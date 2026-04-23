@@ -1,7 +1,7 @@
 import LZString from "lz-string";
 import { gzipSync, gunzipSync, strToU8, strFromU8 } from "fflate";
 import { apiGet, apiPost } from "./apiClient";
-import { exportAll, loadStore, saveStore, importCloudSnapshot } from "./storage";
+import { exportCloudSnapshot, loadStore, saveStore, importCloudSnapshot } from "./storage";
 import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { importHistoryDump } from "./historyCloud";
 
@@ -232,9 +232,9 @@ export async function pushFullBackupToNas() {
   let snapshot: any = null;
 
   try {
-    snapshot = await exportAll();
+    snapshot = await exportCloudSnapshot();
   } catch (e) {
-    console.warn("exportAll() a échoué, fallback store slim", e);
+    console.warn("exportCloudSnapshot() a échoué, fallback store slim", e);
   }
 
   if (!snapshot) {

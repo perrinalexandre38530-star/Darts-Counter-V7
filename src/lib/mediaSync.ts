@@ -5,6 +5,10 @@ function asString(value: any): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isDataImageUrl(value: any): boolean {
+  return typeof value === "string" && value.startsWith("data:image/");
+}
+
 function pickPublicUrl(row: any): string | null {
   const v = row?.publicUrl || row?.url || row?.avatarUrl || row?.path || null;
   return typeof v === "string" && v.trim() ? String(v) : null;
@@ -60,6 +64,133 @@ export async function resolveAssetPublicUrls(ids: string[]): Promise<Record<stri
     console.warn("[mediaSync] resolveAssetPublicUrls failed", err);
     return {};
   }
+}
+
+async function uploadProfileAvatar(profile: any) {
+  const dataUrl = profile?.avatarDataUrl || profile?.avatar;
+  if (!isDataImageUrl(dataUrl)) return profile;
+  try {
+    const uploaded: any = await onlineApi.uploadAvatarImage({
+      dataUrl,
+      updateProfile: false,
+      ownerId: String(profile?.id || ""),
+      kind: "local_profile_avatar",
+      variant: "full",
+    } as any);
+    const publicUrl = asString(uploaded?.publicUrl || uploaded?.avatarUrl || uploaded?.path);
+    const next = {
+      ...(profile || {}),
+      avatarUrl: publicUrl || profile?.avatarUrl || null,
+      avatar: publicUrl || profile?.avatar || null,
+      avatarAssetId: uploaded?.avatarAssetId || uploaded?.assetId || profile?.avatarAssetId || null,
+      avatarThumbAssetId: uploaded?.avatarThumbAssetId || uploaded?.assetId || profile?.avatarThumbAssetId || null,
+      avatarFullAssetId: uploaded?.avatarFullAssetId || uploaded?.assetId || profile?.avatarFullAssetId || null,
+      avatarCastAssetId: uploaded?.avatarCastAssetId || uploaded?.assetId || profile?.avatarCastAssetId || null,
+      avatarUpdatedAt: uploaded?.avatarUpdatedAt || Date.now(),
+      avatarDataUrl: profile?.avatarDataUrl || null,
+    };
+    try {
+      setAvatarCache({
+        profileId: String(next.id || ""),
+        avatarDataUrl: next.avatarDataUrl || null,
+        avatarUrl: next.avatarUrl || null,
+        avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
+        avatarAssetId: next.avatarAssetId || null,
+        avatarThumbAssetId: next.avatarThumbAssetId || null,
+        avatarFullAssetId: next.avatarFullAssetId || null,
+        avatarCastAssetId: next.avatarCastAssetId || null,
+      } as any);
+    } catch {}
+    return next;
+  } catch (err) {
+    console.warn("[mediaSync] uploadProfileAvatar failed", err);
+    return profile;
+  }
+}
+
+async function uploadBotAvatar(bot: any) {
+  const dataUrl = bot?.avatarDataUrl || bot?.avatar;
+  if (!isDataImageUrl(dataUrl)) return bot;
+  try {
+    const uploaded: any = await onlineApi.uploadMediaAsset({
+      dataUrl,
+      kind: "bot_avatar",
+      ownerId: String(bot?.id || ""),
+      variant: "full",
+    } as any);
+    const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
+    return {
+      ...(bot || {}),
+      avatarUrl: publicUrl || bot?.avatarUrl || null,
+      avatar: publicUrl || bot?.avatar || null,
+      avatarAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarAssetId || null,
+      avatarThumbAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarThumbAssetId || null,
+      avatarFullAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarFullAssetId || null,
+      avatarCastAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarCastAssetId || null,
+      avatarUpdatedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn("[mediaSync] uploadBotAvatar failed", err);
+    return bot;
+  }
+}
+
+async function uploadDartSetMedia(ds: any) {
+  let changed = false;
+  let next = { ...(ds || {}) };
+
+  const mainImage = next?.mainImageUrl;
+  if (isDataImageUrl(mainImage)) {
+    try {
+      const uploaded: any = await onlineApi.uploadMediaAsset({
+        dataUrl: mainImage,
+        kind: "dartset_photo",
+        ownerId: String(ds?.id || ""),
+        variant: "main",
+      } as any);
+      const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
+      next.mainImageAssetId = uploaded?.assetId || uploaded?.id || next.mainImageAssetId || null;
+      next.photoAssetId = uploaded?.assetId || uploaded?.id || next.photoAssetId || null;
+      if (publicUrl) next.mainImageUrl = publicUrl;
+      changed = true;
+    } catch (err) {
+      console.warn("[mediaSync] uploadDartSetMedia main failed", err);
+    }
+  }
+
+  const thumbImage = next?.thumbImageUrl;
+  if (isDataImageUrl(thumbImage)) {
+    try {
+      const uploaded: any = await onlineApi.uploadMediaAsset({
+        dataUrl: thumbImage,
+        kind: "dartset_photo",
+        ownerId: String(ds?.id || ""),
+        variant: "thumb",
+      } as any);
+      const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
+      next.thumbImageAssetId = uploaded?.assetId || uploaded?.id || next.thumbImageAssetId || null;
+      if (publicUrl) next.thumbImageUrl = publicUrl;
+      changed = true;
+    } catch (err) {
+      console.warn("[mediaSync] uploadDartSetMedia thumb failed", err);
+    }
+  }
+
+  return changed ? next : ds;
+}
+
+export async function uploadStoreMediaAssets(store: any): Promise<any> {
+  const next: any = { ...(store || {}) };
+  if (Array.isArray(next.profiles)) {
+    next.profiles = await Promise.all(next.profiles.map((p: any) => uploadProfileAvatar(p)));
+  }
+  if (Array.isArray(next.bots)) {
+    next.bots = await Promise.all(next.bots.map((b: any) => uploadBotAvatar(b)));
+  }
+  if (Array.isArray(next.dartSets)) {
+    next.dartSets = await Promise.all(next.dartSets.map((ds: any) => uploadDartSetMedia(ds)));
+  }
+  return next;
 }
 
 export async function hydrateStoreMediaUrls(store: any): Promise<any> {

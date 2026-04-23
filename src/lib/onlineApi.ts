@@ -32,6 +32,8 @@ import {
   nasUpdateEmail,
   nasUpdateProfile,
   nasUploadAvatarImage,
+  nasUploadMediaAsset,
+  nasBulkResolveMediaAssets,
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
@@ -147,6 +149,31 @@ export type UploadMatchPayload = Omit<
   startedAt?: number;
   finishedAt?: number;
   isTraining?: boolean;
+};
+
+
+export type UploadMediaAssetPayload = {
+  dataUrl?: string;
+  base64?: string;
+  mimeType?: string;
+  kind: string;
+  ownerId?: string | null;
+  variant?: string | null;
+};
+
+export type ResolvedMediaAsset = {
+  id: string;
+  assetId?: string;
+  kind?: string | null;
+  ownerId?: string | null;
+  variant?: string | null;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  sha256?: string | null;
+  path?: string | null;
+  publicUrl?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 // --------------------------------------------
@@ -1449,6 +1476,26 @@ async function listMatches(limit = 50): Promise<OnlineMatch[]> {
   return (data || []).map((r: any) => mapOnlineMatchFromRow(r as any));
 }
 
+
+async function uploadMediaAsset(payload: UploadMediaAssetPayload): Promise<ResolvedMediaAsset> {
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    return await nasUploadMediaAsset(payload as any);
+  }
+  throw new Error("uploadMediaAsset n'est supporté que via le backend NAS dans cette version.");
+}
+
+async function bulkResolveMediaAssets(ids: string[]): Promise<ResolvedMediaAsset[]> {
+  const cleanIds = (Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean);
+  if (!cleanIds.length) return [];
+
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    return await nasBulkResolveMediaAssets(cleanIds);
+  }
+  return [];
+}
+
 // ============================================================
 // Export
 // ============================================================
@@ -1472,6 +1519,8 @@ export const onlineApi = {
 
   updateProfile,
   uploadAvatarImage,
+  uploadMediaAsset,
+  bulkResolveMediaAssets,
 
   pullStoreSnapshot,
   pushStoreSnapshot,

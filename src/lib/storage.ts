@@ -1655,7 +1655,32 @@ function sanitizeStoreForCloud(store: any) {
 }
 
 export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
-  return await exportAll();
+  const dump = await exportAll();
+  try {
+    const clone: any = safeJsonParse(safeJsonStringify(dump || {}), dump || {});
+
+    if (clone?.store && typeof clone.store === "object") {
+      clone.store = sanitizeStoreForCloud(clone.store);
+    }
+    if (clone?.data && typeof clone.data === "object") {
+      clone.data = sanitizeStoreForCloud(clone.data);
+    }
+
+    if (clone?.idb && typeof clone.idb === "object") {
+      for (const [key, value] of Object.entries(clone.idb as Record<string, any>)) {
+        const rawKey = String(key || "");
+        const isStoreLikeKey = rawKey === STORE_KEY || rawKey === scopedStorageKey(STORE_KEY) || /(^|[:/])store(?::[^:/]+)?$/.test(rawKey);
+        if (isStoreLikeKey && value && typeof value === "object") {
+          (clone.idb as Record<string, any>)[rawKey] = sanitizeStoreForCloud(value);
+        }
+      }
+    }
+
+    return clone;
+  } catch (err) {
+    console.warn("[storage] exportCloudSnapshot sanitize failed", err);
+    return dump;
+  }
 }
 
 export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<void> {

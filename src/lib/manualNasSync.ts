@@ -69,9 +69,19 @@ export function pushNasSyncDirtyReason(reason: string) {
 }
 
 export async function pushNasAccountSnapshot() {
-  const { exportCloudSnapshot } = await getStorage();
-  const payload = await exportCloudSnapshot();
+  const { loadStore, saveStore, exportCloudSnapshot } = await getStorage();
+  const { uploadStoreMediaAssets, hydrateStoreMediaUrls } = await getMediaSync();
   const api = await getOnlineApi();
+
+  const currentStore: any = await loadStore().catch(() => null);
+  const uploadedStore = currentStore ? await uploadStoreMediaAssets(currentStore).catch(() => currentStore) : currentStore;
+  const hydratedStore = uploadedStore ? await hydrateStoreMediaUrls(uploadedStore).catch(() => uploadedStore) : uploadedStore;
+
+  if (hydratedStore && hydratedStore !== currentStore) {
+    await saveStore(hydratedStore as any).catch(() => {});
+  }
+
+  const payload = await exportCloudSnapshot();
   const res = await api.pushStoreSnapshot(payload as any, (payload as any)?.v ?? 1);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
