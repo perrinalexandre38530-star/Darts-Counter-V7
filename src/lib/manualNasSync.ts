@@ -112,6 +112,10 @@ export async function pushNasAccountSnapshot() {
     const w: any = typeof window !== "undefined" ? window : null;
     if (w && typeof w.__replaceLocalStoreNow === "function") {
       await w.__replaceLocalStoreNow(hydratedStore, "nas-media-uploaded-before-push");
+      // Sécurité critique : on force aussi l'écriture IDB. Sinon exportCloudSnapshot()
+      // peut relire l'ancien store sans assetId/avatarUrl selon le timing React.
+      await saveStore(hydratedStore as any);
+      try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
     } else {
       await saveStore(hydratedStore as any);
       try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}

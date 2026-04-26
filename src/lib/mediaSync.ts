@@ -1,5 +1,5 @@
 import { onlineApi } from "./onlineApi";
-import { setAvatarCache } from "./avatarCache";
+import { getAvatarCache, setAvatarCache } from "./avatarCache";
 
 function asString(value: any): string {
   return typeof value === "string" ? value.trim() : "";
@@ -76,8 +76,48 @@ export async function resolveAssetPublicUrls(ids: string[]): Promise<Record<stri
 }
 
 async function uploadProfileAvatar(profile: any) {
-  const dataUrl = profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar;
-  if (!isDataImageUrl(dataUrl)) return profile;
+  const profileId = String(profile?.id || "");
+  const cached = profileId ? getAvatarCache(profileId) : null;
+
+  // La page Profils peut afficher l'image depuis dc_avatar_cache_v1 alors que
+  // le store principal ne garde plus avatarDataUrl. Pour la sauvegarde NAS
+  // manuelle, on doit donc uploader depuis ce cache si nécessaire.
+  const dataUrl =
+    profile?.avatarDataUrl ||
+    profile?.avatarFullDataUrl ||
+    profile?.avatarCastDataUrl ||
+    cached?.avatarFullDataUrl ||
+    cached?.avatarCastDataUrl ||
+    cached?.avatarDataUrl ||
+    profile?.avatarUrl ||
+    profile?.avatar;
+
+  const existingAssetId =
+    profile?.avatarAssetId ||
+    profile?.avatarFullAssetId ||
+    profile?.avatarThumbAssetId ||
+    profile?.avatarCastAssetId ||
+    cached?.avatarAssetId ||
+    cached?.avatarFullAssetId ||
+    cached?.avatarThumbAssetId ||
+    cached?.avatarCastAssetId ||
+    null;
+
+  if (!isDataImageUrl(dataUrl)) {
+    if (existingAssetId && (!profile?.avatarAssetId || !profile?.avatarUrl)) {
+      return {
+        ...(profile || {}),
+        avatarUrl: profile?.avatarUrl || cached?.avatarUrl || null,
+        avatar: profile?.avatar || profile?.avatarUrl || cached?.avatarUrl || null,
+        avatarAssetId: profile?.avatarAssetId || cached?.avatarAssetId || existingAssetId,
+        avatarThumbAssetId: profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || existingAssetId,
+        avatarFullAssetId: profile?.avatarFullAssetId || cached?.avatarFullAssetId || existingAssetId,
+        avatarCastAssetId: profile?.avatarCastAssetId || cached?.avatarCastAssetId || existingAssetId,
+        avatarUpdatedAt: profile?.avatarUpdatedAt || cached?.avatarUpdatedAt || Date.now(),
+      };
+    }
+    return profile;
+  }
   try {
     const uploaded: any = await onlineApi.uploadMediaAsset({
       dataUrl,
@@ -96,7 +136,7 @@ async function uploadProfileAvatar(profile: any) {
       avatarFullAssetId: uploaded?.avatarFullAssetId || assetId || profile?.avatarFullAssetId || null,
       avatarCastAssetId: uploaded?.avatarCastAssetId || assetId || profile?.avatarCastAssetId || null,
       avatarUpdatedAt: uploaded?.avatarUpdatedAt || Date.now(),
-      avatarDataUrl: profile?.avatarDataUrl || null,
+      avatarDataUrl: profile?.avatarDataUrl || cached?.avatarDataUrl || null,
     };
     try {
       setAvatarCache({

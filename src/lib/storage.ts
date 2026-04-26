@@ -1612,27 +1612,32 @@ function sanitizeStoreForCloud(store: any) {
   stripStoreHistoryFields(clone);
   stripStoreHeavyStatsFields(clone);
 
-  if (Array.isArray(clone.profiles)) {
-    clone.profiles = clone.profiles.map((p: any) => {
-      const out = { ...(p || {}) };
-      cacheProfileAvatar(out);
-      delete out.avatarDataUrl;
-      delete out.photoDataUrl;
-      if (typeof out.avatar === "string" && out.avatar.startsWith("data:")) delete out.avatar;
-      if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:")) delete out.avatarUrl;
-      try {
-        if (out.privateInfo && typeof out.privateInfo === "object") {
-          const pi: any = { ...(out.privateInfo as any) };
-          delete pi.password;
-          delete pi.passwordHash;
-          delete pi.confirmPassword;
-          out.privateInfo = pi;
-        }
-      } catch {}
-      return out;
-    });
-  }
+  const sanitizeProfileMedia = (p: any) => {
+    const out = { ...(p || {}) };
+    cacheProfileAvatar(out);
+    delete out.avatarDataUrl;
+    delete out.avatarThumbDataUrl;
+    delete out.avatarFullDataUrl;
+    delete out.avatarCastDataUrl;
+    delete out.photoDataUrl;
+    delete out.imageDataUrl;
+    if (typeof out.avatar === "string" && out.avatar.startsWith("data:")) delete out.avatar;
+    if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:")) delete out.avatarUrl;
+    try {
+      if (out.privateInfo && typeof out.privateInfo === "object") {
+        const pi: any = { ...(out.privateInfo as any) };
+        delete pi.password;
+        delete pi.passwordHash;
+        delete pi.confirmPassword;
+        out.privateInfo = pi;
+      }
+    } catch {}
+    return out;
+  };
 
+  if (Array.isArray(clone.profiles)) clone.profiles = clone.profiles.map(sanitizeProfileMedia);
+  if (Array.isArray(clone.localProfiles)) clone.localProfiles = clone.localProfiles.map(sanitizeProfileMedia);
+  if (Array.isArray(clone.players)) clone.players = clone.players.map(sanitizeProfileMedia);
   const sanitizeBotMedia = (b: any) => {
     const bo: any = { ...(b || {}) };
     delete bo.avatarDataUrl;
