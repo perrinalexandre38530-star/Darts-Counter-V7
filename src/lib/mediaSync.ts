@@ -103,8 +103,8 @@ async function uploadProfileAvatar(profile: any) {
     } catch {}
     return next;
   } catch (err) {
-    console.warn("[mediaSync] uploadProfileAvatar failed", err);
-    return profile;
+    console.error("[mediaSync] uploadProfileAvatar failed", err);
+    throw err;
   }
 }
 
@@ -130,8 +130,8 @@ async function uploadBotAvatar(bot: any) {
       avatarUpdatedAt: new Date().toISOString(),
     };
   } catch (err) {
-    console.warn("[mediaSync] uploadBotAvatar failed", err);
-    return bot;
+    console.error("[mediaSync] uploadBotAvatar failed", err);
+    throw err;
   }
 }
 
@@ -154,7 +154,8 @@ async function uploadDartSetMedia(ds: any) {
       if (publicUrl) next.mainImageUrl = publicUrl;
       changed = true;
     } catch (err) {
-      console.warn("[mediaSync] uploadDartSetMedia main failed", err);
+      console.error("[mediaSync] uploadDartSetMedia main failed", err);
+      throw err;
     }
   }
 
@@ -172,7 +173,8 @@ async function uploadDartSetMedia(ds: any) {
       if (publicUrl) next.thumbImageUrl = publicUrl;
       changed = true;
     } catch (err) {
-      console.warn("[mediaSync] uploadDartSetMedia thumb failed", err);
+      console.error("[mediaSync] uploadDartSetMedia thumb failed", err);
+      throw err;
     }
   }
 

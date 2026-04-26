@@ -68,21 +68,42 @@ export function pushNasSyncDirtyReason(reason: string) {
   } catch {}
 }
 
+async function flushRuntimeStoreBeforeNasPush() {
+  try {
+    const w: any = typeof window !== "undefined" ? window : null;
+    if (w && typeof w.__flushLocalStoreNow === "function") {
+      await w.__flushLocalStoreNow("before-nas-push");
+    }
+  } catch (e) {
+    console.warn("[nasSync] runtime store flush failed before push", e);
+  }
+}
+
 export async function pushNasAccountSnapshot() {
   const { loadStore, saveStore, exportCloudSnapshot } = await getStorage();
   const { uploadStoreMediaAssets, hydrateStoreMediaUrls } = await getMediaSync();
   const api = await getOnlineApi();
 
+  // ✅ FINAL NAS FIX:
+  // évite le cas: profil local créé en React → pas encore écrit en IDB → push NAS
+  // envoie l'ancien snapshot sans ce profil.
+  await flushRuntimeStoreBeforeNasPush();
+
   const currentStore: any = await loadStore().catch(() => null);
-  const uploadedStore = currentStore ? await uploadStoreMediaAssets(currentStore).catch(() => currentStore) : currentStore;
+
+  // ✅ IMPORTANT:
+  // On NE masque plus les erreurs d'upload média. Si /media/upload renvoie 404,
+  // le push doit échouer clairement au lieu d'afficher une "synchronisation réussie"
+  // avec des avatars manquants.
+  const uploadedStore = currentStore ? await uploadStoreMediaAssets(currentStore) : currentStore;
   const hydratedStore = uploadedStore ? await hydrateStoreMediaUrls(uploadedStore).catch(() => uploadedStore) : uploadedStore;
 
   if (hydratedStore && hydratedStore !== currentStore) {
-    await saveStore(hydratedStore as any).catch(() => {});
+    await saveStore(hydratedStore as any);
   }
 
   const payload = await exportCloudSnapshot();
-  const res = await api.pushStoreSnapshot(payload as any, (payload as any)?.v ?? 1);
+  const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   return res;

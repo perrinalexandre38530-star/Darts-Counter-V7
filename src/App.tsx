@@ -1653,7 +1653,18 @@ useEffect(() => {
         dartSets: ((snapshot as any)?.dartSets || []).length || 0,
       });
     } catch {}
-  }, []);
+
+    // ✅ FINAL NAS FIX:
+    // Un profil local créé juste avant "Synchroniser le compte sur NAS" ne doit pas
+    // rester uniquement en mémoire React. On persiste automatiquement le store
+    // après un court délai, et manualNasSync force aussi ce flush avant le push.
+    if (typeof window !== "undefined") {
+      storePersistTimerRef.current = window.setTimeout(() => {
+        storePersistTimerRef.current = null;
+        void flushPendingStorePersist("auto-deferred");
+      }, 900);
+    }
+  }, [flushPendingStorePersist]);
 
   React.useEffect(() => {
     const handleHidden = () => {
@@ -1926,6 +1937,9 @@ useEffect(() => {
   function update(mut: (s: Store) => Store) {
     setStore((s) => {
       const next = mut({ ...s });
+      // ✅ FINAL NAS FIX: toute mutation globale doit être éligible à une
+      // persistance locale avant un push NAS manuel.
+      try { scheduleStorePersist(next as any); } catch {}
       return next;
     });
   }

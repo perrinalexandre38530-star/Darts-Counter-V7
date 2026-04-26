@@ -247,11 +247,11 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
     displayName,
     nickname: nickname as any,
     avatarUrl:
-      raw?.avatarDataUrl ||
-      raw?.avatar_data_url ||
-      raw?.avatar ||
       raw?.avatarUrl ||
       raw?.avatar_url ||
+      raw?.avatar ||
+      raw?.avatarDataUrl ||
+      raw?.avatar_data_url ||
       undefined,
     country: raw?.country || raw?.pays || null,
     countryCode: raw?.countryCode || raw?.country_code || null,
@@ -850,12 +850,14 @@ export const nasApi = {
 
 export function normalizeNasProfile(raw:any){
   if(!raw) return raw;
-  const avatarDataUrl = raw.avatarDataUrl || raw.avatar_data_url || raw.avatar || raw.avatarUrl || raw.avatar_url || null;
+  const avatarUrl = raw.avatarUrl || raw.avatar_url || raw.avatar || raw.avatarDataUrl || raw.avatar_data_url || null;
+  const avatarDataUrl = raw.avatarDataUrl || raw.avatar_data_url || null;
   const name = raw.name || raw.displayName || raw.display_name || raw.nickname || raw.username || null;
   return {
     ...raw,
     name,
     displayName: name,
+    avatarUrl,
     avatarDataUrl,
   };
 }
