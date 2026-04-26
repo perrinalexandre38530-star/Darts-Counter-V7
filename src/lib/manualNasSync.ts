@@ -109,12 +109,18 @@ export async function pushNasAccountSnapshot() {
   const hydratedStore = uploadedStore ? await hydrateStoreMediaUrls(uploadedStore).catch(() => uploadedStore) : uploadedStore;
 
   if (hydratedStore && hydratedStore !== currentStore) {
-    await saveStore(hydratedStore as any);
-    try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+    const w: any = typeof window !== "undefined" ? window : null;
+    if (w && typeof w.__replaceLocalStoreNow === "function") {
+      await w.__replaceLocalStoreNow(hydratedStore, "nas-media-uploaded-before-push");
+    } else {
+      await saveStore(hydratedStore as any);
+      try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+    }
   }
 
-  // Recharger après saveStore pour éviter de pousser un snapshot ancien.
-  await flushRuntimeStoreBeforeNasPush();
+  // Ne PAS refaire un flush React ici : le store runtime peut encore contenir
+  // l ancienne version avec base64. Un second flush écraserait les assetId/URLs
+  // que l on vient d écrire après upload média.
   const payload = await exportCloudSnapshot();
   const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
@@ -135,7 +141,12 @@ export async function pullNasAccountSnapshot() {
       const restored: any = await loadStore().catch(() => null);
       const hydrated = restored ? await hydrateStoreMediaUrls(restored).catch(() => restored) : null;
       if (hydrated && hydrated !== restored) {
-        await saveStore(hydrated as any);
+        const w: any = typeof window !== "undefined" ? window : null;
+        if (w && typeof w.__replaceLocalStoreNow === "function") {
+          await w.__replaceLocalStoreNow(hydrated, "nas-pull-hydrated-media");
+        } else {
+          await saveStore(hydrated as any);
+        }
       }
     } catch {}
     try { localStorage.setItem(LAST_PULL_KEY, new Date().toISOString()); } catch {}
