@@ -30,12 +30,18 @@ export function collectStoreMediaAssetIds(store: any): string[] {
     pushIfString(ids, p?.avatarCastAssetId);
   }
 
-  const bots = Array.isArray(store?.bots) ? store.bots : [];
-  for (const b of bots) {
-    pushIfString(ids, b?.avatarAssetId);
-    pushIfString(ids, b?.avatarThumbAssetId);
-    pushIfString(ids, b?.avatarFullAssetId);
-    pushIfString(ids, b?.avatarCastAssetId);
+  const botLists = [
+    Array.isArray(store?.bots) ? store.bots : [],
+    Array.isArray(store?.cpuBots) ? store.cpuBots : [],
+    Array.isArray(store?.botPlayers) ? store.botPlayers : [],
+  ];
+  for (const bots of botLists) {
+    for (const b of bots) {
+      pushIfString(ids, b?.avatarAssetId);
+      pushIfString(ids, b?.avatarThumbAssetId);
+      pushIfString(ids, b?.avatarFullAssetId);
+      pushIfString(ids, b?.avatarCastAssetId);
+    }
   }
 
   const dartSets = Array.isArray(store?.dartSets) ? store.dartSets : [];
@@ -43,6 +49,9 @@ export function collectStoreMediaAssetIds(store: any): string[] {
     pushIfString(ids, ds?.mainImageAssetId);
     pushIfString(ids, ds?.thumbImageAssetId);
     pushIfString(ids, ds?.photoAssetId);
+    pushIfString(ids, ds?.imageAssetId);
+    pushIfString(ids, ds?.photoThumbAssetId);
+    pushIfString(ids, ds?.dartSetImageAssetId);
   }
 
   return Array.from(ids);
@@ -109,7 +118,7 @@ async function uploadProfileAvatar(profile: any) {
 }
 
 async function uploadBotAvatar(bot: any) {
-  const dataUrl = bot?.avatarDataUrl || bot?.avatarUrl || bot?.avatar;
+  const dataUrl = bot?.avatarDataUrl || bot?.avatarUrl || bot?.avatar || bot?.photoDataUrl || bot?.imageDataUrl;
   if (!isDataImageUrl(dataUrl)) return bot;
   try {
     const uploaded: any = await onlineApi.uploadMediaAsset({
@@ -139,7 +148,7 @@ async function uploadDartSetMedia(ds: any) {
   let changed = false;
   let next = { ...(ds || {}) };
 
-  const mainImage = next?.photoDataUrl || next?.mainImageUrl || next?.photoUrl;
+  const mainImage = next?.photoDataUrl || next?.imageDataUrl || next?.mainImageDataUrl || next?.dartSetImageDataUrl || next?.mainImageUrl || next?.photoUrl || next?.imageUrl;
   if (isDataImageUrl(mainImage)) {
     try {
       const uploaded: any = await onlineApi.uploadMediaAsset({
@@ -151,7 +160,12 @@ async function uploadDartSetMedia(ds: any) {
       const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
       next.mainImageAssetId = uploaded?.assetId || uploaded?.id || next.mainImageAssetId || null;
       next.photoAssetId = uploaded?.assetId || uploaded?.id || next.photoAssetId || null;
-      if (publicUrl) next.mainImageUrl = publicUrl;
+      next.imageAssetId = uploaded?.assetId || uploaded?.id || next.imageAssetId || null;
+      if (publicUrl) {
+        next.mainImageUrl = publicUrl;
+        next.photoUrl = publicUrl;
+        next.imageUrl = publicUrl;
+      }
       changed = true;
     } catch (err) {
       console.error("[mediaSync] uploadDartSetMedia main failed", err);
@@ -159,7 +173,7 @@ async function uploadDartSetMedia(ds: any) {
     }
   }
 
-  const thumbImage = next?.thumbImageUrl || next?.photoThumbDataUrl || next?.thumbDataUrl;
+  const thumbImage = next?.photoThumbDataUrl || next?.thumbDataUrl || next?.thumbImageDataUrl || next?.thumbImageUrl || next?.photoThumbUrl;
   if (isDataImageUrl(thumbImage)) {
     try {
       const uploaded: any = await onlineApi.uploadMediaAsset({
@@ -170,7 +184,11 @@ async function uploadDartSetMedia(ds: any) {
       } as any);
       const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
       next.thumbImageAssetId = uploaded?.assetId || uploaded?.id || next.thumbImageAssetId || null;
-      if (publicUrl) next.thumbImageUrl = publicUrl;
+      next.photoThumbAssetId = uploaded?.assetId || uploaded?.id || next.photoThumbAssetId || null;
+      if (publicUrl) {
+        next.thumbImageUrl = publicUrl;
+        next.photoThumbUrl = publicUrl;
+      }
       changed = true;
     } catch (err) {
       console.error("[mediaSync] uploadDartSetMedia thumb failed", err);
@@ -188,6 +206,12 @@ export async function uploadStoreMediaAssets(store: any): Promise<any> {
   }
   if (Array.isArray(next.bots)) {
     next.bots = await Promise.all(next.bots.map((b: any) => uploadBotAvatar(b)));
+  }
+  if (Array.isArray(next.cpuBots)) {
+    next.cpuBots = await Promise.all(next.cpuBots.map((b: any) => uploadBotAvatar(b)));
+  }
+  if (Array.isArray(next.botPlayers)) {
+    next.botPlayers = await Promise.all(next.botPlayers.map((b: any) => uploadBotAvatar(b)));
   }
   if (Array.isArray(next.dartSets)) {
     next.dartSets = await Promise.all(next.dartSets.map((ds: any) => uploadDartSetMedia(ds)));
@@ -231,29 +255,33 @@ export async function hydrateStoreMediaUrls(store: any): Promise<any> {
     });
   }
 
-  if (Array.isArray(next.bots)) {
-    next.bots = next.bots.map((b: any) => {
-      const out = { ...(b || {}) };
-      const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
-      const url = assetId ? urls[assetId] : "";
-      if (url) {
-        if (out.avatarUrl !== url) changed = true;
-        out.avatarUrl = url;
-        out.avatar = url;
-      }
-      return out;
-    });
-  }
+  const hydrateBotList = (list: any[]) => list.map((b: any) => {
+    const out = { ...(b || {}) };
+    const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
+    const url = assetId ? urls[assetId] : "";
+    if (url) {
+      if (out.avatarUrl !== url) changed = true;
+      out.avatarUrl = url;
+      out.avatar = url;
+    }
+    return out;
+  });
+
+  if (Array.isArray(next.bots)) next.bots = hydrateBotList(next.bots);
+  if (Array.isArray(next.cpuBots)) next.cpuBots = hydrateBotList(next.cpuBots);
+  if (Array.isArray(next.botPlayers)) next.botPlayers = hydrateBotList(next.botPlayers);
 
   if (Array.isArray(next.dartSets)) {
     next.dartSets = next.dartSets.map((ds: any) => {
       const out = { ...(ds || {}) };
-      const mainId = asString(out.mainImageAssetId || out.photoAssetId);
-      const thumbId = asString(out.thumbImageAssetId || out.mainImageAssetId || out.photoAssetId);
+      const mainId = asString(out.mainImageAssetId || out.photoAssetId || out.imageAssetId || out.dartSetImageAssetId);
+      const thumbId = asString(out.thumbImageAssetId || out.photoThumbAssetId || out.mainImageAssetId || out.photoAssetId || out.imageAssetId);
       const mainUrl = mainId ? urls[mainId] : "";
       const thumbUrl = thumbId ? urls[thumbId] : "";
       if (mainUrl && out.mainImageUrl !== mainUrl) {
         out.mainImageUrl = mainUrl;
+        out.photoUrl = mainUrl;
+        out.imageUrl = mainUrl;
         changed = true;
       }
       if (thumbUrl && out.thumbImageUrl !== thumbUrl) {

@@ -6,6 +6,7 @@ const STATS_HUB_DEBUG = false;
 import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
+import { pushNasAccountSnapshot, pullNasAccountSnapshot, computeNasSyncSummary, getNasSyncState } from "../lib/manualNasSync";
 import StatsPlayerDashboard, {
   type PlayerDashboardStats,
   GoldPill,
@@ -4264,6 +4265,52 @@ go,
     };
   }, []);
 
+  const [nasBusy, setNasBusy] = React.useState<null | "backup" | "restore">(null);
+  const [nasStatus, setNasStatus] = React.useState<string>("");
+
+  async function handleStatsNasBackup() {
+    if (nasBusy) return;
+    setNasBusy("backup");
+    setNasStatus("⏳ Synchronisation NAS en cours...");
+    try {
+      const res: any = await pushNasAccountSnapshot();
+      const summary = await computeNasSyncSummary();
+      const msg = `✅ Synchro NAS terminée — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
+      setNasStatus(msg);
+      try { window.alert(msg); } catch {}
+      return res;
+    } catch (err: any) {
+      const msg = `❌ Synchro NAS impossible : ${err?.message || err}`;
+      setNasStatus(msg);
+      try { window.alert(msg); } catch {}
+    } finally {
+      setNasBusy(null);
+    }
+  }
+
+  async function handleStatsNasRestore() {
+    if (nasBusy) return;
+    const ok = window.confirm("Recharger la sauvegarde NAS sur cet appareil ?\n\nCela remplace les données locales par le snapshot NAS.");
+    if (!ok) return;
+    setNasBusy("restore");
+    setNasStatus("⏳ Rechargement NAS en cours...");
+    try {
+      const res: any = await pullNasAccountSnapshot();
+      const summary = await computeNasSyncSummary();
+      const msg = `✅ Rechargement NAS terminé — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
+      setNasStatus(msg);
+      try { window.alert(msg); } catch {}
+      try { window.location.reload(); } catch {}
+      return res;
+    } catch (err: any) {
+      const msg = `❌ Rechargement NAS impossible : ${err?.message || err}`;
+      setNasStatus(msg);
+      try { window.alert(msg); } catch {}
+    } finally {
+      setNasBusy(null);
+    }
+  }
+
   
   const { sport } = useSport();
   const effectiveSport = String(sportOverride || sport || "").toLowerCase();
@@ -5663,6 +5710,114 @@ return (
               ▶
             </button>
           </div>
+        </div>
+
+        {/* SYNCHRONISATION NAS MANUELLE — même logique que dans Réglages, sans NAS auto au démarrage */}
+        <div style={{
+          ...card,
+          padding: 14,
+          border: `1px solid ${T.accent30}`,
+          background: "linear-gradient(180deg,rgba(18,18,22,.97),rgba(6,6,10,.94))",
+        }}>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "flex-start",
+            marginBottom: 10,
+          }}>
+            <div>
+              <div style={{
+                fontSize: 14,
+                fontWeight: 1000,
+                color: T.accent,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                textShadow: `0 0 10px ${T.accentGlow ?? T.accent}`,
+              }}>
+                Synchronisation NAS
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.78, marginTop: 4, lineHeight: 1.35 }}>
+                Rien ne se lance au démarrage. Ce bouton envoie manuellement tes profils, BOTS, dartsets, stats et les images vers le NAS.
+              </div>
+            </div>
+            <div style={{
+              flexShrink: 0,
+              fontSize: 10,
+              borderRadius: 999,
+              padding: "5px 8px",
+              border: `1px solid ${T.accent30}`,
+              color: T.text,
+              opacity: 0.9,
+              maxWidth: 145,
+              textAlign: "right",
+            }}>
+              {(() => {
+                const s = getNasSyncState();
+                return s.dirty ? "⚠️ Local modifié" : "✅ Local à jour";
+              })()}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <button
+              type="button"
+              onClick={handleStatsNasBackup}
+              disabled={nasBusy !== null}
+              style={{
+                borderRadius: 13,
+                padding: "10px 10px",
+                border: `1px solid ${T.accent}`,
+                background: "rgba(0,0,0,.35)",
+                color: T.accent,
+                fontSize: 11,
+                fontWeight: 1000,
+                textTransform: "uppercase",
+                letterSpacing: 0.4,
+                cursor: nasBusy ? "default" : "pointer",
+                opacity: nasBusy ? 0.65 : 1,
+                boxShadow: `0 0 14px ${T.accent20}`,
+              }}
+            >
+              {nasBusy === "backup" ? "Synchronisation..." : "Synchroniser sur NAS"}
+            </button>
+            <button
+              type="button"
+              onClick={handleStatsNasRestore}
+              disabled={nasBusy !== null}
+              style={{
+                borderRadius: 13,
+                padding: "10px 10px",
+                border: `1px solid ${T.text30}`,
+                background: "rgba(255,255,255,.04)",
+                color: T.text,
+                fontSize: 11,
+                fontWeight: 1000,
+                textTransform: "uppercase",
+                letterSpacing: 0.4,
+                cursor: nasBusy ? "default" : "pointer",
+                opacity: nasBusy ? 0.65 : 1,
+              }}
+            >
+              {nasBusy === "restore" ? "Rechargement..." : "Recharger depuis NAS"}
+            </button>
+          </div>
+
+          {nasStatus ? (
+            <div style={{
+              marginTop: 10,
+              padding: 9,
+              borderRadius: 12,
+              border: `1px solid ${T.accent20}`,
+              background: "rgba(255,255,255,.035)",
+              color: T.text,
+              fontSize: 11,
+              lineHeight: 1.35,
+              wordBreak: "break-word",
+            }}>
+              {nasStatus}
+            </div>
+          ) : null}
         </div>
 
         {/* CONTENU PRINCIPAL */}

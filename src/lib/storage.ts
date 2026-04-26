@@ -1577,10 +1577,13 @@ function extractBotsFromSnapshot(snap: any) {
   const bots =
     pickFirst(
       store?.bots,
+      store?.cpuBots,
       store?.botPlayers,
       data?.bots,
+      data?.cpuBots,
       data?.botPlayers,
       (snap as any)?.bots,
+      (snap as any)?.cpuBots,
       (snap as any)?.botPlayers
     ) ?? null;
 
@@ -1630,23 +1633,34 @@ function sanitizeStoreForCloud(store: any) {
     });
   }
 
-  if (Array.isArray((clone as any).bots)) {
-    (clone as any).bots = (clone as any).bots.map((b: any) => {
-      const bo: any = { ...(b || {}) };
-      delete bo.avatarDataUrl;
-      delete bo.photoDataUrl;
-      if (typeof bo.avatar === "string" && bo.avatar.startsWith("data:")) delete bo.avatar;
-      if (typeof bo.avatarUrl === "string" && bo.avatarUrl.startsWith("data:")) delete bo.avatarUrl;
-      return bo;
-    });
-  }
+  const sanitizeBotMedia = (b: any) => {
+    const bo: any = { ...(b || {}) };
+    delete bo.avatarDataUrl;
+    delete bo.photoDataUrl;
+    delete bo.imageDataUrl;
+    if (typeof bo.avatar === "string" && bo.avatar.startsWith("data:")) delete bo.avatar;
+    if (typeof bo.avatarUrl === "string" && bo.avatarUrl.startsWith("data:")) delete bo.avatarUrl;
+    return bo;
+  };
+  if (Array.isArray((clone as any).bots)) (clone as any).bots = (clone as any).bots.map(sanitizeBotMedia);
+  if (Array.isArray((clone as any).cpuBots)) (clone as any).cpuBots = (clone as any).cpuBots.map(sanitizeBotMedia);
+  if (Array.isArray((clone as any).botPlayers)) (clone as any).botPlayers = (clone as any).botPlayers.map(sanitizeBotMedia);
 
   if (Array.isArray((clone as any).dartSets)) {
     (clone as any).dartSets = (clone as any).dartSets.map((ds: any) => {
       const dso: any = { ...(ds || {}) };
-      if (typeof dso.photoDataUrl === "string") delete dso.photoDataUrl;
-      if (typeof dso.mainImageUrl === "string" && dso.mainImageUrl.startsWith("data:")) dso.mainImageUrl = "";
+      delete dso.photoDataUrl;
+      delete dso.imageDataUrl;
+      delete dso.mainImageDataUrl;
+      delete dso.dartSetImageDataUrl;
+      delete dso.photoThumbDataUrl;
+      delete dso.thumbDataUrl;
+      delete dso.thumbImageDataUrl;
+      if (typeof dso.mainImageUrl === "string" && dso.mainImageUrl.startsWith("data:")) delete dso.mainImageUrl;
+      if (typeof dso.photoUrl === "string" && dso.photoUrl.startsWith("data:")) delete dso.photoUrl;
+      if (typeof dso.imageUrl === "string" && dso.imageUrl.startsWith("data:")) delete dso.imageUrl;
       if (typeof dso.thumbImageUrl === "string" && dso.thumbImageUrl.startsWith("data:")) delete dso.thumbImageUrl;
+      if (typeof dso.photoThumbUrl === "string" && dso.photoThumbUrl.startsWith("data:")) delete dso.photoThumbUrl;
       return dso;
     });
   }
