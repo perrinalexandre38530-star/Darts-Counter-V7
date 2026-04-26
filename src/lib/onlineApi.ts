@@ -34,6 +34,7 @@ import {
   nasUploadAvatarImage,
   nasUploadMediaAsset,
   nasBulkResolveMediaAssets,
+  nasMediaHealth,
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
@@ -1496,6 +1497,14 @@ async function bulkResolveMediaAssets(ids: string[]): Promise<ResolvedMediaAsset
   return [];
 }
 
+async function mediaHealth(): Promise<any> {
+  if (isNasProviderEnabled()) {
+    return await nasMediaHealth();
+  }
+  return { ok: false, provider: "supabase" };
+}
+
+
 // ============================================================
 // Export
 // ============================================================
@@ -1521,6 +1530,7 @@ export const onlineApi = {
   uploadAvatarImage,
   uploadMediaAsset,
   bulkResolveMediaAssets,
+  mediaHealth,
 
   pullStoreSnapshot,
   pushStoreSnapshot,

@@ -2132,6 +2132,16 @@ useEffect(() => {
       if (online.status !== "signed_in") return;
       if (cloudHydrated) return;
 
+      // ✅ SYNC MANUEL STRICT:
+      // On ne fait plus de /sync/pull ni de seed automatique au démarrage.
+      // L'application démarre/localise immédiatement; la page Réglages déclenche
+      // explicitement "Synchroniser le compte sur NAS" ou "Recharger depuis le NAS".
+      if (!cancelled) {
+        setCloudCanSync(true);
+        setCloudHydrated(true);
+      }
+      return;
+
       const uid = String((online as any)?.user?.id || "").trim();
       const hasLocalData = hasMeaningfulLocalCloudData;
 

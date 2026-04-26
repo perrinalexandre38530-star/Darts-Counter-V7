@@ -91,6 +91,16 @@ export async function pushNasAccountSnapshot() {
 
   const currentStore: any = await loadStore().catch(() => null);
 
+  // Vérification explicite du backend média avant de promettre une synchro complète.
+  // Si le NAS n'a pas le bon server.js déployé, on stoppe ici avec un message clair.
+  try {
+    if (typeof api.mediaHealth === "function") {
+      await api.mediaHealth();
+    }
+  } catch (e: any) {
+    throw new Error("Backend média NAS indisponible (/media/health). Remplace server.js sur le NAS puis redémarre l'API.");
+  }
+
   // ✅ IMPORTANT:
   // On NE masque plus les erreurs d'upload média. Si /media/upload renvoie 404,
   // le push doit échouer clairement au lieu d'afficher une "synchronisation réussie"

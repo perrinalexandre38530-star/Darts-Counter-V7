@@ -1755,6 +1755,9 @@ export default function Settings({ go }: Props) {
         const msg = `✅ Rechargement NAS terminé — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
         setNasStatus(msg);
         safeAlert(msg);
+        // Après import manuel NAS, on recharge pour que tous les écrans relisent
+        // le store IndexedDB fraîchement remplacé/hydraté.
+        try { window.location.reload(); } catch {}
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const finalMsg = `❌ Rechargement NAS impossible : ${msg}`;
