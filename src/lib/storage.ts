@@ -1769,21 +1769,10 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
     }
   }
 
-  // 3) dédoublonne "souple" par signature (name+country+avatarUrl)
-  const bySig = new Map<string, any>();
-  for (const p of byId.values()) {
-    const sig = [String(p?.name ?? "").trim().toLowerCase(), String(p?.country ?? "").trim().toLowerCase(), String(p?.avatarUrl ?? "").trim()].join("|");
-
-    const prev = bySig.get(sig);
-    if (!prev) {
-      bySig.set(sig, p);
-    } else {
-      const keep = scoreProfileCompleteness(p) >= scoreProfileCompleteness(prev) ? p : prev;
-      bySig.set(sig, keep);
-    }
-  }
-
-  const cleaned = Array.from(bySig.values());
+  // 3) Ne pas dédoublonner agressivement par signature : deux profils locaux
+  // peuvent avoir le même nom/pays ou perdre temporairement leur avatar pendant
+  // la migration média. On garde donc uniquement le dédoublonnage par id.
+  const cleaned = Array.from(byId.values());
 
   // 4) sécurise l'activeProfileId
   const activeId = String(store?.activeProfileId ?? "");

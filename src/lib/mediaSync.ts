@@ -67,7 +67,7 @@ export async function resolveAssetPublicUrls(ids: string[]): Promise<Record<stri
 }
 
 async function uploadProfileAvatar(profile: any) {
-  const dataUrl = profile?.avatarDataUrl || profile?.avatar;
+  const dataUrl = profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar;
   if (!isDataImageUrl(dataUrl)) return profile;
   try {
     const uploaded: any = await onlineApi.uploadMediaAsset({
@@ -109,7 +109,7 @@ async function uploadProfileAvatar(profile: any) {
 }
 
 async function uploadBotAvatar(bot: any) {
-  const dataUrl = bot?.avatarDataUrl || bot?.avatar;
+  const dataUrl = bot?.avatarDataUrl || bot?.avatarUrl || bot?.avatar;
   if (!isDataImageUrl(dataUrl)) return bot;
   try {
     const uploaded: any = await onlineApi.uploadMediaAsset({
@@ -139,7 +139,7 @@ async function uploadDartSetMedia(ds: any) {
   let changed = false;
   let next = { ...(ds || {}) };
 
-  const mainImage = next?.mainImageUrl;
+  const mainImage = next?.photoDataUrl || next?.mainImageUrl || next?.photoUrl;
   if (isDataImageUrl(mainImage)) {
     try {
       const uploaded: any = await onlineApi.uploadMediaAsset({
@@ -159,7 +159,7 @@ async function uploadDartSetMedia(ds: any) {
     }
   }
 
-  const thumbImage = next?.thumbImageUrl;
+  const thumbImage = next?.thumbImageUrl || next?.photoThumbDataUrl || next?.thumbDataUrl;
   if (isDataImageUrl(thumbImage)) {
     try {
       const uploaded: any = await onlineApi.uploadMediaAsset({

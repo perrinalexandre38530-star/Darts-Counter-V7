@@ -100,8 +100,11 @@ export async function pushNasAccountSnapshot() {
 
   if (hydratedStore && hydratedStore !== currentStore) {
     await saveStore(hydratedStore as any);
+    try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
   }
 
+  // Recharger après saveStore pour éviter de pousser un snapshot ancien.
+  await flushRuntimeStoreBeforeNasPush();
   const payload = await exportCloudSnapshot();
   const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}

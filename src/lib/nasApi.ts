@@ -829,6 +829,10 @@ export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<{
   }
 }
 
+export async function nasMediaHealth(): Promise<any> {
+  return await apiFetch("/media/health", { method: "GET" });
+}
+
 export const nasApi = {
   isEnabled: isNasSyncEnabled,
   login: nasLogin,
@@ -844,6 +848,7 @@ export const nasApi = {
   uploadAvatarImage: nasUploadAvatarImage,
   uploadMediaAsset: nasUploadMediaAsset,
   bulkResolveMediaAssets: nasBulkResolveMediaAssets,
+  mediaHealth: nasMediaHealth,
   pullStoreSnapshot: nasPullStoreSnapshot,
   pushStoreSnapshot: nasPushStoreSnapshot,
 };

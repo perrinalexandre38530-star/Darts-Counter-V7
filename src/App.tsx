@@ -2382,6 +2382,9 @@ useEffect(() => {
         ...(s as any),
         profiles: mergeProfilesSafe((s as any)?.profiles ?? [], fn((s as any)?.profiles ?? [])),
       } as any;
+      // NAS manuel : toute création/modification de profil local doit être écrite
+      // dans IndexedDB avant une sauvegarde NAS, sinon le snapshot peut partir sans elle.
+      try { scheduleStorePersist(next as any); } catch {}
       return next;
     });
   }
@@ -3711,9 +3714,8 @@ case "babyfoot_team_edit":
             let uploadRes: any = null;
             try {
               if ((online as any)?.status === "signed_in" && finalAvatarDataUrl) {
-                uploadRes = await onlineApi.uploadAvatarImage({
+                uploadRes = await onlineApi.uploadMediaAsset({
                   dataUrl: finalAvatarDataUrl,
-                  updateProfile: false,
                   ownerId: latestTarget.id,
                   kind: "bot_avatar",
                   variant: "full",
