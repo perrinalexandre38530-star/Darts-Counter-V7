@@ -443,11 +443,16 @@ function buildAvatarSrc(opts: {
   const safeFullDataUrl = sanitizeAvatarDataUrl(opts.avatarFullDataUrl ?? null, 280_000);
   const safeDataUrl = sanitizeAvatarDataUrl(opts.avatarDataUrl);
 
+  const safeUrl = opts.avatarUrl && String(opts.avatarUrl).trim();
+
+  // Après restauration NAS, l'URL/asset NAS doit gagner contre une ancienne dataUrl
+  // encore présente dans le cache local du navigateur. Sinon deux appareils peuvent
+  // afficher deux images différentes pour le même profil.
   const baseSrc =
     safePreview ||
+    safeUrl ||
     safeFullDataUrl ||
     safeDataUrl ||
-    (opts.avatarUrl && String(opts.avatarUrl).trim()) ||
     "";
 
   if (!baseSrc) return "";
@@ -2352,11 +2357,12 @@ function ActiveProfileBlock({
   // + cache-bust anti Supabase / SW / navigateur
   // =========================
   const activeAvatarCache = getAvatarCacheLib(String((active as any)?.id || ""));
+  const activeAvatarUrl = String((active as any)?.avatarUrl || "");
   const avatarSrc = buildAvatarSrc({
     preview: editPreview,
-    avatarUrl: String((active as any)?.avatarUrl || ""),
+    avatarUrl: activeAvatarUrl,
     avatarDataUrl: String((active as any)?.avatarDataUrl || ""),
-    avatarFullDataUrl: String((activeAvatarCache as any)?.avatarFullDataUrl || ""),
+    avatarFullDataUrl: activeAvatarUrl ? "" : String((activeAvatarCache as any)?.avatarFullDataUrl || ""),
     avatarUpdatedAt: (active as any)?.avatarUpdatedAt ?? null,
   });
 
@@ -4104,7 +4110,7 @@ function LocalProfilesRefonte({
                     src={buildAvatarSrc({
                       avatarUrl: (renderedCurrent as any)?.avatarUrl || null,
                       avatarDataUrl: (renderedCurrent as any)?.avatarDataUrl || null,
-                      avatarFullDataUrl: (getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null,
+                      avatarFullDataUrl: (renderedCurrent as any)?.avatarUrl ? null : ((getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null),
                       avatarUpdatedAt: (renderedCurrent as any)?.avatarUpdatedAt ?? null,
                     })}
                     label={renderedCurrent.name?.[0]?.toUpperCase() || "?"}

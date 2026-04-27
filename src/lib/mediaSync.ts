@@ -19,6 +19,30 @@ function pushIfString(set: Set<string>, value: any) {
   if (v) set.add(v);
 }
 
+function pickFirstDataImage(...values: any[]): string {
+  for (const value of values) {
+    if (isDataImageUrl(value)) return String(value);
+  }
+  return "";
+}
+
+function pickProfileCachedAvatar(profile: any) {
+  try {
+    const id = asString(profile?.id);
+    return id ? getAvatarCache(id) : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeUploadedAssetId(uploaded: any, fallback: any): string | null {
+  return asString(uploaded?.assetId || uploaded?.id || fallback) || null;
+}
+
+function normalizeUploadedPublicUrl(uploaded: any): string | null {
+  return asString(uploaded?.publicUrl || uploaded?.avatarUrl || uploaded?.url || uploaded?.path) || null;
+}
+
 export function collectStoreMediaAssetIds(store: any): string[] {
   const ids = new Set<string>();
 
@@ -76,23 +100,22 @@ export async function resolveAssetPublicUrls(ids: string[]): Promise<Record<stri
 }
 
 async function uploadProfileAvatar(profile: any) {
-  const profileId = String(profile?.id || "");
-  const cached = profileId ? getAvatarCache(profileId) : null;
+  const cached = pickProfileCachedAvatar(profile);
 
-  // La page Profils peut afficher l'image depuis dc_avatar_cache_v1 alors que
-  // le store principal ne garde plus avatarDataUrl. Pour la sauvegarde NAS
-  // manuelle, on doit donc uploader depuis ce cache si nécessaire.
-  const dataUrl =
-    profile?.avatarDataUrl ||
-    profile?.avatarFullDataUrl ||
-    profile?.avatarCastDataUrl ||
-    cached?.avatarFullDataUrl ||
-    cached?.avatarCastDataUrl ||
-    cached?.avatarDataUrl ||
-    profile?.avatarUrl ||
-    profile?.avatar;
+  const dataUrl = pickFirstDataImage(
+    profile?.avatarDataUrl,
+    profile?.avatarFullDataUrl,
+    profile?.avatarCastDataUrl,
+    profile?.avatarThumbDataUrl,
+    profile?.avatar,
+    profile?.avatarUrl,
+    cached?.avatarFullDataUrl,
+    cached?.avatarCastDataUrl,
+    cached?.avatarDataUrl,
+    cached?.avatarThumbDataUrl
+  );
 
-  const existingAssetId =
+  const existingAssetId = asString(
     profile?.avatarAssetId ||
     profile?.avatarFullAssetId ||
     profile?.avatarThumbAssetId ||
@@ -100,24 +123,25 @@ async function uploadProfileAvatar(profile: any) {
     cached?.avatarAssetId ||
     cached?.avatarFullAssetId ||
     cached?.avatarThumbAssetId ||
-    cached?.avatarCastAssetId ||
-    null;
+    cached?.avatarCastAssetId
+  );
+  const existingUrl = asString(profile?.avatarUrl || profile?.avatar || cached?.avatarUrl);
 
-  if (!isDataImageUrl(dataUrl)) {
-    if (existingAssetId && (!profile?.avatarAssetId || !profile?.avatarUrl)) {
+  if (!dataUrl) {
+    if (existingAssetId || existingUrl) {
       return {
         ...(profile || {}),
-        avatarUrl: profile?.avatarUrl || cached?.avatarUrl || null,
-        avatar: profile?.avatar || profile?.avatarUrl || cached?.avatarUrl || null,
-        avatarAssetId: profile?.avatarAssetId || cached?.avatarAssetId || existingAssetId,
-        avatarThumbAssetId: profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || existingAssetId,
-        avatarFullAssetId: profile?.avatarFullAssetId || cached?.avatarFullAssetId || existingAssetId,
-        avatarCastAssetId: profile?.avatarCastAssetId || cached?.avatarCastAssetId || existingAssetId,
-        avatarUpdatedAt: profile?.avatarUpdatedAt || cached?.avatarUpdatedAt || Date.now(),
+        avatarUrl: existingUrl || profile?.avatarUrl || null,
+        avatar: existingUrl || profile?.avatar || null,
+        avatarAssetId: existingAssetId || profile?.avatarAssetId || null,
+        avatarThumbAssetId: asString(profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || existingAssetId) || null,
+        avatarFullAssetId: asString(profile?.avatarFullAssetId || cached?.avatarFullAssetId || existingAssetId) || null,
+        avatarCastAssetId: asString(profile?.avatarCastAssetId || cached?.avatarCastAssetId || existingAssetId) || null,
       };
     }
     return profile;
   }
+
   try {
     const uploaded: any = await onlineApi.uploadMediaAsset({
       dataUrl,
@@ -125,25 +149,34 @@ async function uploadProfileAvatar(profile: any) {
       ownerId: String(profile?.id || ""),
       variant: "full",
     } as any);
-    const publicUrl = asString(uploaded?.publicUrl || uploaded?.avatarUrl || uploaded?.path);
-    const assetId = uploaded?.assetId || uploaded?.id || profile?.avatarAssetId || null;
+    const publicUrl = normalizeUploadedPublicUrl(uploaded);
+    const assetId = normalizeUploadedAssetId(uploaded, profile?.avatarAssetId || cached?.avatarAssetId);
+    const updatedAt = Date.now();
     const next = {
       ...(profile || {}),
-      avatarUrl: publicUrl || profile?.avatarUrl || null,
-      avatar: publicUrl || profile?.avatar || null,
+      avatarUrl: publicUrl || existingUrl || null,
+      avatar: publicUrl || existingUrl || null,
       avatarAssetId: assetId,
-      avatarThumbAssetId: uploaded?.avatarThumbAssetId || assetId || profile?.avatarThumbAssetId || null,
-      avatarFullAssetId: uploaded?.avatarFullAssetId || assetId || profile?.avatarFullAssetId || null,
-      avatarCastAssetId: uploaded?.avatarCastAssetId || assetId || profile?.avatarCastAssetId || null,
-      avatarUpdatedAt: uploaded?.avatarUpdatedAt || Date.now(),
-      avatarDataUrl: profile?.avatarDataUrl || cached?.avatarDataUrl || null,
+      avatarThumbAssetId: normalizeUploadedAssetId(uploaded, profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || assetId),
+      avatarFullAssetId: normalizeUploadedAssetId(uploaded, profile?.avatarFullAssetId || cached?.avatarFullAssetId || assetId),
+      avatarCastAssetId: normalizeUploadedAssetId(uploaded, profile?.avatarCastAssetId || cached?.avatarCastAssetId || assetId),
+      avatarUpdatedAt: updatedAt,
     };
+
+    delete (next as any).avatarDataUrl;
+    delete (next as any).avatarFullDataUrl;
+    delete (next as any).avatarCastDataUrl;
+    delete (next as any).avatarThumbDataUrl;
+
     try {
       setAvatarCache({
         profileId: String(next.id || ""),
-        avatarDataUrl: next.avatarDataUrl || null,
+        avatarDataUrl: null,
+        avatarThumbDataUrl: null,
+        avatarFullDataUrl: null,
+        avatarCastDataUrl: null,
         avatarUrl: next.avatarUrl || null,
-        avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
+        avatarUpdatedAt: updatedAt,
         avatarAssetId: next.avatarAssetId || null,
         avatarThumbAssetId: next.avatarThumbAssetId || null,
         avatarFullAssetId: next.avatarFullAssetId || null,
@@ -273,15 +306,23 @@ export async function hydrateStoreMediaUrls(store: any): Promise<any> {
       const out = { ...(p || {}) };
       const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
       const url = assetId ? urls[assetId] : "";
-      if (url && out.avatarUrl !== url) {
+      if (url) {
+        if (out.avatarUrl !== url || out.avatar !== url || out.avatarDataUrl || out.avatarFullDataUrl || out.avatarCastDataUrl || out.avatarThumbDataUrl) {
+          changed = true;
+        }
         out.avatarUrl = url;
         out.avatar = url;
-        changed = true;
-      }
-      if (url) {
+        delete out.avatarDataUrl;
+        delete out.avatarFullDataUrl;
+        delete out.avatarCastDataUrl;
+        delete out.avatarThumbDataUrl;
         try {
           setAvatarCache({
             profileId: String(out.id || ""),
+            avatarDataUrl: null,
+            avatarThumbDataUrl: null,
+            avatarFullDataUrl: null,
+            avatarCastDataUrl: null,
             avatarUrl: url,
             avatarUpdatedAt: Number(out.avatarUpdatedAt || Date.now()),
             avatarAssetId: asString(out.avatarAssetId || null) || null,
