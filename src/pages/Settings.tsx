@@ -1502,6 +1502,56 @@ export default function Settings({ go }: Props) {
     await fullHardReset();
   }
 
+  function formatBytes(value: any): string {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n) || n <= 0) return "0 Ko";
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
+    return `${(n / 1024 / 1024).toFixed(2)} Mo`;
+  }
+
+  function formatMs(value: any): string {
+    const n = Math.max(0, Number(value || 0));
+    if (n < 1000) return `${Math.round(n)} ms`;
+    return `${(n / 1000).toFixed(2)} s`;
+  }
+
+  function getNasReportLines(kind: "backup" | "restore", summary: any, res?: any): string[] {
+    const media = summary?.media || res?.summary?.media || {};
+    const before = summary?.before || {};
+    const lines: string[] = [];
+    lines.push(kind === "backup" ? "✅ Synchronisation NAS terminée" : "✅ Rechargement NAS terminé");
+    lines.push(`Profils locaux : ${summary?.profiles ?? 0}`);
+    lines.push(`Bots CPU : ${summary?.bots ?? 0}`);
+    lines.push(`Dartsets : ${summary?.dartSets ?? 0}`);
+    lines.push(`Historique : ${summary?.history ?? 0}`);
+    if (kind === "backup") {
+      const createdNow = Math.max(0, Number(summary?.profiles || 0) - Number(before?.totalProfiles || before?.profiles || 0));
+      lines.push(`Nouveaux profils détectés : ${createdNow}`);
+      lines.push(`Avatars uploadés : ${Number(media?.avatarsUploaded || 0)}`);
+      lines.push(`Avatars déjà présents NAS : ${Number(media?.avatarsAlreadyPresent || 0)}`);
+      lines.push(`Avatars déjà liés : ${Number(media?.avatarsAlreadyLinked || 0)}`);
+      lines.push(`Avatars sans image : ${Number(media?.avatarsMissing || 0)}`);
+      lines.push(`Médias dartsets uploadés : ${Number(media?.mediaUploaded || 0)}`);
+      lines.push(`Médias dartsets déjà présents : ${Number(media?.mediaAlreadyPresent || 0)}`);
+      lines.push(`Base64 supprimés : ${Number(summary?.base64FieldsRemoved ?? media?.base64FieldsRemoved ?? 0)}`);
+      lines.push(`Base64 restants dans snapshot : ${Number(summary?.base64FieldsAfter ?? summary?.dataImageFields ?? 0)}`);
+      lines.push(`Snapshot allégé : ${summary?.snapshotLightened ? "oui" : "à vérifier"}`);
+      lines.push(`Taille payload envoyé : ${formatBytes(summary?.payloadBytes || summary?.storeBytes)}`);
+      lines.push(`Durée : ${formatMs(summary?.durationMs || media?.durationMs)}`);
+    } else {
+      lines.push(`Images NAS résolues : ${Number(summary?.mediaUrls || 0)}`);
+      lines.push(`Base64 présents après recharge : ${Number(summary?.dataImageFields || 0)}`);
+      lines.push(`Taille store local : ${formatBytes(summary?.storeBytes)}`);
+    }
+    const updatedAt = res?.updatedAt || res?.updated_at || res?.createdAt || "";
+    if (updatedAt) lines.push(`MAJ NAS : ${String(updatedAt)}`);
+    return lines;
+  }
+
+  function formatNasReport(kind: "backup" | "restore", summary: any, res?: any): string {
+    return getNasReportLines(kind, summary, res).join("\n");
+  }
+
   function ThemeSection() {
     return (
       <section
@@ -1722,10 +1772,9 @@ export default function Settings({ go }: Props) {
       setNasLastInfo(null);
       try {
         const res = await pushNasAccountSnapshot();
-        const summary = await computeNasSyncSummary();
+        const summary = await computeNasSyncSummary(res);
         setNasLastInfo({ ...(res ?? {}), summary });
-        const updatedAt = new Date().toLocaleString();
-        const msg = `✅ Synchronisation NAS terminée. ${updatedAt} — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
+        const msg = formatNasReport("backup", summary, res);
         setNasStatus(msg);
         safeAlert(msg);
       } catch (e) {
@@ -1750,9 +1799,9 @@ export default function Settings({ go }: Props) {
       setNasLastInfo(null);
       try {
         const res = await pullNasAccountSnapshot();
-        const summary = await computeNasSyncSummary();
+        const summary = await computeNasSyncSummary(res);
         setNasLastInfo({ ...(res ?? {}), summary });
-        const msg = `✅ Rechargement NAS terminé — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
+        const msg = formatNasReport("restore", summary, res);
         setNasStatus(msg);
         safeAlert(msg);
         // Après import manuel NAS, on recharge pour que tous les écrans relisent
@@ -1872,6 +1921,7 @@ export default function Settings({ go }: Props) {
               color: theme.text,
               fontSize: 12,
               lineHeight: 1.45,
+              whiteSpace: "pre-wrap",
             }}
           >
             {nasStatus}
@@ -1892,8 +1942,16 @@ export default function Settings({ go }: Props) {
               wordBreak: "break-word",
             }}
           >
-            <div><strong>Réponse API :</strong></div>
-            <div>{JSON.stringify(nasLastInfo)}</div>
+            <div style={{ color: theme.text, fontWeight: 900, marginBottom: 6 }}>Détail technique</div>
+            {nasLastInfo?.summary ? (
+              <div style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>
+                {getNasReportLines("backup", nasLastInfo.summary, nasLastInfo).slice(1).join("\n")}
+              </div>
+            ) : null}
+            <details>
+              <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 800 }}>Voir la réponse API brute</summary>
+              <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{JSON.stringify(nasLastInfo, null, 2)}</div>
+            </details>
           </div>
         ) : null}
       </section>

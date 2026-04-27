@@ -68,6 +68,78 @@ export function pushNasSyncDirtyReason(reason: string) {
   } catch {}
 }
 
+function countArray(value: any): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function byteLengthOfJson(value: any): number {
+  try {
+    const text = JSON.stringify(value ?? null);
+    return new Blob([text]).size;
+  } catch {
+    try { return JSON.stringify(value ?? null).length; } catch { return 0; }
+  }
+}
+
+function countDataImageFields(value: any): number {
+  let count = 0;
+  const seen = new WeakSet<object>();
+  const walk = (node: any) => {
+    if (!node) return;
+    if (typeof node === "string") {
+      if (node.startsWith("data:image/")) count += 1;
+      return;
+    }
+    if (typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    for (const v of Object.values(node)) walk(v);
+  };
+  walk(value);
+  return count;
+}
+
+function countMediaUrls(value: any): number {
+  let count = 0;
+  const seen = new WeakSet<object>();
+  const walk = (node: any) => {
+    if (!node) return;
+    if (typeof node === "string") {
+      if (/\/media\//.test(node) || /api\.multisports-api\.fr\/media\//.test(node)) count += 1;
+      return;
+    }
+    if (typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    for (const v of Object.values(node)) walk(v);
+  };
+  walk(value);
+  return count;
+}
+
+function summarizeStore(store: any) {
+  return {
+    profiles: countArray(store?.profiles),
+    localProfiles: countArray(store?.localProfiles),
+    players: countArray(store?.players),
+    totalProfiles: countArray(store?.profiles) || countArray(store?.localProfiles) || countArray(store?.players),
+    history: countArray(store?.history),
+    bots: countArray(store?.bots) || countArray(store?.cpuBots) || countArray(store?.botPlayers),
+    dartSets: countArray(store?.dartSets),
+    dataImageFields: countDataImageFields(store),
+    mediaUrls: countMediaUrls(store),
+    storeBytes: byteLengthOfJson(store),
+  };
+}
+
 async function flushRuntimeStoreBeforeNasPush() {
   try {
     const w: any = typeof window !== "undefined" ? window : null;
@@ -81,15 +153,18 @@ async function flushRuntimeStoreBeforeNasPush() {
 
 export async function pushNasAccountSnapshot() {
   const { loadStore, saveStore, exportCloudSnapshot } = await getStorage();
-  const { uploadStoreMediaAssets, hydrateStoreMediaUrls } = await getMediaSync();
+  const mediaSync = await getMediaSync();
+  const { uploadStoreMediaAssets, hydrateStoreMediaUrls } = mediaSync;
   const api = await getOnlineApi();
 
   // ✅ FINAL NAS FIX:
   // évite le cas: profil local créé en React → pas encore écrit en IDB → push NAS
   // envoie l'ancien snapshot sans ce profil.
+  const startedAt = Date.now();
   await flushRuntimeStoreBeforeNasPush();
 
   const currentStore: any = await loadStore().catch(() => null);
+  const beforeSummary = summarizeStore(currentStore);
 
   // Vérification explicite du backend média avant de promettre une synchro complète.
   // Si le NAS n'a pas le bon server.js déployé, on stoppe ici avec un message clair.
@@ -126,10 +201,29 @@ export async function pushNasAccountSnapshot() {
   // l ancienne version avec base64. Un second flush écraserait les assetId/URLs
   // que l on vient d écrire après upload média.
   const payload = await exportCloudSnapshot();
+  const payloadBytes = byteLengthOfJson(payload);
+  const mediaSummary = typeof mediaSync.getLastMediaSyncSummary === "function" ? mediaSync.getLastMediaSyncSummary() : null;
+  const afterStore: any = await loadStore().catch(() => hydratedStore || currentStore);
+  const afterSummary = summarizeStore(afterStore);
   const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
-  return res;
+  const durationMs = Date.now() - startedAt;
+  return {
+    ...(res || {}),
+    summary: {
+      ...afterSummary,
+      before: beforeSummary,
+      after: afterSummary,
+      media: mediaSummary,
+      payloadBytes,
+      durationMs,
+      snapshotLightened: afterSummary.dataImageFields === 0,
+      base64FieldsBefore: beforeSummary.dataImageFields,
+      base64FieldsAfter: afterSummary.dataImageFields,
+      base64FieldsRemoved: Math.max(0, beforeSummary.dataImageFields - afterSummary.dataImageFields),
+    },
+  };
 }
 
 export async function pullNasAccountSnapshot() {
@@ -161,13 +255,13 @@ export async function pullNasAccountSnapshot() {
   }
 }
 
-export async function computeNasSyncSummary() {
+export async function computeNasSyncSummary(extra?: any) {
   const { loadStore } = await getStorage();
   const store: any = await loadStore().catch(() => null);
+  const summary = summarizeStore(store);
   return {
-    profiles: Array.isArray(store?.profiles) ? store.profiles.length : 0,
-    history: Array.isArray(store?.history) ? store.history.length : 0,
-    bots: Array.isArray(store?.bots) ? store.bots.length : Array.isArray(store?.cpuBots) ? store.cpuBots.length : 0,
-    dartSets: Array.isArray(store?.dartSets) ? store.dartSets.length : 0,
+    ...summary,
+    profiles: summary.totalProfiles,
+    ...(extra?.summary || {}),
   };
 }

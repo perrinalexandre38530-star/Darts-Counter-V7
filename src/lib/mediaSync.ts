@@ -1,6 +1,36 @@
 import { onlineApi } from "./onlineApi";
 import { getAvatarCache, setAvatarCache } from "./avatarCache";
 
+let lastMediaSyncSummary: any = null;
+
+function resetMediaSyncSummary() {
+  lastMediaSyncSummary = {
+    profilesScanned: 0,
+    botsScanned: 0,
+    dartSetsScanned: 0,
+    avatarsUploaded: 0,
+    avatarsAlreadyPresent: 0,
+    avatarsAlreadyLinked: 0,
+    avatarsMissing: 0,
+    mediaUploaded: 0,
+    mediaAlreadyPresent: 0,
+    uploadErrors: 0,
+    base64FieldsRemoved: 0,
+    startedAt: Date.now(),
+    finishedAt: null,
+    durationMs: 0,
+  };
+}
+
+function bumpMediaSyncSummary(key: string, amount = 1) {
+  if (!lastMediaSyncSummary) return;
+  lastMediaSyncSummary[key] = Number(lastMediaSyncSummary[key] || 0) + amount;
+}
+
+export function getLastMediaSyncSummary(): any {
+  return lastMediaSyncSummary ? { ...lastMediaSyncSummary } : null;
+}
+
 function asString(value: any): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -29,7 +59,10 @@ function pickFirstDataImage(...values: any[]): string {
 function stripDataImageFields<T extends Record<string, any>>(obj: T, keys: string[]): T {
   const out: any = { ...(obj || {}) };
   for (const key of keys) {
-    if (typeof out[key] === "string" && out[key].startsWith("data:image/")) delete out[key];
+    if (typeof out[key] === "string" && out[key].startsWith("data:image/")) {
+      delete out[key];
+      bumpMediaSyncSummary("base64FieldsRemoved");
+    }
   }
   return out;
 }
@@ -137,6 +170,7 @@ export async function resolveAssetPublicUrls(ids: string[]): Promise<Record<stri
 }
 
 async function uploadProfileAvatar(profile: any) {
+  bumpMediaSyncSummary("profilesScanned");
   const cached = pickProfileCachedAvatar(profile);
 
   const dataUrl = pickFirstDataImage(
@@ -181,6 +215,7 @@ async function uploadProfileAvatar(profile: any) {
 
   if (!dataUrl) {
     if (existingAssetId || existingUrl) {
+      bumpMediaSyncSummary("avatarsAlreadyLinked");
       return stripProfileData({
         ...(profile || {}),
         avatarUrl: existingUrl || profile?.avatarUrl || null,
@@ -192,11 +227,13 @@ async function uploadProfileAvatar(profile: any) {
         avatarSha256: knownHash || profile?.avatarSha256 || null,
       });
     }
+    bumpMediaSyncSummary("avatarsMissing");
     return stripProfileData(profile || {});
   }
 
   const localHash = await sha256DataUrl(dataUrl);
   if (existingAssetId && existingUrl && sameUploadedImage(localHash, knownHash, profile?.avatarSha256, cached?.avatarSha256)) {
+    bumpMediaSyncSummary("avatarsAlreadyLinked");
     return stripProfileData({
       ...(profile || {}),
       avatarUrl: existingUrl,
@@ -217,6 +254,8 @@ async function uploadProfileAvatar(profile: any) {
       variant: "full",
       sha256: localHash || undefined,
     } as any);
+    if ((uploaded as any)?.deduped) bumpMediaSyncSummary("avatarsAlreadyPresent");
+    else bumpMediaSyncSummary("avatarsUploaded");
     const publicUrl = normalizeUploadedPublicUrl(uploaded);
     const assetId = normalizeUploadedAssetId(uploaded, profile?.avatarAssetId || cached?.avatarAssetId);
     const uploadedHash = asString(uploaded?.sha256 || localHash || knownHash) || null;
@@ -251,12 +290,14 @@ async function uploadProfileAvatar(profile: any) {
     } catch {}
     return next;
   } catch (err) {
+    bumpMediaSyncSummary("uploadErrors");
     console.error("[mediaSync] uploadProfileAvatar failed", err);
     throw err;
   }
 }
 
 async function uploadBotAvatar(bot: any) {
+  bumpMediaSyncSummary("botsScanned");
   const dataUrl = pickFirstDataImage(bot?.avatarDataUrl, bot?.avatarUrl, bot?.avatar, bot?.photoDataUrl, bot?.imageDataUrl);
   const existingAssetId = asString(bot?.avatarAssetId || bot?.avatarFullAssetId || bot?.avatarThumbAssetId || bot?.avatarCastAssetId);
   const existingUrl = asString(bot?.avatarUrl || bot?.avatar);
@@ -267,9 +308,14 @@ async function uploadBotAvatar(bot: any) {
     if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:image/")) delete out.avatarUrl;
     return out;
   };
-  if (!dataUrl) return stripBotData(bot || {});
+  if (!dataUrl) {
+    if (existingAssetId || existingUrl) bumpMediaSyncSummary("avatarsAlreadyLinked");
+    else bumpMediaSyncSummary("avatarsMissing");
+    return stripBotData(bot || {});
+  }
   const localHash = await sha256DataUrl(dataUrl);
   if (existingAssetId && existingUrl && sameUploadedImage(localHash, knownHash)) {
+    bumpMediaSyncSummary("avatarsAlreadyLinked");
     return stripBotData({ ...(bot || {}), avatarUrl: existingUrl, avatar: existingUrl, avatarSha256: localHash || knownHash || null });
   }
   try {
@@ -280,6 +326,8 @@ async function uploadBotAvatar(bot: any) {
       variant: "full",
       sha256: localHash || undefined,
     } as any);
+    if ((uploaded as any)?.deduped) bumpMediaSyncSummary("avatarsAlreadyPresent");
+    else bumpMediaSyncSummary("avatarsUploaded");
     const publicUrl = asString(uploaded?.publicUrl || uploaded?.url || uploaded?.path);
     const assetId = uploaded?.assetId || uploaded?.id || bot?.avatarAssetId || null;
     return stripBotData({
@@ -294,12 +342,14 @@ async function uploadBotAvatar(bot: any) {
       avatarUpdatedAt: new Date().toISOString(),
     });
   } catch (err) {
+    bumpMediaSyncSummary("uploadErrors");
     console.error("[mediaSync] uploadBotAvatar failed", err);
     throw err;
   }
 }
 
 async function uploadDartSetMedia(ds: any) {
+  bumpMediaSyncSummary("dartSetsScanned");
   let changed = false;
   let next = { ...(ds || {}) };
 
@@ -312,6 +362,8 @@ async function uploadDartSetMedia(ds: any) {
         ownerId: String(ds?.id || ""),
         variant: "main",
       } as any);
+      if ((uploaded as any)?.deduped) bumpMediaSyncSummary("mediaAlreadyPresent");
+      else bumpMediaSyncSummary("mediaUploaded");
       const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
       next.mainImageAssetId = uploaded?.assetId || uploaded?.id || next.mainImageAssetId || null;
       next.photoAssetId = uploaded?.assetId || uploaded?.id || next.photoAssetId || null;
@@ -323,6 +375,7 @@ async function uploadDartSetMedia(ds: any) {
       }
       changed = true;
     } catch (err) {
+      bumpMediaSyncSummary("uploadErrors");
       console.error("[mediaSync] uploadDartSetMedia main failed", err);
       throw err;
     }
@@ -337,6 +390,8 @@ async function uploadDartSetMedia(ds: any) {
         ownerId: String(ds?.id || ""),
         variant: "thumb",
       } as any);
+      if ((uploaded as any)?.deduped) bumpMediaSyncSummary("mediaAlreadyPresent");
+      else bumpMediaSyncSummary("mediaUploaded");
       const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
       next.thumbImageAssetId = uploaded?.assetId || uploaded?.id || next.thumbImageAssetId || null;
       next.photoThumbAssetId = uploaded?.assetId || uploaded?.id || next.photoThumbAssetId || null;
@@ -346,6 +401,7 @@ async function uploadDartSetMedia(ds: any) {
       }
       changed = true;
     } catch (err) {
+      bumpMediaSyncSummary("uploadErrors");
       console.error("[mediaSync] uploadDartSetMedia thumb failed", err);
       throw err;
     }
@@ -361,6 +417,7 @@ async function mapSequential<T>(list: T[], fn: (item: T) => Promise<T>): Promise
 }
 
 export async function uploadStoreMediaAssets(store: any): Promise<any> {
+  resetMediaSyncSummary();
   const next: any = { ...(store || {}) };
   if (Array.isArray(next.profiles)) {
     next.profiles = await mapSequential(next.profiles, (p: any) => uploadProfileAvatar(p));
@@ -382,6 +439,10 @@ export async function uploadStoreMediaAssets(store: any): Promise<any> {
   }
   if (Array.isArray(next.dartSets)) {
     next.dartSets = await mapSequential(next.dartSets, (ds: any) => uploadDartSetMedia(ds));
+  }
+  if (lastMediaSyncSummary) {
+    lastMediaSyncSummary.finishedAt = Date.now();
+    lastMediaSyncSummary.durationMs = Math.max(0, Number(lastMediaSyncSummary.finishedAt || 0) - Number(lastMediaSyncSummary.startedAt || 0));
   }
   return next;
 }
