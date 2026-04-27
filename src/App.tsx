@@ -1601,6 +1601,7 @@ useEffect(() => {
   }, [tab]);
 
   const storePersistTimerRef = React.useRef<number | null>(null);
+  const storePersistIdleRef = React.useRef<number | null>(null);
   const pendingStorePersistRef = React.useRef<Store | null>(null);
   const persistStoreInFlightRef = React.useRef(false);
   const lastScheduledStoreRef = React.useRef<Store | null>(null);
@@ -1654,27 +1655,33 @@ useEffect(() => {
       });
     } catch {}
 
-    // ✅ FINAL NAS FIX:
-    // Un profil local créé juste avant "Synchroniser le compte sur NAS" ne doit pas
-    // rester uniquement en mémoire React. On persiste automatiquement le store
-    // après un court délai, et manualNasSync force aussi ce flush avant le push.
+    // PERF V2:
+    // On garde la garantie NAS (un push manuel force toujours __flushLocalStoreNow),
+    // mais on évite de déclencher saveStore pendant les micro-navigations/carrousels.
+    // Le flush automatique est repoussé et lancé en idle quand possible.
     if (typeof window !== "undefined") {
       storePersistTimerRef.current = window.setTimeout(() => {
         storePersistTimerRef.current = null;
-        void flushPendingStorePersist("auto-deferred");
-      }, 900);
+        const run = () => { void flushPendingStorePersist("auto-idle"); };
+        const ric = (window as any).requestIdleCallback;
+        if (typeof ric === "function") {
+          storePersistIdleRef.current = ric(run, { timeout: 2500 }) as any;
+        } else {
+          window.setTimeout(run, 120);
+        }
+      }, 1800);
     }
   }, [flushPendingStorePersist]);
 
   React.useEffect(() => {
     const handleHidden = () => {
       try {
-        if (document.visibilityState === "hidden") {
+        if (document.visibilityState === "hidden" && pendingStorePersistRef.current) {
           void flushPendingStorePersist("hidden");
         }
       } catch {}
     };
-    const handlePageHide = () => { void flushPendingStorePersist("pagehide"); };
+    const handlePageHide = () => { if (pendingStorePersistRef.current) void flushPendingStorePersist("pagehide"); };
     try { (window as any).__flushLocalStoreNow = (reason?: string) => flushPendingStorePersist(String(reason || "manual")); } catch {}
     document.addEventListener("visibilitychange", handleHidden);
     window.addEventListener("pagehide", handlePageHide);
@@ -1683,6 +1690,12 @@ useEffect(() => {
         window.clearTimeout(storePersistTimerRef.current);
         storePersistTimerRef.current = null;
       }
+      try {
+        if (storePersistIdleRef.current != null && typeof (window as any).cancelIdleCallback === "function") {
+          (window as any).cancelIdleCallback(storePersistIdleRef.current);
+        }
+        storePersistIdleRef.current = null;
+      } catch {}
       document.removeEventListener("visibilitychange", handleHidden);
       window.removeEventListener("pagehide", handlePageHide);
       try { delete (window as any).__flushLocalStoreNow; } catch {}

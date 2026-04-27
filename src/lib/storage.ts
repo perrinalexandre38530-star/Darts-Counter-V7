@@ -16,7 +16,7 @@ import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 
-const STORAGE_DIAG_ENABLED = true;
+const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
 const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
 const QUOTA_ESTIMATE_TTL_MS = 15_000;
 let lastQuotaEstimateAt = 0;
@@ -317,12 +317,28 @@ function isLikelyEphemeralStoreKey(key: string) {
   );
 }
 
+
+function stripTopLevelHeavyBeforeClone(input: any): any {
+  if (!input || typeof input !== "object") return input;
+  const out: any = { ...(input as any) };
+  stripStoreHistoryFields(out);
+  stripStoreHeavyStatsFields(out);
+  for (const key of Object.keys(out)) {
+    const lower = String(key || "").toLowerCase();
+    if (isLikelyEphemeralStoreKey(lower)) delete out[key];
+  }
+  return out;
+}
+
 function compactStoreForMobile<T extends Store>(store: T, mode: "soft" | "hard" = "soft"): T {
   let clone: any;
   try {
-    clone = safeJsonParse(safeJsonStringify(store || {}), {});
+    // PERF V2: on retire les gros blocs top-level AVANT le JSON.stringify.
+    // Avant, on clonait tout le store puis on supprimait history/stats/cache, ce qui coûtait
+    // cher sur mobile même quand ces blocs étaient ensuite jetés.
+    clone = safeJsonParse(safeJsonStringify(stripTopLevelHeavyBeforeClone(store) || {}), {});
   } catch {
-    clone = { ...(store || {}) };
+    clone = { ...(stripTopLevelHeavyBeforeClone(store) || {}) };
   }
 
   stripStoreHistoryFields(clone);
@@ -483,9 +499,12 @@ function minimizeProfilesForPersistence(target: any, aggressive = false) {
 function sanitizeStoreForPersistence<T extends Store>(store: T): T {
   let clone: any;
   try {
-    clone = safeJsonParse(safeJsonStringify(store || {}), {});
+    // PERF V2: clone léger. Les blocs qui n'ont plus vocation à vivre dans le store
+    // principal (historique, stats lourdes, caches, diagnostics) sont supprimés AVANT
+    // le stringify. C'est ce qui réduit le plus les freeze/saveStore-slow.
+    clone = safeJsonParse(safeJsonStringify(stripTopLevelHeavyBeforeClone(store) || {}), {});
   } catch {
-    clone = { ...(store || {}) };
+    clone = { ...(stripTopLevelHeavyBeforeClone(store) || {}) };
   }
 
   stripStoreHeavyStatsFields(clone);

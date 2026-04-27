@@ -6,7 +6,7 @@ function profileSig(p: any) {
     p?.name || "",
     p?.avatarUpdatedAt || 0,
     p?.avatarUrl || "",
-    p?.avatarDataUrl ? "data" : "",
+    p?.avatarSha256 || p?.avatarAssetId || (p?.avatarDataUrl ? "data" : ""),
     p?.country || "",
     p?.privateInfo?.country || "",
   ].join(":");
