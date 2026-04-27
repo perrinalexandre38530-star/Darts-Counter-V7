@@ -3798,19 +3798,32 @@ function LocalProfilesRefonte({
   // ✅ Profils locaux :
   // - on enlève le profil actif
   // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
-  const locals = React.useMemo(
-    () =>
-      onboardingMode
-        ? []
-        : profiles.filter(
-            (p: any) =>
-              p.id !== activeProfileId && !isMirrorProfile(p)
-          ),
-    [profiles, activeProfileId, onboardingMode]
-  );
+  const locals = React.useMemo(() => {
+    if (onboardingMode) return [];
+
+    const filtered = profiles.filter(
+      (p: any) => p.id !== activeProfileId && !isMirrorProfile(p)
+    );
+
+    const collator = new Intl.Collator("fr", {
+      sensitivity: "base",
+      numeric: true,
+      ignorePunctuation: true,
+    });
+
+    return [...filtered].sort((a: any, b: any) => {
+      const nameA = String(a?.name || "").trim();
+      const nameB = String(b?.name || "").trim();
+      const byName = collator.compare(nameA || "~~~", nameB || "~~~");
+      if (byName !== 0) return byName;
+      return collator.compare(String(a?.id || ""), String(b?.id || ""));
+    });
+  }, [profiles, activeProfileId, onboardingMode]);
 
   const [index, setIndex] = React.useState(0);
+  const prevLocalsIdsRef = React.useRef<string[]>([]);
   const prevLocalsCountRef = React.useRef(0);
+  const [profilesListOpen, setProfilesListOpen] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editCountry, setEditCountry] = React.useState("");
@@ -3830,16 +3843,23 @@ function LocalProfilesRefonte({
 
   React.useEffect(() => {
     if (!Array.isArray(locals)) return;
-    const prev = prevLocalsCountRef.current;
-    if (locals.length > prev && locals.length > 0) {
-      setIndex(locals.length - 1);
+
+    const prevIds = prevLocalsIdsRef.current;
+    const nextIds = locals.map((p: any) => String(p?.id || ""));
+    const addedId = nextIds.find((id) => id && !prevIds.includes(id));
+
+    if (addedId) {
+      const addedIndex = nextIds.indexOf(addedId);
+      setIndex(Math.max(0, addedIndex));
     } else if (locals.length === 0) {
       setIndex(0);
     } else if (index >= locals.length) {
       setIndex(Math.max(0, locals.length - 1));
     }
+
+    prevLocalsIdsRef.current = nextIds;
     prevLocalsCountRef.current = locals.length;
-  }, [locals.length]);
+  }, [locals, locals.length, index]);
   const current = locals[index] || null;
   const renderedCurrent = current;
 
@@ -4010,6 +4030,137 @@ function LocalProfilesRefonte({
               "radial-gradient(circle at top, rgba(255,255,255,.08), transparent 60%)",
           }}
         >
+          {/* Liste alphabétique déroulante des profils locaux */}
+          <div
+            style={{
+              marginBottom: 12,
+              borderRadius: 14,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(0,0,0,.18)",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => setProfilesListOpen((v) => !v)}
+              style={{
+                width: "100%",
+                justifyContent: "space-between",
+                border: "none",
+                borderRadius: 0,
+                background: "transparent",
+                color: theme.text,
+                padding: "9px 10px",
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                fontSize: 11,
+                fontWeight: 800,
+              }}
+            >
+              <span>
+                {t("profiles.locals.list.title", "Liste des profils locaux")}
+                {locals.length > 0 ? ` (${locals.length})` : ""}
+              </span>
+              <span aria-hidden>{profilesListOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {profilesListOpen && (
+              <div
+                style={{
+                  // 5 profils visibles maximum : le reste défile à l’intérieur de la liste.
+                  maxHeight: 250,
+                  overflowY: "auto",
+                  padding: 8,
+                  borderTop: `1px solid ${theme.borderSoft}`,
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                {locals.map((p: any, i: number) => {
+                  const selected = i === index;
+                  const country = String(p?.privateInfo?.country || "").trim();
+                  const flag = getCountryFlag(country);
+
+                  return (
+                    <button
+                      key={String(p?.id || i)}
+                      type="button"
+                      onClick={() => {
+                        setIndex(i);
+                        setProfilesListOpen(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 9,
+                        width: "100%",
+                        borderRadius: 12,
+                        border: `1px solid ${selected ? primary : theme.borderSoft}`,
+                        background: selected ? `${primary}22` : "rgba(255,255,255,.035)",
+                        color: theme.text,
+                        padding: "7px 9px",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <AvatarLite
+                        size={34}
+                        src={buildAvatarSrc({
+                          avatarUrl: p?.avatarUrl || null,
+                          avatarDataUrl: p?.avatarDataUrl || null,
+                          avatarFullDataUrl: p?.avatarUrl ? null : ((getAvatarCacheLib(String(p?.id || "")) as any)?.avatarFullDataUrl || null),
+                          avatarUpdatedAt: p?.avatarUpdatedAt ?? null,
+                        })}
+                        label={String(p?.name || "?").charAt(0).toUpperCase() || "?"}
+                      />
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 13,
+                            fontWeight: 900,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {String(p?.name || "—").toUpperCase()}
+                        </span>
+                        {country && (
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: 10,
+                              color: theme.textSoft,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {flag ? `${flag} ` : ""}{country}
+                          </span>
+                        )}
+                      </span>
+                      {selected && (
+                        <span
+                          style={{
+                            flex: "0 0 auto",
+                            fontSize: 10,
+                            fontWeight: 900,
+                            color: primary,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Actif
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           {/* Header carrousel */}
           <div
             style={{
