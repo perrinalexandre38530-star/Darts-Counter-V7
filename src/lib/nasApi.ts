@@ -89,6 +89,7 @@ export type NasMediaUploadPayload = {
   kind: string;
   ownerId?: string | null;
   variant?: string | null;
+  sha256?: string | null;
 };
 
 export type NasMediaAsset = {
@@ -577,6 +578,7 @@ export async function nasUploadMediaAsset(payload: NasMediaUploadPayload): Promi
       kind: payload.kind,
       ownerId: payload.ownerId ?? null,
       variant: payload.variant ?? null,
+      sha256: payload.sha256 ?? null,
     }),
   });
 
@@ -593,7 +595,8 @@ export async function nasUploadMediaAsset(payload: NasMediaUploadPayload): Promi
     publicUrl: json?.publicUrl || null,
     createdAt: json?.createdAt || null,
     updatedAt: json?.updatedAt || null,
-  };
+    deduped: Boolean(json?.deduped || false) as any,
+  } as any;
 }
 
 export async function nasBulkResolveMediaAssets(ids: string[]): Promise<NasMediaAsset[]> {

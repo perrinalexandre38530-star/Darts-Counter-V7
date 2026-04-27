@@ -26,6 +26,39 @@ function pickFirstDataImage(...values: any[]): string {
   return "";
 }
 
+function stripDataImageFields<T extends Record<string, any>>(obj: T, keys: string[]): T {
+  const out: any = { ...(obj || {}) };
+  for (const key of keys) {
+    if (typeof out[key] === "string" && out[key].startsWith("data:image/")) delete out[key];
+  }
+  return out;
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const clean = String(base64 || "").replace(/\s+/g, "");
+  const bin = atob(clean);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function sha256DataUrl(dataUrl: string): Promise<string> {
+  try {
+    const comma = dataUrl.indexOf(",");
+    if (comma < 0 || !dataUrl.slice(0, comma).includes(";base64")) return "";
+    const bytes = base64ToBytes(dataUrl.slice(comma + 1));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return "";
+  }
+}
+
+function sameUploadedImage(localHash: string, ...known: any[]): boolean {
+  if (!localHash) return false;
+  return known.some((v) => asString(v).toLowerCase() === localHash.toLowerCase());
+}
+
 function pickProfileCachedAvatar(profile: any) {
   try {
     const id = asString(profile?.id);
@@ -46,7 +79,11 @@ function normalizeUploadedPublicUrl(uploaded: any): string | null {
 export function collectStoreMediaAssetIds(store: any): string[] {
   const ids = new Set<string>();
 
-  const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+  const profiles = [
+    ...(Array.isArray(store?.profiles) ? store.profiles : []),
+    ...(Array.isArray(store?.localProfiles) ? store.localProfiles : []),
+    ...(Array.isArray(store?.players) ? store.players : []),
+  ];
   for (const p of profiles) {
     pushIfString(ids, p?.avatarAssetId);
     pushIfString(ids, p?.avatarThumbAssetId);
@@ -126,10 +163,25 @@ async function uploadProfileAvatar(profile: any) {
     cached?.avatarCastAssetId
   );
   const existingUrl = asString(profile?.avatarUrl || profile?.avatar || cached?.avatarUrl);
+  const knownHash = asString(profile?.avatarSha256 || profile?.avatarHash || cached?.avatarSha256 || cached?.avatarHash);
+
+  const stripProfileData = (base: any) => {
+    const out = stripDataImageFields(base || {}, [
+      "avatarDataUrl",
+      "avatarFullDataUrl",
+      "avatarCastDataUrl",
+      "avatarThumbDataUrl",
+      "photoDataUrl",
+      "imageDataUrl",
+    ]);
+    if (typeof out.avatar === "string" && out.avatar.startsWith("data:image/")) delete out.avatar;
+    if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:image/")) delete out.avatarUrl;
+    return out;
+  };
 
   if (!dataUrl) {
     if (existingAssetId || existingUrl) {
-      return {
+      return stripProfileData({
         ...(profile || {}),
         avatarUrl: existingUrl || profile?.avatarUrl || null,
         avatar: existingUrl || profile?.avatar || null,
@@ -137,9 +189,24 @@ async function uploadProfileAvatar(profile: any) {
         avatarThumbAssetId: asString(profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || existingAssetId) || null,
         avatarFullAssetId: asString(profile?.avatarFullAssetId || cached?.avatarFullAssetId || existingAssetId) || null,
         avatarCastAssetId: asString(profile?.avatarCastAssetId || cached?.avatarCastAssetId || existingAssetId) || null,
-      };
+        avatarSha256: knownHash || profile?.avatarSha256 || null,
+      });
     }
-    return profile;
+    return stripProfileData(profile || {});
+  }
+
+  const localHash = await sha256DataUrl(dataUrl);
+  if (existingAssetId && existingUrl && sameUploadedImage(localHash, knownHash, profile?.avatarSha256, cached?.avatarSha256)) {
+    return stripProfileData({
+      ...(profile || {}),
+      avatarUrl: existingUrl,
+      avatar: existingUrl,
+      avatarAssetId: existingAssetId,
+      avatarThumbAssetId: asString(profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || existingAssetId) || null,
+      avatarFullAssetId: asString(profile?.avatarFullAssetId || cached?.avatarFullAssetId || existingAssetId) || null,
+      avatarCastAssetId: asString(profile?.avatarCastAssetId || cached?.avatarCastAssetId || existingAssetId) || null,
+      avatarSha256: localHash || knownHash || null,
+    });
   }
 
   try {
@@ -148,11 +215,13 @@ async function uploadProfileAvatar(profile: any) {
       kind: "local_profile_avatar",
       ownerId: String(profile?.id || ""),
       variant: "full",
+      sha256: localHash || undefined,
     } as any);
     const publicUrl = normalizeUploadedPublicUrl(uploaded);
     const assetId = normalizeUploadedAssetId(uploaded, profile?.avatarAssetId || cached?.avatarAssetId);
+    const uploadedHash = asString(uploaded?.sha256 || localHash || knownHash) || null;
     const updatedAt = Date.now();
-    const next = {
+    const next = stripProfileData({
       ...(profile || {}),
       avatarUrl: publicUrl || existingUrl || null,
       avatar: publicUrl || existingUrl || null,
@@ -160,13 +229,9 @@ async function uploadProfileAvatar(profile: any) {
       avatarThumbAssetId: normalizeUploadedAssetId(uploaded, profile?.avatarThumbAssetId || cached?.avatarThumbAssetId || assetId),
       avatarFullAssetId: normalizeUploadedAssetId(uploaded, profile?.avatarFullAssetId || cached?.avatarFullAssetId || assetId),
       avatarCastAssetId: normalizeUploadedAssetId(uploaded, profile?.avatarCastAssetId || cached?.avatarCastAssetId || assetId),
+      avatarSha256: uploadedHash,
       avatarUpdatedAt: updatedAt,
-    };
-
-    delete (next as any).avatarDataUrl;
-    delete (next as any).avatarFullDataUrl;
-    delete (next as any).avatarCastDataUrl;
-    delete (next as any).avatarThumbDataUrl;
+    });
 
     try {
       setAvatarCache({
@@ -181,6 +246,7 @@ async function uploadProfileAvatar(profile: any) {
         avatarThumbAssetId: next.avatarThumbAssetId || null,
         avatarFullAssetId: next.avatarFullAssetId || null,
         avatarCastAssetId: next.avatarCastAssetId || null,
+        avatarSha256: uploadedHash,
       } as any);
     } catch {}
     return next;
@@ -191,26 +257,42 @@ async function uploadProfileAvatar(profile: any) {
 }
 
 async function uploadBotAvatar(bot: any) {
-  const dataUrl = bot?.avatarDataUrl || bot?.avatarUrl || bot?.avatar || bot?.photoDataUrl || bot?.imageDataUrl;
-  if (!isDataImageUrl(dataUrl)) return bot;
+  const dataUrl = pickFirstDataImage(bot?.avatarDataUrl, bot?.avatarUrl, bot?.avatar, bot?.photoDataUrl, bot?.imageDataUrl);
+  const existingAssetId = asString(bot?.avatarAssetId || bot?.avatarFullAssetId || bot?.avatarThumbAssetId || bot?.avatarCastAssetId);
+  const existingUrl = asString(bot?.avatarUrl || bot?.avatar);
+  const knownHash = asString(bot?.avatarSha256 || bot?.avatarHash);
+  const stripBotData = (base: any) => {
+    const out = stripDataImageFields(base || {}, ["avatarDataUrl", "photoDataUrl", "imageDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "avatarThumbDataUrl"]);
+    if (typeof out.avatar === "string" && out.avatar.startsWith("data:image/")) delete out.avatar;
+    if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:image/")) delete out.avatarUrl;
+    return out;
+  };
+  if (!dataUrl) return stripBotData(bot || {});
+  const localHash = await sha256DataUrl(dataUrl);
+  if (existingAssetId && existingUrl && sameUploadedImage(localHash, knownHash)) {
+    return stripBotData({ ...(bot || {}), avatarUrl: existingUrl, avatar: existingUrl, avatarSha256: localHash || knownHash || null });
+  }
   try {
     const uploaded: any = await onlineApi.uploadMediaAsset({
       dataUrl,
       kind: "bot_avatar",
       ownerId: String(bot?.id || ""),
       variant: "full",
+      sha256: localHash || undefined,
     } as any);
-    const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
-    return {
+    const publicUrl = asString(uploaded?.publicUrl || uploaded?.url || uploaded?.path);
+    const assetId = uploaded?.assetId || uploaded?.id || bot?.avatarAssetId || null;
+    return stripBotData({
       ...(bot || {}),
       avatarUrl: publicUrl || bot?.avatarUrl || null,
       avatar: publicUrl || bot?.avatar || null,
-      avatarAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarAssetId || null,
-      avatarThumbAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarThumbAssetId || null,
-      avatarFullAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarFullAssetId || null,
-      avatarCastAssetId: uploaded?.assetId || uploaded?.id || bot?.avatarCastAssetId || null,
+      avatarAssetId: assetId,
+      avatarThumbAssetId: assetId || bot?.avatarThumbAssetId || null,
+      avatarFullAssetId: assetId || bot?.avatarFullAssetId || null,
+      avatarCastAssetId: assetId || bot?.avatarCastAssetId || null,
+      avatarSha256: asString(uploaded?.sha256 || localHash || knownHash) || null,
       avatarUpdatedAt: new Date().toISOString(),
-    };
+    });
   } catch (err) {
     console.error("[mediaSync] uploadBotAvatar failed", err);
     throw err;
@@ -272,22 +354,34 @@ async function uploadDartSetMedia(ds: any) {
   return changed ? next : ds;
 }
 
+async function mapSequential<T>(list: T[], fn: (item: T) => Promise<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (const item of list) out.push(await fn(item));
+  return out;
+}
+
 export async function uploadStoreMediaAssets(store: any): Promise<any> {
   const next: any = { ...(store || {}) };
   if (Array.isArray(next.profiles)) {
-    next.profiles = await Promise.all(next.profiles.map((p: any) => uploadProfileAvatar(p)));
+    next.profiles = await mapSequential(next.profiles, (p: any) => uploadProfileAvatar(p));
+  }
+  if (Array.isArray(next.localProfiles)) {
+    next.localProfiles = await mapSequential(next.localProfiles, (p: any) => uploadProfileAvatar(p));
+  }
+  if (Array.isArray(next.players)) {
+    next.players = await mapSequential(next.players, (p: any) => uploadProfileAvatar(p));
   }
   if (Array.isArray(next.bots)) {
-    next.bots = await Promise.all(next.bots.map((b: any) => uploadBotAvatar(b)));
+    next.bots = await mapSequential(next.bots, (b: any) => uploadBotAvatar(b));
   }
   if (Array.isArray(next.cpuBots)) {
-    next.cpuBots = await Promise.all(next.cpuBots.map((b: any) => uploadBotAvatar(b)));
+    next.cpuBots = await mapSequential(next.cpuBots, (b: any) => uploadBotAvatar(b));
   }
   if (Array.isArray(next.botPlayers)) {
-    next.botPlayers = await Promise.all(next.botPlayers.map((b: any) => uploadBotAvatar(b)));
+    next.botPlayers = await mapSequential(next.botPlayers, (b: any) => uploadBotAvatar(b));
   }
   if (Array.isArray(next.dartSets)) {
-    next.dartSets = await Promise.all(next.dartSets.map((ds: any) => uploadDartSetMedia(ds)));
+    next.dartSets = await mapSequential(next.dartSets, (ds: any) => uploadDartSetMedia(ds));
   }
   return next;
 }
@@ -301,8 +395,7 @@ export async function hydrateStoreMediaUrls(store: any): Promise<any> {
   let changed = false;
   const next: any = { ...(store || {}) };
 
-  if (Array.isArray(next.profiles)) {
-    next.profiles = next.profiles.map((p: any) => {
+  const hydrateProfileList = (list: any[]) => list.map((p: any) => {
       const out = { ...(p || {}) };
       const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
       const url = assetId ? urls[assetId] : "";
@@ -334,7 +427,10 @@ export async function hydrateStoreMediaUrls(store: any): Promise<any> {
       }
       return out;
     });
-  }
+
+  if (Array.isArray(next.profiles)) next.profiles = hydrateProfileList(next.profiles);
+  if (Array.isArray(next.localProfiles)) next.localProfiles = hydrateProfileList(next.localProfiles);
+  if (Array.isArray(next.players)) next.players = hydrateProfileList(next.players);
 
   const hydrateBotList = (list: any[]) => list.map((b: any) => {
     const out = { ...(b || {}) };
