@@ -1151,8 +1151,8 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
       if (norm.changed) {
         try {
           const payload = await compressGzip(safeJsonStringify(norm.store));
-          await idbSet(scopedStorageKey(STORE_KEY), payload);
-    lastSavedStoreJsonByScope.set(scopedStorageKey(STORE_KEY), json);
+          await idbSet(storeScopeKey, payload);
+    lastSavedStoreJsonByScope.set(storeScopeKey, json);
 
     try {
       emitCloudChange(scopedCloudChangeReason("idb:set:store"));
@@ -1225,10 +1225,8 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     persistedStore = guardStoreSizeForMobile(persistedStore);
     const tCompact1 = storageNowMs();
 
-    let payload = await persistPayloadForKey(scopedStorageKey(STORE_KEY), json);
-    const tGzip1 = storageNowMs();
-
-    const prevJson = lastSavedStoreJsonByScope.get(scopedStorageKey(STORE_KEY));
+    const storeScopeKey = scopedStorageKey(STORE_KEY);
+    const prevJson = lastSavedStoreJsonByScope.get(storeScopeKey);
     if (prevJson === json) {
       const endedAt = storageNowMs();
       const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
@@ -1237,9 +1235,9 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         compatMs: Math.round((tCompat1 - tCompat0) * 10) / 10,
         sanitizeMs: Math.round((tSanitize1 - tCompat1) * 10) / 10,
         compactMs: Math.round((tCompact1 - tSanitize1) * 10) / 10,
-        gzipMs: Math.round((tGzip1 - tCompact1) * 10) / 10,
+        gzipMs: 0,
         jsonBytes: bytes,
-        payloadBytes: typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0),
+        payloadBytes: 0,
         profiles: Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles.length : 0,
         bots: Array.isArray((persistedStore as any)?.bots) ? (persistedStore as any).bots.length : 0,
         dartSets: Array.isArray((persistedStore as any)?.dartSets) ? (persistedStore as any).dartSets.length : 0,
@@ -1250,6 +1248,9 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       if (totalMs >= 50) runtimeDiag("storage:saveStore:skipped", diagPayload);
       return;
     }
+
+    let payload = await persistPayloadForKey(storeScopeKey, json);
+    const tGzip1 = storageNowMs();
 
     const est = await getQuotaEstimateCached();
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
@@ -1269,8 +1270,8 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       }
     }
 
-    await idbSet(scopedStorageKey(STORE_KEY), payload);
-    lastSavedStoreJsonByScope.set(scopedStorageKey(STORE_KEY), json);
+    await idbSet(storeScopeKey, payload);
+    lastSavedStoreJsonByScope.set(storeScopeKey, json);
     const endedAt = storageNowMs();
     const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
     const payloadBytes = typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0);
@@ -1949,8 +1950,8 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
 
     try {
       const payload = await compressGzip(safeJsonStringify(newStore));
-      await idbSet(scopedStorageKey(STORE_KEY), payload);
-    lastSavedStoreJsonByScope.set(scopedStorageKey(STORE_KEY), json);
+      await idbSet(storeScopeKey, payload);
+    lastSavedStoreJsonByScope.set(storeScopeKey, json);
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);
     }

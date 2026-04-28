@@ -1606,18 +1606,23 @@ useEffect(() => {
   const persistStoreInFlightRef = React.useRef(false);
   const lastScheduledStoreRef = React.useRef<Store | null>(null);
   const lastPersistAtRef = React.useRef<number>(0);
+  const lastPersistSignatureRef = React.useRef<string>("");
+  const lastScheduledSignatureRef = React.useRef<string>("");
 
   const flushPendingStorePersist = React.useCallback(async (reason = "manual") => {
     if (persistStoreInFlightRef.current) return false;
     const latest = pendingStorePersistRef.current || lastScheduledStoreRef.current;
     pendingStorePersistRef.current = null;
     if (!latest) return false;
+    const latestSignature = buildStorePersistSignatureForPerf(latest as any);
     persistStoreInFlightRef.current = true;
     const activeTab = String(currentTabRef.current || "");
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       await saveStore(latest);
       lastPersistAtRef.current = Date.now();
+      lastPersistSignatureRef.current = latestSignature;
+      lastScheduledSignatureRef.current = latestSignature;
     } catch {}
     const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
     const payload = {
@@ -1639,8 +1644,18 @@ useEffect(() => {
 
   const scheduleStorePersist = React.useCallback((snapshot: Store) => {
     if (!snapshot) return;
+    const nextSignature = buildStorePersistSignatureForPerf(snapshot as any);
+    if (!pendingStorePersistRef.current && nextSignature === lastPersistSignatureRef.current) {
+      return;
+    }
+    if (pendingStorePersistRef.current && nextSignature === lastScheduledSignatureRef.current) {
+      pendingStorePersistRef.current = snapshot;
+      lastScheduledStoreRef.current = snapshot;
+      return;
+    }
     pendingStorePersistRef.current = snapshot;
     lastScheduledStoreRef.current = snapshot;
+    lastScheduledSignatureRef.current = nextSignature;
     if (storePersistTimerRef.current != null) {
       window.clearTimeout(storePersistTimerRef.current);
       storePersistTimerRef.current = null;
@@ -4504,6 +4519,27 @@ function X01PlayV3Route({
   );
 }
 
+
+
+function buildStorePersistSignatureForPerf(store: any): string {
+  try {
+    const pickProfile = (p: any) => [p?.id || '', p?.name || p?.displayName || p?.nickname || '', p?.country || p?.countryCode || '', p?.avatarUrl || p?.avatarAssetId || p?.avatarHash || '', p?.updatedAt || p?.updated_at || p?.modifiedAt || ''].join('~');
+    const pickBot = (b: any) => [b?.id || '', b?.name || b?.displayName || b?.nickname || '', b?.level || b?.difficulty || '', b?.avatarUrl || b?.avatarAssetId || b?.avatarHash || '', b?.updatedAt || b?.updated_at || b?.modifiedAt || ''].join('~');
+    const pickDartSet = (d: any) => [d?.id || '', d?.name || d?.label || '', d?.updatedAt || d?.updated_at || d?.modifiedAt || ''].join('~');
+    return JSON.stringify({
+      activeProfileId: store?.activeProfileId || null,
+      appLang: store?.appLang || store?.language || store?.lang || null,
+      appTheme: store?.appTheme || store?.theme || null,
+      lightMode: store?.lightMode ?? store?.settings?.lightMode ?? null,
+      profiles: Array.isArray(store?.profiles) ? store.profiles.map(pickProfile).join('|') : '',
+      bots: Array.isArray(store?.bots) ? store.bots.map(pickBot).join('|') : '',
+      dartSets: Array.isArray(store?.dartSets) ? store.dartSets.map(pickDartSet).join('|') : '',
+      preferences: store?.preferences || null,
+      playerPreferences: store?.playerPreferences || null,
+      settings: store?.settings || null,
+    });
+  } catch { return String(Date.now()); }
+}
 export default function AppRoot() {
   return (
     <ThemeProvider>
