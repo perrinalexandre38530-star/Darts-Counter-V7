@@ -51,9 +51,19 @@ async function markNasDirtySafe(reason: string) {
 }
 
 
-const PREBUILT_AVATAR_URLS = Array.from({ length: 63 }, (_, i) =>
-  `/images/prebuilt-avatars/avatar-${String(i + 1).padStart(2, "0")}.webp`
+const PREBUILT_AVATAR_COMMON_URLS = Array.from({ length: 153 }, (_, i) =>
+  `/images/prebuilt-avatars/common/avatar-common-${String(i + 1).padStart(3, "0")}.webp`
 );
+
+const PREBUILT_AVATAR_FR_URLS = Array.from({ length: 54 }, (_, i) =>
+  `/images/prebuilt-avatars/fr/avatar-fr-${String(i + 1).padStart(3, "0")}.webp`
+);
+
+const PREBUILT_AVATAR_EN_URLS = Array.from({ length: 63 }, (_, i) =>
+  `/images/prebuilt-avatars/en/avatar-en-${String(i + 1).padStart(3, "0")}.webp`
+);
+
+const AVATAR_PICKER_PAGE_SIZE = 12;
 
 async function avatarUrlToFile(url: string): Promise<File> {
   const res = await fetch(url, { cache: "force-cache" });
@@ -4620,10 +4630,28 @@ function AvatarChoiceModal({
   onSelectFile: (file: File) => void | Promise<void>;
 }) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const primary = theme.primary;
   const importRef = React.useRef<HTMLInputElement | null>(null);
   const [busyUrl, setBusyUrl] = React.useState<string | null>(null);
+  const [page, setPage] = React.useState(0);
+
+  const avatarUrls = React.useMemo(() => {
+    return lang === "fr"
+      ? [...PREBUILT_AVATAR_COMMON_URLS, ...PREBUILT_AVATAR_FR_URLS]
+      : [...PREBUILT_AVATAR_COMMON_URLS, ...PREBUILT_AVATAR_EN_URLS];
+  }, [lang]);
+
+  const totalPages = Math.max(1, Math.ceil(avatarUrls.length / AVATAR_PICKER_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageUrls = React.useMemo(() => {
+    const start = safePage * AVATAR_PICKER_PAGE_SIZE;
+    return avatarUrls.slice(start, start + AVATAR_PICKER_PAGE_SIZE);
+  }, [avatarUrls, safePage]);
+
+  React.useEffect(() => {
+    if (open) setPage(0);
+  }, [open, lang]);
 
   if (!open) return null;
 
@@ -4726,9 +4754,7 @@ function AvatarChoiceModal({
         <div
           style={{
             padding: 12,
-            maxHeight: "calc(84vh - 92px)",
-            overflowY: "auto",
-            WebkitOverflowScrolling: "touch",
+            overflow: "hidden",
           }}
         >
           <div
@@ -4738,33 +4764,78 @@ function AvatarChoiceModal({
               gap: 10,
             }}
           >
-            {PREBUILT_AVATAR_URLS.map((url, i) => (
-              <button
-                key={url}
-                type="button"
-                onClick={() => pickIntegrated(url)}
-                disabled={!!busyUrl}
-                title={`Avatar ${i + 1}`}
-                style={{
-                  aspectRatio: "1 / 1",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  border: `2px solid ${busyUrl === url ? primary : theme.borderSoft}`,
-                  background: "#05050a",
-                  padding: 0,
-                  cursor: busyUrl ? "wait" : "pointer",
-                  boxShadow: `0 8px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08)`,
-                }}
-              >
-                <img
-                  src={url}
-                  alt={`Avatar ${i + 1}`}
-                  loading="lazy"
-                  decoding="async"
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-              </button>
-            ))}
+            {pageUrls.map((url, i) => {
+              const absoluteIndex = safePage * AVATAR_PICKER_PAGE_SIZE + i + 1;
+              return (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => pickIntegrated(url)}
+                  disabled={!!busyUrl}
+                  title={`Avatar ${absoluteIndex}`}
+                  style={{
+                    aspectRatio: "1 / 1",
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    border: `2px solid ${busyUrl === url ? primary : theme.borderSoft}`,
+                    background: "#05050a",
+                    padding: 0,
+                    cursor: busyUrl ? "wait" : "pointer",
+                    boxShadow: `0 8px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08)`,
+                  }}
+                >
+                  <img
+                    src={url}
+                    alt={`Avatar ${absoluteIndex}`}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <button
+              type="button"
+              className="btn sm"
+              disabled={safePage <= 0 || !!busyUrl}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              style={{ minWidth: 74, justifyContent: "center" }}
+            >
+              ←
+            </button>
+            <div
+              style={{
+                flex: 1,
+                textAlign: "center",
+                fontSize: 12,
+                fontWeight: 900,
+                color: theme.textSoft,
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+              }}
+            >
+              {t("profiles.avatarPicker.page", "Page")} {safePage + 1}/{totalPages}
+            </div>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={safePage >= totalPages - 1 || !!busyUrl}
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              style={{ minWidth: 74, justifyContent: "center" }}
+            >
+              →
+            </button>
           </div>
         </div>
       </div>
