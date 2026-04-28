@@ -140,6 +140,108 @@ function summarizeStore(store: any) {
   };
 }
 
+
+function profileCountOfStore(store: any): number {
+  if (!store || typeof store !== "object") return 0;
+  const profiles = countArray(store?.profiles);
+  const localProfiles = countArray(store?.localProfiles);
+  const players = countArray(store?.players);
+  return Math.max(profiles, localProfiles, players);
+}
+
+function clonePlain<T = any>(value: T): T {
+  try { return JSON.parse(JSON.stringify(value ?? null)); } catch { return value; }
+}
+
+function getRuntimeStoreSnapshot(): any | null {
+  try {
+    const w: any = typeof window !== "undefined" ? window : null;
+    if (!w) return null;
+    if (typeof w.__getRuntimeStoreSnapshot === "function") {
+      const snap = w.__getRuntimeStoreSnapshot();
+      if (snap && typeof snap === "object") return clonePlain(snap);
+    }
+    const live = w.__appStore?.store;
+    if (live && typeof live === "object") return clonePlain(live);
+  } catch {}
+  return null;
+}
+
+function pickStoreWithMostProfiles(a: any, b: any): any {
+  const ca = profileCountOfStore(a);
+  const cb = profileCountOfStore(b);
+  if (cb > ca) return b;
+  return a || b;
+}
+
+async function waitForRuntimeFlushToSettle(maxMs = 4500) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    try {
+      const w: any = typeof window !== "undefined" ? window : null;
+      if (!w?.__isStorePersistInFlight?.()) break;
+    } catch { break; }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+}
+
+function isStoreLikeSnapshotKey(key: string): boolean {
+  const k = String(key || "");
+  return k === "store" || k.startsWith("store:") || /(^|[:/])store(?::[^:/]+)?$/.test(k);
+}
+
+function findSnapshotStoreKeys(payload: any): string[] {
+  const idb = payload?.idb && typeof payload.idb === "object" ? payload.idb : null;
+  if (!idb) return [];
+  return Object.keys(idb).filter(isStoreLikeSnapshotKey);
+}
+
+function countProfilesInSnapshot(payload: any): number {
+  try {
+    const idb = payload?.idb && typeof payload.idb === "object" ? payload.idb : null;
+    if (idb) {
+      let max = 0;
+      for (const key of Object.keys(idb)) {
+        if (!isStoreLikeSnapshotKey(key)) continue;
+        max = Math.max(max, profileCountOfStore(idb[key]));
+      }
+      if (max > 0) return max;
+    }
+    return profileCountOfStore(payload?.store || payload?.data || payload);
+  } catch { return 0; }
+}
+
+function stripDataImagesAndSecrets(value: any): any {
+  const seen = new WeakSet<object>();
+  const walk = (node: any): any => {
+    if (node == null) return node;
+    if (typeof node === "string") return node.startsWith("data:image/") ? undefined : node;
+    if (typeof node !== "object") return node;
+    if (seen.has(node)) return undefined;
+    seen.add(node);
+    if (Array.isArray(node)) return node.map(walk).filter((v) => v !== undefined);
+    const out: any = {};
+    for (const [k, v] of Object.entries(node)) {
+      if (["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "password", "passwordHash", "confirmPassword"].includes(k)) continue;
+      const next = walk(v);
+      if (next !== undefined) out[k] = next;
+    }
+    return out;
+  };
+  return walk(value);
+}
+
+function forceSnapshotStore(payload: any, store: any): any {
+  if (!payload || typeof payload !== "object" || !store || typeof store !== "object") return payload;
+  const next = clonePlain(payload);
+  const cleanStore = stripDataImagesAndSecrets(store);
+  if (!next.idb || typeof next.idb !== "object") next.idb = {};
+  const keys = findSnapshotStoreKeys(next);
+  if (!keys.length) keys.push("store");
+  for (const key of keys) next.idb[key] = cleanStore;
+  return next;
+}
+
 async function flushRuntimeStoreBeforeNasPush() {
   try {
     const w: any = typeof window !== "undefined" ? window : null;
@@ -162,8 +264,20 @@ export async function pushNasAccountSnapshot() {
   // envoie l'ancien snapshot sans ce profil.
   const startedAt = Date.now();
   await flushRuntimeStoreBeforeNasPush();
+  await waitForRuntimeFlushToSettle();
 
-  const currentStore: any = await loadStore().catch(() => null);
+  const persistedStore: any = await loadStore().catch(() => null);
+  const runtimeStore: any = getRuntimeStoreSnapshot();
+  let currentStore: any = pickStoreWithMostProfiles(persistedStore, runtimeStore);
+
+  // ✅ COUNT FIX NAS V1:
+  // Si le runtime React contient plus de profils que l'IDB, on force l'IDB avant
+  // l'export NAS. C'est exactement le cas qui pouvait donner : téléphone = 38, PC = 35.
+  if (currentStore && profileCountOfStore(currentStore) > profileCountOfStore(persistedStore)) {
+    await saveStore(currentStore as any);
+    try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+  }
+
   const beforeSummary = summarizeStore(currentStore);
 
   // Vérification explicite du backend média avant de promettre une synchro complète.
@@ -200,7 +314,15 @@ export async function pushNasAccountSnapshot() {
   // Ne PAS refaire un flush React ici : le store runtime peut encore contenir
   // l ancienne version avec base64. Un second flush écraserait les assetId/URLs
   // que l on vient d écrire après upload média.
-  const payload = await exportCloudSnapshot();
+  let payload = await exportCloudSnapshot();
+  const snapshotProfiles = countProfilesInSnapshot(payload);
+  const hydratedProfiles = profileCountOfStore(hydratedStore || currentStore);
+  if (hydratedProfiles > snapshotProfiles) {
+    payload = forceSnapshotStore(payload, hydratedStore || currentStore);
+    try {
+      console.warn("[nasSync] payload store count repaired before push", { snapshotProfiles, hydratedProfiles });
+    } catch {}
+  }
   const payloadBytes = byteLengthOfJson(payload);
   const mediaSummary = typeof mediaSync.getLastMediaSyncSummary === "function" ? mediaSync.getLastMediaSyncSummary() : null;
   const afterStore: any = await loadStore().catch(() => hydratedStore || currentStore);
@@ -217,6 +339,9 @@ export async function pushNasAccountSnapshot() {
       after: afterSummary,
       media: mediaSummary,
       payloadBytes,
+      payloadProfiles: countProfilesInSnapshot(payload),
+      runtimeProfiles: profileCountOfStore(runtimeStore),
+      persistedProfiles: profileCountOfStore(persistedStore),
       durationMs,
       snapshotLightened: afterSummary.dataImageFields === 0,
       base64FieldsBefore: beforeSummary.dataImageFields,

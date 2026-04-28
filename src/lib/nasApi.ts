@@ -708,9 +708,44 @@ let nasPushLastWarnAt = 0;
 function summarizeSnapshotForDiag(payload: any) {
   try {
     const root = payload && typeof payload === "object" ? payload : {};
-    const store = root.store && typeof root.store === "object" ? root.store : root;
-    const profiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles.length : 0;
-    const bots = Array.isArray((store as any)?.bots) ? (store as any).bots.length : 0;
+    const isStoreLikeKey = (key: string) => {
+      const k = String(key || "");
+      return k === "store" || k.startsWith("store:") || /(^|[:/])store(?::[^:/]+)?$/.test(k);
+    };
+    const stores: any[] = [];
+    if (root.store && typeof root.store === "object") stores.push(root.store);
+    if (root.data && typeof root.data === "object") stores.push(root.data);
+    if (root.idb && typeof root.idb === "object") {
+      for (const [key, value] of Object.entries(root.idb as Record<string, any>)) {
+        if (isStoreLikeKey(key) && value && typeof value === "object") stores.push(value);
+      }
+    }
+    if (!stores.length) stores.push(root);
+    let best = stores[0] || {};
+    for (const s of stores) {
+      const bestCount = Math.max(
+        Array.isArray((best as any)?.profiles) ? (best as any).profiles.length : 0,
+        Array.isArray((best as any)?.localProfiles) ? (best as any).localProfiles.length : 0,
+        Array.isArray((best as any)?.players) ? (best as any).players.length : 0,
+      );
+      const count = Math.max(
+        Array.isArray((s as any)?.profiles) ? (s as any).profiles.length : 0,
+        Array.isArray((s as any)?.localProfiles) ? (s as any).localProfiles.length : 0,
+        Array.isArray((s as any)?.players) ? (s as any).players.length : 0,
+      );
+      if (count > bestCount) best = s;
+    }
+    const store = best || {};
+    const profiles = Math.max(
+      Array.isArray((store as any)?.profiles) ? (store as any).profiles.length : 0,
+      Array.isArray((store as any)?.localProfiles) ? (store as any).localProfiles.length : 0,
+      Array.isArray((store as any)?.players) ? (store as any).players.length : 0,
+    );
+    const bots = Math.max(
+      Array.isArray((store as any)?.bots) ? (store as any).bots.length : 0,
+      Array.isArray((store as any)?.cpuBots) ? (store as any).cpuBots.length : 0,
+      Array.isArray((store as any)?.botPlayers) ? (store as any).botPlayers.length : 0,
+    );
     const dartSets = Array.isArray((store as any)?.dartSets) ? (store as any).dartSets.length : 0;
     const history = Array.isArray((store as any)?.history) ? (store as any).history.length : 0;
     return { profiles, bots, dartSets, history, keys: Object.keys(store || {}).slice(0, 12) };

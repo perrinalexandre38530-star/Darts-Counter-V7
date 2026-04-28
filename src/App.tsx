@@ -1610,6 +1610,13 @@ useEffect(() => {
   const lastScheduledSignatureRef = React.useRef<string>("");
 
   const flushPendingStorePersist = React.useCallback(async (reason = "manual") => {
+    // COUNT FIX NAS V1: un push manuel NAS ne doit pas lire l'ancien IDB
+    // pendant qu'un saveStore auto-idle est encore en cours. On attend brièvement,
+    // puis on prend toujours le dernier snapshot React planifié.
+    const waitStart = Date.now();
+    while (persistStoreInFlightRef.current && Date.now() - waitStart < 4500) {
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+    }
     if (persistStoreInFlightRef.current) return false;
     const latest = pendingStorePersistRef.current || lastScheduledStoreRef.current;
     pendingStorePersistRef.current = null;
@@ -1698,6 +1705,7 @@ useEffect(() => {
     };
     const handlePageHide = () => { if (pendingStorePersistRef.current) void flushPendingStorePersist("pagehide"); };
     try { (window as any).__flushLocalStoreNow = (reason?: string) => flushPendingStorePersist(String(reason || "manual")); } catch {}
+    try { (window as any).__isStorePersistInFlight = () => !!persistStoreInFlightRef.current; } catch {}
     document.addEventListener("visibilitychange", handleHidden);
     window.addEventListener("pagehide", handlePageHide);
     return () => {
@@ -1714,6 +1722,7 @@ useEffect(() => {
       document.removeEventListener("visibilitychange", handleHidden);
       window.removeEventListener("pagehide", handlePageHide);
       try { delete (window as any).__flushLocalStoreNow; } catch {}
+      try { delete (window as any).__isStorePersistInFlight; } catch {}
     };
   }, [flushPendingStorePersist]);
 
@@ -2042,6 +2051,7 @@ useEffect(() => {
       (window as any).__appStore.store = store;
       (window as any).__appStore.tab = tab;
       (window as any).__appStore.update = update;
+      (window as any).__getRuntimeStoreSnapshot = () => (window as any).__appStore?.store || store;
     } catch {}
   }, [store, tab]);
 
