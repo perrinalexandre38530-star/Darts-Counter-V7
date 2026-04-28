@@ -51,6 +51,19 @@ async function markNasDirtySafe(reason: string) {
 }
 
 
+const PREBUILT_AVATAR_URLS = Array.from({ length: 63 }, (_, i) =>
+  `/images/prebuilt-avatars/avatar-${String(i + 1).padStart(2, "0")}.webp`
+);
+
+async function avatarUrlToFile(url: string): Promise<File> {
+  const res = await fetch(url, { cache: "force-cache" });
+  if (!res.ok) throw new Error(`Impossible de charger l'avatar intégré: ${url}`);
+  const blob = await res.blob();
+  const name = url.split("/").pop() || "avatar.webp";
+  return new File([blob], name, { type: blob.type || "image/webp" });
+}
+
+
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
 .dc-stats-name-wrapper {
@@ -3151,8 +3164,6 @@ function UnifiedAuthBlock({
   const [country, setCountry] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
-  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
-
   // thème + langue appliqués à l’app
   const [uiTheme, setUiTheme] = React.useState<ThemeId>(
     (themeId as ThemeId) || "gold"
@@ -3164,12 +3175,6 @@ function UnifiedAuthBlock({
   React.useEffect(() => {
     if (autoFocusCreate) createRef.current?.focus();
   }, [autoFocusCreate]);
-
-  React.useEffect(() => {
-    if (autoFocus) {
-      try { nameInputRef.current?.focus(); } catch {}
-    }
-  }, [autoFocus]);
 
   React.useEffect(() => {
     if (!file) {
@@ -3830,6 +3835,7 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -3995,6 +4001,16 @@ function LocalProfilesRefonte({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <AvatarChoiceModal
+        open={avatarPickerOpen}
+        title={t("profiles.avatarPicker.title", "Choisir un avatar")}
+        onClose={() => setAvatarPickerOpen(false)}
+        onSelectFile={async (file) => {
+          if (!current) return;
+          await onAvatar(current.id, file);
+        }}
+      />
+
       {/* ------- Création PROFIL LOCAL ------- */}
       <AddLocalProfile onCreate={onCreate} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
 
@@ -4394,7 +4410,7 @@ function LocalProfilesRefonte({
                 <button
                   className="btn sm"
                   type="button"
-                  onClick={() => onOpenAvatarCreator?.()}
+                  onClick={() => setAvatarPickerOpen(true)}
                   style={pillBtnBase}
                 >
                   {t("profiles.locals.actions.avatar", "AVATAR")}
@@ -4591,6 +4607,171 @@ const DeferredLocalDartSets = React.memo(function DeferredLocalDartSets({ profil
   return <DartSetsPanel key={`local-dartsets-${String(profile?.id || "none")}`} profile={profile} />;
 });
 
+
+function AvatarChoiceModal({
+  open,
+  title,
+  onClose,
+  onSelectFile,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  onSelectFile: (file: File) => void | Promise<void>;
+}) {
+  const { theme } = useTheme();
+  const { t } = useLang();
+  const primary = theme.primary;
+  const importRef = React.useRef<HTMLInputElement | null>(null);
+  const [busyUrl, setBusyUrl] = React.useState<string | null>(null);
+
+  if (!open) return null;
+
+  async function pickIntegrated(url: string) {
+    try {
+      setBusyUrl(url);
+      const file = await avatarUrlToFile(url);
+      await onSelectFile(file);
+      onClose();
+    } catch (err) {
+      console.warn("[avatars] integrated avatar pick failed", err);
+      alert(t("profiles.avatarPicker.error", "Impossible de charger cet avatar."));
+    } finally {
+      setBusyUrl(null);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,.72)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 14,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(520px, 96vw)",
+          maxHeight: "84vh",
+          borderRadius: 18,
+          border: `1px solid ${primary}77`,
+          background: `linear-gradient(180deg, ${theme.card}, ${theme.bg})`,
+          boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${primary}44`,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: "12px 12px 10px",
+            borderBottom: `1px solid ${theme.borderSoft}`,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                color: primary,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                fontSize: 13,
+              }}
+            >
+              {title}
+            </div>
+            <button className="btn sm" type="button" onClick={onClose}>
+              ✕
+            </button>
+          </div>
+
+          <input
+            ref={importRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0] || null;
+              e.currentTarget.value = "";
+              if (!file) return;
+              await onSelectFile(file);
+              onClose();
+            }}
+          />
+          <button
+            type="button"
+            className="btn primary sm"
+            onClick={() => importRef.current?.click()}
+            style={{
+              width: "100%",
+              justifyContent: "center",
+              background: `linear-gradient(180deg, ${primary}, ${primary}AA)`,
+              color: "#000",
+              fontWeight: 900,
+            }}
+          >
+            {t("profiles.avatarPicker.import", "Importer une image")}
+          </button>
+        </div>
+
+        <div
+          style={{
+            padding: 12,
+            maxHeight: "calc(84vh - 92px)",
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            {PREBUILT_AVATAR_URLS.map((url, i) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => pickIntegrated(url)}
+                disabled={!!busyUrl}
+                title={`Avatar ${i + 1}`}
+                style={{
+                  aspectRatio: "1 / 1",
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  border: `2px solid ${busyUrl === url ? primary : theme.borderSoft}`,
+                  background: "#05050a",
+                  padding: 0,
+                  cursor: busyUrl ? "wait" : "pointer",
+                  boxShadow: `0 8px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.08)`,
+                }}
+              >
+                <img
+                  src={url}
+                  alt={`Avatar ${i + 1}`}
+                  loading="lazy"
+                  decoding="async"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ----- Formulaire d’ajout local (refondu) ----- */
 
 function AddLocalProfile({
@@ -4612,6 +4793,7 @@ function AddLocalProfile({
   const [country, setCountry] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
+  const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
   const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const { theme } = useTheme();
@@ -4672,6 +4854,15 @@ function AddLocalProfile({
   const hasSomething = name || country || file;
 
   return (
+    <>
+    <AvatarChoiceModal
+      open={avatarPickerOpen}
+      title={t("profiles.avatarPicker.title", "Choisir un avatar")}
+      onClose={() => setAvatarPickerOpen(false)}
+      onSelectFile={async (selectedFile) => {
+        setFile(selectedFile);
+      }}
+    />
     <div
       style={{
         marginBottom: 10,
@@ -4704,8 +4895,10 @@ function AddLocalProfile({
         className="row"
         style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}
       >
-        <label
+        <button
+          type="button"
           title={t("profiles.locals.add.avatar", "Avatar")}
+          onClick={() => setAvatarPickerOpen(true)}
           style={{
             width: 52,
             height: 52,
@@ -4717,14 +4910,9 @@ function AddLocalProfile({
             background: theme.card,
             cursor: "pointer",
             flex: "0 0 auto",
+            padding: 0,
           }}
         >
-          <input
-            type="file"
-            accept="image/*"
-            style={{ display: "none" }}
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
           {preview ? (
             <img
               src={preview}
@@ -4740,7 +4928,7 @@ function AddLocalProfile({
               {t("profiles.locals.add.avatar", "Avatar")}
             </span>
           )}
-        </label>
+        </button>
 
         <div
           style={{
@@ -4800,6 +4988,7 @@ function AddLocalProfile({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
