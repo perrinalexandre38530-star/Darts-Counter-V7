@@ -30,6 +30,7 @@ import { extAdaptCheckoutSuggestion, type X01OutModeV3 } from "../lib/x01v3/x01C
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 
 import EndOfLegOverlay from "../components/EndOfLegOverlay";

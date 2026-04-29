@@ -82,6 +82,7 @@ import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
 import { triggerAutoBackupIfEnabled } from "./backup/triggerAutoBackup";
 import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
+import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
 /* =========================
    ✅ CLOUD SNAPSHOT PUSH (PATCH CRITICAL)
    - après un match / remove / clear -> push snapshot cloud (debounce)
@@ -1882,6 +1883,29 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     console.warn("[history.upsert] x01 enrichment error:", e);
   }
 
+  // ---------------------------------------------------------
+  // 📦 MATCH COMPACT V1
+  // Résumé/statistiques complets mais compacts pour StatsHub.
+  // On conserve l’ancien payload compressé pour compat/reprise,
+  // mais les écrans stats peuvent lire safe.compact directement.
+  // ---------------------------------------------------------
+  try {
+    const compact = encodeCompactMatch({ ...safe, payload: payloadEffective });
+    if (compact) {
+      (safe as any).compact = compact;
+      (safe as any).compactBytes = estimateCompactBytes(compact);
+      const prevSummary: any = safe.summary || {};
+      safe.summary = {
+        ...prevSummary,
+        compact: true,
+        compactBytes: (safe as any).compactBytes,
+        playersCount: Array.isArray(compact.p) ? compact.p.length : 0,
+      };
+    }
+  } catch (e) {
+    console.warn("[history.upsert] compact encode failed:", e);
+  }
+
   try {
     // ✅ IMPORTANT: ne jamais écraser un payload existant par "" si rec.payload est absent.
     // Cas réel: certains callers font History.upsert(matchId) avec seulement summary/status,
@@ -1978,7 +2002,14 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     if (!payloadEffective && prevPayloadCompressed) {
       payloadCompressed = prevPayloadCompressed;
     } else {
-      const payloadStr = payloadEffective ? JSON.stringify(stripAvatarDataFromPayload(payloadEffective)) : "";
+      // V2 PROPRE : le compact sert aux stats rapides, mais ne remplace jamais
+      // le payload complet nécessaire à la reprise / au détail de partie.
+      // On conserve donc le détail sans avatars/base64 + une copie du compact.
+      const payloadClean = stripAvatarDataFromPayload(payloadEffective);
+      const payloadForDetail = payloadClean && typeof payloadClean === "object"
+        ? { ...(payloadClean as any), compact: (safe as any).compact ?? (payloadClean as any).compact ?? null }
+        : ((safe as any).compact ? { compact: (safe as any).compact } : payloadClean);
+      const payloadStr = payloadForDetail ? JSON.stringify(payloadForDetail) : "";
       payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
     }
 

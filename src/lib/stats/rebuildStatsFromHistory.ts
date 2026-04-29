@@ -7,6 +7,7 @@
 // ============================================
 
 import { delKV, getKV, setKV } from "../storage";
+import { normalizeMatchForStats } from "../matchCompactCodec";
 
 // ----------------------------
 // Types génériques (safe)
@@ -702,7 +703,8 @@ export async function rebuildStatsFromHistory(options?: {
   const rows: any[] = Array.isArray(list) ? list : [];
   for (const rec of rows) {
     const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
-    const payload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
+    const rawPayload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
+    const payload = normalizeMatchForStats(rec, rawPayload);
     const status = rec?.status;
     const mode = normalizeGameKey(rec, payload);
 
