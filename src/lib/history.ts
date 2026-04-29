@@ -1761,6 +1761,27 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     console.warn("[history] avatar strip failed (safe.players):", e);
   }
 
+  // ✅ V4 FIX CRITICAL : ne jamais laisser un autosave tardif "in_progress"
+  // ré-écraser une partie déjà terminée.
+  // Cas réel constaté : X01 termine, puis un timer autosave flush encore un record
+  // in_progress avec le même id => Historique bloqué en "En cours", StatsHub à 0, reprise cassée.
+  try {
+    if (String((safe as any).status || "") === "in_progress") {
+      const existingHeader = await withStore("readonly", async (st) => {
+        return await new Promise<any>((resolve) => {
+          const req = st.get(String(safe.id));
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+      });
+      const existingStatus = existingHeader ? inferHistoryStatus(existingHeader) : null;
+      if (existingStatus === "finished") {
+        try { _resumeIndexRemove(String((safe as any).id)); } catch {}
+        return;
+      }
+    }
+  } catch {}
+
   // ✅ MAJ index de reprise (multi-sport)
   try {
     const st = String((safe as any).status || "");
@@ -2609,7 +2630,15 @@ export const History = {
   get,
   async upsert(rec: SavedMatch) {
     await upsert(rec);
-    _applyUpsertToCache(rec);
+    // V4 FIX : si l'upsert a été ignoré car il tentait de downgrader
+    // un match finished en in_progress, on recharge la ligne réelle avant de toucher le cache UI.
+    try {
+      const cid = getCanonicalMatchId(rec) ?? (rec as any)?.matchId ?? rec.id;
+      const fresh = cid ? await get(String(cid)) : null;
+      _applyUpsertToCache((fresh || rec) as any);
+    } catch {
+      _applyUpsertToCache(rec);
+    }
   },
   // ✅ import cloud (anti-boucle + conflits)
   async upsertFromCloud(rec: SavedMatch, meta?: { cloudEventId?: string; cloudCreatedAt?: string }) {

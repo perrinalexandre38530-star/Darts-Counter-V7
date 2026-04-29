@@ -4447,20 +4447,39 @@ function X01PlayV3Route({
         }
 
         // ✅ config
-        const cfg =
+        let cfg =
           payload?.config ??
           payload?.cfg ??
           payload?.x01ConfigV3 ??
           payload?.x01Config ??
           null;
 
+        // V4 FIX : dernier filet de sécurité pour les records X01 dont le détail
+        // compressé a été perdu mais dont le header contient encore game + players.
+        // Cela évite le faux message "configuration absente" et permet au moins
+        // d'ouvrir la partie avec les paramètres essentiels.
+        if (!cfg && rec?.kind === "x01" && Array.isArray(rec?.players) && rec.players.length > 0) {
+          const g: any = rec?.game || {};
+          const startScore = Number(g?.startScore ?? payload?.startScore ?? payload?.game?.startScore ?? 301);
+          cfg = {
+            ...(g && typeof g === "object" ? g : {}),
+            mode: "x01",
+            startScore: Number.isFinite(startScore) && startScore > 0 ? startScore : 301,
+            players: rec.players,
+          };
+        }
+
         // ✅ darts replay
-        const darts =
+        let darts =
           payload?.darts ??
           payload?.replayDarts ??
           payload?.inputs ??
           payload?.throws ??
           null;
+
+        if (!Array.isArray(darts) && cfg) {
+          darts = [];
+        }
 
         if (!cfg) {
           setError(
