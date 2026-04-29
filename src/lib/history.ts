@@ -125,23 +125,33 @@ function _resumeIndexRemove(id: string) {
 function inferHistoryStatus(rec: any): "in_progress" | "finished" {
   try {
     const raw = String(rec?.status || "").toLowerCase();
-    if (raw === "finished") return "finished";
-    if (raw === "in_progress" || raw === "inprogress") return "in_progress";
+
+    // V3 FIX : un ancien header peut encore porter status="in_progress"
+    // alors qu'un upsert final a déjà ajouté winnerId/summary.finished.
+    // On privilégie donc les marqueurs de fin AVANT le raw in_progress.
+    if (raw === "finished" || raw === "done" || raw === "match_end" || raw === "ended") return "finished";
 
     const summary: any = rec?.summary || {};
     if (summary?.finished === true) return "finished";
     if (summary?.result?.finished === true) return "finished";
     if (summary?.winnerId) return "finished";
+    if (summary?.result?.winnerId) return "finished";
     if (Array.isArray(summary?.rankings) && summary.rankings.length > 0) return "finished";
 
     if (rec?.winnerId) return "finished";
+
+    const payload: any = rec?.payload || {};
+    if (payload?.winnerId || payload?.summary?.winnerId || payload?.summary?.finished === true || payload?.result?.winnerId || payload?.result?.finished === true) {
+      return "finished";
+    }
+
+    if (raw === "in_progress" || raw === "inprogress" || raw === "playing" || raw === "live") return "in_progress";
 
     const resume: any = rec?.resume || {};
     if (resume?.state || resume?.config || (Array.isArray(resume?.darts) && resume.darts.length > 0)) {
       return "in_progress";
     }
 
-    const payload: any = rec?.payload || {};
     if (payload?.result || payload?.summary || payload?.stats) return "finished";
 
     return "finished";
@@ -1528,6 +1538,29 @@ export async function get(id: string): Promise<SavedMatch | null> {
         });
       }
     }
+
+    // V3 FIX : si le payload principal a été compacté/corrompu/ancien,
+    // on reconstruit une base exploitable depuis header.resume.
+    // Cela répare la reprise X01 et évite "configuration absente".
+    try {
+      const resume = (header as any)?.resume;
+      const needsResumeMerge =
+        resume &&
+        typeof resume === "object" &&
+        (!payload ||
+          typeof payload !== "object" ||
+          ((payload as any)?.config == null && (resume as any)?.config != null) ||
+          (!Array.isArray((payload as any)?.darts) && Array.isArray((resume as any)?.darts)));
+
+      if (needsResumeMerge) {
+        payload = {
+          ...(payload && typeof payload === "object" ? payload : {}),
+          ...(resume?.config ? { config: resume.config } : {}),
+          ...(resume?.state ? { state: resume.state } : {}),
+          ...(Array.isArray(resume?.darts) ? { darts: resume.darts } : {}),
+        };
+      }
+    } catch {}
 
     const mid = getCanonicalMatchId({ ...header, payload }) ?? header.matchId ?? null;
     if (mid) header.matchId = String(mid);

@@ -528,17 +528,20 @@ function computeX01MultiMeta(
   const pidTarget = profile.id;
 
   for (const r of rows || []) {
-    const game = (r as any).game || (r as any).mode || "";
-    const variant = String((r as any).variant || "").toLowerCase();
-    const modeStr = String(game || "").toLowerCase();
+    const kind = String((r as any).kind || "").toLowerCase();
+    const game = (r as any).game || (r as any).mode || (r as any).payload?.game || "";
+    const variant = String((r as any).variant || (r as any).payload?.variant || "").toLowerCase();
+    const modeStr = String(typeof game === "object" ? (game?.mode || game?.game || "") : game || "").toLowerCase();
 
     const isX01 =
-      modeStr.includes("x01") || variant.includes("x01");
+      kind === "x01" || kind.includes("x01") || modeStr.includes("x01") || variant.includes("x01");
     if (!isX01) continue;
 
     const players: any[] =
       (r as any).players ??
       (r as any).config?.players ??
+      (r as any).payload?.players ??
+      (r as any).payload?.config?.players ??
       [];
 
     if (!players.length) continue;
@@ -562,7 +565,7 @@ function computeX01MultiMeta(
     const isWin =
       winnerId === selfPid || winnerId === pidTarget;
 
-    const cfg = (r as any).config ?? {};
+    const cfg = (r as any).config ?? (r as any).payload?.config ?? {};
     const hasTeams = !!cfg.teams || cfg.matchMode === "teams";
     const nbPlayers = players.length;
 

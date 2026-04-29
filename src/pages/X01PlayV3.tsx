@@ -2928,6 +2928,8 @@ try {
       state,
       scores,
       liveStatsByPlayer,
+      historyId: historyIdRef.current,
+      darts: Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [],
     });
   } catch (err) {
     console.warn("[X01PlayV3] saveX01V3MatchToHistory failed", err);
@@ -5295,6 +5297,10 @@ type X01V3HistoryPayload = {
   state: any;
   scores: Record<string, number>;
   liveStatsByPlayer: Record<string, any>;
+  /** V3 FIX: id stable utilisé par l'autosave, pour écraser l'entrée en cours au lieu de créer une autre ligne. */
+  historyId?: string | null;
+  /** V3 FIX: replay complet X01, indispensable à la reprise et aux stats détaillées. */
+  darts?: any[];
 };
 
 /* -------------------------------------------------------------
@@ -5445,10 +5451,13 @@ function saveX01V3MatchToHistory({
   state,
   scores,
   liveStatsByPlayer,
+  historyId,
+  darts: replayDarts,
 }: X01V3HistoryPayload) {
   const players = config.players || [];
 
   const matchId =
+    historyId ||
     state?.matchId ||
     `x01v3-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -5898,7 +5907,13 @@ function saveX01V3MatchToHistory({
     matchId, // 🧷 idem summary
     resumeId: matchId,
     config: lightConfig,
+    players: lightPlayers,
     finalScores: scores,
+    summary,
+
+    // ✅ V3 FIX : replay complet compact sans avatars.
+    // Sans ce champ, l'historique ne peut pas reprendre la partie et les stats détaillées tombent à 0.
+    darts: Array.isArray(replayDarts) ? replayDarts : [],
 
     // ✅ compat dartsets (lecture simple côté agrégateurs)
     dartSetId: dartSetIdGlobal,
@@ -5976,7 +5991,10 @@ function saveX01V3MatchToHistory({
     StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
 
     // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
-    History.upsert(record);
+    // V3 FIX : non bloquant pour l'UI, mais log explicite si l'écriture échoue.
+    void History.upsert(record).catch((err) => {
+      console.warn("[X01PlayV3] History.upsert(finished) failed", err);
+    });
   } catch (err) {
     console.warn(
       "[X01PlayV3] History save failed",

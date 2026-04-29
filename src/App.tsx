@@ -4422,11 +4422,29 @@ function X01PlayV3Route({
         if (cancelled) return;
 
         // ✅ Si payload est encore une string (b64 JSON), on préfère la version décodée.
-        const payload =
+        let payload =
           (typeof rec?.payload === "string" ? rec?.payloadDecoded : rec?.payload) ??
           rec?.payloadDecoded ??
           rec?.data ??
           null;
+
+        // V3 FIX : certains records compactés ont le payload complet dans rec.resume.
+        // On le fusionne avant de tester config/darts pour éviter les faux "ancienne version".
+        if (rec?.resume && typeof rec.resume === "object") {
+          const needsResume =
+            !payload ||
+            typeof payload !== "object" ||
+            (payload?.config == null && rec.resume?.config != null) ||
+            (!Array.isArray(payload?.darts) && Array.isArray(rec.resume?.darts));
+          if (needsResume) {
+            payload = {
+              ...(payload && typeof payload === "object" ? payload : {}),
+              ...(rec.resume?.config ? { config: rec.resume.config } : {}),
+              ...(rec.resume?.state ? { state: rec.resume.state } : {}),
+              ...(Array.isArray(rec.resume?.darts) ? { darts: rec.resume.darts } : {}),
+            };
+          }
+        }
 
         // ✅ config
         const cfg =

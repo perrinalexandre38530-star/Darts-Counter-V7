@@ -472,10 +472,10 @@ function detectKindMode(rec: any, decoded: any | null) {
 
 function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress" {
   const raw = safeLower(rec?.status || "");
-  if (raw === "finished") return "finished";
-  if (raw === "inprogress" || raw === "in_progress") return "in_progress";
+  if (raw === "finished" || raw === "done" || raw === "match_end" || raw === "ended") return "finished";
 
-  // On décide "finished" seulement sur des marqueurs solides
+  // V3 FIX : un header peut encore avoir status="in_progress" après fusion,
+  // donc on cherche d'abord les marqueurs solides de fin.
   const s = rec?.summary || rec?.payload?.summary || {};
   const winnerId =
     rec?.winnerId ||
@@ -504,6 +504,7 @@ function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress"
   if (d?.result?.finished === true) return "finished";
   if (Array.isArray(d?.rankings) && d.rankings.length) return "finished";
 
+  if (raw === "inprogress" || raw === "in_progress" || raw === "playing" || raw === "live") return "in_progress";
   return "in_progress";
 }
 
