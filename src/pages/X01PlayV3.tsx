@@ -2286,7 +2286,10 @@ const validateThrow = async () => {
   const inputs: X01DartInputV3[] = toSend.map((d) => ({
     segment: d.v === 25 ? 25 : d.v,
     multiplier: d.mult as 1 | 2 | 3,
-  }));
+    playerId: pid,
+    pid,
+    profileId: pid,
+  } as any));
 
   setCurrentThrow([]);
   setMultiplier(1);
@@ -5376,9 +5379,34 @@ function extractSegmentMapsFromLive(live: any) {
   return { bySegmentS, bySegmentD, bySegmentT };
 }
 
+function buildReplayDartLabel(segment: number, multiplier: number) {
+  if (!segment || segment <= 0) return "MISS";
+  if (segment === 25) return multiplier >= 2 ? "DBULL" : "BULL";
+  return `${multiplier >= 3 ? "T" : multiplier === 2 ? "D" : "S"}${segment}`;
+}
+
 function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undefined, extra: any = {}) {
-  const out: any = { ...(input as any) };
-  if (playerId) out.playerId = String(playerId);
+  const raw: any = input as any;
+  const segment = Number(raw.segment ?? raw.v ?? raw.value ?? 0);
+  const multiplier = Number(raw.multiplier ?? raw.mult ?? raw.m ?? 1) || 1;
+  const score = segment > 0 ? segment * multiplier : 0;
+  const out: any = {
+    ...raw,
+    segment,
+    multiplier,
+    v: segment,
+    mult: multiplier,
+    m: multiplier,
+    score,
+    label: buildReplayDartLabel(segment, multiplier),
+  };
+  if (playerId) {
+    const pid = String(playerId);
+    out.playerId = pid;
+    out.pid = pid;
+    out.profileId = pid;
+    out.p = pid;
+  }
   if (extra?.source) out.source = extra.source;
   if (extra?.ts != null) out.ts = extra.ts;
   return out as X01DartInputV3;
@@ -5386,7 +5414,15 @@ function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undef
 
 function debugReplayDarts(label: string, darts: any[]) {
   try {
-    console.log(`[X01PlayV3][THROW-TRACK] ${label}`, darts);
+    console.log(`[X01PlayV3][THROW-TRACK] ${label}`, (Array.isArray(darts) ? darts : []).map((d: any) => ({
+      playerId: d?.playerId ?? d?.pid ?? d?.p ?? null,
+      profileId: d?.profileId ?? null,
+      segment: d?.segment ?? d?.v ?? null,
+      multiplier: d?.multiplier ?? d?.mult ?? d?.m ?? null,
+      label: d?.label ?? buildReplayDartLabel(Number(d?.segment ?? d?.v ?? 0), Number(d?.multiplier ?? d?.mult ?? d?.m ?? 1)),
+      score: d?.score ?? 0,
+      source: d?.source ?? null,
+    })));
   } catch {}
 }
 
