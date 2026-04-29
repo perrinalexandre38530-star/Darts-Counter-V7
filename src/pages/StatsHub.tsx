@@ -1405,11 +1405,14 @@ function buildDashboardForPlayer(
     }
 
     const ss: any = (r as any)?.summary ?? (r as any)?.payload?.summary ?? {};
-    const per: any[] = ss.perPlayer ?? ss.players ?? (r as any)?.payload?.summary?.perPlayer ?? [];
+    const perSrc: any = ss.perPlayer ?? (r as any)?.payload?.summary?.perPlayer ?? [];
+    const perArr: any[] = Array.isArray(perSrc) ? perSrc : [];
 
     const pstat =
-      per.find((x) => x?.playerId === pid) ??
-      (ss?.[pid] || ss?.players?.[pid] || ss?.perPlayer?.[pid]) ??
+      (ss?.players && typeof ss.players === "object" ? ss.players[pid] : null) ??
+      (perArr.find((x) => String(x?.playerId ?? x?.id ?? x?.profileId ?? "") === String(pid))) ??
+      (perSrc && !Array.isArray(perSrc) && typeof perSrc === "object" ? perSrc[pid] : null) ??
+      (ss?.[pid]) ??
       {};
 
     const a3 =
@@ -1418,8 +1421,8 @@ function buildDashboardForPlayer(
       Nloc(pstat.avg3Darts) ||
       Nloc(pstat.average3);
 
-    const bestV = Nloc(pstat.bestVisit);
-    const bestCO = Nloc(pstat.bestCheckout);
+    const bestV = Nloc(pstat.bestVisit ?? ss?.bestVisitByPlayer?.[pid]);
+    const bestCO = Nloc(pstat.bestCheckout ?? ss?.bestCheckoutByPlayer?.[pid]);
 
     if (a3 > 0) {
       byDate.push({

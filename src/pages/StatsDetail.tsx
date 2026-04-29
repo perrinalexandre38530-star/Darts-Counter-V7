@@ -136,106 +136,153 @@ function buildGolfViewModel(rec: SavedMatch) {
 function buildViewModel(rec: SavedMatch) {
   const players = toArr<PlayerLite>(rec.players);
   const S = toObj<any>(rec.summary);
+  const P = toObj<any>(rec.payload);
+  const PS = toObj<any>(P?.summary);
+  const legacy = toObj<any>(S?.legacy ?? PS?.legacy);
 
-  // Classement (ordre + scores si dispo)
-  // Recherche dans : summary.result.order | summary.ranking | summary.order
-  const rawOrder: any[] =
-    toArr<any>(S?.result?.order) ??
-    toArr<any>(S?.ranking) ??
-    toArr<any>(S?.order);
+  const asArray = (v: any): any[] => (Array.isArray(v) ? v : []);
+  const normId = (v: any) => String(v ?? "");
+  const findByPid = (src: any, pid: string) => {
+    if (!src) return {};
+    if (Array.isArray(src)) {
+      return src.find((x: any) => [x?.id, x?.playerId, x?.profileId, x?.pid].map(normId).includes(pid)) || {};
+    }
+    if (typeof src === "object") {
+      if (src[pid] != null) return src[pid] || {};
+      const k = Object.keys(src).find((key) => normId(key) === pid);
+      return k ? src[k] || {} : {};
+    }
+    return {};
+  };
+  const pickNum = (obj: any, keys: string[], d = 0) => {
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (v != null && Number.isFinite(Number(v))) return Number(v);
+    }
+    return d;
+  };
 
-  // Fallback si pas d’ordre : juste l’ordre de players
-  const order = rawOrder.length
-    ? rawOrder.map((it) => {
-        const pid = String(it.id ?? it.playerId ?? it.pid ?? it);
-        const score = Number(it.score ?? it.points ?? it.pts ?? 0);
-        return { playerId: pid, score };
+  const rankings =
+    asArray(S?.result?.order).length ? asArray(S?.result?.order) :
+    asArray(S?.rankings).length ? asArray(S?.rankings) :
+    asArray(S?.ranking).length ? asArray(S?.ranking) :
+    asArray(S?.order).length ? asArray(S?.order) :
+    asArray(PS?.rankings).length ? asArray(PS?.rankings) :
+    asArray(PS?.ranking).length ? asArray(PS?.ranking) :
+    asArray(P?.rankings).length ? asArray(P?.rankings) :
+    [];
+
+  const order = rankings.length
+    ? rankings.map((it: any, idx: number) => {
+        const pid = String(it?.id ?? it?.playerId ?? it?.profileId ?? it?.pid ?? it);
+        const score = N(it?.score ?? it?.points ?? it?.remaining ?? legacy?.remaining?.[pid] ?? 0);
+        return { playerId: pid, score, rank: N(it?.rank ?? it?.place ?? it?.position ?? idx + 1, idx + 1) };
       })
-    : players.map((p) => ({ playerId: p.id, score: 0 }));
+    : players.map((p, idx) => ({ playerId: p.id, score: N(legacy?.remaining?.[p.id] ?? 0), rank: idx + 1 }));
 
-  // Petits KPIs — on pioche dans plusieurs clefs possibles
-  // Chaque champ accepte multiples alias pour survivre aux refactors
   const pick = (...keys: string[]) => {
     for (const k of keys) {
-      const v = S?.[k];
+      const v = S?.[k] ?? PS?.[k] ?? S?.stats?.[k] ?? S?.meta?.[k] ?? PS?.stats?.[k] ?? PS?.meta?.[k];
       if (v != null) return v;
-      // Essaye dans summary.stats.* , summary.meta.*
-      const v2 = S?.stats?.[k] ?? S?.meta?.[k];
-      if (v2 != null) return v2;
     }
     return undefined;
   };
 
-  // Par joueur : summary.players[pid] | summary.perPlayer[pid] | summary[pid]
   const perPlayer = (pid: string) => {
-    const pp =
-      toObj<any>(S?.players)?.[pid] ??
-      toObj<any>(S?.perPlayer)?.[pid] ??
-      toObj<any>(S?.[pid]);
-    return toObj<any>(pp);
+    const fromSummaryPlayers = findByPid(S?.players, pid);
+    if (Object.keys(fromSummaryPlayers).length) return fromSummaryPlayers;
+    const fromPayloadPlayers = findByPid(PS?.players, pid);
+    if (Object.keys(fromPayloadPlayers).length) return fromPayloadPlayers;
+    const fromPer = findByPid(S?.perPlayer, pid);
+    if (Object.keys(fromPer).length) return fromPer;
+    const fromPayloadPer = findByPid(PS?.perPlayer, pid);
+    if (Object.keys(fromPayloadPer).length) return fromPayloadPer;
+    const fromDetailed = findByPid(S?.detailedByPlayer ?? PS?.detailedByPlayer, pid);
+    if (Object.keys(fromDetailed).length) return fromDetailed;
+    return {};
   };
 
-  // KPIs globaux affichés dans “Résumé”
+  const winnerId = S?.winnerId ?? PS?.winnerId ?? rec.winnerId ?? order[0]?.playerId ?? null;
+  const bestFromMap = (mapName: string) => {
+    const m = S?.[mapName] ?? PS?.[mapName] ?? {};
+    let bestPid: string | null = null;
+    let best = 0;
+    if (m && typeof m === "object") {
+      for (const [pid, val] of Object.entries(m)) {
+        const n = N(val);
+        if (n > best) { best = n; bestPid = String(pid); }
+      }
+    }
+    return { bestPid, best };
+  };
+  const bestVisitMap = bestFromMap("bestVisitByPlayer");
+  const bestCoMap = bestFromMap("bestCheckoutByPlayer");
+  const bestAvgMap = bestFromMap("avg3ByPlayer");
+
   const resume = {
-    winnerId:
-      S?.winnerId ??
-      S?.winner ??
-      rec.winnerId ??
-      order[0]?.playerId ??
-      null,
-    minDartsSide:
-      pick("minDartsSide", "minDartsPlayer") || null,
-    minDarts:
-      pick("minDarts", "fewestDarts") || null,
-    bestVisitSide:
-      pick("bestVisitSide", "bestVisitPlayer") || null,
-    bestVisit:
-      pick("bestVisit", "maxVisit", "bestScore") || null,
-    bestAvg3Side:
-      pick("bestAvg3Side", "bestAverage3Player") || null,
-    bestAvg3:
-      pick("bestAvg3", "average3Best", "avg3Best") ?? null,
+    winnerId,
+    minDartsSide: pick("minDartsSide", "minDartsPlayer") || null,
+    minDarts: pick("minDarts", "fewestDarts") || null,
+    bestVisitSide: pick("bestVisitSide", "bestVisitPlayer") || bestVisitMap.bestPid,
+    bestVisit: pick("bestVisit", "maxVisit", "bestScore") ?? bestVisitMap.best,
+    bestAvg3Side: pick("bestAvg3Side", "bestAverage3Player") || bestAvgMap.bestPid,
+    bestAvg3: pick("bestAvg3", "average3Best", "avg3Best") ?? bestAvgMap.best,
     bestDbPctSide: pick("bestDbPctSide", "bestDoublePctPlayer") ?? null,
     bestDbPct: pick("bestDbPct", "doublePctBest", "pctDoubleBest") ?? null,
     bestTpPctSide: pick("bestTpPctSide", "bestTriplePctPlayer") ?? null,
     bestTpPct: pick("bestTpPct", "triplePctBest", "pctTripleBest") ?? null,
     bestBullSide: pick("bestBullSide", "bestBullPlayer") ?? null,
     bestBull: pick("bestBull", "bullBest") ?? null,
+    bestCoSide: bestCoMap.bestPid,
+    bestCo: bestCoMap.best,
   };
 
-  // Tableaux par joueur (Stats rapides / Darts / Globales)
-  const rows = order.map(({ playerId }) => {
+  const rows = order.map(({ playerId, score }) => {
     const p = getPlayer(players, playerId) || { id: playerId, name: "Joueur" };
     const pp = perPlayer(playerId);
+    const detail = findByPid(S?.detailedByPlayer ?? PS?.detailedByPlayer, playerId);
+    const src = { ...detail, ...pp };
+
+    const darts = pickNum(src, ["darts", "_sumDarts", "throws"], N(legacy?.darts?.[playerId]));
+    const visits = pickNum(src, ["visits", "_sumVisits", "turns", "rounds"], N(legacy?.visits?.[playerId]) || (darts ? Math.ceil(darts / 3) : 0));
+    const points = pickNum(src, ["points", "_sumPoints"], N(legacy?.points?.[playerId]));
+    const avg3 = pickNum(src, ["avg3", "average3", "avg_3", "avg3Darts"], N(legacy?.avg3?.[playerId]) || (darts ? (points / darts) * 3 : 0));
+    const bestVisit = pickNum(src, ["bestVisit", "best_visit"], N(legacy?.bestVisit?.[playerId]));
+    const bestCheckout = pickNum(src, ["bestCheckout", "best_co", "bestFinish", "co", "checkout"], N(legacy?.bestCheckout?.[playerId]));
+
+    const sHits = pickNum(src, ["hitsS", "s", "S", "singles", "single"]);
+    const dHits = pickNum(src, ["hitsD", "d", "D", "doubles", "double"], N(legacy?.doubles?.[playerId]));
+    const tHits = pickNum(src, ["hitsT", "t", "T", "triples", "triple"], N(legacy?.triples?.[playerId]));
+    const miss = pickNum(src, ["miss", "misses", "M"], N(legacy?.misses?.[playerId]));
+    const bull = pickNum(src, ["bull", "bulls"], N(legacy?.bulls?.[playerId]));
+    const dbull = pickNum(src, ["dBull", "dbull", "doubleBull"], N(legacy?.dbulls?.[playerId]));
+    const bust = pickNum(src, ["bust", "busts"], N(legacy?.busts?.[playerId]));
 
     return {
       playerId,
       name: p.name || "Joueur",
       avatar: p.avatarDataUrl || null,
-
-      // “rapides”
-      visits: N(pp.visits ?? pp.turns ?? pp.rounds ?? 0),
-      darts: N(pp.darts ?? pp.throws ?? 0),
-      avg3: Number(
-        pp.avg3 ?? pp.average3 ?? pp.avg_3 ?? pp.avg3Darts ?? 0
-      ),
-      co: N(pp.co ?? pp.checkout ?? 0),
-      _60: N(pp.hit60 ?? pp["60+"] ?? 0),
-      _100: N(pp.hit100 ?? pp["100+"] ?? 0),
-      _140: N(pp.hit140 ?? pp["140+"] ?? 0),
-      _180: N(pp.hit180 ?? pp["180"] ?? 0),
-
-      // “darts”
-      db: N(pp.db ?? pp.double ?? 0),
-      tp: N(pp.tp ?? pp.triple ?? 0),
-      bull: N(pp.bull ?? 0),
-      dbull: N(pp.dbull ?? pp.doubleBull ?? 0),
-
-      // “globales”
-      avg1: Number(pp.avg1 ?? pp.average1 ?? 0),
-      winRate: Number(pp.winRatePct ?? pp.winPct ?? 0),
-      dbPct: Number(pp.dbPct ?? pp.doublePct ?? 0),
-      tpPct: Number(pp.tpPct ?? pp.triplePct ?? 0),
+      score,
+      visits,
+      darts,
+      avg3,
+      avg1: darts ? points / darts : 0,
+      co: bestCheckout,
+      bestVisit,
+      _60: N(src?.hit60 ?? src?.["60+"] ?? 0),
+      _100: N(src?.hit100 ?? src?.["100+"] ?? 0),
+      _140: N(src?.hit140 ?? src?.["140+"] ?? 0),
+      _180: N(src?.hit180 ?? src?.["180"] ?? 0),
+      s: sHits,
+      db: dHits,
+      tp: tHits,
+      bull,
+      dbull,
+      miss,
+      bust,
+      winRate: winnerId && String(winnerId) === String(playerId) ? 100 : 0,
+      dbPct: darts ? (dHits / darts) * 100 : 0,
+      tpPct: darts ? (tHits / darts) * 100 : 0,
     };
   });
 

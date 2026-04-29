@@ -485,6 +485,18 @@ const filteredMatches: X01MatchExtract[] = React.useMemo(() => {
       for (let i = 0; i < tCount; i++) tmp.push({ v: seg, mult: 3 } as UIDart);
     }
 
+    // Fallback : si le détail ne contient pas les segments, on conserve quand même
+    // les volumes S/D/T/MISS pour éviter des graphiques et pourcentages à zéro.
+    if (!tmp.length) {
+      const hitsObj = detail?.hits || {};
+      const sHits = cap(Number(detail?.hitsS ?? detail?.s ?? detail?.S ?? detail?.singles ?? hitsObj?.S ?? 0));
+      const dHits = cap(Number(detail?.hitsD ?? detail?.d ?? detail?.D ?? detail?.doubles ?? hitsObj?.D ?? 0));
+      const tHits = cap(Number(detail?.hitsT ?? detail?.t ?? detail?.T ?? detail?.triples ?? hitsObj?.T ?? 0));
+      for (let i = 0; i < sHits; i++) tmp.push({ v: 20, mult: 1 } as UIDart);
+      for (let i = 0; i < dHits; i++) tmp.push({ v: 20, mult: 2 } as UIDart);
+      for (let i = 0; i < tHits; i++) tmp.push({ v: 20, mult: 3 } as UIDart);
+    }
+
     for (let i = 0; i < cap(miss); i++) tmp.push({ v: 0, mult: 0 } as UIDart);
 
     return tmp;
@@ -521,11 +533,20 @@ const filteredMatches: X01MatchExtract[] = React.useMemo(() => {
           0
       ) || 0;
 
+    const perRow =
+      (Array.isArray(sum?.perPlayer)
+        ? sum.perPlayer.find((x: any) => sameId(x?.playerId ?? x?.id ?? x?.profileId, pid))
+        : sum?.perPlayer?.[pid]) ?? null;
+
+    const playerRow = sum?.players?.[pid] ?? null;
+
     const detail =
       sum?.detailedByPlayer?.[pid] ??
       sum?.detailsByPlayer?.[pid] ??
       sum?.detailed?.[pid] ??
       sum?.details?.[pid] ??
+      perRow ??
+      playerRow ??
       null;
 
     return { avg3, bestVisit, bestCheckout, detail };

@@ -4149,14 +4149,74 @@ function saveX01V3MatchToHistory({
     const visits = legacyVisits[pid] || (darts ? Math.ceil(darts / 3) : 0);
     const points = legacyPoints[pid] || 0;
 
+    const detail = detailedByPlayer[pid] || {};
+    const hitsS = Number(detail.hitsS || 0);
+    const hitsD = Number(detail.hitsD || 0);
+    const hitsT = Number(detail.hitsT || 0);
+    const miss = Number(detail.miss || 0);
+    const bust = Number(detail.bust || 0);
+    const bull = Number(detail.bull || 0);
+    const dBull = Number(detail.dBull || detail.dbull || 0);
+    const hitTotal = hitsS + hitsD + hitsT;
+    const attemptTotal = hitTotal + miss;
+    const segmentTotal: Record<string, number> = {};
+    for (const [seg, v] of Object.entries(detail.bySegmentS || {})) segmentTotal[String(seg)] = (segmentTotal[String(seg)] || 0) + Number(v || 0);
+    for (const [seg, v] of Object.entries(detail.bySegmentD || {})) segmentTotal[String(seg)] = (segmentTotal[String(seg)] || 0) + Number(v || 0);
+    for (const [seg, v] of Object.entries(detail.bySegmentT || {})) segmentTotal[String(seg)] = (segmentTotal[String(seg)] || 0) + Number(v || 0);
+    if (bull) segmentTotal["25"] = (segmentTotal["25"] || 0) + bull;
+    if (dBull) segmentTotal["25"] = (segmentTotal["25"] || 0) + dBull;
+    if (miss) segmentTotal.MISS = (segmentTotal.MISS || 0) + miss;
+
     summaryPlayers[pid] = {
       id: pid,
+      playerId: pid,
       name: p.name,
       avg3: avg3ByPlayer[pid] ?? 0,
+      avg1: darts ? points / darts : 0,
       bestVisit: bestVisitByPlayer[pid] ?? 0,
       bestCheckout: bestCheckoutByPlayer[pid] ?? 0,
       darts,
       visits,
+      points,
+      score: scores[pid] ?? 0,
+      remaining: scores[pid] ?? 0,
+      co: bestCheckoutByPlayer[pid] ?? 0,
+      checkout: bestCheckoutByPlayer[pid] ?? 0,
+      hitsS,
+      hitsD,
+      hitsT,
+      s: hitsS,
+      d: hitsD,
+      t: hitsT,
+      singles: hitsS,
+      doubles: hitsD,
+      triples: hitsT,
+      double: hitsD,
+      triple: hitsT,
+      miss,
+      misses: miss,
+      bust,
+      busts: bust,
+      bull,
+      dBull,
+      dbull: dBull,
+      doubleBull: dBull,
+      hitTotal,
+      attemptTotal,
+      hitPct: attemptTotal ? (hitTotal / attemptTotal) * 100 : 0,
+      dbPct: attemptTotal ? (hitsD / attemptTotal) * 100 : 0,
+      tpPct: attemptTotal ? (hitsT / attemptTotal) * 100 : 0,
+      bullPct: attemptTotal ? ((bull + dBull) / attemptTotal) * 100 : 0,
+      segments: {
+        S: detail.bySegmentS || {},
+        D: detail.bySegmentD || {},
+        T: detail.bySegmentT || {},
+        total: segmentTotal,
+      },
+      bySegmentS: detail.bySegmentS || {},
+      bySegmentD: detail.bySegmentD || {},
+      bySegmentT: detail.bySegmentT || {},
+      hitsBySector: segmentTotal,
       _sumPoints: points,
       _sumDarts: darts,
       _sumVisits: visits || undefined,
