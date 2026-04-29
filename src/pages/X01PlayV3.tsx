@@ -5385,21 +5385,43 @@ function buildReplayDartLabel(segment: number, multiplier: number) {
   return `${multiplier >= 3 ? "T" : multiplier === 2 ? "D" : "S"}${segment}`;
 }
 
+function parseReplayDartParts(input: any): { segment: number; multiplier: 0 | 1 | 2 | 3 } {
+  const raw: any = input || {};
+  const directSegment = raw.segment ?? raw.v ?? raw.value ?? raw.target ?? raw.number ?? raw.n;
+  const directMultiplier = raw.multiplier ?? raw.mult ?? raw.m ?? raw.coef ?? raw.factor;
+  let segment = Number(directSegment);
+  let multiplier = Number(directMultiplier);
+  const labelRaw = String(raw.label ?? raw.segmentLabel ?? raw.dart ?? raw.hit ?? raw.code ?? raw.text ?? raw.name ?? "").trim().toUpperCase().replace(/\s+/g, "");
+
+  if (!Number.isFinite(segment) || segment <= 0) {
+    if (labelRaw === "MISS" || labelRaw === "M" || labelRaw === "0") { segment = 0; multiplier = 0; }
+    else if (labelRaw === "BULL" || labelRaw === "SBULL" || labelRaw === "OB") { segment = 25; multiplier = 1; }
+    else if (labelRaw === "DBULL" || labelRaw === "D-BULL" || labelRaw === "DOUBLEBULL" || labelRaw === "IB") { segment = 25; multiplier = 2; }
+    else {
+      const m = labelRaw.match(/^([SDT])?(\d{1,2})$/);
+      if (m) { segment = Number(m[2]); multiplier = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
+    }
+  }
+  if (!Number.isFinite(multiplier) || multiplier <= 0) {
+    if (labelRaw.startsWith("T")) multiplier = 3;
+    else if (labelRaw.startsWith("D") && labelRaw !== "DBULL") multiplier = 2;
+    else if (segment > 0) multiplier = 1;
+    else multiplier = 0;
+  }
+  if (!Number.isFinite(segment) || segment < 0) segment = 0;
+  if (segment === 25 && multiplier > 2) multiplier = 2;
+  if (segment > 25) segment = 0;
+  if (![0, 1, 2, 3].includes(multiplier)) multiplier = segment > 0 ? 1 : 0;
+  return { segment, multiplier: multiplier as 0 | 1 | 2 | 3 };
+}
+
 function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undefined, extra: any = {}) {
   const raw: any = input as any;
-  const segment = Number(raw.segment ?? raw.v ?? raw.value ?? 0);
-  const multiplier = Number(raw.multiplier ?? raw.mult ?? raw.m ?? 1) || 1;
-  const score = segment > 0 ? segment * multiplier : 0;
-  const out: any = {
-    ...raw,
-    segment,
-    multiplier,
-    v: segment,
-    mult: multiplier,
-    m: multiplier,
-    score,
-    label: buildReplayDartLabel(segment, multiplier),
-  };
+  const parsed = parseReplayDartParts(raw);
+  const segment = parsed.segment;
+  const multiplier = parsed.multiplier;
+  const score = segment > 0 ? (segment === 25 && multiplier >= 2 ? 50 : segment * multiplier) : 0;
+  const out: any = { ...raw, segment, multiplier, v: segment, mult: multiplier, m: multiplier, score, label: buildReplayDartLabel(segment, multiplier) };
   if (playerId) {
     const pid = String(playerId);
     out.playerId = pid;
@@ -5443,8 +5465,9 @@ function extractDetailedStatsFromReplayDarts(allDarts: any, playerId: string, pl
     const rawPid = (raw as any).playerId ?? (raw as any).pid ?? (raw as any).p;
     if (rawPid != null && String(rawPid) !== String(playerId)) continue;
     if (rawPid == null && playersCount > 1) continue;
-    const segment = Number((raw as any).segment ?? (raw as any).v ?? (raw as any).value ?? 0);
-    const multiplier = Number((raw as any).multiplier ?? (raw as any).mult ?? (raw as any).m ?? 1);
+    const parsed = parseReplayDartParts(raw);
+    const segment = parsed.segment;
+    const multiplier = parsed.multiplier;
     darts += 1;
     if (!segment || multiplier <= 0) { miss += 1; continue; }
     if (segment === 25) { if (multiplier >= 2) dBull += 1; else bull += 1; continue; }

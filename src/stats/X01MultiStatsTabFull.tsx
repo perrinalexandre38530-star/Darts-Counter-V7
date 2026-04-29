@@ -372,28 +372,55 @@ function buildSessionFromSummary(
   }
   // ============================================
 
-  // ---------- Hits / Miss / Bust (hors Bull) ----------
-  const hitsS = numOr0(detail.hitsS, row.hitsS);
-  const hitsD = numOr0(detail.hitsD, row.hitsD);
-  const hitsT = numOr0(detail.hitsT, row.hitsT);
-  const miss = numOr0(detail.miss, row.miss);
-  const bust = numOr0(detail.bust, row.bust);
-
   // ---------- bySegment S / D / T ----------
+  // Compat formats :
+  // - V7+: detail.bySegmentS/D/T
+  // - perPlayer: row.segments.S/D/T
+  // - anciens exports: row.segments.{single,double,triple}
   const bySegmentS: Record<string, number> =
     (detail.bySegmentS && typeof detail.bySegmentS === "object"
       ? detail.bySegmentS
-      : row.bySegmentS) || {};
+      : row.bySegmentS && typeof row.bySegmentS === "object"
+      ? row.bySegmentS
+      : row.segments?.S && typeof row.segments.S === "object"
+      ? row.segments.S
+      : row.segments?.single && typeof row.segments.single === "object"
+      ? row.segments.single
+      : {}) || {};
 
   const bySegmentD: Record<string, number> =
     (detail.bySegmentD && typeof detail.bySegmentD === "object"
       ? detail.bySegmentD
-      : row.bySegmentD) || {};
+      : row.bySegmentD && typeof row.bySegmentD === "object"
+      ? row.bySegmentD
+      : row.segments?.D && typeof row.segments.D === "object"
+      ? row.segments.D
+      : row.segments?.double && typeof row.segments.double === "object"
+      ? row.segments.double
+      : {}) || {};
 
   const bySegmentT: Record<string, number> =
     (detail.bySegmentT && typeof detail.bySegmentT === "object"
       ? detail.bySegmentT
-      : row.bySegmentT) || {};
+      : row.bySegmentT && typeof row.bySegmentT === "object"
+      ? row.bySegmentT
+      : row.segments?.T && typeof row.segments.T === "object"
+      ? row.segments.T
+      : row.segments?.triple && typeof row.segments.triple === "object"
+      ? row.segments.triple
+      : {}) || {};
+
+  const sumMap = (m: any) =>
+    m && typeof m === "object"
+      ? Object.values(m).reduce((a: number, v: any) => a + (Number(v) || 0), 0)
+      : 0;
+
+  // ---------- Hits / Miss / Bust (hors Bull) ----------
+  const hitsS = numOr0(detail.hitsS, row.hitsS, row.hits?.S, row.hits?.single, sumMap(bySegmentS));
+  const hitsD = numOr0(detail.hitsD, row.hitsD, row.hits?.D, row.hits?.double, sumMap(bySegmentD));
+  const hitsT = numOr0(detail.hitsT, row.hitsT, row.hits?.T, row.hits?.triple, sumMap(bySegmentT));
+  const miss = numOr0(detail.miss, row.miss, row.hits?.M, row.hits?.miss, row.misses);
+  const bust = numOr0(detail.bust, row.bust, row.busts);
 
   // ---------- Bull / DBull (d’abord champs, puis fallback segments 25) ----------
   const bull = numOr0(
