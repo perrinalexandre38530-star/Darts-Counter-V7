@@ -1228,7 +1228,9 @@ const isBotTurn = React.useMemo(() => {
             throwDart(input);
 
             // Autosave + replay log
-            replayDartsRef.current = replayDartsRef.current.concat([input]);
+            const tracked = enrichReplayDart(input, pid, { source: "voice", ts: Date.now() });
+            replayDartsRef.current = replayDartsRef.current.concat([tracked] as any);
+            debugReplayDarts("voice-dart", [tracked] as any);
             persistAutosave();
           }, index * 10);
         });
@@ -2291,7 +2293,9 @@ const validateThrow = async () => {
 
   currentThrowFromEngineRef.current = false;
 
-  replayDartsRef.current = replayDartsRef.current.concat(inputs);
+  const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { source: "manual", ts: Date.now() }));
+  replayDartsRef.current = replayDartsRef.current.concat(trackedInputs as any);
+  debugReplayDarts("manual-visit", trackedInputs as any);
   persistAutosave();
 
   inputs.forEach((input, index) => {
@@ -2362,7 +2366,9 @@ React.useEffect(() => {
       throwDart(dart);
 
       // Autosave + replay log
-      replayDartsRef.current = replayDartsRef.current.concat([dart]);
+      const tracked = enrichReplayDart(dart, activePlayerId, { source: "external", ts: Date.now() });
+      replayDartsRef.current = replayDartsRef.current.concat([tracked] as any);
+      debugReplayDarts("external-dart", [tracked] as any);
       persistAutosave();
     } catch (e) {
       console.warn("[X01PlayV3] external dart failed", e);
@@ -2438,7 +2444,9 @@ React.useEffect(() => {
         throwDart(d);
       }
 
-      replayDartsRef.current = replayDartsRef.current.concat(darts);
+      const trackedDarts = darts.map((d: any) => enrichReplayDart(d, pid, { source: "external_visit", ts: Date.now() }));
+      replayDartsRef.current = replayDartsRef.current.concat(trackedDarts as any);
+      debugReplayDarts("external-visit", trackedDarts as any);
       persistAutosave();
     } catch (e) {
       console.warn("[X01PlayV3] external visit failed", e);
@@ -3063,7 +3071,9 @@ try {
       });
 
       // Autosave : on enregistre aussi les volées des bots
-      replayDartsRef.current = replayDartsRef.current.concat(inputs);
+      const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { source: "bot", ts: Date.now() }));
+      replayDartsRef.current = replayDartsRef.current.concat(trackedInputs as any);
+      debugReplayDarts("bot-visit", trackedInputs as any);
       persistAutosave();
     }, 650);
 
@@ -5366,6 +5376,62 @@ function extractSegmentMapsFromLive(live: any) {
   return { bySegmentS, bySegmentD, bySegmentT };
 }
 
+function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undefined, extra: any = {}) {
+  const out: any = { ...(input as any) };
+  if (playerId) out.playerId = String(playerId);
+  if (extra?.source) out.source = extra.source;
+  if (extra?.ts != null) out.ts = extra.ts;
+  return out as X01DartInputV3;
+}
+
+function debugReplayDarts(label: string, darts: any[]) {
+  try {
+    console.log(`[X01PlayV3][THROW-TRACK] ${label}`, darts);
+  } catch {}
+}
+
+function extractDetailedStatsFromReplayDarts(allDarts: any, playerId: string, playersCount = 0) {
+  const bySegmentS: Record<string, number> = {};
+  const bySegmentD: Record<string, number> = {};
+  const bySegmentT: Record<string, number> = {};
+  let darts = 0;
+  let hitsS = 0;
+  let hitsD = 0;
+  let hitsT = 0;
+  let miss = 0;
+  let bull = 0;
+  let dBull = 0;
+  const arr = Array.isArray(allDarts) ? allDarts : [];
+  for (const raw of arr) {
+    if (!raw || typeof raw !== "object") continue;
+    const rawPid = (raw as any).playerId ?? (raw as any).pid ?? (raw as any).p;
+    if (rawPid != null && String(rawPid) !== String(playerId)) continue;
+    if (rawPid == null && playersCount > 1) continue;
+    const segment = Number((raw as any).segment ?? (raw as any).v ?? (raw as any).value ?? 0);
+    const multiplier = Number((raw as any).multiplier ?? (raw as any).mult ?? (raw as any).m ?? 1);
+    darts += 1;
+    if (!segment || multiplier <= 0) { miss += 1; continue; }
+    if (segment === 25) { if (multiplier >= 2) dBull += 1; else bull += 1; continue; }
+    const key = String(segment);
+    if (multiplier >= 3) { hitsT += 1; bySegmentT[key] = (bySegmentT[key] || 0) + 1; }
+    else if (multiplier === 2) { hitsD += 1; bySegmentD[key] = (bySegmentD[key] || 0) + 1; }
+    else { hitsS += 1; bySegmentS[key] = (bySegmentS[key] || 0) + 1; }
+  }
+  return { darts, hitsS, hitsD, hitsT, miss, bull, dBull, bust: 0, bySegmentS, bySegmentD, bySegmentT };
+}
+
+function mergeDetailedStats(primary: any, fallback: any) {
+  const liveDarts = Number(primary?.darts || 0);
+  const fallbackDarts = Number(fallback?.darts || 0);
+  if (!liveDarts && fallbackDarts) return fallback;
+  const sumLiveHits = Number(primary?.hitsS || 0) + Number(primary?.hitsD || 0) + Number(primary?.hitsT || 0) + Number(primary?.bull || 0) + Number(primary?.dBull || 0) + Number(primary?.miss || 0);
+  const sumFallbackHits = Number(fallback?.hitsS || 0) + Number(fallback?.hitsD || 0) + Number(fallback?.hitsT || 0) + Number(fallback?.bull || 0) + Number(fallback?.dBull || 0) + Number(fallback?.miss || 0);
+  if (sumLiveHits === 0 && sumFallbackHits > 0) {
+    return { ...primary, hitsS: fallback.hitsS, hitsD: fallback.hitsD, hitsT: fallback.hitsT, miss: fallback.miss, bull: fallback.bull, dBull: fallback.dBull, bySegmentS: fallback.bySegmentS, bySegmentD: fallback.bySegmentD, bySegmentT: fallback.bySegmentT, darts: primary?.darts || fallback.darts };
+  }
+  return primary;
+}
+
 function extractDetailedStatsFromLive(live: any) {
   const hitsS = numOr0(
     live?.hitsS,
@@ -5517,7 +5583,11 @@ function saveX01V3MatchToHistory({
     bestCheckoutByPlayer[pid] = bestCheckout;
 
     // 🔍 Stats détaillées (hits S/D/T, miss, bull, etc.)
-    const detail = extractDetailedStatsFromLive(live);
+    // V6 : le moteur ne remonte pas toujours S/D/T par joueur.
+    // On complète donc depuis replayDarts, maintenant tagués avec playerId.
+    const liveDetail = extractDetailedStatsFromLive(live);
+    const replayDetail = extractDetailedStatsFromReplayDarts(replayDarts, pid, players.length);
+    const detail = mergeDetailedStats(liveDetail, replayDetail);
     detailedByPlayer[pid] = detail;
 
     // Reformatage compatible V2/V1 pour StatsHub et tous les dashboards
@@ -5771,74 +5841,14 @@ function saveX01V3MatchToHistory({
     const visits = legacyVisits[pid] || (darts ? Math.ceil(darts / 3) : 0);
     const points = legacyPoints[pid] || 0;
 
-    const detail = detailedByPlayer[pid] || {};
-    const hitsS = Number(detail.hitsS || 0);
-    const hitsD = Number(detail.hitsD || 0);
-    const hitsT = Number(detail.hitsT || 0);
-    const miss = Number(detail.miss || 0);
-    const bust = Number(detail.bust || 0);
-    const bull = Number(detail.bull || 0);
-    const dBull = Number(detail.dBull || detail.dbull || 0);
-    const hitTotal = hitsS + hitsD + hitsT;
-    const attemptTotal = hitTotal + miss;
-    const segmentTotal: Record<string, number> = {};
-    for (const [seg, v] of Object.entries(detail.bySegmentS || {})) segmentTotal[String(seg)] = (segmentTotal[String(seg)] || 0) + Number(v || 0);
-    for (const [seg, v] of Object.entries(detail.bySegmentD || {})) segmentTotal[String(seg)] = (segmentTotal[String(seg)] || 0) + Number(v || 0);
-    for (const [seg, v] of Object.entries(detail.bySegmentT || {})) segmentTotal[String(seg)] = (segmentTotal[String(seg)] || 0) + Number(v || 0);
-    if (bull) segmentTotal["25"] = (segmentTotal["25"] || 0) + bull;
-    if (dBull) segmentTotal["25"] = (segmentTotal["25"] || 0) + dBull;
-    if (miss) segmentTotal.MISS = (segmentTotal.MISS || 0) + miss;
-
     summaryPlayers[pid] = {
       id: pid,
-      playerId: pid,
       name: p.name,
       avg3: avg3ByPlayer[pid] ?? 0,
-      avg1: darts ? points / darts : 0,
       bestVisit: bestVisitByPlayer[pid] ?? 0,
       bestCheckout: bestCheckoutByPlayer[pid] ?? 0,
       darts,
       visits,
-      points,
-      score: scores[pid] ?? 0,
-      remaining: scores[pid] ?? 0,
-      co: bestCheckoutByPlayer[pid] ?? 0,
-      checkout: bestCheckoutByPlayer[pid] ?? 0,
-      hitsS,
-      hitsD,
-      hitsT,
-      s: hitsS,
-      d: hitsD,
-      t: hitsT,
-      singles: hitsS,
-      doubles: hitsD,
-      triples: hitsT,
-      double: hitsD,
-      triple: hitsT,
-      miss,
-      misses: miss,
-      bust,
-      busts: bust,
-      bull,
-      dBull,
-      dbull: dBull,
-      doubleBull: dBull,
-      hitTotal,
-      attemptTotal,
-      hitPct: attemptTotal ? (hitTotal / attemptTotal) * 100 : 0,
-      dbPct: attemptTotal ? (hitsD / attemptTotal) * 100 : 0,
-      tpPct: attemptTotal ? (hitsT / attemptTotal) * 100 : 0,
-      bullPct: attemptTotal ? ((bull + dBull) / attemptTotal) * 100 : 0,
-      segments: {
-        S: detail.bySegmentS || {},
-        D: detail.bySegmentD || {},
-        T: detail.bySegmentT || {},
-        total: segmentTotal,
-      },
-      bySegmentS: detail.bySegmentS || {},
-      bySegmentD: detail.bySegmentD || {},
-      bySegmentT: detail.bySegmentT || {},
-      hitsBySector: segmentTotal,
       _sumPoints: points,
       _sumDarts: darts,
       _sumVisits: visits || undefined,
