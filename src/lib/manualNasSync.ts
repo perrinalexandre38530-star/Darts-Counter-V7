@@ -363,15 +363,25 @@ export async function pullNasAccountSnapshot() {
     try {
       const restored: any = await loadStore().catch(() => null);
       const hydrated = restored ? await hydrateStoreMediaUrls(restored).catch(() => restored) : null;
-      if (hydrated && hydrated !== restored) {
+      const nextStore = hydrated || restored;
+
+      // ✅ RESTORE LIVE FIX:
+      // importCloudSnapshot() remplace bien IndexedDB, mais la page Profils lit le
+      // store React déjà monté. Sans remplacement runtime, l'alerte peut annoncer
+      // 38 profils NAS restaurés alors que l'écran Profils affiche encore les 33
+      // profils de l'ancien état mémoire.
+      if (nextStore) {
         const w: any = typeof window !== "undefined" ? window : null;
         if (w && typeof w.__replaceLocalStoreNow === "function") {
-          await w.__replaceLocalStoreNow(hydrated, "nas-pull-hydrated-media");
+          await w.__replaceLocalStoreNow(nextStore, "nas-pull-apply-runtime");
         } else {
-          await saveStore(hydrated as any);
+          await saveStore(nextStore as any);
+          try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn("[nasSync] restore live apply failed", e);
+    }
     try { localStorage.setItem(LAST_PULL_KEY, new Date().toISOString()); } catch {}
     clearNasSyncDirty();
     return res;

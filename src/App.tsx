@@ -2052,8 +2052,35 @@ useEffect(() => {
       (window as any).__appStore.tab = tab;
       (window as any).__appStore.update = update;
       (window as any).__getRuntimeStoreSnapshot = () => (window as any).__appStore?.store || store;
+
+      // ✅ NAS manual sync bridge:
+      // Les boutons Réglages vivent hors du cycle normal des pages. Ils doivent
+      // pouvoir forcer l'écriture du dernier store React avant un push NAS et
+      // remplacer immédiatement le store React après un pull NAS.
+      (window as any).__isStorePersistInFlight = () => !!persistStoreInFlightRef.current;
+      (window as any).__flushLocalStoreNow = async (reason = "manual") => {
+        return await flushPendingStorePersist(String(reason || "manual"));
+      };
+      (window as any).__replaceLocalStoreNow = async (nextStore: any, reason = "replace-local-store") => {
+        if (!nextStore || typeof nextStore !== "object") return false;
+        const normalized: Store = {
+          ...initialStore,
+          ...(nextStore as any),
+          profiles: Array.isArray((nextStore as any).profiles) ? (nextStore as any).profiles : [],
+          friends: Array.isArray((nextStore as any).friends) ? (nextStore as any).friends : [],
+          history: Array.isArray((nextStore as any).history) ? (nextStore as any).history : [],
+          dartSets: Array.isArray((nextStore as any).dartSets) ? (nextStore as any).dartSets : getAllDartSets(),
+        } as any;
+
+        pendingStorePersistRef.current = normalized;
+        lastScheduledStoreRef.current = normalized;
+        setStore(normalized);
+        await flushPendingStorePersist(String(reason || "replace-local-store"));
+        try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+        return true;
+      };
     } catch {}
-  }, [store, tab]);
+  }, [store, tab, flushPendingStorePersist]);
 
   /* Load store from IDB at boot + gate */
   React.useEffect(() => {

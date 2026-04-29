@@ -500,34 +500,17 @@ function isMirrorProfile(p: any): boolean {
 
   const id = String(p.id ?? "");
 
-  // mirrors classiques
+  // ✅ On ne masque QUE les vrais profils-miroirs online.
+  // Avant, cette fonction cachait aussi des profils locaux légitimes dès qu'ils
+  // portaient userId / email / country / phone après une restauration NAS.
+  // Résultat observé : le NAS rechargeait 38 profils, mais la page n'en affichait
+  // que 33. Ces champs peuvent être des métadonnées normales d'un profil local
+  // synchronisé, ils ne doivent donc plus servir de critère d'exclusion.
   if (id.startsWith("online:")) return true;
-
-  // mirrors “UUID” mais marqués online
   if (p.source === "online") return true;
-  if (p.isOnlineMirror === true) return true;
-
-  // si tu stockes un uid supabase dans le profil local
-  if (p.onlineUid || p.supabaseUid || p.online_user_id || p.user_id || p.userId) return true;
-
-  // certains stores mettent une clé d’origine
   if (String(p.origin ?? "") === "online") return true;
-
-  // 🔥 heuristiques "legacy mirrors" (anciens déploiements)
-  // - un profil local ne devrait PAS contenir d'email ni de champs de profil Supabase
-  const email = String(p.email ?? p.mail ?? "");
-  if (email.includes("@")) return true;
-
-  const avatar = String(p.avatarUrl ?? p.avatar_url ?? "");
-  const looksSupabaseAvatar =
-    /supabase\.(co|io)\/storage\/v1\/object\/public\/avatars\//.test(avatar) ||
-    /supabase\.(co|io)\/storage\/v1\/object\//.test(avatar);
-
-  const hasOnlineFields =
-    !!p.first_name || !!p.last_name || !!p.city || !!p.country || !!p.birth_date || !!p.phone || !!p.preferences;
-
-  // si ça ressemble à un profil online (avatar Supabase + champs online) => on le cache des "Profils locaux"
-  if (looksSupabaseAvatar && hasOnlineFields) return true;
+  if (p.isOnlineMirror === true) return true;
+  if (p.isOnline === true && id.startsWith("online:")) return true;
 
   return false;
 }
