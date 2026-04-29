@@ -2316,6 +2316,7 @@ function ActiveProfileBlock({
   const [editName, setEditName] = React.useState(active?.name || "");
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
+  const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
@@ -2338,8 +2339,7 @@ function ActiveProfileBlock({
   }, [editFile]);
 
   function handleAvatarClick() {
-    if (!isEditing) return;
-    fileInputRef.current?.click();
+    setAvatarPickerOpen(true);
   }
 
   function handleCancelEdit() {
@@ -2417,6 +2417,17 @@ function ActiveProfileBlock({
 
   return (
     <div className="apb">
+      <AvatarChoiceModal
+        open={avatarPickerOpen}
+        title={t("profiles.avatarPicker.title", "Choisir un avatar")}
+        onClose={() => setAvatarPickerOpen(false)}
+        onSelectFile={async (file) => {
+          onEdit(editName.trim() || active?.name || "", file);
+          setEditFile(null);
+          setEditPreview(null);
+          setIsEditing(false);
+        }}
+      />
       {/* input fichier caché */}
       <input
         ref={fileInputRef}
@@ -2433,7 +2444,7 @@ function ActiveProfileBlock({
           height: MEDALLION,
           borderRadius: "50%",
           position: "relative",
-          cursor: isEditing ? "pointer" : "default",
+          cursor: "pointer",
           margin: "0 auto",
         }}
         onClick={handleAvatarClick}
@@ -2536,6 +2547,10 @@ function ActiveProfileBlock({
             style={pillBtnGhost}
           >
             {t("profiles.locals.actions.edit", "EDITER")}
+          </button>
+
+          <button className="btn sm" onClick={() => setAvatarPickerOpen(true)} style={pillBtnBase}>
+            {t("profiles.locals.actions.avatar", "AVATAR")}
           </button>
 
           <button className="btn sm" onClick={onToggleAway} style={pillBtnBase}>

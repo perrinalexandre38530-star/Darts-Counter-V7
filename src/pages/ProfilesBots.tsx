@@ -8,6 +8,8 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { loadStoredBots, saveStoredBots, subscribeBotsChange, type StoredBot, type StoredBotLevel } from "../lib/bots";
+import { fileToSafeAvatarDataUrl } from "../lib/avatarSafe";
+import AvatarChoiceModal from "../components/AvatarChoiceModal";
 
 export type Bot = StoredBot;
 export type BotLevel = StoredBotLevel;
@@ -73,6 +75,8 @@ export default function ProfilesBots({ store, go }: Props) {
   const [seed, setSeed] = React.useState("");
   const [editingBotId, setEditingBotId] = React.useState<string | null>(null);
   const [selectedBotId, setSelectedBotId] = React.useState<string>("");
+  const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
+  const [avatarTargetBotId, setAvatarTargetBotId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const refresh = () => {
@@ -145,7 +149,8 @@ export default function ProfilesBots({ store, go }: Props) {
     const next = [...bots, bot];
     if (persist(next)) {
       setSelectedBotId(bot.id);
-      go?.("avatar", { botId: bot.id, from: "profiles_bots", isBot: true });
+      setAvatarTargetBotId(bot.id);
+      setAvatarPickerOpen(true);
       handleResetForm();
     }
   }
@@ -169,7 +174,19 @@ export default function ProfilesBots({ store, go }: Props) {
 
   function handleOpenAvatarEditor(bot: Bot) {
     setSelectedBotId(bot.id);
-    go?.("avatar", { botId: bot.id, from: "profiles_bots", isBot: true });
+    setAvatarTargetBotId(bot.id);
+    setAvatarPickerOpen(true);
+  }
+
+  async function handleSetBotAvatar(botId: string, file: File) {
+    const now = new Date().toISOString();
+    const avatarDataUrl = await fileToSafeAvatarDataUrl(file);
+    const next = bots.map((b) =>
+      b.id === botId
+        ? { ...b, avatarDataUrl, avatarUrl: undefined, updatedAt: now }
+        : b
+    );
+    persist(next);
   }
 
   const selectedBot = React.useMemo(() => bots.find((b) => b.id === selectedBotId) || bots[0] || null, [bots, selectedBotId]);
@@ -188,6 +205,16 @@ export default function ProfilesBots({ store, go }: Props) {
 
   return (
     <div style={pagePadding}>
+      <AvatarChoiceModal
+        open={avatarPickerOpen}
+        title={t("profiles.avatarPicker.title", "Choisir un avatar")}
+        onClose={() => setAvatarPickerOpen(false)}
+        onSelectFile={async (file) => {
+          const targetId = avatarTargetBotId || selectedBot?.id || "";
+          if (!targetId) return;
+          await handleSetBotAvatar(targetId, file);
+        }}
+      />
       <button onClick={() => go?.("profiles")} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.textSoft, padding: "6px 10px", fontSize: 13, marginBottom: 10, cursor: "pointer" }}>
         ← {t("bots.back", "Retour aux profils")}
       </button>
