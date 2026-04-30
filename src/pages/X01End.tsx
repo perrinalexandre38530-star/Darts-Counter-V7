@@ -15,7 +15,6 @@ import {
 } from "../lib/stats";
 import { exportSharedMatchPack } from "../lib/backup/sharedMatch";
 import { shareOrDownload } from "../lib/backup/fileExport";
-import { decodeCompactMatch } from "../lib/matchCompactCodec";
 
 /* ================================
    Types basiques
@@ -29,9 +28,24 @@ type Props = {
     resumeId?: string | null;
     rec?: any;
     showEnd?: boolean;
-    forceHistoryDetail?: boolean;
   };
 };
+function hydrateX01HistoryRecord(input: any): any {
+  if (!input || typeof input !== "object") return input;
+  const payload = input.payload && typeof input.payload === "object" ? input.payload : {};
+  const payloadSummary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
+  const ownSummary = input.summary && typeof input.summary === "object" ? input.summary : {};
+  const summary = { ...payloadSummary, ...ownSummary };
+  const players =
+    Array.isArray(input.players) && input.players.length
+      ? input.players
+      : Array.isArray(payload.players) && payload.players.length
+      ? payload.players
+      : Array.isArray(summary.players)
+      ? summary.players
+      : [];
+  return { ...input, payload: { ...payload, summary }, summary, players };
+}
 
 /* ================================
    Densité / responsive
@@ -97,30 +111,14 @@ export default function X01End({ go, params }: Props) {
     (async () => {
       try {
         if (params?.rec) {
-          const rid = String(params?.matchId ?? params.rec?.matchId ?? params.rec?.id ?? "");
-          const full = rid ? await (History as any)?.get?.(rid).catch(() => null) : null;
-          // Depuis Historique, params.rec est souvent seulement le header léger.
-          // On garde les noms/avatars du header, mais le détail IndexedDB a priorité pour payload/compact/stats.
-          const merged = full
-            ? {
-                ...params.rec,
-                ...full,
-                players: Array.isArray(params.rec?.players) && params.rec.players.length ? params.rec.players : full.players,
-                summary: {
-                  ...(params.rec?.summary && typeof params.rec.summary === "object" ? params.rec.summary : {}),
-                  ...(full?.summary && typeof full.summary === "object" ? full.summary : {}),
-                },
-                compact: full?.compact ?? params.rec?.compact ?? null,
-                payload: full?.payload ?? params.rec?.payload ?? null,
-              }
-            : params.rec;
-          if (mounted) setRec(expandCompactHistoryRecord(merged));
+          if (mounted) setRec(hydrateX01HistoryRecord(params.rec));
           return;
         }
-        if (params?.matchId) {
-          const byId = await (History as any)?.get?.(params.matchId);
+        const wantedId = params?.matchId || params?.resumeId;
+        if (wantedId) {
+          const byId = await (History as any)?.get?.(wantedId);
           if (mounted && byId) {
-            setRec(expandCompactHistoryRecord(byId));
+            setRec(hydrateX01HistoryRecord(byId));
             return;
           }
         }
@@ -128,11 +126,10 @@ export default function X01End({ go, params }: Props) {
           | any[]
           | undefined;
         if (mem?.length) {
-          if (params?.matchId) {
-            const m = mem.find((r) => r?.id === params.matchId);
+          if (wantedId) {
+            const m = mem.find((r) => r?.id === wantedId || r?.resumeId === wantedId || r?.matchId === wantedId);
             if (mounted && m) {
-              const full = await (History as any)?.get?.(String(m?.matchId ?? m?.id ?? "")).catch(() => null);
-              setRec(expandCompactHistoryRecord(full ? { ...m, ...full } : m));
+              setRec(hydrateX01HistoryRecord(m));
               return;
             }
           }
@@ -140,8 +137,7 @@ export default function X01End({ go, params }: Props) {
             (r) => String(r?.status).toLowerCase() === "finished"
           );
           if (mounted && lastFin) {
-            const full = await (History as any)?.get?.(String(lastFin?.matchId ?? lastFin?.id ?? "")).catch(() => null);
-            setRec(expandCompactHistoryRecord(full ? { ...lastFin, ...full } : lastFin));
+            setRec(hydrateX01HistoryRecord(lastFin));
             return;
           }
         }
@@ -987,51 +983,6 @@ export default function X01End({ go, params }: Props) {
       )}
     </Shell>
   );
-}
-
-function expandCompactHistoryRecord(input: any) {
-  if (!input || typeof input !== "object") return input;
-  try {
-    const compact =
-      input?.compact ||
-      input?.payload?.compact ||
-      (input?.payload?.__compact === "match.v1" ? input.payload : null) ||
-      (input?.__compact === "match.v1" ? input : null);
-    const decoded = decodeCompactMatch(compact);
-    if (!decoded) return input;
-    const originalSummary = input.summary && typeof input.summary === "object" ? input.summary : {};
-    const decodedSummary = decoded.summary && typeof decoded.summary === "object" ? decoded.summary : {};
-    return {
-      ...decoded,
-      ...input,
-      players: Array.isArray(input.players) && input.players.length ? input.players : decoded.players,
-      winnerId: input.winnerId ?? decoded.winnerId ?? null,
-      summary: {
-        ...decodedSummary,
-        ...originalSummary,
-        players:
-          originalSummary.players &&
-          !Array.isArray(originalSummary.players) &&
-          Object.keys(originalSummary.players || {}).length
-            ? originalSummary.players
-            : decodedSummary.players,
-        detailedByPlayer:
-          originalSummary.detailedByPlayer && Object.keys(originalSummary.detailedByPlayer || {}).length
-            ? originalSummary.detailedByPlayer
-            : decodedSummary.detailedByPlayer,
-        perPlayer:
-          Array.isArray(originalSummary.perPlayer) && originalSummary.perPlayer.length
-            ? originalSummary.perPlayer
-            : decodedSummary.perPlayer,
-      },
-      payload: {
-        ...(decoded.detail ? { detail: decoded.detail } : {}),
-        ...(input.payload && typeof input.payload === "object" ? input.payload : {}),
-      },
-    };
-  } catch {
-    return input;
-  }
 }
 
 function normalizeX01Summary(

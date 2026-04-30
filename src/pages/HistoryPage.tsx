@@ -1231,7 +1231,20 @@ export default function HistoryPage({
     });
   }
 
-  function goStats(e: SavedEntry) {
+  async function goStats(e: SavedEntry) {
+    // PATCH hydrate history full record
+    try {
+      const wantedId = String((e as any)?.id || (e as any)?.matchId || (e as any)?.resumeId || "");
+      const wantedResume = String((e as any)?.resumeId || matchLink(e) || wantedId || "");
+      const loaded = (wantedId && (await (History as any)?.get?.(wantedId))) || (wantedResume && wantedResume !== wantedId && (await (History as any)?.get?.(wantedResume))) || null;
+      if (loaded && typeof loaded === "object") {
+        const payload = { ...((e as any).payload || {}), ...((loaded as any).payload || {}) };
+        const payloadSummary = (payload as any)?.summary && typeof (payload as any).summary === "object" ? (payload as any).summary : {};
+        const summary = { ...payloadSummary, ...(((e as any).summary && typeof (e as any).summary === "object") ? (e as any).summary : {}), ...(((loaded as any).summary && typeof (loaded as any).summary === "object") ? (loaded as any).summary : {}) };
+        const players = Array.isArray((loaded as any).players) && (loaded as any).players.length ? (loaded as any).players : Array.isArray((payload as any).players) && (payload as any).players.length ? (payload as any).players : (e as any).players;
+        e = { ...(e as any), ...(loaded as any), payload: { ...payload, summary }, summary, players } as any;
+      }
+    } catch (err) { console.warn("[HistoryPage] goStats hydrate failed", err); }
     const resumeId = e.resumeId || matchLink(e) || e.id;
 
     const m = baseMode(e);
@@ -1337,16 +1350,7 @@ export default function HistoryPage({
     }
 
     // ✅ FALLBACK X01
-    // Depuis l’historique, le record affiché est un header léger.
-    // Il faut transmettre matchId pour que X01End recharge le détail complet IndexedDB.
-    go("x01_end", {
-      rec: e,
-      matchId: e.matchId || e.id,
-      resumeId,
-      showEnd: true,
-      from: "history",
-      forceHistoryDetail: true,
-    });
+    go("x01_end", { rec: e, resumeId, showEnd: true, from: "history" });
   }
 
 
