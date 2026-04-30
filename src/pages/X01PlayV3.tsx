@@ -5453,7 +5453,7 @@ function debugReplayDarts(label: string, darts: any[]) {
   } catch {}
 }
 
-function extractDetailedStatsFromReplayDarts(allDarts: any, playerId: string, playersCount = 0) {
+function extractDetailedStatsFromReplayDarts(allDarts: any, playerId: string, playersCount = 0, playerOrder: string[] = []) {
   const bySegmentS: Record<string, number> = {};
   const bySegmentD: Record<string, number> = {};
   const bySegmentT: Record<string, number> = {};
@@ -5465,21 +5465,48 @@ function extractDetailedStatsFromReplayDarts(allDarts: any, playerId: string, pl
   let bull = 0;
   let dBull = 0;
   const arr = Array.isArray(allDarts) ? allDarts : [];
+  const order = (Array.isArray(playerOrder) && playerOrder.length ? playerOrder : []).map(String).filter(Boolean);
+  let visitIndex = 0;
+  let dartInVisit = 0;
+
   for (const raw of arr) {
     if (!raw || typeof raw !== "object") continue;
-    const rawPid = (raw as any).playerId ?? (raw as any).pid ?? (raw as any).p;
-    if (rawPid != null && String(rawPid) !== String(playerId)) continue;
+    const rawPid0 = (raw as any).playerId ?? (raw as any).pid ?? (raw as any).p ?? (raw as any).profileId;
+    let rawPid = rawPid0 != null ? String(rawPid0) : null;
+
+    // Fallback vital: certains replayDarts anciens ne sont pas tagués par joueur.
+    // On reconstitue alors le lanceur par ordre de jeu, par volées de 3 fléchettes.
+    if (!rawPid && playersCount > 1 && order.length > 1) {
+      rawPid = order[visitIndex % order.length] || null;
+    }
+
+    if (rawPid != null && String(rawPid) !== String(playerId)) {
+      dartInVisit += 1;
+      if (dartInVisit >= 3) {
+        dartInVisit = 0;
+        visitIndex += 1;
+      }
+      continue;
+    }
     if (rawPid == null && playersCount > 1) continue;
     const parsed = parseReplayDartParts(raw);
     const segment = parsed.segment;
     const multiplier = parsed.multiplier;
     darts += 1;
-    if (!segment || multiplier <= 0) { miss += 1; continue; }
-    if (segment === 25) { if (multiplier >= 2) dBull += 1; else bull += 1; continue; }
-    const key = String(segment);
-    if (multiplier >= 3) { hitsT += 1; bySegmentT[key] = (bySegmentT[key] || 0) + 1; }
-    else if (multiplier === 2) { hitsD += 1; bySegmentD[key] = (bySegmentD[key] || 0) + 1; }
-    else { hitsS += 1; bySegmentS[key] = (bySegmentS[key] || 0) + 1; }
+    if (!segment || multiplier <= 0) { miss += 1; }
+    else if (segment === 25) { if (multiplier >= 2) dBull += 1; else bull += 1; }
+    else {
+      const key = String(segment);
+      if (multiplier >= 3) { hitsT += 1; bySegmentT[key] = (bySegmentT[key] || 0) + 1; }
+      else if (multiplier === 2) { hitsD += 1; bySegmentD[key] = (bySegmentD[key] || 0) + 1; }
+      else { hitsS += 1; bySegmentS[key] = (bySegmentS[key] || 0) + 1; }
+    }
+
+    dartInVisit += 1;
+    if (dartInVisit >= 3) {
+      dartInVisit = 0;
+      visitIndex += 1;
+    }
   }
   return { darts, hitsS, hitsD, hitsT, miss, bull, dBull, bust: 0, bySegmentS, bySegmentD, bySegmentT };
 }
@@ -5681,7 +5708,7 @@ function saveX01V3MatchToHistory({
     // V6 : le moteur ne remonte pas toujours S/D/T par joueur.
     // On complète donc depuis replayDarts, maintenant tagués avec playerId.
     const liveDetail = extractDetailedStatsFromLive(live);
-    const replayDetail = extractDetailedStatsFromReplayDarts(replayDarts, pid, players.length);
+    const replayDetail = extractDetailedStatsFromReplayDarts(replayDarts, pid, players.length, players.map((x: any) => String(x.id)));
     const detail = mergeDetailedStats(liveDetail, replayDetail);
     detailedByPlayer[pid] = detail;
 

@@ -19,7 +19,7 @@ import { shareOrDownload } from "../lib/backup/fileExport";
 /* ================================
    Types basiques
 ================================ */
-type PlayerLite = { id: string; name?: string; avatarDataUrl?: string | null };
+type PlayerLite = { id: string; name?: string; profileId?: string | null; playerId?: string | null; avatarDataUrl?: string | null };
 
 type Props = {
   go: (tab: string, params?: any) => void;
@@ -69,6 +69,89 @@ type VisitRow = {
 /* ================================
    Composant principal
 ================================ */
+function mergeX01HistoryRecord(light: any, full: any) {
+  if (!light && !full) return null;
+  if (!light) return full;
+  if (!full) return light;
+
+  const payload = {
+    ...(light?.payload && typeof light.payload === "object" ? light.payload : {}),
+    ...(full?.payload && typeof full.payload === "object" ? full.payload : {}),
+  };
+
+  const summary = {
+    ...(light?.payload?.summary && typeof light.payload.summary === "object" ? light.payload.summary : {}),
+    ...(light?.summary && typeof light.summary === "object" ? light.summary : {}),
+    ...(full?.payload?.summary && typeof full.payload.summary === "object" ? full.payload.summary : {}),
+    ...(full?.summary && typeof full.summary === "object" ? full.summary : {}),
+  };
+
+  return {
+    ...light,
+    ...full,
+    payload: {
+      ...payload,
+      summary: {
+        ...(payload.summary && typeof payload.summary === "object" ? payload.summary : {}),
+        ...summary,
+      },
+    },
+    summary,
+    players: Array.isArray(full?.players) && full.players.length ? full.players : light.players,
+  };
+}
+
+function getHistoryRecordId(rec: any, params?: any): string | null {
+  // IMPORTANT HISTORIQUE X01:
+  // Certaines lignes affichées dans l’historique / stats peuvent avoir un id composite
+  // du type "matchId:playerId" alors que le vrai enregistrement History est stocké
+  // sous matchId. On privilégie donc toujours matchId explicite avant id.
+  const raw =
+    rec?.matchId ??
+    rec?.payload?.matchId ??
+    rec?.summary?.matchId ??
+    params?.matchId ??
+    params?.resumeId ??
+    rec?.resumeId ??
+    rec?.payload?.resumeId ??
+    rec?.id ??
+    null;
+
+  const id = raw ? String(raw).trim() : "";
+  if (!id) return null;
+
+  // Fallback anti-id composite: "abc:def" -> "abc" si jamais l’appelant a passé e.id.
+  if (id.includes(":")) {
+    const first = id.split(":")[0]?.trim();
+    if (first) return first;
+  }
+  return id;
+}
+
+function getEffectiveX01Summary(rec: any) {
+  if (!rec) return null;
+  const p = rec?.payload || {};
+  const ps = p?.summary || {};
+  const rs = rec?.summary || {};
+  return {
+    ...(ps && typeof ps === "object" ? ps : {}),
+    ...(rs && typeof rs === "object" ? rs : {}),
+    perPlayer: Array.isArray(rs?.perPlayer) && rs.perPlayer.length ? rs.perPlayer : ps?.perPlayer,
+    detailedByPlayer:
+      rs?.detailedByPlayer && Object.keys(rs.detailedByPlayer || {}).length
+        ? rs.detailedByPlayer
+        : ps?.detailedByPlayer,
+    legacy: {
+      ...(ps?.legacy && typeof ps.legacy === "object" ? ps.legacy : {}),
+      ...(rs?.legacy && typeof rs.legacy === "object" ? rs.legacy : {}),
+    },
+    players: {
+      ...(ps?.players && typeof ps.players === "object" ? ps.players : {}),
+      ...(rs?.players && typeof rs.players === "object" ? rs.players : {}),
+    },
+  };
+}
+
 export default function X01End({ go, params }: Props) {
   // --- Hooks toujours au même ordre ---
   const [rec, setRec] = React.useState<any | null>(null);
@@ -94,42 +177,19 @@ export default function X01End({ go, params }: Props) {
     let mounted = true;
     (async () => {
       try {
-        // V12: quand on arrive depuis Historique, params.rec est souvent une ligne "header/light".
-        // Elle suffit pour la carte, mais PAS pour les stats de partie : le payload complet est
-        // stocké séparément en IndexedDB details. On hydrate donc systématiquement via History.get().
-        if (params?.rec) {
-          const light = params.rec;
-          const fullId = String(params?.matchId || light?.matchId || light?.id || "").trim();
-          let full: any = null;
-          if (fullId) {
-            try {
-              full = await (History as any)?.get?.(fullId);
-            } catch {}
-          }
-          if (mounted) {
-            if (full && typeof full === "object") {
-              setRec({
-                ...light,
-                ...full,
-                id: full.id || light.id,
-                matchId: full.matchId || light.matchId || full.id || light.id,
-                players: Array.isArray(full.players) && full.players.length ? full.players : (Array.isArray(light.players) ? light.players : []),
-                summary: { ...(light.summary || {}), ...(full.summary || {}) },
-                payload: full.payload ?? light.payload,
-                resume: full.resume ?? light.resume,
-              });
-            } else {
-              setRec(light);
-            }
-          }
-          return;
-        }
-        if (params?.matchId) {
-          const byId = await (History as any)?.get?.(params.matchId);
-          if (mounted && byId) {
-            setRec(byId);
+        const wantedId = getHistoryRecordId(params?.rec, params);
+
+        if (wantedId) {
+          const byId = await (History as any)?.get?.(wantedId);
+          if (mounted && (byId || params?.rec)) {
+            setRec(mergeX01HistoryRecord(params?.rec || null, byId || null));
             return;
           }
+        }
+
+        if (params?.rec) {
+          if (mounted) setRec(params.rec);
+          return;
         }
         const mem = (window as any)?.__appStore?.history as
           | any[]
@@ -171,10 +231,12 @@ export default function X01End({ go, params }: Props) {
     if (!rec) return [];
     const arr = rec.players?.length ? rec.players : rec.payload?.players || [];
     return arr.map((p: any) => ({
-      id: p.id,
-      name: p?.name || "—",
+      id: String(p?.id ?? p?.playerId ?? p?.profileId ?? ""),
+      playerId: p?.playerId != null ? String(p.playerId) : null,
+      profileId: p?.profileId != null ? String(p.profileId) : null,
+      name: p?.name || p?.displayName || p?.nickname || "—",
       avatarDataUrl: p?.avatarDataUrl ?? null,
-    }));
+    })).filter((p: PlayerLite) => !!p.id);
   }, [rec]);
 
   // tenir playersById synchro (évite setState dans useMemo)
@@ -192,12 +254,17 @@ export default function X01End({ go, params }: Props) {
     (winnerId && (players.find((p) => p.id === winnerId)?.name || null)) ||
     null;
 
+  const effectiveSummary = React.useMemo(
+    () => getEffectiveX01Summary(rec),
+    [rec]
+  );
+
   // Match summary :
   // - X01 v1/v2 => kind === "x01"
   // - X01 v3 léger => kind/variant/engine === "x01_v3"
   const matchSummary = React.useMemo(
-    () => normalizeX01Summary(rec?.summary, players),
-    [rec?.summary, players]
+    () => normalizeX01Summary(effectiveSummary, players),
+    [effectiveSummary, players]
   );
 
   const legSummary = !matchSummary ? buildSummaryFromLeg(rec) : null;
@@ -209,7 +276,7 @@ export default function X01End({ go, params }: Props) {
       return;
     }
 
-    const summary: any = rec.summary || {};
+    const summary: any = effectiveSummary || rec.summary || rec.payload?.summary || {};
     const decoded: any = rec.decoded || rec.payload || {};
 
     const isX01V3 =
@@ -243,7 +310,7 @@ export default function X01End({ go, params }: Props) {
 
     const leg = buildLegStatsFromX01V3Summary(summary, cfg, finalScores);
     setLegStats(leg || null);
-  }, [rec]);
+  }, [rec, effectiveSummary]);
 
   const M = React.useMemo(() => {
     return rec
@@ -1293,6 +1360,97 @@ function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
   };
 }
 
+
+function normalizeLooseName(value: any): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function x01CandidatePlayerKeys(pl: any): string[] {
+  const keys = [
+    pl?.id,
+    pl?.playerId,
+    pl?.profileId,
+    pl?.pid,
+    pl?.userId,
+  ]
+    .map((v) => (v == null ? "" : String(v).trim()))
+    .filter(Boolean);
+  return Array.from(new Set(keys));
+}
+
+function resolveX01RowForPlayer(source: any, pl: PlayerLite): any {
+  if (!source || typeof source !== "object" || !pl) return null;
+  const keys = x01CandidatePlayerKeys(pl);
+
+  // 1) map directe: players[pid], detailedByPlayer[pid], legacy.avg3[pid]...
+  for (const k of keys) {
+    if (source[k] && typeof source[k] === "object") return source[k];
+  }
+
+  // 2) array: perPlayer / rankings / players en liste
+  const arr = Array.isArray(source) ? source : [];
+  if (arr.length) {
+    const hitById = arr.find((row: any) => {
+      const rowKeys = x01CandidatePlayerKeys(row);
+      return rowKeys.some((k) => keys.includes(k));
+    });
+    if (hitById) return hitById;
+
+    const wantedName = normalizeLooseName(pl.name);
+    if (wantedName) {
+      const hitByName = arr.find((row: any) => {
+        const rn = normalizeLooseName(row?.name ?? row?.displayName ?? row?.nickname ?? row?.playerName);
+        return rn && rn === wantedName;
+      });
+      if (hitByName) return hitByName;
+    }
+  }
+
+  // 3) map d'objets: chercher une ligne dont id/profileId/name correspond
+  const values = Object.values(source).filter((v: any) => v && typeof v === "object");
+  if (values.length) {
+    const hitById = values.find((row: any) => {
+      const rowKeys = x01CandidatePlayerKeys(row);
+      return rowKeys.some((k) => keys.includes(k));
+    });
+    if (hitById) return hitById;
+
+    const wantedName = normalizeLooseName(pl.name);
+    if (wantedName) {
+      const hitByName = values.find((row: any) => {
+        const rn = normalizeLooseName(row?.name ?? row?.displayName ?? row?.nickname ?? row?.playerName);
+        return rn && rn === wantedName;
+      });
+      if (hitByName) return hitByName;
+    }
+  }
+
+  return null;
+}
+
+function pickLooseByPlayer(map: any, pl: PlayerLite, fallback?: any) {
+  if (!map || typeof map !== "object") return fallback;
+  for (const k of x01CandidatePlayerKeys(pl)) {
+    if (Object.prototype.hasOwnProperty.call(map, k)) return map[k];
+  }
+  const wantedName = normalizeLooseName(pl.name);
+  if (wantedName) {
+    for (const [k, v] of Object.entries(map)) {
+      if (normalizeLooseName(k) === wantedName) return v;
+      if (v && typeof v === "object") {
+        const rn = normalizeLooseName((v as any).name ?? (v as any).displayName ?? (v as any).nickname ?? (v as any).playerName);
+        if (rn && rn === wantedName) return v;
+      }
+    }
+  }
+  return fallback;
+}
+
 function buildPerPlayerMetrics(
   rec: any,
   summary: any | null,
@@ -1340,6 +1498,7 @@ function buildPerPlayerMetrics(
   const legacy = {
     ...(rec || {}),
     ...(rec?.payload || {}),
+    ...(rec?.payload?.summary || {}),
     ...(rec?.legacy || {}),
     ...(rec?.payload?.legacy || {}),
     ...(rec?.summary?.legacy || {}),
@@ -1450,7 +1609,10 @@ function buildPerPlayerMetrics(
     const m = emptyMetrics(pl);
 
     // ===== 1) summary (rapide) =====
-    const s = summary?.players?.[pid];
+    const s =
+      resolveX01RowForPlayer(summary?.players, pl) ||
+      resolveX01RowForPlayer(summary?.perPlayer, pl) ||
+      null;
     if (s) {
       m.avg3 = n(s.avg3);
       m.avg1 = m.avg3 / 3;
@@ -1474,7 +1636,11 @@ function buildPerPlayerMetrics(
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
-    const r = per?.[pid] || {};
+    const r =
+      resolveX01RowForPlayer(per, pl) ||
+      resolveX01RowForPlayer(summary?.detailedByPlayer, pl) ||
+      resolveX01RowForPlayer(summary?.perPlayer, pl) ||
+      {};
     const imp = r.impacts || {};
     const hitsObj = r.hits || r.hitCounts || r.dartHits || {};
 
@@ -1701,27 +1867,50 @@ function buildPerPlayerMetrics(
     }
 
     // ===== 3) legacy (compat avec anciens formats / v1 / v2) =====
-    m.t180 = m.t180 || n(pick(legacy, [`h180.${pid}`, `t180.${pid}`]), 0);
-    m.t140 = m.t140 || n(pick(legacy, [`h140.${pid}`, `t140.${pid}`]), 0);
-    m.t100 = m.t100 || n(pick(legacy, [`h100.${pid}`, `t100.${pid}`]), 0);
-    m.t60 = m.t60 || n(pick(legacy, [`h60.${pid}`, `t60.${pid}`]), 0);
+    const looseLegacy = {
+      darts: pickLooseByPlayer(legacy?.darts ?? legacy?.dartsThrown, pl),
+      visits: pickLooseByPlayer(legacy?.visits, pl),
+      points: pickLooseByPlayer(legacy?.pointsScored ?? legacy?.points, pl),
+      avg3: pickLooseByPlayer(legacy?.avg3 ?? legacy?.avg3d, pl),
+      bestVisit: pickLooseByPlayer(legacy?.bestVisit, pl),
+      bestCheckout: pickLooseByPlayer(legacy?.bestCheckout ?? legacy?.highestCheckout ?? legacy?.bestCO, pl),
+      singles: pickLooseByPlayer(legacy?.singles ?? legacy?.single, pl),
+      doubles: pickLooseByPlayer(legacy?.doubles ?? legacy?.doubleCount ?? legacy?.dbl, pl),
+      triples: pickLooseByPlayer(legacy?.triples ?? legacy?.tripleCount ?? legacy?.trp, pl),
+      bulls: pickLooseByPlayer(legacy?.bulls ?? legacy?.bullCount ?? legacy?.bull, pl),
+      dbulls: pickLooseByPlayer(legacy?.dbulls ?? legacy?.doubleBull ?? legacy?.doubleBulls ?? legacy?.bull50, pl),
+      misses: pickLooseByPlayer(legacy?.misses ?? legacy?.miss, pl),
+      busts: pickLooseByPlayer(legacy?.busts ?? legacy?.bust ?? legacy?.bustCount, pl),
+      h60: pickLooseByPlayer(legacy?.h60 ?? legacy?.t60, pl),
+      h100: pickLooseByPlayer(legacy?.h100 ?? legacy?.t100, pl),
+      h140: pickLooseByPlayer(legacy?.h140 ?? legacy?.t140, pl),
+      h180: pickLooseByPlayer(legacy?.h180 ?? legacy?.t180, pl),
+      checkoutHits: pickLooseByPlayer(legacy?.checkoutHits, pl),
+      checkoutAttempts: pickLooseByPlayer(legacy?.checkoutAttempts, pl),
+    };
+
+    m.t180 = m.t180 || n(looseLegacy.h180, n(pick(legacy, [`h180.${pid}`, `t180.${pid}`]), 0));
+    m.t140 = m.t140 || n(looseLegacy.h140, n(pick(legacy, [`h140.${pid}`, `t140.${pid}`]), 0));
+    m.t100 = m.t100 || n(looseLegacy.h100, n(pick(legacy, [`h100.${pid}`, `t100.${pid}`]), 0));
+    m.t60 = m.t60 || n(looseLegacy.h60, n(pick(legacy, [`h60.${pid}`, `t60.${pid}`]), 0));
 
     m.darts =
       m.darts ||
-      n(pick(legacy, [`darts.${pid}`, `dartsThrown.${pid}`]), 0);
-    m.visits = m.visits || n(pick(legacy, [`visits.${pid}`]), 0);
+      n(looseLegacy.darts, n(pick(legacy, [`darts.${pid}`, `dartsThrown.${pid}`]), 0));
+    m.visits = m.visits || n(looseLegacy.visits, n(pick(legacy, [`visits.${pid}`]), 0));
     m.points =
       m.points ||
-      n(pick(legacy, [`pointsScored.${pid}`, `points.${pid}`]), 0);
+      n(looseLegacy.points, n(pick(legacy, [`pointsScored.${pid}`, `points.${pid}`]), 0));
     m.avg3 =
       m.avg3 ||
-      n(pick(legacy, [`avg3.${pid}`, `avg3d.${pid}`]), 0);
+      n(looseLegacy.avg3, n(pick(legacy, [`avg3.${pid}`, `avg3d.${pid}`]), 0));
     if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
     m.bestVisit =
-      m.bestVisit || n(pick(legacy, [`bestVisit.${pid}`]), 0);
+      m.bestVisit || n(looseLegacy.bestVisit, n(pick(legacy, [`bestVisit.${pid}`]), 0));
     m.bestCO =
       m.bestCO ||
       sanitizeCO(
+        looseLegacy.bestCheckout ??
         pick(legacy, [
           `bestCheckout.${pid}`,
           `highestCheckout.${pid}`,
@@ -1770,22 +1959,22 @@ function buildPerPlayerMetrics(
       `bustCount.${pid}`,
     ]);
 
-    if (!m.doubles) m.doubles = dblC || m.doubles;
-    if (!m.triples) m.triples = trpC || m.triples;
-    if (!m.bulls) m.bulls = bulC || m.bulls;
-    if (!m.dbulls) m.dbulls = dbuC || m.dbulls;
-    if (m.singles == null && sngC != null) m.singles = n(sngC, 0);
-    if (m.misses == null && misC != null) m.misses = n(misC, 0);
-    if (m.busts == null && bstC != null) m.busts = n(bstC, 0);
+    if (!m.doubles) m.doubles = n(looseLegacy.doubles, dblC || m.doubles);
+    if (!m.triples) m.triples = n(looseLegacy.triples, trpC || m.triples);
+    if (!m.bulls) m.bulls = n(looseLegacy.bulls, bulC || m.bulls);
+    if (!m.dbulls) m.dbulls = n(looseLegacy.dbulls, dbuC || m.dbulls);
+    if (m.singles == null && (looseLegacy.singles != null || sngC != null)) m.singles = n(looseLegacy.singles, n(sngC, 0));
+    if (m.misses == null && (looseLegacy.misses != null || misC != null)) m.misses = n(looseLegacy.misses, n(misC, 0));
+    if (m.busts == null && (looseLegacy.busts != null || bstC != null)) m.busts = n(looseLegacy.busts, n(bstC, 0));
 
     m.coHits =
       m.coHits ||
-      n(pick(legacy, [`checkoutHits.${pid}`]), m.coHits);
+      n(looseLegacy.checkoutHits, n(pick(legacy, [`checkoutHits.${pid}`]), m.coHits));
     m.coAtt =
       m.coAtt ||
       n(
-        pick(legacy, [`checkoutAttempts.${pid}`]),
-        m.coAtt
+        looseLegacy.checkoutAttempts,
+        n(pick(legacy, [`checkoutAttempts.${pid}`]), m.coAtt)
       );
 
     // ===== 3b) fallback reconstruit depuis resume.darts / replay =====

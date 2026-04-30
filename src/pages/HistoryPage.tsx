@@ -1339,7 +1339,15 @@ export default function HistoryPage({
     // ✅ FALLBACK X01
     // V12: on passe aussi matchId pour que X01End puisse hydrater le payload complet
     // depuis History.get() au lieu d'utiliser uniquement la ligne light de l'historique.
-    go("x01_end", { rec: e, matchId: e.id || e.matchId, resumeId, showEnd: true, from: "history" });
+    go("x01_end", {
+      rec: e,
+      // CRITICAL: e.id peut être un id composite de ligne stats (matchId:playerId).
+      // Le détail complet History est indexé par matchId.
+      matchId: e.matchId || e.id,
+      resumeId,
+      showEnd: true,
+      from: "history",
+    });
   }
 
 

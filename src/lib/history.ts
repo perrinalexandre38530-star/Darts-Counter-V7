@@ -1504,7 +1504,34 @@ export async function get(id: string): Promise<SavedMatch | null> {
           req.onerror = () => resolve(null);
         });
 
-      const header = (await getHeaderDirect()) || (await getHeaderByMatchId()) || (await scanHeader());
+      let header = (await getHeaderDirect()) || (await getHeaderByMatchId()) || (await scanHeader());
+
+      // V14 DETAIL FIX: si l’appelant demande un id composite "matchId:playerId",
+      // retenter automatiquement avec la partie avant ':' pour retrouver le vrai match.
+      if (!header && String(id || "").includes(":")) {
+        const baseId = String(id).split(":")[0]?.trim();
+        if (baseId) {
+          header =
+            (await new Promise<any>((resolve) => {
+              const req = headers.get(baseId);
+              req.onsuccess = () => resolve(req.result || null);
+              req.onerror = () => resolve(null);
+            })) ||
+            (await new Promise<any>((resolve) => {
+              try {
+                // @ts-ignore
+                const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
+                if (!hasIx) return resolve(null);
+                const req = headers.index("by_matchId").get(baseId);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+              } catch {
+                resolve(null);
+              }
+            }));
+        }
+      }
+
       if (!header) return null;
 
       const detail = await new Promise<any>((resolve) => {
