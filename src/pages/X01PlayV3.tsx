@@ -5355,24 +5355,29 @@ function extractSegmentMapsFromLive(live: any) {
     live?.bySegmentT ?? live?.segmentsT ?? live?.hitsBySegmentT
   );
 
-  // 2) Fallback : structure combinée { [seg]: {S,D,T} }
-  const combined =
-    live?.bySegment ??
-    live?.segmentHits ??
-    live?.segmentsAll ??
-    undefined;
+  // 2) Fallback : structures combinées du moteur X01 V3.
+  // Le moteur actuel stocke surtout live.bySegment["20"] = { S, D, T }
+  // et live.hitsBySegment[20] = { S, D, T }.
+  const combinedSources = [
+    live?.bySegment,
+    live?.hitsBySegment,
+    live?.segmentHits,
+    live?.segmentsAll,
+    live?.segments,
+  ];
 
-  if (combined && typeof combined === "object") {
+  for (const combined of combinedSources) {
+    if (!combined || typeof combined !== "object") continue;
     for (const [segStr, entry] of Object.entries(combined)) {
       const segKey = String(segStr);
       if (!entry || typeof entry !== "object") continue;
       const e: any = entry;
-      const s = numOr0(e.S, e.s, e.single, e.singles);
-      const d = numOr0(e.D, e.d, e.double, e.doubles);
-      const t = numOr0(e.T, e.t, e.triple, e.triples);
-      if (s) bySegmentS[segKey] = (bySegmentS[segKey] || 0) + s;
-      if (d) bySegmentD[segKey] = (bySegmentD[segKey] || 0) + d;
-      if (t) bySegmentT[segKey] = (bySegmentT[segKey] || 0) + t;
+      const s = numOr0(e.S, e.s, e.single, e.singles, e.hitsS);
+      const d = numOr0(e.D, e.d, e.double, e.doubles, e.hitsD);
+      const t = numOr0(e.T, e.t, e.triple, e.triples, e.hitsT);
+      if (s) bySegmentS[segKey] = Math.max(bySegmentS[segKey] || 0, s);
+      if (d) bySegmentD[segKey] = Math.max(bySegmentD[segKey] || 0, d);
+      if (t) bySegmentT[segKey] = Math.max(bySegmentT[segKey] || 0, t);
     }
   }
 
@@ -5492,42 +5497,70 @@ function mergeDetailedStats(primary: any, fallback: any) {
 }
 
 function extractDetailedStatsFromLive(live: any) {
-  const hitsS = numOr0(
-    live?.hitsS,
-    live?.S,
-    live?.singles,
-    live?.hitsSingle
-  );
-  const hitsD = numOr0(
-    live?.hitsD,
-    live?.D,
-    live?.doubles,
-    live?.hitsDouble
-  );
-  const hitsT = numOr0(
-    live?.hitsT,
-    live?.T,
-    live?.triples,
-    live?.hitsTriple
-  );
+  const { bySegmentS, bySegmentD, bySegmentT } =
+    extractSegmentMapsFromLive(live);
+
+  const sumMap = (m: any) =>
+    m && typeof m === "object"
+      ? Object.values(m).reduce((a: number, v: any) => a + (Number(v) || 0), 0)
+      : 0;
+
+  const hitsS =
+    numOr0(
+      live?.hitsS,
+      live?.S,
+      live?.singles,
+      live?.hitsSingle,
+      live?.hits?.S,
+      live?.hits?.single,
+      live?.hits?.singles
+    ) || sumMap(bySegmentS);
+  const hitsD =
+    numOr0(
+      live?.hitsD,
+      live?.D,
+      live?.doubles,
+      live?.hitsDouble,
+      live?.hits?.D,
+      live?.hits?.double,
+      live?.hits?.doubles
+    ) || sumMap(bySegmentD);
+  const hitsT =
+    numOr0(
+      live?.hitsT,
+      live?.T,
+      live?.triples,
+      live?.hitsTriple,
+      live?.hits?.T,
+      live?.hits?.triple,
+      live?.hits?.triples
+    ) || sumMap(bySegmentT);
 
   const miss = numOr0(
     live?.miss,
     live?.misses,
     live?.missCount,
-    live?.nbMiss
+    live?.nbMiss,
+    live?.hits?.M,
+    live?.hits?.MISS
   );
   const bull = numOr0(
     live?.bull,
     live?.bulls,
     live?.bullHits,
-    live?.hitsBull
+    live?.hitsBull,
+    live?.hits?.Bull,
+    live?.hits?.BULL,
+    bySegmentS["25"]
   );
   const dBull = numOr0(
     live?.dBull,
     live?.doubleBull,
     live?.dbulls,
-    live?.bullDoubleHits
+    live?.bullDoubleHits,
+    live?.hits?.DBull,
+    live?.hits?.DBULL,
+    bySegmentD["25"]
   );
   const bust = numOr0(
     live?.bust,
@@ -5542,12 +5575,8 @@ function extractDetailedStatsFromLive(live: any) {
     live?.totalDarts
   );
   if (!darts) {
-    // fallback minimal si pas de compteur global
-    darts = hitsS + hitsD + hitsT + miss;
+    darts = hitsS + hitsD + hitsT + miss + bull + dBull;
   }
-
-  const { bySegmentS, bySegmentD, bySegmentT } =
-    extractSegmentMapsFromLive(live);
 
   return {
     darts,
@@ -5608,11 +5637,18 @@ function saveX01V3MatchToHistory({
   const legacyBestCheckout: Record<string, number> = {};
   const legacyDoubles: Record<string, number> = {};
   const legacyTriples: Record<string, number> = {};
+  const legacySingles: Record<string, number> = {};
   const legacyBulls: Record<string, number> = {};
   const legacyDbulls: Record<string, number> = {};
   const legacyMiss: Record<string, number> = {};
   const legacyBust: Record<string, number> = {};
   const legacyPoints: Record<string, number> = {};
+  const legacyH60: Record<string, number> = {};
+  const legacyH100: Record<string, number> = {};
+  const legacyH140: Record<string, number> = {};
+  const legacyH180: Record<string, number> = {};
+  const legacyCheckoutHits: Record<string, number> = {};
+  const legacyCheckoutAttempts: Record<string, number> = {};
   const legacyHitsBySector: Record<string, Record<string, number>> = {};
 
   let winnerId: string | null = null;
@@ -5689,6 +5725,7 @@ function saveX01V3MatchToHistory({
     legacyBestVisit[pid] = bestVisit;
     legacyBestCheckout[pid] = bestCheckout;
 
+    legacySingles[pid] = detail.hitsS;
     legacyDoubles[pid] = detail.hitsD;
     legacyTriples[pid] = detail.hitsT;
     legacyBulls[pid] = (detail.bull ?? 0) + (detail.dBull ?? 0);
@@ -5696,6 +5733,14 @@ function saveX01V3MatchToHistory({
     legacyMiss[pid] = detail.miss ?? 0;
     legacyBust[pid] = detail.bust ?? 0;
     legacyPoints[pid] = scored > 0 ? scored : 0;
+
+    const scorePerVisit = Array.isArray(live?.scorePerVisit) ? live.scorePerVisit : [];
+    legacyH60[pid] = scorePerVisit.filter((v: any) => Number(v) >= 60).length;
+    legacyH100[pid] = scorePerVisit.filter((v: any) => Number(v) >= 100).length;
+    legacyH140[pid] = scorePerVisit.filter((v: any) => Number(v) >= 140).length;
+    legacyH180[pid] = scorePerVisit.filter((v: any) => Number(v) >= 180).length;
+    legacyCheckoutAttempts[pid] = numOr0(live?.checkoutAttempts, live?.coAttempts, live?.coAtt);
+    legacyCheckoutHits[pid] = bestCheckout > 0 ? 1 : numOr0(live?.checkoutHits, live?.coHits);
 
     // hits par secteur combinés (S + D + T + BULL / DBULL + MISS)
     const sectorMap: Record<string, number> = {};
@@ -5878,6 +5923,7 @@ function saveX01V3MatchToHistory({
     avg3: legacyAvg3,
     bestVisit: legacyBestVisit,
     bestCheckout: legacyBestCheckout,
+    singles: legacySingles,
     doubles: legacyDoubles,
     triples: legacyTriples,
     bulls: legacyBulls,
@@ -5885,6 +5931,12 @@ function saveX01V3MatchToHistory({
     misses: legacyMiss,
     busts: legacyBust,
     points: legacyPoints,
+    h60: legacyH60,
+    h100: legacyH100,
+    h140: legacyH140,
+    h180: legacyH180,
+    checkoutHits: legacyCheckoutHits,
+    checkoutAttempts: legacyCheckoutAttempts,
     hitsBySector: legacyHitsBySector,
     // Les buckets 60+/100+/140+/180 ne sont pas reconstruits ici,
     // ils resteront à 0 faute de détail par volée (option future).

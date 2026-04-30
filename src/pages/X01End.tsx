@@ -1308,10 +1308,23 @@ function buildPerPlayerMetrics(
     ...perFromRich,
   };
 
-  const legacy = rec?.payload || rec || {};
+  // V11: source legacy unifiée.
+  // Les stats X01 récentes peuvent être stockées dans summary.legacy,
+  // payload.summary.legacy, payload.legacy ou directement dans payload.
+  const legacy = {
+    ...(rec || {}),
+    ...(rec?.payload || {}),
+    ...(rec?.legacy || {}),
+    ...(rec?.payload?.legacy || {}),
+    ...(rec?.summary?.legacy || {}),
+    ...(rec?.payload?.summary?.legacy || {}),
+  };
   const legacyHitsBySectorAll: any =
     rec?.summary?.legacy?.hitsBySector ||
+    rec?.payload?.summary?.legacy?.hitsBySector ||
     rec?.payload?.legacy?.hitsBySector ||
+    rec?.legacy?.hitsBySector ||
+    legacy?.hitsBySector ||
     {};
 
   const derivedVisits = buildVisitHistory(
@@ -1437,6 +1450,37 @@ function buildPerPlayerMetrics(
     // ===== 2) perPlayer riche (V3, training, etc.) =====
     const r = per?.[pid] || {};
     const imp = r.impacts || {};
+    const hitsObj = r.hits || r.hitCounts || r.dartHits || {};
+
+    const sumSegmentMap = (map: any) =>
+      map && typeof map === "object"
+        ? Object.values(map).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0)
+        : 0;
+
+    const rBySegmentS =
+      r.bySegmentS ||
+      r.segments?.S ||
+      r.segments?.s ||
+      r.segments?.single ||
+      r.segments?.singles ||
+      r.hitsBySegmentS ||
+      undefined;
+    const rBySegmentD =
+      r.bySegmentD ||
+      r.segments?.D ||
+      r.segments?.d ||
+      r.segments?.double ||
+      r.segments?.doubles ||
+      r.hitsBySegmentD ||
+      undefined;
+    const rBySegmentT =
+      r.bySegmentT ||
+      r.segments?.T ||
+      r.segments?.t ||
+      r.segments?.triple ||
+      r.segments?.triples ||
+      r.hitsBySegmentT ||
+      undefined;
 
     m.first9 = v(r.first9Avg);
     m.highestNonCO = v(r.highestNonCheckout);
@@ -1468,7 +1512,12 @@ function buildPerPlayerMetrics(
         r.hitsDoubles ??
         r.doubleHits ??
         r.doubleCount ??
-        imp.doubles,
+        hitsObj.D ??
+        hitsObj.d ??
+        hitsObj.double ??
+        hitsObj.doubles ??
+        imp.doubles ??
+        sumSegmentMap(rBySegmentD),
       m.doubles
     );
     const trpHits = n(
@@ -1478,7 +1527,12 @@ function buildPerPlayerMetrics(
         r.hitsTriples ??
         r.tripleHits ??
         r.tripleCount ??
-        imp.triples,
+        hitsObj.T ??
+        hitsObj.t ??
+        hitsObj.triple ??
+        hitsObj.triples ??
+        imp.triples ??
+        sumSegmentMap(rBySegmentT),
       m.triples
     );
     const bulHits = n(
@@ -1487,6 +1541,10 @@ function buildPerPlayerMetrics(
         r.hitsBull ??
         r.hitsBulls ??
         r.bullHits ??
+        hitsObj.BULL ??
+        hitsObj.Bull ??
+        hitsObj.bull ??
+        hitsObj.bulls ??
         imp.bulls,
       m.bulls
     );
@@ -1497,6 +1555,10 @@ function buildPerPlayerMetrics(
         r.hitsDBull ??
         r.doubleBull ??
         r.doubleBullHits ??
+        hitsObj.DBULL ??
+        hitsObj.DBull ??
+        hitsObj.dbull ??
+        hitsObj.dbulls ??
         imp.dbulls,
       m.dbulls
     );
@@ -1512,8 +1574,12 @@ function buildPerPlayerMetrics(
         r.hitsS ??
         r.hitsSingle ??
         r.hitsSingles ??
+        hitsObj.S ??
+        hitsObj.s ??
+        hitsObj.single ??
+        hitsObj.singles ??
         imp.singles ??
-        undefined;
+        (sumSegmentMap(rBySegmentS) || undefined);
     }
 
     if (m.misses == null) {
@@ -1522,6 +1588,10 @@ function buildPerPlayerMetrics(
         r.miss ??
         r.hitsMiss ??
         r.missCount ??
+        hitsObj.M ??
+        hitsObj.MISS ??
+        hitsObj.miss ??
+        hitsObj.misses ??
         imp.misses ??
         undefined;
     }
@@ -1583,6 +1653,25 @@ function buildPerPlayerMetrics(
       undefined;
     if (byNumDirect && typeof byNumDirect === "object") {
       m.byNumber = byNumDirect as any;
+    }
+
+    if (!m.byNumber && (rBySegmentS || rBySegmentD || rBySegmentT)) {
+      const byNum: ByNumber = {};
+      const numbers = new Set<string>([
+        ...Object.keys(rBySegmentS || {}),
+        ...Object.keys(rBySegmentD || {}),
+        ...Object.keys(rBySegmentT || {}),
+      ]);
+      for (const seg of numbers) {
+        const key = String(seg);
+        if (key === "25") continue;
+        byNum[key] = {
+          inner: Number((rBySegmentS || {})[key] || 0),
+          double: Number((rBySegmentD || {})[key] || 0),
+          triple: Number((rBySegmentT || {})[key] || 0),
+        } as any;
+      }
+      m.byNumber = byNum;
     }
 
     // ===== 3) legacy (compat avec anciens formats / v1 / v2) =====

@@ -374,51 +374,75 @@ function buildSessionFromSummary(
 
   // ---------- bySegment S / D / T ----------
   // Compat formats :
-  // - V7+: detail.bySegmentS/D/T
+  // - V9+: detail.bySegmentS/D/T
   // - perPlayer: row.segments.S/D/T
-  // - anciens exports: row.segments.{single,double,triple}
-  const bySegmentS: Record<string, number> =
-    (detail.bySegmentS && typeof detail.bySegmentS === "object"
-      ? detail.bySegmentS
-      : row.bySegmentS && typeof row.bySegmentS === "object"
-      ? row.bySegmentS
-      : row.segments?.S && typeof row.segments.S === "object"
-      ? row.segments.S
-      : row.segments?.single && typeof row.segments.single === "object"
-      ? row.segments.single
-      : {}) || {};
-
-  const bySegmentD: Record<string, number> =
-    (detail.bySegmentD && typeof detail.bySegmentD === "object"
-      ? detail.bySegmentD
-      : row.bySegmentD && typeof row.bySegmentD === "object"
-      ? row.bySegmentD
-      : row.segments?.D && typeof row.segments.D === "object"
-      ? row.segments.D
-      : row.segments?.double && typeof row.segments.double === "object"
-      ? row.segments.double
-      : {}) || {};
-
-  const bySegmentT: Record<string, number> =
-    (detail.bySegmentT && typeof detail.bySegmentT === "object"
-      ? detail.bySegmentT
-      : row.bySegmentT && typeof row.bySegmentT === "object"
-      ? row.bySegmentT
-      : row.segments?.T && typeof row.segments.T === "object"
-      ? row.segments.T
-      : row.segments?.triple && typeof row.segments.triple === "object"
-      ? row.segments.triple
-      : {}) || {};
-
+  // - moteur brut: detail.bySegment / detail.hitsBySegment avec { S, D, T }
   const sumMap = (m: any) =>
     m && typeof m === "object"
       ? Object.values(m).reduce((a: number, v: any) => a + (Number(v) || 0), 0)
       : 0;
 
+  const hasValues = (m: any) => !!m && typeof m === "object" && sumMap(m) > 0;
+  const firstMapWithValues = (...maps: any[]) => {
+    for (const m of maps) {
+      if (hasValues(m)) return m as Record<string, number>;
+    }
+    for (const m of maps) {
+      if (m && typeof m === "object") return m as Record<string, number>;
+    }
+    return {} as Record<string, number>;
+  };
+  const splitCombined = (combined: any, key: "S" | "D" | "T") => {
+    const out: Record<string, number> = {};
+    if (!combined || typeof combined !== "object") return out;
+    for (const [seg, entry] of Object.entries(combined)) {
+      const e: any = entry as any;
+      if (!e || typeof e !== "object") continue;
+      const v = Number(e[key] ?? e[key.toLowerCase()] ?? 0) || 0;
+      if (v) out[String(seg)] = v;
+    }
+    return out;
+  };
+
+  const bySegmentS: Record<string, number> = firstMapWithValues(
+    detail.bySegmentS,
+    row.bySegmentS,
+    row.segments?.S,
+    row.segments?.single,
+    splitCombined(detail.bySegment, "S"),
+    splitCombined(detail.hitsBySegment, "S"),
+    splitCombined(row.bySegment, "S"),
+    splitCombined(row.hitsBySegment, "S")
+  );
+
+  const bySegmentD: Record<string, number> = firstMapWithValues(
+    detail.bySegmentD,
+    row.bySegmentD,
+    row.segments?.D,
+    row.segments?.double,
+    splitCombined(detail.bySegment, "D"),
+    splitCombined(detail.hitsBySegment, "D"),
+    splitCombined(row.bySegment, "D"),
+    splitCombined(row.hitsBySegment, "D")
+  );
+
+  const bySegmentT: Record<string, number> = firstMapWithValues(
+    detail.bySegmentT,
+    row.bySegmentT,
+    row.segments?.T,
+    row.segments?.triple,
+    splitCombined(detail.bySegment, "T"),
+    splitCombined(detail.hitsBySegment, "T"),
+    splitCombined(row.bySegment, "T"),
+    splitCombined(row.hitsBySegment, "T")
+  );
+
   // ---------- Hits / Miss / Bust (hors Bull) ----------
-  const hitsS = numOr0(detail.hitsS, row.hitsS, row.hits?.S, row.hits?.single, sumMap(bySegmentS));
-  const hitsD = numOr0(detail.hitsD, row.hitsD, row.hits?.D, row.hits?.double, sumMap(bySegmentD));
-  const hitsT = numOr0(detail.hitsT, row.hitsT, row.hits?.T, row.hits?.triple, sumMap(bySegmentT));
+  // numOr0 renvoie aussi les zéros explicites. Ici on veut tomber sur les maps
+  // si les anciens champs hitsS/hitsD/hitsT ont été écrits à 0 par erreur.
+  const hitsS = numOr0(detail.hitsS, row.hitsS, row.hits?.S, row.hits?.single) || sumMap(bySegmentS);
+  const hitsD = numOr0(detail.hitsD, row.hitsD, row.hits?.D, row.hits?.double) || sumMap(bySegmentD);
+  const hitsT = numOr0(detail.hitsT, row.hitsT, row.hits?.T, row.hits?.triple) || sumMap(bySegmentT);
   const miss = numOr0(detail.miss, row.miss, row.hits?.M, row.hits?.miss, row.misses);
   const bust = numOr0(detail.bust, row.bust, row.busts);
 
