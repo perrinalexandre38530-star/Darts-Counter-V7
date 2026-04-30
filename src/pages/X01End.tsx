@@ -94,8 +94,34 @@ export default function X01End({ go, params }: Props) {
     let mounted = true;
     (async () => {
       try {
+        // V12: quand on arrive depuis Historique, params.rec est souvent une ligne "header/light".
+        // Elle suffit pour la carte, mais PAS pour les stats de partie : le payload complet est
+        // stocké séparément en IndexedDB details. On hydrate donc systématiquement via History.get().
         if (params?.rec) {
-          if (mounted) setRec(params.rec);
+          const light = params.rec;
+          const fullId = String(params?.matchId || light?.matchId || light?.id || "").trim();
+          let full: any = null;
+          if (fullId) {
+            try {
+              full = await (History as any)?.get?.(fullId);
+            } catch {}
+          }
+          if (mounted) {
+            if (full && typeof full === "object") {
+              setRec({
+                ...light,
+                ...full,
+                id: full.id || light.id,
+                matchId: full.matchId || light.matchId || full.id || light.id,
+                players: Array.isArray(full.players) && full.players.length ? full.players : (Array.isArray(light.players) ? light.players : []),
+                summary: { ...(light.summary || {}), ...(full.summary || {}) },
+                payload: full.payload ?? light.payload,
+                resume: full.resume ?? light.resume,
+              });
+            } else {
+              setRec(light);
+            }
+          }
           return;
         }
         if (params?.matchId) {
