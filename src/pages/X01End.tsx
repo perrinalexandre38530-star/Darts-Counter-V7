@@ -15,11 +15,12 @@ import {
 } from "../lib/stats";
 import { exportSharedMatchPack } from "../lib/backup/sharedMatch";
 import { shareOrDownload } from "../lib/backup/fileExport";
+import { decodeCompactMatch } from "../lib/matchCompactCodec";
 
 /* ================================
    Types basiques
 ================================ */
-type PlayerLite = { id: string; name?: string; profileId?: string | null; playerId?: string | null; avatarDataUrl?: string | null };
+type PlayerLite = { id: string; name?: string; avatarDataUrl?: string | null };
 
 type Props = {
   go: (tab: string, params?: any) => void;
@@ -28,6 +29,7 @@ type Props = {
     resumeId?: string | null;
     rec?: any;
     showEnd?: boolean;
+    forceHistoryDetail?: boolean;
   };
 };
 
@@ -69,89 +71,6 @@ type VisitRow = {
 /* ================================
    Composant principal
 ================================ */
-function mergeX01HistoryRecord(light: any, full: any) {
-  if (!light && !full) return null;
-  if (!light) return full;
-  if (!full) return light;
-
-  const payload = {
-    ...(light?.payload && typeof light.payload === "object" ? light.payload : {}),
-    ...(full?.payload && typeof full.payload === "object" ? full.payload : {}),
-  };
-
-  const summary = {
-    ...(light?.payload?.summary && typeof light.payload.summary === "object" ? light.payload.summary : {}),
-    ...(light?.summary && typeof light.summary === "object" ? light.summary : {}),
-    ...(full?.payload?.summary && typeof full.payload.summary === "object" ? full.payload.summary : {}),
-    ...(full?.summary && typeof full.summary === "object" ? full.summary : {}),
-  };
-
-  return {
-    ...light,
-    ...full,
-    payload: {
-      ...payload,
-      summary: {
-        ...(payload.summary && typeof payload.summary === "object" ? payload.summary : {}),
-        ...summary,
-      },
-    },
-    summary,
-    players: Array.isArray(full?.players) && full.players.length ? full.players : light.players,
-  };
-}
-
-function getHistoryRecordId(rec: any, params?: any): string | null {
-  // IMPORTANT HISTORIQUE X01:
-  // Certaines lignes affichées dans l’historique / stats peuvent avoir un id composite
-  // du type "matchId:playerId" alors que le vrai enregistrement History est stocké
-  // sous matchId. On privilégie donc toujours matchId explicite avant id.
-  const raw =
-    rec?.matchId ??
-    rec?.payload?.matchId ??
-    rec?.summary?.matchId ??
-    params?.matchId ??
-    params?.resumeId ??
-    rec?.resumeId ??
-    rec?.payload?.resumeId ??
-    rec?.id ??
-    null;
-
-  const id = raw ? String(raw).trim() : "";
-  if (!id) return null;
-
-  // Fallback anti-id composite: "abc:def" -> "abc" si jamais l’appelant a passé e.id.
-  if (id.includes(":")) {
-    const first = id.split(":")[0]?.trim();
-    if (first) return first;
-  }
-  return id;
-}
-
-function getEffectiveX01Summary(rec: any) {
-  if (!rec) return null;
-  const p = rec?.payload || {};
-  const ps = p?.summary || {};
-  const rs = rec?.summary || {};
-  return {
-    ...(ps && typeof ps === "object" ? ps : {}),
-    ...(rs && typeof rs === "object" ? rs : {}),
-    perPlayer: Array.isArray(rs?.perPlayer) && rs.perPlayer.length ? rs.perPlayer : ps?.perPlayer,
-    detailedByPlayer:
-      rs?.detailedByPlayer && Object.keys(rs.detailedByPlayer || {}).length
-        ? rs.detailedByPlayer
-        : ps?.detailedByPlayer,
-    legacy: {
-      ...(ps?.legacy && typeof ps.legacy === "object" ? ps.legacy : {}),
-      ...(rs?.legacy && typeof rs.legacy === "object" ? rs.legacy : {}),
-    },
-    players: {
-      ...(ps?.players && typeof ps.players === "object" ? ps.players : {}),
-      ...(rs?.players && typeof rs.players === "object" ? rs.players : {}),
-    },
-  };
-}
-
 export default function X01End({ go, params }: Props) {
   // --- Hooks toujours au même ordre ---
   const [rec, setRec] = React.useState<any | null>(null);
@@ -177,19 +96,33 @@ export default function X01End({ go, params }: Props) {
     let mounted = true;
     (async () => {
       try {
-        const wantedId = getHistoryRecordId(params?.rec, params);
-
-        if (wantedId) {
-          const byId = await (History as any)?.get?.(wantedId);
-          if (mounted && (byId || params?.rec)) {
-            setRec(mergeX01HistoryRecord(params?.rec || null, byId || null));
+        if (params?.rec) {
+          const rid = String(params?.matchId ?? params.rec?.matchId ?? params.rec?.id ?? "");
+          const full = rid ? await (History as any)?.get?.(rid).catch(() => null) : null;
+          // Depuis Historique, params.rec est souvent seulement le header léger.
+          // On garde les noms/avatars du header, mais le détail IndexedDB a priorité pour payload/compact/stats.
+          const merged = full
+            ? {
+                ...params.rec,
+                ...full,
+                players: Array.isArray(params.rec?.players) && params.rec.players.length ? params.rec.players : full.players,
+                summary: {
+                  ...(params.rec?.summary && typeof params.rec.summary === "object" ? params.rec.summary : {}),
+                  ...(full?.summary && typeof full.summary === "object" ? full.summary : {}),
+                },
+                compact: full?.compact ?? params.rec?.compact ?? null,
+                payload: full?.payload ?? params.rec?.payload ?? null,
+              }
+            : params.rec;
+          if (mounted) setRec(expandCompactHistoryRecord(merged));
+          return;
+        }
+        if (params?.matchId) {
+          const byId = await (History as any)?.get?.(params.matchId);
+          if (mounted && byId) {
+            setRec(expandCompactHistoryRecord(byId));
             return;
           }
-        }
-
-        if (params?.rec) {
-          if (mounted) setRec(params.rec);
-          return;
         }
         const mem = (window as any)?.__appStore?.history as
           | any[]
@@ -198,7 +131,8 @@ export default function X01End({ go, params }: Props) {
           if (params?.matchId) {
             const m = mem.find((r) => r?.id === params.matchId);
             if (mounted && m) {
-              setRec(m);
+              const full = await (History as any)?.get?.(String(m?.matchId ?? m?.id ?? "")).catch(() => null);
+              setRec(expandCompactHistoryRecord(full ? { ...m, ...full } : m));
               return;
             }
           }
@@ -206,7 +140,8 @@ export default function X01End({ go, params }: Props) {
             (r) => String(r?.status).toLowerCase() === "finished"
           );
           if (mounted && lastFin) {
-            setRec(lastFin);
+            const full = await (History as any)?.get?.(String(lastFin?.matchId ?? lastFin?.id ?? "")).catch(() => null);
+            setRec(expandCompactHistoryRecord(full ? { ...lastFin, ...full } : lastFin));
             return;
           }
         }
@@ -231,12 +166,10 @@ export default function X01End({ go, params }: Props) {
     if (!rec) return [];
     const arr = rec.players?.length ? rec.players : rec.payload?.players || [];
     return arr.map((p: any) => ({
-      id: String(p?.id ?? p?.playerId ?? p?.profileId ?? ""),
-      playerId: p?.playerId != null ? String(p.playerId) : null,
-      profileId: p?.profileId != null ? String(p.profileId) : null,
-      name: p?.name || p?.displayName || p?.nickname || "—",
+      id: p.id,
+      name: p?.name || "—",
       avatarDataUrl: p?.avatarDataUrl ?? null,
-    })).filter((p: PlayerLite) => !!p.id);
+    }));
   }, [rec]);
 
   // tenir playersById synchro (évite setState dans useMemo)
@@ -254,17 +187,12 @@ export default function X01End({ go, params }: Props) {
     (winnerId && (players.find((p) => p.id === winnerId)?.name || null)) ||
     null;
 
-  const effectiveSummary = React.useMemo(
-    () => getEffectiveX01Summary(rec),
-    [rec]
-  );
-
   // Match summary :
   // - X01 v1/v2 => kind === "x01"
   // - X01 v3 léger => kind/variant/engine === "x01_v3"
   const matchSummary = React.useMemo(
-    () => normalizeX01Summary(effectiveSummary, players),
-    [effectiveSummary, players]
+    () => normalizeX01Summary(rec?.summary, players),
+    [rec?.summary, players]
   );
 
   const legSummary = !matchSummary ? buildSummaryFromLeg(rec) : null;
@@ -276,7 +204,7 @@ export default function X01End({ go, params }: Props) {
       return;
     }
 
-    const summary: any = effectiveSummary || rec.summary || rec.payload?.summary || {};
+    const summary: any = rec.summary || {};
     const decoded: any = rec.decoded || rec.payload || {};
 
     const isX01V3 =
@@ -310,7 +238,7 @@ export default function X01End({ go, params }: Props) {
 
     const leg = buildLegStatsFromX01V3Summary(summary, cfg, finalScores);
     setLegStats(leg || null);
-  }, [rec, effectiveSummary]);
+  }, [rec]);
 
   const M = React.useMemo(() => {
     return rec
@@ -1061,6 +989,51 @@ export default function X01End({ go, params }: Props) {
   );
 }
 
+function expandCompactHistoryRecord(input: any) {
+  if (!input || typeof input !== "object") return input;
+  try {
+    const compact =
+      input?.compact ||
+      input?.payload?.compact ||
+      (input?.payload?.__compact === "match.v1" ? input.payload : null) ||
+      (input?.__compact === "match.v1" ? input : null);
+    const decoded = decodeCompactMatch(compact);
+    if (!decoded) return input;
+    const originalSummary = input.summary && typeof input.summary === "object" ? input.summary : {};
+    const decodedSummary = decoded.summary && typeof decoded.summary === "object" ? decoded.summary : {};
+    return {
+      ...decoded,
+      ...input,
+      players: Array.isArray(input.players) && input.players.length ? input.players : decoded.players,
+      winnerId: input.winnerId ?? decoded.winnerId ?? null,
+      summary: {
+        ...decodedSummary,
+        ...originalSummary,
+        players:
+          originalSummary.players &&
+          !Array.isArray(originalSummary.players) &&
+          Object.keys(originalSummary.players || {}).length
+            ? originalSummary.players
+            : decodedSummary.players,
+        detailedByPlayer:
+          originalSummary.detailedByPlayer && Object.keys(originalSummary.detailedByPlayer || {}).length
+            ? originalSummary.detailedByPlayer
+            : decodedSummary.detailedByPlayer,
+        perPlayer:
+          Array.isArray(originalSummary.perPlayer) && originalSummary.perPlayer.length
+            ? originalSummary.perPlayer
+            : decodedSummary.perPlayer,
+      },
+      payload: {
+        ...(decoded.detail ? { detail: decoded.detail } : {}),
+        ...(input.payload && typeof input.payload === "object" ? input.payload : {}),
+      },
+    };
+  } catch {
+    return input;
+  }
+}
+
 function normalizeX01Summary(
   rawSummary: any,
   players: PlayerLite[]
@@ -1360,97 +1333,6 @@ function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
   };
 }
 
-
-function normalizeLooseName(value: any): string {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/\s+/g, " ");
-}
-
-function x01CandidatePlayerKeys(pl: any): string[] {
-  const keys = [
-    pl?.id,
-    pl?.playerId,
-    pl?.profileId,
-    pl?.pid,
-    pl?.userId,
-  ]
-    .map((v) => (v == null ? "" : String(v).trim()))
-    .filter(Boolean);
-  return Array.from(new Set(keys));
-}
-
-function resolveX01RowForPlayer(source: any, pl: PlayerLite): any {
-  if (!source || typeof source !== "object" || !pl) return null;
-  const keys = x01CandidatePlayerKeys(pl);
-
-  // 1) map directe: players[pid], detailedByPlayer[pid], legacy.avg3[pid]...
-  for (const k of keys) {
-    if (source[k] && typeof source[k] === "object") return source[k];
-  }
-
-  // 2) array: perPlayer / rankings / players en liste
-  const arr = Array.isArray(source) ? source : [];
-  if (arr.length) {
-    const hitById = arr.find((row: any) => {
-      const rowKeys = x01CandidatePlayerKeys(row);
-      return rowKeys.some((k) => keys.includes(k));
-    });
-    if (hitById) return hitById;
-
-    const wantedName = normalizeLooseName(pl.name);
-    if (wantedName) {
-      const hitByName = arr.find((row: any) => {
-        const rn = normalizeLooseName(row?.name ?? row?.displayName ?? row?.nickname ?? row?.playerName);
-        return rn && rn === wantedName;
-      });
-      if (hitByName) return hitByName;
-    }
-  }
-
-  // 3) map d'objets: chercher une ligne dont id/profileId/name correspond
-  const values = Object.values(source).filter((v: any) => v && typeof v === "object");
-  if (values.length) {
-    const hitById = values.find((row: any) => {
-      const rowKeys = x01CandidatePlayerKeys(row);
-      return rowKeys.some((k) => keys.includes(k));
-    });
-    if (hitById) return hitById;
-
-    const wantedName = normalizeLooseName(pl.name);
-    if (wantedName) {
-      const hitByName = values.find((row: any) => {
-        const rn = normalizeLooseName(row?.name ?? row?.displayName ?? row?.nickname ?? row?.playerName);
-        return rn && rn === wantedName;
-      });
-      if (hitByName) return hitByName;
-    }
-  }
-
-  return null;
-}
-
-function pickLooseByPlayer(map: any, pl: PlayerLite, fallback?: any) {
-  if (!map || typeof map !== "object") return fallback;
-  for (const k of x01CandidatePlayerKeys(pl)) {
-    if (Object.prototype.hasOwnProperty.call(map, k)) return map[k];
-  }
-  const wantedName = normalizeLooseName(pl.name);
-  if (wantedName) {
-    for (const [k, v] of Object.entries(map)) {
-      if (normalizeLooseName(k) === wantedName) return v;
-      if (v && typeof v === "object") {
-        const rn = normalizeLooseName((v as any).name ?? (v as any).displayName ?? (v as any).nickname ?? (v as any).playerName);
-        if (rn && rn === wantedName) return v;
-      }
-    }
-  }
-  return fallback;
-}
-
 function buildPerPlayerMetrics(
   rec: any,
   summary: any | null,
@@ -1492,24 +1374,10 @@ function buildPerPlayerMetrics(
     ...perFromRich,
   };
 
-  // V11: source legacy unifiée.
-  // Les stats X01 récentes peuvent être stockées dans summary.legacy,
-  // payload.summary.legacy, payload.legacy ou directement dans payload.
-  const legacy = {
-    ...(rec || {}),
-    ...(rec?.payload || {}),
-    ...(rec?.payload?.summary || {}),
-    ...(rec?.legacy || {}),
-    ...(rec?.payload?.legacy || {}),
-    ...(rec?.summary?.legacy || {}),
-    ...(rec?.payload?.summary?.legacy || {}),
-  };
+  const legacy = rec?.payload || rec || {};
   const legacyHitsBySectorAll: any =
     rec?.summary?.legacy?.hitsBySector ||
-    rec?.payload?.summary?.legacy?.hitsBySector ||
     rec?.payload?.legacy?.hitsBySector ||
-    rec?.legacy?.hitsBySector ||
-    legacy?.hitsBySector ||
     {};
 
   const derivedVisits = buildVisitHistory(
@@ -1609,10 +1477,7 @@ function buildPerPlayerMetrics(
     const m = emptyMetrics(pl);
 
     // ===== 1) summary (rapide) =====
-    const s =
-      resolveX01RowForPlayer(summary?.players, pl) ||
-      resolveX01RowForPlayer(summary?.perPlayer, pl) ||
-      null;
+    const s = summary?.players?.[pid];
     if (s) {
       m.avg3 = n(s.avg3);
       m.avg1 = m.avg3 / 3;
@@ -1636,43 +1501,8 @@ function buildPerPlayerMetrics(
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
-    const r =
-      resolveX01RowForPlayer(per, pl) ||
-      resolveX01RowForPlayer(summary?.detailedByPlayer, pl) ||
-      resolveX01RowForPlayer(summary?.perPlayer, pl) ||
-      {};
+    const r = per?.[pid] || {};
     const imp = r.impacts || {};
-    const hitsObj = r.hits || r.hitCounts || r.dartHits || {};
-
-    const sumSegmentMap = (map: any) =>
-      map && typeof map === "object"
-        ? Object.values(map).reduce((sum: number, val: any) => sum + (Number(val) || 0), 0)
-        : 0;
-
-    const rBySegmentS =
-      r.bySegmentS ||
-      r.segments?.S ||
-      r.segments?.s ||
-      r.segments?.single ||
-      r.segments?.singles ||
-      r.hitsBySegmentS ||
-      undefined;
-    const rBySegmentD =
-      r.bySegmentD ||
-      r.segments?.D ||
-      r.segments?.d ||
-      r.segments?.double ||
-      r.segments?.doubles ||
-      r.hitsBySegmentD ||
-      undefined;
-    const rBySegmentT =
-      r.bySegmentT ||
-      r.segments?.T ||
-      r.segments?.t ||
-      r.segments?.triple ||
-      r.segments?.triples ||
-      r.hitsBySegmentT ||
-      undefined;
 
     m.first9 = v(r.first9Avg);
     m.highestNonCO = v(r.highestNonCheckout);
@@ -1704,12 +1534,7 @@ function buildPerPlayerMetrics(
         r.hitsDoubles ??
         r.doubleHits ??
         r.doubleCount ??
-        hitsObj.D ??
-        hitsObj.d ??
-        hitsObj.double ??
-        hitsObj.doubles ??
-        imp.doubles ??
-        sumSegmentMap(rBySegmentD),
+        imp.doubles,
       m.doubles
     );
     const trpHits = n(
@@ -1719,12 +1544,7 @@ function buildPerPlayerMetrics(
         r.hitsTriples ??
         r.tripleHits ??
         r.tripleCount ??
-        hitsObj.T ??
-        hitsObj.t ??
-        hitsObj.triple ??
-        hitsObj.triples ??
-        imp.triples ??
-        sumSegmentMap(rBySegmentT),
+        imp.triples,
       m.triples
     );
     const bulHits = n(
@@ -1733,10 +1553,6 @@ function buildPerPlayerMetrics(
         r.hitsBull ??
         r.hitsBulls ??
         r.bullHits ??
-        hitsObj.BULL ??
-        hitsObj.Bull ??
-        hitsObj.bull ??
-        hitsObj.bulls ??
         imp.bulls,
       m.bulls
     );
@@ -1747,10 +1563,6 @@ function buildPerPlayerMetrics(
         r.hitsDBull ??
         r.doubleBull ??
         r.doubleBullHits ??
-        hitsObj.DBULL ??
-        hitsObj.DBull ??
-        hitsObj.dbull ??
-        hitsObj.dbulls ??
         imp.dbulls,
       m.dbulls
     );
@@ -1766,12 +1578,8 @@ function buildPerPlayerMetrics(
         r.hitsS ??
         r.hitsSingle ??
         r.hitsSingles ??
-        hitsObj.S ??
-        hitsObj.s ??
-        hitsObj.single ??
-        hitsObj.singles ??
         imp.singles ??
-        (sumSegmentMap(rBySegmentS) || undefined);
+        undefined;
     }
 
     if (m.misses == null) {
@@ -1780,10 +1588,6 @@ function buildPerPlayerMetrics(
         r.miss ??
         r.hitsMiss ??
         r.missCount ??
-        hitsObj.M ??
-        hitsObj.MISS ??
-        hitsObj.miss ??
-        hitsObj.misses ??
         imp.misses ??
         undefined;
     }
@@ -1847,70 +1651,28 @@ function buildPerPlayerMetrics(
       m.byNumber = byNumDirect as any;
     }
 
-    if (!m.byNumber && (rBySegmentS || rBySegmentD || rBySegmentT)) {
-      const byNum: ByNumber = {};
-      const numbers = new Set<string>([
-        ...Object.keys(rBySegmentS || {}),
-        ...Object.keys(rBySegmentD || {}),
-        ...Object.keys(rBySegmentT || {}),
-      ]);
-      for (const seg of numbers) {
-        const key = String(seg);
-        if (key === "25") continue;
-        byNum[key] = {
-          inner: Number((rBySegmentS || {})[key] || 0),
-          double: Number((rBySegmentD || {})[key] || 0),
-          triple: Number((rBySegmentT || {})[key] || 0),
-        } as any;
-      }
-      m.byNumber = byNum;
-    }
-
     // ===== 3) legacy (compat avec anciens formats / v1 / v2) =====
-    const looseLegacy = {
-      darts: pickLooseByPlayer(legacy?.darts ?? legacy?.dartsThrown, pl),
-      visits: pickLooseByPlayer(legacy?.visits, pl),
-      points: pickLooseByPlayer(legacy?.pointsScored ?? legacy?.points, pl),
-      avg3: pickLooseByPlayer(legacy?.avg3 ?? legacy?.avg3d, pl),
-      bestVisit: pickLooseByPlayer(legacy?.bestVisit, pl),
-      bestCheckout: pickLooseByPlayer(legacy?.bestCheckout ?? legacy?.highestCheckout ?? legacy?.bestCO, pl),
-      singles: pickLooseByPlayer(legacy?.singles ?? legacy?.single, pl),
-      doubles: pickLooseByPlayer(legacy?.doubles ?? legacy?.doubleCount ?? legacy?.dbl, pl),
-      triples: pickLooseByPlayer(legacy?.triples ?? legacy?.tripleCount ?? legacy?.trp, pl),
-      bulls: pickLooseByPlayer(legacy?.bulls ?? legacy?.bullCount ?? legacy?.bull, pl),
-      dbulls: pickLooseByPlayer(legacy?.dbulls ?? legacy?.doubleBull ?? legacy?.doubleBulls ?? legacy?.bull50, pl),
-      misses: pickLooseByPlayer(legacy?.misses ?? legacy?.miss, pl),
-      busts: pickLooseByPlayer(legacy?.busts ?? legacy?.bust ?? legacy?.bustCount, pl),
-      h60: pickLooseByPlayer(legacy?.h60 ?? legacy?.t60, pl),
-      h100: pickLooseByPlayer(legacy?.h100 ?? legacy?.t100, pl),
-      h140: pickLooseByPlayer(legacy?.h140 ?? legacy?.t140, pl),
-      h180: pickLooseByPlayer(legacy?.h180 ?? legacy?.t180, pl),
-      checkoutHits: pickLooseByPlayer(legacy?.checkoutHits, pl),
-      checkoutAttempts: pickLooseByPlayer(legacy?.checkoutAttempts, pl),
-    };
-
-    m.t180 = m.t180 || n(looseLegacy.h180, n(pick(legacy, [`h180.${pid}`, `t180.${pid}`]), 0));
-    m.t140 = m.t140 || n(looseLegacy.h140, n(pick(legacy, [`h140.${pid}`, `t140.${pid}`]), 0));
-    m.t100 = m.t100 || n(looseLegacy.h100, n(pick(legacy, [`h100.${pid}`, `t100.${pid}`]), 0));
-    m.t60 = m.t60 || n(looseLegacy.h60, n(pick(legacy, [`h60.${pid}`, `t60.${pid}`]), 0));
+    m.t180 = m.t180 || n(pick(legacy, [`h180.${pid}`, `t180.${pid}`]), 0);
+    m.t140 = m.t140 || n(pick(legacy, [`h140.${pid}`, `t140.${pid}`]), 0);
+    m.t100 = m.t100 || n(pick(legacy, [`h100.${pid}`, `t100.${pid}`]), 0);
+    m.t60 = m.t60 || n(pick(legacy, [`h60.${pid}`, `t60.${pid}`]), 0);
 
     m.darts =
       m.darts ||
-      n(looseLegacy.darts, n(pick(legacy, [`darts.${pid}`, `dartsThrown.${pid}`]), 0));
-    m.visits = m.visits || n(looseLegacy.visits, n(pick(legacy, [`visits.${pid}`]), 0));
+      n(pick(legacy, [`darts.${pid}`, `dartsThrown.${pid}`]), 0);
+    m.visits = m.visits || n(pick(legacy, [`visits.${pid}`]), 0);
     m.points =
       m.points ||
-      n(looseLegacy.points, n(pick(legacy, [`pointsScored.${pid}`, `points.${pid}`]), 0));
+      n(pick(legacy, [`pointsScored.${pid}`, `points.${pid}`]), 0);
     m.avg3 =
       m.avg3 ||
-      n(looseLegacy.avg3, n(pick(legacy, [`avg3.${pid}`, `avg3d.${pid}`]), 0));
+      n(pick(legacy, [`avg3.${pid}`, `avg3d.${pid}`]), 0);
     if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
     m.bestVisit =
-      m.bestVisit || n(looseLegacy.bestVisit, n(pick(legacy, [`bestVisit.${pid}`]), 0));
+      m.bestVisit || n(pick(legacy, [`bestVisit.${pid}`]), 0);
     m.bestCO =
       m.bestCO ||
       sanitizeCO(
-        looseLegacy.bestCheckout ??
         pick(legacy, [
           `bestCheckout.${pid}`,
           `highestCheckout.${pid}`,
@@ -1959,22 +1721,22 @@ function buildPerPlayerMetrics(
       `bustCount.${pid}`,
     ]);
 
-    if (!m.doubles) m.doubles = n(looseLegacy.doubles, dblC || m.doubles);
-    if (!m.triples) m.triples = n(looseLegacy.triples, trpC || m.triples);
-    if (!m.bulls) m.bulls = n(looseLegacy.bulls, bulC || m.bulls);
-    if (!m.dbulls) m.dbulls = n(looseLegacy.dbulls, dbuC || m.dbulls);
-    if (m.singles == null && (looseLegacy.singles != null || sngC != null)) m.singles = n(looseLegacy.singles, n(sngC, 0));
-    if (m.misses == null && (looseLegacy.misses != null || misC != null)) m.misses = n(looseLegacy.misses, n(misC, 0));
-    if (m.busts == null && (looseLegacy.busts != null || bstC != null)) m.busts = n(looseLegacy.busts, n(bstC, 0));
+    if (!m.doubles) m.doubles = dblC || m.doubles;
+    if (!m.triples) m.triples = trpC || m.triples;
+    if (!m.bulls) m.bulls = bulC || m.bulls;
+    if (!m.dbulls) m.dbulls = dbuC || m.dbulls;
+    if (m.singles == null && sngC != null) m.singles = n(sngC, 0);
+    if (m.misses == null && misC != null) m.misses = n(misC, 0);
+    if (m.busts == null && bstC != null) m.busts = n(bstC, 0);
 
     m.coHits =
       m.coHits ||
-      n(looseLegacy.checkoutHits, n(pick(legacy, [`checkoutHits.${pid}`]), m.coHits));
+      n(pick(legacy, [`checkoutHits.${pid}`]), m.coHits);
     m.coAtt =
       m.coAtt ||
       n(
-        looseLegacy.checkoutAttempts,
-        n(pick(legacy, [`checkoutAttempts.${pid}`]), m.coAtt)
+        pick(legacy, [`checkoutAttempts.${pid}`]),
+        m.coAtt
       );
 
     // ===== 3b) fallback reconstruit depuis resume.darts / replay =====

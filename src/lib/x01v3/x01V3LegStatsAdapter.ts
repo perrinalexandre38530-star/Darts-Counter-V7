@@ -1,7 +1,6 @@
 // =============================================================
 // src/lib/x01v3/x01V3LegStatsAdapter.ts
 // Pont X01 V3 (moteur + liveStats) -> LegStats (EndOfLegOverlay)
-// PATCH V16 : extraction robuste, plus de cartes résumé à 0
 // =============================================================
 
 import type {
@@ -12,72 +11,15 @@ import type {
 } from "../../types/x01v3";
 import type { LegStats } from "../stats";
 
-function n(...values: any[]): number {
-  for (const v of values) {
-    if (v === undefined || v === null || v === "") continue;
-    const x = Number(v);
-    if (Number.isFinite(x)) return x;
-  }
-  return 0;
-}
-
-function sumMap(map: any): number {
-  if (!map || typeof map !== "object") return 0;
-  return Object.values(map).reduce((a: number, v: any) => a + (Number(v) || 0), 0);
-}
-
-function cloneSegmentMaps(live: any) {
-  const byS: Record<string, number> = {};
-  const byD: Record<string, number> = {};
-  const byT: Record<string, number> = {};
-
-  for (const [k, v] of Object.entries(live?.bySegmentS ?? live?.segmentsS ?? live?.hitsBySegmentS ?? {})) byS[String(k)] = n(v);
-  for (const [k, v] of Object.entries(live?.bySegmentD ?? live?.segmentsD ?? live?.hitsBySegmentD ?? {})) byD[String(k)] = n(v);
-  for (const [k, v] of Object.entries(live?.bySegmentT ?? live?.segmentsT ?? live?.hitsBySegmentT ?? {})) byT[String(k)] = n(v);
-
-  const combinedSources = [live?.hitsBySegment, live?.bySegment, live?.segmentHits, live?.segmentsAll, live?.segments];
-  for (const combined of combinedSources) {
-    if (!combined || typeof combined !== "object") continue;
-    for (const [seg, entry] of Object.entries(combined)) {
-      if (!entry || typeof entry !== "object") continue;
-      const e: any = entry;
-      const s = n(e.S, e.s, e.single, e.singles, e.hitsS);
-      const d = n(e.D, e.d, e.double, e.doubles, e.hitsD);
-      const t = n(e.T, e.t, e.triple, e.triples, e.hitsT);
-      if (s) byS[String(seg)] = Math.max(byS[String(seg)] || 0, s);
-      if (d) byD[String(seg)] = Math.max(byD[String(seg)] || 0, d);
-      if (t) byT[String(seg)] = Math.max(byT[String(seg)] || 0, t);
-    }
-  }
-  return { byS, byD, byT };
-}
-
-function summaryRow(summary: any, pid: string): any {
-  if (!summary || typeof summary !== "object") return {};
-  if (summary?.detailedByPlayer?.[pid]) return summary.detailedByPlayer[pid];
-  if (summary?.players?.[pid]) return summary.players[pid];
-  if (Array.isArray(summary?.perPlayer)) {
-    return summary.perPlayer.find((x: any) => String(x?.playerId ?? x?.profileId ?? x?.id ?? "") === String(pid)) || {};
-  }
-  return {};
-}
-
-function hitFromSummary(summary: any, pid: string, key: string): number {
-  const r = summaryRow(summary, pid);
-  const hits = r?.hits || r?.hitCounts || {};
-  if (key === "S") return n(r.hitsS, r.hitsSingle, r.singles, hits.S, hits.s, hits.single, hits.singles);
-  if (key === "D") return n(r.hitsD, r.hitsDouble, r.doubles, hits.D, hits.d, hits.double, hits.doubles);
-  if (key === "T") return n(r.hitsT, r.hitsTriple, r.triples, hits.T, hits.t, hits.triple, hits.triples);
-  if (key === "BULL") return n(r.hitsBull, r.bull, r.bulls, hits.BULL, hits.Bull, hits.bull, hits.bulls);
-  if (key === "DBULL") return n(r.hitsDBull, r.hitsDbull, r.dBull, r.dbulls, r.doubleBull, hits.DBULL, hits.DBull, hits.dbull, hits.dbulls);
-  if (key === "MISS") return n(r.misses, r.miss, hits.M, hits.MISS, hits.miss, hits.misses);
-  return 0;
-}
-
 /**
- * Construit un LegStats "global match" à partir du moteur V3.
- * Source prioritaire pour les points : startScore - score restant.
- * Cela évite les résumés / cartes historique à 0 lorsque live.totalScore n'existe pas.
+ * Construit un LegStats "global match" à partir du moteur V3
+ * pour l'overlay EndOfLegOverlay.
+ *
+ * - darts / points / visits / avg3d / bestVisit
+ * - 60+ / 100+ / 140+ / 180 via scorePerVisit
+ * - doubles / triples / bulls / bullsEye + % associés
+ * - buckets + bins (alias) pour 0-59 / 60-99 / 100+ / 140+ / 180
+ * - remaining = score restant actuel (scores[pid])
  */
 export function buildLegStatsFromV3LiveForOverlay(
   config: X01ConfigV3,
@@ -86,112 +28,181 @@ export function buildLegStatsFromV3LiveForOverlay(
   scores: Record<X01PlayerId, number>,
   summary?: any
 ): LegStats {
-  const playerIds: string[] = (config.players ?? []).map((p: any) => String(p.id));
+  const playerIds: string[] = (config.players ?? []).map((p: any) => p.id as string);
   const startScore = (config as any).startScore ?? 501;
+
   const perPlayer: Record<string, any> = {};
 
   for (const pid of playerIds) {
-    const live: any = liveStatsByPlayer?.[pid] || {};
-    const srow: any = summaryRow(summary, pid);
-    const remaining = n(scores?.[pid], live.remaining, srow.remaining, startScore);
-    const pointsFromScore = Math.max(0, startScore - remaining);
+    const live = liveStatsByPlayer?.[pid];
 
-    const darts = n(
-      live.dartsThrown,
-      live.darts,
-      live.totalDarts,
-      srow.darts,
-      srow.dartsThrown,
-      srow.totalDarts,
-      srow._sumDarts
-    );
-    const points = n(live.totalScore, live.pointsScored, live.points, srow.pointsScored, srow.points, srow._sumPoints, pointsFromScore);
-    const visits = n(live.visits, srow.visits, srow._sumVisits, darts ? Math.ceil(darts / 3) : 0);
-    const bestVisit = n(live.bestVisit, srow.bestVisit, summary?.bestVisitByPlayer?.[pid]);
-
-    const scorePerVisit = Array.isArray(live.scorePerVisit)
-      ? live.scorePerVisit
-      : Array.isArray(live.visitsScores)
-      ? live.visitsScores
-      : Array.isArray(live.visitScores)
-      ? live.visitScores
-      : [];
-    let h60 = 0;
-    let h100 = 0;
-    let h140 = 0;
-    let h180 = 0;
-    for (const v of scorePerVisit) {
-      const score = Number(v) || 0;
-      if (score >= 60) h60++;
-      if (score >= 100) h100++;
-      if (score >= 140) h140++;
-      if (score === 180) h180++;
+    if (!live) {
+      perPlayer[pid] = {
+        darts: 0,
+        points: 0,
+        visits: 0,
+        avg3d: 0,
+        bestVisit: 0,
+        h60: 0,
+        h100: 0,
+        h140: 0,
+        h180: 0,
+        doubles: 0,
+        triples: 0,
+        bulls: 0,
+        bullsEye: 0,
+        doubleRate: 0,
+        tripleRate: 0,
+        bullRate: 0,
+        bullEyeRate: 0,
+        bestCheckout: 0,
+        coHits: 0,
+        coAtt: 0,
+        coPct: 0,
+        avg3: 0,
+        dartsThrown: 0,
+        buckets: {
+          "0-59": 0,
+          "60-99": 0,
+          "100+": 0,
+          "140+": 0,
+          "180": 0,
+        },
+        bins: {
+          "0-59": 0,
+          "60-99": 0,
+          "100+": 0,
+          "140+": 0,
+          "180": 0,
+        },
+        remaining: scores[pid] ?? startScore,
+      };
+      continue;
     }
+
+    const darts = live.dartsThrown ?? 0;
+    // live.totalScore est souvent absent dans X01PlayV3. La source fiable
+    // pour une manche finie est startScore - score restant.
+    const remainingNow = Number(scores?.[pid]);
+    const pointsFromScore = Number.isFinite(remainingNow)
+      ? Math.max(0, startScore - remainingNow)
+      : 0;
+    const points = Number(live.totalScore ?? live.pointsScored ?? live.points ?? pointsFromScore) || pointsFromScore;
+    const visits = live.visits ?? (darts ? Math.ceil(darts / 3) : 0);
+    const bestVisit = live.bestVisit ?? 0;
+
+    // ---- Power scoring (60+ / 100+ / 140+ / 180) depuis scorePerVisit ----
+    const scorePerVisit = live.scorePerVisit ?? [];
+    let h60 = 0,
+      h100 = 0,
+      h140 = 0,
+      h180 = 0;
+
+    for (const v of scorePerVisit) {
+      if (v >= 60) h60++;
+      if (v >= 100) h100++;
+      if (v >= 140) h140++;
+      if (v === 180) h180++;
+    }
+
+    const sixtyTo99 = Math.max(0, h60 - h100);
+    const hundredPlus = Math.max(0, h100 - h140 - h180);
+    const oneFortyPlus = h140;
+    const oneEighty = h180;
+    const known = sixtyTo99 + hundredPlus + oneFortyPlus + oneEighty;
+    const zeroTo59 = Math.max(0, visits - known);
+
     const buckets = {
-      "0-59": Math.max(0, visits - Math.max(0, h60 - h100) - Math.max(0, h100 - h140 - h180) - h140 - h180),
-      "60-99": Math.max(0, h60 - h100),
-      "100+": Math.max(0, h100 - h140 - h180),
-      "140+": h140,
-      "180": h180,
+      "0-59": zeroTo59,
+      "60-99": sixtyTo99,
+      "100+": hundredPlus,
+      "140+": oneFortyPlus,
+      "180": oneEighty,
     };
 
-    const { byS, byD, byT } = cloneSegmentMaps(live);
-    const singlesHits = n(live.hitsSingle, live.hitsSingles, live.singles, sumMap(byS), hitFromSummary(summary, pid, "S"));
-    const doublesHits = n(live.hitsDouble, live.hitsDoubles, live.doubles, sumMap(byD), hitFromSummary(summary, pid, "D"));
-    const triplesHits = n(live.hitsTriple, live.hitsTriples, live.triples, sumMap(byT), hitFromSummary(summary, pid, "T"));
-    const bullHits = n(live.hits?.Bull, live.hits?.BULL, live.hitsBull, live.bull, live.bulls, hitFromSummary(summary, pid, "BULL"));
-    const dbullHits = n(live.hits?.DBull, live.hits?.DBULL, live.hitsDBull, live.dBull, live.dbull, live.dbulls, hitFromSummary(summary, pid, "DBULL"));
-    const missHits = n(live.hits?.MISS, live.hits?.M, live.misses, live.miss, hitFromSummary(summary, pid, "MISS"));
+    // ---- Impacts doubles / triples / bulls ----
+    const doublesHits = live.hitsDouble ?? 0;
+    const triplesHits = live.hitsTriple ?? 0;
+    const bulls = live.hits?.Bull ?? 0;
+    const bullsEye = live.hits?.DBull ?? 0;
 
-    const avg3d = darts ? +(((points / darts) * 3).toFixed(2)) : n(srow.avg3, summary?.avg3ByPlayer?.[pid], 0);
-    const bestCheckout = n(summary?.bestCheckoutByPlayer?.[pid], srow.bestCheckoutScore, srow.bestCheckout, live.bestCheckout);
+    const doubleRate = darts ? (doublesHits / darts) * 100 : 0;
+    const tripleRate = darts ? (triplesHits / darts) * 100 : 0;
+    const bullRate = darts ? (bulls / darts) * 100 : 0;
+    const bullEyeRate = darts ? (bullsEye / darts) * 100 : 0;
 
+    const avg3d = darts ? +(((points / darts) * 3).toFixed(2)) : 0;
+
+    // ---- Segments pour le radar / tableau ----
     const segments: Record<string, { S: number; D: number; T: number }> = {};
-    for (const key of new Set([...Object.keys(byS), ...Object.keys(byD), ...Object.keys(byT)])) {
-      segments[String(key)] = { S: byS[key] || 0, D: byD[key] || 0, T: byT[key] || 0 };
+    const hitsBySegment = (live.hitsBySegment as any) ?? (live.bySegment as any) ?? {};
+    for (const key in hitsBySegment) {
+      const st = hitsBySegment[key] || {};
+      segments[String(key)] = {
+        S: st.S || 0,
+        D: st.D || 0,
+        T: st.T || 0,
+      };
     }
 
+    // ---- Checkouts (si dispo dans summary.bestCheckoutByPlayer) ----
+    const bestCheckoutByPlayer =
+      summary?.bestCheckoutByPlayer && typeof summary.bestCheckoutByPlayer === "object"
+        ? summary.bestCheckoutByPlayer
+        : {};
+    const bestCheckout = bestCheckoutByPlayer[pid] ?? 0;
+
     perPlayer[pid] = {
+      // Volumes
       darts,
       points,
       visits,
       avg3d,
-      avg3: avg3d,
       bestVisit,
+
+      // Power scoring
       h60,
       h100,
       h140,
       h180,
-      singles: singlesHits,
-      misses: missHits,
+
+      // Impacts
       doubles: doublesHits,
       triples: triplesHits,
-      bulls: bullHits,
-      bullsEye: dbullHits,
-      hitsBull: bullHits,
-      hitsDBull: dbullHits,
-      doubleRate: darts ? (doublesHits / darts) * 100 : 0,
-      tripleRate: darts ? (triplesHits / darts) * 100 : 0,
-      bullRate: darts ? (bullHits / darts) * 100 : 0,
-      bullEyeRate: darts ? (dbullHits / darts) * 100 : 0,
+      bulls,
+      bullsEye,
+      doubleRate,
+      tripleRate,
+      bullRate,
+      bullEyeRate,
+
+      // Checkouts
       bestCheckout: bestCheckout || undefined,
-      coHits: bestCheckout > 0 ? 1 : undefined,
+      coHits: undefined,
       coAtt: undefined,
-      coPct: bestCheckout > 0 ? 100 : 0,
+      coPct: 0,
+
+      // Alias / compléments attendus par EndOfLegOverlay
+      avg3: avg3d,
       dartsThrown: darts,
-      bySegmentS: byS,
-      bySegmentD: byD,
-      bySegmentT: byT,
-      segments,
       buckets,
-      bins: buckets,
-      remaining,
+      bins: buckets, // ✅ pour powerBucketsFromNew
+      remaining: Number.isFinite(remainingNow) ? remainingNow : Math.max(0, startScore - points),
     };
   }
 
   const legNo = (state as any).currentLeg ?? 1;
-  const winnerIdFromScores = Object.keys(scores || {}).find((id) => (scores as any)[id] === 0) ?? null;
-  const winnerId = (state as any).lastWinnerId ?? (summary?.winnerId ?? winnerIdFromScores ?? null);
+  const winnerIdFromScores =
+    Object.keys(scores || {}).find((id) => (scores as any)[id] === 0) ?? null;
+  const winnerId =
+    (state as any).lastWinnerId ??
+    (summary?.winnerId ?? winnerIdFromScores ?? null);
 
-  return { legNo, players: playerIds, winnerId, finishedAt: Date.now(), perPlayer };
+  return {
+    legNo,
+    players: playerIds,
+    winnerId,
+    finishedAt: Date.now(),
+    perPlayer,
+  };
 }

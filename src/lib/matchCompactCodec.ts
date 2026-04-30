@@ -231,18 +231,25 @@ function addPlayer(dict: string[], id: string): number {
 }
 
 function collectPlayers(rec: any, payload: any): any[] {
-  const arrays = [
+  // X01 V3 sauvegarde souvent les stats sous summary.players = { [playerId]: stats }.
+  // L'ancien compacteur ignorait cette map et ne gardait que rec.players => stats à 0 en détail historique.
+  const sources = [
     rec?.players, rec?.summary?.players, payload?.players, payload?.state?.players, payload?.summary?.players,
     payload?.stats?.players, payload?.result?.players, payload?.match?.players, payload?.config?.players, payload?.cfg?.players,
     payload?.teams, payload?.state?.teams, payload?.summary?.teams
   ];
   const byId = new Map<string, any>();
-  for (const arr of arrays) {
-    if (!Array.isArray(arr)) continue;
-    for (const p of arr) {
-      const id = getPlayerId(p);
-      if (!id) continue;
-      byId.set(id, { ...(byId.get(id) || {}), ...(p || {}) });
+  const pushOne = (row: any, forcedId?: string) => {
+    if (!row || typeof row !== "object") return;
+    const id = forcedId || getPlayerId(row);
+    if (!id) return;
+    byId.set(id, { ...(byId.get(id) || {}), ...(row || {}), id, playerId: row.playerId ?? id });
+  };
+  for (const src of sources) {
+    if (Array.isArray(src)) {
+      for (const row of src) pushOne(row);
+    } else if (isPlainObject(src)) {
+      for (const [id, row] of Object.entries(src)) pushOne(row, String(id));
     }
   }
   return [...byId.values()];
@@ -422,6 +429,9 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       if (ps.n?.dt != null) out.dartsThrown = ps.n.dt;
       if (ps.n?.pts != null) out.pointsScored = ps.n.pts;
       if (ps.n?.sc != null) out.score = ps.n.sc;
+      if (ps.n?.avg3 != null) out.avg3 = ps.n.avg3;
+      if (ps.n?.avg != null && out.avg3 == null) out.avg3 = ps.n.avg;
+      if (ps.n?.vis != null) out.visits = ps.n.vis;
       if (ps.n?.bv != null) out.bestVisit = ps.n.bv;
       if (ps.n?.bc != null) out.bestCheckout = ps.n.bc;
       if (ps.n?.mk != null) out.marksTotal = ps.n.mk;
@@ -430,6 +440,36 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       return out;
     });
     const winnerId = Number.isInteger(compact.w) && compact.p?.[compact.w] ? String(compact.p[compact.w]) : null;
+    const playersMap: Record<string, any> = {};
+    const detailedByPlayer: Record<string, any> = {};
+    for (const p of players as any[]) {
+      const id = String(p?.id || p?.playerId || "");
+      if (!id) continue;
+      playersMap[id] = {
+        id,
+        name: p.name,
+        avg3: toNum(p.avg3) ?? 0,
+        bestVisit: toNum(p.bestVisit) ?? 0,
+        bestCheckout: toNum(p.bestCheckout) ?? 0,
+        darts: toNum(p.dartsThrown) ?? 0,
+        _sumDarts: toNum(p.dartsThrown) ?? 0,
+        _sumPoints: toNum(p.pointsScored) ?? 0,
+        _sumVisits: toNum(p.visits) ?? undefined,
+        matches: 1,
+        legs: 1,
+      };
+      detailedByPlayer[id] = {
+        ...p,
+        playerId: id,
+        profileId: id,
+        darts: toNum(p.dartsThrown) ?? 0,
+        dartsThrown: toNum(p.dartsThrown) ?? 0,
+        pointsScored: toNum(p.pointsScored) ?? 0,
+        avg3: toNum(p.avg3) ?? 0,
+        bestVisit: toNum(p.bestVisit) ?? 0,
+        bestCheckout: toNum(p.bestCheckout) ?? 0,
+      };
+    }
     return {
       id: String(compact.id || ""),
       kind: compact.m || "unknown",
@@ -440,7 +480,7 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       updatedAt: compact.u ? Number(compact.u) : undefined,
       players,
       winnerId,
-      summary: { players, winnerId, options: compact.o || {}, compact: true },
+      summary: { players: playersMap, perPlayer: players, detailedByPlayer, winnerId, options: compact.o || {}, compact: true },
       detail: compact.d,
       compact,
     };
