@@ -1238,7 +1238,11 @@ export default function HistoryPage({
       const wantedResume = String((e as any)?.resumeId || matchLink(e) || wantedId || "");
       const loaded = (wantedId && (await (History as any)?.get?.(wantedId))) || (wantedResume && wantedResume !== wantedId && (await (History as any)?.get?.(wantedResume))) || null;
       if (loaded && typeof loaded === "object") {
-        const payload = { ...((e as any).payload || {}), ...((loaded as any).payload || {}) };
+        const ePayloadRaw = (e as any).payload;
+        const loadedPayloadRaw = (loaded as any).payload;
+        const ePayload = ePayloadRaw && typeof ePayloadRaw === "object" && !Array.isArray(ePayloadRaw) ? ePayloadRaw : {};
+        const loadedPayload = loadedPayloadRaw && typeof loadedPayloadRaw === "object" && !Array.isArray(loadedPayloadRaw) ? loadedPayloadRaw : {};
+        const payload = { ...ePayload, ...loadedPayload };
         const payloadSummary = (payload as any)?.summary && typeof (payload as any).summary === "object" ? (payload as any).summary : {};
         const summary = { ...payloadSummary, ...(((e as any).summary && typeof (e as any).summary === "object") ? (e as any).summary : {}), ...(((loaded as any).summary && typeof (loaded as any).summary === "object") ? (loaded as any).summary : {}) };
         const players = Array.isArray((loaded as any).players) && (loaded as any).players.length ? (loaded as any).players : Array.isArray((payload as any).players) && (payload as any).players.length ? (payload as any).players : (e as any).players;

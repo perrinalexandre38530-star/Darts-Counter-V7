@@ -32,19 +32,38 @@ type Props = {
 };
 function hydrateX01HistoryRecord(input: any): any {
   if (!input || typeof input !== "object") return input;
-  const payload = input.payload && typeof input.payload === "object" ? input.payload : {};
+
+  // IMPORTANT : les lignes venant de l'historique peuvent arriver sous 3 formes :
+  // - header léger : summary présent mais payload absent
+  // - detail History.get : payload objet complet
+  // - ancien/legacy : payload string JSON/compressée déjà décodée ailleurs ou non
+  // Cette fonction ne doit JAMAIS transformer une string en objet {0:"..."}, sinon X01End
+  // perd summary.legacy/darts et toutes les stats tombent à 0.
+  const rawPayload = (input as any).payload;
+  const payload = rawPayload && typeof rawPayload === "object" && !Array.isArray(rawPayload) ? rawPayload : {};
+
   const payloadSummary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
   const ownSummary = input.summary && typeof input.summary === "object" ? input.summary : {};
-  const summary = { ...payloadSummary, ...ownSummary };
+  const decodedSummary = input.decoded?.summary && typeof input.decoded.summary === "object" ? input.decoded.summary : {};
+  const summary = { ...decodedSummary, ...payloadSummary, ...ownSummary };
+
   const players =
     Array.isArray(input.players) && input.players.length
       ? input.players
       : Array.isArray(payload.players) && payload.players.length
       ? payload.players
+      : Array.isArray(input.decoded?.players) && input.decoded.players.length
+      ? input.decoded.players
       : Array.isArray(summary.players)
       ? summary.players
       : [];
-  return { ...input, payload: { ...payload, summary }, summary, players };
+
+  return {
+    ...input,
+    payload: { ...payload, summary },
+    summary,
+    players,
+  };
 }
 
 /* ================================
@@ -1284,6 +1303,43 @@ function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
   };
 }
 
+function getSummaryPlayerStats(summary: any, pid: string): any {
+  const playersBlock = summary?.players;
+  if (!playersBlock) return null;
+
+  if (Array.isArray(playersBlock)) {
+    return (
+      playersBlock.find((row: any) =>
+        String(row?.id ?? row?.playerId ?? row?.profileId ?? "") === String(pid)
+      ) || null
+    );
+  }
+
+  if (typeof playersBlock === "object") {
+    return playersBlock[pid] || playersBlock[String(pid)] || null;
+  }
+
+  return null;
+}
+
+function pickFromAny(paths: string[], roots: any[], def?: any) {
+  for (const root of roots) {
+    if (!root || typeof root !== "object") continue;
+    const hit = pick(root, paths, undefined);
+    if (hit !== undefined && hit !== null) return hit;
+  }
+  return def;
+}
+
+function getPlayerRowFromObjectOrArray(src: any, pid: string): any {
+  if (!src) return null;
+  if (Array.isArray(src)) {
+    return src.find((row: any) => String(row?.id ?? row?.playerId ?? row?.profileId ?? "") === String(pid)) || null;
+  }
+  if (typeof src === "object") return src[pid] || src[String(pid)] || null;
+  return null;
+}
+
 function buildPerPlayerMetrics(
   rec: any,
   summary: any | null,
@@ -1305,6 +1361,12 @@ function buildPerPlayerMetrics(
       ? summary.detailedByPlayer
       : {};
 
+  const payloadSummary = rec?.payload?.summary && typeof rec.payload.summary === "object" ? rec.payload.summary : {};
+  const payloadDetailed =
+    payloadSummary?.detailedByPlayer && typeof payloadSummary.detailedByPlayer === "object"
+      ? payloadSummary.detailedByPlayer
+      : {};
+
   const summaryPerPlayerArray = Array.isArray(summary?.perPlayer)
     ? Object.fromEntries(
         summary.perPlayer
@@ -1321,13 +1383,23 @@ function buildPerPlayerMetrics(
   // on merge : ce qui vient de __legStats écrase au besoin ce qui vient de detailedByPlayer
   const per: Record<string, any> = {
     ...summaryPerPlayerArray,
+    ...payloadDetailed,
     ...summaryDetailed,
     ...perFromRich,
   };
 
   const legacy = rec?.payload || rec || {};
+  const legacyRoots = [
+    rec?.summary?.legacy,
+    rec?.payload?.summary?.legacy,
+    rec?.payload?.legacy,
+    rec?.summary,
+    rec?.payload,
+    rec,
+  ].filter(Boolean);
   const legacyHitsBySectorAll: any =
     rec?.summary?.legacy?.hitsBySector ||
+    rec?.payload?.summary?.legacy?.hitsBySector ||
     rec?.payload?.legacy?.hitsBySector ||
     {};
 
@@ -1428,7 +1500,7 @@ function buildPerPlayerMetrics(
     const m = emptyMetrics(pl);
 
     // ===== 1) summary (rapide) =====
-    const s = summary?.players?.[pid];
+    const s = getSummaryPlayerStats(summary, pid) || getSummaryPlayerStats(payloadSummary, pid);
     if (s) {
       m.avg3 = n(s.avg3);
       m.avg1 = m.avg3 / 3;
@@ -1452,7 +1524,7 @@ function buildPerPlayerMetrics(
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
-    const r = per?.[pid] || {};
+    const r = per?.[pid] || getPlayerRowFromObjectOrArray(payloadSummary?.perPlayer, pid) || {};
     const imp = r.impacts || {};
 
     m.first9 = v(r.first9Avg);
@@ -1603,74 +1675,74 @@ function buildPerPlayerMetrics(
     }
 
     // ===== 3) legacy (compat avec anciens formats / v1 / v2) =====
-    m.t180 = m.t180 || n(pick(legacy, [`h180.${pid}`, `t180.${pid}`]), 0);
-    m.t140 = m.t140 || n(pick(legacy, [`h140.${pid}`, `t140.${pid}`]), 0);
-    m.t100 = m.t100 || n(pick(legacy, [`h100.${pid}`, `t100.${pid}`]), 0);
-    m.t60 = m.t60 || n(pick(legacy, [`h60.${pid}`, `t60.${pid}`]), 0);
+    m.t180 = m.t180 || n(pickFromAny([`h180.${pid}`, `t180.${pid}`], legacyRoots), 0);
+    m.t140 = m.t140 || n(pickFromAny([`h140.${pid}`, `t140.${pid}`], legacyRoots), 0);
+    m.t100 = m.t100 || n(pickFromAny([`h100.${pid}`, `t100.${pid}`], legacyRoots), 0);
+    m.t60 = m.t60 || n(pickFromAny([`h60.${pid}`, `t60.${pid}`], legacyRoots), 0);
 
     m.darts =
       m.darts ||
-      n(pick(legacy, [`darts.${pid}`, `dartsThrown.${pid}`]), 0);
-    m.visits = m.visits || n(pick(legacy, [`visits.${pid}`]), 0);
+      n(pickFromAny([`darts.${pid}`, `dartsThrown.${pid}`], legacyRoots), 0);
+    m.visits = m.visits || n(pickFromAny([`visits.${pid}`], legacyRoots), 0);
     m.points =
       m.points ||
-      n(pick(legacy, [`pointsScored.${pid}`, `points.${pid}`]), 0);
+      n(pickFromAny([`pointsScored.${pid}`, `points.${pid}`], legacyRoots), 0);
     m.avg3 =
       m.avg3 ||
-      n(pick(legacy, [`avg3.${pid}`, `avg3d.${pid}`]), 0);
+      n(pickFromAny([`avg3.${pid}`, `avg3d.${pid}`], legacyRoots), 0);
     if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
     m.bestVisit =
-      m.bestVisit || n(pick(legacy, [`bestVisit.${pid}`]), 0);
+      m.bestVisit || n(pickFromAny([`bestVisit.${pid}`], legacyRoots), 0);
     m.bestCO =
       m.bestCO ||
       sanitizeCO(
-        pick(legacy, [
+        pickFromAny([
           `bestCheckout.${pid}`,
           `highestCheckout.${pid}`,
           `bestCO.${pid}`,
-        ])
+        ], legacyRoots)
       );
 
     const dblC = n(
-      pick(legacy, [
+      pickFromAny([
         `doubles.${pid}`,
         `doubleCount.${pid}`,
         `dbl.${pid}`,
-      ]),
+      ], legacyRoots),
       0
     );
     const trpC = n(
-      pick(legacy, [
+      pickFromAny([
         `triples.${pid}`,
         `tripleCount.${pid}`,
         `trp.${pid}`,
-      ]),
+      ], legacyRoots),
       0
     );
     const bulC = n(
-      pick(legacy, [
+      pickFromAny([
         `bulls.${pid}`,
         `bullCount.${pid}`,
         `bull.${pid}`,
-      ]),
+      ], legacyRoots),
       0
     );
     const dbuC = n(
-      pick(legacy, [
+      pickFromAny([
         `dbulls.${pid}`,
         `doubleBull.${pid}`,
         `doubleBulls.${pid}`,
         `bull50.${pid}`,
-      ]),
+      ], legacyRoots),
       0
     );
-    const sngC = pick(legacy, [`singles.${pid}`, `single.${pid}`]);
-    const misC = pick(legacy, [`misses.${pid}`, `miss.${pid}`]);
-    const bstC = pick(legacy, [
+    const sngC = pickFromAny([`singles.${pid}`, `single.${pid}`], legacyRoots);
+    const misC = pickFromAny([`misses.${pid}`, `miss.${pid}`], legacyRoots);
+    const bstC = pickFromAny([
       `busts.${pid}`,
       `bust.${pid}`,
       `bustCount.${pid}`,
-    ]);
+    ], legacyRoots);
 
     if (!m.doubles) m.doubles = dblC || m.doubles;
     if (!m.triples) m.triples = trpC || m.triples;
@@ -1682,11 +1754,11 @@ function buildPerPlayerMetrics(
 
     m.coHits =
       m.coHits ||
-      n(pick(legacy, [`checkoutHits.${pid}`]), m.coHits);
+      n(pickFromAny([`checkoutHits.${pid}`], legacyRoots), m.coHits);
     m.coAtt =
       m.coAtt ||
       n(
-        pick(legacy, [`checkoutAttempts.${pid}`]),
+        pickFromAny([`checkoutAttempts.${pid}`], legacyRoots),
         m.coAtt
       );
 
