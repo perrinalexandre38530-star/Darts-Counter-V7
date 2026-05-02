@@ -2,13 +2,14 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 
-const PREBUILT_AVATAR_COMMON_URLS = Array.from({ length: 153 }, (_, i) =>
-  `/images/prebuilt-avatars/common/avatar-common-${String(i + 1).padStart(3, "0")}.webp`
-);
-const PREBUILT_AVATAR_FR_URLS = Array.from({ length: 54 }, (_, i) =>
+const PREBUILT_AVATAR_COMMON_URLS = Array.from({ length: 141 }, (_, i) => i + 1)
+  // Le pack fourni ne contient pas avatar-common-137.webp : on l'exclut pour éviter une image cassée.
+  .filter((n) => n !== 137)
+  .map((n) => `/images/prebuilt-avatars/common/avatar-common-${String(n).padStart(3, "0")}.webp`);
+const PREBUILT_AVATAR_FR_URLS = Array.from({ length: 73 }, (_, i) =>
   `/images/prebuilt-avatars/fr/avatar-fr-${String(i + 1).padStart(3, "0")}.webp`
 );
-const PREBUILT_AVATAR_EN_URLS = Array.from({ length: 63 }, (_, i) =>
+const PREBUILT_AVATAR_EN_URLS = Array.from({ length: 73 }, (_, i) =>
   `/images/prebuilt-avatars/en/avatar-en-${String(i + 1).padStart(3, "0")}.webp`
 );
 
