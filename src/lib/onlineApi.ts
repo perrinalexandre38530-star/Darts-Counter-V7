@@ -218,6 +218,8 @@ export type OnlineMatchRow = {
 // --------------------------------------------
 const USE_MOCK = false;
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
+const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
+const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
 
 // ============================================================
 // ✅ PROFILES TABLE RESOLUTION (compat)
@@ -278,13 +280,66 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 function loadAuthFromLS(): AuthSession | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(LS_AUTH_KEY);
-  return safeParse<AuthSession | null>(raw, null);
+  const session = safeParse<AuthSession | null>(raw, null);
+
+  // Mode NAS : l'application garde aussi le JWT dans une clé séparée.
+  // Si une ancienne écriture a laissé dc_online_auth_supabase_v1 sans token,
+  // on reconstruit la session depuis dc_nas_access_token_v1 au lieu de considérer
+  // l'utilisateur comme déconnecté.
+  if (isNasProviderEnabled() && session) {
+    const token = String((session as any).token || "").trim();
+    const fallbackToken = String(window.localStorage.getItem(NAS_TOKEN_KEY) || "").trim();
+    const fallbackRefresh = String(window.localStorage.getItem(NAS_REFRESH_KEY) || "").trim();
+    if (!token && fallbackToken) {
+      const repaired: AuthSession = {
+        ...(session as any),
+        token: fallbackToken,
+        refreshToken: String((session as any).refreshToken || fallbackRefresh || ""),
+      } as AuthSession;
+      try { window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(repaired)); } catch {}
+      return repaired;
+    }
+  }
+
+  return session;
 }
 
 function saveAuthToLS(session: AuthSession | null) {
   if (typeof window === "undefined") return;
-  if (!session) window.localStorage.removeItem(LS_AUTH_KEY);
-  else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
+  if (!session) {
+    window.localStorage.removeItem(LS_AUTH_KEY);
+    if (isNasProviderEnabled()) {
+      window.localStorage.removeItem(NAS_TOKEN_KEY);
+      window.localStorage.removeItem(NAS_REFRESH_KEY);
+    }
+  } else {
+    let next: AuthSession = session;
+
+    if (isNasProviderEnabled()) {
+      const prev = safeParse<AuthSession | null>(window.localStorage.getItem(LS_AUTH_KEY), null);
+      const prevToken = String((prev as any)?.token || window.localStorage.getItem(NAS_TOKEN_KEY) || "").trim();
+      const prevRefresh = String((prev as any)?.refreshToken || window.localStorage.getItem(NAS_REFRESH_KEY) || "").trim();
+      const nextToken = String((session as any)?.token || "").trim();
+      const sameUser = String((session as any)?.user?.id || (session as any)?.userId || "") === String((prev as any)?.user?.id || (prev as any)?.userId || "");
+
+      // Ne jamais écraser une session NAS valide par une session partielle sans JWT.
+      // C'est ce qui provoquait ensuite "Token NAS manquant" pendant la synchro manuelle.
+      if (!nextToken && prevToken && sameUser) {
+        next = {
+          ...(session as any),
+          token: prevToken,
+          refreshToken: String((session as any)?.refreshToken || prevRefresh || ""),
+        } as AuthSession;
+      }
+
+      const finalToken = String((next as any)?.token || "").trim();
+      const finalRefresh = String((next as any)?.refreshToken || "").trim();
+      if (finalToken) window.localStorage.setItem(NAS_TOKEN_KEY, finalToken);
+      if (finalRefresh) window.localStorage.setItem(NAS_REFRESH_KEY, finalRefresh);
+    }
+
+    window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(next));
+  }
 
   try {
     window.dispatchEvent(new CustomEvent("dc-auth-changed"));

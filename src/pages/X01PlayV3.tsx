@@ -5523,6 +5523,37 @@ function mergeDetailedStats(primary: any, fallback: any) {
   return primary;
 }
 
+function computeReplayVisitScoresForPlayer(allDarts: any, playerId: string) {
+  const arr = Array.isArray(allDarts) ? allDarts : [];
+  const pidWanted = String(playerId || "");
+  const visits: number[] = [];
+  let currentPid: string | null = null;
+  let currentScore = 0;
+  let currentCount = 0;
+
+  const flush = () => {
+    if (currentPid === pidWanted && currentCount > 0) visits.push(currentScore);
+    currentPid = null;
+    currentScore = 0;
+    currentCount = 0;
+  };
+
+  for (const raw of arr) {
+    const pid = String((raw as any)?.playerId ?? (raw as any)?.pid ?? (raw as any)?.p ?? (raw as any)?.profileId ?? "");
+    if (!pid) continue;
+    if (currentPid !== pid || currentCount >= 3) {
+      flush();
+      currentPid = pid;
+    }
+    const parsed = parseReplayDartParts(raw);
+    const score = parsed.segment > 0 ? (parsed.segment === 25 && parsed.multiplier >= 2 ? 50 : parsed.segment * parsed.multiplier) : 0;
+    currentScore += score;
+    currentCount += 1;
+  }
+  flush();
+  return visits;
+}
+
 function extractDetailedStatsFromLive(live: any) {
   const { bySegmentS, bySegmentD, bySegmentT } =
     extractSegmentMapsFromLive(live);
@@ -5761,13 +5792,18 @@ function saveX01V3MatchToHistory({
     legacyBust[pid] = detail.bust ?? 0;
     legacyPoints[pid] = scored > 0 ? scored : 0;
 
-    const scorePerVisit = Array.isArray(live?.scorePerVisit) ? live.scorePerVisit : [];
+    const scorePerVisitLive = Array.isArray(live?.scorePerVisit) ? live.scorePerVisit : [];
+    const scorePerVisitReplay = computeReplayVisitScoresForPlayer(replayDarts, pid);
+    const scorePerVisit = scorePerVisitLive.length ? scorePerVisitLive : scorePerVisitReplay;
     legacyH60[pid] = scorePerVisit.filter((v: any) => Number(v) >= 60).length;
     legacyH100[pid] = scorePerVisit.filter((v: any) => Number(v) >= 100).length;
     legacyH140[pid] = scorePerVisit.filter((v: any) => Number(v) >= 140).length;
     legacyH180[pid] = scorePerVisit.filter((v: any) => Number(v) >= 180).length;
-    legacyCheckoutAttempts[pid] = numOr0(live?.checkoutAttempts, live?.coAttempts, live?.coAtt);
     legacyCheckoutHits[pid] = bestCheckout > 0 ? 1 : numOr0(live?.checkoutHits, live?.coHits);
+    legacyCheckoutAttempts[pid] = Math.max(
+      legacyCheckoutHits[pid],
+      numOr0(live?.checkoutAttempts, live?.coAttempts, live?.coAtt)
+    );
 
     // hits par secteur combinés (S + D + T + BULL / DBULL + MISS)
     const sectorMap: Record<string, number> = {};
@@ -5992,7 +6028,12 @@ function saveX01V3MatchToHistory({
       _sumVisits: visits || undefined,
       matches: 1,
       legs: legsPlayedByPlayer[pid] || 1,
-      buckets: {},
+      buckets: {
+        "60+": legacyH60[pid] || 0,
+        "100+": legacyH100[pid] || 0,
+        "140+": legacyH140[pid] || 0,
+        "180": legacyH180[pid] || 0,
+      },
       updatedAt: createdAt,
     };
   }

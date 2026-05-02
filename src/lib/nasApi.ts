@@ -359,18 +359,38 @@ function buildSessionFromResponse(json: any, fallbackEmail?: string): AuthSessio
 export function saveNasTokens(session: AuthSession | null, opts?: { silent?: boolean }) {
   const prevRaw = readLs(NAS_AUTH_SESSION_KEY);
   const prev = readJson<AuthSession | null>(prevRaw, null);
-  const nextRaw = session ? JSON.stringify(session) : "";
 
-  writeLs(NAS_TOKEN_KEY, session?.token || null);
-  writeLs(NAS_REFRESH_KEY, session?.refreshToken || null);
-  writeLs(NAS_AUTH_SESSION_KEY, session ? nextRaw : null);
+  if (!session) {
+    writeLs(NAS_TOKEN_KEY, null);
+    writeLs(NAS_REFRESH_KEY, null);
+    writeLs(NAS_AUTH_SESSION_KEY, null);
+    if (!opts?.silent && prevRaw) dispatchAuthChanged();
+    return;
+  }
+
+  const prevToken = String(prev?.token || readLs(NAS_TOKEN_KEY) || "").trim();
+  const prevRefresh = String(prev?.refreshToken || readLs(NAS_REFRESH_KEY) || "").trim();
+  const nextToken0 = String(session?.token || "").trim();
+  const prevUserId = String(prev?.user?.id || prev?.userId || "");
+  const nextUserId = String(session?.user?.id || session?.userId || "");
+  const sameUser = !!prevUserId && !!nextUserId && prevUserId === nextUserId;
+
+  // Protection critique : /auth/me ne renvoie pas toujours un token neuf.
+  // Une session partielle ne doit pas effacer le JWT NAS existant.
+  const safeSession: AuthSession = (!nextToken0 && prevToken && sameUser)
+    ? ({ ...(session as any), token: prevToken, refreshToken: String((session as any).refreshToken || prevRefresh || "") } as AuthSession)
+    : session;
+
+  const nextRaw = JSON.stringify(safeSession);
+  const nextToken = String(safeSession?.token || "").trim();
+  const nextRefresh = String(safeSession?.refreshToken || "").trim();
+
+  if (nextToken) writeLs(NAS_TOKEN_KEY, nextToken);
+  if (nextRefresh) writeLs(NAS_REFRESH_KEY, nextRefresh);
+  writeLs(NAS_AUTH_SESSION_KEY, nextRaw);
 
   if (opts?.silent) return;
 
-  const prevToken = String(prev?.token || "");
-  const nextToken = String(session?.token || "");
-  const prevUserId = String(prev?.user?.id || prev?.userId || "");
-  const nextUserId = String(session?.user?.id || session?.userId || "");
   const changed = prevRaw !== nextRaw || prevToken !== nextToken || prevUserId !== nextUserId;
   if (changed) dispatchAuthChanged();
 }

@@ -666,9 +666,8 @@ export default function X01End({ go, params }: Props) {
                 { label: "140+", get: (m) => f0(m.t140) },
                 { label: "180", get: (m) => f0(m.t180) },
                 {
-                  label: "Tons (Σ)",
-                  get: (m) =>
-                    f0(m.t180 + m.t140 + m.t100),
+                  label: "Tons (100+)",
+                  get: (m) => f0(m.t100),
                 },
               ],
             },
@@ -1431,6 +1430,8 @@ function buildPerPlayerMetrics(
         dbulls: 0,
         misses: 0,
         busts: 0,
+        coHits: 0,
+        coAtt: 0,
         byNumber: {},
       });
 
@@ -1483,13 +1484,23 @@ function buildPerPlayerMetrics(
     row.points += visitPoints;
     row.bestVisit = Math.max(row.bestVisit, visitPoints);
 
+    // Power scoring = seuils cumulés : une volée à 140 compte aussi en 100+ et 60+.
+    if (visitPoints >= 60) row.t60 += 1;
+    if (visitPoints >= 100) row.t100 += 1;
+    if (visitPoints >= 140) row.t140 += 1;
     if (visitPoints >= 180) row.t180 += 1;
-    else if (visitPoints >= 140) row.t140 += 1;
-    else if (visitPoints >= 100) row.t100 += 1;
-    else if (visitPoints >= 60) row.t60 += 1;
+
+    // Tentatives de checkout : fallback historique.
+    // Une volée commencée à <=170 est considérée comme une opportunité CO potentielle.
+    // Si la volée finit la manche, elle devient un CO hit.
+    if (n(v.scoreBefore, 0) > 1 && n(v.scoreBefore, 0) <= 170) {
+      row.coAtt += 1;
+    }
 
     if (v.finish) {
       row.bestCO = Math.max(row.bestCO, visitPoints);
+      row.coHits += 1;
+      if (row.coAtt <= 0) row.coAtt = 1;
     }
 
     return acc;
@@ -1674,6 +1685,43 @@ function buildPerPlayerMetrics(
       m.byNumber = byNumDirect as any;
     }
 
+    // Compat X01V3 : detailedByPlayer.segments = { S:{20:1}, D:{16:1}, T:{...} }
+    // Sans cette conversion, le radar et les barres par segments restent vides même si
+    // les compteurs Singles/Doubles/Triples sont bien présents.
+    if (!m.byNumber) {
+      const segSrc = r.segments || r.segmentHits || r.bySegment || {};
+      const sMap = segSrc.S || segSrc.s || segSrc.singles || r.bySegmentS || r.hitsBySegmentS || {};
+      const dMap = segSrc.D || segSrc.d || segSrc.doubles || r.bySegmentD || r.hitsBySegmentD || {};
+      const tMap = segSrc.T || segSrc.t || segSrc.triples || r.bySegmentT || r.hitsBySegmentT || {};
+      const byNum: ByNumber = {};
+      const add = (map: any, keyName: "inner" | "double" | "triple") => {
+        if (!map || typeof map !== "object") return;
+        for (const [rawSeg, rawVal] of Object.entries(map)) {
+          const seg = String(rawSeg).replace(/^n/i, "");
+          const val = n(rawVal, 0);
+          if (!val) continue;
+          if (seg === "25" || seg.toUpperCase() === "BULL") {
+            if (keyName === "double") (byNum as any).dbull = n((byNum as any).dbull, 0) + val;
+            else (byNum as any).bull = n((byNum as any).bull, 0) + val;
+            continue;
+          }
+          if (seg.toUpperCase() === "MISS" || seg === "0") {
+            (byNum as any).miss = n((byNum as any).miss, 0) + val;
+            continue;
+          }
+          const num = Number(seg);
+          if (!Number.isFinite(num) || num < 1 || num > 20) continue;
+          const row = byNum[String(num)] || {};
+          (row as any)[keyName] = n((row as any)[keyName], 0) + val;
+          byNum[String(num)] = row;
+        }
+      };
+      add(sMap, "inner");
+      add(dMap, "double");
+      add(tMap, "triple");
+      if (Object.keys(byNum).length) m.byNumber = byNum;
+    }
+
     // ===== 3) legacy (compat avec anciens formats / v1 / v2) =====
     m.t180 = m.t180 || n(pickFromAny([`h180.${pid}`, `t180.${pid}`], legacyRoots), 0);
     m.t140 = m.t140 || n(pickFromAny([`h140.${pid}`, `t140.${pid}`], legacyRoots), 0);
@@ -1790,6 +1838,8 @@ function buildPerPlayerMetrics(
       if (!m.triples) m.triples = n(dv.triples, 0);
       if (!m.bulls) m.bulls = n(dv.bulls, 0);
       if (!m.dbulls) m.dbulls = n(dv.dbulls, 0);
+      if (!m.coHits) m.coHits = n(dv.coHits, 0);
+      if (!m.coAtt) m.coAtt = n(dv.coAtt, 0);
       if (!m.byNumber && dv.byNumber) m.byNumber = dv.byNumber;
     }
 
@@ -2902,22 +2952,30 @@ function buildVisitHistory(
     });
   }
 
-  // 2) Fallback : on reconstruit depuis une liste linéaire de darts
+  // 2) Fallback : on reconstruit depuis une liste linéaire de darts.
+  // IMPORTANT : les replayDarts X01V3 récents portent playerId/pid/profileId.
+  // L'ancienne reconstruction par ordre de jeu uniquement cassait les stats détaillées
+  // depuis l'historique si une volée ne faisait pas exactement 3 darts ou si un checkout
+  // terminait avant la 3e fléchette.
   const rawDarts: any[] =
     rec?.resume?.darts ||
     rec?.resume?.throws ||
-    rec?.payload?.allDarts ||
     rec?.payload?.darts ||
+    rec?.payload?.allDarts ||
     rec?.payload?.replayDarts ||
+    rec?.summary?.dartsReplay ||
     rec?.darts ||
     [];
 
   if (!Array.isArray(rawDarts) || !rawDarts.length) return [];
 
   const order: string[] =
-    (Array.isArray(rec?.summary?.throwOrder) &&
-    rec.summary.throwOrder.length
+    (Array.isArray(rec?.summary?.throwOrder) && rec.summary.throwOrder.length
       ? rec.summary.throwOrder
+      : Array.isArray(rec?.payload?.summary?.throwOrder) && rec.payload.summary.throwOrder.length
+      ? rec.payload.summary.throwOrder
+      : Array.isArray(rec?.payload?.config?.players) && rec.payload.config.players.length
+      ? rec.payload.config.players.map((p: any) => String(p?.id || "")).filter(Boolean)
       : players.map((p) => p.id)) || [];
 
   if (!order.length) return [];
@@ -2932,12 +2990,100 @@ function buildVisitHistory(
     rec?.payload?.game?.startScore ??
     501;
 
+  const parseDart = (r: any) => {
+    const rawLabel = String(r?.label ?? r?.segmentLabel ?? r?.dart ?? r?.hit ?? "").trim().toUpperCase();
+    let seg = Number(r?.segment ?? r?.v ?? r?.value ?? r?.num ?? r?.number ?? 0) || 0;
+    let mult = Number(r?.multiplier ?? r?.mult ?? r?.m ?? r?.multi ?? 0) || 0;
+    if (!seg && rawLabel) {
+      if (rawLabel === "MISS" || rawLabel === "M") { seg = 0; mult = 0; }
+      else if (rawLabel === "BULL" || rawLabel === "OB") { seg = 25; mult = 1; }
+      else if (rawLabel === "DBULL" || rawLabel === "IB" || rawLabel === "D-BULL") { seg = 25; mult = 2; }
+      else {
+        const m = rawLabel.match(/^([SDT])?(\d{1,2})$/);
+        if (m) {
+          seg = Number(m[2]) || 0;
+          mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1;
+        }
+      }
+    }
+    if (!mult) mult = seg > 0 ? 1 : 0;
+    if (seg === 25 && mult > 2) mult = 2;
+    if (![0, 1, 2, 3].includes(mult)) mult = seg > 0 ? 1 : 0;
+    return { v: seg, mult: mult as 1 | 2 | 3 };
+  };
+
+  const dartPid = (r: any): string => String(r?.playerId ?? r?.pid ?? r?.p ?? r?.profileId ?? "").trim();
+  const hasTaggedPlayers = rawDarts.some((d) => dartPid(d));
+
   const scores: Record<string, number> = {};
-  order.forEach((pid) => {
-    scores[pid] = startScore;
-  });
+  order.forEach((pid) => { scores[pid] = Number(startScore) || 501; });
 
   const visits: VisitRow[] = [];
+
+  // 2a) Replay tagué : groupe par joueur + maximum 3 darts par volée.
+  if (hasTaggedPlayers) {
+    let current: any = null;
+    const flush = () => {
+      if (!current || !current.darts?.length) return;
+      const before = n(current.scoreBefore, scores[current.playerId] ?? startScore);
+      let after = before;
+      let bust = false;
+      let finish = false;
+      for (const d of current.darts) {
+        const value = d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult;
+        const tentative = after - value;
+        if (tentative < 0 || tentative === 1) {
+          bust = true;
+          after = before;
+          break;
+        }
+        after = tentative;
+        if (after === 0) { finish = true; break; }
+      }
+      const explicitAfter = current.scoreAfter;
+      if (explicitAfter != null && Number.isFinite(Number(explicitAfter))) after = Number(explicitAfter);
+      if (after === 0) finish = true;
+      visits.push({
+        idx: visits.length + 1,
+        legNo: Number(current.legNo ?? 1) || 1,
+        playerId: current.playerId,
+        darts: current.darts,
+        scoreBefore: before,
+        scoreAfter: after,
+        bust: !!(current.bust || bust),
+        finish: !!(current.finish || finish),
+      });
+      scores[current.playerId] = after;
+      current = null;
+    };
+
+    for (const raw of rawDarts) {
+      const pid = dartPid(raw) || order[0];
+      const d = parseDart(raw);
+      if (!current || current.playerId !== pid || current.darts.length >= 3) {
+        flush();
+        current = {
+          playerId: pid,
+          darts: [],
+          scoreBefore: raw?.scoreBefore ?? raw?.before ?? raw?.startScore ?? scores[pid] ?? startScore,
+          scoreAfter: raw?.scoreAfter ?? raw?.after ?? raw?.endScore,
+          bust: raw?.bust ?? raw?.isBust,
+          finish: raw?.finish ?? raw?.isFinish,
+          legNo: raw?.legNo ?? raw?.legIndex ?? 1,
+        };
+      }
+      current.darts.push(d);
+      if (raw?.scoreAfter != null || raw?.after != null || raw?.endScore != null) {
+        current.scoreAfter = raw?.scoreAfter ?? raw?.after ?? raw?.endScore;
+      }
+      if (raw?.bust || raw?.isBust) current.bust = true;
+      if (raw?.finish || raw?.isFinish) current.finish = true;
+    }
+    flush();
+    return visits;
+  }
+
+  // 2b) Ancien replay non tagué : fallback par ordre de jeu.
   let legNo = 1;
   let throwerIndex = 0;
   let i = 0;
@@ -2951,27 +3097,16 @@ function buildVisitHistory(
     let bust = false;
     let finish = false;
 
-    let consumed = 0;
+    for (let consumed = 0; consumed < 3 && i < rawDarts.length; consumed += 1, i += 1) {
+      const d = parseDart(rawDarts[i] || {});
+      darts.push(d);
 
-    for (; consumed < 3 && i < rawDarts.length; consumed += 1, i += 1) {
-      const r = rawDarts[i] || {};
-      const seg = Number(r.segment ?? r.v ?? r.value ?? r.num ?? 0) || 0;
-      const mult = (Number(r.multiplier ?? r.mult ?? r.m ?? r.multi ?? 1) || 1) as 1 | 2 | 3;
-
-      darts.push({ v: seg, mult });
-
-      const value = seg === 25 && mult === 2 ? 50 : seg * mult;
+      const value = d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult;
       const tentative = scoreAfter - value;
 
       if (tentative < 0 || tentative === 1) {
         bust = true;
         scoreAfter = scoreBefore;
-
-        // on consomme le reste de la volée pour éviter un doublon parasite
-        const remainingInVisit = 2 - consumed;
-        if (remainingInVisit > 0) {
-          i += remainingInVisit;
-        }
         break;
       }
 
@@ -2995,11 +3130,7 @@ function buildVisitHistory(
     });
 
     scores[pid] = scoreAfter;
-
-    if (finish) {
-      break;
-    }
-
+    if (finish) break;
     throwerIndex += 1;
   }
 
