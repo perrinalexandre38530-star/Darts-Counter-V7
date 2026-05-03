@@ -5523,32 +5523,88 @@ function mergeDetailedStats(primary: any, fallback: any) {
   return primary;
 }
 
-function computeReplayVisitScoresForPlayer(allDarts: any, playerId: string) {
+function computeReplayVisitScoresForPlayer(
+  allDarts: any,
+  playerId: string,
+  startScoreInput: number = 501,
+  playerOrder: string[] = []
+) {
   const arr = Array.isArray(allDarts) ? allDarts : [];
   const pidWanted = String(playerId || "");
+  const order = (Array.isArray(playerOrder) ? playerOrder : []).map(String).filter(Boolean);
+  const startScore = Number(startScoreInput || 501) || 501;
+  const scores: Record<string, number> = {};
+  for (const id of order) scores[id] = startScore;
+  if (pidWanted && scores[pidWanted] == null) scores[pidWanted] = startScore;
+
   const visits: number[] = [];
   let currentPid: string | null = null;
-  let currentScore = 0;
-  let currentCount = 0;
+  let currentDarts: any[] = [];
+  let fallbackVisitIndex = 0;
+  let fallbackDartInVisit = 0;
+
+  const dartPid = (raw: any): string => String((raw as any)?.playerId ?? (raw as any)?.pid ?? (raw as any)?.p ?? (raw as any)?.profileId ?? "").trim();
+  const hasTaggedPlayers = arr.some((d) => !!dartPid(d));
+
+  const scoreOf = (raw: any) => {
+    const parsed = parseReplayDartParts(raw);
+    return parsed.segment > 0
+      ? (parsed.segment === 25 && parsed.multiplier >= 2 ? 50 : parsed.segment * parsed.multiplier)
+      : 0;
+  };
 
   const flush = () => {
-    if (currentPid === pidWanted && currentCount > 0) visits.push(currentScore);
+    if (!currentPid || !currentDarts.length) {
+      currentPid = null;
+      currentDarts = [];
+      return;
+    }
+
+    const before = Number(scores[currentPid] ?? startScore) || startScore;
+    let after = before;
+    let rawVisitTotal = 0;
+    let bust = false;
+
+    for (const raw of currentDarts) {
+      const score = scoreOf(raw);
+      rawVisitTotal += score;
+      const tentative = after - score;
+      // X01 : un bust ne doit PAS alimenter les buckets power-scoring.
+      // C'était la source des 140+/180 incohérents quand un bot lançait trop haut.
+      if (tentative < 0 || tentative === 1) {
+        bust = true;
+        after = before;
+        break;
+      }
+      after = tentative;
+      if (after === 0) break;
+    }
+
+    const countedVisitScore = bust ? 0 : Math.max(0, before - after || rawVisitTotal);
+    scores[currentPid] = after;
+    if (currentPid === pidWanted) visits.push(countedVisitScore);
+
     currentPid = null;
-    currentScore = 0;
-    currentCount = 0;
+    currentDarts = [];
   };
 
   for (const raw of arr) {
-    const pid = String((raw as any)?.playerId ?? (raw as any)?.pid ?? (raw as any)?.p ?? (raw as any)?.profileId ?? "");
+    let pid = dartPid(raw);
+    if (!pid && !hasTaggedPlayers && order.length) {
+      pid = order[fallbackVisitIndex % order.length] || "";
+      fallbackDartInVisit += 1;
+      if (fallbackDartInVisit >= 3) {
+        fallbackDartInVisit = 0;
+        fallbackVisitIndex += 1;
+      }
+    }
     if (!pid) continue;
-    if (currentPid !== pid || currentCount >= 3) {
+
+    if (currentPid !== pid || currentDarts.length >= 3) {
       flush();
       currentPid = pid;
     }
-    const parsed = parseReplayDartParts(raw);
-    const score = parsed.segment > 0 ? (parsed.segment === 25 && parsed.multiplier >= 2 ? 50 : parsed.segment * parsed.multiplier) : 0;
-    currentScore += score;
-    currentCount += 1;
+    currentDarts.push(raw);
   }
   flush();
   return visits;
@@ -5793,8 +5849,15 @@ function saveX01V3MatchToHistory({
     legacyPoints[pid] = scored > 0 ? scored : 0;
 
     const scorePerVisitLive = Array.isArray(live?.scorePerVisit) ? live.scorePerVisit : [];
-    const scorePerVisitReplay = computeReplayVisitScoresForPlayer(replayDarts, pid);
-    const scorePerVisit = scorePerVisitLive.length ? scorePerVisitLive : scorePerVisitReplay;
+    const scorePerVisitReplay = computeReplayVisitScoresForPlayer(
+      replayDarts,
+      pid,
+      config.startScore ?? 501,
+      players.map((x: any) => String(x.id))
+    );
+    // Le replay simulé respecte les busts et les restes X01. On le préfère au live
+    // car live.scorePerVisit peut contenir une volée brute impossible (ex: 180 sur 121).
+    const scorePerVisit = scorePerVisitReplay.length ? scorePerVisitReplay : scorePerVisitLive;
     legacyH60[pid] = scorePerVisit.filter((v: any) => Number(v) >= 60).length;
     legacyH100[pid] = scorePerVisit.filter((v: any) => Number(v) >= 100).length;
     legacyH140[pid] = scorePerVisit.filter((v: any) => Number(v) >= 140).length;

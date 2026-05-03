@@ -160,6 +160,28 @@ export default function X01End({ go, params }: Props) {
             return;
           }
         }
+
+        // ✅ Rechargement direct / Firefox rouvert : quand X01End est restaurée
+        // sans params.rec et sans mémoire runtime, il faut relire l'IndexedDB.
+        // Sinon l'écran détaillé affiche un record vide / fallback à 0.
+        const list = typeof (History as any)?.list === "function"
+          ? await (History as any).list()
+          : [];
+        if (Array.isArray(list) && list.length) {
+          const hit = wantedId
+            ? list.find((r: any) => r?.id === wantedId || r?.resumeId === wantedId || r?.matchId === wantedId)
+            : list.find((r: any) => String(r?.kind || "").toLowerCase() === "x01" && String(r?.status || "").toLowerCase() === "finished");
+          if (hit) {
+            const detail = hit?.id && typeof (History as any)?.get === "function"
+              ? await (History as any).get(hit.id)
+              : hit;
+            if (mounted && detail) {
+              setRec(hydrateX01HistoryRecord(detail));
+              return;
+            }
+          }
+        }
+
         if (mounted) setErr("Impossible de charger l'enregistrement.");
       } catch (e) {
         console.warn("[X01End] load error:", e);
