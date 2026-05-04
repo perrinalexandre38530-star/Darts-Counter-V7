@@ -35,6 +35,7 @@ import { pushNasAccountSnapshot, pullNasAccountSnapshot, getNasSyncState, comput
 import { getApiUrl } from "../lib/apiClient";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
+import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -621,6 +622,8 @@ function DevModeBlock() {
 
   const [openTests, setOpenTests] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
+  const [simBusy, setSimBusy] = React.useState(false);
+  const [simLastResult, setSimLastResult] = React.useState<string | null>(null);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -672,6 +675,32 @@ function DevModeBlock() {
       notify(t("settings.dev.tests.seed", "Seed démo demandé (flag)."));
     } catch {
       notify(t("settings.dev.tests.error", "Erreur opération (storage)."));
+    }
+  }
+
+  async function simulateAllGames() {
+    if (simBusy) return;
+    const ok = window.confirm(
+      "Simulation de parties DEV\n\n" +
+        "Cette action ajoute des parties fictives terminées dans l’historique local pour tous les jeux.\n" +
+        "Elles sont marquées devSim/source=dev-match-simulator-v1.\n\n" +
+        "Continuer ?"
+    );
+    if (!ok) return;
+
+    setSimBusy(true);
+    setSimLastResult(null);
+    try {
+      const res = await simulateDevMatchesAllGames({ perGame: 3 });
+      const label = `${res.created} parties fictives ajoutées (${Object.keys(res.games).length} jeux).`;
+      setSimLastResult(label);
+      notify(label);
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : "Erreur simulation parties.";
+      setSimLastResult(msg);
+      notify(msg);
+    } finally {
+      setSimBusy(false);
     }
   }
 
@@ -784,8 +813,56 @@ function DevModeBlock() {
             {t("settings.dev.tests.title", "Tests & Simulations")}
           </div>
 
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div
+              style={{
+                borderRadius: 14,
+                border: `1px solid ${theme.primary}55`,
+                background: `linear-gradient(135deg, ${theme.primary}14, rgba(255,255,255,0.03))`,
+                padding: 12,
+              }}
+            >
+              <div style={{ fontSize: 12, color: theme.primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                Simulations rapides
+              </div>
+              <button
+                type="button"
+                onClick={simulateAllGames}
+                disabled={simBusy}
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.primary}`,
+                  padding: "11px 12px",
+                  background: simBusy ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.55)",
+                  color: simBusy ? theme.textSoft : theme.primary,
+                  fontWeight: 950,
+                  cursor: simBusy ? "wait" : "pointer",
+                  textAlign: "left",
+                  boxShadow: simBusy ? "none" : `0 0 16px ${theme.primary}22`,
+                }}
+              >
+                {simBusy ? "Simulation en cours…" : "Créer parties fictives — Tous jeux"}
+                <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
+                  Ajoute 3 parties terminées par jeu dans l’historique local : X01, Cricket, Killer, Shanghai, Golf, Pétanque, Babyfoot, Ping-pong, Molkky, Dicegame.
+                </div>
+              </button>
+              {simLastResult && <div style={{ marginTop: 8, fontSize: 11, color: theme.primary, fontWeight: 850 }}>{simLastResult}</div>}
+            </div>
+
+            <div
+              style={{
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(255,255,255,0.025)",
+                padding: 12,
+              }}
+            >
+              <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+                Réseau / flags
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <button
                 type="button"
                 onClick={setForceOffline}
@@ -817,7 +894,20 @@ function DevModeBlock() {
               >
                 {t("settings.dev.tests.onlineBtn", "Simuler ONLINE")}
               </button>
+              </div>
             </div>
+
+            <div
+              style={{
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(255,255,255,0.02)",
+                padding: 12,
+              }}
+            >
+              <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+                Maintenance locale
+              </div>
 
             <button
               type="button"
@@ -881,6 +971,7 @@ function DevModeBlock() {
                 )}
               </div>
             </button>
+            </div>
           </div>
 
           <div style={{ marginTop: 10, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
