@@ -4418,13 +4418,16 @@ function X01PlayV3Route({
         setLoading(true);
         setError(null);
 
-        const rec: any = await History.get(resumeId);
+        const loadedRec: any = await History.get(resumeId).catch(() => null);
+        const routeRec: any = routeParams?.rec && typeof routeParams.rec === "object" ? routeParams.rec : null;
+        const rec: any = loadedRec || routeRec;
         if (cancelled) return;
 
         // ✅ Si payload est encore une string (b64 JSON), on préfère la version décodée.
         let payload =
           (typeof rec?.payload === "string" ? rec?.payloadDecoded : rec?.payload) ??
           rec?.payloadDecoded ??
+          routeParams?.payload ??
           rec?.data ??
           null;
 
@@ -4504,6 +4507,7 @@ function X01PlayV3Route({
 
         setResume({
           resumeId,
+          config: cfg,
           darts,
         });
 

@@ -458,9 +458,7 @@ async function fullHardReset() {
       }
     } catch {}
 
-    try {
-      await supabase.auth.signOut({ scope: "local" } as any);
-    } catch {}
+    // Ancien sign-out Supabase retiré : le reset local ne dépend plus de cette configuration obsolète.
 
     try {
       const anyWindow = window as any;
@@ -480,6 +478,73 @@ async function fullHardReset() {
     // eslint-disable-next-line no-console
     console.error("FULL HARD RESET FAILED", err);
     alert("Erreur lors du reset complet. Tu peux aussi vider manuellement les données du site dans le navigateur.");
+  }
+}
+
+async function clearGameDataAndStatsOnly() {
+  try {
+    if (typeof window === "undefined") return;
+
+    const ok = window.confirm(
+      "⚠️ Reset données & statistiques\n\n" +
+        "Cette action supprime uniquement les historiques, matchs simulés et statistiques locales de cet appareil.\n" +
+        "Les profils, bots, dartsets, thème, langue et compte sont conservés autant que possible.\n\n" +
+        "Continuer ?"
+    );
+    if (!ok) return;
+
+    const patterns = [
+      "history",
+      "histories",
+      "stats",
+      "stat",
+      "match",
+      "matches",
+      "game-record",
+      "game_record",
+      "dev-match-simulator",
+    ];
+
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const k = window.localStorage.key(i);
+        if (k) keys.push(k);
+      }
+      for (const k of keys) {
+        const lower = k.toLowerCase();
+        if (patterns.some((needle) => lower.includes(needle))) {
+          window.localStorage.removeItem(k);
+        }
+      }
+    } catch {}
+
+    try {
+      const anyIndexedDB: any = (window as any).indexedDB;
+      const names = new Set<string>();
+      if (anyIndexedDB && typeof anyIndexedDB.databases === "function") {
+        const dbs = await anyIndexedDB.databases();
+        for (const db of dbs || []) {
+          const name = String(db?.name || "");
+          const lower = name.toLowerCase();
+          if (name && patterns.some((needle) => lower.includes(needle))) names.add(name);
+        }
+      }
+      ["dc_stats_v1", "dc_history_v1"].forEach((name) => names.add(name));
+      for (const name of names) {
+        await new Promise<void>((resolve) => {
+          const req = window.indexedDB.deleteDatabase(name);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+          req.onblocked = () => resolve();
+        });
+      }
+    } catch {}
+
+    window.location.reload();
+  } catch (err) {
+    console.error("CLEAR GAME DATA/STATS FAILED", err);
+    alert("Erreur pendant le reset données/statistiques. Tu peux vider manuellement l’historique depuis le navigateur.");
   }
 }
 
@@ -612,7 +677,7 @@ function SettingsMenuCard({
 
 // ---------------- Composant DEV MODE (Settings / menu) ----------------
 
-function DevModeBlock() {
+function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
   const { theme } = useTheme();
   const { t } = useLang();
   const dev = useDevMode() as any;
@@ -982,24 +1047,47 @@ function DevModeBlock() {
           </div>
         </div>
       )}
+
+      {openTests && (
+        <div style={{ marginTop: 12 }}>
+          <div
+            style={{
+              marginBottom: 8,
+              fontSize: 12,
+              fontWeight: 900,
+              color: theme.primary,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+            }}
+          >
+            Sécurité & outils compte DEV
+          </div>
+          <div style={{ fontSize: 11, color: theme.textSoft, lineHeight: 1.35, marginBottom: 8 }}>
+            Les actions techniques de session, sync express, refresh, purge locale et debug sont regroupées ici pour ne plus polluer la page Compte.
+          </div>
+          <AccountToolsPanel go={go} />
+        </div>
+      )}
     </section>
   );
 }
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" | "diagnostics";
+type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" | "developer";
 
 // ---------------- Account pages (NEW simple & clean) ----------------
 
-type AccountPage = "account_menu" | "account_profile" | "account_notifications" | "account_security" | "account_danger";
+type AccountPage = "account_menu" | "account_notifications" | "account_danger";
 
 function AccountPages({
   go,
   onBackToSettingsMenu,
+  onFullReset,
 }: {
   go?: (tab: any, params?: any) => void;
   onBackToSettingsMenu: () => void;
+  onFullReset?: () => void | Promise<void>;
 }) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -1123,186 +1211,133 @@ function AccountPages({
       ? t("settings.account.connectedShort", "Connecté")
       : t("settings.account.offlineShort", "Hors ligne");
 
+  function openAccountLogin() {
+    if (typeof go === "function") {
+      go("account_start" as any);
+      return;
+    }
+    if (typeof window !== "undefined") window.location.hash = "#/auth/login";
+  }
+
+  function openMyProfile() {
+    if (typeof go === "function") {
+      go("profiles" as any, { view: "me", autoCreate: true });
+      return;
+    }
+    if (typeof window !== "undefined") window.location.hash = "#/profiles?view=me";
+  }
+
+  const softCard: React.CSSProperties = {
+    borderRadius: 16,
+    border: `1px solid ${theme.borderSoft}`,
+    background: "rgba(255,255,255,0.035)",
+    padding: 12,
+  };
+
   return (
     <div>
-      {/* Bandeau "résumé" toujours visible */}
-      <section style={sectionBox}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 900,
-                color: theme.primary,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-              }}
-            >
-              {t("settings.account.titleShort", "Compte")}
-            </div>
-            <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
-              {t("settings.account.subtitleV8", "V8 : l’app est toujours connectée (compte anonyme automatique).")}
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 12, color: theme.textSoft }}>
-              <span style={{ fontWeight: 800, color: "#fff" }}>{accountStatusHint}</span>{" "}
-              <span style={{ opacity: 0.9 }}>
-                ({emailLabel} {userIdLabel})
-              </span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onBackToSettingsMenu}
-            style={{
-              borderRadius: 999,
-              border: `1px solid ${theme.borderSoft}`,
-              padding: "8px 10px",
-              background: "rgba(255,255,255,0.04)",
-              color: "#fff",
-              fontWeight: 900,
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-            title="Retour au menu Réglages"
-          >
-            ✕
-          </button>
-        </div>
-      </section>
-
       {/* MENU COMPTE */}
       {page === "account_menu" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <SettingsMenuCard
-            title={t("settings.account.menu.profile", "Profil")}
-            subtitle={t("settings.account.menu.profile.sub", "Pseudo, pays, informations visibles en ligne.")}
-            theme={theme}
-            onClick={() => setPage("account_profile")}
-          />
+          <section style={sectionBox}>
+            {miniBack}
+            <h2 style={{ margin: 0, marginBottom: 12, fontSize: 18, color: theme.primary }}>Compte</h2>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ ...softCard, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                    Statut
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 17, color: "#fff", fontWeight: 950 }}>
+                    {accountStatusHint}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
+                    {status === "signed_in"
+                      ? `${emailLabel} ${userIdLabel}`
+                      : "Compte non connecté ou session locale."}
+                  </div>
+                </div>
+                {status === "signed_in" ? (
+                  <button
+                    type="button"
+                    onClick={logout}
+                    style={{
+                      borderRadius: 999,
+                      border: `1px solid ${theme.borderSoft}`,
+                      padding: "10px 12px",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "#fff",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Se déconnecter
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openAccountLogin}
+                    style={{
+                      borderRadius: 999,
+                      border: `1px solid ${theme.primary}77`,
+                      padding: "10px 14px",
+                      background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                      color: "#000",
+                      fontWeight: 950,
+                      cursor: "pointer",
+                      boxShadow: `0 0 16px ${theme.primary}33`,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Se connecter
+                  </button>
+                )}
+              </div>
+
+              <div style={softCard}>
+                <h3 style={{ margin: 0, marginBottom: 6, fontSize: 16, color: theme.primary }}>Profil joueur</h3>
+                <div style={{ fontSize: 12, color: theme.textSoft, lineHeight: 1.4, marginBottom: 10 }}>
+                  Le surnom, l’avatar et les informations joueur se modifient depuis la carte Mon profil dans l’onglet Profils.
+                </div>
+                <button
+                  type="button"
+                  onClick={openMyProfile}
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: `1px solid ${theme.primary}77`,
+                    padding: "11px 12px",
+                    background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                    color: "#000",
+                    fontWeight: 950,
+                    cursor: "pointer",
+                    boxShadow: `0 0 16px ${theme.primary}22`,
+                  }}
+                >
+                  Ouvrir le profil
+                </button>
+              </div>
+            </div>
+          </section>
+
           <SettingsMenuCard
             title={t("settings.account.menu.notifications", "Notifications")}
-            subtitle={t("settings.account.menu.notifications.sub", "Emails & notifications dans l’app.")}
+            subtitle="Options locales uniquement. À garder simple tant que les notifications réelles ne sont pas branchées."
             theme={theme}
             onClick={() => setPage("account_notifications")}
           />
           <SettingsMenuCard
-            title={t("settings.account.menu.security", "Sécurité")}
-            subtitle={t("settings.account.menu.security.sub", "Etat de session, actions debug, etc.")}
-            theme={theme}
-            onClick={() => setPage("account_security")}
-          />
-          <SettingsMenuCard
-            title={t("settings.account.menu.danger", "Zone dangereuse")}
-            subtitle={t("settings.account.menu.danger.sub", "Suppression définitive du compte cloud.")}
+            title={t("settings.account.menu.danger", "Reset")}
+            subtitle="Suppression du compte ou reset des données/statistiques locales."
             theme={theme}
             onClick={() => setPage("account_danger")}
             rightHint="!"
           />
         </div>
-      )}
-
-      {/* PROFIL */}
-      {page === "account_profile" && (
-        <section style={sectionBox}>
-          {miniBack}
-
-          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
-            {t("settings.account.profile.title", "Profil")}
-          </h2>
-
-          {!isSignedIn ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ color: theme.textSoft, fontSize: 12 }}>
-                {t(
-                  "settings.account.profile.signedOut",
-                  "Tu n'es pas connecté. Connecte-toi pour synchroniser ton profil (compte unique)."
-                )}
-              </div>
-              <button className="btn" style={{ width: "100%" }} onClick={() => go && go("auth_start" as any)}>
-                {t("settings.account.profile.cta", "Connexion")}
-              </button>
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "grid", gap: 8, marginTop: 6, marginBottom: 10 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                  <span style={{ color: theme.textSoft }}>{t("settings.account.email", "Email (optionnel)")}</span>
-                  <input className="input" value={emailLabel} disabled style={{ opacity: 0.7 }} />
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                  <span style={{ color: theme.textSoft }}>
-                    {t("settings.account.displayName", "Pseudo en ligne (display name)")}
-                  </span>
-                  <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                  <span style={{ color: theme.textSoft }}>{t("settings.account.country", "Pays (optionnel)")}</span>
-                  <input className="input" value={country} onChange={(e) => setCountry(e.target.value)} />
-                </label>
-              </div>
-
-              {message && (
-                <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 6 }}>
-                  {message}
-                </div>
-              )}
-              {error && (
-                <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 6 }}>
-                  {error}
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={handleSaveProfile}
-                  disabled={savingProfile || loading || deleting}
-                  style={{
-                    flex: "1 1 220px",
-                    minHeight: 44,
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    border: "none",
-                    background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                    color: "#000",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    opacity: savingProfile || loading || deleting ? 0.65 : 1,
-                    boxShadow: `0 0 18px ${theme.primary}44`,
-                  }}
-                >
-                  {savingProfile
-                    ? t("settings.account.save.loading", "Enregistrement…")
-                    : t("settings.account.save.btn", "Enregistrer")}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => logout?.()}
-                  disabled={loading || deleting || savingProfile}
-                  style={{
-                    flex: "1 1 220px",
-                    minHeight: 44,
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(255,255,255,0.05)",
-                    color: "#fff",
-                    fontWeight: 900,
-                    cursor: loading || deleting || savingProfile ? "default" : "pointer",
-                    opacity: loading || deleting || savingProfile ? 0.65 : 1,
-                  }}
-                >
-                  {t("settings.account.btn.logout", "Se déconnecter")}
-                </button>
-              </div>
-            </>
-          )}
-        </section>
       )}
 
       {/* NOTIFICATIONS */}
@@ -1315,7 +1350,7 @@ function AccountPages({
           </h2>
 
           <p className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
-            {t("settings.account.notifications.subtitle", "Choisis les mails et notifications que tu souhaites recevoir.")}
+            Ces réglages sont conservés localement. Ils ne déclenchent pas encore de vrais emails/push tant qu’aucun service de notifications n’est branché côté app.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
@@ -1350,156 +1385,6 @@ function AccountPages({
         </section>
       )}
 
-      {/* SÉCURITÉ / ACTIONS */}
-      {page === "account_security" && (
-        <section style={sectionBox}>
-          {miniBack}
-
-          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
-            {t("settings.account.security.title", "Sécurité")}
-          </h2>
-
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,0.3)",
-              marginBottom: 12,
-              fontSize: 13,
-            }}
-          >
-            <div style={{ marginBottom: 6, fontWeight: 900 }}>{t("settings.account.status", "Statut du compte")}</div>
-
-            {status === "signed_in" ? (
-              <>
-                <div style={{ color: theme.textSoft }}>
-                  {t("settings.account.connectedAsV8", "Session active")}{" "}
-                  <span style={{ opacity: 0.9 }}>
-                    ({emailLabel} {userIdLabel})
-                  </span>
-                </div>
-                <div className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginTop: 6 }}>
-                  {t(
-                    "settings.account.connectedHintV8",
-                    "Cette session est créée automatiquement. La sync cloud fonctionne via user_store."
-                  )}
-                </div>
-              </>
-            ) : (
-              <div style={{ color: theme.textSoft }}>
-                {t("settings.account.notConnectedV8", "Session indisponible (rare). Rafraîchis la page.")}
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="btn sm"
-              onClick={() => logout?.()}
-              disabled={loading}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${theme.borderSoft}`,
-                padding: "10px 12px",
-                background: "rgba(255,255,255,0.05)",
-                color: "#fff",
-                fontWeight: 900,
-                cursor: "pointer",
-                opacity: loading ? 0.6 : 1,
-                flex: "1 1 180px",
-              }}
-            >
-              {t("settings.account.btn.logout", "Se déconnecter")}
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                if (merging) return;
-                setMergeMsg(null);
-                setError(null);
-                setMessage(null);
-                setMerging(true);
-                try {
-                  await pushNasAccountSnapshot();
-                  setMergeMsg(t("settings.account.merge.ok", "Synchronisation NAS terminée"));
-                } catch (e: any) {
-                  setMergeMsg(null);
-                  setError(e?.message ?? String(e));
-                  safeAlert(`Synchronisation NAS échouée : ${e?.message ?? e}`);
-                } finally {
-                  setMerging(false);
-                }
-              }}
-              disabled={loading || !isSignedIn || merging}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${theme.primary}66`,
-                padding: "10px 12px",
-                background: "rgba(0,0,0,0.35)",
-                color: theme.primary,
-                fontWeight: 900,
-                cursor: !isSignedIn || loading || merging ? "not-allowed" : "pointer",
-                boxShadow: `0 0 14px ${theme.primary}22`,
-                flex: "1 1 220px",
-                opacity: !isSignedIn || loading || merging ? 0.55 : 1,
-              }}
-              title={t(
-                "settings.account.merge.tip",
-                "Fusionne tes données locales avec ton compte cloud (anti-perte). Recommandé après première connexion sur un appareil."
-              )}
-            >
-              {merging ? t("settings.account.merge.busy", "Fusion…") : t("settings.account.merge", "Fusionner local + cloud")}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => go?.("gameSelect")}
-              disabled={!go}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${theme.primary}66`,
-                padding: "10px 12px",
-                background: "rgba(0,0,0,0.45)",
-                color: theme.primary,
-                fontWeight: 900,
-                cursor: go ? "pointer" : "not-allowed",
-                boxShadow: `0 0 14px ${theme.primary}22`,
-                flex: "1 1 180px",
-              }}
-              title="Aller au hub de sélection"
-            >
-              {t("settings.account.btn.changeGame", "Changer de jeu")}
-            </button>
-          </div>
-
-          {(mergeMsg || error) && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${error ? "rgba(255,0,0,0.35)" : theme.borderSoft}`,
-                background: error ? "rgba(255,0,0,0.08)" : "rgba(255,255,255,0.05)",
-                color: error ? "rgba(255,140,140,0.95)" : theme.text,
-                fontSize: 12,
-                fontWeight: 800,
-                lineHeight: 1.35,
-              }}
-            >
-              {error ? `Erreur : ${error}` : mergeMsg}
-            </div>
-          )}
-
-          {/* ✅ OUTILS COMPTE — SYNC EXPRESS */}
-          <div style={{ marginTop: 14 }}>
-            <AccountToolsPanel go={go} />
-          </div>
-        </section>
-      )}
-
       {/* DANGER */}
       {page === "account_danger" && (
         <section style={sectionBox}>
@@ -1509,57 +1394,109 @@ function AccountPages({
             {t("settings.account.danger", "Zone dangereuse")}
           </h2>
 
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 12,
-              border: "1px solid rgba(255,0,0,0.35)",
-              background: "rgba(255,0,0,0.06)",
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 8, color: "#ff8a8a" }}>
-              {t("settings.account.delete.title", "Supprimer mon compte définitivement")}
+          <div style={{ display: "grid", gap: 10 }}>
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(255,255,255,0.035)",
+              }}
+            >
+              <div style={{ fontWeight: 900, marginBottom: 6, color: theme.primary }}>
+                Reset données & statistiques
+              </div>
+              <p style={{ margin: 0, marginBottom: 10, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
+                Supprime les historiques, matchs simulés et statistiques locales de cet appareil. Les profils, bots, dartsets, thème et compte sont conservés autant que possible.
+              </p>
+              <button
+                type="button"
+                onClick={clearGameDataAndStatsOnly}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.primary}66`,
+                  background: "rgba(0,0,0,0.35)",
+                  color: theme.primary,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Reset données & stats
+              </button>
             </div>
 
-            <p
+            <div
               style={{
-                margin: 0,
-                marginBottom: 10,
-                fontSize: 11,
-                color: "rgba(255,255,255,0.78)",
-                lineHeight: 1.35,
-              }}
-            >
-              {t(
-                "settings.account.deleteHintV8",
-                "Cette action supprime le compte cloud (profiles + user_store + auth). L’app recrée automatiquement un nouveau compte anonyme (V8)."
-              )}
-            </p>
-
-            {error && (
-              <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 8 }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              disabled={loading}
-              onClick={handleDeleteAccountV8}
-              style={{
-                width: "100%",
-                padding: "14px 16px",
+                padding: 14,
                 borderRadius: 12,
-                background: "linear-gradient(180deg, #ff5c5c, #c92a2a)",
-                color: "#fff",
-                fontWeight: 900,
-                border: "none",
-                cursor: "pointer",
-                opacity: loading ? 0.6 : 1,
-                boxShadow: "0 0 18px rgba(255,80,80,0.45)",
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(255,255,255,0.035)",
               }}
             >
-              🗑️ {deleting ? "Suppression…" : "Supprimer mon compte"}
-            </button>
+              <div style={{ fontWeight: 900, marginBottom: 6, color: theme.primary }}>
+                Réinitialiser l’application
+              </div>
+              <p style={{ margin: 0, marginBottom: 10, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
+                Hard reset local complet de cet appareil : profils locaux, bots, dartsets, historique, stats et réglages. Le compte NAS n’est pas supprimé.
+              </p>
+              <button
+                type="button"
+                onClick={() => onFullReset?.()}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,120,120,0.55)",
+                  background: "rgba(255,0,0,0.06)",
+                  color: "#ffb3b3",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Réinitialiser application
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 12,
+                border: "1px solid rgba(255,0,0,0.35)",
+                background: "rgba(255,0,0,0.06)",
+              }}
+            >
+              <div style={{ fontWeight: 900, marginBottom: 6, color: "#ff8a8a" }}>
+                {t("settings.account.delete.title", "Supprimer mon compte définitivement")}
+              </div>
+              <p style={{ margin: 0, marginBottom: 10, fontSize: 11, color: "rgba(255,255,255,0.78)", lineHeight: 1.35 }}>
+                Supprime le compte cloud et ses données associées. Action définitive.
+              </p>
+              {error && (
+                <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 8 }}>
+                  {error}
+                </div>
+              )}
+              <button
+                disabled={loading}
+                onClick={handleDeleteAccountV8}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  background: "linear-gradient(180deg, #ff5c5c, #c92a2a)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  border: "none",
+                  cursor: "pointer",
+                  opacity: loading ? 0.6 : 1,
+                  boxShadow: "0 0 14px rgba(255,80,80,0.35)",
+                }}
+              >
+                🗑️ {deleting ? "Suppression…" : "Supprimer mon compte"}
+              </button>
+            </div>
           </div>
         </section>
       )}
@@ -1928,13 +1865,13 @@ export default function Settings({ go }: Props) {
             letterSpacing: 1,
           }}
         >
-          {t("settings.nas.title", "Synchronisation NAS manuelle")}
+          {t("settings.nas.title", "Backup NAS")}
         </h2>
 
         <p style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.45 }}>
           {t(
             "settings.nas.subtitle",
-            "Toutes les modifications restent locales pendant l’usage. Tu déclenches ici la synchro globale du compte vers le NAS, ou le rechargement depuis le NAS."
+            "Créer une sauvegarde NAS du compte ou charger la dernière sauvegarde NAS. Les outils techniques avancés sont dans le mode Développeur."
           )}
         </p>
 
@@ -1982,7 +1919,7 @@ export default function Settings({ go }: Props) {
               opacity: nasBusy ? 0.7 : 1,
             }}
           >
-            {nasBusy === "backup" ? "Synchronisation..." : "Synchroniser le compte sur NAS"}
+            {nasBusy === "backup" ? "Création..." : "Créer sauvegarde NAS"}
           </button>
 
           <button
@@ -1997,7 +1934,7 @@ export default function Settings({ go }: Props) {
               opacity: nasBusy ? 0.7 : 1,
             }}
           >
-            {nasBusy === "restore" ? "Rechargement..." : "Recharger depuis le NAS"}
+            {nasBusy === "restore" ? "Chargement..." : "Charger sauvegarde NAS"}
           </button>
         </div>
 
@@ -2277,6 +2214,85 @@ export default function Settings({ go }: Props) {
     );
   }
 
+
+  function DeveloperSection() {
+    type DevSub = "menu" | "diagnostics" | "tests" | "nas" | "logs" | "security";
+    const [devSub, setDevSub] = React.useState<DevSub>("menu");
+
+    const box: React.CSSProperties = {
+      background: CARD_BG,
+      borderRadius: 18,
+      border: `1px solid ${theme.borderSoft}`,
+      padding: 16,
+      marginBottom: 16,
+    };
+
+    if (devSub !== "menu") {
+      const titles: Record<DevSub, string> = {
+        menu: "Développeur",
+        diagnostics: "Diagnostic",
+        tests: "Tests & simulations",
+        nas: "Push / Pull NAS",
+        logs: "Logs techniques",
+        security: "Sécurité technique",
+      };
+
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={() => setDevSub("menu")}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: theme.textSoft,
+              fontSize: 14,
+              cursor: "pointer",
+              padding: 0,
+              marginBottom: 10,
+            }}
+          >
+            ← Retour développeur
+          </button>
+
+          <section style={box}>
+            <div style={{ fontSize: 16, fontWeight: 950, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.8 }}>
+              {titles[devSub]}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 12, color: theme.textSoft, lineHeight: 1.35 }}>
+              Zone réservée aux tests, diagnostics et actions techniques NAS. Les anciennes références Supabase/configurations obsolètes ne sont pas affichées ici.
+            </div>
+          </section>
+
+          {devSub === "diagnostics" && <DiagnosticsSection />}
+          {devSub === "tests" && <DevModeBlock go={go} />}
+          {devSub === "nas" && <AccountToolsPanel go={go} />}
+          {devSub === "logs" && <AccountToolsPanel go={go} />}
+          {devSub === "security" && <AccountToolsPanel go={go} />}
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <section style={box}>
+          <div style={{ fontSize: 16, fontWeight: 950, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.8 }}>
+            Mode développeur
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft, lineHeight: 1.4 }}>
+            Tous les outils techniques sont regroupés ici : diagnostic, simulations, push/pull NAS, logs et sécurité. La page Réglages reste propre pour l’usage normal.
+          </div>
+        </section>
+
+        <SettingsMenuCard title="Diagnostic" subtitle="Mémoire, store, routes, warnings, erreurs runtime et crashs capturés." theme={theme} onClick={() => setDevSub("diagnostics")} />
+        <SettingsMenuCard title="Tests & simulations" subtitle="Déverrouillage DEV, simulation offline/online et création de parties fictives tous jeux." theme={theme} onClick={() => setDevSub("tests")} />
+        <SettingsMenuCard title="Push / Pull NAS" subtitle="Actions techniques de synchronisation, comparaison local/cloud et refresh session." theme={theme} onClick={() => setDevSub("nas")} />
+        <SettingsMenuCard title="Logs" subtitle="Réponses API, état session, snapshots locaux/cloud et exports de debug." theme={theme} onClick={() => setDevSub("logs")} />
+        <SettingsMenuCard title="Sécurité technique" subtitle="Session, logout, purge locale, merge et outils compte réservés au debug." theme={theme} onClick={() => setDevSub("security")} />
+      </div>
+    );
+  }
+
   function SportSection() {
     type GameId =
       | "darts"
@@ -2501,9 +2517,9 @@ export default function Settings({ go }: Props) {
       : tab === "lang"
       ? t("settings.menu.lang", "Langues")
       : tab === "general"
-      ? t("settings.menu.general", "Réglages")
-      : tab === "diagnostics"
-      ? t("settings.menu.diagnostics", "Diagnostic")
+      ? t("settings.menu.backupNas", "Backup NAS")
+      : tab === "developer"
+      ? t("settings.menu.developer", "Développeur")
       : t("settings.menu.sport", "Choix de sport");
 
   const headerSubtitle =
@@ -2517,9 +2533,9 @@ export default function Settings({ go }: Props) {
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
-      : tab === "diagnostics"
-      ? t("settings.diagnostics.subtitle", "Mémoire, taille du store et derniers incidents capturés.")
-      : t("settings.reset.subtitle", "Efface les données locales de l’application sur cet appareil.");
+      : tab === "developer"
+      ? t("settings.dev.pageSubtitle", "Diagnostic, tests, logs, sécurité technique et outils NAS avancés.")
+      : t("settings.nas.pageSubtitle", "Créer ou charger manuellement la sauvegarde NAS du compte.");
 
   return (
     <div
@@ -2572,7 +2588,7 @@ export default function Settings({ go }: Props) {
             </div>
           </div>
 
-          {tab === "menu" && (
+          {false && tab === "menu" && (
             <button
               onClick={() => setTab("general")}
               style={{
@@ -2602,7 +2618,7 @@ export default function Settings({ go }: Props) {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
               title={t("settings.menu.account", "Compte")}
-              subtitle={t("settings.menu.account.sub", "Profil, notifications, sécurité et suppression du compte.")}
+              subtitle="Compte/profil regroupés, notifications locales et zone dangereuse simplifiée."
               theme={theme}
               onClick={() => setTab("account")}
             />
@@ -2626,42 +2642,30 @@ export default function Settings({ go }: Props) {
             />
 
             <SettingsMenuCard
-              title={t("settings.menu.diagnostics", "Diagnostic")}
-              subtitle={t("settings.menu.diagnostics.sub", "Mémoire, store, route active, derniers warnings et erreurs capturées.")}
-              theme={theme}
-              onClick={() => setTab("diagnostics")}
-            />
-
-            <SettingsMenuCard
-              title={t("settings.menu.cast", "Caster sur un écran")}
-              subtitle={t("settings.menu.cast.sub", "Configurer le vrai Google Cast avec receiver App ID et diffusion directe vers Chromecast / TV compatible.")}
-              theme={theme}
-              onClick={() => go("cast_host" as any)}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.general", "Réinitialiser")}
-              subtitle={t("settings.menu.general.sub", "Effacer les données locales (hard reset + reload).")}
+              title={t("settings.menu.backupNas", "Backup NAS")}
+              subtitle="Créer sauvegarde NAS ou charger sauvegarde NAS. Aucun reset ici."
               theme={theme}
               onClick={() => setTab("general")}
             />
 
-            {/* ✅ DEV MODE BLOCK (directement dans Settings / menu) */}
-            <DevModeBlock />
+            <SettingsMenuCard
+              title={t("settings.menu.developer", "Développeur")}
+              subtitle="Diagnostic, tests, simulations, push NAS, logs et sécurité technique."
+              theme={theme}
+              onClick={() => setTab("developer")}
+            />
 
             <div style={{ height: 10 }} />
           </div>
         )}
 
-        {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} />}
+        {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} onFullReset={handleFullReset} />}
 
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}
         {tab === "sport" && <SportSection />}
-        {tab === "diagnostics" && <DiagnosticsSection />}
-        {tab === "general" && (<>
-          <NasBackupSection />
-          <GeneralSection />
-        </>)}
+        {tab === "developer" && <DeveloperSection />}
+        {tab === "general" && <NasBackupSection />}
       </div>
     </div>
   );

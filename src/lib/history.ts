@@ -2469,19 +2469,73 @@ export async function clearConflicts(baseId?: string): Promise<void> {
 export async function remove(id: string): Promise<void> {
   await migrateFromLocalStorageOnce();
 
+  const wanted = String(id || "").trim();
+  if (!wanted) return;
+
+  // FIX HISTORIQUE : certains enregistrements ont id != matchId/resumeId.
+  // Une suppression par headers.delete(id) seule laisse donc la carte revenir, ou déclenche
+  // des incohérences d'affichage après reload. On supprime toutes les variantes liées.
+  const idsToDelete = new Set<string>([wanted]);
+
   try {
     await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", (stores) => {
       const headers = stores[STORE_HEADERS];
       const details = stores[STORE_DETAILS];
+
+      const deleteOne = (store: IDBObjectStore, key: string) =>
+        new Promise<void>((resolve) => {
+          try {
+            const req = store.delete(key);
+            req.onsuccess = () => resolve();
+            req.onerror = () => resolve();
+          } catch {
+            resolve();
+          }
+        });
+
       return new Promise<void>((resolve, reject) => {
-        const req = headers.delete(id);
-        req.onsuccess = () => {
-          try { details.delete(id); } catch {}
-          resolve();
+        const scan = headers.openCursor();
+        scan.onsuccess = async () => {
+          try {
+            const cur = scan.result as IDBCursorWithValue | null;
+            if (cur) {
+              const v: any = cur.value || {};
+              const candidates = [
+                v?.id,
+                v?.matchId,
+                v?.resumeId,
+                v?.payload?.matchId,
+                v?.payload?.resumeId,
+                v?.summary?.matchId,
+                v?.summary?.resumeId,
+                getCanonicalMatchId(v),
+              ].filter(Boolean).map(String);
+              if (candidates.includes(wanted)) {
+                candidates.forEach((x) => idsToDelete.add(x));
+                idsToDelete.add(String(cur.key));
+              }
+              cur.continue();
+              return;
+            }
+
+            for (const key of Array.from(idsToDelete)) {
+              // eslint-disable-next-line no-await-in-loop
+              await deleteOne(headers, key);
+              // eslint-disable-next-line no-await-in-loop
+              await deleteOne(details, key);
+            }
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
         };
-        req.onerror = () => reject(req.error);
+        scan.onerror = () => reject(scan.error);
       });
     });
+
+    try {
+      idsToDelete.forEach((x) => _resumeIndexRemove(String(x)));
+    } catch {}
 
     try {
       if (typeof window !== "undefined") {
@@ -2491,11 +2545,13 @@ export async function remove(id: string): Promise<void> {
 
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
-    try { _resumeIndexRemove(String(id)); } catch {}
   } catch {
     try {
       const rows = readLegacyRowsSafe() as any[];
-      const out = rows.filter((r) => r.id !== id && r.matchId !== id);
+      const out = rows.filter((r) => {
+        const candidates = [r?.id, r?.matchId, r?.resumeId, getCanonicalMatchId(r)].filter(Boolean).map(String);
+        return !candidates.includes(wanted);
+      });
       localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(out));
 
       try {
@@ -2506,7 +2562,7 @@ export async function remove(id: string): Promise<void> {
 
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
       try { emitCloudChange("history:remove:ls_fallback"); } catch {}
-      try { _resumeIndexRemove(String(id)); } catch {}
+      try { _resumeIndexRemove(wanted); } catch {}
     } catch {}
   }
 }

@@ -15,10 +15,11 @@
 // ✅ FIX BUILD: aucune dépendance npm "lz-string" (fallback via window.LZString si présent)
 // ============================================
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { useSport, type SportId } from "../contexts/SportContext";
 import { History, type SavedMatch } from "../lib/history";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
@@ -79,6 +80,31 @@ const Icon = {
   Upload: (p: any) => (
     <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
       <path fill="currentColor" d="M5 20h14v-2H5v2Zm7-18 5 5h-3v6h-4V7H7l5-5Z" />
+    </svg>
+  ),
+  Refresh: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.76-4.24L13 11h8V3l-3.3 3.3Z" />
+    </svg>
+  ),
+  Filter: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" />
+    </svg>
+  ),
+  Broom: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M15.4 2.6a2 2 0 0 1 2.8 0l.2.2a2 2 0 0 1 0 2.8l-6.5 6.5-3-3 6.5-6.5ZM7.9 10.1l4 4-1.3 1.3c-.5.5-1.2.8-1.9.8H7.6L6.4 20H4.1l1.6-5.2c.2-.8.7-1.5 1.3-2.1l.9-.9ZM12.8 15.2l1.8-1.8 1.4 1.4-1.8 1.8 2.7 2.7-1.4 1.4-2.7-2.7-2.6 2.6-1.4-1.4 2.6-2.6-1.4-1.4 1.4-1.4 1.4 1.4Z" />
+    </svg>
+  ),
+  Gamepad: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M7 8h10a5 5 0 0 1 4.8 3.6l.8 2.8a3.3 3.3 0 0 1-5.4 3.3L15 15H9l-2.2 2.7a3.3 3.3 0 0 1-5.4-3.3l.8-2.8A5 5 0 0 1 7 8Zm-1 3v2H4v2h2v2h2v-2h2v-2H8v-2H6Zm10.5 1.4a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Zm3 3a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Z" />
+    </svg>
+  ),
+  User: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z" />
     </svg>
   ),
   Inbox: (p: any) => (
@@ -203,6 +229,186 @@ function isBatardEntry(e: SavedEntry) {
     s2.toLowerCase().includes("batard") ||
     s3.toLowerCase().includes("batard")
   );
+}
+
+
+type GameFilterKey = "all" | string;
+type PlayerFilterKey = "all" | string;
+
+const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: string[] }[]> = {
+  darts: [
+    { key: "x01", label: "X01", aliases: ["x01", "leg", "301", "501", "701", "901"] },
+    { key: "cricket", label: "Cricket", aliases: ["cricket"] },
+    { key: "killer", label: "Killer", aliases: ["killer"] },
+    { key: "shanghai", label: "Shanghai", aliases: ["shanghai"] },
+    { key: "golf", label: "Golf", aliases: ["golf"] },
+    { key: "batard", label: "Bâtard", aliases: ["batard", "bastard"] },
+    { key: "clock", label: "Horloge", aliases: ["clock", "tourdelhorloge", "tour_de_lhorloge", "tdh"] },
+    { key: "training", label: "Training", aliases: ["training", "entrainement", "practice"] },
+    { key: "countup", label: "Count Up", aliases: ["countup", "count_up"] },
+  ],
+  petanque: [
+    { key: "petanque", label: "Pétanque", aliases: ["petanque", "petanque_classic", "classic"] },
+    { key: "simple", label: "Simple", aliases: ["simple", "solo"] },
+    { key: "doublette", label: "Doublette", aliases: ["doublette", "2v2"] },
+    { key: "triplette", label: "Triplette", aliases: ["triplette", "3v3"] },
+  ],
+  pingpong: [
+    { key: "pingpong", label: "Ping-pong", aliases: ["pingpong", "ping_pong", "tabletennis", "table_tennis"] },
+    { key: "match", label: "Match", aliases: ["match", "classic"] },
+    { key: "sets", label: "Sets", aliases: ["sets", "set"] },
+  ],
+  babyfoot: [
+    { key: "babyfoot", label: "Babyfoot", aliases: ["babyfoot", "foosball"] },
+    { key: "match", label: "Match", aliases: ["match", "classic"] },
+    { key: "sets", label: "Sets", aliases: ["sets", "set"] },
+  ],
+  molkky: [
+    { key: "molkky", label: "Mölkky", aliases: ["molkky", "molky", "mölkky"] },
+  ],
+  dicegame: [
+    { key: "dicegame", label: "Dice Game", aliases: ["dicegame", "dice", "dice_game"] },
+  ],
+};
+
+function normalizeToken(v: any): string {
+  return String(v || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function collectEntryModeTokens(e: SavedEntry): string[] {
+  const anyE: any = e as any;
+  const values = [
+    anyE.kind,
+    anyE.mode,
+    anyE.variant,
+    anyE.sport,
+    anyE.game?.mode,
+    anyE.game?.kind,
+    anyE.game?.variant,
+    anyE.summary?.mode,
+    anyE.summary?.kind,
+    anyE.summary?.game?.mode,
+    anyE.summary?.game?.kind,
+    anyE.summary?.config?.mode,
+    anyE.payload?.mode,
+    anyE.payload?.kind,
+    anyE.payload?.sport,
+    anyE.payload?.config?.mode,
+    anyE.payload?.config?.kind,
+    anyE.payload?.game?.mode,
+    anyE.decoded?.mode,
+    anyE.decoded?.kind,
+    anyE.decoded?.sport,
+    anyE.decoded?.config?.mode,
+    anyE.decoded?.config?.kind,
+    anyE.decoded?.game?.mode,
+    anyE.decoded?.game?.kind,
+    baseMode(e),
+  ];
+  const out = values.map(normalizeToken).filter(Boolean);
+  return [...new Set(out)];
+}
+
+function inferGameFilterKey(e: SavedEntry, sport: SportId): string {
+  if (sport === "darts") {
+    if (isKillerEntry(e)) return "killer";
+    if (isShanghaiEntry(e)) return "shanghai";
+    if (isBatardEntry(e)) return "batard";
+  }
+  const filters = SPORT_GAME_FILTERS[sport] || [];
+  const tokens = collectEntryModeTokens(e);
+  for (const f of filters) {
+    const aliases = [f.key, f.label, ...(f.aliases || [])].map(normalizeToken).filter(Boolean);
+    if (aliases.some((a) => tokens.some((t) => t === a || t.includes(a) || a.includes(t)))) return f.key;
+  }
+  return tokens[0] || "unknown";
+}
+
+function inferSportKey(e: SavedEntry): string {
+  const tokens = collectEntryModeTokens(e);
+  const joined = tokens.join("|");
+  if (/petanque|boule/.test(joined)) return "petanque";
+  if (/pingpong|ping_pong|tabletennis|table_tennis/.test(joined)) return "pingpong";
+  if (/babyfoot|foosball/.test(joined)) return "babyfoot";
+  if (/molkky|molky/.test(joined)) return "molkky";
+  if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
+  if (/x01|leg|cricket|killer|shanghai|golf|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  return "darts";
+}
+
+function getAllEntryPlayers(e: SavedEntry): any[] {
+  const anyE: any = e as any;
+  const pools = [
+    anyE.players,
+    anyE.summary?.players,
+    anyE.summary?.rankings,
+    anyE.summary?.result?.players,
+    anyE.summary?.result?.rankings,
+    anyE.payload?.players,
+    anyE.payload?.config?.players,
+    anyE.payload?.state?.players,
+    anyE.decoded?.players,
+    anyE.decoded?.config?.players,
+    anyE.decoded?.state?.players,
+  ];
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const pool of pools) {
+    if (!Array.isArray(pool)) continue;
+    for (const p of pool) {
+      const id = getId(p) || getName(p);
+      const key = String(id || "").trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function entryHasPlayer(e: SavedEntry, playerId: string): boolean {
+  if (!playerId || playerId === "all") return true;
+  const wanted = String(playerId);
+  return getAllEntryPlayers(e).some((p) => String(getId(p) || getName(p)) === wanted);
+}
+
+function getKnownPlayers(store: Store, entries: SavedEntry[]): { id: string; label: string }[] {
+  const seen = new Map<string, string>();
+  const anyStore: any = store as any;
+  const storeLists = [
+    Array.isArray(anyStore?.profiles) ? anyStore.profiles : null,
+    Array.isArray(anyStore?.profiles?.list) ? anyStore.profiles.list : null,
+    Array.isArray(anyStore?.players) ? anyStore.players : null,
+    Array.isArray(anyStore?.localProfiles) ? anyStore.localProfiles : null,
+    Array.isArray(anyStore?.bots) ? anyStore.bots : null,
+  ].filter(Array.isArray) as any[][];
+
+  for (const list of storeLists) {
+    for (const p of list) {
+      const id = String(getId(p) || getName(p) || "").trim();
+      if (!id) continue;
+      const label = getName(p) || String((p as any)?.surname || (p as any)?.nickname || (p as any)?.displayName || id);
+      if (!seen.has(id)) seen.set(id, label);
+    }
+  }
+
+  for (const e of entries) {
+    for (const p of getAllEntryPlayers(e)) {
+      const id = String(getId(p) || getName(p) || "").trim();
+      if (!id) continue;
+      const label = getName(p) || String((p as any)?.surname || (p as any)?.nickname || (p as any)?.displayName || id);
+      if (!seen.has(id)) seen.set(id, label);
+    }
+  }
+
+  return [...seen.entries()]
+    .map(([id, label]) => ({ id, label: label || id }))
+    .sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
 }
 
 function statusOf(e: SavedEntry): "finished" | "in_progress" {
@@ -572,6 +778,11 @@ const HistoryAPI = {
       await History.remove(id);
     } catch {}
   },
+  async clear() {
+    try {
+      await History.clear();
+    } catch {}
+  },
 };
 
 /* ---------- Styles ---------- */
@@ -638,25 +849,37 @@ function makeStyles(theme: any) {
       lineHeight: 1,
     },
 
-    reloadBtn: {
-      margin: "14px auto 0 auto",
-      padding: "6px 14px",
-      fontSize: 13,
-      fontWeight: 900,
-      borderRadius: 12,
-      border: `1px solid ${theme.primary}`,
-      background: "rgba(0,0,0,0.4)",
-      color: theme.primary,
-      display: "block",
-      boxShadow: `0 0 10px ${theme.primary}AA`,
+    toolbar: {
+      marginTop: 12,
+      display: "flex",
+      gap: 10,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: "0 12px",
+      flexWrap: "nowrap",
     },
+    toolIconBtn: (danger = false, active = false) => ({
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      display: "grid",
+      placeItems: "center",
+      cursor: "pointer",
+      border: `1px solid ${danger ? theme.danger : theme.primary}`,
+      background: active ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.45)",
+      color: danger ? theme.danger : theme.primary,
+      boxShadow: `0 0 12px ${danger ? theme.danger : theme.primary}88`,
+      opacity: active ? 0.58 : 1,
+      userSelect: "none",
+    }),
 
     filtersRow: {
-      marginTop: 18,
+      marginTop: 16,
       display: "flex",
       gap: 8,
       justifyContent: "center",
       padding: "0 12px",
+      flexWrap: "wrap",
     },
     filterBtn: (active: boolean) => ({
       padding: "6px 10px",
@@ -669,6 +892,86 @@ function makeStyles(theme: any) {
       boxShadow: active ? `0 0 10px ${theme.primary}88` : "none",
       cursor: "pointer",
     }),
+    filterPopoverWrap: {
+      position: "relative",
+      display: "inline-flex",
+    },
+    filterPanel: {
+      // IMPORTANT mobile/StackBlitz/Firefox : le popover est en fixed + centré.
+      // Il ne dépend plus du bouton parent, donc il ne peut plus partir hors écran à gauche/droite.
+      position: "fixed",
+      top: "clamp(238px, 29vh, 360px)",
+      left: "50%",
+      right: "auto",
+      transform: "translateX(-50%)",
+      zIndex: 9999,
+      width: "min(292px, calc(100vw - 24px))",
+      maxWidth: "calc(100vw - 24px)",
+      boxSizing: "border-box",
+      padding: 10,
+      borderRadius: 18,
+      border: `1px solid ${edge}`,
+      background: "linear-gradient(180deg, rgba(16,18,26,0.985), rgba(3,5,12,0.985))",
+      boxShadow: `0 18px 40px rgba(0,0,0,.78), 0 0 18px ${theme.primary}44`,
+      display: "grid",
+      gap: 10,
+      backdropFilter: "blur(10px)",
+      overflow: "hidden",
+    },
+    filterTabs: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 8,
+      width: "100%",
+    },
+    filterTabBtn: (active: boolean) => ({
+      minHeight: 44,
+      borderRadius: 14,
+      border: `1px solid ${active ? theme.primary : edge}`,
+      background: active ? `${theme.primary}22` : "rgba(255,255,255,0.055)",
+      color: active ? theme.primary : theme.text,
+      boxShadow: active ? `0 0 12px ${theme.primary}66` : "none",
+      display: "inline-grid",
+      placeItems: "center",
+      fontSize: 0,
+      cursor: "pointer",
+    }),
+    filterDropdown: {
+      width: "100%",
+      maxHeight: "min(230px, calc(100vh - 330px))",
+      overflowY: "auto",
+      display: "grid",
+      gap: 7,
+      padding: "2px 2px 4px",
+      WebkitOverflowScrolling: "touch",
+      boxSizing: "border-box",
+    },
+    filterChip: (active: boolean, tone?: string) => {
+      const c = tone || theme.primary;
+      return {
+        flex: "0 0 auto",
+        minHeight: 34,
+        padding: "7px 11px",
+        borderRadius: 999,
+        border: `1px solid ${active ? c : edge}`,
+        background: active ? `${c}22` : "rgba(255,255,255,0.055)",
+        color: active ? c : theme.text,
+        boxShadow: active ? `0 0 10px ${c}66` : "none",
+        fontSize: 12,
+        fontWeight: 900,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        userSelect: "none",
+      };
+    },
+    chipCount: {
+      opacity: 0.72,
+      fontSize: 10,
+      fontWeight: 950,
+    },
 
     list: {
       marginTop: 20,
@@ -901,6 +1204,7 @@ export default function HistoryPage({
 }) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const { sport } = useSport();
   const S = useMemo(() => makeStyles(theme), [theme]);
 
   const [tab, setTab] = useState<"all" | "done" | "running" | "inbox">("done");
@@ -912,8 +1216,24 @@ export default function HistoryPage({
   }, []);
 
   const [sub, setSub] = useState<RangeKey>("today");
+  const [gameFilter, setGameFilter] = useState<GameFilterKey>("all");
+  const [playerFilter, setPlayerFilter] = useState<PlayerFilterKey>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterMode, setFilterMode] = useState<"games" | "players">("games");
   const [items, setItems] = useState<SavedEntry[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // FIX HISTORIQUE/FIREFOX:
+  // - le store passé par StatsHub peut changer de référence très souvent ; on ne le met pas
+  //   dans les dépendances de chargement sinon l'historique recharge en boucle.
+  // - un seul chargement actif à la fois, avec token anti-race.
+  const storeRef = useRef<Store>(store);
+  const loadingRef = useRef(false);
+  const loadSeqRef = useRef(0);
+  const refreshTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    storeRef.current = store;
+  }, [store]);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [inboxLocal, setInboxLocal] = useState<InboxItemLocal[]>([]);
@@ -924,6 +1244,8 @@ export default function HistoryPage({
   // 🔎 DEBUG HISTORYPAGE — voir RAW vs filtré (pour "Aucune partie ici")
   // ============================================================
   useEffect(() => {
+    const debugHistory = false;
+    if (!debugHistory) return;
     let mounted = true;
 
     (async () => {
@@ -959,26 +1281,52 @@ export default function HistoryPage({
     };
   }, []);
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
+    if (loadingRef.current) return;
+    const seq = ++loadSeqRef.current;
+    loadingRef.current = true;
     setLoading(true);
     try {
-      const rows = await HistoryAPI.list(store);
+      const rows = await HistoryAPI.list(storeRef.current);
+      if (seq !== loadSeqRef.current) return;
       setItems(safeArray<SavedEntry>(rows).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r)));
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
-  }
+  }, []);
+
+  const scheduleHistoryReload = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null;
+      loadHistory().catch(() => {});
+    }, 120);
+  }, [loadHistory]);
 
   useEffect(() => {
-    loadHistory();
-  }, [store]);
+    setGameFilter("all");
+    setPlayerFilter("all");
+    setFilterOpen(false);
+  }, [sport]);
+
+  useEffect(() => {
+    loadHistory().catch(() => {});
+    return () => {
+      if (refreshTimerRef.current != null) window.clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    };
+  }, [loadHistory]);
 
   useEffect(() => {
     const onUpd = () => {
-      loadHistory().catch(() => {});
+      scheduleHistoryReload();
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "dc-history-refresh") loadHistory().catch(() => {});
+      if (e.key === "dc-history-refresh") scheduleHistoryReload();
     };
     window.addEventListener("dc-history-updated" as any, onUpd);
     window.addEventListener("storage", onStorage);
@@ -986,7 +1334,7 @@ export default function HistoryPage({
       window.removeEventListener("dc-history-updated" as any, onUpd);
       window.removeEventListener("storage", onStorage);
     };
-  }, [store]);
+  }, [scheduleHistoryReload]);
 
 
   // ============================================================
@@ -1006,6 +1354,10 @@ export default function HistoryPage({
   useEffect(() => {
     // refresh inbox quand on l'ouvre
     if (tab === "inbox") loadInbox();
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab === "inbox") setFilterOpen(false);
   }, [tab]);
 
   async function handleImportClick() {
@@ -1121,32 +1473,97 @@ export default function HistoryPage({
 
   const inboxCount = (inboxLocal?.length || 0) + (inboxCloud?.length || 0);
 
-  const source = tab === "all" ? items : tab === "inbox" ? [] : tab === "done" ? done : running;
-  const filtered = source.filter((e) => inRange(e.updatedAt || e.createdAt, sub));
+  const source = useMemo(
+    () => (tab === "all" ? items : tab === "inbox" ? [] : tab === "done" ? done : running),
+    [tab, items, done, running]
+  );
 
-  // ✅ DEBUG: ce qui reste après filtres (tab + période + status/dedupe)
+  const sportSource = useMemo(() => {
+    return source.filter((e) => inferSportKey(e) === sport || sport === "darts" && inferSportKey(e) === "darts");
+  }, [source, sport]);
+
+  const gameOptions = useMemo(() => {
+    const configured = SPORT_GAME_FILTERS[sport] || [];
+    const present = new Set(sportSource.map((e) => inferGameFilterKey(e, sport)).filter(Boolean));
+    const base = configured.filter((g) => present.has(g.key));
+    const configuredKeys = new Set(configured.map((g) => g.key));
+    const unknowns = [...present].filter((key) => key && key !== "unknown" && !configuredKeys.has(key));
+    return [
+      ...base,
+      ...unknowns.map((key) => ({ key, label: key.toUpperCase(), aliases: [key] })),
+    ];
+  }, [sportSource, sport]);
+
+  const playerOptions = useMemo(() => getKnownPlayers(storeRef.current, sportSource), [sportSource]);
+
   useEffect(() => {
-    try {
-      console.log(
-        "[HP][VISIBLE] tab =",
-        tab,
-        "range =",
-        sub,
-        "items =",
-        items.length,
-        "source =",
-        source.length,
-        "filtered =",
-        filtered.length
-      );
-      console.log("[HP][VISIBLE] first =", filtered[0]);
-    } catch {}
-  }, [tab, sub, items.length, source.length, filtered.length]);
+    if (gameFilter !== "all" && !gameOptions.some((g) => g.key === gameFilter)) setGameFilter("all");
+  }, [gameFilter, gameOptions]);
+
+  useEffect(() => {
+    if (playerFilter !== "all" && !playerOptions.some((p) => p.id === playerFilter)) setPlayerFilter("all");
+  }, [playerFilter, playerOptions]);
+
+  const filtered = useMemo(() => {
+    return sportSource
+      .filter((e) => inRange(e.updatedAt || e.createdAt, sub))
+      .filter((e) => gameFilter === "all" || inferGameFilterKey(e, sport) === gameFilter)
+      .filter((e) => entryHasPlayer(e, playerFilter));
+  }, [sportSource, sub, gameFilter, playerFilter, sport]);
+
+  // Debug volontairement désactivé en prod : les console.table répétées faisaient ramer Firefox.
 
   async function handleDelete(e: SavedEntry) {
     if (!window.confirm("Supprimer cette partie ?")) return;
-    await HistoryAPI.remove(e.id);
-    await loadHistory();
+    const ids = [e.id, e.matchId, e.resumeId, matchLink(e)].filter(Boolean).map(String);
+    const idSet = new Set(ids);
+
+    // Mise à jour optimiste : la carte disparaît immédiatement sans recharger tout l'historique.
+    setItems((prev) =>
+      safeArray<SavedEntry>(prev).filter((row: any) => {
+        const rowIds = [row?.id, row?.matchId, row?.resumeId, matchLink(row)].filter(Boolean).map(String);
+        return !rowIds.some((rid) => idSet.has(rid));
+      })
+    );
+
+    try {
+      await Promise.all(ids.map((id) => HistoryAPI.remove(id)));
+    } catch (err) {
+      console.warn("[HistoryPage] suppression impossible", err);
+      await loadHistory().catch(() => {});
+      window.alert("Suppression impossible. Historique rechargé.");
+    }
+  }
+
+  async function handleClearHistory() {
+    const count = items.length;
+    if (!count) {
+      window.alert("L'historique est déjà vide.");
+      return;
+    }
+    const ok = window.confirm(
+      `Vider tout l'historique ?
+
+${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouées et ne peut pas être annulée.`
+    );
+    if (!ok) return;
+
+    const previous = items;
+    setItems([]);
+    setGameFilter("all");
+    setPlayerFilter("all");
+
+    try {
+      await HistoryAPI.clear();
+      try {
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
+      } catch {}
+    } catch (err) {
+      console.warn("[HistoryPage] vidage historique impossible", err);
+      setItems(previous);
+      await loadHistory().catch(() => {});
+      window.alert("Vidage impossible. Historique rechargé.");
+    }
   }
 
   function safeGo(candidates: string[], params: any) {
@@ -1225,6 +1642,8 @@ export default function HistoryPage({
 
     go("x01_play_v3", {
       resumeId,
+      rec: e,
+      payload: (e as any)?.payload ?? (e as any)?.decoded ?? null,
       from: preview ? "history_preview" : "history",
       mode: baseMode(e),
       preview: !!preview,
@@ -1429,16 +1848,129 @@ export default function HistoryPage({
         </div>
       </ScaledKpiRow>
 
-      <div style={{ display: "flex", gap: 10, justifyContent: "center", alignItems: "center", marginTop: 10 }}>
-        <button style={{ ...S.reloadBtn, opacity: loading ? 0.5 : 1 }} onClick={() => loadHistory()}>
-          {loading ? "Chargement..." : "Recharger"}
+      <div style={S.toolbar}>
+        <button
+          type="button"
+          aria-label={loading ? "Chargement de l'historique" : "Recharger l'historique"}
+          title={loading ? "Chargement..." : "Recharger"}
+          style={S.toolIconBtn(false, loading)}
+          onClick={() => loadHistory()}
+          disabled={loading}
+        >
+          <Icon.Refresh />
         </button>
 
-        <button style={{ ...S.reloadBtn, opacity: 1 }} onClick={handleImportClick} title="Importer une partie (.json)">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <Icon.Upload /> Importer
-          </span>
+        <button
+          type="button"
+          aria-label="Importer une partie"
+          title="Importer une partie (.json)"
+          style={S.toolIconBtn(false, false)}
+          onClick={handleImportClick}
+        >
+          <Icon.Upload />
         </button>
+
+        {tab !== "inbox" && (
+          <div style={S.filterPopoverWrap}>
+            <button
+              type="button"
+              aria-label="Filtrer l'historique"
+              title="Filtrer"
+              style={S.toolIconBtn(false, filterOpen || gameFilter !== "all" || playerFilter !== "all")}
+              onClick={() => setFilterOpen((v) => !v)}
+            >
+              <Icon.Filter />
+            </button>
+
+            {filterOpen && (
+              <div style={S.filterPanel}>
+                <div style={S.filterTabs}>
+                  <button
+                    type="button"
+                    aria-label="Filtrer par jeu"
+                    title="Jeux"
+                    style={S.filterTabBtn(filterMode === "games")}
+                    onClick={() => setFilterMode("games")}
+                  >
+                    <Icon.Gamepad />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Filtrer par joueur"
+                    title="Joueurs"
+                    style={S.filterTabBtn(filterMode === "players")}
+                    onClick={() => setFilterMode("players")}
+                  >
+                    <Icon.User />
+                  </button>
+                </div>
+
+                <div style={S.filterDropdown}>
+                  {filterMode === "games" ? (
+                    <>
+                      <button
+                        type="button"
+                        style={S.filterChip(gameFilter === "all", theme.primary)}
+                        onClick={() => setGameFilter("all")}
+                        title="Afficher tous les jeux"
+                      >
+                        Tous les jeux <span style={S.chipCount}>{sportSource.length}</span>
+                      </button>
+                      {gameOptions.map((g) => {
+                        const n = sportSource.filter((e) => inferGameFilterKey(e, sport) === g.key).length;
+                        return (
+                          <button
+                            type="button"
+                            key={g.key}
+                            style={S.filterChip(gameFilter === g.key, theme.primary)}
+                            onClick={() => setGameFilter(g.key)}
+                            title={`Afficher seulement ${g.label}`}
+                          >
+                            {g.label} <span style={S.chipCount}>{n}</span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        style={S.filterChip(playerFilter === "all", theme.primary)}
+                        onClick={() => setPlayerFilter("all")}
+                        title="Afficher tous les joueurs"
+                      >
+                        Tous les joueurs
+                      </button>
+                      {playerOptions.map((p) => (
+                        <button
+                          type="button"
+                          key={p.id}
+                          style={S.filterChip(playerFilter === p.id, theme.primary)}
+                          onClick={() => setPlayerFilter(p.id)}
+                          title={`Afficher seulement ${p.label}`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab !== "inbox" && (
+          <button
+            type="button"
+            aria-label="Vider tout l'historique"
+            title="Vider tout l'historique"
+            style={S.toolIconBtn(true, false)}
+            onClick={handleClearHistory}
+          >
+            <Icon.Trash />
+          </button>
+        )}
 
         <input
           ref={fileRef}
@@ -1455,21 +1987,22 @@ export default function HistoryPage({
       </div>
 
       {tab !== "inbox" && (
-      <div style={S.filtersRow}>
-        {(
-          [
-            ["today", "J"],
-            ["week", "S"],
-            ["month", "M"],
-            ["year", "A"],
-            ["archives", "ARV"],
-          ] as any
-        ).map(([key, label]) => (
-          <div key={key} style={S.filterBtn(sub === key)} onClick={() => setSub(key as RangeKey)}>
-            {label}
-          </div>
-        ))}
-      </div>
+        <>
+          <div style={S.filtersRow}>
+            {(
+              [
+                ["today", "J"],
+                ["week", "S"],
+                ["month", "M"],
+                ["year", "A"],
+                ["archives", "ARV"],
+              ] as any
+            ).map(([key, label]) => (
+              <div key={key} style={S.filterBtn(sub === key)} onClick={() => setSub(key as RangeKey)}>
+                {label}
+              </div>
+            ))}
+          </div>        </>
       )}
 
       <div style={S.list}>
@@ -1683,5 +2216,6 @@ export default function HistoryPage({
 
 /* ---------- Date format ---------- */
 function fmtDate(ts: number) {
-  return new Date(ts).toLocaleString();
+  const n = Number(ts || 0);
+  return new Date(Number.isFinite(n) && n > 0 ? n : Date.now()).toLocaleString();
 }
