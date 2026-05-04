@@ -133,6 +133,7 @@ function makeX01(index: number, now: number): SavedMatch {
   const perPlayer = [buildStats(players[0], p1Visits, true), buildStats(players[1], p2Visits, false)];
   rec.game = { mode: "x01", startScore, doubleOut: index % 3 === 0 };
   rec.liveStatsByPlayer = Object.fromEntries(perPlayer.map((p: any) => [p.id, p]));
+  rec.stats = { players: perPlayer, detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])) };
   rec.summary = {
     ...rec.summary,
     mode: "x01",
@@ -145,6 +146,8 @@ function makeX01(index: number, now: number): SavedMatch {
     bestCheckoutByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p.bestCheckout])),
     perPlayer,
     players: perPlayer,
+    detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])),
+    stats: { players: perPlayer },
   };
   rec.payload = {
     ...rec.payload,
@@ -184,7 +187,7 @@ function makeCricket(index: number, now: number): SavedMatch {
       ...p,
       darts,
       dartsThrown: darts,
-      marks,
+      totalMarks: marks,
       marksTotal: marks,
       totalMarks: marks,
       score,
@@ -227,6 +230,7 @@ function makeCricket(index: number, now: number): SavedMatch {
 
   const winnerId = String(rec.winnerId || players[0].id);
   const perPlayer = players.map((p, i) => buildCricketPlayer(p, 10 + i * 20, p.id === winnerId));
+  rec.stats = { players: perPlayer, detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])), cricketLegs: perPlayer.map((p: any) => p.legStats) };
   rec.summary = {
     ...rec.summary,
     mode: "cricket",
@@ -235,6 +239,7 @@ function makeCricket(index: number, now: number): SavedMatch {
     scoreByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p.score])),
     perPlayer,
     players: perPlayer,
+    detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])),
     stats: { players: perPlayer },
     cricketLegs: perPlayer.map((p: any) => p.legStats),
   };
@@ -265,6 +270,7 @@ function makeKiller(index: number, now: number): SavedMatch {
       livesLeft: p.id === winnerId ? n(index + i + 32, 1, 4) : 0,
     };
   });
+  rec.stats = { players: perPlayer, detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])) };
   rec.summary = {
     ...rec.summary,
     mode: "killer",
@@ -275,6 +281,7 @@ function makeKiller(index: number, now: number): SavedMatch {
     players: perPlayer,
     detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])),
     rankings: perPlayer.slice().sort((a: any, b: any) => a.rank - b.rank),
+    stats: { players: perPlayer },
   };
   rec.payload = { ...rec.payload, mode: "killer", config: { lives: 5, becomeRule: "double", shieldOnDBull: true }, players: perPlayer, stats: { players: perPlayer }, summary: rec.summary };
   return rec;
@@ -283,11 +290,104 @@ function makeKiller(index: number, now: number): SavedMatch {
 function makeShanghai(index: number, now: number): SavedMatch {
   const players = pickPlayers(3);
   const rec = base("shanghai", index, now, players);
-  const rounds = players.flatMap((p, pi) => Array.from({ length: 7 }, (_, r) => ({ playerId: p.id, id: p.id, name: p.name, round: r + 1, target: r + 1, score: n(index + pi * 20 + r, 0, 60), hits: n(index + pi * 30 + r, 0, 3), shanghai: r === 5 && pi === 0 })));
-  const totals = players.map((p) => ({ ...p, score: rounds.filter((r) => r.playerId === p.id).reduce((a, r) => a + r.score, 0), hitsTotal: rounds.filter((r) => r.playerId === p.id).reduce((a, r) => a + r.hits, 0) }));
-  rec.winnerId = totals.slice().sort((a, b) => b.score - a.score)[0]?.id || rec.winnerId;
-  rec.summary = { ...rec.summary, winnerId: rec.winnerId, mode: "shanghai", rounds: 7, perPlayer: totals, players: totals, scoreByPlayer: Object.fromEntries(totals.map((p: any) => [p.id, p.score])), statsShanghai: { rounds, players: totals } };
-  rec.payload = { ...rec.payload, winnerId: rec.winnerId, mode: "shanghai", players: totals, rounds, statsShanghai: { rounds, players: totals }, stats: { players: totals }, summary: rec.summary };
+  const maxRounds = 10;
+  const targetOrder = Array.from({ length: maxRounds }, (_, i) => i + 1);
+  const hitsById: Record<string, any[]> = {};
+  const scoreTimelineById: Record<string, number[]> = {};
+
+  const perPlayer = players.map((p, pi) => {
+    let total = 0;
+    hitsById[p.id] = [];
+    scoreTimelineById[p.id] = [];
+
+    for (let r = 0; r < maxRounds; r += 1) {
+      const target = targetOrder[r];
+      const sHits = n(index + pi * 100 + r * 7 + 1, 0, 1);
+      const dHits = n(index + pi * 100 + r * 7 + 2, 0, 1);
+      const tHits = n(index + pi * 100 + r * 7 + 3, 0, 1);
+      const miss = Math.max(0, 3 - sHits - dHits - tHits);
+      const score = target * (sHits + dHits * 2 + tHits * 3);
+      total += score;
+      hitsById[p.id].push({
+        playerId: p.id,
+        id: p.id,
+        name: p.name,
+        round: r + 1,
+        target,
+        score,
+        S: sHits,
+        D: dHits,
+        T: tHits,
+        M: miss,
+        miss,
+        hits: sHits + dHits + tHits,
+        shanghai: sHits > 0 && dHits > 0 && tHits > 0,
+      });
+      scoreTimelineById[p.id].push(total);
+    }
+
+    const allHits = hitsById[p.id];
+    return {
+      ...p,
+      playerId: p.id,
+      profileId: p.id,
+      score: total,
+      totalScore: total,
+      hitsTotal: allHits.reduce((a, h) => a + Number(h.hits || 0), 0),
+      singles: allHits.reduce((a, h) => a + Number(h.S || 0), 0),
+      doubles: allHits.reduce((a, h) => a + Number(h.D || 0), 0),
+      triples: allHits.reduce((a, h) => a + Number(h.T || 0), 0),
+      misses: allHits.reduce((a, h) => a + Number(h.M || h.miss || 0), 0),
+      dartsThrown: maxRounds * 3,
+      rounds: maxRounds,
+    };
+  });
+
+  const ranked = perPlayer.slice().sort((a: any, b: any) => b.score - a.score);
+  rec.winnerId = ranked[0]?.id || rec.winnerId;
+
+  const scores = perPlayer.map((p: any) => ({ id: p.id, name: p.name, score: p.score }));
+  const statsShanghai = {
+    hitsById,
+    scoreTimelineById,
+    targetOrder,
+    maxRounds,
+    winRule: "points",
+    rounds: Object.values(hitsById).flat(),
+    players: perPlayer,
+  };
+
+  rec.stats = { players: perPlayer, statsShanghai, detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])) };
+  rec.summary = {
+    ...rec.summary,
+    winnerId: rec.winnerId,
+    kind: "shanghai",
+    mode: "shanghai",
+    gameId: "shanghai",
+    finished: true,
+    isTie: false,
+    winRule: "points",
+    maxRounds,
+    scores,
+    byId: Object.fromEntries(perPlayer.map((p: any) => [p.id, { score: p.score }])),
+    perPlayer,
+    players: perPlayer,
+    detailedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p])),
+    scoreByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p.score])),
+    statsShanghai,
+    stats: { players: perPlayer },
+  };
+
+  rec.payload = {
+    ...rec.payload,
+    winnerId: rec.winnerId,
+    kind: "shanghai",
+    mode: "shanghai",
+    players: perPlayer,
+    summary: rec.summary,
+    statsShanghai,
+    stats: { players: perPlayer, statsShanghai },
+  };
   return rec;
 }
 
@@ -303,7 +403,8 @@ function makeGolf(index: number, now: number): SavedMatch {
   });
   const rankings = totals.slice().sort((a: any, b: any) => a.total - b.total).map((p: any, i) => ({ id: p.id, playerId: p.id, name: p.name, total: p.total, rank: i + 1 }));
   rec.winnerId = rankings[0]?.id || rec.winnerId;
-  rec.summary = { ...rec.summary, winnerId: rec.winnerId, mode: "golf", players: totals, perPlayer: totals, rankings, playerStats: statsByPlayer, scoreByPlayer: Object.fromEntries(totals.map((p: any) => [p.id, p.total])) };
+  rec.stats = { players: totals, detailedByPlayer: Object.fromEntries(totals.map((p: any) => [p.id, p])), playerStats: statsByPlayer };
+  rec.summary = { ...rec.summary, winnerId: rec.winnerId, mode: "golf", players: totals, perPlayer: totals, detailedByPlayer: Object.fromEntries(totals.map((p: any) => [p.id, p])), rankings, playerStats: statsByPlayer, scoreByPlayer: Object.fromEntries(totals.map((p: any) => [p.id, p.total])), stats: { players: totals } };
   rec.payload = { ...rec.payload, winnerId: rec.winnerId, mode: "golf", players: totals, state: { statsByPlayer }, statsByPlayer, playerStats: statsByPlayer, summary: rec.summary, stats: { players: totals } };
   return rec;
 }
@@ -331,6 +432,9 @@ async function refreshStatsAfterSimulation() {
   try {
     const mod = await import("./statsBridge");
     if (typeof mod.clearStatsIndexCache === "function") mod.clearStatsIndexCache();
+    if (typeof mod.refreshStatsIndexFromHistoryNow === "function") {
+      await mod.refreshStatsIndexFromHistoryNow({ includeNonFinished: true, persist: true, reason: "dev-match-simulation" });
+    }
   } catch {}
   try {
     const mod = await import("./stats/rebuildStatsFromHistory");
@@ -342,7 +446,9 @@ async function refreshStatsAfterSimulation() {
     localStorage.setItem("dc-history-refresh", String(Date.now()));
     localStorage.setItem("dc-stats-refresh", String(Date.now()));
     window.dispatchEvent(new Event("dc-history-updated"));
+    window.dispatchEvent(new Event("history:updated"));
     window.dispatchEvent(new Event("dc-stats-index-updated"));
+    window.dispatchEvent(new Event("stats:recompute"));
   } catch {}
 }
 

@@ -580,17 +580,62 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   },
 
   shanghai: ({ payload, ts, idx }) => {
-    const stats = payload?.statsShanghai || payload?.stats || payload?.summary?.statsShanghai || {};
+    const stats = payload?.statsShanghai || payload?.stats?.statsShanghai || payload?.summary?.statsShanghai || {};
     const rounds = stats?.rounds || payload?.rounds || [];
-    for (const r of Array.isArray(rounds) ? rounds : []) {
-      const pid = String(r?.playerId || r?.id || "");
-      if (!pid) continue;
-      const score = Number(r?.score || 0) || 0;
-      bumpPlayer(idx, pid, { matches: 1 }, ts);
-      const cur: any = (idx.byPlayer[pid] as any).shanghai || { total: 0, min: undefined, max: 0 };
-      cur.total += score;
-      cur.min = cur.min == null ? score : Math.min(cur.min, score);
-      cur.max = Math.max(cur.max || 0, score);
+    const players = payload?.players || payload?.summary?.players || stats?.players || [];
+    const winnerId = payload?.winnerId || payload?.summary?.winnerId || payload?.result?.winnerId || null;
+
+    const totalsByPlayer: Record<string, { name?: string; total: number; hits: number }> = {};
+
+    if (Array.isArray(players)) {
+      for (const pl of players) {
+        const pid = String(pl?.id || pl?.playerId || pl?.profileId || "");
+        if (!pid) continue;
+        totalsByPlayer[pid] = {
+          name: pl?.name || pl?.displayName,
+          total: Number(pl?.score ?? pl?.totalScore ?? 0) || 0,
+          hits: Number(pl?.hitsTotal ?? pl?.hits ?? 0) || 0,
+        };
+      }
+    }
+
+    if (stats?.scoreTimelineById && typeof stats.scoreTimelineById === "object") {
+      for (const [pidRaw, timeline] of Object.entries(stats.scoreTimelineById)) {
+        const pid = String(pidRaw || "");
+        const arr = Array.isArray(timeline) ? timeline : [];
+        const total = Number(arr[arr.length - 1] ?? 0) || 0;
+        totalsByPlayer[pid] = { ...(totalsByPlayer[pid] || {}), total, hits: totalsByPlayer[pid]?.hits || 0 };
+      }
+    }
+
+    if (Array.isArray(rounds)) {
+      for (const r of rounds) {
+        const pid = String(r?.playerId || r?.id || "");
+        if (!pid) continue;
+        const prev = totalsByPlayer[pid] || { total: 0, hits: 0 };
+        // Si on a déjà une timeline ou un total player, on ne remplace pas par un cumul partiel faux.
+        if (!prev.total) prev.total += Number(r?.score || 0) || 0;
+        prev.hits += Number(r?.hits ?? r?.S ?? 0) || 0;
+        totalsByPlayer[pid] = prev;
+      }
+    }
+
+    for (const [pid, row] of Object.entries(totalsByPlayer)) {
+      const total = Number((row as any)?.total || 0) || 0;
+      const hits = Number((row as any)?.hits || 0) || 0;
+      bumpPlayer(idx, pid, {
+        name: (row as any)?.name,
+        matches: 1,
+        wins: winnerId && String(winnerId) === pid ? 1 : 0,
+        losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+        pointsScored: total,
+        bestVisit: total,
+      }, ts);
+      const cur: any = (idx.byPlayer[pid] as any).shanghai || { total: 0, min: undefined, max: 0, hits: 0 };
+      cur.total += total;
+      cur.hits += hits;
+      cur.min = cur.min == null ? total : Math.min(cur.min, total);
+      cur.max = Math.max(cur.max || 0, total);
       (idx.byPlayer[pid] as any).shanghai = cur;
     }
   },
