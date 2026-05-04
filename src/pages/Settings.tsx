@@ -36,6 +36,7 @@ import { getApiUrl } from "../lib/apiClient";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
 import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
+import { useSport } from "../contexts/SportContext";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -681,6 +682,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
   const { theme } = useTheme();
   const { t } = useLang();
   const dev = useDevMode() as any;
+  const { sport } = useSport();
 
   const enabled: boolean = !!dev?.enabled;
   const setEnabled: (v: boolean) => void = dev?.setEnabled ?? (() => {});
@@ -747,8 +749,9 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
     if (simBusy) return;
     const ok = window.confirm(
       "Simulation de parties DEV\n\n" +
-        "Cette action ajoute des parties fictives terminées dans l’historique local pour tous les jeux.\n" +
-        "Elles sont marquées devSim/source=dev-match-simulator-v1.\n\n" +
+        "Cette action remplace les anciennes simulations DEV du sport actif par des parties fictives terminées.\n" +
+        "Elle évite donc les compteurs doublés quand tu relances plusieurs fois le test.\n" +
+        "Les parties sont marquées devSim/source=dev-match-simulator-v1.\n\n" +
         "Continuer ?"
     );
     if (!ok) return;
@@ -756,8 +759,8 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
     setSimBusy(true);
     setSimLastResult(null);
     try {
-      const res = await simulateDevMatchesAllGames({ perGame: 3 });
-      const label = `${res.created} parties fictives ajoutées (${Object.keys(res.games).length} jeux).`;
+      const res = await simulateDevMatchesAllGames({ perGame: 1, sport: sport as any, replacePrevious: true });
+      const label = `${res.created} parties fictives créées (${Object.keys(res.games).length} jeux, ${res.removed} ancienne(s) simulation(s) supprimée(s)).`;
       setSimLastResult(label);
       notify(label);
     } catch (e: any) {
@@ -908,9 +911,9 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
                   boxShadow: simBusy ? "none" : `0 0 16px ${theme.primary}22`,
                 }}
               >
-                {simBusy ? "Simulation en cours…" : "Créer parties fictives — Tous jeux"}
+                {simBusy ? "Simulation en cours…" : "Créer simulations — sport actif"}
                 <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
-                  Ajoute 3 parties terminées par jeu dans l’historique local : X01, Cricket, Killer, Shanghai, Golf, Pétanque, Babyfoot, Ping-pong, Molkky, Dicegame.
+                  Remplace les anciennes simulations DEV du sport actif, puis ajoute 1 partie terminée par jeu. En mode Darts : X01, Cricket, Killer, Shanghai et Golf.
                 </div>
               </button>
               {simLastResult && <div style={{ marginTop: 8, fontSize: 11, color: theme.primary, fontWeight: 850 }}>{simLastResult}</div>}
