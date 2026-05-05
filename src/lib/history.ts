@@ -437,7 +437,7 @@ function scheduleCloudSnapshotPush(reason: string) {
   } catch {}
 }
 
-console.warn("🔥 HISTORY PATCH LOADED v2");
+
 
 /* =========================
    Constantes

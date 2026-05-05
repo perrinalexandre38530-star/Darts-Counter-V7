@@ -390,6 +390,144 @@ export async function pullNasAccountSnapshot() {
   }
 }
 
+
+
+// ============================================================
+// HISTORIQUE NAS — suppression persistante côté snapshot NAS
+// ------------------------------------------------------------
+// Pourquoi: l'historique est restauré depuis /sync/pull après reconnexion.
+// Si on supprime uniquement en local, le snapshot NAS réinjecte les anciennes
+// parties au prochain chargement. Ces helpers nettoient explicitement le
+// payload NAS (dump.history + éventuels champs legacy store.history/localStorage).
+// ============================================================
+function getHistoryCandidateIds(row: any): string[] {
+  const out: string[] = [];
+  const push = (v: any) => {
+    const s = String(v ?? "").trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  try {
+    push(row?.id);
+    push(row?.matchId);
+    push(row?.resumeId);
+    push(row?.payload?.id);
+    push(row?.payload?.matchId);
+    push(row?.payload?.resumeId);
+    push(row?.summary?.id);
+    push(row?.summary?.matchId);
+    push(row?.summary?.resumeId);
+    push(row?.game?.id);
+    push(row?.game?.matchId);
+  } catch {}
+  return out;
+}
+
+function historyRowMatchesDelete(row: any, ids: Set<string> | null): boolean {
+  if (!ids || ids.size === 0) return true; // null/empty = vider tout l'historique
+  return getHistoryCandidateIds(row).some((id) => ids.has(id));
+}
+
+function cleanHistoryArray(value: any, ids: Set<string> | null): any {
+  if (!Array.isArray(value)) return value;
+  return value.filter((row) => !historyRowMatchesDelete(row, ids));
+}
+
+function cleanHistoryRowsObject(value: any, ids: Set<string> | null): any {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const next: Record<string, any> = {};
+  for (const [key, row] of Object.entries(value)) {
+    const keyHit = ids && ids.size > 0 ? ids.has(String(key)) : true;
+    if (keyHit || historyRowMatchesDelete(row, ids)) continue;
+    next[key] = row;
+  }
+  return next;
+}
+
+function cleanStoreLikeHistory(store: any, ids: Set<string> | null): any {
+  if (!store || typeof store !== "object" || Array.isArray(store)) return store;
+  const next: any = { ...store };
+  for (const key of ["history", "matches", "savedMatches", "matchHistory", "finishedMatches", "inProgressMatches"]) {
+    if (Array.isArray(next[key])) next[key] = cleanHistoryArray(next[key], ids);
+  }
+  return next;
+}
+
+function cleanSnapshotLocalStorageHistory(localStorageDump: any, ids: Set<string> | null): any {
+  if (!localStorageDump || typeof localStorageDump !== "object" || Array.isArray(localStorageDump)) return localStorageDump;
+  const next: any = { ...localStorageDump };
+  for (const key of Object.keys(next)) {
+    const k = String(key).toLowerCase();
+    if (!k.includes("history")) continue;
+    if (!ids || ids.size === 0) {
+      delete next[key];
+      continue;
+    }
+    try {
+      const parsed = typeof next[key] === "string" ? JSON.parse(next[key]) : next[key];
+      if (Array.isArray(parsed)) next[key] = JSON.stringify(cleanHistoryArray(parsed, ids));
+      else if (parsed && typeof parsed === "object") next[key] = JSON.stringify(cleanHistoryRowsObject(parsed, ids));
+    } catch {
+      // Si on ne sait pas parser une vieille clé history et qu'on supprime tout, on la retire.
+      if (!ids || ids.size === 0) delete next[key];
+    }
+  }
+  return next;
+}
+
+export function removeHistoryFromNasPayload(payload: any, idsToRemove?: string[]): any {
+  const ids = Array.isArray(idsToRemove) && idsToRemove.length
+    ? new Set(idsToRemove.map((x) => String(x || "").trim()).filter(Boolean))
+    : null;
+  const next: any = clonePlain(payload || {});
+
+  // Format moderne exportCloudSnapshot(): { _v:2, history:{ _v:1, rows:{...} } }
+  if (next.history && typeof next.history === "object") {
+    const h: any = { ...next.history };
+    if (h.rows && typeof h.rows === "object") h.rows = cleanHistoryRowsObject(h.rows, ids);
+    if (Array.isArray(h.items)) h.items = cleanHistoryArray(h.items, ids);
+    if (Array.isArray(h.list)) h.list = cleanHistoryArray(h.list, ids);
+    next.history = h;
+  }
+
+  // Formats legacy éventuels.
+  if (Array.isArray(next.history)) next.history = cleanHistoryArray(next.history, ids);
+  if (Array.isArray(next.matches)) next.matches = cleanHistoryArray(next.matches, ids);
+  if (next.store) next.store = cleanStoreLikeHistory(next.store, ids);
+  if (next.data) next.data = cleanStoreLikeHistory(next.data, ids);
+
+  // Snapshots IDB: certains stores peuvent contenir un champ history en plus du dump history.
+  if (next.idb && typeof next.idb === "object" && !Array.isArray(next.idb)) {
+    const idb: any = { ...next.idb };
+    for (const [key, value] of Object.entries(idb)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        idb[key] = cleanStoreLikeHistory(value, ids);
+      }
+    }
+    next.idb = idb;
+  }
+
+  if (next.localStorage && typeof next.localStorage === "object") {
+    next.localStorage = cleanSnapshotLocalStorageHistory(next.localStorage, ids);
+  }
+
+  return next;
+}
+
+export async function pushNasHistoryDeletion(idsToRemove?: string[]) {
+  const api = await getOnlineApi();
+  const pulled: any = await api.pullStoreSnapshot();
+  if (!pulled || pulled.status !== "ok" || !pulled.payload) {
+    return { ok: false, status: pulled?.status || "not_found", reason: "Aucun snapshot NAS à nettoyer" };
+  }
+
+  const cleaned = removeHistoryFromNasPayload(pulled.payload, idsToRemove);
+  const version = Number((cleaned as any)?._v ?? (cleaned as any)?.v ?? pulled.version ?? 8);
+  const res = await api.pushStoreSnapshot(cleaned, version);
+  try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
+  clearNasSyncDirty();
+  return { ok: true, clearedAll: !idsToRemove || idsToRemove.length === 0, removedIds: idsToRemove || [], result: res };
+}
+
 export async function computeNasSyncSummary(extra?: any) {
   const { loadStore } = await getStorage();
   const store: any = await loadStore().catch(() => null);

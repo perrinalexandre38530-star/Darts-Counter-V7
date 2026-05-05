@@ -459,64 +459,31 @@ function matchLink(e: SavedEntry): string | undefined {
 
 /* ---------- Décodage payload (base64 + gzip) + fallback LZString (sans import npm) ---------- */
 
+const HISTORY_PAYLOAD_DECODE_LIMIT = 180_000;
+
+function looksLikeInlineJsonPayload(raw: string): boolean {
+  const s = String(raw || "").trim();
+  if (!s) return false;
+  return s[0] === "{" || s[0] === "[";
+}
+
 async function decodePayload(raw: any): Promise<any | null> {
   if (!raw || typeof raw !== "string") return null;
 
-  // helper parse safe
-  const tryParse = (s: any) => {
-    if (typeof s !== "string") return null;
-    try {
-      return JSON.parse(s);
-    } catch {
-      return null;
-    }
-  };
+  // ⚠️ Correctif Firefox / mémoire : ne JAMAIS décompresser tous les payloads
+  // de l'historique au chargement de la page. Les payloads compressés peuvent être
+  // très lourds et, sur Firefox, la décompression massive déclenchait une explosion
+  // RAM + CPU. La page Historique n'a besoin que des métadonnées légères
+  // déjà présentes dans le header. On décode uniquement un petit JSON inline.
+  const trimmed = raw.trim();
+  if (!looksLikeInlineJsonPayload(trimmed)) return null;
+  if (trimmed.length > HISTORY_PAYLOAD_DECODE_LIMIT) return null;
 
-  // 0) Si déjà JSON string clair
-  const direct = tryParse(raw);
-  if (direct) return direct;
-
-  // 1) Tentative base64 -> (gzip stream) -> json
   try {
-    const bin = atob(raw);
-    const buf = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-
-    const DS: any = (window as any).DecompressionStream;
-    if (typeof DS === "function") {
-      const ds = new DS("gzip");
-      const stream = new Blob([buf]).stream().pipeThrough(ds);
-      const resp = new Response(stream);
-      return await resp.json();
-    }
-
-    // fallback sans gzip: parfois c'est juste du JSON base64
-    const parsed = tryParse(bin);
-    if (parsed) return parsed;
+    return JSON.parse(trimmed);
   } catch {
-    // ignore
+    return null;
   }
-
-  // 2) ✅ FIX BUILD: PAS D'IMPORT npm => fallback global window.LZString
-  try {
-    const LZ: any = (window as any).LZString;
-    if (LZ) {
-      const s1 = typeof LZ.decompressFromUTF16 === "function" ? LZ.decompressFromUTF16(raw) : null;
-      const p1 = tryParse(s1);
-      if (p1) return p1;
-
-      const s2 = typeof LZ.decompressFromBase64 === "function" ? LZ.decompressFromBase64(raw) : null;
-      const p2 = tryParse(s2);
-      if (p2) return p2;
-
-      const s3 = typeof LZ.decompress === "function" ? LZ.decompress(raw) : null;
-      const p3 = tryParse(s3);
-      if (p3) return p3;
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
 }
 
 /* ---------- Dédup + range ---------- */
@@ -718,39 +685,49 @@ function getStartScore(e: SavedEntry): number {
 
 /* ---------- History API avec décodage payload ---------- */
 
+async function pushHistoryDeletionToNas(ids?: string[]) {
+  try {
+    const mod = await import("../lib/manualNasSync");
+    if (typeof (mod as any).pushNasHistoryDeletion === "function") {
+      await (mod as any).pushNasHistoryDeletion(ids);
+      return true;
+    }
+  } catch (error) {
+    console.warn("[HistoryPage] nettoyage historique NAS impossible", error);
+  }
+  return false;
+}
+
 const HistoryAPI = {
   async list(store: Store): Promise<SavedEntry[]> {
     try {
       const rows = safeArray<SavedEntry>(await History.list()).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
 
-      const enhanced = await Promise.all(
-        rows.map(async (row) => {
-          try {
+      const enhanced: SavedEntry[] = [];
+      for (const row of rows) {
+        try {
           const r: any = row;
           if (!r.summary) r.summary = {};
           if (!r.game) r.game = {};
 
+          // Décodage strictement léger : pas de gzip/base64/LZ au rendu de l'historique.
+          // Les détails lourds restent chargés à la demande par les écrans stats/reprise.
           if (typeof r.payload === "string") {
             const decoded = await decodePayload(r.payload);
             if (decoded && typeof decoded === "object") {
               r.decoded = decoded;
-
               const cfg = decoded.config || decoded.game || decoded.x01?.config || decoded.x01;
-
               if (cfg) {
                 const sc = cfg.startScore ?? cfg.start ?? cfg.x01Start ?? cfg.x01StartScore;
                 if (typeof sc === "number") r.game.startScore = sc;
-
                 const mode = cfg.mode || cfg.gameMode || "x01";
                 if (!r.game.mode) r.game.mode = mode;
               }
-
               const sum = decoded.summary || decoded.result || decoded.stats || {};
               r.summary = { ...sum, ...r.summary };
             }
           }
 
-          // winnerName : tentative soft depuis summary
           if (!r.winnerName) {
             const wid = r.summary?.winnerId || r.summary?.result?.winnerId || r.summary?.winner?.id;
             if (wid) {
@@ -760,12 +737,11 @@ const HistoryAPI = {
             }
           }
 
-          return normalizeSavedEntry(r as SavedEntry);
-          } catch {
-            return normalizeSavedEntry(row as SavedEntry);
-          }
-        })
-      );
+          enhanced.push(normalizeSavedEntry(r as SavedEntry));
+        } catch {
+          enhanced.push(normalizeSavedEntry(row as SavedEntry));
+        }
+      }
 
       return safeArray<SavedEntry>(enhanced).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
     } catch {
@@ -1135,7 +1111,8 @@ function ScaledKpiRow({
     const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect?.width ?? 360;
-      setU(clamp(w / 360, 0.78, 1.05));
+      const next = clamp(w / 360, 0.78, 1.05);
+      setU((prev) => (Math.abs(prev - next) > 0.01 ? next : prev));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -1169,7 +1146,7 @@ function ScaledCard({
       const w = entries[0]?.contentRect?.width ?? 360;
       // u proportionnel à la carte (base = 360px)
       const next = clamp(w / 360, 0.75, 1.05);
-      setU(next);
+      setU((prev) => (Math.abs(prev - next) > 0.01 ? next : prev));
     });
 
     ro.observe(el);
@@ -1465,17 +1442,19 @@ export default function HistoryPage({
   }
 
 
+  const allItems = useMemo(() => dedupe(items), [items]);
+
   const { done, running } = useMemo(() => {
-    const fins = items.filter((e) => statusOf(e) === "finished");
-    const inprog = items.filter((e) => statusOf(e) !== "finished");
+    const fins = allItems.filter((e) => statusOf(e) === "finished");
+    const inprog = allItems.filter((e) => statusOf(e) !== "finished");
     return { done: dedupe(fins), running: dedupe(inprog) };
-  }, [items]);
+  }, [allItems]);
 
   const inboxCount = (inboxLocal?.length || 0) + (inboxCloud?.length || 0);
 
   const source = useMemo(
-    () => (tab === "all" ? items : tab === "inbox" ? [] : tab === "done" ? done : running),
-    [tab, items, done, running]
+    () => (tab === "all" ? allItems : tab === "inbox" ? [] : tab === "done" ? done : running),
+    [tab, allItems, done, running]
   );
 
   const sportSource = useMemo(() => {
@@ -1528,6 +1507,9 @@ export default function HistoryPage({
 
     try {
       await Promise.all(ids.map((id) => HistoryAPI.remove(id)));
+      // CRITIQUE NAS: la suppression locale seule est réinjectée au prochain /sync/pull.
+      // On nettoie donc aussi le snapshot NAS uniquement pour les IDs supprimés.
+      await pushHistoryDeletionToNas(Array.from(idSet));
     } catch (err) {
       console.warn("[HistoryPage] suppression impossible", err);
       await loadHistory().catch(() => {});
@@ -1555,9 +1537,9 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
     try {
       await HistoryAPI.clear();
-      try {
-        if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
-      } catch {}
+      // CRITIQUE NAS: vider localement ne suffit pas si le compte restaure le snapshot NAS.
+      // Appel sans IDs = suppression de TOUT l'historique dans le payload NAS.
+      await pushHistoryDeletionToNas();
     } catch (err) {
       console.warn("[HistoryPage] vidage historique impossible", err);
       setItems(previous);
@@ -1829,7 +1811,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       <ScaledKpiRow baseStyle={S.kpiRow}>
         <div style={S.kpiCard(tab === "all", theme.primary)} onClick={() => setTab("all")}>
           <div style={S.kpiLabel}>ALL</div>
-          <div style={S.kpiValue}>{items.length}</div>
+          <div style={S.kpiValue}>{allItems.length}</div>
         </div>
 
         <div style={S.kpiCard(tab === "done", theme.primary)} onClick={() => setTab("done")}>
