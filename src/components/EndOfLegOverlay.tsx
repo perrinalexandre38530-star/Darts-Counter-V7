@@ -454,6 +454,137 @@ function sortOrderLegacy(res: LegacyLegResult, ids: string[]) {
   return order;
 }
 
+
+
+function parseOverlayVisitDart(raw: any): { v: number; mult: 0 | 1 | 2 | 3 } {
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.code ?? raw?.text ?? raw?.name ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  let v = Number(raw?.segment ?? raw?.v ?? raw?.num ?? raw?.number ?? raw?.target ?? 0);
+  let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? raw?.coef ?? raw?.factor ?? 0);
+
+  if (label) {
+    if (label === "MISS" || label === "M" || label === "0") { v = 0; mult = 0; }
+    else if (label === "BULL" || label === "SBULL" || label === "OB") { v = 25; mult = 1; }
+    else if (label === "DBULL" || label === "D-BULL" || label === "DOUBLEBULL" || label === "IB") { v = 25; mult = 2; }
+    else {
+      const m = label.match(/^([SDT])?(\d{1,2})$/);
+      if (m) { v = Number(m[2]) || 0; mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
+    }
+  }
+
+  if (!Number.isFinite(v) || v < 0 || v > 25) {
+    const rawScore = Number(raw?.score ?? raw?.points ?? raw?.total ?? raw?.value);
+    if (rawScore === 50) { v = 25; mult = 2; }
+    else if (rawScore === 25) { v = 25; mult = 1; }
+    else v = 0;
+  }
+  if (!Number.isFinite(mult) || mult <= 0) mult = v > 0 ? 1 : 0;
+  if (v === 25 && mult > 2) mult = 2;
+  if (![0, 1, 2, 3].includes(mult)) mult = v > 0 ? 1 : 0;
+  return { v, mult: mult as 0 | 1 | 2 | 3 };
+}
+
+function scoreOverlayDart(d: { v: number; mult: number }) {
+  if (!d.v || !d.mult) return 0;
+  return d.v === 25 && d.mult >= 2 ? 50 : d.v * d.mult;
+}
+
+function rowsFromVisitHistory(
+  visits: OverlayVisitRow[],
+  nameOf: (id: string) => string,
+  baseRows: any[] = []
+) {
+  const ids = Array.from(new Set([
+    ...baseRows.map((r: any) => String(r?.pid || "")).filter(Boolean),
+    ...visits.map((v: any) => String(v?.playerId ?? (v as any)?.pid ?? "")).filter(Boolean),
+  ]));
+  if (!ids.length || !visits.length) return [];
+
+  const rows: Record<string, any> = {};
+  const ensure = (pid: string) => rows[pid] || (rows[pid] = {
+    pid,
+    name: nameOf(pid),
+    remainingRaw: null,
+    remaining: 0,
+    avg3: 0,
+    best: 0,
+    darts: 0,
+    visits: 0,
+    h60: 0,
+    h100: 0,
+    h140: 0,
+    h180: 0,
+    doubles: 0,
+    triples: 0,
+    ob: 0,
+    ib: 0,
+    bulls: 0,
+    pDB: "0.0%",
+    pTP: "0.0%",
+    pBull: "0.0%",
+    pDBull: "0.0%",
+    coCount: 0,
+    coDartsAvg: 0,
+    highestCO: 0,
+    points: 0,
+    misses: 0,
+    busts: 0,
+  });
+  ids.forEach(ensure);
+
+  for (const visit of visits as any[]) {
+    const pid = String(visit?.playerId ?? visit?.pid ?? "");
+    if (!pid) continue;
+    const row = ensure(pid);
+    const darts = Array.isArray(visit?.darts) ? visit.darts.map(parseOverlayVisitDart) : [];
+    const before = n(visit?.scoreBefore ?? visit?.before ?? 0);
+    const after = n(visit?.scoreAfter ?? visit?.after ?? 0);
+    const bust = !!(visit?.bust ?? visit?.isBust);
+    const finish = !!(visit?.finish ?? visit?.isFinish) || (!bust && before > 0 && after === 0);
+
+    row.visits += 1;
+    row.darts += darts.length;
+    row.remainingRaw = after;
+    row.remaining = after;
+
+    for (const d of darts) {
+      if (!d.v || !d.mult) row.misses += 1;
+      else if (d.v === 25 && d.mult >= 2) row.ib += 1;
+      else if (d.v === 25) row.ob += 1;
+      else if (d.mult >= 3) row.triples += 1;
+      else if (d.mult === 2) row.doubles += 1;
+    }
+
+    const rawVisitScore = darts.reduce((sum, d) => sum + scoreOverlayDart(d), 0);
+    const visitScore = bust ? 0 : n(visit?.score ?? Math.max(0, before - after) || rawVisitScore);
+    if (bust) row.busts += 1;
+    row.points += visitScore;
+    row.best = Math.max(row.best, visitScore);
+    if (visitScore >= 60) row.h60 += 1;
+    if (visitScore >= 100) row.h100 += 1;
+    if (visitScore >= 140) row.h140 += 1;
+    if (visitScore >= 180) row.h180 += 1;
+    if (finish) {
+      row.coCount += 1;
+      row.highestCO = Math.max(row.highestCO, visitScore);
+      row.coDartsAvg = darts.length;
+    }
+  }
+
+  return ids.map((pid) => {
+    const r = ensure(pid);
+    r.bulls = r.ob + r.ib;
+    r.avg3 = r.darts > 0 ? (r.points / r.darts) * 3 : 0;
+    r.pDB = pctFmt(r.doubles, r.darts);
+    r.pTP = pctFmt(r.triples, r.darts);
+    r.pBull = pctFmt(r.ob, r.darts);
+    r.pDBull = pctFmt(r.ib, r.darts);
+    return r;
+  });
+}
+
 // ---------- Composant principal ----------
 export default function EndOfLegOverlay({
   open,
@@ -506,6 +637,7 @@ function Inner({
 
   // --- rows bruts ---
   const rowsRaw = React.useMemo(() => {
+    let baseRows: any[] = [];
     if ((result as any)?.legacy) {
       const r = (result as any).legacy as LegacyLegResult;
       const ids =
@@ -513,19 +645,21 @@ function Inner({
           ? Object.keys(r.remaining)
           : Object.keys(r?.avg3 || {});
       const ord = sortOrderLegacy(r, ids);
-      return ord.map((pid) => rowFromLegacy(r, pid, nameOf));
-    }
-    if (isLegStatsObj(result)) {
+      baseRows = ord.map((pid) => rowFromLegacy(r, pid, nameOf));
+    } else if (isLegStatsObj(result)) {
       const ids = idsFromNew(result);
       const ord = sortOrderNew(result, ids);
-      return ord.map((pid) => rowFromNew(result, pid, nameOf));
+      baseRows = ord.map((pid) => rowFromNew(result, pid, nameOf));
     } else {
       const r = result as LegacyLegResult;
       const ids = Object.keys(r.remaining || r.avg3 || {});
       const ord = sortOrderLegacy(r, ids);
-      return ord.map((pid) => rowFromLegacy(r, pid, nameOf));
+      baseRows = ord.map((pid) => rowFromLegacy(r, pid, nameOf));
     }
-  }, [result, nameOf]);
+
+    const visitRows = rowsFromVisitHistory(safeVisitHistory, nameOf, baseRows);
+    return visitRows.length ? visitRows : baseRows;
+  }, [result, nameOf, safeVisitHistory]);
 
   const legNo =
     (isLegStatsObj(result)

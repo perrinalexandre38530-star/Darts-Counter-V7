@@ -5429,7 +5429,15 @@ function parseReplayDartParts(input: any): { segment: number; multiplier: 0 | 1 
     const directSegment = raw.segment ?? raw.v ?? raw.target ?? raw.number ?? raw.n;
     segment = Number(directSegment);
   }
-  if (!Number.isFinite(segment) || segment < 0 || segment > 25) segment = 0;
+
+  // Fallback critique : certains objets de replay ne gardent que le score brut
+  // (25/50) au lieu du segment. Dans ce cas 50 = DBULL et 25 = BULL.
+  if (!Number.isFinite(segment) || segment < 0 || segment > 25) {
+    const rawScore = Number(raw.score ?? raw.points ?? raw.total ?? raw.value);
+    if (rawScore === 50) { segment = 25; multiplier = 2; }
+    else if (rawScore === 25) { segment = 25; multiplier = 1; }
+    else segment = 0;
+  }
 
   if (!Number.isFinite(multiplier) || multiplier <= 0) {
     if (labelRaw.startsWith("T")) multiplier = 3;
@@ -5912,10 +5920,12 @@ function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] =
     if (bust) m.bust += 1;
     m.points += visitScore;
     m.bestVisit = Math.max(m.bestVisit, visitScore);
+    // Buckets X01 attendus à l'écran : cumulés.
+    // 117 compte dans 60+ ET 100+, pas uniquement dans une classe exclusive.
+    if (visitScore >= 60) m.h60 += 1;
+    if (visitScore >= 100) m.h100 += 1;
+    if (visitScore >= 140) m.h140 += 1;
     if (visitScore >= 180) m.h180 += 1;
-    else if (visitScore >= 140) m.h140 += 1;
-    else if (visitScore >= 100) m.h100 += 1;
-    else if (visitScore >= 60) m.h60 += 1;
     if (before > 1 && before <= 170) m.checkoutAttempts += 1;
     if (finish) {
       m.checkoutHits += 1;

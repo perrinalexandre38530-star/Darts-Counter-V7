@@ -1509,12 +1509,12 @@ function buildPerPlayerMetrics(
     row.points += visitPoints;
     row.bestVisit = Math.max(row.bestVisit, visitPoints);
 
-    // Power scoring X01 affiché en classes exclusives :
-    // 60+ = 60–99, 100+ = 100–139, 140+ = 140–179, 180 = 180.
+    // Power scoring X01 affiché en compteurs cumulés :
+    // 117 compte dans 60+ ET 100+, 180 compte dans les quatre seuils.
+    if (visitPoints >= 60) row.t60 += 1;
+    if (visitPoints >= 100) row.t100 += 1;
+    if (visitPoints >= 140) row.t140 += 1;
     if (visitPoints >= 180) row.t180 += 1;
-    else if (visitPoints >= 140) row.t140 += 1;
-    else if (visitPoints >= 100) row.t100 += 1;
-    else if (visitPoints >= 60) row.t60 += 1;
 
     // Tentatives de checkout : fallback historique.
     // Une volée commencée à <=170 est considérée comme une opportunité CO potentielle.
@@ -2953,7 +2953,12 @@ function parseHistoryDart(r: any): { v: number; mult: 0 | 1 | 2 | 3 } {
   }
 
   if (!Number.isFinite(seg)) seg = Number(r?.segment ?? r?.v ?? r?.num ?? r?.number ?? r?.target ?? 0);
-  if (!Number.isFinite(seg) || seg < 0 || seg > 25) seg = 0;
+  if (!Number.isFinite(seg) || seg < 0 || seg > 25) {
+    const rawScore = Number(r?.score ?? r?.points ?? r?.total ?? r?.value);
+    if (rawScore === 50) { seg = 25; mult = 2; }
+    else if (rawScore === 25) { seg = 25; mult = 1; }
+    else seg = 0;
+  }
   if (!Number.isFinite(mult) || mult <= 0) {
     if (rawLabel.startsWith("T")) mult = 3;
     else if (rawLabel.startsWith("D") && rawLabel !== "DBULL") mult = 2;

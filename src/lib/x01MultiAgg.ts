@@ -36,13 +36,18 @@ function parseDart(raw: any): { value: number; mult: number } {
   let value = Number(raw?.segment ?? raw?.v ?? raw?.value ?? raw?.num ?? raw?.number ?? 0) || 0;
   let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? 0) || 0;
   if (!value && label) {
-    if (label === "MISS" || label === "M") { value = 0; mult = 0; }
-    else if (label === "BULL" || label === "OB") { value = 25; mult = 1; }
-    else if (label === "DBULL" || label === "IB" || label === "D-BULL") { value = 25; mult = 2; }
+    if (label === "MISS" || label === "M" || label === "0") { value = 0; mult = 0; }
+    else if (label === "BULL" || label === "SBULL" || label === "OB") { value = 25; mult = 1; }
+    else if (label === "DBULL" || label === "IB" || label === "D-BULL" || label === "DOUBLEBULL") { value = 25; mult = 2; }
     else {
       const m = label.match(/^([SDT])?(\d{1,2})$/);
       if (m) { value = Number(m[2]) || 0; mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
     }
+  }
+  if (value > 25) {
+    const rawScore = Number(raw?.score ?? raw?.points ?? raw?.total ?? raw?.value);
+    if (rawScore === 50) { value = 25; mult = 2; }
+    else value = 0;
   }
   if (!mult) mult = value > 0 ? 1 : 0;
   if (value === 25 && mult > 2) mult = 2;
