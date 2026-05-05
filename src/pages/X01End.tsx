@@ -411,10 +411,6 @@ export default function X01End({ go, params }: Props) {
     [rec, players, legStats]
   );
 
-  // Alias volontaire : sécurise les rendus/patchs précédents qui référencent
-  // visitHistory dans le scope X01End au lieu de visits.
-  const visitHistory = visits;
-
   const shareMatchId = (params?.matchId || (rec as any)?.id || (rec as any)?.matchId) as string | undefined;
 
   async function handleShareMatch() {
@@ -1019,7 +1015,7 @@ export default function X01End({ go, params }: Props) {
             open={overlayOpen}
             result={overlayResult}
             playersById={playersById}
-            visitHistory={visitHistory}
+            visitHistory={visits}
             onClose={() => setOverlayOpen(false)}
             onReplay={() => setOverlayOpen(false)}
             onSave={() => setOverlayOpen(false)}
