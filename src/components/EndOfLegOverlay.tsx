@@ -28,6 +28,17 @@ import type { LegStats } from "../lib/stats";
 // --- Types légers (compat) ---
 type PlayerMini = { id: string; name: string; avatarDataUrl?: string | null };
 
+type OverlayVisitRow = {
+  idx: number;
+  legNo?: number;
+  playerId: string;
+  darts: Array<{ v?: number; segment?: number; value?: number; mult?: number; multiplier?: number }>;
+  scoreBefore?: number;
+  scoreAfter?: number;
+  bust?: boolean;
+  finish?: boolean;
+};
+
 // --- Ancien schéma (compat) ---
 export type LegacyLegResult = {
   legNo: number;
@@ -75,6 +86,7 @@ type Props = {
   onClose: () => void;
   onReplay?: () => void;
   onSave?: (res: LegacyLegResult | LegStats) => void;
+  visitHistory?: OverlayVisitRow[];
 };
 
 // ---------- Utils ----------
@@ -450,6 +462,7 @@ export default function EndOfLegOverlay({
   onClose,
   onReplay,
   onSave,
+  visitHistory = [],
 }: Props) {
   if (!open || !result) return null;
   return (
@@ -1294,6 +1307,24 @@ function Inner({
                   <ChartPlaceholder />
                 )}
               </ChartCard>
+
+              {visitHistory.length > 0 ? (
+                <ChartCard>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      opacity: 0.82,
+                      marginBottom: 6,
+                      textAlign: "center",
+                      fontWeight: 900,
+                      color: "var(--dc-accent, #ffcf57)",
+                    }}
+                  >
+                    Historique des volées
+                  </div>
+                  <OverlayVisitsList visits={visitHistory} playersById={playersById} />
+                </ChartCard>
+              ) : null}
             </div>
           </Accordion>
 
@@ -1504,6 +1535,125 @@ function Accordion({
     </div>
   );
 }
+
+
+function overlayDartToString(d: any) {
+  const v = Number(d?.v ?? d?.segment ?? d?.value ?? 0) || 0;
+  const m = Number(d?.mult ?? d?.multiplier ?? 0) || (v > 0 ? 1 : 0);
+  if (!v) return "MISS";
+  if (v === 25) return m === 2 ? "DBULL" : "BULL";
+  return `${m === 3 ? "T" : m === 2 ? "D" : "S"}${v}`;
+}
+
+function overlayDartValue(d: any) {
+  const v = Number(d?.v ?? d?.segment ?? d?.value ?? 0) || 0;
+  const m = Number(d?.mult ?? d?.multiplier ?? 0) || (v > 0 ? 1 : 0);
+  return v === 25 && m === 2 ? 50 : v * m;
+}
+
+function OverlayVisitsList({
+  visits,
+  playersById,
+}: {
+  visits: OverlayVisitRow[];
+  playersById: Record<string, PlayerMini>;
+}) {
+  return (
+    <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+      {visits.map((v, i) => {
+        const player = playersById[v.playerId];
+        const name = player?.name || "—";
+        const before = Number(v.scoreBefore ?? 0) || 0;
+        const after = Number(v.scoreAfter ?? 0) || 0;
+        const total = v.bust ? 0 : before && after >= 0 ? Math.max(0, before - after) : (v.darts || []).reduce((sum, d) => sum + overlayDartValue(d), 0);
+        return (
+          <div
+            key={`${v.idx || i}-${v.playerId}`}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "54px 1fr auto",
+              gap: 8,
+              alignItems: "center",
+              padding: "7px 8px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,.08)",
+              background: "linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018))",
+            }}
+          >
+            <div style={{ color: "var(--dc-accent, #ffcf57)", fontWeight: 900, fontSize: 11 }}>#{v.idx || i + 1}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 5 }}>
+                <span style={{ fontWeight: 900, color: "#f4f4f6" }}>{name}</span>
+                {v.finish && !v.bust ? <span style={overlayVisitTag("finish")}>FINISH</span> : null}
+                {v.bust ? <span style={overlayVisitTag("bust")}>BUST</span> : null}
+              </div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {(v.darts || []).map((d, di) => (
+                  <span key={di} style={overlayDartBadge(overlayDartToString(d))}>{overlayDartToString(d)}</span>
+                ))}
+                <span style={overlayTotalBadge}>{v.bust ? "BUST" : `+${total}`}</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", minWidth: 86 }}>
+              <span style={overlayScoreBadge}>{before || "—"}</span>
+              <span style={{ color: "#8f8f99", fontWeight: 900 }}>→</span>
+              <span style={{ ...overlayScoreBadge, color: "#7fe2a9", borderColor: "rgba(127,226,169,.26)" }}>{after || 0}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function overlayVisitTag(kind: "finish" | "bust"): React.CSSProperties {
+  return {
+    padding: "2px 7px",
+    borderRadius: 999,
+    fontSize: 9,
+    fontWeight: 900,
+    color: kind === "finish" ? "#0f1411" : "#190f10",
+    background: kind === "finish" ? "linear-gradient(180deg,#86efac,#22c55e)" : "linear-gradient(180deg,#fca5a5,#ef4444)",
+  };
+}
+
+function overlayDartBadge(label: string): React.CSSProperties {
+  const isMiss = label === "MISS";
+  const isBull = label === "BULL" || label === "DBULL";
+  const isTriple = label.startsWith("T");
+  const isDouble = label.startsWith("D") && label !== "DBULL";
+  return {
+    padding: "5px 8px",
+    minWidth: 44,
+    textAlign: "center",
+    borderRadius: 10,
+    border: isMiss ? "1px solid rgba(248,113,113,.30)" : isBull ? "1px solid rgba(96,165,250,.34)" : isTriple ? "1px solid rgba(249,115,207,.32)" : isDouble ? "1px solid rgba(61,214,140,.32)" : "1px solid rgba(255,255,255,.10)",
+    background: isMiss ? "rgba(248,113,113,.18)" : isBull ? "rgba(96,165,250,.18)" : isTriple ? "rgba(249,115,207,.16)" : isDouble ? "rgba(61,214,140,.16)" : "rgba(255,255,255,.06)",
+    color: "#f6f6f8",
+    fontSize: 10,
+    fontWeight: 900,
+  };
+}
+
+const overlayTotalBadge: React.CSSProperties = {
+  padding: "5px 8px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,207,87,.18)",
+  background: "rgba(255,207,87,.12)",
+  color: "var(--dc-accent, #ffcf57)",
+  fontSize: 10,
+  fontWeight: 900,
+};
+
+const overlayScoreBadge: React.CSSProperties = {
+  padding: "5px 7px",
+  borderRadius: 9,
+  border: "1px solid rgba(255,255,255,.12)",
+  background: "rgba(255,255,255,.045)",
+  color: "#e8e8ec",
+  fontSize: 10,
+  fontWeight: 900,
+};
 
 function ChartCard({ children }: { children: React.ReactNode }) {
   return (

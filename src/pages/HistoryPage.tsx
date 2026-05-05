@@ -2084,6 +2084,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 	            filtered.map((e) => {
             const inProg = statusOf(e) === "in_progress";
             const key = matchLink(e) || e.id;
+            const historyVisits = !inProg && isX01HistoryRecord(e) ? buildX01HistoryVisits(e) : [];
+            const historyPlayersById = buildHistoryPlayersById(e, store);
 
             return (
               <ScaledCard key={key} baseStyle={sportCardStyle(getModeColor(e))}>
@@ -2186,6 +2188,10 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                     </div>
                   </div>
                 </div>
+
+                {historyVisits.length > 0 ? (
+                  <HistoryX01VisitsBlock visits={historyVisits} playersById={historyPlayersById} />
+                ) : null}
               </ScaledCard>
             );
 	            })
@@ -2195,6 +2201,223 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     </div>
   );
 }
+
+
+/* ---------- X01 visit history block (carte historique) ---------- */
+type HistoryVisitRow = {
+  idx: number;
+  legNo: number;
+  playerId: string;
+  darts: Array<{ v: number; mult: number }>;
+  scoreBefore: number;
+  scoreAfter: number;
+  bust: boolean;
+  finish: boolean;
+};
+
+type HistoryPlayerLite = { id: string; name: string; avatarDataUrl?: string | null };
+
+function isX01HistoryRecord(e: any) {
+  const raw = [e?.kind, e?.mode, e?.game?.mode, e?.payload?.kind, e?.payload?.mode, e?.summary?.kind, e?.summary?.mode]
+    .map((x) => String(x || "").toLowerCase())
+    .join(" ");
+  return /x01|301|501|701|901|leg/.test(raw) || String(modeLabel(e) || "").toLowerCase().includes("x01");
+}
+
+function buildHistoryPlayersById(e: any, store: any): Record<string, HistoryPlayerLite> {
+  const arr: any[] = Array.isArray(e?.players) && e.players.length
+    ? e.players
+    : Array.isArray(e?.payload?.players) && e.payload.players.length
+    ? e.payload.players
+    : Array.isArray(e?.summary?.players) ? e.summary.players : [];
+  const out: Record<string, HistoryPlayerLite> = {};
+  arr.forEach((p: any) => {
+    const id = String(p?.id || p?.playerId || p?.pid || "").trim();
+    if (!id) return;
+    out[id] = { id, name: getName(p) || p?.name || "—", avatarDataUrl: getAvatarUrl(store, p) || p?.avatarDataUrl || null };
+  });
+  return out;
+}
+
+function buildX01HistoryVisits(e: any): HistoryVisitRow[] {
+  const players: any[] = Array.isArray(e?.players) && e.players.length
+    ? e.players
+    : Array.isArray(e?.payload?.players) && e.payload.players.length
+    ? e.payload.players
+    : Array.isArray(e?.summary?.players) ? e.summary.players : [];
+  const order: string[] =
+    (Array.isArray(e?.summary?.throwOrder) && e.summary.throwOrder.length ? e.summary.throwOrder :
+    Array.isArray(e?.payload?.summary?.throwOrder) && e.payload.summary.throwOrder.length ? e.payload.summary.throwOrder :
+    Array.isArray(e?.payload?.config?.players) && e.payload.config.players.length ? e.payload.config.players.map((p: any) => String(p?.id || "")).filter(Boolean) :
+    players.map((p: any) => String(p?.id || p?.playerId || p?.pid || "")).filter(Boolean));
+  if (!order.length) return [];
+
+  const explicitVisits: any[] =
+    Array.isArray(e?.payload?.__legStats?.visits) ? e.payload.__legStats.visits :
+    Array.isArray(e?.__legStats?.visits) ? e.__legStats.visits :
+    Array.isArray(e?.payload?.summary?.visitsHistory) ? e.payload.summary.visitsHistory :
+    Array.isArray(e?.summary?.visitsHistory) ? e.summary.visitsHistory : [];
+
+  if (explicitVisits.length) {
+    return explicitVisits.map((v: any, idx: number) => ({
+      idx: idx + 1,
+      legNo: Number(v?.legNo ?? v?.legIndex ?? 1) || 1,
+      playerId: String(v?.playerId ?? v?.pid ?? ""),
+      darts: (Array.isArray(v?.darts) ? v.darts : Array.isArray(v?.hits) ? v.hits : []).map(parseHistoryDart),
+      scoreBefore: Number(v?.scoreBefore ?? v?.before ?? v?.startScore ?? 0) || 0,
+      scoreAfter: Number(v?.scoreAfter ?? v?.after ?? v?.endScore ?? 0) || 0,
+      bust: !!(v?.bust ?? v?.isBust),
+      finish: !!(v?.finish ?? v?.isFinish) || (!!(v?.scoreAfter === 0 || v?.after === 0) && !(v?.bust ?? v?.isBust)),
+    }));
+  }
+
+  const rawDarts: any[] =
+    Array.isArray(e?.payload?.replayDarts) ? e.payload.replayDarts :
+    Array.isArray(e?.payload?.darts) ? e.payload.darts :
+    Array.isArray(e?.payload?.allDarts) ? e.payload.allDarts :
+    Array.isArray(e?.summary?.dartsReplay) ? e.summary.dartsReplay :
+    Array.isArray(e?.darts) ? e.darts : [];
+  if (!rawDarts.length) return [];
+
+  const startScore = Number(e?.payload?.config?.startScore ?? e?.summary?.startScore ?? e?.payload?.startScore ?? 501) || 501;
+  const scores: Record<string, number> = {};
+  order.forEach((pid) => { scores[pid] = startScore; });
+  const dartPid = (r: any) => String(r?.playerId ?? r?.pid ?? r?.p ?? r?.profileId ?? "").trim();
+  const hasTagged = rawDarts.some((d) => dartPid(d));
+  const out: HistoryVisitRow[] = [];
+
+  const pushVisit = (pid: string, rawGroup: any[]) => {
+    if (!pid || !rawGroup.length) return;
+    const darts = rawGroup.map(parseHistoryDart);
+    const before = Number(rawGroup[0]?.scoreBefore ?? rawGroup[0]?.before ?? rawGroup[0]?.startScore ?? scores[pid] ?? startScore) || 0;
+    let after = before;
+    let bust = rawGroup.some((d) => !!(d?.bust || d?.isBust));
+    let finish = rawGroup.some((d) => !!(d?.finish || d?.isFinish));
+    for (const d of darts) {
+      const tentative = after - historyDartValue(d);
+      if (tentative < 0 || tentative === 1) { bust = true; after = before; break; }
+      after = tentative;
+      if (after === 0) { finish = true; break; }
+    }
+    const last = rawGroup[rawGroup.length - 1];
+    const explicitAfter = last?.scoreAfter ?? last?.after ?? last?.endScore;
+    if (explicitAfter != null && Number.isFinite(Number(explicitAfter))) after = Number(explicitAfter);
+    if (after === 0) finish = true;
+    out.push({ idx: out.length + 1, legNo: Number(rawGroup[0]?.legNo ?? rawGroup[0]?.legIndex ?? 1) || 1, playerId: pid, darts, scoreBefore: before, scoreAfter: after, bust, finish });
+    scores[pid] = after;
+  };
+
+  if (hasTagged) {
+    let currentPid = "";
+    let group: any[] = [];
+    rawDarts.forEach((raw) => {
+      const pid = dartPid(raw) || currentPid || order[0];
+      if (!currentPid) currentPid = pid;
+      if (pid !== currentPid || group.length >= 3) {
+        pushVisit(currentPid, group);
+        currentPid = pid;
+        group = [];
+      }
+      group.push(raw);
+    });
+    pushVisit(currentPid, group);
+    return out;
+  }
+
+  let i = 0;
+  let thrower = 0;
+  while (i < rawDarts.length) {
+    const pid = order[thrower % order.length];
+    const group = rawDarts.slice(i, i + 3);
+    pushVisit(pid, group);
+    i += group.length;
+    thrower += 1;
+    if (out[out.length - 1]?.finish) break;
+  }
+  return out;
+}
+
+function parseHistoryDart(raw: any): { v: number; mult: number } {
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? "").trim().toUpperCase();
+  let v = Number(raw?.segment ?? raw?.v ?? raw?.value ?? raw?.num ?? raw?.number ?? 0) || 0;
+  let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? 0) || 0;
+  if (!v && label) {
+    if (label === "MISS" || label === "M") { v = 0; mult = 0; }
+    else if (label === "BULL" || label === "OB") { v = 25; mult = 1; }
+    else if (label === "DBULL" || label === "IB" || label === "D-BULL") { v = 25; mult = 2; }
+    else {
+      const m = label.match(/^([SDT])?(\d{1,2})$/);
+      if (m) { v = Number(m[2]) || 0; mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
+    }
+  }
+  if (!mult) mult = v > 0 ? 1 : 0;
+  if (v === 25 && mult > 2) mult = 2;
+  return { v, mult };
+}
+
+function historyDartValue(d: { v: number; mult: number }) {
+  return d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult;
+}
+
+function historyDartLabel(d: { v: number; mult: number }) {
+  if (!d.v) return "MISS";
+  if (d.v === 25) return d.mult === 2 ? "DBULL" : "BULL";
+  return `${d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S"}${d.v}`;
+}
+
+function HistoryX01VisitsBlock({ visits, playersById }: { visits: HistoryVisitRow[]; playersById: Record<string, HistoryPlayerLite> }) {
+  return (
+    <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.10)" }}>
+      <div style={{ fontSize: 11, fontWeight: 900, color: "var(--dc-accent, #ffcf57)", marginBottom: 6, letterSpacing: 0.2 }}>
+        Historique des volées
+      </div>
+      <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+        {visits.map((v) => {
+          const p = playersById[v.playerId];
+          const total = v.bust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
+          return (
+            <div key={`${v.idx}-${v.playerId}`} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.18)" }}>
+              <div style={{ color: "var(--dc-accent, #ffcf57)", fontSize: 11, fontWeight: 900 }}>#{v.idx}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
+                  <span style={{ fontWeight: 900, color: "rgba(255,255,255,.92)", fontSize: 11 }}>{p?.name || "—"}</span>
+                  {v.finish && !v.bust ? <span style={historyVisitTag("finish")}>FINISH</span> : null}
+                  {v.bust ? <span style={historyVisitTag("bust")}>BUST</span> : null}
+                </div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  {v.darts.map((d, i) => {
+                    const label = historyDartLabel(d);
+                    return <span key={i} style={historyDartBadge(label)}>{label}</span>;
+                  })}
+                  <span style={{ ...historyDartBadge("TOTAL"), color: "var(--dc-accent, #ffcf57)", borderColor: "rgba(255,207,87,.22)" }}>{v.bust ? "BUST" : `+${total}`}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", minWidth: 86 }}>
+                <span style={historyScoreBadge}>{v.scoreBefore}</span>
+                <span style={{ color: "rgba(255,255,255,.48)", fontWeight: 900 }}>→</span>
+                <span style={{ ...historyScoreBadge, color: "#7fe2a9", borderColor: "rgba(127,226,169,.28)" }}>{v.scoreAfter}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function historyVisitTag(kind: "finish" | "bust"): React.CSSProperties {
+  return { padding: "2px 7px", borderRadius: 999, fontSize: 9, fontWeight: 900, color: kind === "finish" ? "#0f1411" : "#190f10", background: kind === "finish" ? "linear-gradient(180deg,#86efac,#22c55e)" : "linear-gradient(180deg,#fca5a5,#ef4444)" };
+}
+
+function historyDartBadge(label: string): React.CSSProperties {
+  const isMiss = label === "MISS";
+  const isBull = label === "BULL" || label === "DBULL";
+  const isTriple = label.startsWith("T");
+  const isDouble = label.startsWith("D") && label !== "DBULL";
+  return { padding: "5px 8px", minWidth: 42, textAlign: "center", borderRadius: 10, border: isMiss ? "1px solid rgba(248,113,113,.30)" : isBull ? "1px solid rgba(96,165,250,.34)" : isTriple ? "1px solid rgba(249,115,207,.32)" : isDouble ? "1px solid rgba(61,214,140,.32)" : "1px solid rgba(255,255,255,.10)", background: isMiss ? "rgba(248,113,113,.18)" : isBull ? "rgba(96,165,250,.18)" : isTriple ? "rgba(249,115,207,.16)" : isDouble ? "rgba(61,214,140,.16)" : "rgba(255,255,255,.06)", color: "rgba(255,255,255,.92)", fontSize: 10, fontWeight: 900 };
+}
+
+const historyScoreBadge: React.CSSProperties = { padding: "5px 7px", borderRadius: 9, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.045)", color: "rgba(255,255,255,.88)", fontSize: 10, fontWeight: 900 };
 
 /* ---------- Date format ---------- */
 function fmtDate(ts: number) {

@@ -1,120 +1,172 @@
 // ============================================================
 // x01MultiAgg.ts — Agrégation complète X01 Multi
-// Reproduit EXACTEMENT la logique du TrainingX01Stats
-// mais basée sur l'historique des matchs X01 multi (SavedMatch)
+// Source fiable : historique X01 + replay de fléchettes/volées
 // ============================================================
 
 import type { SavedMatch, PlayerLite } from "./types";
 
-// Sécurité
 const N = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 
-// détecte si un match est X01
+function lower(v: any) { return String(v ?? "").toLowerCase().trim(); }
+
 export function isX01Match(rec: SavedMatch): boolean {
-  const k = (rec.kind || "").toLowerCase();
-  return k.startsWith("x01");
+  const payload: any = (rec as any)?.payload ?? null;
+  const nested: any = payload?.payload ?? null;
+  const summary: any = (rec as any)?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const cfg: any = (rec as any)?.config ?? payload?.config ?? nested?.config ?? null;
+  const values = [
+    (rec as any)?.kind, (rec as any)?.mode, (rec as any)?.variant, (rec as any)?.game,
+    payload?.kind, payload?.mode, payload?.variant, payload?.game, payload?.gameMode,
+    nested?.kind, nested?.mode, nested?.variant, nested?.game, nested?.gameMode,
+    summary?.kind, summary?.mode, summary?.variant, summary?.game?.mode,
+    cfg?.kind, cfg?.mode, cfg?.variant, cfg?.gameMode,
+  ].map(lower);
+  return values.some((k) => k === "x01" || k === "x01v3" || k.includes("x01"));
 }
 
-// Extraction universelle d’une visite (score, bust, hits)
-function extractVisits(rec: SavedMatch, pid: string) {
-  // TrainingX01 utilise un format simple : {score, bust, segments:[{mult, value}] }
-  // Ici on doit récupérer les data depuis payload.visits ou engineState
-  const visits =
-    (rec as any).payload?.visits ??
-    (rec as any).engineState?.visits ??
-    [];
+function pickPlayers(rec: any): PlayerLite[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const arr = rec?.players || rec?.summary?.players || payload?.players || payload?.config?.players || nested?.players || nested?.config?.players || [];
+  return Array.isArray(arr) ? arr : [];
+}
 
-  const arr: Array<{
-    bust: boolean;
-    score: number;
-    segments: Array<{ value: number; mult: number }>;
-  }> = [];
+function parseDart(raw: any): { value: number; mult: number } {
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? "").trim().toUpperCase();
+  let value = Number(raw?.segment ?? raw?.v ?? raw?.value ?? raw?.num ?? raw?.number ?? 0) || 0;
+  let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? 0) || 0;
+  if (!value && label) {
+    if (label === "MISS" || label === "M") { value = 0; mult = 0; }
+    else if (label === "BULL" || label === "OB") { value = 25; mult = 1; }
+    else if (label === "DBULL" || label === "IB" || label === "D-BULL") { value = 25; mult = 2; }
+    else {
+      const m = label.match(/^([SDT])?(\d{1,2})$/);
+      if (m) { value = Number(m[2]) || 0; mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
+    }
+  }
+  if (!mult) mult = value > 0 ? 1 : 0;
+  if (value === 25 && mult > 2) mult = 2;
+  if (![0,1,2,3].includes(mult)) mult = value > 0 ? 1 : 0;
+  return { value, mult };
+}
 
-  for (const v of visits) {
-    if (v.p !== pid) continue;
+function dartScore(d: { value: number; mult: number }) {
+  if (!d.value || !d.mult) return 0;
+  return d.value === 25 && d.mult === 2 ? 50 : d.value * d.mult;
+}
 
-    const segs: any[] = Array.isArray(v.segments) ? v.segments : [];
+function extractRawDarts(rec: any): any[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const arr =
+    payload?.replayDarts || payload?.darts || payload?.allDarts || payload?.summary?.replayDarts ||
+    rec?.summary?.replayDarts || rec?.summary?.dartsReplay || rec?.resume?.darts || rec?.darts ||
+    nested?.replayDarts || nested?.darts || [];
+  return Array.isArray(arr) ? arr : [];
+}
 
-    arr.push({
-      bust: !!v.bust,
-      score: Number(v.score) || 0,
-      segments: segs.map((s) => ({
-        value: Number(s.value) || 0,
-        mult: Number(s.mult) || 1,
-      })),
-    });
+function extractVisits(rec: SavedMatch, pid: string, order: string[] = []) {
+  const payload: any = (rec as any).payload ?? null;
+  const explicit = payload?.visits ?? (rec as any).engineState?.visits ?? (rec as any).visits ?? [];
+  if (Array.isArray(explicit) && explicit.length) {
+    return explicit
+      .filter((v: any) => String(v?.p ?? v?.playerId ?? v?.pid ?? "") === String(pid))
+      .map((v: any) => {
+        const segments = Array.isArray(v.segments) ? v.segments.map(parseDart) : (Array.isArray(v.darts) ? v.darts.map(parseDart) : []);
+        const rawScore = N(v.score ?? v.total ?? segments.reduce((s: number, d: any) => s + dartScore(d), 0));
+        return { bust: !!(v.bust ?? v.isBust), finish: !!(v.finish ?? v.isFinish ?? v.checkout), score: rawScore, segments };
+      });
   }
 
-  return arr;
+  const rawDarts = extractRawDarts(rec);
+  if (!rawDarts.length) return [];
+
+  const dartPid = (r: any) => String(r?.playerId ?? r?.pid ?? r?.p ?? r?.profileId ?? "").trim();
+  const hasTagged = rawDarts.some((d) => dartPid(d));
+  const startScore = N((rec as any)?.config?.startScore ?? payload?.config?.startScore ?? payload?.startScore ?? (rec as any)?.summary?.game?.startScore ?? 501) || 501;
+  const scores: Record<string, number> = {};
+  const safeOrder = order.filter(Boolean);
+  for (const id of safeOrder) scores[id] = startScore;
+  if (scores[pid] == null) scores[pid] = startScore;
+
+  const visits: Array<{ bust: boolean; finish: boolean; score: number; segments: Array<{ value: number; mult: number }> }> = [];
+  let currentPid = "";
+  let current: Array<{ value: number; mult: number }> = [];
+  let fallbackVisit = 0;
+  let fallbackDartInVisit = 0;
+
+  const flush = () => {
+    if (!currentPid || !current.length) { currentPid = ""; current = []; return; }
+    const before = N(scores[currentPid] ?? startScore) || startScore;
+    let after = before;
+    let rawTotal = 0;
+    let bust = false;
+    let finish = false;
+    for (const d of current) {
+      const sc = dartScore(d);
+      rawTotal += sc;
+      const tentative = after - sc;
+      if (tentative < 0 || tentative === 1) { bust = true; after = before; break; }
+      after = tentative;
+      if (after === 0) { finish = true; break; }
+    }
+    const score = bust ? 0 : Math.max(0, before - after || rawTotal);
+    scores[currentPid] = after;
+    if (currentPid === String(pid)) visits.push({ bust, finish, score, segments: current });
+    currentPid = "";
+    current = [];
+  };
+
+  for (const raw of rawDarts) {
+    let p = dartPid(raw);
+    if (!p && !hasTagged && safeOrder.length) {
+      p = safeOrder[fallbackVisit % safeOrder.length] || "";
+      fallbackDartInVisit += 1;
+      if (fallbackDartInVisit >= 3) { fallbackDartInVisit = 0; fallbackVisit += 1; }
+    }
+    if (!p) continue;
+    if (currentPid !== p || current.length >= 3) { flush(); currentPid = p; }
+    current.push(parseDart(raw));
+  }
+  flush();
+  return visits;
 }
 
-/**
- * Agrège toutes les statistiques comme dans TrainingX01 :
- * - hits S/D/T
- * - bull / dBull
- * - miss
- * - progression
- * - best visit
- * - best checkout
- * - total darts
- * - avg 3D
- * - %S / %D / %T
- * - %Miss
- * - utilisation par segment (1..20)
- */
-export function computeX01MultiAgg(
-  records: SavedMatch[],
-  playerId: string,
-  playerName?: string
-) {
+export function computeX01MultiAgg(records: SavedMatch[], playerId: string, playerName?: string) {
   const out = {
     sessions: 0,
     darts: 0,
     sumAvg3D: 0,
     bestVisit: 0,
     bestCheckout: 0,
-
     hitsSingle: 0,
     hitsDouble: 0,
     hitsTriple: 0,
-
     hitsBull: 0,
     hitsDBull: 0,
     miss: 0,
-
-    // 1 à 20 → total hits
+    bust: 0,
     byNumber: Array(21).fill(0),
-
-    // progression (moy 3D par match)
     progression: [] as { avg3D: number; ts: number }[],
   };
 
-  const set = new Set<string>();
-
+  const seen = new Set<string>();
   for (const rec of records) {
     if (!isX01Match(rec)) continue;
-    if (rec.status && rec.status !== "finished") continue;
+    if ((rec as any).status && (rec as any).status !== "finished") continue;
+    if ((rec as any).id && seen.has((rec as any).id)) continue;
+    if ((rec as any).id) seen.add((rec as any).id);
 
-    if (rec.id && set.has(rec.id)) continue;
-    if (rec.id) set.add(rec.id);
-
-    const players = (rec.players || []) as PlayerLite[];
-
+    const players = pickPlayers(rec);
     const pname = (playerName || "").trim().toLowerCase();
-    const matched =
-      players.find((p) => p?.id === playerId) ||
-      (pname ? players.find((p) => (p?.name || "").trim().toLowerCase() === pname) : undefined);
-
+    const matched = players.find((p: any) => String(p?.id) === String(playerId)) || (pname ? players.find((p: any) => String(p?.name || "").trim().toLowerCase() === pname) : undefined);
     if (!matched?.id) continue;
-    const effectivePlayerId = matched.id;
 
-    // ----- visites -----
-    const visits = extractVisits(rec, effectivePlayerId);
-
+    const order = players.map((p: any) => String(p?.id || "")).filter(Boolean);
+    const visits = extractVisits(rec, String(matched.id), order);
     if (!visits.length) continue;
 
     out.sessions++;
-
     let darts = 0;
     let scored = 0;
     let bestVisit = 0;
@@ -122,30 +174,19 @@ export function computeX01MultiAgg(
 
     for (const v of visits) {
       darts += v.segments.length;
-
       if (!v.bust) {
         scored += v.score;
-        if (v.score > bestVisit) bestVisit = v.score;
+        bestVisit = Math.max(bestVisit, v.score);
+        if (v.finish) bestCO = Math.max(bestCO, v.score);
+      } else {
+        out.bust += 1;
       }
-
-      // Checkout détecté : score == checkout ? dépend du moteur, mais on prend bestCO = bestVisit ici
-      if (!v.bust && v.score > bestCO) {
-        bestCO = v.score;
-      }
-
-      // décomposition segments
       for (const s of v.segments) {
-        if (s.value === 25 && s.mult === 1) {
-          out.hitsBull++;
-        } else if (s.value === 25 && s.mult === 2) {
-          out.hitsDBull++;
-        } else if (s.value === 0) {
-          out.miss++;
-        } else {
-          if (s.value >= 1 && s.value <= 20) {
-            out.byNumber[s.value] += 1;
-          }
-
+        if (s.value === 25 && s.mult === 1) out.hitsBull++;
+        else if (s.value === 25 && s.mult === 2) out.hitsDBull++;
+        else if (s.value === 0 || s.mult === 0) out.miss++;
+        else {
+          if (s.value >= 1 && s.value <= 20) out.byNumber[s.value] += 1;
           if (s.mult === 1) out.hitsSingle++;
           else if (s.mult === 2) out.hitsDouble++;
           else if (s.mult === 3) out.hitsTriple++;
@@ -156,21 +197,11 @@ export function computeX01MultiAgg(
     out.darts += darts;
     const avg3 = darts > 0 ? (scored / darts) * 3 : 0;
     out.sumAvg3D += avg3;
-
-    if (bestVisit > out.bestVisit) out.bestVisit = bestVisit;
-    if (bestCO > out.bestCheckout) out.bestCheckout = bestCO;
-
-    out.progression.push({
-      avg3D: avg3,
-      ts:
-        rec.updatedAt ??
-        rec.createdAt ??
-        Date.now(),
-    });
+    out.bestVisit = Math.max(out.bestVisit, bestVisit);
+    out.bestCheckout = Math.max(out.bestCheckout, bestCO);
+    out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
   }
 
-  // tri progression
   out.progression.sort((a, b) => a.ts - b.ts);
-
   return out;
 }

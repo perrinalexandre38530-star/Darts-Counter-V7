@@ -273,7 +273,7 @@ function buildSessionFromSummary(
   X01MultiSession,
   "id" | "matchId" | "date" | "selectedPlayerId" | "playerName"
 > | null {
-  const summary = match.summary || {};
+  const summary = match.summary || match?.payload?.summary || match?.payload?.payload?.summary || {};
   const detailedByPlayer = summary.detailedByPlayer || {};
   const perPlayer: any[] = Array.isArray(summary.perPlayer)
     ? summary.perPlayer
@@ -659,7 +659,20 @@ async function loadX01MultiSessions(
 
   const out: X01MultiSession[] = [];
 
-  for (const match of list) {
+  for (const liteMatch of list) {
+    // Les lignes History.list() peuvent être allégées et ne pas contenir
+    // summary.detailedByPlayer / payload décodé. Pour les stats X01, on hydrate
+    // chaque ligne avant extraction afin que le Centre de statistiques voie la
+    // même source que la carte Historique / X01End.
+    let match: any = liteMatch;
+    try {
+      if (liteMatch?.id) {
+        match = (await History.get(liteMatch.id)) || liteMatch;
+      }
+    } catch {
+      match = liteMatch;
+    }
+
     // --------- 1) est-ce bien un X01 / X01V3 ? ----------
     const candidates: any[] = [
       match.kind,
@@ -671,6 +684,15 @@ async function loadX01MultiSessions(
       match?.payload?.game,
       match?.payload?.mode,
       match?.payload?.variant,
+      match?.payload?.gameMode,
+      match?.payload?.payload?.kind,
+      match?.payload?.payload?.game,
+      match?.payload?.payload?.mode,
+      match?.payload?.payload?.variant,
+      match?.payload?.payload?.gameMode,
+      match?.payload?.summary?.game?.mode,
+      match?.payload?.config?.mode,
+      match?.payload?.config?.gameMode,
     ];
 
     const isX01 = candidates
@@ -692,8 +714,16 @@ async function loadX01MultiSessions(
     const players: any[] =
       (Array.isArray(match.players) && match.players.length
         ? match.players
-        : Array.isArray(match?.payload?.players)
+        : Array.isArray(match?.summary?.players) && match.summary.players.length
+        ? match.summary.players
+        : Array.isArray(match?.payload?.players) && match.payload.players.length
         ? match.payload.players
+        : Array.isArray(match?.payload?.config?.players) && match.payload.config.players.length
+        ? match.payload.config.players
+        : Array.isArray(match?.payload?.payload?.players) && match.payload.payload.players.length
+        ? match.payload.payload.players
+        : Array.isArray(match?.payload?.payload?.config?.players)
+        ? match.payload.payload.config.players
         : []) || [];
 
     if (!players.length) continue;

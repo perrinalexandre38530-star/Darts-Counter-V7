@@ -1015,6 +1015,7 @@ export default function X01End({ go, params }: Props) {
             open={overlayOpen}
             result={overlayResult}
             playersById={playersById}
+            visitHistory={visits}
             onClose={() => setOverlayOpen(false)}
             onReplay={() => setOverlayOpen(false)}
             onSave={() => setOverlayOpen(false)}
@@ -1832,37 +1833,37 @@ function buildPerPlayerMetrics(
         m.coAtt
       );
 
-    // ===== 3b) fallback reconstruit depuis resume.darts / replay =====
+    // ===== 3b) source de vérité replay/volées =====
+    // Pour X01, les compteurs finaux/history doivent être recalculés depuis les
+    // fléchettes réellement jouées. Les maps live/legacy peuvent contenir des
+    // volées padding à 3 darts, des BULL/DBULL fusionnés, ou des busts comptés
+    // dans le power scoring. On remplace donc les compteurs sensibles dès que
+    // le replay est disponible.
     const dv = derivedByPid[pid];
-    if (dv) {
-      if (!m.darts) m.darts = n(dv.darts, 0);
-      if (!m.visits) m.visits = n(dv.visits, 0);
-      if (!m.points) m.points = n(dv.points, 0);
-      if (!m.avg3 && n(dv.darts, 0) > 0) {
-        m.avg3 = (n(dv.points, 0) / n(dv.darts, 0)) * 3;
-      }
-      if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
-      if (!m.bestVisit) m.bestVisit = n(dv.bestVisit, 0);
-      m.bestCO = Math.max(
-        sanitizeCO(m.bestCO),
-        sanitizeCO(dv.bestCO)
-      );
+    if (dv && n(dv.darts, 0) > 0) {
+      m.darts = n(dv.darts, 0);
+      m.visits = n(dv.visits, 0);
+      m.points = n(dv.points, 0);
+      m.avg3 = m.darts > 0 ? (m.points / m.darts) * 3 : 0;
+      m.avg1 = m.avg3 / 3;
+      m.bestVisit = n(dv.bestVisit, 0);
+      m.bestCO = sanitizeCO(dv.bestCO);
 
-      if (!m.t60) m.t60 = n(dv.t60, 0);
-      if (!m.t100) m.t100 = n(dv.t100, 0);
-      if (!m.t140) m.t140 = n(dv.t140, 0);
-      if (!m.t180) m.t180 = n(dv.t180, 0);
+      m.t60 = n(dv.t60, 0);
+      m.t100 = n(dv.t100, 0);
+      m.t140 = n(dv.t140, 0);
+      m.t180 = n(dv.t180, 0);
 
-      if (m.singles == null) m.singles = n(dv.singles, 0);
-      if (m.misses == null) m.misses = n(dv.misses, 0);
-      if (m.busts == null) m.busts = n(dv.busts, 0);
-      if (!m.doubles) m.doubles = n(dv.doubles, 0);
-      if (!m.triples) m.triples = n(dv.triples, 0);
-      if (!m.bulls) m.bulls = n(dv.bulls, 0);
-      if (!m.dbulls) m.dbulls = n(dv.dbulls, 0);
-      if (!m.coHits) m.coHits = n(dv.coHits, 0);
-      if (!m.coAtt) m.coAtt = n(dv.coAtt, 0);
-      if (!m.byNumber && dv.byNumber) m.byNumber = dv.byNumber;
+      m.singles = n(dv.singles, 0);
+      m.doubles = n(dv.doubles, 0);
+      m.triples = n(dv.triples, 0);
+      m.bulls = n(dv.bulls, 0);
+      m.dbulls = n(dv.dbulls, 0);
+      m.misses = n(dv.misses, 0);
+      m.busts = n(dv.busts, 0);
+      m.coHits = n(dv.coHits, 0);
+      m.coAtt = n(dv.coAtt, 0);
+      if (dv.byNumber) m.byNumber = dv.byNumber;
     }
 
     // ===== 4) dérivés & % =====
@@ -2944,11 +2945,12 @@ function buildVisitHistory(
     return rawVisits.map((v, idx) => {
       const dartsSrc: any[] =
         v.darts || v.hits || v.throw || v.throws || [];
-      const darts = dartsSrc.map((d) => ({
-        v: Number(d.segment ?? d.v ?? d.value ?? d.num ?? 0) || 0,
-        mult: (Number(d.multiplier ?? d.mult ?? d.m ?? d.multi ?? 1) ||
-          1) as 1 | 2 | 3,
-      }));
+      const darts = dartsSrc.map((d) => {
+        const seg = Number(d.segment ?? d.v ?? d.value ?? d.num ?? 0) || 0;
+        const rawMult = d.multiplier ?? d.mult ?? d.m ?? d.multi;
+        const mult = seg > 0 ? (Number(rawMult ?? 1) || 1) : 0;
+        return { v: seg, mult: mult as 0 | 1 | 2 | 3 };
+      });
       const before = n(
         v.scoreBefore ?? v.before ?? v.startScore ?? v.scoreStart,
         0
