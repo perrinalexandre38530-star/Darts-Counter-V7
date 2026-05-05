@@ -1,6 +1,20 @@
 import { History, type SavedMatch } from "./history";
 
-type SimGame = "x01" | "cricket" | "killer" | "shanghai" | "golf";
+type SimGame =
+  | "x01"
+  | "cricket"
+  | "cricket_cut_throat"
+  | "killer"
+  | "shanghai"
+  | "golf"
+  | "territories"
+  | "battle_royale"
+  | "warfare"
+  | "five_lives"
+  | "scram"
+  | "enculette"
+  | "capital"
+  | "batard";
 
 export type DevMatchSimulationResult = {
   created: number;
@@ -10,7 +24,22 @@ export type DevMatchSimulationResult = {
 };
 
 const DEV_SIM_MARK = "dev-match-simulator-v1";
-const GAMES: SimGame[] = ["x01", "cricket", "killer", "shanghai", "golf"];
+const GAMES: SimGame[] = [
+  "x01",
+  "cricket",
+  "cricket_cut_throat",
+  "killer",
+  "shanghai",
+  "golf",
+  "territories",
+  "battle_royale",
+  "warfare",
+  "five_lives",
+  "scram",
+  "enculette",
+  "capital",
+  "batard",
+];
 
 const PLAYERS = [
   { id: "dev_p1", playerId: "dev_p1", profileId: "dev_p1", name: "DEV Alex", displayName: "DEV Alex" },
@@ -33,8 +62,8 @@ function winnerOf(players: any[], index: number, createdAt: number) {
   return players[n(index + createdAt, 0, players.length - 1)] || players[0];
 }
 
-function base(game: SimGame, index: number, createdAt: number, players = pickPlayers(2)): SavedMatch {
-  const id = `devsim_${game}_${index}`;
+function base(game: SimGame, index: number, createdAt: number, players = pickPlayers(2), idOverride?: string): SavedMatch {
+  const id = idOverride || `devsim_${game}_${index}`;
   const winner = winnerOf(players, index, createdAt);
   const ts = createdAt - index * 60_000;
   return {
@@ -189,7 +218,6 @@ function makeCricket(index: number, now: number): SavedMatch {
       dartsThrown: darts,
       totalMarks: marks,
       marksTotal: marks,
-      totalMarks: marks,
       score,
       points: score,
       hitCount: hitsCount,
@@ -409,12 +437,364 @@ function makeGolf(index: number, now: number): SavedMatch {
   return rec;
 }
 
+
+type DartHit = { segment: number; multiplier: 0 | 1 | 2 | 3; score: number; isMiss?: boolean; label?: string };
+
+function dart(label: string): DartHit {
+  const raw = String(label || "").trim().toUpperCase();
+  if (!raw || raw === "MISS" || raw === "M") return { segment: 0, multiplier: 0, score: 0, isMiss: true, label: "MISS" };
+  if (raw === "BULL" || raw === "SBULL") return { segment: 25, multiplier: 1, score: 25, label: "BULL" };
+  if (raw === "DBULL" || raw === "D-BULL") return { segment: 25, multiplier: 2, score: 50, label: "DBULL" };
+  const prefix = raw[0];
+  const segment = Math.max(0, Math.min(20, Number(raw.slice(1)) || 0));
+  const multiplier = prefix === "T" ? 3 : prefix === "D" ? 2 : 1;
+  return { segment, multiplier: multiplier as 1 | 2 | 3, score: segment * multiplier, label: raw };
+}
+
+function addDartCounters(stats: any, d: DartHit, valid = true) {
+  stats.dartsThrown += 1;
+  stats.darts += 1;
+  stats.dartsDetail.push({ segment: d.segment, multiplier: d.multiplier || 1, score: valid ? d.score : 0, isMiss: !!d.isMiss, label: d.label });
+  if (!valid) return;
+  if (d.isMiss || d.score <= 0) {
+    stats.miss += 1;
+    stats.hits.M += 1;
+    return;
+  }
+  stats.totalScore += d.score;
+  stats.points += d.score;
+  if (d.segment === 25 && d.multiplier === 2) {
+    stats.dBull += 1;
+    stats.dbull += 1;
+    stats.hits.DBull += 1;
+  } else if (d.segment === 25) {
+    stats.bull += 1;
+    stats.bulls += 1;
+    stats.hits.Bull += 1;
+  } else if (d.multiplier === 3) {
+    stats.triples += 1;
+    stats.hits.T += 1;
+  } else if (d.multiplier === 2) {
+    stats.doubles += 1;
+    stats.hits.D += 1;
+  } else {
+    stats.singles += 1;
+    stats.hits.S += 1;
+  }
+  const key = String(d.segment);
+  if (d.segment > 0) {
+    stats.hitsBySegment[key] ||= { S: 0, D: 0, T: 0 };
+    if (d.segment === 25) {
+      // Bull/DBull are kept as global counters for X01 screens.
+    } else if (d.multiplier === 3) stats.hitsBySegment[key].T += 1;
+    else if (d.multiplier === 2) stats.hitsBySegment[key].D += 1;
+    else stats.hitsBySegment[key].S += 1;
+  }
+}
+
+function emptyX01Stats(p: any) {
+  return {
+    ...p,
+    id: p.id,
+    playerId: p.id,
+    profileId: p.id,
+    name: p.name,
+    displayName: p.name,
+    darts: 0,
+    dartsThrown: 0,
+    visits: 0,
+    totalScore: 0,
+    points: 0,
+    pointsScored: 0,
+    scored: 0,
+    avg3: 0,
+    bestVisit: 0,
+    bestCheckout: 0,
+    bestFinish: 0,
+    checkoutAttempts: 0,
+    doublesAttempts: 0,
+    h60: 0,
+    h100: 0,
+    h140: 0,
+    h180: 0,
+    bust: 0,
+    miss: 0,
+    singles: 0,
+    doubles: 0,
+    triples: 0,
+    bulls: 0,
+    bull: 0,
+    dbull: 0,
+    dBull: 0,
+    hits: { S: 0, D: 0, T: 0, M: 0, Bull: 0, DBull: 0 },
+    hitsBySegment: Object.fromEntries([...Array(20)].map((_, i) => [String(i + 1), { S: 0, D: 0, T: 0 }]).concat([["25", { S: 0, D: 0, T: 0 }]] as any)),
+    scorePerVisit: [] as number[],
+    visitsDetail: [] as any[],
+    dartsDetail: [] as any[],
+  };
+}
+
+function makeFixedX01SalsifiJeanNunu(now: number): SavedMatch {
+  const players = [
+    { id: "dev_sp", playerId: "dev_sp", profileId: "dev_sp", name: "Salsifi Poilu", displayName: "Salsifi Poilu", initials: "SP" },
+    { id: "dev_jn", playerId: "dev_jn", profileId: "dev_jn", name: "Jean Nunu", displayName: "Jean Nunu", initials: "JN" },
+  ];
+  const rec = base("x01", 0, now - 777_000, players, "devsim_x01_fixed_jn_sp_301");
+  const startScore = 301;
+  rec.winnerId = "dev_jn";
+
+  const script: Array<{ playerId: string; labels: string[]; bust?: boolean; checkout?: boolean }> = [
+    { playerId: "dev_jn", labels: ["D16", "BULL", "T20"] },
+    { playerId: "dev_sp", labels: ["T17", "S16", "MISS"] },
+    { playerId: "dev_jn", labels: ["S10", "T10", "T7"] },
+    { playerId: "dev_sp", labels: ["T19", "DBULL", "S13"] },
+    { playerId: "dev_jn", labels: ["MISS", "S20", "S6"] },
+    { playerId: "dev_sp", labels: ["T13", "BULL", "S1"] },
+    { playerId: "dev_jn", labels: ["T18", "S7", "S13"] },
+    { playerId: "dev_sp", labels: ["DBULL"], bust: true },
+    { playerId: "dev_jn", labels: ["S11", "D6"], checkout: true },
+  ];
+
+  const remaining: Record<string, number> = { dev_jn: startScore, dev_sp: startScore };
+  const statsById: Record<string, any> = Object.fromEntries(players.map((p) => [p.id, emptyX01Stats(p)]));
+  const visits: any[] = [];
+
+  script.forEach((turn, i) => {
+    const st = statsById[turn.playerId];
+    const darts = turn.labels.map(dart);
+    const visitScore = darts.reduce((acc, d) => acc + d.score, 0);
+    const start = remaining[turn.playerId];
+    const validVisit = !turn.bust;
+    st.visits += 1;
+    if (turn.bust) {
+      st.bust += 1;
+      st.checkoutAttempts += 1;
+      st.doublesAttempts += darts.filter((d) => d.multiplier === 2).length;
+    }
+    darts.forEach((d) => addDartCounters(st, d, validVisit));
+    if (validVisit) remaining[turn.playerId] = Math.max(0, start - visitScore);
+    st.scorePerVisit.push(validVisit ? visitScore : 0);
+    st.bestVisit = Math.max(st.bestVisit, validVisit ? visitScore : 0);
+    if (turn.checkout) {
+      st.bestCheckout = visitScore;
+      st.bestFinish = visitScore;
+      st.checkoutAttempts += 1;
+      st.doublesAttempts += darts.filter((d) => d.multiplier === 2).length;
+    }
+    visits.push({
+      p: turn.playerId,
+      playerId: turn.playerId,
+      score: validVisit ? visitScore : 0,
+      rawScore: visitScore,
+      bust: !!turn.bust,
+      isCheckout: !!turn.checkout,
+      remainingBefore: start,
+      remainingAfter: validVisit ? remaining[turn.playerId] : start,
+      segments: darts.map((d) => ({ segment: d.segment, multiplier: d.multiplier || 1, score: d.score, label: d.label, isMiss: !!d.isMiss })),
+      ts: Number(rec.createdAt || now) + i * 10_000,
+    });
+  });
+
+  const perPlayer = players.map((p) => {
+    const st = statsById[p.id];
+    st.pointsScored = st.points;
+    st.scored = st.points;
+    st.avg3 = st.dartsThrown > 0 ? Number(((st.points / st.dartsThrown) * 3).toFixed(2)) : 0;
+    st.h60 = st.scorePerVisit.filter((x: number) => x >= 60).length;
+    st.h100 = st.scorePerVisit.filter((x: number) => x >= 100).length;
+    st.h140 = st.scorePerVisit.filter((x: number) => x >= 140).length;
+    st.h180 = st.scorePerVisit.filter((x: number) => x === 180).length;
+    st.pctMiss = st.dartsThrown ? Number(((st.miss / st.dartsThrown) * 100).toFixed(1)) : 0;
+    st.pctS = st.dartsThrown ? Number(((st.singles / Math.max(1, st.dartsThrown - st.miss)) * 100).toFixed(1)) : 0;
+    st.pctD = st.dartsThrown ? Number(((st.doubles / Math.max(1, st.dartsThrown - st.miss)) * 100).toFixed(1)) : 0;
+    st.pctT = st.dartsThrown ? Number(((st.triples / Math.max(1, st.dartsThrown - st.miss)) * 100).toFixed(1)) : 0;
+    return st;
+  });
+  const detailedByPlayer = Object.fromEntries(perPlayer.map((p: any) => [p.id, p]));
+  const rankings = [
+    { id: "dev_jn", playerId: "dev_jn", name: "Jean Nunu", initials: "JN", legsWon: 1, setsWon: 1, score: 1, rank: 1 },
+    { id: "dev_sp", playerId: "dev_sp", name: "Salsifi Poilu", initials: "SP", legsWon: 0, setsWon: 0, score: 0, rank: 2 },
+  ];
+
+  rec.game = { mode: "x01", startScore, inMode: "simple", outMode: "simple", doubleOut: false, simpleOut: true, legsPerSet: 1, setsToWin: 1 };
+  rec.liveStatsByPlayer = detailedByPlayer;
+  rec.stats = { players: perPlayer, detailedByPlayer };
+  rec.summary = {
+    ...rec.summary,
+    source: DEV_SIM_MARK,
+    scenario: "fixed-x01-301-jn-sp",
+    mode: "x01",
+    game: rec.game,
+    winnerId: "dev_jn",
+    winnerName: "Jean Nunu",
+    finished: true,
+    legs: 1,
+    darts: perPlayer.reduce((a: number, pp: any) => a + pp.dartsThrown, 0),
+    co: 23,
+    rankings,
+    players: perPlayer,
+    perPlayer,
+    detailedByPlayer,
+    avg3ByPlayer: Object.fromEntries(perPlayer.map((pp: any) => [pp.id, pp.avg3])),
+    bestVisitByPlayer: Object.fromEntries(perPlayer.map((pp: any) => [pp.id, pp.bestVisit])),
+    bestCheckoutByPlayer: { dev_jn: 23 },
+    stats: { players: perPlayer, detailedByPlayer },
+  };
+  rec.payload = {
+    ...rec.payload,
+    variant: "x01_v3",
+    scenario: "fixed-x01-301-jn-sp",
+    game: rec.game,
+    config: { ...rec.game, players, serveMode: "manual", firstPlayerId: "dev_jn" },
+    state: {
+      matchId: rec.id,
+      currentSet: 1,
+      currentLeg: 1,
+      throwOrder: ["dev_jn", "dev_sp"],
+      activePlayer: "dev_jn",
+      scores: remaining,
+      legsWon: { dev_jn: 1, dev_sp: 0 },
+      setsWon: { dev_jn: 1, dev_sp: 0 },
+      status: "match_end",
+      lastWinnerId: "dev_jn",
+      liveStatsByPlayer: detailedByPlayer,
+    },
+    players: perPlayer,
+    stats: { players: perPlayer, detailedByPlayer },
+    summary: rec.summary,
+    visits,
+    darts: visits,
+    turns: visits.map((v, i) => ({ round: i + 1, playerId: v.playerId, score: v.score, rawScore: v.rawScore, bust: v.bust, segments: v.segments })),
+  };
+  return rec;
+}
+
+function makeGenericDartsMode(game: SimGame, index: number, now: number): SavedMatch {
+  const players = pickPlayers(game === "battle_royale" || game === "warfare" || game === "five_lives" || game === "territories" ? 4 : 3);
+  const rec = base(game, index, now, players);
+  const rounds = game === "territories" ? 12 : game === "capital" || game === "batard" ? 10 : 8;
+  const variantId = game === "enculette" ? "enculette" : game === "cricket_cut_throat" ? "cut_throat" : game;
+  const perPlayer = players.map((p, i) => {
+    const dartsThrown = rounds * 3;
+    const points = n(index + i * 100 + 1, 120, 680);
+    const bestVisit = n(index + i * 100 + 2, 45, 160);
+    const fails = n(index + i * 100 + 3, 0, 5);
+    const validHits = n(index + i * 100 + 4, 8, Math.max(9, dartsThrown - fails));
+    const captures = game === "territories" ? n(index + i * 100 + 5, 1, 8) : 0;
+    const livesLeft = game === "five_lives" || game === "battle_royale" ? (p.id === rec.winnerId ? n(index + i * 100 + 6, 1, 5) : 0) : undefined;
+    return {
+      ...p,
+      playerId: p.id,
+      profileId: p.id,
+      variantId,
+      darts: dartsThrown,
+      dartsThrown,
+      totalThrows: dartsThrown,
+      points,
+      score: points,
+      totalScore: points,
+      avg3: Number(((points / dartsThrown) * 3).toFixed(2)),
+      bestVisit,
+      bestCheckout: 0,
+      fails,
+      validHits,
+      advances: n(index + i * 100 + 7, 0, rounds),
+      captures,
+      capturedTerritories: Array.from({ length: captures }, (_, c) => `T${i + 1}_${c + 1}`),
+      kills: game === "battle_royale" || game === "warfare" ? n(index + i * 100 + 8, 0, 4) : 0,
+      livesLeft,
+      win: p.id === rec.winnerId,
+      rank: p.id === rec.winnerId ? 1 : i + 2,
+      rounds,
+      visits: Array.from({ length: rounds }, (_, r) => ({ round: r + 1, score: n(index + i * 100 + r, 0, 90), valid: r % 5 !== 0 })),
+    };
+  });
+  const winner = perPlayer.find((p: any) => p.id === rec.winnerId) || perPlayer[0];
+  const rankings = perPlayer.slice().sort((a: any, b: any) => (a.id === winner.id ? -1 : b.id === winner.id ? 1 : b.points - a.points)).map((p: any, rank) => ({ id: p.id, playerId: p.id, name: p.name, rank: rank + 1, score: p.points, points: p.points, win: rank === 0 }));
+
+  const mapBy = (key: string) => Object.fromEntries(perPlayer.map((p: any) => [p.id, p[key] ?? 0]));
+  const detailedByPlayer = Object.fromEntries(perPlayer.map((p: any) => [p.id, p]));
+  const summary: any = {
+    ...rec.summary,
+    kind: game,
+    mode: game,
+    gameId: game,
+    variantId,
+    finished: true,
+    winnerId: winner.id,
+    winnerName: winner.name,
+    rounds,
+    rankings,
+    players: perPlayer,
+    perPlayer,
+    detailedByPlayer,
+    pointsByPlayer: mapBy("points"),
+    scoreByPlayer: mapBy("score"),
+    dartsByPlayer: mapBy("dartsThrown"),
+    bestVisitByPlayer: mapBy("bestVisit"),
+    failsByPlayer: mapBy("fails"),
+    validHitsByPlayer: mapBy("validHits"),
+    advancesByPlayer: mapBy("advances"),
+    capturesByPlayer: mapBy("captures"),
+    killsByPlayer: mapBy("kills"),
+    stats: { players: perPlayer, detailedByPlayer },
+  };
+
+  if (game === "cricket_cut_throat") {
+    summary.mode = "cricket";
+    summary.variantId = "cut_throat";
+    summary.cutThroat = true;
+    summary.cricketLegs = perPlayer.map((p: any, i: number) => ({
+      matchId: rec.id,
+      legId: `${rec.id}:${p.id}:0`,
+      playerId: p.id,
+      mode: "cut_throat",
+      variantId: "cut_throat",
+      cutThroat: true,
+      scoringVariant: "cut-throat",
+      darts: p.dartsThrown,
+      visits: Math.ceil(p.dartsThrown / 3),
+      totalMarks: n(index + i * 100 + 77, 18, 50),
+      totalPoints: p.points,
+      mpr: Number((n(index + i * 100 + 78, 18, 50) / Math.max(1, Math.ceil(p.dartsThrown / 3))).toFixed(2)),
+      won: p.id === winner.id,
+      perSegment: {},
+      startedAt: rec.createdAt,
+      endedAt: rec.updatedAt,
+    }));
+  }
+
+  if (game === "territories") {
+    summary.territories = {
+      mapId: "dev-world",
+      ownedByPlayer: Object.fromEntries(perPlayer.map((p: any) => [p.id, p.capturedTerritories])),
+      capturesByPlayer: summary.capturesByPlayer,
+    };
+  }
+
+  rec.winnerId = winner.id;
+  rec.stats = { players: perPlayer, detailedByPlayer, variantId };
+  rec.summary = summary;
+  rec.payload = {
+    ...rec.payload,
+    kind: game,
+    mode: game === "cricket_cut_throat" ? "cricket" : game,
+    variantId,
+    config: { mode: game, variantId, rounds, players },
+    players: perPlayer,
+    summary,
+    stats: { players: perPlayer, detailedByPlayer, variantId },
+  };
+  return rec;
+}
+
 function makeRecord(game: SimGame, index: number, now: number): SavedMatch {
   if (game === "x01") return makeX01(index, now);
   if (game === "cricket") return makeCricket(index, now);
   if (game === "killer") return makeKiller(index, now);
   if (game === "shanghai") return makeShanghai(index, now);
-  return makeGolf(index, now);
+  if (game === "golf") return makeGolf(index, now);
+  return makeGenericDartsMode(game, index, now);
 }
 
 async function removePreviousDevSimulations() {
@@ -459,6 +839,11 @@ export async function simulateDevMatchesAllGames(options?: { perGame?: number })
   let created = 0;
 
   await removePreviousDevSimulations();
+
+  const fixed = makeFixedX01SalsifiJeanNunu(startedAt);
+  await History.upsert(fixed);
+  games.x01 = (games.x01 || 0) + 1;
+  created += 1;
 
   for (const game of GAMES) {
     games[game] = 0;
