@@ -154,6 +154,7 @@ import { useAutoBackup } from "./hooks/useAutoBackup";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
+import DartsModeSummaryPage from "./pages/DartsModeSummaryPage";
 
 // ✅ NEW: WARFARE
 import WarfareConfigPage from "./pages/WarfareConfig";
@@ -727,6 +728,7 @@ type Tab =
   | "auth_callback"
   | "darts_mode_config"
   | "darts_mode_play"
+  | "darts_mode_summary"
   // ✅ NEW: Darts modes dedicated tabs (Config + Play)
   | "halve_it_config"
   | "halve_it_play"
@@ -3697,6 +3699,10 @@ case "babyfoot_team_edit":
 
       case "shanghai_end":
         page = <ShanghaiEnd params={{ ...routeParams, go }} />;
+        break;
+
+      case "darts_mode_summary":
+        page = <DartsModeSummaryPage store={store} go={go} params={routeParams} />;
         break;
 
       // ✅ NEW: WARFARE

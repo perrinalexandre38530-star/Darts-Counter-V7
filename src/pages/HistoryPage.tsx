@@ -347,6 +347,37 @@ function inferSportKey(e: SavedEntry): string {
   return "darts";
 }
 
+
+function isGenericDartsSummaryMode(mode: string): boolean {
+  const m = normalizeToken(mode);
+  return [
+    "battleroyale",
+    "battle_royale",
+    "warfare",
+    "fivelives",
+    "five_lives",
+    "les5vies",
+    "scram",
+    "capital",
+    "batard",
+    "bastard",
+    "territories",
+    "territoires",
+    "departements",
+    "cricketcutthroat",
+    "cricket_cut_throat",
+    "cutthroat",
+    "enculette",
+    "vache",
+    "enculettevache",
+  ].includes(m);
+}
+
+function isCricketVariantMode(mode: string): boolean {
+  const m = normalizeToken(mode);
+  return ["cricketcutthroat", "cricket_cut_throat", "cutthroat", "enculette", "vache", "enculettevache"].includes(m);
+}
+
 function getAllEntryPlayers(e: SavedEntry): any[] {
   const anyE: any = e as any;
   const pools = [
@@ -1634,6 +1665,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
+    const inferredMode = inferGameFilterKey(e, "darts");
+    if (!preview && (isGenericDartsSummaryMode(baseMode(e)) || isGenericDartsSummaryMode(inferredMode))) {
+      go("darts_mode_summary", { rec: e, resumeId, from: "history", mode: inferredMode || baseMode(e) });
+      return;
+    }
+
     go("x01_play_v3", {
       resumeId,
       rec: e,
@@ -1665,6 +1702,38 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     const resumeId = e.resumeId || matchLink(e) || e.id;
 
     const m = baseMode(e);
+    const inferredMode = inferGameFilterKey(e, "darts");
+
+    // ✅ VARIANTES CRICKET : stats dans Cricket, pas X01
+    if (isCricketVariantMode(m) || isCricketVariantMode(inferredMode)) {
+      const wid =
+        (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
+      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
+      try {
+        go("statsHub", {
+          tab: "cricket",
+          initialStatsSubTab: "cricket",
+          initialPlayerId: firstPlayerId,
+          playerId: firstPlayerId,
+          matchId: e.id,
+          resumeId,
+          from: "history",
+          cricketVariant: inferredMode || m,
+        });
+        return;
+      } catch {}
+      try {
+        go("cricket_stats", { profileId: firstPlayerId, from: "history", cricketVariant: inferredMode || m });
+        return;
+      } catch {}
+      return;
+    }
+
+    // ✅ MODES DARTS DÉDIÉS : résumé propre, jamais X01
+    if (isGenericDartsSummaryMode(m) || isGenericDartsSummaryMode(inferredMode)) {
+      go("darts_mode_summary", { rec: e, resumeId, from: "history", mode: inferredMode || m });
+      return;
+    }
 
     // ✅ BATARD
     if (isBatardEntry(e)) {

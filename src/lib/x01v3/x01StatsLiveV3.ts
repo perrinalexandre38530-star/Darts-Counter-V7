@@ -106,15 +106,27 @@ export function applyVisitToLiveStatsV3(
   stats.visits += 1;
 
 
-  // Track per-visit score series (for sparkline + First9)
-    // Sum of dart points thrown in this visit (independent from bust/remaining score logic below)
-  const visitPoints = visit.darts.reduce((acc, d) => acc + (Number(d?.score) || 0), 0);
-  stats.scorePerVisit.push(visitPoints);
+  // Score de la volée : 0 en cas de bust, sinon score réellement validé.
+  // Important : scorePerVisit sert aux tranches 60+/100+/140+/180 ; il ne doit
+  // contenir qu'une seule entrée par volée et jamais le total brut d'un bust.
+  const visitScoreRaw = visit.startingScore - visit.currentScore;
+  const visitScore = wasBust ? 0 : Math.max(visitScoreRaw, 0);
+  stats.scorePerVisit.push(visitScore);
 
   // First 9 darts average (average of first 3 visits)
   if (stats.scorePerVisit.length >= 3 && (stats as any).first9Avg === 0) {
     (stats as any).first9Avg = (stats.scorePerVisit[0] + stats.scorePerVisit[1] + stats.scorePerVisit[2]) / 3;
   }
+
+  // Tranches EXCLUSIVES : 60-99 / 100-139 / 140-179 / 180 exact.
+  (stats as any).h60 = (stats as any).h60 || 0;
+  (stats as any).h100 = (stats as any).h100 || 0;
+  (stats as any).h140 = (stats as any).h140 || 0;
+  (stats as any).h180 = (stats as any).h180 || 0;
+  if (visitScore === 180) (stats as any).h180 += 1;
+  else if (visitScore >= 140) (stats as any).h140 += 1;
+  else if (visitScore >= 100) (stats as any).h100 += 1;
+  else if (visitScore >= 60) (stats as any).h60 += 1;
 
   // Checkout attempt heuristic: any visit starting on a finish (<=170)
   if (visit.startingScore <= 170 && visit.startingScore > 0) {
@@ -124,10 +136,6 @@ export function applyVisitToLiveStatsV3(
     const dAtt = visit.darts.reduce((acc, d) => acc + (d?.multiplier === 2 && (Number(d?.score) || 0) > 0 ? 1 : 0), 0);
     (stats as any).doublesAttempts = ((stats as any).doublesAttempts || 0) + dAtt;
   }
-
-  // Score de la volée (0 en cas de bust)
-  const visitScoreRaw = visit.startingScore - visit.currentScore;
-  const visitScore = wasBust ? 0 : Math.max(visitScoreRaw, 0);
 
   stats.totalScore += visitScore;
 
@@ -163,41 +171,47 @@ export function applyVisitToLiveStatsV3(
       continue;
     }
 
-    const seg = dart.segment;
+    const score = Number(dart.score) || 0;
+    const seg = Number(dart.segment) || 0;
+    const mult = Number(dart.multiplier) || 0;
 
-    // Gestion Bull / DBull
-    if (seg === 25) {
-      if (dart.multiplier === 1) {
-        stats.hits.Bull += 1;
-        stats.bull += 1;
-      } else if (dart.multiplier === 2) {
+    // Gestion Bull / DBull robuste : certains flux stockent score=25/50
+    // sans segment=25. On classe donc d'abord par score quand nécessaire.
+    if (seg === 25 || score === 25 || score === 50) {
+      ensureSegmentBucket(stats, 25);
+      if (score === 50 || mult === 2) {
         stats.hits.DBull += 1;
         stats.bull += 1;
         stats.dBull += 1;
-      }
-
-      // On enregistre quand même dans bySegment["25"] (S/D)
-      ensureSegmentBucket(stats, seg);
-      if (dart.multiplier === 1) {
-        stats.bySegment["25"].S += 1;
-      } else if (dart.multiplier === 2) {
         stats.bySegment["25"].D += 1;
+        stats.hitsBySegment[25].D += 1;
+      } else {
+        stats.hits.Bull += 1;
+        stats.bull += 1;
+        stats.bySegment["25"].S += 1;
+        stats.hitsBySegment[25].S += 1;
       }
       continue;
     }
 
     // Segments 1-20
-    ensureSegmentBucket(stats, seg);
+    ensureSegmentBucket(stats, seg as any);
 
-    if (dart.multiplier === 1) {
+    if (mult === 1) {
       stats.hits.S += 1;
+      stats.hitsSingle = (stats.hitsSingle || 0) + 1;
       stats.bySegment[String(seg)].S += 1;
-    } else if (dart.multiplier === 2) {
+      stats.hitsBySegment[seg].S += 1;
+    } else if (mult === 2) {
       stats.hits.D += 1;
+      stats.hitsDouble = (stats.hitsDouble || 0) + 1;
       stats.bySegment[String(seg)].D += 1;
-    } else if (dart.multiplier === 3) {
+      stats.hitsBySegment[seg].D += 1;
+    } else if (mult === 3) {
       stats.hits.T += 1;
+      stats.hitsTriple = (stats.hitsTriple || 0) + 1;
       stats.bySegment[String(seg)].T += 1;
+      stats.hitsBySegment[seg].T += 1;
     }
   }
 

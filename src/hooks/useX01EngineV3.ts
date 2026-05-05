@@ -366,10 +366,12 @@ function buildAggregatedStats(
     if (!st) continue;
 
     const dartsCount =
-      (st.hitsSingle || 0) +
-      (st.hitsDouble || 0) +
-      (st.hitsTriple || 0) +
-      (st.miss || 0);
+      st.dartsThrown ||
+      ((st.hitsSingle || 0) +
+        (st.hitsDouble || 0) +
+        (st.hitsTriple || 0) +
+        (st.miss || 0) +
+        ((st as any).bull || 0));
 
     const totalScore = st.totalScore || 0;
     const avg3 = dartsCount > 0 ? (totalScore / dartsCount) * 3 : 0;
@@ -487,12 +489,8 @@ score: visit.currentScore,
 
     // Patch étendu : hits/miss/bust/segments + power scoring
     ensureExtendedStatsFor(stPlayer);
-
-    if (result.bust) {
-      stPlayer.bust = (stPlayer.bust || 0) + 1;
-    }
-
-    recordVisitOn(stPlayer, dartsArr, result.bust);
+    // applyVisitToLiveStatsV3 enregistre déjà la volée, les hits, le bust,
+    // scorePerVisit et les tranches 60+/100+/140+/180. Ne pas doubler ici.
     finalizeStatsFor(stPlayer);
 
     live[pid] = stPlayer;
@@ -793,10 +791,10 @@ score: visit.currentScore,
   applyVisitToLiveStatsV3(st, visit as any, result.bust, isCheckout);
 
   // Patch étendu : hits/miss/bust/segments + power scoring
-  ensureExtendedStatsFor(st); 
-
-  recordVisitOn(st, darts, result.bust);
-finalizeStatsFor(st);
+  ensureExtendedStatsFor(st);
+  // applyVisitToLiveStatsV3 enregistre déjà la volée, les hits, le bust,
+  // scorePerVisit et les tranches 60+/100+/140+/180. Ne pas doubler ici.
+  finalizeStatsFor(st);
 
   liveMap[pid] = st;
   (m as any).liveStatsByPlayer = liveMap;

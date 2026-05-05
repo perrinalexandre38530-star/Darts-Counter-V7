@@ -508,8 +508,8 @@ function parseOverlayVisitDart(raw: any): { v: number; mult: 0 | 1 | 2 | 3 } {
     }
   }
 
-  if (!Number.isFinite(v) || v < 0 || v > 25) {
-    const rawScore = Number(raw?.score ?? raw?.points ?? raw?.total ?? raw?.value);
+  const rawScore = Number(raw?.score ?? raw?.points ?? raw?.total ?? raw?.value);
+  if (!Number.isFinite(v) || v < 0 || v > 25 || (v === 0 && (rawScore === 25 || rawScore === 50))) {
     if (rawScore === 50) { v = 25; mult = 2; }
     else if (rawScore === 25) { v = 25; mult = 1; }
     else v = 0;
@@ -586,11 +586,9 @@ function rowsFromVisitHistory(
     row.remainingRaw = after;
     row.remaining = after;
 
-    darts.forEach((d, dartIdx) => {
-      // En cas de bust, la dernière fléchette est comptée dans la colonne BUST,
-      // pas comme un hit DB/BULL/TP, afin que les totaux correspondent à la saisie réelle.
-      const isBustDart = bust && dartIdx === darts.length - 1;
-      if (isBustDart) return;
+    darts.forEach((d) => {
+      // Un bust reste une fléchette réellement lancée : on compte donc aussi
+      // son impact (ex : DBULL bust = DBULL + 1 bust), et BUST est une colonne séparée.
       if (!d.v || !d.mult) row.misses += 1;
       else if (d.v === 25 && d.mult >= 2) row.ib += 1;
       else if (d.v === 25) row.ob += 1;
