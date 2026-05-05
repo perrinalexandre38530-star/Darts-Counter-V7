@@ -2822,7 +2822,18 @@ React.useEffect(() => {
   // RÉSUMÉ : on construit un LegStats à partir du moteur V3 + liveStats
   function handleShowSummary(_matchId: string) {
     try {
-      const summaryRaw: any = (state as any)?.summary || {};
+      const replayVisitsForSummary = buildReplayVisitsForX01History(
+        replayDartsRef.current,
+        players.map((p: any) => String(p.id)),
+        config.startScore ?? 501,
+        (config as any).outMode ?? (config as any).checkoutMode ?? "double"
+      );
+      const summaryRaw: any = {
+        ...((state as any)?.summary || {}),
+        visitHistory: replayVisitsForSummary,
+        visitsHistory: replayVisitsForSummary,
+        __legStats: { visits: replayVisitsForSummary },
+      };
       const legStats = buildLegStatsFromV3LiveForOverlay(
         config,
         state as any,
@@ -5394,13 +5405,17 @@ function buildReplayDartLabel(segment: number, multiplier: number) {
 
 function parseReplayDartParts(input: any): { segment: number; multiplier: 0 | 1 | 2 | 3 } {
   const raw: any = input || {};
-  const directSegment = raw.segment ?? raw.v ?? raw.value ?? raw.target ?? raw.number ?? raw.n;
-  const directMultiplier = raw.multiplier ?? raw.mult ?? raw.m ?? raw.coef ?? raw.factor;
-  let segment = Number(directSegment);
-  let multiplier = Number(directMultiplier);
-  const labelRaw = String(raw.label ?? raw.segmentLabel ?? raw.dart ?? raw.hit ?? raw.code ?? raw.text ?? raw.name ?? "").trim().toUpperCase().replace(/\s+/g, "");
+  const labelRaw = String(raw.label ?? raw.segmentLabel ?? raw.dart ?? raw.hit ?? raw.code ?? raw.text ?? raw.name ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
 
-  if (!Number.isFinite(segment) || segment <= 0) {
+  let segment = Number.NaN;
+  let multiplier = Number(raw.multiplier ?? raw.mult ?? raw.m ?? raw.coef ?? raw.factor);
+
+  // Source la plus fiable : le label métier. IMPORTANT : ne jamais interpréter
+  // value/score=50 comme un segment 50, sinon DBULL devient MISS.
+  if (labelRaw) {
     if (labelRaw === "MISS" || labelRaw === "M" || labelRaw === "0") { segment = 0; multiplier = 0; }
     else if (labelRaw === "BULL" || labelRaw === "SBULL" || labelRaw === "OB") { segment = 25; multiplier = 1; }
     else if (labelRaw === "DBULL" || labelRaw === "D-BULL" || labelRaw === "DOUBLEBULL" || labelRaw === "IB") { segment = 25; multiplier = 2; }
@@ -5409,15 +5424,20 @@ function parseReplayDartParts(input: any): { segment: number; multiplier: 0 | 1 
       if (m) { segment = Number(m[2]); multiplier = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
     }
   }
+
+  if (!Number.isFinite(segment)) {
+    const directSegment = raw.segment ?? raw.v ?? raw.target ?? raw.number ?? raw.n;
+    segment = Number(directSegment);
+  }
+  if (!Number.isFinite(segment) || segment < 0 || segment > 25) segment = 0;
+
   if (!Number.isFinite(multiplier) || multiplier <= 0) {
     if (labelRaw.startsWith("T")) multiplier = 3;
     else if (labelRaw.startsWith("D") && labelRaw !== "DBULL") multiplier = 2;
     else if (segment > 0) multiplier = 1;
     else multiplier = 0;
   }
-  if (!Number.isFinite(segment) || segment < 0) segment = 0;
   if (segment === 25 && multiplier > 2) multiplier = 2;
-  if (segment > 25) segment = 0;
   if (![0, 1, 2, 3].includes(multiplier)) multiplier = segment > 0 ? 1 : 0;
   return { segment, multiplier: multiplier as 0 | 1 | 2 | 3 };
 }
@@ -5761,6 +5781,7 @@ function buildReplayVisitsForX01History(
     let bust = false;
     let finish = false;
 
+    let countedDarts = currentDarts.slice();
     for (let i = 0; i < currentDarts.length; i += 1) {
       const raw = currentDarts[i];
       const value = dartValue(raw);
@@ -5769,16 +5790,18 @@ function buildReplayVisitsForX01History(
       if (tentative < 0 || tentative === 1 || (tentative === 0 && !canFinishWith(lastForFinish))) {
         bust = true;
         after = before;
+        countedDarts = currentDarts.slice(0, i + 1); // on compte seulement les fléchettes réellement lancées
         break;
       }
       after = tentative;
       if (after === 0) {
         finish = true;
+        countedDarts = currentDarts.slice(0, i + 1); // finish en 1 ou 2 darts : pas de padding à 3
         break;
       }
     }
 
-    const darts = currentDarts.map((raw) => {
+    const darts = countedDarts.map((raw) => {
       const parsed = parseReplayDartParts(raw);
       return {
         v: parsed.segment,

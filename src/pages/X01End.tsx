@@ -2933,6 +2933,37 @@ function dartToString(v: number, mult: 1 | 2 | 3) {
   return `${prefix}${v}`;
 }
 
+
+function parseHistoryDart(r: any): { v: number; mult: 0 | 1 | 2 | 3 } {
+  const rawLabel = String(r?.label ?? r?.segmentLabel ?? r?.dart ?? r?.hit ?? r?.code ?? r?.text ?? r?.name ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  let seg = Number.NaN;
+  let mult = Number(r?.multiplier ?? r?.mult ?? r?.m ?? r?.multi ?? r?.coef ?? r?.factor);
+
+  if (rawLabel) {
+    if (rawLabel === "MISS" || rawLabel === "M" || rawLabel === "0") { seg = 0; mult = 0; }
+    else if (rawLabel === "BULL" || rawLabel === "SBULL" || rawLabel === "OB") { seg = 25; mult = 1; }
+    else if (rawLabel === "DBULL" || rawLabel === "D-BULL" || rawLabel === "DOUBLEBULL" || rawLabel === "IB") { seg = 25; mult = 2; }
+    else {
+      const m = rawLabel.match(/^([SDT])?(\d{1,2})$/);
+      if (m) { seg = Number(m[2]) || 0; mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
+    }
+  }
+
+  if (!Number.isFinite(seg)) seg = Number(r?.segment ?? r?.v ?? r?.num ?? r?.number ?? r?.target ?? 0);
+  if (!Number.isFinite(seg) || seg < 0 || seg > 25) seg = 0;
+  if (!Number.isFinite(mult) || mult <= 0) {
+    if (rawLabel.startsWith("T")) mult = 3;
+    else if (rawLabel.startsWith("D") && rawLabel !== "DBULL") mult = 2;
+    else mult = seg > 0 ? 1 : 0;
+  }
+  if (seg === 25 && mult > 2) mult = 2;
+  if (![0, 1, 2, 3].includes(mult)) mult = seg > 0 ? 1 : 0;
+  return { v: seg, mult: mult as 0 | 1 | 2 | 3 };
+}
+
 function buildVisitHistory(
   rec: any,
   players: PlayerLite[],
@@ -2966,12 +2997,7 @@ function buildVisitHistory(
     return rawVisits.map((v, idx) => {
       const dartsSrc: any[] =
         v.darts || v.hits || v.throw || v.throws || [];
-      const darts = dartsSrc.map((d) => {
-        const seg = Number(d.segment ?? d.v ?? d.value ?? d.num ?? 0) || 0;
-        const rawMult = d.multiplier ?? d.mult ?? d.m ?? d.multi;
-        const mult = seg > 0 ? (Number(rawMult ?? 1) || 1) : 0;
-        return { v: seg, mult: mult as 0 | 1 | 2 | 3 };
-      });
+      const darts = dartsSrc.map((d) => parseHistoryDart(d));
       const before = n(
         v.scoreBefore ?? v.before ?? v.startScore ?? v.scoreStart,
         0
@@ -3035,27 +3061,7 @@ function buildVisitHistory(
     rec?.payload?.game?.startScore ??
     501;
 
-  const parseDart = (r: any) => {
-    const rawLabel = String(r?.label ?? r?.segmentLabel ?? r?.dart ?? r?.hit ?? "").trim().toUpperCase();
-    let seg = Number(r?.segment ?? r?.v ?? r?.value ?? r?.num ?? r?.number ?? 0) || 0;
-    let mult = Number(r?.multiplier ?? r?.mult ?? r?.m ?? r?.multi ?? 0) || 0;
-    if (!seg && rawLabel) {
-      if (rawLabel === "MISS" || rawLabel === "M") { seg = 0; mult = 0; }
-      else if (rawLabel === "BULL" || rawLabel === "OB") { seg = 25; mult = 1; }
-      else if (rawLabel === "DBULL" || rawLabel === "IB" || rawLabel === "D-BULL") { seg = 25; mult = 2; }
-      else {
-        const m = rawLabel.match(/^([SDT])?(\d{1,2})$/);
-        if (m) {
-          seg = Number(m[2]) || 0;
-          mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1;
-        }
-      }
-    }
-    if (!mult) mult = seg > 0 ? 1 : 0;
-    if (seg === 25 && mult > 2) mult = 2;
-    if (![0, 1, 2, 3].includes(mult)) mult = seg > 0 ? 1 : 0;
-    return { v: seg, mult: mult as 1 | 2 | 3 };
-  };
+  const parseDart = (r: any) => parseHistoryDart(r);
 
   const dartPid = (r: any): string => String(r?.playerId ?? r?.pid ?? r?.p ?? r?.profileId ?? "").trim();
   const hasTaggedPlayers = rawDarts.some((d) => dartPid(d));

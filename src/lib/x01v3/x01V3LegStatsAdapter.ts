@@ -11,6 +11,108 @@ import type {
 } from "../../types/x01v3";
 import type { LegStats } from "../stats";
 
+
+function parseVisitDart(raw: any): { segment: number; multiplier: 0 | 1 | 2 | 3 } {
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.code ?? raw?.text ?? raw?.name ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  let segment = Number.NaN;
+  let multiplier = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.coef ?? raw?.factor);
+  if (label) {
+    if (label === "MISS" || label === "M" || label === "0") { segment = 0; multiplier = 0; }
+    else if (label === "BULL" || label === "SBULL" || label === "OB") { segment = 25; multiplier = 1; }
+    else if (label === "DBULL" || label === "D-BULL" || label === "DOUBLEBULL" || label === "IB") { segment = 25; multiplier = 2; }
+    else {
+      const m = label.match(/^([SDT])?(\d{1,2})$/);
+      if (m) { segment = Number(m[2]); multiplier = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
+    }
+  }
+  if (!Number.isFinite(segment)) segment = Number(raw?.segment ?? raw?.v ?? raw?.target ?? raw?.number ?? raw?.n ?? 0);
+  if (!Number.isFinite(segment) || segment < 0 || segment > 25) segment = 0;
+  if (!Number.isFinite(multiplier) || multiplier <= 0) {
+    if (label.startsWith("T")) multiplier = 3;
+    else if (label.startsWith("D") && label !== "DBULL") multiplier = 2;
+    else multiplier = segment > 0 ? 1 : 0;
+  }
+  if (segment === 25 && multiplier > 2) multiplier = 2;
+  if (![0, 1, 2, 3].includes(multiplier)) multiplier = segment > 0 ? 1 : 0;
+  return { segment, multiplier: multiplier as 0 | 1 | 2 | 3 };
+}
+
+function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], startScore: number): Record<string, any> {
+  const out: Record<string, any> = {};
+  const ensure = (pid: string) => out[pid] || (out[pid] = {
+    darts: 0, points: 0, visits: 0, avg3d: 0, avg3: 0, bestVisit: 0,
+    h60: 0, h100: 0, h140: 0, h180: 0,
+    doubles: 0, triples: 0, bulls: 0, bullsEye: 0,
+    doubleRate: 0, tripleRate: 0, bullRate: 0, bullEyeRate: 0,
+    bestCheckout: 0, coHits: 0, coAtt: 0, coPct: 0,
+    dartsThrown: 0, remaining: startScore,
+    buckets: { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 },
+    bins: { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 },
+    segments: {},
+  });
+  playerIds.forEach(ensure);
+
+  for (const visit of rawVisits || []) {
+    const pid = String(visit?.playerId ?? visit?.pid ?? "");
+    if (!pid) continue;
+    const m = ensure(pid);
+    const darts = Array.isArray(visit?.darts) ? visit.darts : [];
+    m.visits += 1;
+    m.darts += darts.length;
+    m.dartsThrown = m.darts;
+    for (const d of darts) {
+      const parsed = parseVisitDart(d);
+      const seg = parsed.segment;
+      const mult = parsed.multiplier;
+      if (!seg || mult <= 0) continue;
+      if (seg === 25 && mult >= 2) m.bullsEye += 1;
+      else if (seg === 25) m.bulls += 1;
+      else {
+        const cur = m.segments[String(seg)] || { S: 0, D: 0, T: 0 };
+        if (mult >= 3) { m.triples += 1; cur.T += 1; }
+        else if (mult === 2) { m.doubles += 1; cur.D += 1; }
+        else { cur.S += 1; }
+        m.segments[String(seg)] = cur;
+      }
+    }
+    const before = Number(visit?.scoreBefore ?? visit?.before ?? 0) || 0;
+    const after = Number(visit?.scoreAfter ?? visit?.after ?? 0) || 0;
+    const bust = !!(visit?.bust || visit?.isBust);
+    const finish = !!(visit?.finish || visit?.isFinish) || (!bust && after === 0 && before > 0);
+    const score = bust ? 0 : Math.max(0, Number(visit?.score ?? (before - after)) || 0);
+    m.points += score;
+    m.bestVisit = Math.max(m.bestVisit, score);
+    m.remaining = after;
+    if (score >= 180) m.h180 += 1;
+    else if (score >= 140) m.h140 += 1;
+    else if (score >= 100) m.h100 += 1;
+    else if (score >= 60) m.h60 += 1;
+    if (before > 1 && before <= 170) m.coAtt += 1;
+    if (finish) {
+      m.bestCheckout = Math.max(m.bestCheckout, score);
+      m.coHits += 1;
+      if (m.coAtt <= 0) m.coAtt = 1;
+    }
+  }
+  for (const pid of Object.keys(out)) {
+    const m = out[pid];
+    m.avg3d = m.darts > 0 ? +(((m.points / m.darts) * 3).toFixed(2)) : 0;
+    m.avg3 = m.avg3d;
+    m.doubleRate = m.darts ? (m.doubles / m.darts) * 100 : 0;
+    m.tripleRate = m.darts ? (m.triples / m.darts) * 100 : 0;
+    m.bullRate = m.darts ? (m.bulls / m.darts) * 100 : 0;
+    m.bullEyeRate = m.darts ? (m.bullsEye / m.darts) * 100 : 0;
+    m.coPct = m.coAtt ? (m.coHits / m.coAtt) * 100 : 0;
+    const sixtyTo99 = Math.max(0, m.h60);
+    m.buckets = { "0-59": Math.max(0, m.visits - m.h60 - m.h100 - m.h140 - m.h180), "60-99": sixtyTo99, "100+": m.h100, "140+": m.h140, "180": m.h180 };
+    m.bins = m.buckets;
+  }
+  return out;
+}
+
 /**
  * Construit un LegStats "global match" à partir du moteur V3
  * pour l'overlay EndOfLegOverlay.
@@ -189,6 +291,20 @@ export function buildLegStatsFromV3LiveForOverlay(
       bins: buckets, // ✅ pour powerBucketsFromNew
       remaining: Number.isFinite(remainingNow) ? remainingNow : Math.max(0, startScore - points),
     };
+  }
+
+  const replayVisits = Array.isArray(summary?.visitHistory)
+    ? summary.visitHistory
+    : Array.isArray(summary?.visitsHistory)
+    ? summary.visitsHistory
+    : Array.isArray(summary?.__legStats?.visits)
+    ? summary.__legStats.visits
+    : [];
+  if (replayVisits.length) {
+    const replayPerPlayer = derivePerPlayerFromVisitHistory(replayVisits, playerIds, startScore);
+    for (const pid of Object.keys(replayPerPlayer)) {
+      perPlayer[pid] = { ...(perPlayer[pid] || {}), ...replayPerPlayer[pid] };
+    }
   }
 
   const legNo = (state as any).currentLeg ?? 1;
