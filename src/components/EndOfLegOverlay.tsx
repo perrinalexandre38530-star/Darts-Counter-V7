@@ -462,7 +462,7 @@ export default function EndOfLegOverlay({
   onClose,
   onReplay,
   onSave,
-  visitHistory = [],
+  visitHistory: rawVisitHistory = [],
 }: Props) {
   if (!open || !result) return null;
   return (
@@ -1308,7 +1308,7 @@ function Inner({
                 )}
               </ChartCard>
 
-              {visitHistory.length > 0 ? (
+              {safeVisitHistory.length > 0 ? (
                 <ChartCard>
                   <div
                     style={{
@@ -1322,7 +1322,7 @@ function Inner({
                   >
                     Historique des volées
                   </div>
-                  <OverlayVisitsList visits={visitHistory} playersById={playersById} />
+                  <OverlayVisitsList visits={safeVisitHistory} playersById={playersById} />
                 </ChartCard>
               ) : null}
             </div>
