@@ -6129,10 +6129,11 @@ function saveX01V3MatchToHistory({
       .filter((v: any) => String(v?.playerId || v?.pid || "") === String(pid))
       .map((v: any) => Number(v?.score || 0) || 0);
     const scorePerVisit = scorePerVisitReplay.length ? scorePerVisitReplay : scorePerVisitLive;
-    legacyH60[pid] = replayMetric?.h60 ?? scorePerVisit.filter((v: any) => Number(v) >= 60).length;
-    legacyH100[pid] = replayMetric?.h100 ?? scorePerVisit.filter((v: any) => Number(v) >= 100).length;
-    legacyH140[pid] = replayMetric?.h140 ?? scorePerVisit.filter((v: any) => Number(v) >= 140).length;
-    legacyH180[pid] = replayMetric?.h180 ?? scorePerVisit.filter((v: any) => Number(v) >= 180).length;
+    // Buckets affichés = classes exclusives : 60-99 / 100-139 / 140-179 / 180.
+    legacyH60[pid] = replayMetric?.h60 ?? scorePerVisit.filter((v: any) => { const n = Number(v) || 0; return n >= 60 && n < 100; }).length;
+    legacyH100[pid] = replayMetric?.h100 ?? scorePerVisit.filter((v: any) => { const n = Number(v) || 0; return n >= 100 && n < 140; }).length;
+    legacyH140[pid] = replayMetric?.h140 ?? scorePerVisit.filter((v: any) => { const n = Number(v) || 0; return n >= 140 && n < 180; }).length;
+    legacyH180[pid] = replayMetric?.h180 ?? scorePerVisit.filter((v: any) => Number(v) === 180).length;
     legacyCheckoutHits[pid] = replayMetric?.checkoutHits ?? (bestCheckout > 0 ? 1 : numOr0(live?.checkoutHits, live?.coHits));
     legacyCheckoutAttempts[pid] = replayMetric?.checkoutAttempts ?? Math.max(
       legacyCheckoutHits[pid],

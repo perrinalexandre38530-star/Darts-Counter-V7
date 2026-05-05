@@ -1556,9 +1556,9 @@ function buildPerPlayerMetrics(
         {};
       if (sb) {
         m.t180 = n(sb["180"] ?? sb["180+"] ?? sb.t180 ?? sb._180, m.t180);
-        m.t140 = n(sb["140+"] ?? sb.t140 ?? sb._140, m.t140);
-        m.t100 = n(sb["100+"] ?? sb.t100 ?? sb._100, m.t100);
-        m.t60 = n(sb["60+"] ?? sb.t60 ?? sb._60, m.t60);
+        m.t140 = n(sb["140-179"] ?? sb["140+"] ?? sb.t140 ?? sb._140, m.t140);
+        m.t100 = n(sb["100-139"] ?? sb["100+"] ?? sb.t100 ?? sb._100, m.t100);
+        m.t60 = n(sb["60-99"] ?? sb["60+"] ?? sb.t60 ?? sb._60, m.t60);
       }
     }
 
@@ -1697,9 +1697,9 @@ function buildPerPlayerMetrics(
       r.buckets || r.powerBuckets || r.power || r.x01Buckets || {};
     if (rb && typeof rb === "object") {
       m.t180 = m.t180 || n(rb["180"] ?? rb["180+"] ?? rb.t180 ?? rb._180, 0);
-      m.t140 = m.t140 || n(rb["140+"] ?? rb.t140 ?? rb._140, 0);
-      m.t100 = m.t100 || n(rb["100+"] ?? rb.t100 ?? rb._100, 0);
-      m.t60 = m.t60 || n(rb["60+"] ?? rb.t60 ?? rb._60, 0);
+      m.t140 = m.t140 || n(rb["140-179"] ?? rb["140+"] ?? rb.t140 ?? rb._140, 0);
+      m.t100 = m.t100 || n(rb["100-139"] ?? rb["100+"] ?? rb.t100 ?? rb._100, 0);
+      m.t60 = m.t60 || n(rb["60-99"] ?? rb["60+"] ?? rb.t60 ?? rb._60, 0);
     }
 
     // byNumber (si structure dédiée présente)

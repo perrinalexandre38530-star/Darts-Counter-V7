@@ -179,10 +179,14 @@ function powerBucketsFromNew(leg: LegStats, pid: string) {
   // Beaucoup de sources V3 exposent directement h60/h100/h140/h180 ou des buckets
   // nommés "60-99" plutôt que "60+".
   return {
-    h60: n(st.h60 ?? st.hits60 ?? b["60+"] ?? b["60-99"] ?? b["60"] ?? 0),
-    h100: n(st.h100 ?? st.hits100 ?? b["100+"] ?? b["100-139"] ?? 0),
-    h140: n(st.h140 ?? st.hits140 ?? b["140+"] ?? b["140-179"] ?? 0),
-    h180: n(st.h180 ?? st.x180 ?? b["180"] ?? b["180+"] ?? 0),
+    // Les tableaux X01 attendent des classes EXCLUSIVES :
+    // 60+ = 60-99, 100+ = 100-139, 140+ = 140-179, 180 = 180 exact.
+    // Les champs st.h60/st.h100 legacy sont souvent cumulés dans le live engine,
+    // donc on privilégie toujours buckets/bins quand ils existent.
+    h60: n(b["60-99"] ?? b["60+"] ?? st.h60 ?? st.hits60 ?? b["60"] ?? 0),
+    h100: n(b["100-139"] ?? b["100+"] ?? st.h100 ?? st.hits100 ?? 0),
+    h140: n(b["140-179"] ?? b["140+"] ?? st.h140 ?? st.hits140 ?? 0),
+    h180: n(b["180"] ?? b["180+"] ?? st.h180 ?? st.x180 ?? 0),
   };
 }
 

@@ -213,15 +213,16 @@ export function buildLegStatsFromV3LiveForOverlay(
       h140 = 0,
       h180 = 0;
 
-    for (const v of scorePerVisit) {
-      if (v >= 60) h60++;
-      if (v >= 100) h100++;
-      if (v >= 140) h140++;
-      if (v === 180) h180++;
+    for (const raw of scorePerVisit) {
+      const v = Number(raw) || 0;
+      if (v >= 180) h180++;
+      else if (v >= 140) h140++;
+      else if (v >= 100) h100++;
+      else if (v >= 60) h60++;
     }
 
-    const sixtyTo99 = Math.max(0, h60 - h100);
-    const hundredPlus = Math.max(0, h100 - h140 - h180);
+    const sixtyTo99 = h60;
+    const hundredPlus = h100;
     const oneFortyPlus = h140;
     const oneEighty = h180;
     const known = sixtyTo99 + hundredPlus + oneFortyPlus + oneEighty;
@@ -275,11 +276,11 @@ export function buildLegStatsFromV3LiveForOverlay(
       avg3d,
       bestVisit,
 
-      // Power scoring
-      h60,
-      h100,
-      h140,
-      h180,
+      // Power scoring — classes exclusives affichées dans les tableaux
+      h60: sixtyTo99,
+      h100: hundredPlus,
+      h140: oneFortyPlus,
+      h180: oneEighty,
 
       // Impacts
       doubles: doublesHits,
