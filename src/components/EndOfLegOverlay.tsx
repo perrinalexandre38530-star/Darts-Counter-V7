@@ -465,6 +465,9 @@ export default function EndOfLegOverlay({
   visitHistory: rawVisitHistory = [],
 }: Props) {
   if (!open || !result) return null;
+
+  const safeVisitHistory = Array.isArray(rawVisitHistory) ? rawVisitHistory : [];
+
   return (
     <Inner
       result={result}
@@ -472,6 +475,7 @@ export default function EndOfLegOverlay({
       onClose={onClose}
       onReplay={onReplay}
       onSave={onSave}
+      safeVisitHistory={safeVisitHistory}
     />
   );
 }
@@ -482,12 +486,14 @@ function Inner({
   onClose,
   onReplay,
   onSave,
+  safeVisitHistory,
 }: {
   result: LegacyLegResult | LegStats;
   playersById: Record<string, PlayerMini>;
   onClose: () => void;
   onReplay?: () => void;
   onSave?: (res: LegacyLegResult | LegStats) => void;
+  safeVisitHistory: OverlayVisitRow[];
 }) {
   const nameOf = React.useCallback(
     (id?: string | null) => playersById[id || ""]?.name ?? (id || "—"),
