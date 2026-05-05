@@ -796,10 +796,12 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
         if (v.isCheckout && sc > bestCheckout2) bestCheckout2 = sc;
       }
 
-      if (sc >= 60) h60_2 += 1;
-      if (sc >= 100) h100_2 += 1;
-      if (sc >= 140) h140_2 += 1;
+      // Power scoring = tranches EXCLUSIVES par volée :
+      // 60+ = 60..99, 100+ = 100..139, 140+ = 140..179, 180 = 180 exact.
       if (sc === 180) h180_2 += 1;
+      else if (sc >= 140) h140_2 += 1;
+      else if (sc >= 100) h100_2 += 1;
+      else if (sc >= 60) h60_2 += 1;
 
       bust2 += v.bust ? 1 : 0;
 
@@ -830,10 +832,12 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
     if (!bestVisit) bestVisit = bestVisit2;
     if (!bestCheckout) bestCheckout = bestCheckout2;
 
-    if (!h60 && h60_2) h60 = h60_2;
-    if (!h100 && h100_2) h100 = h100_2;
-    if (!h140 && h140_2) h140 = h140_2;
-    if (!h180 && h180_2) h180 = h180_2;
+    // Les anciennes valeurs stockées peuvent être cumulatives/fausses :
+    // dès que les volées existent, elles sont la source de vérité.
+    h60 = h60_2;
+    h100 = h100_2;
+    h140 = h140_2;
+    h180 = h180_2;
 
     if (!bust && bust2) bust = bust2;
     if (!miss && miss2) miss = miss2;
@@ -1768,10 +1772,12 @@ export const StatsBridge = {
         bestCheckout[pid] = Math.max(bestCheckout[pid] || 0, dartValue(last));
       }
 
-      if (visitPoints >= 60) h60[pid] += 1;
-      if (visitPoints >= 100) h100[pid] += 1;
-      if (visitPoints >= 140) h140[pid] += 1;
+      // Power scoring = tranches EXCLUSIVES par volée :
+      // 60+ = 60..99, 100+ = 100..139, 140+ = 140..179, 180 = 180 exact.
       if (visitPoints === 180) h180[pid] += 1;
+      else if (visitPoints >= 140) h140[pid] += 1;
+      else if (visitPoints >= 100) h100[pid] += 1;
+      else if (visitPoints >= 60) h60[pid] += 1;
 
       bust[pid] += v.bust ? 1 : 0;
 
