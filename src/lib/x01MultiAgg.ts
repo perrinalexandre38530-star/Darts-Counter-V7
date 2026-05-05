@@ -67,14 +67,21 @@ function extractRawDarts(rec: any): any[] {
 
 function extractVisits(rec: SavedMatch, pid: string, order: string[] = []) {
   const payload: any = (rec as any).payload ?? null;
-  const explicit = payload?.visits ?? (rec as any).engineState?.visits ?? (rec as any).visits ?? [];
+  const summary: any = (rec as any)?.summary ?? payload?.summary ?? null;
+  const explicit =
+    payload?.visitHistory ?? payload?.visitsHistory ?? payload?.__legStats?.visits ??
+    summary?.visitHistory ?? summary?.visitsHistory ?? summary?.__legStats?.visits ?? summary?.legacy?.visitHistory ??
+    payload?.visits ?? (rec as any).engineState?.visits ?? (rec as any).visits ?? [];
   if (Array.isArray(explicit) && explicit.length) {
     return explicit
       .filter((v: any) => String(v?.p ?? v?.playerId ?? v?.pid ?? "") === String(pid))
       .map((v: any) => {
         const segments = Array.isArray(v.segments) ? v.segments.map(parseDart) : (Array.isArray(v.darts) ? v.darts.map(parseDart) : []);
-        const rawScore = N(v.score ?? v.total ?? segments.reduce((s: number, d: any) => s + dartScore(d), 0));
-        return { bust: !!(v.bust ?? v.isBust), finish: !!(v.finish ?? v.isFinish ?? v.checkout), score: rawScore, segments };
+        const before = N(v.scoreBefore ?? v.before ?? 0);
+        const after = N(v.scoreAfter ?? v.after ?? 0);
+        const bust = !!(v.bust ?? v.isBust);
+        const rawScore = N(v.score ?? v.total ?? (!bust && before ? Math.max(0, before - after) : 0) ?? segments.reduce((s: number, d: any) => s + dartScore(d), 0));
+        return { bust, finish: !!(v.finish ?? v.isFinish ?? v.checkout) || (!bust && before > 0 && after === 0), score: rawScore, segments };
       });
   }
 

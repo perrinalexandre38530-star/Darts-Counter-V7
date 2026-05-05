@@ -3551,6 +3551,7 @@ if (isLandscapeTablet) {
         open={summaryOpen && !!summaryLegStats}
         result={summaryLegStats}
         playersById={summaryPlayersById}
+        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, players.map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
         onClose={() => setSummaryOpen(false)}
         onReplay={handleReplaySameConfig}
       />
@@ -3990,6 +3991,7 @@ if (isLandscapeTablet) {
         open={summaryOpen && !!summaryLegStats}
         result={summaryLegStats}
         playersById={summaryPlayersById}
+        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, players.map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
         onClose={() => setSummaryOpen(false)}
         onReplay={handleReplaySameConfig}
       />
@@ -5714,6 +5716,199 @@ function extractDetailedStatsFromLive(live: any) {
      => évite les erreurs de quota
 ------------------------------------------------------------- */
 
+
+function buildReplayVisitsForX01History(
+  allDarts: any,
+  playerOrder: string[] = [],
+  startScoreInput: number = 501,
+  outModeInput: any = "double"
+) {
+  const arr = Array.isArray(allDarts) ? allDarts : [];
+  const order = (Array.isArray(playerOrder) ? playerOrder : []).map(String).filter(Boolean);
+  const startScore = Number(startScoreInput || 501) || 501;
+  const outMode = String(outModeInput || "double").toLowerCase();
+  const scores: Record<string, number> = {};
+  for (const id of order) scores[id] = startScore;
+
+  const dartPid = (raw: any): string => String(raw?.playerId ?? raw?.pid ?? raw?.p ?? raw?.profileId ?? "").trim();
+  const hasTaggedPlayers = arr.some((d: any) => !!dartPid(d));
+  const dartValue = (d: any) => {
+    const parsed = parseReplayDartParts(d);
+    return parsed.segment > 0 ? (parsed.segment === 25 && parsed.multiplier >= 2 ? 50 : parsed.segment * parsed.multiplier) : 0;
+  };
+  const canFinishWith = (d: any) => {
+    const parsed = parseReplayDartParts(d);
+    if (outMode === "simple" || outMode === "straight" || outMode === "single") return true;
+    if (outMode === "master") return parsed.multiplier === 2 || parsed.multiplier === 3 || (parsed.segment === 25 && parsed.multiplier === 2);
+    return parsed.multiplier === 2 || (parsed.segment === 25 && parsed.multiplier === 2);
+  };
+
+  const visits: any[] = [];
+  let currentPid: string | null = null;
+  let currentDarts: any[] = [];
+  let fallbackVisitIndex = 0;
+  let fallbackDartInVisit = 0;
+
+  const flush = () => {
+    if (!currentPid || !currentDarts.length) {
+      currentPid = null;
+      currentDarts = [];
+      return;
+    }
+    if (scores[currentPid] == null) scores[currentPid] = startScore;
+    const before = Number(scores[currentPid] ?? startScore) || startScore;
+    let after = before;
+    let bust = false;
+    let finish = false;
+
+    for (let i = 0; i < currentDarts.length; i += 1) {
+      const raw = currentDarts[i];
+      const value = dartValue(raw);
+      const tentative = after - value;
+      const lastForFinish = tentative === 0 ? raw : null;
+      if (tentative < 0 || tentative === 1 || (tentative === 0 && !canFinishWith(lastForFinish))) {
+        bust = true;
+        after = before;
+        break;
+      }
+      after = tentative;
+      if (after === 0) {
+        finish = true;
+        break;
+      }
+    }
+
+    const darts = currentDarts.map((raw) => {
+      const parsed = parseReplayDartParts(raw);
+      return {
+        v: parsed.segment,
+        segment: parsed.segment,
+        value: parsed.segment,
+        mult: parsed.multiplier,
+        multiplier: parsed.multiplier,
+        label: buildReplayDartLabel(parsed.segment, parsed.multiplier),
+      };
+    });
+
+    visits.push({
+      idx: visits.length + 1,
+      legNo: 1,
+      playerId: currentPid,
+      pid: currentPid,
+      darts,
+      scoreBefore: before,
+      before,
+      scoreAfter: after,
+      after,
+      bust,
+      isBust: bust,
+      finish,
+      isFinish: finish,
+      score: bust ? 0 : Math.max(0, before - after),
+    });
+
+    scores[currentPid] = after;
+    currentPid = null;
+    currentDarts = [];
+  };
+
+  for (const raw of arr) {
+    let pid = dartPid(raw);
+    if (!pid && !hasTaggedPlayers && order.length) {
+      pid = order[fallbackVisitIndex % order.length] || "";
+      fallbackDartInVisit += 1;
+      if (fallbackDartInVisit >= 3) {
+        fallbackDartInVisit = 0;
+        fallbackVisitIndex += 1;
+      }
+    }
+    if (!pid) continue;
+    if (scores[pid] == null) scores[pid] = startScore;
+    if (currentPid !== pid || currentDarts.length >= 3) {
+      flush();
+      currentPid = pid;
+    }
+    currentDarts.push(raw);
+  }
+  flush();
+  return visits;
+}
+
+function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] = []) {
+  const ids = Array.from(new Set([...(playerOrder || []).map(String), ...(visits || []).map((v: any) => String(v?.playerId || v?.pid || "")).filter(Boolean)]));
+  const out: Record<string, any> = {};
+  const ensure = (pid: string) => out[pid] || (out[pid] = {
+    darts: 0,
+    visits: 0,
+    points: 0,
+    bestVisit: 0,
+    bestCheckout: 0,
+    hitsS: 0,
+    hitsD: 0,
+    hitsT: 0,
+    miss: 0,
+    bull: 0,
+    dBull: 0,
+    bust: 0,
+    h60: 0,
+    h100: 0,
+    h140: 0,
+    h180: 0,
+    checkoutHits: 0,
+    checkoutAttempts: 0,
+    checkoutDarts: 0,
+    bySegmentS: {},
+    bySegmentD: {},
+    bySegmentT: {},
+  });
+  ids.forEach(ensure);
+
+  for (const v of visits || []) {
+    const pid = String(v?.playerId || v?.pid || "");
+    if (!pid) continue;
+    const m = ensure(pid);
+    const darts = Array.isArray(v?.darts) ? v.darts : [];
+    m.visits += 1;
+    m.darts += darts.length;
+    for (const d of darts) {
+      const parsed = parseReplayDartParts(d);
+      const seg = parsed.segment;
+      const mult = parsed.multiplier;
+      if (!seg || mult <= 0) m.miss += 1;
+      else if (seg === 25 && mult >= 2) m.dBull += 1;
+      else if (seg === 25) m.bull += 1;
+      else if (mult >= 3) { m.hitsT += 1; m.bySegmentT[String(seg)] = (m.bySegmentT[String(seg)] || 0) + 1; }
+      else if (mult === 2) { m.hitsD += 1; m.bySegmentD[String(seg)] = (m.bySegmentD[String(seg)] || 0) + 1; }
+      else { m.hitsS += 1; m.bySegmentS[String(seg)] = (m.bySegmentS[String(seg)] || 0) + 1; }
+    }
+    const before = Number(v?.scoreBefore ?? v?.before ?? 0) || 0;
+    const after = Number(v?.scoreAfter ?? v?.after ?? 0) || 0;
+    const bust = !!(v?.bust || v?.isBust);
+    const finish = !!(v?.finish || v?.isFinish) || (!bust && after === 0 && before > 0);
+    const visitScore = bust ? 0 : Math.max(0, before - after);
+    if (bust) m.bust += 1;
+    m.points += visitScore;
+    m.bestVisit = Math.max(m.bestVisit, visitScore);
+    if (visitScore >= 180) m.h180 += 1;
+    else if (visitScore >= 140) m.h140 += 1;
+    else if (visitScore >= 100) m.h100 += 1;
+    else if (visitScore >= 60) m.h60 += 1;
+    if (before > 1 && before <= 170) m.checkoutAttempts += 1;
+    if (finish) {
+      m.checkoutHits += 1;
+      m.bestCheckout = Math.max(m.bestCheckout, visitScore);
+      m.checkoutDarts = darts.length;
+      if (m.checkoutAttempts <= 0) m.checkoutAttempts = 1;
+    }
+  }
+
+  for (const pid of Object.keys(out)) {
+    const m = out[pid];
+    m.avg3 = m.darts > 0 ? (m.points / m.darts) * 3 : 0;
+  }
+  return out;
+}
+
 function saveX01V3MatchToHistory({
   config,
   state,
@@ -5723,6 +5918,14 @@ function saveX01V3MatchToHistory({
   darts: replayDarts,
 }: X01V3HistoryPayload) {
   const players = config.players || [];
+  const playerOrderForReplay = (players as any[]).map((p: any) => String(p?.id || "")).filter(Boolean);
+  const replayVisits = buildReplayVisitsForX01History(
+    replayDarts,
+    playerOrderForReplay,
+    config.startScore ?? 501,
+    (config as any).outMode ?? (config as any).checkoutMode ?? (config as any).doubleOutMode ?? "double"
+  );
+  const replayMetricsByPlayer = deriveX01MetricsFromReplayVisits(replayVisits, playerOrderForReplay);
 
   const matchId =
     historyId ||
@@ -5777,15 +5980,18 @@ function saveX01V3MatchToHistory({
     const scoreNow = scores[pid] ?? startScore;
     const scored = startScore - scoreNow;
 
-    const dartsThrown = live.dartsThrown ?? live.darts ?? 0;
+    const replayMetricAtTop = replayMetricsByPlayer[pid] || null;
+    const dartsThrown = replayMetricAtTop?.darts ?? live.dartsThrown ?? live.darts ?? 0;
 
     let avg3 = 0;
-    if (dartsThrown > 0 && scored > 0) {
+    if (replayMetricAtTop) {
+      avg3 = replayMetricAtTop.avg3 || 0;
+    } else if (dartsThrown > 0 && scored > 0) {
       avg3 = (scored / dartsThrown) * 3;
     }
 
-    const bestVisit = live.bestVisit ?? 0;
-    const bestCheckout = live.bestCheckout ?? 0;
+    const bestVisit = replayMetricAtTop?.bestVisit ?? live.bestVisit ?? 0;
+    const bestCheckout = replayMetricAtTop?.bestCheckout ?? live.bestCheckout ?? 0;
 
     avg3ByPlayer[pid] = avg3;
     bestVisitByPlayer[pid] = bestVisit;
@@ -5796,7 +6002,25 @@ function saveX01V3MatchToHistory({
     // On complète donc depuis replayDarts, maintenant tagués avec playerId.
     const liveDetail = extractDetailedStatsFromLive(live);
     const replayDetail = extractDetailedStatsFromReplayDarts(replayDarts, pid, players.length, players.map((x: any) => String(x.id)));
-    const detail = mergeDetailedStats(liveDetail, replayDetail);
+    const replayMetric = replayMetricsByPlayer[pid] || null;
+    const detail = replayMetric
+      ? {
+          ...mergeDetailedStats(liveDetail, replayDetail),
+          darts: replayMetric.darts,
+          hitsS: replayMetric.hitsS,
+          hitsD: replayMetric.hitsD,
+          hitsT: replayMetric.hitsT,
+          miss: replayMetric.miss,
+          bull: replayMetric.bull,
+          dBull: replayMetric.dBull,
+          bust: replayMetric.bust,
+          avgCheckoutDarts: replayMetric.checkoutDarts,
+          dartsCheckout: replayMetric.checkoutDarts,
+          bySegmentS: replayMetric.bySegmentS,
+          bySegmentD: replayMetric.bySegmentD,
+          bySegmentT: replayMetric.bySegmentT,
+        }
+      : mergeDetailedStats(liveDetail, replayDetail);
     detailedByPlayer[pid] = detail;
 
     // Reformatage compatible V2/V1 pour StatsHub et tous les dashboards
@@ -5826,6 +6050,10 @@ function saveX01V3MatchToHistory({
       bull: detail.bull,
       dBull: detail.dBull,
       bust: detail.bust,
+      avgCheckoutDarts: replayMetric?.checkoutDarts ?? 0,
+      dartsCheckout: replayMetric?.checkoutDarts ?? 0,
+      checkoutHits: replayMetric?.checkoutHits ?? 0,
+      checkoutAttempts: replayMetric?.checkoutAttempts ?? 0,
       segments,
     });
 
@@ -5834,7 +6062,7 @@ function saveX01V3MatchToHistory({
     // -------------------------
     legacyRemaining[pid] = scoreNow;
     legacyDarts[pid] = detail.darts;
-    legacyVisits[pid] = detail.darts ? Math.ceil(detail.darts / 3) : 0;
+    legacyVisits[pid] = replayMetric?.visits ?? (detail.darts ? Math.ceil(detail.darts / 3) : 0);
     legacyAvg3[pid] = avg3;
     legacyBestVisit[pid] = bestVisit;
     legacyBestCheckout[pid] = bestCheckout;
@@ -5842,28 +6070,23 @@ function saveX01V3MatchToHistory({
     legacySingles[pid] = detail.hitsS;
     legacyDoubles[pid] = detail.hitsD;
     legacyTriples[pid] = detail.hitsT;
-    legacyBulls[pid] = (detail.bull ?? 0) + (detail.dBull ?? 0);
+    legacyBulls[pid] = detail.bull ?? 0;
     legacyDbulls[pid] = detail.dBull ?? 0;
     legacyMiss[pid] = detail.miss ?? 0;
     legacyBust[pid] = detail.bust ?? 0;
-    legacyPoints[pid] = scored > 0 ? scored : 0;
+    legacyPoints[pid] = replayMetric?.points ?? (scored > 0 ? scored : 0);
 
     const scorePerVisitLive = Array.isArray(live?.scorePerVisit) ? live.scorePerVisit : [];
-    const scorePerVisitReplay = computeReplayVisitScoresForPlayer(
-      replayDarts,
-      pid,
-      config.startScore ?? 501,
-      players.map((x: any) => String(x.id))
-    );
-    // Le replay simulé respecte les busts et les restes X01. On le préfère au live
-    // car live.scorePerVisit peut contenir une volée brute impossible (ex: 180 sur 121).
+    const scorePerVisitReplay = (replayVisits || [])
+      .filter((v: any) => String(v?.playerId || v?.pid || "") === String(pid))
+      .map((v: any) => Number(v?.score || 0) || 0);
     const scorePerVisit = scorePerVisitReplay.length ? scorePerVisitReplay : scorePerVisitLive;
-    legacyH60[pid] = scorePerVisit.filter((v: any) => Number(v) >= 60).length;
-    legacyH100[pid] = scorePerVisit.filter((v: any) => Number(v) >= 100).length;
-    legacyH140[pid] = scorePerVisit.filter((v: any) => Number(v) >= 140).length;
-    legacyH180[pid] = scorePerVisit.filter((v: any) => Number(v) >= 180).length;
-    legacyCheckoutHits[pid] = bestCheckout > 0 ? 1 : numOr0(live?.checkoutHits, live?.coHits);
-    legacyCheckoutAttempts[pid] = Math.max(
+    legacyH60[pid] = replayMetric?.h60 ?? scorePerVisit.filter((v: any) => Number(v) >= 60).length;
+    legacyH100[pid] = replayMetric?.h100 ?? scorePerVisit.filter((v: any) => Number(v) >= 100).length;
+    legacyH140[pid] = replayMetric?.h140 ?? scorePerVisit.filter((v: any) => Number(v) >= 140).length;
+    legacyH180[pid] = replayMetric?.h180 ?? scorePerVisit.filter((v: any) => Number(v) >= 180).length;
+    legacyCheckoutHits[pid] = replayMetric?.checkoutHits ?? (bestCheckout > 0 ? 1 : numOr0(live?.checkoutHits, live?.coHits));
+    legacyCheckoutAttempts[pid] = replayMetric?.checkoutAttempts ?? Math.max(
       legacyCheckoutHits[pid],
       numOr0(live?.checkoutAttempts, live?.coAttempts, live?.coAtt)
     );
@@ -6064,6 +6287,8 @@ function saveX01V3MatchToHistory({
     checkoutHits: legacyCheckoutHits,
     checkoutAttempts: legacyCheckoutAttempts,
     hitsBySector: legacyHitsBySector,
+    visitHistory: replayVisits,
+    visitsHistory: replayVisits,
     // Les buckets 60+/100+/140+/180 ne sont pas reconstruits ici,
     // ils resteront à 0 faute de détail par volée (option future).
   };
@@ -6091,6 +6316,10 @@ function saveX01V3MatchToHistory({
       _sumVisits: visits || undefined,
       matches: 1,
       legs: legsPlayedByPlayer[pid] || 1,
+      avgCheckoutDarts: replayMetricsByPlayer[pid]?.checkoutDarts ?? 0,
+      dartsCheckout: replayMetricsByPlayer[pid]?.checkoutDarts ?? 0,
+      checkoutHits: legacyCheckoutHits[pid] || 0,
+      checkoutAttempts: legacyCheckoutAttempts[pid] || 0,
       buckets: {
         "60+": legacyH60[pid] || 0,
         "100+": legacyH100[pid] || 0,
@@ -6145,6 +6374,11 @@ function saveX01V3MatchToHistory({
 
     // Compatibilité rétro : l'ancien shape utilisé par History / LEO
     legacy,
+
+    // Historique complet des volées, utilisé par X01End, History et overlay résumé.
+    visitHistory: replayVisits,
+    visitsHistory: replayVisits,
+    __legStats: { visits: replayVisits },
   };
 
   // -------------------------
@@ -6226,6 +6460,9 @@ function saveX01V3MatchToHistory({
     // ✅ V3 FIX : replay complet compact sans avatars.
     // Sans ce champ, l'historique ne peut pas reprendre la partie et les stats détaillées tombent à 0.
     darts: Array.isArray(replayDarts) ? replayDarts : [],
+    visitHistory: replayVisits,
+    visitsHistory: replayVisits,
+    __legStats: { visits: replayVisits },
 
     // ✅ compat dartsets (lecture simple côté agrégateurs)
     dartSetId: dartSetIdGlobal,

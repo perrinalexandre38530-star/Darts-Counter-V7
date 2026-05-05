@@ -1456,6 +1456,7 @@ function buildPerPlayerMetrics(
         busts: 0,
         coHits: 0,
         coAtt: 0,
+        checkoutDarts: 0,
         byNumber: {},
       });
 
@@ -1508,11 +1509,12 @@ function buildPerPlayerMetrics(
     row.points += visitPoints;
     row.bestVisit = Math.max(row.bestVisit, visitPoints);
 
-    // Power scoring = seuils cumulés : une volée à 140 compte aussi en 100+ et 60+.
-    if (visitPoints >= 60) row.t60 += 1;
-    if (visitPoints >= 100) row.t100 += 1;
-    if (visitPoints >= 140) row.t140 += 1;
+    // Power scoring X01 affiché en classes exclusives :
+    // 60+ = 60–99, 100+ = 100–139, 140+ = 140–179, 180 = 180.
     if (visitPoints >= 180) row.t180 += 1;
+    else if (visitPoints >= 140) row.t140 += 1;
+    else if (visitPoints >= 100) row.t100 += 1;
+    else if (visitPoints >= 60) row.t60 += 1;
 
     // Tentatives de checkout : fallback historique.
     // Une volée commencée à <=170 est considérée comme une opportunité CO potentielle.
@@ -1524,6 +1526,7 @@ function buildPerPlayerMetrics(
     if (v.finish) {
       row.bestCO = Math.max(row.bestCO, visitPoints);
       row.coHits += 1;
+      row.checkoutDarts = Array.isArray(v.darts) ? v.darts.length : 0;
       if (row.coAtt <= 0) row.coAtt = 1;
     }
 
@@ -1864,6 +1867,7 @@ function buildPerPlayerMetrics(
       m.busts = n(dv.busts, 0);
       m.coHits = n(dv.coHits, 0);
       m.coAtt = n(dv.coAtt, 0);
+      m.avgCoDarts = n(dv.checkoutDarts, 0);
       if (dv.byNumber) m.byNumber = dv.byNumber;
     }
 
@@ -2940,6 +2944,22 @@ function buildVisitHistory(
   const rawVisits: any[] =
     legLike?.visits && Array.isArray(legLike.visits)
       ? legLike.visits
+      : Array.isArray(rec?.summary?.visitHistory)
+      ? rec.summary.visitHistory
+      : Array.isArray(rec?.summary?.visitsHistory)
+      ? rec.summary.visitsHistory
+      : Array.isArray(rec?.payload?.visitHistory)
+      ? rec.payload.visitHistory
+      : Array.isArray(rec?.payload?.visitsHistory)
+      ? rec.payload.visitsHistory
+      : Array.isArray(rec?.payload?.summary?.visitHistory)
+      ? rec.payload.summary.visitHistory
+      : Array.isArray(rec?.payload?.summary?.visitsHistory)
+      ? rec.payload.summary.visitsHistory
+      : Array.isArray(rec?.summary?.legacy?.visitHistory)
+      ? rec.summary.legacy.visitHistory
+      : Array.isArray(rec?.payload?.summary?.legacy?.visitHistory)
+      ? rec.payload.summary.legacy.visitHistory
       : [];
 
   if (rawVisits.length) {
