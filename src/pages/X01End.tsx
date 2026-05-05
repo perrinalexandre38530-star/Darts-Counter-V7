@@ -411,6 +411,11 @@ export default function X01End({ go, params }: Props) {
     [rec, players, legStats]
   );
 
+  // Alias volontairement conservé : certains blocs/rendus X01 existants utilisent encore
+  // le nom historique `visitHistory`. Sans cet alias local, le rendu de fin de partie
+  // peut crasher en production avec `ReferenceError: visitHistory is not defined`.
+  const visitHistory: VisitRow[] = visits;
+
   const shareMatchId = (params?.matchId || (rec as any)?.id || (rec as any)?.matchId) as string | undefined;
 
   async function handleShareMatch() {
