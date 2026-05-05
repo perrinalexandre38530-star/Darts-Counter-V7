@@ -454,7 +454,7 @@ function detectKindMode(rec: any, decoded: any | null) {
   if (blob.includes("babyfoot") || blob.includes("baby-foot") || blob.includes("baby_foot")) return { kind: "babyfoot", mode: "babyfoot" };
   if (blob.includes("pingpong") || blob.includes("ping-pong") || blob.includes("ping_pong")) return { kind: "pingpong", mode: "pingpong" };
   if (blob.includes("petanque") || blob.includes("pétanque")) return { kind: "petanque", mode: "petanque" };
-  if (blob.includes("cricket")) return { kind: "cricket", mode: "cricket" };
+  if (blob.includes("cricket") || blob.includes("cut_throat") || blob.includes("cut-throat") || blob.includes("cut throat") || blob.includes("enculette") || blob.includes("vache")) return { kind: "cricket", mode: "cricket" };
   if (blob.includes("killer")) return { kind: "killer", mode: "killer" };
   if (blob.includes("shanghai")) return { kind: "shanghai", mode: "shanghai" };
   if (blob.includes("golf")) return { kind: "golf", mode: "golf" };

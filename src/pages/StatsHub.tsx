@@ -4478,6 +4478,11 @@ const modeDefs = React.useMemo(
               { key: "shanghai", label: "Shanghai" },
               { key: "killer", label: "Killer" },
               { key: "golf", label: "Golf" },
+              { key: "battle_royale", label: "Battle Royale" },
+              { key: "warfare", label: "Warfare" },
+              { key: "five_lives", label: "Les 5 vies" },
+              { key: "scram", label: "SCRAM" },
+              { key: "capital", label: "Capital" },
               { key: "batard", label: "BÂTARD" },
               { key: "territories", label: "Territories" },
               { key: "leaderboards", label: "Classements" },
@@ -6838,7 +6843,77 @@ return (
               </div>
             )}
 
-{currentMode === "territories" && (
+{["battle_royale", "warfare", "five_lives", "scram", "capital"].includes(String(currentMode)) && (
+              <div style={card}>
+                <div style={{ padding: 18 }}>
+                  <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
+                    {currentModeLabel} — Stats
+                  </div>
+                  {!selectedPlayer ? (
+                    <div style={{ color: T.text70, fontSize: 13 }}>Sélectionne un joueur pour afficher ces stats.</div>
+                  ) : (() => {
+                    const aliases: Record<string, string[]> = {
+                      battle_royale: ["battle_royale", "battle royale", "battle", "royale"],
+                      warfare: ["warfare"],
+                      five_lives: ["five_lives", "five lives", "5 vies", "cinq vies"],
+                      scram: ["scram"],
+                      capital: ["capital"],
+                    };
+                    const pid = String(selectedPlayer.id);
+                    const modeAliases = aliases[String(currentMode)] || [String(currentMode)];
+                    const rows = (records || []).filter((r: any) => {
+                      const blob = [r?.kind, r?.mode, r?.game, r?.variantId, r?.summary?.mode, r?.payload?.kind, r?.payload?.mode, r?.payload?.originalMode, r?.payload?.variantId, r?.payload?.summary?.mode]
+                        .filter(Boolean).map((x: any) => String(x).toLowerCase()).join(" ");
+                      if (!modeAliases.some((a) => blob.includes(a))) return false;
+                      const pools = [r?.players, r?.summary?.players, r?.summary?.perPlayer, r?.payload?.players, r?.payload?.stats?.players, r?.payload?.summary?.players, r?.payload?.summary?.perPlayer];
+                      return pools.some((arr: any) => Array.isArray(arr) && arr.some((pl: any) => String(pl?.id || pl?.playerId || pl?.profileId || "") === pid));
+                    });
+                    const playerRows = rows.map((r: any) => {
+                      const pools = [r?.payload?.stats?.players, r?.payload?.players, r?.summary?.players, r?.summary?.perPlayer, r?.players];
+                      for (const arr of pools) {
+                        if (!Array.isArray(arr)) continue;
+                        const hit = arr.find((pl: any) => String(pl?.id || pl?.playerId || pl?.profileId || "") === pid);
+                        if (hit) return { rec: r, pl: hit };
+                      }
+                      return { rec: r, pl: null };
+                    }).filter((x: any) => x.pl);
+                    const games = rows.length;
+                    const wins = rows.filter((r: any) => String(r?.winnerId || r?.summary?.winnerId || r?.payload?.winnerId || "") === pid).length;
+                    const sum = (key: string) => playerRows.reduce((a: number, x: any) => a + (Number(x.pl?.[key] ?? 0) || 0), 0);
+                    const darts = sum("dartsThrown") || sum("darts") || sum("totalThrows");
+                    const points = sum("points") || sum("score") || sum("totalScore");
+                    const bestVisit = playerRows.reduce((a: number, x: any) => Math.max(a, Number(x.pl?.bestVisit ?? x.pl?.validHits ?? x.pl?.captures ?? x.pl?.kills ?? 0) || 0), 0);
+                    const validHits = sum("validHits") || sum("hitsTotal");
+                    const fails = sum("fails") || sum("misses");
+                    const captures = sum("captures");
+                    const kills = sum("kills");
+                    const advances = sum("advances");
+                    const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
+                    const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
+                    const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
+                    return (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Darts</div><div style={value}>{darts}</div></div>
+                          <div style={statBox}><div style={label}>Points</div><div style={value}>{points}</div></div>
+                          <div style={statBox}><div style={label}>Best visit / action</div><div style={value}>{bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Hits valides</div><div style={value}>{validHits}</div></div>
+                          <div style={statBox}><div style={label}>Fails / Miss</div><div style={value}>{fails}</div></div>
+                          <div style={statBox}><div style={label}>Progression</div><div style={value}>{advances || captures || kills || "—"}</div><div style={{ opacity: .75, fontSize: 11 }}>captures/kills/avancées selon le mode</div></div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
+                          Base commune créée pour ce mode. Les vraies pages détaillées pourront ensuite reprendre ces mêmes champs : players, summary, stats et payload.
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {currentMode === "territories" && (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Territories…" />}>
                   <StatsTerritoriesTab embedded />

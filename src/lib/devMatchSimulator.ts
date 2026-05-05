@@ -13,6 +13,7 @@ type SimGame =
   | "five_lives"
   | "scram"
   | "enculette"
+  | "vache"
   | "capital"
   | "batard";
 
@@ -37,6 +38,7 @@ const GAMES: SimGame[] = [
   "five_lives",
   "scram",
   "enculette",
+  "vache",
   "capital",
   "batard",
 ];
@@ -673,9 +675,11 @@ function makeGenericDartsMode(game: SimGame, index: number, now: number): SavedM
   const players = pickPlayers(game === "battle_royale" || game === "warfare" || game === "five_lives" || game === "territories" ? 4 : 3);
   const rec = base(game, index, now, players);
   const rounds = game === "territories" ? 12 : game === "capital" || game === "batard" ? 10 : 8;
-  const variantId = game === "enculette" ? "enculette" : game === "cricket_cut_throat" ? "cut_throat" : game;
+  const isCricketVariant = game === "enculette" || game === "vache" || game === "cricket_cut_throat";
+  const variantId = game === "enculette" ? "enculette" : game === "vache" ? "vache" : game === "cricket_cut_throat" ? "cut_throat" : game;
   const perPlayer = players.map((p, i) => {
     const dartsThrown = rounds * 3;
+    const cricketMarks = isCricketVariant ? n(index + i * 100 + 70, 18, 58) : 0;
     const points = n(index + i * 100 + 1, 120, 680);
     const bestVisit = n(index + i * 100 + 2, 45, 160);
     const fails = n(index + i * 100 + 3, 0, 5);
@@ -693,6 +697,11 @@ function makeGenericDartsMode(game: SimGame, index: number, now: number): SavedM
       points,
       score: points,
       totalScore: points,
+      marks: isCricketVariant ? { 20: n(index + i * 100 + 71, 3, 9), 19: n(index + i * 100 + 72, 3, 9), 18: n(index + i * 100 + 73, 2, 8), 17: n(index + i * 100 + 74, 2, 8), 16: n(index + i * 100 + 75, 2, 8), 15: n(index + i * 100 + 76, 2, 8), 25: n(index + i * 100 + 77, 1, 6) } : undefined,
+      marksTotal: isCricketVariant ? cricketMarks : undefined,
+      totalMarks: isCricketVariant ? cricketMarks : undefined,
+      mpr: isCricketVariant ? Number(((cricketMarks / dartsThrown) * 3).toFixed(2)) : undefined,
+      cutThroat: game === "cricket_cut_throat",
       avg3: Number(((points / dartsThrown) * 3).toFixed(2)),
       bestVisit,
       bestCheckout: 0,
@@ -740,25 +749,28 @@ function makeGenericDartsMode(game: SimGame, index: number, now: number): SavedM
     stats: { players: perPlayer, detailedByPlayer },
   };
 
-  if (game === "cricket_cut_throat") {
+  if (isCricketVariant) {
+    summary.kind = "cricket";
     summary.mode = "cricket";
-    summary.variantId = "cut_throat";
-    summary.cutThroat = true;
+    summary.originalMode = game;
+    summary.variantId = variantId;
+    summary.cutThroat = game === "cricket_cut_throat";
+    summary.withPoints = game !== "enculette" && game !== "vache";
     summary.cricketLegs = perPlayer.map((p: any, i: number) => ({
       matchId: rec.id,
       legId: `${rec.id}:${p.id}:0`,
       playerId: p.id,
-      mode: "cut_throat",
-      variantId: "cut_throat",
-      cutThroat: true,
-      scoringVariant: "cut-throat",
+      mode: "solo",
+      variantId,
+      cutThroat: game === "cricket_cut_throat",
+      scoringVariant: game === "cricket_cut_throat" ? "cut-throat" : game === "enculette" || game === "vache" ? "no-points" : "points",
       darts: p.dartsThrown,
       visits: Math.ceil(p.dartsThrown / 3),
-      totalMarks: n(index + i * 100 + 77, 18, 50),
+      totalMarks: p.totalMarks || p.marksTotal || n(index + i * 100 + 77, 18, 50),
       totalPoints: p.points,
-      mpr: Number((n(index + i * 100 + 78, 18, 50) / Math.max(1, Math.ceil(p.dartsThrown / 3))).toFixed(2)),
+      mpr: Number(((p.totalMarks || p.marksTotal || 0) / Math.max(1, Math.ceil(p.dartsThrown / 3))).toFixed(2)),
       won: p.id === winner.id,
-      perSegment: {},
+      perSegment: Object.fromEntries(Object.entries(p.marks || {}).map(([segment, marks]) => [segment, { segment: Number(segment), marks: Number(marks) || 0, closes: Number(marks) >= 3 ? 1 : 0, pointsScored: game === "cricket_cut_throat" ? n(index + i * 100 + Number(segment), 0, 60) : 0 }])),
       startedAt: rec.createdAt,
       endedAt: rec.updatedAt,
     }));
@@ -773,17 +785,22 @@ function makeGenericDartsMode(game: SimGame, index: number, now: number): SavedM
   }
 
   rec.winnerId = winner.id;
-  rec.stats = { players: perPlayer, detailedByPlayer, variantId };
+  rec.stats = { players: perPlayer, detailedByPlayer, variantId, cricketLegs: isCricketVariant ? summary.cricketLegs : undefined };
   rec.summary = summary;
   rec.payload = {
     ...rec.payload,
-    kind: game,
-    mode: game === "cricket_cut_throat" ? "cricket" : game,
+    kind: isCricketVariant ? "cricket" : game,
+    originalKind: game,
+    mode: isCricketVariant ? "cricket" : game,
+    originalMode: game,
     variantId,
-    config: { mode: game, variantId, rounds, players },
+    cutThroat: game === "cricket_cut_throat",
+    withPoints: !(game === "enculette" || game === "vache"),
+    config: { mode: isCricketVariant ? "cricket" : game, originalMode: game, variantId, rounds, players },
     players: perPlayer,
     summary,
-    stats: { players: perPlayer, detailedByPlayer, variantId },
+    stats: { players: perPlayer, detailedByPlayer, variantId, cricketLegs: isCricketVariant ? summary.cricketLegs : undefined },
+    cricketLegs: isCricketVariant ? summary.cricketLegs : undefined,
   };
   return rec;
 }

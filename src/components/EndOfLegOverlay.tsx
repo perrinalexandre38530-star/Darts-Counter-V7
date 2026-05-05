@@ -558,7 +558,9 @@ function rowsFromVisitHistory(
     }
 
     const rawVisitScore = darts.reduce((sum, d) => sum + scoreOverlayDart(d), 0);
-    const visitScore = bust ? 0 : n(visit?.score ?? Math.max(0, before - after) || rawVisitScore);
+    const inferredVisitScore = Math.max(0, before - after) || rawVisitScore;
+    const explicitVisitScore = visit?.score ?? null;
+    const visitScore = bust ? 0 : n(explicitVisitScore ?? inferredVisitScore);
     if (bust) row.busts += 1;
     row.points += visitScore;
     row.best = Math.max(row.best, visitScore);

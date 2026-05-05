@@ -19,7 +19,11 @@ export type GameKey =
   | "golf"
   | "shanghai"
   | "territories"
+  | "battle_royale"
+  | "warfare"
+  | "five_lives"
   | "scram"
+  | "capital"
   | "batard"
   | "unknown";
 
@@ -137,7 +141,11 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       golf: { mode: "golf", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       shanghai: { mode: "shanghai", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       territories: { mode: "territories", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      battle_royale: { mode: "battle_royale", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      warfare: { mode: "warfare", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      five_lives: { mode: "five_lives", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       scram: { mode: "scram", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      capital: { mode: "capital", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       batard: { mode: "batard", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       unknown: { mode: "unknown", matches: 0, finished: 0, inProgress: 0, saved: 0 },
     },
@@ -149,7 +157,11 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       golf: [],
       shanghai: [],
       territories: [],
+      battle_royale: [],
+      warfare: [],
+      five_lives: [],
       scram: [],
+      capital: [],
       batard: [],
       unknown: [],
     },
@@ -265,18 +277,27 @@ function toTs(v: any): number | undefined {
 }
 
 function normalizeGameKey(rec: any, payload: any): GameKey {
-  const g = (rec?.game || rec?.mode || rec?.kind || payload?.game || payload?.mode || payload?.kind || "")
-    .toString()
-    .toLowerCase();
+  const parts = [
+    rec?.game, rec?.mode, rec?.kind, rec?.variant, rec?.variantId, rec?.summary?.mode, rec?.summary?.variantId,
+    payload?.game, payload?.mode, payload?.kind, payload?.variant, payload?.variantId, payload?.config?.mode, payload?.config?.variantId, payload?.summary?.mode, payload?.summary?.variantId,
+  ];
+  const g = parts.filter((v) => v !== undefined && v !== null).map((v) => String(v).toLowerCase()).join(" ");
 
   if (g.includes("x01") || g.includes("301") || g.includes("501")) return "x01";
-  if (g.includes("cricket")) return "cricket";
+
+  // Variantes Cricket : elles doivent alimenter le même tableau de stats Cricket.
+  if (g.includes("cricket") || g.includes("cut_throat") || g.includes("cut-throat") || g.includes("cut throat") || g.includes("enculette") || g.includes("vache")) return "cricket";
+
   if (g.includes("killer")) return "killer";
   if (g.includes("golf")) return "golf";
   if (g.includes("shanghai")) return "shanghai";
   if (g.includes("territ")) return "territories";
+  if (g.includes("battle") || g.includes("royale")) return "battle_royale";
+  if (g.includes("warfare")) return "warfare";
+  if (g.includes("five_lives") || g.includes("five lives") || g.includes("5 vies") || g.includes("cinq vies")) return "five_lives";
   if (g.includes("scram")) return "scram";
-  if (g.includes("batard") || g.includes("bastard")) return "batard";
+  if (g.includes("capital")) return "capital";
+  if (g.includes("batard") || g.includes("bastard") || g.includes("bâtard")) return "batard";
   if (payload?.x01 || payload?.startScore || payload?.legs || payload?.sets) return "x01";
   return "unknown";
 }
@@ -393,6 +414,48 @@ type Extractor = (args: {
   ts?: number;
   idx: StatsIndex;
 }) => void;
+
+function sumNumbers(value: any): number {
+  if (Array.isArray(value)) return value.reduce((a, b) => a + (Number(b) || 0), 0);
+  if (value && typeof value === "object") return Object.values(value).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0) as number;
+  return Number(value || 0) || 0;
+}
+
+function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undefined, idx: StatsIndex): void {
+  const players = payload?.players || payload?.state?.players || payload?.summary?.players || payload?.stats?.players || [];
+  const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
+  for (const pl of Array.isArray(players) ? players : []) {
+    const pid = String(pl?.id || pl?.playerId || pl?.profileId || pl?.uid || "");
+    if (!pid) continue;
+    const points = Number(pl?.points ?? pl?.score ?? pl?.totalScore ?? 0) || 0;
+    const dartsThrown = Number(pl?.dartsThrown ?? pl?.darts ?? pl?.totalThrows ?? 0) || 0;
+    const bestVisit = Number(pl?.bestVisit ?? pl?.bestRound ?? pl?.validHits ?? pl?.captures ?? pl?.kills ?? points ?? 0) || 0;
+    const isWinner = winnerId && String(winnerId) === pid;
+    bumpPlayer(idx, pid, {
+      name: pl?.name || pl?.displayName,
+      matches: 1,
+      wins: isWinner ? 1 : 0,
+      losses: winnerId && !isWinner ? 1 : 0,
+      dartsThrown,
+      pointsScored: points,
+      bestVisit,
+      bestCheckout: Number(pl?.bestCheckout ?? 0) || 0,
+      buckets: makeVisitBuckets(bestVisit),
+    }, ts);
+
+    const cur: any = (idx.byPlayer[pid] as any)[mode] || { points: 0, darts: 0, wins: 0, captures: 0, kills: 0, fails: 0, validHits: 0, rounds: 0, advances: 0 };
+    cur.points += points;
+    cur.darts += dartsThrown;
+    cur.wins += isWinner ? 1 : 0;
+    cur.captures += Number(pl?.captures ?? pl?.captured ?? 0) || 0;
+    cur.kills += Number(pl?.kills ?? 0) || 0;
+    cur.fails += Number(pl?.fails ?? pl?.misses ?? 0) || 0;
+    cur.validHits += Number(pl?.validHits ?? pl?.hitsTotal ?? 0) || 0;
+    cur.rounds += Number(pl?.rounds ?? payload?.summary?.rounds ?? 0) || 0;
+    cur.advances += Number(pl?.advances ?? 0) || 0;
+    (idx.byPlayer[pid] as any)[mode] = cur;
+  }
+}
 
 const extractors: Partial<Record<GameKey, Extractor>> = {
   x01: ({ payload, ts, idx }) => {
@@ -653,14 +716,23 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
 
       bumpPlayer(idx, pid, { name: pl?.name, matches: 1 }, ts);
 
-      const cur: any = (idx.byPlayer[pid] as any).territories || { captured: 0, darts: 0, steals: 0, lost: 0 };
-      cur.captured += sum(data?.captured ?? pl?.captured);
-      cur.darts += sum(data?.darts ?? pl?.darts);
+      const cur: any = (idx.byPlayer[pid] as any).territories || { captured: 0, darts: 0, steals: 0, lost: 0, points: 0, wins: 0 };
+      cur.captured += sum(data?.captured ?? pl?.captured ?? pl?.captures ?? pl?.capturedTerritories);
+      cur.darts += sum(data?.darts ?? pl?.darts ?? pl?.dartsThrown);
       cur.steals += sum(data?.steals ?? pl?.steals);
       cur.lost += sum(data?.lost ?? pl?.lost);
+      cur.points += Number(pl?.points ?? pl?.score ?? 0) || 0;
+      cur.wins += payload?.winnerId && String(payload.winnerId) === pid ? 1 : 0;
       (idx.byPlayer[pid] as any).territories = cur;
     }
   },
+
+  battle_royale: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  warfare: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  five_lives: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  scram: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  capital: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  batard: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
 };
 
 export async function refreshStatsIndexFromHistoryNow(options?: {
