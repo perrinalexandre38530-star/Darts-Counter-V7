@@ -5901,10 +5901,14 @@ function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] =
     const darts = Array.isArray(v?.darts) ? v.darts : [];
     m.visits += 1;
     m.darts += darts.length;
-    for (const d of darts) {
+    const isBustVisit = !!(v?.bust || v?.isBust);
+    for (let dartIdx = 0; dartIdx < darts.length; dartIdx += 1) {
+      const d = darts[dartIdx];
       const parsed = parseReplayDartParts(d);
       const seg = parsed.segment;
       const mult = parsed.multiplier;
+      const isBustDart = isBustVisit && dartIdx === darts.length - 1;
+      if (isBustDart) continue;
       if (!seg || mult <= 0) m.miss += 1;
       else if (seg === 25 && mult >= 2) m.dBull += 1;
       else if (seg === 25) m.bull += 1;
@@ -5920,12 +5924,12 @@ function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] =
     if (bust) m.bust += 1;
     m.points += visitScore;
     m.bestVisit = Math.max(m.bestVisit, visitScore);
-    // Buckets X01 attendus à l'écran : cumulés.
-    // 117 compte dans 60+ ET 100+, pas uniquement dans une classe exclusive.
-    if (visitScore >= 60) m.h60 += 1;
-    if (visitScore >= 100) m.h100 += 1;
-    if (visitScore >= 140) m.h140 += 1;
+    // Buckets X01 attendus à l'écran : classes exclusives.
+    // 117 = 100+ uniquement, pas 60+ + 100+.
     if (visitScore >= 180) m.h180 += 1;
+    else if (visitScore >= 140) m.h140 += 1;
+    else if (visitScore >= 100) m.h100 += 1;
+    else if (visitScore >= 60) m.h60 += 1;
     if (before > 1 && before <= 170) m.checkoutAttempts += 1;
     if (finish) {
       m.checkoutHits += 1;
@@ -6080,9 +6084,20 @@ function saveX01V3MatchToHistory({
       bestCheckout,
       darts: detail.darts,
       hits,
+      singles: detail.hitsS,
+      misses: detail.miss,
+      miss: detail.miss,
       bull: detail.bull,
+      bulls: detail.bull,
       dBull: detail.dBull,
+      dbulls: detail.dBull,
+      bullsEye: detail.dBull,
       bust: detail.bust,
+      busts: detail.bust,
+      h60: legacyH60[pid] || replayMetric?.h60 || 0,
+      h100: legacyH100[pid] || replayMetric?.h100 || 0,
+      h140: legacyH140[pid] || replayMetric?.h140 || 0,
+      h180: legacyH180[pid] || replayMetric?.h180 || 0,
       avgCheckoutDarts: replayMetric?.checkoutDarts ?? 0,
       dartsCheckout: replayMetric?.checkoutDarts ?? 0,
       checkoutHits: replayMetric?.checkoutHits ?? 0,
@@ -6552,10 +6567,10 @@ function saveX01V3MatchToHistory({
 
       // ces champs ne sont pas utilisés par commitLegAndAccumulate,
       // mais on les passe pour rester compatibles avec le type LegacyMaps
-      h60: {},
-      h100: {},
-      h140: {},
-      h180: {},
+      h60: legacyH60,
+      h100: legacyH100,
+      h140: legacyH140,
+      h180: legacyH180,
 
       miss: legacyMiss,
       missPct: {},

@@ -94,7 +94,7 @@ type VisitRow = {
   idx: number;
   legNo: number;
   playerId: string;
-  darts: { v: number; mult: 1 | 2 | 3 }[];
+  darts: { v: number; mult: 0 | 1 | 2 | 3 }[];
   scoreBefore: number;
   scoreAfter: number;
   bust: boolean;
@@ -714,17 +714,10 @@ export default function X01End({ go, params }: Props) {
                   label: "CO %",
                   get: (m) => pct(m.coPct),
                 },
-                ...(has.avgCoDarts
-                  ? [
-                      {
-                        label: "Avg darts@CO",
-                        get: (m) =>
-                          m.avgCoDarts != null
-                            ? f2(m.avgCoDarts)
-                            : "—",
-                      },
-                    ]
-                  : []),
+                {
+                  label: "Darts CO",
+                  get: (m) => m.avgCoDarts != null && m.avgCoDarts > 0 ? f2(m.avgCoDarts) : "0.00",
+                },
               ],
             },
           ]}
@@ -852,14 +845,18 @@ export default function X01End({ go, params }: Props) {
                       },
                     ]
                   : []),
-                ...(has.misses
-                  ? [
-                      {
-                        label: "Misses (hits)",
-                        get: (m) => f0(m.misses || 0),
-                      },
-                    ]
-                  : []),
+                {
+                  label: "Singles (hits)",
+                  get: (m) => f0(m.singles || 0),
+                },
+                {
+                  label: "Misses (hits)",
+                  get: (m) => f0(m.misses || 0),
+                },
+                {
+                  label: "Busts (hits)",
+                  get: (m) => f0(m.busts || 0),
+                },
               ],
             },
           ]}
@@ -1461,29 +1458,34 @@ function buildPerPlayerMetrics(
       });
 
     row.visits += 1;
-    row.darts += Array.isArray(v.darts) ? v.darts.length : 0;
+    const visitDarts = Array.isArray(v.darts) ? v.darts : [];
+    row.darts += visitDarts.length;
 
     let visitPoints = 0;
-    for (const d of v.darts || []) {
+    const isBustVisit = !!v.bust;
+    visitDarts.forEach((d: any, dartIdx: number) => {
       const seg = Number(d?.v ?? 0) || 0;
-      const mult = Number(d?.mult ?? 1) || 1;
+      const mult = Number(d?.mult ?? 0) || 0;
       const score = seg === 25 && mult === 2 ? 50 : seg * mult;
       visitPoints += score;
 
-      if (seg === 0) {
+      // La dernière fléchette d'une volée bust est classée en BUST, pas dans DB/BULL/TP.
+      if (isBustVisit && dartIdx === visitDarts.length - 1) return;
+
+      if (seg === 0 || mult <= 0) {
         row.misses += 1;
         row.byNumber.miss = (row.byNumber.miss ?? 0) + 1;
-        continue;
+        return;
       }
       if (seg === 25 && mult === 2) {
         row.dbulls += 1;
         row.byNumber.dbull = (row.byNumber.dbull ?? 0) + 1;
-        continue;
+        return;
       }
       if (seg === 25) {
         row.bulls += 1;
         row.byNumber.bull = (row.byNumber.bull ?? 0) + 1;
-        continue;
+        return;
       }
 
       const key = String(seg);
@@ -1499,7 +1501,7 @@ function buildPerPlayerMetrics(
         slot.inner = (slot.inner ?? 0) + 1;
       }
       row.byNumber[key] = slot;
-    }
+    });
 
     if (v.bust) {
       row.busts += 1;
@@ -1509,12 +1511,11 @@ function buildPerPlayerMetrics(
     row.points += visitPoints;
     row.bestVisit = Math.max(row.bestVisit, visitPoints);
 
-    // Power scoring X01 affiché en compteurs cumulés :
-    // 117 compte dans 60+ ET 100+, 180 compte dans les quatre seuils.
-    if (visitPoints >= 60) row.t60 += 1;
-    if (visitPoints >= 100) row.t100 += 1;
-    if (visitPoints >= 140) row.t140 += 1;
+    // Power scoring X01 : classes exclusives 60-99 / 100-139 / 140-179 / 180.
     if (visitPoints >= 180) row.t180 += 1;
+    else if (visitPoints >= 140) row.t140 += 1;
+    else if (visitPoints >= 100) row.t100 += 1;
+    else if (visitPoints >= 60) row.t60 += 1;
 
     // Tentatives de checkout : fallback historique.
     // Une volée commencée à <=170 est considérée comme une opportunité CO potentielle.

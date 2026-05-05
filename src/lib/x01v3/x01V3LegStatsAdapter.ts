@@ -45,7 +45,9 @@ function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], 
   const ensure = (pid: string) => out[pid] || (out[pid] = {
     darts: 0, points: 0, visits: 0, avg3d: 0, avg3: 0, bestVisit: 0,
     h60: 0, h100: 0, h140: 0, h180: 0,
-    doubles: 0, triples: 0, bulls: 0, bullsEye: 0,
+    singles: 0, misses: 0, busts: 0,
+    doubles: 0, triples: 0, bulls: 0, bullsEye: 0, dBull: 0, dbulls: 0,
+    singleRate: 0, missRate: 0, bustRate: 0,
     doubleRate: 0, tripleRate: 0, bullRate: 0, bullEyeRate: 0,
     bestCheckout: 0, coHits: 0, coAtt: 0, coPct: 0,
     dartsThrown: 0, remaining: startScore,
@@ -63,18 +65,22 @@ function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], 
     m.visits += 1;
     m.darts += darts.length;
     m.dartsThrown = m.darts;
-    for (const d of darts) {
+    const isBustVisit = !!(visit?.bust || visit?.isBust);
+    for (let dartIdx = 0; dartIdx < darts.length; dartIdx += 1) {
+      const d = darts[dartIdx];
       const parsed = parseVisitDart(d);
       const seg = parsed.segment;
       const mult = parsed.multiplier;
-      if (!seg || mult <= 0) continue;
-      if (seg === 25 && mult >= 2) m.bullsEye += 1;
+      const isBustDart = isBustVisit && dartIdx === darts.length - 1;
+      if (isBustDart) continue;
+      if (!seg || mult <= 0) { m.misses += 1; continue; }
+      if (seg === 25 && mult >= 2) { m.bullsEye += 1; m.dBull += 1; m.dbulls += 1; }
       else if (seg === 25) m.bulls += 1;
       else {
         const cur = m.segments[String(seg)] || { S: 0, D: 0, T: 0 };
         if (mult >= 3) { m.triples += 1; cur.T += 1; }
         else if (mult === 2) { m.doubles += 1; cur.D += 1; }
-        else { cur.S += 1; }
+        else { m.singles += 1; cur.S += 1; }
         m.segments[String(seg)] = cur;
       }
     }
@@ -91,9 +97,13 @@ function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], 
     else if (score >= 100) m.h100 += 1;
     else if (score >= 60) m.h60 += 1;
     if (before > 1 && before <= 170) m.coAtt += 1;
+    if (bust) m.busts += 1;
     if (finish) {
       m.bestCheckout = Math.max(m.bestCheckout, score);
       m.coHits += 1;
+      m.checkoutDarts = darts.length;
+      m.avgCheckoutDarts = darts.length;
+      m.dartsCheckout = darts.length;
       if (m.coAtt <= 0) m.coAtt = 1;
     }
   }
@@ -101,13 +111,16 @@ function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], 
     const m = out[pid];
     m.avg3d = m.darts > 0 ? +(((m.points / m.darts) * 3).toFixed(2)) : 0;
     m.avg3 = m.avg3d;
+    m.singleRate = m.darts ? (m.singles / m.darts) * 100 : 0;
+    m.missRate = m.darts ? (m.misses / m.darts) * 100 : 0;
+    m.bustRate = m.darts ? (m.busts / m.darts) * 100 : 0;
     m.doubleRate = m.darts ? (m.doubles / m.darts) * 100 : 0;
     m.tripleRate = m.darts ? (m.triples / m.darts) * 100 : 0;
     m.bullRate = m.darts ? (m.bulls / m.darts) * 100 : 0;
     m.bullEyeRate = m.darts ? (m.bullsEye / m.darts) * 100 : 0;
     m.coPct = m.coAtt ? (m.coHits / m.coAtt) * 100 : 0;
     const sixtyTo99 = Math.max(0, m.h60);
-    m.buckets = { "0-59": Math.max(0, m.visits - m.h60 - m.h100 - m.h140 - m.h180), "60-99": sixtyTo99, "100+": m.h100, "140+": m.h140, "180": m.h180 };
+    m.buckets = { "0-59": Math.max(0, m.visits - m.h60 - m.h100 - m.h140 - m.h180), "60-99": sixtyTo99, "60+": sixtyTo99, "100+": m.h100, "140+": m.h140, "180": m.h180 };
     m.bins = m.buckets;
   }
   return out;

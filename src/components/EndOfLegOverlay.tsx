@@ -175,11 +175,14 @@ function bestVisitFromNew(leg: LegStats, pid: string) {
 function powerBucketsFromNew(leg: LegStats, pid: string) {
   const st: any = leg.perPlayer?.[pid] ?? {};
   const b = st.bins || st.buckets || {};
+  // X01 attendu ici = classes EXCLUSIVES : 60-99 / 100-139 / 140-179 / 180.
+  // Beaucoup de sources V3 exposent directement h60/h100/h140/h180 ou des buckets
+  // nommés "60-99" plutôt que "60+".
   return {
-    h60: n(b["60+"] ?? b["60"] ?? 0),
-    h100: n(b["100+"] ?? 0),
-    h140: n(b["140+"] ?? 0),
-    h180: n(b["180"] ?? 0),
+    h60: n(st.h60 ?? st.hits60 ?? b["60+"] ?? b["60-99"] ?? b["60"] ?? 0),
+    h100: n(st.h100 ?? st.hits100 ?? b["100+"] ?? b["100-139"] ?? 0),
+    h140: n(st.h140 ?? st.hits140 ?? b["140+"] ?? b["140-179"] ?? 0),
+    h180: n(st.h180 ?? st.x180 ?? b["180"] ?? b["180+"] ?? 0),
   };
 }
 
@@ -187,17 +190,29 @@ function impactsFromNew(leg: LegStats, pid: string) {
   const st: any = leg.perPlayer?.[pid] ?? {};
   const r = st.rates || {};
   const darts = n(st.darts ?? st.dartsThrown);
-  const doubles = n(st.doubles ?? r.dblHits ?? 0);
-  const triples = n(st.triples ?? r.triHits ?? 0);
-  const ob = n(st.ob ?? r.bullHits ?? 0);
-  const ib = n(st.ib ?? r.dbullHits ?? 0);
+  const singles = n(st.singles ?? st.hitsS ?? r.singleHits ?? r.sHits ?? 0);
+  const misses = n(st.misses ?? st.miss ?? st.hitsMiss ?? r.missHits ?? 0);
+  const busts = n(st.busts ?? st.bust ?? r.bustHits ?? 0);
+  const doubles = n(st.doubles ?? st.hitsD ?? r.dblHits ?? r.doubleHits ?? 0);
+  const triples = n(st.triples ?? st.hitsT ?? r.triHits ?? r.tripleHits ?? 0);
+  const ob = n(st.ob ?? st.bull ?? st.bulls ?? r.bullHits ?? 0);
+  const ib = n(st.ib ?? st.dBull ?? st.dbull ?? st.dbulls ?? st.bullsEye ?? r.dbullHits ?? r.bullEyeHits ?? 0);
   const bulls = ob + ib;
   return {
+    singles,
+    misses,
+    busts,
     doubles,
     triples,
     ob,
     ib,
     bulls,
+    pS: pctFmt(singles, darts),
+    pMiss: pctFmt(misses, darts),
+    pBust: pctFmt(busts, darts),
+    pS: pctFmt(singles, darts),
+    pMiss: pctFmt(misses, darts),
+    pBust: pctFmt(busts, darts),
     pDB: pctFmt(doubles, darts),
     pTP: pctFmt(triples, darts),
     pBull: pctFmt(ob, darts),
@@ -303,11 +318,17 @@ function rowFromNew(leg: LegStats, pid: string, nameOf: (id: string) => string) 
     h100: p.h100,
     h140: p.h140,
     h180: p.h180,
+    singles: imp.singles,
+    misses: imp.misses,
+    busts: imp.busts,
     doubles: imp.doubles,
     triples: imp.triples,
     ob: imp.ob,
     ib: imp.ib,
     bulls: imp.bulls,
+    pS: imp.pS,
+    pMiss: imp.pMiss,
+    pBust: imp.pBust,
     pDB: imp.pDB,
     pTP: imp.pTP,
     pBull: imp.pBull,
@@ -401,6 +422,9 @@ function rowFromLegacy(
       ? Number(f2(coDartsAvgArr.reduce((s, x) => s + x, 0) / coDartsAvgArr.length))
       : 0;
   const highestCO = n(res.bestCheckout?.[pid] ?? 0);
+  const singles = n((res as any).singles?.[pid] ?? (res as any).single?.[pid] ?? 0);
+  const misses = n((res as any).misses?.[pid] ?? (res as any).miss?.[pid] ?? 0);
+  const busts = n((res as any).busts?.[pid] ?? (res as any).bust?.[pid] ?? 0);
 
   // 🎯 remaining brut du moteur si dispo
   const explicitRem =
@@ -424,11 +448,17 @@ function rowFromLegacy(
     h100,
     h140,
     h180,
+    singles,
+    misses,
+    busts,
     doubles,
     triples,
     ob,
     ib,
     bulls,
+    pS: pctFmt(singles, darts),
+    pMiss: pctFmt(misses, darts),
+    pBust: pctFmt(busts, darts),
     pDB: pctFmt(doubles, darts),
     pTP: pctFmt(triples, darts),
     pBull: pctFmt(ob, darts),
@@ -521,6 +551,9 @@ function rowsFromVisitHistory(
     ob: 0,
     ib: 0,
     bulls: 0,
+    pS: "0.0%",
+    pMiss: "0.0%",
+    pBust: "0.0%",
     pDB: "0.0%",
     pTP: "0.0%",
     pBull: "0.0%",
@@ -549,13 +582,18 @@ function rowsFromVisitHistory(
     row.remainingRaw = after;
     row.remaining = after;
 
-    for (const d of darts) {
+    darts.forEach((d, dartIdx) => {
+      // En cas de bust, la dernière fléchette est comptée dans la colonne BUST,
+      // pas comme un hit DB/BULL/TP, afin que les totaux correspondent à la saisie réelle.
+      const isBustDart = bust && dartIdx === darts.length - 1;
+      if (isBustDart) return;
       if (!d.v || !d.mult) row.misses += 1;
       else if (d.v === 25 && d.mult >= 2) row.ib += 1;
       else if (d.v === 25) row.ob += 1;
       else if (d.mult >= 3) row.triples += 1;
       else if (d.mult === 2) row.doubles += 1;
-    }
+      else row.singles += 1;
+    });
 
     const rawVisitScore = darts.reduce((sum, d) => sum + scoreOverlayDart(d), 0);
     const inferredVisitScore = Math.max(0, before - after) || rawVisitScore;
@@ -564,10 +602,10 @@ function rowsFromVisitHistory(
     if (bust) row.busts += 1;
     row.points += visitScore;
     row.best = Math.max(row.best, visitScore);
-    if (visitScore >= 60) row.h60 += 1;
-    if (visitScore >= 100) row.h100 += 1;
-    if (visitScore >= 140) row.h140 += 1;
     if (visitScore >= 180) row.h180 += 1;
+    else if (visitScore >= 140) row.h140 += 1;
+    else if (visitScore >= 100) row.h100 += 1;
+    else if (visitScore >= 60) row.h60 += 1;
     if (finish) {
       row.coCount += 1;
       row.highestCO = Math.max(row.highestCO, visitScore);
@@ -579,6 +617,9 @@ function rowsFromVisitHistory(
     const r = ensure(pid);
     r.bulls = r.ob + r.ib;
     r.avg3 = r.darts > 0 ? (r.points / r.darts) * 3 : 0;
+    r.pS = pctFmt(r.singles, r.darts);
+    r.pMiss = pctFmt(r.misses, r.darts);
+    r.pBust = pctFmt(r.busts, r.darts);
     r.pDB = pctFmt(r.doubles, r.darts);
     r.pTP = pctFmt(r.triples, r.darts);
     r.pBull = pctFmt(r.ob, r.darts);
@@ -599,7 +640,15 @@ export default function EndOfLegOverlay({
 }: Props) {
   if (!open || !result) return null;
 
-  const safeVisitHistory = Array.isArray(rawVisitHistory) ? rawVisitHistory : [];
+  const embeddedVisitHistory =
+    Array.isArray((result as any)?.visitHistory) ? (result as any).visitHistory :
+    Array.isArray((result as any)?.visitsHistory) ? (result as any).visitsHistory :
+    Array.isArray((result as any)?.__legStats?.visits) ? (result as any).__legStats.visits :
+    Array.isArray((result as any)?.legacy?.visitHistory) ? (result as any).legacy.visitHistory :
+    [];
+  const safeVisitHistory = Array.isArray(rawVisitHistory) && rawVisitHistory.length
+    ? rawVisitHistory
+    : embeddedVisitHistory;
 
   return (
     <Inner
@@ -1237,35 +1286,41 @@ function Inner({
 
           {/* Stats Darts */}
           <Accordion title="Stats Darts">
-  <div style={{ overflowX: "auto" }}>
-    <table style={tableBase}>
-      <thead>
-        <tr>
-          <TH>Joueur</TH>
-          <TH>CO</TH>
-          <TH>Darts CO</TH>
-          <TH>DB</TH>
-          <TH>TP</TH>
-          <TH>Bull</TH>
-          <TH>DBull</TH>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={`darts-${r.pid}`} style={rowLine}>
-            <TDStrong>{r.name}</TDStrong>
-            <TD>{r.coCount}</TD>
-            <TD>{f2(r.coDartsAvg)}</TD>
-            <TD>{r.doubles}</TD>
-            <TD>{r.triples}</TD>
-            <TD>{r.ob}</TD>
-            <TD>{r.ib}</TD>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-</Accordion>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ ...tableBase, minWidth: 760 }}>
+                <thead>
+                  <tr>
+                    <TH>Joueur</TH>
+                    <TH>CO</TH>
+                    <TH>Darts CO</TH>
+                    <TH>Simple</TH>
+                    <TH>Miss</TH>
+                    <TH>Bust</TH>
+                    <TH>DB</TH>
+                    <TH>TP</TH>
+                    <TH>Bull</TH>
+                    <TH>DBull</TH>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={`darts-${r.pid}`} style={rowLine}>
+                      <TDStrong>{r.name}</TDStrong>
+                      <TD>{r.coCount}</TD>
+                      <TD>{f2(r.coDartsAvg)}</TD>
+                      <TD>{r.singles ?? 0}</TD>
+                      <TD>{r.misses ?? 0}</TD>
+                      <TD>{r.busts ?? 0}</TD>
+                      <TD>{r.doubles}</TD>
+                      <TD>{r.triples}</TD>
+                      <TD>{r.ob}</TD>
+                      <TD>{r.ib}</TD>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Accordion>
 
           {/* Stats globales */}
           <Accordion title="Stats globales">
@@ -1283,6 +1338,9 @@ function Inner({
                     <TH>Moy./3D</TH>
                     <TH>Pts Max</TH>
                     <TH>Darts</TH>
+                    <TH>%S</TH>
+                    <TH>%Miss</TH>
+                    <TH>%Bust</TH>
                     <TH>%DB</TH>
                     <TH>%TP</TH>
                     <TH>%Bull</TH>
@@ -1297,6 +1355,9 @@ function Inner({
                       <TD>{f2(r.avg3)}</TD>
                       <TD>{r.best}</TD>
                       <TD>{r.darts}</TD>
+                      <TD>{r.pS}</TD>
+                      <TD>{r.pMiss}</TD>
+                      <TD>{r.pBust}</TD>
                       <TD>{r.pDB}</TD>
                       <TD>{r.pTP}</TD>
                       <TD>{r.pBull}</TD>
