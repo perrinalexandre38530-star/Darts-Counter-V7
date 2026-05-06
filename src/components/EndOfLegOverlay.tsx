@@ -628,6 +628,66 @@ function rowsFromVisitHistory(
     r.pDBull = pctFmt(r.ib, r.darts);
     return r;
   });
+
+}
+
+function mergeOverlayRows(baseRows: any[] = [], visitRows: any[] = []) {
+  if (!visitRows.length) return baseRows;
+  const ids = Array.from(new Set([
+    ...baseRows.map((r: any) => String(r?.pid || "")).filter(Boolean),
+    ...visitRows.map((r: any) => String(r?.pid || "")).filter(Boolean),
+  ]));
+  const baseById = Object.fromEntries(baseRows.map((r: any) => [String(r?.pid || ""), r]));
+  const visitById = Object.fromEntries(visitRows.map((r: any) => [String(r?.pid || ""), r]));
+  const nz = (v: any) => Number.isFinite(Number(v)) && Number(v) > 0;
+  const pickNum = (visit: any, base: any) => nz(visit) ? Number(visit) : nz(base) ? Number(base) : Number(visit ?? base ?? 0) || 0;
+  const pickText = (visit: any, base: any) => {
+    const sv = String(visit ?? "");
+    const sb = String(base ?? "");
+    if (sv && sv !== "0%" && sv !== "0.0%" && sv !== "0") return visit;
+    if (sb) return base;
+    return visit ?? base;
+  };
+
+  return ids.map((pid) => {
+    const b: any = baseById[pid] || {};
+    const v: any = visitById[pid] || {};
+    const r: any = { ...b, ...v, pid, name: v.name || b.name };
+
+    // Volumes : le replay est fiable pour les hits ; le résumé sauvegardé peut
+    // être plus fiable pour les buckets/checkout. On fusionne donc champ par champ.
+    for (const k of ["darts", "visits", "points", "best", "singles", "misses", "busts", "doubles", "triples", "ob", "ib", "bulls"]) {
+      r[k] = pickNum(v[k], b[k]);
+    }
+    for (const k of ["h60", "h100", "h140", "h180", "highestCO", "coCount", "coDartsAvg"]) {
+      r[k] = pickNum(v[k], b[k]);
+    }
+
+    // Si le Best CO existe, le checkout existe forcément. C'est le cas typique
+    // où la carte historique avait Best CO mais CO hits/att/%/Darts CO à 0.
+    if (r.highestCO > 0) {
+      if (!r.coCount) r.coCount = 1;
+      if (!r.coAtt) r.coAtt = 1;
+      if (!r.coPct || r.coPct === "0%" || r.coPct === "0.0%") r.coPct = "100%";
+      if (!r.coDartsAvg || r.coDartsAvg <= 0) {
+        const lastVisitDarts = r.darts > 0 && r.visits > 0 ? r.darts - (r.visits - 1) * 3 : 0;
+        if (lastVisitDarts > 0 && lastVisitDarts <= 3) r.coDartsAvg = lastVisitDarts;
+      }
+    }
+
+    r.bulls = Number(r.ob || 0) + Number(r.ib || 0);
+    r.avg3 = nz(v.avg3) ? v.avg3 : nz(b.avg3) ? b.avg3 : (r.darts > 0 ? (Number(r.points || 0) / r.darts) * 3 : 0);
+
+    r.pS = pickText(v.pS, b.pS) || pctFmt(r.singles, r.darts);
+    r.pMiss = pickText(v.pMiss, b.pMiss) || pctFmt(r.misses, r.darts);
+    r.pBust = pickText(v.pBust, b.pBust) || pctFmt(r.busts, r.darts);
+    r.pDB = pickText(v.pDB, b.pDB) || pctFmt(r.doubles, r.darts);
+    r.pTP = pickText(v.pTP, b.pTP) || pctFmt(r.triples, r.darts);
+    r.pBull = pickText(v.pBull, b.pBull) || pctFmt(r.ob, r.darts);
+    r.pDBull = pickText(v.pDBull, b.pDBull) || pctFmt(r.ib, r.darts);
+
+    return r;
+  });
 }
 
 // ---------- Composant principal ----------
@@ -715,7 +775,7 @@ function Inner({
     }
 
     const visitRows = rowsFromVisitHistory(safeVisitHistory, nameOf, baseRows);
-    return visitRows.length ? visitRows : baseRows;
+    return mergeOverlayRows(baseRows, visitRows);
   }, [result, nameOf, safeVisitHistory]);
 
   const legNo =

@@ -2084,6 +2084,18 @@ function buildPerPlayerMetrics(
       }
     }
 
+    // Darts CO fallback : quand le résumé historique indique bien un checkout
+    // réussi mais ne stocke pas la longueur exacte de la volée de finish, on
+    // déduit le nombre de fléchettes de la dernière volée du joueur.
+    if ((!m.avgCoDarts || m.avgCoDarts <= 0) && m.coHits > 0) {
+      const lastVisitDarts = m.darts > 0 && m.visits > 0 ? m.darts - (m.visits - 1) * 3 : 0;
+      if (lastVisitDarts > 0 && lastVisitDarts <= 3) {
+        m.avgCoDarts = lastVisitDarts;
+      } else if (m.dartsToFinish != null && m.dartsToFinish > 0) {
+        m.avgCoDarts = m.dartsToFinish;
+      }
+    }
+
     // CO%
     if (m.coAtt > 0) {
       m.coPct = (m.coHits / m.coAtt) * 100;
