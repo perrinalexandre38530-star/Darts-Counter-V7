@@ -1646,11 +1646,22 @@ function buildPerPlayerMetrics(
         (s.power as any) ||
         {};
       if (sb) {
-        m.t180 = n(sb["180"] ?? sb["180+"] ?? sb.t180 ?? sb._180, m.t180);
-        m.t140 = n(sb["140-179"] ?? sb["140+"] ?? sb.t140 ?? sb._140, m.t140);
-        m.t100 = n(sb["100-139"] ?? sb["100+"] ?? sb.t100 ?? sb._100, m.t100);
-        m.t60 = n(sb["60-99"] ?? sb["60+"] ?? sb.t60 ?? sb._60, m.t60);
+        m.t180 = n(sb["180"] ?? sb["180+"] ?? sb.t180 ?? sb.h180 ?? sb._180, m.t180);
+        m.t140 = n(sb["140-179"] ?? sb["140+"] ?? sb.t140 ?? sb.h140 ?? sb._140, m.t140);
+        m.t100 = n(sb["100-139"] ?? sb["100+"] ?? sb.t100 ?? sb.h100 ?? sb._100, m.t100);
+        m.t60 = n(sb["60-99"] ?? sb["60+"] ?? sb.t60 ?? sb.h60 ?? sb._60, m.t60);
       }
+
+      // Historique X01 : certains records stockent les buckets et le checkout
+      // directement dans summary.players[pid] et non dans buckets. Le résumé
+      // rapide live les affiche bien, mais la table détaillée restait à 0.
+      m.t180 = n(s.h180 ?? s.t180 ?? s["180"] ?? s["180+"], m.t180);
+      m.t140 = n(s.h140 ?? s.t140 ?? s["140+"] ?? s["140-179"], m.t140);
+      m.t100 = n(s.h100 ?? s.t100 ?? s["100+"] ?? s["100-139"], m.t100);
+      m.t60 = n(s.h60 ?? s.t60 ?? s["60+"] ?? s["60-99"], m.t60);
+      m.coHits = n(s.checkoutHits ?? s.coHits ?? s.coSuccess ?? s.hitsCheckout ?? s.hitsCO, m.coHits);
+      m.coAtt = n(s.checkoutAttempts ?? s.coAtt ?? s.coAttempts ?? s.co_attempts ?? s.attemptsCheckout, m.coAtt);
+      if (!m.avgCoDarts) m.avgCoDarts = v(s.avgCheckoutDarts ?? s.dartsCheckout ?? s.checkoutDarts);
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
@@ -1798,11 +1809,16 @@ function buildPerPlayerMetrics(
     const rb =
       r.buckets || r.powerBuckets || r.power || r.x01Buckets || {};
     if (rb && typeof rb === "object") {
-      m.t180 = m.t180 || n(rb["180"] ?? rb["180+"] ?? rb.t180 ?? rb._180, 0);
-      m.t140 = m.t140 || n(rb["140-179"] ?? rb["140+"] ?? rb.t140 ?? rb._140, 0);
-      m.t100 = m.t100 || n(rb["100-139"] ?? rb["100+"] ?? rb.t100 ?? rb._100, 0);
-      m.t60 = m.t60 || n(rb["60-99"] ?? rb["60+"] ?? rb.t60 ?? rb._60, 0);
+      m.t180 = m.t180 || n(rb["180"] ?? rb["180+"] ?? rb.t180 ?? rb.h180 ?? rb._180, 0);
+      m.t140 = m.t140 || n(rb["140-179"] ?? rb["140+"] ?? rb.t140 ?? rb.h140 ?? rb._140, 0);
+      m.t100 = m.t100 || n(rb["100-139"] ?? rb["100+"] ?? rb.t100 ?? rb.h100 ?? rb._100, 0);
+      m.t60 = m.t60 || n(rb["60-99"] ?? rb["60+"] ?? rb.t60 ?? rb.h60 ?? rb._60, 0);
     }
+    // X01PlayV3 sauvegarde aussi ces valeurs en champs plats dans perPlayer.
+    m.t180 = m.t180 || n(r.h180 ?? r.t180 ?? r["180"] ?? r["180+"], 0);
+    m.t140 = m.t140 || n(r.h140 ?? r.t140 ?? r["140+"] ?? r["140-179"], 0);
+    m.t100 = m.t100 || n(r.h100 ?? r.t100 ?? r["100+"] ?? r["100-139"], 0);
+    m.t60 = m.t60 || n(r.h60 ?? r.t60 ?? r["60+"] ?? r["60-99"], 0);
 
     // byNumber (si structure dédiée présente)
     const byNumDirect =
@@ -1973,12 +1989,17 @@ function buildPerPlayerMetrics(
     // le replay est disponible.
     const dv = derivedByPid[pid];
     if (dv && n(dv.visits, 0) > 0) {
-      // Les buckets power-scoring sont fiables dès qu'on a des volées, même si
-      // ces volées historiques sont compactes et ne portent pas les darts.
-      m.t60 = n(dv.t60, 0);
-      m.t100 = n(dv.t100, 0);
-      m.t140 = n(dv.t140, 0);
-      m.t180 = n(dv.t180, 0);
+      // Les buckets power-scoring sont fiables uniquement si le replay permet
+      // vraiment de les recalculer. Si le replay compact ne donne que les hits
+      // par segments, il peut produire 0/0/0/0 et ne doit pas écraser les
+      // buckets déjà lus depuis summary.players/perPlayer/legacy.
+      const dvPowerTotal = n(dv.t60, 0) + n(dv.t100, 0) + n(dv.t140, 0) + n(dv.t180, 0);
+      if (dvPowerTotal > 0 || (n(m.t60, 0) + n(m.t100, 0) + n(m.t140, 0) + n(m.t180, 0)) === 0) {
+        m.t60 = n(dv.t60, 0);
+        m.t100 = n(dv.t100, 0);
+        m.t140 = n(dv.t140, 0);
+        m.t180 = n(dv.t180, 0);
+      }
 
       // On ne remplace les métriques de volume que si le replay porte vraiment
       // assez d'information. Sinon on garde les valeurs summary déjà bonnes
@@ -2008,9 +2029,13 @@ function buildPerPlayerMetrics(
         if (dv.byNumber) m.byNumber = dv.byNumber;
       }
       m.busts = n(dv.busts, m.busts ?? 0);
-      m.coHits = n(dv.coHits, m.coHits ?? 0);
-      m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
-      m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
+      // Même principe pour checkout : ne pas écraser les champs sauvegardés
+      // par 0 quand le replay historique n'a pas assez de contexte.
+      if (n(dv.coHits, 0) > 0 || n(dv.coAtt, 0) > 0) {
+        m.coHits = n(dv.coHits, m.coHits ?? 0);
+        m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
+      }
+      if (n(dv.checkoutDarts, 0) > 0) m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
     }
 
     // ===== 4) dérivés & % =====
