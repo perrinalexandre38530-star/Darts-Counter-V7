@@ -130,7 +130,42 @@ export default function X01End({ go, params }: Props) {
     (async () => {
       try {
         if (params?.rec) {
-          if (mounted) setRec(hydrateX01HistoryRecord(params.rec));
+          const lightweight = hydrateX01HistoryRecord(params.rec);
+          const wantedFromRec =
+            lightweight?.id || lightweight?.matchId || lightweight?.resumeId || params?.matchId || params?.resumeId;
+
+          // IMPORTANT HISTORY: la carte Historique envoie souvent un header léger
+          // (e) sans payload complet / visitHistory. Si on fait return ici, X01End
+          // calcule depuis un objet incomplet => 60+/100+ à 0, radar vide, pas
+          // d’historique des volées. On tente donc de recharger le détail IndexedDB
+          // puis on fusionne : header léger + payload complet.
+          if (wantedFromRec && typeof (History as any)?.get === "function") {
+            try {
+              const detail = await (History as any).get(wantedFromRec);
+              if (detail && mounted) {
+                setRec(
+                  hydrateX01HistoryRecord({
+                    ...lightweight,
+                    ...detail,
+                    payload: {
+                      ...(lightweight?.payload && typeof lightweight.payload === "object" ? lightweight.payload : {}),
+                      ...(detail?.payload && typeof detail.payload === "object" ? detail.payload : {}),
+                    },
+                    summary: {
+                      ...(lightweight?.summary && typeof lightweight.summary === "object" ? lightweight.summary : {}),
+                      ...(detail?.summary && typeof detail.summary === "object" ? detail.summary : {}),
+                      ...(detail?.payload?.summary && typeof detail.payload.summary === "object" ? detail.payload.summary : {}),
+                    },
+                  })
+                );
+                return;
+              }
+            } catch (e) {
+              console.warn("[X01End] History.get(params.rec) failed:", e);
+            }
+          }
+
+          if (mounted) setRec(lightweight);
           return;
         }
         const wantedId = params?.matchId || params?.resumeId;
