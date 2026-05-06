@@ -684,6 +684,19 @@ export default function X01End({ go, params }: Props) {
         </InfoCard>
       ) : null}
 
+      <CardTable title="Score du match">
+        <TableColMajor
+          columns={cols}
+          rowGroups={[{ rows: [
+            { label: "Sets remportés", get: (m) => f0(m.setsWon ?? (m.id === winnerId ? 1 : 0)) },
+            { label: "Legs remportées", get: (m) => f0(m.legsWon ?? (m.id === winnerId ? 1 : 0)) },
+            { label: "Score restant", get: (m) => m.remaining != null ? f0(m.remaining) : "—" },
+          ] }]}
+          dataMap={M}
+          tableStyle={tableStyle}
+        />
+      </CardTable>
+
       {/* ===== 1) VOLUMES (lignes) ===== */}
       <CardTable title="Volumes">
         <TableColMajor
@@ -793,180 +806,28 @@ export default function X01End({ go, params }: Props) {
         />
       </CardTable>
 
-      {/* ===== 4) DARTS USAGE ===== */}
-      <CardTable title="Darts usage">
+      {/* ===== 4) DARTS / IMPACTS / RATES — bloc fusionné ===== */}
+      <CardTable title="Darts / impacts / précision">
         <TableColMajor
           columns={cols}
           rowGroups={[
             {
               rows: [
                 { label: "Darts", get: (m) => f0(m.darts) },
-                {
-                  label: "Singles",
-                  get: (m) => {
-                    const d = Math.max(0, m.darts || 0);
-                    const singles = n(
-                      m.singles,
-                      Math.max(
-                        0,
-                        d -
-                          (n(m.doubles) +
-                            n(m.triples) +
-                            n(m.bulls) +
-                            n(m.dbulls) +
-                            n(m.misses) +
-                            n(m.busts))
-                      )
-                    );
-                    return f0(singles);
-                  },
-                },
-                {
-                  label: "Singles %",
-                  get: (m) => {
-                    const d = Math.max(0, m.darts || 0);
-                    const singles = n(
-                      m.singles,
-                      Math.max(
-                        0,
-                        d -
-                          (n(m.doubles) +
-                            n(m.triples) +
-                            n(m.bulls) +
-                            n(m.dbulls) +
-                            n(m.misses) +
-                            n(m.busts))
-                      )
-                    );
-                    return pct(
-                      d > 0 ? (singles / d) * 100 : undefined
-                    );
-                  },
-                },
-                {
-                  label: "Miss",
-                  get: (m) => f0(m.misses || 0),
-                },
-                {
-                  label: "Miss %",
-                  get: (m) =>
-                    pct(
-                      m.darts > 0
-                        ? (n(m.misses) / m.darts) * 100
-                        : undefined
-                    ),
-                },
-                {
-                  label: "Bust",
-                  get: (m) => f0(m.busts || 0),
-                },
-                {
-                  label: "Bust %",
-                  get: (m) =>
-                    pct(
-                      m.darts > 0
-                        ? (n(m.busts) / m.darts) * 100
-                        : undefined
-                    ),
-                },
-              ],
-            },
-          ]}
-          dataMap={M}
-          tableStyle={tableStyle}
-        />
-      </CardTable>
-
-      {/* ===== 5) PRÉCISION (IMPACTS) ===== */}
-      <CardTable title="Précision (impacts)">
-        <TableColMajor
-          columns={cols}
-          rowGroups={[
-            {
-              rows: [
-                { label: "Doubles", get: (m) => f0(m.doubles) },
-                {
-                  label: "Dbl %",
-                  get: (m) => pct(m.doublePct),
-                },
-                { label: "Triples", get: (m) => f0(m.triples) },
-                {
-                  label: "Trpl %",
-                  get: (m) => pct(m.triplePct),
-                },
-                { label: "Bulls", get: (m) => f0(m.bulls) },
-                {
-                  label: "Bulls %",
-                  get: (m) => pct(m.bullPct),
-                },
-                { label: "DBull", get: (m) => f0(m.dbulls) },
-                {
-                  label: "DBull %",
-                  get: (m) => pct(m.dbullPct),
-                },
-                ...(has.singles
-                  ? [
-                      {
-                        label: "Singles (hits)",
-                        get: (m) => f0(m.singles || 0),
-                      },
-                    ]
-                  : []),
-                {
-                  label: "Singles (hits)",
-                  get: (m) => f0(m.singles || 0),
-                },
-                {
-                  label: "Misses (hits)",
-                  get: (m) => f0(m.misses || 0),
-                },
-                {
-                  label: "Busts (hits)",
-                  get: (m) => f0(m.busts || 0),
-                },
-              ],
-            },
-          ]}
-          dataMap={M}
-          tableStyle={tableStyle}
-        />
-      </CardTable>
-
-      {/* ===== 6) RATES ===== */}
-      <CardTable title="Rates (si tentatives connues ou fallback)">
-        <TableColMajor
-          columns={cols}
-          rowGroups={[
-            {
-              rows: [
-                {
-                  label: "Treble rate",
-                  get: (m) => pct(m.triplePct),
-                },
-                {
-                  label: "Double rate",
-                  get: (m) => pct(m.doublePct),
-                },
-                {
-                  label: "Bull rate",
-                  get: (m) => pct(m.bullPct),
-                },
-                {
-                  label: "DBull rate",
-                  get: (m) => pct(m.dbullPct),
-                },
-                {
-                  label: "Checkout rate",
-                  get: (m) => pct(m.coPct),
-                },
-                {
-                  label: "Single rate",
-                  get: (m) => pct(m.singleRate),
-                },
-                {
-                  label: "Bust rate",
-                  get: (m) => pct(m.bustRate),
-                },
+                { label: "Miss hits", get: (m) => f0(m.misses || 0) },
+                { label: "Miss %", get: (m) => pct(m.darts > 0 ? (n(m.misses) / m.darts) * 100 : undefined) },
+                { label: "Singles hits", get: (m) => f0(m.singles || 0) },
+                { label: "Singles %", get: (m) => pct(m.darts > 0 ? (n(m.singles) / m.darts) * 100 : undefined) },
+                { label: "Double hits", get: (m) => f0(m.doubles || 0) },
+                { label: "Dbl %", get: (m) => pct(m.doublePct) },
+                { label: "Triples hits", get: (m) => f0(m.triples || 0) },
+                { label: "Trpl %", get: (m) => pct(m.triplePct) },
+                { label: "Bull 25 hits", get: (m) => f0(m.bulls || 0) },
+                { label: "Bull 25 %", get: (m) => pct(m.bullPct) },
+                { label: "DBull 50 hits", get: (m) => f0(m.dbulls || 0) },
+                { label: "DBull 50 %", get: (m) => pct(m.dbullPct) },
+                { label: "Bust", get: (m) => f0(m.busts || 0) },
+                { label: "Bust %", get: (m) => pct(m.darts > 0 ? (n(m.busts) / m.darts) * 100 : undefined) },
               ],
             },
           ]}
@@ -1338,6 +1199,9 @@ type PlayerMetrics = {
   coHits: number;
   coAtt: number;
   coPct: number;
+  remaining?: number;
+  setsWon?: number;
+  legsWon?: number;
   segOuter?: number;
   segInner?: number;
   segDouble?: number;
@@ -1381,6 +1245,9 @@ function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
     coHits: 0,
     coAtt: 0,
     coPct: 0,
+    remaining: undefined,
+    setsWon: undefined,
+    legsWon: undefined,
     segOuter: undefined,
     segInner: undefined,
     segDouble: undefined,
@@ -1425,6 +1292,10 @@ function getPlayerRowFromObjectOrArray(src: any, pid: string): any {
   }
   if (typeof src === "object") return src[pid] || src[String(pid)] || null;
   return null;
+}
+
+function winnerIdFromRecord(rec: any): string | null {
+  return rec?.winnerId ?? rec?.payload?.winnerId ?? rec?.summary?.winnerId ?? null;
 }
 
 function buildPerPlayerMetrics(
@@ -1521,6 +1392,7 @@ function buildPerPlayerMetrics(
         coHits: 0,
         coAtt: 0,
         checkoutDarts: 0,
+        finalScore: undefined,
         byNumber: {},
       });
 
@@ -1599,6 +1471,8 @@ function buildPerPlayerMetrics(
       visitPoints = 0;
     }
 
+    row.finalScore = n(v.scoreAfter, row.finalScore ?? undefined);
+
     row.points += visitPoints;
     row.bestVisit = Math.max(row.bestVisit, visitPoints);
 
@@ -1639,6 +1513,9 @@ function buildPerPlayerMetrics(
       m.darts = n(s.darts);
       m.visits = s._sumVisits ? n(s._sumVisits) : m.darts ? Math.ceil(m.darts / 3) : 0;
       m.points = n(s._sumPoints, (m.avg3 / 3) * m.darts);
+      m.remaining = v(s.remaining ?? s.scoreRemaining ?? s.finalScore ?? s.scoreAfter);
+      m.setsWon = v(s.setsWon ?? s.sets ?? s.matchSets ?? s.wonSets);
+      m.legsWon = v(s.legsWon ?? s.legs ?? s.matchLegs ?? s.wonLegs);
 
       const sb =
         s.buckets ||
@@ -1672,6 +1549,9 @@ function buildPerPlayerMetrics(
     m.highestNonCO = v(r.highestNonCheckout);
     m.dartsToFinish = v(r.dartsToFinish);
     m.avgCoDarts = v(r.avgCheckoutDarts);
+    m.remaining = v(r.remaining ?? r.scoreRemaining ?? r.finalScore ?? r.scoreAfter ?? m.remaining);
+    m.setsWon = v(r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? m.setsWon);
+    m.legsWon = v(r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? m.legsWon);
 
     // NB de darts : on prend ce qu'on trouve de plus fiable
     const dartsFromDetail = n(
@@ -1981,6 +1861,10 @@ function buildPerPlayerMetrics(
         m.coAtt
       );
 
+    m.remaining = v(pickFromAny([`remaining.${pid}`, `finalScores.${pid}`, `scoreAfter.${pid}`, `scores.${pid}`], legacyRoots), m.remaining);
+    m.setsWon = v(pickFromAny([`setsWon.${pid}`, `sets.${pid}`, `score.sets.${pid}`], legacyRoots), m.setsWon);
+    m.legsWon = v(pickFromAny([`legsWon.${pid}`, `legs.${pid}`, `score.legs.${pid}`], legacyRoots), m.legsWon);
+
     // ===== 3b) source de vérité replay/volées =====
     // Pour X01, les compteurs finaux/history doivent être recalculés depuis les
     // fléchettes réellement jouées. Les maps live/legacy peuvent contenir des
@@ -2036,7 +1920,11 @@ function buildPerPlayerMetrics(
         m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
       }
       if (n(dv.checkoutDarts, 0) > 0) m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
+      if (dv.finalScore !== undefined) m.remaining = n(dv.finalScore, m.remaining ?? undefined);
     }
+
+    // Winner must finish at 0, loser keeps real remaining when available.
+    if (winnerIdFromRecord(rec) === pid) m.remaining = 0;
 
     // ===== 4) dérivés & % =====
     if (!m.points && m.avg3 && m.darts) {
