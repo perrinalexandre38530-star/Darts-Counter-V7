@@ -3002,24 +3002,34 @@ function buildVisitHistory(
   if (rawVisits.length) {
     return rawVisits.map((v, idx) => {
       const dartsSrc: any[] =
-        v.darts || v.hits || v.throw || v.throws || [];
+        Array.isArray(v.darts)
+          ? v.darts
+          : Array.isArray(v.segments)
+          ? v.segments
+          : Array.isArray(v.hits)
+          ? v.hits
+          : Array.isArray(v.throw)
+          ? v.throw
+          : Array.isArray(v.throws)
+          ? v.throws
+          : [];
       const darts = dartsSrc.map((d) => parseHistoryDart(d));
       const before = n(
-        v.scoreBefore ?? v.before ?? v.startScore ?? v.scoreStart,
+        v.scoreBefore ?? v.before ?? v.startScore ?? v.scoreStart ?? v.remainingBefore,
         0
       );
       const after = n(
-        v.scoreAfter ?? v.after ?? v.endScore ?? v.scoreEnd,
+        v.scoreAfter ?? v.after ?? v.endScore ?? v.scoreEnd ?? v.remainingAfter,
         0
       );
       const bust = !!(v.bust ?? v.isBust);
       const finish =
-        !!(v.finish ?? v.isFinish) || (!bust && after === 0);
+        !!(v.finish ?? v.isFinish ?? v.isCheckout) || (!bust && after === 0 && before > 0);
 
       return {
         idx: idx + 1,
         legNo: Number(v.legNo ?? v.legIndex ?? 1) || 1,
-        playerId: String(v.playerId ?? v.pid ?? ""),
+        playerId: String(v.playerId ?? v.pid ?? v.p ?? v.profileId ?? ""),
         darts,
         scoreBefore: before,
         scoreAfter: after,
