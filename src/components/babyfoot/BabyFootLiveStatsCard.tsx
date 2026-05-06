@@ -19,7 +19,7 @@ type Props = {
   penaltiesB?: number;
 };
 
-function statRow(label: string, left: string | number, right: string | number) {
+function statRow(label: string, left: string | number, right: string | number, last = false) {
   return (
     <div
       key={label}
@@ -28,30 +28,30 @@ function statRow(label: string, left: string | number, right: string | number) {
         gridTemplateColumns: "52px minmax(0,1fr) 52px",
         gap: 8,
         alignItems: "center",
-        padding: "7px 0",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
+        padding: "11px 0",
+        borderBottom: last ? "none" : "1px solid rgba(255,255,255,0.05)",
       }}
     >
-      <div style={{ textAlign: "center", fontSize: 22, fontWeight: 1100, color: "#b4ff39" }}>{left}</div>
-      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 1000, color: "rgba(255,255,255,0.88)" }}>{label}</div>
-      <div style={{ textAlign: "center", fontSize: 22, fontWeight: 1100, color: "#ff82b8" }}>{right}</div>
+      <div style={{ textAlign: "center", fontSize: 24, fontWeight: 1100, color: "#b4ff39" }}>{left}</div>
+      <div style={{ textAlign: "center", fontSize: 16, fontWeight: 1000, color: "rgba(255,255,255,0.96)" }}>{label}</div>
+      <div style={{ textAlign: "center", fontSize: 24, fontWeight: 1100, color: "#ff5fb1" }}>{right}</div>
     </div>
   );
 }
 
-function infoPill(label: string, value: string) {
+function infoCard(label: string, value: string, valueColor?: string) {
   return (
     <div
       key={label}
       style={{
-        borderRadius: 12,
-        padding: "10px 11px",
+        borderRadius: 16,
+        padding: "12px 14px",
         border: "1px solid rgba(255,255,255,0.08)",
         background: "rgba(255,255,255,0.03)",
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 4, fontSize: 15, fontWeight: 1000, lineHeight: 1.15 }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 0.9, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 6, fontSize: 16, fontWeight: 1000, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
     </div>
   );
 }
@@ -65,9 +65,6 @@ export default function BabyFootLiveStatsCard({
   lastGoalLabel,
   momentumLabel,
   cadenceLabel,
-  setsEnabled = false,
-  setsA = 0,
-  setsB = 0,
   handicapA = 0,
   handicapB = 0,
   penaltiesA = 0,
@@ -76,39 +73,38 @@ export default function BabyFootLiveStatsCard({
   return (
     <div
       style={{
-        borderRadius: 18,
-        padding: 12,
-        border: "1px solid rgba(255,210,74,0.10)",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
-        boxShadow: "0 14px 28px rgba(0,0,0,0.30)",
+        borderRadius: 24,
+        padding: 16,
+        border: "1px solid rgba(120,150,255,0.14)",
+        background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
+        boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
       }}
     >
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.9, color: "rgba(255,255,255,0.62)", textTransform: "uppercase" }}>Statistiques</div>
-        <div style={{ marginTop: 3, fontSize: 21, fontWeight: 1100 }}>Lecture rapide du match</div>
-        <div style={{ marginTop: 4, fontSize: 11, color: "rgba(255,255,255,0.70)" }}>{teamAName} vs {teamBName}</div>
+        <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Statistiques</div>
+        <div style={{ marginTop: 5, fontSize: 22, fontWeight: 1100 }}>Lecture rapide du match</div>
+        <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.72)" }}>{teamAName} vs {teamBName}</div>
       </div>
 
       <div
         style={{
-          marginTop: 12,
-          borderRadius: 16,
-          padding: "2px 12px",
+          marginTop: 14,
+          borderRadius: 18,
+          padding: "0 14px",
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(0,0,0,0.18)",
         }}
       >
         {statRow("Buts", goalsA, goalsB)}
-        {setsEnabled ? statRow("Sets", setsA, setsB) : statRow("Handicap", handicapA, handicapB)}
-        {statRow("Penalties", penaltiesA, penaltiesB)}
+        {statRow("Handicap", handicapA, handicapB)}
+        {statRow("Penalties", penaltiesA, penaltiesB, true)}
       </div>
 
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {infoPill("Temps", durationLabel)}
-        {infoPill("Cadence", cadenceLabel)}
-        {infoPill("Dernier but", lastGoalLabel)}
-        {infoPill("Momentum", momentumLabel)}
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {infoCard("Temps", durationLabel)}
+        {infoCard("Cadence", cadenceLabel)}
+        {infoCard("Dernier but", lastGoalLabel)}
+        {infoCard("Momentum", momentumLabel, "#c7ff4f")}
       </div>
     </div>
   );
