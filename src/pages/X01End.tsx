@@ -444,7 +444,9 @@ export default function X01End({ go, params }: Props) {
       triples[id] = n(m.triples, 0);
       bulls[id] = n(m.bulls, 0);
 
-      remaining[id] = 0; // match terminé
+      // Score restant réel : seul le vainqueur finit à 0.
+      // Le perdant doit garder son score final (fallback calculé dans buildPerPlayerMetrics).
+      remaining[id] = n(m.remaining, id === winnerId ? 0 : undefined);
     }
 
     const order = [...ids].sort((a, b) => {
@@ -1225,6 +1227,22 @@ type PlayerMetrics = {
   byNumber?: ByNumber;
 };
 
+function getX01StartScore(rec: any): number {
+  const raw =
+    rec?.resume?.config?.startScore ??
+    rec?.resume?.startScore ??
+    rec?.summary?.game?.startScore ??
+    rec?.summary?.startScore ??
+    rec?.payload?.startScore ??
+    rec?.payload?.config?.startScore ??
+    rec?.payload?.game?.startScore ??
+    rec?.config?.startScore ??
+    rec?.game?.startScore ??
+    501;
+  const val = Number(raw);
+  return Number.isFinite(val) && val > 0 ? val : 501;
+}
+
 function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
   return {
     id: p.id,
@@ -1938,8 +1956,20 @@ function buildPerPlayerMetrics(
       if (dv.finalScore !== undefined) m.remaining = n(dv.finalScore, m.remaining ?? undefined);
     }
 
-    // Winner must finish at 0, loser keeps real remaining when available.
-    if (winnerIdFromRecord(rec) === pid) m.remaining = 0;
+    // Score restant final : seul le vainqueur est forcé à 0.
+    // Pour les perdants, si l'historique ne porte pas de scoreAfter fiable ou
+    // si un ancien payload l'a écrasé à 0, on recalcule depuis le score de départ
+    // et les points marqués (ex. 301 - 286 = 15).
+    const winnerPid = winnerIdFromRecord(rec);
+    const startScoreForRemaining = getX01StartScore(rec);
+    if (winnerPid === pid) {
+      m.remaining = 0;
+    } else if (m.remaining == null || m.remaining === 0) {
+      const pointsForRemaining = n(m.points, 0);
+      if (pointsForRemaining > 0) {
+        m.remaining = Math.max(0, startScoreForRemaining - pointsForRemaining);
+      }
+    }
 
     // ===== 4) dérivés & % =====
     if (!m.points && m.avg3 && m.darts) {
