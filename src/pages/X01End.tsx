@@ -130,6 +130,7 @@ type VisitRow = {
   scoreAfter: number;
   bust: boolean;
   finish: boolean;
+  score?: number;
 };
 
 /* ================================
@@ -1679,8 +1680,13 @@ function buildPerPlayerMetrics(
       );
 
     // ---- HITS bruts : compat X01 V3 / training ----
+    // Compat historique X01 : detailedByPlayer peut stocker les hits sous
+    // hits: { S, D, T, M, BULL, DBULL } au lieu de champs plats.
+    const hitsBag = r.hits && typeof r.hits === "object" ? r.hits : {};
+
     const dblHits = n(
       r.doubles ??
+        hitsBag.D ?? hitsBag.d ?? hitsBag.double ?? hitsBag.doubles ??
         r.hitsD ??
         r.hitsDouble ??
         r.hitsDoubles ??
@@ -1691,6 +1697,7 @@ function buildPerPlayerMetrics(
     );
     const trpHits = n(
       r.triples ??
+        hitsBag.T ?? hitsBag.t ?? hitsBag.triple ?? hitsBag.triples ??
         r.hitsT ??
         r.hitsTriple ??
         r.hitsTriples ??
@@ -1702,6 +1709,7 @@ function buildPerPlayerMetrics(
     const bulHits = n(
       r.bulls ??
         r.bull ??
+        hitsBag.BULL ?? hitsBag.bull ?? hitsBag.B ?? hitsBag.b ??
         r.hitsBull ??
         r.hitsBulls ??
         r.bullHits ??
@@ -1711,6 +1719,7 @@ function buildPerPlayerMetrics(
     const dbuHits = n(
       r.dbulls ??
         r.dBull ??
+        hitsBag.DBULL ?? hitsBag.dbull ?? hitsBag.IB ?? hitsBag.ib ??
         r.hitsDbull ??
         r.hitsDBull ??
         r.doubleBull ??
@@ -1727,6 +1736,7 @@ function buildPerPlayerMetrics(
     if (m.singles == null) {
       m.singles =
         r.singles ??
+        hitsBag.S ?? hitsBag.s ?? hitsBag.single ?? hitsBag.singles ??
         r.hitsS ??
         r.hitsSingle ??
         r.hitsSingles ??
@@ -1738,6 +1748,8 @@ function buildPerPlayerMetrics(
       m.misses =
         r.misses ??
         r.miss ??
+        hitsBag.M ?? hitsBag.m ?? hitsBag.MISS ?? hitsBag.miss ??
+        r.hitsMiss ??
         r.hitsMiss ??
         r.missCount ??
         imp.misses ??
@@ -1806,6 +1818,31 @@ function buildPerPlayerMetrics(
     // Compat X01V3 : detailedByPlayer.segments = { S:{20:1}, D:{16:1}, T:{...} }
     // Sans cette conversion, le radar et les barres par segments restent vides même si
     // les compteurs Singles/Doubles/Triples sont bien présents.
+    if (!m.byNumber && r.hitsBySegment && typeof r.hitsBySegment === "object") {
+      const byNum: ByNumber = {};
+      for (const [rawSeg, rawVal] of Object.entries(r.hitsBySegment)) {
+        const segLabel = String(rawSeg).toUpperCase();
+        const val: any = rawVal || {};
+        if (segLabel === "MISS" || segLabel === "M" || segLabel === "0") {
+          (byNum as any).miss = n((byNum as any).miss, 0) + n(val.M ?? val.m ?? val.miss ?? val.MISS ?? val, 0);
+          continue;
+        }
+        if (segLabel === "BULL" || segLabel === "25") {
+          (byNum as any).bull = n((byNum as any).bull, 0) + n(val.S ?? val.s ?? val.BULL ?? val.bull ?? val.outer ?? val, 0);
+          (byNum as any).dbull = n((byNum as any).dbull, 0) + n(val.D ?? val.d ?? val.DBULL ?? val.dbull ?? val.inner, 0);
+          continue;
+        }
+        const num = Number(String(rawSeg).replace(/^n/i, ""));
+        if (!Number.isFinite(num) || num < 1 || num > 20) continue;
+        const row: any = {};
+        row.inner = n(val.S ?? val.s ?? val.single ?? val.singles ?? val.inner, 0);
+        row.double = n(val.D ?? val.d ?? val.double ?? val.doubles, 0);
+        row.triple = n(val.T ?? val.t ?? val.triple ?? val.triples, 0);
+        if (row.inner || row.double || row.triple) byNum[String(num)] = row;
+      }
+      if (Object.keys(byNum).length) m.byNumber = byNum;
+    }
+
     if (!m.byNumber) {
       const segSrc = r.segments || r.segmentHits || r.bySegment || {};
       const sMap = segSrc.S || segSrc.s || segSrc.singles || r.bySegmentS || r.hitsBySegmentS || {};
@@ -3155,6 +3192,10 @@ function buildVisitHistory(
       const bust = !!(v.bust ?? v.isBust);
       const finish =
         !!(v.finish ?? v.isFinish ?? v.isCheckout) || (!bust && after === 0 && before > 0);
+      const compactScore = n(
+        v.score ?? v.points ?? v.visitScore ?? v.visitPoints ?? v.total ?? v.value,
+        darts.reduce((sum: number, d: any) => sum + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult), 0)
+      );
 
       return {
         idx: idx + 1,
@@ -3165,6 +3206,7 @@ function buildVisitHistory(
         scoreAfter: after,
         bust,
         finish,
+        score: compactScore,
       };
     });
   }
