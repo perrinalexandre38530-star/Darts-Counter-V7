@@ -19,7 +19,7 @@ import { shareOrDownload } from "../lib/backup/fileExport";
 /* ================================
    Types basiques
 ================================ */
-type PlayerLite = { id: string; name?: string; avatarDataUrl?: string | null };
+type PlayerLite = { id: string; name?: string; avatarDataUrl?: string | null; avatarUrl?: string | null; photoUrl?: string | null; imageUrl?: string | null };
 
 type Props = {
   go: (tab: string, params?: any) => void;
@@ -269,11 +269,26 @@ export default function X01End({ go, params }: Props) {
   const players: PlayerLite[] = React.useMemo(() => {
     if (!rec) return [];
     const arr = rec.players?.length ? rec.players : rec.payload?.players || [];
-    return arr.map((p: any) => ({
-      id: p.id,
-      name: p?.name || "—",
-      avatarDataUrl: p?.avatarDataUrl ?? null,
-    }));
+    return arr.map((p: any) => {
+      const avatar =
+        p?.avatarDataUrl ||
+        p?.avatarUrl ||
+        p?.avatar ||
+        p?.photoUrl ||
+        p?.imageUrl ||
+        p?.picture ||
+        p?.profile?.avatarDataUrl ||
+        p?.profile?.avatarUrl ||
+        null;
+      return {
+        id: p.id || p.profileId || p.playerId,
+        name: p?.name || p?.displayName || "—",
+        avatarDataUrl: avatar,
+        avatarUrl: p?.avatarUrl ?? null,
+        photoUrl: p?.photoUrl ?? null,
+        imageUrl: p?.imageUrl ?? null,
+      };
+    });
   }, [rec]);
 
   // tenir playersById synchro (évite setState dans useMemo)
@@ -2050,6 +2065,25 @@ function buildPerPlayerMetrics(
         ? (n(m.busts) / darts) * 100
         : undefined;
 
+    // Checkout fallback historique : si le joueur a un Best CO, il y a forcément
+    // un checkout réussi, même si la carte historique n'a pas stocké coHits/coAtt.
+    // C'était le dernier cas où le résumé live était bon mais la fiche historique
+    // affichait CO hits/att/%/Darts CO à 0.
+    if (sanitizeCO(m.bestCO) > 0) {
+      if (m.coHits <= 0) m.coHits = 1;
+      if (m.coAtt <= 0) m.coAtt = 1;
+
+      if (!m.avgCoDarts || m.avgCoDarts <= 0) {
+        const finishVisit = derivedVisits
+          .filter((vv) => String(vv.playerId) === String(pid))
+          .slice()
+          .reverse()
+          .find((vv) => !!vv.finish || n(vv.score, 0) === sanitizeCO(m.bestCO));
+        const fd = Array.isArray(finishVisit?.darts) ? finishVisit!.darts.length : 0;
+        if (fd > 0) m.avgCoDarts = fd;
+      }
+    }
+
     // CO%
     if (m.coAtt > 0) {
       m.coPct = (m.coHits / m.coAtt) * 100;
@@ -2389,6 +2423,59 @@ function TableColMajor({
   dataMap: Record<string, PlayerMetrics>;
   tableStyle?: React.CSSProperties;
 }) {
+  const isDuel = columns.length === 2;
+
+  if (isDuel) {
+    const left = columns[0];
+    const right = columns[1];
+    const leftM = dataMap[left.key] || emptyMetrics({ id: left.key });
+    const rightM = dataMap[right.key] || emptyMetrics({ id: right.key });
+
+    return (
+      <div
+        className="x-table x-table-duel"
+        style={{
+          overflowX: "auto",
+          border: "1px solid rgba(255,255,255,.08)",
+          borderRadius: D.radius,
+        }}
+      >
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "left" }}>
+                <span style={{ fontWeight: 900, color: "#ffcf57" }}>{left.title}</span>
+              </th>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "center", color: "#ffcf57" }}>
+                Stat
+              </th>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "right" }}>
+                <span style={{ fontWeight: 900, color: "#ffcf57" }}>{right.title}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowGroups.flatMap((g, gi) =>
+              g.rows.map((r, ri) => (
+                <tr key={`duel-r-${gi}-${ri}`}>
+                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "left", fontWeight: 800 }}>
+                    {r.get(leftM)}
+                  </td>
+                  <td className="x-td" style={{ ...tdStyle(true), textAlign: "center", color: "#ffcf57", fontWeight: 900 }}>
+                    {r.label}
+                  </td>
+                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "right", fontWeight: 800 }}>
+                    {r.get(rightM)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
     <div
       className="x-table"
