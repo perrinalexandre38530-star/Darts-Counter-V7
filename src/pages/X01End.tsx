@@ -1525,13 +1525,36 @@ function buildPerPlayerMetrics(
 
     row.visits += 1;
     const visitDarts = Array.isArray(v.darts) ? v.darts : [];
-    row.darts += visitDarts.length;
 
-    let visitPoints = 0;
+    // HISTORIQUE FIX CRITIQUE : certaines cartes historiques conservent les
+    // volées sous forme compacte avec seulement { score, playerId } et sans
+    // détail des fléchettes. Dans ce cas l'ancien calcul donnait visitPoints=0,
+    // donc 60+/100+/140+/180 restaient à 0 alors que le résumé live était bon.
+    const rawVisitScore = n(
+      v.score ??
+        v.points ??
+        v.visitScore ??
+        v.visitPoints ??
+        v.total ??
+        v.value,
+      0
+    );
+
+    const explicitDartsCount = n(
+      v.dartsCount ??
+        v.dartsThrown ??
+        v.nbDarts ??
+        v.countDarts ??
+        (typeof v.darts === "number" ? v.darts : undefined),
+      0
+    );
+    row.darts += visitDarts.length || explicitDartsCount;
+
+    let visitPoints = visitDarts.length ? 0 : rawVisitScore;
     const isBustVisit = !!v.bust;
     visitDarts.forEach((d: any, dartIdx: number) => {
-      const seg = Number(d?.v ?? 0) || 0;
-      const mult = Number(d?.mult ?? 0) || 0;
+      const seg = Number(d?.v ?? d?.segment ?? d?.value ?? 0) || 0;
+      const mult = Number(d?.mult ?? d?.multiplier ?? d?.m ?? 0) || 0;
       const score = seg === 25 && mult === 2 ? 50 : seg * mult;
       visitPoints += score;
 
@@ -1912,31 +1935,45 @@ function buildPerPlayerMetrics(
     // dans le power scoring. On remplace donc les compteurs sensibles dès que
     // le replay est disponible.
     const dv = derivedByPid[pid];
-    if (dv && n(dv.darts, 0) > 0) {
-      m.darts = n(dv.darts, 0);
-      m.visits = n(dv.visits, 0);
-      m.points = n(dv.points, 0);
-      m.avg3 = m.darts > 0 ? (m.points / m.darts) * 3 : 0;
-      m.avg1 = m.avg3 / 3;
-      m.bestVisit = n(dv.bestVisit, 0);
-      m.bestCO = sanitizeCO(dv.bestCO);
-
+    if (dv && n(dv.visits, 0) > 0) {
+      // Les buckets power-scoring sont fiables dès qu'on a des volées, même si
+      // ces volées historiques sont compactes et ne portent pas les darts.
       m.t60 = n(dv.t60, 0);
       m.t100 = n(dv.t100, 0);
       m.t140 = n(dv.t140, 0);
       m.t180 = n(dv.t180, 0);
 
-      m.singles = n(dv.singles, 0);
-      m.doubles = n(dv.doubles, 0);
-      m.triples = n(dv.triples, 0);
-      m.bulls = n(dv.bulls, 0);
-      m.dbulls = n(dv.dbulls, 0);
-      m.misses = n(dv.misses, 0);
-      m.busts = n(dv.busts, 0);
-      m.coHits = n(dv.coHits, 0);
-      m.coAtt = n(dv.coAtt, 0);
-      m.avgCoDarts = n(dv.checkoutDarts, 0);
-      if (dv.byNumber) m.byNumber = dv.byNumber;
+      // On ne remplace les métriques de volume que si le replay porte vraiment
+      // assez d'information. Sinon on garde les valeurs summary déjà bonnes
+      // (darts, avg, best visit) et on corrige seulement les compteurs à 0.
+      if (n(dv.darts, 0) > 0) {
+        m.darts = n(dv.darts, 0);
+        m.visits = n(dv.visits, 0);
+        m.points = n(dv.points, 0);
+        m.avg3 = m.darts > 0 ? (m.points / m.darts) * 3 : 0;
+        m.avg1 = m.avg3 / 3;
+      } else {
+        m.visits = m.visits || n(dv.visits, 0);
+        m.points = m.points || n(dv.points, 0);
+      }
+
+      if (n(dv.bestVisit, 0) > 0) m.bestVisit = n(dv.bestVisit, 0);
+      if (sanitizeCO(dv.bestCO) > 0) m.bestCO = sanitizeCO(dv.bestCO);
+
+      const hitTotal = n(dv.singles, 0) + n(dv.doubles, 0) + n(dv.triples, 0) + n(dv.bulls, 0) + n(dv.dbulls, 0) + n(dv.misses, 0);
+      if (hitTotal > 0) {
+        m.singles = n(dv.singles, 0);
+        m.doubles = n(dv.doubles, 0);
+        m.triples = n(dv.triples, 0);
+        m.bulls = n(dv.bulls, 0);
+        m.dbulls = n(dv.dbulls, 0);
+        m.misses = n(dv.misses, 0);
+        if (dv.byNumber) m.byNumber = dv.byNumber;
+      }
+      m.busts = n(dv.busts, m.busts ?? 0);
+      m.coHits = n(dv.coHits, m.coHits ?? 0);
+      m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
+      m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
     }
 
     // ===== 4) dérivés & % =====
@@ -3122,7 +3159,7 @@ function buildVisitHistory(
       return {
         idx: idx + 1,
         legNo: Number(v.legNo ?? v.legIndex ?? 1) || 1,
-        playerId: String(v.playerId ?? v.pid ?? v.p ?? v.profileId ?? ""),
+        playerId: String(v.playerId ?? v.pid ?? v.p ?? v.profileId ?? players[idx % players.length]?.id ?? ""),
         darts,
         scoreBefore: before,
         scoreAfter: after,
