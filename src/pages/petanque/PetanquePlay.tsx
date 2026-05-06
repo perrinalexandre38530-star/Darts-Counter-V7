@@ -1346,7 +1346,15 @@ const ffaWinnerIdx = React.useMemo(() => {
   return idx >= 0 ? idx : null;
 }, [ffaScores]);
 
-const castTeams = React.useMemo(() => resolveTeams(matchCfg, stSafe, store), [matchCfg, stSafe, store]);
+// ✅ FIX CRASH 2026-05-06
+// Ancien code: resolveTeams(matchCfg, stSafe, store)
+// Problème: resolveTeams n'existe pas dans ce fichier => ReferenceError dès le render.
+// On réutilise le helper local extractTeams(), déjà prévu pour reconstruire A/B
+// depuis la config, l'état de partie et les profils du store.
+const castTeams = React.useMemo(
+  () => extractTeams(stSafe as any, matchCfg, Array.isArray(store?.profiles) ? store.profiles : undefined),
+  [stSafe, matchCfg, store?.profiles]
+);
 
 React.useEffect(() => {
   try {
