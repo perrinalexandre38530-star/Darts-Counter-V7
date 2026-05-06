@@ -3013,56 +3013,42 @@ function buildVisitHistory(
 ): VisitRow[] {
   if (!players.length) return [];
 
-  // 1) Si legStats / __legStats possède déjà les visits : on les utilise
-  let rawVisits: any[] =
-    legLike?.visits && Array.isArray(legLike.visits)
-      ? legLike.visits
-      : Array.isArray(rec?.visitHistory)
-      ? rec.visitHistory
-      : Array.isArray(rec?.visitsHistory)
-      ? rec.visitsHistory
-      : Array.isArray(rec?.__legStats?.visits)
-      ? rec.__legStats.visits
-      : Array.isArray(rec?.summary?.visitHistory)
-      ? rec.summary.visitHistory
-      : Array.isArray(rec?.summary?.visitsHistory)
-      ? rec.summary.visitsHistory
-      : Array.isArray(rec?.summary?.__legStats?.visits)
-      ? rec.summary.__legStats.visits
-      : Array.isArray(rec?.summary?.legacy?.visitHistory)
-      ? rec.summary.legacy.visitHistory
-      : Array.isArray(rec?.summary?.legacy?.visitsHistory)
-      ? rec.summary.legacy.visitsHistory
-      : Array.isArray(rec?.payload?.visitHistory)
-      ? rec.payload.visitHistory
-      : Array.isArray(rec?.payload?.visitsHistory)
-      ? rec.payload.visitsHistory
-      : Array.isArray(rec?.payload?.__legStats?.visits)
-      ? rec.payload.__legStats.visits
-      : Array.isArray(rec?.payload?.legacy?.visitHistory)
-      ? rec.payload.legacy.visitHistory
-      : Array.isArray(rec?.payload?.legacy?.visitsHistory)
-      ? rec.payload.legacy.visitsHistory
-      : Array.isArray(rec?.payload?.summary?.visitHistory)
-      ? rec.payload.summary.visitHistory
-      : Array.isArray(rec?.payload?.summary?.visitsHistory)
-      ? rec.payload.summary.visitsHistory
-      : Array.isArray(rec?.payload?.summary?.__legStats?.visits)
-      ? rec.payload.summary.__legStats.visits
-      : Array.isArray(rec?.payload?.summary?.legacy?.visitHistory)
-      ? rec.payload.summary.legacy.visitHistory
-      : Array.isArray(rec?.payload?.summary?.legacy?.visitsHistory)
-      ? rec.payload.summary.legacy.visitsHistory
-      : Array.isArray(rec?.payload?.payload?.visitHistory)
-      ? rec.payload.payload.visitHistory
-      : Array.isArray(rec?.payload?.payload?.visitsHistory)
-      ? rec.payload.payload.visitsHistory
-      : Array.isArray(rec?.payload?.payload?.summary?.visitHistory)
-      ? rec.payload.payload.summary.visitHistory
-      : Array.isArray(rec?.payload?.payload?.summary?.visitsHistory)
-      ? rec.payload.payload.summary.visitsHistory
-      : [];
+  // 1) Si legStats / __legStats possède déjà les visits : on les utilise.
+  // IMPORTANT : ne jamais s'arrêter sur un tableau vide. C'était la cause du bug
+  // Historique : legStats reconstruit depuis un summary léger fournissait visits=[],
+  // ce qui empêchait de retomber sur rec.visitHistory / payload.visitHistory.
+  const firstNonEmptyArray = (...candidates: any[]): any[] => {
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) return c;
+    }
+    return [];
+  };
 
+  let rawVisits: any[] = firstNonEmptyArray(
+    legLike?.visits,
+    rec?.visitHistory,
+    rec?.visitsHistory,
+    rec?.__legStats?.visits,
+    rec?.summary?.visitHistory,
+    rec?.summary?.visitsHistory,
+    rec?.summary?.__legStats?.visits,
+    rec?.summary?.legacy?.visitHistory,
+    rec?.summary?.legacy?.visitsHistory,
+    rec?.payload?.visitHistory,
+    rec?.payload?.visitsHistory,
+    rec?.payload?.__legStats?.visits,
+    rec?.payload?.legacy?.visitHistory,
+    rec?.payload?.legacy?.visitsHistory,
+    rec?.payload?.summary?.visitHistory,
+    rec?.payload?.summary?.visitsHistory,
+    rec?.payload?.summary?.__legStats?.visits,
+    rec?.payload?.summary?.legacy?.visitHistory,
+    rec?.payload?.summary?.legacy?.visitsHistory,
+    rec?.payload?.payload?.visitHistory,
+    rec?.payload?.payload?.visitsHistory,
+    rec?.payload?.payload?.summary?.visitHistory,
+    rec?.payload?.payload?.summary?.visitsHistory
+  );
 
   if (!rawVisits.length) {
     const dp = rec?.summary?.detailedByPlayer || rec?.payload?.summary?.detailedByPlayer || rec?.summary?.players || rec?.payload?.summary?.players || {};
