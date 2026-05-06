@@ -9,16 +9,19 @@ type Props = {
   teamBName?: string;
 };
 
-function chip(label: string): React.CSSProperties {
+function setDot(fill: string, active = false): React.CSSProperties {
   return {
+    width: 14,
+    height: 14,
     borderRadius: 999,
-    padding: "5px 9px",
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(255,255,255,0.05)",
-    fontSize: 11,
-    fontWeight: 1000,
-    letterSpacing: 0.3,
-    whiteSpace: "nowrap",
+    border: active ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.10)",
+    background: fill,
+    boxShadow:
+      fill !== "rgba(255,255,255,0.06)"
+        ? fill.includes("124,255,196")
+          ? "0 0 12px rgba(124,255,196,0.22)"
+          : "0 0 12px rgba(255,130,184,0.20)"
+        : "none",
   };
 }
 
@@ -30,12 +33,11 @@ export default function BabyFootSetsBar({
   teamAName = "Équipe A",
   teamBName = "Équipe B",
 }: Props) {
-  const total = Math.max(1, bestOf);
-  const needed = Math.floor(total / 2) + 1;
-  const safeSetsA = Math.max(0, setsA);
-  const safeSetsB = Math.max(0, setsB);
-  const activeIndex = Math.max(0, Math.min(total - 1, currentSet - 1));
-  const completed = safeSetsA + safeSetsB;
+  const total = Math.max(1, bestOf || 1);
+  const winTarget = Math.floor(total / 2) + 1;
+  const safeA = Math.max(0, Number(setsA) || 0);
+  const safeB = Math.max(0, Number(setsB) || 0);
+  const current = Math.min(total, Math.max(1, currentSet || 1));
 
   return (
     <div
@@ -43,98 +45,84 @@ export default function BabyFootSetsBar({
         borderRadius: 18,
         padding: 10,
         border: "1px solid rgba(255,255,255,0.10)",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.24)",
-        overflow: "hidden",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
       }}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
-          gap: 8,
-          alignItems: "center",
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.64, letterSpacing: 0.8 }}>SETS A</div>
+          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#7cffc4", opacity: 0.92 }}>SETS A</div>
           <div
+            title={teamAName}
             style={{
               marginTop: 4,
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: 1100,
-              color: "#7cffc4",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
-            title={teamAName}
           >
             {teamAName}
           </div>
         </div>
 
-        <div style={{ textAlign: "center", minWidth: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.64, letterSpacing: 0.8 }}>X01 STYLE</div>
-          <div style={{ marginTop: 2, fontSize: 22, fontWeight: 1100, lineHeight: 1 }}>{safeSetsA}–{safeSetsB}</div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.9, opacity: 0.64 }}>SETS</div>
+          <div style={{ marginTop: 2, fontSize: 24, fontWeight: 1100, lineHeight: 1 }}>{safeA}–{safeB}</div>
         </div>
 
         <div style={{ minWidth: 0, textAlign: "right" }}>
-          <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.64, letterSpacing: 0.8 }}>SETS B</div>
+          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#ff82b8", opacity: 0.92 }}>SETS B</div>
           <div
+            title={teamBName}
             style={{
               marginTop: 4,
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: 1100,
-              color: "#ff82b8",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
-            title={teamBName}
           >
             {teamBName}
           </div>
         </div>
       </div>
 
-      <div style={{ marginTop: 10, display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
-        <span style={chip(`BO${total}`)}>BO{total}</span>
-        <span style={chip(`win ${needed}`)}>win {needed}</span>
-        <span style={chip(`Set ${Math.min(total, Math.max(1, currentSet))}/${total}`)}>
-          Set {Math.min(total, Math.max(1, currentSet))}/{total}
-        </span>
-      </div>
-
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: `repeat(${total}, minmax(0,1fr))`, gap: 6 }}>
-        {Array.from({ length: total }).map((_, index) => {
-          const filledByA = index < safeSetsA;
-          const filledByB = index >= total - safeSetsB;
-          const isActive = index === activeIndex && !filledByA && !filledByB && completed < total;
-          return (
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, justifyContent: "flex-start", flexWrap: "wrap" }}>
+          {Array.from({ length: winTarget }).map((_, index) => (
             <div
-              key={index}
-              style={{
-                height: 12,
-                borderRadius: 999,
-                border: isActive ? "1px solid rgba(255,255,255,0.20)" : "1px solid rgba(255,255,255,0.10)",
-                background: filledByA
-                  ? "linear-gradient(180deg, rgba(124,255,196,0.48), rgba(124,255,196,0.14))"
-                  : filledByB
-                  ? "linear-gradient(180deg, rgba(255,130,184,0.48), rgba(255,130,184,0.14))"
-                  : isActive
-                  ? "rgba(255,255,255,0.16)"
-                  : "rgba(255,255,255,0.05)",
-                boxShadow: filledByA
-                  ? "0 0 10px rgba(124,255,196,0.20)"
-                  : filledByB
-                  ? "0 0 10px rgba(255,130,184,0.20)"
-                  : "none",
-              }}
+              key={`a-${index}`}
+              style={setDot(index < safeA ? "linear-gradient(180deg, rgba(124,255,196,0.55), rgba(124,255,196,0.18))" : "rgba(255,255,255,0.06)")}
             />
-          );
-        })}
+          ))}
+        </div>
+
+        <div
+          style={{
+            borderRadius: 999,
+            padding: "6px 10px",
+            border: "1px solid rgba(255,255,255,0.10)",
+            background: "rgba(255,255,255,0.05)",
+            fontSize: 11,
+            fontWeight: 1000,
+            letterSpacing: 0.3,
+            whiteSpace: "nowrap",
+          }}
+        >
+          BO{total} • set {current}/{total}
+        </div>
+
+        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          {Array.from({ length: winTarget }).map((_, index) => (
+            <div
+              key={`b-${index}`}
+              style={setDot(index < safeB ? "linear-gradient(180deg, rgba(255,130,184,0.55), rgba(255,130,184,0.18))" : "rgba(255,255,255,0.06)")}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

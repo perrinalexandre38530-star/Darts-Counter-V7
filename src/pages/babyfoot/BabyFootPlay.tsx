@@ -423,102 +423,104 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         right={<InfoDot title={infoTitle} content={infoBody} glow={(theme?.colors?.primary ?? "#7cffc4") + "88"} />}
       />
 
-      <div style={{ padding: 10, paddingBottom: 138, display: "grid", gap: 10, overflowX: "hidden" }}>
-        <BabyFootLiveHeader
-          phaseLabel={phaseLabel}
-          modeLabel={state.mode}
-          clockLabel={clockLabel}
-          targetLabel={targetLabel}
-          secondaryLabel={secondaryLabel}
-        />
+      <div style={{ padding: 10, paddingBottom: 150, overflowX: "hidden" }}>
+        <div style={{ width: "100%", maxWidth: 540, margin: "0 auto", display: "grid", gap: 10 }}>
+          <BabyFootLiveHeader
+            phaseLabel={phaseLabel}
+            modeLabel={state.mode}
+            clockLabel={clockLabel}
+            targetLabel={targetLabel}
+            secondaryLabel={secondaryLabel}
+          />
 
-        <BabyFootDuelScoreCard
-          theme={theme}
-          teamAName={state.teamA}
-          teamBName={state.teamB}
-          teamALogoDataUrl={state.teamALogoDataUrl}
-          teamBLogoDataUrl={state.teamBLogoDataUrl}
-          scoreA={displayedScore.scoreA}
-          scoreB={displayedScore.scoreB}
-          setsEnabled={state.setsEnabled}
-          setsA={state.setsA || 0}
-          setsB={state.setsB || 0}
-          setTarget={state.setTarget || state.target}
-          target={state.target}
-          handicapA={state.handicapA}
-          handicapB={state.handicapB}
-        />
+          {state.setsEnabled ? (
+            <BabyFootSetsBar
+              setsA={state.setsA || 0}
+              setsB={state.setsB || 0}
+              bestOf={state.setsBestOf || 3}
+              currentSet={state.setIndex || 1}
+              teamAName={state.teamA}
+              teamBName={state.teamB}
+            />
+          ) : null}
 
-        {state.setsEnabled ? (
-          <BabyFootSetsBar
-            setsA={state.setsA || 0}
-            setsB={state.setsB || 0}
-            bestOf={state.setsBestOf || 3}
-            currentSet={state.setIndex || 1}
+          <BabyFootDuelScoreCard
+            theme={theme}
             teamAName={state.teamA}
             teamBName={state.teamB}
-          />
-        ) : null}
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-          <BabyFootTeamCard
-            team="A"
-            name={state.teamA}
-            score={displayedScore.scoreA}
-            playerIds={teamAIds}
-            getProfile={getProfile}
-            logoDataUrl={state.teamALogoDataUrl}
-            handicap={state.handicapA}
-            onAddGoal={() => addForTeam("A")}
-            disabled={state.finished || state.phase === "penalties"}
-            accent="green"
-            footerLabel={teamAIds.length > 1 ? "Choix du buteur" : "Validation directe"}
+            teamALogoDataUrl={state.teamALogoDataUrl}
+            teamBLogoDataUrl={state.teamBLogoDataUrl}
+            scoreA={displayedScore.scoreA}
+            scoreB={displayedScore.scoreB}
+            setsEnabled={state.setsEnabled}
+            setsA={state.setsA || 0}
+            setsB={state.setsB || 0}
+            setTarget={state.setTarget || state.target}
+            target={state.target}
+            handicapA={state.handicapA}
+            handicapB={state.handicapB}
           />
 
-          <BabyFootTeamCard
-            team="B"
-            name={state.teamB}
-            score={displayedScore.scoreB}
-            playerIds={teamBIds}
-            getProfile={getProfile}
-            logoDataUrl={state.teamBLogoDataUrl}
-            handicap={state.handicapB}
-            onAddGoal={() => addForTeam("B")}
-            disabled={state.finished || state.phase === "penalties"}
-            accent="pink"
-            footerLabel={teamBIds.length > 1 ? "Choix du buteur" : "Validation directe"}
-          />
-        </div>
-
-        {state.phase === "penalties" ? (
-          <BabyFootPhasePanel
-            state={state}
-            lastGoalLabel={lastGoalLabel}
-            liveContext={liveContext}
-            onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
-          />
-        ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
+            <BabyFootTeamCard
+              team="A"
+              name={state.teamA}
+              score={displayedScore.scoreA}
+              playerIds={teamAIds}
+              getProfile={getProfile}
+              logoDataUrl={state.teamALogoDataUrl}
+              handicap={state.handicapA}
+              onAddGoal={() => addForTeam("A")}
+              disabled={state.finished || state.phase === "penalties"}
+              accent="green"
+              footerLabel={teamAIds.length > 1 ? "Choix du buteur" : "Validation directe"}
+            />
+
+            <BabyFootTeamCard
+              team="B"
+              name={state.teamB}
+              score={displayedScore.scoreB}
+              playerIds={teamBIds}
+              getProfile={getProfile}
+              logoDataUrl={state.teamBLogoDataUrl}
+              handicap={state.handicapB}
+              onAddGoal={() => addForTeam("B")}
+              disabled={state.finished || state.phase === "penalties"}
+              accent="pink"
+              footerLabel={teamBIds.length > 1 ? "Choix du buteur" : "Validation directe"}
+            />
+          </div>
+
+          {state.phase === "penalties" ? (
             <BabyFootPhasePanel
               state={state}
               lastGoalLabel={lastGoalLabel}
               liveContext={liveContext}
               onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
             />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
+              <BabyFootPhasePanel
+                state={state}
+                lastGoalLabel={lastGoalLabel}
+                liveContext={liveContext}
+                onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
+              />
 
-            <BabyFootLiveStatsCard
-              teamAName={state.teamA}
-              teamBName={state.teamB}
-              goalsA={goalCountA}
-              goalsB={goalCountB}
-              totalGoals={totalGoals}
-              durationLabel={fmt(durationMs)}
-              lastGoalLabel={lastGoalLabel}
-              momentumLabel={momentumLabel}
-              cadenceLabel={cadenceLabel}
-            />
-          </div>
-        )}
+              <BabyFootLiveStatsCard
+                teamAName={state.teamA}
+                teamBName={state.teamB}
+                goalsA={goalCountA}
+                goalsB={goalCountB}
+                totalGoals={totalGoals}
+                durationLabel={fmt(durationMs)}
+                lastGoalLabel={lastGoalLabel}
+                momentumLabel={momentumLabel}
+                cadenceLabel={cadenceLabel}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <div
@@ -535,26 +537,28 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           zIndex: 50,
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
-          <DockButton
-            label="UNDO"
-            onClick={() => {
-              if (!canUndo) return;
-              setState(undoGoal());
-            }}
-            disabled={!canUndo}
-          />
-          <DockButton label="STATS" onClick={() => go("babyfoot_stats_center")} />
-          <DockButton
-            label="FIN"
-            onClick={() => {
-              if (state.finished) return;
-              setState(finishByTime());
-            }}
-            disabled={state.finished}
-            emphasized
-          />
-          <DockButton label="CONFIG" onClick={() => go("babyfoot_config")} />
+        <div style={{ width: "100%", maxWidth: 540, margin: "0 auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
+            <DockButton
+              label="UNDO"
+              onClick={() => {
+                if (!canUndo) return;
+                setState(undoGoal());
+              }}
+              disabled={!canUndo}
+            />
+            <DockButton label="STATS" onClick={() => go("babyfoot_stats_center")} />
+            <DockButton
+              label="FIN"
+              onClick={() => {
+                if (state.finished) return;
+                setState(finishByTime());
+              }}
+              disabled={state.finished}
+              emphasized
+            />
+            <DockButton label="CONFIG" onClick={() => go("babyfoot_config")} />
+          </div>
         </div>
       </div>
 

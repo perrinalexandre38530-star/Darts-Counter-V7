@@ -29,8 +29,8 @@ function TeamLogo({ label, logoDataUrl }: { label: string; logoDataUrl?: string 
         src={logoDataUrl}
         alt={label}
         style={{
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           objectFit: "cover",
           borderRadius: 14,
           border: "1px solid rgba(255,255,255,0.14)",
@@ -43,14 +43,14 @@ function TeamLogo({ label, logoDataUrl }: { label: string; logoDataUrl?: string 
   return (
     <div
       style={{
-        width: 42,
-        height: 42,
+        width: 44,
+        height: 44,
         borderRadius: 14,
         border: "1px solid rgba(255,255,255,0.12)",
         background: "rgba(255,255,255,0.06)",
         display: "grid",
         placeItems: "center",
-        fontSize: 20,
+        fontSize: 21,
         fontWeight: 1100,
       }}
     >
@@ -73,9 +73,10 @@ export default function BabyFootTeamCard({
   footerLabel,
 }: Props) {
   const color = accent === "green" ? "#7cffc4" : "#ff82b8";
-  const buttonBg = accent === "green"
-    ? "linear-gradient(180deg, rgba(124,255,196,0.24), rgba(124,255,196,0.10))"
-    : "linear-gradient(180deg, rgba(255,130,184,0.24), rgba(255,130,184,0.10))";
+  const buttonBg =
+    accent === "green"
+      ? "linear-gradient(180deg, rgba(124,255,196,0.24), rgba(124,255,196,0.10))"
+      : "linear-gradient(180deg, rgba(255,130,184,0.24), rgba(255,130,184,0.10))";
   const visiblePlayers = playerIds.slice(0, 2);
   const extraPlayers = Math.max(0, playerIds.length - visiblePlayers.length);
 
@@ -87,19 +88,19 @@ export default function BabyFootTeamCard({
         border: "1px solid rgba(255,255,255,0.10)",
         background:
           accent === "green"
-            ? "radial-gradient(700px 180px at 0% 0%, rgba(124,255,196,0.11), transparent 42%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))"
+            ? "radial-gradient(700px 180px at 0% 0%, rgba(124,255,196,0.10), transparent 42%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))"
             : "radial-gradient(700px 180px at 100% 0%, rgba(255,130,184,0.10), transparent 42%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
         boxShadow: "0 12px 28px rgba(0,0,0,0.22)",
         minWidth: 0,
-        overflow: "hidden",
       }}
     >
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
           <TeamLogo label={name} logoDataUrl={logoDataUrl} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color, opacity: 0.94 }}>JOUEURS {team}</div>
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color, opacity: 0.94 }}>ÉQUIPE {team}</div>
             <div
+              title={name}
               style={{
                 marginTop: 3,
                 fontSize: 15,
@@ -109,7 +110,6 @@ export default function BabyFootTeamCard({
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }}
-              title={name}
             >
               {name}
             </div>
@@ -121,20 +121,20 @@ export default function BabyFootTeamCard({
 
         <div
           style={{
-            minWidth: 60,
-            borderRadius: 16,
-            padding: "8px 10px",
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(255,255,255,0.07)",
+            minWidth: 46,
             textAlign: "center",
+            borderRadius: 14,
+            padding: "7px 8px",
+            border: "1px solid rgba(255,255,255,0.10)",
+            background: "rgba(255,255,255,0.06)",
           }}
         >
-          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.66 }}>SCORE</div>
-          <div style={{ marginTop: 4, fontSize: 18, fontWeight: 1100, lineHeight: 1 }}>{score}</div>
+          <div style={{ fontSize: 9, fontWeight: 1000, letterSpacing: 0.7, opacity: 0.62 }}>BUTS</div>
+          <div style={{ marginTop: 3, fontSize: 18, fontWeight: 1100, lineHeight: 1 }}>{score}</div>
         </div>
       </div>
 
-      <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {visiblePlayers.map((playerId) => {
           const profile = getProfile(playerId);
           const label = profile?.name || playerId;
@@ -144,19 +144,20 @@ export default function BabyFootTeamCard({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 7,
                 minWidth: 0,
+                flex: "1 1 0",
                 borderRadius: 12,
-                padding: "7px 9px",
+                padding: "7px 8px",
                 border: "1px solid rgba(255,255,255,0.08)",
                 background: "rgba(0,0,0,0.16)",
               }}
             >
-              <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={30} />
+              <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={28} />
               <div
                 style={{
                   minWidth: 0,
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 1000,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -168,31 +169,32 @@ export default function BabyFootTeamCard({
             </div>
           );
         })}
-
-        {extraPlayers > 0 ? <div style={{ fontSize: 11, fontWeight: 1000, opacity: 0.68 }}>+{extraPlayers} joueur{extraPlayers > 1 ? "s" : ""}</div> : null}
       </div>
 
-      {footerLabel ? <div style={{ marginTop: 8, fontSize: 11, fontWeight: 1000, opacity: 0.68 }}>{footerLabel}</div> : null}
-
-      <button
-        type="button"
-        onClick={onAddGoal}
-        disabled={disabled}
-        style={{
-          marginTop: 10,
-          width: "100%",
-          height: 44,
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: disabled ? "rgba(255,255,255,0.05)" : buttonBg,
-          color: disabled ? "rgba(255,255,255,0.45)" : "#fff",
-          fontWeight: 1100,
-          letterSpacing: 0.7,
-          cursor: disabled ? "default" : "pointer",
-        }}
-      >
-        + BUT
-      </button>
+      <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 1000, opacity: 0.66 }}>
+          {footerLabel || "Action rapide"}
+          {extraPlayers > 0 ? ` • +${extraPlayers}` : ""}
+        </div>
+        <button
+          type="button"
+          onClick={onAddGoal}
+          disabled={disabled}
+          style={{
+            minWidth: 104,
+            height: 40,
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: disabled ? "rgba(255,255,255,0.05)" : buttonBg,
+            color: disabled ? "rgba(255,255,255,0.45)" : "#fff",
+            fontWeight: 1100,
+            letterSpacing: 0.5,
+            cursor: disabled ? "default" : "pointer",
+          }}
+        >
+          + BUT
+        </button>
+      </div>
     </div>
   );
 }

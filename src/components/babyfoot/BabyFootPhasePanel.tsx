@@ -9,7 +9,7 @@ type Props = {
   onPenaltyShot: (team: BabyFootTeamId, scored: boolean) => void;
 };
 
-function infoPill(label: string) {
+function pill(label: string) {
   return (
     <div
       key={label}
@@ -62,12 +62,12 @@ export default function BabyFootPhasePanel({ state, lastGoalLabel, liveContext, 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.68 }}>PHASE</div>
-            <div style={{ marginTop: 3, fontSize: 16, fontWeight: 1100 }}>PENALTIES</div>
+            <div style={{ marginTop: 3, fontSize: 15, fontWeight: 1100 }}>PENALTIES</div>
           </div>
           <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.84 }}>Tour • {turn === "A" ? state.teamA : state.teamB}</div>
         </div>
 
-        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
           <BabyFootPenaltyBar label={state.teamA} shots={pen?.shotsA ?? 0} goals={pen?.goalsA ?? 0} />
           <BabyFootPenaltyBar label={state.teamB} shots={pen?.shotsB ?? 0} goals={pen?.goalsB ?? 0} />
         </div>
@@ -90,9 +90,6 @@ export default function BabyFootPhasePanel({ state, lastGoalLabel, liveContext, 
     );
   }
 
-  const liveTitle = state.phase === "overtime" ? "PROLONGATION" : state.finished ? "MATCH TERMINÉ" : "CONTEXTE";
-  const compactContext = liveContext.slice(0, 3);
-
   return (
     <div
       style={{
@@ -103,8 +100,15 @@ export default function BabyFootPhasePanel({ state, lastGoalLabel, liveContext, 
         boxShadow: "0 12px 30px rgba(0,0,0,0.24)",
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.68 }}>PHASE</div>
-      <div style={{ marginTop: 3, fontSize: 16, fontWeight: 1100 }}>{liveTitle}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.68 }}>LIVE</div>
+          <div style={{ marginTop: 3, fontSize: 15, fontWeight: 1100 }}>Contexte du match</div>
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 1000, opacity: 0.68 }}>
+          {state.phase === "overtime" ? "Prolongation" : state.finished ? "Terminé" : "En cours"}
+        </div>
+      </div>
 
       <div
         style={{
@@ -132,7 +136,7 @@ export default function BabyFootPhasePanel({ state, lastGoalLabel, liveContext, 
         </div>
       </div>
 
-      <div style={{ marginTop: 9, display: "flex", gap: 6, flexWrap: "wrap" }}>{compactContext.map(infoPill)}</div>
+      <div style={{ marginTop: 9, display: "flex", gap: 6, flexWrap: "wrap" }}>{liveContext.slice(0, 4).map(pill)}</div>
     </div>
   );
 }

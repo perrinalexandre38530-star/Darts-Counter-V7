@@ -61,14 +61,15 @@ export default function BabyFootLiveStatsCard({
         boxShadow: "0 12px 30px rgba(0,0,0,0.24)",
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.68 }}>STATS LIVE</div>
-      <div style={{ marginTop: 3, fontSize: 16, fontWeight: 1100 }}>Lecture rapide</div>
+      <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.68 }}>MATCH</div>
+      <div style={{ marginTop: 3, fontSize: 15, fontWeight: 1100 }}>Lecture rapide</div>
 
       <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 7 }}>
         {statBlock("Répartition", `${goalsA}–${goalsB}`)}
         {statBlock("Buts", String(totalGoals))}
         {statBlock("Temps", durationLabel)}
-        {statBlock("Cadence", cadenceLabel || momentumLabel)}
+        {statBlock("Cadence", cadenceLabel)}
+        <div style={{ gridColumn: "1 / -1" }}>{statBlock("Momentum", momentumLabel)}</div>
       </div>
     </div>
   );
