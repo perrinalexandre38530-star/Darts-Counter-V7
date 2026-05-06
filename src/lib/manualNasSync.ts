@@ -2,9 +2,7 @@ async function getStorage() {
   return await import("./storage");
 }
 
-async function getMediaSync() {
-  return await import("./mediaSync");
-}
+import * as mediaSync from "./mediaSync";
 
 async function getOnlineApi() {
   const mod = await import("./onlineApi");
@@ -255,7 +253,7 @@ async function flushRuntimeStoreBeforeNasPush() {
 
 export async function pushNasAccountSnapshot() {
   const { loadStore, saveStore, exportCloudSnapshot } = await getStorage();
-  const mediaSync = await getMediaSync();
+  
   const { uploadStoreMediaAssets, hydrateStoreMediaUrls } = mediaSync;
   const api = await getOnlineApi();
 
@@ -356,7 +354,6 @@ export async function pullNasAccountSnapshot() {
   const res: any = await api.pullStoreSnapshot();
   if (!res || res.status !== "ok" || !res.payload) return res;
   const { importCloudSnapshot, loadStore, saveStore } = await getStorage();
-  const { hydrateStoreMediaUrls } = await getMediaSync();
   setApplyingNasSnapshot(true);
   try {
     await importCloudSnapshot(res.payload, { mode: "replace" });
