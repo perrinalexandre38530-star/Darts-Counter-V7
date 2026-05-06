@@ -412,23 +412,48 @@ function rowFromLegacy(
   const doubles = n(res.doubles?.[pid]);
   const triples = n(res.triples?.[pid]);
 
-  const h60 = n(res.h60?.[pid] ?? 0);
-  const h100 = n(res.h100?.[pid] ?? 0);
-  const h140 = n(res.h140?.[pid] ?? 0);
-  const h180 = n(res.h180?.[pid] ?? res.x180?.[pid] ?? 0);
-
-  const coCount = n(
-    res.coHits?.[pid] ?? res.checkoutDartsByPlayer?.[pid]?.length ?? 0
+  // Power scoring : si le legacy ne transporte pas h60/h100/h140/h180,
+  // on recalcule depuis visitSumsByPlayer exactement comme X01End.
+  const visitSums = Array.isArray(res.visitSumsByPlayer?.[pid])
+    ? (res.visitSumsByPlayer?.[pid] || [])
+    : [];
+  const powerFromVisits = visitSums.reduce(
+    (acc, score) => {
+      const v = n(score);
+      if (v >= 180) acc.h180 += 1;
+      else if (v >= 140) acc.h140 += 1;
+      else if (v >= 100) acc.h100 += 1;
+      else if (v >= 60) acc.h60 += 1;
+      return acc;
+    },
+    { h60: 0, h100: 0, h140: 0, h180: 0 }
   );
+
+  const pickPower = (stored: any, rebuilt: number) => {
+    const a = n(stored);
+    return a > 0 ? a : rebuilt;
+  };
+  const h60 = pickPower(res.h60?.[pid], powerFromVisits.h60);
+  const h100 = pickPower(res.h100?.[pid], powerFromVisits.h100);
+  const h140 = pickPower(res.h140?.[pid], powerFromVisits.h140);
+  const h180 = pickPower(res.h180?.[pid] ?? res.x180?.[pid], powerFromVisits.h180);
+
+  const highestCO = n(res.bestCheckout?.[pid] ?? 0);
   const coDartsAvgArr = res.checkoutDartsByPlayer?.[pid];
+  const coCount = n(
+    res.coHits?.[pid] ?? res.checkoutDartsByPlayer?.[pid]?.length ?? (highestCO > 0 ? 1 : 0)
+  );
   const coDartsAvg =
     coCount && coDartsAvgArr?.length
       ? Number(f2(coDartsAvgArr.reduce((s, x) => s + x, 0) / coDartsAvgArr.length))
+      : highestCO > 0 && darts > 0 && visits > 0
+      ? Math.max(1, Math.min(3, darts - (visits - 1) * 3))
       : 0;
-  const highestCO = n(res.bestCheckout?.[pid] ?? 0);
-  const singles = n((res as any).singles?.[pid] ?? (res as any).single?.[pid] ?? 0);
+
   const misses = n((res as any).misses?.[pid] ?? (res as any).miss?.[pid] ?? 0);
   const busts = n((res as any).busts?.[pid] ?? (res as any).bust?.[pid] ?? 0);
+  const explicitSingles = n((res as any).singles?.[pid] ?? (res as any).single?.[pid] ?? 0);
+  const singles = explicitSingles || Math.max(0, darts - misses - busts - doubles - triples - ob - ib);
 
   // 🎯 remaining brut du moteur si dispo
   const explicitRem =
@@ -491,30 +516,59 @@ function sortOrderLegacy(res: LegacyLegResult, ids: string[]) {
 
 
 function parseOverlayVisitDart(raw: any): { v: number; mult: 0 | 1 | 2 | 3 } {
-  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.code ?? raw?.text ?? raw?.name ?? "")
+  // Même logique que X01End.parseHistoryDart : la source historique peut être
+  // un objet ({label:"T20"}), une string ("T20"), ou parfois un score brut.
+  const rawLabel = String(
+    typeof raw === "string"
+      ? raw
+      : raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.code ?? raw?.text ?? raw?.name ?? ""
+  )
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
-  let v = Number(raw?.segment ?? raw?.v ?? raw?.num ?? raw?.number ?? raw?.target ?? 0);
-  let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? raw?.coef ?? raw?.factor ?? 0);
 
-  if (label) {
-    if (label === "MISS" || label === "M" || label === "0") { v = 0; mult = 0; }
-    else if (label === "BULL" || label === "SBULL" || label === "OB") { v = 25; mult = 1; }
-    else if (label === "DBULL" || label === "D-BULL" || label === "DOUBLEBULL" || label === "IB") { v = 25; mult = 2; }
+  let v = Number.NaN;
+  let mult = Number(
+    typeof raw === "object" && raw
+      ? raw.multiplier ?? raw.mult ?? raw.m ?? raw.multi ?? raw.coef ?? raw.factor
+      : NaN
+  );
+
+  if (rawLabel) {
+    if (rawLabel === "MISS" || rawLabel === "M" || rawLabel === "0") { v = 0; mult = 0; }
+    else if (rawLabel === "BULL" || rawLabel === "SBULL" || rawLabel === "OB") { v = 25; mult = 1; }
+    else if (rawLabel === "DBULL" || rawLabel === "D-BULL" || rawLabel === "DOUBLEBULL" || rawLabel === "IB") { v = 25; mult = 2; }
     else {
-      const m = label.match(/^([SDT])?(\d{1,2})$/);
+      const m = rawLabel.match(/^([SDT])?(\d{1,2})$/);
       if (m) { v = Number(m[2]) || 0; mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1; }
     }
   }
 
-  const rawScore = Number(raw?.score ?? raw?.points ?? raw?.total ?? raw?.value);
+  if (!Number.isFinite(v)) {
+    v = Number(
+      typeof raw === "object" && raw
+        ? raw.segment ?? raw.v ?? raw.num ?? raw.number ?? raw.target ?? 0
+        : 0
+    );
+  }
+
+  const rawScore = Number(
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "object" && raw
+      ? raw.score ?? raw.points ?? raw.total ?? raw.value
+      : NaN
+  );
   if (!Number.isFinite(v) || v < 0 || v > 25 || (v === 0 && (rawScore === 25 || rawScore === 50))) {
     if (rawScore === 50) { v = 25; mult = 2; }
     else if (rawScore === 25) { v = 25; mult = 1; }
     else v = 0;
   }
-  if (!Number.isFinite(mult) || mult <= 0) mult = v > 0 ? 1 : 0;
+  if (!Number.isFinite(mult) || mult <= 0) {
+    if (rawLabel.startsWith("T")) mult = 3;
+    else if (rawLabel.startsWith("D") && rawLabel !== "DBULL") mult = 2;
+    else mult = v > 0 ? 1 : 0;
+  }
   if (v === 25 && mult > 2) mult = 2;
   if (![0, 1, 2, 3].includes(mult)) mult = v > 0 ? 1 : 0;
   return { v, mult: mult as 0 | 1 | 2 | 3 };
