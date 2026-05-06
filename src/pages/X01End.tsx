@@ -2979,7 +2979,7 @@ function buildVisitHistory(
   if (!players.length) return [];
 
   // 1) Si legStats / __legStats possède déjà les visits : on les utilise
-  const rawVisits: any[] =
+  let rawVisits: any[] =
     legLike?.visits && Array.isArray(legLike.visits)
       ? legLike.visits
       : Array.isArray(rec?.visitHistory)
@@ -3018,7 +3018,27 @@ function buildVisitHistory(
       ? rec.payload.summary.legacy.visitHistory
       : Array.isArray(rec?.payload?.summary?.legacy?.visitsHistory)
       ? rec.payload.summary.legacy.visitsHistory
+      : Array.isArray(rec?.payload?.payload?.visitHistory)
+      ? rec.payload.payload.visitHistory
+      : Array.isArray(rec?.payload?.payload?.visitsHistory)
+      ? rec.payload.payload.visitsHistory
+      : Array.isArray(rec?.payload?.payload?.summary?.visitHistory)
+      ? rec.payload.payload.summary.visitHistory
+      : Array.isArray(rec?.payload?.payload?.summary?.visitsHistory)
+      ? rec.payload.payload.summary.visitsHistory
       : [];
+
+
+  if (!rawVisits.length) {
+    const dp = rec?.summary?.detailedByPlayer || rec?.payload?.summary?.detailedByPlayer || rec?.summary?.players || rec?.payload?.summary?.players || {};
+    const rebuilt: any[] = [];
+    for (const p of players) {
+      const row = dp?.[p.id] || {};
+      const pv = Array.isArray(row.visitHistory) ? row.visitHistory : Array.isArray(row.visitsHistory) ? row.visitsHistory : Array.isArray(row.visitsList) ? row.visitsList : [];
+      pv.forEach((v: any) => rebuilt.push({ ...v, playerId: v?.playerId ?? v?.pid ?? p.id }));
+    }
+    rawVisits = rebuilt;
+  }
 
   if (rawVisits.length) {
     return rawVisits.map((v, idx) => {

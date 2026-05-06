@@ -36,6 +36,7 @@ import { getApiUrl } from "../lib/apiClient";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
 import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
+import { injectDevX01ReferenceMatch } from "../lib/devInjectX01TestMatch";
 import { useSport } from "../contexts/SportContext";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
@@ -772,6 +773,22 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
     }
   }
 
+  async function injectX01ReferenceMatch() {
+    try {
+      const rec = await injectDevX01ReferenceMatch();
+      const msg = "Match X01 test JN/SP injecté dans l'historique.";
+      setSimLastResult(msg);
+      notify(msg);
+      if (go) {
+        go("x01_end", { matchId: rec.id, resumeId: rec.id, showEnd: true, fresh: Date.now() });
+      }
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : "Erreur injection match X01 test.";
+      setSimLastResult(msg);
+      notify(msg);
+    }
+  }
+
   function clearOnlyDevFlags() {
     try {
       localStorage.removeItem(FORCE_OFFLINE_KEY);
@@ -914,6 +931,28 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
                 {simBusy ? "Simulation en cours…" : "Créer simulations — sport actif"}
                 <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
                   Remplace les anciennes simulations DEV du sport actif, puis ajoute 1 partie terminée par jeu. En mode Darts : X01, Cricket, Killer, Shanghai et Golf.
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={injectX01ReferenceMatch}
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(125,226,169,0.75)",
+                  padding: "11px 12px",
+                  background: "rgba(0,60,35,0.32)",
+                  color: "#7de2a9",
+                  fontWeight: 950,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  boxShadow: "0 0 16px rgba(125,226,169,0.18)",
+                }}
+              >
+                Injecter match X01 test JN/SP
+                <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
+                  Crée directement en historique la partie 301 simple out : JN 117/61/26/74/23 et SP 67/120/65/bust. Ouvre ensuite le résumé pour tester sans rejouer.
                 </div>
               </button>
               {simLastResult && <div style={{ marginTop: 8, fontSize: 11, color: theme.primary, fontWeight: 850 }}>{simLastResult}</div>}
