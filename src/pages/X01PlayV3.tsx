@@ -6559,6 +6559,12 @@ function saveX01V3MatchToHistory({
     winnerId,
     summary,
     payload,
+    // CRITIQUE HISTORIQUE : garder les volées au niveau header aussi.
+    // Comme ça "Voir stats" peut recalculer 60+/100+/140+/180 même si le payload
+    // détaillé n'est pas encore rechargé ou si IndexedDB renvoie une carte légère.
+    visitHistory: replayVisits,
+    visitsHistory: replayVisits,
+    __legStats: { visits: replayVisits },
   };
 
   try {

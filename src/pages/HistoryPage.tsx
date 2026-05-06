@@ -1701,7 +1701,41 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         // des compteurs à 0. Le payload détaillé doit gagner sur le header.
         const summary = { ...headerSummary, ...loadedSummary, ...payloadSummary };
         const players = Array.isArray((payload as any).players) && (payload as any).players.length ? (payload as any).players : Array.isArray((loaded as any).players) && (loaded as any).players.length ? (loaded as any).players : (e as any).players;
-        e = { ...(e as any), ...(loaded as any), payload: { ...payload, summary }, summary, players } as any;
+
+        // FIX HISTORIQUE X01 : on remonte explicitement les volées complètes au
+        // niveau racine du record envoyé à X01End. La carte historique transporte
+        // parfois un summary léger, et certains merge payload/header gardent les
+        // compteurs à 0. En mettant visitHistory ici, X01End recalcule les stats
+        // depuis la même source que le résumé live.
+        const firstNonEmptyArray = (...arrs: any[]) => arrs.find((a) => Array.isArray(a) && a.length > 0) || [];
+        const richVisitHistory = firstNonEmptyArray(
+          (payload as any).visitHistory,
+          (payload as any).visitsHistory,
+          (payload as any).__legStats?.visits,
+          (payload as any).summary?.visitHistory,
+          (payload as any).summary?.visitsHistory,
+          (payload as any).summary?.__legStats?.visits,
+          (loaded as any).visitHistory,
+          (loaded as any).visitsHistory,
+          (loaded as any).__legStats?.visits,
+          (loaded as any).summary?.visitHistory,
+          (loaded as any).summary?.visitsHistory,
+          (e as any).visitHistory,
+          (e as any).visitsHistory,
+          (e as any).summary?.visitHistory,
+          (e as any).summary?.visitsHistory
+        );
+
+        e = {
+          ...(e as any),
+          ...(loaded as any),
+          payload: { ...payload, summary, visitHistory: richVisitHistory, visitsHistory: richVisitHistory, __legStats: { ...((payload as any).__legStats || {}), visits: richVisitHistory } },
+          summary: { ...summary, visitHistory: richVisitHistory, visitsHistory: richVisitHistory, __legStats: { ...((summary as any).__legStats || {}), visits: richVisitHistory } },
+          players,
+          visitHistory: richVisitHistory,
+          visitsHistory: richVisitHistory,
+          __legStats: { ...((loaded as any).__legStats || {}), visits: richVisitHistory },
+        } as any;
       }
     } catch (err) { console.warn("[HistoryPage] goStats hydrate failed", err); }
     const resumeId = e.resumeId || matchLink(e) || e.id;

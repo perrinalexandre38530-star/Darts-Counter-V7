@@ -64,11 +64,36 @@ function hydrateX01HistoryRecord(input: any): any {
       ? summary.players
       : [];
 
+  const firstNonEmptyArray = (...arrs: any[]) => arrs.find((a) => Array.isArray(a) && a.length > 0) || [];
+  const richVisitHistory = firstNonEmptyArray(
+    input.visitHistory,
+    input.visitsHistory,
+    input.__legStats?.visits,
+    ownSummary.visitHistory,
+    ownSummary.visitsHistory,
+    ownSummary.__legStats?.visits,
+    decodedSummary.visitHistory,
+    decodedSummary.visitsHistory,
+    payload.visitHistory,
+    payload.visitsHistory,
+    payload.__legStats?.visits,
+    payloadSummary.visitHistory,
+    payloadSummary.visitsHistory,
+    payloadSummary.__legStats?.visits,
+    payload?.payload?.visitHistory,
+    payload?.payload?.visitsHistory,
+    payload?.payload?.summary?.visitHistory,
+    payload?.payload?.summary?.visitsHistory
+  );
+
   return {
     ...input,
-    payload: { ...payload, summary },
-    summary,
+    payload: { ...payload, summary: { ...summary, visitHistory: richVisitHistory, visitsHistory: richVisitHistory, __legStats: { ...((summary as any).__legStats || {}), visits: richVisitHistory } }, visitHistory: richVisitHistory, visitsHistory: richVisitHistory, __legStats: { ...((payload as any).__legStats || {}), visits: richVisitHistory } },
+    summary: { ...summary, visitHistory: richVisitHistory, visitsHistory: richVisitHistory, __legStats: { ...((summary as any).__legStats || {}), visits: richVisitHistory } },
     players,
+    visitHistory: richVisitHistory,
+    visitsHistory: richVisitHistory,
+    __legStats: { ...((input as any).__legStats || {}), visits: richVisitHistory },
   };
 }
 

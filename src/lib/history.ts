@@ -1263,6 +1263,39 @@ async function withStore<T>(
 
 function toHeaderRecord(rec: any) {
   const out: any = normalizeHistoryRow({ ...(rec || {}) });
+
+  // X01 DETAIL FIX : le header léger doit conserver les volées compactes quand
+  // elles existent. Sinon Historique -> Voir stats ouvre X01End avec une carte
+  // sans replay et les buckets 60+/100+/140+/180 retombent à 0.
+  try {
+    const firstNonEmptyArray = (...arrs: any[]) => arrs.find((a) => Array.isArray(a) && a.length > 0) || [];
+    const visits = firstNonEmptyArray(
+      out.visitHistory,
+      out.visitsHistory,
+      out.__legStats?.visits,
+      out.summary?.visitHistory,
+      out.summary?.visitsHistory,
+      out.summary?.__legStats?.visits,
+      out.payload?.visitHistory,
+      out.payload?.visitsHistory,
+      out.payload?.__legStats?.visits,
+      out.payload?.summary?.visitHistory,
+      out.payload?.summary?.visitsHistory,
+      out.payload?.summary?.__legStats?.visits
+    );
+    if (visits.length) {
+      out.visitHistory = visits;
+      out.visitsHistory = visits;
+      out.__legStats = { ...(out.__legStats || {}), visits };
+      out.summary = {
+        ...(out.summary || {}),
+        visitHistory: visits,
+        visitsHistory: visits,
+        __legStats: { ...((out.summary || {}).__legStats || {}), visits },
+      };
+    }
+  } catch {}
+
   delete out.payload;
   delete out.payloadCompressed;
   return out;
