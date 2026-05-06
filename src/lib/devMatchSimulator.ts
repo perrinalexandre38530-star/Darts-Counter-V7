@@ -718,6 +718,52 @@ function makeGenericDartsMode(game: SimGame, index: number, now: number): SavedM
       visits: Array.from({ length: rounds }, (_, r) => ({ round: r + 1, score: n(index + i * 100 + r, 0, 90), valid: r % 5 !== 0 })),
     };
   });
+
+  perPlayer.forEach((p: any, i: number) => {
+    const seed = index + i * 1000;
+    if (game === "battle_royale") {
+      p.eliminations = p.kills = n(seed + 11, 1, 6);
+      p.livesLeft = p.id === rec.winnerId ? n(seed + 12, 1, 3) : 0;
+      p.damageTaken = p.lostLives = Math.max(0, 5 - Number(p.livesLeft || 0));
+      p.bestAction = Math.max(p.eliminations, p.bestVisit || 0);
+    } else if (game === "warfare") {
+      p.kills = n(seed + 13, 2, 9);
+      p.friendlyKills = p.friendlyFire = n(seed + 14, 0, 3);
+      p.objectives = n(seed + 15, 0, 4);
+      p.bestAction = p.kills;
+    } else if (game === "five_lives") {
+      p.startLives = 5;
+      p.livesLeft = p.id === rec.winnerId ? n(seed + 16, 1, 5) : 0;
+      p.lostLives = 5 - Number(p.livesLeft || 0);
+      p.saves = n(seed + 17, 0, 4);
+      p.bestAction = Number(p.livesLeft || 0);
+    } else if (game === "scram") {
+      p.attackerPoints = n(seed + 18, 90, 420);
+      p.blockedTargets = p.closed = p.closedNumbers = n(seed + 19, 2, 7);
+      p.totalMarks = p.marksTotal = n(seed + 20, 14, 46);
+      p.points = p.score = p.attackerPoints;
+      p.bestAction = p.blockedTargets;
+    } else if (game === "capital") {
+      p.startCapital = 100;
+      p.finalCapital = p.capital = n(seed + 21, 40, 320);
+      p.bonus = n(seed + 22, 0, 80);
+      p.penalties = n(seed + 23, 0, 4);
+      p.points = p.score = p.finalCapital;
+      p.bestAction = p.bonus;
+    } else if (game === "batard") {
+      p.success = p.successes = p.validHits = n(seed + 24, 7, 24);
+      p.penalties = p.fails = n(seed + 25, 0, 8);
+      p.series = n(seed + 26, 1, 5);
+      p.bestAction = p.success;
+    } else if (game === "territories") {
+      p.captures = p.territories = p.owned = n(seed + 27, 2, 10);
+      p.steals = p.stolen = n(seed + 28, 0, 5);
+      p.lost = n(seed + 29, 0, 4);
+      p.capturedTerritories = Array.from({ length: p.captures }, (_: any, c: number) => `T${i + 1}_${c + 1}`);
+      p.bestAction = p.captures;
+    }
+  });
+
   const winner = perPlayer.find((p: any) => p.id === rec.winnerId) || perPlayer[0];
   const rankings = perPlayer.slice().sort((a: any, b: any) => (a.id === winner.id ? -1 : b.id === winner.id ? 1 : b.points - a.points)).map((p: any, rank) => ({ id: p.id, playerId: p.id, name: p.name, rank: rank + 1, score: p.points, points: p.points, win: rank === 0 }));
 

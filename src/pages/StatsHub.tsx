@@ -6843,7 +6843,7 @@ return (
               </div>
             )}
 
-{["battle_royale", "warfare", "five_lives", "scram", "capital"].includes(String(currentMode)) && (
+{["battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
@@ -6858,6 +6858,8 @@ return (
                       five_lives: ["five_lives", "five lives", "5 vies", "cinq vies"],
                       scram: ["scram"],
                       capital: ["capital"],
+                      batard: ["batard", "bâtard", "bastard"],
+                      territories: ["territories", "territoires", "territory", "territ"],
                     };
                     const pid = String(selectedPlayer.id);
                     const modeAliases = aliases[String(currentMode)] || [String(currentMode)];
@@ -6882,11 +6884,15 @@ return (
                     const sum = (key: string) => playerRows.reduce((a: number, x: any) => a + (Number(x.pl?.[key] ?? 0) || 0), 0);
                     const darts = sum("dartsThrown") || sum("darts") || sum("totalThrows");
                     const points = sum("points") || sum("score") || sum("totalScore");
-                    const bestVisit = playerRows.reduce((a: number, x: any) => Math.max(a, Number(x.pl?.bestVisit ?? x.pl?.validHits ?? x.pl?.captures ?? x.pl?.kills ?? 0) || 0), 0);
-                    const validHits = sum("validHits") || sum("hitsTotal");
-                    const fails = sum("fails") || sum("misses");
-                    const captures = sum("captures");
-                    const kills = sum("kills");
+                    const bestVisit = playerRows.reduce((a: number, x: any) => Math.max(a, Number(x.pl?.bestVisit ?? x.pl?.bestAction ?? x.pl?.validHits ?? x.pl?.captures ?? x.pl?.kills ?? 0) || 0), 0);
+                    const validHits = sum("validHits") || sum("hitsTotal") || sum("success") || sum("successes");
+                    const fails = sum("fails") || sum("misses") || sum("penalties");
+                    const captures = sum("captures") || sum("territories") || sum("owned");
+                    const steals = sum("steals") || sum("stolen");
+                    const kills = sum("kills") || sum("eliminations");
+                    const friendlyKills = sum("friendlyKills") || sum("friendlyFire") || sum("teamKills");
+                    const livesLeft = sum("livesLeft") || sum("remainingLives") || sum("lives");
+                    const lostLives = sum("lostLives") || sum("damageTaken") || sum("deaths");
                     const advances = sum("advances");
                     const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
                     const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
@@ -6901,7 +6907,10 @@ return (
                           <div style={statBox}><div style={label}>Best visit / action</div><div style={value}>{bestVisit || "—"}</div></div>
                           <div style={statBox}><div style={label}>Hits valides</div><div style={value}>{validHits}</div></div>
                           <div style={statBox}><div style={label}>Fails / Miss</div><div style={value}>{fails}</div></div>
-                          <div style={statBox}><div style={label}>Progression</div><div style={value}>{advances || captures || kills || "—"}</div><div style={{ opacity: .75, fontSize: 11 }}>captures/kills/avancées selon le mode</div></div>
+                          <div style={statBox}><div style={label}>Progression</div><div style={value}>{advances || captures || kills || validHits || "—"}</div><div style={{ opacity: .75, fontSize: 11 }}>captures/kills/avancées selon le mode</div></div>
+                          <div style={statBox}><div style={label}>Captures / Steals</div><div style={value}>{captures || steals ? `${captures} / ${steals}` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Kills / FF</div><div style={value}>{kills || friendlyKills ? `${kills} / ${friendlyKills}` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Vies / vies perdues</div><div style={value}>{livesLeft || lostLives ? `${livesLeft} / ${lostLives}` : "—"}</div></div>
                         </div>
                         <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
                           Base commune créée pour ce mode. Les vraies pages détaillées pourront ensuite reprendre ces mêmes champs : players, summary, stats et payload.

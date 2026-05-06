@@ -422,15 +422,31 @@ function sumNumbers(value: any): number {
 }
 
 function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undefined, idx: StatsIndex): void {
-  const players = payload?.players || payload?.state?.players || payload?.summary?.players || payload?.stats?.players || [];
+  const pools = [
+    payload?.stats?.players,
+    payload?.summary?.perPlayer,
+    payload?.summary?.players,
+    payload?.players,
+    payload?.state?.players,
+  ];
+  const byId = new Map<string, any>();
+  for (const pool of pools) {
+    if (!Array.isArray(pool)) continue;
+    for (const row of pool) {
+      const pid = String(row?.id || row?.playerId || row?.profileId || row?.uid || "");
+      if (!pid) continue;
+      byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid });
+    }
+  }
+
   const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
-  for (const pl of Array.isArray(players) ? players : []) {
+  for (const pl of byId.values()) {
     const pid = String(pl?.id || pl?.playerId || pl?.profileId || pl?.uid || "");
     if (!pid) continue;
-    const points = Number(pl?.points ?? pl?.score ?? pl?.totalScore ?? 0) || 0;
+    const points = Number(pl?.points ?? pl?.score ?? pl?.totalScore ?? pl?.capital ?? pl?.finalCapital ?? 0) || 0;
     const dartsThrown = Number(pl?.dartsThrown ?? pl?.darts ?? pl?.totalThrows ?? 0) || 0;
-    const bestVisit = Number(pl?.bestVisit ?? pl?.bestRound ?? pl?.validHits ?? pl?.captures ?? pl?.kills ?? points ?? 0) || 0;
-    const isWinner = winnerId && String(winnerId) === pid;
+    const bestVisit = Number(pl?.bestVisit ?? pl?.bestRound ?? pl?.bestAction ?? pl?.validHits ?? pl?.captures ?? pl?.kills ?? points ?? 0) || 0;
+    const isWinner = !!winnerId && String(winnerId) === pid;
     bumpPlayer(idx, pid, {
       name: pl?.name || pl?.displayName,
       matches: 1,
@@ -440,19 +456,31 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
       pointsScored: points,
       bestVisit,
       bestCheckout: Number(pl?.bestCheckout ?? 0) || 0,
-      buckets: makeVisitBuckets(bestVisit),
+      buckets: makeVisitBuckets(bestVisit || points),
     }, ts);
 
-    const cur: any = (idx.byPlayer[pid] as any)[mode] || { points: 0, darts: 0, wins: 0, captures: 0, kills: 0, fails: 0, validHits: 0, rounds: 0, advances: 0 };
+    const cur: any = (idx.byPlayer[pid] as any)[mode] || {
+      points: 0, darts: 0, wins: 0, captures: 0, steals: 0, kills: 0, friendlyKills: 0,
+      fails: 0, validHits: 0, rounds: 0, advances: 0, livesLeft: 0, lostLives: 0,
+      marks: 0, closed: 0, penalties: 0, success: 0,
+    };
     cur.points += points;
     cur.darts += dartsThrown;
     cur.wins += isWinner ? 1 : 0;
-    cur.captures += Number(pl?.captures ?? pl?.captured ?? 0) || 0;
-    cur.kills += Number(pl?.kills ?? 0) || 0;
-    cur.fails += Number(pl?.fails ?? pl?.misses ?? 0) || 0;
-    cur.validHits += Number(pl?.validHits ?? pl?.hitsTotal ?? 0) || 0;
+    cur.captures += Number(pl?.captures ?? pl?.captured ?? pl?.territories ?? pl?.owned ?? 0) || 0;
+    cur.steals += Number(pl?.steals ?? pl?.stolen ?? 0) || 0;
+    cur.kills += Number(pl?.kills ?? pl?.eliminations ?? 0) || 0;
+    cur.friendlyKills += Number(pl?.friendlyKills ?? pl?.friendlyFire ?? pl?.teamKills ?? 0) || 0;
+    cur.fails += Number(pl?.fails ?? pl?.misses ?? pl?.penalties ?? 0) || 0;
+    cur.validHits += Number(pl?.validHits ?? pl?.hitsTotal ?? pl?.success ?? pl?.successes ?? 0) || 0;
     cur.rounds += Number(pl?.rounds ?? payload?.summary?.rounds ?? 0) || 0;
     cur.advances += Number(pl?.advances ?? 0) || 0;
+    cur.livesLeft += Number(pl?.livesLeft ?? pl?.remainingLives ?? pl?.lives ?? 0) || 0;
+    cur.lostLives += Number(pl?.lostLives ?? pl?.damageTaken ?? pl?.deaths ?? 0) || 0;
+    cur.marks += Number(pl?.totalMarks ?? pl?.marksTotal ?? 0) || sumNumbers(pl?.marks);
+    cur.closed += Number(pl?.closed ?? pl?.closes ?? pl?.closedNumbers ?? 0) || 0;
+    cur.penalties += Number(pl?.penalties ?? 0) || 0;
+    cur.success += Number(pl?.success ?? pl?.successes ?? pl?.validHits ?? 0) || 0;
     (idx.byPlayer[pid] as any)[mode] = cur;
   }
 }
@@ -703,29 +731,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
     }
   },
 
-  territories: ({ payload, ts, idx }) => {
-    const data = payload || {};
-    const sum = (arr: any[]) =>
-      Array.isArray(arr) ? arr.reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0;
-
-    const players = payload?.players || payload?.state?.players || payload?.summary?.players || [];
-
-    for (const pl of Array.isArray(players) ? players : []) {
-      const pid = String(pl?.id || pl?.playerId || pl?.profileId || "");
-      if (!pid) continue;
-
-      bumpPlayer(idx, pid, { name: pl?.name, matches: 1 }, ts);
-
-      const cur: any = (idx.byPlayer[pid] as any).territories || { captured: 0, darts: 0, steals: 0, lost: 0, points: 0, wins: 0 };
-      cur.captured += sum(data?.captured ?? pl?.captured ?? pl?.captures ?? pl?.capturedTerritories);
-      cur.darts += sum(data?.darts ?? pl?.darts ?? pl?.dartsThrown);
-      cur.steals += sum(data?.steals ?? pl?.steals);
-      cur.lost += sum(data?.lost ?? pl?.lost);
-      cur.points += Number(pl?.points ?? pl?.score ?? 0) || 0;
-      cur.wins += payload?.winnerId && String(payload.winnerId) === pid ? 1 : 0;
-      (idx.byPlayer[pid] as any).territories = cur;
-    }
-  },
+  territories: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
 
   battle_royale: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
   warfare: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
