@@ -8,23 +8,26 @@ type Props = {
   secondaryLabel?: string;
 };
 
-function chip(label: string, emphasis = false): React.CSSProperties {
+function chip(label: string, tone: "strong" | "soft" = "soft"): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     minHeight: 28,
-    padding: emphasis ? "7px 12px" : "6px 10px",
+    padding: "0 11px",
     borderRadius: 999,
-    border: emphasis ? "1px solid rgba(255,255,255,0.16)" : "1px solid rgba(255,255,255,0.10)",
-    background: emphasis ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)",
-    color: emphasis ? "#fff" : "rgba(255,255,255,0.84)",
+    border: tone === "strong" ? "1px solid rgba(255,210,74,0.28)" : "1px solid rgba(255,255,255,0.08)",
+    background:
+      tone === "strong"
+        ? "linear-gradient(180deg, rgba(255,210,74,0.18), rgba(255,210,74,0.06))"
+        : "rgba(255,255,255,0.04)",
+    color: tone === "strong" ? "#fff2a8" : "rgba(255,255,255,0.86)",
     fontSize: 11,
     fontWeight: 1000,
     letterSpacing: 0.45,
-    whiteSpace: "nowrap",
-    lineHeight: 1,
     textTransform: "uppercase",
+    whiteSpace: "nowrap",
+    boxShadow: tone === "strong" ? "0 0 14px rgba(255,210,74,0.12)" : "none",
   };
 }
 
@@ -34,32 +37,31 @@ export default function BabyFootLiveHeader({ phaseLabel, modeLabel, clockLabel, 
       style={{
         borderRadius: 18,
         padding: 12,
-        border: "1px solid rgba(255,255,255,0.10)",
+        border: "1px solid rgba(255,210,74,0.12)",
         background:
-          "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))",
-        boxShadow: "0 14px 26px rgba(0,0,0,0.30)",
+          "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))",
+        boxShadow: "0 14px 28px rgba(0,0,0,0.30)",
       }}
     >
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-          <span style={chip(phaseLabel, true)}>{phaseLabel}</span>
+          <span style={chip(phaseLabel, "strong")}>{phaseLabel}</span>
           <span style={chip(modeLabel)}>{modeLabel}</span>
           {secondaryLabel ? <span style={chip(secondaryLabel)}>{secondaryLabel}</span> : null}
         </div>
 
         <div
           style={{
-            minWidth: 82,
-            borderRadius: 14,
+            minWidth: 76,
+            borderRadius: 13,
             padding: "7px 10px",
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.22)",
-            textAlign: "right",
-            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(0,0,0,0.28)",
+            textAlign: "center",
           }}
         >
           <div style={{ fontSize: 9, fontWeight: 1000, letterSpacing: 0.9, opacity: 0.6, textTransform: "uppercase" }}>Chrono</div>
-          <div style={{ marginTop: 2, fontSize: 19, fontWeight: 1100, lineHeight: 1 }}>{clockLabel}</div>
+          <div style={{ marginTop: 2, fontSize: 22, fontWeight: 1100, lineHeight: 1, color: "#fff2a8" }}>{clockLabel}</div>
         </div>
       </div>
 
@@ -67,13 +69,12 @@ export default function BabyFootLiveHeader({ phaseLabel, modeLabel, clockLabel, 
         style={{
           marginTop: 10,
           borderRadius: 12,
-          padding: "8px 10px",
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "rgba(0,0,0,0.16)",
+          padding: "9px 11px",
+          border: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(0,0,0,0.22)",
           fontSize: 12,
-          fontWeight: 950,
-          lineHeight: 1.15,
-          opacity: 0.92,
+          fontWeight: 1000,
+          color: "rgba(255,255,255,0.92)",
         }}
       >
         {targetLabel}

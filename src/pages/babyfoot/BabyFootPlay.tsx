@@ -484,7 +484,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         right={<InfoDot title="Baby-Foot" content={infoBody} glow={(theme?.colors?.primary ?? "#9dff57") + "88"} />}
       />
 
-      <div style={{ padding: 10, paddingBottom: 96, overflowX: "hidden" }}>
+      <div style={{ padding: 10, paddingBottom: 24, overflowX: "hidden" }}>
         <div style={{ width: "100%", maxWidth: 420, margin: "0 auto", display: "grid", gap: 12 }}>
           <BabyFootLiveHeader phaseLabel={phaseLabel} modeLabel={state.mode} clockLabel={clockLabel} targetLabel={targetLabel} secondaryLabel={secondaryLabel} />
 
@@ -493,7 +493,6 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           ) : null}
 
           <BabyFootDuelScoreCard
-            theme={theme}
             teamAName={state.teamA}
             teamBName={state.teamB}
             teamALogoDataUrl={state.teamALogoDataUrl}
@@ -507,26 +506,43 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             target={state.target}
             handicapA={state.handicapA}
             handicapB={state.handicapB}
+            onAddGoalA={() => addForTeam("A")}
+            onAddGoalB={() => addForTeam("B")}
+            goalsDisabled={state.finished || state.phase === "penalties"}
           />
 
           <div
             style={{
-              borderRadius: 16,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
-              boxShadow: "0 14px 26px rgba(0,0,0,0.28)",
+              borderRadius: 18,
+              padding: 12,
+              border: "1px solid rgba(255,210,74,0.10)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
+              boxShadow: "0 14px 28px rgba(0,0,0,0.30)",
             }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-              <SegButton label={`+ But ${state.teamA}`} onClick={() => addForTeam("A")} accent="green" disabled={state.finished || state.phase === "penalties"} />
-              <SegButton label={`+ But ${state.teamB}`} onClick={() => addForTeam("B")} accent="pink" disabled={state.finished || state.phase === "penalties"} />
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "rgba(255,255,255,0.62)", textTransform: "uppercase" }}>Composition</div>
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.18)", padding: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#9dff57", textTransform: "uppercase" }}>Équipe A</div>
+                <div style={{ marginTop: 4, fontSize: 15, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.teamA}</div>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {teamAIds.map((id) => {
+                    const profile = getProfile(id);
+                    return <ProfileAvatar key={id} profile={profile || { id, name: id }} size={36} />;
+                  })}
+                </div>
+              </div>
+              <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.18)", padding: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#ff82b8", textTransform: "uppercase" }}>Équipe B</div>
+                <div style={{ marginTop: 4, fontSize: 15, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.teamB}</div>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {teamBIds.map((id) => {
+                    const profile = getProfile(id);
+                    return <ProfileAvatar key={id} profile={profile || { id, name: id }} size={36} />;
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <TeamGoalStrip name={state.teamA} team="A" playerIds={teamAIds} getProfile={getProfile} onAddGoal={() => addForTeam("A")} disabled={state.finished || state.phase === "penalties"} accent="green" />
-            <TeamGoalStrip name={state.teamB} team="B" playerIds={teamBIds} getProfile={getProfile} onAddGoal={() => addForTeam("B")} disabled={state.finished || state.phase === "penalties"} accent="pink" />
           </div>
 
           <BabyFootLiveStatsCard
@@ -554,19 +570,19 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             style={{
               borderRadius: 18,
               padding: 12,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
-              boxShadow: "0 14px 26px rgba(0,0,0,0.28)",
+              border: "1px solid rgba(255,210,74,0.10)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
+              boxShadow: "0 14px 28px rgba(0,0,0,0.30)",
             }}
           >
-            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.66, textTransform: "uppercase" }}>Actions</div>
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "rgba(255,255,255,0.62)", textTransform: "uppercase" }}>Actions</div>
             <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
               <ActionButton label="Annuler" onClick={() => setState(undoGoal())} disabled={!canUndo} />
+              <ActionButton label="Fin du match" onClick={() => setState(finishByTime())} disabled={state.finished} />
               <ActionButton label="Nouvelle partie" onClick={() => setState(startMatch())} emphasized />
               <ActionButton label="Stats" onClick={() => go("babyfoot_stats_center")} />
-              <ActionButton label="Config" onClick={() => go("babyfoot_config")} />
               <div style={{ gridColumn: "1 / -1" }}>
-                <ActionButton label="Fin du match" onClick={() => setState(finishByTime())} disabled={state.finished} />
+                <ActionButton label="Configuration" onClick={() => go("babyfoot_config")} />
               </div>
             </div>
           </div>
