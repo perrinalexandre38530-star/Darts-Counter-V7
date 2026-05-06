@@ -9,7 +9,7 @@ type Props = {
   onPenaltyShot: (team: BabyFootTeamId, scored: boolean) => void;
 };
 
-function chip(label: string): React.CSSProperties {
+function chip(): React.CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -41,7 +41,7 @@ function action(glow: string): React.CSSProperties {
 
 export default function BabyFootPhasePanel({ state, liveContext, onPenaltyShot }: Props) {
   const isPenalties = state.phase === "penalties";
-  const statusLabel = state.finished ? "Terminé" : isPenalties ? "Penalties" : state.phase === "overtime" ? "Overtime" : "Live";
+  const statusLabel = state.finished ? "Terminé" : isPenalties ? "Live" : state.phase === "overtime" ? "Overtime" : "Live";
 
   return (
     <div
@@ -66,8 +66,8 @@ export default function BabyFootPhasePanel({ state, liveContext, onPenaltyShot }
             minHeight: 36,
             padding: "0 14px",
             borderRadius: 999,
-            border: "1px solid rgba(180,255,57,0.20)",
-            background: "rgba(180,255,57,0.08)",
+            border: "1px solid rgba(199,255,38,0.20)",
+            background: "rgba(199,255,38,0.08)",
             color: "#eaff84",
             fontSize: 13,
             fontWeight: 1100,
@@ -79,8 +79,8 @@ export default function BabyFootPhasePanel({ state, liveContext, onPenaltyShot }
       </div>
 
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {liveContext.slice(0, 4).map((entry, index) => (
-          <span key={`${entry}-${index}`} style={chip(entry)}>{entry}</span>
+        {liveContext.slice(0, 3).map((entry, index) => (
+          <span key={`${entry}-${index}`} style={chip()}>{entry}</span>
         ))}
       </div>
 
@@ -91,8 +91,8 @@ export default function BabyFootPhasePanel({ state, liveContext, onPenaltyShot }
             <BabyFootPenaltyBar label={state.teamB} shots={state.penalties?.shotsB ?? 0} goals={state.penalties?.goalsB ?? 0} />
           </div>
           <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <button type="button" onClick={() => onPenaltyShot("A", true)} style={action("rgba(180,255,57,0.9)")}>{state.teamA} ✓</button>
-            <button type="button" onClick={() => onPenaltyShot("B", true)} style={action("rgba(255,95,177,0.9)")}>{state.teamB} ✓</button>
+            <button type="button" onClick={() => onPenaltyShot("A", true)} style={action("rgba(199,255,38,0.9)")}>{state.teamA} ✓</button>
+            <button type="button" onClick={() => onPenaltyShot("B", true)} style={action("rgba(255,89,176,0.9)")}>{state.teamB} ✓</button>
             <button type="button" onClick={() => onPenaltyShot("A", false)} style={action("rgba(255,255,255,0.34)")}>{state.teamA} ✕</button>
             <button type="button" onClick={() => onPenaltyShot("B", false)} style={action("rgba(255,255,255,0.34)")}>{state.teamB} ✕</button>
           </div>

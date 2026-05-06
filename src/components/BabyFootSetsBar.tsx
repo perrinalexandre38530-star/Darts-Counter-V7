@@ -16,7 +16,7 @@ function dot(active: boolean, accent: string): React.CSSProperties {
     borderRadius: 999,
     border: `1px solid ${active ? accent : "rgba(255,255,255,0.16)"}`,
     background: active ? accent : "transparent",
-    boxShadow: active ? `0 0 12px ${accent}66` : "none",
+    boxShadow: active ? `0 0 10px ${accent}55` : "none",
   };
 }
 
@@ -25,8 +25,8 @@ export default function BabyFootSetsBar({
   setsB,
   bestOf,
   currentSet = 1,
-  teamAName = "Équipe A",
-  teamBName = "Équipe B",
+  teamAName = "Joueur A",
+  teamBName = "Joueur B",
 }: Props) {
   const left = Math.max(0, Number(setsA) || 0);
   const right = Math.max(0, Number(setsB) || 0);
@@ -37,11 +37,10 @@ export default function BabyFootSetsBar({
   return (
     <div
       style={{
-        borderRadius: 22,
+        borderRadius: 24,
         padding: 16,
         border: "1px solid rgba(120,150,255,0.14)",
-        background:
-          "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
+        background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
       }}
     >
@@ -54,80 +53,33 @@ export default function BabyFootSetsBar({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div
-            title={teamAName}
-            style={{
-              fontSize: 18,
-              fontWeight: 1100,
-              color: "#b4ff39",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div title={teamAName} style={{ fontSize: 18, fontWeight: 1100, color: "#c7ff26", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {teamAName}
           </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <div style={{ marginTop: 10, display: "flex", gap: 12 }}>
             {Array.from({ length: winTarget }).map((_, index) => (
-              <div key={`left-${index}`} style={dot(index < left, "#b4ff39")} />
+              <div key={`left-${index}`} style={dot(index < left, "#c7ff26")} />
             ))}
           </div>
         </div>
 
-        <div style={{ minWidth: 120, textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 15,
-              fontWeight: 1000,
-              letterSpacing: 1.2,
-              color: "rgba(255,255,255,0.82)",
-              textTransform: "uppercase",
-            }}
-          >
-            Sets
+        <div style={{ minWidth: 108, textAlign: "center" }}>
+          <div style={{ fontSize: 15, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.82)", textTransform: "uppercase" }}>Sets</div>
+          <div style={{ marginTop: 6, fontSize: 34, lineHeight: 1, fontWeight: 1100, color: "#fff" }}>
+            <span style={{ color: "#c7ff26" }}>{left}</span>
+            <span style={{ padding: "0 8px", opacity: 0.84, color: "#fff" }}>–</span>
+            <span style={{ color: "#ff59b0" }}>{right}</span>
           </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 38,
-              lineHeight: 1,
-              fontWeight: 1100,
-              color: "#fff",
-            }}
-          >
-            <span style={{ color: "#b4ff39" }}>{left}</span>
-            <span style={{ padding: "0 10px", opacity: 0.82, color: "#fff" }}>–</span>
-            <span style={{ color: "#ff5fb1" }}>{right}</span>
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 15,
-              fontWeight: 1000,
-              color: "rgba(255,255,255,0.72)",
-            }}
-          >
-            BO{bo} • set {setNo}/{bo}
-          </div>
+          <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000, color: "rgba(255,255,255,0.74)" }}>BO{bo} • set {setNo}/{bo}</div>
         </div>
 
         <div style={{ minWidth: 0, textAlign: "right" }}>
-          <div
-            title={teamBName}
-            style={{
-              fontSize: 18,
-              fontWeight: 1100,
-              color: "#ff5fb1",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
+          <div title={teamBName} style={{ fontSize: 18, fontWeight: 1100, color: "#ff59b0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {teamBName}
           </div>
-          <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <div style={{ marginTop: 10, display: "flex", gap: 12, justifyContent: "flex-end" }}>
             {Array.from({ length: winTarget }).map((_, index) => (
-              <div key={`right-${index}`} style={dot(index < right, "#ff5fb1")} />
+              <div key={`right-${index}`} style={dot(index < right, "#ff59b0")} />
             ))}
           </div>
         </div>

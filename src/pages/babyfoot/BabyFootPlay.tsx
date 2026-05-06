@@ -75,6 +75,12 @@ type FinishLikeEvent = Extract<BabyFootEvent, { t: "finish" }>;
 
 type ReconstructedScore = { scoreA: number; scoreB: number };
 
+type ScoreVisual = {
+  name: string;
+  imageSrc?: string | null;
+  roleLabel: string;
+};
+
 function tourResultKey(tournamentId: unknown, matchId: unknown) {
   return `bf_tour_result_${String(tournamentId || "")}_${String(matchId || "")}`;
 }
@@ -165,9 +171,9 @@ function shellCard(): React.CSSProperties {
 function actionStyle(tone: "neutral" | "danger" | "primary", disabled = false): React.CSSProperties {
   const bg =
     tone === "primary"
-      ? "linear-gradient(180deg, rgba(180,255,57,0.24), rgba(180,255,57,0.10))"
+      ? "linear-gradient(180deg, rgba(199,255,38,0.24), rgba(199,255,38,0.10))"
       : tone === "danger"
-      ? "linear-gradient(180deg, rgba(255,95,177,0.14), rgba(255,95,177,0.06))"
+      ? "linear-gradient(180deg, rgba(255,89,176,0.16), rgba(255,89,176,0.06))"
       : "rgba(255,255,255,0.04)";
 
   return {
@@ -182,6 +188,71 @@ function actionStyle(tone: "neutral" | "danger" | "primary", disabled = false): 
     letterSpacing: 0.2,
     cursor: disabled ? "default" : "pointer",
   };
+}
+
+function normalizeSrc(v: unknown): string | null {
+  if (!v) return null;
+  if (typeof v === "string") return v.trim() || null;
+  if (typeof v === "object" && v && typeof (v as any).default === "string") {
+    return ((v as any).default as string).trim() || null;
+  }
+  return null;
+}
+
+function profileImage(profile: ProfileLike): string | null {
+  if (!profile) return null;
+  return normalizeSrc(profile.avatarDataUrl) || normalizeSrc(profile.avatarUrl) || null;
+}
+
+function MiniCompositionCard({
+  label,
+  name,
+  imageSrc,
+  accent,
+}: {
+  label: string;
+  name: string;
+  imageSrc?: string | null;
+  accent: string;
+}) {
+  return (
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        style={{
+          width: 54,
+          height: 54,
+          borderRadius: 999,
+          padding: 2,
+          flex: "0 0 auto",
+          background: `linear-gradient(180deg, ${accent}bb, ${accent}22)`,
+          boxShadow: `0 0 16px ${accent}28`,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: 999,
+            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(0,0,0,0.30)",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          {imageSrc ? (
+            <img src={imageSrc} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ fontSize: 22, fontWeight: 1100 }}>{name.trim().slice(0, 1).toUpperCase() || "?"}</span>
+          )}
+        </div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 0.85, textTransform: "uppercase", color: accent }}>{label}</div>
+        <div title={name} style={{ marginTop: 2, fontSize: 16, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+      </div>
+    </div>
+  );
 }
 
 function TeamCompositionColumn({
@@ -292,7 +363,6 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   }, [teamAIds.join("|"), teamBIds.join("|")]);
 
   const durationMs = computeDurationMs(state);
-
   const regularStart = state.startedAt ?? state.createdAt;
   const regularLimitMs = state.matchDurationSec ? state.matchDurationSec * 1000 : null;
   const regularElapsed = Math.max(0, now - regularStart);
@@ -349,11 +419,11 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     }
   })();
 
-  const phaseLabel = state.finished ? "FIN" : state.phase === "penalties" ? "PENALTIES" : state.phase === "overtime" ? "OVERTIME" : "MATCH";
+  const phaseLabel = state.finished ? "MATCH" : state.phase === "penalties" ? "PENALTIES" : state.phase === "overtime" ? "OVERTIME" : "MATCH";
   const clockLabel = state.finished
     ? fmt(durationMs)
     : state.phase === "overtime"
-    ? `OT ${fmt(otRemain ?? 0)}`
+    ? fmt(otRemain ?? 0)
     : regularLimitMs != null
     ? fmt(regularRemain ?? 0)
     : fmt(regularElapsed);
@@ -363,8 +433,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const liveContext = [
     `Leader ${leaderLabel}`,
     regularLimitMs != null ? `Chrono ${fmt(regularLimitMs)}` : "Sans chrono fixe",
-    state.phase === "overtime" ? `OT ${fmt(otLimitMs ?? 0)}` : `Mode ${state.mode}`,
-    state.goldenGoal && state.phase === "play" ? "Golden goal" : null,
+    `Mode ${state.mode}`,
   ].filter((entry): entry is string => Boolean(entry));
 
   const infoBody =
@@ -477,10 +546,22 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     setState(addGoal(team, scorerId));
   };
 
-  const scoreLine = state.setsEnabled
-    ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}`
-    : `${displayedScore.scoreA}–${displayedScore.scoreB}`;
-  const winnerLabel = state.winner === "A" ? state.teamA : state.winner === "B" ? state.teamB : "Match nul";
+  const teamAProfile = teamAIds[0] ? getProfile(teamAIds[0]) : null;
+  const teamBProfile = teamBIds[0] ? getProfile(teamBIds[0]) : null;
+  const isOneVsOne = state.mode === "1v1" && teamAIds.length <= 1 && teamBIds.length <= 1;
+
+  const visualA: ScoreVisual = {
+    name: isOneVsOne ? teamAProfile?.name || state.teamA : state.teamA,
+    imageSrc: isOneVsOne ? profileImage(teamAProfile) : normalizeSrc(state.teamALogoDataUrl) || profileImage(teamAProfile),
+    roleLabel: isOneVsOne ? "Joueur A" : "Équipe A",
+  };
+  const visualB: ScoreVisual = {
+    name: isOneVsOne ? teamBProfile?.name || state.teamB : state.teamB,
+    imageSrc: isOneVsOne ? profileImage(teamBProfile) : normalizeSrc(state.teamBLogoDataUrl) || profileImage(teamBProfile),
+    roleLabel: isOneVsOne ? "Joueur B" : "Équipe B",
+  };
+
+  const winnerLabel = state.winner === "A" ? visualA.name : state.winner === "B" ? visualB.name : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
 
   return (
@@ -509,16 +590,14 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
               setsB={state.setsB || 0}
               bestOf={state.setsBestOf || 3}
               currentSet={state.setIndex || 1}
-              teamAName={state.teamA}
-              teamBName={state.teamB}
+              teamAName={visualA.name}
+              teamBName={visualB.name}
             />
           ) : null}
 
           <BabyFootDuelScoreCard
-            teamAName={state.teamA}
-            teamBName={state.teamB}
-            teamALogoDataUrl={state.teamALogoDataUrl}
-            teamBLogoDataUrl={state.teamBLogoDataUrl}
+            visualA={visualA}
+            visualB={visualB}
             scoreA={displayedScore.scoreA}
             scoreB={displayedScore.scoreB}
             setsEnabled={state.setsEnabled}
@@ -537,38 +616,39 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>
               Composition
             </div>
-            <div
-              style={{
-                marginTop: 12,
-                display: "grid",
-                gridTemplateColumns: "1fr 1px 1fr",
-                gap: 14,
-                alignItems: "stretch",
-              }}
-            >
-              <TeamCompositionColumn
-                title="Équipe A"
-                accent="#b4ff39"
-                teamName={state.teamA}
-                teamLogo={state.teamALogoDataUrl}
-                playerIds={teamAIds}
-                getProfile={getProfile}
-              />
-              <div style={{ width: 1, background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
-              <TeamCompositionColumn
-                title="Équipe B"
-                accent="#ff5fb1"
-                teamName={state.teamB}
-                teamLogo={state.teamBLogoDataUrl}
-                playerIds={teamBIds}
-                getProfile={getProfile}
-              />
-            </div>
+
+            {isOneVsOne ? (
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 14, alignItems: "center" }}>
+                <MiniCompositionCard label="Joueur A" name={visualA.name} imageSrc={visualA.imageSrc} accent="#c7ff26" />
+                <div style={{ width: 1, alignSelf: "stretch", background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
+                <MiniCompositionCard label="Joueur B" name={visualB.name} imageSrc={visualB.imageSrc} accent="#ff59b0" />
+              </div>
+            ) : (
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 14, alignItems: "stretch" }}>
+                <TeamCompositionColumn
+                  title="Équipe A"
+                  accent="#c7ff26"
+                  teamName={state.teamA}
+                  teamLogo={normalizeSrc(state.teamALogoDataUrl)}
+                  playerIds={teamAIds}
+                  getProfile={getProfile}
+                />
+                <div style={{ width: 1, background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
+                <TeamCompositionColumn
+                  title="Équipe B"
+                  accent="#ff59b0"
+                  teamName={state.teamB}
+                  teamLogo={normalizeSrc(state.teamBLogoDataUrl)}
+                  playerIds={teamBIds}
+                  getProfile={getProfile}
+                />
+              </div>
+            )}
           </div>
 
           <BabyFootLiveStatsCard
-            teamAName={state.teamA}
-            teamBName={state.teamB}
+            teamAName={visualA.name}
+            teamBName={visualB.name}
             goalsA={goalCountA}
             goalsB={goalCountB}
             totalGoals={totalGoals}
@@ -619,103 +699,75 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         </div>
       </div>
 
-      <BabyFootEndGameSummary
-        open={state.finished}
-        theme={theme}
-        winnerLabel={winnerLabel}
-        scoreLine={scoreLine}
-        detailsLine={detailsLine}
-        onReplay={() => setState(startMatch())}
-        onStats={() => go("babyfoot_stats_center")}
-        onGames={() => go("babyfoot_menu")}
-      />
-
       {pickTeam ? (
-        <Modal title={pickTeam === "A" ? `Buteur — ${state.teamA}` : `Buteur — ${state.teamB}`} onClose={() => setPickTeam(null)}>
-          <div style={{ display: "grid", gap: 10 }}>
-            {(pickTeam === "A" ? teamAIds : teamBIds).map((playerId) => {
-              const profile = getProfile(playerId);
-              const label = profile?.name || playerId;
-              return (
-                <button
-                  key={playerId}
-                  type="button"
-                  onClick={() => {
-                    setState(addGoal(pickTeam, playerId));
-                    setPickTeam(null);
-                  }}
-                  style={{
-                    borderRadius: 16,
-                    padding: "12px 12px",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "#fff",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={40} />
-                  <div style={{ fontWeight: 1000, letterSpacing: 0.4, textAlign: "left" }}>{label}</div>
-                </button>
-              );
-            })}
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  );
-}
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.62)",
+            backdropFilter: "blur(6px)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            zIndex: 80,
+          }}
+          onClick={() => setPickTeam(null)}
+        >
+          <div style={{ ...shellCard(), width: "100%", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 20, fontWeight: 1100 }}>Choisir le buteur</div>
+            <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
+              Sélectionne le joueur qui a marqué pour {pickTeam === "A" ? visualA.name : visualB.name}.
+            </div>
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 120,
-        background: "rgba(0,0,0,0.62)",
-        display: "grid",
-        placeItems: "center",
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          borderRadius: 22,
-          border: "1px solid rgba(255,255,255,0.12)",
-          background: "linear-gradient(180deg, rgba(20,22,34,0.96), rgba(11,12,20,0.98))",
-          boxShadow: "0 18px 46px rgba(0,0,0,0.46)",
-          padding: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 16, fontWeight: 1100 }}>{title}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.06)",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            ✕
-          </button>
+            <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+              {(pickTeam === "A" ? teamAIds : teamBIds).map((playerId) => {
+                const profile = getProfile(playerId);
+                const label = profile?.name || playerId;
+                return (
+                  <button
+                    key={playerId}
+                    type="button"
+                    onClick={() => {
+                      setState(addGoal(pickTeam, playerId));
+                      setPickTeam(null);
+                    }}
+                    style={{
+                      width: "100%",
+                      minHeight: 54,
+                      borderRadius: 16,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "#fff",
+                      fontWeight: 1000,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "0 14px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={34} />
+                    <span style={{ fontSize: 15 }}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button type="button" onClick={() => setPickTeam(null)} style={{ ...actionStyle("neutral"), marginTop: 14 }}>
+              Fermer
+            </button>
+          </div>
         </div>
-        {children}
-      </div>
+      ) : null}
+
+      {state.finished ? (
+        <BabyFootEndGameSummary
+          winnerLabel={winnerLabel}
+          scoreLine={state.setsEnabled ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}` : `${displayedScore.scoreA}–${displayedScore.scoreB}`}
+          detailsLine={detailsLine}
+          onClose={() => go("babyfoot_menu")}
+        />
+      ) : null}
     </div>
   );
 }

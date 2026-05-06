@@ -28,13 +28,13 @@ function statRow(label: string, left: string | number, right: string | number, l
         gridTemplateColumns: "52px minmax(0,1fr) 52px",
         gap: 8,
         alignItems: "center",
-        padding: "11px 0",
+        padding: "10px 0",
         borderBottom: last ? "none" : "1px solid rgba(255,255,255,0.05)",
       }}
     >
-      <div style={{ textAlign: "center", fontSize: 24, fontWeight: 1100, color: "#b4ff39" }}>{left}</div>
-      <div style={{ textAlign: "center", fontSize: 16, fontWeight: 1000, color: "rgba(255,255,255,0.96)" }}>{label}</div>
-      <div style={{ textAlign: "center", fontSize: 24, fontWeight: 1100, color: "#ff5fb1" }}>{right}</div>
+      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1100, color: "#c7ff26" }}>{left}</div>
+      <div style={{ textAlign: "center", fontSize: 15, fontWeight: 1000, color: "rgba(255,255,255,0.96)" }}>{label}</div>
+      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1100, color: "#ff59b0" }}>{right}</div>
     </div>
   );
 }
@@ -51,7 +51,7 @@ function infoCard(label: string, value: string, valueColor?: string) {
       }}
     >
       <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 0.9, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 6, fontSize: 16, fontWeight: 1000, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
+      <div style={{ marginTop: 6, fontSize: 15, fontWeight: 1000, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
     </div>
   );
 }
@@ -82,7 +82,7 @@ export default function BabyFootLiveStatsCard({
     >
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Statistiques</div>
-        <div style={{ marginTop: 5, fontSize: 22, fontWeight: 1100 }}>Lecture rapide du match</div>
+        <div style={{ marginTop: 5, fontSize: 18, fontWeight: 1100 }}>Lecture rapide du match</div>
         <div style={{ marginTop: 4, fontSize: 13, color: "rgba(255,255,255,0.72)" }}>{teamAName} vs {teamBName}</div>
       </div>
 
@@ -104,7 +104,7 @@ export default function BabyFootLiveStatsCard({
         {infoCard("Temps", durationLabel)}
         {infoCard("Cadence", cadenceLabel)}
         {infoCard("Dernier but", lastGoalLabel)}
-        {infoCard("Momentum", momentumLabel, "#c7ff4f")}
+        {infoCard("Momentum", momentumLabel, "#c7ff26")}
       </div>
     </div>
   );
