@@ -763,7 +763,24 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
   let bulls = N(pstat.bulls, 0);
   let dbull = N(pstat.dbull, 0);
 
-  const pv = (m.raw as any)?.payload?.visits;
+  const rawRec: any = (m.raw as any) || {};
+  const rawPayload: any = rawRec?.payload || {};
+  const rawSummary: any = rawRec?.summary || rawPayload?.summary || {};
+  const rawLegacy: any = rawSummary?.legacy || rawPayload?.legacy || {};
+  const pv =
+    rawPayload?.visits ||
+    rawPayload?.visitHistory ||
+    rawPayload?.visitsHistory ||
+    rawPayload?.__legStats?.visits ||
+    rawSummary?.visitHistory ||
+    rawSummary?.visitsHistory ||
+    rawSummary?.__legStats?.visits ||
+    rawLegacy?.visitHistory ||
+    rawLegacy?.visitsHistory ||
+    rawRec?.visitHistory ||
+    rawRec?.visitsHistory ||
+    rawRec?.__legStats?.visits ||
+    [];
   if (Array.isArray(pv)) {
     let darts2 = 0;
     let scored2 = 0;
@@ -783,9 +800,9 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
       dbull2 = 0;
 
     for (const v of pv) {
-      if (String(v?.p) !== pid) continue;
+      if (String(v?.p ?? v?.playerId ?? v?.pid ?? v?.profileId ?? "") !== pid) continue;
 
-      const segs = Array.isArray(v.segments) ? v.segments : [];
+      const segs = Array.isArray(v.segments) ? v.segments : (Array.isArray(v.darts) ? v.darts : []);
       darts2 += segs.length || 0;
 
       const sc = N(v.score, 0);
@@ -810,11 +827,11 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
         const mm = N(s2?.mult, 1);
 
         if (vv === 0) miss2 += 1;
-        if (mm === 2) doubles2 += 1;
-        if (mm === 3) triples2 += 1;
+        if (vv !== 25 && mm === 2) doubles2 += 1;
+        if (vv !== 25 && mm === 3) triples2 += 1;
 
-        // bull / dbull
-        if (vv === 25) bulls2 += mm === 2 ? 1 : 0.5;
+        // bull / dbull séparés : BULL = simple bull, DBULL = double bull.
+        if (vv === 25 && mm === 1) bulls2 += 1;
         if (vv === 25 && mm === 2) dbull2 += 1;
       }
     }
@@ -1767,9 +1784,8 @@ export const StatsBridge = {
 
       bestVisit[pid] = Math.max(bestVisit[pid] || 0, visitPoints);
 
-      if (v.isCheckout && segs.length) {
-        const last = segs[segs.length - 1];
-        bestCheckout[pid] = Math.max(bestCheckout[pid] || 0, dartValue(last));
+      if ((v.isCheckout || v.finish || v.isFinish) && segs.length) {
+        bestCheckout[pid] = Math.max(bestCheckout[pid] || 0, visitPoints);
       }
 
       // Power scoring = tranches EXCLUSIVES par volée :
@@ -1785,9 +1801,10 @@ export const StatsBridge = {
         if ((s.v || 0) === 0) miss[pid] += 1;
         if (s.v === 25 && s.mult === 2) dbull[pid] += 1;
 
-        if (s.mult === 2) doubles[pid] += 1;
-        if (s.mult === 3) triples[pid] += 1;
-        if (s.v === 25) bulls[pid] += s.mult === 2 ? 1 : 0.5;
+        // DB = doubles 1..20 uniquement. DBULL est compté dans sa propre colonne.
+        if (s.v !== 25 && s.mult === 2) doubles[pid] += 1;
+        if (s.v !== 25 && s.mult === 3) triples[pid] += 1;
+        if (s.v === 25 && s.mult === 1) bulls[pid] += 1;
       }
     }
 

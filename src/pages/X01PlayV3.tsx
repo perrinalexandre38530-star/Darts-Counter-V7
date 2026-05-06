@@ -5907,8 +5907,9 @@ function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] =
       const parsed = parseReplayDartParts(d);
       const seg = parsed.segment;
       const mult = parsed.multiplier;
-      const isBustDart = isBustVisit && dartIdx === darts.length - 1;
-      if (isBustDart) continue;
+      // Une fléchette de bust reste un impact réel :
+      // ex. DBULL qui bust = DBULL + 1 et bust + 1.
+      // On ne la retire donc plus des compteurs de hits.
       if (!seg || mult <= 0) m.miss += 1;
       else if (seg === 25 && mult >= 2) m.dBull += 1;
       else if (seg === 25) m.bull += 1;
@@ -6130,10 +6131,20 @@ function saveX01V3MatchToHistory({
       .map((v: any) => Number(v?.score || 0) || 0);
     const scorePerVisit = scorePerVisitReplay.length ? scorePerVisitReplay : scorePerVisitLive;
     // Buckets affichés = classes exclusives : 60-99 / 100-139 / 140-179 / 180.
-    legacyH60[pid] = replayMetric?.h60 ?? scorePerVisit.filter((v: any) => { const n = Number(v) || 0; return n >= 60 && n < 100; }).length;
-    legacyH100[pid] = replayMetric?.h100 ?? scorePerVisit.filter((v: any) => { const n = Number(v) || 0; return n >= 100 && n < 140; }).length;
-    legacyH140[pid] = replayMetric?.h140 ?? scorePerVisit.filter((v: any) => { const n = Number(v) || 0; return n >= 140 && n < 180; }).length;
-    legacyH180[pid] = replayMetric?.h180 ?? scorePerVisit.filter((v: any) => Number(v) === 180).length;
+    // IMPORTANT : les champs replayMetric.h60/h100 venant d'anciens calculs peuvent exister à 0
+    // et masquer les vraies volées. On recalcule donc toujours depuis scorePerVisit dès qu'il existe.
+    const scoreBandSource = scorePerVisit.length
+      ? scorePerVisit
+      : [
+          replayMetric?.h60 ? 60 : null,
+          replayMetric?.h100 ? 100 : null,
+          replayMetric?.h140 ? 140 : null,
+          replayMetric?.h180 ? 180 : null,
+        ].filter((x: any) => x != null);
+    legacyH60[pid] = scoreBandSource.filter((v: any) => { const n = Number(v) || 0; return n >= 60 && n < 100; }).length;
+    legacyH100[pid] = scoreBandSource.filter((v: any) => { const n = Number(v) || 0; return n >= 100 && n < 140; }).length;
+    legacyH140[pid] = scoreBandSource.filter((v: any) => { const n = Number(v) || 0; return n >= 140 && n < 180; }).length;
+    legacyH180[pid] = scoreBandSource.filter((v: any) => Number(v) === 180).length;
     legacyCheckoutHits[pid] = replayMetric?.checkoutHits ?? (bestCheckout > 0 ? 1 : numOr0(live?.checkoutHits, live?.coHits));
     legacyCheckoutAttempts[pid] = replayMetric?.checkoutAttempts ?? Math.max(
       legacyCheckoutHits[pid],

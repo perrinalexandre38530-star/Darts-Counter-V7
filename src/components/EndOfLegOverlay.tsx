@@ -646,7 +646,11 @@ export default function EndOfLegOverlay({
     Array.isArray((result as any)?.visitHistory) ? (result as any).visitHistory :
     Array.isArray((result as any)?.visitsHistory) ? (result as any).visitsHistory :
     Array.isArray((result as any)?.__legStats?.visits) ? (result as any).__legStats.visits :
+    Array.isArray((result as any)?.summary?.visitHistory) ? (result as any).summary.visitHistory :
+    Array.isArray((result as any)?.summary?.visitsHistory) ? (result as any).summary.visitsHistory :
+    Array.isArray((result as any)?.summary?.__legStats?.visits) ? (result as any).summary.__legStats.visits :
     Array.isArray((result as any)?.legacy?.visitHistory) ? (result as any).legacy.visitHistory :
+    Array.isArray((result as any)?.legacy?.visitsHistory) ? (result as any).legacy.visitsHistory :
     [];
   const safeVisitHistory = Array.isArray(rawVisitHistory) && rawVisitHistory.length
     ? rawVisitHistory

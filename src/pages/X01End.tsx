@@ -1469,8 +1469,9 @@ function buildPerPlayerMetrics(
       const score = seg === 25 && mult === 2 ? 50 : seg * mult;
       visitPoints += score;
 
-      // La dernière fléchette d'une volée bust est classée en BUST, pas dans DB/BULL/TP.
-      if (isBustVisit && dartIdx === visitDarts.length - 1) return;
+      // Une fléchette de bust reste un impact réel :
+      // ex. DBULL qui bust = DBULL + 1 et bust + 1.
+      // BUST est une colonne séparée, pas un remplacement du hit.
 
       if (seg === 0 || mult <= 0) {
         row.misses += 1;
@@ -2981,22 +2982,42 @@ function buildVisitHistory(
   const rawVisits: any[] =
     legLike?.visits && Array.isArray(legLike.visits)
       ? legLike.visits
+      : Array.isArray(rec?.visitHistory)
+      ? rec.visitHistory
+      : Array.isArray(rec?.visitsHistory)
+      ? rec.visitsHistory
+      : Array.isArray(rec?.__legStats?.visits)
+      ? rec.__legStats.visits
       : Array.isArray(rec?.summary?.visitHistory)
       ? rec.summary.visitHistory
       : Array.isArray(rec?.summary?.visitsHistory)
       ? rec.summary.visitsHistory
+      : Array.isArray(rec?.summary?.__legStats?.visits)
+      ? rec.summary.__legStats.visits
+      : Array.isArray(rec?.summary?.legacy?.visitHistory)
+      ? rec.summary.legacy.visitHistory
+      : Array.isArray(rec?.summary?.legacy?.visitsHistory)
+      ? rec.summary.legacy.visitsHistory
       : Array.isArray(rec?.payload?.visitHistory)
       ? rec.payload.visitHistory
       : Array.isArray(rec?.payload?.visitsHistory)
       ? rec.payload.visitsHistory
+      : Array.isArray(rec?.payload?.__legStats?.visits)
+      ? rec.payload.__legStats.visits
+      : Array.isArray(rec?.payload?.legacy?.visitHistory)
+      ? rec.payload.legacy.visitHistory
+      : Array.isArray(rec?.payload?.legacy?.visitsHistory)
+      ? rec.payload.legacy.visitsHistory
       : Array.isArray(rec?.payload?.summary?.visitHistory)
       ? rec.payload.summary.visitHistory
       : Array.isArray(rec?.payload?.summary?.visitsHistory)
       ? rec.payload.summary.visitsHistory
-      : Array.isArray(rec?.summary?.legacy?.visitHistory)
-      ? rec.summary.legacy.visitHistory
+      : Array.isArray(rec?.payload?.summary?.__legStats?.visits)
+      ? rec.payload.summary.__legStats.visits
       : Array.isArray(rec?.payload?.summary?.legacy?.visitHistory)
       ? rec.payload.summary.legacy.visitHistory
+      : Array.isArray(rec?.payload?.summary?.legacy?.visitsHistory)
+      ? rec.payload.summary.legacy.visitsHistory
       : [];
 
   if (rawVisits.length) {
