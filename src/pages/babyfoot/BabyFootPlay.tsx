@@ -1,7 +1,7 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootPlay.tsx
 // Baby-Foot — Play (LOCAL ONLY)
-// Refonte UI match premium inspirée Pétanque + X01 sets
+// Refonte UI inspirée Pétanque Play + X01 pour les sets
 // =============================================================
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -18,7 +18,6 @@ import BabyFootDuelScoreCard from "../../components/babyfoot/BabyFootDuelScoreCa
 import BabyFootLiveHeader from "../../components/babyfoot/BabyFootLiveHeader";
 import BabyFootLiveStatsCard from "../../components/babyfoot/BabyFootLiveStatsCard";
 import BabyFootPhasePanel from "../../components/babyfoot/BabyFootPhasePanel";
-import BabyFootTeamCard from "../../components/babyfoot/BabyFootTeamCard";
 
 import { sendCastSnapshot } from "../../cast/googleCast";
 import {
@@ -154,6 +153,124 @@ function computeMomentumLabel(goalEvents: GoalLikeEvent[], teamA: string, teamB:
   return streak > 1 ? `${teamName} sur ${streak} buts de suite` : `${teamName} a repris la main`;
 }
 
+function SegButton({
+  label,
+  onClick,
+  accent,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  accent: "green" | "pink" | "neutral";
+  disabled?: boolean;
+}) {
+  const bg =
+    accent === "green"
+      ? "linear-gradient(180deg, rgba(157,255,87,0.24), rgba(157,255,87,0.10))"
+      : accent === "pink"
+      ? "linear-gradient(180deg, rgba(255,130,184,0.24), rgba(255,130,184,0.10))"
+      : "rgba(255,255,255,0.05)";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: "100%",
+        minHeight: 46,
+        border: "none",
+        background: disabled ? "rgba(255,255,255,0.04)" : bg,
+        color: disabled ? "rgba(255,255,255,0.42)" : "#fff",
+        fontWeight: 1100,
+        letterSpacing: 0.8,
+        textTransform: "uppercase",
+        cursor: disabled ? "default" : "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function TeamGoalStrip({
+  name,
+  team,
+  playerIds,
+  getProfile,
+  onAddGoal,
+  disabled,
+  accent,
+}: {
+  name: string;
+  team: "A" | "B";
+  playerIds: string[];
+  getProfile: (id: string) => ProfileLike;
+  onAddGoal: () => void;
+  disabled: boolean;
+  accent: "green" | "pink";
+}) {
+  const color = accent === "green" ? "#9dff57" : "#ff82b8";
+  const visiblePlayers = playerIds.slice(0, 2);
+  const more = Math.max(0, playerIds.length - visiblePlayers.length);
+
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ padding: 10, display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color, textTransform: "uppercase" }}>Équipe {team}</div>
+            <div title={name} style={{ marginTop: 3, fontSize: 15, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {visiblePlayers.map((id) => {
+              const profile = getProfile(id);
+              return <ProfileAvatar key={id} profile={profile || { id, name: id }} size={28} />;
+            })}
+            {more > 0 ? (
+              <div style={{ minWidth: 28, height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 1000 }}>+{more}</div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <SegButton label={`+ But ${team}`} onClick={onAddGoal} accent={accent} disabled={disabled} />
+    </div>
+  );
+}
+
+function ActionButton({ label, onClick, emphasized = false, disabled = false }: { label: string; onClick: () => void; emphasized?: boolean; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        minHeight: 40,
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: disabled
+          ? "rgba(255,255,255,0.04)"
+          : emphasized
+          ? "linear-gradient(180deg, rgba(157,255,87,0.24), rgba(157,255,87,0.10))"
+          : "rgba(255,255,255,0.05)",
+        color: disabled ? "rgba(255,255,255,0.42)" : "#fff",
+        fontWeight: 1000,
+        letterSpacing: 0.4,
+        cursor: disabled ? "default" : "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const { theme } = useTheme();
   const { store } = useStore() as any;
@@ -193,27 +310,22 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   const otStart = lastPhaseAt(state, "overtime") ?? regularStart;
   const otLimitMs = state.overtimeSec != null ? Math.max(0, state.overtimeSec) * 1000 : null;
-  const otElapsed = Math.max(0, now - otStart);
-  const otRemain = otLimitMs != null ? Math.max(0, otLimitMs - otElapsed) : null;
+  const otRemain = otLimitMs != null ? Math.max(0, otLimitMs - Math.max(0, now - otStart)) : null;
 
-  const neededSets = Math.floor((state.setsBestOf || 3) / 2) + 1;
   const canUndo = !state.finished && Array.isArray(state.events) && state.events.length > 0;
-
   const goalEvents = useMemo(() => getGoalEvents(state.events || []), [state.events]);
   const displayedScore = useMemo(() => reconstructDisplayedScore(state), [state]);
 
   const goalCountA = goalEvents.filter((event) => event.team === "A").length;
   const goalCountB = goalEvents.filter((event) => event.team === "B").length;
   const totalGoals = goalCountA + goalCountB;
+  const penaltiesA = state.penalties?.goalsA ?? 0;
+  const penaltiesB = state.penalties?.goalsB ?? 0;
 
   const lastGoalEvent = goalEvents.length ? goalEvents[goalEvents.length - 1] : null;
   const lastGoalTeamName = lastGoalEvent?.team === "A" ? state.teamA : lastGoalEvent?.team === "B" ? state.teamB : null;
   const lastGoalScorer = lastGoalEvent?.scorerId ? getProfile(lastGoalEvent.scorerId)?.name || lastGoalEvent.scorerId : null;
-  const lastGoalLabel = lastGoalEvent
-    ? lastGoalScorer
-      ? `${lastGoalScorer} • ${lastGoalTeamName}`
-      : `But ${lastGoalTeamName}`
-    : "Aucun but pour le moment";
+  const lastGoalLabel = lastGoalEvent ? (lastGoalScorer ? `${lastGoalScorer} • ${lastGoalTeamName}` : `But ${lastGoalTeamName}`) : "Aucun but pour le moment";
 
   const leaderLabel =
     displayedScore.scoreA === displayedScore.scoreB
@@ -222,7 +334,6 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       ? state.teamA
       : state.teamB;
   const momentumLabel = computeMomentumLabel(goalEvents, state.teamA, state.teamB);
-
   const cadenceLabel = (() => {
     const mins = durationMs / 60000;
     if (mins <= 0 || totalGoals === 0) return "0 but/min";
@@ -247,34 +358,10 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     }
   })();
 
-  const phaseLabel = (() => {
-    if (state.finished) return "FIN";
-    if (state.phase === "penalties") return "PENALTIES";
-    if (state.phase === "overtime") return "OVERTIME";
-    return "MATCH";
-  })();
-
-  const clockLabel = (() => {
-    if (state.finished) return fmt(durationMs);
-    if (state.phase === "overtime") return `OT ${fmt(otRemain ?? 0)}`;
-    if (regularLimitMs != null) return fmt(regularRemain ?? 0);
-    return fmt(regularElapsed);
-  })();
-
-  const targetLabel =
-    state.phase === "penalties"
-      ? "Séance en cours"
-      : state.setsEnabled
-      ? `Set ${state.setIndex} • objectif ${state.setTarget || state.target}`
-      : `Objectif ${state.target}`;
-
-  const secondaryLabel = state.setsEnabled
-    ? `BO${state.setsBestOf || 3}`
-    : state.goldenGoal
-    ? "Golden goal"
-    : state.matchDurationSec
-    ? `${state.matchDurationSec}s`
-    : `Target ${state.target}`;
+  const phaseLabel = state.finished ? "FIN" : state.phase === "penalties" ? "PENALTIES" : state.phase === "overtime" ? "OVERTIME" : "MATCH";
+  const clockLabel = state.finished ? fmt(durationMs) : state.phase === "overtime" ? `OT ${fmt(otRemain ?? 0)}` : regularLimitMs != null ? fmt(regularRemain ?? 0) : fmt(regularElapsed);
+  const targetLabel = state.phase === "penalties" ? "Séance en cours" : state.setsEnabled ? `Set ${state.setIndex} • objectif ${state.setTarget || state.target}` : `Objectif ${state.target}`;
+  const secondaryLabel = state.setsEnabled ? `BO${state.setsBestOf || 3}` : state.goldenGoal ? "Golden goal" : `Target ${state.target}`;
 
   const liveContext = [
     state.setsEnabled ? `Sets ${state.setsA}–${state.setsB}` : `Leader ${leaderLabel}`,
@@ -284,13 +371,12 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     state.overtimeGoldenGoal && state.phase === "overtime" ? "Golden goal OT" : null,
   ].filter((entry): entry is string => Boolean(entry));
 
-  const infoTitle = "Baby-Foot";
   const infoBody =
-    "Refonte live premium : header match, sets séparés, duel score central, cartes équipes et panneau de phase.\n\n" +
-    "• + BUT : ajoute un but à l'équipe\n" +
+    "Page live Baby-Foot inspirée de la structure Pétanque Play avec un hero score plus lisible et une vraie barre des sets.\n\n" +
+    "• + BUT A / B : ajoute un but à l'équipe\n" +
     "• UNDO : annule le dernier évènement\n" +
-    "• FIN : laisse le store décider OT / penalties / fin selon le contexte\n\n" +
-    "Phases : MATCH → OVERTIME → PENALTIES → FIN";
+    "• FIN : laisse le moteur décider OT / penalties / fin selon le contexte\n" +
+    "• CONFIG / STATS : raccourcis rapides";
 
   useEffect(() => {
     try {
@@ -302,12 +388,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           { id: "A", name: String(state.teamA || "Équipe A"), score: Number(displayedScore.scoreA || 0), active: false },
           { id: "B", name: String(state.teamB || "Équipe B"), score: Number(displayedScore.scoreB || 0), active: false },
         ],
-        meta: {
-          phase: state.phase,
-          setsA: Number(state.setsA || 0),
-          setsB: Number(state.setsB || 0),
-          mode: state.mode,
-        },
+        meta: { phase: state.phase, setsA: Number(state.setsA || 0), setsB: Number(state.setsB || 0), mode: state.mode },
         updatedAt: Date.now(),
       });
     } catch {
@@ -317,15 +398,11 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   useEffect(() => {
     if (state.finished) return;
-
     if (state.phase === "play" && regularLimitMs != null && regularRemain === 0) {
       setState(finishByTime());
       return;
     }
-
-    if (state.phase === "overtime" && otLimitMs != null && otRemain === 0) {
-      setState(finishByTime());
-    }
+    if (state.phase === "overtime" && otLimitMs != null && otRemain === 0) setState(finishByTime());
   }, [otLimitMs, otRemain, regularLimitMs, regularRemain, state.finished, state.phase]);
 
   useEffect(() => {
@@ -369,14 +446,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       try {
         localStorage.setItem(
           tourResultKey(tournamentId, state.matchId),
-          JSON.stringify({
-            at: Date.now(),
-            winnerTeam,
-            scoreA: displayedScore.scoreA,
-            scoreB: displayedScore.scoreB,
-            setsA: state.setsA,
-            setsB: state.setsB,
-          })
+          JSON.stringify({ at: Date.now(), winnerTeam, scoreA: displayedScore.scoreA, scoreB: displayedScore.scoreB, setsA: state.setsA, setsB: state.setsB })
         );
       } catch {
         // noop
@@ -387,16 +457,9 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedScore.scoreA, displayedScore.scoreB, durationMs, players, state.finished]);
 
-  const headerTicker = useMemo(
-    () => pickTicker(`babyfoot_${state.mode}`) || pickTicker("babyfoot_match") || pickTicker("babyfoot_games"),
-    [state.mode]
-  );
+  const headerTicker = useMemo(() => pickTicker(`babyfoot_${state.mode}`) || pickTicker("babyfoot_match") || pickTicker("babyfoot_games"), [state.mode]);
 
-  const isPickScorerNeeded = (team: BabyFootTeamId) => {
-    const ids = team === "A" ? teamAIds : teamBIds;
-    return ids.length > 1;
-  };
-
+  const isPickScorerNeeded = (team: BabyFootTeamId) => ((team === "A" ? teamAIds : teamBIds).length > 1);
   const addForTeam = (team: BabyFootTeamId) => {
     if (state.finished || state.phase === "penalties") return;
     if (isPickScorerNeeded(team)) {
@@ -407,9 +470,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     setState(addGoal(team, scorerId));
   };
 
-  const scoreLine = state.setsEnabled
-    ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}`
-    : `${displayedScore.scoreA}–${displayedScore.scoreB}`;
+  const scoreLine = state.setsEnabled ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}` : `${displayedScore.scoreA}–${displayedScore.scoreB}`;
   const winnerLabel = state.winner === "A" ? state.teamA : state.winner === "B" ? state.teamB : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
 
@@ -420,28 +481,15 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         tickerAlt="Baby-Foot — Play"
         tickerHeight={92}
         left={<BackDot onClick={() => go("babyfoot_menu")} />}
-        right={<InfoDot title={infoTitle} content={infoBody} glow={(theme?.colors?.primary ?? "#7cffc4") + "88"} />}
+        right={<InfoDot title="Baby-Foot" content={infoBody} glow={(theme?.colors?.primary ?? "#9dff57") + "88"} />}
       />
 
-      <div style={{ padding: 10, paddingBottom: 150, overflowX: "hidden" }}>
-        <div style={{ width: "100%", maxWidth: 540, margin: "0 auto", display: "grid", gap: 10 }}>
-          <BabyFootLiveHeader
-            phaseLabel={phaseLabel}
-            modeLabel={state.mode}
-            clockLabel={clockLabel}
-            targetLabel={targetLabel}
-            secondaryLabel={secondaryLabel}
-          />
+      <div style={{ padding: 10, paddingBottom: 96, overflowX: "hidden" }}>
+        <div style={{ width: "100%", maxWidth: 420, margin: "0 auto", display: "grid", gap: 12 }}>
+          <BabyFootLiveHeader phaseLabel={phaseLabel} modeLabel={state.mode} clockLabel={clockLabel} targetLabel={targetLabel} secondaryLabel={secondaryLabel} />
 
           {state.setsEnabled ? (
-            <BabyFootSetsBar
-              setsA={state.setsA || 0}
-              setsB={state.setsB || 0}
-              bestOf={state.setsBestOf || 3}
-              currentSet={state.setIndex || 1}
-              teamAName={state.teamA}
-              teamBName={state.teamB}
-            />
+            <BabyFootSetsBar setsA={state.setsA || 0} setsB={state.setsB || 0} bestOf={state.setsBestOf || 3} currentSet={state.setIndex || 1} teamAName={state.teamA} teamBName={state.teamB} />
           ) : null}
 
           <BabyFootDuelScoreCard
@@ -461,103 +509,66 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             handicapB={state.handicapB}
           />
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-            <BabyFootTeamCard
-              team="A"
-              name={state.teamA}
-              score={displayedScore.scoreA}
-              playerIds={teamAIds}
-              getProfile={getProfile}
-              logoDataUrl={state.teamALogoDataUrl}
-              handicap={state.handicapA}
-              onAddGoal={() => addForTeam("A")}
-              disabled={state.finished || state.phase === "penalties"}
-              accent="green"
-              footerLabel={teamAIds.length > 1 ? "Choix du buteur" : "Validation directe"}
-            />
-
-            <BabyFootTeamCard
-              team="B"
-              name={state.teamB}
-              score={displayedScore.scoreB}
-              playerIds={teamBIds}
-              getProfile={getProfile}
-              logoDataUrl={state.teamBLogoDataUrl}
-              handicap={state.handicapB}
-              onAddGoal={() => addForTeam("B")}
-              disabled={state.finished || state.phase === "penalties"}
-              accent="pink"
-              footerLabel={teamBIds.length > 1 ? "Choix du buteur" : "Validation directe"}
-            />
+          <div
+            style={{
+              borderRadius: 16,
+              overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+              boxShadow: "0 14px 26px rgba(0,0,0,0.28)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+              <SegButton label={`+ But ${state.teamA}`} onClick={() => addForTeam("A")} accent="green" disabled={state.finished || state.phase === "penalties"} />
+              <SegButton label={`+ But ${state.teamB}`} onClick={() => addForTeam("B")} accent="pink" disabled={state.finished || state.phase === "penalties"} />
+            </div>
           </div>
 
-          {state.phase === "penalties" ? (
-            <BabyFootPhasePanel
-              state={state}
-              lastGoalLabel={lastGoalLabel}
-              liveContext={liveContext}
-              onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
-            />
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-              <BabyFootPhasePanel
-                state={state}
-                lastGoalLabel={lastGoalLabel}
-                liveContext={liveContext}
-                onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
-              />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <TeamGoalStrip name={state.teamA} team="A" playerIds={teamAIds} getProfile={getProfile} onAddGoal={() => addForTeam("A")} disabled={state.finished || state.phase === "penalties"} accent="green" />
+            <TeamGoalStrip name={state.teamB} team="B" playerIds={teamBIds} getProfile={getProfile} onAddGoal={() => addForTeam("B")} disabled={state.finished || state.phase === "penalties"} accent="pink" />
+          </div>
 
-              <BabyFootLiveStatsCard
-                teamAName={state.teamA}
-                teamBName={state.teamB}
-                goalsA={goalCountA}
-                goalsB={goalCountB}
-                totalGoals={totalGoals}
-                durationLabel={fmt(durationMs)}
-                lastGoalLabel={lastGoalLabel}
-                momentumLabel={momentumLabel}
-                cadenceLabel={cadenceLabel}
-              />
+          <BabyFootLiveStatsCard
+            teamAName={state.teamA}
+            teamBName={state.teamB}
+            goalsA={goalCountA}
+            goalsB={goalCountB}
+            totalGoals={totalGoals}
+            durationLabel={fmt(durationMs)}
+            lastGoalLabel={lastGoalLabel}
+            momentumLabel={momentumLabel}
+            cadenceLabel={cadenceLabel}
+            setsEnabled={state.setsEnabled}
+            setsA={state.setsA || 0}
+            setsB={state.setsB || 0}
+            handicapA={state.handicapA || 0}
+            handicapB={state.handicapB || 0}
+            penaltiesA={penaltiesA}
+            penaltiesB={penaltiesB}
+          />
+
+          <BabyFootPhasePanel state={state} lastGoalLabel={lastGoalLabel} liveContext={liveContext} onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))} />
+
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+              boxShadow: "0 14px 26px rgba(0,0,0,0.28)",
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.66, textTransform: "uppercase" }}>Actions</div>
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
+              <ActionButton label="Annuler" onClick={() => setState(undoGoal())} disabled={!canUndo} />
+              <ActionButton label="Nouvelle partie" onClick={() => setState(startMatch())} emphasized />
+              <ActionButton label="Stats" onClick={() => go("babyfoot_stats_center")} />
+              <ActionButton label="Config" onClick={() => go("babyfoot_config")} />
+              <div style={{ gridColumn: "1 / -1" }}>
+                <ActionButton label="Fin du match" onClick={() => setState(finishByTime())} disabled={state.finished} />
+              </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: "8px 10px calc(72px + env(safe-area-inset-bottom))",
-          backdropFilter: "blur(10px)",
-          background:
-            "linear-gradient(180deg, rgba(10,10,18,0.00) 0%, rgba(10,10,18,0.72) 18%, rgba(10,10,18,0.94) 100%)",
-          borderTop: "1px solid rgba(255,255,255,0.08)",
-          zIndex: 50,
-        }}
-      >
-        <div style={{ width: "100%", maxWidth: 540, margin: "0 auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
-            <DockButton
-              label="UNDO"
-              onClick={() => {
-                if (!canUndo) return;
-                setState(undoGoal());
-              }}
-              disabled={!canUndo}
-            />
-            <DockButton label="STATS" onClick={() => go("babyfoot_stats_center")} />
-            <DockButton
-              label="FIN"
-              onClick={() => {
-                if (state.finished) return;
-                setState(finishByTime());
-              }}
-              disabled={state.finished}
-              emphasized
-            />
-            <DockButton label="CONFIG" onClick={() => go("babyfoot_config")} />
           </div>
         </div>
       </div>
@@ -611,99 +622,53 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   );
 }
 
-function DockButton({
-  label,
-  onClick,
-  disabled = false,
-  emphasized = false,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  emphasized?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        height: 44,
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: disabled
-          ? "rgba(255,255,255,0.05)"
-          : emphasized
-          ? "linear-gradient(180deg, rgba(124,255,196,0.24), rgba(124,255,196,0.12))"
-          : "rgba(255,255,255,0.06)",
-        color: disabled ? "rgba(255,255,255,0.45)" : "#fff",
-        fontWeight: 1100,
-        fontSize: 12,
-        letterSpacing: 0.4,
-        cursor: disabled ? "default" : "pointer",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Modal({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div
-      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        zIndex: 120,
+        background: "rgba(0,0,0,0.62)",
+        display: "grid",
+        placeItems: "center",
         padding: 16,
-        zIndex: 9999,
       }}
+      onClick={onClose}
     >
       <div
         onClick={(event) => event.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 520,
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.14)",
-          background: "rgba(10,12,18,0.96)",
-          padding: 16,
-          boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
-          color: "#fff",
+          maxWidth: 420,
+          borderRadius: 22,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "linear-gradient(180deg, rgba(20,22,34,0.96), rgba(11,12,20,0.98))",
+          boxShadow: "0 18px 46px rgba(0,0,0,0.46)",
+          padding: 14,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ fontWeight: 1100, fontSize: 16, letterSpacing: 0.6 }}>{title}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 1100 }}>{title}</div>
           <button
             type="button"
             onClick={onClose}
             style={{
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(0,0,0,0.18)",
+              width: 32,
+              height: 32,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.06)",
               color: "#fff",
-              fontWeight: 900,
-              borderRadius: 12,
-              padding: "8px 10px",
               cursor: "pointer",
             }}
           >
             ✕
           </button>
         </div>
-
-        <div style={{ marginTop: 14 }}>{children}</div>
+        {children}
       </div>
     </div>
   );
