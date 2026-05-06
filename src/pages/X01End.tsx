@@ -45,7 +45,13 @@ function hydrateX01HistoryRecord(input: any): any {
   const payloadSummary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
   const ownSummary = input.summary && typeof input.summary === "object" ? input.summary : {};
   const decodedSummary = input.decoded?.summary && typeof input.decoded.summary === "object" ? input.decoded.summary : {};
-  const summary = { ...decodedSummary, ...payloadSummary, ...ownSummary };
+
+  // CRITIQUE HISTORIQUE : la carte Historique transporte souvent un summary léger
+  // (header IndexedDB) qui ne contient pas les buckets 60+/100+/140+/180 ni
+  // visitHistory. Le payload détaillé, lui, est la source complète. Il doit donc
+  // écraser le header, pas l'inverse. Sinon "Voir stats" affiche 0 alors que le
+  // résumé de fin de partie live est correct.
+  const summary = { ...ownSummary, ...decodedSummary, ...payloadSummary };
 
   const players =
     Array.isArray(input.players) && input.players.length

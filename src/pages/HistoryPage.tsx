@@ -1694,8 +1694,13 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         const loadedPayload = loadedPayloadRaw && typeof loadedPayloadRaw === "object" && !Array.isArray(loadedPayloadRaw) ? loadedPayloadRaw : {};
         const payload = { ...ePayload, ...loadedPayload };
         const payloadSummary = (payload as any)?.summary && typeof (payload as any).summary === "object" ? (payload as any).summary : {};
-        const summary = { ...payloadSummary, ...(((e as any).summary && typeof (e as any).summary === "object") ? (e as any).summary : {}), ...(((loaded as any).summary && typeof (loaded as any).summary === "object") ? (loaded as any).summary : {}) };
-        const players = Array.isArray((loaded as any).players) && (loaded as any).players.length ? (loaded as any).players : Array.isArray((payload as any).players) && (payload as any).players.length ? (payload as any).players : (e as any).players;
+        const headerSummary = (((e as any).summary && typeof (e as any).summary === "object") ? (e as any).summary : {});
+        const loadedSummary = (((loaded as any).summary && typeof (loaded as any).summary === "object") ? (loaded as any).summary : {});
+
+        // CRITIQUE HISTORIQUE X01 : le header/list peut être léger et contenir
+        // des compteurs à 0. Le payload détaillé doit gagner sur le header.
+        const summary = { ...headerSummary, ...loadedSummary, ...payloadSummary };
+        const players = Array.isArray((payload as any).players) && (payload as any).players.length ? (payload as any).players : Array.isArray((loaded as any).players) && (loaded as any).players.length ? (loaded as any).players : (e as any).players;
         e = { ...(e as any), ...(loaded as any), payload: { ...payload, summary }, summary, players } as any;
       }
     } catch (err) { console.warn("[HistoryPage] goStats hydrate failed", err); }
