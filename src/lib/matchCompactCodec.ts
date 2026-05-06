@@ -145,9 +145,15 @@ function isPlainObject(v: any): v is Record<string, any> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
-function stripHeavy(value: any, depth = 0): any {
+function stripHeavy(value: any, depth = 0, seen?: WeakSet<object>): any {
   if (value == null) return value;
   if (depth > 8) return undefined;
+  if (value && typeof value === "object") {
+    const guard = seen || new WeakSet<object>();
+    if (guard.has(value)) return undefined;
+    guard.add(value);
+    seen = guard;
+  }
   if (typeof value === "string") {
     if (value.startsWith("data:image") || value.length > 512) return undefined;
     return value;
@@ -156,13 +162,13 @@ function stripHeavy(value: any, depth = 0): any {
   if (Array.isArray(value)) {
     // On conserve les tableaux statistiques, mais on évite les explosions de payload.
     const max = depth <= 3 ? 500 : 160;
-    return value.slice(-max).map((x) => stripHeavy(x, depth + 1)).filter((x) => x !== undefined);
+    return value.slice(-max).map((x) => stripHeavy(x, depth + 1, seen)).filter((x) => x !== undefined);
   }
   if (isPlainObject(value)) {
     const out: Record<string, any> = {};
     for (const [k, v] of Object.entries(value)) {
       if (DROP_KEYS.has(k)) continue;
-      const sv = stripHeavy(v, depth + 1);
+      const sv = stripHeavy(v, depth + 1, seen);
       if (sv !== undefined) out[shortKey(k)] = sv;
     }
     return out;

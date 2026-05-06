@@ -51,14 +51,20 @@ function sanitizeImageString(value: string, key?: string, maxChars = DEFAULT_IMA
 
 export function sanitizeImagesDeep<T>(input: T, options?: { imageMaxChars?: number }): T {
   const imageMaxChars = options?.imageMaxChars ?? DEFAULT_IMAGE_MAX_CHARS;
+  const seen = new WeakSet<object>();
 
   const walk = (value: any, pathKey?: string): any => {
     if (typeof value === "string") {
       return sanitizeImageString(value, pathKey, imageMaxChars);
     }
 
+    if (value && typeof value === "object") {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+    }
+
     if (Array.isArray(value)) {
-      return value.map((item) => walk(item, pathKey));
+      return value.map((item) => walk(item, pathKey)).filter((item) => item !== undefined);
     }
 
     if (!isObjectLike(value)) return value;

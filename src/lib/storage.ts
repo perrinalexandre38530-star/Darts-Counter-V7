@@ -193,9 +193,17 @@ function isHeavyImageDataUrl(value: any) {
   return typeof value === "string" && value.startsWith("data:image/") && value.length > 256;
 }
 
-function stripHeavyInlineImagesDeep(value: any): any {
+function stripHeavyInlineImagesDeep(value: any, seen?: WeakSet<object>): any {
+  if (!value || typeof value !== "object") return value;
+
+  const guard = seen || new WeakSet<object>();
+  if (guard.has(value)) return undefined;
+  guard.add(value);
+
   if (Array.isArray(value)) {
-    return value.map((item) => stripHeavyInlineImagesDeep(item));
+    return value
+      .map((item) => stripHeavyInlineImagesDeep(item, guard))
+      .filter((item) => item !== undefined);
   }
 
   if (!isObjectLike(value)) return value;
@@ -218,7 +226,8 @@ function stripHeavyInlineImagesDeep(value: any): any {
       continue;
     }
 
-    out[key] = stripHeavyInlineImagesDeep(raw);
+    const cleaned = stripHeavyInlineImagesDeep(raw, guard);
+    if (cleaned !== undefined) out[key] = cleaned;
   }
   return out;
 }

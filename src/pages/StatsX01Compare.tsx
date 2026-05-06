@@ -248,8 +248,12 @@ const pickNum = (...vals: any[]): number | undefined => {
 };
 
 // scan récursif pour trouver un nombre dont la clé contient un mot-clé
-function findNumberDeep(obj: any, keyParts: string[]): number | undefined {
+function findNumberDeep(obj: any, keyParts: string[], seen?: WeakSet<object>): number | undefined {
   if (!obj || typeof obj !== "object") return undefined;
+  const guard = seen || new WeakSet<object>();
+  if (guard.has(obj as object)) return undefined;
+  guard.add(obj as object);
+
   for (const [k, v] of Object.entries(obj)) {
     if (typeof v === "number") {
       const key = k.toLowerCase();
@@ -257,7 +261,7 @@ function findNumberDeep(obj: any, keyParts: string[]): number | undefined {
         return v;
       }
     } else if (v && typeof v === "object") {
-      const nested = findNumberDeep(v, keyParts);
+      const nested = findNumberDeep(v, keyParts, guard);
       if (nested !== undefined) return nested;
     }
   }

@@ -255,7 +255,7 @@ function _trimHeavyArray(arr: any, keep = 100, hardLimit = 200) {
   return arr.length > hardLimit ? arr.slice(-keep) : arr;
 }
 
-function _sanitizeDataUrlsDeep(input: any, depth = 0): any {
+function _sanitizeDataUrlsDeep(input: any, depth = 0, seen?: WeakSet<object>): any {
   if (depth > 6) return input;
   if (typeof input === "string") {
     if (input.startsWith("data:image")) return undefined;
@@ -263,8 +263,17 @@ function _sanitizeDataUrlsDeep(input: any, depth = 0): any {
   }
   if (!input || typeof input !== "object") return input;
 
+  // CRITICAL: certains snapshots NAS / payloads legacy peuvent contenir
+  // des références circulaires. Sans garde, le nettoyage récursif déclenche
+  // RangeError: Maximum call stack size exceeded au boot.
+  const guard = seen || new WeakSet<object>();
+  if (guard.has(input as object)) return undefined;
+  guard.add(input as object);
+
   if (Array.isArray(input)) {
-    return input.map((x) => _sanitizeDataUrlsDeep(x, depth + 1));
+    return input
+      .map((x) => _sanitizeDataUrlsDeep(x, depth + 1, guard))
+      .filter((x) => x !== undefined);
   }
 
   const out: any = { ...input };
@@ -274,7 +283,7 @@ function _sanitizeDataUrlsDeep(input: any, depth = 0): any {
       delete out[k];
       continue;
     }
-    out[k] = _sanitizeDataUrlsDeep(v, depth + 1);
+    out[k] = _sanitizeDataUrlsDeep(v, depth + 1, guard);
     if (out[k] === undefined) delete out[k];
   }
   return out;
@@ -351,10 +360,25 @@ async function withCloudImportGuard<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // mini-sanitize local (anti data: énormes + perfs)
+function _safeJsonCloneNoCycles<T = any>(value: T): T {
+  try {
+    const seen = new WeakSet<object>();
+    return JSON.parse(JSON.stringify(value || {}, (_key, val) => {
+      if (val && typeof val === "object") {
+        if (seen.has(val)) return undefined;
+        seen.add(val);
+      }
+      return val;
+    }));
+  } catch {
+    try { return Array.isArray(value) ? ([...(value as any)] as any) : ({ ...((value as any) || {}) } as any); } catch { return value; }
+  }
+}
+
 function _sanitizeStoreForCloudMini(s: any) {
   let clone: any;
   try {
-    clone = JSON.parse(JSON.stringify(s || {}));
+    clone = _safeJsonCloneNoCycles(s || {});
   } catch {
     clone = { ...(s || {}) };
   }
