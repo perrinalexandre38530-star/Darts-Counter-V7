@@ -39,6 +39,23 @@ import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
 import { injectDevX01ReferenceMatch } from "../lib/devInjectX01TestMatch";
 import { useSport } from "../contexts/SportContext";
 
+import {
+  DEFAULT_GOOGLE_CAST_APP_ID,
+  endGoogleCastSession,
+  getGoogleCastAppId,
+  getGoogleCastState,
+  pingGoogleCastReceiver,
+  requestGoogleCastSession,
+  resetGoogleCastAppId,
+  setGoogleCastAppId,
+  subscribeGoogleCastStatus,
+} from "../cast/googleCast";
+import { buildViewerWaitingSnapshot } from "../lib/viewer/buildViewerSnapshot";
+import { createViewerSession, publishViewerSnapshot, viewerJoinUrl } from "../lib/viewer/viewerClient";
+import { clearActiveViewerSession, getActiveViewerSession, setActiveViewerSession, subscribeViewerSessionChanged } from "../lib/viewer/viewerSession";
+import { clearViewerDiagLog, getViewerDiagLog } from "../lib/viewer/viewerPublisher";
+import type { ViewerSessionInfo } from "../lib/viewer/types";
+
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
 
@@ -1116,7 +1133,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" | "developer";
+type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer";
 
 // ---------------- Account pages (NEW simple & clean) ----------------
 
@@ -1542,6 +1559,238 @@ function AccountPages({
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+
+function CastViewerSettingsSection({ go }: { go?: (tab: any, params?: any) => void }) {
+  const { theme } = useTheme() as any;
+  const [castState, setCastState] = React.useState<any>(() => getGoogleCastState());
+  const [appId, setAppId] = React.useState<string>(() => getGoogleCastAppId());
+  const [viewer, setViewer] = React.useState<ViewerSessionInfo | null>(() => getActiveViewerSession());
+  const [viewerDiag, setViewerDiag] = React.useState<any[]>(() => getViewerDiagLog());
+  const [busy, setBusy] = React.useState<null | "cast" | "viewer" | "ping">(null);
+  const [msg, setMsg] = React.useState<string>("Cast TV et Viewer tablette sont deux sorties séparées. Tu peux activer les deux sans conflit.");
+
+  React.useEffect(() => {
+    const refreshCast = () => {
+      setCastState(getGoogleCastState());
+      setAppId(getGoogleCastAppId());
+    };
+    refreshCast();
+    return subscribeGoogleCastStatus(refreshCast);
+  }, []);
+
+  React.useEffect(() => subscribeViewerSessionChanged(() => setViewer(getActiveViewerSession())), []);
+
+  React.useEffect(() => {
+    const refresh = () => setViewerDiag(getViewerDiagLog());
+    window.addEventListener("dc-viewer-diag", refresh as any);
+    return () => window.removeEventListener("dc-viewer-diag", refresh as any);
+  }, []);
+
+  const box: React.CSSProperties = {
+    borderRadius: 18,
+    padding: 16,
+    background: CARD_BG,
+    border: `1px solid ${theme.borderSoft}`,
+    boxShadow: `0 14px 34px rgba(0,0,0,.35), 0 0 14px ${theme.primary}18`,
+  };
+
+  const btn = (primary = false): React.CSSProperties => ({
+    borderRadius: 14,
+    padding: "10px 12px",
+    border: primary ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+    background: primary ? `${theme.primary}22` : "rgba(255,255,255,0.04)",
+    color: primary ? theme.primary : theme.text,
+    fontWeight: 900,
+    cursor: "pointer",
+  });
+
+  function saveCastAppId() {
+    const next = String(appId || DEFAULT_GOOGLE_CAST_APP_ID).trim().toUpperCase();
+    setGoogleCastAppId(next);
+    setAppId(getGoogleCastAppId());
+    setCastState(getGoogleCastState());
+    setMsg(`Receiver Cast enregistré : ${getGoogleCastAppId()}`);
+  }
+
+  function restoreDefaultCastAppId() {
+    resetGoogleCastAppId();
+    setAppId(getGoogleCastAppId());
+    setCastState(getGoogleCastState());
+    setMsg(`Receiver Cast par défaut restauré : ${getGoogleCastAppId()}`);
+  }
+
+  async function toggleCast() {
+    setBusy("cast");
+    try {
+      if (castState?.isCasting) {
+        await endGoogleCastSession();
+        setMsg("Session Cast arrêtée.");
+      } else {
+        const res = await requestGoogleCastSession();
+        if (res.ok) setMsg("Session Cast démarrée.");
+        else setMsg(res.reason === "cancel" ? "Ouverture Cast annulée." : `Impossible d’ouvrir Cast : ${res.reason}`);
+      }
+    } finally {
+      setCastState(getGoogleCastState());
+      setBusy(null);
+    }
+  }
+
+  async function pingCast() {
+    setBusy("ping");
+    try {
+      const ok = await pingGoogleCastReceiver();
+      setMsg(ok ? "PING envoyé au receiver Cast." : "PING impossible : aucune session Cast active ou erreur receiver.");
+    } finally {
+      setCastState(getGoogleCastState());
+      setBusy(null);
+    }
+  }
+
+  async function startViewer() {
+    setBusy("viewer");
+    setMsg("Création de la session viewer…");
+    try {
+      const res = await createViewerSession();
+      const now = Date.now();
+      const info: ViewerSessionInfo = {
+        sessionId: res.sessionId,
+        code: res.code || res.sessionId,
+        joinUrl: res.joinUrl || viewerJoinUrl(res.sessionId),
+        createdAt: now,
+        expiresAt: res.expiresInSeconds ? now + res.expiresInSeconds * 1000 : null,
+        enabled: true,
+      };
+      setActiveViewerSession(info);
+      setViewer(info);
+      try {
+        await publishViewerSnapshot(info.sessionId, buildViewerWaitingSnapshot(info.sessionId));
+      } catch {}
+      setMsg("Session viewer active. Ouvre la page complète pour afficher le QR code.");
+    } catch (e: any) {
+      setMsg(`Erreur viewer : ${String(e?.message || e || "création impossible")}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyViewerLink() {
+    const url = viewer?.joinUrl || (viewer?.sessionId ? viewerJoinUrl(viewer.sessionId) : "");
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setMsg("Lien viewer copié.");
+    } catch {
+      setMsg(url);
+    }
+  }
+
+  function stopViewer() {
+    clearActiveViewerSession();
+    setViewer(null);
+    setMsg("Session viewer arrêtée.");
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <section style={box}>
+        <h2 style={{ margin: "0 0 8px", color: theme.primary, fontSize: 18 }}>Sorties écran</h2>
+        <p style={{ margin: 0, color: theme.textSoft, fontSize: 13, lineHeight: 1.45 }}>
+          Le Cast envoie vers TV / Chromecast. Le Viewer tablette crée une session live séparée avec QR code. Les deux peuvent tourner en même temps.
+        </p>
+        <div style={{ marginTop: 12, color: msg.startsWith("Erreur") || msg.startsWith("Impossible") ? "#ffb4b4" : theme.text, fontSize: 13, fontWeight: 800 }}>
+          {msg}
+        </div>
+      </section>
+
+      <section style={box}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+          <div>
+            <h3 style={{ margin: 0, color: theme.primary, fontSize: 16 }}>📺 Google Cast / TV</h3>
+            <div style={{ color: theme.textSoft, fontSize: 12, marginTop: 3 }}>
+              {castState?.isCasting ? `Actif${castState?.deviceName ? ` : ${castState.deviceName}` : ""}` : "Aucune session active"}
+            </div>
+          </div>
+          <div style={{ borderRadius: 999, padding: "7px 10px", border: `1px solid ${castState?.isCasting ? theme.primary : theme.borderSoft}`, color: castState?.isCasting ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 1000 }}>
+            {castState?.isCasting ? "ON" : "OFF"}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          <label style={{ color: theme.textSoft, fontSize: 12, fontWeight: 900 }}>Receiver Application ID</label>
+          <input
+            value={appId}
+            onChange={(e) => setAppId(e.target.value.toUpperCase())}
+            placeholder="Ex: 3534BC6A"
+            style={{
+              borderRadius: 13,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(255,255,255,0.05)",
+              color: theme.text,
+              padding: "11px 12px",
+              fontWeight: 900,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={saveCastAppId} style={btn(true)}>Enregistrer</button>
+            <button type="button" onClick={restoreDefaultCastAppId} style={btn(false)}>App ID défaut</button>
+            <button type="button" disabled={busy === "cast"} onClick={toggleCast} style={btn(true)}>{castState?.isCasting ? "Arrêter Cast" : "Lancer Cast"}</button>
+            <button type="button" disabled={busy === "ping"} onClick={pingCast} style={btn(false)}>PING</button>
+            <button type="button" onClick={() => go?.("cast_host")} style={btn(false)}>Page Cast complète</button>
+          </div>
+        </div>
+      </section>
+
+      <section style={box}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+          <div>
+            <h3 style={{ margin: 0, color: theme.primary, fontSize: 16 }}>📱 Viewer tablette</h3>
+            <div style={{ color: theme.textSoft, fontSize: 12, marginTop: 3 }}>
+              {viewer?.sessionId ? `Session active : ${viewer.code || viewer.sessionId}` : "Aucune session active"}
+            </div>
+          </div>
+          <div style={{ borderRadius: 999, padding: "7px 10px", border: `1px solid ${viewer?.sessionId ? theme.primary : theme.borderSoft}`, color: viewer?.sessionId ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 1000 }}>
+            {viewer?.sessionId ? "ON" : "OFF"}
+          </div>
+        </div>
+
+        {viewer?.sessionId && (
+          <div style={{ marginBottom: 10, display: "grid", gap: 5 }}>
+            <div style={{ color: theme.primary, fontSize: 30, letterSpacing: 3, fontWeight: 1200 }}>{viewer.code || viewer.sessionId}</div>
+            <div style={{ color: theme.textSoft, fontSize: 12, overflowWrap: "anywhere" }}>{viewer.joinUrl}</div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" disabled={busy === "viewer"} onClick={viewer?.sessionId ? copyViewerLink : startViewer} style={btn(true)}>
+            {viewer?.sessionId ? "Copier lien" : busy === "viewer" ? "Création…" : "Créer viewer"}
+          </button>
+          {viewer?.sessionId && <button type="button" onClick={stopViewer} style={btn(false)}>Arrêter viewer</button>}
+          <button type="button" onClick={() => go?.("viewer_host")} style={btn(false)}>Page Viewer / QR code</button>
+          <button type="button" onClick={() => go?.("viewer_join")} style={btn(false)}>Rejoindre</button>
+        </div>
+      </section>
+
+      <section style={box}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <h3 style={{ margin: 0, color: theme.primary, fontSize: 16 }}>Diagnostic viewer</h3>
+            <div style={{ color: theme.textSoft, fontSize: 12, marginTop: 3 }}>Derniers envois live vers tablette.</div>
+          </div>
+          <button type="button" onClick={() => { clearViewerDiagLog(); setViewerDiag([]); }} style={btn(false)}>Vider</button>
+        </div>
+        <div style={{ marginTop: 10, display: "grid", gap: 6, maxHeight: 130, overflow: "auto" }}>
+          {viewerDiag.length ? viewerDiag.slice(-6).reverse().map((d, i) => (
+            <div key={i} style={{ fontSize: 11, color: theme.textSoft, borderTop: `1px solid ${theme.borderSoft}`, paddingTop: 5 }}>
+              {new Date(d.at || Date.now()).toLocaleTimeString()} · {d.entry} · {d.extra ? JSON.stringify(d.extra).slice(0, 110) : ""}
+            </div>
+          )) : <div style={{ color: theme.textSoft, fontSize: 12 }}>Aucun envoi pour le moment.</div>}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2560,6 +2809,8 @@ export default function Settings({ go }: Props) {
       ? t("settings.menu.lang", "Langues")
       : tab === "general"
       ? t("settings.menu.backupNas", "Backup NAS")
+      : tab === "castViewer"
+      ? "Cast / Viewer"
       : tab === "developer"
       ? t("settings.menu.developer", "Développeur")
       : t("settings.menu.sport", "Choix de sport");
@@ -2575,6 +2826,8 @@ export default function Settings({ go }: Props) {
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
+      : tab === "castViewer"
+      ? "Paramètres des deux sorties écran : Google Cast TV et Viewer tablette."
       : tab === "developer"
       ? t("settings.dev.pageSubtitle", "Diagnostic, tests, logs, sécurité technique et outils NAS avancés.")
       : t("settings.nas.pageSubtitle", "Créer ou charger manuellement la sauvegarde NAS du compte.");
@@ -2684,6 +2937,13 @@ export default function Settings({ go }: Props) {
             />
 
             <SettingsMenuCard
+              title={t("settings.menu.castViewer", "Cast / Viewer")}
+              subtitle="Réglages Google Cast TV, session Viewer tablette, QR code et diagnostics écran."
+              theme={theme}
+              onClick={() => setTab("castViewer")}
+            />
+
+            <SettingsMenuCard
               title={t("settings.menu.backupNas", "Backup NAS")}
               subtitle="Créer sauvegarde NAS ou charger sauvegarde NAS. Aucun reset ici."
               theme={theme}
@@ -2706,6 +2966,7 @@ export default function Settings({ go }: Props) {
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}
         {tab === "sport" && <SportSection />}
+        {tab === "castViewer" && <CastViewerSettingsSection go={go} />}
         {tab === "developer" && <DeveloperSection />}
         {tab === "general" && <NasBackupSection />}
       </div>

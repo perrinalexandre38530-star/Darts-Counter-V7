@@ -1,7 +1,6 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
-import GlobalCastButton from "./GlobalCastButton";
 
 /**
  * BottomNav
@@ -26,6 +25,9 @@ type TabKey =
   | "stats"
   | "statsHub"
   | "settings"
+  | "cast_host"
+  | "viewer_host"
+  | "cast_room"
   // au cas où ton routing le contient
   | "petanque_home"
   | "petanque_menu"
@@ -43,6 +45,8 @@ type NavItem = {
     | "petanque_menu"
     | "petanque_config"
     | "petanque_play"
+    | "viewer_host"
+    | "cast_room"
   >;
   label: string;
   icon: React.ReactNode;
@@ -130,6 +134,18 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
+    case "cast_host":
+    case "viewer_host":
+    case "cast_room":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path d="M3 18a3 3 0 0 1 3 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M3 13a8 8 0 0 1 8 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M3 8a13 13 0 0 1 13 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M5 5h14v10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+
     case "settings":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
@@ -205,6 +221,7 @@ export default function BottomNav({
 
     { k: "stats", label: "Stats", icon: <Icon name="stats" /> },
     { k: "settings", label: "Réglages", icon: <Icon name="settings" /> },
+    { k: "cast_host", label: "Écrans", icon: <Icon name="cast_host" /> },
   ];
 
   const tap = (k: NavItem["k"]) => {
@@ -236,7 +253,8 @@ export default function BottomNav({
       {tabs.map((t) => {
         const activeStats = t.k === "stats" && value === "statsHub";
         const activeTournaments = t.k === "tournaments" && isTournamentRoute;
-        const active = value === t.k || activeStats || activeTournaments;
+        const activeScreens = t.k === "cast_host" && (value === "viewer_host" || value === "cast_room");
+        const active = value === t.k || activeStats || activeTournaments || activeScreens;
 
         const halo = active ? accent : "transparent";
 
@@ -282,7 +300,6 @@ export default function BottomNav({
           </button>
         );
       })}
-      <GlobalCastButton accent={accent} textMain={textMain} textSoft={textSoft} />
       <div className="bn-safe" />
     </nav>
   );

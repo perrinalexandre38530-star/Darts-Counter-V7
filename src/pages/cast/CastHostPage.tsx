@@ -62,7 +62,7 @@ export default function CastHostPage({ go }: Props) {
   const [appId, setAppIdState] = React.useState(getGoogleCastAppId());
   const [diag, setDiag] = React.useState<any[]>(getGoogleCastDiagLog());
   const [message, setMessage] = React.useState(
-    "Ouvre la liste des appareils, connecte la TV, puis envoie un PING ou lance X01."
+    "Page centrale des sorties écran : Cast TV / Chromecast et Viewer tablette indépendant."
   );
   const [loading, setLoading] = React.useState(false);
 
@@ -163,11 +163,29 @@ export default function CastHostPage({ go }: Props) {
           >
             ← Retour
           </button>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.4 }}>Google Cast</div>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.4 }}>Cast / Viewer</div>
           <div style={{ width: 88 }} />
         </div>
 
         <div style={{ display: "grid", gap: 16 }}>
+
+          <div style={cardStyle()}>
+            <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 8 }}>Deux sorties écran indépendantes</div>
+            <div style={{ fontSize: 14, opacity: 0.86, lineHeight: 1.45, marginBottom: 14 }}>
+              📺 <b>Cast</b> envoie vers TV / Chromecast via CAF. 📱 <b>Viewer tablette</b> ouvre une session live séparée avec QR code. Les deux peuvent fonctionner en même temps sans partager le même canal.
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={start} disabled={loading} style={smallButton("gold")}>
+                {loading ? "Ouverture..." : "Lancer le Cast TV"}
+              </button>
+              <button onClick={() => go("viewer_host")} style={smallButton("gold")}>
+                Créer / voir Viewer tablette
+              </button>
+              <button onClick={() => go("settings")} style={smallButton()}>
+                Réglages
+              </button>
+            </div>
+          </div>
           <div style={cardStyle()}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
               <div style={badge(state.supported, "ok")}>
@@ -185,7 +203,7 @@ export default function CastHostPage({ go }: Props) {
 
             <div style={{ display: "grid", gap: 10 }}>
               <div>
-                <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>Receiver Application ID</div>
+                <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>Receiver Application ID Google Cast</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <input
                     value={appId}

@@ -7,10 +7,28 @@ export const GOOGLE_CAST_SDK_URL =
 const GOOGLE_CAST_DIAG_KEY = "multisports_google_cast_diag";
 const MAX_PLAYERS_WITH_ALL_AVATARS = 8;
 
-// Viewer tablette : stockage volontairement dupliqué ici pour éviter
-// une dépendance statique Cast -> Viewer. Le Cast doit continuer à charger
-// même si le module viewer a un souci.
-const ACTIVE_VIEWER_SESSION_STORAGE_KEY = "dc_viewer_active_session_v1";
+function hasActiveViewerSessionForBridge(): boolean {
+  try {
+    if (typeof window === "undefined") return false;
+    const raw = window.localStorage.getItem("dc_viewer_active_session_v1");
+    if (!raw) return false;
+    const info = JSON.parse(raw);
+    if (!info?.sessionId || info?.enabled === false) return false;
+    if (info?.expiresAt && Number(info.expiresAt) < Date.now()) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function bridgeSnapshotToViewerIfActive(payload: CastSnapshot, reason = "sendCastSnapshot") {
+  if (!hasActiveViewerSessionForBridge()) return;
+  try {
+    void import("../lib/viewer/viewerPublisher")
+      .then((mod) => mod.publishActiveViewerSnapshotFromCast(payload, reason))
+      .catch(() => {});
+  } catch {}
+}
 
 let sdkPromise: Promise<boolean> | null = null;
 let initializedAppId: string | null = null;
@@ -54,48 +72,6 @@ function pushDiag(entry: string, extra?: any) {
     window.localStorage.setItem(GOOGLE_CAST_DIAG_KEY, JSON.stringify(next));
   } catch {}
   emitStatus();
-}
-
-function hasActiveViewerSessionLight() {
-  if (typeof window === "undefined") return false;
-  try {
-    const raw = window.localStorage.getItem(ACTIVE_VIEWER_SESSION_STORAGE_KEY);
-    if (!raw) return false;
-    const info = JSON.parse(raw);
-    if (!info?.sessionId || info.enabled === false) return false;
-    if (info.expiresAt && Number(info.expiresAt) < Date.now()) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function mirrorCastSnapshotToViewer(payload: CastSnapshot, reason = "cast_snapshot") {
-  // Ne charge pas le module viewer tant qu'aucune session viewer n'est active.
-  // Cela évite tout conflit avec l'initialisation CAF et garde les deux sorties indépendantes.
-  if (!hasActiveViewerSessionLight()) return;
-
-  void import("../lib/viewer/viewerPublisher")
-    .then((mod) => {
-      try {
-        mod.publishActiveViewerSnapshotFromCast(payload, reason);
-      } catch (err) {
-        pushDiag("viewer_mirror_failed", safeString(err));
-      }
-    })
-    .catch((err) => {
-      pushDiag("viewer_mirror_import_failed", safeString(err));
-    });
-}
-
-function hasActiveCastSendContext() {
-  if (typeof window === "undefined") return false;
-  if (!hasSdkLoaded()) return false;
-  try {
-    return !!(getSessionWrapper() || getRawSession());
-  } catch {
-    return false;
-  }
 }
 
 function hasSdkLoaded() {
@@ -770,28 +746,12 @@ function buildSnapshotSignaturePayload(payload: any) {
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
   if (!snapshot) return false;
   const payload = await sanitizeSnapshot(snapshot);
-
-  // Sortie Viewer tablette indépendante : fire-and-forget, jamais await, jamais SDK Cast.
-  mirrorCastSnapshotToViewer(payload as CastSnapshot, "sendCastSnapshot");
-
+  bridgeSnapshotToViewerIfActive(payload as CastSnapshot, "sendCastSnapshot");
   const signature = buildSnapshotSignaturePayload(payload);
   lastSnapshotPayload = payload;
   lastSnapshotAt = Date.now();
   if (signature === lastSnapshotSignature) return true;
   lastSnapshotSignature = signature;
-
-  // Si aucune session Cast n'est active, on garde seulement le dernier snapshot en cache.
-  // Quand l'utilisateur lance le Cast, request/session_state_changed fera un resendLastSnapshot().
-  // Cela évite que le viewer tablette déclenche ou perturbe CAF.
-  if (!hasActiveCastSendContext()) {
-    pushDiag("send_snapshot_skipped_no_cast_session", {
-      game: safeString(payload?.game || ""),
-      players: Array.isArray(payload?.players) ? payload.players.length : 0,
-      viewerActive: hasActiveViewerSessionLight(),
-    });
-    return false;
-  }
-
   return sendMessageInternal(
     { type: "SNAPSHOT", payload },
     "send_snapshot_ok",
