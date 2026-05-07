@@ -59,6 +59,7 @@ import {
 // ✅ Realtime presence + chat MVP
 import { joinPresence } from "../lib/onlinePresence";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
+import { History } from "../lib/history";
 
 /* -------------------------------------------------
    Constantes localStorage
@@ -508,14 +509,82 @@ function MatchMiniCard({
 
 
 /* -------------------------------------------------
+   Import d'un partage reçu dans l'historique local
+--------------------------------------------------*/
+function getShareImportableMatch(item: SharedOnlineItem): any | null {
+  const payload: any = item?.payload || null;
+  if (!payload) return null;
+  const type = String(item?.type || "").toLowerCase();
+  if (type === "match" || type === "score" || type === "snapshot") return payload;
+  if (type === "stats" && payload?.lastMatch) return payload.lastMatch;
+  if (payload?.match) return payload.match;
+  if (payload?.lastMatch) return payload.lastMatch;
+  return null;
+}
+
+function buildImportedHistoryRecord(item: SharedOnlineItem): any | null {
+  const match = getShareImportableMatch(item);
+  if (!match || typeof match !== "object") return null;
+
+  const now = Date.now();
+  const baseId = String(
+    item.matchId ||
+      match.matchId ||
+      match.id ||
+      match.payload?.matchId ||
+      `shared_${item.id || now}`
+  );
+  const id = baseId.startsWith("shared_") ? baseId : `shared_${baseId}`;
+  const createdRaw = match.createdAt || match.created_at || match.finishedAt || match.date || item.createdAt;
+  const createdAt = typeof createdRaw === "number" ? createdRaw : Date.parse(String(createdRaw || ""));
+  const players = Array.isArray(match.players)
+    ? match.players
+    : Array.isArray(match.payload?.players)
+    ? match.payload.players
+    : Array.isArray(match.summary?.players)
+    ? match.summary.players
+    : [];
+
+  const kind = String(match.kind || match.game || match.mode || item.sport || "x01").toLowerCase();
+  const status = String(match.status || match.payload?.status || "finished") === "in_progress" ? "finished" : "finished";
+
+  return {
+    ...match,
+    id,
+    matchId: id,
+    kind: kind || "x01",
+    game: match.game ?? match.mode ?? item.sport ?? null,
+    status,
+    players,
+    winnerId: match.winnerId ?? match.winner?.id ?? match.result?.winnerId ?? null,
+    createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now,
+    updatedAt: now,
+    summary: match.summary || match.result || match.stats || null,
+    payload: {
+      ...(match.payload && typeof match.payload === "object" ? match.payload : match),
+      importedFromShare: true,
+      importedShareId: item.id,
+      importedShareTitle: item.title || null,
+      importedShareOwner: item.ownerUser?.displayName || item.ownerUser?.nickname || null,
+      importedAt: new Date(now).toISOString(),
+    },
+  };
+}
+
+
+/* -------------------------------------------------
    Détail d'un partage reçu
 --------------------------------------------------*/
 function ShareDetailsModal({
   item,
   onClose,
+  onImport,
+  importing = false,
 }: {
   item: SharedOnlineItem;
   onClose: () => void;
+  onImport?: (item: SharedOnlineItem) => void;
+  importing?: boolean;
 }) {
   const payload: any = item?.payload || {};
   const owner = item.ownerUser?.displayName || item.ownerUser?.nickname || "Ami";
@@ -533,6 +602,8 @@ function ShareDetailsModal({
     return names.length ? names.slice(0, 4).join(" vs ") : "—";
   };
   const winnerOf = (m: any) => String(m?.winner?.name || m?.winnerName || m?.payload?.winnerName || m?.result?.winnerName || "").trim();
+  const importableMatch = getShareImportableMatch(item);
+  const canImport = !!importableMatch;
 
   const metrics = isStats
     ? [
@@ -638,8 +709,31 @@ function ShareDetailsModal({
           </div>
         ) : null}
 
-        <div style={{ marginTop: 12, fontSize: 11.5, opacity: 0.72, lineHeight: 1.35 }}>
-          Ce détail est lu depuis le partage NAS. Le prochain cran sera l’import direct dans l’historique local ou l’ouverture d’un résumé complet selon le type de partie.
+        <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+          {canImport ? (
+            <button
+              type="button"
+              onClick={() => onImport?.(item)}
+              disabled={importing}
+              style={{
+                minHeight: 42,
+                borderRadius: 14,
+                border: "1px solid rgba(127,226,169,.34)",
+                background: importing
+                  ? "rgba(255,255,255,.08)"
+                  : "linear-gradient(180deg, rgba(127,226,169,.22), rgba(127,226,169,.10))",
+                color: "#dfffea",
+                fontWeight: 1000,
+                cursor: importing ? "default" : "pointer",
+                boxShadow: "0 0 18px rgba(127,226,169,.12)",
+              }}
+            >
+              {importing ? "Import en cours…" : "⬇️ Importer dans l’historique"}
+            </button>
+          ) : null}
+          <div style={{ fontSize: 11.5, opacity: 0.72, lineHeight: 1.35 }}>
+            Ce détail est lu depuis le partage NAS. Les matchs importés apparaissent ensuite dans l’historique local et peuvent alimenter les statistiques comme une partie terminée.
+          </div>
         </div>
       </div>
     </div>
@@ -1090,6 +1184,7 @@ const doLogout = React.useCallback(async () => {
   const [busyRequestId, setBusyRequestId] = React.useState<string | null>(null);
   const [busyShareId, setBusyShareId] = React.useState<string | null>(null);
   const [selectedShare, setSelectedShare] = React.useState<SharedOnlineItem | null>(null);
+  const [importingShareId, setImportingShareId] = React.useState<string | null>(null);
 
   const incomingRequests = React.useMemo(
     () => friendRequests.filter((r) => r.direction === "incoming" && r.status === "pending"),
@@ -1285,6 +1380,28 @@ const doLogout = React.useCallback(async () => {
       await markSharedItemRead(item.id);
       await loadSocial();
     } catch {}
+  }
+
+  async function handleImportShareToHistory(item: SharedOnlineItem) {
+    if (!item?.id || importingShareId) return;
+    const record = buildImportedHistoryRecord(item);
+    if (!record) {
+      setFriendsError("Ce partage ne contient pas de match importable.");
+      return;
+    }
+    setImportingShareId(item.id);
+    setFriendsError(null);
+    setFriendsInfo(null);
+    try {
+      await History.upsert(record as any);
+      setFriendsInfo("Partage importé dans l’historique local.");
+      await handleReadShare(item);
+      setSelectedShare(null);
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e) || "Import impossible dans l’historique.");
+    } finally {
+      setImportingShareId(null);
+    }
   }
 
   /* -----------------------------
@@ -1810,7 +1927,14 @@ const doLogout = React.useCallback(async () => {
         </>
       ) : null}
 
-      {selectedShare ? <ShareDetailsModal item={selectedShare} onClose={() => setSelectedShare(null)} /> : null}
+      {selectedShare ? (
+        <ShareDetailsModal
+          item={selectedShare}
+          onClose={() => setSelectedShare(null)}
+          onImport={(it) => handleImportShareToHistory(it).catch(() => {})}
+          importing={importingShareId === selectedShare.id}
+        />
+      ) : null}
 
       {/* ================= RÉSUMÉ ================= */}
       <SectionTitle title="Résumé" subtitle="Aperçu rapide (semaine + dernier match)" />
