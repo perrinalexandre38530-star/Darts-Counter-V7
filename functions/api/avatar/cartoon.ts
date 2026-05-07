@@ -1,161 +1,213 @@
 // ===================================================
-// /functions/api/avatar/cartoon.ts
-// IA caricature (img2img) via Workers AI
-// - Reçoit un FormData avec "image" (File) + "style" (string)
-// - Appelle @cf/runwayml/stable-diffusion-v1-5-img2img
-// - Retourne JSON { ok: true, cartoonPng: "data:image/png;base64,..." }
-//   compatible avec AvatarCreator.tsx
+// functions/api/avatar/cartoon.ts
+// Endpoint serveur pour vraie caricature avatar.
+// Priorité : OpenAI Images Edit si OPENAI_API_KEY est configuré.
+// Fallback : Cloudflare Workers AI si binding AI disponible.
+// Le médaillon n'est jamais généré par l'IA : le front l'applique ensuite
+// pour garder un cadre identique et compresser en WebP.
 // ===================================================
 
 export interface Env {
-  AI: Ai;
+  AI?: any;
+  OPENAI_API_KEY?: string;
+  OPENAI_IMAGE_MODEL?: string;
 }
 
-// Styles dispo côté front
 type StyleId = "realistic" | "comic" | "flat" | "exaggerated";
 
-// Petites variations de prompt suivant le style
 const STYLE_SNIPPETS: Record<StyleId, string> = {
   realistic:
-    "realistic hand-drawn caricature portrait, warm colors, thick outlines, visible brush strokes, humorous but still recognizable face, studio lighting, plain dark background",
+    "premium hand-drawn cartoon portrait, recognizable face, clean polished illustration, warm skin shading, thick confident outlines, expressive but not distorted",
   comic:
-    "comic-book style caricature portrait, bold black outlines, halftone shadows, vibrant colors, dynamic shading, humorous facial expression, plain dark background",
+    "comic book caricature portrait, bold black ink outlines, vibrant color blocks, halftone energy, funny expressive smile, playful face exaggeration",
   flat:
-    "flat vector esport logo, stylized face as a mascot, clean shapes, thick outlines, limited color palette, high contrast, centered head only, dark background",
+    "esport mascot vector avatar, simplified shapes, clean flat colors, thick outlines, punchy contrast, centered face, badge-ready portrait",
   exaggerated:
-    "very exaggerated caricature portrait, over-the-top facial features, strong contrast, painterly brush strokes, humorous and expressive, plain dark background",
+    "VERY exaggerated funny cartoon caricature, oversized expressive head, big eyes, comic nose and smile, playful asymmetry, bold outlines, vibrant warm colors, hilarious but friendly",
 };
 
-// Construit le prompt final à partir du style
-function buildPrompt(style: StyleId | null): string {
-  const base =
-    "Cartoon caricature portrait of this person, head and shoulders only, centered in frame, high quality illustration.";
-  const snippet =
-    (style && STYLE_SNIPPETS[style as StyleId]) || STYLE_SNIPPETS.realistic;
-  return `${base} ${snippet}`;
+function buildPrompt(style: StyleId): string {
+  return [
+    "Transform the uploaded photo into a square cartoon avatar caricature.",
+    "Keep the person recognizable, but make it much more cartoonish, funny and expressive.",
+    "Head and shoulders only, centered composition, looking at camera.",
+    "Do NOT include text, letters, logo, watermark, badge, circle frame, medallion, UI, hands, or background objects.",
+    "Use a simple warm yellow/orange comic background that will fit inside a circular medallion later.",
+    STYLE_SNIPPETS[style] || STYLE_SNIPPETS.exaggerated,
+  ].join(" ");
 }
 
-// ---------- Helpers ----------
-
-// Lis un File depuis le FormData et renvoie un tableau d'octets (Uint8Array[])
-async function fileToUint8ArrayList(file: File): Promise<number[]> {
+async function fileToArray(file: File): Promise<number[]> {
   const buf = await file.arrayBuffer();
-  const uint8 = new Uint8Array(buf);
-  // Workers AI attend un "array" de nombres 0..255 (cf docs)
-  return Array.from(uint8);
+  return Array.from(new Uint8Array(buf));
 }
 
-// Convertit un ReadableStream (image PNG) -> dataURL base64
-async function imageStreamToDataUrl(stream: ReadableStream): Promise<string> {
-  const resp = new Response(stream);
-  const buf = await resp.arrayBuffer();
+function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...Array.from(chunk));
   }
-  const b64 = btoa(binary);
-  return `data:image/png;base64,${b64}`;
+  return btoa(binary);
 }
 
-// ---------- Handler principal ----------
+async function resultToDataUrl(result: any): Promise<string | null> {
+  if (!result) return null;
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+  if (typeof result === "string") {
+    if (result.startsWith("data:image/")) return result;
+    return `data:image/png;base64,${result}`;
+  }
+
+  if (result instanceof ReadableStream) {
+    const buf = await new Response(result).arrayBuffer();
+    return `data:image/png;base64,${arrayBufferToBase64(buf)}`;
+  }
+
+  if (result.image && typeof result.image === "string") {
+    if (result.image.startsWith("data:image/")) return result.image;
+    return `data:image/png;base64,${result.image}`;
+  }
+
+  if (result.images?.[0] && typeof result.images[0] === "string") {
+    const first = result.images[0];
+    if (first.startsWith("data:image/")) return first;
+    return `data:image/png;base64,${first}`;
+  }
+
+  if (result.data?.[0]?.b64_json && typeof result.data[0].b64_json === "string") {
+    return `data:image/webp;base64,${result.data[0].b64_json}`;
+  }
+
+  if (result.data?.[0]?.url && typeof result.data[0].url === "string") {
+    return result.data[0].url;
+  }
+
+  return null;
+}
+
+async function callOpenAiImageEdit(apiKey: string, file: File, style: StyleId): Promise<string | null> {
+  const form = new FormData();
+  form.append("model", "gpt-image-1");
+  form.append("image", file, file.name || "avatar-source.webp");
+  form.append("prompt", buildPrompt(style));
+  form.append("n", "1");
+  form.append("size", "1024x1024");
+  form.append("quality", "medium");
+  form.append("output_format", "webp");
+  form.append("output_compression", "82");
+
+  const response = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: form,
+  });
+
+  const text = await response.text();
+  let json: any = null;
   try {
-    const { request, env } = context;
+    json = JSON.parse(text);
+  } catch {}
 
+  if (!response.ok) {
+    const msg = json?.error?.message || text || `openai_${response.status}`;
+    throw new Error(msg);
+  }
+
+  return await resultToDataUrl(json);
+}
+
+async function callCloudflareAi(env: Env, file: File, style: StyleId): Promise<string | null> {
+  if (!env.AI?.run) return null;
+
+  const prompt = buildPrompt(style);
+  const image = await fileToArray(file);
+
+  const candidates = [
+    "@cf/runwayml/stable-diffusion-v1-5-img2img",
+    "@cf/lykon/dreamshaper-8-lcm",
+  ];
+
+  let lastError = "";
+  for (const model of candidates) {
+    try {
+      const result = await env.AI.run(model, {
+        prompt,
+        image,
+        num_steps: style === "exaggerated" ? 32 : 26,
+        strength: style === "realistic" ? 0.58 : style === "flat" ? 0.72 : 0.82,
+        guidance: style === "exaggerated" ? 9 : 7.5,
+      });
+      const dataUrl = await resultToDataUrl(result);
+      if (dataUrl) return dataUrl;
+      lastError = "empty_ai_result";
+    } catch (err: any) {
+      lastError = String(err?.message || err || "ai_error");
+    }
+  }
+
+  throw new Error(lastError || "cloudflare_ai_failed");
+}
+
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  try {
     const contentType = request.headers.get("content-type") || "";
     if (!contentType.includes("multipart/form-data")) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "invalid_content_type",
-          message: "Expected multipart/form-data with an image file.",
-        }),
-        {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }
-      );
+      return json({ ok: false, error: "invalid_content_type" }, 400);
     }
 
     const form = await request.formData();
     const file = form.get("image");
-    const styleRaw = form.get("style");
+    const styleRaw = String(form.get("style") || "exaggerated");
+    const style: StyleId = ["realistic", "comic", "flat", "exaggerated"].includes(styleRaw)
+      ? (styleRaw as StyleId)
+      : "exaggerated";
 
     if (!(file instanceof File)) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "missing_image",
-          message: 'FormData must contain a field "image" of type File.',
-        }),
-        {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }
-      );
+      return json({ ok: false, error: "missing_image" }, 400);
     }
 
-    // Style optionnel
-    const style =
-      typeof styleRaw === "string" &&
-      ["realistic", "comic", "flat", "exaggerated"].includes(
-        styleRaw as StyleId
-      )
-        ? (styleRaw as StyleId)
-        : ("realistic" as StyleId);
+    if (file.size > 12 * 1024 * 1024) {
+      return json({ ok: false, error: "image_too_large" }, 413);
+    }
 
-    const prompt = buildPrompt(style);
-
-    // Conversion de l'image en tableau d'entiers (0..255)
-    const imageArray = await fileToUint8ArrayList(file);
-
-    // Appel Workers AI — modèle img2img officiel
-    const inputs = {
-      prompt,
-      image: imageArray,
-      // Quelques paramètres raisonnables
-      num_steps: 20,
-      strength: 0.65,
-      guidance: 7.5,
-      // pas de seed => null interdit (cf erreur précédente), donc on ne met rien
-    };
-
-    const aiResult = await env.AI.run(
-      "@cf/runwayml/stable-diffusion-v1-5-img2img",
-      inputs
-    );
-
-    // D'après la doc, pour ce modèle, la binding retourne un ReadableStream PNG
-    const cartoonPng = await imageStreamToDataUrl(aiResult as ReadableStream);
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        cartoonPng,
-        debug: {
-          model: "@cf/runwayml/stable-diffusion-v1-5-img2img",
-          style,
-        },
-      }),
-      {
-        status: 200,
-        headers: { "content-type": "application/json" },
+    const openAiKey = String(env.OPENAI_API_KEY || "").trim();
+    if (openAiKey) {
+      try {
+        const dataUrl = await callOpenAiImageEdit(openAiKey, file, style);
+        if (dataUrl) return json({ ok: true, cartoonWebp: dataUrl, provider: "openai", style }, 200);
+      } catch (err: any) {
+        // On garde un fallback Cloudflare possible si OpenAI échoue.
+        const openAiMessage = String(err?.message || err || "openai_error");
+        try {
+          const dataUrl = await callCloudflareAi(env, file, style);
+          if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", fallbackFrom: "openai", openAiMessage, style }, 200);
+        } catch (cfErr: any) {
+          return json({ ok: false, error: "ai_generation_failed", provider: "openai", message: openAiMessage, fallbackMessage: String(cfErr?.message || cfErr || "cloudflare_error") }, 502);
+        }
       }
-    );
+    }
+
+    try {
+      const dataUrl = await callCloudflareAi(env, file, style);
+      if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", style }, 200);
+    } catch (err: any) {
+      return json({ ok: false, error: "ai_generation_failed", provider: "cloudflare", message: String(err?.message || err || "cloudflare_error") }, 502);
+    }
+
+    return json({ ok: false, error: "ai_binding_missing", message: "Configure OPENAI_API_KEY or Cloudflare AI binding." }, 503);
   } catch (err: any) {
-    console.error("[avatar/cartoon] error:", err);
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "exception",
-        message: String(err?.message || err || "Unknown error"),
-      }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      }
-    );
+    return json({ ok: false, error: "exception", message: String(err?.message || err || "Unknown error") }, 500);
   }
 };
+
+function json(payload: any, status: number): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}

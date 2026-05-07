@@ -25,7 +25,11 @@ async function bitmapFromFile(file: File): Promise<ImageBitmap | HTMLImageElemen
     fr.onerror = () => reject(fr.error || new Error("read_failed"));
     fr.readAsDataURL(file);
   });
-  return await new Promise<HTMLImageElement>((resolve, reject) => {
+  return await imageFromDataUrl(dataUrl);
+}
+
+function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error("image_load_failed"));
@@ -46,6 +50,12 @@ function renderBitmapToDataUrl(img: any, maxSide: number, quality: number): stri
   if (!ctx) throw new Error("canvas_unavailable");
   ctx.drawImage(img, 0, 0, tw, th);
   return canvas.toDataURL("image/webp", quality);
+}
+
+async function recompressDataUrl(dataUrl: string, maxSide: number, quality: number): Promise<string | null> {
+  const img = await imageFromDataUrl(dataUrl);
+  const rendered = renderBitmapToDataUrl(img, maxSide, quality);
+  return sanitizeAvatarDataUrl(rendered, MAX_AVATAR_DATA_URL_CHARS);
 }
 
 export type AvatarVariants = {
@@ -70,7 +80,7 @@ export async function fileToSafeAvatarDataUrl(file: File): Promise<string> {
   if (!file) throw new Error("missing_file");
   if (file.size > MAX_AVATAR_FILE_MB * 1024 * 1024) throw new Error("avatar_file_too_big");
   const bitmap = await bitmapFromFile(file);
-  const fullDataUrl = sanitizeAvatarDataUrl(renderBitmapToDataUrl(bitmap, 320, 0.86), 280_000);
+  const fullDataUrl = sanitizeAvatarDataUrl(renderBitmapToDataUrl(bitmap, 512, 0.82), MAX_AVATAR_DATA_URL_CHARS);
   try { (bitmap as any).close?.(); } catch {}
   if (!fullDataUrl) throw new Error("avatar_variant_too_large");
   return fullDataUrl;
@@ -79,5 +89,10 @@ export async function fileToSafeAvatarDataUrl(file: File): Promise<string> {
 export async function enforceSafeAvatarDataUrl(dataUrl: string): Promise<string | null> {
   const direct = sanitizeAvatarDataUrl(dataUrl);
   if (direct) return direct;
-  return null;
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return null;
+  try {
+    return await recompressDataUrl(dataUrl, 512, 0.76);
+  } catch {
+    return null;
+  }
 }
