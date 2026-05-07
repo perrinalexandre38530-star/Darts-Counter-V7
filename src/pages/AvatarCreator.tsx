@@ -409,6 +409,7 @@ function AvatarCreator({
   const [miniInfo, setMiniInfo] = React.useState<{ title: string; content: string } | null>(null);
   const [gallery, setGallery] = React.useState<GalleryAvatar[]>(() => readGallery());
   const [assignTarget, setAssignTarget] = React.useState<GalleryAvatar | null>(null);
+  const [selectedGalleryItem, setSelectedGalleryItem] = React.useState<GalleryAvatar | null>(null);
   const [profiles, setProfiles] = React.useState<AssignableProfile[]>([]);
   const [medallionColorId, setMedallionColorId] = React.useState<string>("gold");
 
@@ -469,7 +470,19 @@ function AvatarCreator({
       const store: any = await loadStore<any>();
       if (!alive) return;
       const list = Array.isArray(store?.profiles) ? store.profiles : [];
-      setProfiles(list.map((p: any) => ({ id: String(p?.id || ""), name: String(p?.name || p?.displayName || "Profil"), avatarDataUrl: p?.avatarDataUrl, avatarUrl: p?.avatarUrl })).filter((p: any) => p.id));
+      const profileItems = list
+        .map((p: any) => ({
+          id: `profile:${String(p?.id || "")}`,
+          name: `${String(p?.id || "") === String(store?.activeProfileId || "") ? "⭐ Profil actif — " : "Profil local — "}${String(p?.name || p?.displayName || "Profil")}`,
+          avatarDataUrl: p?.avatarDataUrl,
+          avatarUrl: p?.avatarUrl,
+        }))
+        .filter((p: any) => p.id !== "profile:");
+      const botsRaw = readLocalJson<any[]>("dc_bots_v1", []);
+      const botItems = Array.isArray(botsRaw)
+        ? botsRaw.map((b: any) => ({ id: `bot:${String(b?.id || "")}`, name: `Bot CPU — ${String(b?.name || "Bot")}`, avatarDataUrl: b?.avatarDataUrl, avatarUrl: b?.avatarUrl || b?.avatar })).filter((b: any) => b.id !== "bot:")
+        : [];
+      setProfiles([...profileItems, ...botItems]);
     })();
     return () => { alive = false; };
   }, [activeTab, assignTarget]);
@@ -624,8 +637,7 @@ function AvatarCreator({
         setOffsetX(0);
         setOffsetY(0);
         consumeAvatarCreditAfterSuccess();
-        setStatus("Vraie caricature IA générée. 1 crédit avatar consommé. Elle sera ajoutée à la galerie à l’enregistrement.");
-        setActiveTab("gallery");
+        setStatus("Vraie caricature IA générée. 1 crédit avatar consommé. Enregistre-la pour l’ajouter à la galerie.");
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
         setPhotoUrl(fallback);
@@ -713,15 +725,30 @@ function AvatarCreator({
   async function assignAvatarToProfile(item: GalleryAvatar, profileId: string) {
     try {
       setBusy(true);
+      if (profileId.startsWith("bot:")) {
+        const botId = profileId.slice(4);
+        const bots = readLocalJson<any[]>("dc_bots_v1", []);
+        const nextBots = Array.isArray(bots)
+          ? bots.map((b: any) => String(b?.id || "") === botId ? { ...b, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatar: undefined, updatedAt: new Date().toISOString() } : b)
+          : [];
+        localStorage.setItem("dc_bots_v1", JSON.stringify(nextBots));
+        try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
+        const target = nextBots.find((b: any) => String(b?.id || "") === botId);
+        setStatus(`Avatar attribué au bot ${target?.name || "CPU"}.`);
+        setAssignTarget(null);
+        return;
+      }
+
+      const cleanProfileId = profileId.startsWith("profile:") ? profileId.slice(8) : profileId;
       const store: any = await loadStore<any>();
       if (!store || !Array.isArray(store.profiles)) throw new Error("store_profiles_missing");
       const nextProfiles = store.profiles.map((p: any) =>
-        String(p?.id || "") === String(profileId)
+        String(p?.id || "") === String(cleanProfileId)
           ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null }
           : p
       );
       await saveStore({ ...store, profiles: nextProfiles });
-      const target = nextProfiles.find((p: any) => String(p?.id || "") === String(profileId));
+      const target = nextProfiles.find((p: any) => String(p?.id || "") === String(cleanProfileId));
       setStatus(`Avatar attribué à ${target?.name || "profil"}.`);
       setAssignTarget(null);
     } catch (e) {
@@ -784,86 +811,99 @@ function AvatarCreator({
     );
   };
 
-  const renderIaTab = () => (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardBase, padding: 14, background: "linear-gradient(145deg, rgba(37,24,67,.96), rgba(9,9,16,.98))" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-          <div>
-            <div style={{ fontWeight: 1000, textTransform: "uppercase", fontSize: 15 }}>Studio caricature</div>
-            <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 2 }}>Import direct dans le médaillon, recadrage, génération IA.</div>
-          </div>
-          <InfoMini title="Workflow" content="Importe la photo dans le médaillon, ajuste zoom et décalage, puis lance l'IA. Après génération, enregistre l'avatar pour l'ajouter à la galerie." onOpen={(title, content) => setMiniInfo({ title, content })} />
-        </div>
+  const MedallionButton = ({ compact = false }: { compact?: boolean }) => (
+    <button type="button" onClick={() => fileInputRef.current?.click()} title="Importer une photo" style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: compact ? 360 : 520, background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305", borderRadius: 24, padding: 10, boxShadow: "0 22px 48px rgba(0,0,0,.62)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "0", cursor: "pointer" }}>
+      <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
+        <defs>
+          <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
+          <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%"><stop offset="0%" stopColor={RING_LIGHT} /><stop offset="42%" stopColor={RING_COLOR} /><stop offset="100%" stopColor={RING_DARK} /></radialGradient>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" /></filter>
+        </defs>
+        <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
+        <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
+        <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+        <circle r={R_OUTER - 19} fill={BLACK} />
+        <circle r={R_OUTER - 28} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.82} />
+        <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
+        <circle r={R_INNER + 23} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.82} />
+        <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+        <circle r={R_AVATAR} fill="#22232b" />
+        {avatarImage ? (
+          <g clipPath="url(#avatarClip)">
+            <image href={avatarImage} x={-avatarImgSize / 2 + offsetX} y={-avatarImgSize / 2 + offsetY} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
+            <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
+          </g>
+        ) : (
+          <g clipPath="url(#avatarClip)">
+            <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
+            <text x={0} y={-12} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={20} fontWeight={900} fill="#e5e7eb">Clique ici</text>
+            <text x={0} y={20} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={15} fill="#cbd5e1">importer une photo</text>
+          </g>
+        )}
+        <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
+        <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}><textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
+        <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
+        <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
+      </svg>
+      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
+    </button>
+  );
 
+  const ColorPicker = () => (
+    <div style={{ display: "grid", gap: 7 }}>
+      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.88 }}>Couleur du médaillon</div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+        {MEDALLION_COLORS.map((c) => (
+          <button key={c.id} type="button" onClick={() => setMedallionColorId(c.id)} title={c.label} style={{ width: 30, height: 30, borderRadius: 999, border: medallionColorId === c.id ? "3px solid #fff" : "1px solid rgba(255,255,255,.25)", background: `radial-gradient(circle at 32% 24%, ${c.light}, ${c.main} 52%, ${c.dark})`, boxShadow: medallionColorId === c.id ? `0 0 18px ${c.main}aa` : "none", cursor: "pointer" }} />
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderCreditsCard = () => (
+    <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(12,38,32,.96), rgba(7,12,14,.98))" }}>
+      {creditCompact}
+    </div>
+  );
+
+  const renderControls = () => (
+    <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(18,18,27,.96), rgba(6,7,12,.98))" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <strong style={{ fontSize: 12, textTransform: "uppercase", color: theme.textSoft }}>Recadrage médaillon</strong>
+        <button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }} style={{ border: 0, borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.09)", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 850 }}>Reset</button>
+      </div>
+      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>Zoom<input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
+      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>Gauche / Droite<input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} /></label>
+      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 10 }}>Haut / Bas<input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} /></label>
+      <label style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}>Nom affiché<input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINJA" style={{ minHeight: 42 }} /></label>
+      <ColorPicker />
+    </div>
+  );
+
+  const renderCaricatureBox = () => {
+    if (!originalFile) return null;
+    return (
+      <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(37,24,67,.96), rgba(9,9,16,.98))" }}>
+        <div style={{ fontWeight: 1000, textTransform: "uppercase", marginBottom: 4 }}>Caricature souhaitée</div>
+        <div style={{ opacity: 0.78, fontSize: 12, marginBottom: 10 }}>Choisis le style puis lance la génération.</div>
         <select value={style} onChange={(e) => setStyle(e.target.value as StyleId)} style={{ width: "100%", minHeight: 42, borderRadius: 12, padding: "9px 12px", background: "#07070d", color: "#fff", border: "1px solid rgba(255,255,255,.18)", marginBottom: 10 }}>
           <option value="exaggerated">🎭 Très caricaturé — comique & fun</option>
           <option value="comic">💥 Comic / BD</option>
           <option value="flat">🏆 Logo esport</option>
           <option value="realistic">✏️ Dessin cartoon plus réaliste</option>
         </select>
-
-        <button type="button" onClick={() => fileInputRef.current?.click()} style={{ width: "100%", borderRadius: 14, padding: "13px 14px", marginBottom: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>
-          📸 {originalFile ? "Changer la photo" : "Importer une photo dans le médaillon"}
-        </button>
-        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
-
-        <div style={{ ...cardBase, padding: 12, boxShadow: "none", background: "rgba(0,0,0,.22)", marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <strong style={{ fontSize: 12, textTransform: "uppercase", color: theme.textSoft }}>Recadrage avant IA</strong>
-            <button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }} style={{ border: 0, borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.09)", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 850 }}>Reset</button>
-          </div>
-          <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
-            Zoom
-            <input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
-          </label>
-          <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
-            Gauche / Droite
-            <input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} />
-          </label>
-          <label style={{ display: "grid", gap: 5, fontSize: 12 }}>
-            Haut / Bas
-            <input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} />
-          </label>
-        </div>
-
-        <label style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}>
-          Nom affiché dans le médaillon
-          <input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINJA" style={{ minHeight: 42 }} />
-        </label>
-
-
-        <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 850, opacity: 0.86 }}>Couleur du médaillon</div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-            {MEDALLION_COLORS.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setMedallionColorId(c.id)}
-                title={c.label}
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 999,
-                  border: medallionColorId === c.id ? "3px solid #fff" : "1px solid rgba(255,255,255,.25)",
-                  background: `radial-gradient(circle at 32% 24%, ${c.light}, ${c.main} 52%, ${c.dark})`,
-                  boxShadow: medallionColorId === c.id ? `0 0 18px ${c.main}aa` : "none",
-                  cursor: "pointer",
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <button type="button" onClick={handleGenerateCartoon} disabled={busy || !originalFile || !hasAiCredit} style={{ width: "100%", borderRadius: 15, padding: "15px 16px", fontSize: 15, fontWeight: 950, border: "none", cursor: busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer", background: "linear-gradient(135deg, #B06CFF, #7C3AED)", color: "#FFF", boxShadow: "0 16px 32px rgba(124,58,237,.42)", opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1 }}>
-          {busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit avatar IA requis"}
-        </button>
-        <button type="button" onClick={() => handleSave("manual")} disabled={busy || !avatarImage} style={{ width: "100%", marginTop: 8, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(246,194,86,.32)", background: "rgba(246,194,86,.11)", color: GOLD_2, fontWeight: 950, cursor: busy || !avatarImage ? "not-allowed" : "pointer", opacity: busy || !avatarImage ? 0.55 : 1 }}>
-          💾 Enregistrer dans la galerie
-        </button>
+        <button type="button" onClick={handleGenerateCartoon} disabled={busy || !originalFile || !hasAiCredit} style={{ width: "100%", borderRadius: 15, padding: "15px 16px", fontSize: 15, fontWeight: 950, border: "none", cursor: busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer", background: "linear-gradient(135deg, #B06CFF, #7C3AED)", color: "#FFF", boxShadow: "0 16px 32px rgba(124,58,237,.42)", opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1 }}>{busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit avatar IA requis"}</button>
+        <button type="button" onClick={() => handleSave("manual")} disabled={busy || !avatarImage} style={{ width: "100%", marginTop: 8, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(246,194,86,.32)", background: "rgba(246,194,86,.11)", color: GOLD_2, fontWeight: 950, cursor: busy || !avatarImage ? "not-allowed" : "pointer", opacity: busy || !avatarImage ? 0.55 : 1 }}>💾 Enregistrer dans la galerie</button>
       </div>
+    );
+  };
 
-      <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(12,38,32,.94), rgba(7,12,14,.98))" }}>{creditCompact}</div>
+  const renderIaTab = () => (
+    <div style={{ display: "grid", gap: 12 }}>
+      {renderCreditsCard()}
+      <MedallionButton />
+      {renderControls()}
+      {renderCaricatureBox()}
       <StatusCard />
     </div>
   );
@@ -876,21 +916,16 @@ function AvatarCreator({
             <div style={{ fontWeight: 1000, textTransform: "uppercase", fontSize: 15 }}>Galerie avatars IA</div>
             <div style={{ opacity: 0.78, fontSize: 12.5 }}>{gallery.length} avatar{gallery.length > 1 ? "s" : ""} sauvegardé{gallery.length > 1 ? "s" : ""}</div>
           </div>
-          <InfoMini title="Galerie" content="Chaque avatar enregistré ici peut être exporté en WebP ou attribué à un profil existant." onOpen={(title, content) => setMiniInfo({ title, content })} />
+          <InfoMini title="Galerie" content="Clique sur un avatar pour l’ouvrir en grand, l’exporter ou l’attribuer à un profil existant." onOpen={(title, content) => setMiniInfo({ title, content })} />
         </div>
         {gallery.length === 0 ? (
           <div style={{ borderRadius: 16, border: "1px dashed rgba(255,255,255,.18)", padding: 20, textAlign: "center", opacity: 0.72 }}>Aucun avatar pour le moment. Génère puis enregistre un avatar depuis l’onglet IA.</div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
             {gallery.map((item) => (
-              <div key={item.id} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.045)", padding: 10 }}>
-                <img src={item.dataUrl} alt={item.name} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 14, background: "#000" }} />
-                <div style={{ marginTop: 8, fontWeight: 950, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
-                  <button type="button" onClick={() => downloadGalleryItem(item)} style={{ border: 0, borderRadius: 10, padding: "8px 6px", background: "rgba(255,255,255,.09)", color: "#fff", fontWeight: 850, cursor: "pointer", fontSize: 11 }}>Exporter</button>
-                  <button type="button" onClick={() => setAssignTarget(item)} style={{ border: 0, borderRadius: 10, padding: "8px 6px", background: "rgba(246,194,86,.18)", color: GOLD_2, fontWeight: 850, cursor: "pointer", fontSize: 11 }}>Attribuer</button>
-                </div>
-              </div>
+              <button key={item.id} type="button" onClick={() => setSelectedGalleryItem(item)} style={{ border: 0, borderRadius: 14, background: "rgba(255,255,255,.055)", padding: 6, cursor: "pointer" }}>
+                <img src={item.dataUrl} alt={item.name} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 12, background: "#000" }} />
+              </button>
             ))}
           </div>
         )}
@@ -911,64 +946,28 @@ function AvatarCreator({
   );
 
   return (
-    <div style={{ minHeight: "100vh", margin: -8, padding: "14px 14px 104px", color: theme.text, background: "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)" }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 12 }}>
-        <header style={{ ...cardBase, padding: "12px 14px", display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 10, background: "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))", position: "sticky", top: 6, zIndex: 20 }}>
-          <BackDot onClick={handleBack} size={40} color={primary} />
-          <div style={{ minWidth: 0, textAlign: "center" }}>
-            <h1 style={{ margin: 0, fontSize: 24, lineHeight: 1, fontWeight: 1000, letterSpacing: 1.4, color: primary, textTransform: "uppercase" }}>AVATAR IA</h1>
-            <div style={{ marginTop: 5, fontSize: 12, opacity: 0.82, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Caricature cartoon + médaillon WebP</div>
-          </div>
-          <InfoDot title="Infos Avatar IA" content={infoContent} size={40} color={primary} />
-        </header>
-
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 410px) minmax(320px, 1fr)", gap: 16, alignItems: "start" }} className="avatar-ia-grid">
-          <section style={{ display: "grid", gap: 10 }}>
-            <div style={{ display: "flex", gap: 7, padding: 4, borderRadius: 18, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" }}>
-              {tabs.filter((x) => !x.hidden).map((tab) => <TabButton key={tab.id} id={tab.id} label={tab.label} icon={tab.icon} />)}
+    <div style={{ minHeight: "100vh", margin: -8, padding: "0 14px 104px", color: theme.text, background: "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)" }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", display: "grid", gap: 12 }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 50, padding: "10px 0 8px", background: "linear-gradient(180deg, rgba(5,5,9,.98), rgba(5,5,9,.92) 70%, rgba(5,5,9,0))", backdropFilter: "blur(12px)" }}>
+          <header style={{ ...cardBase, padding: "12px 14px", display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 10, background: "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))" }}>
+            <BackDot onClick={handleBack} size={40} color={primary} />
+            <div style={{ minWidth: 0, textAlign: "center" }}>
+              <h1 style={{ margin: 0, fontSize: 24, lineHeight: 1, fontWeight: 1000, letterSpacing: 1.4, color: primary, textTransform: "uppercase" }}>AVATAR IA</h1>
+              <div style={{ marginTop: 5, fontSize: 12, opacity: 0.82, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Caricature cartoon + médaillon WebP</div>
             </div>
-            {activeTab === "ia" ? renderIaTab() : null}
-            {activeTab === "gallery" ? renderGalleryTab() : null}
-            {activeTab === "debug" && devMode.enabled ? renderDebugTab() : null}
-          </section>
+            <InfoDot title="Infos Avatar IA" content={infoContent} size={40} color={primary} />
+          </header>
 
-          <section style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 12, position: "sticky", top: 96 }} className="avatar-ia-preview">
-            <button type="button" onClick={() => fileInputRef.current?.click()} title="Importer une photo" style={{ width: "min(100%, 660px)", aspectRatio: "1 / 1", maxHeight: "min(72vh, 660px)", background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305", borderRadius: 28, padding: 12, boxShadow: "0 26px 70px rgba(0,0,0,.72)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "0", cursor: "pointer" }}>
-              <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
-                <defs>
-                  <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
-                  <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%"><stop offset="0%" stopColor={RING_LIGHT} /><stop offset="42%" stopColor={RING_COLOR} /><stop offset="100%" stopColor={RING_DARK} /></radialGradient>
-                  <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" /></filter>
-                </defs>
-                <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
-                <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
-                <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
-                <circle r={R_OUTER - 19} fill={BLACK} />
-                <circle r={R_OUTER - 28} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.72} />
-                <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
-                <circle r={R_INNER + 23} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.65} />
-                <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
-                <circle r={R_AVATAR} fill="#22232b" />
-                {avatarImage ? (
-                  <g clipPath="url(#avatarClip)">
-                    <image href={avatarImage} x={-avatarImgSize / 2 + offsetX} y={-avatarImgSize / 2 + offsetY} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
-                    <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
-                  </g>
-                ) : (
-                  <g clipPath="url(#avatarClip)">
-                    <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
-                    <text x={0} y={-10} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={17} fill="#aaa">Clique ici</text>
-                    <text x={0} y={18} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={15} fill="#aaa">pour importer une photo</text>
-                  </g>
-                )}
-                <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
-                <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}><textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
-                <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
-                <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
-              </svg>
-            </button>
-          </section>
+          <div style={{ display: "flex", gap: 7, padding: 4, marginTop: 8, borderRadius: 18, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" }}>
+            {tabs.filter((x) => !x.hidden).map((tab) => <TabButton key={tab.id} id={tab.id} label={tab.label} icon={tab.icon} />)}
+          </div>
         </div>
+
+        <main style={{ display: "grid", gap: 12 }}>
+          {activeTab === "ia" ? renderIaTab() : null}
+          {activeTab === "gallery" ? renderGalleryTab() : null}
+          {activeTab === "debug" && devMode.enabled ? renderDebugTab() : null}
+        </main>
       </div>
 
       {miniInfo ? (
@@ -979,6 +978,23 @@ function AvatarCreator({
               <button type="button" onClick={() => setMiniInfo(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
             </div>
             <div style={{ opacity: 0.88, lineHeight: 1.45, fontSize: 13.5 }}>{miniInfo.content}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedGalleryItem ? (
+        <div onClick={() => setSelectedGalleryItem(null)} style={{ position: "fixed", inset: 0, zIndex: 9997, background: "rgba(0,0,0,.74)", display: "grid", placeItems: "center", padding: 18 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, 430px)", ...cardBase, padding: 16, background: "linear-gradient(145deg, rgba(18,18,27,.98), rgba(4,5,9,.99))" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <strong style={{ color: primary, textTransform: "uppercase" }}>Avatar IA</strong>
+              <button type="button" onClick={() => setSelectedGalleryItem(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
+            </div>
+            <img src={selectedGalleryItem.dataUrl} alt={selectedGalleryItem.name} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 18, background: "#000", boxShadow: "0 18px 42px rgba(0,0,0,.5)" }} />
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button type="button" onClick={() => downloadGalleryItem(selectedGalleryItem)} style={{ border: 0, borderRadius: 13, padding: "12px 10px", background: "rgba(255,255,255,.09)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>⬇️ Exporter</button>
+              <button type="button" onClick={() => { setAssignTarget(selectedGalleryItem); setSelectedGalleryItem(null); }} style={{ border: 0, borderRadius: 13, padding: "12px 10px", background: "rgba(246,194,86,.18)", color: GOLD_2, fontWeight: 900, cursor: "pointer" }}>👤 Attribuer</button>
+            </div>
+            <button type="button" onClick={() => setSelectedGalleryItem(null)} style={{ width: "100%", marginTop: 8, border: "1px solid rgba(255,255,255,.12)", borderRadius: 13, padding: "11px 10px", background: "transparent", color: "#fff", cursor: "pointer" }}>Fermer</button>
           </div>
         </div>
       ) : null}
