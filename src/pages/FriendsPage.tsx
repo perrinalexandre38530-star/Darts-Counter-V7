@@ -39,6 +39,21 @@ import type { OnlineLobby } from "../lib/onlineApi";
 import type { OnlineMatch } from "../lib/onlineTypes";
 import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
+import {
+  listFriends,
+  listFriendRequests,
+  listSharedItems,
+  markSharedItemRead,
+  removeFriend,
+  respondFriendRequest,
+  searchUsers,
+  sendFriendRequest,
+  shareWithFriend,
+  updatePresence,
+  type FriendRequest,
+  type OnlineFriendUser,
+  type SharedOnlineItem,
+} from "../lib/friendsApi";
 
 
 // ✅ Realtime presence + chat MVP
@@ -507,13 +522,6 @@ export default function FriendsPage({ store, update, go }: Props) {
   const isSignedIn = sessionState === "signed_in";
   const sessionUserId = (auth?.user?.id ?? (auth as any)?.userId ?? null) as string | null;
 
-  if (!ready) {
-    return (
-      <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
-        Connexion en cours…
-      </div>
-    );
-  }
 
   // Présence locale (uniquement UI)
   const initialPresence = React.useMemo(() => loadPresenceFromLS(), []);
@@ -587,8 +595,11 @@ export default function FriendsPage({ store, update, go }: Props) {
     savePresenceToLS(newStatus);
     setLastSeen(Date.now());
 
-    // ✅ sync realtime presence
+    // ✅ sync realtime presence + API NAS friends/presence
     presenceRef.current?.setState(newStatus === "away" ? "away" : "online").catch(() => {});
+    if (isSignedIn) {
+      updatePresence(newStatus).catch(() => {});
+    }
   }
 
   // Ping présence toutes les 30s quand "online"
@@ -631,6 +642,7 @@ export default function FriendsPage({ store, update, go }: Props) {
   /* -----------------------------
      Connexion / Déconnexion / Reconnexion
   ------------------------------ */
+  const [authHint, setAuthHint] = React.useState<string | null>(null);
   const [reconnecting, setReconnecting] = React.useState(false);
 
   const doReconnect = React.useCallback(async () => {
@@ -909,6 +921,191 @@ const doLogout = React.useCallback(async () => {
   }
 
   /* -----------------------------
+     Amis / demandes / partages NAS
+  ------------------------------ */
+  const [friendsLoading, setFriendsLoading] = React.useState(false);
+  const [friendsError, setFriendsError] = React.useState<string | null>(null);
+  const [friendsInfo, setFriendsInfo] = React.useState<string | null>(null);
+  const [onlineFriends, setOnlineFriends] = React.useState<OnlineFriendUser[]>([]);
+  const [friendRequests, setFriendRequests] = React.useState<FriendRequest[]>([]);
+  const [sharedItems, setSharedItems] = React.useState<SharedOnlineItem[]>([]);
+  const [friendQuery, setFriendQuery] = React.useState("");
+  const [friendSearchResults, setFriendSearchResults] = React.useState<OnlineFriendUser[]>([]);
+  const [friendSearching, setFriendSearching] = React.useState(false);
+  const [busyFriendId, setBusyFriendId] = React.useState<string | null>(null);
+  const [busyRequestId, setBusyRequestId] = React.useState<string | null>(null);
+  const [busyShareId, setBusyShareId] = React.useState<string | null>(null);
+
+  const incomingRequests = React.useMemo(
+    () => friendRequests.filter((r) => r.direction === "incoming" && r.status === "pending"),
+    [friendRequests]
+  );
+  const outgoingRequests = React.useMemo(
+    () => friendRequests.filter((r) => r.direction === "outgoing" && r.status === "pending"),
+    [friendRequests]
+  );
+  const incomingShares = React.useMemo(
+    () => sharedItems.filter((it) => it.direction === "incoming"),
+    [sharedItems]
+  );
+  const outgoingShares = React.useMemo(
+    () => sharedItems.filter((it) => it.direction === "outgoing"),
+    [sharedItems]
+  );
+
+  const loadSocial = React.useCallback(async () => {
+    if (!isSignedIn) {
+      setOnlineFriends([]);
+      setFriendRequests([]);
+      setSharedItems([]);
+      return;
+    }
+    setFriendsLoading(true);
+    setFriendsError(null);
+    try {
+      const [friends, requests, shares] = await Promise.all([
+        listFriends(),
+        listFriendRequests(),
+        listSharedItems(),
+      ]);
+      setOnlineFriends(Array.isArray(friends) ? friends : []);
+      setFriendRequests(Array.isArray(requests) ? requests : []);
+      setSharedItems(Array.isArray(shares) ? shares : []);
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e));
+    } finally {
+      setFriendsLoading(false);
+    }
+  }, [isSignedIn]);
+
+  React.useEffect(() => {
+    loadSocial().catch(() => {});
+  }, [loadSocial]);
+
+  React.useEffect(() => {
+    if (!isSignedIn) return;
+    updatePresence(selfStatus === "away" ? "away" : "online").catch(() => {});
+  }, [isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleFriendSearch() {
+    const q = friendQuery.trim();
+    if (q.length < 2) {
+      setFriendsError("Entre au moins 2 caractères pour chercher un joueur.");
+      return;
+    }
+    setFriendSearching(true);
+    setFriendsError(null);
+    setFriendsInfo(null);
+    try {
+      const users = await searchUsers(q);
+      setFriendSearchResults(users.filter((u) => String(u.id || u.userId || "") !== String(sessionUserId || "")));
+      if (!users.length) setFriendsInfo("Aucun joueur trouvé.");
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e));
+    } finally {
+      setFriendSearching(false);
+    }
+  }
+
+  async function handleSendFriendRequest(user: OnlineFriendUser) {
+    const targetId = String(user.id || user.userId || "").trim();
+    if (!targetId) return;
+    setBusyFriendId(targetId);
+    setFriendsError(null);
+    setFriendsInfo(null);
+    try {
+      await sendFriendRequest(targetId);
+      setFriendsInfo(`Demande envoyée à ${user.displayName || user.nickname || "ce joueur"}.`);
+      await loadSocial();
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e));
+    } finally {
+      setBusyFriendId(null);
+    }
+  }
+
+  async function handleRespondRequest(req: FriendRequest, status: "accepted" | "rejected") {
+    setBusyRequestId(req.id);
+    setFriendsError(null);
+    setFriendsInfo(null);
+    try {
+      await respondFriendRequest(req.id, status);
+      setFriendsInfo(status === "accepted" ? "Ami ajouté." : "Demande refusée.");
+      await loadSocial();
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e));
+    } finally {
+      setBusyRequestId(null);
+    }
+  }
+
+  async function handleRemoveFriend(friend: OnlineFriendUser) {
+    const id = String(friend.id || friend.userId || "").trim();
+    if (!id) return;
+    setBusyFriendId(id);
+    setFriendsError(null);
+    setFriendsInfo(null);
+    try {
+      await removeFriend(id);
+      setFriendsInfo("Ami supprimé.");
+      await loadSocial();
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e));
+    } finally {
+      setBusyFriendId(null);
+    }
+  }
+
+  async function handleShare(friend: OnlineFriendUser, kind: "stats" | "match") {
+    const id = String(friend.id || friend.userId || "").trim();
+    if (!id) return;
+    setBusyShareId(`${id}:${kind}`);
+    setFriendsError(null);
+    setFriendsInfo(null);
+    try {
+      if (kind === "match" && lastMatch) {
+        await shareWithFriend({
+          targetUserId: id,
+          type: "match",
+          title: getMatchTitle(lastMatch),
+          sport: "darts",
+          matchId: String((lastMatch as any)?.id || ""),
+          payload: lastMatch,
+        });
+      } else {
+        await shareWithFriend({
+          targetUserId: id,
+          type: "stats",
+          title: `Stats online de ${displayName}`,
+          sport: "darts",
+          payload: {
+            playerName: displayName,
+            weekMatchesCount,
+            avg3DWeek,
+            checkoutPctWeek,
+            lastMatch: lastMatch || null,
+            exportedAt: new Date().toISOString(),
+          },
+        });
+      }
+      setFriendsInfo(kind === "match" ? "Dernier match partagé." : "Stats partagées.");
+      await loadSocial();
+    } catch (e: any) {
+      setFriendsError(normalizeErrMessage(e));
+    } finally {
+      setBusyShareId(null);
+    }
+  }
+
+  async function handleReadShare(item: SharedOnlineItem) {
+    if (!item?.id || item.readAt) return;
+    try {
+      await markSharedItemRead(item.id);
+      await loadSocial();
+    } catch {}
+  }
+
+  /* -----------------------------
      Home stats
   ------------------------------ */
   const sortedMatches = React.useMemo(
@@ -1014,6 +1211,14 @@ const doLogout = React.useCallback(async () => {
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
+
+  if (!ready) {
+    return (
+      <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+        Connexion en cours…
+      </div>
+    );
+  }
 
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
@@ -1184,6 +1389,241 @@ const doLogout = React.useCallback(async () => {
 
       {/* ================= TICKER ================= */}
       <OnlineTicker items={tickerItems} speedSec={22} />
+
+
+      {/* ================= AMIS / PARTAGE ================= */}
+      <SectionTitle
+        title="Amis"
+        subtitle="Ajoute des joueurs, accepte les demandes et partage tes stats"
+        right={friendsLoading ? <Pill label="SYNC" tone="blue" /> : <Pill label={`${onlineFriends.length} ami(s)`} tone="green" />}
+      />
+
+      <NeonCard style={{ marginTop: 10 }}>
+        {!isSignedIn ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ fontSize: 12.5, opacity: 0.88, lineHeight: 1.35 }}>
+              Connecte ton compte pour activer la liste d’amis, les demandes et le partage des stats.
+            </div>
+            <GhostButton label="Connexion / Mon profil" onClick={() => go("profiles")} />
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={friendQuery}
+                onChange={(e) => setFriendQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleFriendSearch().catch(() => {});
+                }}
+                placeholder="Pseudo ou email d’un joueur…"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.18)",
+                  background: "rgba(5,5,8,.95)",
+                  color: "#f5f5f7",
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  outline: "none",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => handleFriendSearch().catch(() => {})}
+                disabled={friendSearching}
+                style={{
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  border: "1px solid rgba(255,255,255,.16)",
+                  background: "linear-gradient(180deg, #ffd56a, #e9a93d)",
+                  color: "#1c1304",
+                  fontWeight: 1000,
+                  cursor: friendSearching ? "default" : "pointer",
+                  opacity: friendSearching ? 0.65 : 1,
+                  minWidth: 92,
+                }}
+              >
+                {friendSearching ? "…" : "Chercher"}
+              </button>
+            </div>
+
+            {friendsError ? <div style={{ color: "#ff8a8a", fontSize: 12, fontWeight: 950 }}>{friendsError}</div> : null}
+            {friendsInfo ? <div style={{ color: "#8fe6aa", fontSize: 12, fontWeight: 950 }}>{friendsInfo}</div> : null}
+
+            {friendSearchResults.length > 0 ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 11.5, opacity: 0.82, fontWeight: 1000 }}>Résultats</div>
+                {friendSearchResults.slice(0, 8).map((u) => {
+                  const id = String(u.id || u.userId || "");
+                  const name = u.displayName || u.nickname || "Joueur";
+                  return (
+                    <div
+                      key={id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        borderRadius: 14,
+                        padding: 10,
+                        border: "1px solid rgba(255,255,255,.10)",
+                        background: "rgba(255,255,255,.055)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: "50%",
+                          overflow: "hidden",
+                          background: "radial-gradient(circle at 30% 0%, #ffde75, #856116)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 1000, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                        <div style={{ fontSize: 11.5, opacity: 0.75 }}>{u.status || "offline"}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSendFriendRequest(u).catch(() => {})}
+                        disabled={busyFriendId === id}
+                        style={{
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,.14)",
+                          background: "rgba(127,226,169,.14)",
+                          color: "#8fe6aa",
+                          padding: "8px 10px",
+                          fontWeight: 1000,
+                          fontSize: 11.5,
+                        }}
+                      >
+                        {busyFriendId === id ? "…" : "Ajouter"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {incomingRequests.length > 0 ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 11.5, opacity: 0.82, fontWeight: 1000 }}>Demandes reçues</div>
+                {incomingRequests.map((r) => {
+                  const u = r.fromUser || {};
+                  const name = u.displayName || u.nickname || "Joueur";
+                  return (
+                    <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,213,106,.22)", background: "rgba(255,213,106,.08)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontWeight: 1000 }}>{name}</div>
+                        <Pill label="Demande" tone="gold" />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                        <GhostButton label={busyRequestId === r.id ? "…" : "Accepter"} onClick={() => handleRespondRequest(r, "accepted").catch(() => {})} disabled={busyRequestId === r.id} />
+                        <GhostButton label="Refuser" onClick={() => handleRespondRequest(r, "rejected").catch(() => {})} disabled={busyRequestId === r.id} tone="danger" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ fontSize: 11.5, opacity: 0.82, fontWeight: 1000 }}>Mes amis</div>
+                {outgoingRequests.length > 0 ? <Pill label={`${outgoingRequests.length} envoyée(s)`} tone="gray" /> : null}
+              </div>
+              {onlineFriends.length === 0 ? (
+                <div style={{ opacity: 0.82, fontSize: 12.5 }}>Aucun ami pour le moment. Cherche un joueur au-dessus pour envoyer une demande.</div>
+              ) : (
+                onlineFriends.map((f) => {
+                  const id = String(f.id || f.userId || "");
+                  const name = f.displayName || f.nickname || "Joueur";
+                  const status = String(f.status || "offline");
+                  const tone = status === "online" ? "green" : status === "away" ? "orange" : "gray";
+                  return (
+                    <div key={id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.055)", display: "grid", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", background: "#111", flexShrink: 0 }}>
+                          {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 1000, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                          <div style={{ marginTop: 4 }}><Pill label={status === "online" ? "En ligne" : status === "away" ? "Absent" : "Offline"} tone={tone as any} /></div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFriend(f).catch(() => {})}
+                          disabled={busyFriendId === id}
+                          style={{ borderRadius: 999, padding: "7px 9px", border: "1px solid rgba(255,90,90,.18)", background: "rgba(255,90,90,.10)", color: "#ff9c9c", fontWeight: 1000, fontSize: 11 }}
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <GhostButton
+                          label={busyShareId === `${id}:stats` ? "Partage…" : "📊 Partager stats"}
+                          onClick={() => handleShare(f, "stats").catch(() => {})}
+                          disabled={busyShareId === `${id}:stats`}
+                        />
+                        <GhostButton
+                          label={busyShareId === `${id}:match` ? "Partage…" : "🎯 Dernier match"}
+                          onClick={() => handleShare(f, "match").catch(() => {})}
+                          disabled={!lastMatch || busyShareId === `${id}:match`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </NeonCard>
+
+      {isSignedIn ? (
+        <>
+          <SectionTitle
+            title="Partages reçus"
+            subtitle="Stats, matchs et scores envoyés par tes amis"
+            right={incomingShares.filter((it) => !it.readAt).length > 0 ? <Pill label={`${incomingShares.filter((it) => !it.readAt).length} nouveau(x)`} tone="gold" /> : <Pill label={`${incomingShares.length}`} tone="gray" />}
+          />
+          <NeonCard style={{ marginTop: 10 }}>
+            {incomingShares.length === 0 ? (
+              <div style={{ opacity: 0.82, fontSize: 12.5 }}>Aucun partage reçu pour le moment.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {incomingShares.slice(0, 6).map((it) => {
+                  const owner = it.ownerUser?.displayName || it.ownerUser?.nickname || "Ami";
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => handleReadShare(it).catch(() => {})}
+                      style={{
+                        textAlign: "left",
+                        borderRadius: 14,
+                        padding: 10,
+                        border: `1px solid ${it.readAt ? "rgba(255,255,255,.10)" : "rgba(255,213,106,.30)"}`,
+                        background: it.readAt ? "rgba(255,255,255,.055)" : "rgba(255,213,106,.08)",
+                        color: "#f5f5f7",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 1000, color: "#ffd56a" }}>{it.title || it.type}</div>
+                        <Pill label={it.type} tone={it.readAt ? "gray" : "gold"} />
+                      </div>
+                      <div style={{ marginTop: 5, fontSize: 11.8, opacity: 0.82 }}>Envoyé par {owner}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </NeonCard>
+        </>
+      ) : null}
 
       {/* ================= RÉSUMÉ ================= */}
       <SectionTitle title="Résumé" subtitle="Aperçu rapide (semaine + dernier match)" />
