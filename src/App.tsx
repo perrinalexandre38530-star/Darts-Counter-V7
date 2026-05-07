@@ -77,7 +77,6 @@ import { setAvatarCache } from "./lib/avatarCache";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
 import BottomNav from "./components/BottomNav";
 import SportQuickSwitch from "./components/SportQuickSwitch";
-import CastViewerQuickDock from "./components/CastViewerQuickDock";
 
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
@@ -1891,8 +1890,23 @@ useEffect(() => {
         setTab("spectator");
         return;
       }
-      if (h === "#/cast" || h === "#/cast/") {
+      if (h === "#/cast" || h === "#/cast/" || h === "#/screens" || h === "#/screens/") {
         setRouteParams(null);
+        setTab("cast_host");
+        return;
+      }
+      if (h === "#/cast/viewer" || h === "#/screens/viewer") {
+        setRouteParams({ screenTab: "viewer" });
+        setTab("cast_host");
+        return;
+      }
+      if (h === "#/cast/settings" || h === "#/screens/settings") {
+        setRouteParams({ screenTab: "settings" });
+        setTab("cast_host");
+        return;
+      }
+      if (h === "#/cast/cast" || h === "#/screens/cast") {
+        setRouteParams({ screenTab: "cast" });
         setTab("cast_host");
         return;
       }
@@ -1983,7 +1997,10 @@ useEffect(() => {
       else if (next === "auth_v7_signup") window.location.hash = "#/auth/signup";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "spectator") window.location.hash = "#/spectator";
-      else if (next === "cast_host") window.location.hash = "#/cast";
+      else if (next === "cast_host") {
+        const screenTab = String(params?.screenTab || "").toLowerCase();
+        window.location.hash = screenTab === "viewer" || screenTab === "settings" || screenTab === "cast" ? `#/cast/${screenTab}` : "#/cast";
+      }
       else if (next === "cast_join") window.location.hash = "#/cast/join";
       else if (next === "cast_room") window.location.hash = `#/cast/${params?.roomId || routeParams?.roomId || ""}`;
       else if (next === "viewer_host") window.location.hash = "#/viewer";
@@ -3161,7 +3178,7 @@ try {
         break;
 
       case "cast_host":
-        page = <CastHostPage go={go} />;
+        page = <CastHostPage go={go} initialTab={(routeParams as any)?.screenTab} />;
         break;
 
       case "cast_room":
@@ -4230,62 +4247,24 @@ case "babyfoot_team_edit":
     "molkky_play",
   ]);
 
-  // ✅ Raccourcis écrans pendant les parties : Cast TV + Viewer tablette
-  // - N’ouvre pas la page Cast automatiquement
-  // - Cast et Viewer restent indépendants
-  // - La partie continue : la modale se superpose au gameplay
-  const SHOW_SCREEN_DOCK_TABS = new Set<Tab>([
-    "x01",
-    "x01_play_v3",
-    "cricket",
-    "killer_play",
-    "shanghai_play",
-    "golf_play",
-    "petanque_play",
-    "babyfoot_play",
-    "pingpong_play",
-    "molkky_play",
-    "tournament_match_play",
-    "darts_mode_play",
-    "halve_it_play",
-    "count_up_play",
-    "prisoner_play",
-    "super_bull_play",
-    "shooter_play",
-    "tic_tac_toe_play",
-    "knockout_play",
-    "bobs_27_play",
-    "scram_play",
-    "baseball_play",
-    "game_170_play",
-    "football_play",
-    "batard_play",
-    "capital_play",
-    "happy_mille_play",
-    "rugby_play",
-    "departements_play",
-    "enculette_play",
-  ]);
+  // ✅ Les sorties Cast / Viewer sont lancées en amont depuis le bottom nav Écrans.
+  // Aucun dock flottant n’est affiché pendant les parties : les snapshots partent silencieusement vers les sorties déjà actives.
 
 
-  const HIDE_SPORT_QUICK_SWITCH_TABS = new Set<Tab>([
-    ...Array.from(HIDE_BOTTOM_NAV_TABS),
-    "account_start",
-    "auth_start",
-    "auth_forgot",
-    "auth_v7_login",
-    "auth_v7_signup",
-    "auth_callback",
-    "auth_reset",
-    "cast_join",
-    "cast_host",
-    "cast_room",
-    "viewer_host",
-    "viewer_join",
-    "viewer_display",
+
+  // ✅ SportQuickSwitch: affichage STRICTEMENT limité aux pages principales du BottomNav.
+  // Objectif: aucun affichage dans les menus/config/settings spécifiques aux modes,
+  // ni dans les pages Play, Cast, Viewer, Auth, sous-pages Stats/Tournois/Profils, etc.
+  const SPORT_QUICK_SWITCH_ALLOWED_TABS = new Set<Tab>([
+    "home",        // Accueil
+    "profiles",    // Profils
+    "games",       // Local
+    "tournaments", // Tournoi
+    "stats",       // Stats
+    "settings",    // Réglages global
   ] as any);
 
-  const showSportQuickSwitch = !HIDE_SPORT_QUICK_SWITCH_TABS.has(tab);
+  const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab);
 
 
   return (
@@ -4311,9 +4290,6 @@ case "babyfoot_team_edit":
 
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
-
-        {/* ✅ Accès rapide pendant une partie : 📺 Cast + 📱 Viewer */}
-        {SHOW_SCREEN_DOCK_TABS.has(tab) && <CastViewerQuickDock go={go} />}
 
         <SWUpdateBanner />
       </>

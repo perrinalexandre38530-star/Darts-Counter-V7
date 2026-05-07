@@ -2,6 +2,7 @@ import * as React from "react";
 import ViewerScreen from "../../components/viewer/ViewerScreen";
 import { fetchViewerSnapshot, normalizeViewerCode } from "../../lib/viewer/viewerClient";
 import type { ViewerLiveSnapshot } from "../../lib/viewer/types";
+import { getViewerPollMs } from "../../lib/viewer/viewerSettings";
 
 type Props = { go: (tab: any, params?: any) => void; sessionId?: string | null };
 
@@ -19,6 +20,8 @@ export default function ViewerDisplay({ go, sessionId }: Props) {
 
     let alive = true;
     let timer: number | null = null;
+    const pollMs = getViewerPollMs();
+    const offlinePollMs = Math.max(1200, pollMs * 2);
 
     const tick = async () => {
       try {
@@ -37,7 +40,7 @@ export default function ViewerDisplay({ go, sessionId }: Props) {
       } catch {
         if (alive) setState("offline");
       } finally {
-        if (alive) timer = window.setTimeout(tick, state === "offline" ? 1400 : 700);
+        if (alive) timer = window.setTimeout(tick, state === "offline" ? offlinePollMs : pollMs);
       }
     };
 

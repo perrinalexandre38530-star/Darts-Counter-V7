@@ -1795,7 +1795,7 @@ function CastViewerSettingsSection({ go }: { go?: (tab: any, params?: any) => vo
   );
 }
 
-export default function Settings({ go }: Props) {
+export function Settings({ go }: Props) {
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { lang, setLang, t } = useLang();
 
@@ -2938,9 +2938,9 @@ export default function Settings({ go }: Props) {
 
             <SettingsMenuCard
               title={t("settings.menu.castViewer", "Cast / Viewer")}
-              subtitle="Réglages Google Cast TV, session Viewer tablette, QR code et diagnostics écran."
+              subtitle="Ouvre la page Écrans directement sur l’onglet Réglages : Cast TV, Viewer tablette et diagnostics."
               theme={theme}
-              onClick={() => setTab("castViewer")}
+              onClick={() => go?.("cast_host", { screenTab: "settings" })}
             />
 
             <SettingsMenuCard
@@ -2973,3 +2973,5 @@ export default function Settings({ go }: Props) {
     </div>
   );
 }
+
+export default Settings;

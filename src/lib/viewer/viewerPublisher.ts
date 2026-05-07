@@ -3,12 +3,14 @@ import type { ViewerLiveSnapshot } from "./types";
 import { publishViewerSnapshot } from "./viewerClient";
 import { getActiveViewerSession } from "./viewerSession";
 import { castSnapshotToViewerSnapshot } from "./buildViewerSnapshot";
+import { getViewerAutoPublish } from "./viewerSettings";
 
 const MIN_INTERVAL_MS = 350;
 const VIEWER_DIAG_KEY = "dc_viewer_diag_v1";
 let lastSentAt = 0;
 let lastSignature = "";
 let lastErrorAt = 0;
+let lastAutoPublishSkipAt = 0;
 
 function diag(entry: string, extra?: any) {
   if (typeof window === "undefined") return;
@@ -57,6 +59,14 @@ export function clearViewerDiagLog() {
 
 export function publishActiveViewerSnapshotFromCast(castSnapshot: CastSnapshot | null, reason = "cast_snapshot") {
   if (!castSnapshot) return false;
+  if (!getViewerAutoPublish()) {
+    const now = Date.now();
+    if (now - lastAutoPublishSkipAt > 3000) {
+      lastAutoPublishSkipAt = now;
+      diag("viewer_publish_skipped_disabled", { reason });
+    }
+    return false;
+  }
   const session = getActiveViewerSession();
   if (!session?.sessionId) return false;
   const snapshot = castSnapshotToViewerSnapshot(castSnapshot, session.sessionId);
