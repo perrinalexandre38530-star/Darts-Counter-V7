@@ -107,6 +107,12 @@ export async function apiPut(path: string, body: unknown) {
   });
 }
 
+export async function apiDelete(path: string) {
+  return doFetch(path, {
+    method: "DELETE",
+  });
+}
+
 export function getApiUrl() {
   return API_URL;
 }

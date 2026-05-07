@@ -1,58 +1,104 @@
-import { supabase } from "./supabaseClient";
+import { apiDelete, apiGet, apiPost, apiPut } from "./apiClient";
 
-export async function sendFriendRequest(toUserId: string) {
-  const { data, error } = await supabase
-    .from("friend_requests")
-    .insert({ to_user: toUserId, from_user: (await supabase.auth.getUser()).data.user?.id })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data;
+export type OnlineFriendUser = {
+  id: string;
+  userId?: string;
+  nickname?: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+  avatarAssetId?: string | null;
+  country?: string | null;
+  countryCode?: string | null;
+  status?: "online" | "away" | "offline" | string;
+  lastSeenAt?: string | null;
+  friendshipId?: string;
+  createdAt?: string;
+};
+
+export type FriendRequest = {
+  id: string;
+  status: "pending" | "accepted" | "rejected" | string;
+  message?: string | null;
+  direction?: "incoming" | "outgoing";
+  createdAt?: string;
+  updatedAt?: string;
+  respondedAt?: string | null;
+  fromUser?: OnlineFriendUser;
+  toUser?: OnlineFriendUser;
+};
+
+export type SharedOnlineItem = {
+  id: string;
+  type: "stats" | "match" | "score" | "snapshot" | string;
+  title?: string | null;
+  sport?: string | null;
+  matchId?: string | null;
+  payload?: any;
+  createdAt?: string;
+  readAt?: string | null;
+  direction?: "incoming" | "outgoing";
+  ownerUser?: OnlineFriendUser;
+  targetUserId?: string;
+};
+
+function qs(value: string) {
+  return encodeURIComponent(String(value || "").trim());
 }
 
-export async function listFriendRequests() {
-  const { data, error } = await supabase
-    .from("friend_requests")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data || [];
+export async function searchUsers(query: string): Promise<OnlineFriendUser[]> {
+  const res = await apiGet(`/online/users/search?q=${qs(query)}`);
+  return Array.isArray(res?.users) ? res.users : [];
 }
 
-export async function respondFriendRequest(requestId: string, status: "accepted" | "rejected") {
-  // update request
-  const { data: req, error: e1 } = await supabase
-    .from("friend_requests")
-    .update({ status })
-    .eq("id", requestId)
-    .select("*")
-    .single();
-  if (e1) throw e1;
-
-  // if accepted -> upsert friends pair (normalize order)
-  if (status === "accepted") {
-    const a = req.from_user as string;
-    const b = req.to_user as string;
-    const [user_a, user_b] = a < b ? [a, b] : [b, a];
-
-    const { error: e2 } = await supabase
-      .from("friends")
-      .insert({ user_a, user_b });
-    // ignore unique error
-    if (e2 && !String(e2.message).toLowerCase().includes("duplicate")) throw e2;
-  }
-
-  return req;
+export async function sendFriendRequest(toUserId: string, message?: string) {
+  const res = await apiPost("/online/friend-requests", { toUserId, message });
+  return res?.request ?? res;
 }
 
-export async function listFriends() {
-  const me = (await supabase.auth.getUser()).data.user?.id;
-  if (!me) return [];
-  const { data, error } = await supabase
-    .from("friends")
-    .select("*")
-    .or(`user_a.eq.${me},user_b.eq.${me}`)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data || [];
+export async function listFriendRequests(): Promise<FriendRequest[]> {
+  const res = await apiGet("/online/friend-requests");
+  return Array.isArray(res?.requests) ? res.requests : [];
+}
+
+export async function respondFriendRequest(
+  requestId: string,
+  status: "accepted" | "rejected"
+) {
+  const res = await apiPost(`/online/friend-requests/${qs(requestId)}/respond`, { status });
+  return res?.request ?? res;
+}
+
+export async function listFriends(): Promise<OnlineFriendUser[]> {
+  const res = await apiGet("/online/friends");
+  return Array.isArray(res?.friends) ? res.friends : [];
+}
+
+export async function removeFriend(userId: string) {
+  return apiDelete(`/online/friends/${qs(userId)}`);
+}
+
+export async function updatePresence(status: "online" | "away" | "offline") {
+  return apiPut("/online/presence", { status });
+}
+
+export async function shareWithFriend(input: {
+  targetUserId: string;
+  type: "stats" | "match" | "score" | "snapshot";
+  title?: string;
+  sport?: string;
+  matchId?: string;
+  payload?: any;
+}) {
+  const res = await apiPost("/online/share", input);
+  return res?.item ?? res;
+}
+
+export async function listSharedItems(): Promise<SharedOnlineItem[]> {
+  const res = await apiGet("/online/shared");
+  return Array.isArray(res?.items) ? res.items : [];
+}
+
+export async function markSharedItemRead(id: string) {
+  const res = await apiPut(`/online/shared/${qs(id)}/read`, {});
+  return res?.item ?? res;
 }
