@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { cleanId, ensureStore, joinUrl, json, options, randomCode, SESSION_TTL_SECONDS, sessionKey, SNAPSHOT_TTL_SECONDS, snapshotKey } from "../_shared";
+import { cleanId, ensureStore, joinUrl, json, options, randomCode, SESSION_TTL_SECONDS, sessionKey, SNAPSHOT_TTL_SECONDS, snapshotKey } from "./_shared";
 
 export const onRequestOptions: PagesFunction = async () => options();
 
