@@ -1006,6 +1006,7 @@ const doLogout = React.useCallback(async () => {
   const [joinedLobby, setJoinedLobby] = React.useState<OnlineLobby | null>(null);
   const [joinError, setJoinError] = React.useState<string | null>(null);
   const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
+  const [copyInfo, setCopyInfo] = React.useState<string | null>(null);
 
   const createReqIdRef = React.useRef(0);
   const joinReqIdRef = React.useRef(0);
@@ -1087,6 +1088,18 @@ const doLogout = React.useCallback(async () => {
     }
   }
 
+  async function copyLobbyCode() {
+    const code = String((lobby as any)?.code || "").toUpperCase();
+    if (!code) return;
+    try {
+      await navigator.clipboard?.writeText(code);
+      setCopyInfo("Code copié.");
+    } catch {
+      setCopyInfo(`Code : ${code}`);
+    }
+    window.setTimeout(() => setCopyInfo(null), 2200);
+  }
+
   function cancelCreate() {
     createReqIdRef.current++;
     setCreatingLobby(false);
@@ -1103,6 +1116,33 @@ const doLogout = React.useCallback(async () => {
     if (!code) return null;
     return String(code).toUpperCase();
   }, [lobby]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let timer: number | null = null;
+
+    async function refreshLobby() {
+      if (!lobbyKey) return;
+      try {
+        const fresh = await onlineApi.getLobby(lobbyKey);
+        if (cancelled || !fresh) return;
+        if (joinedLobby) setJoinedLobby(fresh);
+        else setLastCreatedLobby(fresh);
+      } catch {
+        // Le salon peut expirer ou être indisponible : on évite de faire clignoter l'UI.
+      }
+    }
+
+    refreshLobby().catch(() => {});
+    if (lobbyKey) {
+      timer = window.setInterval(() => refreshLobby().catch(() => {}), 3000);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [lobbyKey, joinedLobby]);
 
   const [chatLoading, setChatLoading] = React.useState(false);
   const [chatError, setChatError] = React.useState<string | null>(null);
@@ -2113,12 +2153,63 @@ const doLogout = React.useCallback(async () => {
             {String((lobby as any).code || "").toUpperCase()}
           </div>
 
+          <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.84 }}>
+                Joueurs {Number((lobby as any).playersCount || ((lobby as any).players || []).length || 0)}/{Number((lobby as any).maxPlayers || 2)}
+              </div>
+              <Pill label={String((lobby as any).status || "waiting") === "started" ? "Lancé" : "En attente"} tone="green" />
+            </div>
+
+            {Array.isArray((lobby as any).players) && (lobby as any).players.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {((lobby as any).players || []).map((p: any, idx: number) => {
+                  const name = String(p?.displayName || p?.nickname || p?.name || `Joueur ${idx + 1}`);
+                  const avatar = String(p?.avatarUrl || "");
+                  const role = String(p?.role || "player");
+                  return (
+                    <div
+                      key={String(p?.userId || p?.id || idx)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,.10)",
+                        background: "rgba(255,255,255,.055)",
+                        padding: "8px 10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 999,
+                          background: avatar ? `center/cover no-repeat url(${avatar})` : "rgba(255,255,255,.10)",
+                          border: "1px solid rgba(255,213,106,.28)",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                        <div style={{ fontSize: 10.8, opacity: 0.72 }}>{role === "spectator" ? "Spectateur" : idx === 0 ? "Hôte" : "Joueur"}</div>
+                      </div>
+                      <Pill label={String(p?.status || "offline") === "online" ? "Online" : "—"} tone={String(p?.status || "offline") === "online" ? "green" : "gray"} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, opacity: 0.78 }}>En attente des joueurs…</div>
+            )}
+          </div>
+
           <div style={{ display: "grid", gap: 10 }}>
             <GhostButton
               label="🚀 Reprendre / lancer le match"
               onClick={() => go("x01_online_setup", { lobbyCode: (lobby as any).code || null })}
             />
-            <GhostButton label="📋 Copier le code (SOON)" onClick={() => {}} disabled />
+            <GhostButton label={copyInfo || "📋 Copier le code"} onClick={copyLobbyCode} />
           </div>
         </div>
       )}

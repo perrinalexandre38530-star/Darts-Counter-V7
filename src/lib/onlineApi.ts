@@ -38,6 +38,7 @@ import {
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
+import { apiGet, apiPost } from "./apiClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 export const CLOUD_STORE_KEY = "main";
@@ -196,6 +197,10 @@ export type OnlineLobby = {
   settings: OnlineLobbySettings;
   status: string;
   createdAt: string;
+  updatedAt?: string;
+  players?: any[];
+  playersCount?: number;
+  isFull?: boolean;
 };
 
 // --------------------------------------------
@@ -1283,6 +1288,16 @@ function generateLobbyCode(): string {
 }
 
 async function createLobby(args: { mode: string; maxPlayers: number; settings: OnlineLobbySettings }): Promise<OnlineLobby> {
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiPost("/online/lobbies", {
+      mode: args.mode,
+      maxPlayers: args.maxPlayers,
+      settings: args.settings,
+    });
+    return (res?.lobby || res) as OnlineLobby;
+  }
+
   const { user } = await ensureAuthedUser();
 
   const meta = (user.user_metadata || {}) as any;
@@ -1320,6 +1335,16 @@ async function createLobby(args: { mode: string; maxPlayers: number; settings: O
 async function joinLobby(args: { code: string; [k: string]: any }): Promise<OnlineLobby> {
   const codeUpper = safeUpper(args.code);
 
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/join`, {
+      code: codeUpper,
+      nickname: args.nickname,
+      role: args.role || "player",
+    });
+    return (res?.lobby || res) as OnlineLobby;
+  }
+
   const { data, error } = await supabase
     .from("online_lobbies")
     .select("*")
@@ -1333,8 +1358,34 @@ async function joinLobby(args: { code: string; [k: string]: any }): Promise<Onli
   return mapLobbyRow(data as any);
 }
 
+async function getLobby(code: string): Promise<OnlineLobby> {
+  const codeUpper = safeUpper(code);
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiGet(`/online/lobbies/${encodeURIComponent(codeUpper)}`);
+    return (res?.lobby || res) as OnlineLobby;
+  }
+
+  const { data, error } = await supabase
+    .from("online_lobbies")
+    .select("*")
+    .eq("code", codeUpper)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message || "Impossible de lire ce salon.");
+  if (!data) throw new Error("Salon introuvable.");
+  return mapLobbyRow(data as any);
+}
+
 // ✅ A) Lobbies actifs pour page “ONLINE / Spectateur”
 async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiGet(`/online/lobbies?limit=${encodeURIComponent(String(limit))}`);
+    return Array.isArray(res?.lobbies) ? res.lobbies : [];
+  }
+
   const { data, error } = await supabase
     .from("online_lobbies")
     .select("*")
@@ -1539,6 +1590,7 @@ export const onlineApi = {
 
   createLobby,
   joinLobby,
+  getLobby,
   listActiveLobbies,
 
   startMatch,
