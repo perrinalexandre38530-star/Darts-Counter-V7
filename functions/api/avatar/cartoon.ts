@@ -15,6 +15,9 @@ export interface Env {
   OPENAI_APIKEY?: string;
   VITE_OPENAI_API_KEY?: string;
   OPENAI_IMAGE_MODEL?: string;
+  NAS_API_URL?: string;
+  VITE_NAS_API_URL?: string;
+  API_URL?: string;
   [key: string]: any;
 }
 
@@ -56,6 +59,41 @@ function readOpenAiKey(env: Env): { key: string; source: string | null; preview:
 
 function publicError(error: string, message: string, extra: Record<string, any> = {}, status = 500): Response {
   return json({ ok: false, error, message, ...extra }, status);
+}
+
+function readNasApiUrl(env: Env): string {
+  const raw = String(env.NAS_API_URL || env.VITE_NAS_API_URL || env.API_URL || "").trim().replace(/\/+$/, "");
+  return raw && /^https?:\/\//i.test(raw) ? raw : "";
+}
+
+async function callNasJson(env: Env, request: Request, path: string, body?: Record<string, any>): Promise<any | null> {
+  const base = readNasApiUrl(env);
+  if (!base) return null;
+  const auth = request.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ")) {
+    throw Object.assign(new Error("Session utilisateur requise pour utiliser les crédits Avatar IA."), { status: 401, code: "auth_required" });
+  }
+  const response = await fetch(`${base}${path}`, {
+    method: body ? "POST" : "GET",
+    headers: {
+      Authorization: auth,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await response.json().catch(() => null) as any;
+  if (!response.ok) {
+    throw Object.assign(new Error(json?.message || json?.error || `nas_${response.status}`), { status: response.status, code: json?.error || "nas_error", payload: json });
+  }
+  return json;
+}
+
+async function checkNasAvatarCredit(env: Env, request: Request): Promise<any | null> {
+  return callNasJson(env, request, "/avatar-ai/check", { source: "cloudflare_avatar_cartoon" });
+}
+
+async function consumeNasAvatarCredit(env: Env, request: Request, meta: { provider: string; model?: string; style?: string }): Promise<any | null> {
+  return callNasJson(env, request, "/avatar-ai/consume", meta);
 }
 
 const STYLE_SNIPPETS: Record<StyleId, string> = {
@@ -218,6 +256,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return json({ ok: false, error: "image_too_large" }, 413);
     }
 
+    let nasCreditBefore: any = null;
+    try {
+      nasCreditBefore = await checkNasAvatarCredit(env, request);
+    } catch (creditErr: any) {
+      return publicError(creditErr?.code || "avatar_credit_check_failed", String(creditErr?.message || creditErr || "Crédit avatar IA indisponible."), { provider: "nas", avatarCredits: creditErr?.payload || null }, Number(creditErr?.status || 402));
+    }
+
     const openAi = readOpenAiKey(env);
     const openAiKey = openAi.key;
     const openAiModel = String(env.OPENAI_IMAGE_MODEL || "gpt-image-1").trim() || "gpt-image-1";
@@ -225,13 +270,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (openAiKey) {
       try {
         const dataUrl = await callOpenAiImageEdit(openAiKey, file, style, openAiModel);
-        if (dataUrl) return json({ ok: true, cartoonWebp: dataUrl, provider: "openai", style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 200);
+        if (dataUrl) {
+          const avatarCredits = await consumeNasAvatarCredit(env, request, { provider: "openai", model: openAiModel, style }).catch((err: any) => ({ ok: false, error: err?.code || "consume_failed", message: String(err?.message || err) }));
+          return json({ ok: true, cartoonWebp: dataUrl, provider: "openai", style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel, avatarCredits, creditChecked: !!nasCreditBefore }, 200);
+        }
       } catch (err: any) {
         // On garde un fallback Cloudflare possible si OpenAI échoue.
         const openAiMessage = String(err?.message || err || "openai_error");
         try {
           const dataUrl = await callCloudflareAi(env, file, style);
-          if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", fallbackFrom: "openai", openAiMessage, style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 200);
+          if (dataUrl) {
+            const avatarCredits = await consumeNasAvatarCredit(env, request, { provider: "cloudflare", model: "workers-ai", style }).catch((err: any) => ({ ok: false, error: err?.code || "consume_failed", message: String(err?.message || err) }));
+            return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", fallbackFrom: "openai", openAiMessage, style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel, avatarCredits, creditChecked: !!nasCreditBefore }, 200);
+          }
         } catch (cfErr: any) {
           return publicError("ai_generation_failed", openAiMessage, { provider: "openai", fallbackMessage: String(cfErr?.message || cfErr || "cloudflare_error"), keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 502);
         }
@@ -240,7 +291,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     try {
       const dataUrl = await callCloudflareAi(env, file, style);
-      if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", style }, 200);
+      if (dataUrl) {
+        const avatarCredits = await consumeNasAvatarCredit(env, request, { provider: "cloudflare", model: "workers-ai", style }).catch((err: any) => ({ ok: false, error: err?.code || "consume_failed", message: String(err?.message || err) }));
+        return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", style, avatarCredits, creditChecked: !!nasCreditBefore }, 200);
+      }
     } catch (err: any) {
       return publicError("ai_generation_failed", String(err?.message || err || "cloudflare_error"), { provider: "cloudflare", cloudflareAiBinding: Boolean(env.AI?.run) }, 502);
     }

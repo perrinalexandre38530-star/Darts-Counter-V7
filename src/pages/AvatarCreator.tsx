@@ -18,6 +18,7 @@ import InfoDot from "../components/InfoDot";
 import InfoMini from "../components/InfoMini";
 import { useDevMode } from "../contexts/DevModeContext";
 import { loadStore, saveStore } from "../lib/storage";
+import { apiGet, apiPost } from "../lib/apiClient";
 
 type Props = {
   size?: number;
@@ -34,6 +35,7 @@ type TabId = "ia" | "gallery" | "debug";
 type AiPayload = {
   dataUrl: string;
   provider?: string;
+  avatarCredits?: Partial<AvatarCreditState> & { ok?: boolean; canGenerate?: boolean; label?: string };
 };
 
 const GOLD = "#F6C256";
@@ -112,6 +114,33 @@ function readLocalJson<T>(key: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function readNasAccessToken(): string {
+  try {
+    const direct = String(localStorage.getItem("dc_nas_access_token_v1") || "").trim();
+    if (direct) return direct;
+    const session = readLocalJson<any>("dc_online_auth_supabase_v1", null);
+    return String(
+      session?.token ||
+      session?.accessToken ||
+      session?.access_token ||
+      session?.session?.token ||
+      session?.session?.accessToken ||
+      session?.session?.access_token ||
+      ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeCreditPayload(raw: any, fallback?: AvatarCreditState): AvatarCreditState {
+  return {
+    freeUsed: Boolean(raw?.freeUsed ?? fallback?.freeUsed ?? false),
+    credits: Math.max(0, Math.floor(Number(raw?.credits ?? fallback?.credits ?? 0))),
+    updatedAt: typeof raw?.updatedAt === "string" ? raw.updatedAt : new Date().toISOString(),
+  };
 }
 
 function getAvatarAccountKey(): string {
@@ -342,8 +371,10 @@ async function callAvatarAi(file: File, style: StyleId): Promise<AiPayload | nul
   const form = new FormData();
   form.append("image", file);
   form.append("style", style);
+  const token = readNasAccessToken();
   const response = await fetch("/api/avatar/cartoon", {
     method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form,
   });
   const json = (await response.json().catch(() => null)) as any;
@@ -367,8 +398,8 @@ async function callAvatarAi(file: File, style: StyleId): Promise<AiPayload | nul
   }
   const raw = json?.cartoonWebp || json?.cartoonPng || json?.image || json?.dataUrl || null;
   if (typeof raw !== "string") return null;
-  if (raw.startsWith("data:image/")) return { dataUrl: raw, provider: json?.provider };
-  if (/^https?:\/\//i.test(raw)) return { dataUrl: raw, provider: json?.provider };
+  if (raw.startsWith("data:image/")) return { dataUrl: raw, provider: json?.provider, avatarCredits: json?.avatarCredits };
+  if (/^https?:\/\//i.test(raw)) return { dataUrl: raw, provider: json?.provider, avatarCredits: json?.avatarCredits };
   return null;
 }
 
@@ -436,6 +467,28 @@ function AvatarCreator({
     if (activeTab === "debug" && !devMode.enabled) setActiveTab("ia");
   }, [activeTab, devMode.enabled]);
 
+  const refreshAvatarCredits = React.useCallback(async () => {
+    try {
+      if (!readNasAccessToken()) return;
+      const json = await apiGet("/avatar-ai/credits") as any;
+      const next = normalizeCreditPayload(json, readCreditState());
+      setCreditState(writeCreditState(next));
+    } catch (err) {
+      console.warn("[AvatarCreator] crédits IA NAS indisponibles", err);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refreshAvatarCredits();
+    const handler = () => refreshAvatarCredits();
+    window.addEventListener("dc-auth-changed", handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener("dc-auth-changed", handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, [refreshAvatarCredits]);
+
   React.useEffect(() => {
     const href = window.location.href;
     if (!href.includes("avatarCheckout=success")) return;
@@ -446,13 +499,12 @@ function AvatarCreator({
     (async () => {
       try {
         setBusy(true);
-        const response = await fetch(`/api/avatar/checkout-verify?session_id=${encodeURIComponent(sessionId)}`);
-        const json = await response.json().catch(() => null) as any;
-        if (!response.ok || !json?.paid || !json?.credits) throw new Error(json?.message || json?.error || `verify_${response.status}`);
+        const json = await apiGet(`/avatar-ai/checkout/verify?session_id=${encodeURIComponent(sessionId)}`) as any;
+        if (!json?.paid) throw new Error(json?.message || json?.error || "verify_failed");
         if (cancelled) return;
-        setCreditState((current) => writeCreditState({ ...current, credits: current.credits + Math.max(0, Number(json.credits || 0)) }));
+        setCreditState(writeCreditState(normalizeCreditPayload(json, creditState)));
         markCheckoutProcessed(sessionId);
-        setStatus(`Paiement validé : +${json.credits} crédits avatars IA ajoutés au compte.`);
+        setStatus(json.credited ? `Paiement validé : +${json.addedCredits} crédits avatars IA ajoutés au compte.` : "Paiement déjà validé : crédits IA déjà ajoutés à ce compte.");
         window.history.replaceState(null, "", window.location.href.replace(/[?&]avatarCheckout=success/, "").replace(/[?&]session_id=[^&#]+/, ""));
       } catch (err: any) {
         if (!cancelled) setError(`Impossible de valider le paiement Stripe : ${String(err?.message || err || "erreur")}`);
@@ -519,24 +571,18 @@ function AvatarCreator({
     setStatus(null);
     try {
       setBusy(true);
-      const response = await fetch("/api/avatar/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          packId: pack.id,
-          accountKey: getAvatarAccountKey(),
-          successUrl: `${window.location.origin}${window.location.pathname}${window.location.hash || "#/avatar_creator"}?avatarCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: window.location.href,
-        }),
-      });
-      const json = await response.json().catch(() => null) as any;
-      if (!response.ok || !json?.url) {
-        throw new Error(json?.message || json?.error || `checkout_${response.status}`);
-      }
+      if (!readNasAccessToken()) throw new Error("Connecte-toi au compte utilisateur avant d’acheter des crédits IA.");
+      const json = await apiPost("/avatar-ai/checkout", {
+        packId: pack.id,
+        accountKey: getAvatarAccountKey(),
+        successUrl: `${window.location.origin}${window.location.pathname}${window.location.hash || "#/avatar_creator"}?avatarCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: window.location.href,
+      }) as any;
+      if (!json?.url) throw new Error(json?.message || json?.error || "checkout_url_missing");
       window.location.href = json.url;
     } catch (err: any) {
       console.warn("[AvatarCreator] Stripe checkout failed", err);
-      setError(`Paiement non disponible : ${String(err?.message || err || "erreur")}. Vérifie STRIPE_SECRET_KEY côté Cloudflare.`);
+      setError(`Paiement non disponible : ${String(err?.message || err || "erreur")}. Vérifie STRIPE_SECRET_KEY côté NAS.`);
     } finally {
       setBusy(false);
     }
@@ -636,8 +682,14 @@ function AvatarCreator({
         setZoom(1.12);
         setOffsetX(0);
         setOffsetY(0);
-        consumeAvatarCreditAfterSuccess();
-        setStatus("Vraie caricature IA générée. 1 crédit avatar consommé. Enregistre-la pour l’ajouter à la galerie.");
+        if (generated.avatarCredits?.ok) {
+          const nextCredits = normalizeCreditPayload(generated.avatarCredits, creditState);
+          setCreditState(writeCreditState(nextCredits));
+        } else {
+          consumeAvatarCreditAfterSuccess();
+          refreshAvatarCredits();
+        }
+        setStatus("Vraie caricature IA générée. 1 crédit avatar consommé côté compte utilisateur. Enregistre-la pour l’ajouter à la galerie.");
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
         setPhotoUrl(fallback);
