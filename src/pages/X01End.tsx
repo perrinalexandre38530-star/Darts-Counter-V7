@@ -445,8 +445,9 @@ export default function X01End({ go, params }: Props) {
       bulls[id] = n(m.bulls, 0);
 
       // Score restant réel : seul le vainqueur finit à 0.
-      // Le perdant doit garder son score final (fallback calculé dans buildPerPlayerMetrics).
-      remaining[id] = n(m.remaining, id === winnerId ? 0 : undefined);
+      // Le perdant doit garder son score final ; si un payload historique l'a écrasé à 0,
+      // on recalcule depuis les points marqués (ex. 301 - 286 = 15).
+      remaining[id] = computeX01RemainingScore(m, rec, winnerId) ?? 0;
     }
 
     const order = [...ids].sort((a, b) => {
@@ -707,7 +708,10 @@ export default function X01End({ go, params }: Props) {
           rowGroups={[{ rows: [
             { label: "Sets remportés", get: (m) => f0(m.setsWon ?? (m.id === winnerId ? 1 : 0)) },
             { label: "Legs remportées", get: (m) => f0(m.legsWon ?? (m.id === winnerId ? 1 : 0)) },
-            { label: "Score restant", get: (m) => m.remaining != null ? f0(m.remaining) : "—" },
+            { label: "Score restant", get: (m) => {
+              const rem = computeX01RemainingScore(m, rec, winnerId);
+              return rem != null ? f0(rem) : "—";
+            } },
           ] }]}
           dataMap={M}
           tableStyle={tableStyle}
@@ -1237,10 +1241,28 @@ function getX01StartScore(rec: any): number {
     rec?.payload?.config?.startScore ??
     rec?.payload?.game?.startScore ??
     rec?.config?.startScore ??
-    rec?.game?.startScore ??
-    501;
+    rec?.game?.startScore;
+
   const val = Number(raw);
-  return Number.isFinite(val) && val > 0 ? val : 501;
+  if (Number.isFinite(val) && val > 0) return val;
+
+  // Fallback historique : certaines cartes n'ont pas startScore mais portent
+  // un libellé du type "X01 - 301". C'est nécessaire pour recalculer
+  // correctement le score restant du perdant.
+  const title = String(
+    rec?.title ??
+      rec?.label ??
+      rec?.name ??
+      rec?.summary?.title ??
+      rec?.summary?.label ??
+      rec?.payload?.title ??
+      rec?.payload?.label ??
+      rec?.payload?.name ??
+      ""
+  );
+  const match = title.match(/x01\s*[-–—:]?\s*(\d{3,4})/i) || title.match(/(?:start|score|départ|depart)\D*(\d{3,4})/i);
+  const parsed = match ? Number(match[1]) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 501;
 }
 
 function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
@@ -1329,6 +1351,45 @@ function getPlayerRowFromObjectOrArray(src: any, pid: string): any {
 
 function winnerIdFromRecord(rec: any): string | null {
   return rec?.winnerId ?? rec?.payload?.winnerId ?? rec?.summary?.winnerId ?? null;
+}
+
+function computeX01RemainingScore(
+  m: Partial<PlayerMetrics> & { id?: string },
+  rec: any,
+  explicitWinnerId?: string | null
+): number | undefined {
+  const pid = String(m?.id ?? "");
+  const winner = explicitWinnerId ? String(explicitWinnerId) : null;
+  const startScore = getX01StartScore(rec);
+
+  // Le vainqueur est le seul joueur dont le score restant doit être forcé à 0.
+  if ((winner && pid && winner === pid) || (!winner && n(m.bestCO, 0) > 0 && n(m.remaining, 0) === 0)) {
+    return 0;
+  }
+
+  const rawRemaining = Number(m.remaining);
+  if (Number.isFinite(rawRemaining) && rawRemaining > 0) {
+    return rawRemaining;
+  }
+
+  // Ancien bug : plusieurs payloads historisés écrasent le score final du perdant à 0.
+  // Dans ce cas, on recalcule depuis les points réellement marqués.
+  const points = n(
+    m.points,
+    n(m.avg3, 0) > 0 && n(m.darts, 0) > 0
+      ? Math.round((n(m.avg3, 0) / 3) * n(m.darts, 0))
+      : 0
+  );
+
+  if (points > 0 && points < startScore) {
+    return Math.max(0, startScore - points);
+  }
+
+  if (Number.isFinite(rawRemaining)) {
+    return rawRemaining;
+  }
+
+  return undefined;
 }
 
 function buildPerPlayerMetrics(
@@ -1977,6 +2038,13 @@ function buildPerPlayerMetrics(
     }
     if (!m.visits && m.darts) {
       m.visits = Math.ceil(m.darts / 3);
+    }
+
+    // Dernier filet de sécurité : certains historiques anciens portent remaining/finalScore à 0
+    // pour tous les joueurs. Après avoir stabilisé points/avg/darts, on recalcule le perdant.
+    const safeRemaining = computeX01RemainingScore(m, rec, winnerIdFromRecord(rec));
+    if (safeRemaining !== undefined) {
+      m.remaining = safeRemaining;
     }
 
     // si darts encore à 0, tente un fallback minimal (hits connus)
