@@ -3900,12 +3900,7 @@ case "babyfoot_team_edit":
           }
 
           page = (
-            <div style={{ padding: 16 }}>
-              <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
-                ← Retour
-              </button>
-              <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} isBotMode={true} />
-            </div>
+            <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} onBack={() => go(backTo)} isBotMode={true} />
           );
           break;
         }
@@ -4013,12 +4008,7 @@ case "babyfoot_team_edit":
         }
 
         page = (
-          <div style={{ padding: 16 }}>
-            <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
-              ← Retour
-            </button>
-            <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} isBotMode={isBotMode} />
-          </div>
+          <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} onBack={() => go(backTo)} isBotMode={isBotMode} />
         );
         break;
       }

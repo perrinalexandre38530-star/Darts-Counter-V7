@@ -16,6 +16,9 @@ import { fileToSafeAvatarDataUrl, enforceSafeAvatarDataUrl } from "../lib/avatar
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import InfoMini from "../components/InfoMini";
+import { useDevMode } from "../contexts/DevModeContext";
+import { loadStore, saveStore } from "../lib/storage";
+import { loadStoredBots, saveStoredBots } from "../lib/bots";
 
 type Props = {
   size?: number;
@@ -27,7 +30,7 @@ type Props = {
 };
 
 type StyleId = "comic" | "flat" | "exaggerated" | "realistic";
-type TabId = "ia" | "credits" | "photo" | "export";
+type TabId = "ia" | "gallery" | "debug";
 
 type AiPayload = {
   dataUrl: string;
@@ -56,10 +59,40 @@ type CreditPack = {
 };
 
 const CREDIT_PACKS: CreditPack[] = [
-  { id: "pack10", label: "Pack 10 avatars IA", credits: 10, price: "1,99 €" },
-  { id: "pack30", label: "Pack 30 avatars IA", credits: 30, price: "4,99 €" },
-  { id: "pack100", label: "Pack 100 avatars IA", credits: 100, price: "9,99 €" },
+  { id: "pack10", label: "10 avatars IA", credits: 10, price: "1,99 €" },
+  { id: "pack30", label: "30 avatars IA", credits: 30, price: "4,99 €" },
+  { id: "pack100", label: "100 avatars IA", credits: 100, price: "9,99 €" },
 ];
+const GALLERY_STORAGE_KEY = "msc_avatar_ia_gallery_v1";
+
+type GalleryAvatar = {
+  id: string;
+  name: string;
+  dataUrl: string;
+  createdAt: string;
+  source: "ia" | "manual";
+};
+
+function readGallery(): GalleryAvatar[] {
+  try {
+    const raw = localStorage.getItem(GALLERY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x) => x && typeof x.dataUrl === "string").slice(0, 48) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeGallery(items: GalleryAvatar[]): GalleryAvatar[] {
+  const safe = items.filter((x) => x && typeof x.dataUrl === "string").slice(0, 48);
+  try {
+    localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(safe));
+  } catch {}
+  return safe;
+}
+
+type AssignableProfile = { id: string; name: string; avatarDataUrl?: string | null; avatarUrl?: string | null };
+
 
 function readCreditState(): AvatarCreditState {
   try {
@@ -301,6 +334,7 @@ export default function AvatarCreator({
 }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const devMode = useDevMode();
 
   const [name, setName] = React.useState(defaultName || "");
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
@@ -308,6 +342,8 @@ export default function AvatarCreator({
   const [originalPreviewUrl, setOriginalPreviewUrl] = React.useState<string | null>(null);
   const [style, setStyle] = React.useState<StyleId>("exaggerated");
   const [zoom, setZoom] = React.useState(1.18);
+  const [offsetX, setOffsetX] = React.useState(0);
+  const [offsetY, setOffsetY] = React.useState(0);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -316,18 +352,102 @@ export default function AvatarCreator({
   const [creditState, setCreditState] = React.useState<AvatarCreditState>(() => readCreditState());
   const [activeTab, setActiveTab] = React.useState<TabId>("ia");
   const [miniInfo, setMiniInfo] = React.useState<{ title: string; content: string } | null>(null);
+  const [gallery, setGallery] = React.useState<GalleryAvatar[]>(() => readGallery());
+  const [selectedGallery, setSelectedGallery] = React.useState<GalleryAvatar | null>(null);
+  const [profiles, setProfiles] = React.useState<Array<AssignableProfile & { kind?: "active" | "local" | "bot" }>>([]);
+  const [assignProfileId, setAssignProfileId] = React.useState("");
+  const [medallionColor, setMedallionColor] = React.useState(isBotMode ? BOT_RING : GOLD);
+  const [autoSaveAfterAi, setAutoSaveAfterAi] = React.useState(false);
 
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const avatarImage = photoUrl;
 
   const primary = theme.primary ?? GOLD;
-  const RING_COLOR = isBotMode ? BOT_RING : GOLD;
+  const RING_COLOR = medallionColor || (isBotMode ? BOT_RING : GOLD);
   const avatarImgSize = R_AVATAR * 2 * zoom;
   const displayName = (name || "PLAYER").trim().toUpperCase();
   const hasAiCredit = !creditState.freeUsed || creditState.credits > 0;
-  const remainingPaidCredits = creditState.credits;
-  const panelWidth = 410;
+
+  const colorChoices = [
+    { id: "gold", label: "Or", value: GOLD },
+    { id: "lime", label: "Lime", value: "#A3E635" },
+    { id: "blue", label: "Bleu", value: "#38BDF8" },
+    { id: "pink", label: "Rose", value: "#F472B6" },
+    { id: "purple", label: "Violet", value: "#A78BFA" },
+    { id: "red", label: "Rouge", value: "#FB7185" },
+    { id: "white", label: "Blanc", value: "#F8FAFC" },
+  ];
+
+  const tabs: Array<{ id: TabId; label: string; icon: string; hidden?: boolean }> = [
+    { id: "ia", label: "IA", icon: "✨" },
+    { id: "gallery", label: "Galerie", icon: "🖼️" },
+    { id: "debug", label: "Debug", icon: "🧪", hidden: !devMode.enabled },
+  ];
+
+  React.useEffect(() => {
+    if (activeTab === "debug" && !devMode.enabled) setActiveTab("ia");
+  }, [activeTab, devMode.enabled]);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const result: Array<AssignableProfile & { kind?: "active" | "local" | "bot" }> = [];
+      try {
+        const store: any = await loadStore<any>();
+        const list = Array.isArray(store?.profiles) ? store.profiles : [];
+        const activeId = String(store?.activeProfileId || "");
+        for (const p of list) {
+          const id = String(p?.id || "");
+          if (!id) continue;
+          result.push({
+            id: `profile:${id}`,
+            name: `${id === activeId ? "Profil actif" : "Profil local"} — ${String(p?.name || p?.displayName || "Profil")}`,
+            avatarDataUrl: p?.avatarDataUrl,
+            avatarUrl: p?.avatarUrl,
+            kind: id === activeId ? "active" : "local",
+          });
+        }
+      } catch {}
+      try {
+        const bots = loadStoredBots();
+        if (Array.isArray(bots)) {
+          for (const b of bots) {
+            const id = String((b as any)?.id || "");
+            if (!id) continue;
+            result.push({
+              id: `bot:${id}`,
+              name: `Bot CPU — ${String((b as any)?.name || "Bot")}`,
+              avatarDataUrl: (b as any)?.avatarDataUrl,
+              avatarUrl: (b as any)?.avatarUrl || (b as any)?.avatar,
+              kind: "bot",
+            });
+          }
+        }
+      } catch {}
+      if (alive) setProfiles(result);
+    })();
+    return () => { alive = false; };
+  }, [activeTab, selectedGallery]);
+
+  function persistGallery(next: GalleryAvatar[]) {
+    const saved = writeGallery(next);
+    setGallery(saved);
+    return saved;
+  }
+
+  function addToGallery(dataUrl: string, source: "ia" | "manual" = "ia") {
+    if (!dataUrl) return;
+    const item: GalleryAvatar = {
+      id: `av_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: displayName || "PLAYER",
+      dataUrl,
+      createdAt: new Date().toISOString(),
+      source,
+    };
+    const saved = persistGallery([item, ...gallery.filter((x) => x.dataUrl !== dataUrl)]);
+    setSelectedGallery(saved[0] || item);
+  }
 
   function consumeAvatarCreditAfterSuccess() {
     setCreditState((current) => {
@@ -339,12 +459,8 @@ export default function AvatarCreator({
   }
 
   function handleBuyPack(pack: CreditPack) {
-    // Paiement réel à brancher plus tard côté NAS/Stripe/Store.
-    // On n'ajoute volontairement pas les crédits ici pour éviter une faille évidente.
     setError(null);
-    setStatus(
-      `${pack.label} — ${pack.price}. Paiement à brancher côté backend avant activation automatique des crédits.`
-    );
+    setStatus(`${pack.label} — ${pack.price}. Paiement Stripe/NAS à brancher : les crédits ne sont pas ajoutés côté frontend.`);
   }
 
   const handleBack = React.useCallback(() => {
@@ -370,8 +486,10 @@ export default function AvatarCreator({
         setOriginalPreviewUrl(safe);
         setPhotoUrl(safe);
         setZoom(1.18);
+        setOffsetX(0);
+        setOffsetY(0);
         setDebugText(null);
-        setStatus(t("avatar.status.photoLoaded", "Photo importée. Lance la génération IA pour obtenir une vraie caricature cartoon."));
+        setStatus("Photo importée. Recadre depuis les réglages, choisis le style, puis lance l'IA.");
       } catch {
         setError(t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`));
       } finally {
@@ -398,6 +516,7 @@ export default function AvatarCreator({
         ? `DEBUG API: clé visible côté Cloudflare ✅ source=${openai.source} preview=${openai.valuePreview} modèle=${json.openaiImageModel}`
         : `DEBUG API: clé ABSENTE côté Cloudflare ❌. Variables détectées: ${(json.sensitiveEnvKeysDetected || []).map((x: any) => x.name).join(", ") || "aucune"}`;
       setDebugText(line);
+      setStatus(line);
     } catch (err) {
       console.warn("[AvatarCreator] debug failed", err);
       setDebugText("DEBUG API: impossible d'appeler /api/avatar/debug. Vérifie le déploiement des Functions.");
@@ -408,7 +527,7 @@ export default function AvatarCreator({
 
   async function handleGenerateCartoon() {
     if (!originalFile || !originalPreviewUrl) {
-      setError(t("avatar.error.noAvatar", "Importe d’abord une photo avant de générer la caricature."));
+      setError("Clique au centre du médaillon pour importer une photo avant de générer.");
       return;
     }
     if (!hasAiCredit) {
@@ -418,7 +537,7 @@ export default function AvatarCreator({
     setBusy(true);
     setError(null);
     setLastExport(null);
-    setStatus(t("avatar.status.generating", "Génération de la vraie caricature IA en cours…"));
+    setStatus("Génération de la vraie caricature IA en cours…");
     try {
       let generated: AiPayload | null = null;
       try {
@@ -430,24 +549,24 @@ export default function AvatarCreator({
           ? `Clé détectée (${details.keySource}, ${details.keyPreview || "masquée"}) mais OpenAI/Cloudflare refuse: ${apiErr?.message || "erreur inconnue"}.`
           : `Clé non visible par la Function runtime. Lance le diagnostic API puis vérifie Production/Runtime + redéploiement.`;
         setDebugText(`ERREUR API: ${suffix}`);
-        setError(null);
       }
 
       if (generated?.dataUrl) {
         const fitted = await fitDataUrlToWebp(generated.dataUrl, 512, 0.82);
         setPhotoUrl(fitted);
         setZoom(1.12);
+        setOffsetX(0);
+        setOffsetY(0);
         consumeAvatarCreditAfterSuccess();
-        setStatus(
-          generated.provider === "openai"
-            ? t("avatar.status.generatedOpenAi", "Vraie caricature IA générée. 1 crédit avatar consommé.")
-            : t("avatar.status.generatedAi", "Caricature IA générée. 1 crédit avatar consommé.")
-        );
+        setAutoSaveAfterAi(true);
+        setStatus("Caricature IA générée. Enregistrement automatique dans la galerie…");
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
         setPhotoUrl(fallback);
         setZoom(1.18);
-        setStatus(t("avatar.status.generatedFallback", "Aucune API IA n’est branchée ici : fallback local appliqué. Pour le rendu très caricaturé du mockup, configure OPENAI_API_KEY côté Cloudflare."));
+        setOffsetX(0);
+        setOffsetY(0);
+        setStatus("Aucune vraie IA disponible : fallback local appliqué. Configure OPENAI_API_KEY pour le rendu caricature premium.");
       }
     } catch (e) {
       console.warn(e);
@@ -492,540 +611,296 @@ export default function AvatarCreator({
     });
   }
 
-  async function handleSave() {
+  async function handleSave(source: "ia" | "manual" = "manual", silent = false) {
     if (!avatarImage) {
-      setError(t("avatar.error.noAvatar", "Importe d’abord une image avant d’enregistrer."));
+      if (!silent) setError("Importe d’abord une image avant d’enregistrer.");
       return;
     }
-
     try {
       setBusy(true);
       const webpDataUrl = await renderMedallionWebp(EXPORT_SIZE);
       const safeDataUrl = (await enforceSafeAvatarDataUrl(webpDataUrl)) || webpDataUrl;
       setLastExport(safeDataUrl);
-
-      if (onSave) {
+      addToGallery(safeDataUrl, source);
+      if (onSave && !silent) {
         onSave({ pngDataUrl: safeDataUrl, name: name || "PLAYER" });
-        setStatus(t("avatar.status.savedToProfile", "Avatar WebP enregistré sur le profil."));
+        setStatus("Avatar WebP enregistré sur le profil et ajouté à la galerie.");
       } else {
-        const a = document.createElement("a");
-        a.href = safeDataUrl;
-        a.download = `avatar-multisports-${name || "player"}.webp`;
-        a.click();
-        setStatus(t("avatar.status.downloaded", "Avatar généré et téléchargé en WebP."));
+        setStatus("Avatar WebP ajouté à la galerie. Tu peux l’exporter ou l’attribuer à un profil.");
       }
     } catch (e) {
       console.warn(e);
-      setError(t("avatar.error.saveFailed", "Impossible d’enregistrer l’avatar pour le moment."));
+      if (!silent) setError("Impossible d’enregistrer l’avatar pour le moment.");
     } finally {
       setBusy(false);
     }
   }
 
-  const tabs: Array<{ id: TabId; label: string; icon: string }> = [
-    { id: "ia", label: "IA", icon: "✨" },
-    { id: "credits", label: "Crédits", icon: "💳" },
-    { id: "photo", label: "Photo", icon: "📸" },
-    { id: "export", label: "Export", icon: "💾" },
-  ];
+  React.useEffect(() => {
+    if (!autoSaveAfterAi || !photoUrl) return;
+    const timer = window.setTimeout(() => {
+      setAutoSaveAfterAi(false);
+      handleSave("ia", true).catch(() => {});
+    }, 140);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSaveAfterAi, photoUrl]);
+
+  function downloadGalleryItem(item: GalleryAvatar) {
+    const a = document.createElement("a");
+    a.href = item.dataUrl;
+    a.download = `avatar-multisports-${item.name || "player"}.webp`;
+    a.click();
+  }
+
+  async function assignAvatarToSelection(item: GalleryAvatar, targetId: string) {
+    if (!targetId) {
+      setError("Choisis d’abord un profil ou un bot.");
+      return;
+    }
+    try {
+      setBusy(true);
+      if (targetId.startsWith("bot:")) {
+        const botId = targetId.slice(4);
+        const bots = loadStoredBots();
+        const next = Array.isArray(bots) ? bots.map((b: any) => String(b?.id || "") === botId ? { ...b, avatarDataUrl: item.dataUrl, avatarUrl: item.dataUrl, avatar: item.dataUrl, updatedAt: new Date().toISOString() } : b) : [];
+        saveStoredBots(next);
+        try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
+        setStatus("Avatar attribué au bot CPU.");
+      } else {
+        const profileId = targetId.replace(/^profile:/, "");
+        const store: any = await loadStore<any>();
+        if (!store || !Array.isArray(store.profiles)) throw new Error("store_profiles_missing");
+        const nextProfiles = store.profiles.map((p: any) =>
+          String(p?.id || "") === String(profileId)
+            ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null }
+            : p
+        );
+        await saveStore({ ...store, profiles: nextProfiles });
+        const target = nextProfiles.find((p: any) => String(p?.id || "") === String(profileId));
+        setStatus(`Avatar attribué à ${target?.name || "profil"}.`);
+      }
+      setSelectedGallery(null);
+      setAssignProfileId("");
+    } catch (e) {
+      console.warn(e);
+      setError("Impossible d’attribuer cet avatar au profil sélectionné.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const infoContent = (
     <div style={{ lineHeight: 1.45 }}>
-      <p style={{ marginTop: 0 }}>
-        <strong>AVATAR IA</strong> transforme une photo en caricature cartoon, puis l'application ajoute le médaillon Multisports Scoring et compresse le résultat en WebP 256x256.
-      </p>
-      <p>
-        La première génération est offerte. Ensuite, chaque génération réussie consomme 1 crédit avatar IA.
-      </p>
-      <p style={{ marginBottom: 0 }}>
-        En production publique, les packs doivent passer par Stripe/NAS avant d'appeler OpenAI afin d'éviter tout abus.
-      </p>
+      <p style={{ marginTop: 0 }}><strong>AVATAR IA</strong> : clique au centre du médaillon pour importer une photo, recadre, choisis le style, puis génère.</p>
+      <p>La première génération est offerte. Ensuite, chaque génération réussie consomme 1 crédit.</p>
+      <p style={{ marginBottom: 0 }}>La galerie stocke automatiquement les avatars générés ici.</p>
     </div>
   );
-
-  const TabButton = ({ id, label, icon }: { id: TabId; label: string; icon: string }) => {
-    const selected = activeTab === id;
-    return (
-      <button
-        type="button"
-        onClick={() => setActiveTab(id)}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          border: "1px solid rgba(255,255,255,.13)",
-          borderRadius: 14,
-          padding: "10px 8px",
-          color: selected ? "#07070d" : "#fff",
-          background: selected
-            ? `linear-gradient(135deg, ${primary}, ${GOLD_2})`
-            : "linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.035))",
-          boxShadow: selected ? `0 0 24px ${primary}66` : "none",
-          fontWeight: 950,
-          fontSize: 12,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        <span style={{ marginRight: 5 }}>{icon}</span>{label}
-      </button>
-    );
-  };
 
   const StatusCard = () => {
     if (!status && !error && !lastExport && !debugText) return null;
     return (
-      <div
-        style={{
-          ...cardBase,
-          padding: 14,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          background: error
-            ? "linear-gradient(145deg, rgba(70,18,18,.96), rgba(14,10,10,.96))"
-            : "linear-gradient(145deg, rgba(8,45,31,.95), rgba(5,12,10,.98))",
-        }}
-      >
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 999,
-            background: error ? "#ff5d5d" : "#22c76f",
-            display: "grid",
-            placeItems: "center",
-            fontWeight: 950,
-            color: "#fff",
-            flex: "0 0 auto",
-          }}
-        >
-          {error ? "!" : "✓"}
-        </div>
-        <div style={{ fontSize: 13, lineHeight: 1.35 }}>
-          <div style={{ fontWeight: 850 }}>{error ? error : debugText || status || t("avatar.status.ok", "Avatar prêt !")}</div>
-          {!error && <div style={{ opacity: 0.78, marginTop: 2 }}>Format WebP • {EXPORT_SIZE}x{EXPORT_SIZE} • {dataUrlSizeKb(lastExport || photoUrl)}</div>}
+      <div className={`avatar-status ${error ? "is-error" : "is-ok"}`}>
+        <div className="avatar-status-dot">{error ? "!" : "✓"}</div>
+        <div>
+          <div className="avatar-status-title">{error ? error : debugText || status || "Avatar prêt !"}</div>
+          {!error && <div className="avatar-status-sub">WebP • {EXPORT_SIZE}x{EXPORT_SIZE} • {dataUrlSizeKb(lastExport || photoUrl)}</div>}
         </div>
       </div>
     );
   };
 
+  const CreditStrip = () => (
+    <section className="avatar-credit-strip">
+      <div className="credit-main">
+        <strong>Crédits IA</strong>
+        <span>{creditLabel(creditState)}</span>
+      </div>
+      <div className={`credit-pill ${hasAiCredit ? "ok" : "ko"}`}>{!creditState.freeUsed ? "FREE" : creditState.credits}</div>
+      <div className="credit-packs">
+        {CREDIT_PACKS.map((pack) => (
+          <button key={pack.id} type="button" onClick={() => handleBuyPack(pack)}>
+            <strong>{pack.credits}</strong><span>{pack.price}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
+  const MedallionSvg = () => (
+    <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
+      <defs>
+        <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
+        <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%"><stop offset="0%" stopColor="#ffffff" /><stop offset="17%" stopColor={GOLD_2} /><stop offset="52%" stopColor={RING_COLOR} /><stop offset="100%" stopColor="#7a5313" /></radialGradient>
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" /></filter>
+      </defs>
+      <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
+      <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
+      <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+      <circle r={R_OUTER - 19} fill={BLACK} />
+      <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
+      <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+      <circle r={R_AVATAR} fill="#22232b" />
+      {avatarImage ? (
+        <g clipPath="url(#avatarClip)">
+          <image href={avatarImage} x={-avatarImgSize / 2 + offsetX} y={-avatarImgSize / 2 + offsetY} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
+          <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
+        </g>
+      ) : (
+        <g clipPath="url(#avatarClip)">
+          <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
+          <text x={0} y={-10} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={17} fill="#bfc2cf">Clique ici</text>
+          <text x={0} y={18} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={15} fill="#bfc2cf">pour importer une photo</text>
+        </g>
+      )}
+      <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
+      <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}><textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
+      <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
+      <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
+    </svg>
+  );
+
+  const MedallionPreview = () => (
+    <button type="button" className="medallion-button" onClick={() => fileInputRef.current?.click()} title="Importer une photo">
+      <MedallionSvg />
+      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
+    </button>
+  );
+
   const renderIaTab = () => (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardBase, padding: 16, background: "linear-gradient(145deg, rgba(37,24,67,.98), rgba(14,10,29,.98))" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-          <div style={{ fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.5, fontSize: 15 }}>
-            Photo → caricature IA
-          </div>
-          <InfoMini title="Caricature IA" content="L'IA génère l'image cartoon. Le médaillon est ajouté ensuite par l'application pour garder un cadre toujours net et identique." onOpen={(title, content) => setMiniInfo({ title, content })} />
-        </div>
-        <div style={{ opacity: 0.9, marginBottom: 14, fontSize: 13.5, lineHeight: 1.42 }}>
-          Importe une photo, choisis un style très caricaturé, puis lance la génération.
-        </div>
+    <div className="tab-content">
+      <CreditStrip />
 
-        <select
-          value={style}
-          onChange={(e) => setStyle(e.target.value as StyleId)}
-          style={{
-            width: "100%",
-            minHeight: 42,
-            borderRadius: 12,
-            padding: "9px 12px",
-            background: "#07070d",
-            color: "#fff",
-            border: "1px solid rgba(255,255,255,.18)",
-            marginBottom: 12,
-          }}
-        >
-          <option value="exaggerated">🎭 Très caricaturé — comique & fun</option>
-          <option value="comic">💥 Comic / BD</option>
-          <option value="flat">🏆 Logo esport</option>
-          <option value="realistic">✏️ Dessin cartoon plus réaliste</option>
-        </select>
-
-        <button
-          type="button"
-          onClick={handleGenerateCartoon}
-          disabled={busy || !originalFile || !hasAiCredit}
-          style={{
-            width: "100%",
-            borderRadius: 15,
-            padding: "15px 16px",
-            fontSize: 15,
-            fontWeight: 950,
-            border: "none",
-            cursor: busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer",
-            background: "linear-gradient(135deg, #B06CFF, #7C3AED)",
-            color: "#FFF",
-            boxShadow: "0 16px 32px rgba(124,58,237,.42)",
-            opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1,
-          }}
-        >
-          {busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit avatar IA requis"}
-        </button>
-
-        <button
-          type="button"
-          onClick={runAvatarDebug}
-          disabled={busy}
-          style={{
-            width: "100%",
-            marginTop: 10,
-            borderRadius: 13,
-            padding: "11px 12px",
-            fontSize: 13,
-            fontWeight: 900,
-            border: "1px solid rgba(255,255,255,.16)",
-            cursor: busy ? "not-allowed" : "pointer",
-            background: "rgba(255,255,255,.07)",
-            color: "#fff",
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
-          🔎 Diagnostic API IA
-        </button>
+      <div className="medallion-zone">
+        <MedallionPreview />
       </div>
-      <StatusCard />
-    </div>
-  );
 
-  const renderCreditsTab = () => (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardBase, padding: 16, background: "linear-gradient(145deg, rgba(12,38,32,.96), rgba(7,12,14,.98))" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 12 }}>
+      {originalFile ? (
+        <section className="floating-style-card">
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 950, textTransform: "uppercase", fontSize: 14 }}>
-              Crédits avatars IA
-              <InfoMini title="Crédits IA" content="1 génération réussie consomme 1 crédit. Le premier avatar IA est offert. Les packs devront être validés côté serveur via Stripe avant production publique." onOpen={(title, content) => setMiniInfo({ title, content })} />
-            </div>
-            <div style={{ fontSize: 12.5, opacity: 0.82, marginTop: 4 }}>{creditLabel(creditState)}</div>
+            <strong>Caricature souhaitée</strong>
+            <span>Choisis le style avant de lancer l’IA.</span>
           </div>
-          <div style={{ minWidth: 68, textAlign: "center", borderRadius: 13, padding: "9px 11px", background: hasAiCredit ? "rgba(34,197,94,.18)" : "rgba(255,93,93,.16)", border: "1px solid rgba(255,255,255,.12)", fontWeight: 950 }}>
-            {!creditState.freeUsed ? "FREE" : remainingPaidCredits}
-          </div>
-        </div>
+          <select value={style} onChange={(e) => setStyle(e.target.value as StyleId)}>
+            <option value="exaggerated">🎭 Très caricaturé — comique & fun</option>
+            <option value="comic">💥 Comic / BD</option>
+            <option value="flat">🏆 Logo esport</option>
+            <option value="realistic">✏️ Cartoon plus réaliste</option>
+          </select>
+          <button type="button" onClick={handleGenerateCartoon} disabled={busy || !hasAiCredit}>{busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit IA requis"}</button>
+        </section>
+      ) : null}
 
-        <div style={{ display: "grid", gap: 10 }}>
-          {CREDIT_PACKS.map((pack) => (
-            <button
-              key={pack.id}
-              type="button"
-              onClick={() => handleBuyPack(pack)}
-              disabled={busy}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                alignItems: "center",
-                gap: 12,
-                width: "100%",
-                borderRadius: 16,
-                padding: "13px 14px",
-                border: "1px solid rgba(246,194,86,.28)",
-                background: "linear-gradient(145deg, rgba(255,255,255,.085), rgba(255,255,255,.035))",
-                color: "#fff",
-                cursor: busy ? "not-allowed" : "pointer",
-                opacity: busy ? 0.6 : 1,
-                textAlign: "left",
-              }}
-            >
-              <span>
-                <strong style={{ display: "block", fontSize: 14 }}>{pack.label}</strong>
-                <span style={{ display: "block", opacity: 0.68, fontSize: 12, marginTop: 2 }}>{pack.credits} générations IA</span>
-              </span>
-              <span style={{ fontWeight: 950, color: GOLD_2, fontSize: 15 }}>{pack.price}</span>
-            </button>
-          ))}
+      <section className="control-card">
+        <div className="control-title"><strong>Recadrage médaillon</strong><button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }}>Reset</button></div>
+        <label>Zoom<input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
+        <label>Gauche / Droite<input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} /></label>
+        <label>Haut / Bas<input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} /></label>
+        <label>Nom affiché<input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINJA" /></label>
+        <div className="color-row" aria-label="Couleur du médaillon">
+          {colorChoices.map((c) => <button key={c.id} type="button" title={c.label} className={medallionColor === c.value ? "selected" : ""} style={{ background: c.value }} onClick={() => setMedallionColor(c.value)} />)}
         </div>
-
-        <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(0,0,0,.23)", fontSize: 12, lineHeight: 1.36, opacity: 0.78 }}>
-          Paiement à brancher via Stripe/NAS : le frontend affiche les packs, mais les crédits réels devront être ajoutés uniquement après webhook Stripe validé.
-        </div>
-      </div>
+        <button className="save-gallery-btn" type="button" onClick={() => handleSave("manual")} disabled={busy || !avatarImage}>💾 Enregistrer dans la galerie</button>
+      </section>
       <StatusCard />
     </div>
   );
 
-  const renderPhotoTab = () => (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardBase, padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-          <div style={{ fontWeight: 950, textTransform: "uppercase", fontSize: 14 }}>Photo source</div>
-          <InfoMini title="Photo source" content="Importe une photo nette, idéalement cadrée visage/buste. L'app réduit déjà l'image pour éviter les gros fichiers base64." onOpen={(title, content) => setMiniInfo({ title, content })} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "128px 1fr", gap: 14, alignItems: "center" }}>
-          <div
-            style={{
-              width: 128,
-              height: 128,
-              borderRadius: 16,
-              overflow: "hidden",
-              background: "linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.025))",
-              border: "1px solid rgba(255,255,255,.14)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "rgba(255,255,255,.55)",
-              fontSize: 12,
-              textAlign: "center",
-            }}
-          >
-            {originalPreviewUrl ? <img src={originalPreviewUrl} alt="Photo de départ" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "Aucune photo"}
+  const renderGalleryTab = () => (
+    <div className="tab-content">
+      <section className="gallery-card">
+        <div className="gallery-head"><strong>Galerie avatars IA</strong><span>{gallery.length} avatar{gallery.length > 1 ? "s" : ""}</span></div>
+        {gallery.length === 0 ? (
+          <div className="empty-gallery">Aucun avatar pour le moment.<br />Les avatars générés ici seront stockés automatiquement.</div>
+        ) : (
+          <div className="gallery-grid">
+            {gallery.map((item) => (
+              <button key={item.id} type="button" className="gallery-thumb" onClick={() => { setSelectedGallery(item); setAssignProfileId(""); }}>
+                <img src={item.dataUrl} alt={item.name} />
+              </button>
+            ))}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            <button type="button" className="btn sm" onClick={() => fileInputRef.current?.click()} style={{ borderRadius: 12, padding: "11px 12px" }}>
-              ⬆️ {originalFile ? t("avatar.btn.change", "Changer la photo") : t("avatar.btn.import", "Importer une photo")}
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
-            <button
-              className="btn sm"
-              type="button"
-              disabled={!photoUrl && !originalPreviewUrl}
-              onClick={() => {
-                setPhotoUrl(null);
-                setOriginalFile(null);
-                setOriginalPreviewUrl(null);
-                setStatus(null);
-                setError(null);
-                setLastExport(null);
-                setDebugText(null);
-              }}
-              style={{ borderRadius: 12, padding: "11px 12px", opacity: !photoUrl && !originalPreviewUrl ? 0.5 : 1 }}
-            >
-              🗑️ Effacer
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ ...cardBase, padding: 16 }}>
-        <div style={{ fontWeight: 950, marginBottom: 12, textTransform: "uppercase", fontSize: 14 }}>Réglages médaillon</div>
-        <label style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13, marginBottom: 14 }}>
-          <span style={{ color: theme.textSoft }}>Zoom visage</span>
-          <input type="range" min={0.9} max={2.4} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13 }}>
-          <span style={{ color: theme.textSoft }}>Nom affiché</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINZALEX" style={{ minHeight: 44 }} />
-        </label>
-      </div>
+        )}
+      </section>
       <StatusCard />
     </div>
   );
 
-  const renderExportTab = () => (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardBase, padding: 16, background: "linear-gradient(145deg, rgba(31,24,64,.96), rgba(8,8,14,.98))" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-          <div style={{ fontWeight: 950, textTransform: "uppercase", fontSize: 14 }}>Export WebP</div>
-          <InfoMini title="Export WebP" content="L'avatar final est rendu en 256x256 WebP compressé pour rester léger dans le stockage local/NAS." onOpen={(title, content) => setMiniInfo({ title, content })} />
-        </div>
-        <p style={{ margin: "0 0 14px", opacity: 0.82, lineHeight: 1.4, fontSize: 13 }}>
-          Enregistre le médaillon final compressé. C'est ce fichier qui doit être stocké sur le profil.
-        </p>
-        <button
-          className="btn ok"
-          type="button"
-          onClick={handleSave}
-          disabled={busy || !avatarImage}
-          style={{
-            width: "100%",
-            borderRadius: 16,
-            padding: "16px 18px",
-            fontSize: 16,
-            fontWeight: 950,
-            background: "linear-gradient(135deg, #9B5CFF, #6D28D9)",
-            border: "none",
-            boxShadow: "0 16px 34px rgba(124,58,237,.35)",
-            opacity: busy || !avatarImage ? 0.6 : 1,
-          }}
-        >
-          ⬇️ {onSave ? "Enregistrer l’avatar (WebP)" : "Télécharger l’avatar (WebP)"}
-          <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.82, marginTop: 3 }}>{EXPORT_SIZE}x{EXPORT_SIZE} • WebP • compression optimisée</div>
-        </button>
-      </div>
-
-      <div style={{ width: "100%", ...cardBase, padding: 14, textAlign: "center" }}>
-        <div style={{ textAlign: "left", fontWeight: 850, marginBottom: 8, fontSize: 13, textTransform: "uppercase" }}>Aperçu miniature</div>
-        <div style={{ width: 130, height: 130, margin: "0 auto", borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(255,255,255,.03)" }}>
-          <svg viewBox="-256 -256 512 512" width="112" height="112">
-            <defs><clipPath id="avatarClipSmall"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath></defs>
-            <circle r={R_OUTER + STROKE} fill={BLACK} />
-            <circle r={R_OUTER} fill="none" stroke={RING_COLOR} strokeWidth={STROKE} />
-            <circle r={R_INNER} fill="none" stroke={RING_COLOR} strokeWidth={STROKE} />
-            <circle r={R_AVATAR} fill="#22232b" />
-            {avatarImage && <g clipPath="url(#avatarClipSmall)"><image href={avatarImage} x={-avatarImgSize / 2} y={-avatarImgSize / 2} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" /></g>}
-            <path id="arcTopSmall" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
-            <text fontFamily="Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4} fill={RING_COLOR}><textPath href="#arcTopSmall" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
-            <path id="arcBottomSmall" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
-            <text fontFamily="Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottomSmall" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
-          </svg>
-        </div>
-      </div>
+  const renderDebugTab = () => (
+    <div className="tab-content">
+      <section className="control-card debug-card">
+        <strong>Diagnostic développeur</strong>
+        <p>Visible uniquement quand le mode développeur est activé.</p>
+        <button type="button" onClick={runAvatarDebug} disabled={busy}>🔎 Diagnostic API IA</button>
+      </section>
       <StatusCard />
     </div>
   );
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        margin: -8,
-        padding: "14px 14px 104px",
-        color: theme.text,
-        background:
-          "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)",
-      }}
-    >
-      <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 14 }}>
-        <header
-          style={{
-            ...cardBase,
-            padding: "14px 16px",
-            display: "grid",
-            gridTemplateColumns: "48px 1fr 48px",
-            alignItems: "center",
-            gap: 10,
-            background: "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))",
-            position: "sticky",
-            top: 6,
-            zIndex: 20,
-          }}
-        >
-          <BackDot onClick={handleBack} size={42} color={primary} />
-          <div style={{ minWidth: 0, textAlign: "center" }}>
-            <h1 style={{ margin: 0, fontSize: 25, lineHeight: 1, fontWeight: 1000, letterSpacing: 1.5, color: primary, textTransform: "uppercase" }}>
-              AVATAR IA
-            </h1>
-            <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.82, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              Caricature cartoon + médaillon WebP optimisé
-            </div>
+    <div className="avatar-page-shell">
+      <div className="avatar-fixed-top">
+        <header className="avatar-header">
+          <BackDot onClick={handleBack} size={40} color={primary} />
+          <div className="avatar-title-block">
+            <h1>AVATAR IA</h1>
+            <span>Caricature cartoon + médaillon WebP</span>
           </div>
-          <InfoDot title="Infos Avatar IA" content={infoContent} size={42} color={primary} />
+          <InfoDot title="Infos Avatar IA" content={infoContent} size={40} color={primary} />
         </header>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `minmax(300px, ${panelWidth}px) minmax(320px, 1fr)`,
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
-          <section style={{ display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", gap: 7, padding: 4, borderRadius: 18, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" }}>
-              {tabs.map((tab) => <TabButton key={tab.id} {...tab} />)}
-            </div>
-
-            {activeTab === "ia" ? renderIaTab() : null}
-            {activeTab === "credits" ? renderCreditsTab() : null}
-            {activeTab === "photo" ? renderPhotoTab() : null}
-            {activeTab === "export" ? renderExportTab() : null}
-          </section>
-
-          <section style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 12, position: "sticky", top: 104 }}>
-            <div
-              style={{
-                width: "min(100%, 680px)",
-                aspectRatio: "1 / 1",
-                maxHeight: "min(72vh, 680px)",
-                background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305",
-                borderRadius: 28,
-                padding: 12,
-                boxShadow: "0 26px 70px rgba(0,0,0,.72)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
-                <defs>
-                  <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
-                  <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%">
-                    <stop offset="0%" stopColor={GOLD_2} />
-                    <stop offset="42%" stopColor={RING_COLOR} />
-                    <stop offset="100%" stopColor="#B97913" />
-                  </radialGradient>
-                  <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" />
-                  </filter>
-                </defs>
-
-                <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
-                <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
-                <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
-                <circle r={R_OUTER - 19} fill={BLACK} />
-                <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
-                <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
-                <circle r={R_AVATAR} fill="#21130a" />
-
-                {avatarImage ? (
-                  <g clipPath="url(#avatarClip)">
-                    <image href={avatarImage} x={-avatarImgSize / 2} y={-avatarImgSize / 2} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
-                    <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
-                  </g>
-                ) : (
-                  <g clipPath="url(#avatarClip)">
-                    <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
-                    <text x={0} y={-8} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={16} fill="#aaa">Photo</text>
-                    <text x={0} y={18} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={16} fill="#aaa">à importer</text>
-                  </g>
-                )}
-
-                <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
-                <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}>
-                  <textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath>
-                </text>
-
-                <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
-                <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}>
-                  <textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath>
-                </text>
-              </svg>
-            </div>
-          </section>
-        </div>
+        <nav className="avatar-tabs">
+          {tabs.filter((x) => !x.hidden).map((tab) => (
+            <button key={tab.id} type="button" className={activeTab === tab.id ? "active" : ""} onClick={() => setActiveTab(tab.id)}><span>{tab.icon}</span>{tab.label}</button>
+          ))}
+        </nav>
       </div>
 
+      <main className="avatar-scroll-area">
+        {activeTab === "ia" ? renderIaTab() : null}
+        {activeTab === "gallery" ? renderGalleryTab() : null}
+        {activeTab === "debug" && devMode.enabled ? renderDebugTab() : null}
+      </main>
+
       {miniInfo ? (
-        <div
-          onClick={() => setMiniInfo(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "rgba(0,0,0,.62)",
-            display: "grid",
-            placeItems: "center",
-            padding: 18,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(92vw, 360px)",
-              ...cardBase,
-              padding: 18,
-              background: "linear-gradient(145deg, rgba(24,24,34,.98), rgba(6,7,12,.98))",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-              <strong style={{ color: primary, textTransform: "uppercase" }}>{miniInfo.title}</strong>
-              <button type="button" onClick={() => setMiniInfo(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
+        <div onClick={() => setMiniInfo(null)} className="modal-backdrop">
+          <div onClick={(e) => e.stopPropagation()} className="modal-card">
+            <div className="modal-head"><strong>{miniInfo.title}</strong><button type="button" onClick={() => setMiniInfo(null)}>✕</button></div>
+            <div>{miniInfo.content}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedGallery ? (
+        <div onClick={() => setSelectedGallery(null)} className="modal-backdrop gallery-modal-backdrop">
+          <div onClick={(e) => e.stopPropagation()} className="gallery-modal">
+            <div className="modal-head"><strong>{selectedGallery.name}</strong><button type="button" onClick={() => setSelectedGallery(null)}>✕</button></div>
+            <img className="gallery-modal-img" src={selectedGallery.dataUrl} alt={selectedGallery.name} />
+            <button className="primary-action" type="button" onClick={() => downloadGalleryItem(selectedGallery)}>⬇️ Exporter l’avatar WebP</button>
+            <div className="assign-box">
+              <label>Attribuer cet avatar</label>
+              <select value={assignProfileId} onChange={(e) => setAssignProfileId(e.target.value)}>
+                <option value="">Choisir un profil / bot…</option>
+                {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button type="button" onClick={() => assignAvatarToSelection(selectedGallery, assignProfileId)} disabled={!assignProfileId || busy}>Attribuer</button>
             </div>
-            <div style={{ opacity: 0.88, lineHeight: 1.45, fontSize: 13.5 }}>{miniInfo.content}</div>
           </div>
         </div>
       ) : null}
 
       <style>{`
-        @media (max-width: 860px) {
-          div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
-          section[style*="sticky"] { position: relative !important; top: auto !important; }
-        }
-        @media (max-width: 520px) {
-          header h1 { font-size: 21px !important; }
-        }
+        .avatar-page-shell{min-height:100vh;margin:-8px;padding:0 12px 98px;color:${theme.text};background:radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%),radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%),linear-gradient(135deg,#050509 0%,#0b0d14 46%,#030305 100%);}
+        .avatar-fixed-top{position:sticky;top:0;z-index:50;padding:10px 0 8px;background:linear-gradient(180deg,rgba(5,5,9,.98),rgba(5,5,9,.92) 78%,rgba(5,5,9,0));backdrop-filter:blur(12px);}
+        .avatar-header{border-radius:18px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(135deg,rgba(13,16,24,.94),rgba(43,28,73,.76));box-shadow:0 18px 38px rgba(0,0,0,.42);padding:11px 12px;display:grid;grid-template-columns:42px 1fr 42px;align-items:center;gap:9px;}
+        .avatar-title-block{text-align:center;min-width:0}.avatar-title-block h1{margin:0;color:${primary};font-size:23px;line-height:1;font-weight:1000;letter-spacing:1.3px}.avatar-title-block span{display:block;margin-top:5px;font-size:11px;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .avatar-tabs{display:flex;gap:7px;margin-top:8px;padding:4px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}.avatar-tabs button{flex:1;border:1px solid rgba(255,255,255,.13);border-radius:13px;padding:9px 8px;color:#fff;background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.035));font-weight:950;font-size:12px}.avatar-tabs button.active{color:#07070d;background:linear-gradient(135deg,${primary},${GOLD_2});box-shadow:0 0 24px ${primary}66}.avatar-tabs span{margin-right:5px}
+        .avatar-scroll-area{max-width:540px;margin:0 auto;padding-top:2px}.tab-content{display:grid;gap:12px}.avatar-credit-strip{border-radius:16px;border:1px solid rgba(34,197,94,.22);background:linear-gradient(145deg,rgba(12,38,32,.95),rgba(7,12,14,.98));padding:10px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.credit-main strong{display:block;text-transform:uppercase;color:#d9f99d;font-size:12px}.credit-main span{display:block;font-size:11.5px;opacity:.85}.credit-pill{border-radius:999px;padding:7px 10px;font-weight:1000;border:1px solid rgba(255,255,255,.14)}.credit-pill.ok{background:rgba(34,197,94,.22)}.credit-pill.ko{background:rgba(255,93,93,.18)}.credit-packs{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.credit-packs button{border:1px solid rgba(246,194,86,.22);background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:7px 6px}.credit-packs strong{display:block;font-size:11px}.credit-packs span{color:${GOLD_2};font-weight:950;font-size:11px}
+        .medallion-zone{display:grid;place-items:center;padding:8px 0 0}.medallion-button{width:min(100%,420px);aspect-ratio:1/1;border:0;border-radius:26px;background:radial-gradient(circle at 50% 42%,rgba(246,194,86,.08),transparent 58%),#030305;box-shadow:0 24px 58px rgba(0,0,0,.68);padding:10px;cursor:pointer;display:grid;place-items:center;overflow:hidden}.floating-style-card,.control-card,.gallery-card,.debug-card{border-radius:18px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(145deg,rgba(19,22,32,.94),rgba(6,7,12,.96));box-shadow:0 18px 38px rgba(0,0,0,.42);padding:12px}.floating-style-card{background:linear-gradient(145deg,rgba(37,24,67,.96),rgba(9,9,16,.98));display:grid;gap:9px}.floating-style-card strong{display:block;text-transform:uppercase}.floating-style-card span{font-size:12px;opacity:.82}.floating-style-card select,.assign-box select{width:100%;min-height:42px;border-radius:12px;padding:9px 12px;background:#07070d;color:#fff;border:1px solid rgba(255,255,255,.18)}.floating-style-card button,.primary-action,.debug-card button{border:0;border-radius:15px;padding:14px 16px;font-weight:950;background:linear-gradient(135deg,#B06CFF,#7C3AED);color:#fff;box-shadow:0 16px 32px rgba(124,58,237,.42)}button:disabled{opacity:.55;cursor:not-allowed!important}
+        .control-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.control-title strong{text-transform:uppercase;font-size:12px}.control-title button{border:0;border-radius:999px;padding:6px 9px;background:rgba(255,255,255,.09);color:#fff}.control-card label{display:grid;gap:5px;font-size:12px;margin-bottom:8px}.input,.control-card input[type=text]{min-height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#090910;color:#fff;padding:0 12px}.color-row{display:flex;gap:8px;margin:8px 0 12px}.color-row button{width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.18);box-shadow:0 0 0 2px rgba(0,0,0,.35)}.color-row button.selected{border-color:#fff;transform:scale(1.08)}.save-gallery-btn{width:100%;border-radius:14px;padding:12px 14px;border:1px solid rgba(246,194,86,.32);background:rgba(246,194,86,.11);color:${GOLD_2};font-weight:950}
+        .avatar-status{border-radius:16px;border:1px solid rgba(255,255,255,.13);padding:11px;display:flex;gap:10px;align-items:center}.avatar-status.is-ok{background:linear-gradient(145deg,rgba(8,45,31,.95),rgba(5,12,10,.98))}.avatar-status.is-error{background:linear-gradient(145deg,rgba(70,18,18,.96),rgba(14,10,10,.96))}.avatar-status-dot{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;font-weight:950;background:#22c76f}.avatar-status.is-error .avatar-status-dot{background:#ff5d5d}.avatar-status-title{font-size:12.5px;font-weight:850}.avatar-status-sub{font-size:12px;opacity:.78;margin-top:2px}
+        .gallery-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.gallery-head strong{text-transform:uppercase}.gallery-head span{font-size:12px;opacity:.75}.empty-gallery{border-radius:16px;border:1px dashed rgba(255,255,255,.18);padding:28px 16px;text-align:center;opacity:.72}.gallery-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.gallery-thumb{border:0;background:#050505;border-radius:13px;padding:0;overflow:hidden;aspect-ratio:1/1}.gallery-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+        .modal-backdrop{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.68);display:grid;place-items:center;padding:18px}.modal-card,.gallery-modal{width:min(92vw,420px);border-radius:18px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(145deg,rgba(24,24,34,.98),rgba(6,7,12,.98));box-shadow:0 26px 70px rgba(0,0,0,.72);padding:16px}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.modal-head strong{color:${primary};text-transform:uppercase}.modal-head button{border:0;background:rgba(255,255,255,.09);color:#fff;border-radius:10px;padding:6px 9px}.gallery-modal-img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:18px;background:#000;margin-bottom:12px}.assign-box{display:grid;gap:8px;margin-top:12px}.assign-box label{font-weight:900;text-transform:uppercase;font-size:12px}.assign-box button{border:0;border-radius:14px;padding:12px;background:rgba(246,194,86,.18);color:${GOLD_2};font-weight:950}
       `}</style>
     </div>
   );
