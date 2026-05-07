@@ -18,7 +18,6 @@ import InfoDot from "../components/InfoDot";
 import InfoMini from "../components/InfoMini";
 import { useDevMode } from "../contexts/DevModeContext";
 import { loadStore, saveStore } from "../lib/storage";
-import { loadStoredBots, saveStoredBots } from "../lib/bots";
 
 type Props = {
   size?: number;
@@ -65,6 +64,19 @@ const CREDIT_PACKS: CreditPack[] = [
 ];
 const GALLERY_STORAGE_KEY = "msc_avatar_ia_gallery_v1";
 
+const MEDALLION_COLORS = [
+  { id: "gold", label: "Or", main: "#F6C256", light: "#FFE08A", dark: "#B97913" },
+  { id: "lime", label: "Lime", main: "#A3E635", light: "#ECFCCB", dark: "#4D7C0F" },
+  { id: "cyan", label: "Cyan", main: "#38BDF8", light: "#BAE6FD", dark: "#075985" },
+  { id: "violet", label: "Violet", main: "#A78BFA", light: "#DDD6FE", dark: "#5B21B6" },
+  { id: "pink", label: "Rose", main: "#F472B6", light: "#FBCFE8", dark: "#9D174D" },
+  { id: "red", label: "Rouge", main: "#FB7185", light: "#FFE4E6", dark: "#9F1239" },
+  { id: "white", label: "Blanc", main: "#F8FAFC", light: "#FFFFFF", dark: "#94A3B8" },
+];
+
+type MedallionColor = (typeof MEDALLION_COLORS)[number];
+
+
 type GalleryAvatar = {
   id: string;
   name: string;
@@ -93,10 +105,53 @@ function writeGallery(items: GalleryAvatar[]): GalleryAvatar[] {
 
 type AssignableProfile = { id: string; name: string; avatarDataUrl?: string | null; avatarUrl?: string | null };
 
+function readLocalJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getAvatarAccountKey(): string {
+  try {
+    const session = readLocalJson<any>("dc_online_auth_supabase_v1", null);
+    const userId = String(session?.userId || session?.user?.id || session?.session?.user?.id || "").trim();
+    if (userId) return `user_${userId}`;
+  } catch {}
+  try {
+    const raw = localStorage.getItem("dc_store_v1") || localStorage.getItem("darts-counter-store") || "";
+    const store = raw ? JSON.parse(raw) : null;
+    const active = String(store?.activeProfileId || store?.profileId || "").trim();
+    if (active) return `profile_${active}`;
+  } catch {}
+  return "local_device";
+}
+
+function scopedCreditStorageKey(): string {
+  return `${CREDIT_STORAGE_KEY}:${getAvatarAccountKey()}`;
+}
+
+function readProcessedCheckoutIds(): string[] {
+  return readLocalJson<string[]>(`${CREDIT_STORAGE_KEY}:processed_sessions`, []);
+}
+
+function markCheckoutProcessed(sessionId: string) {
+  const ids = readProcessedCheckoutIds();
+  if (!ids.includes(sessionId)) {
+    localStorage.setItem(`${CREDIT_STORAGE_KEY}:processed_sessions`, JSON.stringify([sessionId, ...ids].slice(0, 80)));
+  }
+}
+
+function isCheckoutProcessed(sessionId: string): boolean {
+  return readProcessedCheckoutIds().includes(sessionId);
+}
+
 
 function readCreditState(): AvatarCreditState {
   try {
-    const raw = localStorage.getItem(CREDIT_STORAGE_KEY);
+    const raw = localStorage.getItem(scopedCreditStorageKey());
     if (!raw) return { freeUsed: false, credits: 0, updatedAt: new Date().toISOString() };
     const parsed = JSON.parse(raw) as Partial<AvatarCreditState>;
     return {
@@ -116,7 +171,7 @@ function writeCreditState(next: AvatarCreditState): AvatarCreditState {
     updatedAt: new Date().toISOString(),
   };
   try {
-    localStorage.setItem(CREDIT_STORAGE_KEY, JSON.stringify(safe));
+    localStorage.setItem(scopedCreditStorageKey(), JSON.stringify(safe));
   } catch {}
   return safe;
 }
@@ -324,7 +379,7 @@ const cardBase: React.CSSProperties = {
   boxShadow: "0 18px 38px rgba(0,0,0,.42)",
 };
 
-export default function AvatarCreator({
+function AvatarCreator({
   size = 512,
   overlaySrc, // eslint-disable-line @typescript-eslint/no-unused-vars
   defaultName = "",
@@ -353,32 +408,23 @@ export default function AvatarCreator({
   const [activeTab, setActiveTab] = React.useState<TabId>("ia");
   const [miniInfo, setMiniInfo] = React.useState<{ title: string; content: string } | null>(null);
   const [gallery, setGallery] = React.useState<GalleryAvatar[]>(() => readGallery());
-  const [selectedGallery, setSelectedGallery] = React.useState<GalleryAvatar | null>(null);
-  const [profiles, setProfiles] = React.useState<Array<AssignableProfile & { kind?: "active" | "local" | "bot" }>>([]);
-  const [assignProfileId, setAssignProfileId] = React.useState("");
-  const [medallionColor, setMedallionColor] = React.useState(isBotMode ? BOT_RING : GOLD);
-  const [autoSaveAfterAi, setAutoSaveAfterAi] = React.useState(false);
+  const [assignTarget, setAssignTarget] = React.useState<GalleryAvatar | null>(null);
+  const [profiles, setProfiles] = React.useState<AssignableProfile[]>([]);
+  const [medallionColorId, setMedallionColorId] = React.useState<string>("gold");
 
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const avatarImage = photoUrl;
 
   const primary = theme.primary ?? GOLD;
-  const RING_COLOR = medallionColor || (isBotMode ? BOT_RING : GOLD);
+  const selectedMedallion = MEDALLION_COLORS.find((c) => c.id === medallionColorId) || MEDALLION_COLORS[0];
+  const RING_COLOR = isBotMode ? BOT_RING : selectedMedallion.main;
+  const RING_LIGHT = isBotMode ? "#DDF7FF" : selectedMedallion.light;
+  const RING_DARK = isBotMode ? "#0369A1" : selectedMedallion.dark;
   const avatarImgSize = R_AVATAR * 2 * zoom;
   const displayName = (name || "PLAYER").trim().toUpperCase();
   const hasAiCredit = !creditState.freeUsed || creditState.credits > 0;
-
-  const colorChoices = [
-    { id: "gold", label: "Or", value: GOLD },
-    { id: "lime", label: "Lime", value: "#A3E635" },
-    { id: "blue", label: "Bleu", value: "#38BDF8" },
-    { id: "pink", label: "Rose", value: "#F472B6" },
-    { id: "purple", label: "Violet", value: "#A78BFA" },
-    { id: "red", label: "Rouge", value: "#FB7185" },
-    { id: "white", label: "Blanc", value: "#F8FAFC" },
-  ];
-
+  const remainingPaidCredits = creditState.credits;
   const tabs: Array<{ id: TabId; label: string; icon: string; hidden?: boolean }> = [
     { id: "ia", label: "IA", icon: "✨" },
     { id: "gallery", label: "Galerie", icon: "🖼️" },
@@ -390,45 +436,43 @@ export default function AvatarCreator({
   }, [activeTab, devMode.enabled]);
 
   React.useEffect(() => {
+    const href = window.location.href;
+    if (!href.includes("avatarCheckout=success")) return;
+    const match = href.match(/[?&]session_id=([^&#]+)/);
+    const sessionId = match ? decodeURIComponent(match[1]) : "";
+    if (!sessionId || isCheckoutProcessed(sessionId)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setBusy(true);
+        const response = await fetch(`/api/avatar/checkout-verify?session_id=${encodeURIComponent(sessionId)}`);
+        const json = await response.json().catch(() => null) as any;
+        if (!response.ok || !json?.paid || !json?.credits) throw new Error(json?.message || json?.error || `verify_${response.status}`);
+        if (cancelled) return;
+        setCreditState((current) => writeCreditState({ ...current, credits: current.credits + Math.max(0, Number(json.credits || 0)) }));
+        markCheckoutProcessed(sessionId);
+        setStatus(`Paiement validé : +${json.credits} crédits avatars IA ajoutés au compte.`);
+        window.history.replaceState(null, "", window.location.href.replace(/[?&]avatarCheckout=success/, "").replace(/[?&]session_id=[^&#]+/, ""));
+      } catch (err: any) {
+        if (!cancelled) setError(`Impossible de valider le paiement Stripe : ${String(err?.message || err || "erreur")}`);
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab !== "gallery" && !assignTarget) return;
     let alive = true;
     (async () => {
-      const result: Array<AssignableProfile & { kind?: "active" | "local" | "bot" }> = [];
-      try {
-        const store: any = await loadStore<any>();
-        const list = Array.isArray(store?.profiles) ? store.profiles : [];
-        const activeId = String(store?.activeProfileId || "");
-        for (const p of list) {
-          const id = String(p?.id || "");
-          if (!id) continue;
-          result.push({
-            id: `profile:${id}`,
-            name: `${id === activeId ? "Profil actif" : "Profil local"} — ${String(p?.name || p?.displayName || "Profil")}`,
-            avatarDataUrl: p?.avatarDataUrl,
-            avatarUrl: p?.avatarUrl,
-            kind: id === activeId ? "active" : "local",
-          });
-        }
-      } catch {}
-      try {
-        const bots = loadStoredBots();
-        if (Array.isArray(bots)) {
-          for (const b of bots) {
-            const id = String((b as any)?.id || "");
-            if (!id) continue;
-            result.push({
-              id: `bot:${id}`,
-              name: `Bot CPU — ${String((b as any)?.name || "Bot")}`,
-              avatarDataUrl: (b as any)?.avatarDataUrl,
-              avatarUrl: (b as any)?.avatarUrl || (b as any)?.avatar,
-              kind: "bot",
-            });
-          }
-        }
-      } catch {}
-      if (alive) setProfiles(result);
+      const store: any = await loadStore<any>();
+      if (!alive) return;
+      const list = Array.isArray(store?.profiles) ? store.profiles : [];
+      setProfiles(list.map((p: any) => ({ id: String(p?.id || ""), name: String(p?.name || p?.displayName || "Profil"), avatarDataUrl: p?.avatarDataUrl, avatarUrl: p?.avatarUrl })).filter((p: any) => p.id));
     })();
     return () => { alive = false; };
-  }, [activeTab, selectedGallery]);
+  }, [activeTab, assignTarget]);
 
   function persistGallery(next: GalleryAvatar[]) {
     const saved = writeGallery(next);
@@ -445,8 +489,7 @@ export default function AvatarCreator({
       createdAt: new Date().toISOString(),
       source,
     };
-    const saved = persistGallery([item, ...gallery.filter((x) => x.dataUrl !== dataUrl)]);
-    setSelectedGallery(saved[0] || item);
+    persistGallery([item, ...gallery.filter((x) => x.dataUrl !== dataUrl)]);
   }
 
   function consumeAvatarCreditAfterSuccess() {
@@ -458,9 +501,32 @@ export default function AvatarCreator({
     });
   }
 
-  function handleBuyPack(pack: CreditPack) {
+  async function handleBuyPack(pack: CreditPack) {
     setError(null);
-    setStatus(`${pack.label} — ${pack.price}. Paiement Stripe/NAS à brancher : les crédits ne sont pas ajoutés côté frontend.`);
+    setStatus(null);
+    try {
+      setBusy(true);
+      const response = await fetch("/api/avatar/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packId: pack.id,
+          accountKey: getAvatarAccountKey(),
+          successUrl: `${window.location.origin}${window.location.pathname}${window.location.hash || "#/avatar_creator"}?avatarCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: window.location.href,
+        }),
+      });
+      const json = await response.json().catch(() => null) as any;
+      if (!response.ok || !json?.url) {
+        throw new Error(json?.message || json?.error || `checkout_${response.status}`);
+      }
+      window.location.href = json.url;
+    } catch (err: any) {
+      console.warn("[AvatarCreator] Stripe checkout failed", err);
+      setError(`Paiement non disponible : ${String(err?.message || err || "erreur")}. Vérifie STRIPE_SECRET_KEY côté Cloudflare.`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const handleBack = React.useCallback(() => {
@@ -489,7 +555,7 @@ export default function AvatarCreator({
         setOffsetX(0);
         setOffsetY(0);
         setDebugText(null);
-        setStatus("Photo importée. Recadre depuis les réglages, choisis le style, puis lance l'IA.");
+        setStatus("Photo importée dans le médaillon. Recadre-la puis lance la caricature IA.");
       } catch {
         setError(t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`));
       } finally {
@@ -527,7 +593,7 @@ export default function AvatarCreator({
 
   async function handleGenerateCartoon() {
     if (!originalFile || !originalPreviewUrl) {
-      setError("Clique au centre du médaillon pour importer une photo avant de générer.");
+      setError("Importe d’abord une photo directement dans le médaillon.");
       return;
     }
     if (!hasAiCredit) {
@@ -558,8 +624,8 @@ export default function AvatarCreator({
         setOffsetX(0);
         setOffsetY(0);
         consumeAvatarCreditAfterSuccess();
-        setAutoSaveAfterAi(true);
-        setStatus("Caricature IA générée. Enregistrement automatique dans la galerie…");
+        setStatus("Vraie caricature IA générée. 1 crédit avatar consommé. Elle sera ajoutée à la galerie à l’enregistrement.");
+        setActiveTab("gallery");
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
         setPhotoUrl(fallback);
@@ -611,9 +677,9 @@ export default function AvatarCreator({
     });
   }
 
-  async function handleSave(source: "ia" | "manual" = "manual", silent = false) {
+  async function handleSave(source: "ia" | "manual" = "manual") {
     if (!avatarImage) {
-      if (!silent) setError("Importe d’abord une image avant d’enregistrer.");
+      setError("Importe d’abord une image avant d’enregistrer.");
       return;
     }
     try {
@@ -622,29 +688,20 @@ export default function AvatarCreator({
       const safeDataUrl = (await enforceSafeAvatarDataUrl(webpDataUrl)) || webpDataUrl;
       setLastExport(safeDataUrl);
       addToGallery(safeDataUrl, source);
-      if (onSave && !silent) {
+      if (onSave) {
         onSave({ pngDataUrl: safeDataUrl, name: name || "PLAYER" });
         setStatus("Avatar WebP enregistré sur le profil et ajouté à la galerie.");
       } else {
         setStatus("Avatar WebP ajouté à la galerie. Tu peux l’exporter ou l’attribuer à un profil.");
       }
+      setActiveTab("gallery");
     } catch (e) {
       console.warn(e);
-      if (!silent) setError("Impossible d’enregistrer l’avatar pour le moment.");
+      setError("Impossible d’enregistrer l’avatar pour le moment.");
     } finally {
       setBusy(false);
     }
   }
-
-  React.useEffect(() => {
-    if (!autoSaveAfterAi || !photoUrl) return;
-    const timer = window.setTimeout(() => {
-      setAutoSaveAfterAi(false);
-      handleSave("ia", true).catch(() => {});
-    }, 140);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSaveAfterAi, photoUrl]);
 
   function downloadGalleryItem(item: GalleryAvatar) {
     const a = document.createElement("a");
@@ -653,35 +710,20 @@ export default function AvatarCreator({
     a.click();
   }
 
-  async function assignAvatarToSelection(item: GalleryAvatar, targetId: string) {
-    if (!targetId) {
-      setError("Choisis d’abord un profil ou un bot.");
-      return;
-    }
+  async function assignAvatarToProfile(item: GalleryAvatar, profileId: string) {
     try {
       setBusy(true);
-      if (targetId.startsWith("bot:")) {
-        const botId = targetId.slice(4);
-        const bots = loadStoredBots();
-        const next = Array.isArray(bots) ? bots.map((b: any) => String(b?.id || "") === botId ? { ...b, avatarDataUrl: item.dataUrl, avatarUrl: item.dataUrl, avatar: item.dataUrl, updatedAt: new Date().toISOString() } : b) : [];
-        saveStoredBots(next);
-        try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
-        setStatus("Avatar attribué au bot CPU.");
-      } else {
-        const profileId = targetId.replace(/^profile:/, "");
-        const store: any = await loadStore<any>();
-        if (!store || !Array.isArray(store.profiles)) throw new Error("store_profiles_missing");
-        const nextProfiles = store.profiles.map((p: any) =>
-          String(p?.id || "") === String(profileId)
-            ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null }
-            : p
-        );
-        await saveStore({ ...store, profiles: nextProfiles });
-        const target = nextProfiles.find((p: any) => String(p?.id || "") === String(profileId));
-        setStatus(`Avatar attribué à ${target?.name || "profil"}.`);
-      }
-      setSelectedGallery(null);
-      setAssignProfileId("");
+      const store: any = await loadStore<any>();
+      if (!store || !Array.isArray(store.profiles)) throw new Error("store_profiles_missing");
+      const nextProfiles = store.profiles.map((p: any) =>
+        String(p?.id || "") === String(profileId)
+          ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null }
+          : p
+      );
+      await saveStore({ ...store, profiles: nextProfiles });
+      const target = nextProfiles.find((p: any) => String(p?.id || "") === String(profileId));
+      setStatus(`Avatar attribué à ${target?.name || "profil"}.`);
+      setAssignTarget(null);
     } catch (e) {
       console.warn(e);
       setError("Impossible d’attribuer cet avatar au profil sélectionné.");
@@ -692,216 +734,284 @@ export default function AvatarCreator({
 
   const infoContent = (
     <div style={{ lineHeight: 1.45 }}>
-      <p style={{ marginTop: 0 }}><strong>AVATAR IA</strong> : clique au centre du médaillon pour importer une photo, recadre, choisis le style, puis génère.</p>
-      <p>La première génération est offerte. Ensuite, chaque génération réussie consomme 1 crédit.</p>
-      <p style={{ marginBottom: 0 }}>La galerie stocke automatiquement les avatars générés ici.</p>
+      <p style={{ marginTop: 0 }}><strong>AVATAR IA</strong> : importe une photo dans le médaillon, recadre-la, génère une caricature cartoon, puis enregistre le WebP final.</p>
+      <p>Le premier avatar IA est offert. Ensuite, chaque génération réussie consomme 1 crédit.</p>
+      <p style={{ marginBottom: 0 }}>Le diagnostic API est masqué et visible uniquement en mode développeur.</p>
+    </div>
+  );
+
+  const creditCompact = (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontWeight: 950, fontSize: 12, textTransform: "uppercase", color: "#d9f99d" }}>Crédits IA</div>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>{creditLabel(creditState)}</div>
+        </div>
+        <div style={{ minWidth: 56, textAlign: "center", borderRadius: 999, padding: "7px 10px", background: hasAiCredit ? "rgba(34,197,94,.22)" : "rgba(255,93,93,.18)", border: "1px solid rgba(255,255,255,.14)", fontWeight: 950 }}>
+          {!creditState.freeUsed ? "FREE" : remainingPaidCredits}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+        {CREDIT_PACKS.map((pack) => (
+          <button key={pack.id} type="button" onClick={() => handleBuyPack(pack)} style={{ border: "1px solid rgba(246,194,86,.22)", background: "rgba(0,0,0,.25)", color: "#fff", borderRadius: 12, padding: "8px 6px", cursor: "pointer", textAlign: "center" }}>
+            <strong style={{ display: "block", fontSize: 11 }}>{pack.credits}</strong>
+            <span style={{ color: GOLD_2, fontWeight: 950, fontSize: 11 }}>{pack.price}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 
   const StatusCard = () => {
     if (!status && !error && !lastExport && !debugText) return null;
     return (
-      <div className={`avatar-status ${error ? "is-error" : "is-ok"}`}>
-        <div className="avatar-status-dot">{error ? "!" : "✓"}</div>
-        <div>
-          <div className="avatar-status-title">{error ? error : debugText || status || "Avatar prêt !"}</div>
-          {!error && <div className="avatar-status-sub">WebP • {EXPORT_SIZE}x{EXPORT_SIZE} • {dataUrlSizeKb(lastExport || photoUrl)}</div>}
+      <div style={{ ...cardBase, padding: 12, display: "flex", gap: 10, alignItems: "center", background: error ? "linear-gradient(145deg, rgba(70,18,18,.96), rgba(14,10,10,.96))" : "linear-gradient(145deg, rgba(8,45,31,.95), rgba(5,12,10,.98))" }}>
+        <div style={{ width: 30, height: 30, borderRadius: 999, background: error ? "#ff5d5d" : "#22c76f", display: "grid", placeItems: "center", fontWeight: 950, color: "#fff", flex: "0 0 auto" }}>{error ? "!" : "✓"}</div>
+        <div style={{ fontSize: 12.5, lineHeight: 1.35 }}>
+          <div style={{ fontWeight: 850 }}>{error ? error : debugText || status || "Avatar prêt !"}</div>
+          {!error && <div style={{ opacity: 0.78, marginTop: 2 }}>WebP • {EXPORT_SIZE}x{EXPORT_SIZE} • {dataUrlSizeKb(lastExport || photoUrl)}</div>}
         </div>
       </div>
     );
   };
 
-  const CreditStrip = () => (
-    <section className="avatar-credit-strip">
-      <div className="credit-main">
-        <strong>Crédits IA</strong>
-        <span>{creditLabel(creditState)}</span>
-      </div>
-      <div className={`credit-pill ${hasAiCredit ? "ok" : "ko"}`}>{!creditState.freeUsed ? "FREE" : creditState.credits}</div>
-      <div className="credit-packs">
-        {CREDIT_PACKS.map((pack) => (
-          <button key={pack.id} type="button" onClick={() => handleBuyPack(pack)}>
-            <strong>{pack.credits}</strong><span>{pack.price}</span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-
-  const MedallionSvg = () => (
-    <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
-      <defs>
-        <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
-        <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%"><stop offset="0%" stopColor="#ffffff" /><stop offset="17%" stopColor={GOLD_2} /><stop offset="52%" stopColor={RING_COLOR} /><stop offset="100%" stopColor="#7a5313" /></radialGradient>
-        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" /></filter>
-      </defs>
-      <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
-      <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
-      <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
-      <circle r={R_OUTER - 19} fill={BLACK} />
-      <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
-      <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
-      <circle r={R_AVATAR} fill="#22232b" />
-      {avatarImage ? (
-        <g clipPath="url(#avatarClip)">
-          <image href={avatarImage} x={-avatarImgSize / 2 + offsetX} y={-avatarImgSize / 2 + offsetY} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
-          <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
-        </g>
-      ) : (
-        <g clipPath="url(#avatarClip)">
-          <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
-          <text x={0} y={-10} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={17} fill="#bfc2cf">Clique ici</text>
-          <text x={0} y={18} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={15} fill="#bfc2cf">pour importer une photo</text>
-        </g>
-      )}
-      <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
-      <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}><textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
-      <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
-      <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
-    </svg>
-  );
-
-  const MedallionPreview = () => (
-    <button type="button" className="medallion-button" onClick={() => fileInputRef.current?.click()} title="Importer une photo">
-      <MedallionSvg />
-      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
-    </button>
-  );
+  const TabButton = ({ id, label, icon }: { id: TabId; label: string; icon: string }) => {
+    const selected = activeTab === id;
+    return (
+      <button type="button" onClick={() => setActiveTab(id)} style={{ flex: 1, border: "1px solid rgba(255,255,255,.13)", borderRadius: 14, padding: "10px 8px", color: selected ? "#07070d" : "#fff", background: selected ? `linear-gradient(135deg, ${primary}, ${GOLD_2})` : "linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.035))", boxShadow: selected ? `0 0 24px ${primary}66` : "none", fontWeight: 950, fontSize: 12, cursor: "pointer" }}>
+        <span style={{ marginRight: 5 }}>{icon}</span>{label}
+      </button>
+    );
+  };
 
   const renderIaTab = () => (
-    <div className="tab-content">
-      <CreditStrip />
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ ...cardBase, padding: 14, background: "linear-gradient(145deg, rgba(37,24,67,.96), rgba(9,9,16,.98))" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontWeight: 1000, textTransform: "uppercase", fontSize: 15 }}>Studio caricature</div>
+            <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 2 }}>Import direct dans le médaillon, recadrage, génération IA.</div>
+          </div>
+          <InfoMini title="Workflow" content="Importe la photo dans le médaillon, ajuste zoom et décalage, puis lance l'IA. Après génération, enregistre l'avatar pour l'ajouter à la galerie." onOpen={(title, content) => setMiniInfo({ title, content })} />
+        </div>
 
-      <div className="medallion-zone">
-        <MedallionPreview />
+        <select value={style} onChange={(e) => setStyle(e.target.value as StyleId)} style={{ width: "100%", minHeight: 42, borderRadius: 12, padding: "9px 12px", background: "#07070d", color: "#fff", border: "1px solid rgba(255,255,255,.18)", marginBottom: 10 }}>
+          <option value="exaggerated">🎭 Très caricaturé — comique & fun</option>
+          <option value="comic">💥 Comic / BD</option>
+          <option value="flat">🏆 Logo esport</option>
+          <option value="realistic">✏️ Dessin cartoon plus réaliste</option>
+        </select>
+
+        <button type="button" onClick={() => fileInputRef.current?.click()} style={{ width: "100%", borderRadius: 14, padding: "13px 14px", marginBottom: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>
+          📸 {originalFile ? "Changer la photo" : "Importer une photo dans le médaillon"}
+        </button>
+        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
+
+        <div style={{ ...cardBase, padding: 12, boxShadow: "none", background: "rgba(0,0,0,.22)", marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <strong style={{ fontSize: 12, textTransform: "uppercase", color: theme.textSoft }}>Recadrage avant IA</strong>
+            <button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }} style={{ border: 0, borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.09)", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 850 }}>Reset</button>
+          </div>
+          <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
+            Zoom
+            <input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
+          </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
+            Gauche / Droite
+            <input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} />
+          </label>
+          <label style={{ display: "grid", gap: 5, fontSize: 12 }}>
+            Haut / Bas
+            <input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} />
+          </label>
+        </div>
+
+        <label style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}>
+          Nom affiché dans le médaillon
+          <input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINJA" style={{ minHeight: 42 }} />
+        </label>
+
+
+        <div style={{ display: "grid", gap: 7, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 850, opacity: 0.86 }}>Couleur du médaillon</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            {MEDALLION_COLORS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setMedallionColorId(c.id)}
+                title={c.label}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  border: medallionColorId === c.id ? "3px solid #fff" : "1px solid rgba(255,255,255,.25)",
+                  background: `radial-gradient(circle at 32% 24%, ${c.light}, ${c.main} 52%, ${c.dark})`,
+                  boxShadow: medallionColorId === c.id ? `0 0 18px ${c.main}aa` : "none",
+                  cursor: "pointer",
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <button type="button" onClick={handleGenerateCartoon} disabled={busy || !originalFile || !hasAiCredit} style={{ width: "100%", borderRadius: 15, padding: "15px 16px", fontSize: 15, fontWeight: 950, border: "none", cursor: busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer", background: "linear-gradient(135deg, #B06CFF, #7C3AED)", color: "#FFF", boxShadow: "0 16px 32px rgba(124,58,237,.42)", opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1 }}>
+          {busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit avatar IA requis"}
+        </button>
+        <button type="button" onClick={() => handleSave("manual")} disabled={busy || !avatarImage} style={{ width: "100%", marginTop: 8, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(246,194,86,.32)", background: "rgba(246,194,86,.11)", color: GOLD_2, fontWeight: 950, cursor: busy || !avatarImage ? "not-allowed" : "pointer", opacity: busy || !avatarImage ? 0.55 : 1 }}>
+          💾 Enregistrer dans la galerie
+        </button>
       </div>
 
-      {originalFile ? (
-        <section className="floating-style-card">
-          <div>
-            <strong>Caricature souhaitée</strong>
-            <span>Choisis le style avant de lancer l’IA.</span>
-          </div>
-          <select value={style} onChange={(e) => setStyle(e.target.value as StyleId)}>
-            <option value="exaggerated">🎭 Très caricaturé — comique & fun</option>
-            <option value="comic">💥 Comic / BD</option>
-            <option value="flat">🏆 Logo esport</option>
-            <option value="realistic">✏️ Cartoon plus réaliste</option>
-          </select>
-          <button type="button" onClick={handleGenerateCartoon} disabled={busy || !hasAiCredit}>{busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit IA requis"}</button>
-        </section>
-      ) : null}
-
-      <section className="control-card">
-        <div className="control-title"><strong>Recadrage médaillon</strong><button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }}>Reset</button></div>
-        <label>Zoom<input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
-        <label>Gauche / Droite<input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} /></label>
-        <label>Haut / Bas<input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} /></label>
-        <label>Nom affiché<input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINJA" /></label>
-        <div className="color-row" aria-label="Couleur du médaillon">
-          {colorChoices.map((c) => <button key={c.id} type="button" title={c.label} className={medallionColor === c.value ? "selected" : ""} style={{ background: c.value }} onClick={() => setMedallionColor(c.value)} />)}
-        </div>
-        <button className="save-gallery-btn" type="button" onClick={() => handleSave("manual")} disabled={busy || !avatarImage}>💾 Enregistrer dans la galerie</button>
-      </section>
+      <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(12,38,32,.94), rgba(7,12,14,.98))" }}>{creditCompact}</div>
       <StatusCard />
     </div>
   );
 
   const renderGalleryTab = () => (
-    <div className="tab-content">
-      <section className="gallery-card">
-        <div className="gallery-head"><strong>Galerie avatars IA</strong><span>{gallery.length} avatar{gallery.length > 1 ? "s" : ""}</span></div>
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ ...cardBase, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontWeight: 1000, textTransform: "uppercase", fontSize: 15 }}>Galerie avatars IA</div>
+            <div style={{ opacity: 0.78, fontSize: 12.5 }}>{gallery.length} avatar{gallery.length > 1 ? "s" : ""} sauvegardé{gallery.length > 1 ? "s" : ""}</div>
+          </div>
+          <InfoMini title="Galerie" content="Chaque avatar enregistré ici peut être exporté en WebP ou attribué à un profil existant." onOpen={(title, content) => setMiniInfo({ title, content })} />
+        </div>
         {gallery.length === 0 ? (
-          <div className="empty-gallery">Aucun avatar pour le moment.<br />Les avatars générés ici seront stockés automatiquement.</div>
+          <div style={{ borderRadius: 16, border: "1px dashed rgba(255,255,255,.18)", padding: 20, textAlign: "center", opacity: 0.72 }}>Aucun avatar pour le moment. Génère puis enregistre un avatar depuis l’onglet IA.</div>
         ) : (
-          <div className="gallery-grid">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
             {gallery.map((item) => (
-              <button key={item.id} type="button" className="gallery-thumb" onClick={() => { setSelectedGallery(item); setAssignProfileId(""); }}>
-                <img src={item.dataUrl} alt={item.name} />
-              </button>
+              <div key={item.id} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.045)", padding: 10 }}>
+                <img src={item.dataUrl} alt={item.name} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 14, background: "#000" }} />
+                <div style={{ marginTop: 8, fontWeight: 950, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+                  <button type="button" onClick={() => downloadGalleryItem(item)} style={{ border: 0, borderRadius: 10, padding: "8px 6px", background: "rgba(255,255,255,.09)", color: "#fff", fontWeight: 850, cursor: "pointer", fontSize: 11 }}>Exporter</button>
+                  <button type="button" onClick={() => setAssignTarget(item)} style={{ border: 0, borderRadius: 10, padding: "8px 6px", background: "rgba(246,194,86,.18)", color: GOLD_2, fontWeight: 850, cursor: "pointer", fontSize: 11 }}>Attribuer</button>
+                </div>
+              </div>
             ))}
           </div>
         )}
-      </section>
+      </div>
       <StatusCard />
     </div>
   );
 
   const renderDebugTab = () => (
-    <div className="tab-content">
-      <section className="control-card debug-card">
-        <strong>Diagnostic développeur</strong>
-        <p>Visible uniquement quand le mode développeur est activé.</p>
-        <button type="button" onClick={runAvatarDebug} disabled={busy}>🔎 Diagnostic API IA</button>
-      </section>
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ ...cardBase, padding: 14, background: "linear-gradient(145deg, rgba(46,24,22,.96), rgba(10,8,8,.98))" }}>
+        <div style={{ fontWeight: 1000, textTransform: "uppercase", marginBottom: 8 }}>Diagnostic développeur</div>
+        <p style={{ margin: "0 0 12px", opacity: 0.82, fontSize: 13, lineHeight: 1.4 }}>Visible uniquement quand le mode développeur est activé.</p>
+        <button type="button" onClick={runAvatarDebug} disabled={busy} style={{ width: "100%", borderRadius: 14, padding: "13px 14px", border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 950, cursor: busy ? "not-allowed" : "pointer" }}>🔎 Diagnostic API IA</button>
+      </div>
       <StatusCard />
     </div>
   );
 
   return (
-    <div className="avatar-page-shell">
-      <div className="avatar-fixed-top">
-        <header className="avatar-header">
+    <div style={{ minHeight: "100vh", margin: -8, padding: "14px 14px 104px", color: theme.text, background: "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)" }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 12 }}>
+        <header style={{ ...cardBase, padding: "12px 14px", display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 10, background: "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))", position: "sticky", top: 6, zIndex: 20 }}>
           <BackDot onClick={handleBack} size={40} color={primary} />
-          <div className="avatar-title-block">
-            <h1>AVATAR IA</h1>
-            <span>Caricature cartoon + médaillon WebP</span>
+          <div style={{ minWidth: 0, textAlign: "center" }}>
+            <h1 style={{ margin: 0, fontSize: 24, lineHeight: 1, fontWeight: 1000, letterSpacing: 1.4, color: primary, textTransform: "uppercase" }}>AVATAR IA</h1>
+            <div style={{ marginTop: 5, fontSize: 12, opacity: 0.82, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Caricature cartoon + médaillon WebP</div>
           </div>
           <InfoDot title="Infos Avatar IA" content={infoContent} size={40} color={primary} />
         </header>
-        <nav className="avatar-tabs">
-          {tabs.filter((x) => !x.hidden).map((tab) => (
-            <button key={tab.id} type="button" className={activeTab === tab.id ? "active" : ""} onClick={() => setActiveTab(tab.id)}><span>{tab.icon}</span>{tab.label}</button>
-          ))}
-        </nav>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(300px, 410px) minmax(320px, 1fr)", gap: 16, alignItems: "start" }} className="avatar-ia-grid">
+          <section style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", gap: 7, padding: 4, borderRadius: 18, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" }}>
+              {tabs.filter((x) => !x.hidden).map((tab) => <TabButton key={tab.id} id={tab.id} label={tab.label} icon={tab.icon} />)}
+            </div>
+            {activeTab === "ia" ? renderIaTab() : null}
+            {activeTab === "gallery" ? renderGalleryTab() : null}
+            {activeTab === "debug" && devMode.enabled ? renderDebugTab() : null}
+          </section>
+
+          <section style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 12, position: "sticky", top: 96 }} className="avatar-ia-preview">
+            <button type="button" onClick={() => fileInputRef.current?.click()} title="Importer une photo" style={{ width: "min(100%, 660px)", aspectRatio: "1 / 1", maxHeight: "min(72vh, 660px)", background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305", borderRadius: 28, padding: 12, boxShadow: "0 26px 70px rgba(0,0,0,.72)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "0", cursor: "pointer" }}>
+              <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
+                <defs>
+                  <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
+                  <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%"><stop offset="0%" stopColor={RING_LIGHT} /><stop offset="42%" stopColor={RING_COLOR} /><stop offset="100%" stopColor={RING_DARK} /></radialGradient>
+                  <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" /></filter>
+                </defs>
+                <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
+                <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
+                <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+                <circle r={R_OUTER - 19} fill={BLACK} />
+                <circle r={R_OUTER - 28} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.72} />
+                <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
+                <circle r={R_INNER + 23} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.65} />
+                <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+                <circle r={R_AVATAR} fill="#22232b" />
+                {avatarImage ? (
+                  <g clipPath="url(#avatarClip)">
+                    <image href={avatarImage} x={-avatarImgSize / 2 + offsetX} y={-avatarImgSize / 2 + offsetY} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
+                    <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
+                  </g>
+                ) : (
+                  <g clipPath="url(#avatarClip)">
+                    <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
+                    <text x={0} y={-10} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={17} fill="#aaa">Clique ici</text>
+                    <text x={0} y={18} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={15} fill="#aaa">pour importer une photo</text>
+                  </g>
+                )}
+                <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
+                <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}><textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
+                <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
+                <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
+              </svg>
+            </button>
+          </section>
+        </div>
       </div>
 
-      <main className="avatar-scroll-area">
-        {activeTab === "ia" ? renderIaTab() : null}
-        {activeTab === "gallery" ? renderGalleryTab() : null}
-        {activeTab === "debug" && devMode.enabled ? renderDebugTab() : null}
-      </main>
-
       {miniInfo ? (
-        <div onClick={() => setMiniInfo(null)} className="modal-backdrop">
-          <div onClick={(e) => e.stopPropagation()} className="modal-card">
-            <div className="modal-head"><strong>{miniInfo.title}</strong><button type="button" onClick={() => setMiniInfo(null)}>✕</button></div>
-            <div>{miniInfo.content}</div>
+        <div onClick={() => setMiniInfo(null)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.62)", display: "grid", placeItems: "center", padding: 18 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(92vw, 360px)", ...cardBase, padding: 18, background: "linear-gradient(145deg, rgba(24,24,34,.98), rgba(6,7,12,.98))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+              <strong style={{ color: primary, textTransform: "uppercase" }}>{miniInfo.title}</strong>
+              <button type="button" onClick={() => setMiniInfo(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
+            </div>
+            <div style={{ opacity: 0.88, lineHeight: 1.45, fontSize: 13.5 }}>{miniInfo.content}</div>
           </div>
         </div>
       ) : null}
 
-      {selectedGallery ? (
-        <div onClick={() => setSelectedGallery(null)} className="modal-backdrop gallery-modal-backdrop">
-          <div onClick={(e) => e.stopPropagation()} className="gallery-modal">
-            <div className="modal-head"><strong>{selectedGallery.name}</strong><button type="button" onClick={() => setSelectedGallery(null)}>✕</button></div>
-            <img className="gallery-modal-img" src={selectedGallery.dataUrl} alt={selectedGallery.name} />
-            <button className="primary-action" type="button" onClick={() => downloadGalleryItem(selectedGallery)}>⬇️ Exporter l’avatar WebP</button>
-            <div className="assign-box">
-              <label>Attribuer cet avatar</label>
-              <select value={assignProfileId} onChange={(e) => setAssignProfileId(e.target.value)}>
-                <option value="">Choisir un profil / bot…</option>
-                {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <button type="button" onClick={() => assignAvatarToSelection(selectedGallery, assignProfileId)} disabled={!assignProfileId || busy}>Attribuer</button>
+      {assignTarget ? (
+        <div onClick={() => setAssignTarget(null)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.68)", display: "grid", placeItems: "center", padding: 18 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(92vw, 420px)", ...cardBase, padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <strong style={{ color: primary, textTransform: "uppercase" }}>Attribuer à un profil</strong>
+              <button type="button" onClick={() => setAssignTarget(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
             </div>
+            {profiles.length === 0 ? <div style={{ opacity: 0.75, fontSize: 13 }}>Aucun profil local trouvé.</div> : (
+              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
+                {profiles.map((p) => (
+                  <button key={p.id} type="button" onClick={() => assignAvatarToProfile(assignTarget, p.id)} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", borderRadius: 14, padding: 10, cursor: "pointer", textAlign: "left" }}>
+                    <img src={p.avatarDataUrl || p.avatarUrl || assignTarget.dataUrl} alt="" style={{ width: 38, height: 38, borderRadius: 999, objectFit: "cover", background: "#000" }} />
+                    <strong>{p.name}</strong>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : null}
 
       <style>{`
-        .avatar-page-shell{min-height:100vh;margin:-8px;padding:0 12px 98px;color:${theme.text};background:radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%),radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%),linear-gradient(135deg,#050509 0%,#0b0d14 46%,#030305 100%);}
-        .avatar-fixed-top{position:sticky;top:0;z-index:50;padding:10px 0 8px;background:linear-gradient(180deg,rgba(5,5,9,.98),rgba(5,5,9,.92) 78%,rgba(5,5,9,0));backdrop-filter:blur(12px);}
-        .avatar-header{border-radius:18px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(135deg,rgba(13,16,24,.94),rgba(43,28,73,.76));box-shadow:0 18px 38px rgba(0,0,0,.42);padding:11px 12px;display:grid;grid-template-columns:42px 1fr 42px;align-items:center;gap:9px;}
-        .avatar-title-block{text-align:center;min-width:0}.avatar-title-block h1{margin:0;color:${primary};font-size:23px;line-height:1;font-weight:1000;letter-spacing:1.3px}.avatar-title-block span{display:block;margin-top:5px;font-size:11px;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .avatar-tabs{display:flex;gap:7px;margin-top:8px;padding:4px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}.avatar-tabs button{flex:1;border:1px solid rgba(255,255,255,.13);border-radius:13px;padding:9px 8px;color:#fff;background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.035));font-weight:950;font-size:12px}.avatar-tabs button.active{color:#07070d;background:linear-gradient(135deg,${primary},${GOLD_2});box-shadow:0 0 24px ${primary}66}.avatar-tabs span{margin-right:5px}
-        .avatar-scroll-area{max-width:540px;margin:0 auto;padding-top:2px}.tab-content{display:grid;gap:12px}.avatar-credit-strip{border-radius:16px;border:1px solid rgba(34,197,94,.22);background:linear-gradient(145deg,rgba(12,38,32,.95),rgba(7,12,14,.98));padding:10px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.credit-main strong{display:block;text-transform:uppercase;color:#d9f99d;font-size:12px}.credit-main span{display:block;font-size:11.5px;opacity:.85}.credit-pill{border-radius:999px;padding:7px 10px;font-weight:1000;border:1px solid rgba(255,255,255,.14)}.credit-pill.ok{background:rgba(34,197,94,.22)}.credit-pill.ko{background:rgba(255,93,93,.18)}.credit-packs{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.credit-packs button{border:1px solid rgba(246,194,86,.22);background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:7px 6px}.credit-packs strong{display:block;font-size:11px}.credit-packs span{color:${GOLD_2};font-weight:950;font-size:11px}
-        .medallion-zone{display:grid;place-items:center;padding:8px 0 0}.medallion-button{width:min(100%,420px);aspect-ratio:1/1;border:0;border-radius:26px;background:radial-gradient(circle at 50% 42%,rgba(246,194,86,.08),transparent 58%),#030305;box-shadow:0 24px 58px rgba(0,0,0,.68);padding:10px;cursor:pointer;display:grid;place-items:center;overflow:hidden}.floating-style-card,.control-card,.gallery-card,.debug-card{border-radius:18px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(145deg,rgba(19,22,32,.94),rgba(6,7,12,.96));box-shadow:0 18px 38px rgba(0,0,0,.42);padding:12px}.floating-style-card{background:linear-gradient(145deg,rgba(37,24,67,.96),rgba(9,9,16,.98));display:grid;gap:9px}.floating-style-card strong{display:block;text-transform:uppercase}.floating-style-card span{font-size:12px;opacity:.82}.floating-style-card select,.assign-box select{width:100%;min-height:42px;border-radius:12px;padding:9px 12px;background:#07070d;color:#fff;border:1px solid rgba(255,255,255,.18)}.floating-style-card button,.primary-action,.debug-card button{border:0;border-radius:15px;padding:14px 16px;font-weight:950;background:linear-gradient(135deg,#B06CFF,#7C3AED);color:#fff;box-shadow:0 16px 32px rgba(124,58,237,.42)}button:disabled{opacity:.55;cursor:not-allowed!important}
-        .control-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.control-title strong{text-transform:uppercase;font-size:12px}.control-title button{border:0;border-radius:999px;padding:6px 9px;background:rgba(255,255,255,.09);color:#fff}.control-card label{display:grid;gap:5px;font-size:12px;margin-bottom:8px}.input,.control-card input[type=text]{min-height:40px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#090910;color:#fff;padding:0 12px}.color-row{display:flex;gap:8px;margin:8px 0 12px}.color-row button{width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.18);box-shadow:0 0 0 2px rgba(0,0,0,.35)}.color-row button.selected{border-color:#fff;transform:scale(1.08)}.save-gallery-btn{width:100%;border-radius:14px;padding:12px 14px;border:1px solid rgba(246,194,86,.32);background:rgba(246,194,86,.11);color:${GOLD_2};font-weight:950}
-        .avatar-status{border-radius:16px;border:1px solid rgba(255,255,255,.13);padding:11px;display:flex;gap:10px;align-items:center}.avatar-status.is-ok{background:linear-gradient(145deg,rgba(8,45,31,.95),rgba(5,12,10,.98))}.avatar-status.is-error{background:linear-gradient(145deg,rgba(70,18,18,.96),rgba(14,10,10,.96))}.avatar-status-dot{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;font-weight:950;background:#22c76f}.avatar-status.is-error .avatar-status-dot{background:#ff5d5d}.avatar-status-title{font-size:12.5px;font-weight:850}.avatar-status-sub{font-size:12px;opacity:.78;margin-top:2px}
-        .gallery-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.gallery-head strong{text-transform:uppercase}.gallery-head span{font-size:12px;opacity:.75}.empty-gallery{border-radius:16px;border:1px dashed rgba(255,255,255,.18);padding:28px 16px;text-align:center;opacity:.72}.gallery-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.gallery-thumb{border:0;background:#050505;border-radius:13px;padding:0;overflow:hidden;aspect-ratio:1/1}.gallery-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-        .modal-backdrop{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.68);display:grid;place-items:center;padding:18px}.modal-card,.gallery-modal{width:min(92vw,420px);border-radius:18px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(145deg,rgba(24,24,34,.98),rgba(6,7,12,.98));box-shadow:0 26px 70px rgba(0,0,0,.72);padding:16px}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.modal-head strong{color:${primary};text-transform:uppercase}.modal-head button{border:0;background:rgba(255,255,255,.09);color:#fff;border-radius:10px;padding:6px 9px}.gallery-modal-img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:18px;background:#000;margin-bottom:12px}.assign-box{display:grid;gap:8px;margin-top:12px}.assign-box label{font-weight:900;text-transform:uppercase;font-size:12px}.assign-box button{border:0;border-radius:14px;padding:12px;background:rgba(246,194,86,.18);color:${GOLD_2};font-weight:950}
+        @media (max-width: 860px) {
+          .avatar-ia-grid { grid-template-columns: 1fr !important; }
+          .avatar-ia-preview { position: relative !important; top: auto !important; }
+        }
       `}</style>
     </div>
   );
 }
+
+export default AvatarCreator;

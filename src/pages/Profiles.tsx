@@ -31,6 +31,7 @@ import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagM
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
 import OnlineProfileForm from "../components/OnlineProfileForm";
+import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
 
@@ -249,8 +250,12 @@ function HeavySectionPlaceholder({ minHeight = 180 }: { minHeight?: number }) {
 
 type FriendLike = {
   id: string;
+  userId?: string;
   name?: string;
-  avatarDataUrl?: string;
+  displayName?: string;
+  nickname?: string;
+  avatarUrl?: string | null;
+  avatarDataUrl?: string | null;
   status?: "online" | "away" | "offline" | string;
   stats?: {
     avg3?: number;
@@ -736,7 +741,26 @@ export default function Profiles({
     [setProfiles]
   );
 
-  const friends: FriendLike[] = (store as any).friends ?? [];
+  const localFriends: FriendLike[] = React.useMemo(
+    () => (Array.isArray((store as any).friends) ? ((store as any).friends as FriendLike[]) : []),
+    [store]
+  );
+  const [onlineProfileFriends, setOnlineProfileFriends] = React.useState<FriendLike[]>([]);
+  const [onlineProfileFriendsLoading, setOnlineProfileFriendsLoading] = React.useState(false);
+  const [onlineProfileFriendsError, setOnlineProfileFriendsError] = React.useState<string | null>(null);
+
+  const friends: FriendLike[] = React.useMemo(() => {
+    const map = new Map<string, FriendLike>();
+    for (const f of localFriends) {
+      const id = String((f as any)?.id || (f as any)?.userId || "").trim();
+      if (id) map.set(id, f);
+    }
+    for (const f of onlineProfileFriends) {
+      const id = String((f as any)?.id || (f as any)?.userId || "").trim();
+      if (id) map.set(id, { ...(map.get(id) || {}), ...f });
+    }
+    return Array.from(map.values());
+  }, [localFriends, onlineProfileFriends]);
 
   // ✅ Source de vérité: SportContext
  const { sport } = useSport();
@@ -763,6 +787,7 @@ export default function Profiles({
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
 
+
   // ✅ Cohérence globale : si l'utilisateur est authentifié Supabase,
   // on ne laisse pas l'UI afficher "Hors ligne" par défaut.
   React.useEffect(() => {
@@ -783,6 +808,36 @@ export default function Profiles({
       : "menu"
   );
   const profilesDiagPrevRef = React.useRef<any>(null);
+
+  const refreshProfileOnlineFriends = React.useCallback(async () => {
+    setOnlineProfileFriendsLoading(true);
+    setOnlineProfileFriendsError(null);
+    try {
+      const apiFriends = await listFriends();
+      const mapped: FriendLike[] = (Array.isArray(apiFriends) ? apiFriends : []).map((f: OnlineFriendUser) => ({
+        id: String(f.id || f.userId || ""),
+        userId: String(f.userId || f.id || ""),
+        name: String(f.displayName || f.nickname || "Ami"),
+        displayName: f.displayName,
+        nickname: f.nickname,
+        avatarUrl: f.avatarUrl || null,
+        avatarDataUrl: null,
+        status: f.status || "offline",
+        stats: (f as any).stats || {},
+      })).filter((f) => !!f.id);
+      setOnlineProfileFriends(mapped);
+    } catch (error: any) {
+      setOnlineProfileFriendsError(error?.message || "Impossible de charger les amis online");
+      setOnlineProfileFriends([]);
+    } finally {
+      setOnlineProfileFriendsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (view !== "friends") return;
+    refreshProfileOnlineFriends();
+  }, [view, refreshProfileOnlineFriends]);
 
 
   // 🔥 Shimmer du nom "NINJA" (copie du Home)
@@ -1951,7 +2006,7 @@ React.useEffect(() => {
                   "Amis ({count})"
                 ).replace("{count}", String(onlineFriendsCount))}
               >
-                <FriendsMergedBlock friends={friends} />
+                <FriendsMergedBlock friends={friends} loading={onlineProfileFriendsLoading} error={onlineProfileFriendsError} onRefresh={refreshProfileOnlineFriends} />
               </Card>
             )}
           </>
@@ -2901,7 +2956,7 @@ function PrivateField({
 
 /* ------ Bloc AMIS FUSIONNÉ ------ */
 
-function FriendsMergedBlock({ friends }: { friends: FriendLike[] }) {
+function FriendsMergedBlock({ friends, loading = false, error = null, onRefresh }: { friends: FriendLike[]; loading?: boolean; error?: string | null; onRefresh?: () => void }) {
   const { theme } = useTheme();
 
   const { sport } = useSport();
@@ -2913,7 +2968,7 @@ function FriendsMergedBlock({ friends }: { friends: FriendLike[] }) {
   const order: Record<string, number> = { online: 0, away: 1, offline: 2 };
 
   const merged = [...friends]
-    .filter((f) => f.status === "online" || f.status === "away")
+    .filter((f) => !!String((f as any)?.id || (f as any)?.userId || "").trim())
     .sort((a, b) => {
       const sa = order[(a.status as string) ?? "offline"] ?? 2;
       const sb = order[(b.status as string) ?? "offline"] ?? 2;
@@ -2959,6 +3014,22 @@ function FriendsMergedBlock({ friends }: { friends: FriendLike[] }) {
 
       {open && (
         <div className="list" style={{ marginTop: 6 }}>
+          <div className="row-between" style={{ gap: 8, marginBottom: 6 }}>
+            <span className="subtitle" style={{ fontSize: 11 }}>
+              {loading ? "Synchronisation NAS…" : "Liste synchronisée avec l’onglet Online"}
+            </span>
+            {onRefresh ? (
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="btn small"
+                style={{ fontSize: 11, padding: "5px 9px" }}
+              >
+                Recharger
+              </button>
+            ) : null}
+          </div>
+          {error ? <div style={{ color: "#ff8a8a", fontSize: 12, fontWeight: 800, marginBottom: 6 }}>{error}</div> : null}
           {merged.length === 0 ? (
             <div className="subtitle">
               {t("profiles.friends.empty", "Aucun ami pour l’instant")}
@@ -3068,7 +3139,9 @@ function FriendsMergedBlock({ friends }: { friends: FriendLike[] }) {
                   >
                     {f.status === "online"
                       ? t("status.online", "En ligne")
-                      : t("status.away", "Absent")}
+                      : f.status === "away"
+                      ? t("status.away", "Absent")
+                      : t("status.offline", "Hors ligne")}
                   </span>
                 </div>
               );

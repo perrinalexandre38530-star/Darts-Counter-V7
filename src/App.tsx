@@ -3900,7 +3900,9 @@ case "babyfoot_team_edit":
           }
 
           page = (
-            <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} onBack={() => go(backTo)} isBotMode={true} />
+            <div style={{ padding: 0 }}>
+              <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} onBack={() => go(backTo)} isBotMode={true} />
+            </div>
           );
           break;
         }
@@ -4008,7 +4010,9 @@ case "babyfoot_team_edit":
         }
 
         page = (
-          <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} onBack={() => go(backTo)} isBotMode={isBotMode} />
+          <div style={{ padding: 0 }}>
+            <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} onBack={() => go(backTo)} isBotMode={isBotMode} />
+          </div>
         );
         break;
       }
