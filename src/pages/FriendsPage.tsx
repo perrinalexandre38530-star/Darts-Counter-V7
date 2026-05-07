@@ -426,10 +426,24 @@ function OnlineTicker({
                 fontSize: 12,
                 fontWeight: 900,
                 opacity: 0.95,
+                maxWidth: "min(84vw, 410px)",
+                minWidth: 0,
               }}
             >
               <Pill label="•" tone={it.tone || "gold"} />
-              <span style={{ letterSpacing: 0.2 }}>{it.text}</span>
+              <span
+                style={{
+                  letterSpacing: 0.2,
+                  display: "inline-block",
+                  maxWidth: "min(78vw, 360px)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  verticalAlign: "bottom",
+                }}
+              >
+                {it.text}
+              </span>
             </span>
           ))}
         </div>
@@ -488,6 +502,146 @@ function MatchMiniCard({
       </div>
 
       <div style={{ fontSize: 11, opacity: 0.88, lineHeight: 1.2 }}>{playersLabel}</div>
+    </div>
+  );
+}
+
+
+/* -------------------------------------------------
+   Détail d'un partage reçu
+--------------------------------------------------*/
+function ShareDetailsModal({
+  item,
+  onClose,
+}: {
+  item: SharedOnlineItem;
+  onClose: () => void;
+}) {
+  const payload: any = item?.payload || {};
+  const owner = item.ownerUser?.displayName || item.ownerUser?.nickname || "Ami";
+  const kind = String(item.type || "partage");
+  const isStats = kind === "stats";
+  const last = payload?.lastMatch || null;
+  const asDate = (v: any) => {
+    const t = new Date(String(v || "")).getTime();
+    return Number.isFinite(t) && t > 0 ? new Date(t).toLocaleDateString() : "—";
+  };
+  const titleOf = (m: any) => String(m?.title || m?.mode || m?.game || m?.sport || item.title || "Match partagé");
+  const playersOf = (m: any) => {
+    const players = Array.isArray(m?.players) ? m.players : Array.isArray(m?.payload?.players) ? m.payload.players : [];
+    const names = players.map((p: any) => p?.name || p?.displayName || p?.nickname).filter(Boolean);
+    return names.length ? names.slice(0, 4).join(" vs ") : "—";
+  };
+  const winnerOf = (m: any) => String(m?.winner?.name || m?.winnerName || m?.payload?.winnerName || m?.result?.winnerName || "").trim();
+
+  const metrics = isStats
+    ? [
+        ["Joueur", payload?.playerName || owner],
+        ["Matchs semaine", Number(payload?.weekMatchesCount || 0)],
+        ["Avg 3D", Number(payload?.avg3DWeek || 0) > 0 ? fmt1(Number(payload.avg3DWeek)) : "—"],
+        ["Checkout", Number(payload?.checkoutPctWeek || 0) > 0 ? `${fmt1(Number(payload.checkoutPctWeek))}%` : "—"],
+      ]
+    : [
+        ["Sport", item.sport || payload?.sport || "darts"],
+        ["Match", item.title || titleOf(payload)],
+        ["Joueurs", playersOf(payload)],
+        ["Vainqueur", winnerOf(payload) || "—"],
+      ];
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,.72)",
+        display: "grid",
+        placeItems: "center",
+        padding: 18,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(430px, 100%)",
+          maxHeight: "82vh",
+          overflow: "auto",
+          borderRadius: 22,
+          border: "1px solid rgba(255,213,106,.28)",
+          background:
+            "radial-gradient(140% 120% at 0% 0%, rgba(255,213,106,.16), transparent 48%), linear-gradient(180deg, rgba(25,25,32,.98), rgba(7,7,10,.99))",
+          boxShadow: "0 24px 70px rgba(0,0,0,.78), 0 0 34px rgba(198,255,0,.13)",
+          padding: 16,
+          color: "#f5f5f7",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 1000, letterSpacing: 1 }}>PARTAGE REÇU</div>
+            <div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000, color: "#ffd56a", lineHeight: 1.15 }}>
+              {item.title || (isStats ? "Stats partagées" : "Match partagé")}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 12.2, opacity: 0.82 }}>Envoyé par {owner}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              borderRadius: 999,
+              width: 34,
+              height: 34,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(255,255,255,.08)",
+              color: "#fff",
+              fontWeight: 1000,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+            aria-label="Fermer"
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14 }}>
+          {metrics.map(([label, value]) => (
+            <div
+              key={String(label)}
+              style={{
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,.10)",
+                background: "rgba(255,255,255,.055)",
+                padding: 10,
+                minWidth: 0,
+              }}
+            >
+              <div style={{ fontSize: 10.5, opacity: 0.72, fontWeight: 1000, textTransform: "uppercase" }}>{label}</div>
+              <div style={{ marginTop: 5, fontSize: 14, fontWeight: 1000, color: "#f5f5f7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {String(value ?? "—")}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {last ? (
+          <div style={{ marginTop: 12 }}>
+            <MatchMiniCard
+              title={titleOf(last)}
+              dateLabel={asDate(last?.createdAt || last?.created_at || last?.date || item.createdAt)}
+              playersLabel={playersOf(last)}
+              winner={winnerOf(last) || null}
+              kindTone="blue"
+            />
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: 12, fontSize: 11.5, opacity: 0.72, lineHeight: 1.35 }}>
+          Ce détail est lu depuis le partage NAS. Le prochain cran sera l’import direct dans l’historique local ou l’ouverture d’un résumé complet selon le type de partie.
+        </div>
+      </div>
     </div>
   );
 }
@@ -935,6 +1089,7 @@ const doLogout = React.useCallback(async () => {
   const [busyFriendId, setBusyFriendId] = React.useState<string | null>(null);
   const [busyRequestId, setBusyRequestId] = React.useState<string | null>(null);
   const [busyShareId, setBusyShareId] = React.useState<string | null>(null);
+  const [selectedShare, setSelectedShare] = React.useState<SharedOnlineItem | null>(null);
 
   const incomingRequests = React.useMemo(
     () => friendRequests.filter((r) => r.direction === "incoming" && r.status === "pending"),
@@ -953,6 +1108,31 @@ const doLogout = React.useCallback(async () => {
     [sharedItems]
   );
 
+  const syncOnlineFriendsIntoStore = React.useCallback((friends: OnlineFriendUser[]) => {
+    const mapped = (Array.isArray(friends) ? friends : [])
+      .map((f) => ({
+        id: String(f.id || f.userId || ""),
+        userId: String(f.userId || f.id || ""),
+        name: String(f.displayName || f.nickname || "Ami"),
+        displayName: f.displayName || f.nickname || "Ami",
+        nickname: f.nickname || f.displayName || "Ami",
+        avatarUrl: f.avatarUrl || null,
+        avatarDataUrl: null,
+        status: f.status || "offline",
+        lastSeenAt: f.lastSeenAt || null,
+        source: "nas-online",
+      }))
+      .filter((f) => !!f.id);
+
+    update((st: any) => {
+      const current = Array.isArray(st?.friends) ? st.friends : [];
+      const same = JSON.stringify(current.map((f: any) => ({ id: f.id || f.userId, status: f.status, avatarUrl: f.avatarUrl || null }))) ===
+        JSON.stringify(mapped.map((f: any) => ({ id: f.id || f.userId, status: f.status, avatarUrl: f.avatarUrl || null })));
+      if (same) return st;
+      return { ...st, friends: mapped };
+    });
+  }, [update]);
+
   const loadSocial = React.useCallback(async () => {
     if (!isSignedIn) {
       setOnlineFriends([]);
@@ -968,7 +1148,9 @@ const doLogout = React.useCallback(async () => {
         listFriendRequests(),
         listSharedItems(),
       ]);
-      setOnlineFriends(Array.isArray(friends) ? friends : []);
+      const nextFriends = Array.isArray(friends) ? friends : [];
+      setOnlineFriends(nextFriends);
+      syncOnlineFriendsIntoStore(nextFriends);
       setFriendRequests(Array.isArray(requests) ? requests : []);
       setSharedItems(Array.isArray(shares) ? shares : []);
     } catch (e: any) {
@@ -976,7 +1158,7 @@ const doLogout = React.useCallback(async () => {
     } finally {
       setFriendsLoading(false);
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, syncOnlineFriendsIntoStore]);
 
   React.useEffect(() => {
     loadSocial().catch(() => {});
@@ -1601,7 +1783,10 @@ const doLogout = React.useCallback(async () => {
                     <button
                       key={it.id}
                       type="button"
-                      onClick={() => handleReadShare(it).catch(() => {})}
+                      onClick={() => {
+                        setSelectedShare(it);
+                        handleReadShare(it).catch(() => {});
+                      }}
                       style={{
                         textAlign: "left",
                         borderRadius: 14,
@@ -1624,6 +1809,8 @@ const doLogout = React.useCallback(async () => {
           </NeonCard>
         </>
       ) : null}
+
+      {selectedShare ? <ShareDetailsModal item={selectedShare} onClose={() => setSelectedShare(null)} /> : null}
 
       {/* ================= RÉSUMÉ ================= */}
       <SectionTitle title="Résumé" subtitle="Aperçu rapide (semaine + dernier match)" />
