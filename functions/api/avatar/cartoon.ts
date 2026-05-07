@@ -10,10 +10,53 @@
 export interface Env {
   AI?: any;
   OPENAI_API_KEY?: string;
+  OPENAI_KEY?: string;
+  OPENAI_SECRET_KEY?: string;
+  OPENAI_APIKEY?: string;
+  VITE_OPENAI_API_KEY?: string;
   OPENAI_IMAGE_MODEL?: string;
+  [key: string]: any;
 }
 
 type StyleId = "realistic" | "comic" | "flat" | "exaggerated";
+
+
+function normalizeKeyName(value: string): string {
+  return String(value || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function maskSecret(value: string): string {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  if (v.length <= 12) return `${v.slice(0, 3)}…${v.slice(-2)}`;
+  return `${v.slice(0, 7)}…${v.slice(-5)}`;
+}
+
+function readOpenAiKey(env: Env): { key: string; source: string | null; preview: string | null } {
+  const candidates = ["OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_SECRET_KEY", "OPENAI_APIKEY", "VITE_OPENAI_API_KEY"];
+
+  for (const name of candidates) {
+    const raw = env?.[name];
+    if (typeof raw === "string" && raw.trim()) {
+      const key = raw.trim();
+      return { key, source: name, preview: maskSecret(key) };
+    }
+  }
+
+  const wanted = normalizeKeyName("OPENAI_API_KEY");
+  for (const [name, raw] of Object.entries(env || {})) {
+    if (normalizeKeyName(name) === wanted && typeof raw === "string" && raw.trim()) {
+      const key = raw.trim();
+      return { key, source: name, preview: maskSecret(key) };
+    }
+  }
+
+  return { key: "", source: null, preview: null };
+}
+
+function publicError(error: string, message: string, extra: Record<string, any> = {}, status = 500): Response {
+  return json({ ok: false, error, message, ...extra }, status);
+}
 
 const STYLE_SNIPPETS: Record<StyleId, string> = {
   realistic:
@@ -88,9 +131,9 @@ async function resultToDataUrl(result: any): Promise<string | null> {
   return null;
 }
 
-async function callOpenAiImageEdit(apiKey: string, file: File, style: StyleId): Promise<string | null> {
+async function callOpenAiImageEdit(apiKey: string, file: File, style: StyleId, model = "gpt-image-1"): Promise<string | null> {
   const form = new FormData();
-  form.append("model", "gpt-image-1");
+  form.append("model", model);
   form.append("image", file, file.name || "avatar-source.webp");
   form.append("prompt", buildPrompt(style));
   form.append("n", "1");
@@ -175,19 +218,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return json({ ok: false, error: "image_too_large" }, 413);
     }
 
-    const openAiKey = String(env.OPENAI_API_KEY || "").trim();
+    const openAi = readOpenAiKey(env);
+    const openAiKey = openAi.key;
+    const openAiModel = String(env.OPENAI_IMAGE_MODEL || "gpt-image-1").trim() || "gpt-image-1";
+
     if (openAiKey) {
       try {
-        const dataUrl = await callOpenAiImageEdit(openAiKey, file, style);
-        if (dataUrl) return json({ ok: true, cartoonWebp: dataUrl, provider: "openai", style }, 200);
+        const dataUrl = await callOpenAiImageEdit(openAiKey, file, style, openAiModel);
+        if (dataUrl) return json({ ok: true, cartoonWebp: dataUrl, provider: "openai", style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 200);
       } catch (err: any) {
         // On garde un fallback Cloudflare possible si OpenAI échoue.
         const openAiMessage = String(err?.message || err || "openai_error");
         try {
           const dataUrl = await callCloudflareAi(env, file, style);
-          if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", fallbackFrom: "openai", openAiMessage, style }, 200);
+          if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", fallbackFrom: "openai", openAiMessage, style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 200);
         } catch (cfErr: any) {
-          return json({ ok: false, error: "ai_generation_failed", provider: "openai", message: openAiMessage, fallbackMessage: String(cfErr?.message || cfErr || "cloudflare_error") }, 502);
+          return publicError("ai_generation_failed", openAiMessage, { provider: "openai", fallbackMessage: String(cfErr?.message || cfErr || "cloudflare_error"), keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 502);
         }
       }
     }
@@ -196,12 +242,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       const dataUrl = await callCloudflareAi(env, file, style);
       if (dataUrl) return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", style }, 200);
     } catch (err: any) {
-      return json({ ok: false, error: "ai_generation_failed", provider: "cloudflare", message: String(err?.message || err || "cloudflare_error") }, 502);
+      return publicError("ai_generation_failed", String(err?.message || err || "cloudflare_error"), { provider: "cloudflare", cloudflareAiBinding: Boolean(env.AI?.run) }, 502);
     }
 
-    return json({ ok: false, error: "ai_binding_missing", message: "Configure OPENAI_API_KEY or Cloudflare AI binding." }, 503);
+    return publicError("openai_key_missing", "OPENAI_API_KEY absente côté Cloudflare Pages Function runtime. Vérifie variable Production/Runtime puis redéploie.", { provider: "none", envKeysVisible: Object.keys(env || {}).filter((k) => !/KEY|TOKEN|SECRET|PASSWORD|PWD/i.test(k)).sort(), sensitiveKeysDetected: Object.keys(env || {}).filter((k) => /OPENAI|AI|KEY|TOKEN|SECRET/i.test(k)).sort(), cloudflareAiBinding: Boolean(env.AI?.run) }, 503);
   } catch (err: any) {
-    return json({ ok: false, error: "exception", message: String(err?.message || err || "Unknown error") }, 500);
+    return publicError("exception", String(err?.message || err || "Unknown error"), {}, 500);
   }
 };
 

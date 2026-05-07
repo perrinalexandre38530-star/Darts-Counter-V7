@@ -203,7 +203,21 @@ async function callAvatarAi(file: File, style: StyleId): Promise<AiPayload | nul
   const json = (await response.json().catch(() => null)) as any;
   if (!response.ok) {
     const message = json?.message || json?.error || `avatar_api_${response.status}`;
-    throw new Error(String(message));
+    const details = {
+      status: response.status,
+      error: json?.error,
+      provider: json?.provider,
+      keySource: json?.keySource,
+      keyPreview: json?.keyPreview,
+      model: json?.model,
+      fallbackMessage: json?.fallbackMessage,
+      sensitiveKeysDetected: json?.sensitiveKeysDetected,
+      envKeysVisible: json?.envKeysVisible,
+      cloudflareAiBinding: json?.cloudflareAiBinding,
+    };
+    const err = new Error(String(message)) as Error & { details?: any };
+    err.details = details;
+    throw err;
   }
   const raw = json?.cartoonWebp || json?.cartoonPng || json?.image || json?.dataUrl || null;
   if (typeof raw !== "string") return null;
@@ -240,6 +254,7 @@ export default function AvatarCreator({
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [lastExport, setLastExport] = React.useState<string | null>(null);
+  const [debugText, setDebugText] = React.useState<string | null>(null);
 
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -274,6 +289,7 @@ export default function AvatarCreator({
         setOriginalPreviewUrl(safe);
         setPhotoUrl(safe);
         setZoom(1.18);
+        setDebugText(null);
         setStatus(t("avatar.status.photoLoaded", "Photo importée. Lance la génération IA pour obtenir une vraie caricature cartoon."));
       } catch {
         setError(t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`));
@@ -282,6 +298,31 @@ export default function AvatarCreator({
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     })();
+  }
+
+  async function runAvatarDebug() {
+    setBusy(true);
+    setError(null);
+    setDebugText(null);
+    try {
+      const response = await fetch("/api/avatar/debug", { method: "GET" });
+      const json = await response.json().catch(() => null);
+      console.info("[AvatarCreator] /api/avatar/debug", json);
+      if (!response.ok || !json?.ok) {
+        setDebugText(`DEBUG API: endpoint inaccessible (${response.status}). Regarde la console.`);
+        return;
+      }
+      const openai = json.openai;
+      const line = openai?.found
+        ? `DEBUG API: clé visible côté Cloudflare ✅ source=${openai.source} preview=${openai.valuePreview} modèle=${json.openaiImageModel}`
+        : `DEBUG API: clé ABSENTE côté Cloudflare ❌. Variables détectées: ${(json.sensitiveEnvKeysDetected || []).map((x: any) => x.name).join(", ") || "aucune"}`;
+      setDebugText(line);
+    } catch (err) {
+      console.warn("[AvatarCreator] debug failed", err);
+      setDebugText("DEBUG API: impossible d'appeler /api/avatar/debug. Vérifie le déploiement des Functions.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleGenerateCartoon() {
@@ -298,7 +339,12 @@ export default function AvatarCreator({
       try {
         generated = await callAvatarAi(originalFile, style);
       } catch (apiErr: any) {
-        console.warn("[AvatarCreator] API IA indisponible", apiErr);
+        console.warn("[AvatarCreator] API IA indisponible", apiErr, apiErr?.details);
+        const details = apiErr?.details || {};
+        const suffix = details?.keySource
+          ? `Clé détectée (${details.keySource}, ${details.keyPreview || "masquée"}) mais OpenAI/Cloudflare refuse: ${apiErr?.message || "erreur inconnue"}.`
+          : `Clé non visible par la Function runtime. Lance le diagnostic API puis vérifie Production/Runtime + redéploiement.`;
+        setDebugText(`ERREUR API: ${suffix}`);
         setError(null);
       }
 
@@ -488,6 +534,27 @@ export default function AvatarCreator({
               {busy ? "⏳ Traitement…" : "✨ Générer la caricature IA"}
             </button>
 
+            <button
+              type="button"
+              onClick={runAvatarDebug}
+              disabled={busy}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                borderRadius: 11,
+                padding: "10px 12px",
+                fontSize: 13,
+                fontWeight: 850,
+                border: "1px solid rgba(255,255,255,.16)",
+                cursor: busy ? "not-allowed" : "pointer",
+                background: "rgba(255,255,255,.07)",
+                color: "#fff",
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              🔎 Diagnostic API IA
+            </button>
+
             <div style={{ marginTop: 12, opacity: 0.78, fontSize: 12.5, lineHeight: 1.4 }}>
               {t("avatar.step1.help", "Le médaillon est ajouté après la génération pour garder exactement le cadre Multisports Scoring.")}
             </div>
@@ -531,6 +598,7 @@ export default function AvatarCreator({
                     setStatus(null);
                     setError(null);
                     setLastExport(null);
+                    setDebugText(null);
                   }}
                   style={{ borderRadius: 10, padding: "9px 12px", opacity: !photoUrl && !originalPreviewUrl ? 0.5 : 1 }}
                 >
@@ -558,7 +626,7 @@ export default function AvatarCreator({
             </label>
           </div>
 
-          {(status || error || lastExport) && (
+          {(status || error || lastExport || debugText) && (
             <div
               style={{
                 ...cardBase,
@@ -585,7 +653,7 @@ export default function AvatarCreator({
                 {error ? "!" : "✓"}
               </div>
               <div style={{ fontSize: 13.5, lineHeight: 1.35 }}>
-                <div style={{ fontWeight: 850 }}>{error ? error : status || t("avatar.status.ok", "Avatar prêt !")}</div>
+                <div style={{ fontWeight: 850 }}>{error ? error : debugText || status || t("avatar.status.ok", "Avatar prêt !")}</div>
                 {!error && <div style={{ opacity: 0.78, marginTop: 2 }}>Format WebP • {EXPORT_SIZE}x{EXPORT_SIZE} • {dataUrlSizeKb(lastExport || photoUrl)}</div>}
               </div>
             </div>

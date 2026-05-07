@@ -29,6 +29,12 @@ type Props = {
 };
 
 const TAB_STORAGE_KEY = "dc_screens_initial_tab_v1";
+const PAGE_BG = "radial-gradient(circle at top, rgba(28,40,62,.95) 0%, rgba(8,12,20,1) 54%, rgba(5,7,12,1) 100%)";
+const CARD_BG = "linear-gradient(180deg, rgba(13,19,31,.96), rgba(8,10,16,.98))";
+const CARD_BORDER = "1px solid rgba(255,255,255,.08)";
+const GOLD = "#ffd15c";
+const TEXT_SOFT = "rgba(255,255,255,.72)";
+const TEXT_MUTED = "rgba(255,255,255,.56)";
 
 function normalizeInitialTab(raw: any): ScreenTab {
   const value = String(raw || "").toLowerCase();
@@ -49,110 +55,152 @@ function consumeStoredInitialTab(): ScreenTab | null {
 
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
-    background:
-      "radial-gradient(120% 120% at 0% 0%, rgba(255,213,106,.10), transparent 52%), linear-gradient(180deg, rgba(18,22,31,.98), rgba(7,8,12,.98))",
-    border: "1px solid rgba(255,255,255,.10)",
-    borderRadius: 24,
-    padding: 16,
-    boxShadow: "0 18px 52px rgba(0,0,0,.38)",
+    background: CARD_BG,
+    border: CARD_BORDER,
+    borderRadius: 28,
+    padding: 20,
+    boxShadow: "0 22px 60px rgba(0,0,0,.28)",
     ...extra,
   };
 }
 
-function panelTitle(title: string, subtitle?: string) {
+function sectionTitle(icon: string, title: string, subtitle?: string) {
   return (
-    <div style={{ display: "grid", gap: 4, marginBottom: 14 }}>
-      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 1100, color: "#ffd56a", letterSpacing: 0.2 }}>{title}</h2>
-      {subtitle ? <div style={{ color: "rgba(255,255,255,.68)", fontSize: 13, lineHeight: 1.45 }}>{subtitle}</div> : null}
+    <div style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr)", gap: 14, alignItems: "start", marginBottom: 18 }}>
+      <div
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 16,
+          display: "grid",
+          placeItems: "center",
+          border: "1px solid rgba(255,209,92,.28)",
+          background: "linear-gradient(180deg, rgba(255,209,92,.12), rgba(255,209,92,.04))",
+          color: GOLD,
+          fontSize: 27,
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <h2 style={{ margin: 0, color: "#fff", fontSize: 26, lineHeight: 1.05, fontWeight: 1150 }}>{title}</h2>
+        {subtitle ? <div style={{ marginTop: 8, color: TEXT_SOFT, fontSize: 15, lineHeight: 1.42 }}>{subtitle}</div> : null}
+      </div>
     </div>
   );
 }
 
-function statusBadge(active: boolean, label: string, tone: "ok" | "warn" | "idle" = "idle"): React.CSSProperties {
-  const ok = active && tone === "ok";
-  const warn = active && tone === "warn";
+function pill(active: boolean, label: string, tone: "ok" | "warn" | "idle" = "idle"): React.CSSProperties {
+  const isOk = tone === "ok";
+  const isWarn = tone === "warn";
   return {
     display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 8,
+    minHeight: 40,
     borderRadius: 999,
-    padding: "7px 10px",
-    fontSize: 12,
-    fontWeight: 1000,
-    border: `1px solid ${ok ? "rgba(16,185,129,.38)" : warn ? "rgba(245,158,11,.38)" : "rgba(255,255,255,.12)"}`,
-    background: ok ? "rgba(16,185,129,.14)" : warn ? "rgba(245,158,11,.14)" : "rgba(255,255,255,.055)",
-    color: ok ? "#a7f3d0" : warn ? "#fde68a" : "rgba(255,255,255,.82)",
+    padding: "0 14px",
+    border: `1px solid ${active ? (isOk ? "rgba(74,222,128,.34)" : isWarn ? "rgba(248,113,113,.28)" : "rgba(255,209,92,.28)") : "rgba(255,255,255,.10)"}`,
+    background: active ? (isOk ? "rgba(34,197,94,.12)" : isWarn ? "rgba(239,68,68,.10)" : "rgba(255,209,92,.10)") : "rgba(255,255,255,.05)",
+    color: active ? (isOk ? "#86efac" : isWarn ? "#fca5a5" : "#fff1b8") : "rgba(255,255,255,.72)",
+    fontWeight: 950,
+    fontSize: 14,
   };
 }
 
-function smallButton(tone: "gold" | "danger" | "ghost" = "ghost"): React.CSSProperties {
-  const gold = tone === "gold";
+function buttonStyle(tone: "primary" | "secondary" | "danger" = "secondary", wide = false): React.CSSProperties {
+  const primary = tone === "primary";
   const danger = tone === "danger";
   return {
-    borderRadius: 14,
-    padding: "11px 13px",
-    border: gold ? "1px solid rgba(255,213,106,.45)" : danger ? "1px solid rgba(248,113,113,.35)" : "1px solid rgba(255,255,255,.13)",
-    background: gold
-      ? "linear-gradient(180deg, rgba(255,213,106,.24), rgba(255,183,42,.10))"
+    minHeight: 56,
+    width: wide ? "100%" : undefined,
+    borderRadius: 18,
+    padding: "0 18px",
+    border: primary
+      ? "1px solid rgba(255,209,92,.45)"
       : danger
-      ? "rgba(248,113,113,.10)"
-      : "rgba(255,255,255,.06)",
-    color: gold ? "#fff4bf" : danger ? "#fecaca" : "#fff",
-    fontWeight: 1000,
+      ? "1px solid rgba(248,113,113,.28)"
+      : "1px solid rgba(255,255,255,.10)",
+    background: primary
+      ? "linear-gradient(180deg, rgba(255,209,92,.98), rgba(242,185,46,.96))"
+      : danger
+      ? "rgba(255,255,255,.06)"
+      : "rgba(255,255,255,.04)",
+    color: primary ? "#17120b" : danger ? "#fff" : "#eef2ff",
+    fontWeight: 1100,
+    fontSize: 15,
+    boxShadow: primary ? "0 8px 26px rgba(255,209,92,.18)" : "none",
     cursor: "pointer",
-    boxShadow: gold ? "0 0 18px rgba(255,213,106,.12)" : "none",
   };
 }
 
-function fieldStyle(): React.CSSProperties {
+function inputStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,.13)",
-    background: "rgba(255,255,255,.06)",
+    width: "100%",
+    minHeight: 56,
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,.10)",
+    background: "rgba(255,255,255,.04)",
     color: "#fff",
-    padding: "12px 14px",
-    fontWeight: 900,
     outline: "none",
+    padding: "0 16px",
+    fontWeight: 950,
+    fontSize: 16,
+    ...extra,
   };
 }
 
-function LogList({ rows, empty, color = "#fde68a" }: { rows: any[]; empty: string; color?: string }) {
+function stateRow(label: string, value: React.ReactNode, tone: "normal" | "ok" | "warn" = "normal") {
   return (
-    <div
-      style={{
-        maxHeight: 330,
-        overflow: "auto",
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,.08)",
-        background: "rgba(0,0,0,.25)",
-      }}
-    >
-      {rows.length ? (
-        rows
-          .slice()
-          .reverse()
-          .map((row, idx) => (
-            <div
-              key={idx}
-              style={{
-                padding: 11,
-                borderBottom: "1px solid rgba(255,255,255,.06)",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                fontSize: 11,
-                lineHeight: 1.42,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              <div style={{ color, fontWeight: 1000 }}>{row.now || (row.at ? new Date(row.at).toLocaleTimeString() : "—")}</div>
-              <div>{row.entry}</div>
-              <div style={{ opacity: 0.76 }}>{row.extra == null ? "" : JSON.stringify(row.extra, null, 2)}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", minHeight: 46, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+      <div style={{ color: "rgba(255,255,255,.82)", fontSize: 15 }}>{label}</div>
+      <div style={{ color: tone === "ok" ? "#86efac" : tone === "warn" ? "#fca5a5" : "#fff", fontWeight: 1000, fontSize: 15 }}>{value}</div>
+    </div>
+  );
+}
+
+function DiagnosticPreview({ rows, empty, color = GOLD }: { rows: any[]; empty: string; color?: string }) {
+  const items = rows.slice().reverse().slice(0, 3);
+  return (
+    <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.18)", overflow: "hidden" }}>
+      {items.length ? (
+        items.map((row, idx) => (
+          <div key={idx} style={{ padding: "12px 14px", borderBottom: idx === items.length - 1 ? "none" : "1px solid rgba(255,255,255,.06)", display: "grid", gridTemplateColumns: "84px minmax(0,1fr)", gap: 12, fontSize: 12, lineHeight: 1.45 }}>
+            <div style={{ color, fontWeight: 1100 }}>{row.now || (row.at ? new Date(row.at).toLocaleTimeString() : "—")}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "rgba(255,255,255,.90)" }}>{row.entry}</div>
+              {row.extra != null ? <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: TEXT_MUTED, marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{JSON.stringify(row.extra)}</div> : null}
             </div>
-          ))
+          </div>
+        ))
       ) : (
-        <div style={{ padding: 14, opacity: 0.72, fontSize: 13 }}>{empty}</div>
+        <div style={{ padding: 14, color: TEXT_SOFT, fontSize: 14 }}>{empty}</div>
       )}
     </div>
+  );
+}
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 76,
+        height: 42,
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,.10)",
+        background: checked ? "linear-gradient(180deg, rgba(255,209,92,.95), rgba(242,185,46,.95))" : "rgba(255,255,255,.08)",
+        padding: 4,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: checked ? "flex-end" : "flex-start",
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#fff", display: "block", boxShadow: "0 2px 8px rgba(0,0,0,.28)" }} />
+    </button>
   );
 }
 
@@ -167,7 +215,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
 
   const [viewer, setViewer] = React.useState<ViewerSessionInfo | null>(() => getActiveViewerSession());
   const [viewerDiag, setViewerDiag] = React.useState<any[]>(() => getViewerDiagLog());
-  const [viewerMessage, setViewerMessage] = React.useState("Viewer prêt : crée la session tablette avant de démarrer une partie.");
+  const [viewerMessage, setViewerMessage] = React.useState("Crée une session viewer avant la partie, puis ouvre le lien ou le QR code sur la tablette.");
   const [viewerBusy, setViewerBusy] = React.useState(false);
   const [qr, setQr] = React.useState("");
 
@@ -204,7 +252,7 @@ export default function CastHostPage({ go, initialTab }: Props) {
       setQr("");
       return;
     }
-    QRCode.toDataURL(url, { margin: 1, width: 250, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(url, { margin: 1, width: 240, errorCorrectionLevel: "M" })
       .then((dataUrl: string) => {
         if (alive) setQr(dataUrl);
       })
@@ -305,9 +353,14 @@ export default function CastHostPage({ go, initialTab }: Props) {
       try {
         await publishViewerSnapshot(info.sessionId, buildViewerWaitingSnapshot(info.sessionId));
       } catch {}
-      setViewerMessage("Session viewer active. Lance une partie : les snapshots iront vers la tablette.");
+      setViewerMessage("Session viewer active. Ouvre le lien ou le QR code sur la tablette, puis lance ta partie.");
     } catch (e: any) {
-      setViewerMessage(`Erreur viewer : ${String(e?.message || e || "création impossible")}`);
+      const message = String(e?.message || e || "création impossible");
+      setViewerMessage(
+        message.toLowerCase().includes("not found") || message.toLowerCase().includes("404")
+          ? "Erreur viewer : endpoint introuvable. Vérifie le déploiement /api/viewer sur Cloudflare Pages ou le Worker online."
+          : `Erreur viewer : ${message}`
+      );
     } finally {
       setViewerBusy(false);
     }
@@ -349,192 +402,230 @@ export default function CastHostPage({ go, initialTab }: Props) {
     setViewerMessage(`Réglages viewer enregistrés : ${nextPoll} ms, publication ${nextAuto ? "active" : "désactivée"}.`);
   }
 
-  const tabMeta: Array<{ key: ScreenTab; title: string; subtitle: string }> = [
-    { key: "cast", title: "CAST", subtitle: "TV / Chromecast" },
-    { key: "viewer", title: "VIEWER", subtitle: "Tablette / second écran" },
-    { key: "settings", title: "RÉGLAGES", subtitle: "Paramètres écran" },
+  const tabMeta: Array<{ key: ScreenTab; title: string; subtitle: string; icon: string }> = [
+    { key: "cast", title: "CAST", subtitle: "TV / Chromecast", icon: "📺" },
+    { key: "viewer", title: "VIEWER", subtitle: "Tablette / second écran", icon: "📱" },
+    { key: "settings", title: "RÉGLAGES", subtitle: "Paramètres écran", icon: "⚙️" },
   ];
 
+  const viewerLink = viewer?.joinUrl || (viewer?.sessionId ? viewerJoinUrl(viewer.sessionId) : "");
+  const castNoDevice = !castState.isCasting && !castState.deviceName;
+
   return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        background: "radial-gradient(circle at top, #18202d 0%, #090b10 56%, #050608 100%)",
-        color: "#f8fafc",
-      }}
-    >
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "18px 14px 116px" }}>
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-          <button onClick={() => go("home")} style={smallButton("ghost")}>← Retour</button>
+    <div style={{ minHeight: "100dvh", background: PAGE_BG, color: "#f8fafc" }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "18px 14px 110px" }}>
+        <header style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", alignItems: "center", gap: 10, marginBottom: 18 }}>
+          <button onClick={() => go("home")} style={{ ...buttonStyle("secondary"), minHeight: 62, borderRadius: 20, padding: 0, width: 62, justifySelf: "start" }}>←</button>
           <div style={{ textAlign: "center", minWidth: 0 }}>
-            <div style={{ fontSize: "clamp(25px,7vw,38px)", fontWeight: 1200, letterSpacing: 0.4, color: "#ffd56a" }}>Écrans</div>
-            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>Cast TV et Viewer tablette, séparés et utilisables ensemble.</div>
+            <div style={{ fontSize: "clamp(30px,9vw,58px)", lineHeight: .95, fontWeight: 1200, color: GOLD }}>Écrans</div>
+            <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.35, color: TEXT_SOFT, fontWeight: 850 }}>Cast TV et Viewer tablette,<br />séparés et utilisables ensemble</div>
           </div>
-          <div style={{ width: 86 }} />
+          <div />
         </header>
 
-        <nav style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 14 }}>
-          {tabMeta.map((tab) => {
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => openTab(tab.key)}
-                style={{
-                  borderRadius: 18,
-                  padding: "12px 8px",
-                  border: active ? "1px solid rgba(255,213,106,.62)" : "1px solid rgba(255,255,255,.10)",
-                  background: active ? "linear-gradient(180deg, rgba(255,213,106,.22), rgba(0,0,0,.20))" : "rgba(255,255,255,.045)",
-                  color: active ? "#fff4bf" : "rgba(255,255,255,.74)",
-                  boxShadow: active ? "0 0 18px rgba(255,213,106,.16)" : "none",
-                  cursor: "pointer",
-                }}
-              >
-                <div style={{ fontWeight: 1200, fontSize: 15, letterSpacing: 0.3 }}>{tab.title}</div>
-                <div style={{ fontSize: 10, opacity: 0.75, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tab.subtitle}</div>
-              </button>
-            );
-          })}
+        <nav style={{ ...cardStyle({ padding: 0, overflow: "hidden", marginBottom: 18 }) }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
+            {tabMeta.map((tab, idx) => {
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => openTab(tab.key)}
+                  style={{
+                    minHeight: 112,
+                    border: "none",
+                    borderRight: idx < tabMeta.length - 1 ? "1px solid rgba(255,255,255,.07)" : "none",
+                    background: active ? "linear-gradient(180deg, rgba(255,209,92,.16), rgba(255,209,92,.05))" : "transparent",
+                    color: active ? "#fff2bc" : "rgba(255,255,255,.86)",
+                    boxShadow: active ? "inset 0 0 0 1px rgba(255,209,92,.5)" : "none",
+                    cursor: "pointer",
+                    display: "grid",
+                    placeItems: "center",
+                    gap: 4,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 26, lineHeight: 1 }}>{tab.icon}</div>
+                  <div style={{ fontSize: 17, fontWeight: 1100, letterSpacing: .2 }}>{tab.title}</div>
+                  <div style={{ fontSize: 12, color: active ? "#ffd15c" : TEXT_SOFT }}>{tab.subtitle}</div>
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
         {activeTab === "cast" && (
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 16 }}>
             <section style={cardStyle()}>
-              {panelTitle("📺 Cast TV / Chromecast", "À lancer avant la partie. La partie enverra ensuite les snapshots au receiver Cast actif.")}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                <div style={statusBadge(castState.supported, castState.supported ? "Navigateur compatible" : "Navigateur non compatible", castState.supported ? "ok" : "warn")} />
-                <div style={statusBadge(castState.sdkLoaded, castState.sdkLoaded ? "SDK chargé" : "SDK non chargé", castState.sdkLoaded ? "ok" : "idle")} />
-                <div style={statusBadge(castState.isCasting, castState.isCasting ? `Connecté${castState.deviceName ? ` : ${castState.deviceName}` : ""}` : "Aucune session Cast", castState.isCasting ? "ok" : "warn")} />
-              </div>
-              <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                <button onClick={startCast} disabled={castBusy} style={smallButton("gold")}>{castBusy ? "Ouverture…" : "Lancer le Cast TV"}</button>
-                <button onClick={stopCast} disabled={castBusy} style={smallButton(castState.isCasting ? "danger" : "ghost")}>Arrêter Cast</button>
-                <button onClick={pingCast} disabled={castBusy} style={smallButton("ghost")}>Envoyer un PING</button>
-                <button onClick={clearCastDiag} style={smallButton("ghost")}>Effacer diagnostic Cast</button>
-              </div>
-              <div style={{ marginTop: 12, color: castMessage.startsWith("Impossible") ? "#fecaca" : "#dbeafe", fontSize: 13, fontWeight: 900 }}>{castMessage}</div>
-            </section>
+              {sectionTitle("📺", "Cast TV / Chromecast", "À lancer avant la partie. La partie enverra ensuite les snapshots au receiver Cast actif.")}
 
-            <section style={cardStyle()}>
-              {panelTitle("État runtime Cast")}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, fontSize: 13 }} className="screens-two-cols">
-                <div>supported : <b>{String(castState.supported)}</b></div>
-                <div>sdkLoaded : <b>{String(castState.sdkLoaded)}</b></div>
-                <div>castState : <b>{String(castState.castState)}</b></div>
-                <div>deviceName : <b>{castState.deviceName || "—"}</b></div>
-                <div style={{ gridColumn: "1 / -1" }}>sessionId : <b>{(castState as any).sessionId || "—"}</b></div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
+                <div style={pill(castState.supported, castState.supported ? "Compatible" : "Non compatible", castState.supported ? "ok" : "warn")} />
+                <div style={pill(castNoDevice, castNoDevice ? "Aucun appareil" : (castState.deviceName || "Appareil détecté"), castNoDevice ? "idle" : "ok")} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }} className="screens-main-actions">
+                <button onClick={startCast} disabled={castBusy} style={buttonStyle("primary", true)}>{castBusy ? "Ouverture…" : "▶ Lancer le Cast"}</button>
+                <button onClick={stopCast} disabled={castBusy} style={buttonStyle("secondary", true)}>■ Arrêter</button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, marginTop: 12 }} className="screens-sub-actions">
+                <button onClick={pingCast} disabled={castBusy} style={buttonStyle("secondary", true)}>✈ Envoyer un ping</button>
+                <button onClick={clearCastDiag} style={buttonStyle("secondary", true)}>∿ Diagnostic</button>
               </div>
             </section>
 
             <section style={cardStyle()}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontWeight: 1100, fontSize: 18, color: "#ffd56a" }}>Journal diagnostic Cast</div>
-                <button onClick={clearCastDiag} style={smallButton("ghost")}>Vider</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, border: "1px solid rgba(255,209,92,.28)", color: GOLD, display: "grid", placeItems: "center", fontSize: 22 }}>∿</div>
+                <div style={{ fontSize: 22, fontWeight: 1100, color: "#fff" }}>État Cast</div>
               </div>
-              <LogList rows={castDiag} empty="Aucune entrée Cast pour le moment." />
+              <div style={{ display: "grid" }}>
+                {stateRow("Support navigateur", castState.supported ? "Oui" : "Non", castState.supported ? "ok" : "warn")}
+                {stateRow("SDK", castState.sdkLoaded ? "Chargé" : "Non chargé", castState.sdkLoaded ? "ok" : "warn")}
+                {stateRow("Appareil", castState.deviceName || "—")}
+                {stateRow("Session", (castState as any).sessionId || "—")}
+              </div>
+            </section>
+
+            <section style={cardStyle()}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 14, border: "1px solid rgba(255,209,92,.28)", color: GOLD, display: "grid", placeItems: "center", fontSize: 22 }}>🧾</div>
+                  <div style={{ fontSize: 22, fontWeight: 1100, color: "#fff" }}>Journal diagnostic</div>
+                </div>
+                <button onClick={clearCastDiag} style={{ ...buttonStyle("secondary"), minHeight: 46 }}>🗑 Vider</button>
+              </div>
+              <DiagnosticPreview rows={castDiag} empty="Aucune entrée Cast pour le moment." />
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ color: castMessage.startsWith("Impossible") ? "#fca5a5" : TEXT_SOFT, fontSize: 14, fontWeight: 900 }}>{castMessage}</div>
+                <div style={{ color: GOLD, fontWeight: 1000, whiteSpace: "nowrap" }}>Voir tout le journal ›</div>
+              </div>
             </section>
           </div>
         )}
 
         {activeTab === "viewer" && (
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 16 }}>
             <section style={cardStyle()}>
-              {panelTitle("📱 Viewer tablette", "À créer avant la partie. La tablette ouvre le lien ou scanne le QR code, puis reçoit le scoreboard live.")}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                <div style={statusBadge(!!viewer?.sessionId, viewer?.sessionId ? "Session active" : "Aucune session viewer", viewer?.sessionId ? "ok" : "warn")} />
-                <div style={statusBadge(autoPublish, autoPublish ? "Publication auto active" : "Publication auto désactivée", autoPublish ? "ok" : "warn")} />
-                <div style={statusBadge(true, `Refresh tablette : ${pollMs} ms`, "idle")} />
+              {sectionTitle("📱", "Viewer tablette", "Créez une session avant la partie. Ouvrez le lien ou scannez le QR code sur la tablette pour suivre le live.")}
+
+              <div style={{ borderRadius: 22, border: viewer?.sessionId ? "1px solid rgba(74,222,128,.25)" : "1px solid rgba(255,255,255,.08)", background: viewer?.sessionId ? "rgba(34,197,94,.08)" : "rgba(255,255,255,.035)", padding: 18, marginBottom: 16 }}>
+                <div style={{ color: viewer?.sessionId ? "#86efac" : "#d1fae5", fontWeight: 1100, fontSize: 18 }}>{viewer?.sessionId ? "Session active" : "Aucune session active"}</div>
+                <div style={{ color: TEXT_SOFT, marginTop: 6, fontSize: 14 }}>{viewer?.sessionId ? `Code session : ${viewer.code || viewer.sessionId}` : "Créez une session pour générer le lien et le QR code."}</div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 280px", gap: 14 }} className="screens-viewer-grid">
-                <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-                  {viewer?.sessionId ? (
-                    <>
-                      <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 1000 }}>Code tablette</div>
-                      <div style={{ fontSize: 42, letterSpacing: 3, lineHeight: 1, color: "#ffd56a", fontWeight: 1200 }}>{viewer.code || viewer.sessionId}</div>
-                      <div style={{ overflowWrap: "anywhere", opacity: 0.78, fontSize: 13 }}>{viewer.joinUrl || viewerJoinUrl(viewer.sessionId)}</div>
-                      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                        <button onClick={copyViewerLink} style={smallButton("gold")}>Copier le lien</button>
-                        <button onClick={() => go("viewer_display", { sessionId: viewer.sessionId })} style={smallButton("ghost")}>Aperçu local</button>
-                        <button onClick={stopViewer} disabled={viewerBusy} style={smallButton("danger")}>Arrêter viewer</button>
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <div style={{ color: "rgba(255,255,255,.74)", lineHeight: 1.45, fontSize: 13 }}>
-                        Crée une session, ouvre le QR code sur la tablette, puis reviens lancer ta partie. Aucune logique de score n’est exécutée sur la tablette.
-                      </div>
-                      <button disabled={viewerBusy} onClick={startViewer} style={smallButton("gold")}>{viewerBusy ? "Création…" : "Créer une session Viewer"}</button>
-                    </div>
-                  )}
-                  <div style={{ color: viewerMessage.startsWith("Erreur") ? "#fecaca" : "#dbeafe", fontSize: 13, fontWeight: 900 }}>{viewerMessage}</div>
-                </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }} className="screens-main-actions">
+                <button disabled={viewerBusy} onClick={viewer?.sessionId ? stopViewer : startViewer} style={buttonStyle("primary", true)}>{viewer?.sessionId ? "＋ Nouvelle session" : viewerBusy ? "Création…" : "＋ Créer une session"}</button>
+                <button disabled={!viewer?.sessionId} onClick={() => viewer?.sessionId && go("viewer_display", { sessionId: viewer.sessionId })} style={buttonStyle("secondary", true)}>↗ Ouvrir le viewer</button>
+              </div>
 
-                <aside style={{ borderRadius: 22, padding: 12, background: "#fff", minHeight: 256, display: "grid", placeItems: "center" }}>
-                  {qr ? <img src={qr} alt="QR code viewer" style={{ width: 250, height: 250 }} /> : <div style={{ color: "#111", textAlign: "center", fontWeight: 1000 }}>Crée une session pour générer le QR code</div>}
-                </aside>
+              <div style={{ ...cardStyle({ padding: 16, marginTop: 16, boxShadow: "none", borderRadius: 24, background: "rgba(255,255,255,.02)" }) }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 200px", gap: 16, alignItems: "center" }} className="screens-viewer-grid">
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <div style={{ color: GOLD, fontSize: 22 }}>⌘</div>
+                      <div style={{ fontSize: 20, fontWeight: 1100 }}>QR code de la session</div>
+                    </div>
+                    <div style={{ color: TEXT_SOFT, fontSize: 14, lineHeight: 1.45 }}>Scannez ce code avec la tablette pour ouvrir le viewer.</div>
+                    <div style={{ marginTop: 16 }}>
+                      <button disabled={!viewerLink} onClick={copyViewerLink} style={{ ...buttonStyle("secondary"), minHeight: 50 }}>🔗 Copier le lien</button>
+                    </div>
+                    {viewerLink ? <div style={{ marginTop: 12, color: TEXT_MUTED, fontSize: 12, overflowWrap: "anywhere" }}>{viewerLink}</div> : null}
+                  </div>
+                  <div style={{ borderRadius: 22, background: "#fff", minHeight: 200, display: "grid", placeItems: "center", padding: 12 }}>
+                    {qr ? <img src={qr} alt="QR code viewer" style={{ width: 180, height: 180, display: "block" }} /> : <div style={{ color: "#111", textAlign: "center", fontWeight: 1000, fontSize: 15 }}>Crée une session pour générer le QR code</div>}
+                  </div>
+                </div>
               </div>
             </section>
 
             <section style={cardStyle()}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontWeight: 1100, fontSize: 18, color: "#ffd56a" }}>Journal diagnostic Viewer</div>
-                <button onClick={clearViewerDiag} style={smallButton("ghost")}>Vider</button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 14, border: "1px solid rgba(255,209,92,.28)", color: GOLD, display: "grid", placeItems: "center", fontSize: 22 }}>∿</div>
+                  <div style={{ fontSize: 22, fontWeight: 1100, color: "#fff" }}>État Viewer</div>
+                </div>
+                <div style={pill(!!viewer?.sessionId, viewer?.sessionId ? "Actif" : "Inactif", viewer?.sessionId ? "ok" : "idle")} />
               </div>
-              <LogList rows={viewerDiag} empty="Aucun envoi Viewer pour le moment." color="#a7f3d0" />
+              <div style={{ display: "grid" }}>
+                {stateRow("Session", viewer?.sessionId ? (viewer.code || viewer.sessionId) : "Aucune session active")}
+                {stateRow("Lien", viewerLink || "Aucun lien généré")}
+                {stateRow("Synchro", viewer?.sessionId ? "Prête" : "Non connecté", viewer?.sessionId ? "ok" : "warn")}
+                {stateRow("Dernière mise à jour", viewer?.createdAt ? new Date(viewer.createdAt).toLocaleTimeString() : "—")}
+              </div>
+            </section>
+
+            <section style={cardStyle()}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 14, border: "1px solid rgba(255,209,92,.28)", color: GOLD, display: "grid", placeItems: "center", fontSize: 22 }}>🧾</div>
+                  <div style={{ fontSize: 22, fontWeight: 1100, color: "#fff" }}>Journal diagnostic</div>
+                </div>
+                <button onClick={clearViewerDiag} style={{ ...buttonStyle("secondary"), minHeight: 46 }}>🗑 Vider</button>
+              </div>
+              <DiagnosticPreview rows={viewerDiag} empty="Aucun envoi Viewer pour le moment." color="#a7f3d0" />
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ color: viewerMessage.startsWith("Erreur") ? "#fca5a5" : TEXT_SOFT, fontSize: 14, fontWeight: 900 }}>{viewerMessage}</div>
+                <div style={{ color: GOLD, fontWeight: 1000, whiteSpace: "nowrap" }}>Voir tout le journal ›</div>
+              </div>
             </section>
           </div>
         )}
 
         {activeTab === "settings" && (
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 16 }}>
             <section style={cardStyle()}>
-              {panelTitle("Réglages Cast", "Paramètres techniques du receiver Google Cast. Ces réglages ne créent pas de session Viewer.")}
-              <div style={{ display: "grid", gap: 9 }}>
-                <label style={{ fontSize: 12, opacity: 0.76, fontWeight: 1000 }}>Receiver Application ID Google Cast</label>
-                <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                  <input value={appId} onChange={(e) => setAppIdState(e.target.value.toUpperCase())} placeholder="Ex: 3534BC6A" style={{ ...fieldStyle(), flex: "1 1 180px", minWidth: 160 }} />
-                  <button onClick={saveAppId} style={smallButton("gold")}>Enregistrer</button>
-                  <button onClick={restoreDefault} style={smallButton("ghost")}>App ID par défaut</button>
+              {sectionTitle("⚙️", "Réglages Cast", "Paramètres techniques du receiver Google Cast. Ces réglages ne créent pas de session Viewer.")}
+              <div style={{ display: "grid", gap: 10 }}>
+                <label style={{ fontSize: 14, fontWeight: 1000, color: TEXT_SOFT }}>Receiver Application ID</label>
+                <input value={appId} onChange={(e) => setAppIdState(e.target.value.toUpperCase())} placeholder="3534BC6A" style={inputStyle()} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, marginTop: 4 }} className="screens-main-actions">
+                  <button onClick={saveAppId} style={buttonStyle("primary", true)}>💾 Enregistrer</button>
+                  <button onClick={restoreDefault} style={buttonStyle("secondary", true)}>↻ Valeur par défaut</button>
                 </div>
-                <div style={{ color: "rgba(255,255,255,.62)", fontSize: 12 }}>App ID courant : <b>{getGoogleCastAppId()}</b></div>
               </div>
             </section>
 
             <section style={cardStyle()}>
-              {panelTitle("Réglages Viewer", "Paramètres de l’écran tablette. Le flux reste séparé de la sauvegarde NAS globale.")}
-              <div style={{ display: "grid", gap: 12 }}>
-                <label style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", borderRadius: 16, padding: 12, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.045)" }}>
-                  <span>
-                    <span style={{ display: "block", fontWeight: 1000 }}>Publication automatique des snapshots</span>
-                    <span style={{ display: "block", opacity: 0.66, fontSize: 12, marginTop: 2 }}>Quand une session Viewer existe, les snapshots de partie sont envoyés à la tablette.</span>
-                  </span>
-                  <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublishState(e.target.checked)} style={{ transform: "scale(1.2)" }} />
-                </label>
+              {sectionTitle("🖥️", "Réglages Viewer", "Paramètres de l’écran tablette. Le flux reste séparé de la sauvegarde NAS globale.")}
+              <div style={{ display: "grid", gap: 16 }}>
+                <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 16, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 16, alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 1100, fontSize: 18 }}>Publication automatique des snapshots</div>
+                    <div style={{ color: TEXT_SOFT, fontSize: 14, lineHeight: 1.42, marginTop: 4 }}>Quand une session Viewer existe, les snapshots de partie sont envoyés à la tablette.</div>
+                  </div>
+                  <Toggle checked={autoPublish} onChange={setAutoPublishState} />
+                </div>
 
-                <div style={{ display: "grid", gap: 7 }}>
-                  <label style={{ fontSize: 12, opacity: 0.76, fontWeight: 1000 }}>Intervalle de rafraîchissement tablette</label>
-                  <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
-                    <input type="number" min={300} max={3000} step={100} value={pollMs} onChange={(e) => setPollMsState(Number(e.target.value || 700))} style={{ ...fieldStyle(), width: 140 }} />
-                    <span style={{ opacity: 0.7, fontSize: 13 }}>ms — conseillé : 500 à 1000 ms</span>
+                <div>
+                  <label style={{ display: "block", fontSize: 14, fontWeight: 1000, color: TEXT_SOFT, marginBottom: 8 }}>Intervalle de rafraîchissement</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+                    <input type="number" min={300} max={3000} step={100} value={pollMs} onChange={(e) => setPollMsState(Number(e.target.value || 700))} style={inputStyle()} />
+                    <div style={{ color: TEXT_SOFT, fontWeight: 1000, minWidth: 36 }}>ms</div>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-                  <button onClick={saveViewerSettings} style={smallButton("gold")}>Enregistrer réglages Viewer</button>
-                  <button onClick={() => { setPollMsState(700); setAutoPublishState(true); setViewerPollMs(700); setViewerAutoPublish(true); }} style={smallButton("ghost")}>Réglages par défaut</button>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }} className="screens-main-actions">
+                  <button onClick={saveViewerSettings} style={buttonStyle("primary", true)}>💾 Enregistrer</button>
+                  <button onClick={() => { setPollMsState(700); setAutoPublishState(true); setViewerPollMs(700); setViewerAutoPublish(true); }} style={buttonStyle("secondary", true)}>↻ Réglages par défaut</button>
                 </div>
               </div>
             </section>
 
             <section style={cardStyle()}>
-              {panelTitle("Rappel de fonctionnement", "Les sorties sont préparées en amont, puis les pages de jeu publient silencieusement vers les sorties déjà actives.")}
-              <div style={{ display: "grid", gap: 8, color: "rgba(255,255,255,.76)", fontSize: 13, lineHeight: 1.5 }}>
-                <div>1. Lance le Cast et/ou le Viewer depuis cette page Écrans.</div>
-                <div>2. Reviens dans la configuration du jeu.</div>
-                <div>3. Lance la partie : aucun bouton parasite n’apparaît dans l’écran de jeu.</div>
-                <div>4. Si Cast + Viewer sont actifs, les deux reçoivent les snapshots sans partager le même canal.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, border: "1px solid rgba(255,209,92,.28)", color: GOLD, display: "grid", placeItems: "center", fontSize: 22 }}>ⓘ</div>
+                <div style={{ fontSize: 22, fontWeight: 1100, color: "#fff" }}>Rappel de fonctionnement</div>
+              </div>
+              <div style={{ display: "grid", gap: 12 }}>
+                {["Lance le Cast et/ou le Viewer depuis cette page Écrans.", "Reviens dans la configuration du jeu.", "Lance la partie : aucun bouton parasite n’apparaît dans l’écran de jeu."].map((line, idx) => (
+                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 999, border: "1px solid rgba(255,209,92,.32)", color: GOLD, display: "grid", placeItems: "center", fontWeight: 1100 }}>{idx + 1}</div>
+                    <div style={{ color: TEXT_SOFT, fontSize: 16, lineHeight: 1.45 }}>{line}</div>
+                  </div>
+                ))}
               </div>
             </section>
           </div>
@@ -543,7 +634,8 @@ export default function CastHostPage({ go, initialTab }: Props) {
 
       <style>{`
         @media (max-width: 760px){
-          .screens-two-cols{grid-template-columns:1fr!important;}
+          .screens-main-actions,
+          .screens-sub-actions,
           .screens-viewer-grid{grid-template-columns:1fr!important;}
         }
       `}</style>

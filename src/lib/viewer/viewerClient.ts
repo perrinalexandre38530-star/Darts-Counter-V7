@@ -12,17 +12,23 @@ function normalizeBase(raw: any) {
 function baseCandidates() {
   const env = (import.meta as any)?.env || {};
   const list = [
+    "",
     normalizeBase(env.VITE_VIEWER_API_URL),
     normalizeBase(NAS_API_URL),
     normalizeBase(env.VITE_ONLINE_API_URL),
     normalizeBase(env.VITE_ONLINE_WS_BASE_URL),
-    "",
   ];
-  return Array.from(new Set(list));
+  return Array.from(new Set(list.filter((v, idx, arr) => arr.indexOf(v) === idx)));
 }
 
 function normalizePath(path: string) {
   return path.startsWith("/") ? path : `/${path}`;
+}
+
+function pathCandidates(path: string) {
+  const normalized = normalizePath(path);
+  const apiPath = normalized.startsWith("/api/") ? normalized : `/api${normalized}`;
+  return Array.from(new Set([apiPath, normalized]));
 }
 
 async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number }) {
@@ -30,46 +36,48 @@ async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number 
   let lastError: any = null;
 
   for (const base of bases) {
-    const ctrl = new AbortController();
-    const timeout = Math.max(800, Number(init?.timeoutMs ?? VIEWER_TIMEOUT_MS) || VIEWER_TIMEOUT_MS);
-    const timer = window.setTimeout(() => {
-      try {
-        ctrl.abort();
-      } catch {}
-    }, timeout);
+    for (const candidatePath of pathCandidates(path)) {
+      const ctrl = new AbortController();
+      const timeout = Math.max(800, Number(init?.timeoutMs ?? VIEWER_TIMEOUT_MS) || VIEWER_TIMEOUT_MS);
+      const timer = window.setTimeout(() => {
+        try {
+          ctrl.abort();
+        } catch {}
+      }, timeout);
 
-    try {
-      const url = `${base}${normalizePath(path)}`;
-      const res = await fetch(url, {
-        ...init,
-        signal: ctrl.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...((init?.headers as any) || {}),
-        },
-      });
-      const text = await res.text();
-      let json: any = null;
       try {
-        json = text ? JSON.parse(text) : null;
-      } catch {
-        json = { raw: text };
+        const url = `${base}${candidatePath}`;
+        const res = await fetch(url, {
+          ...init,
+          signal: ctrl.signal,
+          headers: {
+            "Content-Type": "application/json",
+            ...((init?.headers as any) || {}),
+          },
+        });
+        const text = await res.text();
+        let json: any = null;
+        try {
+          json = text ? JSON.parse(text) : null;
+        } catch {
+          json = { raw: text };
+        }
+        if (!res.ok) {
+          const msg = String(json?.message || json?.error || `Viewer API ${res.status}`);
+          const err: any = new Error(msg);
+          err.status = res.status;
+          err.payload = json;
+          err.url = url;
+          throw err;
+        }
+        return json;
+      } catch (e: any) {
+        lastError = e;
+        const status = Number(e?.status || 0);
+        if (status && ![401, 403, 404, 405].includes(status)) break;
+      } finally {
+        window.clearTimeout(timer);
       }
-      if (!res.ok) {
-        const msg = String(json?.message || json?.error || `Viewer API ${res.status}`);
-        const err: any = new Error(msg);
-        err.status = res.status;
-        err.payload = json;
-        throw err;
-      }
-      return json;
-    } catch (e: any) {
-      lastError = e;
-      const status = Number(e?.status || 0);
-      // Endpoint non disponible/protégé sur NAS ou same-origin => on tente le Worker suivant.
-      if (status && ![401, 403, 404, 405].includes(status)) break;
-    } finally {
-      window.clearTimeout(timer);
     }
   }
 
