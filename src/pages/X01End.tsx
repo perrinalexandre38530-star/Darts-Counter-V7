@@ -124,6 +124,8 @@ const mobileDenseCss = `
 type VisitRow = {
   idx: number;
   legNo: number;
+  setNo?: number;
+  legInSet?: number;
   playerId: string;
   darts: { v: number; mult: 0 | 1 | 2 | 3 }[];
   scoreBefore: number;
@@ -143,6 +145,7 @@ export default function X01End({ go, params }: Props) {
 
   // cible: ne pas dépendre de rec au moment de l'initialisation
   const [chartPid, setChartPid] = React.useState<string>("");
+  const [summaryTab, setSummaryTab] = React.useState<"summary" | "details">("summary");
 
   // NEW: overlay “à la demande”
   const [overlayOpen, setOverlayOpen] = React.useState<boolean>(
@@ -496,6 +499,21 @@ export default function X01End({ go, params }: Props) {
     [rec, players, legStats]
   );
 
+  const isMatchDetailsMode = React.useMemo(
+    () => isX01MatchWithDetails(rec, visits),
+    [rec, visits]
+  );
+
+  const legBreakdown = React.useMemo(
+    () => buildLegBreakdown(rec, players, visits),
+    [rec, players, visits]
+  );
+
+  React.useEffect(() => {
+    if (!isMatchDetailsMode && summaryTab !== "summary") {
+      setSummaryTab("summary");
+    }
+  }, [isMatchDetailsMode, summaryTab]);
 
   const shareMatchId = (params?.matchId || (rec as any)?.id || (rec as any)?.matchId) as string | undefined;
 
@@ -702,6 +720,12 @@ export default function X01End({ go, params }: Props) {
         </InfoCard>
       ) : null}
 
+      {isMatchDetailsMode ? (
+        <SummaryDetailsTabs value={summaryTab} onChange={setSummaryTab} />
+      ) : null}
+
+      {summaryTab === "summary" ? (
+        <>
       <CardTable title="Score du match">
         <TableColMajor
           columns={cols}
@@ -954,6 +978,15 @@ export default function X01End({ go, params }: Props) {
           <VisitsList visits={visits} playersById={playersById} />
         </Panel>
       ) : null}
+
+        </>
+      ) : (
+        <MatchLegDetails
+          breakdown={legBreakdown}
+          players={players}
+          tableStyle={tableStyle}
+        />
+      )}
 
       {/* ===== Overlay fin (optionnel) ===== */}
       {overlayOpen && overlayResult && (
@@ -1460,6 +1493,10 @@ function buildPerPlayerMetrics(
     players,
     legStats || rec?.payload?.__legStats || rec?.__legStats || null
   );
+  const derivedMaxLegNo = Math.max(
+    1,
+    ...derivedVisits.map((v: any) => Number(v?.legNo || 1) || 1)
+  );
 
   const derivedByPid = derivedVisits.reduce((acc: any, v) => {
     const pid = String(v.playerId || "");
@@ -1487,6 +1524,7 @@ function buildPerPlayerMetrics(
         coAtt: 0,
         checkoutDarts: 0,
         finalScore: undefined,
+        finalLegNo: 1,
         byNumber: {},
       });
 
@@ -1566,6 +1604,7 @@ function buildPerPlayerMetrics(
     }
 
     row.finalScore = n(v.scoreAfter, row.finalScore ?? undefined);
+    row.finalLegNo = Number(v.legNo || row.finalLegNo || 1) || 1;
 
     row.points += visitPoints;
     row.bestVisit = Math.max(row.bestVisit, visitPoints);
@@ -1639,13 +1678,49 @@ function buildPerPlayerMetrics(
     const r = per?.[pid] || getPlayerRowFromObjectOrArray(payloadSummary?.perPlayer, pid) || {};
     const imp = r.impacts || {};
 
+    const summaryLegsMap =
+      summary?.legsByPlayer ||
+      summary?.legsWon ||
+      summary?.legsScore ||
+      payloadSummary?.legsByPlayer ||
+      payloadSummary?.legsWon ||
+      rec?.payload?.legsWon ||
+      {};
+    const summarySetsMap =
+      summary?.setsByPlayer ||
+      summary?.setsWon ||
+      summary?.setsScore ||
+      payloadSummary?.setsByPlayer ||
+      payloadSummary?.setsWon ||
+      rec?.payload?.setsWon ||
+      {};
+
+    m.legsWon = v(
+      m.legsWon ??
+        r.legsWonTotal ??
+        r.legsWon ??
+        r.legs ??
+        r.matchLegs ??
+        r.wonLegs ??
+        summaryLegsMap?.[pid]
+    );
+    m.setsWon = v(
+      m.setsWon ??
+        r.setsWonTotal ??
+        r.setsWon ??
+        r.sets ??
+        r.matchSets ??
+        r.wonSets ??
+        summarySetsMap?.[pid]
+    );
+
     m.first9 = v(r.first9Avg);
     m.highestNonCO = v(r.highestNonCheckout);
     m.dartsToFinish = v(r.dartsToFinish);
     m.avgCoDarts = v(r.avgCheckoutDarts);
     m.remaining = v(r.remaining ?? r.scoreRemaining ?? r.finalScore ?? r.scoreAfter ?? m.remaining);
-    m.setsWon = v(r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? m.setsWon);
-    m.legsWon = v(r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? m.legsWon);
+    m.setsWon = v(r.setsWonTotal ?? r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? summarySetsMap?.[pid] ?? m.setsWon);
+    m.legsWon = v(r.legsWonTotal ?? r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? summaryLegsMap?.[pid] ?? m.legsWon);
 
     // NB de darts : on prend ce qu'on trouve de plus fiable
     const dartsFromDetail = n(
@@ -2014,7 +2089,20 @@ function buildPerPlayerMetrics(
         m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
       }
       if (n(dv.checkoutDarts, 0) > 0) m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
-      if (dv.finalScore !== undefined) m.remaining = n(dv.finalScore, m.remaining ?? undefined);
+
+      // En multi-legs, un joueur peut ne pas relancer dans le leg décisif
+      // (ex. l'adversaire check-out au premier tour). Dans ce cas son dernier
+      // scoreAfter issu du replay appartient au leg précédent et ne doit pas
+      // écraser finalScores/remaining déjà sauvegardé par le moteur.
+      const hasExplicitRemaining =
+        m.remaining != null && Number.isFinite(Number(m.remaining));
+      const dvIsFinalLeg = n(dv.finalLegNo, 1) >= derivedMaxLegNo;
+      if (
+        dv.finalScore !== undefined &&
+        (!hasExplicitRemaining || derivedMaxLegNo <= 1 || dvIsFinalLeg)
+      ) {
+        m.remaining = n(dv.finalScore, m.remaining ?? undefined);
+      }
     }
 
     // Score restant final : seul le vainqueur est forcé à 0.
@@ -2274,6 +2362,149 @@ function buildPerPlayerMetrics(
   return out;
 }
 
+
+function getLegsPerSetFromRecord(rec: any): number {
+  const raw = pickFromAny(
+    [
+      "summary.game.legsPerSet",
+      "payload.summary.game.legsPerSet",
+      "payload.config.legsPerSet",
+      "payload.game.legsPerSet",
+      "config.legsPerSet",
+      "game.legsPerSet",
+    ],
+    [rec],
+    1
+  );
+  const val = Number(raw);
+  return Number.isFinite(val) && val > 0 ? val : 1;
+}
+
+function getSetsToWinFromRecord(rec: any): number {
+  const raw = pickFromAny(
+    [
+      "summary.game.setsToWin",
+      "payload.summary.game.setsToWin",
+      "payload.config.setsToWin",
+      "payload.game.setsToWin",
+      "config.setsToWin",
+      "game.setsToWin",
+    ],
+    [rec],
+    1
+  );
+  const val = Number(raw);
+  return Number.isFinite(val) && val > 0 ? val : 1;
+}
+
+function maxMapValue(obj: any): number {
+  if (!obj || typeof obj !== "object") return 0;
+  return Math.max(0, ...Object.values(obj).map((x: any) => Number(x) || 0));
+}
+
+function isX01MatchWithDetails(rec: any, visits: VisitRow[]): boolean {
+  if (!rec) return false;
+  const legsPerSet = getLegsPerSetFromRecord(rec);
+  const setsToWin = getSetsToWinFromRecord(rec);
+  const distinctLegs = new Set((visits || []).map((v) => Number(v.legNo || 1))).size;
+
+  const summary = rec?.summary || rec?.payload?.summary || {};
+  const maxLegsWon = Math.max(
+    maxMapValue(summary?.legsByPlayer),
+    maxMapValue(summary?.legsWon),
+    maxMapValue(summary?.legsScore),
+    maxMapValue(rec?.payload?.legsWon)
+  );
+  const maxSetsWon = Math.max(
+    maxMapValue(summary?.setsByPlayer),
+    maxMapValue(summary?.setsWon),
+    maxMapValue(summary?.setsScore),
+    maxMapValue(rec?.payload?.setsWon)
+  );
+
+  return distinctLegs > 1 || legsPerSet > 1 || setsToWin > 1 || maxLegsWon > 1 || maxSetsWon > 1;
+}
+
+function buildLegBreakdown(
+  rec: any,
+  players: PlayerLite[],
+  visits: VisitRow[]
+): LegBreakdown[] {
+  if (!rec || !players.length || !visits.length) return [];
+
+  const legsPerSet = getLegsPerSetFromRecord(rec);
+  const groups = new Map<string, VisitRow[]>();
+
+  for (const visit of visits) {
+    const legNo = Math.max(1, Number(visit.legNo || 1) || 1);
+    const setNo = Math.max(1, Number(visit.setNo || Math.floor((legNo - 1) / legsPerSet) + 1) || 1);
+    const legInSet = Math.max(1, Number(visit.legInSet || ((legNo - 1) % legsPerSet) + 1) || 1);
+    const key = `${setNo}:${legInSet}:${legNo}`;
+    const normalized = { ...visit, legNo, setNo, legInSet };
+    const bucket = groups.get(key) || [];
+    bucket.push(normalized);
+    groups.set(key, bucket);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, rows]) => {
+      const first = rows[0] || ({} as VisitRow);
+      const legNo = Math.max(1, Number(first.legNo || 1) || 1);
+      const setNo = Math.max(1, Number(first.setNo || Math.floor((legNo - 1) / legsPerSet) + 1) || 1);
+      const legInSet = Math.max(1, Number(first.legInSet || ((legNo - 1) % legsPerSet) + 1) || 1);
+      const winnerVisit = rows.find((v) => v.finish && !v.bust) || null;
+      const winnerId = winnerVisit ? String(winnerVisit.playerId || "") : null;
+
+      const syntheticSummary = {
+        kind: "x01",
+        winnerId,
+        game: {
+          ...(rec?.summary?.game || rec?.payload?.summary?.game || {}),
+          startScore: getX01StartScore(rec),
+          legsPerSet,
+        },
+        visitHistory: rows,
+        visitsHistory: rows,
+        __legStats: { visits: rows },
+        legacy: {
+          winnerId,
+          visitHistory: rows,
+          visitsHistory: rows,
+        },
+      };
+
+      const syntheticRec = {
+        ...rec,
+        winnerId,
+        summary: syntheticSummary,
+        payload: {
+          ...(rec?.payload || {}),
+          winnerId,
+          visitHistory: rows,
+          visitsHistory: rows,
+          __legStats: { visits: rows },
+          summary: syntheticSummary,
+        },
+        visitHistory: rows,
+        visitsHistory: rows,
+        __legStats: { visits: rows },
+      };
+
+      return {
+        key,
+        legNo,
+        setNo,
+        legInSet,
+        title: `Set ${setNo} — Leg ${legInSet}`,
+        winnerId,
+        visits: rows,
+        metrics: buildPerPlayerMetrics(syntheticRec, syntheticSummary, players),
+      } as LegBreakdown;
+    })
+    .sort((a, b) => a.legNo - b.legNo || a.setNo - b.setNo || a.legInSet - b.legInSet);
+}
+
+
 /* ================================
    Détection colonnes optionnelles
 ================================ */
@@ -2430,6 +2661,178 @@ function Notice({ children }: { children: React.ReactNode }) {
 function InfoCard({ children }: { children: React.ReactNode }) {
   return <Panel style={{ color: "#bbb" }}>{children}</Panel>;
 }
+
+function SummaryDetailsTabs({
+  value,
+  onChange,
+}: {
+  value: "summary" | "details";
+  onChange: (value: "summary" | "details") => void;
+}) {
+  const tab = (key: "summary" | "details", label: string) => {
+    const active = value === key;
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(key)}
+        style={{
+          flex: 1,
+          border: active ? "1px solid rgba(255,207,87,.58)" : "1px solid rgba(255,255,255,.10)",
+          background: active
+            ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
+            : "linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03))",
+          color: active ? "#141417" : "#e8e8ec",
+          borderRadius: 999,
+          padding: "8px 10px",
+          fontSize: 12,
+          fontWeight: 1000,
+          cursor: "pointer",
+          boxShadow: active ? "0 0 16px rgba(255,207,87,.22)" : "none",
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        margin: "0 0 10px",
+        padding: 4,
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,.08)",
+        background: "rgba(255,255,255,.04)",
+      }}
+    >
+      {tab("summary", "Résumé cumulé")}
+      {tab("details", "Détails legs")}
+    </div>
+  );
+}
+
+type LegBreakdown = {
+  key: string;
+  legNo: number;
+  setNo: number;
+  legInSet: number;
+  title: string;
+  winnerId: string | null;
+  visits: VisitRow[];
+  metrics: Record<string, PlayerMetrics>;
+};
+
+function MatchLegDetails({
+  breakdown,
+  players,
+  tableStyle,
+}: {
+  breakdown: LegBreakdown[];
+  players: PlayerLite[];
+  tableStyle: React.CSSProperties;
+}) {
+  const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
+
+  if (!breakdown.length) {
+    return (
+      <InfoCard>
+        Aucun détail de leg disponible pour ce match.
+      </InfoCard>
+    );
+  }
+
+  return (
+    <>
+      <InfoCard>
+        <b>Détails par leg</b> — chaque bloc ci-dessous isole les stats de la manche correspondante, pendant que l’onglet Résumé affiche le cumul complet du match.
+      </InfoCard>
+
+      {breakdown.map((leg) => {
+        const winnerName =
+          leg.winnerId && players.find((p) => p.id === leg.winnerId)?.name
+            ? players.find((p) => p.id === leg.winnerId)?.name
+            : null;
+
+        return (
+          <Panel key={leg.key} className="x-card" style={{ padding: D.cardPad }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 6,
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: D.fsHead + 1,
+                  letterSpacing: 0.2,
+                  color: "#ffcf57",
+                }}
+              >
+                {leg.title}
+              </h3>
+              {winnerName ? (
+                <span
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,207,87,.30)",
+                    background: "rgba(255,207,87,.10)",
+                    color: "#ffcf57",
+                    fontSize: 10.5,
+                    fontWeight: 1000,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🏆 {winnerName}
+                </span>
+              ) : null}
+            </div>
+
+            <TableColMajor
+              columns={cols}
+              rowGroups={[
+                {
+                  rows: [
+                    { label: "Score restant", get: (m) => (m.remaining != null ? f0(m.remaining) : "—") },
+                    { label: "Avg/3D", get: (m) => f2(m.avg3) },
+                    { label: "Best visit", get: (m) => f0(m.bestVisit) },
+                    { label: "Darts", get: (m) => f0(m.darts) },
+                    { label: "Visits", get: (m) => f0(m.visits) },
+                    { label: "Points", get: (m) => f0(m.points) },
+                    { label: "60+", get: (m) => f0(m.t60) },
+                    { label: "100+", get: (m) => f0(m.t100) },
+                    { label: "140+", get: (m) => f0(m.t140) },
+                    { label: "180", get: (m) => f0(m.t180) },
+                    { label: "Best CO", get: (m) => f0(m.bestCO) },
+                    { label: "CO hits", get: (m) => f0(m.coHits) },
+                    { label: "CO att.", get: (m) => f0(m.coAtt) },
+                    { label: "CO %", get: (m) => pct(m.coPct) },
+                  ],
+                },
+              ]}
+              dataMap={leg.metrics}
+              tableStyle={tableStyle}
+            />
+
+            <div style={{ marginTop: 8 }}>
+              <VisitsList
+                visits={leg.visits.map((v, idx) => ({ ...v, idx: idx + 1 }))}
+                playersById={Object.fromEntries(players.map((p) => [p.id, p]))}
+              />
+            </div>
+          </Panel>
+        );
+      })}
+    </>
+  );
+}
+
 function Trophy(props: any) {
   return (
     <svg viewBox="0 0 24 24" width={16} height={16} {...props}>
@@ -3277,6 +3680,10 @@ function buildVisitHistory(
   }
 
   if (rawVisits.length) {
+    const legsPerSet = getLegsPerSetFromRecord(rec);
+    let inferredLegNo = 1;
+    let previousWasFinish = false;
+
     return rawVisits.map((v, idx) => {
       const dartsSrc: any[] =
         Array.isArray(v.darts)
@@ -3300,16 +3707,36 @@ function buildVisitHistory(
         0
       );
       const bust = !!(v.bust ?? v.isBust);
+
+      const strongLeg = Number(v.matchLegNo ?? v.legIndex ?? (Number(v.legNo) > 1 ? v.legNo : undefined));
+      if (Number.isFinite(strongLeg) && strongLeg > 0) {
+        inferredLegNo = strongLeg;
+      } else if (idx > 0 && previousWasFinish) {
+        inferredLegNo += 1;
+      }
+
+      const setNoRaw = Number(v.setNo ?? v.setIndex ?? v.currentSet);
+      const legInSetRaw = Number(v.legInSet ?? v.currentLeg);
+      const setNo = Number.isFinite(setNoRaw) && setNoRaw > 0
+        ? setNoRaw
+        : Math.floor((inferredLegNo - 1) / legsPerSet) + 1;
+      const legInSet = Number.isFinite(legInSetRaw) && legInSetRaw > 0
+        ? legInSetRaw
+        : ((inferredLegNo - 1) % legsPerSet) + 1;
+
       const finish =
         !!(v.finish ?? v.isFinish ?? v.isCheckout) || (!bust && after === 0 && before > 0);
       const compactScore = n(
         v.score ?? v.points ?? v.visitScore ?? v.visitPoints ?? v.total ?? v.value,
         darts.reduce((sum: number, d: any) => sum + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult), 0)
       );
+      previousWasFinish = finish && !bust;
 
       return {
         idx: idx + 1,
-        legNo: Number(v.legNo ?? v.legIndex ?? 1) || 1,
+        legNo: inferredLegNo,
+        setNo,
+        legInSet,
         playerId: String(v.playerId ?? v.pid ?? v.p ?? v.profileId ?? players[idx % players.length]?.id ?? ""),
         darts,
         scoreBefore: before,
@@ -3371,7 +3798,50 @@ function buildVisitHistory(
 
   // 2a) Replay tagué : groupe par joueur + maximum 3 darts par volée.
   if (hasTaggedPlayers) {
+    const legsPerSet = getLegsPerSetFromRecord(rec);
+    const resetScores = () => order.forEach((pid) => { scores[pid] = Number(startScore) || 501; });
+    const rawLegNo = (raw: any): number | null => {
+      const val = Number(raw?.matchLegNo ?? raw?.legNo ?? raw?.legIndex);
+      return Number.isFinite(val) && val > 0 ? val : null;
+    };
+    const rawSetNo = (raw: any): number | null => {
+      const val = Number(raw?.setNo ?? raw?.setIndex ?? raw?.currentSet);
+      return Number.isFinite(val) && val > 0 ? val : null;
+    };
+    const rawLegInSet = (raw: any): number | null => {
+      const val = Number(raw?.legInSet ?? raw?.currentLeg);
+      return Number.isFinite(val) && val > 0 ? val : null;
+    };
+
     let current: any = null;
+    let currentLegNo = rawLegNo(rawDarts[0]) || 1;
+    let currentSetNo = rawSetNo(rawDarts[0]) || 1;
+    let currentLegInSet = rawLegInSet(rawDarts[0]) || currentLegNo;
+    let pendingNewLeg = false;
+
+    const openNextLegIfNeeded = (raw?: any) => {
+      const explicit = raw ? rawLegNo(raw) : null;
+      const setExplicit = raw ? rawSetNo(raw) : null;
+      const legInSetExplicit = raw ? rawLegInSet(raw) : null;
+
+      if (explicit && explicit !== currentLegNo) {
+        currentLegNo = explicit;
+        currentSetNo = setExplicit || currentSetNo;
+        currentLegInSet = legInSetExplicit || ((currentLegNo - 1) % legsPerSet) + 1;
+        resetScores();
+        pendingNewLeg = false;
+        return;
+      }
+
+      if (pendingNewLeg) {
+        currentLegNo += 1;
+        currentSetNo = setExplicit || Math.floor((currentLegNo - 1) / legsPerSet) + 1;
+        currentLegInSet = legInSetExplicit || ((currentLegNo - 1) % legsPerSet) + 1;
+        resetScores();
+        pendingNewLeg = false;
+      }
+    };
+
     const flush = () => {
       if (!current || !current.darts?.length) return;
       const before = n(current.scoreBefore, scores[current.playerId] ?? startScore);
@@ -3394,23 +3864,36 @@ function buildVisitHistory(
       if (after === 0) finish = true;
       visits.push({
         idx: visits.length + 1,
-        legNo: Number(current.legNo ?? 1) || 1,
+        legNo: Number(current.legNo ?? currentLegNo) || 1,
+        setNo: Number(current.setNo ?? currentSetNo) || 1,
+        legInSet: Number(current.legInSet ?? currentLegInSet) || Number(current.legNo ?? currentLegNo) || 1,
         playerId: current.playerId,
         darts: current.darts,
         scoreBefore: before,
         scoreAfter: after,
         bust: !!(current.bust || bust),
         finish: !!(current.finish || finish),
+        score: !!(current.bust || bust) ? 0 : Math.max(0, before - after),
       });
       scores[current.playerId] = after;
+      if (finish && !(current.bust || bust)) pendingNewLeg = true;
       current = null;
     };
 
     for (const raw of rawDarts) {
       const pid = dartPid(raw) || order[0];
       const d = parseDart(raw);
+      const explicitLeg = rawLegNo(raw);
+      if (explicitLeg && explicitLeg !== currentLegNo) {
+        flush();
+        openNextLegIfNeeded(raw);
+      } else if (pendingNewLeg) {
+        flush();
+        openNextLegIfNeeded(raw);
+      }
       if (!current || current.playerId !== pid || current.darts.length >= 3) {
         flush();
+        if (pendingNewLeg) openNextLegIfNeeded(raw);
         current = {
           playerId: pid,
           darts: [],
@@ -3418,7 +3901,9 @@ function buildVisitHistory(
           scoreAfter: raw?.scoreAfter ?? raw?.after ?? raw?.endScore,
           bust: raw?.bust ?? raw?.isBust,
           finish: raw?.finish ?? raw?.isFinish,
-          legNo: raw?.legNo ?? raw?.legIndex ?? 1,
+          legNo: rawLegNo(raw) || currentLegNo,
+          setNo: rawSetNo(raw) || currentSetNo,
+          legInSet: rawLegInSet(raw) || currentLegInSet,
         };
       }
       current.darts.push(d);

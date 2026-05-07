@@ -1101,6 +1101,28 @@ const {
 
 const activePlayer = players.find((p) => p.id === activePlayerId) || null;
 
+// Métadonnées de replay : indispensable pour distinguer les legs/sets dans
+// le résumé final et dans l'historique détaillé. Sans ça, un match en plusieurs
+// legs était relu comme une seule manche continue.
+const currentReplayLegMeta = React.useCallback(() => {
+  const st: any = state || {};
+  const currentSet = Number(st.currentSet ?? 1) || 1;
+  const currentLeg = Number(st.currentLeg ?? 1) || 1;
+  const legsPerSet = Math.max(1, Number((config as any)?.legsPerSet ?? 1) || 1);
+  const matchLegNo = (currentSet - 1) * legsPerSet + currentLeg;
+  return {
+    setNo: currentSet,
+    setIndex: currentSet,
+    currentSet,
+    legNo: matchLegNo,
+    legIndex: matchLegNo,
+    matchLegNo,
+    currentLeg,
+    legInSet: currentLeg,
+    legsPerSet,
+  };
+}, [state, config]);
+
 // ============================================================
 // 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
 // - Sync currentThrow + lastVisitsByPlayer (utilisé par PlayersListOnly)
@@ -1228,7 +1250,7 @@ const isBotTurn = React.useMemo(() => {
             throwDart(input);
 
             // Autosave + replay log
-            const tracked = enrichReplayDart(input, pid, { source: "voice", ts: Date.now() });
+            const tracked = enrichReplayDart(input, pid, { ...currentReplayLegMeta(), source: "voice", ts: Date.now() });
             replayDartsRef.current = replayDartsRef.current.concat([tracked] as any);
             debugReplayDarts("voice-dart", [tracked] as any);
             persistAutosave();
@@ -1596,10 +1618,12 @@ const activeTeam = React.useMemo(() => {
     }
   }, [config, throwDart]);
 
-  // Quand le match est terminé : on vide l’autosave
+  // Quand le match est terminé : on vide seulement l’autosave navigateur.
+  // IMPORTANT : on ne vide PAS replayDartsRef ici, car l'effet de sauvegarde
+  // Historique s'exécute aussi sur status === "match_end" et doit encore lire
+  // toutes les fléchettes du match complet (multi-legs / multi-sets inclus).
   React.useEffect(() => {
     if (status === "match_end") {
-      replayDartsRef.current = [];
       if (typeof window !== "undefined") {
         try {
           window.localStorage.removeItem(AUTOSAVE_KEY);
@@ -2296,7 +2320,7 @@ const validateThrow = async () => {
 
   currentThrowFromEngineRef.current = false;
 
-  const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { source: "manual", ts: Date.now() }));
+  const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { ...currentReplayLegMeta(), source: "manual", ts: Date.now() }));
   replayDartsRef.current = replayDartsRef.current.concat(trackedInputs as any);
   debugReplayDarts("manual-visit", trackedInputs as any);
   persistAutosave();
@@ -2369,7 +2393,7 @@ React.useEffect(() => {
       throwDart(dart);
 
       // Autosave + replay log
-      const tracked = enrichReplayDart(dart, activePlayerId, { source: "external", ts: Date.now() });
+      const tracked = enrichReplayDart(dart, activePlayerId, { ...currentReplayLegMeta(), source: "external", ts: Date.now() });
       replayDartsRef.current = replayDartsRef.current.concat([tracked] as any);
       debugReplayDarts("external-dart", [tracked] as any);
       persistAutosave();
@@ -2447,7 +2471,7 @@ React.useEffect(() => {
         throwDart(d);
       }
 
-      const trackedDarts = darts.map((d: any) => enrichReplayDart(d, pid, { source: "external_visit", ts: Date.now() }));
+      const trackedDarts = darts.map((d: any) => enrichReplayDart(d, pid, { ...currentReplayLegMeta(), source: "external_visit", ts: Date.now() }));
       replayDartsRef.current = replayDartsRef.current.concat(trackedDarts as any);
       debugReplayDarts("external-visit", trackedDarts as any);
       persistAutosave();
@@ -2471,6 +2495,7 @@ React.useEffect(() => {
   throwDart,
   persistAutosave,
   playHitSfx,
+  currentReplayLegMeta,
 ]);
 
   // =====================================================
@@ -3085,7 +3110,7 @@ try {
       });
 
       // Autosave : on enregistre aussi les volées des bots
-      const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { source: "bot", ts: Date.now() }));
+      const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { ...currentReplayLegMeta(), source: "bot", ts: Date.now() }));
       replayDartsRef.current = replayDartsRef.current.concat(trackedInputs as any);
       debugReplayDarts("bot-visit", trackedInputs as any);
       persistAutosave();
@@ -3105,6 +3130,7 @@ try {
     players,
     throwDart,
     persistAutosave,
+    currentReplayLegMeta,
   ]);
 
   // =====================================================
@@ -5464,6 +5490,24 @@ function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undef
     out.profileId = pid;
     out.p = pid;
   }
+  const legNo = Number(extra?.matchLegNo ?? extra?.legNo ?? extra?.legIndex);
+  if (Number.isFinite(legNo) && legNo > 0) {
+    out.legNo = legNo;
+    out.legIndex = legNo;
+    out.matchLegNo = legNo;
+  }
+  const setNo = Number(extra?.setNo ?? extra?.setIndex ?? extra?.currentSet);
+  if (Number.isFinite(setNo) && setNo > 0) {
+    out.setNo = setNo;
+    out.setIndex = setNo;
+    out.currentSet = setNo;
+  }
+  const legInSet = Number(extra?.legInSet ?? extra?.currentLeg);
+  if (Number.isFinite(legInSet) && legInSet > 0) {
+    out.legInSet = legInSet;
+    out.currentLeg = legInSet;
+  }
+  if (extra?.legsPerSet != null) out.legsPerSet = Number(extra.legsPerSet) || extra.legsPerSet;
   if (extra?.source) out.source = extra.source;
   if (extra?.ts != null) out.ts = extra.ts;
   return out as X01DartInputV3;
@@ -5756,7 +5800,10 @@ function buildReplayVisitsForX01History(
   const startScore = Number(startScoreInput || 501) || 501;
   const outMode = String(outModeInput || "double").toLowerCase();
   const scores: Record<string, number> = {};
-  for (const id of order) scores[id] = startScore;
+  const resetScores = () => {
+    for (const id of order) scores[id] = startScore;
+  };
+  resetScores();
 
   const dartPid = (raw: any): string => String(raw?.playerId ?? raw?.pid ?? raw?.p ?? raw?.profileId ?? "").trim();
   const hasTaggedPlayers = arr.some((d: any) => !!dartPid(d));
@@ -5770,26 +5817,68 @@ function buildReplayVisitsForX01History(
     if (outMode === "master") return parsed.multiplier === 2 || parsed.multiplier === 3 || (parsed.segment === 25 && parsed.multiplier === 2);
     return parsed.multiplier === 2 || (parsed.segment === 25 && parsed.multiplier === 2);
   };
+  const explicitLegNo = (raw: any): number | null => {
+    const n = Number(raw?.matchLegNo ?? raw?.legNo ?? raw?.legIndex);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const explicitSetNo = (raw: any): number | null => {
+    const n = Number(raw?.setNo ?? raw?.setIndex ?? raw?.currentSet);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const explicitLegInSet = (raw: any): number | null => {
+    const n = Number(raw?.legInSet ?? raw?.currentLeg);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
 
   const visits: any[] = [];
   let currentPid: string | null = null;
   let currentDarts: any[] = [];
+  let currentMeta: any = null;
   let fallbackVisitIndex = 0;
   let fallbackDartInVisit = 0;
+  let currentLegNo = explicitLegNo(arr[0]) || 1;
+  let currentSetNo = explicitSetNo(arr[0]) || 1;
+  let currentLegInSet = explicitLegInSet(arr[0]) || currentLegNo;
+  let pendingNewLeg = false;
+
+  const startNextReplayLegIfNeeded = (raw?: any) => {
+    const rawLeg = raw ? explicitLegNo(raw) : null;
+    const rawSet = raw ? explicitSetNo(raw) : null;
+    const rawLegInSet = raw ? explicitLegInSet(raw) : null;
+
+    if (rawLeg && rawLeg !== currentLegNo) {
+      currentLegNo = rawLeg;
+      currentSetNo = rawSet || currentSetNo;
+      currentLegInSet = rawLegInSet || currentLegNo;
+      resetScores();
+      pendingNewLeg = false;
+      return;
+    }
+
+    if (pendingNewLeg) {
+      currentLegNo += 1;
+      if (rawSet) currentSetNo = rawSet;
+      if (rawLegInSet) currentLegInSet = rawLegInSet;
+      else currentLegInSet += 1;
+      resetScores();
+      pendingNewLeg = false;
+    }
+  };
 
   const flush = () => {
     if (!currentPid || !currentDarts.length) {
       currentPid = null;
       currentDarts = [];
+      currentMeta = null;
       return;
     }
     if (scores[currentPid] == null) scores[currentPid] = startScore;
-    const before = Number(scores[currentPid] ?? startScore) || startScore;
+    const before = Number(currentMeta?.scoreBefore ?? scores[currentPid] ?? startScore) || startScore;
     let after = before;
     let bust = false;
     let finish = false;
-
     let countedDarts = currentDarts.slice();
+
     for (let i = 0; i < currentDarts.length; i += 1) {
       const raw = currentDarts[i];
       const value = dartValue(raw);
@@ -5798,13 +5887,13 @@ function buildReplayVisitsForX01History(
       if (tentative < 0 || tentative === 1 || (tentative === 0 && !canFinishWith(lastForFinish))) {
         bust = true;
         after = before;
-        countedDarts = currentDarts.slice(0, i + 1); // on compte seulement les fléchettes réellement lancées
+        countedDarts = currentDarts.slice(0, i + 1);
         break;
       }
       after = tentative;
       if (after === 0) {
         finish = true;
-        countedDarts = currentDarts.slice(0, i + 1); // finish en 1 ou 2 darts : pas de padding à 3
+        countedDarts = currentDarts.slice(0, i + 1);
         break;
       }
     }
@@ -5823,7 +5912,12 @@ function buildReplayVisitsForX01History(
 
     visits.push({
       idx: visits.length + 1,
-      legNo: 1,
+      legNo: Number(currentMeta?.legNo ?? currentLegNo) || 1,
+      legIndex: Number(currentMeta?.legNo ?? currentLegNo) || 1,
+      matchLegNo: Number(currentMeta?.legNo ?? currentLegNo) || 1,
+      setNo: Number(currentMeta?.setNo ?? currentSetNo) || 1,
+      setIndex: Number(currentMeta?.setNo ?? currentSetNo) || 1,
+      legInSet: Number(currentMeta?.legInSet ?? currentLegInSet) || Number(currentMeta?.legNo ?? currentLegNo) || 1,
       playerId: currentPid,
       pid: currentPid,
       darts,
@@ -5839,8 +5933,10 @@ function buildReplayVisitsForX01History(
     });
 
     scores[currentPid] = after;
+    if (finish) pendingNewLeg = true;
     currentPid = null;
     currentDarts = [];
+    currentMeta = null;
   };
 
   for (const raw of arr) {
@@ -5854,10 +5950,27 @@ function buildReplayVisitsForX01History(
       }
     }
     if (!pid) continue;
+
+    const rawLeg = explicitLegNo(raw);
+    if (rawLeg && rawLeg !== currentLegNo) {
+      flush();
+      startNextReplayLegIfNeeded(raw);
+    } else if (pendingNewLeg) {
+      flush();
+      startNextReplayLegIfNeeded(raw);
+    }
+
     if (scores[pid] == null) scores[pid] = startScore;
     if (currentPid !== pid || currentDarts.length >= 3) {
       flush();
+      if (pendingNewLeg) startNextReplayLegIfNeeded(raw);
       currentPid = pid;
+      currentMeta = {
+        legNo: explicitLegNo(raw) || currentLegNo,
+        setNo: explicitSetNo(raw) || currentSetNo,
+        legInSet: explicitLegInSet(raw) || currentLegInSet,
+        scoreBefore: raw?.scoreBefore ?? raw?.before ?? raw?.startScore ?? scores[pid] ?? startScore,
+      };
     }
     currentDarts.push(raw);
   }
