@@ -36,6 +36,60 @@ const BLACK = "#000000";
 const BOT_RING = "#00b4ff";
 const EXPORT_SIZE = 256;
 
+const CREDIT_STORAGE_KEY = "msc_avatar_ai_credits_v1";
+
+type AvatarCreditState = {
+  freeUsed: boolean;
+  credits: number;
+  updatedAt: string;
+};
+
+type CreditPack = {
+  id: "pack10" | "pack30" | "pack100";
+  label: string;
+  credits: number;
+  price: string;
+};
+
+const CREDIT_PACKS: CreditPack[] = [
+  { id: "pack10", label: "Pack 10 avatars IA", credits: 10, price: "1,99 €" },
+  { id: "pack30", label: "Pack 30 avatars IA", credits: 30, price: "4,99 €" },
+  { id: "pack100", label: "Pack 100 avatars IA", credits: 100, price: "9,99 €" },
+];
+
+function readCreditState(): AvatarCreditState {
+  try {
+    const raw = localStorage.getItem(CREDIT_STORAGE_KEY);
+    if (!raw) return { freeUsed: false, credits: 0, updatedAt: new Date().toISOString() };
+    const parsed = JSON.parse(raw) as Partial<AvatarCreditState>;
+    return {
+      freeUsed: Boolean(parsed.freeUsed),
+      credits: Math.max(0, Math.floor(Number(parsed.credits || 0))),
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+    };
+  } catch {
+    return { freeUsed: false, credits: 0, updatedAt: new Date().toISOString() };
+  }
+}
+
+function writeCreditState(next: AvatarCreditState): AvatarCreditState {
+  const safe = {
+    freeUsed: Boolean(next.freeUsed),
+    credits: Math.max(0, Math.floor(Number(next.credits || 0))),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(CREDIT_STORAGE_KEY, JSON.stringify(safe));
+  } catch {}
+  return safe;
+}
+
+function creditLabel(state: AvatarCreditState): string {
+  if (!state.freeUsed) return "1 avatar IA gratuit disponible";
+  if (state.credits > 0) return `${state.credits} crédit${state.credits > 1 ? "s" : ""} avatar IA disponible${state.credits > 1 ? "s" : ""}`;
+  return "Aucun crédit avatar IA disponible";
+}
+
 const R_OUTER = 248;
 const R_INNER = 188;
 const STROKE = 18;
@@ -255,6 +309,7 @@ export default function AvatarCreator({
   const [busy, setBusy] = React.useState(false);
   const [lastExport, setLastExport] = React.useState<string | null>(null);
   const [debugText, setDebugText] = React.useState<string | null>(null);
+  const [creditState, setCreditState] = React.useState<AvatarCreditState>(() => readCreditState());
 
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -264,7 +319,27 @@ export default function AvatarCreator({
   const RING_COLOR = isBotMode ? BOT_RING : GOLD;
   const avatarImgSize = R_AVATAR * 2 * zoom;
   const displayName = (name || "PLAYER").trim().toUpperCase();
+  const hasAiCredit = !creditState.freeUsed || creditState.credits > 0;
+  const remainingPaidCredits = creditState.credits;
   const panelWidth = 410;
+
+  function consumeAvatarCreditAfterSuccess() {
+    setCreditState((current) => {
+      const next = current.freeUsed
+        ? { ...current, credits: Math.max(0, current.credits - 1) }
+        : { ...current, freeUsed: true };
+      return writeCreditState(next);
+    });
+  }
+
+  function handleBuyPack(pack: CreditPack) {
+    // Paiement réel à brancher plus tard côté NAS/Stripe/Store.
+    // On n'ajoute volontairement pas les crédits ici pour éviter une faille évidente.
+    setError(null);
+    setStatus(
+      `${pack.label} — ${pack.price}. Paiement à brancher côté backend avant activation automatique des crédits.`
+    );
+  }
 
   const handleBack = React.useCallback(() => {
     if (onBack) onBack();
@@ -330,6 +405,10 @@ export default function AvatarCreator({
       setError(t("avatar.error.noAvatar", "Importe d’abord une photo avant de générer la caricature."));
       return;
     }
+    if (!hasAiCredit) {
+      setError("Tu as utilisé ton avatar IA gratuit. Achète un pack de crédits pour relancer une génération IA.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setLastExport(null);
@@ -352,10 +431,11 @@ export default function AvatarCreator({
         const fitted = await fitDataUrlToWebp(generated.dataUrl, 512, 0.82);
         setPhotoUrl(fitted);
         setZoom(1.12);
+        consumeAvatarCreditAfterSuccess();
         setStatus(
           generated.provider === "openai"
-            ? t("avatar.status.generatedOpenAi", "Vraie caricature IA générée. Rendu cartoon compressé en WebP.")
-            : t("avatar.status.generatedAi", "Caricature IA générée puis compressée en WebP.")
+            ? t("avatar.status.generatedOpenAi", "Vraie caricature IA générée. 1 crédit avatar consommé.")
+            : t("avatar.status.generatedAi", "Caricature IA générée. 1 crédit avatar consommé.")
         );
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
@@ -516,7 +596,7 @@ export default function AvatarCreator({
             <button
               type="button"
               onClick={handleGenerateCartoon}
-              disabled={busy || !originalFile}
+              disabled={busy || !originalFile || !hasAiCredit}
               style={{
                 width: "100%",
                 borderRadius: 13,
@@ -524,14 +604,14 @@ export default function AvatarCreator({
                 fontSize: 15,
                 fontWeight: 900,
                 border: "none",
-                cursor: busy || !originalFile ? "not-allowed" : "pointer",
+                cursor: busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer",
                 background: "linear-gradient(135deg, #B06CFF, #7C3AED)",
                 color: "#FFF",
                 boxShadow: "0 14px 28px rgba(124,58,237,.34)",
-                opacity: busy || !originalFile ? 0.55 : 1,
+                opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1,
               }}
             >
-              {busy ? "⏳ Traitement…" : "✨ Générer la caricature IA"}
+              {busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit avatar IA requis"}
             </button>
 
             <button
@@ -557,6 +637,51 @@ export default function AvatarCreator({
 
             <div style={{ marginTop: 12, opacity: 0.78, fontSize: 12.5, lineHeight: 1.4 }}>
               {t("avatar.step1.help", "Le médaillon est ajouté après la génération pour garder exactement le cadre Multisports Scoring.")}
+            </div>
+          </div>
+
+          <div style={{ ...cardBase, padding: 16, background: "linear-gradient(145deg, rgba(12,38,32,.96), rgba(7,12,14,.98))" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 950, textTransform: "uppercase", fontSize: 13 }}>Crédits avatars IA</div>
+                <div style={{ fontSize: 12.5, opacity: 0.82, marginTop: 4 }}>{creditLabel(creditState)}</div>
+              </div>
+              <div style={{ minWidth: 62, textAlign: "center", borderRadius: 12, padding: "8px 10px", background: hasAiCredit ? "rgba(34,197,94,.18)" : "rgba(255,93,93,.16)", border: "1px solid rgba(255,255,255,.12)", fontWeight: 950 }}>
+                {!creditState.freeUsed ? "FREE" : remainingPaidCredits}
+              </div>
+            </div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.35, opacity: 0.82, marginBottom: 12 }}>
+              1ère caricature IA offerte. Ensuite, chaque génération réussie consomme 1 crédit.
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {CREDIT_PACKS.map((pack) => (
+                <button
+                  key={pack.id}
+                  type="button"
+                  onClick={() => handleBuyPack(pack)}
+                  disabled={busy}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    width: "100%",
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                    border: "1px solid rgba(255,255,255,.14)",
+                    background: "rgba(255,255,255,.065)",
+                    color: "#fff",
+                    cursor: busy ? "not-allowed" : "pointer",
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  <span style={{ fontWeight: 850 }}>{pack.label}</span>
+                  <span style={{ fontWeight: 950, color: GOLD_2 }}>{pack.price}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, opacity: 0.68, marginTop: 10, lineHeight: 1.35 }}>
+              Sécurité actuelle : blocage côté application. Pour une mise en production publique, le paiement et les crédits devront être validés côté serveur NAS/Stripe avant d'appeler OpenAI.
             </div>
           </div>
 
