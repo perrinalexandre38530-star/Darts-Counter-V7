@@ -321,6 +321,151 @@ async function handleDownload(request: Request, env: Env): Promise<Response> {
   return jsonResponse(JSON.parse(raw), 200);
 }
 
+
+// --------- Viewer tablette live (snapshot léger temporaire) ---------
+
+const VIEWER_TTL_SECONDS = 60 * 60 * 3; // 3 heures
+
+function normalizeViewerId(input: string): string {
+  return String(input || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "")
+    .slice(0, 32);
+}
+
+function viewerSessionKey(sessionId: string) {
+  return `viewer:${sessionId}`;
+}
+
+function viewerSnapshotKey(sessionId: string) {
+  return `viewer:${sessionId}:snapshot`;
+}
+
+async function handleViewerCreate(_request: Request, env: Env): Promise<Response> {
+  let sessionId = "";
+  for (let i = 0; i < 6; i++) {
+    const candidate = generateToken(12);
+    const existing = await env.DC_SYNC.get(viewerSessionKey(candidate));
+    if (!existing) {
+      sessionId = candidate;
+      break;
+    }
+  }
+  if (!sessionId) return jsonError("Unable to create viewer session", 500);
+
+  const meta = {
+    sessionId,
+    code: sessionId,
+    kind: "viewer_live_v1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    rev: 0,
+  };
+
+  await env.DC_SYNC.put(viewerSessionKey(sessionId), JSON.stringify(meta), {
+    expirationTtl: VIEWER_TTL_SECONDS,
+  });
+
+  const initialSnapshot = {
+    v: 1,
+    sessionId,
+    rev: 0,
+    updatedAt: Date.now(),
+    sport: "darts",
+    game: "unknown",
+    phase: "lobby",
+    title: "Multisports Scoring",
+    players: [],
+    meta: { text: "En attente du lancement de la partie" },
+    source: "worker",
+  };
+
+  await env.DC_SYNC.put(viewerSnapshotKey(sessionId), JSON.stringify(initialSnapshot), {
+    expirationTtl: VIEWER_TTL_SECONDS,
+  });
+
+  return jsonResponse({ sessionId, code: sessionId, expiresInSeconds: VIEWER_TTL_SECONDS }, 200);
+}
+
+async function handleViewerPostSnapshot(request: Request, env: Env, rawSessionId: string): Promise<Response> {
+  const sessionId = normalizeViewerId(rawSessionId);
+  if (!sessionId) return jsonError("Missing viewer session id", 400);
+
+  const sessionRaw = await env.DC_SYNC.get(viewerSessionKey(sessionId));
+  if (!sessionRaw) return jsonError("Viewer session not found", 404);
+
+  let snapshot: any;
+  try {
+    snapshot = await request.json();
+  } catch {
+    return jsonError("Invalid JSON body", 400);
+  }
+
+  if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.players)) {
+    return jsonError("Invalid viewer snapshot", 400);
+  }
+
+  let meta: any = {};
+  try {
+    meta = JSON.parse(sessionRaw || "{}");
+  } catch {}
+  const rev = Number(meta.rev || 0) + 1;
+  const payload = {
+    ...snapshot,
+    v: 1,
+    sessionId,
+    rev,
+    updatedAt: Date.now(),
+  };
+
+  await env.DC_SYNC.put(viewerSnapshotKey(sessionId), JSON.stringify(payload), {
+    expirationTtl: VIEWER_TTL_SECONDS,
+  });
+  await env.DC_SYNC.put(viewerSessionKey(sessionId), JSON.stringify({ ...meta, sessionId, code: sessionId, rev, updatedAt: new Date().toISOString() }), {
+    expirationTtl: VIEWER_TTL_SECONDS,
+  });
+
+  return jsonResponse({ ok: true, sessionId, rev, updatedAt: payload.updatedAt }, 200);
+}
+
+async function handleViewerGetSnapshot(_request: Request, env: Env, rawSessionId: string): Promise<Response> {
+  const sessionId = normalizeViewerId(rawSessionId);
+  if (!sessionId) return jsonError("Missing viewer session id", 400);
+
+  const raw = await env.DC_SYNC.get(viewerSnapshotKey(sessionId));
+  if (!raw) return jsonError("Viewer snapshot not found", 404);
+
+  try {
+    return jsonResponse({ snapshot: JSON.parse(raw) }, 200);
+  } catch {
+    return jsonError("Corrupted viewer snapshot", 500);
+  }
+}
+
+async function handleViewerDelete(_request: Request, env: Env, rawSessionId: string): Promise<Response> {
+  const sessionId = normalizeViewerId(rawSessionId);
+  if (!sessionId) return jsonError("Missing viewer session id", 400);
+
+  await env.DC_SYNC.put(viewerSessionKey(sessionId), JSON.stringify({ sessionId, closedAt: new Date().toISOString(), status: "closed" }), {
+    expirationTtl: 60,
+  });
+  await env.DC_SYNC.put(viewerSnapshotKey(sessionId), JSON.stringify({
+    v: 1,
+    sessionId,
+    updatedAt: Date.now(),
+    game: "unknown",
+    phase: "finished",
+    title: "Session viewer fermée",
+    players: [],
+    meta: { text: "Session fermée" },
+  }), {
+    expirationTtl: 60,
+  });
+
+  return jsonResponse({ ok: true }, 200);
+}
+
 // --------- Dart scanner /dart-scan (POST) ---------
 
 export type DartScanOptions = {
@@ -424,7 +569,7 @@ const worker = {
     // ------- Préflight CORS -------
     if (request.method === "OPTIONS") {
       const headers: Record<string, string> = {
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,Authorization",
       };
       if (origin && isOriginAllowed(env, origin)) {
@@ -448,6 +593,24 @@ const worker = {
 
     if (url.pathname === "/api/sync/download" && request.method === "GET") {
       const res = await handleDownload(request, env);
+      return withCors(env, request, res);
+    }
+
+    // ------- Viewer tablette live : /viewer/session -------
+    if ((url.pathname === "/viewer/session" || url.pathname === "/api/viewer/session") && request.method === "POST") {
+      const res = await handleViewerCreate(request, env);
+      return withCors(env, request, res);
+    }
+
+    const viewerMatch = url.pathname.match(/^\/(?:api\/)?viewer\/session\/([^/]+)(?:\/snapshot)?$/);
+    if (viewerMatch) {
+      const sessionId = viewerMatch[1];
+      const isSnapshotRoute = url.pathname.endsWith("/snapshot");
+      let res: Response;
+      if (isSnapshotRoute && request.method === "GET") res = await handleViewerGetSnapshot(request, env, sessionId);
+      else if (isSnapshotRoute && request.method === "POST") res = await handleViewerPostSnapshot(request, env, sessionId);
+      else if (!isSnapshotRoute && request.method === "DELETE") res = await handleViewerDelete(request, env, sessionId);
+      else res = jsonError("Unsupported viewer method", 405);
       return withCors(env, request, res);
     }
 

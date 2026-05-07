@@ -331,6 +331,9 @@ import EnculettePlay from "./pages/EnculettePlay";
 import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
+import ViewerHost from "./pages/viewer/ViewerHost";
+import ViewerJoin from "./pages/viewer/ViewerJoin";
+import ViewerDisplay from "./pages/viewer/ViewerDisplay";
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
 import { runtimeDiag, diagMarkStart, diagMarkEnd } from "./lib/runtimeDiag";
 import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallow } from "./lib/profilesDiag";
@@ -645,6 +648,9 @@ type Tab =
   | "cast_join"
   | "cast_host"
   | "cast_room"
+  | "viewer_host"
+  | "viewer_join"
+  | "viewer_display"
   | "mode_not_ready"
   // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
   | "petanque_menu"
@@ -1899,6 +1905,25 @@ useEffect(() => {
         setTab(roomId ? "cast_room" : "cast_host");
         return;
       }
+      if (h === "#/viewer" || h === "#/viewer/") {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("viewer_host");
+        return;
+      }
+      if (h.startsWith("#/viewer/join")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("viewer_join");
+        return;
+      }
+      if (h.startsWith("#/viewer/")) {
+        const sessionId = h.replace(/^#\/viewer\//, "").split(/[?#]/)[0] || null;
+        setShowSplash(false);
+        setRouteParams(sessionId ? { sessionId } : null);
+        setTab(sessionId ? "viewer_display" : "viewer_host");
+        return;
+      }
       if (h.startsWith("#/auth/login")) {
         setShowSplash(false);
         setRouteParams(null);
@@ -1959,13 +1984,17 @@ useEffect(() => {
       else if (next === "cast_host") window.location.hash = "#/cast";
       else if (next === "cast_join") window.location.hash = "#/cast/join";
       else if (next === "cast_room") window.location.hash = `#/cast/${params?.roomId || routeParams?.roomId || ""}`;
+      else if (next === "viewer_host") window.location.hash = "#/viewer";
+      else if (next === "viewer_join") window.location.hash = "#/viewer/join";
+      else if (next === "viewer_display") window.location.hash = `#/viewer/${params?.sessionId || routeParams?.sessionId || ""}`;
       else {
         const h = String(window.location.hash || "");
         if (
           h.startsWith("#/auth/") ||
           h.startsWith("#/online") ||
           h.startsWith("#/spectator") ||
-          h.startsWith("#/cast")
+          h.startsWith("#/cast") ||
+          h.startsWith("#/viewer")
         )
           window.location.hash = "#/";
       }
@@ -3135,6 +3164,18 @@ try {
 
       case "cast_room":
         page = <CastScreen go={go} roomId={(routeParams as any)?.roomId} />;
+        break;
+
+      case "viewer_host":
+        page = <ViewerHost go={go} />;
+        break;
+
+      case "viewer_join":
+        page = <ViewerJoin go={go} />;
+        break;
+
+      case "viewer_display":
+        page = <ViewerDisplay go={go} sessionId={(routeParams as any)?.sessionId} />;
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)

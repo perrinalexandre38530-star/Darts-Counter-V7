@@ -211,6 +211,9 @@ export default function CastHostPage({ go }: Props) {
                 <button onClick={start} disabled={loading} style={smallButton("gold")}>
                   {loading ? "Ouverture..." : "Lancer le Cast"}
                 </button>
+                <button onClick={() => go("viewer_host")} style={smallButton("gold")}>
+                  Viewer tablette
+                </button>
                 <button onClick={ping} disabled={loading} style={smallButton()}>
                   Envoyer un PING
                 </button>
