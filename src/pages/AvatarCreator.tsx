@@ -12,7 +12,10 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import { fileToSafeAvatarDataUrl, enforceSafeAvatarDataUrl } from "../lib/avatarSafe";
+import {
+  fileToSafeAvatarDataUrl,
+  enforceSafeAvatarDataUrl,
+} from "../lib/avatarSafe";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import InfoMini from "../components/InfoMini";
@@ -31,13 +34,23 @@ type Props = {
   isBotMode?: boolean;
 };
 
-type StyleId = "comic" | "flat" | "exaggerated" | "realistic";
+type StyleId =
+  | "exaggerated_fun"
+  | "exaggerated_realistic"
+  | "simple_elegant"
+  | "simple_fun"
+  | "three_d_fun"
+  | "three_d_elegant";
 type TabId = "ia" | "gallery" | "debug";
 
 type AiPayload = {
   dataUrl: string;
   provider?: string;
-  avatarCredits?: Partial<AvatarCreditState> & { ok?: boolean; canGenerate?: boolean; label?: string };
+  avatarCredits?: Partial<AvatarCreditState> & {
+    ok?: boolean;
+    canGenerate?: boolean;
+    label?: string;
+  };
 };
 
 const GOLD = "#F6C256";
@@ -69,17 +82,309 @@ const CREDIT_PACKS: CreditPack[] = [
 const GALLERY_STORAGE_KEY = "msc_avatar_ia_gallery_v1";
 
 const MEDALLION_COLORS = [
-  { id: "gold", label: "Or", main: "#F6C256", light: "#FFE08A", dark: "#B97913" },
-  { id: "lime", label: "Lime", main: "#A3E635", light: "#ECFCCB", dark: "#4D7C0F" },
-  { id: "cyan", label: "Cyan", main: "#38BDF8", light: "#BAE6FD", dark: "#075985" },
-  { id: "violet", label: "Violet", main: "#A78BFA", light: "#DDD6FE", dark: "#5B21B6" },
-  { id: "pink", label: "Rose", main: "#F472B6", light: "#FBCFE8", dark: "#9D174D" },
-  { id: "red", label: "Rouge", main: "#FB7185", light: "#FFE4E6", dark: "#9F1239" },
-  { id: "white", label: "Blanc", main: "#F8FAFC", light: "#FFFFFF", dark: "#94A3B8" },
+  {
+    id: "gold",
+    label: "Or",
+    main: "#F6C256",
+    light: "#FFE08A",
+    dark: "#B97913",
+  },
+  {
+    id: "lime",
+    label: "Lime",
+    main: "#A3E635",
+    light: "#ECFCCB",
+    dark: "#4D7C0F",
+  },
+  {
+    id: "cyan",
+    label: "Cyan",
+    main: "#38BDF8",
+    light: "#BAE6FD",
+    dark: "#075985",
+  },
+  {
+    id: "violet",
+    label: "Violet",
+    main: "#A78BFA",
+    light: "#DDD6FE",
+    dark: "#5B21B6",
+  },
+  {
+    id: "pink",
+    label: "Rose",
+    main: "#F472B6",
+    light: "#FBCFE8",
+    dark: "#9D174D",
+  },
+  {
+    id: "red",
+    label: "Rouge",
+    main: "#FB7185",
+    light: "#FFE4E6",
+    dark: "#9F1239",
+  },
+  {
+    id: "white",
+    label: "Blanc",
+    main: "#F8FAFC",
+    light: "#FFFFFF",
+    dark: "#94A3B8",
+  },
 ];
 
-type MedallionColor = (typeof MEDALLION_COLORS)[number];
+type AvatarStyleOption = {
+  id: StyleId;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: string;
+  accent: string;
+  preview: string;
+};
 
+const AVATAR_STYLE_OPTIONS: AvatarStyleOption[] = [
+  {
+    id: "exaggerated_fun",
+    label: "Très caricaturé — Comique & Fun",
+    shortLabel: "Très fun",
+    description:
+      "Grosse expression, yeux amplifiés, sourire très drôle, rendu cartoon assumé.",
+    icon: "🎭",
+    accent: "#F97316",
+    preview: "Yeux énormes • sourire XXL • contours épais",
+  },
+  {
+    id: "exaggerated_realistic",
+    label: "Très caricaturé — Cartoon réaliste",
+    shortLabel: "Caricature réaliste",
+    description:
+      "Caricature forte mais plus proche du visage réel, illustration propre et premium.",
+    icon: "🧑‍🎨",
+    accent: "#38BDF8",
+    preview: "Ressemblance forte • traits amplifiés • peau travaillée",
+  },
+  {
+    id: "simple_elegant",
+    label: "Caricature Simple — Élégant",
+    shortLabel: "Simple élégant",
+    description:
+      "Portrait cartoon plus sobre, propre, classe, idéal profil sérieux ou équipe.",
+    icon: "✨",
+    accent: "#F8FAFC",
+    preview: "Traits doux • rendu propre • expression naturelle",
+  },
+  {
+    id: "simple_fun",
+    label: "Caricature Simple — Cartoon & Fun",
+    shortLabel: "Simple fun",
+    description:
+      "Cartoon léger, sympathique, coloré, sans exagération extrême.",
+    icon: "😄",
+    accent: "#A3E635",
+    preview: "Sourire sympa • couleurs vives • style avatar",
+  },
+  {
+    id: "three_d_fun",
+    label: "Caricature 3D — Comique & Fun",
+    shortLabel: "3D fun",
+    description:
+      "Avatar type jouet 3D, drôle, rond, expressif, très visible dans le médaillon.",
+    icon: "🧸",
+    accent: "#A78BFA",
+    preview: "Volume 3D • grosse tête • look jouet Pixar-like",
+  },
+  {
+    id: "three_d_elegant",
+    label: "Caricature 3D — Élégant",
+    shortLabel: "3D élégant",
+    description: "Rendu 3D plus premium, lumineux et propre, moins clownesque.",
+    icon: "💎",
+    accent: "#F472B6",
+    preview: "3D premium • éclairage studio • visage propre",
+  },
+];
+
+function getAvatarStyleOption(style: StyleId): AvatarStyleOption {
+  return (
+    AVATAR_STYLE_OPTIONS.find((x) => x.id === style) || AVATAR_STYLE_OPTIONS[0]
+  );
+}
+
+function getLocalFallbackSettings(style: StyleId) {
+  switch (style) {
+    case "simple_elegant":
+      return {
+        levels: 7,
+        edgeThreshold: 28,
+        contrast: 1.12,
+        saturation: 1.12,
+        rays: 8,
+        quality: 0.78,
+      };
+    case "simple_fun":
+      return {
+        levels: 6,
+        edgeThreshold: 23,
+        contrast: 1.28,
+        saturation: 1.42,
+        rays: 12,
+        quality: 0.76,
+      };
+    case "exaggerated_realistic":
+      return {
+        levels: 6,
+        edgeThreshold: 18,
+        contrast: 1.36,
+        saturation: 1.38,
+        rays: 14,
+        quality: 0.77,
+      };
+    case "three_d_fun":
+      return {
+        levels: 5,
+        edgeThreshold: 16,
+        contrast: 1.52,
+        saturation: 1.68,
+        rays: 18,
+        quality: 0.76,
+      };
+    case "three_d_elegant":
+      return {
+        levels: 6,
+        edgeThreshold: 20,
+        contrast: 1.24,
+        saturation: 1.26,
+        rays: 10,
+        quality: 0.79,
+      };
+    case "exaggerated_fun":
+    default:
+      return {
+        levels: 5,
+        edgeThreshold: 14,
+        contrast: 1.58,
+        saturation: 1.72,
+        rays: 18,
+        quality: 0.74,
+      };
+  }
+}
+
+function AvatarStylePreview({
+  option,
+  selected,
+}: {
+  option: AvatarStyleOption;
+  selected: boolean;
+}) {
+  const faceScale = option.id.includes("exaggerated")
+    ? 1.13
+    : option.id.includes("three_d")
+      ? 1.08
+      : 1;
+  const eyeSize =
+    option.id === "exaggerated_fun"
+      ? 8
+      : option.id.includes("exaggerated")
+        ? 7
+        : 5;
+  const smile = option.id.includes("fun")
+    ? "M31 43 Q42 58 53 43"
+    : "M32 45 Q42 52 52 45";
+  return (
+    <div
+      style={{
+        width: 58,
+        height: 58,
+        borderRadius: 16,
+        padding: 4,
+        background: `radial-gradient(circle at 28% 20%, #fff, ${option.accent} 40%, #111827 78%)`,
+        boxShadow: selected
+          ? `0 0 18px ${option.accent}88`
+          : "0 10px 20px rgba(0,0,0,.28)",
+        flex: "0 0 auto",
+      }}
+    >
+      <svg
+        viewBox="0 0 84 84"
+        width="100%"
+        height="100%"
+        style={{
+          display: "block",
+          filter: option.id.includes("three_d")
+            ? "drop-shadow(0 7px 7px rgba(0,0,0,.38))"
+            : "none",
+        }}
+      >
+        <circle cx="42" cy="42" r="39" fill="#080812" opacity="0.88" />
+        <circle
+          cx="42"
+          cy="42"
+          r="34"
+          fill={option.id.includes("three_d") ? "url(#skin3d)" : "#F7B36D"}
+          transform={`scale(${faceScale}) translate(${(1 - faceScale) * 42} ${(1 - faceScale) * 42})`}
+        />
+        <defs>
+          <radialGradient id="skin3d" cx="32%" cy="24%" r="70%">
+            <stop offset="0" stopColor="#FFE0B2" />
+            <stop offset="0.58" stopColor="#F59E62" />
+            <stop offset="1" stopColor="#9A4A25" />
+          </radialGradient>
+        </defs>
+        <path
+          d="M20 30 Q42 9 64 30"
+          fill="none"
+          stroke="#2A1208"
+          strokeWidth="7"
+          strokeLinecap="round"
+        />
+        <circle
+          cx="31"
+          cy="37"
+          r={eyeSize}
+          fill="#fff"
+          stroke="#111"
+          strokeWidth="2"
+        />
+        <circle
+          cx="53"
+          cy="37"
+          r={eyeSize}
+          fill="#fff"
+          stroke="#111"
+          strokeWidth="2"
+        />
+        <circle cx="33" cy="38" r="2.6" fill="#111" />
+        <circle cx="51" cy="38" r="2.6" fill="#111" />
+        <path
+          d="M42 39 Q37 47 45 48"
+          fill="none"
+          stroke="#5B240F"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <path
+          d={smile}
+          fill="none"
+          stroke="#51180B"
+          strokeWidth={option.id.includes("fun") ? 5 : 3.5}
+          strokeLinecap="round"
+        />
+        {option.id.includes("elegant") ? (
+          <path
+            d="M24 63 Q42 72 60 63"
+            fill="none"
+            stroke="rgba(255,255,255,.5)"
+            strokeWidth="2"
+          />
+        ) : null}
+      </svg>
+    </div>
+  );
+}
+
+type MedallionColor = (typeof MEDALLION_COLORS)[number];
 
 type GalleryAvatar = {
   id: string;
@@ -93,21 +398,30 @@ function readGallery(): GalleryAvatar[] {
   try {
     const raw = localStorage.getItem(GALLERY_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((x) => x && typeof x.dataUrl === "string").slice(0, 48) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((x) => x && typeof x.dataUrl === "string").slice(0, 48)
+      : [];
   } catch {
     return [];
   }
 }
 
 function writeGallery(items: GalleryAvatar[]): GalleryAvatar[] {
-  const safe = items.filter((x) => x && typeof x.dataUrl === "string").slice(0, 48);
+  const safe = items
+    .filter((x) => x && typeof x.dataUrl === "string")
+    .slice(0, 48);
   try {
     localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(safe));
   } catch {}
   return safe;
 }
 
-type AssignableProfile = { id: string; name: string; avatarDataUrl?: string | null; avatarUrl?: string | null };
+type AssignableProfile = {
+  id: string;
+  name: string;
+  avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+};
 
 function readLocalJson<T>(key: string, fallback: T): T {
   try {
@@ -120,41 +434,59 @@ function readLocalJson<T>(key: string, fallback: T): T {
 
 function readNasAccessToken(): string {
   try {
-    const direct = String(localStorage.getItem("dc_nas_access_token_v1") || "").trim();
+    const direct = String(
+      localStorage.getItem("dc_nas_access_token_v1") || "",
+    ).trim();
     if (direct) return direct;
     const session = readLocalJson<any>("dc_online_auth_supabase_v1", null);
     return String(
       session?.token ||
-      session?.accessToken ||
-      session?.access_token ||
-      session?.session?.token ||
-      session?.session?.accessToken ||
-      session?.session?.access_token ||
-      ""
+        session?.accessToken ||
+        session?.access_token ||
+        session?.session?.token ||
+        session?.session?.accessToken ||
+        session?.session?.access_token ||
+        "",
     ).trim();
   } catch {
     return "";
   }
 }
 
-function normalizeCreditPayload(raw: any, fallback?: AvatarCreditState): AvatarCreditState {
+function normalizeCreditPayload(
+  raw: any,
+  fallback?: AvatarCreditState,
+): AvatarCreditState {
   return {
     freeUsed: Boolean(raw?.freeUsed ?? fallback?.freeUsed ?? false),
-    credits: Math.max(0, Math.floor(Number(raw?.credits ?? fallback?.credits ?? 0))),
-    updatedAt: typeof raw?.updatedAt === "string" ? raw.updatedAt : new Date().toISOString(),
+    credits: Math.max(
+      0,
+      Math.floor(Number(raw?.credits ?? fallback?.credits ?? 0)),
+    ),
+    updatedAt:
+      typeof raw?.updatedAt === "string"
+        ? raw.updatedAt
+        : new Date().toISOString(),
   };
 }
 
 function getAvatarAccountKey(): string {
   try {
     const session = readLocalJson<any>("dc_online_auth_supabase_v1", null);
-    const userId = String(session?.userId || session?.user?.id || session?.session?.user?.id || "").trim();
+    const userId = String(
+      session?.userId || session?.user?.id || session?.session?.user?.id || "",
+    ).trim();
     if (userId) return `user_${userId}`;
   } catch {}
   try {
-    const raw = localStorage.getItem("dc_store_v1") || localStorage.getItem("darts-counter-store") || "";
+    const raw =
+      localStorage.getItem("dc_store_v1") ||
+      localStorage.getItem("darts-counter-store") ||
+      "";
     const store = raw ? JSON.parse(raw) : null;
-    const active = String(store?.activeProfileId || store?.profileId || "").trim();
+    const active = String(
+      store?.activeProfileId || store?.profileId || "",
+    ).trim();
     if (active) return `profile_${active}`;
   } catch {}
   return "local_device";
@@ -165,13 +497,19 @@ function scopedCreditStorageKey(): string {
 }
 
 function readProcessedCheckoutIds(): string[] {
-  return readLocalJson<string[]>(`${CREDIT_STORAGE_KEY}:processed_sessions`, []);
+  return readLocalJson<string[]>(
+    `${CREDIT_STORAGE_KEY}:processed_sessions`,
+    [],
+  );
 }
 
 function markCheckoutProcessed(sessionId: string) {
   const ids = readProcessedCheckoutIds();
   if (!ids.includes(sessionId)) {
-    localStorage.setItem(`${CREDIT_STORAGE_KEY}:processed_sessions`, JSON.stringify([sessionId, ...ids].slice(0, 80)));
+    localStorage.setItem(
+      `${CREDIT_STORAGE_KEY}:processed_sessions`,
+      JSON.stringify([sessionId, ...ids].slice(0, 80)),
+    );
   }
 }
 
@@ -179,20 +517,32 @@ function isCheckoutProcessed(sessionId: string): boolean {
   return readProcessedCheckoutIds().includes(sessionId);
 }
 
-
 function readCreditState(): AvatarCreditState {
   // Cache d'affichage uniquement : le NAS reste l'unique source de vérité.
   try {
     const raw = localStorage.getItem(scopedCreditStorageKey());
-    if (!raw) return { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() };
-    return normalizeCreditPayload(JSON.parse(raw), { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() });
+    if (!raw)
+      return {
+        freeUsed: true,
+        credits: 0,
+        updatedAt: new Date().toISOString(),
+      };
+    return normalizeCreditPayload(JSON.parse(raw), {
+      freeUsed: true,
+      credits: 0,
+      updatedAt: new Date().toISOString(),
+    });
   } catch {
     return { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() };
   }
 }
 
 function writeCreditState(next: AvatarCreditState): AvatarCreditState {
-  const safe = normalizeCreditPayload(next, { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() });
+  const safe = normalizeCreditPayload(next, {
+    freeUsed: true,
+    credits: 0,
+    updatedAt: new Date().toISOString(),
+  });
   try {
     localStorage.setItem(scopedCreditStorageKey(), JSON.stringify(safe));
   } catch {}
@@ -201,7 +551,8 @@ function writeCreditState(next: AvatarCreditState): AvatarCreditState {
 
 function creditLabel(state: AvatarCreditState): string {
   const paid = Math.max(0, Math.floor(Number(state.credits || 0)));
-  if (paid > 0) return `${paid} crédit${paid > 1 ? "s" : ""} avatar IA disponible${paid > 1 ? "s" : ""}`;
+  if (paid > 0)
+    return `${paid} crédit${paid > 1 ? "s" : ""} avatar IA disponible${paid > 1 ? "s" : ""}`;
   if (!state.freeUsed) return "1 avatar IA gratuit disponible";
   return "Aucun crédit avatar IA disponible";
 }
@@ -250,7 +601,11 @@ function dataUrlSizeKb(dataUrl: string | null): string {
   return `${Math.max(1, Math.round((payload.length * 3) / 4 / 1024))} Ko`;
 }
 
-async function fitDataUrlToWebp(dataUrl: string, side = 512, quality = 0.82): Promise<string> {
+async function fitDataUrlToWebp(
+  dataUrl: string,
+  side = 512,
+  quality = 0.82,
+): Promise<string> {
   const img = await dataUrlToImage(dataUrl);
   const canvas = document.createElement("canvas");
   canvas.width = side;
@@ -268,7 +623,10 @@ async function fitDataUrlToWebp(dataUrl: string, side = 512, quality = 0.82): Pr
   return canvasToWebp(canvas, quality);
 }
 
-async function localPosterFallback(dataUrl: string, style: StyleId): Promise<string> {
+async function localPosterFallback(
+  dataUrl: string,
+  style: StyleId,
+): Promise<string> {
   // Ce fallback ne prétend pas remplacer une vraie IA : il sert seulement à garder
   // une app utilisable dans StackBlitz quand aucun secret/API n'est configuré.
   const img = await dataUrlToImage(dataUrl);
@@ -279,7 +637,14 @@ async function localPosterFallback(dataUrl: string, style: StyleId): Promise<str
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas_unavailable");
 
-  const bg = ctx.createRadialGradient(side / 2, side / 2, 20, side / 2, side / 2, side * 0.68);
+  const bg = ctx.createRadialGradient(
+    side / 2,
+    side / 2,
+    20,
+    side / 2,
+    side / 2,
+    side * 0.68,
+  );
   bg.addColorStop(0, "#ffe27a");
   bg.addColorStop(0.62, "#f28d21");
   bg.addColorStop(1, "#2b1200");
@@ -296,10 +661,11 @@ async function localPosterFallback(dataUrl: string, style: StyleId): Promise<str
   const imageData = ctx.getImageData(0, 0, side, side);
   const src = imageData.data;
   const original = new Uint8ClampedArray(src);
-  const levels = style === "flat" ? 4 : style === "exaggerated" ? 6 : 5;
-  const edgeThreshold = style === "exaggerated" ? 14 : style === "comic" ? 18 : 24;
-  const contrast = style === "realistic" ? 1.18 : style === "flat" ? 1.34 : 1.56;
-  const saturation = style === "realistic" ? 1.24 : style === "flat" ? 1.48 : 1.72;
+  const fallbackSettings = getLocalFallbackSettings(style);
+  const levels = fallbackSettings.levels;
+  const edgeThreshold = fallbackSettings.edgeThreshold;
+  const contrast = fallbackSettings.contrast;
+  const saturation = fallbackSettings.saturation;
 
   for (let y = 0; y < side; y++) {
     for (let x = 0; x < side; x++) {
@@ -326,9 +692,18 @@ async function localPosterFallback(dataUrl: string, style: StyleId): Promise<str
       if (x < side - 1 && y < side - 1) {
         const ir = (y * side + (x + 1)) * 4;
         const id = ((y + 1) * side + x) * 4;
-        const lum = 0.299 * original[i] + 0.587 * original[i + 1] + 0.114 * original[i + 2];
-        const lumR = 0.299 * original[ir] + 0.587 * original[ir + 1] + 0.114 * original[ir + 2];
-        const lumD = 0.299 * original[id] + 0.587 * original[id + 1] + 0.114 * original[id + 2];
+        const lum =
+          0.299 * original[i] +
+          0.587 * original[i + 1] +
+          0.114 * original[i + 2];
+        const lumR =
+          0.299 * original[ir] +
+          0.587 * original[ir + 1] +
+          0.114 * original[ir + 2];
+        const lumD =
+          0.299 * original[id] +
+          0.587 * original[id + 1] +
+          0.114 * original[id + 2];
         edge = Math.max(Math.abs(lum - lumR), Math.abs(lum - lumD));
       }
 
@@ -350,8 +725,8 @@ async function localPosterFallback(dataUrl: string, style: StyleId): Promise<str
   ctx.globalCompositeOperation = "multiply";
   ctx.lineWidth = 5;
   ctx.strokeStyle = "rgba(35,14,0,.42)";
-  for (let i = 0; i < 18; i += 1) {
-    const a = (Math.PI * 2 * i) / 18;
+  for (let i = 0; i < fallbackSettings.rays; i += 1) {
+    const a = (Math.PI * 2 * i) / fallbackSettings.rays;
     ctx.beginPath();
     ctx.moveTo(side / 2 + Math.cos(a) * 70, side / 2 + Math.sin(a) * 70);
     ctx.lineTo(side / 2 + Math.cos(a) * 360, side / 2 + Math.sin(a) * 360);
@@ -359,17 +734,27 @@ async function localPosterFallback(dataUrl: string, style: StyleId): Promise<str
   }
   ctx.globalCompositeOperation = "source-over";
 
-  const shine = ctx.createRadialGradient(side * 0.36, side * 0.18, 20, side / 2, side / 2, side * 0.8);
+  const shine = ctx.createRadialGradient(
+    side * 0.36,
+    side * 0.18,
+    20,
+    side / 2,
+    side / 2,
+    side * 0.8,
+  );
   shine.addColorStop(0, "rgba(255,255,255,0.20)");
   shine.addColorStop(0.46, "rgba(255,255,255,0.02)");
   shine.addColorStop(1, "rgba(0,0,0,0.38)");
   ctx.fillStyle = shine;
   ctx.fillRect(0, 0, side, side);
 
-  return canvasToWebp(canvas, 0.74);
+  return canvasToWebp(canvas, fallbackSettings.quality);
 }
 
-async function callAvatarAi(file: File, style: StyleId): Promise<AiPayload | null> {
+async function callAvatarAi(
+  file: File,
+  style: StyleId,
+): Promise<AiPayload | null> {
   const form = new FormData();
   form.append("image", file);
   form.append("style", style);
@@ -381,7 +766,8 @@ async function callAvatarAi(file: File, style: StyleId): Promise<AiPayload | nul
   });
   const json = (await response.json().catch(() => null)) as any;
   if (!response.ok) {
-    const message = json?.message || json?.error || `avatar_api_${response.status}`;
+    const message =
+      json?.message || json?.error || `avatar_api_${response.status}`;
     const details = {
       status: response.status,
       error: json?.error,
@@ -398,10 +784,25 @@ async function callAvatarAi(file: File, style: StyleId): Promise<AiPayload | nul
     err.details = details;
     throw err;
   }
-  const raw = json?.cartoonWebp || json?.cartoonPng || json?.image || json?.dataUrl || null;
+  const raw =
+    json?.cartoonWebp ||
+    json?.cartoonPng ||
+    json?.image ||
+    json?.dataUrl ||
+    null;
   if (typeof raw !== "string") return null;
-  if (raw.startsWith("data:image/")) return { dataUrl: raw, provider: json?.provider, avatarCredits: json?.avatarCredits };
-  if (/^https?:\/\//i.test(raw)) return { dataUrl: raw, provider: json?.provider, avatarCredits: json?.avatarCredits };
+  if (raw.startsWith("data:image/"))
+    return {
+      dataUrl: raw,
+      provider: json?.provider,
+      avatarCredits: json?.avatarCredits,
+    };
+  if (/^https?:\/\//i.test(raw))
+    return {
+      dataUrl: raw,
+      provider: json?.provider,
+      avatarCredits: json?.avatarCredits,
+    };
   return null;
 }
 
@@ -427,8 +828,10 @@ function AvatarCreator({
   const [name, setName] = React.useState(defaultName || "");
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
   const [originalFile, setOriginalFile] = React.useState<File | null>(null);
-  const [originalPreviewUrl, setOriginalPreviewUrl] = React.useState<string | null>(null);
-  const [style, setStyle] = React.useState<StyleId>("exaggerated");
+  const [originalPreviewUrl, setOriginalPreviewUrl] = React.useState<
+    string | null
+  >(null);
+  const [style, setStyle] = React.useState<StyleId>("exaggerated_fun");
   const [zoom, setZoom] = React.useState(1.18);
   const [offsetX, setOffsetX] = React.useState(0);
   const [offsetY, setOffsetY] = React.useState(0);
@@ -437,23 +840,44 @@ function AvatarCreator({
   const [busy, setBusy] = React.useState(false);
   const [lastExport, setLastExport] = React.useState<string | null>(null);
   const [debugText, setDebugText] = React.useState<string | null>(null);
-  const [creditState, setCreditState] = React.useState<AvatarCreditState>(() => readCreditState());
+  const [creditState, setCreditState] = React.useState<AvatarCreditState>(() =>
+    readCreditState(),
+  );
   const [activeTab, setActiveTab] = React.useState<TabId>("ia");
-  const [miniInfo, setMiniInfo] = React.useState<{ title: string; content: string } | null>(null);
-  const [gallery, setGallery] = React.useState<GalleryAvatar[]>(() => readGallery());
-  const [assignTarget, setAssignTarget] = React.useState<GalleryAvatar | null>(null);
-  const [selectedGalleryItem, setSelectedGalleryItem] = React.useState<GalleryAvatar | null>(null);
+  const [miniInfo, setMiniInfo] = React.useState<{
+    title: string;
+    content: string;
+  } | null>(null);
+  const [gallery, setGallery] = React.useState<GalleryAvatar[]>(() =>
+    readGallery(),
+  );
+  const [assignTarget, setAssignTarget] = React.useState<GalleryAvatar | null>(
+    null,
+  );
+  const [selectedGalleryItem, setSelectedGalleryItem] =
+    React.useState<GalleryAvatar | null>(null);
   const [profiles, setProfiles] = React.useState<AssignableProfile[]>([]);
-  const [medallionColorId, setMedallionColorId] = React.useState<string>("gold");
+  const [medallionColorId, setMedallionColorId] =
+    React.useState<string>("gold");
 
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-  const cropPointersRef = React.useRef(new Map<number, { x: number; y: number }>());
-  const cropGestureRef = React.useRef({ moved: false, lastX: 0, lastY: 0, pinchDistance: 0, zoomStart: 1 });
+  const cropPointersRef = React.useRef(
+    new Map<number, { x: number; y: number }>(),
+  );
+  const cropGestureRef = React.useRef({
+    moved: false,
+    lastX: 0,
+    lastY: 0,
+    pinchDistance: 0,
+    zoomStart: 1,
+  });
   const avatarImage = photoUrl;
 
   const primary = theme.primary ?? GOLD;
-  const selectedMedallion = MEDALLION_COLORS.find((c) => c.id === medallionColorId) || MEDALLION_COLORS[0];
+  const selectedMedallion =
+    MEDALLION_COLORS.find((c) => c.id === medallionColorId) ||
+    MEDALLION_COLORS[0];
   const RING_COLOR = isBotMode ? BOT_RING : selectedMedallion.main;
   const RING_LIGHT = isBotMode ? "#DDF7FF" : selectedMedallion.light;
   const RING_DARK = isBotMode ? "#0369A1" : selectedMedallion.dark;
@@ -461,7 +885,12 @@ function AvatarCreator({
   const displayName = (name || "PLAYER").trim().toUpperCase();
   const hasAiCredit = !creditState.freeUsed || creditState.credits > 0;
   const remainingPaidCredits = creditState.credits;
-  const tabs: Array<{ id: TabId; label: string; icon: string; hidden?: boolean }> = [
+  const tabs: Array<{
+    id: TabId;
+    label: string;
+    icon: string;
+    hidden?: boolean;
+  }> = [
     { id: "ia", label: "IA", icon: "✨" },
     { id: "gallery", label: "Galerie", icon: "🖼️" },
     { id: "debug", label: "Debug", icon: "🧪", hidden: !devMode.enabled },
@@ -474,15 +903,27 @@ function AvatarCreator({
   const refreshAvatarCredits = React.useCallback(async () => {
     try {
       if (!readNasAccessToken()) {
-        setCreditState(writeCreditState({ freeUsed: true, credits: 0, updatedAt: new Date().toISOString() }));
+        setCreditState(
+          writeCreditState({
+            freeUsed: true,
+            credits: 0,
+            updatedAt: new Date().toISOString(),
+          }),
+        );
         return;
       }
-      const json = await apiGet("/avatar-ai/account") as any;
+      const json = (await apiGet("/avatar-ai/account")) as any;
       const next = normalizeCreditPayload(json, readCreditState());
       setCreditState(writeCreditState(next));
     } catch (err) {
       console.warn("[AvatarCreator] crédits IA NAS indisponibles", err);
-      setCreditState(writeCreditState({ freeUsed: true, credits: 0, updatedAt: new Date().toISOString() }));
+      setCreditState(
+        writeCreditState({
+          freeUsed: true,
+          credits: 0,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
     }
   }, []);
 
@@ -509,22 +950,42 @@ function AvatarCreator({
     (async () => {
       try {
         setBusy(true);
-        const json = await apiGet(`/avatar-ai/checkout/verify?session_id=${encodeURIComponent(sessionId)}`) as any;
-        if (!json?.paid) throw new Error(json?.message || json?.error || "verify_failed");
+        const json = (await apiGet(
+          `/avatar-ai/checkout/verify?session_id=${encodeURIComponent(sessionId)}`,
+        )) as any;
+        if (!json?.paid)
+          throw new Error(json?.message || json?.error || "verify_failed");
         if (cancelled) return;
-        const nextCredits = writeCreditState(normalizeCreditPayload(json, creditState));
+        const nextCredits = writeCreditState(
+          normalizeCreditPayload(json, creditState),
+        );
         setCreditState(nextCredits);
         markCheckoutProcessed(sessionId);
-        setStatus(json.credited ? `Paiement validé : +${json.addedCredits} crédits avatars IA ajoutés au compte. ${creditLabel(nextCredits)}.` : `Paiement déjà validé : crédits IA déjà ajoutés à ce compte. ${creditLabel(nextCredits)}.`);
+        setStatus(
+          json.credited
+            ? `Paiement validé : +${json.addedCredits} crédits avatars IA ajoutés au compte. ${creditLabel(nextCredits)}.`
+            : `Paiement déjà validé : crédits IA déjà ajoutés à ce compte. ${creditLabel(nextCredits)}.`,
+        );
         refreshAvatarCredits();
-        window.history.replaceState(null, "", window.location.href.replace(/[?&]avatarCheckout=success/, "").replace(/[?&]session_id=[^&#]+/, ""));
+        window.history.replaceState(
+          null,
+          "",
+          window.location.href
+            .replace(/[?&]avatarCheckout=success/, "")
+            .replace(/[?&]session_id=[^&#]+/, ""),
+        );
       } catch (err: any) {
-        if (!cancelled) setError(`Impossible de valider le paiement Stripe : ${String(err?.message || err || "erreur")}`);
+        if (!cancelled)
+          setError(
+            `Impossible de valider le paiement Stripe : ${String(err?.message || err || "erreur")}`,
+          );
       } finally {
         if (!cancelled) setBusy(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   React.useEffect(() => {
@@ -544,11 +1005,20 @@ function AvatarCreator({
         .filter((p: any) => p.id !== "profile:");
       const botsRaw = loadBots();
       const botItems = Array.isArray(botsRaw)
-        ? botsRaw.map((b: any) => ({ id: `bot:${String(b?.id || "")}`, name: `Bot CPU — ${String(b?.name || "Bot")}`, avatarDataUrl: b?.avatarDataUrl, avatarUrl: b?.avatarUrl || b?.avatar })).filter((b: any) => b.id !== "bot:")
+        ? botsRaw
+            .map((b: any) => ({
+              id: `bot:${String(b?.id || "")}`,
+              name: `Bot CPU — ${String(b?.name || "Bot")}`,
+              avatarDataUrl: b?.avatarDataUrl,
+              avatarUrl: b?.avatarUrl || b?.avatar,
+            }))
+            .filter((b: any) => b.id !== "bot:")
         : [];
       setProfiles([...profileItems, ...botItems]);
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [activeTab, assignTarget]);
 
   function persistGallery(next: GalleryAvatar[]) {
@@ -584,9 +1054,11 @@ function AvatarCreator({
 
   async function checkAvatarCreditBeforeGeneration() {
     if (!readNasAccessToken()) {
-      throw new Error("Connecte-toi au compte utilisateur avant de générer un avatar IA.");
+      throw new Error(
+        "Connecte-toi au compte utilisateur avant de générer un avatar IA.",
+      );
     }
-    const json = await apiPost("/avatar-ai/check", { style }) as any;
+    const json = (await apiPost("/avatar-ai/check", { style })) as any;
     const next = normalizeCreditPayload(json, creditState);
     setCreditState(writeCreditState(next));
     if (json?.ok === false || json?.canGenerate === false) {
@@ -597,13 +1069,15 @@ function AvatarCreator({
 
   async function consumeAvatarCreditAfterSuccess() {
     if (!readNasAccessToken()) {
-      throw new Error("Compte utilisateur introuvable : impossible de débiter le crédit IA.");
+      throw new Error(
+        "Compte utilisateur introuvable : impossible de débiter le crédit IA.",
+      );
     }
-    const json = await apiPost("/avatar-ai/consume", {
+    const json = (await apiPost("/avatar-ai/consume", {
       provider: "openai",
       model: "gpt-image-1",
       style,
-    }) as any;
+    })) as any;
     const next = normalizeCreditPayload(json, creditState);
     setCreditState(writeCreditState(next));
     return next;
@@ -614,18 +1088,24 @@ function AvatarCreator({
     setStatus(null);
     try {
       setBusy(true);
-      if (!readNasAccessToken()) throw new Error("Connecte-toi au compte utilisateur avant d’acheter des crédits IA.");
-      const json = await apiPost("/avatar-ai/checkout", {
+      if (!readNasAccessToken())
+        throw new Error(
+          "Connecte-toi au compte utilisateur avant d’acheter des crédits IA.",
+        );
+      const json = (await apiPost("/avatar-ai/checkout", {
         packId: pack.id,
         accountKey: getAvatarAccountKey(),
         successUrl: `${window.location.origin}${window.location.pathname}${window.location.hash || "#/avatar_creator"}?avatarCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,
-      }) as any;
-      if (!json?.url) throw new Error(json?.message || json?.error || "checkout_url_missing");
+      })) as any;
+      if (!json?.url)
+        throw new Error(json?.message || json?.error || "checkout_url_missing");
       window.location.href = json.url;
     } catch (err: any) {
       console.warn("[AvatarCreator] Stripe checkout failed", err);
-      setError(`Paiement non disponible : ${String(err?.message || err || "erreur")}. Vérifie STRIPE_SECRET_KEY côté NAS.`);
+      setError(
+        `Paiement non disponible : ${String(err?.message || err || "erreur")}. Vérifie STRIPE_SECRET_KEY côté NAS.`,
+      );
     } finally {
       setBusy(false);
     }
@@ -641,7 +1121,9 @@ function AvatarCreator({
     if (!f) return;
     const maxMb = 8;
     if (f.size > maxMb * 1024 * 1024) {
-      setError(t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`));
+      setError(
+        t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`),
+      );
       return;
     }
     setError(null);
@@ -657,9 +1139,16 @@ function AvatarCreator({
         setOffsetX(0);
         setOffsetY(0);
         setDebugText(null);
-        setStatus("Photo importée dans le médaillon. Recadre-la puis lance la caricature IA.");
+        setStatus(
+          "Photo importée dans le médaillon. Recadre-la puis lance la caricature IA.",
+        );
       } catch {
-        setError(t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`));
+        setError(
+          t(
+            "avatar.error.tooBig",
+            `L’image est trop lourde (max ${maxMb} Mo).`,
+          ),
+        );
       } finally {
         setBusy(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -676,7 +1165,9 @@ function AvatarCreator({
       const json = await response.json().catch(() => null);
       console.info("[AvatarCreator] /api/avatar/debug", json);
       if (!response.ok || !json?.ok) {
-        setDebugText(`DEBUG API: endpoint inaccessible (${response.status}). Regarde la console.`);
+        setDebugText(
+          `DEBUG API: endpoint inaccessible (${response.status}). Regarde la console.`,
+        );
         return;
       }
       const openai = json.openai;
@@ -687,7 +1178,9 @@ function AvatarCreator({
       setStatus(line);
     } catch (err) {
       console.warn("[AvatarCreator] debug failed", err);
-      setDebugText("DEBUG API: impossible d'appeler /api/avatar/debug. Vérifie le déploiement des Functions.");
+      setDebugText(
+        "DEBUG API: impossible d'appeler /api/avatar/debug. Vérifie le déploiement des Functions.",
+      );
     } finally {
       setBusy(false);
     }
@@ -699,7 +1192,9 @@ function AvatarCreator({
       return;
     }
     if (!hasAiCredit) {
-      setError("Tu as utilisé ton avatar IA gratuit. Achète un pack de crédits pour relancer une génération IA.");
+      setError(
+        "Tu as utilisé ton avatar IA gratuit. Achète un pack de crédits pour relancer une génération IA.",
+      );
       return;
     }
     setBusy(true);
@@ -713,7 +1208,11 @@ function AvatarCreator({
       try {
         generated = await callAvatarAi(originalFile, style);
       } catch (apiErr: any) {
-        console.warn("[AvatarCreator] API IA indisponible", apiErr, apiErr?.details);
+        console.warn(
+          "[AvatarCreator] API IA indisponible",
+          apiErr,
+          apiErr?.details,
+        );
         const details = apiErr?.details || {};
         const suffix = details?.keySource
           ? `Clé détectée (${details.keySource}, ${details.keyPreview || "masquée"}) mais OpenAI/Cloudflare refuse: ${apiErr?.message || "erreur inconnue"}.`
@@ -731,7 +1230,9 @@ function AvatarCreator({
           ? normalizeCreditPayload(generated.avatarCredits, creditState)
           : await consumeAvatarCreditAfterSuccess();
         setCreditState(writeCreditState(nextCredits));
-        setStatus(`Vraie caricature IA générée. Crédit débité côté compte utilisateur. ${creditLabel(nextCredits)}.`);
+        setStatus(
+          `Vraie caricature IA générée. Crédit débité côté compte utilisateur. ${creditLabel(nextCredits)}.`,
+        );
         refreshAvatarCredits();
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
@@ -739,17 +1240,26 @@ function AvatarCreator({
         setZoom(1.18);
         setOffsetX(0);
         setOffsetY(0);
-        setStatus("Aucune vraie IA disponible : fallback local appliqué. Configure OPENAI_API_KEY pour le rendu caricature premium.");
+        setStatus(
+          "Aucune vraie IA disponible : fallback local appliqué. Configure OPENAI_API_KEY pour le rendu caricature premium.",
+        );
       }
     } catch (e) {
       console.warn(e);
-      setError(t("avatar.error.generateFailed", "Impossible de générer la caricature pour le moment."));
+      setError(
+        t(
+          "avatar.error.generateFailed",
+          "Impossible de générer la caricature pour le moment.",
+        ),
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function renderMedallionWebp(outputSize = EXPORT_SIZE): Promise<string> {
+  async function renderMedallionWebp(
+    outputSize = EXPORT_SIZE,
+  ): Promise<string> {
     const svg = svgRef.current;
     if (!svg) throw new Error("missing_svg");
     const serializer = new XMLSerializer();
@@ -792,14 +1302,19 @@ function AvatarCreator({
     try {
       setBusy(true);
       const webpDataUrl = await renderMedallionWebp(EXPORT_SIZE);
-      const safeDataUrl = (await enforceSafeAvatarDataUrl(webpDataUrl)) || webpDataUrl;
+      const safeDataUrl =
+        (await enforceSafeAvatarDataUrl(webpDataUrl)) || webpDataUrl;
       setLastExport(safeDataUrl);
       addToGallery(safeDataUrl, source);
       if (onSave) {
         onSave({ pngDataUrl: safeDataUrl, name: name || "PLAYER" });
-        setStatus("Avatar WebP enregistré sur le profil et ajouté à la galerie.");
+        setStatus(
+          "Avatar WebP enregistré sur le profil et ajouté à la galerie.",
+        );
       } else {
-        setStatus("Avatar WebP ajouté à la galerie. Tu peux l’exporter ou l’attribuer à un profil.");
+        setStatus(
+          "Avatar WebP ajouté à la galerie. Tu peux l’exporter ou l’attribuer à un profil.",
+        );
       }
       setActiveTab("gallery");
     } catch (e) {
@@ -825,7 +1340,18 @@ function AvatarCreator({
         const bots = loadBots();
         const nowTs = Date.now();
         const nextBots = Array.isArray(bots)
-          ? bots.map((b: any) => String(b?.id || "") === botId ? { ...b, avatarDataUrl: item.dataUrl, avatarUrl: null, avatar: null, avatarUpdatedAt: nowTs, updatedAt: new Date(nowTs).toISOString() } : b)
+          ? bots.map((b: any) =>
+              String(b?.id || "") === botId
+                ? {
+                    ...b,
+                    avatarDataUrl: item.dataUrl,
+                    avatarUrl: null,
+                    avatar: null,
+                    avatarUpdatedAt: nowTs,
+                    updatedAt: new Date(nowTs).toISOString(),
+                  }
+                : b,
+            )
           : [];
         saveBots(nextBots);
         const target = nextBots.find((b: any) => String(b?.id || "") === botId);
@@ -846,24 +1372,47 @@ function AvatarCreator({
         return;
       }
 
-      const cleanProfileId = profileId.startsWith("profile:") ? profileId.slice(8) : profileId;
+      const cleanProfileId = profileId.startsWith("profile:")
+        ? profileId.slice(8)
+        : profileId;
       const store: any = await loadStore<any>();
-      if (!store || !Array.isArray(store.profiles)) throw new Error("store_profiles_missing");
+      if (!store || !Array.isArray(store.profiles))
+        throw new Error("store_profiles_missing");
       const nowTs = Date.now();
       const nextProfiles = store.profiles.map((p: any) =>
         String(p?.id || "") === String(cleanProfileId)
-          ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarPath: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null, avatarUpdatedAt: nowTs }
-          : p
+          ? {
+              ...p,
+              avatarDataUrl: item.dataUrl,
+              avatarUrl: undefined,
+              avatarPath: undefined,
+              avatarAssetId: null,
+              avatarThumbAssetId: null,
+              avatarFullAssetId: null,
+              avatarCastAssetId: null,
+              avatarUpdatedAt: nowTs,
+            }
+          : p,
       );
       await saveStore({ ...store, profiles: nextProfiles });
-      try { window.dispatchEvent(new Event("dc:profiles-changed")); } catch {}
-      const target = nextProfiles.find((p: any) => String(p?.id || "") === String(cleanProfileId));
+      try {
+        window.dispatchEvent(new Event("dc:profiles-changed"));
+      } catch {}
+      const target = nextProfiles.find(
+        (p: any) => String(p?.id || "") === String(cleanProfileId),
+      );
       try {
         upsertAvatarGalleryItem(getAvatarAccountKey(), {
-          category: String(cleanProfileId) === String(store?.activeProfileId || "") ? "account" : "local",
+          category:
+            String(cleanProfileId) === String(store?.activeProfileId || "")
+              ? "account"
+              : "local",
           ownerId: cleanProfileId,
           ownerName: String(target?.name || target?.displayName || "Profil"),
-          name: String(cleanProfileId) === String(store?.activeProfileId || "") ? `Profil actif · ${String(target?.name || target?.displayName || "Profil")}` : String(target?.name || target?.displayName || "Profil"),
+          name:
+            String(cleanProfileId) === String(store?.activeProfileId || "")
+              ? `Profil actif · ${String(target?.name || target?.displayName || "Profil")}`
+              : String(target?.name || target?.displayName || "Profil"),
           src: item.dataUrl,
           createdAt: nowTs,
           updatedAt: nowTs,
@@ -882,28 +1431,90 @@ function AvatarCreator({
 
   const infoContent = (
     <div style={{ lineHeight: 1.45 }}>
-      <p style={{ marginTop: 0 }}><strong>AVATAR IA</strong> : importe une photo dans le médaillon, recadre-la, génère une caricature cartoon, puis enregistre le WebP final.</p>
-      <p>Le premier avatar IA est offert. Ensuite, chaque génération réussie consomme 1 crédit.</p>
-      <p style={{ marginBottom: 0 }}>Le diagnostic API est masqué et visible uniquement en mode développeur.</p>
+      <p style={{ marginTop: 0 }}>
+        <strong>AVATAR IA</strong> : importe une photo dans le médaillon,
+        recadre-la, génère une caricature cartoon, puis enregistre le WebP
+        final.
+      </p>
+      <p>
+        Le premier avatar IA est offert. Ensuite, chaque génération réussie
+        consomme 1 crédit.
+      </p>
+      <p style={{ marginBottom: 0 }}>
+        Le diagnostic API est masqué et visible uniquement en mode développeur.
+      </p>
     </div>
   );
 
   const creditCompact = (
     <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
         <div>
-          <div style={{ fontWeight: 950, fontSize: 12, textTransform: "uppercase", color: "#d9f99d" }}>Crédits IA</div>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>{creditLabel(creditState)}</div>
+          <div
+            style={{
+              fontWeight: 950,
+              fontSize: 12,
+              textTransform: "uppercase",
+              color: "#d9f99d",
+            }}
+          >
+            Crédits IA
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            {creditLabel(creditState)}
+          </div>
         </div>
-        <div style={{ minWidth: 56, textAlign: "center", borderRadius: 999, padding: "7px 10px", background: hasAiCredit ? "rgba(34,197,94,.22)" : "rgba(255,93,93,.18)", border: "1px solid rgba(255,255,255,.14)", fontWeight: 950 }}>
+        <div
+          style={{
+            minWidth: 56,
+            textAlign: "center",
+            borderRadius: 999,
+            padding: "7px 10px",
+            background: hasAiCredit
+              ? "rgba(34,197,94,.22)"
+              : "rgba(255,93,93,.18)",
+            border: "1px solid rgba(255,255,255,.14)",
+            fontWeight: 950,
+          }}
+        >
           {creditBadgeLabel(creditState)}
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 6,
+        }}
+      >
         {CREDIT_PACKS.map((pack) => (
-          <button key={pack.id} type="button" onClick={() => handleBuyPack(pack)} style={{ border: "1px solid rgba(246,194,86,.22)", background: "rgba(0,0,0,.25)", color: "#fff", borderRadius: 12, padding: "8px 6px", cursor: "pointer", textAlign: "center" }}>
-            <strong style={{ display: "block", fontSize: 11 }}>{pack.credits}</strong>
-            <span style={{ color: GOLD_2, fontWeight: 950, fontSize: 11 }}>{pack.price}</span>
+          <button
+            key={pack.id}
+            type="button"
+            onClick={() => handleBuyPack(pack)}
+            style={{
+              border: "1px solid rgba(246,194,86,.22)",
+              background: "rgba(0,0,0,.25)",
+              color: "#fff",
+              borderRadius: 12,
+              padding: "8px 6px",
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            <strong style={{ display: "block", fontSize: 11 }}>
+              {pack.credits}
+            </strong>
+            <span style={{ color: GOLD_2, fontWeight: 950, fontSize: 11 }}>
+              {pack.price}
+            </span>
           </button>
         ))}
       </div>
@@ -913,21 +1524,79 @@ function AvatarCreator({
   const StatusCard = () => {
     if (!status && !error && !lastExport && !debugText) return null;
     return (
-      <div style={{ ...cardBase, padding: 12, display: "flex", gap: 10, alignItems: "center", background: error ? "linear-gradient(145deg, rgba(70,18,18,.96), rgba(14,10,10,.96))" : "linear-gradient(145deg, rgba(8,45,31,.95), rgba(5,12,10,.98))" }}>
-        <div style={{ width: 30, height: 30, borderRadius: 999, background: error ? "#ff5d5d" : "#22c76f", display: "grid", placeItems: "center", fontWeight: 950, color: "#fff", flex: "0 0 auto" }}>{error ? "!" : "✓"}</div>
+      <div
+        style={{
+          ...cardBase,
+          padding: 12,
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          background: error
+            ? "linear-gradient(145deg, rgba(70,18,18,.96), rgba(14,10,10,.96))"
+            : "linear-gradient(145deg, rgba(8,45,31,.95), rgba(5,12,10,.98))",
+        }}
+      >
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 999,
+            background: error ? "#ff5d5d" : "#22c76f",
+            display: "grid",
+            placeItems: "center",
+            fontWeight: 950,
+            color: "#fff",
+            flex: "0 0 auto",
+          }}
+        >
+          {error ? "!" : "✓"}
+        </div>
         <div style={{ fontSize: 12.5, lineHeight: 1.35 }}>
-          <div style={{ fontWeight: 850 }}>{error ? error : debugText || status || "Avatar prêt !"}</div>
-          {!error && <div style={{ opacity: 0.78, marginTop: 2 }}>WebP • {EXPORT_SIZE}x{EXPORT_SIZE} • {dataUrlSizeKb(lastExport || photoUrl)}</div>}
+          <div style={{ fontWeight: 850 }}>
+            {error ? error : debugText || status || "Avatar prêt !"}
+          </div>
+          {!error && (
+            <div style={{ opacity: 0.78, marginTop: 2 }}>
+              WebP • {EXPORT_SIZE}x{EXPORT_SIZE} •{" "}
+              {dataUrlSizeKb(lastExport || photoUrl)}
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  const TabButton = ({ id, label, icon }: { id: TabId; label: string; icon: string }) => {
+  const TabButton = ({
+    id,
+    label,
+    icon,
+  }: {
+    id: TabId;
+    label: string;
+    icon: string;
+  }) => {
     const selected = activeTab === id;
     return (
-      <button type="button" onClick={() => setActiveTab(id)} style={{ flex: 1, border: "1px solid rgba(255,255,255,.13)", borderRadius: 14, padding: "10px 8px", color: selected ? "#07070d" : "#fff", background: selected ? `linear-gradient(135deg, ${primary}, ${GOLD_2})` : "linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.035))", boxShadow: selected ? `0 0 24px ${primary}66` : "none", fontWeight: 950, fontSize: 12, cursor: "pointer" }}>
-        <span style={{ marginRight: 5 }}>{icon}</span>{label}
+      <button
+        type="button"
+        onClick={() => setActiveTab(id)}
+        style={{
+          flex: 1,
+          border: "1px solid rgba(255,255,255,.13)",
+          borderRadius: 14,
+          padding: "10px 8px",
+          color: selected ? "#07070d" : "#fff",
+          background: selected
+            ? `linear-gradient(135deg, ${primary}, ${GOLD_2})`
+            : "linear-gradient(145deg, rgba(255,255,255,.08), rgba(255,255,255,.035))",
+          boxShadow: selected ? `0 0 24px ${primary}66` : "none",
+          fontWeight: 950,
+          fontSize: 12,
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ marginRight: 5 }}>{icon}</span>
+        {label}
       </button>
     );
   };
@@ -936,7 +1605,10 @@ function AvatarCreator({
     return Math.max(-150, Math.min(150, Math.round(value)));
   }
 
-  function distanceBetween(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  function distanceBetween(
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): number {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
     return Math.sqrt(dx * dx + dy * dy);
@@ -966,7 +1638,13 @@ function AvatarCreator({
     if (points.length >= 2) {
       const dist = distanceBetween(points[0], points[1]);
       const base = cropGestureRef.current.pinchDistance || dist;
-      const nextZoom = Math.max(0.86, Math.min(2.55, cropGestureRef.current.zoomStart * (dist / Math.max(1, base))));
+      const nextZoom = Math.max(
+        0.86,
+        Math.min(
+          2.55,
+          cropGestureRef.current.zoomStart * (dist / Math.max(1, base)),
+        ),
+      );
       if (Math.abs(nextZoom - zoom) > 0.01) cropGestureRef.current.moved = true;
       setZoom(nextZoom);
       return;
@@ -980,9 +1658,13 @@ function AvatarCreator({
   }
 
   function handleCropPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
-    if (cropPointersRef.current.has(e.pointerId)) cropPointersRef.current.delete(e.pointerId);
-    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
-    if (cropPointersRef.current.size < 2) cropGestureRef.current.pinchDistance = 0;
+    if (cropPointersRef.current.has(e.pointerId))
+      cropPointersRef.current.delete(e.pointerId);
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {}
+    if (cropPointersRef.current.size < 2)
+      cropGestureRef.current.pinchDistance = 0;
   }
 
   function handleMedallionClick(e: React.MouseEvent<HTMLButtonElement>) {
@@ -998,77 +1680,360 @@ function AvatarCreator({
     if (!avatarImage) return;
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.08 : 0.08;
-    setZoom((v) => Math.max(0.86, Math.min(2.55, Number((v + delta).toFixed(2)))));
+    setZoom((v) =>
+      Math.max(0.86, Math.min(2.55, Number((v + delta).toFixed(2)))),
+    );
   }
 
   const MedallionButton = ({ compact = false }: { compact?: boolean }) => (
-    <button type="button" onClick={handleMedallionClick} onPointerDown={handleCropPointerDown} onPointerMove={handleCropPointerMove} onPointerUp={handleCropPointerUp} onPointerCancel={handleCropPointerUp} onWheel={handleCropWheel} title={avatarImage ? "Glisse pour recadrer, pince ou molette pour zoomer" : "Importer une photo"} style={{ width: "100%", touchAction: avatarImage ? "none" : "manipulation", aspectRatio: "1 / 1", maxHeight: compact ? 360 : 520, background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305", borderRadius: 24, padding: 10, boxShadow: "0 22px 48px rgba(0,0,0,.62)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "0", cursor: "pointer" }}>
+    <button
+      type="button"
+      onClick={handleMedallionClick}
+      onPointerDown={handleCropPointerDown}
+      onPointerMove={handleCropPointerMove}
+      onPointerUp={handleCropPointerUp}
+      onPointerCancel={handleCropPointerUp}
+      onWheel={handleCropWheel}
+      title={
+        avatarImage
+          ? "Glisse pour recadrer, pince ou molette pour zoomer"
+          : "Importer une photo"
+      }
+      style={{
+        width: "100%",
+        touchAction: avatarImage ? "none" : "manipulation",
+        aspectRatio: "1 / 1",
+        maxHeight: compact ? 360 : 520,
+        background:
+          "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305",
+        borderRadius: 24,
+        padding: 10,
+        boxShadow: "0 22px 48px rgba(0,0,0,.62)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        overflow: "hidden",
+        border: "0",
+        cursor: "pointer",
+      }}
+    >
       <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
         <defs>
-          <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
-          <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%"><stop offset="0%" stopColor={RING_LIGHT} /><stop offset="42%" stopColor={RING_COLOR} /><stop offset="100%" stopColor={RING_DARK} /></radialGradient>
-          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="8" floodColor="#000" floodOpacity="0.55" /></filter>
+          <clipPath id="avatarClip">
+            <circle r={R_AVATAR} cx={0} cy={0} />
+          </clipPath>
+          <radialGradient id="goldOuter" cx="32%" cy="18%" r="76%">
+            <stop offset="0%" stopColor={RING_LIGHT} />
+            <stop offset="42%" stopColor={RING_COLOR} />
+            <stop offset="100%" stopColor={RING_DARK} />
+          </radialGradient>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow
+              dx="0"
+              dy="10"
+              stdDeviation="8"
+              floodColor="#000"
+              floodOpacity="0.55"
+            />
+          </filter>
         </defs>
-        <circle r={R_OUTER + STROKE + 10} fill="#050505" filter="url(#softShadow)" />
+        <circle
+          r={R_OUTER + STROKE + 10}
+          fill="#050505"
+          filter="url(#softShadow)"
+        />
         <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
-        <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+        <circle
+          r={R_OUTER}
+          fill="none"
+          stroke="url(#goldOuter)"
+          strokeWidth={STROKE}
+        />
         <circle r={R_OUTER - 19} fill={BLACK} />
-        <path d={`M ${-R_OUTER + 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 0 ${-R_OUTER + 28} 124`} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.82} />
-        <path d={`M ${R_OUTER - 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 1 ${R_OUTER - 28} 124`} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.82} />
-        <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
-        <path d={`M ${-R_INNER - 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 0 ${-R_INNER - 23} 96`} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.82} />
-        <path d={`M ${R_INNER + 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 1 ${R_INNER + 23} 96`} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.82} />
-        <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
+        <path
+          d={`M ${-R_OUTER + 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 0 ${-R_OUTER + 28} 124`}
+          fill="none"
+          stroke={RING_DARK}
+          strokeWidth={5}
+          opacity={0.82}
+        />
+        <path
+          d={`M ${R_OUTER - 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 1 ${R_OUTER - 28} 124`}
+          fill="none"
+          stroke={RING_DARK}
+          strokeWidth={5}
+          opacity={0.82}
+        />
+        <circle
+          r={R_INNER + 15}
+          fill="none"
+          stroke="#090909"
+          strokeWidth={24}
+        />
+        <path
+          d={`M ${-R_INNER - 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 0 ${-R_INNER - 23} 96`}
+          fill="none"
+          stroke={RING_COLOR}
+          strokeWidth={5}
+          opacity={0.82}
+        />
+        <path
+          d={`M ${R_INNER + 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 1 ${R_INNER + 23} 96`}
+          fill="none"
+          stroke={RING_COLOR}
+          strokeWidth={5}
+          opacity={0.82}
+        />
+        <circle
+          r={R_INNER}
+          fill="none"
+          stroke="url(#goldOuter)"
+          strokeWidth={STROKE}
+        />
         <circle r={R_AVATAR} fill="#22232b" />
         {avatarImage ? (
           <g clipPath="url(#avatarClip)">
-            <image href={avatarImage} x={-avatarImgSize / 2 + offsetX} y={-avatarImgSize / 2 + offsetY} width={avatarImgSize} height={avatarImgSize} preserveAspectRatio="xMidYMid slice" />
-            <circle r={R_AVATAR} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth={4} />
+            <image
+              href={avatarImage}
+              x={-avatarImgSize / 2 + offsetX}
+              y={-avatarImgSize / 2 + offsetY}
+              width={avatarImgSize}
+              height={avatarImgSize}
+              preserveAspectRatio="xMidYMid slice"
+            />
+            <circle
+              r={R_AVATAR}
+              fill="none"
+              stroke="rgba(255,255,255,.16)"
+              strokeWidth={4}
+            />
           </g>
         ) : (
           <g clipPath="url(#avatarClip)">
-            <rect x={-R_AVATAR} y={-R_AVATAR} width={R_AVATAR * 2} height={R_AVATAR * 2} fill="#22232b" />
-            <text x={0} y={-12} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={20} fontWeight={900} fill="#e5e7eb">Clique ici</text>
-            <text x={0} y={20} textAnchor="middle" fontFamily="system-ui, sans-serif" fontSize={15} fill="#cbd5e1">importer une photo</text>
+            <rect
+              x={-R_AVATAR}
+              y={-R_AVATAR}
+              width={R_AVATAR * 2}
+              height={R_AVATAR * 2}
+              fill="#22232b"
+            />
+            <text
+              x={0}
+              y={-12}
+              textAnchor="middle"
+              fontFamily="system-ui, sans-serif"
+              fontSize={20}
+              fontWeight={900}
+              fill="#e5e7eb"
+            >
+              Clique ici
+            </text>
+            <text
+              x={0}
+              y={20}
+              textAnchor="middle"
+              fontFamily="system-ui, sans-serif"
+              fontSize={15}
+              fill="#cbd5e1"
+            >
+              importer une photo
+            </text>
           </g>
         )}
-        <path id="arcTop" d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`} fill="none" />
-        <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={38} fontWeight={950} letterSpacing={4.2} fill={RING_COLOR}><textPath href="#arcTop" startOffset="50%" textAnchor="middle">MULTISPORTS SCORING</textPath></text>
-        <path id="arcBottom" d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`} fill="none" />
-        <text fontFamily="Montserrat, Arial Black, system-ui, sans-serif" fontSize={displayName.length > 10 ? 34 : 40} fontWeight={950} letterSpacing={displayName.length > 10 ? 2.4 : 4} fill={RING_COLOR}><textPath href="#arcBottom" startOffset="50%" textAnchor="middle">{displayName}</textPath></text>
+        <path
+          id="arcTop"
+          d={`M ${-R_TEXT} ${TEXT_DY_TOP} A ${R_TEXT} ${R_TEXT} 0 0 1 ${R_TEXT} ${TEXT_DY_TOP}`}
+          fill="none"
+        />
+        <text
+          fontFamily="Montserrat, Arial Black, system-ui, sans-serif"
+          fontSize={38}
+          fontWeight={950}
+          letterSpacing={4.2}
+          fill={RING_COLOR}
+        >
+          <textPath href="#arcTop" startOffset="50%" textAnchor="middle">
+            MULTISPORTS SCORING
+          </textPath>
+        </text>
+        <path
+          id="arcBottom"
+          d={`M ${-NAME_RADIUS} ${TEXT_DY_BOTTOM} A ${NAME_RADIUS} ${NAME_RADIUS} 0 0 0 ${NAME_RADIUS} ${TEXT_DY_BOTTOM}`}
+          fill="none"
+        />
+        <text
+          fontFamily="Montserrat, Arial Black, system-ui, sans-serif"
+          fontSize={displayName.length > 10 ? 34 : 40}
+          fontWeight={950}
+          letterSpacing={displayName.length > 10 ? 2.4 : 4}
+          fill={RING_COLOR}
+        >
+          <textPath href="#arcBottom" startOffset="50%" textAnchor="middle">
+            {displayName}
+          </textPath>
+        </text>
       </svg>
-      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
     </button>
   );
 
   const ColorPicker = () => (
     <div style={{ display: "grid", gap: 7 }}>
-      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.88 }}>Couleur du médaillon</div>
+      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.88 }}>
+        Couleur du médaillon
+      </div>
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
         {MEDALLION_COLORS.map((c) => (
-          <button key={c.id} type="button" onClick={() => setMedallionColorId(c.id)} title={c.label} style={{ width: 30, height: 30, borderRadius: 999, border: medallionColorId === c.id ? "3px solid #fff" : "1px solid rgba(255,255,255,.25)", background: `radial-gradient(circle at 32% 24%, ${c.light}, ${c.main} 52%, ${c.dark})`, boxShadow: medallionColorId === c.id ? `0 0 18px ${c.main}aa` : "none", cursor: "pointer" }} />
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => setMedallionColorId(c.id)}
+            title={c.label}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              border:
+                medallionColorId === c.id
+                  ? "3px solid #fff"
+                  : "1px solid rgba(255,255,255,.25)",
+              background: `radial-gradient(circle at 32% 24%, ${c.light}, ${c.main} 52%, ${c.dark})`,
+              boxShadow:
+                medallionColorId === c.id ? `0 0 18px ${c.main}aa` : "none",
+              cursor: "pointer",
+            }}
+          />
         ))}
       </div>
     </div>
   );
 
   const renderCreditsCard = () => (
-    <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(12,38,32,.96), rgba(7,12,14,.98))" }}>
+    <div
+      style={{
+        ...cardBase,
+        padding: 12,
+        background:
+          "linear-gradient(145deg, rgba(12,38,32,.96), rgba(7,12,14,.98))",
+      }}
+    >
       {creditCompact}
     </div>
   );
 
   const renderControls = () => (
-    <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(18,18,27,.96), rgba(6,7,12,.98))" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <strong style={{ fontSize: 12, textTransform: "uppercase", color: theme.textSoft }}>Recadrage tactile / souris</strong>
-        <button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }} style={{ border: 0, borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.09)", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 850 }}>Reset</button>
+    <div
+      style={{
+        ...cardBase,
+        padding: 12,
+        background:
+          "linear-gradient(145deg, rgba(18,18,27,.96), rgba(6,7,12,.98))",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        <strong
+          style={{
+            fontSize: 12,
+            textTransform: "uppercase",
+            color: theme.textSoft,
+          }}
+        >
+          Recadrage tactile / souris
+        </strong>
+        <button
+          type="button"
+          onClick={() => {
+            setZoom(1.18);
+            setOffsetX(0);
+            setOffsetY(0);
+          }}
+          style={{
+            border: 0,
+            borderRadius: 999,
+            padding: "6px 9px",
+            background: "rgba(255,255,255,.09)",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 850,
+          }}
+        >
+          Reset
+        </button>
       </div>
-      <div style={{ fontSize: 12, opacity: 0.78, lineHeight: 1.35, marginBottom: 8 }}>Glisse directement l’image dans le médaillon. Sur mobile : pince à 2 doigts pour zoomer. Sur PC : molette pour zoomer.</div>
-      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>Zoom<input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
-      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>Gauche / Droite<input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} /></label>
-      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 10 }}>Haut / Bas<input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} /></label>
-      <label style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}>Nom affiché<input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 14))} placeholder="Ex : NINJA" style={{ minHeight: 42 }} /></label>
+      <div
+        style={{
+          fontSize: 12,
+          opacity: 0.78,
+          lineHeight: 1.35,
+          marginBottom: 8,
+        }}
+      >
+        Glisse directement l’image dans le médaillon. Sur mobile : pince à 2
+        doigts pour zoomer. Sur PC : molette pour zoomer.
+      </div>
+      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
+        Zoom
+        <input
+          type="range"
+          min={0.86}
+          max={2.55}
+          step={0.01}
+          value={zoom}
+          onChange={(e) => setZoom(Number(e.target.value))}
+        />
+      </label>
+      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
+        Gauche / Droite
+        <input
+          type="range"
+          min={-120}
+          max={120}
+          step={1}
+          value={offsetX}
+          onChange={(e) => setOffsetX(Number(e.target.value))}
+        />
+      </label>
+      <label
+        style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 10 }}
+      >
+        Haut / Bas
+        <input
+          type="range"
+          min={-120}
+          max={120}
+          step={1}
+          value={offsetY}
+          onChange={(e) => setOffsetY(Number(e.target.value))}
+        />
+      </label>
+      <label
+        style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}
+      >
+        Nom affiché
+        <input
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value.slice(0, 14))}
+          placeholder="Ex : NINJA"
+          style={{ minHeight: 42 }}
+        />
+      </label>
       <ColorPicker />
     </div>
   );
@@ -1076,17 +2041,142 @@ function AvatarCreator({
   const renderCaricatureBox = () => {
     if (!originalFile) return null;
     return (
-      <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(37,24,67,.96), rgba(9,9,16,.98))" }}>
-        <div style={{ fontWeight: 1000, textTransform: "uppercase", marginBottom: 4 }}>Caricature souhaitée</div>
-        <div style={{ opacity: 0.78, fontSize: 12, marginBottom: 10 }}>Choisis le style puis lance la génération.</div>
-        <select value={style} onChange={(e) => setStyle(e.target.value as StyleId)} style={{ width: "100%", minHeight: 42, borderRadius: 12, padding: "9px 12px", background: "#07070d", color: "#fff", border: "1px solid rgba(255,255,255,.18)", marginBottom: 10 }}>
-          <option value="exaggerated">🎭 Très caricaturé — comique & fun</option>
-          <option value="comic">💥 Comic / BD</option>
-          <option value="flat">🏆 Logo esport</option>
-          <option value="realistic">✏️ Dessin cartoon plus réaliste</option>
-        </select>
-        <button type="button" onClick={handleGenerateCartoon} disabled={busy || !originalFile || !hasAiCredit} style={{ width: "100%", borderRadius: 15, padding: "15px 16px", fontSize: 15, fontWeight: 950, border: "none", cursor: busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer", background: "linear-gradient(135deg, #B06CFF, #7C3AED)", color: "#FFF", boxShadow: "0 16px 32px rgba(124,58,237,.42)", opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1 }}>{busy ? "⏳ Traitement…" : hasAiCredit ? "✨ Générer la caricature IA" : "🔒 Crédit avatar IA requis"}</button>
-        <button type="button" onClick={() => handleSave("manual")} disabled={busy || !avatarImage} style={{ width: "100%", marginTop: 8, borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(246,194,86,.32)", background: "rgba(246,194,86,.11)", color: GOLD_2, fontWeight: 950, cursor: busy || !avatarImage ? "not-allowed" : "pointer", opacity: busy || !avatarImage ? 0.55 : 1 }}>💾 Enregistrer dans la galerie</button>
+      <div
+        style={{
+          ...cardBase,
+          padding: 12,
+          background:
+            "linear-gradient(145deg, rgba(37,24,67,.96), rgba(9,9,16,.98))",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 1000,
+            textTransform: "uppercase",
+            marginBottom: 4,
+          }}
+        >
+          Caricature souhaitée
+        </div>
+        <div style={{ opacity: 0.78, fontSize: 12, marginBottom: 10 }}>
+          Choisis le style puis lance la génération.
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 8,
+            marginBottom: 10,
+          }}
+        >
+          {AVATAR_STYLE_OPTIONS.map((option) => {
+            const selected = style === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setStyle(option.id)}
+                style={{
+                  minHeight: 116,
+                  borderRadius: 16,
+                  padding: 9,
+                  border: selected
+                    ? `2px solid ${option.accent}`
+                    : "1px solid rgba(255,255,255,.13)",
+                  background: selected
+                    ? `linear-gradient(145deg, ${option.accent}30, rgba(10,10,16,.98))`
+                    : "linear-gradient(145deg, rgba(255,255,255,.07), rgba(7,7,12,.95))",
+                  color: "#fff",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  boxShadow: selected ? `0 0 22px ${option.accent}55` : "none",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    marginBottom: 8,
+                  }}
+                >
+                  <AvatarStylePreview option={option} selected={selected} />
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 1000,
+                        fontSize: 11.5,
+                        lineHeight: 1.12,
+                      }}
+                    >
+                      {option.icon} {option.shortLabel}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        color: option.accent,
+                        fontSize: 10.5,
+                        fontWeight: 900,
+                        lineHeight: 1.15,
+                      }}
+                    >
+                      Exemple : {option.preview}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  style={{ opacity: 0.78, fontSize: 10.5, lineHeight: 1.25 }}
+                >
+                  {option.description}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={handleGenerateCartoon}
+          disabled={busy || !originalFile || !hasAiCredit}
+          style={{
+            width: "100%",
+            borderRadius: 15,
+            padding: "15px 16px",
+            fontSize: 15,
+            fontWeight: 950,
+            border: "none",
+            cursor:
+              busy || !originalFile || !hasAiCredit ? "not-allowed" : "pointer",
+            background: "linear-gradient(135deg, #B06CFF, #7C3AED)",
+            color: "#FFF",
+            boxShadow: "0 16px 32px rgba(124,58,237,.42)",
+            opacity: busy || !originalFile || !hasAiCredit ? 0.55 : 1,
+          }}
+        >
+          {busy
+            ? "⏳ Traitement…"
+            : hasAiCredit
+              ? "✨ Générer la caricature IA"
+              : "🔒 Crédit avatar IA requis"}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSave("manual")}
+          disabled={busy || !avatarImage}
+          style={{
+            width: "100%",
+            marginTop: 8,
+            borderRadius: 14,
+            padding: "12px 14px",
+            border: "1px solid rgba(246,194,86,.32)",
+            background: "rgba(246,194,86,.11)",
+            color: GOLD_2,
+            fontWeight: 950,
+            cursor: busy || !avatarImage ? "not-allowed" : "pointer",
+            opacity: busy || !avatarImage ? 0.55 : 1,
+          }}
+        >
+          💾 Enregistrer dans la galerie
+        </button>
       </div>
     );
   };
@@ -1104,20 +2194,81 @@ function AvatarCreator({
   const renderGalleryTab = () => (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ ...cardBase, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
           <div>
-            <div style={{ fontWeight: 1000, textTransform: "uppercase", fontSize: 15 }}>Galerie avatars IA</div>
-            <div style={{ opacity: 0.78, fontSize: 12.5 }}>{gallery.length} avatar{gallery.length > 1 ? "s" : ""} sauvegardé{gallery.length > 1 ? "s" : ""}</div>
+            <div
+              style={{
+                fontWeight: 1000,
+                textTransform: "uppercase",
+                fontSize: 15,
+              }}
+            >
+              Galerie avatars IA
+            </div>
+            <div style={{ opacity: 0.78, fontSize: 12.5 }}>
+              {gallery.length} avatar{gallery.length > 1 ? "s" : ""} sauvegardé
+              {gallery.length > 1 ? "s" : ""}
+            </div>
           </div>
-          <InfoMini title="Galerie" content="Clique sur un avatar pour l’ouvrir en grand, l’exporter ou l’attribuer à un profil existant." onOpen={(title, content) => setMiniInfo({ title, content })} />
+          <InfoMini
+            title="Galerie"
+            content="Clique sur un avatar pour l’ouvrir en grand, l’exporter ou l’attribuer à un profil existant."
+            onOpen={(title, content) => setMiniInfo({ title, content })}
+          />
         </div>
         {gallery.length === 0 ? (
-          <div style={{ borderRadius: 16, border: "1px dashed rgba(255,255,255,.18)", padding: 20, textAlign: "center", opacity: 0.72 }}>Aucun avatar pour le moment. Génère puis enregistre un avatar depuis l’onglet IA.</div>
+          <div
+            style={{
+              borderRadius: 16,
+              border: "1px dashed rgba(255,255,255,.18)",
+              padding: 20,
+              textAlign: "center",
+              opacity: 0.72,
+            }}
+          >
+            Aucun avatar pour le moment. Génère puis enregistre un avatar depuis
+            l’onglet IA.
+          </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 8,
+            }}
+          >
             {gallery.map((item) => (
-              <button key={item.id} type="button" onClick={() => setSelectedGalleryItem(item)} style={{ border: 0, borderRadius: 14, background: "rgba(255,255,255,.055)", padding: 6, cursor: "pointer" }}>
-                <img src={item.dataUrl} alt={item.name} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 12, background: "#000" }} />
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSelectedGalleryItem(item)}
+                style={{
+                  border: 0,
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,.055)",
+                  padding: 6,
+                  cursor: "pointer",
+                }}
+              >
+                <img
+                  src={item.dataUrl}
+                  alt={item.name}
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    objectFit: "cover",
+                    borderRadius: 12,
+                    background: "#000",
+                  }}
+                />
               </button>
             ))}
           </div>
@@ -1129,30 +2280,149 @@ function AvatarCreator({
 
   const renderDebugTab = () => (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ ...cardBase, padding: 14, background: "linear-gradient(145deg, rgba(46,24,22,.96), rgba(10,8,8,.98))" }}>
-        <div style={{ fontWeight: 1000, textTransform: "uppercase", marginBottom: 8 }}>Diagnostic développeur</div>
-        <p style={{ margin: "0 0 12px", opacity: 0.82, fontSize: 13, lineHeight: 1.4 }}>Visible uniquement quand le mode développeur est activé.</p>
-        <button type="button" onClick={runAvatarDebug} disabled={busy} style={{ width: "100%", borderRadius: 14, padding: "13px 14px", border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 950, cursor: busy ? "not-allowed" : "pointer" }}>🔎 Diagnostic API IA</button>
+      <div
+        style={{
+          ...cardBase,
+          padding: 14,
+          background:
+            "linear-gradient(145deg, rgba(46,24,22,.96), rgba(10,8,8,.98))",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 1000,
+            textTransform: "uppercase",
+            marginBottom: 8,
+          }}
+        >
+          Diagnostic développeur
+        </div>
+        <p
+          style={{
+            margin: "0 0 12px",
+            opacity: 0.82,
+            fontSize: 13,
+            lineHeight: 1.4,
+          }}
+        >
+          Visible uniquement quand le mode développeur est activé.
+        </p>
+        <button
+          type="button"
+          onClick={runAvatarDebug}
+          disabled={busy}
+          style={{
+            width: "100%",
+            borderRadius: 14,
+            padding: "13px 14px",
+            border: "1px solid rgba(255,255,255,.16)",
+            background: "rgba(255,255,255,.08)",
+            color: "#fff",
+            fontWeight: 950,
+            cursor: busy ? "not-allowed" : "pointer",
+          }}
+        >
+          🔎 Diagnostic API IA
+        </button>
       </div>
       <StatusCard />
     </div>
   );
 
   return (
-    <div style={{ minHeight: "100vh", margin: -8, padding: "0 14px 104px", color: theme.text, background: "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)" }}>
-      <div style={{ maxWidth: 460, margin: "0 auto", display: "grid", gap: 12 }}>
-        <div style={{ position: "sticky", top: 0, zIndex: 50, padding: "10px 0 8px", background: "linear-gradient(180deg, rgba(5,5,9,.98), rgba(5,5,9,.92) 70%, rgba(5,5,9,0))", backdropFilter: "blur(12px)" }}>
-          <header style={{ ...cardBase, padding: "12px 14px", display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 10, background: "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))" }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        margin: -8,
+        padding: "0 14px 104px",
+        color: theme.text,
+        background:
+          "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)",
+      }}
+    >
+      <div
+        style={{ maxWidth: 460, margin: "0 auto", display: "grid", gap: 12 }}
+      >
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 50,
+            padding: "10px 0 8px",
+            background:
+              "linear-gradient(180deg, rgba(5,5,9,.98), rgba(5,5,9,.92) 70%, rgba(5,5,9,0))",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <header
+            style={{
+              ...cardBase,
+              padding: "12px 14px",
+              display: "grid",
+              gridTemplateColumns: "44px 1fr 44px",
+              alignItems: "center",
+              gap: 10,
+              background:
+                "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))",
+            }}
+          >
             <BackDot onClick={handleBack} size={40} color={primary} />
             <div style={{ minWidth: 0, textAlign: "center" }}>
-              <h1 style={{ margin: 0, fontSize: 24, lineHeight: 1, fontWeight: 1000, letterSpacing: 1.4, color: primary, textTransform: "uppercase" }}>AVATAR IA</h1>
-              <div style={{ marginTop: 5, fontSize: 12, opacity: 0.82, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Caricature cartoon + médaillon WebP</div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 24,
+                  lineHeight: 1,
+                  fontWeight: 1000,
+                  letterSpacing: 1.4,
+                  color: primary,
+                  textTransform: "uppercase",
+                }}
+              >
+                AVATAR IA
+              </h1>
+              <div
+                style={{
+                  marginTop: 5,
+                  fontSize: 12,
+                  opacity: 0.82,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                Caricature cartoon + médaillon WebP
+              </div>
             </div>
-            <InfoDot title="Infos Avatar IA" content={infoContent} size={40} color={primary} />
+            <InfoDot
+              title="Infos Avatar IA"
+              content={infoContent}
+              size={40}
+              color={primary}
+            />
           </header>
 
-          <div style={{ display: "flex", gap: 7, padding: 4, marginTop: 8, borderRadius: 18, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" }}>
-            {tabs.filter((x) => !x.hidden).map((tab) => <TabButton key={tab.id} id={tab.id} label={tab.label} icon={tab.icon} />)}
+          <div
+            style={{
+              display: "flex",
+              gap: 7,
+              padding: 4,
+              marginTop: 8,
+              borderRadius: 18,
+              background: "rgba(255,255,255,.045)",
+              border: "1px solid rgba(255,255,255,.08)",
+            }}
+          >
+            {tabs
+              .filter((x) => !x.hidden)
+              .map((tab) => (
+                <TabButton
+                  key={tab.id}
+                  id={tab.id}
+                  label={tab.label}
+                  icon={tab.icon}
+                />
+              ))}
           </div>
         </div>
 
@@ -1164,46 +2434,274 @@ function AvatarCreator({
       </div>
 
       {miniInfo ? (
-        <div onClick={() => setMiniInfo(null)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.62)", display: "grid", placeItems: "center", padding: 18 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(92vw, 360px)", ...cardBase, padding: 18, background: "linear-gradient(145deg, rgba(24,24,34,.98), rgba(6,7,12,.98))" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
-              <strong style={{ color: primary, textTransform: "uppercase" }}>{miniInfo.title}</strong>
-              <button type="button" onClick={() => setMiniInfo(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
+        <div
+          onClick={() => setMiniInfo(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,.62)",
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(92vw, 360px)",
+              ...cardBase,
+              padding: 18,
+              background:
+                "linear-gradient(145deg, rgba(24,24,34,.98), rgba(6,7,12,.98))",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                marginBottom: 10,
+              }}
+            >
+              <strong style={{ color: primary, textTransform: "uppercase" }}>
+                {miniInfo.title}
+              </strong>
+              <button
+                type="button"
+                onClick={() => setMiniInfo(null)}
+                style={{
+                  border: 0,
+                  background: "rgba(255,255,255,.09)",
+                  color: "#fff",
+                  borderRadius: 10,
+                  padding: "6px 9px",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
             </div>
-            <div style={{ opacity: 0.88, lineHeight: 1.45, fontSize: 13.5 }}>{miniInfo.content}</div>
+            <div style={{ opacity: 0.88, lineHeight: 1.45, fontSize: 13.5 }}>
+              {miniInfo.content}
+            </div>
           </div>
         </div>
       ) : null}
 
       {selectedGalleryItem ? (
-        <div onClick={() => setSelectedGalleryItem(null)} style={{ position: "fixed", inset: 0, zIndex: 9997, background: "rgba(0,0,0,.74)", display: "grid", placeItems: "center", padding: 18 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, 430px)", ...cardBase, padding: 16, background: "linear-gradient(145deg, rgba(18,18,27,.98), rgba(4,5,9,.99))" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <strong style={{ color: primary, textTransform: "uppercase" }}>Avatar IA</strong>
-              <button type="button" onClick={() => setSelectedGalleryItem(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
+        <div
+          onClick={() => setSelectedGalleryItem(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9997,
+            background: "rgba(0,0,0,.74)",
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(94vw, 430px)",
+              ...cardBase,
+              padding: 16,
+              background:
+                "linear-gradient(145deg, rgba(18,18,27,.98), rgba(4,5,9,.99))",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 12,
+              }}
+            >
+              <strong style={{ color: primary, textTransform: "uppercase" }}>
+                Avatar IA
+              </strong>
+              <button
+                type="button"
+                onClick={() => setSelectedGalleryItem(null)}
+                style={{
+                  border: 0,
+                  background: "rgba(255,255,255,.09)",
+                  color: "#fff",
+                  borderRadius: 10,
+                  padding: "6px 9px",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
             </div>
-            <img src={selectedGalleryItem.dataUrl} alt={selectedGalleryItem.name} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 18, background: "#000", boxShadow: "0 18px 42px rgba(0,0,0,.5)" }} />
-            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button type="button" onClick={() => downloadGalleryItem(selectedGalleryItem)} style={{ border: 0, borderRadius: 13, padding: "12px 10px", background: "rgba(255,255,255,.09)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>⬇️ Exporter</button>
-              <button type="button" onClick={() => { setAssignTarget(selectedGalleryItem); setSelectedGalleryItem(null); }} style={{ border: 0, borderRadius: 13, padding: "12px 10px", background: "rgba(246,194,86,.18)", color: GOLD_2, fontWeight: 900, cursor: "pointer" }}>👤 Attribuer</button>
+            <img
+              src={selectedGalleryItem.dataUrl}
+              alt={selectedGalleryItem.name}
+              style={{
+                width: "100%",
+                aspectRatio: "1 / 1",
+                objectFit: "cover",
+                borderRadius: 18,
+                background: "#000",
+                boxShadow: "0 18px 42px rgba(0,0,0,.5)",
+              }}
+            />
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => downloadGalleryItem(selectedGalleryItem)}
+                style={{
+                  border: 0,
+                  borderRadius: 13,
+                  padding: "12px 10px",
+                  background: "rgba(255,255,255,.09)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                ⬇️ Exporter
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAssignTarget(selectedGalleryItem);
+                  setSelectedGalleryItem(null);
+                }}
+                style={{
+                  border: 0,
+                  borderRadius: 13,
+                  padding: "12px 10px",
+                  background: "rgba(246,194,86,.18)",
+                  color: GOLD_2,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                👤 Attribuer
+              </button>
             </div>
-            <button type="button" onClick={() => setSelectedGalleryItem(null)} style={{ width: "100%", marginTop: 8, border: "1px solid rgba(255,255,255,.12)", borderRadius: 13, padding: "11px 10px", background: "transparent", color: "#fff", cursor: "pointer" }}>Fermer</button>
+            <button
+              type="button"
+              onClick={() => setSelectedGalleryItem(null)}
+              style={{
+                width: "100%",
+                marginTop: 8,
+                border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 13,
+                padding: "11px 10px",
+                background: "transparent",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Fermer
+            </button>
           </div>
         </div>
       ) : null}
 
       {assignTarget ? (
-        <div onClick={() => setAssignTarget(null)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.68)", display: "grid", placeItems: "center", padding: 18 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(92vw, 420px)", ...cardBase, padding: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <strong style={{ color: primary, textTransform: "uppercase" }}>Attribuer à un profil</strong>
-              <button type="button" onClick={() => setAssignTarget(null)} style={{ border: 0, background: "rgba(255,255,255,.09)", color: "#fff", borderRadius: 10, padding: "6px 9px", cursor: "pointer" }}>✕</button>
+        <div
+          onClick={() => setAssignTarget(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9998,
+            background: "rgba(0,0,0,.68)",
+            display: "grid",
+            placeItems: "center",
+            padding: 18,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "min(92vw, 420px)", ...cardBase, padding: 16 }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 12,
+              }}
+            >
+              <strong style={{ color: primary, textTransform: "uppercase" }}>
+                Attribuer à un profil
+              </strong>
+              <button
+                type="button"
+                onClick={() => setAssignTarget(null)}
+                style={{
+                  border: 0,
+                  background: "rgba(255,255,255,.09)",
+                  color: "#fff",
+                  borderRadius: 10,
+                  padding: "6px 9px",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
             </div>
-            {profiles.length === 0 ? <div style={{ opacity: 0.75, fontSize: 13 }}>Aucun profil local trouvé.</div> : (
-              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
+            {profiles.length === 0 ? (
+              <div style={{ opacity: 0.75, fontSize: 13 }}>
+                Aucun profil local trouvé.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  maxHeight: 360,
+                  overflow: "auto",
+                }}
+              >
                 {profiles.map((p) => (
-                  <button key={p.id} type="button" onClick={() => assignAvatarToProfile(assignTarget, p.id)} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", borderRadius: 14, padding: 10, cursor: "pointer", textAlign: "left" }}>
-                    <img src={p.avatarDataUrl || p.avatarUrl || assignTarget.dataUrl} alt="" style={{ width: 38, height: 38, borderRadius: 999, objectFit: "cover", background: "#000" }} />
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => assignAvatarToProfile(assignTarget, p.id)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      border: "1px solid rgba(255,255,255,.12)",
+                      background: "rgba(255,255,255,.06)",
+                      color: "#fff",
+                      borderRadius: 14,
+                      padding: 10,
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <img
+                      src={
+                        p.avatarDataUrl || p.avatarUrl || assignTarget.dataUrl
+                      }
+                      alt=""
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 999,
+                        objectFit: "cover",
+                        background: "#000",
+                      }}
+                    />
                     <strong>{p.name}</strong>
                   </button>
                 ))}

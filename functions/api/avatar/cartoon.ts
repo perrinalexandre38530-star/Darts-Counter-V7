@@ -21,11 +21,18 @@ export interface Env {
   [key: string]: any;
 }
 
-type StyleId = "realistic" | "comic" | "flat" | "exaggerated";
-
+type StyleId =
+  | "exaggerated_fun"
+  | "exaggerated_realistic"
+  | "simple_elegant"
+  | "simple_fun"
+  | "three_d_fun"
+  | "three_d_elegant";
 
 function normalizeKeyName(value: string): string {
-  return String(value || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
 }
 
 function maskSecret(value: string): string {
@@ -35,8 +42,18 @@ function maskSecret(value: string): string {
   return `${v.slice(0, 7)}…${v.slice(-5)}`;
 }
 
-function readOpenAiKey(env: Env): { key: string; source: string | null; preview: string | null } {
-  const candidates = ["OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_SECRET_KEY", "OPENAI_APIKEY", "VITE_OPENAI_API_KEY"];
+function readOpenAiKey(env: Env): {
+  key: string;
+  source: string | null;
+  preview: string | null;
+} {
+  const candidates = [
+    "OPENAI_API_KEY",
+    "OPENAI_KEY",
+    "OPENAI_SECRET_KEY",
+    "OPENAI_APIKEY",
+    "VITE_OPENAI_API_KEY",
+  ];
 
   for (const name of candidates) {
     const raw = env?.[name];
@@ -48,7 +65,11 @@ function readOpenAiKey(env: Env): { key: string; source: string | null; preview:
 
   const wanted = normalizeKeyName("OPENAI_API_KEY");
   for (const [name, raw] of Object.entries(env || {})) {
-    if (normalizeKeyName(name) === wanted && typeof raw === "string" && raw.trim()) {
+    if (
+      normalizeKeyName(name) === wanted &&
+      typeof raw === "string" &&
+      raw.trim()
+    ) {
       const key = raw.trim();
       return { key, source: name, preview: maskSecret(key) };
     }
@@ -57,21 +78,40 @@ function readOpenAiKey(env: Env): { key: string; source: string | null; preview:
   return { key: "", source: null, preview: null };
 }
 
-function publicError(error: string, message: string, extra: Record<string, any> = {}, status = 500): Response {
+function publicError(
+  error: string,
+  message: string,
+  extra: Record<string, any> = {},
+  status = 500,
+): Response {
   return json({ ok: false, error, message, ...extra }, status);
 }
 
 function readNasApiUrl(env: Env): string {
-  const raw = String(env.NAS_API_URL || env.VITE_NAS_API_URL || env.API_URL || "").trim().replace(/\/+$/, "");
+  const raw = String(
+    env.NAS_API_URL || env.VITE_NAS_API_URL || env.API_URL || "",
+  )
+    .trim()
+    .replace(/\/+$/, "");
   return raw && /^https?:\/\//i.test(raw) ? raw : "";
 }
 
-async function callNasJson(env: Env, request: Request, path: string, body?: Record<string, any>): Promise<any | null> {
+async function callNasJson(
+  env: Env,
+  request: Request,
+  path: string,
+  body?: Record<string, any>,
+): Promise<any | null> {
   const base = readNasApiUrl(env);
   if (!base) return null;
   const auth = request.headers.get("authorization") || "";
   if (!auth.startsWith("Bearer ")) {
-    throw Object.assign(new Error("Session utilisateur requise pour utiliser les crédits Avatar IA."), { status: 401, code: "auth_required" });
+    throw Object.assign(
+      new Error(
+        "Session utilisateur requise pour utiliser les crédits Avatar IA.",
+      ),
+      { status: 401, code: "auth_required" },
+    );
   }
   const response = await fetch(`${base}${path}`, {
     method: body ? "POST" : "GET",
@@ -81,31 +121,83 @@ async function callNasJson(env: Env, request: Request, path: string, body?: Reco
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const json = await response.json().catch(() => null) as any;
+  const json = (await response.json().catch(() => null)) as any;
   if (!response.ok) {
-    throw Object.assign(new Error(json?.message || json?.error || `nas_${response.status}`), { status: response.status, code: json?.error || "nas_error", payload: json });
+    throw Object.assign(
+      new Error(json?.message || json?.error || `nas_${response.status}`),
+      {
+        status: response.status,
+        code: json?.error || "nas_error",
+        payload: json,
+      },
+    );
   }
   return json;
 }
 
-async function checkNasAvatarCredit(env: Env, request: Request): Promise<any | null> {
-  return callNasJson(env, request, "/avatar-ai/check", { source: "cloudflare_avatar_cartoon" });
+async function checkNasAvatarCredit(
+  env: Env,
+  request: Request,
+): Promise<any | null> {
+  return callNasJson(env, request, "/avatar-ai/check", {
+    source: "cloudflare_avatar_cartoon",
+  });
 }
 
-async function consumeNasAvatarCredit(env: Env, request: Request, meta: { provider: string; model?: string; style?: string }): Promise<any | null> {
+async function consumeNasAvatarCredit(
+  env: Env,
+  request: Request,
+  meta: { provider: string; model?: string; style?: string },
+): Promise<any | null> {
   return callNasJson(env, request, "/avatar-ai/consume", meta);
 }
 
 const STYLE_SNIPPETS: Record<StyleId, string> = {
-  realistic:
-    "premium hand-drawn cartoon portrait, recognizable face, clean polished illustration, warm skin shading, thick confident outlines, expressive but not distorted",
-  comic:
-    "comic book caricature portrait, bold black ink outlines, vibrant color blocks, halftone energy, funny expressive smile, playful face exaggeration",
-  flat:
-    "esport mascot vector avatar, simplified shapes, clean flat colors, thick outlines, punchy contrast, centered face, badge-ready portrait",
-  exaggerated:
-    "VERY exaggerated funny cartoon caricature, oversized expressive head, big eyes, comic nose and smile, playful asymmetry, bold outlines, vibrant warm colors, hilarious but friendly",
+  exaggerated_fun:
+    "VERY exaggerated funny cartoon caricature, oversized expressive head, huge eyes, comic nose and big smile, playful asymmetry, bold black outlines, vibrant warm colors, hilarious but friendly, comedy mascot energy",
+  exaggerated_realistic:
+    "very caricatured but realistic cartoon portrait, recognizable face, exaggerated facial features while keeping true likeness, polished hand-drawn illustration, premium shading, expressive eyes, confident outlines",
+  simple_elegant:
+    "simple elegant caricature portrait, subtle cartoon stylization, clean refined line art, natural expression, tasteful warm lighting, premium profile avatar, not too distorted",
+  simple_fun:
+    "simple cartoon fun caricature, friendly smile, light exaggeration, bright colors, clean rounded shapes, playful avatar style, charming and approachable",
+  three_d_fun:
+    "3D funny cartoon caricature avatar, toy-like rounded face, oversized head, big expressive eyes, humorous smile, glossy soft lighting, playful stylized 3D character, comedy energy",
+  three_d_elegant:
+    "elegant 3D caricature avatar, premium stylized character portrait, soft studio lighting, realistic 3D materials, clean face proportions, slight caricature, polished and classy",
 };
+
+const LEGACY_STYLE_MAP: Record<string, StyleId> = {
+  exaggerated: "exaggerated_fun",
+  comic: "exaggerated_fun",
+  realistic: "exaggerated_realistic",
+  flat: "simple_fun",
+};
+
+function normalizeStyleId(raw: string): StyleId {
+  const value = String(raw || "").trim();
+  if ((Object.keys(STYLE_SNIPPETS) as StyleId[]).includes(value as StyleId))
+    return value as StyleId;
+  return LEGACY_STYLE_MAP[value] || "exaggerated_fun";
+}
+
+function styleGenerationSettings(style: StyleId) {
+  switch (style) {
+    case "simple_elegant":
+      return { num_steps: 24, strength: 0.56, guidance: 6.8 };
+    case "simple_fun":
+      return { num_steps: 26, strength: 0.66, guidance: 7.4 };
+    case "exaggerated_realistic":
+      return { num_steps: 30, strength: 0.7, guidance: 8.2 };
+    case "three_d_fun":
+      return { num_steps: 32, strength: 0.82, guidance: 9.0 };
+    case "three_d_elegant":
+      return { num_steps: 30, strength: 0.68, guidance: 7.8 };
+    case "exaggerated_fun":
+    default:
+      return { num_steps: 32, strength: 0.84, guidance: 9.2 };
+  }
+}
 
 function buildPrompt(style: StyleId): string {
   return [
@@ -114,7 +206,7 @@ function buildPrompt(style: StyleId): string {
     "Head and shoulders only, centered composition, looking at camera.",
     "Do NOT include text, letters, logo, watermark, badge, circle frame, medallion, UI, hands, or background objects.",
     "Use a simple warm yellow/orange comic background that will fit inside a circular medallion later.",
-    STYLE_SNIPPETS[style] || STYLE_SNIPPETS.exaggerated,
+    STYLE_SNIPPETS[style] || STYLE_SNIPPETS.exaggerated_fun,
   ].join(" ");
 }
 
@@ -158,7 +250,10 @@ async function resultToDataUrl(result: any): Promise<string | null> {
     return `data:image/png;base64,${first}`;
   }
 
-  if (result.data?.[0]?.b64_json && typeof result.data[0].b64_json === "string") {
+  if (
+    result.data?.[0]?.b64_json &&
+    typeof result.data[0].b64_json === "string"
+  ) {
     return `data:image/webp;base64,${result.data[0].b64_json}`;
   }
 
@@ -169,7 +264,12 @@ async function resultToDataUrl(result: any): Promise<string | null> {
   return null;
 }
 
-async function callOpenAiImageEdit(apiKey: string, file: File, style: StyleId, model = "gpt-image-1"): Promise<string | null> {
+async function callOpenAiImageEdit(
+  apiKey: string,
+  file: File,
+  style: StyleId,
+  model = "gpt-image-1",
+): Promise<string | null> {
   const form = new FormData();
   form.append("model", model);
   form.append("image", file, file.name || "avatar-source.webp");
@@ -202,7 +302,11 @@ async function callOpenAiImageEdit(apiKey: string, file: File, style: StyleId, m
   return await resultToDataUrl(json);
 }
 
-async function callCloudflareAi(env: Env, file: File, style: StyleId): Promise<string | null> {
+async function callCloudflareAi(
+  env: Env,
+  file: File,
+  style: StyleId,
+): Promise<string | null> {
   if (!env.AI?.run) return null;
 
   const prompt = buildPrompt(style);
@@ -219,9 +323,7 @@ async function callCloudflareAi(env: Env, file: File, style: StyleId): Promise<s
       const result = await env.AI.run(model, {
         prompt,
         image,
-        num_steps: style === "exaggerated" ? 32 : 26,
-        strength: style === "realistic" ? 0.58 : style === "flat" ? 0.72 : 0.82,
-        guidance: style === "exaggerated" ? 9 : 7.5,
+        ...styleGenerationSettings(style),
       });
       const dataUrl = await resultToDataUrl(result);
       if (dataUrl) return dataUrl;
@@ -243,10 +345,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const form = await request.formData();
     const file = form.get("image");
-    const styleRaw = String(form.get("style") || "exaggerated");
-    const style: StyleId = ["realistic", "comic", "flat", "exaggerated"].includes(styleRaw)
-      ? (styleRaw as StyleId)
-      : "exaggerated";
+    const styleRaw = String(form.get("style") || "exaggerated_fun");
+    const style: StyleId = normalizeStyleId(styleRaw);
 
     if (!(file instanceof File)) {
       return json({ ok: false, error: "missing_image" }, 400);
@@ -260,19 +360,53 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     try {
       nasCreditBefore = await checkNasAvatarCredit(env, request);
     } catch (creditErr: any) {
-      return publicError(creditErr?.code || "avatar_credit_check_failed", String(creditErr?.message || creditErr || "Crédit avatar IA indisponible."), { provider: "nas", avatarCredits: creditErr?.payload || null }, Number(creditErr?.status || 402));
+      return publicError(
+        creditErr?.code || "avatar_credit_check_failed",
+        String(
+          creditErr?.message || creditErr || "Crédit avatar IA indisponible.",
+        ),
+        { provider: "nas", avatarCredits: creditErr?.payload || null },
+        Number(creditErr?.status || 402),
+      );
     }
 
     const openAi = readOpenAiKey(env);
     const openAiKey = openAi.key;
-    const openAiModel = String(env.OPENAI_IMAGE_MODEL || "gpt-image-1").trim() || "gpt-image-1";
+    const openAiModel =
+      String(env.OPENAI_IMAGE_MODEL || "gpt-image-1").trim() || "gpt-image-1";
 
     if (openAiKey) {
       try {
-        const dataUrl = await callOpenAiImageEdit(openAiKey, file, style, openAiModel);
+        const dataUrl = await callOpenAiImageEdit(
+          openAiKey,
+          file,
+          style,
+          openAiModel,
+        );
         if (dataUrl) {
-          const avatarCredits = await consumeNasAvatarCredit(env, request, { provider: "openai", model: openAiModel, style }).catch((err: any) => ({ ok: false, error: err?.code || "consume_failed", message: String(err?.message || err) }));
-          return json({ ok: true, cartoonWebp: dataUrl, provider: "openai", style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel, avatarCredits, creditChecked: !!nasCreditBefore }, 200);
+          const avatarCredits = await consumeNasAvatarCredit(env, request, {
+            provider: "openai",
+            model: openAiModel,
+            style,
+          }).catch((err: any) => ({
+            ok: false,
+            error: err?.code || "consume_failed",
+            message: String(err?.message || err),
+          }));
+          return json(
+            {
+              ok: true,
+              cartoonWebp: dataUrl,
+              provider: "openai",
+              style,
+              keySource: openAi.source,
+              keyPreview: openAi.preview,
+              model: openAiModel,
+              avatarCredits,
+              creditChecked: !!nasCreditBefore,
+            },
+            200,
+          );
         }
       } catch (err: any) {
         // On garde un fallback Cloudflare possible si OpenAI échoue.
@@ -280,11 +414,47 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         try {
           const dataUrl = await callCloudflareAi(env, file, style);
           if (dataUrl) {
-            const avatarCredits = await consumeNasAvatarCredit(env, request, { provider: "cloudflare", model: "workers-ai", style }).catch((err: any) => ({ ok: false, error: err?.code || "consume_failed", message: String(err?.message || err) }));
-            return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", fallbackFrom: "openai", openAiMessage, style, keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel, avatarCredits, creditChecked: !!nasCreditBefore }, 200);
+            const avatarCredits = await consumeNasAvatarCredit(env, request, {
+              provider: "cloudflare",
+              model: "workers-ai",
+              style,
+            }).catch((err: any) => ({
+              ok: false,
+              error: err?.code || "consume_failed",
+              message: String(err?.message || err),
+            }));
+            return json(
+              {
+                ok: true,
+                cartoonPng: dataUrl,
+                provider: "cloudflare",
+                fallbackFrom: "openai",
+                openAiMessage,
+                style,
+                keySource: openAi.source,
+                keyPreview: openAi.preview,
+                model: openAiModel,
+                avatarCredits,
+                creditChecked: !!nasCreditBefore,
+              },
+              200,
+            );
           }
         } catch (cfErr: any) {
-          return publicError("ai_generation_failed", openAiMessage, { provider: "openai", fallbackMessage: String(cfErr?.message || cfErr || "cloudflare_error"), keySource: openAi.source, keyPreview: openAi.preview, model: openAiModel }, 502);
+          return publicError(
+            "ai_generation_failed",
+            openAiMessage,
+            {
+              provider: "openai",
+              fallbackMessage: String(
+                cfErr?.message || cfErr || "cloudflare_error",
+              ),
+              keySource: openAi.source,
+              keyPreview: openAi.preview,
+              model: openAiModel,
+            },
+            502,
+          );
         }
       }
     }
@@ -292,16 +462,58 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     try {
       const dataUrl = await callCloudflareAi(env, file, style);
       if (dataUrl) {
-        const avatarCredits = await consumeNasAvatarCredit(env, request, { provider: "cloudflare", model: "workers-ai", style }).catch((err: any) => ({ ok: false, error: err?.code || "consume_failed", message: String(err?.message || err) }));
-        return json({ ok: true, cartoonPng: dataUrl, provider: "cloudflare", style, avatarCredits, creditChecked: !!nasCreditBefore }, 200);
+        const avatarCredits = await consumeNasAvatarCredit(env, request, {
+          provider: "cloudflare",
+          model: "workers-ai",
+          style,
+        }).catch((err: any) => ({
+          ok: false,
+          error: err?.code || "consume_failed",
+          message: String(err?.message || err),
+        }));
+        return json(
+          {
+            ok: true,
+            cartoonPng: dataUrl,
+            provider: "cloudflare",
+            style,
+            avatarCredits,
+            creditChecked: !!nasCreditBefore,
+          },
+          200,
+        );
       }
     } catch (err: any) {
-      return publicError("ai_generation_failed", String(err?.message || err || "cloudflare_error"), { provider: "cloudflare", cloudflareAiBinding: Boolean(env.AI?.run) }, 502);
+      return publicError(
+        "ai_generation_failed",
+        String(err?.message || err || "cloudflare_error"),
+        { provider: "cloudflare", cloudflareAiBinding: Boolean(env.AI?.run) },
+        502,
+      );
     }
 
-    return publicError("openai_key_missing", "OPENAI_API_KEY absente côté Cloudflare Pages Function runtime. Vérifie variable Production/Runtime puis redéploie.", { provider: "none", envKeysVisible: Object.keys(env || {}).filter((k) => !/KEY|TOKEN|SECRET|PASSWORD|PWD/i.test(k)).sort(), sensitiveKeysDetected: Object.keys(env || {}).filter((k) => /OPENAI|AI|KEY|TOKEN|SECRET/i.test(k)).sort(), cloudflareAiBinding: Boolean(env.AI?.run) }, 503);
+    return publicError(
+      "openai_key_missing",
+      "OPENAI_API_KEY absente côté Cloudflare Pages Function runtime. Vérifie variable Production/Runtime puis redéploie.",
+      {
+        provider: "none",
+        envKeysVisible: Object.keys(env || {})
+          .filter((k) => !/KEY|TOKEN|SECRET|PASSWORD|PWD/i.test(k))
+          .sort(),
+        sensitiveKeysDetected: Object.keys(env || {})
+          .filter((k) => /OPENAI|AI|KEY|TOKEN|SECRET/i.test(k))
+          .sort(),
+        cloudflareAiBinding: Boolean(env.AI?.run),
+      },
+      503,
+    );
   } catch (err: any) {
-    return publicError("exception", String(err?.message || err || "Unknown error"), {}, 500);
+    return publicError(
+      "exception",
+      String(err?.message || err || "Unknown error"),
+      {},
+      500,
+    );
   }
 };
 
