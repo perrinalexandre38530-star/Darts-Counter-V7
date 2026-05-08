@@ -206,9 +206,20 @@ function writeCreditState(next: AvatarCreditState): AvatarCreditState {
 }
 
 function creditLabel(state: AvatarCreditState): string {
+  const paid = Math.max(0, Math.floor(Number(state.credits || 0)));
+  if (!state.freeUsed && paid > 0) {
+    return `1 gratuit + ${paid} crédit${paid > 1 ? "s" : ""} avatar IA`;
+  }
   if (!state.freeUsed) return "1 avatar IA gratuit disponible";
-  if (state.credits > 0) return `${state.credits} crédit${state.credits > 1 ? "s" : ""} avatar IA disponible${state.credits > 1 ? "s" : ""}`;
+  if (paid > 0) return `${paid} crédit${paid > 1 ? "s" : ""} avatar IA disponible${paid > 1 ? "s" : ""}`;
   return "Aucun crédit avatar IA disponible";
+}
+
+function creditBadgeLabel(state: AvatarCreditState): string {
+  const paid = Math.max(0, Math.floor(Number(state.credits || 0)));
+  if (!state.freeUsed && paid > 0) return `FREE + ${paid}`;
+  if (!state.freeUsed) return "FREE";
+  return String(paid);
 }
 
 const R_OUTER = 248;
@@ -483,9 +494,11 @@ function AvatarCreator({
     const handler = () => refreshAvatarCredits();
     window.addEventListener("dc-auth-changed", handler);
     window.addEventListener("storage", handler);
+    window.addEventListener("focus", handler);
     return () => {
       window.removeEventListener("dc-auth-changed", handler);
       window.removeEventListener("storage", handler);
+      window.removeEventListener("focus", handler);
     };
   }, [refreshAvatarCredits]);
 
@@ -502,9 +515,11 @@ function AvatarCreator({
         const json = await apiGet(`/avatar-ai/checkout/verify?session_id=${encodeURIComponent(sessionId)}`) as any;
         if (!json?.paid) throw new Error(json?.message || json?.error || "verify_failed");
         if (cancelled) return;
-        setCreditState(writeCreditState(normalizeCreditPayload(json, creditState)));
+        const nextCredits = writeCreditState(normalizeCreditPayload(json, creditState));
+        setCreditState(nextCredits);
         markCheckoutProcessed(sessionId);
-        setStatus(json.credited ? `Paiement validé : +${json.addedCredits} crédits avatars IA ajoutés au compte.` : "Paiement déjà validé : crédits IA déjà ajoutés à ce compte.");
+        setStatus(json.credited ? `Paiement validé : +${json.addedCredits} crédits avatars IA ajoutés au compte. ${creditLabel(nextCredits)}.` : `Paiement déjà validé : crédits IA déjà ajoutés à ce compte. ${creditLabel(nextCredits)}.`);
+        refreshAvatarCredits();
         window.history.replaceState(null, "", window.location.href.replace(/[?&]avatarCheckout=success/, "").replace(/[?&]session_id=[^&#]+/, ""));
       } catch (err: any) {
         if (!cancelled) setError(`Impossible de valider le paiement Stripe : ${String(err?.message || err || "erreur")}`);
@@ -557,13 +572,31 @@ function AvatarCreator({
     persistGallery([item, ...gallery.filter((x) => x.dataUrl !== dataUrl)]);
   }
 
-  function consumeAvatarCreditAfterSuccess() {
-    setCreditState((current) => {
-      const next = current.freeUsed
-        ? { ...current, credits: Math.max(0, current.credits - 1) }
-        : { ...current, freeUsed: true };
-      return writeCreditState(next);
-    });
+  async function checkAvatarCreditBeforeGeneration() {
+    if (!readNasAccessToken()) {
+      throw new Error("Connecte-toi au compte utilisateur avant de générer un avatar IA.");
+    }
+    const json = await apiPost("/avatar-ai/check", { style }) as any;
+    const next = normalizeCreditPayload(json, creditState);
+    setCreditState(writeCreditState(next));
+    if (json?.ok === false || json?.canGenerate === false) {
+      throw new Error(json?.message || "Crédit avatar IA requis.");
+    }
+    return next;
+  }
+
+  async function consumeAvatarCreditAfterSuccess() {
+    if (!readNasAccessToken()) {
+      throw new Error("Compte utilisateur introuvable : impossible de débiter le crédit IA.");
+    }
+    const json = await apiPost("/avatar-ai/consume", {
+      provider: "openai",
+      model: "gpt-image-1",
+      style,
+    }) as any;
+    const next = normalizeCreditPayload(json, creditState);
+    setCreditState(writeCreditState(next));
+    return next;
   }
 
   async function handleBuyPack(pack: CreditPack) {
@@ -662,8 +695,10 @@ function AvatarCreator({
     setBusy(true);
     setError(null);
     setLastExport(null);
-    setStatus("Génération de la vraie caricature IA en cours…");
+    setStatus("Vérification des crédits avatar IA…");
     try {
+      await checkAvatarCreditBeforeGeneration();
+      setStatus("Génération de la vraie caricature IA en cours…");
       let generated: AiPayload | null = null;
       try {
         generated = await callAvatarAi(originalFile, style);
@@ -682,14 +717,12 @@ function AvatarCreator({
         setZoom(1.12);
         setOffsetX(0);
         setOffsetY(0);
-        if (generated.avatarCredits?.ok) {
-          const nextCredits = normalizeCreditPayload(generated.avatarCredits, creditState);
-          setCreditState(writeCreditState(nextCredits));
-        } else {
-          consumeAvatarCreditAfterSuccess();
-          refreshAvatarCredits();
-        }
-        setStatus("Vraie caricature IA générée. 1 crédit avatar consommé côté compte utilisateur. Enregistre-la pour l’ajouter à la galerie.");
+        const nextCredits = generated.avatarCredits?.ok
+          ? normalizeCreditPayload(generated.avatarCredits, creditState)
+          : await consumeAvatarCreditAfterSuccess();
+        setCreditState(writeCreditState(nextCredits));
+        setStatus(`Vraie caricature IA générée. Crédit débité côté compte utilisateur. ${creditLabel(nextCredits)}.`);
+        refreshAvatarCredits();
       } else {
         const fallback = await localPosterFallback(originalPreviewUrl, style);
         setPhotoUrl(fallback);
@@ -827,7 +860,7 @@ function AvatarCreator({
           <div style={{ fontSize: 12, opacity: 0.85 }}>{creditLabel(creditState)}</div>
         </div>
         <div style={{ minWidth: 56, textAlign: "center", borderRadius: 999, padding: "7px 10px", background: hasAiCredit ? "rgba(34,197,94,.22)" : "rgba(255,93,93,.18)", border: "1px solid rgba(255,255,255,.14)", fontWeight: 950 }}>
-          {!creditState.freeUsed ? "FREE" : remainingPaidCredits}
+          {creditBadgeLabel(creditState)}
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
