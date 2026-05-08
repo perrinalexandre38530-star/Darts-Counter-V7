@@ -740,6 +740,167 @@ function ShareDetailsModal({
   );
 }
 
+
+/* -------------------------------------------------
+   Onglets ONLINE — ajout non destructif
+   Objectif: conserver la page historique et restructurer l'affichage
+   sans supprimer les blocs existants.
+--------------------------------------------------*/
+type OnlineMainTab = "hub" | "friends" | "requests" | "shares" | "play" | "activity";
+
+type OnlineTabSpec = {
+  id: OnlineMainTab;
+  label: string;
+  icon: string;
+  hint: string;
+  badge?: number | string | null;
+  tone?: "gold" | "blue" | "green" | "red" | "orange" | "gray";
+};
+
+function OnlineTabsBar({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: OnlineTabSpec[];
+  active: OnlineMainTab;
+  onChange: (tab: OnlineMainTab) => void;
+}) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        marginBottom: 12,
+        position: "sticky",
+        top: 8,
+        zIndex: 5,
+        borderRadius: 18,
+        padding: 8,
+        border: "1px solid rgba(255,255,255,.10)",
+        background:
+          "radial-gradient(800px 120px at 12% 0%, rgba(255,213,106,.16), transparent 55%), linear-gradient(180deg, rgba(20,20,27,.94), rgba(7,7,11,.94))",
+        boxShadow: "0 14px 34px rgba(0,0,0,.58)",
+        backdropFilter: "blur(12px)",
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridAutoFlow: "column",
+          gridAutoColumns: "minmax(118px, 1fr)",
+          gap: 8,
+          minWidth: 760,
+        }}
+      >
+        {tabs.map((tab) => {
+          const selected = tab.id === active;
+          const accent =
+            tab.tone === "green"
+              ? "#7fe2a9"
+              : tab.tone === "blue"
+              ? "#4fb4ff"
+              : tab.tone === "orange"
+              ? "#ffb347"
+              : tab.tone === "red"
+              ? "#ff8a8a"
+              : tab.tone === "gray"
+              ? "rgba(255,255,255,.72)"
+              : "#ffd56a";
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              style={{
+                minHeight: 64,
+                borderRadius: 15,
+                padding: "8px 9px",
+                border: selected ? `1px solid ${accent}` : "1px solid rgba(255,255,255,.10)",
+                background: selected
+                  ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
+                  : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.20))",
+                color: "#f5f5f7",
+                cursor: "pointer",
+                boxShadow: selected ? `0 0 22px ${accent}33, 0 10px 22px rgba(0,0,0,.42)` : "0 8px 18px rgba(0,0,0,.32)",
+                textAlign: "left",
+                display: "grid",
+                gap: 4,
+                alignContent: "center",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                  <span style={{ fontSize: 15, lineHeight: 1 }}>{tab.icon}</span>
+                  <span
+                    style={{
+                      fontSize: 12.2,
+                      fontWeight: 1000,
+                      letterSpacing: 0.2,
+                      color: selected ? accent : "rgba(255,255,255,.92)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {tab.label}
+                  </span>
+                </span>
+                {tab.badge != null && tab.badge !== "" ? (
+                  <span
+                    style={{
+                      minWidth: 22,
+                      height: 22,
+                      padding: "0 7px",
+                      borderRadius: 999,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: selected ? `${accent}22` : "rgba(255,255,255,.08)",
+                      border: selected ? `1px solid ${accent}66` : "1px solid rgba(255,255,255,.10)",
+                      color: selected ? accent : "rgba(255,255,255,.84)",
+                      fontSize: 11,
+                      fontWeight: 1000,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {tab.badge}
+                  </span>
+                ) : null}
+              </span>
+              <span
+                style={{
+                  fontSize: 10.6,
+                  lineHeight: 1.15,
+                  opacity: selected ? 0.92 : 0.62,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {tab.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OnlineEmptyCard({ title, text }: { title: string; text: string }) {
+  return (
+    <NeonCard style={{ marginTop: 10 }}>
+      <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ color: "#ffd56a", fontWeight: 1000, fontSize: 14 }}>{title}</div>
+        <div style={{ fontSize: 12.4, opacity: 0.82, lineHeight: 1.35 }}>{text}</div>
+      </div>
+    </NeonCard>
+  );
+}
+
 /* -------------------------------------------------
    Composant principal
 --------------------------------------------------*/
@@ -1551,6 +1712,75 @@ const doLogout = React.useCallback(async () => {
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
 
+
+  const [activeOnlineTab, setActiveOnlineTab] = React.useState<OnlineMainTab>("hub");
+
+  const unreadSharesCount = React.useMemo(
+    () => incomingShares.filter((it) => !it.readAt).length,
+    [incomingShares]
+  );
+
+  const onlineTabs = React.useMemo<OnlineTabSpec[]>(
+    () => [
+      {
+        id: "hub",
+        label: "Hub",
+        icon: "⚡",
+        hint: "Vue rapide",
+        badge: serverState === "ok" ? "OK" : serverState === "down" ? "OFF" : "…",
+        tone: serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray",
+      },
+      {
+        id: "friends",
+        label: "Amis",
+        icon: "👥",
+        hint: "Liste + recherche",
+        badge: onlineFriends.length,
+        tone: "green",
+      },
+      {
+        id: "requests",
+        label: "Demandes",
+        icon: "📨",
+        hint: "Reçues / envoyées",
+        badge: incomingRequests.length + outgoingRequests.length,
+        tone: incomingRequests.length > 0 ? "gold" : "gray",
+      },
+      {
+        id: "shares",
+        label: "Partages",
+        icon: "🔗",
+        hint: "Matchs + stats NAS",
+        badge: unreadSharesCount || incomingShares.length,
+        tone: unreadSharesCount > 0 ? "gold" : "blue",
+      },
+      {
+        id: "play",
+        label: "Jouer",
+        icon: "🎯",
+        hint: "Salon + chat",
+        badge: lobby?.code ? String((lobby as any).code).toUpperCase() : null,
+        tone: lobby?.code ? "gold" : "blue",
+      },
+      {
+        id: "activity",
+        label: "Activité",
+        icon: "📈",
+        hint: "Matchs récents",
+        badge: sortedMatches.length,
+        tone: "orange",
+      },
+    ],
+    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, sortedMatches.length]
+  );
+
+  const showHubTab = activeOnlineTab === "hub";
+  const showFriendsTab = activeOnlineTab === "friends";
+  const showRequestsTab = activeOnlineTab === "requests";
+  const showSharesTab = activeOnlineTab === "shares";
+  const showPlayTab = activeOnlineTab === "play";
+  const showActivityTab = activeOnlineTab === "activity";
+
   if (!ready) {
     return (
       <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
@@ -1729,8 +1959,34 @@ const doLogout = React.useCallback(async () => {
       {/* ================= TICKER ================= */}
       <OnlineTicker items={tickerItems} speedSec={22} />
 
+      <OnlineTabsBar tabs={onlineTabs} active={activeOnlineTab} onChange={setActiveOnlineTab} />
+
+      {showHubTab ? (
+        <>
+          <SectionTitle title="Vue rapide" subtitle="Tout le online en un coup d’œil" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
+            <NeonCard style={{ padding: 12 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 1000, opacity: 0.72 }}>AMIS</div>
+              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 1000, color: "#7fe2a9" }}>{onlineFriends.length}</div>
+              <div style={{ marginTop: 2, fontSize: 11, opacity: 0.74 }}>connectés / ajoutés</div>
+            </NeonCard>
+            <NeonCard style={{ padding: 12 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 1000, opacity: 0.72 }}>DEMANDES</div>
+              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 1000, color: incomingRequests.length ? "#ffd56a" : "#f5f5f7" }}>{incomingRequests.length}</div>
+              <div style={{ marginTop: 2, fontSize: 11, opacity: 0.74 }}>{outgoingRequests.length} envoyée(s)</div>
+            </NeonCard>
+            <NeonCard style={{ padding: 12 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 1000, opacity: 0.72 }}>PARTAGES</div>
+              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 1000, color: unreadSharesCount ? "#ffd56a" : "#4fb4ff" }}>{unreadSharesCount}</div>
+              <div style={{ marginTop: 2, fontSize: 11, opacity: 0.74 }}>non lus</div>
+            </NeonCard>
+          </div>
+        </>
+      ) : null}
 
       {/* ================= AMIS / PARTAGE ================= */}
+      {(showHubTab || showFriendsTab) ? (
+        <>
       <SectionTitle
         title="Amis"
         subtitle="Ajoute des joueurs, accepte les demandes et partage tes stats"
@@ -1921,8 +2177,89 @@ const doLogout = React.useCallback(async () => {
           </div>
         )}
       </NeonCard>
+        </>
+      ) : null}
 
-      {isSignedIn ? (
+      {showRequestsTab ? (
+        <>
+          <SectionTitle
+            title="Demandes d’amis"
+            subtitle="Demandes reçues, envoyées et réponses rapides"
+            right={(incomingRequests.length + outgoingRequests.length) > 0 ? <Pill label={`${incomingRequests.length + outgoingRequests.length}`} tone="gold" /> : <Pill label="0" tone="gray" />}
+          />
+          {!isSignedIn ? (
+            <OnlineEmptyCard title="Connexion requise" text="Connecte ton compte pour lire et répondre aux demandes d’amis." />
+          ) : (
+            <NeonCard style={{ marginTop: 10 }}>
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 1000, color: "#ffd56a" }}>Demandes reçues</div>
+                    <Pill label={`${incomingRequests.length}`} tone={incomingRequests.length ? "gold" : "gray"} />
+                  </div>
+                  {incomingRequests.length === 0 ? (
+                    <div style={{ opacity: 0.78, fontSize: 12.5 }}>Aucune demande reçue pour le moment.</div>
+                  ) : (
+                    incomingRequests.map((r) => {
+                      const u = r.fromUser || {};
+                      const name = u.displayName || u.nickname || "Joueur";
+                      return (
+                        <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,213,106,.22)", background: "rgba(255,213,106,.08)", display: "grid", gap: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,213,106,.20)", flexShrink: 0 }}>
+                              {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 1000, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                              <div style={{ fontSize: 11.5, opacity: 0.74 }}>Souhaite t’ajouter en ami</div>
+                            </div>
+                            <Pill label="Reçue" tone="gold" />
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <GhostButton label={busyRequestId === r.id ? "…" : "Accepter"} onClick={() => handleRespondRequest(r, "accepted").catch(() => {})} disabled={busyRequestId === r.id} />
+                            <GhostButton label="Refuser" onClick={() => handleRespondRequest(r, "rejected").catch(() => {})} disabled={busyRequestId === r.id} tone="danger" />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent)" }} />
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 1000, color: "#4fb4ff" }}>Demandes envoyées</div>
+                    <Pill label={`${outgoingRequests.length}`} tone={outgoingRequests.length ? "blue" : "gray"} />
+                  </div>
+                  {outgoingRequests.length === 0 ? (
+                    <div style={{ opacity: 0.78, fontSize: 12.5 }}>Aucune demande en attente côté envoi.</div>
+                  ) : (
+                    outgoingRequests.map((r) => {
+                      const u = r.toUser || {};
+                      const name = u.displayName || u.nickname || "Joueur";
+                      return (
+                        <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(79,180,255,.18)", background: "rgba(79,180,255,.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 38, height: 38, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", flexShrink: 0 }}>
+                            {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                            <div style={{ fontSize: 11.5, opacity: 0.74 }}>En attente d’acceptation</div>
+                          </div>
+                          <Pill label="Envoyée" tone="blue" />
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </NeonCard>
+          )}
+        </>
+      ) : null}
+
+      {(showHubTab || showSharesTab) && isSignedIn ? (
         <>
           <SectionTitle
             title="Partages reçus"
@@ -1977,6 +2314,8 @@ const doLogout = React.useCallback(async () => {
       ) : null}
 
       {/* ================= RÉSUMÉ ================= */}
+      {showHubTab ? (
+        <>
       <SectionTitle title="Résumé" subtitle="Aperçu rapide (semaine + dernier match)" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <NeonCard style={{ padding: 12 }}>
@@ -2026,8 +2365,12 @@ const doLogout = React.useCallback(async () => {
           </div>
         </NeonCard>
       </div>
+        </>
+      ) : null}
 
       {/* ================= JOUER EN LIGNE ================= */}
+      {showPlayTab ? (
+        <>
       <SectionTitle
         title="Jouer en ligne"
         subtitle="Créer un salon, rejoindre une salle d’attente"
@@ -2317,8 +2660,12 @@ const doLogout = React.useCallback(async () => {
         <GhostButton label="💬 Chat amis (SOON)" onClick={() => {}} disabled />
         <GhostButton label="🏆 Classements (SOON)" onClick={() => {}} disabled />
       </div>
+        </>
+      ) : null}
 
       {/* ================= ACTIVITÉ RÉCENTE ================= */}
+      {(showHubTab || showActivityTab) ? (
+        <>
       <SectionTitle
         title="Activité récente"
         subtitle="Tes derniers matchs online"
@@ -2372,6 +2719,8 @@ const doLogout = React.useCallback(async () => {
           </div>
         )}
       </NeonCard>
+        </>
+      ) : null}
 
       <div style={{ height: 10 }} />
     </div>
