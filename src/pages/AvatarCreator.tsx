@@ -392,6 +392,9 @@ type GalleryAvatar = {
   dataUrl: string;
   createdAt: string;
   source: "ia" | "manual";
+  style?: StyleId | string;
+  medallionColor?: string;
+  updatedAt?: string;
 };
 
 function readGallery(): GalleryAvatar[] {
@@ -414,6 +417,37 @@ function writeGallery(items: GalleryAvatar[]): GalleryAvatar[] {
     localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(safe));
   } catch {}
   return safe;
+}
+
+function normalizeGalleryItems(raw: any): GalleryAvatar[] {
+  const source = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
+  return source
+    .map((x: any) => ({
+      id: String(x?.id || x?.galleryId || `av_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+      name: String(x?.name || "PLAYER"),
+      dataUrl: String(x?.dataUrl || x?.data_url || x?.src || ""),
+      createdAt: String(x?.createdAt || x?.created_at || new Date().toISOString()),
+      updatedAt: String(x?.updatedAt || x?.updated_at || x?.createdAt || x?.created_at || new Date().toISOString()),
+      source: x?.source === "manual" ? "manual" : "ia",
+      style: x?.style || undefined,
+      medallionColor: x?.medallionColor || x?.medallion_color || undefined,
+    }))
+    .filter((x: GalleryAvatar) => x.dataUrl.startsWith("data:image/"))
+    .slice(0, 48);
+}
+
+function mergeGalleryItems(a: GalleryAvatar[], b: GalleryAvatar[]): GalleryAvatar[] {
+  const out: GalleryAvatar[] = [];
+  const seen = new Set<string>();
+  for (const item of [...a, ...b]) {
+    const key = item.id || item.dataUrl;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out
+    .sort((x, y) => Date.parse(y.createdAt || "") - Date.parse(x.createdAt || ""))
+    .slice(0, 48);
 }
 
 type AssignableProfile = {
@@ -1064,6 +1098,45 @@ function AvatarCreator({
     };
   }, [activeTab, assignTarget]);
 
+  const refreshAvatarGallery = React.useCallback(async () => {
+    const localItems = readGallery();
+    if (!readNasAccessToken()) {
+      setGallery(localItems);
+      return;
+    }
+    try {
+      const json = (await apiGet("/avatar-ai/gallery")) as any;
+      const remoteItems = normalizeGalleryItems(json);
+      const merged = mergeGalleryItems(remoteItems, localItems);
+      setGallery(writeGallery(merged));
+
+      // Migration douce : si l'appareil avait déjà des avatars locaux, on les remonte au NAS.
+      const remoteKeys = new Set(remoteItems.map((x) => x.id || x.dataUrl));
+      const missingLocal = localItems.filter((x) => !remoteKeys.has(x.id || x.dataUrl));
+      for (const item of missingLocal.slice(0, 12)) {
+        try {
+          await apiPost("/avatar-ai/gallery", item);
+        } catch {}
+      }
+    } catch (err) {
+      console.warn("[AvatarCreator] galerie IA NAS indisponible", err);
+      setGallery(localItems);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refreshAvatarGallery();
+    const handler = () => refreshAvatarGallery();
+    window.addEventListener("dc-auth-changed", handler);
+    window.addEventListener("focus", handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener("dc-auth-changed", handler);
+      window.removeEventListener("focus", handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, [refreshAvatarGallery]);
+
   function persistGallery(next: GalleryAvatar[]) {
     const saved = writeGallery(next);
     setGallery(saved);
@@ -1072,14 +1145,38 @@ function AvatarCreator({
 
   function addToGallery(dataUrl: string, source: "ia" | "manual" = "ia") {
     if (!dataUrl) return;
+    const now = new Date().toISOString();
     const item: GalleryAvatar = {
       id: `av_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: displayName || "PLAYER",
       dataUrl,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       source,
+      style,
+      medallionColor: selectedMedallion.id,
     };
     persistGallery([item, ...gallery.filter((x) => x.dataUrl !== dataUrl)]);
+
+    // Sauvegarde locale + sauvegarde NAS par compte utilisateur :
+    // la galerie revient donc après reconnexion et sur un autre appareil.
+    if (readNasAccessToken()) {
+      apiPost("/avatar-ai/gallery", item)
+        .then((json: any) => {
+          const saved = normalizeGalleryItems([json?.item || json])[0];
+          if (saved) {
+            const next = mergeGalleryItems([saved], readGallery());
+            setGallery(writeGallery(next));
+          }
+        })
+        .catch((err) => {
+          console.warn("[AvatarCreator] sauvegarde galerie NAS impossible", err);
+          setStatus(
+            "Avatar ajouté en galerie locale. La sauvegarde NAS sera retentée à la prochaine ouverture.",
+          );
+        });
+    }
+
     try {
       const accountId = getAvatarAccountKey();
       upsertAvatarGalleryItem(accountId, {
@@ -1354,7 +1451,9 @@ function AvatarCreator({
         );
       } else {
         setStatus(
-          "Avatar WebP ajouté à la galerie. Tu peux l’exporter ou l’attribuer à un profil.",
+          readNasAccessToken()
+            ? "Avatar WebP ajouté à la galerie du compte. Il sera récupéré aux prochaines connexions et sur les autres appareils."
+            : "Avatar WebP ajouté à la galerie locale. Connecte-toi pour le synchroniser sur le NAS.",
         );
       }
       setActiveTab("gallery");

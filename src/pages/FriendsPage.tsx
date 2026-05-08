@@ -1726,9 +1726,17 @@ const doLogout = React.useCallback(async () => {
         id: "hub",
         label: "Hub",
         icon: "⚡",
-        hint: "Vue rapide",
+        hint: "Essentiel",
         badge: serverState === "ok" ? "OK" : serverState === "down" ? "OFF" : "…",
         tone: serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray",
+      },
+      {
+        id: "play",
+        label: "Jouer",
+        icon: "🎯",
+        hint: "Salon + chat",
+        badge: lobby?.code ? String((lobby as any).code).toUpperCase() : null,
+        tone: lobby?.code ? "gold" : "blue",
       },
       {
         id: "friends",
@@ -1753,14 +1761,6 @@ const doLogout = React.useCallback(async () => {
         hint: "Matchs + stats NAS",
         badge: unreadSharesCount || incomingShares.length,
         tone: unreadSharesCount > 0 ? "gold" : "blue",
-      },
-      {
-        id: "play",
-        label: "Jouer",
-        icon: "🎯",
-        hint: "Salon + chat",
-        badge: lobby?.code ? String((lobby as any).code).toUpperCase() : null,
-        tone: lobby?.code ? "gold" : "blue",
       },
       {
         id: "activity",
@@ -1963,29 +1963,108 @@ const doLogout = React.useCallback(async () => {
 
       {showHubTab ? (
         <>
-          <SectionTitle title="Vue rapide" subtitle="Tout le online en un coup d’œil" />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
-            <NeonCard style={{ padding: 12 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 1000, opacity: 0.72 }}>AMIS</div>
-              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 1000, color: "#7fe2a9" }}>{onlineFriends.length}</div>
-              <div style={{ marginTop: 2, fontSize: 11, opacity: 0.74 }}>connectés / ajoutés</div>
-            </NeonCard>
-            <NeonCard style={{ padding: 12 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 1000, opacity: 0.72 }}>DEMANDES</div>
-              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 1000, color: incomingRequests.length ? "#ffd56a" : "#f5f5f7" }}>{incomingRequests.length}</div>
-              <div style={{ marginTop: 2, fontSize: 11, opacity: 0.74 }}>{outgoingRequests.length} envoyée(s)</div>
-            </NeonCard>
-            <NeonCard style={{ padding: 12 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 1000, opacity: 0.72 }}>PARTAGES</div>
-              <div style={{ marginTop: 4, fontSize: 24, fontWeight: 1000, color: unreadSharesCount ? "#ffd56a" : "#4fb4ff" }}>{unreadSharesCount}</div>
-              <div style={{ marginTop: 2, fontSize: 11, opacity: 0.74 }}>non lus</div>
-            </NeonCard>
-          </div>
+          <SectionTitle title="Hub" subtitle="L’essentiel uniquement — les détails sont dans les onglets dédiés" />
+
+          <NeonCard style={{ marginTop: 10, padding: 12 }}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.15fr .85fr", gap: 10, alignItems: "stretch" }}>
+                <div
+                  style={{
+                    borderRadius: 16,
+                    padding: 12,
+                    border: "1px solid rgba(255,213,106,.16)",
+                    background: "linear-gradient(180deg, rgba(255,213,106,.10), rgba(255,255,255,.045))",
+                    display: "grid",
+                    gap: 8,
+                    alignContent: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 1000, opacity: 0.74 }}>ACTION PRIORITAIRE</div>
+                  <div style={{ color: "#ffd56a", fontWeight: 1000, fontSize: 15.5, lineHeight: 1.15 }}>
+                    {!isSignedIn
+                      ? "Connecte ton compte"
+                      : incomingRequests.length > 0
+                      ? "Répondre aux demandes"
+                      : unreadSharesCount > 0
+                      ? "Voir les partages reçus"
+                      : lobby?.code
+                      ? `Salon ${String((lobby as any).code).toUpperCase()} prêt`
+                      : "Créer ou rejoindre un salon"}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.78, lineHeight: 1.3 }}>
+                    {!isSignedIn
+                      ? "Le online social nécessite une session active."
+                      : incomingRequests.length > 0
+                      ? `${incomingRequests.length} demande(s) en attente de réponse.`
+                      : unreadSharesCount > 0
+                      ? `${unreadSharesCount} partage(s) non lu(s).`
+                      : lobby?.code
+                      ? "Invite un ami avec le code ou lance la partie."
+                      : "Le plus utile ici : lancer un salon ou rejoindre un ami."}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <PrimaryButton
+                    label={lobby?.code ? "🎯 Ouvrir le salon" : "🎯 Jouer en ligne"}
+                    subLabel={lobby?.code ? String((lobby as any).code).toUpperCase() : "Créer / rejoindre"}
+                    tone="gold"
+                    onClick={() => setActiveOnlineTab("play")}
+                    disabled={!isSignedIn}
+                  />
+                  {!isSignedIn ? (
+                    <GhostButton label="Connexion / profil" onClick={() => go("profiles")} />
+                  ) : incomingRequests.length > 0 ? (
+                    <GhostButton label="📨 Ouvrir les demandes" onClick={() => setActiveOnlineTab("requests")} />
+                  ) : unreadSharesCount > 0 ? (
+                    <GhostButton label="🔗 Ouvrir les partages" onClick={() => setActiveOnlineTab("shares")} />
+                  ) : (
+                    <GhostButton label="👥 Voir mes amis" onClick={() => setActiveOnlineTab("friends")} />
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
+                  <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>AMIS</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: "#7fe2a9" }}>{onlineFriends.length}</div>
+                </NeonCard>
+                <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
+                  <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>DEMANDES</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: incomingRequests.length ? "#ffd56a" : "#f5f5f7" }}>{incomingRequests.length}</div>
+                </NeonCard>
+                <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
+                  <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>PARTAGES</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: unreadSharesCount ? "#ffd56a" : "#4fb4ff" }}>{unreadSharesCount}</div>
+                </NeonCard>
+                <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
+                  <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>MATCHS</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: "#ffb347" }}>{sortedMatches.length}</div>
+                </NeonCard>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  fontSize: 11.5,
+                  opacity: 0.84,
+                }}
+              >
+                <Pill label={serverState === "ok" ? "Serveur OK" : serverState === "down" ? "Serveur OFF" : "Serveur…"} tone={serverChipTone} />
+                <Pill label={sessionState === "signed_in" ? "Session OK" : sessionState === "signed_out" ? "Déconnecté" : "Session…"} tone={sessionState === "signed_in" ? "green" : sessionState === "signed_out" ? "red" : "gray"} />
+                <Pill label={presenceLabel} tone={presenceTone} />
+                {lastMatch ? <span>Dernier match : <b>{getMatchTitle(lastMatch)}</b></span> : <span>Aucun match online enregistré.</span>}
+              </div>
+            </div>
+          </NeonCard>
         </>
       ) : null}
 
       {/* ================= AMIS / PARTAGE ================= */}
-      {(showHubTab || showFriendsTab) ? (
+      {showFriendsTab ? (
         <>
       <SectionTitle
         title="Amis"
@@ -2259,7 +2338,7 @@ const doLogout = React.useCallback(async () => {
         </>
       ) : null}
 
-      {(showHubTab || showSharesTab) && isSignedIn ? (
+      {showSharesTab && isSignedIn ? (
         <>
           <SectionTitle
             title="Partages reçus"
@@ -2314,7 +2393,7 @@ const doLogout = React.useCallback(async () => {
       ) : null}
 
       {/* ================= RÉSUMÉ ================= */}
-      {showHubTab ? (
+      {showActivityTab ? (
         <>
       <SectionTitle title="Résumé" subtitle="Aperçu rapide (semaine + dernier match)" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
@@ -2664,7 +2743,7 @@ const doLogout = React.useCallback(async () => {
       ) : null}
 
       {/* ================= ACTIVITÉ RÉCENTE ================= */}
-      {(showHubTab || showActivityTab) ? (
+      {showActivityTab ? (
         <>
       <SectionTitle
         title="Activité récente"

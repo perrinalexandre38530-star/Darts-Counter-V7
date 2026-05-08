@@ -182,8 +182,6 @@ import StatsDetail from "./pages/StatsDetail";
 import Profiles from "./pages/Profiles";
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
-const FriendRequestsPage = React.lazy(() => import("./pages/FriendRequestsPage"));
-const SharedPage = React.lazy(() => import("./pages/SharedPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
@@ -698,8 +696,6 @@ type Tab =
   | "profiles"
   | "profiles_bots"
   | "friends"
-  | "friend_requests"
-  | "shared_online"
   | "online"
   | "spectator"
   | "settings"
@@ -3400,14 +3396,6 @@ case "babyfoot_team_edit":
 
       case "friends":
         page = <FriendsPage store={store} update={update} go={go} />;
-        break;
-
-      case "friend_requests":
-        page = <FriendRequestsPage go={go} />;
-        break;
-
-      case "shared_online":
-        page = <SharedPage go={go} params={routeParams} />;
         break;
 
       case "online":
