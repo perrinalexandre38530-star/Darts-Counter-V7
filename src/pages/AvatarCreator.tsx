@@ -594,6 +594,49 @@ function canvasToWebp(canvas: HTMLCanvasElement, quality = 0.78): string {
   }
 }
 
+function fileToRawDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("read_failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function fileToMedallionPreviewDataUrl(file: File): Promise<string> {
+  try {
+    return await fileToSafeAvatarDataUrl(file);
+  } catch {}
+
+  const raw = await fileToRawDataUrl(file);
+  const img = await dataUrlToImage(raw);
+  const sourceW = img.naturalWidth || img.width || 1;
+  const sourceH = img.naturalHeight || img.height || 1;
+  const attempts = [
+    { maxSide: 480, quality: 0.74 },
+    { maxSide: 420, quality: 0.7 },
+    { maxSide: 360, quality: 0.66 },
+    { maxSide: 320, quality: 0.62 },
+    { maxSide: 256, quality: 0.58 },
+  ];
+
+  for (const attempt of attempts) {
+    const scale = Math.min(1, attempt.maxSide / Math.max(sourceW, sourceH));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceW * scale));
+    canvas.height = Math.max(1, Math.round(sourceH * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/webp", attempt.quality);
+    if (dataUrl.startsWith("data:image/") && dataUrl.length <= 380_000) {
+      return dataUrl;
+    }
+  }
+
+  throw new Error("avatar_import_too_large");
+}
+
 function dataUrlSizeKb(dataUrl: string | null): string {
   if (!dataUrl) return "—";
   const comma = dataUrl.indexOf(",");
@@ -1131,7 +1174,7 @@ function AvatarCreator({
     setLastExport(null);
     (async () => {
       try {
-        const safe = await fileToSafeAvatarDataUrl(f);
+        const safe = await fileToMedallionPreviewDataUrl(f);
         setOriginalFile(f);
         setOriginalPreviewUrl(safe);
         setPhotoUrl(safe);
@@ -1142,12 +1185,10 @@ function AvatarCreator({
         setStatus(
           "Photo importée dans le médaillon. Recadre-la puis lance la caricature IA.",
         );
-      } catch {
+      } catch (err) {
+        console.warn("[AvatarCreator] import photo failed", err);
         setError(
-          t(
-            "avatar.error.tooBig",
-            `L’image est trop lourde (max ${maxMb} Mo).`,
-          ),
+          "Impossible d’importer cette photo. Essaie une image JPG/PNG/WebP moins lourde ou moins grande.",
         );
       } finally {
         setBusy(false);
@@ -1616,7 +1657,6 @@ function AvatarCreator({
 
   function handleCropPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     if (!avatarImage) return;
-    e.preventDefault();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     cropPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     cropGestureRef.current.moved = false;
@@ -1631,7 +1671,6 @@ function AvatarCreator({
 
   function handleCropPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
     if (!avatarImage || !cropPointersRef.current.has(e.pointerId)) return;
-    e.preventDefault();
     const prev = cropPointersRef.current.get(e.pointerId);
     cropPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const points = Array.from(cropPointersRef.current.values());
@@ -1703,11 +1742,13 @@ function AvatarCreator({
         width: "100%",
         touchAction: avatarImage ? "none" : "manipulation",
         aspectRatio: "1 / 1",
-        maxHeight: compact ? 360 : 520,
+        maxHeight: compact ? 340 : 500,
+        maxWidth: compact ? 360 : 500,
+        margin: "0 auto",
         background:
           "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305",
         borderRadius: 24,
-        padding: 10,
+        padding: compact ? 14 : 18,
         boxShadow: "0 22px 48px rgba(0,0,0,.62)",
         display: "flex",
         alignItems: "center",
@@ -1718,7 +1759,7 @@ function AvatarCreator({
         cursor: "pointer",
       }}
     >
-      <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
+      <svg ref={svgRef} viewBox="-272 -272 544 544" width="100%" height="100%" style={{ display: "block" }}>
         <defs>
           <clipPath id="avatarClip">
             <circle r={R_AVATAR} cx={0} cy={0} />
@@ -1751,39 +1792,11 @@ function AvatarCreator({
           strokeWidth={STROKE}
         />
         <circle r={R_OUTER - 19} fill={BLACK} />
-        <path
-          d={`M ${-R_OUTER + 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 0 ${-R_OUTER + 28} 124`}
-          fill="none"
-          stroke={RING_DARK}
-          strokeWidth={5}
-          opacity={0.82}
-        />
-        <path
-          d={`M ${R_OUTER - 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 1 ${R_OUTER - 28} 124`}
-          fill="none"
-          stroke={RING_DARK}
-          strokeWidth={5}
-          opacity={0.82}
-        />
         <circle
           r={R_INNER + 15}
           fill="none"
           stroke="#090909"
           strokeWidth={24}
-        />
-        <path
-          d={`M ${-R_INNER - 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 0 ${-R_INNER - 23} 96`}
-          fill="none"
-          stroke={RING_COLOR}
-          strokeWidth={5}
-          opacity={0.82}
-        />
-        <path
-          d={`M ${R_INNER + 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 1 ${R_INNER + 23} 96`}
-          fill="none"
-          stroke={RING_COLOR}
-          strokeWidth={5}
-          opacity={0.82}
         />
         <circle
           r={R_INNER}
@@ -1874,13 +1887,6 @@ function AvatarCreator({
           </textPath>
         </text>
       </svg>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={handleFileChange}
-      />
     </button>
   );
 
@@ -1943,7 +1949,7 @@ function AvatarCreator({
           justifyContent: "space-between",
           alignItems: "center",
           gap: 8,
-          marginBottom: 8,
+          marginBottom: 10,
         }}
       >
         <strong
@@ -1953,7 +1959,7 @@ function AvatarCreator({
             color: theme.textSoft,
           }}
         >
-          Recadrage tactile / souris
+          Réglages médaillon
         </strong>
         <button
           type="button"
@@ -1981,47 +1987,12 @@ function AvatarCreator({
           fontSize: 12,
           opacity: 0.78,
           lineHeight: 1.35,
-          marginBottom: 8,
+          marginBottom: 10,
         }}
       >
-        Glisse directement l’image dans le médaillon. Sur mobile : pince à 2
-        doigts pour zoomer. Sur PC : molette pour zoomer.
+        Recadrage direct dans le médaillon : glisse l’image avec le doigt ou la souris.
+        Sur mobile, pince à 2 doigts pour zoomer. Sur PC, utilise la molette.
       </div>
-      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
-        Zoom
-        <input
-          type="range"
-          min={0.86}
-          max={2.55}
-          step={0.01}
-          value={zoom}
-          onChange={(e) => setZoom(Number(e.target.value))}
-        />
-      </label>
-      <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>
-        Gauche / Droite
-        <input
-          type="range"
-          min={-120}
-          max={120}
-          step={1}
-          value={offsetX}
-          onChange={(e) => setOffsetX(Number(e.target.value))}
-        />
-      </label>
-      <label
-        style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 10 }}
-      >
-        Haut / Bas
-        <input
-          type="range"
-          min={-120}
-          max={120}
-          step={1}
-          value={offsetY}
-          onChange={(e) => setOffsetY(Number(e.target.value))}
-        />
-      </label>
       <label
         style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}
       >
@@ -2340,6 +2311,13 @@ function AvatarCreator({
           "radial-gradient(circle at 72% 8%, rgba(246,194,86,.16), transparent 34%), radial-gradient(circle at 20% 60%, rgba(124,58,237,.15), transparent 34%), linear-gradient(135deg, #050509 0%, #0b0d14 46%, #030305 100%)",
       }}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
       <div
         style={{ maxWidth: 460, margin: "0 auto", display: "grid", gap: 12 }}
       >
