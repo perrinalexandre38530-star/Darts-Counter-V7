@@ -756,6 +756,69 @@ type OnlineTabSpec = {
   badge?: number | string | null;
   tone?: "gold" | "blue" | "green" | "red" | "orange" | "gray";
 };
+type OnlineGameModeId =
+  | "x01"
+  | "killer"
+  | "shanghai"
+  | "golf"
+  | "cricket"
+  | "warfare"
+  | "battle_royale"
+  | "territories"
+  | "capital"
+  | "batard"
+  | "scram"
+  | "five_lives"
+  | "clock";
+
+type OnlineGameModeSpec = {
+  id: OnlineGameModeId;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  route: string;
+  hint: string;
+};
+
+const LS_ONLINE_SELECTED_MODE_KEY = "dc_online_selected_mode_v1";
+
+const ONLINE_GAME_MODES: OnlineGameModeSpec[] = [
+  { id: "x01", label: "X01", shortLabel: "X01", icon: "🎯", route: "x01_online_setup", hint: "501 / 301 / sets / legs" },
+  { id: "killer", label: "Killer", shortLabel: "Killer", icon: "💀", route: "killer_config", hint: "Cibles, vies, variantes" },
+  { id: "shanghai", label: "Shanghai", shortLabel: "Shanghai", icon: "🏮", route: "shanghai", hint: "Tours 1 à 20" },
+  { id: "golf", label: "Golf", shortLabel: "Golf", icon: "⛳", route: "golf_config", hint: "Par, birdie, eagle" },
+  { id: "cricket", label: "Cricket", shortLabel: "Cricket", icon: "🏏", route: "cricket", hint: "Classique / variantes" },
+  { id: "warfare", label: "Warfare", shortLabel: "Warfare", icon: "⚔️", route: "warfare_config", hint: "Mode attaque" },
+  { id: "battle_royale", label: "Battle Royale", shortLabel: "Battle", icon: "👑", route: "battle_royale", hint: "Survie multi-joueurs" },
+  { id: "territories", label: "Territories", shortLabel: "Territories", icon: "🗺️", route: "departements_config", hint: "Cartes / conquête" },
+  { id: "capital", label: "Capital", shortLabel: "Capital", icon: "🏛️", route: "capital_config", hint: "Défis capitales" },
+  { id: "batard", label: "Bâtard", shortLabel: "Bâtard", icon: "😈", route: "batard_config", hint: "Mode fun / gages" },
+  { id: "scram", label: "SCRAM", shortLabel: "SCRAM", icon: "🚧", route: "scram_config", hint: "Bloquer / scorer" },
+  { id: "five_lives", label: "Les 5 vies", shortLabel: "5 vies", icon: "❤️", route: "five_lives_config", hint: "Survie en 5 vies" },
+  { id: "clock", label: "Tour de l’horloge", shortLabel: "Horloge", icon: "🕒", route: "training_clock", hint: "Progression autour du board" },
+];
+
+function getOnlineModeSpec(mode: any): OnlineGameModeSpec {
+  const id = String(mode || "x01") as OnlineGameModeId;
+  return ONLINE_GAME_MODES.find((m) => m.id === id) || ONLINE_GAME_MODES[0];
+}
+
+function loadSelectedOnlineMode(): OnlineGameModeId {
+  if (typeof window === "undefined") return "x01";
+  try {
+    const raw = window.localStorage.getItem(LS_ONLINE_SELECTED_MODE_KEY);
+    return getOnlineModeSpec(raw).id;
+  } catch {
+    return "x01";
+  }
+}
+
+function saveSelectedOnlineMode(mode: OnlineGameModeId) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LS_ONLINE_SELECTED_MODE_KEY, mode);
+  } catch {}
+}
 
 function OnlineTabsBar({
   tabs,
@@ -1168,6 +1231,15 @@ const doLogout = React.useCallback(async () => {
   const [joinError, setJoinError] = React.useState<string | null>(null);
   const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
   const [copyInfo, setCopyInfo] = React.useState<string | null>(null);
+  const [selectedOnlineMode, setSelectedOnlineMode] = React.useState<OnlineGameModeId>(() => loadSelectedOnlineMode());
+  const selectedOnlineModeSpec = React.useMemo(() => getOnlineModeSpec(selectedOnlineMode), [selectedOnlineMode]);
+
+  function selectOnlineMode(mode: OnlineGameModeId) {
+    setSelectedOnlineMode(mode);
+    saveSelectedOnlineMode(mode);
+    setJoinInfo(null);
+    setJoinError(null);
+  }
 
   const createReqIdRef = React.useRef(0);
   const joinReqIdRef = React.useRef(0);
@@ -1190,9 +1262,12 @@ const doLogout = React.useCallback(async () => {
     try {
       const lobby = await withTimeout(
         onlineApi.createLobby({
-          mode: "x01",
-          maxPlayers: 2,
+          mode: selectedOnlineModeSpec.id,
+          maxPlayers: selectedOnlineModeSpec.id === "x01" ? 2 : 8,
           settings: {
+            mode: selectedOnlineModeSpec.id,
+            label: selectedOnlineModeSpec.label,
+            route: selectedOnlineModeSpec.route,
             start: (store as any).settings?.defaultX01,
             doubleOut: (store as any).settings?.doubleOut,
           },
@@ -1205,7 +1280,7 @@ const doLogout = React.useCallback(async () => {
 
       setLastCreatedLobby(lobby);
       setJoinedLobby(null);
-      setJoinInfo("Salon créé.");
+      setJoinInfo(`Salon ${selectedOnlineModeSpec.label} créé.`);
     } catch (e: any) {
       if (createReqIdRef.current !== reqId) return;
       setJoinError(normalizeErrMessage(e) || "Impossible de créer un salon.");
@@ -1268,6 +1343,60 @@ const doLogout = React.useCallback(async () => {
   }
 
   const lobby = joinedLobby || lastCreatedLobby;
+
+  /* -----------------------------
+     Chat MVP (si lobby existe)
+  ------------------------------ */
+  const lobbyModeSpec = React.useMemo(() => {
+    const modeFromLobby = (lobby as any)?.mode || (lobby as any)?.settings?.mode || selectedOnlineMode;
+    return getOnlineModeSpec(modeFromLobby);
+  }, [lobby, selectedOnlineMode]);
+
+  async function launchOnlineLobby() {
+    const code = String((lobby as any)?.code || "").toUpperCase();
+    const spec = lobbyModeSpec;
+    if (!code) {
+      setActiveOnlineTab("play");
+      setJoinError("Crée ou rejoins d’abord un salon.");
+      return;
+    }
+
+    setJoinError(null);
+    setJoinInfo(`Lancement ${spec.label}…`);
+    try {
+      await withTimeout(
+        onlineApi.startMatch({
+          lobbyCode: code,
+          initialState: {
+            mode: spec.id,
+            onlineMode: spec.id,
+            lobbyCode: code,
+            lobbyId: (lobby as any)?.id || null,
+            settings: (lobby as any)?.settings || {},
+            players: (lobby as any)?.players || [],
+            startedAt: Date.now(),
+          },
+        }),
+        10_000,
+        "Lancement : délai dépassé. Vérifie le serveur NAS."
+      );
+    } catch (e: any) {
+      setJoinError(normalizeErrMessage(e) || "Impossible de lancer le match online.");
+      setJoinInfo(null);
+      return;
+    }
+
+    go(spec.route as any, {
+      online: true,
+      onlineV9: true,
+      onlineMode: spec.id,
+      mode: spec.id,
+      lobbyCode: code,
+      lobbyId: (lobby as any)?.id || null,
+      lobby,
+      source: "online",
+    });
+  }
 
   /* -----------------------------
      Chat MVP (si lobby existe)
@@ -1734,8 +1863,8 @@ const doLogout = React.useCallback(async () => {
         id: "play",
         label: "Jouer",
         icon: "🎯",
-        hint: "Salon + chat",
-        badge: lobby?.code ? String((lobby as any).code).toUpperCase() : null,
+        hint: lobby?.code ? lobbyModeSpec.shortLabel : "Mode + salon",
+        badge: lobby?.code ? String((lobby as any).code).toUpperCase() : selectedOnlineModeSpec.shortLabel,
         tone: lobby?.code ? "gold" : "blue",
       },
       {
@@ -1771,7 +1900,7 @@ const doLogout = React.useCallback(async () => {
         tone: "orange",
       },
     ],
-    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, sortedMatches.length]
+    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, lobbyModeSpec.shortLabel, selectedOnlineModeSpec.shortLabel, sortedMatches.length]
   );
 
   const showHubTab = activeOnlineTab === "hub";
@@ -2452,7 +2581,7 @@ const doLogout = React.useCallback(async () => {
         <>
       <SectionTitle
         title="Jouer en ligne"
-        subtitle="Créer un salon, rejoindre une salle d’attente"
+        subtitle="Choisis le mode, crée un salon ou rejoins un ami"
         right={
           creatingLobby ? (
             <button
@@ -2481,9 +2610,56 @@ const doLogout = React.useCallback(async () => {
       />
 
       <NeonCard style={{ marginTop: 10 }}>
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.86 }}>Mode de jeu</div>
+              <Pill label={selectedOnlineModeSpec.shortLabel} tone="gold" />
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 8,
+              }}
+            >
+              {ONLINE_GAME_MODES.map((mode) => {
+                const active = selectedOnlineMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => selectOnlineMode(mode.id)}
+                    disabled={!!lobby?.code}
+                    style={{
+                      minHeight: 62,
+                      textAlign: "left",
+                      borderRadius: 15,
+                      border: active ? "1px solid rgba(255,213,106,.62)" : "1px solid rgba(255,255,255,.12)",
+                      background: active
+                        ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
+                        : "rgba(255,255,255,.045)",
+                      color: active ? "#ffd56a" : "#f5f5f7",
+                      padding: "9px 10px",
+                      fontWeight: 1000,
+                      cursor: lobby?.code ? "not-allowed" : "pointer",
+                      opacity: lobby?.code && !active ? 0.55 : 1,
+                    }}
+                    title={lobby?.code ? "Quitte ou crée un nouveau salon pour changer de mode" : mode.hint}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
+                      <span>{mode.icon}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mode.shortLabel}</span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 10.2, opacity: 0.72, fontWeight: 800, lineHeight: 1.15 }}>{mode.hint}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <PrimaryButton
-            label={creatingLobby ? "Création…" : "Créer un salon X01"}
+            label={creatingLobby ? "Création…" : `Créer un salon ${selectedOnlineModeSpec.shortLabel}`}
             subLabel="Match privé • invite un ami avec un code"
             disabled={creatingLobby || !canPlayOnline}
             onClick={handleCreateLobby}
@@ -2578,9 +2754,15 @@ const doLogout = React.useCallback(async () => {
           <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.84 }}>
-                Joueurs {Number((lobby as any).playersCount || ((lobby as any).players || []).length || 0)}/{Number((lobby as any).maxPlayers || 2)}
+                Mode : <span style={{ color: "#ffd56a" }}>{lobbyModeSpec.label}</span>
               </div>
               <Pill label={String((lobby as any).status || "waiting") === "started" ? "Lancé" : "En attente"} tone="green" />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.84 }}>
+                Joueurs {Number((lobby as any).playersCount || ((lobby as any).players || []).length || 0)}/{Number((lobby as any).maxPlayers || 2)}
+              </div>
+              <Pill label={String((lobby as any).code || "").toUpperCase()} tone="gold" />
             </div>
 
             {Array.isArray((lobby as any).players) && (lobby as any).players.length ? (
@@ -2628,8 +2810,8 @@ const doLogout = React.useCallback(async () => {
 
           <div style={{ display: "grid", gap: 10 }}>
             <GhostButton
-              label="🚀 Reprendre / lancer le match"
-              onClick={() => go("x01_online_setup", { lobbyCode: (lobby as any).code || null })}
+              label={`🚀 Lancer ${lobbyModeSpec.shortLabel}`}
+              onClick={launchOnlineLobby}
             />
             <GhostButton label={copyInfo || "📋 Copier le code"} onClick={copyLobbyCode} />
           </div>

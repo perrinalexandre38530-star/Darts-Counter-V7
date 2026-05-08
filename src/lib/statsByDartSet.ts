@@ -95,7 +95,7 @@ function pickPerPlayer(summary: any): any[] {
 }
 
 function resolveProfileId(pp: any): string | null {
-  return (pp?.profileId ?? null) || (pp?.playerId ?? null) || (pp?.id ?? null) || null;
+  return (pp?.profileId ?? null) || (pp?.playerId ?? null) || (pp?.pid ?? null) || (pp?.uid ?? null) || (pp?.id ?? null) || null;
 }
 
 function resolveDartSetId(pp: any): string | null {
@@ -106,6 +106,79 @@ function resolveDartSetId(pp: any): string | null {
     (pp?.presetId ?? null) ||
     null
   );
+}
+
+function pickRecordPlayers(r: any): any[] {
+  const candidates = [
+    r?.players,
+    r?.payload?.players,
+    r?.payload?.config?.players,
+    r?.config?.players,
+    r?.resume?.players,
+    r?.resume?.config?.players,
+    r?.summary?.players,
+    r?.payload?.summary?.players,
+  ];
+  const out: any[] = [];
+  for (const c of candidates) {
+    if (!Array.isArray(c)) continue;
+    for (const p of c) {
+      if (p && typeof p === "object") out.push(p);
+    }
+  }
+  return out;
+}
+
+function readDartSetMapFromRecord(r: any): Record<string, any> | null {
+  const map =
+    r?.payload?.meta?.dartSetIdsByPlayer ??
+    r?.meta?.dartSetIdsByPlayer ??
+    r?.resume?.meta?.dartSetIdsByPlayer ??
+    r?.resume?.payload?.meta?.dartSetIdsByPlayer ??
+    r?.payload?.dartSetIdsByPlayer ??
+    r?.dartSetIdsByPlayer ??
+    null;
+  return map && typeof map === "object" ? map : null;
+}
+
+function resolveDartSetIdFromRecord(r: any, profileId: string | null | undefined, pp?: any): string | null {
+  const direct = resolveDartSetId(pp);
+  if (direct) return String(direct);
+
+  const ids = new Set<string>();
+  if (profileId) ids.add(String(profileId));
+  const ppId = resolveProfileId(pp);
+  if (ppId) ids.add(String(ppId));
+
+  const map = readDartSetMapFromRecord(r);
+  if (map) {
+    for (const id of ids) {
+      const v = map[id];
+      if (v) return String(v);
+    }
+  }
+
+  for (const player of pickRecordPlayers(r)) {
+    const pid = resolveProfileId(player);
+    const rawId = player?.id ?? player?.profileId ?? player?.playerId ?? player?.pid ?? null;
+    if ((pid && ids.has(String(pid))) || (rawId && ids.has(String(rawId)))) {
+      const ds = resolveDartSetId(player);
+      if (ds) return String(ds);
+    }
+  }
+
+  const global =
+    r?.dartSetId ??
+    r?.payload?.dartSetId ??
+    r?.payload?.meta?.dartSetId ??
+    r?.meta?.dartSetId ??
+    r?.summary?.dartSetId ??
+    r?.payload?.summary?.dartSetId ??
+    r?.payload?.config?.dartSetId ??
+    r?.config?.dartSetId ??
+    null;
+
+  return global ? String(global) : null;
 }
 
 function resolvePoints(pp: any): number {
@@ -484,13 +557,14 @@ export async function getX01StatsByDartSet(profileId?: string) {
         const pid = resolveProfileId(pp);
         if (profileId && String(pid) !== String(profileId)) continue;
 
-        const dartSetId = resolveDartSetId(pp);
+        const dartSetId = resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
         if (!dartSetId) {
           // summary existe mais pas de dartSetId → fallback raw
           if (!profileId && !pid) continue;
           const raw = computeFromRaw(r, String(pid || profileId));
-          if (!raw.dartSetId) continue;
-          const sid = String(raw.dartSetId);
+          const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
+          if (!fallbackSetId) continue;
+          const sid = String(fallbackSetId);
           const a = (agg[sid] ||= {
             dartSetId: sid,
             matches: 0,
@@ -570,7 +644,8 @@ export async function getX01StatsByDartSet(profileId?: string) {
         // si summary ne contient pas darts/points → raw fallback pour ce match
         if (d <= 0 || p <= 0) {
           const raw = computeFromRaw(r, String(pid || profileId));
-          if (raw.dartSetId) {
+          const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
+          if (fallbackSetId) {
             a.darts += raw.darts;
             a.avg3SumPoints += raw.points;
             a.avg3SumDarts += raw.darts;
@@ -639,8 +714,9 @@ export async function getX01StatsByDartSet(profileId?: string) {
     // ✅ cas 2 : pas de summary du tout → raw obligatoire
     if (profileId) {
       const raw = computeFromRaw(r, String(profileId));
-      if (!raw.dartSetId) continue;
-      const sid = String(raw.dartSetId);
+      const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(profileId), null);
+      if (!fallbackSetId) continue;
+      const sid = String(fallbackSetId);
 
       const a = (agg[sid] ||= {
         dartSetId: sid,

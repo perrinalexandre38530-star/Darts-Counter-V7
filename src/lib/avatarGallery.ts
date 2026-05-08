@@ -101,14 +101,28 @@ export function writeAvatarGallery(accountId: string | null | undefined, items: 
   const safe = Array.from(map.values()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_ITEMS);
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(avatarGalleryKey(accountId), JSON.stringify(safe));
-      window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: safe.length } }));
+      const key = avatarGalleryKey(accountId);
+      const serialized = JSON.stringify(safe);
+      const previous = window.localStorage.getItem(key);
+      if (previous !== serialized) {
+        window.localStorage.setItem(key, serialized);
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: safe.length } }));
+        }, 0);
+      }
     } catch (error) {
       // En cas de quota, on conserve les entrées récentes et on réessaie.
       try {
         const compact = safe.slice(0, 120);
-        window.localStorage.setItem(avatarGalleryKey(accountId), JSON.stringify(compact));
-        window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: compact.length } }));
+        const key = avatarGalleryKey(accountId);
+        const serialized = JSON.stringify(compact);
+        const previous = window.localStorage.getItem(key);
+        if (previous !== serialized) {
+          window.localStorage.setItem(key, serialized);
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: compact.length } }));
+          }, 0);
+        }
         return compact;
       } catch {}
     }

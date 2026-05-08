@@ -654,6 +654,7 @@ async function fileToMedallionPreviewDataUrl(file: File): Promise<string> {
     { maxSide: 256, quality: 0.58 },
   ];
 
+  let fallbackDataUrl = "";
   for (const attempt of attempts) {
     const scale = Math.min(1, attempt.maxSide / Math.max(sourceW, sourceH));
     const canvas = document.createElement("canvas");
@@ -663,11 +664,15 @@ async function fileToMedallionPreviewDataUrl(file: File): Promise<string> {
     if (!ctx) continue;
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/webp", attempt.quality);
-    if (dataUrl.startsWith("data:image/") && dataUrl.length <= 380_000) {
-      return dataUrl;
+    if (dataUrl.startsWith("data:image/")) {
+      fallbackDataUrl = dataUrl;
+      if (dataUrl.length <= 380_000) return dataUrl;
     }
   }
 
+  // Dernier filet de sécurité : même si la prévisualisation est un peu plus lourde,
+  // on l'affiche quand même dans le médaillon. L'export final reste compressé en WebP 256.
+  if (fallbackDataUrl) return fallbackDataUrl;
   throw new Error("avatar_import_too_large");
 }
 
@@ -1179,16 +1184,20 @@ function AvatarCreator({
 
     try {
       const accountId = getAvatarAccountKey();
-      upsertAvatarGalleryItem(accountId, {
-        category: "ia",
-        ownerId: item.id,
-        ownerName: item.name,
-        name: item.name,
-        src: dataUrl,
-        createdAt: Date.parse(item.createdAt) || Date.now(),
-        updatedAt: Date.now(),
-        source: `avatar_ia_${source}`,
-      });
+      window.setTimeout(() => {
+        try {
+          upsertAvatarGalleryItem(accountId, {
+            category: "ia",
+            ownerId: item.id,
+            ownerName: item.name,
+            name: item.name,
+            src: dataUrl,
+            createdAt: Date.parse(item.createdAt) || Date.now(),
+            updatedAt: Date.now(),
+            source: `avatar_ia_${source}`,
+          });
+        } catch {}
+      }, 0);
     } catch {}
   }
 
@@ -1259,31 +1268,35 @@ function AvatarCreator({
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    const maxMb = 8;
+    const maxMb = 12;
     if (f.size > maxMb * 1024 * 1024) {
       setError(
         t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`),
       );
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
     setError(null);
     setBusy(true);
     setLastExport(null);
+    setDebugText(null);
+    setOriginalFile(f);
     (async () => {
       try {
         const safe = await fileToMedallionPreviewDataUrl(f);
-        setOriginalFile(f);
         setOriginalPreviewUrl(safe);
         setPhotoUrl(safe);
-        setZoom(1.18);
+        setZoom(1.12);
         setOffsetX(0);
         setOffsetY(0);
-        setDebugText(null);
         setStatus(
-          "Photo importée dans le médaillon. Recadre-la puis lance la caricature IA.",
+          "Photo importée dans le médaillon. Recadre-la directement au doigt ou à la souris, puis lance la caricature IA.",
         );
       } catch (err) {
         console.warn("[AvatarCreator] import photo failed", err);
+        setOriginalFile(null);
+        setOriginalPreviewUrl(null);
+        setPhotoUrl(null);
         setError(
           "Impossible d’importer cette photo. Essaie une image JPG/PNG/WebP moins lourde ou moins grande.",
         );
@@ -1816,7 +1829,6 @@ function AvatarCreator({
 
   function handleCropWheel(e: React.WheelEvent<HTMLButtonElement>) {
     if (!avatarImage) return;
-    e.preventDefault();
     const delta = e.deltaY > 0 ? -0.08 : 0.08;
     setZoom((v) =>
       Math.max(0.86, Math.min(2.55, Number((v + delta).toFixed(2)))),
@@ -1841,13 +1853,13 @@ function AvatarCreator({
         width: "100%",
         touchAction: avatarImage ? "none" : "manipulation",
         aspectRatio: "1 / 1",
-        maxHeight: compact ? 340 : 500,
-        maxWidth: compact ? 360 : 500,
+        maxHeight: compact ? 330 : 455,
+        maxWidth: compact ? 350 : 455,
         margin: "0 auto",
         background:
           "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305",
         borderRadius: 24,
-        padding: compact ? 14 : 18,
+        padding: compact ? 16 : 24,
         boxShadow: "0 22px 48px rgba(0,0,0,.62)",
         display: "flex",
         alignItems: "center",
@@ -1858,7 +1870,7 @@ function AvatarCreator({
         cursor: "pointer",
       }}
     >
-      <svg ref={svgRef} viewBox="-272 -272 544 544" width="100%" height="100%" style={{ display: "block" }}>
+      <svg ref={svgRef} viewBox="-286 -286 572 572" width="100%" height="100%" style={{ display: "block" }}>
         <defs>
           <clipPath id="avatarClip">
             <circle r={R_AVATAR} cx={0} cy={0} />
@@ -1891,11 +1903,12 @@ function AvatarCreator({
           strokeWidth={STROKE}
         />
         <circle r={R_OUTER - 19} fill={BLACK} />
+        {/* Séparateur noir supprimé : il créait deux demi-traits visibles sur le médaillon. */}
         <circle
           r={R_INNER + 15}
           fill="none"
-          stroke="#090909"
-          strokeWidth={24}
+          stroke="transparent"
+          strokeWidth={0}
         />
         <circle
           r={R_INNER}
@@ -2089,8 +2102,7 @@ function AvatarCreator({
           marginBottom: 10,
         }}
       >
-        Recadrage direct dans le médaillon : glisse l’image avec le doigt ou la souris.
-        Sur mobile, pince à 2 doigts pour zoomer. Sur PC, utilise la molette.
+        Recadrage intégré au médaillon : glisse directement l’image. Pinch à 2 doigts ou molette pour zoomer.
       </div>
       <label
         style={{ display: "grid", gap: 6, fontSize: 12, marginBottom: 10 }}
@@ -2255,6 +2267,23 @@ function AvatarCreator({
     <div style={{ display: "grid", gap: 12 }}>
       {renderCreditsCard()}
       <MedallionButton />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={busy}
+        style={{
+          borderRadius: 999,
+          border: `1px solid ${primary}66`,
+          background: "linear-gradient(135deg, rgba(0,0,0,.42), rgba(246,194,86,.13))",
+          color: GOLD_2,
+          padding: "11px 14px",
+          fontWeight: 950,
+          cursor: busy ? "not-allowed" : "pointer",
+          boxShadow: `0 0 22px ${primary}33`,
+        }}
+      >
+        📸 Importer une photo
+      </button>
       {renderControls()}
       {renderCaricatureBox()}
       <StatusCard />

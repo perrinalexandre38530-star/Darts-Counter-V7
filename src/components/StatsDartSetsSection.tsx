@@ -285,7 +285,91 @@ function resolveProfileId(pp: any): string | null {
   );
 }
 function resolveDartSetId(pp: any): string | null {
-  return (pp?.dartSetId ?? null) || (pp?.dartPresetId ?? null) || (pp?.dartsetId ?? null) || null;
+  return (pp?.dartSetId ?? null) || (pp?.dartPresetId ?? null) || (pp?.dartsetId ?? null) || (pp?.presetId ?? null) || null;
+}
+
+function pickRecordPlayers(r: any): any[] {
+  const candidates = [
+    r?.players,
+    r?.payload?.players,
+    r?.payload?.config?.players,
+    r?.config?.players,
+    r?.resume?.players,
+    r?.resume?.config?.players,
+    r?.summary?.players,
+    r?.payload?.summary?.players,
+  ];
+  const out: any[] = [];
+  for (const c of candidates) {
+    if (!Array.isArray(c)) continue;
+    for (const p of c) {
+      if (p && typeof p === "object") out.push(p);
+    }
+  }
+  return out;
+}
+
+function readDartSetMapFromRecord(r: any): Record<string, any> | null {
+  const map =
+    r?.payload?.meta?.dartSetIdsByPlayer ??
+    r?.meta?.dartSetIdsByPlayer ??
+    r?.resume?.meta?.dartSetIdsByPlayer ??
+    r?.resume?.payload?.meta?.dartSetIdsByPlayer ??
+    r?.payload?.dartSetIdsByPlayer ??
+    r?.dartSetIdsByPlayer ??
+    null;
+  return map && typeof map === "object" ? map : null;
+}
+
+function resolveDartSetIdFromRecord(r: any, profileId: string, pp?: any): string | null {
+  const direct = resolveDartSetId(pp);
+  if (direct) return String(direct);
+
+  const ids = new Set<string>([String(profileId)]);
+  const ppId = resolveProfileId(pp);
+  if (ppId) ids.add(String(ppId));
+
+  const map = readDartSetMapFromRecord(r);
+  if (map) {
+    for (const id of ids) {
+      const v = map[id];
+      if (v) return String(v);
+    }
+  }
+
+  for (const player of pickRecordPlayers(r)) {
+    const pid = resolveProfileId(player);
+    const rawId = player?.id ?? player?.profileId ?? player?.playerId ?? player?.pid ?? null;
+    if ((pid && ids.has(String(pid))) || (rawId && ids.has(String(rawId)))) {
+      const ds = resolveDartSetId(player);
+      if (ds) return String(ds);
+    }
+  }
+
+  const global =
+    r?.dartSetId ??
+    r?.payload?.dartSetId ??
+    r?.payload?.meta?.dartSetId ??
+    r?.meta?.dartSetId ??
+    r?.summary?.dartSetId ??
+    r?.payload?.summary?.dartSetId ??
+    r?.payload?.config?.dartSetId ??
+    r?.config?.dartSetId ??
+    null;
+
+  return global ? String(global) : null;
+}
+
+function resolvePlayerStatsRowFromRecord(r: any, profileId: string): any | null {
+  const summary = r?.summary ?? r?.payload?.summary ?? null;
+  const perPlayer = pickPerPlayer(summary);
+  const fromSummary = perPlayer.find((pp: any) => String(resolveProfileId(pp) ?? "") === String(profileId));
+  if (fromSummary) return fromSummary;
+
+  return (pickRecordPlayers(r) || []).find((pp: any) => {
+    const pid = resolveProfileId(pp) ?? pp?.id ?? pp?.profileId ?? pp?.playerId ?? pp?.pid ?? null;
+    return String(pid ?? "") === String(profileId);
+  }) || null;
 }
 
 function pickNum(r: any, ...keys: string[]) {
@@ -343,7 +427,7 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string): Record<str
     const mine = perPlayer.find((pp: any) => String(resolveProfileId(pp) ?? "") === String(profileId));
     if (!mine) continue;
 
-    const dsid = resolveDartSetId(mine);
+    const dsid = resolveDartSetIdFromRecord(r, profileId, mine);
     if (!dsid) continue;
 
     const at =
@@ -727,12 +811,10 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
     if (status && status !== "finished") continue;
 
     const summary = r?.summary ?? r?.payload?.summary ?? null;
-    const perPlayer = pickPerPlayer(summary);
-
-    const mine = perPlayer.find((pp: any) => String(resolveProfileId(pp) ?? "") === String(profileId));
+    const mine = resolvePlayerStatsRowFromRecord(r, profileId);
     if (!mine) continue;
 
-    const dsid = String(resolveDartSetId(mine) ?? "");
+    const dsid = String(resolveDartSetIdFromRecord(r, profileId, mine) ?? "");
     if (!dsid) continue;
 
     const row = (out[dsid] ||= {

@@ -1401,8 +1401,18 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
 // B) Match live state (online_matches)
 // ============================================================
 async function startMatch(args: { lobbyCode: string; initialState?: any }): Promise<OnlineMatchRow> {
-  const { user } = await ensureAuthedUser();
   const code = safeUpper(args.lobbyCode);
+
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiPost("/online/matches/start", {
+      lobbyCode: code,
+      initialState: args.initialState ?? {},
+    });
+    return (res?.match || res) as OnlineMatchRow;
+  }
+
+  const { user } = await ensureAuthedUser();
 
   const row = {
     lobby_code: code,
@@ -1437,6 +1447,17 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
 
 async function updateMatchState(args: { lobbyCode: string; state: any; status?: OnlineMatchStatus }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
+
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    await apiPost("/online/matches/state", {
+      lobbyCode: code,
+      state: args.state ?? {},
+      status: args.status,
+    });
+    return;
+  }
+
   const patch: any = {
     state_json: args.state ?? {},
     updated_at: new Date().toISOString(),
@@ -1449,6 +1470,16 @@ async function updateMatchState(args: { lobbyCode: string; state: any; status?: 
 
 async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
+
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    await apiPost("/online/matches/end", {
+      lobbyCode: code,
+      finalState: args.finalState ?? {},
+    });
+    return;
+  }
+
   const patch: any = {
     status: "ended",
     finished_at: new Date().toISOString(),
@@ -1463,6 +1494,12 @@ async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<
 async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | null> {
   const code = safeUpper(lobbyCode);
   if (!code) return null;
+
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiGet(`/online/matches/by-code/${encodeURIComponent(code)}`);
+    return (res?.match || null) as OnlineMatchRow | null;
+  }
 
   const { data, error } = await supabase
     .from("online_matches")
@@ -1482,7 +1519,7 @@ function mapOnlineMatchFromRow(row: OnlineMatchRow): OnlineMatch {
   return {
     id: String(row.id),
     userId: String(row.owner_user || "unknown"),
-    mode: "x01",
+    mode: String((row as any)?.mode || (row as any)?.state_json?.mode || (row as any)?.state_json?.onlineMode || "x01") as any,
     payload: {
       lobbyCode: row.lobby_code,
       state: row.state_json,
@@ -1518,6 +1555,13 @@ async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
 }
 
 async function listMatches(limit = 50): Promise<OnlineMatch[]> {
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiGet(`/online/matches?limit=${encodeURIComponent(String(limit))}`);
+    const rows = Array.isArray(res?.matches) ? res.matches : [];
+    return rows.map((r: any) => mapOnlineMatchFromRow(r as any));
+  }
+
   const { data, error } = await supabase
     .from("online_matches")
     .select("*")
