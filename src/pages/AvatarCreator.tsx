@@ -44,7 +44,7 @@ const BLACK = "#000000";
 const BOT_RING = "#00b4ff";
 const EXPORT_SIZE = 256;
 
-const CREDIT_STORAGE_KEY = "msc_avatar_ai_credits_v1";
+const CREDIT_STORAGE_KEY = "msc_avatar_ai_credits_v1"; // legacy: lecture tolérée, décisions désormais côté NAS
 
 type AvatarCreditState = {
   freeUsed: boolean;
@@ -179,26 +179,18 @@ function isCheckoutProcessed(sessionId: string): boolean {
 
 
 function readCreditState(): AvatarCreditState {
+  // Cache d'affichage uniquement : le NAS reste l'unique source de vérité.
   try {
     const raw = localStorage.getItem(scopedCreditStorageKey());
-    if (!raw) return { freeUsed: false, credits: 0, updatedAt: new Date().toISOString() };
-    const parsed = JSON.parse(raw) as Partial<AvatarCreditState>;
-    return {
-      freeUsed: Boolean(parsed.freeUsed),
-      credits: Math.max(0, Math.floor(Number(parsed.credits || 0))),
-      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
-    };
+    if (!raw) return { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() };
+    return normalizeCreditPayload(JSON.parse(raw), { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() });
   } catch {
-    return { freeUsed: false, credits: 0, updatedAt: new Date().toISOString() };
+    return { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() };
   }
 }
 
 function writeCreditState(next: AvatarCreditState): AvatarCreditState {
-  const safe = {
-    freeUsed: Boolean(next.freeUsed),
-    credits: Math.max(0, Math.floor(Number(next.credits || 0))),
-    updatedAt: new Date().toISOString(),
-  };
+  const safe = normalizeCreditPayload(next, { freeUsed: true, credits: 0, updatedAt: new Date().toISOString() });
   try {
     localStorage.setItem(scopedCreditStorageKey(), JSON.stringify(safe));
   } catch {}
@@ -207,19 +199,16 @@ function writeCreditState(next: AvatarCreditState): AvatarCreditState {
 
 function creditLabel(state: AvatarCreditState): string {
   const paid = Math.max(0, Math.floor(Number(state.credits || 0)));
-  if (!state.freeUsed && paid > 0) {
-    return `1 gratuit + ${paid} crédit${paid > 1 ? "s" : ""} avatar IA`;
-  }
-  if (!state.freeUsed) return "1 avatar IA gratuit disponible";
   if (paid > 0) return `${paid} crédit${paid > 1 ? "s" : ""} avatar IA disponible${paid > 1 ? "s" : ""}`;
+  if (!state.freeUsed) return "1 avatar IA gratuit disponible";
   return "Aucun crédit avatar IA disponible";
 }
 
 function creditBadgeLabel(state: AvatarCreditState): string {
   const paid = Math.max(0, Math.floor(Number(state.credits || 0)));
-  if (!state.freeUsed && paid > 0) return `FREE + ${paid}`;
-  if (!state.freeUsed) return "FREE";
-  return String(paid);
+  if (paid > 0) return `${paid} CRÉDIT${paid > 1 ? "S" : ""}`;
+  if (!state.freeUsed) return "1 GRATUIT";
+  return "0 CRÉDIT";
 }
 
 const R_OUTER = 248;
@@ -457,6 +446,8 @@ function AvatarCreator({
 
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const cropPointersRef = React.useRef(new Map<number, { x: number; y: number }>());
+  const cropGestureRef = React.useRef({ moved: false, lastX: 0, lastY: 0, pinchDistance: 0, zoomStart: 1 });
   const avatarImage = photoUrl;
 
   const primary = theme.primary ?? GOLD;
@@ -480,12 +471,16 @@ function AvatarCreator({
 
   const refreshAvatarCredits = React.useCallback(async () => {
     try {
-      if (!readNasAccessToken()) return;
-      const json = await apiGet("/avatar-ai/credits") as any;
+      if (!readNasAccessToken()) {
+        setCreditState(writeCreditState({ freeUsed: true, credits: 0, updatedAt: new Date().toISOString() }));
+        return;
+      }
+      const json = await apiGet("/avatar-ai/account") as any;
       const next = normalizeCreditPayload(json, readCreditState());
       setCreditState(writeCreditState(next));
     } catch (err) {
       console.warn("[AvatarCreator] crédits IA NAS indisponibles", err);
+      setCreditState(writeCreditState({ freeUsed: true, credits: 0, updatedAt: new Date().toISOString() }));
     }
   }, []);
 
@@ -896,8 +891,77 @@ function AvatarCreator({
     );
   };
 
+  function clampCropOffset(value: number): number {
+    return Math.max(-150, Math.min(150, Math.round(value)));
+  }
+
+  function distanceBetween(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function handleCropPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!avatarImage) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    cropPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    cropGestureRef.current.moved = false;
+    cropGestureRef.current.lastX = e.clientX;
+    cropGestureRef.current.lastY = e.clientY;
+    if (cropPointersRef.current.size === 2) {
+      const pts = Array.from(cropPointersRef.current.values());
+      cropGestureRef.current.pinchDistance = distanceBetween(pts[0], pts[1]);
+      cropGestureRef.current.zoomStart = zoom;
+    }
+  }
+
+  function handleCropPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!avatarImage || !cropPointersRef.current.has(e.pointerId)) return;
+    e.preventDefault();
+    const prev = cropPointersRef.current.get(e.pointerId);
+    cropPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const points = Array.from(cropPointersRef.current.values());
+    if (points.length >= 2) {
+      const dist = distanceBetween(points[0], points[1]);
+      const base = cropGestureRef.current.pinchDistance || dist;
+      const nextZoom = Math.max(0.86, Math.min(2.55, cropGestureRef.current.zoomStart * (dist / Math.max(1, base))));
+      if (Math.abs(nextZoom - zoom) > 0.01) cropGestureRef.current.moved = true;
+      setZoom(nextZoom);
+      return;
+    }
+    if (!prev) return;
+    const dx = e.clientX - prev.x;
+    const dy = e.clientY - prev.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) cropGestureRef.current.moved = true;
+    setOffsetX((v) => clampCropOffset(v + dx));
+    setOffsetY((v) => clampCropOffset(v + dy));
+  }
+
+  function handleCropPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    if (cropPointersRef.current.has(e.pointerId)) cropPointersRef.current.delete(e.pointerId);
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+    if (cropPointersRef.current.size < 2) cropGestureRef.current.pinchDistance = 0;
+  }
+
+  function handleMedallionClick(e: React.MouseEvent<HTMLButtonElement>) {
+    if (cropGestureRef.current.moved) {
+      e.preventDefault();
+      cropGestureRef.current.moved = false;
+      return;
+    }
+    if (!avatarImage) fileInputRef.current?.click();
+  }
+
+  function handleCropWheel(e: React.WheelEvent<HTMLButtonElement>) {
+    if (!avatarImage) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.08 : 0.08;
+    setZoom((v) => Math.max(0.86, Math.min(2.55, Number((v + delta).toFixed(2)))));
+  }
+
   const MedallionButton = ({ compact = false }: { compact?: boolean }) => (
-    <button type="button" onClick={() => fileInputRef.current?.click()} title="Importer une photo" style={{ width: "100%", aspectRatio: "1 / 1", maxHeight: compact ? 360 : 520, background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305", borderRadius: 24, padding: 10, boxShadow: "0 22px 48px rgba(0,0,0,.62)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "0", cursor: "pointer" }}>
+    <button type="button" onClick={handleMedallionClick} onPointerDown={handleCropPointerDown} onPointerMove={handleCropPointerMove} onPointerUp={handleCropPointerUp} onPointerCancel={handleCropPointerUp} onWheel={handleCropWheel} title={avatarImage ? "Glisse pour recadrer, pince ou molette pour zoomer" : "Importer une photo"} style={{ width: "100%", touchAction: avatarImage ? "none" : "manipulation", aspectRatio: "1 / 1", maxHeight: compact ? 360 : 520, background: "radial-gradient(circle at 50% 42%, rgba(246,194,86,.08), transparent 58%), #030305", borderRadius: 24, padding: 10, boxShadow: "0 22px 48px rgba(0,0,0,.62)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "0", cursor: "pointer" }}>
       <svg ref={svgRef} viewBox="-256 -256 512 512" width="100%" height="100%">
         <defs>
           <clipPath id="avatarClip"><circle r={R_AVATAR} cx={0} cy={0} /></clipPath>
@@ -908,9 +972,11 @@ function AvatarCreator({
         <circle r={R_OUTER + 8} fill="none" stroke="#1b1b1b" strokeWidth={10} />
         <circle r={R_OUTER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
         <circle r={R_OUTER - 19} fill={BLACK} />
-        <circle r={R_OUTER - 28} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.82} />
+        <path d={`M ${-R_OUTER + 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 0 ${-R_OUTER + 28} 124`} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.82} />
+        <path d={`M ${R_OUTER - 28} -124 A ${R_OUTER - 28} ${R_OUTER - 28} 0 0 1 ${R_OUTER - 28} 124`} fill="none" stroke={RING_DARK} strokeWidth={5} opacity={0.82} />
         <circle r={R_INNER + 15} fill="none" stroke="#090909" strokeWidth={24} />
-        <circle r={R_INNER + 23} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.82} />
+        <path d={`M ${-R_INNER - 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 0 ${-R_INNER - 23} 96`} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.82} />
+        <path d={`M ${R_INNER + 23} -96 A ${R_INNER + 23} ${R_INNER + 23} 0 0 1 ${R_INNER + 23} 96`} fill="none" stroke={RING_COLOR} strokeWidth={5} opacity={0.82} />
         <circle r={R_INNER} fill="none" stroke="url(#goldOuter)" strokeWidth={STROKE} />
         <circle r={R_AVATAR} fill="#22232b" />
         {avatarImage ? (
@@ -954,9 +1020,10 @@ function AvatarCreator({
   const renderControls = () => (
     <div style={{ ...cardBase, padding: 12, background: "linear-gradient(145deg, rgba(18,18,27,.96), rgba(6,7,12,.98))" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <strong style={{ fontSize: 12, textTransform: "uppercase", color: theme.textSoft }}>Recadrage médaillon</strong>
+        <strong style={{ fontSize: 12, textTransform: "uppercase", color: theme.textSoft }}>Recadrage tactile / souris</strong>
         <button type="button" onClick={() => { setZoom(1.18); setOffsetX(0); setOffsetY(0); }} style={{ border: 0, borderRadius: 999, padding: "6px 9px", background: "rgba(255,255,255,.09)", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 850 }}>Reset</button>
       </div>
+      <div style={{ fontSize: 12, opacity: 0.78, lineHeight: 1.35, marginBottom: 8 }}>Glisse directement l’image dans le médaillon. Sur mobile : pince à 2 doigts pour zoomer. Sur PC : molette pour zoomer.</div>
       <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>Zoom<input type="range" min={0.86} max={2.55} step={0.01} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} /></label>
       <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 8 }}>Gauche / Droite<input type="range" min={-120} max={120} step={1} value={offsetX} onChange={(e) => setOffsetX(Number(e.target.value))} /></label>
       <label style={{ display: "grid", gap: 5, fontSize: 12, marginBottom: 10 }}>Haut / Bas<input type="range" min={-120} max={120} step={1} value={offsetY} onChange={(e) => setOffsetY(Number(e.target.value))} /></label>

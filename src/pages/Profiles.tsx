@@ -34,6 +34,9 @@ import OnlineProfileForm from "../components/OnlineProfileForm";
 import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
+import { loadBots } from "../lib/bots";
+import { loadTeams } from "../lib/petanqueTeamsStore";
+import { AVATAR_GALLERY_EVENT, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
 
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
@@ -131,7 +134,7 @@ function useInjectStatsNameCss() {
   }, []);
 }
 
-type View = "menu" | "me" | "locals" | "friends" | "dartsets";
+type View = "menu" | "me" | "locals" | "friends" | "dartsets" | "avatarGallery";
 
 // ✅ TYPE UNIQUE (évite les collisions / erreurs TS et les patchs qui partent sur un mauvais type)
 export type PrivateInfo = {
@@ -805,6 +808,8 @@ export default function Profiles({
       ? "friends"
       : params?.view === "dartsets"
       ? "dartsets"
+      : params?.view === "avatarGallery"
+      ? "avatarGallery"
       : "menu"
   );
   const profilesDiagPrevRef = React.useRef<any>(null);
@@ -872,6 +877,7 @@ export default function Profiles({
   const meHeavyReady = useDeferredSectionReady(view === "me", 80);
   const localsHeavyReady = useDeferredSectionReady(view === "locals", 120);
   const dartsetsHeavyReady = useDeferredSectionReady(view === "dartsets", 80);
+  const avatarGalleryHeavyReady = useDeferredSectionReady(view === "avatarGallery", 60);
   const dartSetOwners = React.useMemo(() => {
     const list = (stableProfiles as any[] || []).filter((p: any) => !!p && !isMirrorProfile(p));
     const activeOne = list.find((p: any) => String(p?.id || "") === String(activeProfileId || ""));
@@ -887,6 +893,45 @@ export default function Profiles({
   const selectedDartsetsProfile = React.useMemo(() => {
     return (dartSetOwners as any[]).find((p: any) => String(p?.id || "") === String(dartsetsOwnerId || "")) || (dartSetOwners[0] as any) || null;
   }, [dartSetOwners, dartsetsOwnerId]);
+
+  const avatarGalleryAccountId = React.useMemo(() => {
+    return String(auth?.user?.id || activeProfileId || "local_device").trim() || "local_device";
+  }, [auth?.user?.id, activeProfileId]);
+  const [avatarGalleryItems, setAvatarGalleryItems] = React.useState<AvatarGalleryItem[]>(() => readAvatarGallery("local_device"));
+
+  const refreshAvatarGallery = React.useCallback(() => {
+    try {
+      const next = syncAvatarGalleryFromSources({
+        accountId: avatarGalleryAccountId,
+        activeProfileId: String(activeProfileId || ""),
+        profiles: stableProfiles as any[],
+        bots: loadBots(),
+        teams: loadTeams(),
+        includeLegacyAiGallery: true,
+      });
+      setAvatarGalleryItems(next);
+    } catch (error) {
+      console.warn("[Profiles] avatar gallery sync failed", error);
+      setAvatarGalleryItems(readAvatarGallery(avatarGalleryAccountId));
+    }
+  }, [avatarGalleryAccountId, activeProfileId, stableProfiles]);
+
+  React.useEffect(() => {
+    refreshAvatarGallery();
+  }, [refreshAvatarGallery]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => refreshAvatarGallery();
+    window.addEventListener(AVATAR_GALLERY_EVENT, handler as EventListener);
+    window.addEventListener("dc:bots-changed", handler as EventListener);
+    window.addEventListener("storage", handler as EventListener);
+    return () => {
+      window.removeEventListener(AVATAR_GALLERY_EVENT, handler as EventListener);
+      window.removeEventListener("dc:bots-changed", handler as EventListener);
+      window.removeEventListener("storage", handler as EventListener);
+    };
+  }, [refreshAvatarGallery]);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
@@ -1054,6 +1099,22 @@ export default function Profiles({
       }
     }
 
+    try {
+      const targetName = String(targetProfile?.name || targetProfile?.displayName || "Profil");
+      const isAccount = String(id || "") === String(activeProfileId || avatarGalleryAccountId || "");
+      const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
+        category: isAccount ? "account" : "local",
+        ownerId: id,
+        ownerName: targetName,
+        name: isAccount ? `Profil actif · ${targetName}` : targetName,
+        src: thumbDataUrl,
+        updatedAt: now,
+        createdAt: now,
+        source: isAccount ? "active_profile_upload" : "local_profile_upload",
+      });
+      setAvatarGalleryItems(nextGallery);
+    } catch {}
+
     scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: thumbDataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 6000 });
     try { URL.revokeObjectURL(objectUrl); } catch {}
   }
@@ -1142,6 +1203,19 @@ export default function Profiles({
         avatarCastDataUrl: avatarDataUrl,
         avatarUpdatedAt: now,
       });
+      try {
+        const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
+          category: (privateInfo as any)?.onlineUserId ? "account" : "local",
+          ownerId: p.id,
+          ownerName: cleanName,
+          name: (privateInfo as any)?.onlineUserId ? `Profil actif · ${cleanName}` : cleanName,
+          src: avatarDataUrl,
+          createdAt: now,
+          updatedAt: now,
+          source: (privateInfo as any)?.onlineUserId ? "active_profile_create" : "local_profile_create",
+        });
+        setAvatarGalleryItems(nextGallery);
+      } catch {}
     }
   
     // ✅ 1) Calcule un nextStore depuis la vraie source (s), PAS depuis "store" capturé
@@ -1844,6 +1918,7 @@ React.useEffect(() => {
     onSelectMe={() => openView("me")}
     onSelectLocals={() => openView("locals")}
     onSelectFriends={() => openView("friends")}
+    onSelectAvatarGallery={() => openView("avatarGallery")}
             onSelectDartSets={() => openView("dartsets")}
           />
         ) : (
@@ -1983,6 +2058,60 @@ React.useEffect(() => {
               </Card>
             )}
 
+            {view === "avatarGallery" && (
+              <Card title={t("profiles.avatarGallery.title", "GALERIE")}>
+                {avatarGalleryHeavyReady ? (
+                  <AvatarGalleryPanel
+                    items={avatarGalleryItems}
+                    onRefresh={refreshAvatarGallery}
+                    onApplyToActive={async (item) => {
+                      const src = String(item?.src || "").trim();
+                      if (!src || !activeProfileId) return;
+                      const targetName = String(active?.name || active?.displayName || "Profil actif");
+                      const nowTs = Date.now();
+                      writeAvatarCache(activeProfileId, {
+                        avatarUrl: src.startsWith("data:image/") ? undefined : src,
+                        avatarDataUrl: src.startsWith("data:image/") ? src : undefined,
+                        avatarThumbDataUrl: src.startsWith("data:image/") ? src : undefined,
+                        avatarFullDataUrl: src.startsWith("data:image/") ? src : undefined,
+                        avatarCastDataUrl: src.startsWith("data:image/") ? src : undefined,
+                        avatarUpdatedAt: nowTs,
+                      });
+                      setProfilesSafe((arr) => arr.map((p) => String(p.id) === String(activeProfileId) ? {
+                        ...p,
+                        avatarUrl: src.startsWith("data:image/") ? undefined : src,
+                        avatarPath: undefined,
+                        avatarDataUrl: src.startsWith("data:image/") ? src : (p as any).avatarDataUrl,
+                        avatarUpdatedAt: nowTs,
+                      } : p));
+                      const nextProfiles = (stableProfiles as any[]).map((p: any) => String(p?.id || "") === String(activeProfileId) ? {
+                        ...(p || {}),
+                        avatarUrl: src.startsWith("data:image/") ? undefined : src,
+                        avatarPath: undefined,
+                        avatarDataUrl: src.startsWith("data:image/") ? src : p?.avatarDataUrl,
+                        avatarUpdatedAt: nowTs,
+                      } : p);
+                      scheduleProfilesPersist("profiles_avatar_gallery_apply", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 5000 });
+                      const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
+                        category: "account",
+                        ownerId: activeProfileId,
+                        ownerName: targetName,
+                        name: `Profil actif · ${targetName}`,
+                        src,
+                        createdAt: nowTs,
+                        updatedAt: nowTs,
+                        source: "gallery_apply_active",
+                      });
+                      setAvatarGalleryItems(nextGallery);
+                      setToast({ type: "success", message: "Avatar appliqué au profil actif" });
+                    }}
+                  />
+                ) : (
+                  <HeavySectionPlaceholder minHeight={360} />
+                )}
+              </Card>
+            )}
+
             {view === "dartsets" && (
               <Card title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}>
                 <div style={{ display: "grid", gap: 10 }}>
@@ -2031,6 +2160,8 @@ function ProfilesMenuView({
   onSelectLocals,
   onSelectFriends,
   onSelectDartSets,
+  onSelectAvatarGallery,
+  avatarGalleryCount = 0,
 }: {
   go?: (tab: any, params?: any) => void;
   sport?: "darts" | "petanque" | string;
@@ -2038,6 +2169,8 @@ function ProfilesMenuView({
   onSelectLocals: () => void;
   onSelectFriends: () => void;
   onSelectDartSets: () => void;
+  onSelectAvatarGallery: () => void;
+  avatarGalleryCount?: number;
 }) {
   const { theme } = useTheme();
 
@@ -2169,6 +2302,16 @@ function ProfilesMenuView({
         )}
         onClick={() => go?.("avatar")}
       />
+
+      <CardBtn
+        title={t("profiles.menu.avatarGallery.title", "GALERIE")}
+        subtitle={t(
+          "profiles.menu.avatarGallery.subtitle",
+          "Tous les avatars et logos enregistrés pour ce compte, classés par source."
+        )}
+        badge={avatarGalleryCount > 0 ? String(avatarGalleryCount) : undefined}
+        onClick={onSelectAvatarGallery}
+      />
   
       <CardBtn
         title={t("profiles.menu.me.title", "MON PROFIL")}
@@ -2251,6 +2394,291 @@ function ProfilesMenuView({
 
         return null;
       })()}
+    </div>
+  );
+}
+
+
+/* ================================
+   Galerie centrale Avatars / Logos
+================================ */
+
+const AVATAR_GALLERY_TABS: Array<{ id: "all" | AvatarGalleryCategory; label: string }> = [
+  { id: "all", label: "TOUS" },
+  { id: "account", label: "PROFIL ACTIF" },
+  { id: "local", label: "PROFILS LOCAUX" },
+  { id: "bot", label: "BOTS CPU" },
+  { id: "team", label: "TEAMS" },
+  { id: "ia", label: "AVATAR IA" },
+];
+
+function AvatarGalleryPanel({
+  items,
+  onRefresh,
+  onApplyToActive,
+}: {
+  items: AvatarGalleryItem[];
+  onRefresh: () => void;
+  onApplyToActive: (item: AvatarGalleryItem) => void | Promise<void>;
+}) {
+  const { theme } = useTheme();
+  const [tab, setTab] = React.useState<"all" | AvatarGalleryCategory>("all");
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+
+  const currentTabIndex = Math.max(0, AVATAR_GALLERY_TABS.findIndex((entry) => entry.id === tab));
+  const activeTabEntry = AVATAR_GALLERY_TABS[currentTabIndex] || AVATAR_GALLERY_TABS[0];
+  const moveTab = React.useCallback((direction: -1 | 1) => {
+    const currentIndex = Math.max(0, AVATAR_GALLERY_TABS.findIndex((entry) => entry.id === tab));
+    const nextIndex = (currentIndex + direction + AVATAR_GALLERY_TABS.length) % AVATAR_GALLERY_TABS.length;
+    setTab(AVATAR_GALLERY_TABS[nextIndex].id);
+  }, [tab]);
+
+  const counts = React.useMemo(() => {
+    const base: Record<string, number> = { all: items.length, account: 0, local: 0, bot: 0, team: 0, ia: 0 };
+    for (const item of items) base[item.category] = (base[item.category] || 0) + 1;
+    return base;
+  }, [items]);
+
+  const filtered = React.useMemo(() => {
+    const arr = tab === "all" ? items : items.filter((item) => item.category === tab);
+    return arr.slice(0, 240);
+  }, [items, tab]);
+
+  const selected = React.useMemo(() => {
+    return filtered.find((item) => item.id === selectedId) || filtered[0] || null;
+  }, [filtered, selectedId]);
+
+  React.useEffect(() => {
+    if (!selectedId && filtered[0]?.id) setSelectedId(filtered[0].id);
+    if (selectedId && !filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0]?.id || null);
+  }, [filtered, selectedId]);
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          background: "rgba(0,0,0,.20)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: theme.primary, letterSpacing: 0.8 }}>GALERIE DU COMPTE</div>
+            <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 3 }}>
+              Auto-remplie avec les avatars IA, profils locaux, bots CPU, teams et avatar du profil actif.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            style={{
+              border: `1px solid ${theme.primary}77`,
+              background: `${theme.primary}18`,
+              color: theme.primary,
+              borderRadius: 999,
+              padding: "8px 10px",
+              fontWeight: 900,
+              fontSize: 11,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            ↻ SCAN
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "34px minmax(0, 1fr) 34px",
+            alignItems: "center",
+            gap: 8,
+            width: "100%",
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => moveTab(-1)}
+            aria-label="Catégorie précédente"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(255,255,255,.05)",
+              color: theme.text,
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+          >
+            ‹
+          </button>
+
+          <button
+            type="button"
+            onClick={() => moveTab(1)}
+            title="Appuie pour passer à la catégorie suivante"
+            style={{
+              minWidth: 0,
+              width: "100%",
+              maxWidth: "100%",
+              border: `1px solid ${theme.primary}`,
+              background: `${theme.primary}24`,
+              color: theme.primary,
+              borderRadius: 999,
+              padding: "9px 12px",
+              fontSize: 11,
+              fontWeight: 950,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              cursor: "pointer",
+              boxShadow: `0 0 16px ${theme.primary}22`,
+            }}
+          >
+            {activeTabEntry.label} · {counts[activeTabEntry.id] || 0}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => moveTab(1)}
+            aria-label="Catégorie suivante"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(255,255,255,.05)",
+              color: theme.text,
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+          >
+            ›
+          </button>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 8, maxWidth: "100%", overflow: "hidden" }}>
+          {AVATAR_GALLERY_TABS.map((entry) => {
+            const active = tab === entry.id;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => setTab(entry.id)}
+                aria-label={entry.label}
+                style={{
+                  width: active ? 18 : 7,
+                  height: 7,
+                  borderRadius: 999,
+                  border: "none",
+                  padding: 0,
+                  background: active ? theme.primary : "rgba(255,255,255,.25)",
+                  cursor: "pointer",
+                  transition: "width .15s ease, background .15s ease",
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {selected && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "96px 1fr",
+            gap: 12,
+            alignItems: "center",
+            padding: 12,
+            borderRadius: 18,
+            border: `1px solid ${theme.primary}55`,
+            background: `linear-gradient(135deg, ${theme.primary}18, rgba(0,0,0,.26))`,
+          }}
+        >
+          <div
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 24,
+              overflow: "hidden",
+              border: `2px solid ${theme.primary}`,
+              boxShadow: `0 0 20px ${theme.primary}44`,
+              background: "#050505",
+            }}
+          >
+            <img src={selected.src} alt={selected.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: theme.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.name}</div>
+            <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, textTransform: "uppercase", fontWeight: 800 }}>
+              {selected.category === "account" ? "Profil actif" : selected.category === "local" ? "Profil local" : selected.category === "bot" ? "Bot CPU" : selected.category === "team" ? "Team" : "Avatar IA"}
+            </div>
+            <button
+              type="button"
+              onClick={() => onApplyToActive(selected)}
+              style={{
+                marginTop: 10,
+                border: `1px solid ${theme.primary}`,
+                background: theme.primary,
+                color: "#050505",
+                borderRadius: 999,
+                padding: "8px 12px",
+                fontWeight: 950,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              APPLIQUER AU PROFIL ACTIF
+            </button>
+          </div>
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <div style={{ padding: 18, borderRadius: 18, border: `1px dashed ${theme.borderSoft}`, color: theme.textSoft, textAlign: "center", fontSize: 12 }}>
+          Aucun avatar dans cette catégorie pour l’instant. Le bouton SCAN relit les profils, bots, teams et l’ancienne galerie Avatar IA.
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(74px, 1fr))",
+            gap: 10,
+          }}
+        >
+          {filtered.map((item) => {
+            const active = selected?.id === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSelectedId(item.id)}
+                title={item.name}
+                style={{
+                  border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+                  background: active ? `${theme.primary}20` : "rgba(255,255,255,.035)",
+                  borderRadius: 18,
+                  padding: 6,
+                  cursor: "pointer",
+                  boxShadow: active ? `0 0 18px ${theme.primary}44` : "none",
+                }}
+              >
+                <div style={{ aspectRatio: "1 / 1", borderRadius: 14, overflow: "hidden", background: "#050505" }}>
+                  <img src={item.src} alt={item.name} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </div>
+                <div style={{ marginTop: 5, fontSize: 9, color: active ? theme.primary : theme.textSoft, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {item.ownerName || item.name}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
