@@ -122,6 +122,14 @@ export function upsertAvatarGalleryItem(accountId: string | null | undefined, in
   return writeAvatarGallery(accountId, [item, ...readAvatarGallery(accountId)]);
 }
 
+
+export function deleteAvatarGalleryItem(accountId: string | null | undefined, itemId: string): AvatarGalleryItem[] {
+  const id = String(itemId || "").trim();
+  if (!id) return readAvatarGallery(accountId);
+  const next = readAvatarGallery(accountId).filter((item) => String(item.id || "") !== id);
+  return writeAvatarGallery(accountId, next);
+}
+
 export function collectAvatarGalleryFromSources(opts: {
   accountId?: string | null;
   activeProfileId?: string | null;

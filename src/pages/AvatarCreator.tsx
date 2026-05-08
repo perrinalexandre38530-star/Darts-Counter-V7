@@ -19,6 +19,8 @@ import InfoMini from "../components/InfoMini";
 import { useDevMode } from "../contexts/DevModeContext";
 import { loadStore, saveStore } from "../lib/storage";
 import { apiGet, apiPost } from "../lib/apiClient";
+import { loadBots, saveBots } from "../lib/bots";
+import { upsertAvatarGalleryItem } from "../lib/avatarGallery";
 
 type Props = {
   size?: number;
@@ -540,7 +542,7 @@ function AvatarCreator({
           avatarUrl: p?.avatarUrl,
         }))
         .filter((p: any) => p.id !== "profile:");
-      const botsRaw = readLocalJson<any[]>("dc_bots_v1", []);
+      const botsRaw = loadBots();
       const botItems = Array.isArray(botsRaw)
         ? botsRaw.map((b: any) => ({ id: `bot:${String(b?.id || "")}`, name: `Bot CPU — ${String(b?.name || "Bot")}`, avatarDataUrl: b?.avatarDataUrl, avatarUrl: b?.avatarUrl || b?.avatar })).filter((b: any) => b.id !== "bot:")
         : [];
@@ -565,6 +567,19 @@ function AvatarCreator({
       source,
     };
     persistGallery([item, ...gallery.filter((x) => x.dataUrl !== dataUrl)]);
+    try {
+      const accountId = getAvatarAccountKey();
+      upsertAvatarGalleryItem(accountId, {
+        category: "ia",
+        ownerId: item.id,
+        ownerName: item.name,
+        name: item.name,
+        src: dataUrl,
+        createdAt: Date.parse(item.createdAt) || Date.now(),
+        updatedAt: Date.now(),
+        source: `avatar_ia_${source}`,
+      });
+    } catch {}
   }
 
   async function checkAvatarCreditBeforeGeneration() {
@@ -807,13 +822,25 @@ function AvatarCreator({
       setBusy(true);
       if (profileId.startsWith("bot:")) {
         const botId = profileId.slice(4);
-        const bots = readLocalJson<any[]>("dc_bots_v1", []);
+        const bots = loadBots();
+        const nowTs = Date.now();
         const nextBots = Array.isArray(bots)
-          ? bots.map((b: any) => String(b?.id || "") === botId ? { ...b, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatar: undefined, updatedAt: new Date().toISOString() } : b)
+          ? bots.map((b: any) => String(b?.id || "") === botId ? { ...b, avatarDataUrl: item.dataUrl, avatarUrl: null, avatar: null, avatarUpdatedAt: nowTs, updatedAt: new Date(nowTs).toISOString() } : b)
           : [];
-        localStorage.setItem("dc_bots_v1", JSON.stringify(nextBots));
-        try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
+        saveBots(nextBots);
         const target = nextBots.find((b: any) => String(b?.id || "") === botId);
+        try {
+          upsertAvatarGalleryItem(getAvatarAccountKey(), {
+            category: "bot",
+            ownerId: botId,
+            ownerName: String(target?.name || "Bot CPU"),
+            name: String(target?.name || "Bot CPU"),
+            src: item.dataUrl,
+            createdAt: nowTs,
+            updatedAt: nowTs,
+            source: "avatar_ia_assign_bot",
+          });
+        } catch {}
         setStatus(`Avatar attribué au bot ${target?.name || "CPU"}.`);
         setAssignTarget(null);
         return;
@@ -822,13 +849,27 @@ function AvatarCreator({
       const cleanProfileId = profileId.startsWith("profile:") ? profileId.slice(8) : profileId;
       const store: any = await loadStore<any>();
       if (!store || !Array.isArray(store.profiles)) throw new Error("store_profiles_missing");
+      const nowTs = Date.now();
       const nextProfiles = store.profiles.map((p: any) =>
         String(p?.id || "") === String(cleanProfileId)
-          ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null }
+          ? { ...p, avatarDataUrl: item.dataUrl, avatarUrl: undefined, avatarPath: undefined, avatarAssetId: null, avatarThumbAssetId: null, avatarFullAssetId: null, avatarCastAssetId: null, avatarUpdatedAt: nowTs }
           : p
       );
       await saveStore({ ...store, profiles: nextProfiles });
+      try { window.dispatchEvent(new Event("dc:profiles-changed")); } catch {}
       const target = nextProfiles.find((p: any) => String(p?.id || "") === String(cleanProfileId));
+      try {
+        upsertAvatarGalleryItem(getAvatarAccountKey(), {
+          category: String(cleanProfileId) === String(store?.activeProfileId || "") ? "account" : "local",
+          ownerId: cleanProfileId,
+          ownerName: String(target?.name || target?.displayName || "Profil"),
+          name: String(cleanProfileId) === String(store?.activeProfileId || "") ? `Profil actif · ${String(target?.name || target?.displayName || "Profil")}` : String(target?.name || target?.displayName || "Profil"),
+          src: item.dataUrl,
+          createdAt: nowTs,
+          updatedAt: nowTs,
+          source: "avatar_ia_assign_profile",
+        });
+      } catch {}
       setStatus(`Avatar attribué à ${target?.name || "profil"}.`);
       setAssignTarget(null);
     } catch (e) {

@@ -34,9 +34,9 @@ import OnlineProfileForm from "../components/OnlineProfileForm";
 import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
-import { loadBots } from "../lib/bots";
+import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
-import { AVATAR_GALLERY_EVENT, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
+import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
 
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
@@ -932,6 +932,105 @@ export default function Profiles({
       window.removeEventListener("storage", handler as EventListener);
     };
   }, [refreshAvatarGallery]);
+
+  const applyGalleryAvatarToProfile = React.useCallback(async (targetProfileId: string, item: AvatarGalleryItem) => {
+    const src = String(item?.src || "").trim();
+    const id = String(targetProfileId || "").trim();
+    if (!src || !id) return;
+
+    const nowTs = Date.now();
+    const isData = src.startsWith("data:image/");
+    const targetProfile = (stableProfiles as any[]).find((p: any) => String(p?.id || "") === id) || null;
+    const targetName = String(targetProfile?.name || targetProfile?.displayName || (id === activeProfileId ? "Profil actif" : "Profil local"));
+
+    writeAvatarCache(id, {
+      avatarUrl: isData ? undefined : src,
+      avatarDataUrl: isData ? src : undefined,
+      avatarThumbDataUrl: isData ? src : undefined,
+      avatarFullDataUrl: isData ? src : undefined,
+      avatarCastDataUrl: isData ? src : undefined,
+      avatarUpdatedAt: nowTs,
+    });
+
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
+      const nextProfiles = prevProfiles.map((p0: any) => String(p0?.id || "") === id ? {
+        ...(p0 || {}),
+        avatarUrl: isData ? undefined : src,
+        avatarPath: undefined,
+        avatarDataUrl: isData ? src : p0?.avatarDataUrl,
+        avatarUpdatedAt: nowTs,
+      } : p0);
+      nextStoreSnapshot = { ...(s || {}), profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
+
+    setProfilesSafe((arr) => arr.map((p0: any) => String(p0?.id || "") === id ? {
+      ...(p0 || {}),
+      avatarUrl: isData ? undefined : src,
+      avatarPath: undefined,
+      avatarDataUrl: isData ? src : (p0 as any).avatarDataUrl,
+      avatarUpdatedAt: nowTs,
+    } : p0));
+
+    if (nextStoreSnapshot) {
+      scheduleProfilesPersist("profiles_avatar_gallery_apply", nextStoreSnapshot, { cloud: false, delayMs: 2500 });
+    }
+
+    const isAccount = String(id) === String(activeProfileId || avatarGalleryAccountId || "");
+    const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
+      category: isAccount ? "account" : "local",
+      ownerId: id,
+      ownerName: targetName,
+      name: isAccount ? `Profil actif · ${targetName}` : targetName,
+      src,
+      createdAt: nowTs,
+      updatedAt: nowTs,
+      source: isAccount ? "gallery_apply_active" : "gallery_apply_local",
+    });
+    setAvatarGalleryItems(nextGallery);
+    setToast({ type: "success", message: isAccount ? "Avatar appliqué au profil actif" : `Avatar appliqué à ${targetName}` });
+  }, [activeProfileId, avatarGalleryAccountId, scheduleProfilesPersist, setProfilesSafe, stableProfiles, update]);
+
+  const applyGalleryAvatarToBot = React.useCallback(async (targetBotId: string, item: AvatarGalleryItem) => {
+    const src = String(item?.src || "").trim();
+    const id = String(targetBotId || "").trim();
+    if (!src || !id) return;
+
+    const nowTs = Date.now();
+    const bots = loadBots();
+    const targetBot = bots.find((bot: any) => String(bot?.id || "") === id) || null;
+    const targetName = String(targetBot?.name || targetBot?.displayName || "Bot CPU");
+    const nextBots = bots.map((bot: any) => String(bot?.id || "") === id ? {
+      ...(bot || {}),
+      avatarUrl: src.startsWith("data:image/") ? null : src,
+      avatarDataUrl: src.startsWith("data:image/") ? src : bot?.avatarDataUrl || null,
+      avatarUpdatedAt: nowTs,
+    } : bot);
+    saveBots(nextBots);
+
+    const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
+      category: "bot",
+      ownerId: id,
+      ownerName: targetName,
+      name: targetName,
+      src,
+      createdAt: nowTs,
+      updatedAt: nowTs,
+      source: "gallery_apply_bot",
+    });
+    setAvatarGalleryItems(nextGallery);
+    setToast({ type: "success", message: `Avatar appliqué au bot ${targetName}` });
+  }, [avatarGalleryAccountId]);
+
+  const deleteGalleryItem = React.useCallback((item: AvatarGalleryItem) => {
+    const ok = window.confirm("Supprimer cette image de la galerie ? Cela ne supprime pas le profil/bot d’origine.");
+    if (!ok) return;
+    const next = deleteAvatarGalleryItem(avatarGalleryAccountId, item.id);
+    setAvatarGalleryItems(next);
+    setToast({ type: "success", message: "Image supprimée de la galerie" });
+  }, [avatarGalleryAccountId]);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
@@ -2063,48 +2162,14 @@ React.useEffect(() => {
                 {avatarGalleryHeavyReady ? (
                   <AvatarGalleryPanel
                     items={avatarGalleryItems}
+                    profiles={(stableProfiles as any[]).filter((p: any) => !!p && !isMirrorProfile(p))}
+                    bots={loadBots() as any[]}
+                    activeProfileId={String(activeProfileId || "")}
                     onRefresh={refreshAvatarGallery}
-                    onApplyToActive={async (item) => {
-                      const src = String(item?.src || "").trim();
-                      if (!src || !activeProfileId) return;
-                      const targetName = String(active?.name || active?.displayName || "Profil actif");
-                      const nowTs = Date.now();
-                      writeAvatarCache(activeProfileId, {
-                        avatarUrl: src.startsWith("data:image/") ? undefined : src,
-                        avatarDataUrl: src.startsWith("data:image/") ? src : undefined,
-                        avatarThumbDataUrl: src.startsWith("data:image/") ? src : undefined,
-                        avatarFullDataUrl: src.startsWith("data:image/") ? src : undefined,
-                        avatarCastDataUrl: src.startsWith("data:image/") ? src : undefined,
-                        avatarUpdatedAt: nowTs,
-                      });
-                      setProfilesSafe((arr) => arr.map((p) => String(p.id) === String(activeProfileId) ? {
-                        ...p,
-                        avatarUrl: src.startsWith("data:image/") ? undefined : src,
-                        avatarPath: undefined,
-                        avatarDataUrl: src.startsWith("data:image/") ? src : (p as any).avatarDataUrl,
-                        avatarUpdatedAt: nowTs,
-                      } : p));
-                      const nextProfiles = (stableProfiles as any[]).map((p: any) => String(p?.id || "") === String(activeProfileId) ? {
-                        ...(p || {}),
-                        avatarUrl: src.startsWith("data:image/") ? undefined : src,
-                        avatarPath: undefined,
-                        avatarDataUrl: src.startsWith("data:image/") ? src : p?.avatarDataUrl,
-                        avatarUpdatedAt: nowTs,
-                      } : p);
-                      scheduleProfilesPersist("profiles_avatar_gallery_apply", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 5000 });
-                      const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
-                        category: "account",
-                        ownerId: activeProfileId,
-                        ownerName: targetName,
-                        name: `Profil actif · ${targetName}`,
-                        src,
-                        createdAt: nowTs,
-                        updatedAt: nowTs,
-                        source: "gallery_apply_active",
-                      });
-                      setAvatarGalleryItems(nextGallery);
-                      setToast({ type: "success", message: "Avatar appliqué au profil actif" });
-                    }}
+                    onApplyToActive={(item) => applyGalleryAvatarToProfile(String(activeProfileId || ""), item)}
+                    onApplyToProfile={applyGalleryAvatarToProfile}
+                    onApplyToBot={applyGalleryAvatarToBot}
+                    onDeleteItem={deleteGalleryItem}
                   />
                 ) : (
                   <HeavySectionPlaceholder minHeight={360} />
@@ -2414,16 +2479,31 @@ const AVATAR_GALLERY_TABS: Array<{ id: "all" | AvatarGalleryCategory; label: str
 
 function AvatarGalleryPanel({
   items,
+  profiles,
+  bots,
+  activeProfileId,
   onRefresh,
   onApplyToActive,
+  onApplyToProfile,
+  onApplyToBot,
+  onDeleteItem,
 }: {
   items: AvatarGalleryItem[];
+  profiles: any[];
+  bots: any[];
+  activeProfileId?: string;
   onRefresh: () => void;
   onApplyToActive: (item: AvatarGalleryItem) => void | Promise<void>;
+  onApplyToProfile: (profileId: string, item: AvatarGalleryItem) => void | Promise<void>;
+  onApplyToBot: (botId: string, item: AvatarGalleryItem) => void | Promise<void>;
+  onDeleteItem: (item: AvatarGalleryItem) => void;
 }) {
   const { theme } = useTheme();
   const [tab, setTab] = React.useState<"all" | AvatarGalleryCategory>("all");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [targetKind, setTargetKind] = React.useState<"active" | "profile" | "bot">("active");
+  const [targetProfileId, setTargetProfileId] = React.useState<string>("");
+  const [targetBotId, setTargetBotId] = React.useState<string>("");
 
   const currentTabIndex = Math.max(0, AVATAR_GALLERY_TABS.findIndex((entry) => entry.id === tab));
   const activeTabEntry = AVATAR_GALLERY_TABS[currentTabIndex] || AVATAR_GALLERY_TABS[0];
@@ -2452,6 +2532,21 @@ function AvatarGalleryPanel({
     if (!selectedId && filtered[0]?.id) setSelectedId(filtered[0].id);
     if (selectedId && !filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0]?.id || null);
   }, [filtered, selectedId]);
+
+  React.useEffect(() => {
+    if (!targetProfileId && profiles[0]?.id) setTargetProfileId(String(profiles[0].id));
+  }, [profiles, targetProfileId]);
+
+  React.useEffect(() => {
+    if (!targetBotId && bots[0]?.id) setTargetBotId(String(bots[0].id));
+  }, [bots, targetBotId]);
+
+  const applySelected = React.useCallback(() => {
+    if (!selected) return;
+    if (targetKind === "bot") return onApplyToBot(targetBotId, selected);
+    if (targetKind === "profile") return onApplyToProfile(targetProfileId, selected);
+    return onApplyToActive(selected);
+  }, [onApplyToActive, onApplyToBot, onApplyToProfile, selected, targetBotId, targetKind, targetProfileId]);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -2618,23 +2713,119 @@ function AvatarGalleryPanel({
             <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, textTransform: "uppercase", fontWeight: 800 }}>
               {selected.category === "account" ? "Profil actif" : selected.category === "local" ? "Profil local" : selected.category === "bot" ? "Bot CPU" : selected.category === "team" ? "Team" : "Avatar IA"}
             </div>
-            <button
-              type="button"
-              onClick={() => onApplyToActive(selected)}
-              style={{
-                marginTop: 10,
-                border: `1px solid ${theme.primary}`,
-                background: theme.primary,
-                color: "#050505",
-                borderRadius: 999,
-                padding: "8px 12px",
-                fontWeight: 950,
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              APPLIQUER AU PROFIL ACTIF
-            </button>
+            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                {([
+                  ["active", "ACTIF"],
+                  ["profile", "PROFIL"],
+                  ["bot", "BOT"],
+                ] as const).map(([id, label]) => {
+                  const active = targetKind === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setTargetKind(id)}
+                      style={{
+                        border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+                        background: active ? `${theme.primary}22` : "rgba(255,255,255,.04)",
+                        color: active ? theme.primary : theme.textSoft,
+                        borderRadius: 999,
+                        padding: "7px 6px",
+                        fontWeight: 950,
+                        fontSize: 10,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {targetKind === "profile" && (
+                <select
+                  value={targetProfileId}
+                  onChange={(event) => setTargetProfileId(event.target.value)}
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(0,0,0,.35)",
+                    color: theme.text,
+                    borderRadius: 12,
+                    padding: "8px 10px",
+                    fontWeight: 800,
+                    fontSize: 11,
+                  }}
+                >
+                  {profiles.map((profile: any) => (
+                    <option key={String(profile?.id || "")} value={String(profile?.id || "")}>{String(profile?.name || profile?.displayName || "Profil")}</option>
+                  ))}
+                </select>
+              )}
+
+              {targetKind === "bot" && (
+                <select
+                  value={targetBotId}
+                  onChange={(event) => setTargetBotId(event.target.value)}
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(0,0,0,.35)",
+                    color: theme.text,
+                    borderRadius: 12,
+                    padding: "8px 10px",
+                    fontWeight: 800,
+                    fontSize: 11,
+                  }}
+                >
+                  {bots.map((bot: any) => (
+                    <option key={String(bot?.id || "")} value={String(bot?.id || "")}>{String(bot?.name || bot?.displayName || "Bot CPU")}</option>
+                  ))}
+                </select>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={applySelected}
+                  disabled={(targetKind === "profile" && !targetProfileId) || (targetKind === "bot" && !targetBotId) || (targetKind === "active" && !activeProfileId)}
+                  style={{
+                    minWidth: 0,
+                    border: `1px solid ${theme.primary}`,
+                    background: theme.primary,
+                    color: "#050505",
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    fontWeight: 950,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    opacity: ((targetKind === "profile" && !targetProfileId) || (targetKind === "bot" && !targetBotId) || (targetKind === "active" && !activeProfileId)) ? 0.45 : 1,
+                  }}
+                >
+                  ATTRIBUER
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteItem(selected)}
+                  title="Supprimer de la galerie"
+                  style={{
+                    border: `1px solid rgba(255,90,90,.65)`,
+                    background: "rgba(255,80,80,.14)",
+                    color: "#ff8f8f",
+                    borderRadius: 999,
+                    padding: "8px 10px",
+                    fontWeight: 950,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  🗑
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
