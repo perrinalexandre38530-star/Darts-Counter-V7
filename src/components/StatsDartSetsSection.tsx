@@ -1084,61 +1084,32 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const all = Array.from(byId.values());
 
         // ------------------------------------------------------------
-        // Enrich (lazy) : pour certains records, History.list() ne contient pas payload.
-        // On charge le payload complet seulement si nécessaire (KPIs manquants).
+        // Enrich complet X01 : History.list() ne donne que le header léger.
+        // Les stats dartsets peuvent avoir besoin du payload détaillé (darts / visits).
+        // On recharge donc les derniers X01 via History.get(id), même si le header
+        // ne contient pas payloadCompressed (il est stocké dans le store detail).
         // ------------------------------------------------------------
-        const needsEnrich = (rec: any) => {
-          if (!rec?.id) return false;
-          if (rec?.payload) return false;
-          if (!rec?.payloadCompressed) return false;
-          const summary = rec?.summary ?? rec?.payload?.summary ?? null;
-          const pp = pickPerPlayer(summary);
-          // si on n'a pas au moins scorePerVisit, on ne peut pas calculer First9 / Checkout%
-          const mine = pp?.[0] || null;
-          const hasScores =
-            Array.isArray(mine?.scorePerVisit) ||
-            Array.isArray(mine?.scoresPerVisit) ||
-            Array.isArray(mine?.visitScores) ||
-            Array.isArray(mine?.scoreByVisit);
-          // si First9 / Checkout% / Doubles% absent : enrich
-          const missingKpis =
-            !Number.isFinite(Number(mine?.first9)) &&
-            !Number.isFinite(Number(mine?.first9Avg)) &&
-            !Number.isFinite(Number(mine?.checkoutPct)) &&
-            !Number.isFinite(Number(mine?.coPct)) &&
-            !Number.isFinite(Number(mine?.doublesPct)) &&
-            !Number.isFinite(Number(mine?.doublePct));
-          return !hasScores && missingKpis;
-        };
-
         const sortedForEnrich = (all || []).slice().sort((a: any, b: any) => {
-          const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.createdAt, 0) || 0;
-          const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.createdAt, 0) || 0;
+          const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.updatedAt, 0) || N(a?.createdAt, 0) || 0;
+          const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.updatedAt, 0) || N(b?.createdAt, 0) || 0;
           return tb - ta;
         });
 
-        // max 80 reads pour éviter de geler sur mobile
         const enrichedMap = new Map<string, any>();
         let enrichCount = 0;
 
         for (const rec of sortedForEnrich) {
-          const id = String(rec?.id ?? "");
+          const id = String(rec?.id ?? rec?.matchId ?? "").trim();
           if (!id) continue;
-          if (!needsEnrich(rec)) {
-            enrichedMap.set(id, rec);
-            continue;
+          if (isX01Record(rec) && enrichCount < 120) {
+            try {
+              const full = await History.get(id);
+              enrichedMap.set(id, full || rec);
+              enrichCount += 1;
+              continue;
+            } catch {}
           }
-          if (enrichCount >= 80) {
-            enrichedMap.set(id, rec);
-            continue;
-          }
-          try {
-            const full = await History.get(id);
-            enrichedMap.set(id, full || rec);
-            enrichCount += 1;
-          } catch {
-            enrichedMap.set(id, rec);
-          }
+          enrichedMap.set(id, rec);
         }
 
         const allEnriched = Array.from(enrichedMap.values());

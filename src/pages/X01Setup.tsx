@@ -10,7 +10,9 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import { getBasicProfileStats, type BasicProfileStats } from "../lib/statsBridge";
 
 type SetupProps = {
-  profiles: Profile[];
+  profiles: Profile[] | unknown;
+  initialPlayers?: Profile[] | unknown;
+  initialPlayerIds?: string[];
   onCancel: () => void;
   onStart: (opts: {
     playerIds: string[];
@@ -89,10 +91,63 @@ type Bot = {
 
 const LS_BOTS_KEY = "dc_bots_v1";
 
+function asObjectArray(input: unknown): any[] {
+  if (Array.isArray(input)) return input.filter((item) => item && typeof item === "object");
+  if (!input || typeof input !== "object") return [];
+  const anyInput = input as any;
+  if (Array.isArray(anyInput.items)) return asObjectArray(anyInput.items);
+  if (Array.isArray(anyInput.bots)) return asObjectArray(anyInput.bots);
+  if (Array.isArray(anyInput.players)) return asObjectArray(anyInput.players);
+  if (Array.isArray(anyInput.profiles)) return asObjectArray(anyInput.profiles);
+  return Object.values(anyInput).filter((item) => item && typeof item === "object");
+}
+
+function normalizeProfilesInput(input: unknown): Profile[] {
+  return asObjectArray(input)
+    .map((item: any) => {
+      const id = String(item?.id || item?.profileId || item?.userId || item?.user_id || "").trim();
+      const name = String(item?.name || item?.displayName || item?.nickname || item?.label || "Joueur").trim();
+      if (!id) return null;
+      return {
+        ...(item || {}),
+        id,
+        name: name || "Joueur",
+        avatarDataUrl: item?.avatarDataUrl || item?.avatar_data_url || item?.avatarUrl || item?.avatar_url || item?.avatar || null,
+      } as Profile;
+    })
+    .filter(Boolean) as Profile[];
+}
+
+function mergeUniqueProfiles(profiles: Profile[]): Profile[] {
+  const seen = new Set<string>();
+  const out: Profile[] = [];
+  for (const profile of profiles) {
+    const id = String((profile as any)?.id || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(profile);
+  }
+  return out;
+}
+
+function normalizeStringArray(input: unknown): string[] {
+  return Array.isArray(input) ? input.map((value) => String(value || "").trim()).filter(Boolean) : [];
+}
+
 function loadBots(): Bot[] {
   try {
     const raw = localStorage.getItem(LS_BOTS_KEY);
-    return raw ? (JSON.parse(raw) as Bot[]) : [];
+    if (!raw) return [];
+    return asObjectArray(JSON.parse(raw))
+      .map((item: any) => ({
+        id: String(item?.id || item?.botId || "").trim(),
+        name: String(item?.name || item?.displayName || item?.nickname || "Bot").trim(),
+        level: (item?.level || "medium") as BotLevel,
+        avatarSeed: String(item?.avatarSeed || item?.seed || item?.id || "bot"),
+        createdAt: String(item?.createdAt || new Date().toISOString()),
+        updatedAt: String(item?.updatedAt || item?.createdAt || new Date().toISOString()),
+      }))
+      .filter((bot: Bot) => Boolean(bot.id && bot.name));
   } catch {
     return [];
   }
@@ -170,13 +225,15 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /** Charge un map {profileId -> BasicProfileStats} pour afficher les rings */
-function useAvgMap(profiles: Profile[]) {
+function useAvgMap(profiles: Profile[] | unknown) {
+  const list = React.useMemo(() => normalizeProfilesInput(profiles), [profiles]);
+  const listKey = React.useMemo(() => list.map((p) => p.id).join("|"), [list]);
   const [map, setMap] = React.useState<Record<string, BasicProfileStats | undefined>>({});
   React.useEffect(() => {
     let cancel = false;
     (async () => {
       // On charge progressivement pour éviter un burst.
-      for (const p of profiles) {
+      for (const p of list) {
         if (cancel || map[p.id]) continue;
         try {
           const s = await getBasicProfileStats(p.id);
@@ -190,11 +247,16 @@ function useAvgMap(profiles: Profile[]) {
       cancel = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles.map((p) => p.id).join("|")]);
+  }, [listKey]);
   return map;
 }
 
-export default function X01Setup({ profiles, onCancel, onStart, defaults }: SetupProps) {
+export default function X01Setup({ profiles, initialPlayers, initialPlayerIds, onCancel, onStart, defaults }: SetupProps) {
+  const safeProfiles = React.useMemo(() => normalizeProfilesInput(profiles), [profiles]);
+  const safeInitialPlayers = React.useMemo(() => normalizeProfilesInput(initialPlayers), [initialPlayers]);
+  const safeInitialPlayerIds = React.useMemo(() => normalizeStringArray(initialPlayerIds), [initialPlayerIds]);
+  const initialSelectionDoneRef = React.useRef(false);
+
   // On merge une fois : defaults locaux (localStorage) + valeurs globales (props.defaults) + fallback
   const rawSaved = React.useMemo(loadSettings, []);
   const saved = React.useMemo(
@@ -255,12 +317,26 @@ export default function X01Setup({ profiles, onCancel, onStart, defaults }: Setu
   const [available, setAvailable] = React.useState<Profile[]>([]);
   const [selected, setSelected] = React.useState<Profile[]>([]);
 
-  // Initialisation de available = profils locaux + BOTS
+  // Initialisation de available = profils locaux + BOTS.
+  // Garde-fou important : certaines anciennes sauvegardes peuvent contenir dc_bots_v1
+  // sous forme d'objet, et le mode online peut fournir des joueurs via params.players.
   React.useEffect(() => {
-    const bots = loadBots();
-    const botProfiles = bots.map(botToProfile);
-    setAvailable([...profiles, ...botProfiles]);
-  }, [profiles]);
+    const botProfiles = loadBots().map(botToProfile);
+    const allProfiles = mergeUniqueProfiles([...safeInitialPlayers, ...safeProfiles, ...botProfiles]);
+    const wantedIds = new Set<string>([...safeInitialPlayers.map((p) => p.id), ...safeInitialPlayerIds]);
+
+    if (!initialSelectionDoneRef.current && wantedIds.size > 0) {
+      const initialSelected = allProfiles.filter((p) => wantedIds.has(p.id));
+      if (initialSelected.length > 0) {
+        initialSelectionDoneRef.current = true;
+        setSelected(initialSelected);
+        setAvailable(allProfiles.filter((p) => !wantedIds.has(p.id)));
+        return;
+      }
+    }
+
+    setAvailable(allProfiles);
+  }, [safeProfiles, safeInitialPlayers, safeInitialPlayerIds]);
 
   // Map des stats pour les rings (disponibles + sélectionnés)
   const avgMap = useAvgMap([...available, ...selected]);

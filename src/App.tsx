@@ -3718,9 +3718,27 @@ case "babyfoot_team_edit":
         const defaultDoubleOut =
           typeof settingsFromLobby?.doubleOut === "boolean" ? settingsFromLobby.doubleOut : getX01DefaultDoubleOut(store);
 
+        const routePlayersRaw = Array.isArray(routeParams?.players) ? routeParams.players : [];
+        const onlineProfilesForSetup = routePlayersRaw
+          .map((player: any) => {
+            const id = String(player?.id || player?.userId || player?.user_id || player?.profileId || "").trim();
+            const name = String(player?.name || player?.displayName || player?.nickname || "Joueur").trim();
+            if (!id) return null;
+            return {
+              ...(player || {}),
+              id,
+              name: name || "Joueur",
+              avatarDataUrl: player?.avatarDataUrl || player?.avatar_data_url || player?.avatarUrl || player?.avatar_url || player?.avatar || null,
+            };
+          })
+          .filter(Boolean);
+        const profilesForSetup = isOnlineSetup && onlineProfilesForSetup.length > 0 ? onlineProfilesForSetup : store.profiles;
+
         page = (
           <X01Setup
-            profiles={store.profiles}
+            profiles={profilesForSetup}
+            initialPlayers={isOnlineSetup ? onlineProfilesForSetup : undefined}
+            initialPlayerIds={isOnlineSetup ? onlineProfilesForSetup.map((player: any) => String(player.id)) : undefined}
             defaults={{ start: defaultStart, doubleOut: defaultDoubleOut }}
             onCancel={() =>
               isOnlineSetup && lobbyCode
@@ -3766,6 +3784,7 @@ case "babyfoot_team_edit":
                       lobbyId,
                       config: nextConfig,
                       players,
+                      playerProfiles: profilesForSetup,
                       startedAt: new Date().toISOString(),
                       source: "x01setup",
                     },
