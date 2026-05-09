@@ -3704,20 +3704,83 @@ case "babyfoot_team_edit":
         page = <TournamentRoadmap go={go} />;
         break;
 
-      case "x01setup":
+      case "x01setup": {
+        const isOnlineSetup = !!routeParams?.online || !!routeParams?.lobbyCode;
+        const lobbyCode = routeParams?.lobbyCode ? String(routeParams.lobbyCode).toUpperCase() : null;
+        const lobbyId = routeParams?.lobbyId ?? null;
+        const onlineMode = routeParams?.onlineMode || "x01";
+        const settingsFromLobby = (routeParams?.settings || {}) as any;
+        const defaultStartRaw = Number(settingsFromLobby?.start || getX01DefaultStart(store));
+        const defaultStart: 301 | 501 | 701 | 901 =
+          defaultStartRaw === 301 || defaultStartRaw === 501 || defaultStartRaw === 701 || defaultStartRaw === 901
+            ? (defaultStartRaw as 301 | 501 | 701 | 901)
+            : getX01DefaultStart(store);
+        const defaultDoubleOut =
+          typeof settingsFromLobby?.doubleOut === "boolean" ? settingsFromLobby.doubleOut : getX01DefaultDoubleOut(store);
+
         page = (
           <X01Setup
             profiles={store.profiles}
-            defaults={{ start: getX01DefaultStart(store), doubleOut: getX01DefaultDoubleOut(store) }}
-            onCancel={() => go("games")}
+            defaults={{ start: defaultStart, doubleOut: defaultDoubleOut }}
+            onCancel={() =>
+              isOnlineSetup && lobbyCode
+                ? go("x01_online_setup", { ...(routeParams || {}), lobbyCode, lobbyId, online: true, onlineMode })
+                : go("games")
+            }
             onStart={(opts) => {
               const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
-              setX01Config({ playerIds: players, start: opts.start, doubleOut: opts.doubleOut });
-              go("x01", { resumeId: null, fresh: Date.now() });
+              const nextConfig = {
+                playerIds: players,
+                start: opts.start,
+                doubleOut: opts.doubleOut,
+                outMode: opts.outMode,
+                inMode: opts.inMode,
+                doubleIn: opts.doubleIn,
+                setsToWin: opts.setsToWin,
+                legsPerSet: opts.legsPerSet,
+                randomOrder: opts.randomOrder,
+              };
+              setX01Config(nextConfig);
+
+              const fresh = Date.now();
+              const nextParams = isOnlineSetup
+                ? {
+                    resumeId: null,
+                    fresh,
+                    online: true,
+                    onlineMode,
+                    lobbyCode,
+                    lobbyId,
+                    from: "x01_online_config",
+                  }
+                : { resumeId: null, fresh };
+
+              if (isOnlineSetup && lobbyCode) {
+                onlineApi
+                  .startMatch({
+                    lobbyCode,
+                    initialState: {
+                      mode: "x01",
+                      onlineMode: "x01",
+                      lobbyCode,
+                      lobbyId,
+                      config: nextConfig,
+                      players,
+                      startedAt: new Date().toISOString(),
+                      source: "x01setup",
+                    },
+                  })
+                  .catch((error: any) => {
+                    console.warn("[ONLINE:X01] startMatch failed", error?.message || error);
+                  });
+              }
+
+              go("x01", nextParams);
             }}
           />
         );
         break;
+      }
 
       case "x01_online_setup": {
         const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;

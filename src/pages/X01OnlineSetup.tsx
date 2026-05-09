@@ -17,6 +17,8 @@ import React from "react";
 import type { Store } from "../lib/types";
 import { useOnlineRoom } from "../online/client/useOnlineRoom";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
+import { onlineApi } from "../lib/onlineApi";
+import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 
 type StartScore = 301 | 501 | 701 | 901;
 
@@ -105,38 +107,151 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   const clients = roomState?.clients || [];
   const match: any = roomState?.match || null; // gardé pour le debug futur
 
-  // Exemple d'ordre par défaut pour démarrer une manche
-  const defaultOrder =
-    clients.length > 0
-      ? clients.map((c) => ({ id: c.id, name: c.name }))
-      : [
-          {
-            id: (activeProfile?.id as any) || "local",
-            name: activeProfile?.name || "Joueur",
-          },
-        ];
-
   const [showDebug, setShowDebug] = React.useState(false);
 
-  function handleStartMatch() {
-    if (!defaultOrder.length) return;
+  // ---------------------------------------------------------------------------
+  // NAS lobby + chat salon
+  // Le salon ONLINE V7/V8/V9 est maintenant porté par le backend NAS.
+  // Le Worker Cloudflare historique reste disponible uniquement en debug, mais
+  // l'écran d'attente utilise en priorité les joueurs/messages persistants NAS.
+  // ---------------------------------------------------------------------------
+  const [nasLobby, setNasLobby] = React.useState<any>(null);
+  const [nasLobbyLoading, setNasLobbyLoading] = React.useState(false);
+  const [nasLobbyError, setNasLobbyError] = React.useState<string | null>(null);
+  const [chatMessages, setChatMessages] = React.useState<any[]>([]);
+  const [chatText, setChatText] = React.useState("");
+  const [chatError, setChatError] = React.useState<string | null>(null);
+  const [chatSending, setChatSending] = React.useState(false);
 
-    // 1) Démarre la manche côté Worker (ordre des joueurs)
-    startX01Match({
-      startScore,
-      order: defaultOrder,
-    });
+  const refreshNasLobby = React.useCallback(async () => {
+    if (!rawCode) return;
+    setNasLobbyLoading(true);
+    try {
+      const next = await (onlineApi as any).getLobby(rawCode);
+      setNasLobby(next || null);
+      setNasLobbyError(null);
+    } catch (error: any) {
+      setNasLobbyError(error?.message || "Impossible de lire le salon NAS.");
+    } finally {
+      setNasLobbyLoading(false);
+    }
+  }, [rawCode]);
 
-    // 2) Lance le X01 local (X01Play) via App.tsx
-    //    → App n'a plus besoin de onStart, il va créer la config
-    //      en mode ONLINE quand on passe { online: true }.
-    go("x01", {
-      resumeId: null,
-      fresh: Date.now(),
+  React.useEffect(() => {
+    if (!rawCode) return;
+    refreshNasLobby().catch(() => {});
+    const timer = window.setInterval(() => refreshNasLobby().catch(() => {}), 2500);
+    return () => window.clearInterval(timer);
+  }, [rawCode, refreshNasLobby]);
+
+  React.useEffect(() => {
+    if (!rawCode) return;
+    let cancelled = false;
+    let unsubscribe: any = null;
+
+    (async () => {
+      try {
+        const initial = await fetchMessages(rawCode, 80);
+        if (!cancelled) {
+          setChatMessages(Array.isArray(initial) ? initial : []);
+          setChatError(null);
+        }
+      } catch (error: any) {
+        if (!cancelled) setChatError(error?.message || "Impossible de charger le chat du salon.");
+      }
+
+      try {
+        unsubscribe = subscribeMessages(rawCode, (message: any) => {
+          if (cancelled || !message) return;
+          const id = String(message?.id || `${message?.createdAt || message?.created_at || ""}:${message?.text || message?.message?.text || ""}`);
+          setChatMessages((prev) => {
+            if (id && prev.some((m) => String(m?.id || "") === id)) return prev;
+            return [...prev, message].slice(-100);
+          });
+        });
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsubscribe) Promise.resolve(unsubscribe()).catch(() => {});
+    };
+  }, [rawCode]);
+
+  const lobbyPlayersRaw: any[] = Array.isArray(nasLobby?.players) ? nasLobby.players : [];
+  const connectedPlayers = React.useMemo(() => {
+    const fromNas = lobbyPlayersRaw
+      .map((p: any) => ({
+        id: String(p?.userId || p?.user_id || p?.id || "").trim(),
+        name: String(p?.displayName || p?.nickname || p?.name || "Joueur").trim(),
+        avatarUrl: p?.avatarUrl || p?.avatar_url || null,
+        role: p?.role || "player",
+        status: p?.status || "online",
+      }))
+      .filter((p: any) => p.id || p.name);
+
+    if (fromNas.length) return fromNas;
+
+    const fromWorker = clients.map((c: any) => ({
+      id: String(c?.id || "").trim(),
+      name: String(c?.name || "Joueur").trim(),
+      avatarUrl: null,
+      role: "player",
+      status: wsStatus === "connected" ? "online" : "offline",
+    }));
+
+    if (fromWorker.length) return fromWorker;
+
+    return [
+      {
+        id: String((activeProfile?.id as any) || "local"),
+        name: activeProfile?.name || "Joueur",
+        avatarUrl: (activeProfile as any)?.avatarDataUrl || (activeProfile as any)?.avatarUrl || (activeProfile as any)?.avatar || null,
+        role: "player",
+        status: "online",
+      },
+    ];
+  }, [lobbyPlayersRaw, clients, wsStatus, activeProfile]);
+
+  const defaultOrder = connectedPlayers.map((p: any) => ({ id: p.id || p.name, name: p.name || "Joueur" }));
+
+  function handleConfigureMatch() {
+    go("x01setup", {
       online: true,
+      onlineMode: "x01",
       lobbyCode: rawCode || null,
-      from: "online_fullweb",
+      lobbyId: nasLobby?.id || params?.lobbyId || null,
+      settings: {
+        ...(nasLobby?.settings || {}),
+        start: startScore,
+        doubleOut: defaultDoubleOut,
+      },
+      players: connectedPlayers,
+      from: "x01_online_lobby",
+      fresh: Date.now(),
     });
+  }
+
+  async function handleSendChat() {
+    const text = chatText.trim();
+    if (!rawCode || !text || chatSending) return;
+    setChatSending(true);
+    setChatError(null);
+    try {
+      const sent = await postMessage(rawCode, {
+        text,
+        name: activeProfile?.name || "Joueur",
+        playerId: (activeProfile?.id as any) || "local",
+        type: "chat",
+        at: new Date().toISOString(),
+      });
+      setChatMessages((prev) => [...prev, sent].slice(-100));
+      setChatText("");
+    } catch (error: any) {
+      setChatError(error?.message || "Impossible d’envoyer le message.");
+    } finally {
+      setChatSending(false);
+    }
   }
 
   function handleSendDemoVisit() {
@@ -178,8 +293,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           marginBottom: 12,
         }}
       >
-        Code de salon partagé entre les joueurs. Dès que tout le monde est
-        connecté à la même room, tu peux lancer la manche X01.
+        Code de salon partagé entre les joueurs. Discute dans le chat, vérifie
+        les joueurs connectés puis ouvre la configuration X01 complète.
       </p>
 
       {/* Code du salon */}
@@ -227,7 +342,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
               marginBottom: 4,
             }}
           >
-            Connexion temps réel
+            Connexion temps réel Worker (debug)
           </div>
           <div style={{ opacity: 0.9 }}>
             Statut :{" "}
@@ -341,39 +456,166 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
             marginBottom: 4,
           }}
         >
-          Joueurs connectés dans la room
+          Joueurs connectés au salon
         </div>
 
-        {clients.length === 0 ? (
+        {nasLobbyLoading && !nasLobby ? (
+          <div style={{ opacity: 0.85 }}>Chargement du salon NAS…</div>
+        ) : connectedPlayers.length === 0 ? (
           <div style={{ opacity: 0.85 }}>
-            Aucun client pour le moment. Demande à ton ami de se connecter au
-            même code de salon.
+            Aucun joueur pour le moment. Demande à ton ami de rejoindre le même code de salon.
           </div>
         ) : (
-          <ul
-            style={{
-              margin: 0,
-              paddingLeft: 16,
-            }}
-          >
-            {clients.map((c) => (
-              <li key={c.id} style={{ marginBottom: 2 }}>
-                <span style={{ fontWeight: 700 }}>{c.name}</span>{" "}
-                <span
-                  style={{
-                    opacity: 0.8,
-                    fontSize: 11,
-                  }}
-                >
-                  (<code>{c.id}</code>)
-                </span>
-              </li>
+          <div style={{ display: "grid", gap: 7 }}>
+            {connectedPlayers.map((c: any) => (
+              <div
+                key={c.id || c.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  borderRadius: 10,
+                  padding: "7px 8px",
+                  background: "rgba(255,255,255,.045)",
+                  border: "1px solid rgba(255,255,255,.07)",
+                }}
+              >
+                <span style={{ fontWeight: 800 }}>{c.name}</span>
+                <span style={{ opacity: 0.78, fontSize: 11 }}>{c.role || "player"} • {c.status || "online"}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
+        {nasLobbyError ? <div style={{ color: "#ff8a8a", marginTop: 7 }}>{nasLobbyError}</div> : null}
       </div>
 
-      {/* Bloc "Lancer la manche X01" */}
+      {/* Forum / chat du salon */}
+      <div
+        style={{
+          marginBottom: 14,
+          padding: 10,
+          borderRadius: 12,
+          border: "1px solid rgba(127,226,169,.18)",
+          background:
+            "linear-gradient(180deg, rgba(16,28,24,.94), rgba(8,10,12,.98))",
+          fontSize: 12,
+          boxShadow: "0 0 20px rgba(127,226,169,.08)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <div>
+            <div style={{ fontWeight: 900, color: "#7fe2a9", marginBottom: 2 }}>Forum / chat du salon</div>
+            <div style={{ opacity: 0.78, fontSize: 11 }}>Messages persistants NAS • code {effectiveCode}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchMessages(rawCode, 80).then((rows) => setChatMessages(Array.isArray(rows) ? rows : [])).catch((e: any) => setChatError(e?.message || "Refresh chat impossible."))}
+            disabled={!rawCode}
+            style={{
+              borderRadius: 999,
+              padding: "5px 9px",
+              border: "1px solid rgba(127,226,169,.25)",
+              background: "rgba(127,226,169,.10)",
+              color: "#7fe2a9",
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: rawCode ? "pointer" : "default",
+            }}
+          >
+            Rafraîchir
+          </button>
+        </div>
+
+        <div
+          style={{
+            minHeight: 112,
+            maxHeight: 220,
+            overflowY: "auto",
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,.08)",
+            background: "rgba(0,0,0,.38)",
+            padding: 8,
+            display: "flex",
+            flexDirection: "column",
+            gap: 7,
+          }}
+        >
+          {chatMessages.length === 0 ? (
+            <div style={{ opacity: 0.74, lineHeight: 1.35 }}>
+              Aucun message pour l’instant. Utilise ce chat pour te mettre d’accord avec les joueurs avant de configurer la partie.
+            </div>
+          ) : (
+            chatMessages.map((m: any, idx: number) => {
+              const payload = m?.message && typeof m.message === "object" ? m.message : m;
+              const name = payload?.name || m?.nickname || m?.name || "Joueur";
+              const text = payload?.text || payload?.message || m?.text || "";
+              const at = payload?.at || m?.createdAt || m?.created_at || null;
+              return (
+                <div
+                  key={String(m?.id || idx)}
+                  style={{
+                    borderRadius: 10,
+                    padding: "7px 8px",
+                    background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025))",
+                    border: "1px solid rgba(255,255,255,.06)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
+                    <b style={{ color: "#ffd56a", fontSize: 11.5 }}>{name}</b>
+                    {at ? <span style={{ opacity: 0.48, fontSize: 10 }}>{new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> : null}
+                  </div>
+                  <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.3 }}>{text}</div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input
+            value={chatText}
+            onChange={(e) => setChatText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendChat().catch(() => {});
+              }
+            }}
+            placeholder="Écrire un message avant la partie…"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.12)",
+              background: "rgba(0,0,0,.45)",
+              color: "#f5f5f7",
+              padding: "9px 12px",
+              outline: "none",
+              fontSize: 12,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => handleSendChat().catch(() => {})}
+            disabled={!chatText.trim() || chatSending || !rawCode}
+            style={{
+              borderRadius: 999,
+              border: "none",
+              padding: "9px 13px",
+              background: chatText.trim() && !chatSending && rawCode ? "linear-gradient(180deg,#7fe2a9,#35c86d)" : "linear-gradient(180deg,#444,#333)",
+              color: chatText.trim() && !chatSending && rawCode ? "#03140a" : "rgba(255,255,255,.62)",
+              fontWeight: 900,
+              cursor: chatText.trim() && !chatSending && rawCode ? "pointer" : "default",
+            }}
+          >
+            Envoyer
+          </button>
+        </div>
+        {chatError ? <div style={{ color: "#ff8a8a", marginTop: 7, fontSize: 11 }}>{chatError}</div> : null}
+      </div>
+
+      {/* Bloc "Configurer la partie X01" */}
       <div
         style={{
           marginBottom: 16,
@@ -391,12 +633,12 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
             marginBottom: 6,
           }}
         >
-          Lancer la manche X01
+          Configurer la partie X01
         </div>
 
         <button
           type="button"
-          onClick={handleStartMatch}
+          onClick={handleConfigureMatch}
           disabled={!defaultOrder.length}
           style={{
             width: "100%",
@@ -414,7 +656,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
             marginBottom: 6,
           }}
         >
-          ⭐ Démarrer X01 ({startScore})
+          ⚙️ Configurer X01 ({startScore})
         </button>
 
         <div
@@ -423,10 +665,9 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
             opacity: 0.85,
           }}
         >
-          Pour l’instant, cette action démarre la manche côté Worker Cloudflare{" "}
-          <b>ET</b> ouvre un écran X01 local (même paramètres) sur ton
-          appareil. Plus tard, cet écran sera entièrement synchronisé avec le
-          state envoyé par le Worker.
+          Ouvre la vraie configuration X01 pour choisir les joueurs, le score,
+          les sets/legs, les options d’entrée/sortie et l’ordre de jeu. Au
+          lancement, le match sera créé côté NAS avec le code salon actuel.
         </div>
       </div>
 
