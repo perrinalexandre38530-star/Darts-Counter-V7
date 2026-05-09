@@ -410,6 +410,38 @@ function pickNum(r: any, ...keys: string[]) {
   }
   return null;
 }
+function countNumValues(obj: any): number {
+  if (!obj || typeof obj !== "object") return 0;
+  return Object.values(obj).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+}
+function pickAvg3FromRow(r: any): number | null {
+  return pickNum(r, "avg3", "avg3d", "avgPer3", "avgPerThree", "average3", "avg");
+}
+function pickDartsFromRow(r: any): number {
+  return N(pickNum(r, "darts", "_sumDarts", "sumDarts", "totalDarts", "nbDarts", "thrown", "dartsThrown", "dartsUsed"), 0);
+}
+function pickPointsFromRow(r: any): number {
+  const direct = pickNum(r, "_sumPoints", "sumPoints", "points", "scoredPoints", "totalPoints");
+  if (direct !== null) return Number(direct);
+  const avg = pickAvg3FromRow(r);
+  const darts = pickDartsFromRow(r);
+  return avg !== null && darts > 0 ? (Number(avg) * darts) / 3 : 0;
+}
+function pickHitCount(r: any, mult: "S" | "D" | "T"): number {
+  const h = r?.hits && typeof r.hits === "object" ? r.hits : null;
+  const seg = r?.segments && typeof r.segments === "object" ? r.segments : null;
+  if (mult === "S") return N(pickNum(r, "hitsS", "s", "singles", "single", "S") ?? h?.S ?? h?.s, 0) || countNumValues(seg?.S ?? r?.bySegmentS);
+  if (mult === "D") return N(pickNum(r, "hitsD", "d", "doubles", "double", "D") ?? h?.D ?? h?.d, 0) || countNumValues(seg?.D ?? r?.bySegmentD);
+  return N(pickNum(r, "hitsT", "t", "triples", "triple", "T") ?? h?.T ?? h?.t, 0) || countNumValues(seg?.T ?? r?.bySegmentT);
+}
+function pickMissCount(r: any): number {
+  const h = r?.hits && typeof r.hits === "object" ? r.hits : null;
+  return N(pickNum(r, "miss", "misses", "missCount", "nbMiss") ?? h?.M ?? h?.miss ?? h?.misses, 0);
+}
+function pickBucket(r: any, key: string): number {
+  const b = r?.buckets && typeof r.buckets === "object" ? r.buckets : null;
+  return N(b?.[key], 0);
+}
 function pickObj(r: any, ...keys: string[]) {
   for (const k of keys) {
     const v = r?.[k];
@@ -505,9 +537,13 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string): Record<str
     }
 
     const avg3 =
-      pickNum(mine, "avg3", "avg3d", "avgPer3", "avgPerThree", "avg") ??
+      pickAvg3FromRow(mine) ??
       pickNum(summary, "avg3", "avg3d") ??
-      null;
+      (() => {
+        const pts = pickPointsFromRow(mine);
+        const darts = pickDartsFromRow(mine);
+        return darts > 0 && pts > 0 ? (pts / darts) * 3 : null;
+      })();
 
     const item: MiniMatch = {
       id: String(r?.id ?? r?.matchId ?? `${dsid}-${at}`),
@@ -875,16 +911,17 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
     row.matches += 1;
 
     const avg3 =
-      pickNum(mine, "avg3", "avg3d", "avgPer3", "avgPerThree", "avg") ??
+      pickAvg3FromRow(mine) ??
       pickNum(summary, "avg3", "avg3d") ??
-      null;
+      (() => {
+        const pts = pickPointsFromRow(mine);
+        const darts = pickDartsFromRow(mine);
+        return darts > 0 && pts > 0 ? (pts / darts) * 3 : null;
+      })();
 
     if (avg3 !== null) row.evoAvg3.push(Number(avg3));
 
-    row.darts +=
-      pickNum(mine, "darts", "nbDarts", "thrown", "dartsThrown", "dartsUsed") ??
-      pickNum(mine, "totalDarts") ??
-      0;
+    row.darts += pickDartsFromRow(mine);
 
     row.bestVisit = Math.max(row.bestVisit, N(pickNum(mine, "bestVisit", "bestVolley", "bestThree", "best3", "bestScore"), 0));
     row.bestCheckout = Math.max(row.bestCheckout, N(pickNum(mine, "bestCheckout", "bestCO", "bestOut"), 0));
@@ -926,16 +963,16 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
       row.doublesPct += (d / denom) * 100;
     }
 
-    row.n180 += N(pickNum(mine, "n180", "count180", "s180", "nb180"), 0);
-    row.n140 += N(pickNum(mine, "n140", "count140", "s140", "nb140"), 0);
-    row.n100 += N(pickNum(mine, "n100", "count100", "s100", "nb100", "n100p", "n100Plus"), 0);
+    row.n180 += N(pickNum(mine, "n180", "count180", "s180", "nb180", "h180") ?? pickBucket(mine, "180"), 0);
+    row.n140 += N(pickNum(mine, "n140", "count140", "s140", "nb140", "h140") ?? pickBucket(mine, "140+"), 0);
+    row.n100 += N(pickNum(mine, "n100", "count100", "s100", "nb100", "n100p", "n100Plus", "h100") ?? pickBucket(mine, "100+"), 0);
 
-    row.hitsS += N(pickNum(mine, "hitsS", "s", "singles", "single", "S"), 0);
-    row.hitsD += N(pickNum(mine, "hitsD", "d", "doubles", "double", "D"), 0);
-    row.hitsT += N(pickNum(mine, "hitsT", "t", "triples", "triple", "T"), 0);
-    row.bull += N(pickNum(mine, "bull", "hitsBull", "sbull", "BULL"), 0);
-    row.dBull += N(pickNum(mine, "dBull", "dbull", "hitsDBull", "DBULL"), 0);
-    row.miss += N(pickNum(mine, "miss", "misses", "missCount", "nbMiss"), 0);
+    row.hitsS += pickHitCount(mine, "S");
+    row.hitsD += pickHitCount(mine, "D");
+    row.hitsT += pickHitCount(mine, "T");
+    row.bull += N(pickNum(mine, "bull", "bulls", "hitsBull", "sbull", "BULL"), 0);
+    row.dBull += N(pickNum(mine, "dBull", "dbull", "dbulls", "hitsDBull", "DBULL"), 0);
+    row.miss += pickMissCount(mine);
     row.bust += N(pickNum(mine, "bust", "busts", "bustCount", "nbBust"), 0);
 
     const segObj = extractSegmentsObjectFromPlayer(mine) || null;

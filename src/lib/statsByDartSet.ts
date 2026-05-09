@@ -209,33 +209,48 @@ function resolveDartSetIdFromRecord(r: any, profileId: string | null | undefined
   return global ? String(global) : null;
 }
 
+function resolveAvg3(pp: any): number {
+  return N(pp?.avg3 ?? pp?.avg3d ?? pp?.avgPer3 ?? pp?.avgPerThree ?? pp?.average3 ?? pp?.avg, 0);
+}
+
+function resolveDarts(pp: any): number {
+  if (pp?.darts !== undefined) return N(pp.darts, 0);
+  if (pp?._sumDarts !== undefined) return N(pp._sumDarts, 0);
+  if (pp?.sumDarts !== undefined) return N(pp.sumDarts, 0);
+  if (pp?.totalDarts !== undefined) return N(pp.totalDarts, 0);
+  if (pp?.nbDarts !== undefined) return N(pp.nbDarts, 0);
+  if (pp?.thrownDarts !== undefined) return N(pp.thrownDarts, 0);
+  if (pp?.dartsThrown !== undefined) return N(pp.dartsThrown, 0);
+  if (pp?.dartsUsed !== undefined) return N(pp.dartsUsed, 0);
+  return 0;
+}
+
 function resolvePoints(pp: any): number {
   if (pp?._sumPoints !== undefined) return N(pp._sumPoints, 0);
   if (pp?.sumPoints !== undefined) return N(pp.sumPoints, 0);
   if (pp?.points !== undefined) return N(pp.points, 0);
   if (pp?.scoredPoints !== undefined) return N(pp.scoredPoints, 0);
   if (pp?.totalPoints !== undefined) return N(pp.totalPoints, 0);
+  const avg3 = resolveAvg3(pp);
+  const darts = resolveDarts(pp);
+  if (avg3 > 0 && darts > 0) return (avg3 * darts) / 3;
   return 0;
 }
 
-function resolveDarts(pp: any): number {
-  if (pp?.darts !== undefined) return N(pp.darts, 0);
-  if (pp?.sumDarts !== undefined) return N(pp.sumDarts, 0);
-  if (pp?.thrownDarts !== undefined) return N(pp.thrownDarts, 0);
-  return 0;
+function countNestedSegments(obj: any): number {
+  if (!obj || typeof obj !== "object") return 0;
+  return Object.values(obj).reduce((sum: number, v: any) => sum + N(v, 0), 0);
 }
 
 function resolveHitsFromSummary(pp: any): { S: number; D: number; T: number; M: number } {
-  const h = pp?.hits ?? pp?.hit ?? pp?.segments ?? null;
-  if (h && typeof h === "object") {
-    return {
-      S: N(h.S, 0),
-      D: N(h.D, 0),
-      T: N(h.T, 0),
-      M: N(h.M ?? h.miss, 0),
-    };
-  }
-  return { S: 0, D: 0, T: 0, M: 0 };
+  const h = pp?.hits ?? pp?.hit ?? null;
+  const seg = pp?.segments ?? null;
+  return {
+    S: N(pp?.hitsS ?? pp?.singles ?? pp?.single ?? h?.S ?? h?.s, 0) || countNestedSegments(seg?.S ?? pp?.bySegmentS),
+    D: N(pp?.hitsD ?? pp?.doubles ?? pp?.double ?? h?.D ?? h?.d, 0) || countNestedSegments(seg?.D ?? pp?.bySegmentD),
+    T: N(pp?.hitsT ?? pp?.triples ?? pp?.triple ?? h?.T ?? h?.t, 0) || countNestedSegments(seg?.T ?? pp?.bySegmentT),
+    M: N(pp?.miss ?? pp?.misses ?? h?.M ?? h?.miss ?? h?.misses, 0),
+  };
 }
 
 function resolveBullsFromSummary(pp: any): { bull: number; dbull: number } {
@@ -264,9 +279,10 @@ function resolveBestCheckout(pp: any): number {
 function resolveRecordsFromSummary(pp: any): { n180: number; n140: number; n100: number } {
   const rec = pp?.records ?? pp?.tops ?? pp?.visits ?? null;
 
-  const n180 = pp?.n180 ?? pp?.count180 ?? rec?.n180 ?? rec?.["180"] ?? rec?.top180 ?? 0;
-  const n140 = pp?.n140 ?? pp?.count140 ?? rec?.n140 ?? rec?.["140"] ?? rec?.top140 ?? 0;
-  const n100 = pp?.n100 ?? pp?.count100 ?? rec?.n100 ?? rec?.["100"] ?? rec?.top100 ?? rec?.top100Plus ?? 0;
+  const buckets = pp?.buckets && typeof pp.buckets === "object" ? pp.buckets : null;
+  const n180 = pp?.n180 ?? pp?.count180 ?? pp?.h180 ?? rec?.n180 ?? rec?.["180"] ?? rec?.top180 ?? buckets?.["180"] ?? 0;
+  const n140 = pp?.n140 ?? pp?.count140 ?? pp?.h140 ?? rec?.n140 ?? rec?.["140"] ?? rec?.top140 ?? buckets?.["140+"] ?? 0;
+  const n100 = pp?.n100 ?? pp?.count100 ?? pp?.h100 ?? rec?.n100 ?? rec?.["100"] ?? rec?.top100 ?? rec?.top100Plus ?? buckets?.["100+"] ?? 0;
 
   return { n180: N(n180, 0), n140: N(n140, 0), n100: N(n100, 0) };
 }
@@ -668,9 +684,10 @@ export async function getX01StatsByDartSet(profileId?: string) {
 
         const d = resolveDarts(pp);
         const p = resolvePoints(pp);
+        const summaryAvg3 = resolveAvg3(pp);
 
-        // si summary ne contient pas darts/points → raw fallback pour ce match
-        if (d <= 0 || p <= 0) {
+        // si summary ne contient vraiment ni volume ni moyenne → raw fallback pour ce match
+        if (d <= 0 || (p <= 0 && summaryAvg3 <= 0)) {
           const raw = computeFromRaw(r, String(pid || profileId));
           const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
           if (fallbackSetId) {
@@ -732,7 +749,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
           mergeSegments(a.segments, raw.segments);
         }
 
-        const avg3 = d > 0 ? (p / d) * 3 : 0;
+        const avg3 = summaryAvg3 > 0 ? summaryAvg3 : d > 0 ? (p / d) * 3 : 0;
         (evoMap[sid] ||= []).push({ t: ts || Date.now(), avg3 });
       }
 

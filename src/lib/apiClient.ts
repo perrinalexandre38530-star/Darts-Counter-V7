@@ -81,7 +81,17 @@ async function doFetch(path: string, init?: RequestInit) {
   });
 
   if (!res.ok) {
-    throw new Error(`${init?.method || "GET"} ${normalizedPath} failed (${res.status})`);
+    const errPayload = await parseJsonSafe(res).catch(() => null);
+    const errMessage = String(
+      errPayload?.message ||
+        errPayload?.error ||
+        errPayload?.detail ||
+        errPayload?.hint ||
+        ""
+    ).trim();
+    throw new Error(
+      `${init?.method || "GET"} ${normalizedPath} failed (${res.status})${errMessage ? ` — ${errMessage}` : ""}`
+    );
   }
 
   return parseJsonSafe(res);

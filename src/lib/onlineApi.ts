@@ -1290,7 +1290,7 @@ function generateLobbyCode(): string {
 async function createLobby(args: { mode: string; maxPlayers: number; settings: OnlineLobbySettings }): Promise<OnlineLobby> {
   if (isNasProviderEnabled()) {
     await ensureNasSession();
-    const res = await apiPost("/online/lobbies", {
+    const res = await apiPost("/online/lobbies/create-safe", {
       mode: args.mode,
       maxPlayers: args.maxPlayers,
       settings: args.settings,
@@ -1337,7 +1337,7 @@ async function joinLobby(args: { code: string; [k: string]: any }): Promise<Onli
 
   if (isNasProviderEnabled()) {
     await ensureNasSession();
-    const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/join`, {
+    const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/join-safe`, {
       code: codeUpper,
       nickname: args.nickname,
       role: args.role || "player",
@@ -1405,7 +1405,7 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
 
   if (isNasProviderEnabled()) {
     await ensureNasSession();
-    const res = await apiPost("/online/matches/start", {
+    const res = await apiPost("/online/matches/start-safe", {
       lobbyCode: code,
       initialState: args.initialState ?? {},
     });
@@ -1450,7 +1450,7 @@ async function updateMatchState(args: { lobbyCode: string; state: any; status?: 
 
   if (isNasProviderEnabled()) {
     await ensureNasSession();
-    await apiPost("/online/matches/state", {
+    await apiPost("/online/matches/state-safe", {
       lobbyCode: code,
       state: args.state ?? {},
       status: args.status,
@@ -1473,7 +1473,7 @@ async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<
 
   if (isNasProviderEnabled()) {
     await ensureNasSession();
-    await apiPost("/online/matches/end", {
+    await apiPost("/online/matches/end-safe", {
       lobbyCode: code,
       finalState: args.finalState ?? {},
     });
