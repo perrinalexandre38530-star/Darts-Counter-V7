@@ -3718,6 +3718,19 @@ case "babyfoot_team_edit":
         const defaultDoubleOut =
           typeof settingsFromLobby?.doubleOut === "boolean" ? settingsFromLobby.doubleOut : getX01DefaultDoubleOut(store);
 
+        const normalizeX01V3ModeFromSetup = (value: any, fallback: "simple" | "double" | "master" = "simple") => {
+          const raw = String(value || "").trim().toLowerCase();
+          if (raw === "single" || raw === "simple") return "simple" as const;
+          if (raw === "double") return "double" as const;
+          if (raw === "master") return "master" as const;
+          return fallback;
+        };
+
+        const normalizeX01V3Count = (value: any, fallback: 1 | 3 | 5 | 7 | 9 | 11 | 13 = 1) => {
+          const n = Number(value);
+          return n === 1 || n === 3 || n === 5 || n === 7 || n === 9 || n === 11 || n === 13 ? (n as any) : fallback;
+        };
+
         const routePlayersRaw = Array.isArray(routeParams?.players) ? routeParams.players : [];
         const onlineProfilesForSetup = routePlayersRaw
           .map((player: any) => {
@@ -3769,7 +3782,51 @@ case "babyfoot_team_edit":
                 legsPerSet: opts.legsPerSet,
                 randomOrder: opts.randomOrder,
               };
+
+              const nextConfigV3 = {
+                id: `x01v3-online-${Date.now()}`,
+                mode: "x01",
+                online: isOnlineSetup,
+                onlineMode: "x01",
+                lobbyCode,
+                lobbyId,
+                startScore: opts.start,
+                start: opts.start,
+                inMode: normalizeX01V3ModeFromSetup(opts.inMode),
+                outMode: normalizeX01V3ModeFromSetup(opts.outMode, opts.doubleOut ? "double" : "simple"),
+                doubleIn: !!opts.doubleIn,
+                doubleOut: !!opts.doubleOut,
+                gameMode: selectedProfilesForPlay.length <= 1 ? "solo" : "multi",
+                matchMode: selectedProfilesForPlay.length <= 1 ? "solo" : "multi",
+                players: selectedProfilesForPlay.map((profile: any) => {
+                  const avatar =
+                    profile?.avatarDataUrl ||
+                    profile?.avatar_data_url ||
+                    profile?.avatarUrl ||
+                    profile?.avatar_url ||
+                    profile?.avatar ||
+                    null;
+                  return {
+                    ...(profile || {}),
+                    id: String(profile?.id || profile?.userId || profile?.profileId || ""),
+                    profileId: String(profile?.id || profile?.userId || profile?.profileId || ""),
+                    name: String(profile?.name || profile?.displayName || profile?.nickname || "Joueur"),
+                    avatar,
+                    avatarDataUrl: avatar,
+                    isOnlinePlayer: isOnlineSetup,
+                    role: profile?.role || "player",
+                  };
+                }),
+                teams: null,
+                legsPerSet: normalizeX01V3Count(opts.legsPerSet, 1),
+                setsToWin: normalizeX01V3Count(opts.setsToWin, 1),
+                serveMode: opts.randomOrder ? "random" : "alternate",
+                scoringSource: "manual",
+                createdAt: Date.now(),
+              };
+
               setX01Config(nextConfig);
+              setX01ConfigV3(nextConfigV3);
 
               const fresh = Date.now();
               const nextParams = isOnlineSetup
@@ -3781,9 +3838,11 @@ case "babyfoot_team_edit":
                     lobbyCode,
                     lobbyId,
                     players: selectedProfilesForPlay,
+                    config: nextConfigV3,
+                    x01ConfigV3: nextConfigV3,
                     from: "x01_online_config",
                   }
-                : { resumeId: null, fresh };
+                : { resumeId: null, fresh, config: nextConfigV3 };
 
               if (isOnlineSetup && lobbyCode) {
                 onlineApi
@@ -3794,12 +3853,14 @@ case "babyfoot_team_edit":
                       onlineMode: "x01",
                       lobbyCode,
                       lobbyId,
-                      config: nextConfig,
+                      config: nextConfigV3,
+                      x01ConfigV3: nextConfigV3,
+                      legacyConfig: nextConfig,
                       playerIds: orderedPlayerIds,
                       players: selectedProfilesForPlay,
                       playerProfiles: selectedProfilesForPlay,
                       startedAt: new Date().toISOString(),
-                      source: "x01setup",
+                      source: "x01setup_v3",
                     },
                   })
                   .catch((error: any) => {
@@ -3807,7 +3868,7 @@ case "babyfoot_team_edit":
                   });
               }
 
-              go("x01", nextParams);
+              go("x01_play_v3", nextParams);
             }}
           />
         );
@@ -4929,28 +4990,39 @@ function X01PlayV3Route({
     };
   }, [resumeId]);
 
-  // Mode "nouvelle partie" (via config page)
+  // Mode "nouvelle partie" (via config page ou lobby ONLINE)
   if (!resumeId) {
-    if (!x01ConfigV3) {
+    const routeConfig =
+      routeParams?.x01ConfigV3 ??
+      routeParams?.config ??
+      routeParams?.initialState?.x01ConfigV3 ??
+      routeParams?.initialState?.config ??
+      null;
+    const cfgToStart = x01ConfigV3 || routeConfig;
+    const isOnline = !!routeParams?.online || !!routeParams?.lobbyCode;
+
+    if (!cfgToStart) {
       return (
         <div style={{ padding: 16 }}>
-          <button onClick={() => go("x01_config_v3")}>← Retour</button>
+          <button onClick={() => go(isOnline ? "x01_online_setup" : "x01_config_v3", routeParams)}>← Retour</button>
           <p>Configuration X01 V3 manquante.</p>
         </div>
       );
     }
 
     const freshToken = routeParams?.fresh ?? Date.now();
-    const key = `x01v3-${freshToken}`;
+    const key = isOnline
+      ? `x01v3-online-${String(routeParams?.lobbyCode || "room")}-${freshToken}`
+      : `x01v3-${freshToken}`;
 
     return (
       <X01PlayV3
         key={key}
-        config={x01ConfigV3}
-        onExit={() => go("x01_config_v3")}
-        onReplayNewConfig={() => go("x01_config_v3")}
+        config={cfgToStart}
+        onExit={() => go(isOnline ? "online" : "x01_config_v3")}
+        onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
         onShowSummary={(matchId: string) =>
-          go("statsDetail", { matchId, showEnd: true })
+          go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeParams?.lobbyCode })
         }
       />
     );

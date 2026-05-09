@@ -18,6 +18,7 @@ import { useX01EngineV3 } from "../hooks/useX01EngineV3";
 import type { Dart as UIDart } from "../lib/types";
 
 import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
 import BackDot from "../components/BackDot";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
