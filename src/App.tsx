@@ -3746,9 +3746,20 @@ case "babyfoot_team_edit":
                 : go("games")
             }
             onStart={(opts) => {
-              const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
+              const orderedPlayerIds = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
+              const profilesIndex = new Map<string, any>();
+              [...onlineProfilesForSetup, ...profilesForSetup, ...(Array.isArray(store.profiles) ? store.profiles : [])].forEach((profile: any) => {
+                const id = String(profile?.id || profile?.userId || profile?.profileId || "").trim();
+                if (id && !profilesIndex.has(id)) profilesIndex.set(id, profile);
+              });
+              const selectedProfilesForPlay = orderedPlayerIds
+                .map((id) => profilesIndex.get(String(id)))
+                .filter(Boolean);
+
               const nextConfig = {
-                playerIds: players,
+                playerIds: orderedPlayerIds,
+                players: selectedProfilesForPlay,
+                playerProfiles: selectedProfilesForPlay,
                 start: opts.start,
                 doubleOut: opts.doubleOut,
                 outMode: opts.outMode,
@@ -3769,6 +3780,7 @@ case "babyfoot_team_edit":
                     onlineMode,
                     lobbyCode,
                     lobbyId,
+                    players: selectedProfilesForPlay,
                     from: "x01_online_config",
                   }
                 : { resumeId: null, fresh };
@@ -3783,8 +3795,9 @@ case "babyfoot_team_edit":
                       lobbyCode,
                       lobbyId,
                       config: nextConfig,
-                      players,
-                      playerProfiles: profilesForSetup,
+                      playerIds: orderedPlayerIds,
+                      players: selectedProfilesForPlay,
+                      playerProfiles: selectedProfilesForPlay,
                       startedAt: new Date().toISOString(),
                       source: "x01setup",
                     },
@@ -3840,13 +3853,46 @@ case "babyfoot_team_edit":
 
         let effectiveConfig = x01Config;
 
+        const normalizeX01PlayMode = (value: any, fallback: "single" | "double" | "master" = "single") => {
+          const raw = String(value || "").trim().toLowerCase();
+          if (raw === "simple" || raw === "single") return "single" as const;
+          if (raw === "double") return "double" as const;
+          if (raw === "master") return "master" as const;
+          return fallback;
+        };
+
+        const normalizePlayProfile = (profile: any) => {
+          const id = String(profile?.id || profile?.userId || profile?.user_id || profile?.profileId || "").trim();
+          if (!id) return null;
+          const name = String(profile?.name || profile?.displayName || profile?.nickname || profile?.label || "Joueur").trim() || "Joueur";
+          const avatar =
+            profile?.avatarDataUrl ||
+            profile?.avatar_data_url ||
+            profile?.avatarUrl ||
+            profile?.avatar_url ||
+            profile?.avatar ||
+            null;
+          return { ...(profile || {}), id, name, avatar, avatarDataUrl: avatar };
+        };
+
+        const safeStoreProfiles = Array.isArray(store?.profiles) ? store.profiles : [];
+        const routePlayers = Array.isArray(routeParams?.players) ? routeParams.players : [];
+
         if (!effectiveConfig && isOnline && !isResume) {
-          const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
+          const activeProfile = safeStoreProfiles.find((p: any) => p.id === store.activeProfileId) ?? safeStoreProfiles[0] ?? null;
           const startDefault = getX01DefaultStart(store);
           const start =
             startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901 ? startDefault : 501;
+          const fallbackProfiles = routePlayers.length ? routePlayers : activeProfile ? [activeProfile] : [];
+          const fallbackPlayers = fallbackProfiles.map(normalizePlayProfile).filter(Boolean);
 
-          effectiveConfig = { start, doubleOut: store.settings.doubleOut, playerIds: activeProfile ? [activeProfile.id] : [] };
+          effectiveConfig = {
+            start,
+            doubleOut: store.settings.doubleOut,
+            playerIds: fallbackPlayers.map((player: any) => player.id),
+            players: fallbackPlayers,
+            playerProfiles: fallbackPlayers,
+          };
           setX01Config(effectiveConfig);
         }
 
@@ -3860,23 +3906,73 @@ case "babyfoot_team_edit":
           break;
         }
 
-        const rawStart = effectiveConfig?.start ?? getX01DefaultStart(store);
-        const startClamped: 301 | 501 | 701 | 901 = rawStart >= 901 ? 901 : (rawStart as any);
+        const rawStart = Number(effectiveConfig?.start ?? effectiveConfig?.startScore ?? getX01DefaultStart(store));
+        const startClamped: 301 | 501 | 701 | 901 =
+          rawStart === 301 || rawStart === 501 || rawStart === 701 || rawStart === 901 ? (rawStart as any) : 501;
 
-        const outMode = effectiveConfig?.doubleOut ? "double" : "simple";
-        const playerIds = effectiveConfig?.playerIds ?? [];
+        const rawProfileSources = [
+          ...(Array.isArray(effectiveConfig?.players) ? effectiveConfig.players : []),
+          ...(Array.isArray(effectiveConfig?.playerProfiles) ? effectiveConfig.playerProfiles : []),
+          ...routePlayers,
+          ...safeStoreProfiles,
+        ];
+        const profilesById = new Map<string, any>();
+        rawProfileSources.forEach((profile: any) => {
+          const normalized = normalizePlayProfile(profile);
+          if (normalized && !profilesById.has(normalized.id)) profilesById.set(normalized.id, normalized);
+        });
+
+        const playerIdsFromConfig = Array.isArray(effectiveConfig?.playerIds)
+          ? effectiveConfig.playerIds.map((id: any) => String(id || "").trim()).filter(Boolean)
+          : [];
+        const playerIdsFromPlayers = Array.isArray(effectiveConfig?.players)
+          ? effectiveConfig.players.map((player: any) => String(player?.id || player?.userId || player?.profileId || "").trim()).filter(Boolean)
+          : [];
+        const playerIds = playerIdsFromConfig.length ? playerIdsFromConfig : playerIdsFromPlayers;
+        const playPlayers = (playerIds.length ? playerIds : Array.from(profilesById.keys()))
+          .map((id: string) => profilesById.get(id) || normalizePlayProfile({ id, name: "Joueur" }))
+          .filter(Boolean);
+
+        if (!isResume && playPlayers.length === 0) {
+          page = (
+            <div className="container" style={{ padding: 16 }}>
+              <button onClick={() => go(isOnline ? "online" : "x01setup")}>← Retour</button>
+              <p>Aucun joueur X01 valide pour démarrer la partie.</p>
+            </div>
+          );
+          break;
+        }
+
+        const outMode = normalizeX01PlayMode(
+          effectiveConfig?.outMode ?? (effectiveConfig?.doubleOut ? "double" : "single"),
+          effectiveConfig?.doubleOut ? "double" : "single"
+        );
+        const inMode = normalizeX01PlayMode(
+          effectiveConfig?.inMode ?? (effectiveConfig?.doubleIn ? "double" : "single"),
+          effectiveConfig?.doubleIn ? "double" : "single"
+        );
+
+        const x01PlayConfig = {
+          ...(effectiveConfig || {}),
+          startScore: startClamped,
+          start: startClamped,
+          inMode,
+          outMode,
+          gameMode: playPlayers.length <= 1 ? "solo" : "multi",
+          players: playPlayers,
+          teams: undefined,
+          legsPerSet: effectiveConfig?.legsPerSet || 1,
+          setsToWin: effectiveConfig?.setsToWin || 1,
+          serveMode: effectiveConfig?.randomOrder ? "random" : "alternate",
+        };
+
         const freshToken = routeParams?.fresh ?? Date.now();
         const key = isResume ? `resume-${routeParams.resumeId}` : `fresh-${freshToken}`;
 
         page = (
           <X01Play
             key={key}
-            profiles={store.profiles}
-            playerIds={playerIds}
-            start={startClamped}
-            outMode={outMode}
-            inMode="simple"
-            params={isResume ? { resumeId: routeParams.resumeId } : undefined}
+            config={x01PlayConfig as any}
             onFinish={(m) => pushHistory(enrichOnlineMatchForHistory(m, "x01", routeParams))}
             onExit={() => (isOnline ? go("online") : go("x01setup"))}
           />
