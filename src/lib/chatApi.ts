@@ -44,7 +44,38 @@ export async function fetchMessages(lobbyCode: string, limit = 50) {
 }
 
 export function subscribeMessages(lobbyCode: string, onInsert: (row: any) => void) {
-  if (isNasProviderEnabled()) return async () => {};
+  const code = String(lobbyCode || "").trim().toUpperCase();
+
+  // NAS: pas de websocket ici -> polling léger et déduplication locale.
+  // Cela rend le chat salon utilisable sur téléphone/PC sans Supabase realtime.
+  if (isNasProviderEnabled()) {
+    const seen = new Set<string>();
+    let stopped = false;
+    let timer: number | null = null;
+
+    const tick = async () => {
+      if (stopped || !code) return;
+      try {
+        const rows = await fetchMessages(code, 80);
+        for (const row of rows || []) {
+          const id = String(row?.id || `${row?.createdAt || ""}:${row?.userId || ""}:${row?.text || row?.message?.text || ""}`);
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          onInsert(row);
+        }
+      } catch {
+        // silence: le composant affiche déjà les erreurs de fetch initial/envoyer
+      }
+    };
+
+    tick().catch(() => {});
+    timer = window.setInterval(() => tick().catch(() => {}), 2500);
+    return async () => {
+      stopped = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }
+
   const chan = supabase
     .channel(`chat:${lobbyCode}`)
     .on(

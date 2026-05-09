@@ -114,6 +114,7 @@ import { onlineApi } from "./lib/onlineApi";
 import { isNasProviderEnabled } from "./lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
+
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
 
@@ -340,6 +341,108 @@ import { runtimeDiag, diagMarkStart, diagMarkEnd } from "./lib/runtimeDiag";
 import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallow } from "./lib/profilesDiag";
 import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
+
+// ============================================================
+// ONLINE V10 — propagation sécurisée du contexte salon
+// Objectif: quand un joueur lance un mode depuis Online > Jouer,
+// le contexte {lobbyCode, onlineMode, online:true} doit survivre
+// aux écrans de configuration puis au vrai gameplay.
+// ============================================================
+const ONLINE_CONTEXT_TABS = new Set<string>([
+  "x01_online_setup",
+  "x01",
+  "x01_play_v3",
+  "cricket",
+  "killer_config",
+  "killer_play",
+  "shanghai",
+  "shanghai_play",
+  "golf_config",
+  "golf_play",
+  "warfare_config",
+  "warfare_play",
+  "battle_royale",
+  "battle_royale_play",
+  "five_lives_config",
+  "five_lives_play",
+  "scram_config",
+  "scram_play",
+  "batard_config",
+  "batard_play",
+  "capital_config",
+  "capital_play",
+  "departements_config",
+  "departements_play",
+  "training_clock",
+]);
+
+const ONLINE_GAMEPLAY_TABS = new Set<string>([
+  "x01",
+  "x01_play_v3",
+  "cricket",
+  "killer_play",
+  "shanghai_play",
+  "golf_play",
+  "warfare_play",
+  "battle_royale_play",
+  "five_lives_play",
+  "scram_play",
+  "batard_play",
+  "capital_play",
+  "departements_play",
+  "training_clock",
+]);
+
+function readOnlineRouteContext(params: any) {
+  const lobbyCode = String(params?.lobbyCode || params?.code || params?.lobby?.code || "").trim().toUpperCase();
+  const onlineMode = String(params?.onlineMode || params?.mode || params?.lobby?.mode || params?.config?.onlineMode || "").trim();
+  const isOnline = !!params?.online || !!params?.onlineV9 || !!params?.onlineV10 || !!lobbyCode;
+  if (!isOnline && !lobbyCode) return null;
+  return {
+    online: true,
+    onlineV10: true,
+    source: "online",
+    lobbyCode: lobbyCode || null,
+    lobbyId: params?.lobbyId || params?.lobby?.id || params?.config?.lobbyId || null,
+    onlineMode: onlineMode || params?.config?.mode || null,
+    mode: onlineMode || params?.mode || params?.config?.mode || null,
+    lobby: params?.lobby || null,
+  };
+}
+
+function mergeOnlineRouteContext(currentParams: any, next: any, params?: any) {
+  const nextName = String(next || "");
+  const base = params && typeof params === "object" ? { ...params } : params == null ? null : { value: params };
+  const ctx = readOnlineRouteContext(base) || readOnlineRouteContext(currentParams);
+  if (!ctx || !ONLINE_CONTEXT_TABS.has(nextName)) return base;
+
+  const merged: any = { ...(base || {}), ...ctx };
+  if (base?.config && typeof base.config === "object") {
+    merged.config = { ...base.config, ...ctx };
+  }
+  return merged;
+}
+
+function enrichOnlineMatchForHistory(match: any, fallbackMode: string, params: any) {
+  const ctx = readOnlineRouteContext(params);
+  if (!ctx?.lobbyCode) return match;
+  const payload = match?.payload && typeof match.payload === "object" ? { ...match.payload } : {};
+  return {
+    ...(match || {}),
+    kind: match?.kind || fallbackMode,
+    payload: {
+      ...payload,
+      online: true,
+      onlineV10: true,
+      source: "online",
+      mode: ctx.onlineMode || fallbackMode,
+      onlineMode: ctx.onlineMode || fallbackMode,
+      lobbyCode: ctx.lobbyCode,
+      lobbyId: ctx.lobbyId || null,
+    },
+  };
+}
+
 
 if (import.meta.env.DEV) installHistoryProbe();
 
@@ -1972,8 +2075,9 @@ useEffect(() => {
 
   /* Navigation */
   function go(next: Tab, params?: any) {
-    setRouteParams(params ?? null);
-    profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: params ?? null });
+    const nextParams = mergeOnlineRouteContext(routeParams, next, params);
+    setRouteParams(nextParams ?? null);
+    profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: nextParams ?? null });
     const nextRoute = String(window.location.hash || `#/go:${next}`);
     trackRoute(nextRoute);
     crashGuardTrackRoute(nextRoute);
@@ -2637,12 +2741,19 @@ useEffect(() => {
     } catch {}
 
     try {
-      const supported = ["x01", "cricket", "killer", "shanghai"];
-      if (supported.includes(saved.kind)) {
+      const supported = ["x01", "cricket", "killer", "shanghai", "golf", "warfare", "battle_royale", "five_lives", "scram", "batard", "capital", "territories", "clock"];
+      const lobbyCode = String((saved.payload as any)?.lobbyCode || "").trim().toUpperCase();
+      if (supported.includes(saved.kind) && lobbyCode) {
         onlineApi
           .uploadMatch({
-            mode: saved.kind as any,
-            payload: { summary: saved.summary ?? null, payload: saved.payload ?? null },
+            mode: ((saved.payload as any)?.onlineMode || saved.kind) as any,
+            payload: {
+              lobbyCode,
+              online: true,
+              onlineV10: true,
+              summary: saved.summary ?? null,
+              payload: saved.payload ?? null,
+            },
             isTraining: false,
             startedAt: saved.createdAt,
             finishedAt: saved.updatedAt,
@@ -2657,7 +2768,34 @@ useEffect(() => {
     } else {
       nav();
     }
+
   }
+
+  // ONLINE V10 — publie le route/config actuel quand une page de gameplay online est ouverte.
+  // Cela donne au NAS une source de vérité minimale pour spectateur/reprise/invité,
+  // sans écrire de snapshot lourd à chaque dart.
+  React.useEffect(() => {
+    const ctx = readOnlineRouteContext(routeParams);
+    const routeName = String(tab || "");
+    if (!ctx?.lobbyCode || !ONLINE_GAMEPLAY_TABS.has(routeName)) return;
+
+    const state = {
+      online: true,
+      onlineV10: true,
+      phase: "playing",
+      route: routeName,
+      mode: ctx.onlineMode || ctx.mode || routeName,
+      onlineMode: ctx.onlineMode || ctx.mode || routeName,
+      lobbyCode: ctx.lobbyCode,
+      lobbyId: ctx.lobbyId || null,
+      config: routeParams?.config || null,
+      updatedAt: Date.now(),
+    };
+
+    onlineApi
+      .updateMatchState({ lobbyCode: ctx.lobbyCode, status: "started" as any, state })
+      .catch((e: any) => console.warn("[ONLINE V10] updateMatchState route snapshot failed", e?.message || e));
+  }, [tab, routeParams?.lobbyCode, routeParams?.onlineMode, routeParams?.mode, routeParams?.config]);
 
 
   /* --------------------------------------------
@@ -3657,7 +3795,7 @@ case "babyfoot_team_edit":
             outMode={outMode}
             inMode="simple"
             params={isResume ? { resumeId: routeParams.resumeId } : undefined}
-            onFinish={(m) => pushHistory(m)}
+            onFinish={(m) => pushHistory(enrichOnlineMatchForHistory(m, "x01", routeParams))}
             onExit={() => (isOnline ? go("online") : go("x01setup"))}
           />
         );
@@ -3700,7 +3838,7 @@ case "babyfoot_team_edit":
           <CricketPlay
             profiles={store.profiles ?? []}
             params={routeParams}
-            onFinish={(m: any) => pushHistory(m)}
+            onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "cricket", routeParams))}
           />
         );
         break;
@@ -3711,7 +3849,7 @@ case "babyfoot_team_edit":
         break;
 
       case "killer_play": {
-        page = <KillerPlayRoute store={store} go={go} routeParams={routeParams} onFinish={(m: any) => pushHistory(m)} />;
+        page = <KillerPlayRoute store={store} go={go} routeParams={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "killer", routeParams))} />;
         break;
       }
 
@@ -3734,7 +3872,7 @@ case "babyfoot_team_edit":
           );
           break;
         }
-        page = <FiveLivesPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(m)} />;
+        page = <FiveLivesPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "five_lives", routeParams))} />;
         break;
       }
 
@@ -3753,7 +3891,7 @@ case "babyfoot_team_edit":
           );
           break;
         }
-        page = <ShanghaiPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(m)} />;
+        page = <ShanghaiPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "shanghai", routeParams))} />;
         break;
       }
 
@@ -3781,7 +3919,7 @@ case "babyfoot_team_edit":
           );
           break;
         }
-        page = <WarfarePlay go={go} config={cfg} />;
+        page = <WarfarePlay go={go} config={cfg} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "warfare", routeParams))} />;
         break;
       }
 
@@ -3793,7 +3931,7 @@ case "babyfoot_team_edit":
       case "battle_royale_play": {
         const cfg = routeParams?.config;
         if (!cfg) { page = <div>Config manquante</div>; break; }
-        page = <BattleRoyalePlay store={store} go={go} config={cfg} onFinish={(m) => pushHistory(m)} />;
+        page = <BattleRoyalePlay store={store} go={go} config={cfg} onFinish={(m) => pushHistory(enrichOnlineMatchForHistory(m, "battle_royale", routeParams))} />;
         break;
       }
 
@@ -4085,7 +4223,7 @@ case "babyfoot_team_edit":
         break;
       case "scram_play":
         // ✅ pass store so ScramPlay can resolve player avatars/names like other Play pages
-        page = <ScramPlay store={store} setTab={go} params={routeParams} />;
+        page = <ScramPlay store={store} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "scram", routeParams))} />;
         break;
 
       case "golf_config":
@@ -4093,7 +4231,7 @@ case "babyfoot_team_edit":
         break;
       case "golf_play":
         // ✅ pass store so GolfPlay can resolve avatars (needed for the X01PlayV3-like header)
-        page = <GolfPlay store={store} setTab={go} params={routeParams} />;
+        page = <GolfPlay store={store} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "golf", routeParams))} />;
         break;
 
       case "baseball_config":
@@ -4123,7 +4261,7 @@ case "babyfoot_team_edit":
         break;
       case "batard_play":
         // ✅ pass store so play screen can resolve profiles/avatars consistently
-        page = <BatardPlay store={store} setTab={go} params={routeParams} />;
+        page = <BatardPlay store={store} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "batard", routeParams))} />;
         break;
 
       case "fun_gages_config":
@@ -4137,7 +4275,7 @@ case "babyfoot_team_edit":
         page = <CapitalConfig setTab={go} go={go} store={store} params={routeParams} />;
         break;
       case "capital_play":
-        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} />;
+        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "capital", routeParams))} />;
         break;
 
       case "happy_mille_config":
@@ -4158,7 +4296,7 @@ case "babyfoot_team_edit":
         page = <DepartementsConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "departements_play":
-        page = <DepartementsPlay store={store} go={go} setTab={go} params={routeParams} />;
+        page = <DepartementsPlay store={store} go={go} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "territories", routeParams))} />;
         break;
 
       case "enculette_config":

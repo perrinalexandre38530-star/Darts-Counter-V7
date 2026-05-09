@@ -129,6 +129,37 @@ function pickRecordPlayers(r: any): any[] {
   return out;
 }
 
+
+function collectCandidatePlayerIds(r: any, profileId: string | null | undefined, pp?: any): Set<string> {
+  const ids = new Set<string>();
+  const add = (v: any) => {
+    if (v !== null && v !== undefined && String(v).trim()) ids.add(String(v));
+  };
+
+  add(profileId);
+  add(resolveProfileId(pp));
+  add(pp?.id);
+  add(pp?.profileId);
+  add(pp?.playerId);
+  add(pp?.pid);
+  add(pp?.uid);
+
+  for (const player of pickRecordPlayers(r)) {
+    const vals = [player?.id, player?.profileId, player?.playerId, player?.pid, player?.uid];
+    const hit = vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+    if (hit) vals.forEach(add);
+  }
+
+  return ids;
+}
+
+function rowMatchesProfile(r: any, profileId: string | null | undefined, pp: any): boolean {
+  if (!profileId) return true;
+  const ids = collectCandidatePlayerIds(r, profileId, pp);
+  const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
+  return vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+}
+
 function readDartSetMapFromRecord(r: any): Record<string, any> | null {
   const map =
     r?.payload?.meta?.dartSetIdsByPlayer ??
@@ -145,10 +176,7 @@ function resolveDartSetIdFromRecord(r: any, profileId: string | null | undefined
   const direct = resolveDartSetId(pp);
   if (direct) return String(direct);
 
-  const ids = new Set<string>();
-  if (profileId) ids.add(String(profileId));
-  const ppId = resolveProfileId(pp);
-  if (ppId) ids.add(String(ppId));
+  const ids = collectCandidatePlayerIds(r, profileId, pp);
 
   const map = readDartSetMapFromRecord(r);
   if (map) {
@@ -555,7 +583,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
     if (perPlayer.length) {
       for (const pp of perPlayer) {
         const pid = resolveProfileId(pp);
-        if (profileId && String(pid) !== String(profileId)) continue;
+        if (profileId && !rowMatchesProfile(r, profileId, pp)) continue;
 
         const dartSetId = resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
         if (!dartSetId) {

@@ -309,6 +309,32 @@ function pickRecordPlayers(r: any): any[] {
   return out;
 }
 
+
+function collectCandidatePlayerIds(r: any, profileId: string | null | undefined, pp?: any): Set<string> {
+  const ids = new Set<string>();
+  const add = (v: any) => {
+    if (v !== null && v !== undefined && String(v).trim()) ids.add(String(v));
+  };
+
+  add(profileId);
+  add(resolveProfileId(pp));
+  add(pp?.id);
+  add(pp?.profileId);
+  add(pp?.playerId);
+  add(pp?.pid);
+  add(pp?.uid);
+
+  // Historique X01 : le profil actif peut être stocké dans players[].profileId
+  // alors que summary.players est indexé par players[].id. On ajoute donc les 2.
+  for (const player of pickRecordPlayers(r)) {
+    const vals = [player?.id, player?.profileId, player?.playerId, player?.pid, player?.uid];
+    const hit = vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+    if (hit) vals.forEach(add);
+  }
+
+  return ids;
+}
+
 function readDartSetMapFromRecord(r: any): Record<string, any> | null {
   const map =
     r?.payload?.meta?.dartSetIdsByPlayer ??
@@ -325,9 +351,7 @@ function resolveDartSetIdFromRecord(r: any, profileId: string, pp?: any): string
   const direct = resolveDartSetId(pp);
   if (direct) return String(direct);
 
-  const ids = new Set<string>([String(profileId)]);
-  const ppId = resolveProfileId(pp);
-  if (ppId) ids.add(String(ppId));
+  const ids = collectCandidatePlayerIds(r, profileId, pp);
 
   const map = readDartSetMapFromRecord(r);
   if (map) {
@@ -363,12 +387,19 @@ function resolveDartSetIdFromRecord(r: any, profileId: string, pp?: any): string
 function resolvePlayerStatsRowFromRecord(r: any, profileId: string): any | null {
   const summary = r?.summary ?? r?.payload?.summary ?? null;
   const perPlayer = pickPerPlayer(summary);
-  const fromSummary = perPlayer.find((pp: any) => String(resolveProfileId(pp) ?? "") === String(profileId));
+  const ids = collectCandidatePlayerIds(r, profileId, null);
+
+  // Priorité aux lignes stats complètes du summary. Elles sont souvent indexées
+  // par player.id, tandis que l'onglet Stats reçoit le profileId actif.
+  const fromSummary = perPlayer.find((pp: any) => {
+    const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
+    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+  });
   if (fromSummary) return fromSummary;
 
   return (pickRecordPlayers(r) || []).find((pp: any) => {
-    const pid = resolveProfileId(pp) ?? pp?.id ?? pp?.profileId ?? pp?.playerId ?? pp?.pid ?? null;
-    return String(pid ?? "") === String(profileId);
+    const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
+    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
   }) || null;
 }
 
@@ -424,7 +455,7 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string): Record<str
     const summary = r?.summary ?? r?.payload?.summary ?? null;
     const perPlayer = pickPerPlayer(summary);
 
-    const mine = perPlayer.find((pp: any) => String(resolveProfileId(pp) ?? "") === String(profileId));
+    const mine = resolvePlayerStatsRowFromRecord(r, profileId);
     if (!mine) continue;
 
     const dsid = resolveDartSetIdFromRecord(r, profileId, mine);
