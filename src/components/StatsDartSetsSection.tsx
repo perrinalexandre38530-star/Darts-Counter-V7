@@ -412,25 +412,122 @@ function resolveDartSetIdFromRecord(r: any, profileId: string, pp?: any): string
   return global ? String(global) : null;
 }
 
+function makeLegacyStatsRowFromRecord(r: any, pid: string, base: any = {}): any | null {
+  const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? null;
+  const legacy = summary?.legacy ?? r?.legacy ?? r?.payload?.legacy ?? r?.payload?.summary?.legacy ?? null;
+  if (!legacy || !pid) return null;
+  const get = (key: string) => legacy?.[key]?.[pid];
+  const row: any = {
+    ...(base || {}),
+    id: base?.id ?? pid,
+    playerId: base?.playerId ?? pid,
+    profileId: base?.profileId ?? pid,
+    name: base?.name,
+    dartSetId: base?.dartSetId ?? null,
+    dartPresetId: base?.dartPresetId ?? null,
+    avg3: get("avg3"),
+    bestVisit: get("bestVisit"),
+    bestCheckout: get("bestCheckout"),
+    darts: get("darts"),
+    visits: get("visits"),
+    _sumPoints: get("points"),
+    hitsS: get("singles"),
+    hitsD: get("doubles"),
+    hitsT: get("triples"),
+    bull: get("bulls"),
+    dBull: get("dbulls"),
+    miss: get("misses"),
+    bust: get("busts"),
+    checkoutHits: get("checkoutHits"),
+    checkoutAttempts: get("checkoutAttempts"),
+    buckets: {
+      "60+": N(get("h60"), 0),
+      "100+": N(get("h100"), 0),
+      "140+": N(get("h140"), 0),
+      "180": N(get("h180"), 0),
+    },
+    hitsBySector: get("hitsBySector"),
+  };
+  const hasNumbers = ["avg3", "bestVisit", "darts", "_sumPoints", "hitsS", "hitsD", "hitsT", "miss", "bull", "dBull", "bust"].some((k) => Number(row[k] || 0) > 0);
+  return hasNumbers ? row : null;
+}
+
+function mergeStatsRowsForDartSet(...rows: any[]): any | null {
+  const valid = rows.filter((r) => r && typeof r === "object");
+  if (!valid.length) return null;
+  const out: any = {};
+  for (const r of valid) {
+    for (const [k, v] of Object.entries(r)) {
+      if (v == null || v === "") continue;
+      const cur = out[k];
+      if (cur == null || cur === "") {
+        out[k] = v;
+        continue;
+      }
+      if (typeof v === "number" && (!Number.isFinite(Number(cur)) || Number(cur) === 0) && Number(v) !== 0) {
+        out[k] = v;
+        continue;
+      }
+      if (k === "buckets" && v && typeof v === "object") out.buckets = { ...(cur || {}), ...(v as any) };
+      if ((k === "segments" || k === "hitsBySegment" || k === "segmentsByHit" || k === "hitsBySector") && v && typeof v === "object") {
+        out[k] = { ...(cur || {}), ...(v as any) };
+      }
+    }
+  }
+  return out;
+}
+
 function resolvePlayerStatsRowFromRecord(r: any, profileId: string, playerName = ""): any | null {
   const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? null;
   const perPlayer = pickPerPlayer(summary);
   const ids = collectCandidatePlayerIds(r, profileId, null);
   const wantedName = String(playerName || "").trim().toLowerCase();
   const rowName = (x: any) => String(x?.name ?? x?.playerName ?? x?.profileName ?? x?.displayName ?? x?.nickname ?? "").trim().toLowerCase();
+  const idVals = (x: any) => [resolveProfileId(x), x?.id, x?.profileId, x?.playerId, x?.pid, x?.uid].filter((v) => v !== null && v !== undefined && String(v).trim());
 
-  // Priorité aux lignes stats complètes du summary. Elles sont souvent indexées
-  // par player.id, tandis que l'onglet Stats reçoit le profileId actif.
-  const fromSummary = perPlayer.find((pp: any) => {
-    const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
-    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v))) || (wantedName && rowName(pp) === wantedName);
+  const allRows: any[] = [];
+  const push = (x: any) => { if (x && typeof x === "object") allRows.push(x); };
+
+  // 1) Les lignes players du record portent souvent dartSetId + name, mais peu/pas de stats.
+  for (const p of pickRecordPlayers(r)) push(p);
+  // 2) Les lignes summary.players/perPlayer portent les stats, mais pas toujours dartSetId.
+  for (const pp of perPlayer) push(pp);
+  // 3) detailedByPlayer contient parfois les compteurs détaillés.
+  const detailed = summary?.detailedByPlayer ?? r?.payload?.summary?.detailedByPlayer ?? null;
+  if (detailed && typeof detailed === "object") {
+    for (const [pid, v] of Object.entries(detailed)) push({ playerId: pid, ...(v as any) });
+  }
+
+  // On élargit les alias par nom ET par id. C'est le point qui cassait “Mes fléchettes” :
+  // la carte player trouvait le dartSet, mais la ligne stats était ailleurs sous playerId/name.
+  for (const row of allRows) {
+    const nm = rowName(row);
+    const hitByName = !!wantedName && !!nm && nm === wantedName;
+    const hitById = idVals(row).some((v) => ids.has(String(v)));
+    if (hitByName || hitById) idVals(row).forEach((v) => ids.add(String(v)));
+  }
+
+  const matched = allRows.filter((row) => {
+    const nm = rowName(row);
+    return idVals(row).some((v) => ids.has(String(v))) || (!!wantedName && !!nm && nm === wantedName);
   });
-  if (fromSummary) return fromSummary;
 
-  return (pickRecordPlayers(r) || []).find((pp: any) => {
-    const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
-    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v))) || (wantedName && rowName(pp) === wantedName);
-  }) || null;
+  // Ajoute les maps legacy utilisées par X01End/History : legacy.avg3[pid], legacy.darts[pid], etc.
+  const legacyRows: any[] = [];
+  for (const row of matched) {
+    for (const pid of idVals(row)) {
+      const lr = makeLegacyStatsRowFromRecord(r, String(pid), row);
+      if (lr) legacyRows.push(lr);
+    }
+  }
+  if (!legacyRows.length) {
+    for (const id of ids) {
+      const lr = makeLegacyStatsRowFromRecord(r, String(id), null);
+      if (lr) legacyRows.push(lr);
+    }
+  }
+
+  return mergeStatsRowsForDartSet(...matched, ...legacyRows);
 }
 
 function pickNum(r: any, ...keys: string[]) {
@@ -673,6 +770,8 @@ function extractSegmentsObjectFromPlayer(pp: any): any | null {
     pp?.segHits ||
     pp?.hitsBySeg ||
     pp?.bySegment ||
+    pp?.hitsBySector ||
+    pp?.sectorMap ||
     null
   );
 }
