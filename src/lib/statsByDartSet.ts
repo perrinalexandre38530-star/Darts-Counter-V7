@@ -74,6 +74,16 @@ function isX01Record(r: any): boolean {
   return false;
 }
 
+function isFinishedX01StatsRecord(r: any): boolean {
+  const status = safeLower(r?.status ?? r?.state ?? "");
+  if (!status) return true;
+  if (["finished", "finish", "completed", "complete", "done", "ended", "end", "saved"].includes(status)) return true;
+  const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? {};
+  if (summary?.finished === true || summary?.result?.finished === true) return true;
+  if (summary?.winnerId || summary?.winnerName || r?.winnerId || r?.payload?.winnerId) return true;
+  return false;
+}
+
 function pickPerPlayer(summary: any): any[] {
   if (!summary) return [];
   if (Array.isArray(summary.perPlayer)) return summary.perPlayer;
@@ -219,6 +229,10 @@ function resolveDarts(pp: any): number {
   if (pp?.sumDarts !== undefined) return N(pp.sumDarts, 0);
   if (pp?.totalDarts !== undefined) return N(pp.totalDarts, 0);
   if (pp?.nbDarts !== undefined) return N(pp.nbDarts, 0);
+  if (pp?.throws !== undefined) return N(pp.throws, 0);
+  if (pp?.totalThrows !== undefined) return N(pp.totalThrows, 0);
+  if (pp?.dartsCount !== undefined) return N(pp.dartsCount, 0);
+  if (pp?.countDarts !== undefined) return N(pp.countDarts, 0);
   if (pp?.thrownDarts !== undefined) return N(pp.thrownDarts, 0);
   if (pp?.dartsThrown !== undefined) return N(pp.dartsThrown, 0);
   if (pp?.dartsUsed !== undefined) return N(pp.dartsUsed, 0);
@@ -229,8 +243,11 @@ function resolvePoints(pp: any): number {
   if (pp?._sumPoints !== undefined) return N(pp._sumPoints, 0);
   if (pp?.sumPoints !== undefined) return N(pp.sumPoints, 0);
   if (pp?.points !== undefined) return N(pp.points, 0);
+  if (pp?.pointsScored !== undefined) return N(pp.pointsScored, 0);
   if (pp?.scoredPoints !== undefined) return N(pp.scoredPoints, 0);
   if (pp?.totalPoints !== undefined) return N(pp.totalPoints, 0);
+  if (pp?.score !== undefined) return N(pp.score, 0);
+  if (pp?.totalScore !== undefined) return N(pp.totalScore, 0);
   const avg3 = resolveAvg3(pp);
   const darts = resolveDarts(pp);
   if (avg3 > 0 && darts > 0) return (avg3 * darts) / 3;
@@ -394,6 +411,18 @@ function guessBustFromTurn(turn: any): boolean {
 
 function dartToSegmentLabel(d: any): { label: string; mult: number; num: number | null; points: number } {
   // essaye de comprendre le tir : bull / miss / number + multiplier
+  if (typeof d === "string" || typeof d === "number") {
+    const label0 = String(d ?? "").trim().toUpperCase();
+    if (!label0 || label0 === "MISS" || label0 === "M" || label0 === "0") return { label: "MISS", mult: 0, num: null, points: 0 };
+    if (label0 === "DB" || label0 === "DBULL" || label0 === "D25" || label0 === "50") return { label: "DB", mult: 2, num: 25, points: 50 };
+    if (label0 === "BULL" || label0 === "SB" || label0 === "SBULL" || label0 === "S25" || label0 === "25") return { label: "SB", mult: 1, num: 25, points: 25 };
+    const m0 = label0.match(/^([SDT])?(\d{1,2})$/);
+    if (m0) {
+      const nn = Number(m0[2]) || 0;
+      const mul = m0[1] === "T" ? 3 : m0[1] === "D" ? 2 : 1;
+      if (nn >= 1 && nn <= 20) return { label: `${mul === 3 ? "T" : mul === 2 ? "D" : "S"}${nn}`, mult: mul, num: nn, points: nn * mul };
+    }
+  }
   const raw = d ?? {};
   const mult =
     N(raw.multiplier, 0) ||
@@ -512,9 +541,12 @@ function computeFromRaw(r: any, profileId: string): {
     if (isBust) bust += 1;
 
     const dartsArr = getRawDartsFromTurn(turn);
-    if (!dartsArr.length) continue;
+    const explicitDartsCount = N(turn?.dartsCount ?? turn?.dartsThrown ?? turn?.nbDarts ?? turn?.countDarts ?? (typeof turn?.darts === "number" ? turn.darts : undefined), 0);
+    if (!dartsArr.length && explicitDartsCount <= 0) continue;
 
-    let visit = 0;
+    let visit = N(turn?.score ?? turn?.total ?? turn?.points ?? turn?.visitScore ?? turn?.visitPoints, 0);
+    if (dartsArr.length) visit = 0;
+    if (!dartsArr.length && explicitDartsCount > 0) darts += explicitDartsCount;
 
     for (const d of dartsArr) {
       const s = dartToSegmentLabel(d);
@@ -631,8 +663,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
   for (const r of ordered) {
     if (!isX01Record(r)) continue;
 
-    const status = r?.status ?? r?.state ?? "";
-    if (status && status !== "finished") continue;
+    if (!isFinishedX01StatsRecord(r)) continue;
 
     const ts = getRecordTimestamp(r);
 

@@ -53,6 +53,16 @@ function isX01Record(r: any): boolean {
   return false;
 }
 
+function isFinishedX01StatsRecord(r: any): boolean {
+  const status = String(r?.status ?? r?.state ?? "").trim().toLowerCase();
+  if (!status) return true;
+  if (["finished", "finish", "completed", "complete", "done", "ended", "end", "saved"].includes(status)) return true;
+  const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? {};
+  if (summary?.finished === true || summary?.result?.finished === true) return true;
+  if (summary?.winnerId || summary?.winnerName || r?.winnerId || r?.payload?.winnerId) return true;
+  return false;
+}
+
 /* ============================================================= */
 /* -------------------- URL / IMAGE HELPERS -------------------- */
 /* ============================================================= */
@@ -435,13 +445,13 @@ function countNumValues(obj: any): number {
   return Object.values(obj).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
 }
 function pickAvg3FromRow(r: any): number | null {
-  return pickNum(r, "avg3", "avg3d", "avgPer3", "avgPerThree", "average3", "avg");
+  return pickNum(r, "avg3", "avg3d", "avgPer3", "avgPerThree", "average3", "avg", "moy3", "moyenne3", "mean3");
 }
 function pickDartsFromRow(r: any): number {
-  return N(pickNum(r, "darts", "_sumDarts", "sumDarts", "totalDarts", "nbDarts", "thrown", "dartsThrown", "dartsUsed"), 0);
+  return N(pickNum(r, "darts", "_sumDarts", "sumDarts", "totalDarts", "nbDarts", "thrown", "throws", "totalThrows", "dartsThrown", "dartsUsed", "dartsCount", "countDarts"), 0);
 }
 function pickPointsFromRow(r: any): number {
-  const direct = pickNum(r, "_sumPoints", "sumPoints", "points", "scoredPoints", "totalPoints");
+  const direct = pickNum(r, "_sumPoints", "sumPoints", "points", "scoredPoints", "totalPoints", "pointsScored", "score", "totalScore");
   if (direct !== null) return Number(direct);
   const avg = pickAvg3FromRow(r);
   const darts = pickDartsFromRow(r);
@@ -501,8 +511,7 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName 
   for (const r of allHistory || []) {
     if (!isX01Record(r)) continue;
 
-    const status = r?.status ?? r?.state ?? "";
-    if (status && status !== "finished") continue;
+    if (!isFinishedX01StatsRecord(r)) continue;
 
     const summary = r?.summary ?? r?.payload?.summary ?? null;
     const perPlayer = pickPerPlayer(summary);
@@ -899,11 +908,26 @@ type AggRow = {
 
 
 function parseDartLoose(raw: any): { value: number; mult: number; score: number; label: string } {
-  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.segment ?? raw?.seg ?? "").trim().toUpperCase();
-  let value = Number(raw?.number ?? raw?.num ?? raw?.n ?? raw?.segment ?? raw?.v ?? raw?.value ?? 0) || 0;
+  // Les vraies volées X01 ne sont pas toutes stockées sous forme objet.
+  // On rencontre aussi: "T20", "D16", "BULL", "DBULL", "MISS", 20, 0.
+  if (typeof raw === "string" || typeof raw === "number") {
+    const label0 = String(raw ?? "").trim().toUpperCase();
+    if (!label0 || label0 === "MISS" || label0 === "M" || label0 === "0") return { value: 0, mult: 0, score: 0, label: "MISS" };
+    if (label0 === "DB" || label0 === "DBULL" || label0 === "D25" || label0 === "50") return { value: 25, mult: 2, score: 50, label: "DB" };
+    if (label0 === "BULL" || label0 === "SB" || label0 === "SBULL" || label0 === "S25" || label0 === "25") return { value: 25, mult: 1, score: 25, label: "SB" };
+    const m0 = label0.match(/^([SDT])?(\d{1,2})$/);
+    if (m0) {
+      const value = Number(m0[2]) || 0;
+      const mult = m0[1] === "T" ? 3 : m0[1] === "D" ? 2 : 1;
+      if (value >= 1 && value <= 20) return { value, mult, score: value * mult, label: `${mult === 3 ? "T" : mult === 2 ? "D" : "S"}${value}` };
+    }
+  }
+
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.segment ?? raw?.seg ?? raw?.target ?? "").trim().toUpperCase();
+  let value = Number(raw?.number ?? raw?.num ?? raw?.n ?? raw?.segment ?? raw?.v ?? raw?.value ?? raw?.target ?? 0) || 0;
   let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? 0) || 0;
 
-  if (raw?.miss === true || label === "MISS" || label === "M" || label === "0") return { value: 0, mult: 0, score: 0, label: "MISS" };
+  if (raw?.miss === true || raw?.type === "miss" || label === "MISS" || label === "M" || label === "0") return { value: 0, mult: 0, score: 0, label: "MISS" };
   if (raw?.dBull === true || raw?.dbull === true || label === "DB" || label === "DBULL" || label === "D25" || label === "50") return { value: 25, mult: 2, score: 50, label: "DB" };
   if (raw?.bull === true || label === "BULL" || label === "SB" || label === "SBULL" || label === "S25" || label === "25") return { value: 25, mult: 1, score: 25, label: "SB" };
 
@@ -996,9 +1020,18 @@ function pickVisitArrays(r: any): any[] {
 }
 
 function visitBelongsToPlayer(v: any, aliases: Set<string>, names: Set<string>): boolean {
-  const ids = [v?.p, v?.playerId, v?.pid, v?.profileId, v?.id, v?.uid, v?.ownerId, v?.player?.id, v?.player?.profileId];
+  const ids = [
+    v?.p, v?.playerId, v?.pid, v?.profileId, v?.id, v?.uid, v?.ownerId,
+    v?.player, v?.player?.id, v?.player?.profileId, v?.player?.playerId,
+  ];
   if (ids.some((x) => x !== null && x !== undefined && aliases.has(String(x)))) return true;
-  const nm = nameOfPlayerLike(v) || nameOfPlayerLike(v?.player);
+
+  const directName = String(
+    v?.name ?? v?.playerName ?? v?.profileName ?? v?.displayName ?? v?.nickname ??
+    (typeof v?.player === "string" ? v.player : "")
+  ).trim().toLowerCase();
+  const nestedName = nameOfPlayerLike(v?.player);
+  const nm = directName || nestedName || nameOfPlayerLike(v);
   if (nm && names.has(nm)) return true;
   return false;
 }
@@ -1022,10 +1055,25 @@ function computeRawVisitStats(r: any, profileId: string, playerName = ""): RawVi
   if (!visits.length) return null;
   const out: RawVisitStats = { darts: 0, points: 0, bestVisit: 0, bestCheckout: 0, hitsS: 0, hitsD: 0, hitsT: 0, bull: 0, dBull: 0, miss: 0, bust: 0, n180: 0, n140: 0, n100: 0, segments: {}, scorePerVisit: [] };
   for (const v of visits) {
-    const segsRaw = Array.isArray(v?.segments) ? v.segments : Array.isArray(v?.darts) ? v.darts : Array.isArray(v?.throws) ? v.throws : [];
+    const segsRaw = Array.isArray(v?.segments)
+      ? v.segments
+      : Array.isArray(v?.darts)
+      ? v.darts
+      : Array.isArray(v?.throws)
+      ? v.throws
+      : Array.isArray(v?.shots)
+      ? v.shots
+      : Array.isArray(v?.items)
+      ? v.items
+      : [];
     const bust = v?.bust === true || v?.isBust === true || v?.busted === true;
     if (bust) out.bust += 1;
-    let visitScore = Number(v?.score ?? v?.total ?? v?.points ?? NaN);
+    let visitScore = Number(v?.score ?? v?.total ?? v?.points ?? v?.visitScore ?? v?.visitPoints ?? v?.value ?? NaN);
+    const explicitDartsCount = N(
+      v?.dartsCount ?? v?.dartsThrown ?? v?.nbDarts ?? v?.countDarts ?? v?.dartCount ??
+        (typeof v?.darts === "number" ? v.darts : undefined),
+      0
+    );
     let computedScore = 0;
     for (const raw of segsRaw) {
       const d = parseDartLoose(raw);
@@ -1042,6 +1090,7 @@ function computeRawVisitStats(r: any, profileId: string, playerName = ""): RawVi
         else if (d.mult === 3) out.hitsT += 1;
       }
     }
+    if (!segsRaw.length && explicitDartsCount > 0) out.darts += explicitDartsCount;
     if (!Number.isFinite(visitScore)) visitScore = computedScore;
     if (!bust) {
       out.points += Math.max(0, visitScore || 0);
@@ -1062,8 +1111,7 @@ function computeAggFromHistory(allHistory: any[], profileId: string, playerName 
   for (const r of allHistory || []) {
     if (!isX01Record(r)) continue;
 
-    const status = r?.status ?? "";
-    if (status && status !== "finished") continue;
+    if (!isFinishedX01StatsRecord(r)) continue;
 
     const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? null;
     const mine = resolvePlayerStatsRowFromRecord(r, profileId, playerName);
