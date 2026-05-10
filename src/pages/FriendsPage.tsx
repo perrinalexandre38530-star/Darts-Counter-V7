@@ -1361,30 +1361,11 @@ const doLogout = React.useCallback(async () => {
       return;
     }
 
+    // IMPORTANT : ce bouton ouvre la salle d’attente, il ne démarre plus la partie.
+    // Le lancement réel est réservé à l’hôte depuis la salle d’attente / config,
+    // après validation NAS que tous les invités sont au statut “Prêt”.
     setJoinError(null);
-    setJoinInfo(`Lancement ${spec.label}…`);
-    try {
-      await withTimeout(
-        onlineApi.startMatch({
-          lobbyCode: code,
-          initialState: {
-            mode: spec.id,
-            onlineMode: spec.id,
-            lobbyCode: code,
-            lobbyId: (lobby as any)?.id || null,
-            settings: (lobby as any)?.settings || {},
-            players: (lobby as any)?.players || [],
-            startedAt: Date.now(),
-          },
-        }),
-        10_000,
-        "Lancement : délai dépassé. Vérifie le serveur NAS."
-      );
-    } catch (e: any) {
-      setJoinError(normalizeErrMessage(e) || "Impossible de lancer le match online.");
-      setJoinInfo(null);
-      return;
-    }
+    setJoinInfo(`Ouverture du salon ${spec.label}…`);
 
     go(spec.route as any, {
       online: true,
@@ -1394,7 +1375,7 @@ const doLogout = React.useCallback(async () => {
       lobbyCode: code,
       lobbyId: (lobby as any)?.id || null,
       lobby,
-      source: "online",
+      source: "online_lobby_waiting_room",
     });
   }
 
@@ -2798,7 +2779,10 @@ const doLogout = React.useCallback(async () => {
                         <div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
                         <div style={{ fontSize: 10.8, opacity: 0.72 }}>{role === "spectator" ? "Spectateur" : idx === 0 ? "Hôte" : "Joueur"}</div>
                       </div>
-                      <Pill label={String(p?.status || "offline") === "online" ? "Online" : "—"} tone={String(p?.status || "offline") === "online" ? "green" : "gray"} />
+                      <Pill
+                        label={String(p?.status || "offline") === "ready" ? "Prêt" : String(p?.status || "offline") === "online" ? "Online" : "—"}
+                        tone={String(p?.status || "offline") === "ready" || String(p?.status || "offline") === "online" ? "green" : "gray"}
+                      />
                     </div>
                   );
                 })}
@@ -2810,7 +2794,7 @@ const doLogout = React.useCallback(async () => {
 
           <div style={{ display: "grid", gap: 10 }}>
             <GhostButton
-              label={`🚀 Lancer ${lobbyModeSpec.shortLabel}`}
+              label={`🚪 Ouvrir le salon ${lobbyModeSpec.shortLabel}`}
               onClick={launchOnlineLobby}
             />
             <GhostButton label={copyInfo || "📋 Copier le code"} onClick={copyLobbyCode} />

@@ -62,11 +62,40 @@ function readLs(key: string): string {
   }
 }
 
-function dispatchAuthChanged() {
+function dispatchAuthChanged(detail?: any) {
   if (typeof window === "undefined") return;
   try {
-    window.dispatchEvent(new CustomEvent("dc-auth-changed"));
+    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail }));
   } catch {}
+}
+
+function purgeNasAuthLocalState() {
+  if (typeof window === "undefined") return;
+  try {
+    const explicitKeys = [
+      NAS_TOKEN_KEY,
+      NAS_REFRESH_KEY,
+      NAS_AUTH_SESSION_KEY,
+      "auth_token",
+      "auth_session",
+      "current_user",
+      "dc_session",
+      "dc_user",
+      "dc_user_id",
+      "dc_nas_profile_onboarding_uid",
+      "supabase.auth.token",
+    ];
+    for (const key of explicitKeys) window.localStorage.removeItem(key);
+
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i) || "";
+      if (/^(sb-|supabase\.)/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+
+  try { window.sessionStorage.clear(); } catch {}
 }
 
 function authToken(): string {
@@ -478,7 +507,11 @@ export async function nasLogout(): Promise<void> {
   try {
     await apiFetch("/auth/logout", { method: "POST" });
   } catch {}
-  saveNasTokens(null);
+  nasLastRestoreErrorAt = 0;
+  nasLastRestoreErrorKey = "logout";
+  saveNasTokens(null, { silent: true });
+  purgeNasAuthLocalState();
+  dispatchAuthChanged({ status: "signed_out" });
 }
 
 export async function nasGetProfile(): Promise<OnlineProfile | null> {
@@ -560,8 +593,15 @@ export async function nasDeleteAccount(): Promise<void> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
 
-  await apiFetch("/auth/account", { method: "DELETE" });
-  saveNasTokens(null);
+  try {
+    await apiFetch("/auth/account", { method: "DELETE" });
+  } finally {
+    nasLastRestoreErrorAt = 0;
+    nasLastRestoreErrorKey = "deleted";
+    saveNasTokens(null, { silent: true });
+    purgeNasAuthLocalState();
+    dispatchAuthChanged({ status: "signed_out", deleted: true });
+  }
 }
 
 

@@ -223,6 +223,45 @@ export type OnlineMatchRow = {
 // --------------------------------------------
 const USE_MOCK = false;
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
+const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
+const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
+const AUTH_LOCAL_KEYS_TO_PURGE = [
+  LS_AUTH_KEY,
+  NAS_TOKEN_KEY,
+  NAS_REFRESH_KEY,
+  "auth_token",
+  "auth_session",
+  "current_user",
+  "dc_session",
+  "dc_user",
+  "dc_user_id",
+  "dc_nas_profile_onboarding_uid",
+  "supabase.auth.token",
+];
+
+function purgeAuthLocalState() {
+  if (typeof window === "undefined") return;
+
+  try {
+    for (const key of AUTH_LOCAL_KEYS_TO_PURGE) {
+      window.localStorage.removeItem(key);
+    }
+
+    // Supabase garde parfois ses JWT dans des clés dynamiques du type sb-xxx-auth-token.
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i) || "";
+      if (/^(sb-|supabase\.)/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+
+  try { window.sessionStorage.clear(); } catch {}
+
+  try {
+    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { status: "signed_out" } }));
+  } catch {}
+}
 
 // ============================================================
 // ✅ PROFILES TABLE RESOLUTION (compat)
@@ -861,17 +900,20 @@ async function restoreSession(): Promise<AuthSession | null> {
 }
 
 async function logout(): Promise<void> {
-  if (isNasProviderEnabled()) {
-    await nasLogout();
+  try {
+    if (isNasProviderEnabled()) {
+      await nasLogout();
+    } else {
+      const { error } = await supabase.auth.signOut();
+      if (error) console.warn("[onlineApi] logout error", error);
+    }
+  } finally {
     __nasLastGoodSession = null;
     __nasLastRestoreAt = 0;
+    __nasEnsureInFlight = null;
     saveAuthToLS(null);
-    return;
+    purgeAuthLocalState();
   }
-
-  const { error } = await supabase.auth.signOut();
-  if (error) console.warn("[onlineApi] logout error", error);
-  saveAuthToLS(null);
 }
 
 async function getCurrentSession(): Promise<AuthSession | null> {
@@ -955,23 +997,25 @@ async function updateEmail(newEmail: string): Promise<void> {
 }
 
 async function deleteAccount(): Promise<void> {
-  if (isNasProviderEnabled()) {
-    await ensureNasSession();
-    await nasDeleteAccount();
+  try {
+    if (isNasProviderEnabled()) {
+      await ensureNasSession();
+      await nasDeleteAccount();
+      return;
+    }
+
+    await ensureAuthedUser();
+    const { data, error } = await supabase.functions.invoke("delete-account");
+    if (error) throw new Error(error.message || "Suppression impossible (Edge Function).");
+    if ((data as any)?.error) throw new Error((data as any).error);
+    await supabase.auth.signOut();
+  } finally {
     __nasLastGoodSession = null;
     __nasLastRestoreAt = 0;
     __nasEnsureInFlight = null;
     saveAuthToLS(null);
-    return;
+    purgeAuthLocalState();
   }
-  await ensureAuthedUser();
-
-  const { data, error } = await supabase.functions.invoke("delete-account");
-  if (error) throw new Error(error.message || "Suppression impossible (Edge Function).");
-  if ((data as any)?.error) throw new Error((data as any).error);
-
-  await supabase.auth.signOut();
-  saveAuthToLS(null);
 }
 
 // ============================================================

@@ -37,7 +37,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     (store.profiles || [])[0] ||
     null;
 
-  const activeUserId = String((activeProfile as any)?.id || (activeProfile as any)?.userId || (activeProfile as any)?.profileId || "").trim();
+  const activeProfileId = String((activeProfile as any)?.id || (activeProfile as any)?.profileId || "").trim();
+  const activeUserId = String((activeProfile as any)?.userId || activeProfileId || "").trim();
 
   // Code salon reçu via params.lobbyCode
   const rawCode = (params?.lobbyCode || "").toString().trim().toUpperCase();
@@ -127,6 +128,24 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   const [readySending, setReadySending] = React.useState(false);
   const [lobbyActionError, setLobbyActionError] = React.useState<string | null>(null);
   const autoLaunchRef = React.useRef<string | null>(null);
+  const joinOnceRef = React.useRef<string | null>(null);
+  const [sessionUserId, setSessionUserId] = React.useState<string>("");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await (onlineApi as any).getCurrentSession?.();
+        const uid = String(session?.user?.id || session?.userId || "").trim();
+        if (!cancelled) setSessionUserId(uid);
+      } catch {
+        if (!cancelled) setSessionUserId("");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshNasLobby = React.useCallback(async () => {
     if (!rawCode) return;
@@ -148,6 +167,41 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     const timer = window.setInterval(() => refreshNasLobby().catch(() => {}), 2500);
     return () => window.clearInterval(timer);
   }, [rawCode, refreshNasLobby]);
+
+  // Tout joueur connecté qui ouvre un code salon doit être inscrit dans la salle
+  // d’attente NAS. Sinon il peut voir une page partielle mais ne sera pas reconnu
+  // pour le chat, le statut prêt et le lancement synchronisé.
+  React.useEffect(() => {
+    if (!rawCode) return;
+    const joinKey = `${rawCode}:${sessionUserId || activeUserId || "local"}`;
+    if (joinOnceRef.current === joinKey) return;
+    joinOnceRef.current = joinKey;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const joined = await (onlineApi as any).joinLobby({
+          code: rawCode,
+          nickname: activeProfile?.name || activeProfile?.displayName || activeProfile?.nickname || "Joueur",
+          role: "player",
+        });
+        if (!cancelled && joined) {
+          setNasLobby(joined);
+          setNasLobbyError(null);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          // On garde la lecture simple du salon si l’inscription échoue momentanément.
+          setNasLobbyError(error?.message || "Impossible d’entrer dans le salon NAS.");
+          refreshNasLobby().catch(() => {});
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rawCode, sessionUserId, activeUserId, activeProfile?.name, activeProfile?.displayName, activeProfile?.nickname, refreshNasLobby]);
 
   React.useEffect(() => {
     if (!rawCode) return;
@@ -237,6 +291,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
 
   const lobbyPlayersRaw: any[] = Array.isArray(nasLobby?.players) ? nasLobby.players : [];
   const lobbyHostUserId = String(nasLobby?.hostUserId || nasLobby?.host_user_id || "").trim();
+  const effectiveUserId = String(sessionUserId || activeUserId || activeProfileId || "").trim();
 
   const connectedPlayers = React.useMemo(() => {
     const fromNas = lobbyPlayersRaw
@@ -289,15 +344,18 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     ];
   }, [lobbyPlayersRaw, clients, wsStatus, activeProfile, lobbyHostUserId]);
 
-  const currentLobbyPlayer = connectedPlayers.find((p: any) => String(p?.id || p?.userId || "") === activeUserId) || null;
-  const isHost = !!activeUserId && !!lobbyHostUserId && activeUserId === lobbyHostUserId;
+  const currentLobbyPlayer = connectedPlayers.find((p: any) => {
+    const pid = String(p?.userId || p?.id || "").trim();
+    return !!pid && pid === effectiveUserId;
+  }) || null;
+  const isHost = !!effectiveUserId && !!lobbyHostUserId && effectiveUserId === lobbyHostUserId;
   const nonHostPlayers = connectedPlayers.filter((p: any) => p?.role !== "spectator" && !p?.isHost);
   const notReadyPlayers = nonHostPlayers.filter((p: any) => !p?.ready);
   const allPlayersReady = nonHostPlayers.length === 0 || notReadyPlayers.length === 0;
   const readyCount = nonHostPlayers.length - notReadyPlayers.length;
   const isCurrentPlayerReady = !!currentLobbyPlayer?.ready;
   const lobbyAlreadyStarted = String(nasLobby?.status || "waiting").toLowerCase() === "started";
-  const canHostConfigure = isHost && allPlayersReady && !lobbyAlreadyStarted;
+  const canHostConfigure = isHost && !lobbyAlreadyStarted;
 
   const defaultOrder = connectedPlayers.map((p: any) => ({ id: p.id || p.name, name: p.name || "Joueur" }));
 
@@ -309,10 +367,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       return;
     }
 
-    if (!allPlayersReady) {
-      setLobbyActionError("Tous les joueurs doivent être prêts avant d’ouvrir la configuration de partie.");
-      return;
-    }
+    // L’hôte peut préparer/modifier la configuration à tout moment.
+    // Le démarrage réel reste bloqué côté NAS tant que tous les invités ne sont pas prêts.
 
     go("x01setup", {
       online: true,

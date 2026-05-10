@@ -24,6 +24,67 @@ const NAS_AUTH_COOLDOWN_MS = 1500;
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
+const AUTH_REDIRECT_LOGIN = "#/auth/login";
+const AUTH_REDIRECT_SIGNUP = "#/auth/signup";
+
+function purgeAuthKeysFromBrowser(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const keys = [
+      "dc_online_auth_supabase_v1",
+      "dc_nas_access_token_v1",
+      "dc_nas_refresh_token_v1",
+      "auth_token",
+      "auth_session",
+      "current_user",
+      "dc_session",
+      "dc_user",
+      "dc_user_id",
+      "dc_nas_profile_onboarding_uid",
+      "supabase.auth.token",
+    ];
+    for (const key of keys) window.localStorage.removeItem(key);
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i) || "";
+      if (/^(sb-|supabase\.)/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+  try { window.sessionStorage.clear(); } catch {}
+}
+
+function redirectToAuth(hash: string): void {
+  if (typeof window === "undefined") return;
+  const target = hash.startsWith("#") ? hash : `#${hash}`;
+  try {
+    window.location.replace(`${window.location.pathname}${window.location.search}${target}`);
+  } catch {
+    window.location.hash = target;
+  }
+}
+
+async function cleanupDeletedAccountLocalData(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.clear(); } catch {}
+  try { window.sessionStorage.clear(); } catch {}
+  try {
+    const idb: any = window.indexedDB;
+    if (!idb) return;
+    if (typeof idb.databases === "function") {
+      const dbs = await idb.databases();
+      await Promise.all((dbs || []).map((db: any) => new Promise<void>((resolve) => {
+        const name = String(db?.name || "").trim();
+        if (!name) return resolve();
+        const req = window.indexedDB.deleteDatabase(name);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      })));
+    }
+  } catch {}
+}
+
 async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
   try {
     if (!isNasProviderEnabled()) return;
@@ -535,10 +596,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {
-      try {
-        setStorageUser(null);
-        localStorage.removeItem("dc_user_id");
-      } catch {}
+      try { setStorageUser(null); } catch {}
+      purgeAuthKeysFromBrowser();
       if (isNasProviderEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
@@ -553,6 +612,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         ready: true,
         error: null,
       }));
+      redirectToAuth(AUTH_REDIRECT_LOGIN);
     }
   }, []);
 
@@ -565,11 +625,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       console.warn("[useAuthOnline] deleteAccount error:", e);
       throw e;
     } finally {
-      try {
-        setStorageUser(null);
-        localStorage.removeItem("dc_user_id");
-        localStorage.removeItem("dc_nas_profile_onboarding_uid");
-      } catch {}
+      try { setStorageUser(null); } catch {}
+      await cleanupDeletedAccountLocalData();
       if (isNasProviderEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
@@ -584,6 +641,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         ready: true,
         error: null,
       }));
+      redirectToAuth(AUTH_REDIRECT_SIGNUP);
     }
   }, []);
 
