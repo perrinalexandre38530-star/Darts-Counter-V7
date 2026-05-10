@@ -359,6 +359,24 @@ function resolveDartSetIdFromRecord(r: any, profileId: string, pp?: any): string
       const v = map[id];
       if (v) return String(v);
     }
+    // Certains historiques keyent dartSetIdsByPlayer par nom affiché plutôt que par id.
+    const names = [
+      pp?.name,
+      pp?.playerName,
+      pp?.profileName,
+      pp?.displayName,
+      pp?.nickname,
+    ]
+      .map((x: any) => String(x ?? "").trim())
+      .filter(Boolean);
+    for (const name of names) {
+      const directName = map[name];
+      if (directName) return String(directName);
+      const low = name.toLowerCase();
+      for (const [k, v] of Object.entries(map)) {
+        if (String(k).trim().toLowerCase() === low && v) return String(v);
+      }
+    }
   }
 
   for (const player of pickRecordPlayers(r)) {
@@ -518,12 +536,21 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName 
       null;
 
     const mineId = String(resolveProfileId(mine) ?? "");
+    const winnerName = String(
+      summary?.winnerName ?? summary?.winnerPlayerName ?? summary?.winnerProfileName ?? summary?.winner?.name ?? ""
+    ).trim().toLowerCase();
+    const mineName = nameOfPlayerLike(mine) || String(playerName || "").trim().toLowerCase();
+
     const isWinner =
       mine?.isWinner === true ||
       mine?.win === true ||
       mine?.won === true ||
+      mine?.result === "win" ||
+      mine?.status === "win" ||
       (winnerId && String(winnerId) === String(profileId)) ||
-      (winnerId && mineId && String(winnerId) === mineId);
+      (winnerId && mineId && String(winnerId) === mineId) ||
+      (winnerName && mineName && winnerName === mineName) ||
+      (N(mine?.remaining ?? mine?.scoreRemaining ?? mine?.finalScore, NaN) === 0 && N(mine?.bestCheckout ?? mine?.bestCO, 0) > 0);
 
     const legsW = pickNum(mine, "legsWin", "legsWon", "legsW");
     const legsL = pickNum(mine, "legsLose", "legsLost", "legsL");
@@ -906,22 +933,82 @@ function playerAliasesForRecord(r: any, profileId: string, playerName = ""): Set
   return ids;
 }
 
-function rawVisitsForPlayer(r: any, profileId: string, playerName = ""): any[] {
+function nameOfPlayerLike(x: any): string {
+  return String(x?.name ?? x?.playerName ?? x?.profileName ?? x?.displayName ?? x?.nickname ?? x?.label ?? "").trim().toLowerCase();
+}
+
+function collectPlayerNamesForRecord(r: any, profileId: string, playerName = ""): Set<string> {
+  const names = new Set<string>();
+  const addName = (v: any) => {
+    const n = String(v ?? "").trim().toLowerCase();
+    if (n) names.add(n);
+  };
+  addName(playerName);
+  const ids = collectCandidatePlayerIds(r, profileId, null);
+  for (const p of pickRecordPlayers(r)) {
+    const vals = [p?.id, p?.profileId, p?.playerId, p?.pid, p?.uid];
+    const nm = nameOfPlayerLike(p);
+    const hitById = vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+    const hitByName = nm && names.has(nm);
+    if (hitById || hitByName) {
+      addName(nm);
+      vals.forEach((v) => {
+        if (v !== null && v !== undefined && String(v).trim()) ids.add(String(v));
+      });
+    }
+  }
+  return names;
+}
+
+function pickVisitArrays(r: any): any[] {
   const payload = r?.payload ?? null;
   const nested = payload?.payload ?? null;
   const summary = r?.summary ?? payload?.summary ?? nested?.summary ?? null;
-  const explicit =
-    payload?.visitHistory ?? payload?.visitsHistory ?? payload?.__legStats?.visits ??
-    summary?.visitHistory ?? summary?.visitsHistory ?? summary?.__legStats?.visits ?? summary?.legacy?.visitHistory ??
-    payload?.visits ?? nested?.visits ?? r?.engineState?.visits ?? r?.visits ?? [];
-  const aliases = playerAliasesForRecord(r, profileId, playerName);
-  if (Array.isArray(explicit) && explicit.length) {
-    return explicit.filter((v: any) => {
-      const id = String(v?.p ?? v?.playerId ?? v?.pid ?? v?.profileId ?? v?.id ?? "").trim();
-      return !id ? false : aliases.has(id);
-    });
+  const legacy = summary?.legacy ?? payload?.legacy ?? r?.legacy ?? null;
+  const roots = [r, payload, nested, summary, legacy, r?.state, payload?.state, payload?.match, nested?.state].filter(Boolean);
+  const keys = [
+    "visitHistory",
+    "visitsHistory",
+    "visits",
+    "turns",
+    "throwsHistory",
+    "throwHistory",
+    "rounds",
+    "history",
+  ];
+  const out: any[] = [];
+  const seen = new Set<any>();
+  for (const root of roots) {
+    for (const key of keys) {
+      const arr = root?.[key];
+      if (Array.isArray(arr) && arr.length && !seen.has(arr)) {
+        seen.add(arr);
+        out.push(...arr);
+      }
+    }
+    const legArr = root?.__legStats?.visits;
+    if (Array.isArray(legArr) && legArr.length && !seen.has(legArr)) {
+      seen.add(legArr);
+      out.push(...legArr);
+    }
   }
-  return [];
+  return out;
+}
+
+function visitBelongsToPlayer(v: any, aliases: Set<string>, names: Set<string>): boolean {
+  const ids = [v?.p, v?.playerId, v?.pid, v?.profileId, v?.id, v?.uid, v?.ownerId, v?.player?.id, v?.player?.profileId];
+  if (ids.some((x) => x !== null && x !== undefined && aliases.has(String(x)))) return true;
+  const nm = nameOfPlayerLike(v) || nameOfPlayerLike(v?.player);
+  if (nm && names.has(nm)) return true;
+  return false;
+}
+
+function rawVisitsForPlayer(r: any, profileId: string, playerName = ""): any[] {
+  const explicit = pickVisitArrays(r);
+  if (!explicit.length) return [];
+  const aliases = playerAliasesForRecord(r, profileId, playerName);
+  const names = collectPlayerNamesForRecord(r, profileId, playerName);
+  return explicit.filter((v: any) => visitBelongsToPlayer(v, aliases, names));
 }
 
 type RawVisitStats = {
