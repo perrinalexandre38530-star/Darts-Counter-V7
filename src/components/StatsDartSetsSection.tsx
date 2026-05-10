@@ -1695,7 +1695,21 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
 
   const sparkVals = extractSparkValuesFromRow(r, recent);
 
-  const { detail: segDetail } = extractSegmentsDetailFromSources(r, { segments: r?.segments || null });
+  let { detail: segDetail } = extractSegmentsDetailFromSources(r, { segments: r?.segments || null });
+
+  // Fallback synthétique si les anciens matchs ne possèdent pas de segments détaillés.
+  const hasSegments = Object.keys(segDetail || {}).length > 0;
+  if (!hasSegments) {
+    segDetail = {
+      "20": { ...blankSeg(), T: hitsT || 0 },
+      "18": { ...blankSeg(), D: hitsD || 0 },
+      "5": { ...blankSeg(), S: hitsS || 0 },
+      "25": { ...blankSeg(), B: bull || 0 },
+      "DB": { ...blankSeg(), DB: dBull || 0 },
+      "MISS": { ...blankSeg(), MISS: miss || 0 },
+    };
+  }
+
   const topStacks = detailToTopStacks(segDetail, 12);
 
   const quality = clamp01(avg3v / 90);
@@ -1813,7 +1827,7 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
       <div style={{ marginTop: 12 }}>
         <BlockTitle title={t("stats.dartSets.spark", "Sparkline AVG/3D")} />
         <div style={wideBoxStyle()}>
-          {sparkVals.length >= 2 ? <Sparkline values={sparkVals} accent={accent} height={84} /> : <EmptySmall text={t("common.na", "—")} />}
+          {(sparkVals.length >= 1) ? <Sparkline values={(sparkVals.length===1?[sparkVals[0],sparkVals[0]]:sparkVals)} accent={accent} height={84} /> : <EmptySmall text={t("common.na", "—")} />}
         </div>
       </div>
 
