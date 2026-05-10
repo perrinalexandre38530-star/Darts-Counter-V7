@@ -43,6 +43,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { loadBots } from "./ProfilesBots";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
+import { onlineApi } from "../lib/onlineApi";
 
 
 
@@ -152,6 +153,9 @@ const miniRankScoreFini: React.CSSProperties = {
 
 type Props = {
   config: X01ConfigV3;
+  online?: boolean;
+  lobbyCode?: string | null;
+  onlineUserId?: string | null;
   onExit?: () => void; // QUITTER -> Home (via App)
   onShowSummary?: (matchId: string) => void; // RÉSUMÉ -> Historique détaillé
   onReplayNewConfig?: () => void; // REJOUER -> changer paramètres (App)
@@ -882,6 +886,9 @@ const resolveTeamSkin = (team: any): TeamSkin => {
 const teamAvatarUrl = (team: any) => getTeamAvatarUrl(resolveTeamSkin(team));
 export default function X01PlayV3({
   config,
+  online = false,
+  lobbyCode = null,
+  onlineUserId = null,
   onExit,
   onShowSummary,
   onReplayNewConfig,
@@ -969,7 +976,7 @@ const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary 
   const autosaveLastPersistAtRef = React.useRef(0);
 
   // ✅ IMPORTANT: déclarer players avant tout hook/useMemo qui l'utilise
-  const players = (config as any)?.players ?? [];
+  const players = Array.isArray((config as any)?.players) ? ((config as any).players as any[]) : [];
 
  // =====================================================
 // ✅ Bot avatars fallback (si un BOT n'a pas avatarDataUrl dans config)
@@ -1077,7 +1084,7 @@ const [summaryLegStats, setSummaryLegStats] = React.useState<LegStats | null>(
 
 const summaryPlayersById = React.useMemo(() => {
   return Object.fromEntries(
-    (config.players || []).map((p) => [
+    (Array.isArray((config as any)?.players) ? (config as any).players : []).map((p: any) => [
       p.id,
       {
         id: p.id,
@@ -1086,7 +1093,7 @@ const summaryPlayersById = React.useMemo(() => {
       },
     ])
   );
-}, [config.players, resolveAvatar]);
+}, [(config as any)?.players, resolveAvatar]);
 
 const {
   state,
@@ -1100,6 +1107,137 @@ const {
 } = useX01EngineV3({ config });
 
 const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+
+// ============================================================
+// ONLINE X01 V3 — synchronisation NAS par replayDarts
+// - Le joueur qui valide une volée publie le replay complet dans online_matches.
+// - Les autres clients pollent le match et appliquent uniquement les nouvelles fléchettes.
+// - On garde cette couche additive: elle ne remplace pas le moteur X01 V3 local.
+// ============================================================
+const onlineLobbyCode = String(lobbyCode || (config as any)?.lobbyCode || (config as any)?.onlineLobbyCode || "").trim().toUpperCase();
+const isOnlineMatch = !!online || !!onlineLobbyCode || !!(config as any)?.online;
+const onlineAppliedDartsCountRef = React.useRef(0);
+const onlinePublishingRef = React.useRef(false);
+const onlineLastRemoteSigRef = React.useRef("");
+
+const normalizeOnlineReplayDart = React.useCallback((raw: any): X01DartInputV3 | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const segment = Number(raw.segment ?? raw.v ?? raw.value ?? 0);
+  const multiplier = Number(raw.multiplier ?? raw.mult ?? raw.m ?? 1);
+  if (!Number.isFinite(segment) || !Number.isFinite(multiplier)) return null;
+  return {
+    ...raw,
+    segment: segment === 25 ? 25 : Math.max(0, Math.min(20, segment)),
+    multiplier: Math.max(0, Math.min(3, multiplier || 1)) as any,
+    playerId: raw.playerId ?? raw.pid ?? raw.profileId ?? undefined,
+    pid: raw.pid ?? raw.playerId ?? raw.profileId ?? undefined,
+    profileId: raw.profileId ?? raw.playerId ?? raw.pid ?? undefined,
+  } as any;
+}, []);
+
+const publishOnlineReplayState = React.useCallback(async (reason: string = "visit") => {
+  if (!isOnlineMatch || !onlineLobbyCode) return;
+  if (onlinePublishingRef.current) return;
+  const darts = Array.isArray(replayDartsRef.current) ? replayDartsRef.current : [];
+  onlineAppliedDartsCountRef.current = darts.length;
+  onlinePublishingRef.current = true;
+  try {
+    await (onlineApi as any).updateMatchState?.({
+      lobbyCode: onlineLobbyCode,
+      status: status === "match_end" ? "ended" : "started",
+      state: {
+        mode: "x01",
+        onlineMode: "x01",
+        lobbyCode: onlineLobbyCode,
+        lobbyId: (config as any)?.lobbyId || null,
+        hostUserId: (config as any)?.hostUserId || (config as any)?.onlineHostUserId || null,
+        x01ConfigV3: config,
+        config,
+        players,
+        __x01OnlineSyncVersion: 2,
+        __x01OnlineReason: reason,
+        __x01OnlineDarts: darts,
+        __x01OnlineDartsCount: darts.length,
+        __x01OnlineUpdatedAt: Date.now(),
+        __x01OnlineUpdatedBy: onlineUserId || null,
+      },
+    });
+  } catch (error) {
+    console.warn("[X01PlayV3][ONLINE] publish replay state failed", error);
+  } finally {
+    onlinePublishingRef.current = false;
+  }
+}, [isOnlineMatch, onlineLobbyCode, status, config, players, onlineUserId]);
+
+React.useEffect(() => {
+  if (!isOnlineMatch || !onlineLobbyCode) return;
+  let cancelled = false;
+
+  const applyRemote = async () => {
+    try {
+      const row = await (onlineApi as any).fetchMatchByCode?.(onlineLobbyCode);
+      if (cancelled || !row) return;
+      const statePayload =
+        (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
+        (row?.state && typeof row.state === "object" ? row.state : null) ||
+        {};
+      const remoteDarts = Array.isArray(statePayload.__x01OnlineDarts) ? statePayload.__x01OnlineDarts : [];
+      const remoteCount = Number(statePayload.__x01OnlineDartsCount ?? remoteDarts.length) || 0;
+      const sig = `${String(row?.id || onlineLobbyCode)}:${String(row?.updated_at || row?.updatedAt || "")}:${remoteCount}`;
+      if (sig === onlineLastRemoteSigRef.current) return;
+      onlineLastRemoteSigRef.current = sig;
+
+      const applied = Math.max(0, onlineAppliedDartsCountRef.current || 0);
+      if (remoteCount <= applied || remoteDarts.length <= applied) return;
+      const nextDarts = remoteDarts.slice(applied).map(normalizeOnlineReplayDart).filter(Boolean) as X01DartInputV3[];
+      if (!nextDarts.length) {
+        onlineAppliedDartsCountRef.current = remoteDarts.length;
+        return;
+      }
+
+      isReplayingRef.current = true;
+      currentThrowFromEngineRef.current = true;
+      nextDarts.forEach((dart, index) => {
+        window.setTimeout(() => {
+          try {
+            throwDart(dart);
+            replayDartsRef.current = replayDartsRef.current.concat([dart] as any);
+            const pid = String((dart as any).playerId || (dart as any).pid || (dart as any).profileId || "");
+            if (pid) {
+              const uiDart: UIDart = {
+                v: Number((dart as any).segment || 0) === 25 ? 25 : Number((dart as any).segment || 0),
+                mult: Number((dart as any).multiplier || 1) as any,
+              } as any;
+              setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => {
+                const old = Array.isArray(prev?.[pid]) ? prev[pid] : [];
+                return { ...prev, [pid]: [...old, uiDart].slice(-3) };
+              });
+            }
+          } catch (error) {
+            console.warn("[X01PlayV3][ONLINE] apply remote dart failed", error);
+          } finally {
+            if (index === nextDarts.length - 1) {
+              onlineAppliedDartsCountRef.current = remoteDarts.length;
+              window.setTimeout(() => {
+                isReplayingRef.current = false;
+                forceSyncFromEngine();
+              }, 0);
+            }
+          }
+        }, index * 12);
+      });
+    } catch {
+      // silencieux: on ne casse jamais la partie locale si le NAS répond mal
+    }
+  };
+
+  applyRemote().catch(() => {});
+  const timer = window.setInterval(() => applyRemote().catch(() => {}), 900);
+  return () => {
+    cancelled = true;
+    window.clearInterval(timer);
+  };
+}, [isOnlineMatch, onlineLobbyCode, normalizeOnlineReplayDart, throwDart]);
 
 // Métadonnées de replay : indispensable pour distinguer les legs/sets dans
 // le résumé final et dans l'historique détaillé. Sans ça, un match en plusieurs
@@ -2246,6 +2384,7 @@ try {
 } finally {
   window.setTimeout(() => {
     botUndoGuardRef.current = false;
+    publishOnlineReplayState("undo").catch(() => {});
   }, 0);
 }
 };
@@ -2336,6 +2475,7 @@ const validateThrow = async () => {
         // (évite de conserver des fléchettes affichées sur la visite suivante)
         window.setTimeout(() => {
           forceSyncFromEngine();
+          publishOnlineReplayState("manual-visit").catch(() => {});
         }, 0);
       }
     }, index * 10);
@@ -2397,6 +2537,7 @@ React.useEffect(() => {
       replayDartsRef.current = replayDartsRef.current.concat([tracked] as any);
       debugReplayDarts("external-dart", [tracked] as any);
       persistAutosave();
+      publishOnlineReplayState("external-dart").catch(() => {});
     } catch (e) {
       console.warn("[X01PlayV3] external dart failed", e);
     }
@@ -2475,6 +2616,7 @@ React.useEffect(() => {
       replayDartsRef.current = replayDartsRef.current.concat(trackedDarts as any);
       debugReplayDarts("external-visit", trackedDarts as any);
       persistAutosave();
+      publishOnlineReplayState("external-visit").catch(() => {});
     } catch (e) {
       console.warn("[X01PlayV3] external visit failed", e);
     }
@@ -4821,16 +4963,24 @@ function TeamsPlayersList(props: {
   const {
     cameraOpen,
     setCameraOpen,
-    teams,
+    teams: rawTeams,
     activePlayerId,
-    profileById,
-    liveStatsByPlayer,
+    profileById: rawProfileById,
+    liveStatsByPlayer: rawLiveStatsByPlayer,
     start,
-    scoresByPlayer,
-    lastVisitsByPlayer,
-    lastVisitIsBustByPlayer,
-    avg3ByPlayer,
+    scoresByPlayer: rawScoresByPlayer,
+    lastVisitsByPlayer: rawLastVisitsByPlayer,
+    lastVisitIsBustByPlayer: rawLastVisitIsBustByPlayer,
+    avg3ByPlayer: rawAvg3ByPlayer,
   } = props;
+
+  const teams = Array.isArray(rawTeams) ? rawTeams : [];
+  const profileById = rawProfileById || {};
+  const liveStatsByPlayer = rawLiveStatsByPlayer || {};
+  const scoresByPlayer = rawScoresByPlayer || {};
+  const lastVisitsByPlayer = rawLastVisitsByPlayer || {};
+  const lastVisitIsBustByPlayer = rawLastVisitIsBustByPlayer || {};
+  const avg3ByPlayer = rawAvg3ByPlayer || {};
 
   return (
     <div
@@ -5039,18 +5189,28 @@ function PlayersListOnly(props: {
   const {
     cameraOpen,
     setCameraOpen,
-    players,
-    profileById,
-    liveStatsByPlayer,
+    players: rawPlayers,
+    profileById: rawProfileById,
+    liveStatsByPlayer: rawLiveStatsByPlayer,
     start,
-    scoresByPlayer,
-    legsWon,
-    setsWon,
+    scoresByPlayer: rawScoresByPlayer,
+    legsWon: rawLegsWon,
+    setsWon: rawSetsWon,
     useSets,
-    lastVisitsByPlayer,
-    lastVisitIsBustByPlayer,
-    avg3ByPlayer,
+    lastVisitsByPlayer: rawLastVisitsByPlayer,
+    lastVisitIsBustByPlayer: rawLastVisitIsBustByPlayer,
+    avg3ByPlayer: rawAvg3ByPlayer,
   } = props;
+
+  const players = Array.isArray(rawPlayers) ? rawPlayers : [];
+  const profileById = rawProfileById || {};
+  const liveStatsByPlayer = rawLiveStatsByPlayer || {};
+  const scoresByPlayer = rawScoresByPlayer || {};
+  const legsWon = rawLegsWon || {};
+  const setsWon = rawSetsWon || {};
+  const lastVisitsByPlayer = rawLastVisitsByPlayer || {};
+  const lastVisitIsBustByPlayer = rawLastVisitIsBustByPlayer || {};
+  const avg3ByPlayer = rawAvg3ByPlayer || {};
 
 
   return (

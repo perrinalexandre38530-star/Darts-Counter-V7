@@ -5000,8 +5000,10 @@ function X01PlayV3Route({
       routeParams?.initialState?.x01ConfigV3 ??
       routeParams?.initialState?.config ??
       null;
-    const cfgToStart = x01ConfigV3 || routeConfig;
     const isOnline = !!routeParams?.online || !!routeParams?.lobbyCode;
+    // En online, on privilégie toujours la config portée par le salon/route.
+    // Sinon un ancien x01ConfigV3 local peut être réutilisé après un retour navigateur.
+    const cfgToStart = isOnline ? (routeConfig || x01ConfigV3) : (x01ConfigV3 || routeConfig);
 
     if (!cfgToStart) {
       return (
@@ -5021,6 +5023,9 @@ function X01PlayV3Route({
       <X01PlayV3
         key={key}
         config={cfgToStart}
+        online={isOnline}
+        lobbyCode={routeParams?.lobbyCode || (cfgToStart as any)?.lobbyCode || null}
+        onlineUserId={routeParams?.onlineUserId || routeParams?.userId || null}
         onExit={() => go(isOnline ? "online" : "x01_config_v3")}
         onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
         onShowSummary={(matchId: string) =>

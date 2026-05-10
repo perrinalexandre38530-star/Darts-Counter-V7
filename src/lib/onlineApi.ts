@@ -1581,7 +1581,7 @@ async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | nul
 
   if (isNasProviderEnabled()) {
     await ensureNasSession();
-    const res = await apiGet(`/online/matches/by-code/${encodeURIComponent(code)}`);
+    const res = await apiGet(`/online/matches/by-code-safe/${encodeURIComponent(code)}`);
     return (res?.match || null) as OnlineMatchRow | null;
   }
 
