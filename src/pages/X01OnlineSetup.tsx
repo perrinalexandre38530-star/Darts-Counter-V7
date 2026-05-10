@@ -240,17 +240,26 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
 
   const openStartedOnlineMatch = React.useCallback((matchRow: any) => {
     if (!matchRow) return;
-    const status = String(matchRow?.status || "").toLowerCase();
+    const status = String(matchRow?.status || matchRow?.match?.status || "").toLowerCase();
     if (status !== "started") return;
 
     const state =
       (matchRow?.state_json && typeof matchRow.state_json === "object" ? matchRow.state_json : null) ||
       (matchRow?.state && typeof matchRow.state === "object" ? matchRow.state : null) ||
+      (matchRow?.match?.state_json && typeof matchRow.match.state_json === "object" ? matchRow.match.state_json : null) ||
+      (matchRow?.match?.state && typeof matchRow.match.state === "object" ? matchRow.match.state : null) ||
       {};
-    const cfg = state?.x01ConfigV3 || state?.config || state?.initialState?.x01ConfigV3 || state?.initialState?.config || null;
+    const cfg =
+      state?.x01ConfigV3 ||
+      state?.config ||
+      state?.initialState?.x01ConfigV3 ||
+      state?.initialState?.config ||
+      state?.payload?.x01ConfigV3 ||
+      state?.payload?.config ||
+      null;
     if (!cfg) return;
 
-    const launchKey = String(matchRow?.id || `${rawCode}:${matchRow?.updated_at || matchRow?.updatedAt || "started"}`);
+    const launchKey = String(matchRow?.id || matchRow?.match?.id || `${rawCode}:${matchRow?.updated_at || matchRow?.updatedAt || matchRow?.match?.updated_at || matchRow?.match?.updatedAt || "started"}`);
     if (autoLaunchRef.current === launchKey) return;
     autoLaunchRef.current = launchKey;
 
@@ -261,7 +270,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       onlineMode: "x01",
       lobbyCode: rawCode || state?.lobbyCode || null,
       lobbyId: nasLobby?.id || params?.lobbyId || state?.lobbyId || null,
-      players: Array.isArray(state?.players) ? state.players : connectedPlayers,
+      players: Array.isArray(state?.players) ? state.players : Array.isArray(state?.playerProfiles) ? state.playerProfiles : connectedPlayers,
       config: cfg,
       x01ConfigV3: cfg,
       from: "x01_online_lobby_autostart",
@@ -282,14 +291,26 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     };
 
     tick().catch(() => {});
-    const timer = window.setInterval(() => tick().catch(() => {}), 2200);
+    const timer = window.setInterval(() => tick().catch(() => {}), 1000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [rawCode, openStartedOnlineMatch]);
 
-  const lobbyPlayersRaw: any[] = Array.isArray(nasLobby?.players) ? nasLobby.players : [];
+
+  React.useEffect(() => {
+    if (!rawCode) return;
+    if (String(nasLobby?.status || "").toLowerCase() !== "started") return;
+    (async () => {
+      try {
+        const matchRow = await (onlineApi as any).fetchMatchByCode(rawCode);
+        openStartedOnlineMatch(matchRow);
+      } catch {}
+    })();
+  }, [rawCode, nasLobby?.status, nasLobby?.updatedAt, nasLobby?.updated_at, openStartedOnlineMatch]);
+
+    const lobbyPlayersRaw: any[] = Array.isArray(nasLobby?.players) ? nasLobby.players : [];
   const lobbyHostUserId = String(nasLobby?.hostUserId || nasLobby?.host_user_id || "").trim();
   const effectiveUserId = String(sessionUserId || activeUserId || activeProfileId || "").trim();
 
@@ -450,26 +471,15 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         color: "#f5f5f7",
       }}
     >
-      <h2
-        style={{
-          fontSize: 20,
-          fontWeight: 800,
-          marginBottom: 4,
-        }}
-      >
-        X01 Online — Salle d’attente
-      </h2>
-
-      <p
-        style={{
-          fontSize: 13,
-          opacity: 0.8,
-          marginBottom: 12,
-        }}
-      >
-        Code de salon partagé entre les joueurs. Discute dans le chat, vérifie
-        les joueurs connectés puis ouvre la configuration X01 complète.
-      </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 950, margin: 0 }}>Salon X01</h2>
+          <div style={{ fontSize: 12, opacity: 0.76, marginTop: 3 }}>Chat, joueurs, statut prêt et lancement synchronisé.</div>
+        </div>
+        <div style={{ borderRadius: 999, padding: "5px 9px", background: isHost ? "rgba(255,213,106,.14)" : "rgba(127,226,169,.12)", color: isHost ? "#ffd56a" : "#7fe2a9", border: "1px solid rgba(255,255,255,.12)", fontSize: 11, fontWeight: 950 }}>
+          {isHost ? "HÔTE" : isCurrentPlayerReady ? "PRÊT" : "JOUEUR"}
+        </div>
+      </div>
 
       {/* Code du salon */}
       <div
@@ -493,16 +503,16 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         {effectiveCode}
       </div>
 
-      {/* Statut WebSocket */}
+      {/* Statut WebSocket - conservé en debug, masqué dans l'UI salon */}
       <div
         style={{
+          display: showDebug ? "flex" : "none",
           marginBottom: 12,
           padding: 10,
           borderRadius: 12,
           border: "1px solid rgba(255,255,255,.12)",
           background:
             "linear-gradient(180deg, rgba(32,32,40,.95), rgba(10,10,14,.98))",
-          display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
@@ -583,8 +593,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         </div>
       </div>
 
-      {/* Infos joueur local */}
-      {activeProfile && (
+      {/* Infos joueur local - masqué dans l'UI principale */}
+      {showDebug && activeProfile && (
         <div
           style={{
             marginBottom: 12,
@@ -624,13 +634,9 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           fontSize: 12,
         }}
       >
-        <div
-          style={{
-            fontWeight: 700,
-            marginBottom: 4,
-          }}
-        >
-          Joueurs connectés au salon
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 950, fontSize: 13 }}>Joueurs ({connectedPlayers.length})</div>
+          <div style={{ opacity: .72, fontSize: 11 }}>{allPlayersReady ? "Tout le monde est prêt" : "En attente"}</div>
         </div>
 
         {nasLobbyLoading && !nasLobby ? (
@@ -652,9 +658,9 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 8,
-                    borderRadius: 10,
-                    padding: "7px 8px",
-                    background: "rgba(255,255,255,.045)",
+                    borderRadius: 14,
+                    padding: "9px 10px",
+                    background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.025))",
                     border: ready || isPlayerHost ? "1px solid rgba(127,226,169,.24)" : "1px solid rgba(255,255,255,.07)",
                   }}
                 >
@@ -699,8 +705,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
           <div>
-            <div style={{ fontWeight: 900, color: "#7fe2a9", marginBottom: 2 }}>Forum / chat du salon</div>
-            <div style={{ opacity: 0.78, fontSize: 11 }}>Messages persistants NAS • code {effectiveCode}</div>
+            <div style={{ fontWeight: 950, color: "#7fe2a9", marginBottom: 2 }}>Chat du salon</div>
+            <div style={{ opacity: 0.78, fontSize: 11 }}>Code {effectiveCode} • messages NAS</div>
           </div>
           <button
             type="button"

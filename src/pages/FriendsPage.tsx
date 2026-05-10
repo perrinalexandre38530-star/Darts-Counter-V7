@@ -60,6 +60,7 @@ import {
 import { joinPresence } from "../lib/onlinePresence";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import { History } from "../lib/history";
+import { getTicker } from "../lib/tickers";
 
 /* -------------------------------------------------
    Constantes localStorage
@@ -778,25 +779,41 @@ type OnlineGameModeSpec = {
   icon: string;
   route: string;
   hint: string;
+  tickerKey?: string;
+  favorite?: boolean;
 };
 
 const LS_ONLINE_SELECTED_MODE_KEY = "dc_online_selected_mode_v1";
 
 const ONLINE_GAME_MODES: OnlineGameModeSpec[] = [
-  { id: "x01", label: "X01", shortLabel: "X01", icon: "🎯", route: "x01_online_setup", hint: "501 / 301 / sets / legs" },
-  { id: "killer", label: "Killer", shortLabel: "Killer", icon: "💀", route: "killer_config", hint: "Cibles, vies, variantes" },
-  { id: "shanghai", label: "Shanghai", shortLabel: "Shanghai", icon: "🏮", route: "shanghai", hint: "Tours 1 à 20" },
-  { id: "golf", label: "Golf", shortLabel: "Golf", icon: "⛳", route: "golf_config", hint: "Par, birdie, eagle" },
-  { id: "cricket", label: "Cricket", shortLabel: "Cricket", icon: "🏏", route: "cricket", hint: "Classique / variantes" },
-  { id: "warfare", label: "Warfare", shortLabel: "Warfare", icon: "⚔️", route: "warfare_config", hint: "Mode attaque" },
-  { id: "battle_royale", label: "Battle Royale", shortLabel: "Battle", icon: "👑", route: "battle_royale", hint: "Survie multi-joueurs" },
-  { id: "territories", label: "Territories", shortLabel: "Territories", icon: "🗺️", route: "departements_config", hint: "Cartes / conquête" },
-  { id: "capital", label: "Capital", shortLabel: "Capital", icon: "🏛️", route: "capital_config", hint: "Défis capitales" },
-  { id: "batard", label: "Bâtard", shortLabel: "Bâtard", icon: "😈", route: "batard_config", hint: "Mode fun / gages" },
-  { id: "scram", label: "SCRAM", shortLabel: "SCRAM", icon: "🚧", route: "scram_config", hint: "Bloquer / scorer" },
-  { id: "five_lives", label: "Les 5 vies", shortLabel: "5 vies", icon: "❤️", route: "five_lives_config", hint: "Survie en 5 vies" },
-  { id: "clock", label: "Tour de l’horloge", shortLabel: "Horloge", icon: "🕒", route: "training_clock", hint: "Progression autour du board" },
+  { id: "battle_royale", label: "Battle Royale", shortLabel: "Battle", icon: "👑", route: "battle_royale", hint: "Survie multi-joueurs", tickerKey: "ticker_battle_royale", favorite: true },
+  { id: "x01", label: "X01", shortLabel: "X01", icon: "🎯", route: "x01_online_setup", hint: "501 / 301 / sets / legs", tickerKey: "x01", favorite: true },
+  { id: "batard", label: "Bâtard", shortLabel: "Bâtard", icon: "😈", route: "batard_config", hint: "Mode fun / gages", tickerKey: "ticker_batard_players" },
+  { id: "capital", label: "Capital", shortLabel: "Capital", icon: "🏛️", route: "capital_config", hint: "Défis capitales", tickerKey: "capital" },
+  { id: "clock", label: "Tour de l’horloge", shortLabel: "Horloge", icon: "🕒", route: "training_clock", hint: "Progression autour du board", tickerKey: "clock" },
+  { id: "cricket", label: "Cricket", shortLabel: "Cricket", icon: "🏏", route: "cricket", hint: "Classique / variantes", tickerKey: "cricket" },
+  { id: "five_lives", label: "Les 5 vies", shortLabel: "5 vies", icon: "❤️", route: "five_lives_config", hint: "Survie en 5 vies", tickerKey: "five_lives" },
+  { id: "golf", label: "Golf", shortLabel: "Golf", icon: "⛳", route: "golf_config", hint: "Par, birdie, eagle", tickerKey: "golf" },
+  { id: "killer", label: "Killer", shortLabel: "Killer", icon: "💀", route: "killer_config", hint: "Cibles, vies, variantes", tickerKey: "ticker_killer", favorite: true },
+  { id: "scram", label: "SCRAM", shortLabel: "SCRAM", icon: "🚧", route: "scram_config", hint: "Bloquer / scorer", tickerKey: "scram" },
+  { id: "shanghai", label: "Shanghai", shortLabel: "Shanghai", icon: "🏮", route: "shanghai", hint: "Tours 1 à 20", tickerKey: "shanghai" },
+  { id: "territories", label: "Territories", shortLabel: "Territories", icon: "🗺️", route: "departements_config", hint: "Cartes / conquête", tickerKey: "territories" },
+  { id: "warfare", label: "Warfare", shortLabel: "Warfare", icon: "⚔️", route: "warfare_config", hint: "Mode attaque", tickerKey: "warfare" },
 ];
+
+const SORTED_ONLINE_GAME_MODES: OnlineGameModeSpec[] = [...ONLINE_GAME_MODES].sort((a, b) => {
+  if (!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1;
+  return a.label.localeCompare(b.label, "fr", { sensitivity: "base" });
+});
+
+function getOnlineModeTicker(mode: OnlineGameModeSpec): string | null {
+  return (
+    getTicker(mode.tickerKey || mode.id) ||
+    getTicker(`ticker_${mode.id}`) ||
+    getTicker(mode.id) ||
+    getTicker("dice_games")
+  );
+}
 
 function getOnlineModeSpec(mode: any): OnlineGameModeSpec {
   const id = String(mode || "x01") as OnlineGameModeId;
@@ -2599,13 +2616,17 @@ const doLogout = React.useCallback(async () => {
             </div>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 8,
+                display: "flex",
+                gap: 10,
+                overflowX: "auto",
+                padding: "4px 2px 10px",
+                scrollSnapType: "x mandatory",
+                WebkitOverflowScrolling: "touch",
               }}
             >
-              {ONLINE_GAME_MODES.map((mode) => {
+              {SORTED_ONLINE_GAME_MODES.map((mode) => {
                 const active = selectedOnlineMode === mode.id;
+                const tickerUrl = getOnlineModeTicker(mode);
                 return (
                   <button
                     key={mode.id}
@@ -2613,39 +2634,74 @@ const doLogout = React.useCallback(async () => {
                     onClick={() => selectOnlineMode(mode.id)}
                     disabled={!!lobby?.code}
                     style={{
-                      minHeight: 62,
+                      flex: "0 0 168px",
+                      minHeight: 92,
                       textAlign: "left",
-                      borderRadius: 15,
-                      border: active ? "1px solid rgba(255,213,106,.62)" : "1px solid rgba(255,255,255,.12)",
-                      background: active
+                      borderRadius: 16,
+                      border: active ? "1px solid rgba(255,213,106,.82)" : "1px solid rgba(255,255,255,.12)",
+                      background: tickerUrl
+                        ? `linear-gradient(90deg, rgba(0,0,0,.86), rgba(0,0,0,.30)), url(${tickerUrl}) center / cover no-repeat`
+                        : active
                         ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
                         : "rgba(255,255,255,.045)",
-                      color: active ? "#ffd56a" : "#f5f5f7",
-                      padding: "9px 10px",
+                      boxShadow: active ? "0 0 20px rgba(255,213,106,.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
+                      color: "#f5f5f7",
+                      padding: "10px 11px",
                       fontWeight: 1000,
                       cursor: lobby?.code ? "not-allowed" : "pointer",
                       opacity: lobby?.code && !active ? 0.55 : 1,
+                      position: "relative",
+                      overflow: "hidden",
+                      scrollSnapAlign: "start",
                     }}
                     title={lobby?.code ? "Quitte ou crée un nouveau salon pour changer de mode" : mode.hint}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
-                      <span>{mode.icon}</span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mode.shortLabel}</span>
+                    {mode.favorite ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 7,
+                          left: 7,
+                          borderRadius: 999,
+                          padding: "3px 7px",
+                          background: "rgba(188,255,0,.18)",
+                          border: "1px solid rgba(188,255,0,.32)",
+                          color: "#c8ff00",
+                          fontSize: 9.5,
+                          fontWeight: 1000,
+                          letterSpacing: .4,
+                        }}
+                      >
+                        ★ FAVORI
+                      </span>
+                    ) : null}
+                    <div style={{ position: "absolute", left: 11, right: 11, bottom: 10 }}>
+                      <div style={{ fontSize: 14, textShadow: "0 2px 10px rgba(0,0,0,.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mode.shortLabel}</div>
+                      <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.84, fontWeight: 850, lineHeight: 1.15, textShadow: "0 2px 8px rgba(0,0,0,.9)" }}>{mode.hint}</div>
                     </div>
-                    <div style={{ marginTop: 4, fontSize: 10.2, opacity: 0.72, fontWeight: 800, lineHeight: 1.15 }}>{mode.hint}</div>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <PrimaryButton
-            label={creatingLobby ? "Création…" : `Créer un salon ${selectedOnlineModeSpec.shortLabel}`}
-            subLabel="Match privé • invite un ami avec un code"
-            disabled={creatingLobby || !canPlayOnline}
-            onClick={handleCreateLobby}
-            tone={!canPlayOnline ? "gray" : "gold"}
-          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <PrimaryButton
+              label={creatingLobby ? "Création…" : "CRÉER"}
+              subLabel={`Salon ${selectedOnlineModeSpec.shortLabel}`}
+              disabled={creatingLobby || !canPlayOnline}
+              onClick={handleCreateLobby}
+              tone={!canPlayOnline ? "gray" : "gold"}
+            />
+
+            <PrimaryButton
+              label={joiningLobby ? "Recherche…" : "REJOINDRE"}
+              subLabel="Avec un code"
+              disabled={joiningLobby || !canPlayOnline}
+              onClick={handleJoinLobby}
+              tone={!canPlayOnline ? "gray" : "blue"}
+            />
+          </div>
 
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.85 }}>Code salon</div>
@@ -2669,14 +2725,6 @@ const doLogout = React.useCallback(async () => {
               }}
             />
           </div>
-
-          <PrimaryButton
-            label={joiningLobby ? "Recherche…" : "Rejoindre"}
-            subLabel="Accède à la salle d’attente"
-            disabled={joiningLobby || !canPlayOnline}
-            onClick={handleJoinLobby}
-            tone={!canPlayOnline ? "gray" : "blue"}
-          />
 
           {!canPlayOnline && (
             <div className="hint" style={{ fontSize: 12, opacity: 0.88, color: "#ffd56a", fontWeight: 950 }}>
