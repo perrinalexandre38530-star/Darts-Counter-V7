@@ -40,7 +40,7 @@ import {
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
-import { apiGet, apiPost } from "./apiClient";
+import { apiGet, apiPost, buildApiUrl, readNasAccessToken } from "./apiClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 export const CLOUD_STORE_KEY = "main";
@@ -1618,6 +1618,73 @@ async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | nul
   return ((data || [])[0] as any) || null;
 }
 
+type OnlineStreamHandlers = {
+  onMatch?: (match: OnlineMatchRow, event?: MessageEvent) => void;
+  onLobby?: (lobby: any, event?: MessageEvent) => void;
+  onMessage?: (message: any, event?: MessageEvent) => void;
+  onEvent?: (payload: any, event?: MessageEvent) => void;
+  onOpen?: () => void;
+  onError?: (error: any) => void;
+};
+
+function subscribeOnlineStream(lobbyCode: string, handlers: OnlineStreamHandlers = {}) {
+  const code = safeUpper(lobbyCode);
+  if (!code || !isNasProviderEnabled() || typeof window === "undefined" || typeof EventSource === "undefined") {
+    return () => {};
+  }
+
+  const token = readNasAccessToken();
+  const url = buildApiUrl(`/online/stream/${encodeURIComponent(code)}`, token ? { token } : undefined);
+  let closed = false;
+  const es = new EventSource(url);
+
+  const parse = (event: MessageEvent) => {
+    try {
+      return event?.data ? JSON.parse(String(event.data)) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handlePayload = (event: MessageEvent) => {
+    const payload = parse(event);
+    if (!payload) return;
+    handlers.onEvent?.(payload, event);
+    const match = payload?.match || payload?.data?.match || null;
+    if (match) handlers.onMatch?.(match as OnlineMatchRow, event);
+    const lobby = payload?.lobby || payload?.data?.lobby || null;
+    if (lobby) handlers.onLobby?.(lobby, event);
+    const message = payload?.message || payload?.data?.message || null;
+    if (message) handlers.onMessage?.(message, event);
+  };
+
+  es.onopen = () => handlers.onOpen?.();
+  es.onerror = (error) => {
+    if (!closed) handlers.onError?.(error);
+  };
+
+  [
+    "connected",
+    "match:snapshot",
+    "match:start",
+    "match:update",
+    "match:end",
+    "lobby:snapshot",
+    "lobby:create",
+    "lobby:join",
+    "lobby:ready",
+    "lobby:update",
+    "lobby:message",
+    "ping",
+  ].forEach((name) => es.addEventListener(name, handlePayload as EventListener));
+  es.onmessage = handlePayload;
+
+  return () => {
+    closed = true;
+    try { es.close(); } catch {}
+  };
+}
+
 // ============================================================
 // Matchs “historique” (compat OnlineMatch de ton app)
 // ============================================================
@@ -1748,6 +1815,7 @@ export const onlineApi = {
   updateMatchState,
   endMatch,
   fetchMatchByCode,
+  subscribeOnlineStream,
 
   uploadMatch,
   listMatches,

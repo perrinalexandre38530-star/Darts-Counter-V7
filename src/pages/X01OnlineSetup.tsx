@@ -164,7 +164,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   React.useEffect(() => {
     if (!rawCode) return;
     refreshNasLobby().catch(() => {});
-    const timer = window.setInterval(() => refreshNasLobby().catch(() => {}), 2500);
+    const timer = window.setInterval(() => refreshNasLobby().catch(() => {}), 10000);
     return () => window.clearInterval(timer);
   }, [rawCode, refreshNasLobby]);
 
@@ -280,6 +280,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   React.useEffect(() => {
     if (!rawCode) return;
     let cancelled = false;
+    let streamOpened = false;
 
     const tick = async () => {
       try {
@@ -290,11 +291,36 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       }
     };
 
+    const unsubscribe = (onlineApi as any).subscribeOnlineStream?.(rawCode, {
+      onOpen: () => { streamOpened = true; },
+      onError: () => { streamOpened = false; },
+      onLobby: (lobby: any) => {
+        if (!cancelled && lobby) {
+          setNasLobby(lobby);
+          setNasLobbyError(null);
+        }
+      },
+      onMessage: (message: any) => {
+        if (cancelled || !message) return;
+        const id = String(message?.id || `${message?.createdAt || message?.created_at || ""}:${message?.text || message?.message?.text || ""}`);
+        setChatMessages((prev) => {
+          if (id && prev.some((m) => String(m?.id || "") === id)) return prev;
+          return [...prev, message].slice(-100);
+        });
+      },
+      onMatch: (match: any) => {
+        if (!cancelled) openStartedOnlineMatch(match);
+      },
+    });
+
     tick().catch(() => {});
-    const timer = window.setInterval(() => tick().catch(() => {}), 1000);
+    const timer = window.setInterval(() => {
+      if (!streamOpened) tick().catch(() => {});
+    }, 8000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      if (typeof unsubscribe === "function") unsubscribe();
     };
   }, [rawCode, openStartedOnlineMatch]);
 

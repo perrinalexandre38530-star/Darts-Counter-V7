@@ -1172,10 +1172,10 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
 React.useEffect(() => {
   if (!isOnlineMatch || !onlineLobbyCode) return;
   let cancelled = false;
+  let streamOpened = false;
 
-  const applyRemote = async () => {
+  const applyRemoteRow = (row: any) => {
     try {
-      const row = await (onlineApi as any).fetchMatchByCode?.(onlineLobbyCode);
       if (cancelled || !row) return;
       const statePayload =
         (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
@@ -1183,7 +1183,7 @@ React.useEffect(() => {
         {};
       const remoteDarts = Array.isArray(statePayload.__x01OnlineDarts) ? statePayload.__x01OnlineDarts : [];
       const remoteCount = Number(statePayload.__x01OnlineDartsCount ?? remoteDarts.length) || 0;
-      const sig = `${String(row?.id || onlineLobbyCode)}:${String(row?.updated_at || row?.updatedAt || "")}:${remoteCount}`;
+      const sig = `${String(row?.id || onlineLobbyCode)}:${String(row?.updated_at || row?.updatedAt || statePayload.__x01OnlineUpdatedAt || "")}:${remoteCount}`;
       if (sig === onlineLastRemoteSigRef.current) return;
       onlineLastRemoteSigRef.current = sig;
 
@@ -1224,18 +1224,37 @@ React.useEffect(() => {
               }, 0);
             }
           }
-        }, index * 12);
+        }, index * 8);
       });
     } catch {
-      // silencieux: on ne casse jamais la partie locale si le NAS répond mal
+      // silence: la partie locale reste jouable même si un paquet distant est invalide
     }
   };
 
-  applyRemote().catch(() => {});
-  const timer = window.setInterval(() => applyRemote().catch(() => {}), 900);
+  const applyRemoteFetch = async () => {
+    try {
+      const row = await (onlineApi as any).fetchMatchByCode?.(onlineLobbyCode);
+      applyRemoteRow(row);
+    } catch {
+      // silence: fallback uniquement, jamais de spam console en partie
+    }
+  };
+
+  const unsubscribe = (onlineApi as any).subscribeOnlineStream?.(onlineLobbyCode, {
+    onOpen: () => { streamOpened = true; },
+    onMatch: (match: any) => applyRemoteRow(match),
+    onError: () => { streamOpened = false; },
+  });
+
+  applyRemoteFetch().catch(() => {});
+  const fallbackTimer = window.setInterval(() => {
+    if (!streamOpened) applyRemoteFetch().catch(() => {});
+  }, 5000);
+
   return () => {
     cancelled = true;
-    window.clearInterval(timer);
+    window.clearInterval(fallbackTimer);
+    if (typeof unsubscribe === "function") unsubscribe();
   };
 }, [isOnlineMatch, onlineLobbyCode, normalizeOnlineReplayDart, throwDart]);
 

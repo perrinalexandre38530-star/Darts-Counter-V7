@@ -29,7 +29,7 @@ function safeParseJson<T>(raw: string, fallback: T): T {
   }
 }
 
-function readNasAccessToken(): string {
+export function readNasAccessToken(): string {
   const direct = safeReadLocalStorage("dc_nas_access_token_v1").trim();
   if (direct) return direct;
 
@@ -121,6 +121,16 @@ export async function apiDelete(path: string) {
   return doFetch(path, {
     method: "DELETE",
   });
+}
+
+export function buildApiUrl(path: string, query?: Record<string, string | number | boolean | null | undefined>) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(`${API_URL}${normalizedPath}`);
+  for (const [key, value] of Object.entries(query || {})) {
+    if (value === null || value === undefined || value === "") continue;
+    url.searchParams.set(key, String(value));
+  }
+  return url.toString();
 }
 
 export function getApiUrl() {
