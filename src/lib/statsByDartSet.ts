@@ -310,18 +310,39 @@ function pickAnyArray(...candidates: any[]): any[] | null {
 }
 
 function getRawTurns(r: any): any[] {
-  // souvent : r.payload.turns / r.payload.state.turns / r.state.turns / r.turns
+  // X01 V3 sauvegarde les vraies volées sous visitHistory / visitsHistory,
+  // pas forcément sous visits. Si on oublie ces chemins, on trouve bien
+  // les sessions dartsets mais tous les compteurs restent à 0.
   const p = r?.payload ?? r?.data ?? null;
   const s = r?.state ?? p?.state ?? p?.match ?? null;
+  const sum = r?.summary ?? p?.summary ?? null;
+  const legacy = sum?.legacy ?? p?.legacy ?? r?.legacy ?? null;
 
   return (
     pickAnyArray(
       r?.turns,
       r?.visits,
+      r?.visitHistory,
+      r?.visitsHistory,
+      r?.__legStats?.visits,
       p?.turns,
       p?.visits,
+      p?.visitHistory,
+      p?.visitsHistory,
+      p?.__legStats?.visits,
+      sum?.turns,
+      sum?.visits,
+      sum?.visitHistory,
+      sum?.visitsHistory,
+      sum?.__legStats?.visits,
+      legacy?.turns,
+      legacy?.visits,
+      legacy?.visitHistory,
+      legacy?.visitsHistory,
       s?.turns,
       s?.visits,
+      s?.visitHistory,
+      s?.visitsHistory,
       s?.history,
       p?.history
     ) || []

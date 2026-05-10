@@ -6274,8 +6274,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement des fléchettes…" />}>
                     <StatsDartSetsSection
-                      activeProfileId={activeProfileId}
-                      activePlayerName={selectedPlayer?.name ?? ""}
+                      activeProfileId={selectedPlayer.id}
                       title="MES FLÉCHETTES"
                     />
                   </React.Suspense>
