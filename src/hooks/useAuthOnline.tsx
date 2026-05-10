@@ -143,6 +143,7 @@ type Ctx = AuthState & {
   signup: (payload: { email?: string; nickname: string; password?: string }) => Promise<boolean>;
   login: (payload: { email?: string; nickname?: string; password?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -317,9 +318,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
       if (session?.user) {
         lastSignedInSessionRef.current = session;
-      } else if (isNasProviderEnabled() && lastSignedInSessionRef.current?.user) {
-        setState((s) => ({ ...s, loading: false, ready: true }));
-        return;
+      } else {
+        lastSignedInSessionRef.current = null;
       }
 
       applyAuthFromSession(setState, session);
@@ -395,11 +395,9 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
               if (nextSession?.user) {
                 lastSignedInSessionRef.current = nextSession;
                 applyAuthFromSession(setState, nextSession);
-              } else if (lastSignedInSessionRef.current?.user) {
-                setState((s) => ({ ...s, loading: false, ready: true }));
-                return;
               } else {
-                applyAuthFromSession(setState, nextSession);
+                lastSignedInSessionRef.current = null;
+                applyAuthFromSession(setState, null);
               }
 
               const nextUser = nextSession?.user ?? null;
@@ -532,6 +530,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   const logout = React.useCallback(async () => {
     try {
+      lastSignedInSessionRef.current = null;
       await (onlineApi as any).logout?.();
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
@@ -543,6 +542,38 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       if (isNasProviderEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
+      lastSignedInSessionRef.current = null;
+      setState((s) => ({
+        ...s,
+        status: "signed_out",
+        session: null,
+        user: null,
+        profile: null,
+        loading: false,
+        ready: true,
+        error: null,
+      }));
+    }
+  }, []);
+
+
+  const deleteAccount = React.useCallback(async () => {
+    try {
+      lastSignedInSessionRef.current = null;
+      await (onlineApi as any).deleteAccount?.();
+    } catch (e) {
+      console.warn("[useAuthOnline] deleteAccount error:", e);
+      throw e;
+    } finally {
+      try {
+        setStorageUser(null);
+        localStorage.removeItem("dc_user_id");
+        localStorage.removeItem("dc_nas_profile_onboarding_uid");
+      } catch {}
+      if (isNasProviderEnabled()) {
+        await cleanupSupabaseLocalSessionForNas();
+      }
+      lastSignedInSessionRef.current = null;
       setState((s) => ({
         ...s,
         status: "signed_out",
@@ -563,9 +594,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       signup,
       login,
       logout,
+      deleteAccount,
       refresh,
     }),
-    [state, signup, login, logout, refresh]
+    [state, signup, login, logout, deleteAccount, refresh]
   );
 
   return <AuthOnlineContext.Provider value={value}>{children}</AuthOnlineContext.Provider>;
@@ -580,6 +612,7 @@ export function useAuthOnline() {
       signup: async () => false,
       login: async () => false,
       logout: async () => {},
+      deleteAccount: async () => {},
       refresh: async () => {},
     } as Ctx;
   }

@@ -3259,8 +3259,8 @@ try {
       case "account_start":
         page = (
           <AccountStart
-            onLogin={() => go("auth_start")}
-            onCreate={() => go("auth_start")}
+            onLogin={() => go("auth_v7_login")}
+            onCreate={() => go("auth_v7_signup")}
             onForgot={() => go("auth_forgot")}
           />
         );
@@ -3758,7 +3758,7 @@ case "babyfoot_team_edit":
                 ? go("x01_online_setup", { ...(routeParams || {}), lobbyCode, lobbyId, online: true, onlineMode })
                 : go("games")
             }
-            onStart={(opts) => {
+            onStart={async (opts) => {
               const orderedPlayerIds = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
               const profilesIndex = new Map<string, any>();
               [...onlineProfilesForSetup, ...profilesForSetup, ...(Array.isArray(store.profiles) ? store.profiles : [])].forEach((profile: any) => {
@@ -3845,8 +3845,8 @@ case "babyfoot_team_edit":
                 : { resumeId: null, fresh, config: nextConfigV3 };
 
               if (isOnlineSetup && lobbyCode) {
-                onlineApi
-                  .startMatch({
+                try {
+                  await onlineApi.startMatch({
                     lobbyCode,
                     initialState: {
                       mode: "x01",
@@ -3862,10 +3862,12 @@ case "babyfoot_team_edit":
                       startedAt: new Date().toISOString(),
                       source: "x01setup_v3",
                     },
-                  })
-                  .catch((error: any) => {
-                    console.warn("[ONLINE:X01] startMatch failed", error?.message || error);
                   });
+                } catch (error: any) {
+                  console.warn("[ONLINE:X01] startMatch failed", error?.message || error);
+                  window.alert(error?.message || "Impossible de lancer le match online. Vérifie que tu es l’hôte et que tous les joueurs sont prêts.");
+                  return;
+                }
               }
 
               go("x01_play_v3", nextParams);

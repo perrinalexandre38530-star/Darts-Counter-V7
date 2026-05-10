@@ -1139,6 +1139,63 @@ type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" |
 
 type AccountPage = "account_menu" | "account_notifications" | "account_danger";
 
+async function hardClearLocalAccountAndAppDataForDeletedAccount() {
+  if (typeof window === "undefined") return;
+
+  try { window.localStorage.clear(); } catch {}
+  try { window.sessionStorage.clear(); } catch {}
+
+  try {
+    const idb: any = (window as any).indexedDB;
+    if (!idb) return;
+
+    if (typeof idb.databases === "function") {
+      const dbs = await idb.databases();
+      for (const db of dbs || []) {
+        const name = String(db?.name || "").trim();
+        if (!name) continue;
+        await new Promise<void>((resolve) => {
+          const req = window.indexedDB.deleteDatabase(name);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+          req.onblocked = () => resolve();
+        });
+      }
+      return;
+    }
+
+    const known = [
+      "dc_stats_v1",
+      "dc_history_v1",
+      "dc_profiles_v1",
+      "dc_training_v1",
+      "darts-counter-v7",
+      "multisports-scoring",
+    ];
+    for (const name of known) {
+      await new Promise<void>((resolve) => {
+        const req = window.indexedDB.deleteDatabase(name);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+    }
+  } catch {}
+}
+
+function forceAuthRoute(hash: "#/auth/login" | "#/auth/signup", reload = false) {
+  if (typeof window === "undefined") return;
+  try {
+    window.location.hash = hash;
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  } catch {
+    window.location.hash = hash;
+  }
+  if (reload) {
+    try { window.location.reload(); } catch {}
+  }
+}
+
 function AccountPages({
   go,
   onBackToSettingsMenu,
@@ -1217,11 +1274,22 @@ function AccountPages({
     }
   }
 
+  async function handleLogoutV8() {
+    setMessage(null);
+    setError(null);
+    try {
+      await logout();
+      forceAuthRoute("#/auth/login", false);
+    } catch (e: any) {
+      setError("Erreur déconnexion : " + (e?.message ?? e));
+    }
+  }
+
   async function handleDeleteAccountV8() {
     const ok = window.confirm(
       "⚠️ Cette action est définitive.\n\n" +
-        "Toutes tes données (profil, stats, dartsets) seront supprimées côté cloud.\n\n" +
-        "Continuer ?"
+        "Le compte sera supprimé de la base NAS, puis les données locales de cet appareil seront effacées.\n\n" +
+        "Tu seras redirigé vers la création de compte. Continuer ?"
     );
     if (!ok) return;
 
@@ -1231,10 +1299,10 @@ function AccountPages({
 
     try {
       await deleteAccount();
-      alert("Compte supprimé. Un nouveau compte vierge a été recréé.");
+      await hardClearLocalAccountAndAppDataForDeletedAccount();
+      forceAuthRoute("#/auth/signup", true);
     } catch (e: any) {
       setError("Erreur suppression compte : " + (e?.message ?? e));
-    } finally {
       setDeleting(false);
     }
   }
@@ -1275,7 +1343,7 @@ function AccountPages({
       go("account_start" as any);
       return;
     }
-    if (typeof window !== "undefined") window.location.hash = "#/auth/login";
+    if (typeof window !== "undefined") forceAuthRoute("#/auth/login", false);
   }
 
   function openMyProfile() {
@@ -1320,7 +1388,7 @@ function AccountPages({
                 {status === "signed_in" ? (
                   <button
                     type="button"
-                    onClick={logout}
+                    onClick={handleLogoutV8}
                     style={{
                       borderRadius: 999,
                       border: `1px solid ${theme.borderSoft}`,

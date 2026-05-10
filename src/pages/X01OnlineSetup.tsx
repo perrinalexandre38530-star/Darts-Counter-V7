@@ -37,6 +37,8 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     (store.profiles || [])[0] ||
     null;
 
+  const activeUserId = String((activeProfile as any)?.id || (activeProfile as any)?.userId || (activeProfile as any)?.profileId || "").trim();
+
   // Code salon reçu via params.lobbyCode
   const rawCode = (params?.lobbyCode || "").toString().trim().toUpperCase();
   const effectiveCode = rawCode || "----";
@@ -122,6 +124,9 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   const [chatText, setChatText] = React.useState("");
   const [chatError, setChatError] = React.useState<string | null>(null);
   const [chatSending, setChatSending] = React.useState(false);
+  const [readySending, setReadySending] = React.useState(false);
+  const [lobbyActionError, setLobbyActionError] = React.useState<string | null>(null);
+  const autoLaunchRef = React.useRef<string | null>(null);
 
   const refreshNasLobby = React.useCallback(async () => {
     if (!rawCode) return;
@@ -178,49 +183,143 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     };
   }, [rawCode]);
 
+
+  const openStartedOnlineMatch = React.useCallback((matchRow: any) => {
+    if (!matchRow) return;
+    const status = String(matchRow?.status || "").toLowerCase();
+    if (status !== "started") return;
+
+    const state =
+      (matchRow?.state_json && typeof matchRow.state_json === "object" ? matchRow.state_json : null) ||
+      (matchRow?.state && typeof matchRow.state === "object" ? matchRow.state : null) ||
+      {};
+    const cfg = state?.x01ConfigV3 || state?.config || state?.initialState?.x01ConfigV3 || state?.initialState?.config || null;
+    if (!cfg) return;
+
+    const launchKey = String(matchRow?.id || `${rawCode}:${matchRow?.updated_at || matchRow?.updatedAt || "started"}`);
+    if (autoLaunchRef.current === launchKey) return;
+    autoLaunchRef.current = launchKey;
+
+    go("x01_play_v3", {
+      resumeId: null,
+      fresh: Date.now(),
+      online: true,
+      onlineMode: "x01",
+      lobbyCode: rawCode || state?.lobbyCode || null,
+      lobbyId: nasLobby?.id || params?.lobbyId || state?.lobbyId || null,
+      players: Array.isArray(state?.players) ? state.players : connectedPlayers,
+      config: cfg,
+      x01ConfigV3: cfg,
+      from: "x01_online_lobby_autostart",
+    });
+  }, [rawCode, go, nasLobby?.id, params?.lobbyId]);
+
+  React.useEffect(() => {
+    if (!rawCode) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const matchRow = await (onlineApi as any).fetchMatchByCode(rawCode);
+        if (!cancelled) openStartedOnlineMatch(matchRow);
+      } catch {
+        // silencieux : le salon reste utilisable même si le match live n'existe pas encore
+      }
+    };
+
+    tick().catch(() => {});
+    const timer = window.setInterval(() => tick().catch(() => {}), 2200);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [rawCode, openStartedOnlineMatch]);
+
   const lobbyPlayersRaw: any[] = Array.isArray(nasLobby?.players) ? nasLobby.players : [];
+  const lobbyHostUserId = String(nasLobby?.hostUserId || nasLobby?.host_user_id || "").trim();
+
   const connectedPlayers = React.useMemo(() => {
     const fromNas = lobbyPlayersRaw
-      .map((p: any) => ({
-        id: String(p?.userId || p?.user_id || p?.id || "").trim(),
-        name: String(p?.displayName || p?.nickname || p?.name || "Joueur").trim(),
-        avatarUrl: p?.avatarUrl || p?.avatar_url || null,
-        role: p?.role || "player",
-        status: p?.status || "online",
-      }))
+      .map((p: any) => {
+        const id = String(p?.userId || p?.user_id || p?.id || "").trim();
+        const status = String(p?.status || "online").trim().toLowerCase();
+        const isHostPlayer = !!lobbyHostUserId && id === lobbyHostUserId;
+        return {
+          id,
+          userId: id,
+          name: String(p?.displayName || p?.nickname || p?.name || "Joueur").trim(),
+          avatarUrl: p?.avatarUrl || p?.avatar_url || null,
+          role: p?.role || "player",
+          status,
+          ready: isHostPlayer || status === "ready" || !!p?.ready,
+          isHost: isHostPlayer || !!p?.isHost,
+        };
+      })
       .filter((p: any) => p.id || p.name);
 
     if (fromNas.length) return fromNas;
 
-    const fromWorker = clients.map((c: any) => ({
-      id: String(c?.id || "").trim(),
-      name: String(c?.name || "Joueur").trim(),
-      avatarUrl: null,
-      role: "player",
-      status: wsStatus === "connected" ? "online" : "offline",
-    }));
+    const fromWorker = clients.map((c: any) => {
+      const id = String(c?.id || "").trim();
+      return {
+        id,
+        userId: id,
+        name: String(c?.name || "Joueur").trim(),
+        avatarUrl: null,
+        role: "player",
+        status: wsStatus === "connected" ? "online" : "offline",
+        ready: false,
+        isHost: false,
+      };
+    });
 
     if (fromWorker.length) return fromWorker;
 
     return [
       {
         id: String((activeProfile?.id as any) || "local"),
+        userId: String((activeProfile?.id as any) || "local"),
         name: activeProfile?.name || "Joueur",
         avatarUrl: (activeProfile as any)?.avatarDataUrl || (activeProfile as any)?.avatarUrl || (activeProfile as any)?.avatar || null,
         role: "player",
         status: "online",
+        ready: false,
+        isHost: false,
       },
     ];
-  }, [lobbyPlayersRaw, clients, wsStatus, activeProfile]);
+  }, [lobbyPlayersRaw, clients, wsStatus, activeProfile, lobbyHostUserId]);
+
+  const currentLobbyPlayer = connectedPlayers.find((p: any) => String(p?.id || p?.userId || "") === activeUserId) || null;
+  const isHost = !!activeUserId && !!lobbyHostUserId && activeUserId === lobbyHostUserId;
+  const nonHostPlayers = connectedPlayers.filter((p: any) => p?.role !== "spectator" && !p?.isHost);
+  const notReadyPlayers = nonHostPlayers.filter((p: any) => !p?.ready);
+  const allPlayersReady = nonHostPlayers.length === 0 || notReadyPlayers.length === 0;
+  const readyCount = nonHostPlayers.length - notReadyPlayers.length;
+  const isCurrentPlayerReady = !!currentLobbyPlayer?.ready;
+  const lobbyAlreadyStarted = String(nasLobby?.status || "waiting").toLowerCase() === "started";
+  const canHostConfigure = isHost && allPlayersReady && !lobbyAlreadyStarted;
 
   const defaultOrder = connectedPlayers.map((p: any) => ({ id: p.id || p.name, name: p.name || "Joueur" }));
 
   function handleConfigureMatch() {
+    setLobbyActionError(null);
+
+    if (!isHost) {
+      setLobbyActionError("Seul l’hôte du salon peut configurer et lancer la partie.");
+      return;
+    }
+
+    if (!allPlayersReady) {
+      setLobbyActionError("Tous les joueurs doivent être prêts avant d’ouvrir la configuration de partie.");
+      return;
+    }
+
     go("x01setup", {
       online: true,
       onlineMode: "x01",
       lobbyCode: rawCode || null,
       lobbyId: nasLobby?.id || params?.lobbyId || null,
+      onlineHostUserId: lobbyHostUserId,
       settings: {
         ...(nasLobby?.settings || {}),
         start: startScore,
@@ -230,6 +329,25 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       from: "x01_online_lobby",
       fresh: Date.now(),
     });
+  }
+
+  async function handleToggleReady() {
+    if (!rawCode || isHost || readySending) return;
+    setReadySending(true);
+    setLobbyActionError(null);
+    try {
+      const nextLobby = await (onlineApi as any).setLobbyReady({
+        code: rawCode,
+        ready: !isCurrentPlayerReady,
+        nickname: activeProfile?.name || "Joueur",
+        role: "player",
+      });
+      if (nextLobby) setNasLobby(nextLobby);
+    } catch (error: any) {
+      setLobbyActionError(error?.message || "Impossible de changer le statut prêt.");
+    } finally {
+      setReadySending(false);
+    }
   }
 
   async function handleSendChat() {
@@ -467,24 +585,44 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 7 }}>
-            {connectedPlayers.map((c: any) => (
-              <div
-                key={c.id || c.name}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  borderRadius: 10,
-                  padding: "7px 8px",
-                  background: "rgba(255,255,255,.045)",
-                  border: "1px solid rgba(255,255,255,.07)",
-                }}
-              >
-                <span style={{ fontWeight: 800 }}>{c.name}</span>
-                <span style={{ opacity: 0.78, fontSize: 11 }}>{c.role || "player"} • {c.status || "online"}</span>
-              </div>
-            ))}
+            {connectedPlayers.map((c: any) => {
+              const ready = !!c?.ready;
+              const isPlayerHost = !!c?.isHost;
+              return (
+                <div
+                  key={c.id || c.name}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    borderRadius: 10,
+                    padding: "7px 8px",
+                    background: "rgba(255,255,255,.045)",
+                    border: ready || isPlayerHost ? "1px solid rgba(127,226,169,.24)" : "1px solid rgba(255,255,255,.07)",
+                  }}
+                >
+                  <span style={{ fontWeight: 800 }}>{c.name}</span>
+                  <span
+                    style={{
+                      opacity: 0.95,
+                      fontSize: 11,
+                      borderRadius: 999,
+                      padding: "3px 7px",
+                      background: isPlayerHost
+                        ? "rgba(255,213,106,.14)"
+                        : ready
+                        ? "rgba(127,226,169,.14)"
+                        : "rgba(255,255,255,.08)",
+                      color: isPlayerHost ? "#ffd56a" : ready ? "#7fe2a9" : "rgba(255,255,255,.72)",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {isPlayerHost ? "HÔTE" : ready ? "PRÊT" : "EN ATTENTE"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
         {nasLobbyError ? <div style={{ color: "#ff8a8a", marginTop: 7 }}>{nasLobbyError}</div> : null}
@@ -615,7 +753,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
         {chatError ? <div style={{ color: "#ff8a8a", marginTop: 7, fontSize: 11 }}>{chatError}</div> : null}
       </div>
 
-      {/* Bloc "Configurer la partie X01" */}
+      {/* Bloc prêt / hôte / configuration */}
       <div
         style={{
           marginBottom: 16,
@@ -629,46 +767,106 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
       >
         <div
           style={{
-            fontWeight: 700,
-            marginBottom: 6,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 8,
           }}
         >
-          Configurer la partie X01
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 2 }}>
+              {isHost ? "Commandes hôte" : "Statut joueur"}
+            </div>
+            <div style={{ opacity: 0.78, fontSize: 11 }}>
+              Prêts : {readyCount}/{nonHostPlayers.length} joueur(s) requis
+            </div>
+          </div>
+          <div
+            style={{
+              borderRadius: 999,
+              padding: "4px 9px",
+              border: "1px solid rgba(255,255,255,.12)",
+              background: allPlayersReady ? "rgba(127,226,169,.14)" : "rgba(255,213,106,.12)",
+              color: allPlayersReady ? "#7fe2a9" : "#ffd56a",
+              fontWeight: 900,
+              fontSize: 11,
+            }}
+          >
+            {allPlayersReady ? "READY" : "ATTENTE"}
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleConfigureMatch}
-          disabled={!defaultOrder.length}
-          style={{
-            width: "100%",
-            borderRadius: 999,
-            padding: "9px 12px",
-            border: "none",
-            fontSize: 13,
-            fontWeight: 800,
-            background: defaultOrder.length
-              ? "linear-gradient(180deg,#ffd56a,#e9a93d)"
-              : "linear-gradient(180deg,#444,#333)",
-            color: "#1c1304",
-            cursor: defaultOrder.length ? "pointer" : "default",
-            opacity: defaultOrder.length ? 1 : 0.5,
-            marginBottom: 6,
-          }}
-        >
-          ⚙️ Configurer X01 ({startScore})
-        </button>
+        {isHost ? (
+          <>
+            <button
+              type="button"
+              onClick={handleConfigureMatch}
+              disabled={!canHostConfigure || !defaultOrder.length}
+              style={{
+                width: "100%",
+                borderRadius: 999,
+                padding: "9px 12px",
+                border: "none",
+                fontSize: 13,
+                fontWeight: 900,
+                background: canHostConfigure && defaultOrder.length
+                  ? "linear-gradient(180deg,#ffd56a,#e9a93d)"
+                  : "linear-gradient(180deg,#444,#333)",
+                color: canHostConfigure && defaultOrder.length ? "#1c1304" : "rgba(255,255,255,.62)",
+                cursor: canHostConfigure && defaultOrder.length ? "pointer" : "default",
+                opacity: canHostConfigure && defaultOrder.length ? 1 : 0.65,
+                marginBottom: 6,
+              }}
+            >
+              ⚙️ Configurer et préparer X01 ({startScore})
+            </button>
+            <div style={{ fontSize: 11, opacity: 0.85, lineHeight: 1.35 }}>
+              Seul l’hôte peut ouvrir la configuration et lancer la partie. Une fois lancée,
+              l’écran de jeu s’ouvrira automatiquement chez tous les joueurs du salon.
+              {!allPlayersReady && notReadyPlayers.length > 0 ? (
+                <span style={{ display: "block", marginTop: 4, color: "#ffd56a" }}>
+                  En attente : {notReadyPlayers.map((p: any) => p.name || "Joueur").join(", ")}
+                </span>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleReady().catch(() => {})}
+              disabled={readySending || !rawCode || lobbyAlreadyStarted}
+              style={{
+                width: "100%",
+                borderRadius: 999,
+                padding: "9px 12px",
+                border: "none",
+                fontSize: 13,
+                fontWeight: 900,
+                background: isCurrentPlayerReady
+                  ? "linear-gradient(180deg,#7fe2a9,#35c86d)"
+                  : "linear-gradient(180deg,#ffd56a,#e9a93d)",
+                color: "#07120a",
+                cursor: readySending || !rawCode || lobbyAlreadyStarted ? "default" : "pointer",
+                opacity: readySending || !rawCode || lobbyAlreadyStarted ? 0.65 : 1,
+                marginBottom: 6,
+              }}
+            >
+              {readySending ? "Synchronisation…" : isCurrentPlayerReady ? "✅ Prêt" : "Je suis prêt"}
+            </button>
+            <div style={{ fontSize: 11, opacity: 0.85, lineHeight: 1.35 }}>
+              Quand tu es prêt, valide ton statut. L’hôte configurera la partie puis le jeu
+              s’ouvrira automatiquement ici dès qu’il lance la manche.
+            </div>
+          </>
+        )}
 
-        <div
-          style={{
-            fontSize: 11,
-            opacity: 0.85,
-          }}
-        >
-          Ouvre la vraie configuration X01 pour choisir les joueurs, le score,
-          les sets/legs, les options d’entrée/sortie et l’ordre de jeu. Au
-          lancement, le match sera créé côté NAS avec le code salon actuel.
-        </div>
+        {lobbyActionError ? (
+          <div style={{ color: "#ff8a8a", marginTop: 8, fontSize: 11, fontWeight: 800 }}>
+            {lobbyActionError}
+          </div>
+        ) : null}
       </div>
 
       {/* Bouton debug DO */}

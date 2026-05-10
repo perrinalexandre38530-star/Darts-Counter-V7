@@ -384,22 +384,24 @@ function resolveDartSetIdFromRecord(r: any, profileId: string, pp?: any): string
   return global ? String(global) : null;
 }
 
-function resolvePlayerStatsRowFromRecord(r: any, profileId: string): any | null {
-  const summary = r?.summary ?? r?.payload?.summary ?? null;
+function resolvePlayerStatsRowFromRecord(r: any, profileId: string, playerName = ""): any | null {
+  const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? null;
   const perPlayer = pickPerPlayer(summary);
   const ids = collectCandidatePlayerIds(r, profileId, null);
+  const wantedName = String(playerName || "").trim().toLowerCase();
+  const rowName = (x: any) => String(x?.name ?? x?.playerName ?? x?.profileName ?? x?.displayName ?? x?.nickname ?? "").trim().toLowerCase();
 
   // Priorité aux lignes stats complètes du summary. Elles sont souvent indexées
   // par player.id, tandis que l'onglet Stats reçoit le profileId actif.
   const fromSummary = perPlayer.find((pp: any) => {
     const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
-    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v))) || (wantedName && rowName(pp) === wantedName);
   });
   if (fromSummary) return fromSummary;
 
   return (pickRecordPlayers(r) || []).find((pp: any) => {
     const vals = [resolveProfileId(pp), pp?.id, pp?.profileId, pp?.playerId, pp?.pid, pp?.uid];
-    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v)));
+    return vals.some((v) => v !== null && v !== undefined && ids.has(String(v))) || (wantedName && rowName(pp) === wantedName);
   }) || null;
 }
 
@@ -475,7 +477,7 @@ type MiniMatch = {
   avg3?: number | null;
 };
 
-function buildRecentMatchesMap(allHistory: any[], profileId: string): Record<string, MiniMatch[]> {
+function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName = ""): Record<string, MiniMatch[]> {
   const map: Record<string, MiniMatch[]> = {};
 
   for (const r of allHistory || []) {
@@ -487,7 +489,7 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string): Record<str
     const summary = r?.summary ?? r?.payload?.summary ?? null;
     const perPlayer = pickPerPlayer(summary);
 
-    const mine = resolvePlayerStatsRowFromRecord(r, profileId);
+    const mine = resolvePlayerStatsRowFromRecord(r, profileId, playerName);
     if (!mine) continue;
 
     const dsid = resolveDartSetIdFromRecord(r, profileId, mine);
@@ -868,17 +870,116 @@ type AggRow = {
   evoAvg3?: number[];
 };
 
-function computeAggFromHistory(allHistory: any[], profileId: string): Record<string, AggRow> {
+
+function parseDartLoose(raw: any): { value: number; mult: number; score: number; label: string } {
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.segment ?? raw?.seg ?? "").trim().toUpperCase();
+  let value = Number(raw?.number ?? raw?.num ?? raw?.n ?? raw?.segment ?? raw?.v ?? raw?.value ?? 0) || 0;
+  let mult = Number(raw?.multiplier ?? raw?.mult ?? raw?.m ?? raw?.multi ?? 0) || 0;
+
+  if (raw?.miss === true || label === "MISS" || label === "M" || label === "0") return { value: 0, mult: 0, score: 0, label: "MISS" };
+  if (raw?.dBull === true || raw?.dbull === true || label === "DB" || label === "DBULL" || label === "D25" || label === "50") return { value: 25, mult: 2, score: 50, label: "DB" };
+  if (raw?.bull === true || label === "BULL" || label === "SB" || label === "SBULL" || label === "S25" || label === "25") return { value: 25, mult: 1, score: 25, label: "SB" };
+
+  const m = label.match(/^([SDT])?(\d{1,2})$/);
+  if (m) {
+    value = Number(m[2]) || value;
+    mult = m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1;
+  }
+  if (!mult) mult = value > 0 ? 1 : 0;
+  if (value > 20 && value !== 25) value = 0;
+  if (value === 25 && mult > 2) mult = 2;
+  const score = Number(raw?.points ?? raw?.score ?? raw?.scored ?? NaN);
+  const computed = value && mult ? (value === 25 && mult === 2 ? 50 : value * mult) : 0;
+  const mm = mult === 3 ? "T" : mult === 2 ? "D" : mult === 1 ? "S" : "MISS";
+  return { value, mult, score: Number.isFinite(score) ? score : computed, label: value ? `${mm}${value}` : "MISS" };
+}
+
+function playerAliasesForRecord(r: any, profileId: string, playerName = ""): Set<string> {
+  const ids = collectCandidatePlayerIds(r, profileId, null);
+  const wantedName = String(playerName || "").trim().toLowerCase();
+  for (const p of pickRecordPlayers(r)) {
+    const vals = [p?.id, p?.profileId, p?.playerId, p?.pid, p?.uid];
+    const nm = String(p?.name ?? p?.playerName ?? p?.profileName ?? p?.displayName ?? p?.nickname ?? "").trim().toLowerCase();
+    const hit = vals.some((v) => v !== null && v !== undefined && ids.has(String(v))) || (wantedName && nm === wantedName);
+    if (hit) vals.forEach((v) => { if (v !== null && v !== undefined && String(v).trim()) ids.add(String(v)); });
+  }
+  return ids;
+}
+
+function rawVisitsForPlayer(r: any, profileId: string, playerName = ""): any[] {
+  const payload = r?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = r?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const explicit =
+    payload?.visitHistory ?? payload?.visitsHistory ?? payload?.__legStats?.visits ??
+    summary?.visitHistory ?? summary?.visitsHistory ?? summary?.__legStats?.visits ?? summary?.legacy?.visitHistory ??
+    payload?.visits ?? nested?.visits ?? r?.engineState?.visits ?? r?.visits ?? [];
+  const aliases = playerAliasesForRecord(r, profileId, playerName);
+  if (Array.isArray(explicit) && explicit.length) {
+    return explicit.filter((v: any) => {
+      const id = String(v?.p ?? v?.playerId ?? v?.pid ?? v?.profileId ?? v?.id ?? "").trim();
+      return !id ? false : aliases.has(id);
+    });
+  }
+  return [];
+}
+
+type RawVisitStats = {
+  darts: number; points: number; bestVisit: number; bestCheckout: number;
+  hitsS: number; hitsD: number; hitsT: number; bull: number; dBull: number; miss: number; bust: number;
+  n180: number; n140: number; n100: number; segments: Record<string, number>; scorePerVisit: number[];
+};
+
+function computeRawVisitStats(r: any, profileId: string, playerName = ""): RawVisitStats | null {
+  const visits = rawVisitsForPlayer(r, profileId, playerName);
+  if (!visits.length) return null;
+  const out: RawVisitStats = { darts: 0, points: 0, bestVisit: 0, bestCheckout: 0, hitsS: 0, hitsD: 0, hitsT: 0, bull: 0, dBull: 0, miss: 0, bust: 0, n180: 0, n140: 0, n100: 0, segments: {}, scorePerVisit: [] };
+  for (const v of visits) {
+    const segsRaw = Array.isArray(v?.segments) ? v.segments : Array.isArray(v?.darts) ? v.darts : Array.isArray(v?.throws) ? v.throws : [];
+    const bust = v?.bust === true || v?.isBust === true || v?.busted === true;
+    if (bust) out.bust += 1;
+    let visitScore = Number(v?.score ?? v?.total ?? v?.points ?? NaN);
+    let computedScore = 0;
+    for (const raw of segsRaw) {
+      const d = parseDartLoose(raw);
+      out.darts += 1;
+      computedScore += d.score;
+      if (d.value === 0 || d.mult === 0) { out.miss += 1; out.segments.MISS = (out.segments.MISS || 0) + 1; }
+      else if (d.value === 25 && d.mult === 1) { out.bull += 1; out.segments.SB = (out.segments.SB || 0) + 1; }
+      else if (d.value === 25 && d.mult === 2) { out.dBull += 1; out.segments.DB = (out.segments.DB || 0) + 1; }
+      else {
+        const key = `${d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S"}${d.value}`;
+        out.segments[key] = (out.segments[key] || 0) + 1;
+        if (d.mult === 1) out.hitsS += 1;
+        else if (d.mult === 2) out.hitsD += 1;
+        else if (d.mult === 3) out.hitsT += 1;
+      }
+    }
+    if (!Number.isFinite(visitScore)) visitScore = computedScore;
+    if (!bust) {
+      out.points += Math.max(0, visitScore || 0);
+      out.bestVisit = Math.max(out.bestVisit, Math.max(0, visitScore || 0));
+      if (v?.finish || v?.isFinish || v?.checkout || v?.isCheckout) out.bestCheckout = Math.max(out.bestCheckout, Math.max(0, visitScore || 0));
+      if (visitScore === 180) out.n180 += 1;
+      if (visitScore >= 140) out.n140 += 1;
+      if (visitScore >= 100) out.n100 += 1;
+    }
+    out.scorePerVisit.push(bust ? 0 : Math.max(0, visitScore || 0));
+  }
+  return out.darts > 0 ? out : null;
+}
+
+function computeAggFromHistory(allHistory: any[], profileId: string, playerName = ""): Record<string, AggRow> {
   const out: Record<string, AggRow> = {};
 
   for (const r of allHistory || []) {
     if (!isX01Record(r)) continue;
 
-    const status = r?.status ?? r?.state ?? "";
+    const status = r?.status ?? "";
     if (status && status !== "finished") continue;
 
-    const summary = r?.summary ?? r?.payload?.summary ?? null;
-    const mine = resolvePlayerStatsRowFromRecord(r, profileId);
+    const summary = r?.summary ?? r?.payload?.summary ?? r?.payload?.payload?.summary ?? null;
+    const mine = resolvePlayerStatsRowFromRecord(r, profileId, playerName);
     if (!mine) continue;
 
     const dsid = String(resolveDartSetIdFromRecord(r, profileId, mine) ?? "");
@@ -910,27 +1011,38 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
 
     row.matches += 1;
 
-    const avg3 =
+    // Source prioritaire pour les anciens matchs X01 : les volées détaillées.
+    // C'est exactement ce qui permet aux autres écrans stats de retrouver les AVG.
+    const raw = computeRawVisitStats(r, profileId, playerName);
+
+    const summaryDarts = pickDartsFromRow(mine);
+    const summaryPoints = pickPointsFromRow(mine);
+    const summaryAvg3 =
       pickAvg3FromRow(mine) ??
       pickNum(summary, "avg3", "avg3d") ??
-      (() => {
-        const pts = pickPointsFromRow(mine);
-        const darts = pickDartsFromRow(mine);
-        return darts > 0 && pts > 0 ? (pts / darts) * 3 : null;
-      })();
+      (summaryDarts > 0 && summaryPoints > 0 ? (summaryPoints / summaryDarts) * 3 : null);
 
-    if (avg3 !== null) row.evoAvg3.push(Number(avg3));
+    const avg3 = raw?.darts ? (raw.points / raw.darts) * 3 : summaryAvg3;
+    if (avg3 !== null && Number.isFinite(Number(avg3))) row.evoAvg3.push(Number(avg3));
 
-    row.darts += pickDartsFromRow(mine);
+    row.darts += raw?.darts || summaryDarts;
 
-    row.bestVisit = Math.max(row.bestVisit, N(pickNum(mine, "bestVisit", "bestVolley", "bestThree", "best3", "bestScore"), 0));
-    row.bestCheckout = Math.max(row.bestCheckout, N(pickNum(mine, "bestCheckout", "bestCO", "bestOut"), 0));
+    row.bestVisit = Math.max(
+      row.bestVisit,
+      raw?.bestVisit || 0,
+      N(pickNum(mine, "bestVisit", "bestVolley", "bestThree", "best3", "bestScore"), 0)
+    );
+    row.bestCheckout = Math.max(
+      row.bestCheckout,
+      raw?.bestCheckout || 0,
+      N(pickNum(mine, "bestCheckout", "bestCO", "bestOut"), 0)
+    );
+
+    const spv = raw?.scorePerVisit?.length ? raw.scorePerVisit : extractScorePerVisit(mine, r);
 
     const f9 = pickNum(mine, "first9", "first9Avg", "avgFirst9", "firstNine") ?? null;
-    if (f9 !== null) {
-      row.first9 += Number(f9);
-    } else {
-      const spv = extractScorePerVisit(mine, r);
+    if (f9 !== null) row.first9 += Number(f9);
+    else {
       const f9c = computeFirst9FromScorePerVisit(spv);
       if (f9c !== null) row.first9 += Number(f9c);
     }
@@ -939,43 +1051,39 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
       pickNum(mine, "checkoutPct", "coPct", "checkoutPercent", "pctCheckout") ??
       pickNum(mine, "checkout%", "checkoutP") ??
       null;
-    if (coPct !== null) {
-      row.checkoutPct += Number(coPct);
-    } else {
-      const spv = extractScorePerVisit(mine, r);
-      const startScore = extractStartScoreFromRecord(r);
-      const calc = computeCheckoutPctFromScorePerVisit(startScore, spv);
+    if (coPct !== null) row.checkoutPct += Number(coPct);
+    else {
+      const calc = computeCheckoutPctFromScorePerVisit(extractStartScoreFromRecord(r), spv);
       if (calc) row.checkoutPct += Number(calc.pct);
     }
+
+    const summaryS = pickHitCount(mine, "S");
+    const summaryD = pickHitCount(mine, "D");
+    const summaryT = pickHitCount(mine, "T");
+    const sHits = raw?.darts ? raw.hitsS : summaryS;
+    const dHits = raw?.darts ? raw.hitsD : summaryD;
+    const tHits = raw?.darts ? raw.hitsT : summaryT;
 
     const dPct =
       pickNum(mine, "doublesPct", "doublePct", "doublesPercent", "pctDoubles") ??
       pickNum(mine, "doubles%", "doublesP") ??
       null;
-    if (dPct !== null) {
-      row.doublesPct += Number(dPct);
-    } else {
-      // fallback: proportion de Doubles parmi les hits (approx utile quand doublesPct n'est pas tracké)
-      const s = N(pickNum(mine, "hitsS", "s", "singles", "single", "S"), 0);
-      const d = N(pickNum(mine, "hitsD", "d", "doubles", "double", "D"), 0);
-      const t = N(pickNum(mine, "hitsT", "t", "triples", "triple", "T"), 0);
-      const denom = Math.max(1, s + d + t);
-      row.doublesPct += (d / denom) * 100;
-    }
+    if (dPct !== null) row.doublesPct += Number(dPct);
+    else row.doublesPct += (dHits / Math.max(1, sHits + dHits + tHits)) * 100;
 
-    row.n180 += N(pickNum(mine, "n180", "count180", "s180", "nb180", "h180") ?? pickBucket(mine, "180"), 0);
-    row.n140 += N(pickNum(mine, "n140", "count140", "s140", "nb140", "h140") ?? pickBucket(mine, "140+"), 0);
-    row.n100 += N(pickNum(mine, "n100", "count100", "s100", "nb100", "n100p", "n100Plus", "h100") ?? pickBucket(mine, "100+"), 0);
+    row.n180 += raw?.n180 || N(pickNum(mine, "n180", "count180", "s180", "nb180", "h180") ?? pickBucket(mine, "180"), 0);
+    row.n140 += raw?.n140 || N(pickNum(mine, "n140", "count140", "s140", "nb140", "h140") ?? pickBucket(mine, "140+"), 0);
+    row.n100 += raw?.n100 || N(pickNum(mine, "n100", "count100", "s100", "nb100", "n100p", "n100Plus", "h100") ?? pickBucket(mine, "100+"), 0);
 
-    row.hitsS += pickHitCount(mine, "S");
-    row.hitsD += pickHitCount(mine, "D");
-    row.hitsT += pickHitCount(mine, "T");
-    row.bull += N(pickNum(mine, "bull", "bulls", "hitsBull", "sbull", "BULL"), 0);
-    row.dBull += N(pickNum(mine, "dBull", "dbull", "dbulls", "hitsDBull", "DBULL"), 0);
-    row.miss += pickMissCount(mine);
-    row.bust += N(pickNum(mine, "bust", "busts", "bustCount", "nbBust"), 0);
+    row.hitsS += sHits;
+    row.hitsD += dHits;
+    row.hitsT += tHits;
+    row.bull += raw?.darts ? raw.bull : N(pickNum(mine, "bull", "bulls", "hitsBull", "sbull", "BULL"), 0);
+    row.dBull += raw?.darts ? raw.dBull : N(pickNum(mine, "dBull", "dbull", "dbulls", "hitsDBull", "DBULL"), 0);
+    row.miss += raw?.darts ? raw.miss : pickMissCount(mine);
+    row.bust += raw?.darts ? raw.bust : N(pickNum(mine, "bust", "busts", "bustCount", "nbBust"), 0);
 
-    const segObj = extractSegmentsObjectFromPlayer(mine) || null;
+    const segObj = raw?.segments && Object.keys(raw.segments).length ? raw.segments : extractSegmentsObjectFromPlayer(mine) || null;
     if (segObj) {
       for (const [k, v] of Object.entries(segObj)) {
         const kk = normalizeSegKey(k);
@@ -989,14 +1097,11 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
   for (const dsid of Object.keys(out)) {
     const row = out[dsid];
     const m = Math.max(1, row.matches);
-
     const arr = (row.evoAvg3 || []).filter((x: any) => Number.isFinite(Number(x)));
     row.avg3 = arr.length ? arr.reduce((a: number, b: number) => a + Number(b), 0) / arr.length : 0;
-
     row.first9 = row.first9 > 0 ? row.first9 / m : 0;
     row.checkoutPct = row.checkoutPct > 0 ? row.checkoutPct / m : 0;
     row.doublesPct = row.doublesPct > 0 ? row.doublesPct / m : 0;
-
     row.evoAvg3 = arr.slice(-18);
   }
 
@@ -1030,8 +1135,8 @@ function mergeRowPreferNonZero(base: any, extra: any) {
 
 /* ============================================================= */
 
-export default function StatsDartSetsSection(props: { activeProfileId: string | null; title?: string }) {
-  const { activeProfileId, title } = props;
+export default function StatsDartSetsSection(props: { activeProfileId: string | null; activePlayerName?: string | null; title?: string }) {
+  const { activeProfileId, activePlayerName, title } = props;
   const { theme } = useTheme();
   const { t } = useLang() as any;
 
@@ -1115,10 +1220,10 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const allEnriched = Array.from(enrichedMap.values());
 
 
-        const recMap = buildRecentMatchesMap(allEnriched || [], activeProfileId);
+        const recMap = buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || "");
         if (mounted) setRecentBySet(recMap);
 
-        const aggMap = computeAggFromHistory(allEnriched || [], activeProfileId);
+        const aggMap = computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
 
         const ids = new Set<string>();
         for (const r of rowsA) ids.add(String(r?.dartSetId || r?.dartPresetId || ""));
@@ -1151,7 +1256,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     return () => {
       mounted = false;
     };
-  }, [activeProfileId]);
+  }, [activeProfileId, activePlayerName]);
 
   React.useEffect(() => {
     setSelectedIdx((i) => {

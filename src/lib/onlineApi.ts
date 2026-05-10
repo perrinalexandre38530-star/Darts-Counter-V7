@@ -958,6 +958,9 @@ async function deleteAccount(): Promise<void> {
   if (isNasProviderEnabled()) {
     await ensureNasSession();
     await nasDeleteAccount();
+    __nasLastGoodSession = null;
+    __nasLastRestoreAt = 0;
+    __nasEnsureInFlight = null;
     saveAuthToLS(null);
     return;
   }
@@ -1358,6 +1361,43 @@ async function joinLobby(args: { code: string; [k: string]: any }): Promise<Onli
   return mapLobbyRow(data as any);
 }
 
+async function setLobbyReady(args: { code: string; ready: boolean; nickname?: string; role?: string }): Promise<OnlineLobby> {
+  const codeUpper = safeUpper(args.code);
+  if (!codeUpper) throw new Error("Code salon manquant.");
+
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/ready-safe`, {
+      ready: !!args.ready,
+      nickname: args.nickname,
+      role: args.role || "player",
+    });
+    return (res?.lobby || res) as OnlineLobby;
+  }
+
+  const { user } = await ensureAuthedUser();
+  const status = args.ready ? "ready" : "online";
+
+  const { data: lobby, error: lobbyError } = await supabase
+    .from("online_lobbies")
+    .select("*")
+    .eq("code", codeUpper)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lobbyError) throw new Error(lobbyError.message || "Impossible de lire le salon.");
+  if (!lobby) throw new Error("Salon introuvable.");
+
+  await supabase
+    .from("online_lobby_players")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("lobby_code", codeUpper)
+    .eq("user_id", user.id);
+
+  return mapLobbyRow(lobby as any);
+}
+
 async function getLobby(code: string): Promise<OnlineLobby> {
   const codeUpper = safeUpper(code);
   if (isNasProviderEnabled()) {
@@ -1634,6 +1674,7 @@ export const onlineApi = {
 
   createLobby,
   joinLobby,
+  setLobbyReady,
   getLobby,
   listActiveLobbies,
 

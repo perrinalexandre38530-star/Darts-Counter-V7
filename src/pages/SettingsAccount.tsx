@@ -162,6 +162,10 @@ export default function SettingsAccount({ store, update }: Props) {
       setMessage(
         t("settings.account.logout.ok", "Tu es maintenant déconnecté.")
       );
+      if (typeof window !== "undefined") {
+        window.location.hash = "#/auth/login";
+        try { window.dispatchEvent(new HashChangeEvent("hashchange")); } catch {}
+      }
     } catch (err: any) {
       setError(err?.message || "Erreur lors de la déconnexion.");
     } finally {
