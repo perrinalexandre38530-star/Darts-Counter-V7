@@ -491,7 +491,7 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number; force?: boo
 
     nasLastRestoreErrorAt = Date.now();
     nasLastRestoreErrorKey = message.slice(0, 120);
-    console.warn("[nasApi] restoreSession soft-failed -> keep cached session", { status, message });
+    console.warn("[nasApi] restoreSession soft-failed -> cached auth reused", { status, message });
     if (cached?.token) {
       try {
         writeLs(NAS_TOKEN_KEY, cached.token);

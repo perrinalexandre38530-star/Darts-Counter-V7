@@ -932,7 +932,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         }
 
         try {
-          await onlineApi.restoreSession();
+          onlineApi.restoreSession().catch(() => {});
         } catch {}
 
         const { data, error } = await supabase.auth.getSession();

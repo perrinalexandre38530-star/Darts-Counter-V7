@@ -1,3 +1,5 @@
+let __authReady = false;
+let __authBootstrapPromise: Promise<void> | null = null;
 // ============================================================
 // src/lib/onlineApi.ts
 // API Mode Online (V7 STABLE -> A+B SPECTATOR READY)
@@ -566,7 +568,8 @@ async function ensureNasSession(): Promise<AuthSession> {
 
     __nasLastGoodSession = session;
     saveAuthToLS(session);
-    return session;
+    markAuthReady(!!session?.token);
+      return session;
   })();
 
   try {
@@ -806,7 +809,8 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
 
   const session = await buildAuthSessionFromSupabase();
   if (!session) throw new Error("Impossible de récupérer la session après la connexion.");
-  return session;
+  markAuthReady(!!session?.token);
+      return session;
 }
 
 // ============================================================
@@ -851,6 +855,23 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
   }
 }
 
+
+function markAuthReady(v: boolean) {
+  __authReady = !!v;
+}
+
+export function isOnlineAuthReady(): boolean {
+  return __authReady;
+}
+
+async function waitOnlineAuthReady(timeoutMs = 4000): Promise<boolean> {
+  const start = Date.now();
+  while (!__authReady) {
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return true;
+}
 async function restoreSession(): Promise<AuthSession | null> {
   if (isNasProviderEnabled()) {
     // LOT 2: pas de réseau NAS automatique dans restoreSession.
@@ -891,6 +912,7 @@ async function restoreSession(): Promise<AuthSession | null> {
 
     return null;
   } catch (e) {
+    markAuthReady(false);
     console.warn("[onlineApi] restoreSession error", e);
     try {
       saveAuthToLS(null);
@@ -1733,4 +1755,16 @@ export const onlineApi = {
   USE_MOCK,
 
   loadAuthFromLS,
-};
+}
+async function ensureOnlineAuth(): Promise<any> {
+  const cached = loadAuthFromLS?.();
+  if (cached?.token) { markAuthReady(true); return cached; }
+  if (!__authBootstrapPromise) {
+    __authBootstrapPromise = restoreSession().then(()=>{}).finally(()=>{ __authBootstrapPromise=null;});
+  }
+  await __authBootstrapPromise;
+  const ok = await waitOnlineAuthReady();
+  if (!ok) return null;
+  return loadAuthFromLS?.();
+}
+;
