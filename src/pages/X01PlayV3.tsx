@@ -1199,7 +1199,10 @@ React.useEffect(() => {
     window.clearInterval(id);
   };
 }, [effectiveOnline, readOnlineSessionUserId]);
-const onlineCurrentUserId = String(onlineUserId || (config as any)?.onlineUserId || (config as any)?.currentUserId || onlineLocalUserId || "").trim();
+// ONLINE STRICT: priorité absolue à la session locale réelle. Les ids transportés dans
+// config/route peuvent être l'id de l'hôte ou du joueur actif, donc ils ne doivent jamais
+// déverrouiller le keypad d'un autre appareil.
+const onlineCurrentUserId = String(onlineLocalUserId || onlineUserId || "").trim();
 const onlineActivePlayerId = String(activePlayerId || "").trim();
 
 // ONLINE STRICT TURN LOCK
@@ -1227,8 +1230,13 @@ const onlineIsMyTurn = !effectiveOnline || (
   !!onlineCurrentUserId &&
   onlineActiveIdentitySet.has(String(onlineCurrentUserId))
 );
+// En ONLINE, l'absence de session locale = verrouillé. On préfère bloquer que laisser
+// un appareil scorer pour le mauvais compte.
 const onlineTurnLocked = !!effectiveOnline && status === "running" && !onlineIsMyTurn;
 const onlineCanScore = !effectiveOnline || onlineIsMyTurn;
+const onlineStrictDebugLabel = effectiveOnline
+  ? `local=${onlineCurrentUserId || "NO_SESSION"} active=${onlineActivePlayerId || "NO_ACTIVE"} canScore=${onlineCanScore ? "yes" : "no"}`
+  : "local";
 
 const activePlayerCountryFlagSrc = React.useMemo(() => {
   const direct =
@@ -1383,7 +1391,7 @@ const sendOnlineChat = React.useCallback(async () => {
   const optimistic = {
     id: clientId,
     clientId,
-    userId: onlineUserId || me?.id || "",
+    userId: onlineCurrentUserId || me?.id || "",
     name: me?.name || profileById[String(me?.id || "")]?.name || "Moi",
     text,
     createdAt: new Date().toISOString(),
@@ -1402,7 +1410,7 @@ const sendOnlineChat = React.useCallback(async () => {
   } catch (e) {
     console.warn("[X01PlayV3] online chat send failed", e);
   }
-}, [effectiveOnline, effectiveLobbyCode, onlineChatDraft, safePlayersForOnline, onlineCurrentUserId, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
+}, [effectiveOnline, effectiveLobbyCode, onlineChatDraft, safePlayersForOnline, onlineCurrentUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
 
 // ONLINE : annonce automatiquement le joueur au trait dans le chat système.
 const onlineLastTurnSystemKeyRef = React.useRef("");
@@ -1552,7 +1560,7 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
         __x01OnlineDarts: darts,
         __x01OnlineDartsCount: darts.length,
         __x01OnlineUpdatedAt: Date.now(),
-        __x01OnlineUpdatedBy: onlineUserId || null,
+        __x01OnlineUpdatedBy: onlineCurrentUserId || null,
       },
     });
   } catch (error) {
@@ -1560,7 +1568,7 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
   } finally {
     onlinePublishingRef.current = false;
   }
-}, [isOnlineMatch, onlineLobbyCode, status, effectiveRuntimeConfig, players, onlineUserId]);
+}, [isOnlineMatch, onlineLobbyCode, status, effectiveRuntimeConfig, players, onlineCurrentUserId]);
 
 React.useEffect(() => {
   if (!isOnlineMatch || !onlineLobbyCode) return;
@@ -2540,6 +2548,15 @@ const [bustError, setBustError] = React.useState<string | null>(null);
 
 const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
 
+React.useEffect(() => {
+  if (!effectiveOnline || !onlineTurnLocked) return;
+  // Si un paquet local reste affiché après un changement de tour / reprise / mauvais compte,
+  // on le supprime immédiatement pour éviter toute validation fantôme.
+  setCurrentThrow([]);
+  setMultiplier(1);
+  setPendingOnlineVisitConfirm(null);
+}, [effectiveOnline, onlineTurnLocked, activePlayerId]);
+
 // ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
 const [lastVisitsByPlayer, setLastVisitsByPlayer] = React.useState<
   Record<string, UIDart[]>
@@ -2643,6 +2660,7 @@ React.useEffect(() => {
 }, [activePlayerId]);
 
 function pushDart(value: number, multOverride?: 1 | 2 | 3) {
+  if (effectiveOnline && !onlineCanScore) return;
   ensureAudioUnlockedNow();
   currentThrowFromEngineRef.current = false;
 

@@ -5023,14 +5023,14 @@ function X01PlayV3Route({
       ""
     ).trim().toUpperCase();
     const onlineSession = isOnline ? (onlineApi as any)?.loadAuthFromLS?.() : null;
+    // ONLINE STRICT: l'identité locale doit venir UNIQUEMENT de la session du compte connecté
+    // sur CET appareil. Ne jamais reprendre onlineUserId depuis routeParams/config : ces valeurs
+    // peuvent contenir l'id de l'hôte ou du joueur actif et donnent alors le keypad au mauvais appareil.
     const onlineSessionUserId = String(
       onlineSession?.user?.id ||
       onlineSession?.userId ||
       onlineSession?.profile?.userId ||
       onlineSession?.profile?.user_id ||
-      routeParams?.onlineUserId ||
-      routeConfig?.onlineUserId ||
-      cfgToStart?.onlineUserId ||
       ""
     ).trim();
     const key = isOnline
@@ -5040,7 +5040,7 @@ function X01PlayV3Route({
     return (
       <X01PlayV3
         key={key}
-        config={{ ...(cfgToStart || {}), ...(isOnline ? { online: true, onlineMode: "x01", lobbyCode: routeLobbyCode || cfgToStart?.lobbyCode, onlineUserId: onlineSessionUserId || cfgToStart?.onlineUserId } : {}) }}
+        config={{ ...(cfgToStart || {}), ...(isOnline ? { online: true, onlineMode: "x01", lobbyCode: routeLobbyCode || cfgToStart?.lobbyCode, onlineUserId: onlineSessionUserId || null } : {}) }}
         online={isOnline}
         lobbyCode={routeLobbyCode || null}
         onlineUserId={onlineSessionUserId || null}

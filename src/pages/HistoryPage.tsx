@@ -548,28 +548,25 @@ function sameBucket(a: SavedEntry, b: SavedEntry): boolean {
 }
 
 function dedupe(list: SavedEntry[]): SavedEntry[] {
-  const byLink = new Map<string, SavedEntry>();
-  const rest: SavedEntry[] = [];
-  for (const e of list) {
-    const link = matchLink(e);
-    if (link) byLink.set(link, byLink.has(link) ? better(byLink.get(link)!, e) : e);
-    else rest.push(e);
+  // IMPORTANT HISTORIQUE X01 SETS/LEGS
+  // Ancienne logique: après un dédoublonnage exact par resumeId/matchId, on regroupait
+  // encore les entrées proches dans le temps avec les mêmes joueurs (sameBucket, 20 min).
+  // Résultat concret: deux vrais matchs X01 joués à quelques minutes d’écart étaient
+  // fusionnés en une seule carte dans l’historique global, alors que X01Multi les voyait
+  // correctement en détail.
+  // Nouvelle règle: 1 match joué = 1 carte. On ne fusionne QUE les doublons qui portent
+  // le même identifiant canonique.
+  const byKey = new Map<string, SavedEntry>();
+
+  for (const e of safeArray<SavedEntry>(list)) {
+    if (!isUsableSavedEntry(e)) continue;
+    const key = String(matchLink(e) || (e as any).matchId || (e as any).resumeId || e.id || "").trim();
+    if (!key) continue;
+    byKey.set(key, byKey.has(key) ? better(byKey.get(key)!, e) : e);
   }
-  const base = [...byLink.values(), ...rest];
-  const buckets: { rep: SavedEntry }[] = [];
-  for (const e of base.sort((a, b) => (a.updatedAt || a.createdAt || 0) - (b.updatedAt || b.createdAt || 0))) {
-    let ok = false;
-    for (const bkt of buckets) {
-      if (sameBucket(bkt.rep, e)) {
-        bkt.rep = better(bkt.rep, e);
-        ok = true;
-        break;
-      }
-    }
-    if (!ok) buckets.push({ rep: e });
-  }
-  return buckets
-    .map((b) => b.rep)
+
+  return Array.from(byKey.values())
+    .filter(isUsableSavedEntry)
     .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
 }
 
