@@ -5032,9 +5032,21 @@ const [liveDashboard, setLiveDashboard] =
           dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
           dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
           dash.totalDarts = agg?.darts ?? dash.totalDarts;
-          // Ne pas remplacer `distribution` ici : StatsPlayerDashboard attend les buckets
-          // de volées X01 (0-59 / 60-99 / 100+ / 140+ / 180). Les hits S/D/T/Bull
-          // appartiennent au radar X01Multi et cassaient la répartition des volées.
+          if (agg?.visitBuckets && typeof agg.visitBuckets === "object") {
+            dash.distribution = {
+              "0-59": Number(agg.visitBuckets["0-59"] || 0),
+              "60-99": Number(agg.visitBuckets["60-99"] || 0),
+              "100+": Number(agg.visitBuckets["100+"] || 0),
+              "140+": Number(agg.visitBuckets["140+"] || 0),
+              "180": Number(agg.visitBuckets["180"] || 0),
+            };
+          }
+          if (Array.isArray(agg?.progression) && agg.progression.length) {
+            dash.evolution = agg.progression.slice(-30).map((p: any) => ({
+              date: new Date(Number(p?.ts || Date.now())).toISOString().slice(0, 10),
+              avg3: Number(p?.avg3D || 0),
+            }));
+          }
         }
       } catch {
         // no-op
@@ -5556,6 +5568,38 @@ function fmtStatValue(value: any, suffix = "") {
   if (!Number.isFinite(n)) return `—${suffix}`;
   const rounded = Math.abs(n) >= 100 ? Math.round(n) : Math.round(n * 10) / 10;
   return `${rounded}${suffix}`;
+}
+
+const modeThemeColor: Record<string, string> = {
+  x01: "#e4c06b",
+  cricket: "#4da84d",
+  clock: "#ff40b4",
+  training: "#71c9ff",
+  killer: "#ff6a3c",
+  shanghai: "#ffb000",
+  golf: "#f6c256",
+  territories: "#4ac29a",
+  battle_royale: "#ff455c",
+  warfare: "#ff7a2f",
+  five_lives: "#ff4fb8",
+  scram: "#42d6ff",
+  capital: "#6ee36e",
+  batard: "#9b5cff",
+  default: "#888888",
+};
+
+function modeColor(key: string) {
+  return modeThemeColor[key] || modeThemeColor.default;
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const h = String(hex || "").replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  if (!Number.isFinite(n)) return `rgba(228,192,107,${alpha})`;
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
@@ -6332,6 +6376,10 @@ return (
               0% { transform: translate3d(0,0,0); }
               100% { transform: translate3d(-50%,0,0); }
             }
+            @keyframes statshubModeCardsScroll {
+              0% { transform: translate3d(0,0,0); }
+              100% { transform: translate3d(-50%,0,0); }
+            }
           `}</style>
           <div
             style={{
@@ -6350,24 +6398,32 @@ return (
 
           <div
             style={{
-              display: "flex",
-              gap: 10,
-              overflowX: "auto",
+              overflow: "hidden",
               paddingBottom: 2,
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none" as any,
+              WebkitMaskImage: "linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%)",
+              maskImage: "linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%)",
             }}
           >
-            {globalModeDashboard.map((m: ModeDashboardCard, idx: number) => {
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                width: "max-content",
+                animation: `statshubModeCardsScroll ${Math.max(34, globalModeDashboard.length * 14)}s linear infinite`,
+              }}
+            >
+            {[...globalModeDashboard, ...globalModeDashboard].map((m: ModeDashboardCard, idx: number) => {
               const goToMode = () => {
                 const targetKey = m.key === "clock" ? "tour_de_l_horloge" : m.key;
                 const found = modeDefs.findIndex((x) => x.key === targetKey || x.key === m.key);
                 if (found >= 0) setModeIndex(found);
               };
               const tickerItems = [...m.ticker, ...m.ticker];
+              const mainColor = modeColor(m.key);
+              const mainGlow = hexToRgba(mainColor, 0.45);
               return (
                 <button
-                  key={m.key}
+                  key={`${m.key}-${idx}`}
                   type="button"
                   onClick={goToMode}
                   style={{
@@ -6376,9 +6432,9 @@ return (
                     textAlign: "left",
                     borderRadius: 19,
                     padding: 11,
-                    border: `1px solid ${T.accent40}`,
-                    background: `radial-gradient(circle at 0% 0%, ${T.accent30}, transparent 58%), linear-gradient(180deg,#17191F,#090A0D)`,
-                    boxShadow: `0 0 0 1px ${T.accent10}, 0 0 18px ${T.accent15}, 0 10px 22px rgba(0,0,0,.38)`,
+                    border: `1px solid ${hexToRgba(mainColor, 0.62)}`,
+                    background: `radial-gradient(circle at 0% 0%, ${hexToRgba(mainColor, 0.25)}, transparent 58%), linear-gradient(180deg,#17191F,#090A0D)`,
+                    boxShadow: `0 0 0 1px ${hexToRgba(mainColor, 0.16)}, 0 0 18px ${hexToRgba(mainColor, 0.22)}, 0 10px 22px rgba(0,0,0,.38)`,
                     color: T.text,
                     cursor: "pointer",
                     minHeight: 106,
@@ -6386,10 +6442,10 @@ return (
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                    <div style={{ fontSize: 11, fontWeight: 1000, color: T.accent, textTransform: "uppercase", letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${T.accentGlow ?? T.accent}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 1000, color: mainColor, textTransform: "uppercase", letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${mainGlow}` }}>
                       {m.label}
                     </div>
-                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${T.accent50}`, color: T.accent, background: "rgba(0,0,0,.34)", whiteSpace: "nowrap", boxShadow: `0 0 10px ${T.accent20}` }}>
+                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${hexToRgba(mainColor, 0.58)}`, color: mainColor, background: "rgba(0,0,0,.34)", whiteSpace: "nowrap", boxShadow: `0 0 10px ${hexToRgba(mainColor, 0.22)}` }}>
                       {m.matches} sess.
                     </div>
                   </div>
@@ -6414,7 +6470,7 @@ return (
                       }}
                     >
                       {tickerItems.map((it, i) => {
-                        const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? T.accent : T.gold;
+                        const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                         return (
                           <div
                             key={`${it.label}-${i}`}
@@ -6434,11 +6490,12 @@ return (
                   </div>
 
                   <div style={{ marginTop: 9, height: 5, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                    <div style={{ width: `${Math.max(5, Math.min(100, m.winRate || m.accuracy || 0))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${T.accent30}, ${T.accent})`, boxShadow: `0 0 12px ${T.accent}` }} />
+                    <div style={{ width: `${Math.max(5, Math.min(100, m.winRate || m.accuracy || 0))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${hexToRgba(mainColor, 0.28)}, ${mainColor})`, boxShadow: `0 0 12px ${mainGlow}` }} />
                   </div>
                 </button>
               );
             })}
+            </div>
           </div>
         </div>
       )}
@@ -6472,8 +6529,11 @@ return (
                       <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>RÉSUMÉS ESSENTIELS</div>
                       <div style={{ fontSize: 10, color: T.text70 }}>Détails complets dans chaque onglet</div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                      {globalModeDashboard.map((m: ModeDashboardCard) => (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {globalModeDashboard.map((m: ModeDashboardCard) => {
+                        const mainColor = modeColor(m.key);
+                        const mainGlow = hexToRgba(mainColor, 0.42);
+                        return (
                         <button
                           key={`essential-${m.key}`}
                           type="button"
@@ -6485,8 +6545,9 @@ return (
                           style={{
                             borderRadius: 16,
                             padding: 10,
-                            border: `1px solid ${T.accent30}`,
-                            background: "linear-gradient(180deg,#15171B,#0F1014)",
+                            border: `1px solid ${hexToRgba(mainColor, 0.56)}`,
+                            background: `radial-gradient(circle at 0% 0%, ${hexToRgba(mainColor, 0.18)}, transparent 58%), linear-gradient(180deg,#15171B,#0F1014)`,
+                            boxShadow: `0 0 16px ${hexToRgba(mainColor, 0.13)}`,
                             color: T.text,
                             textAlign: "left",
                             cursor: "pointer",
@@ -6494,12 +6555,12 @@ return (
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
-                            <div style={{ fontSize: 11, fontWeight: 1000, color: T.gold, textTransform: "uppercase", letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
-                            <div style={{ fontSize: 9, color: T.accent, border: `1px solid ${T.accent40}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
+                            <div style={{ fontSize: 12, fontWeight: 1000, color: mainColor, textTransform: "uppercase", letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: `0 0 10px ${mainGlow}` }}>{m.label}</div>
+                            <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                             {m.ticker.slice(0, m.key === "killer" ? 8 : 4).map((it) => {
-                              const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? T.accent : T.gold;
+                              const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
                                   <div style={{ fontSize: 8.5, color: T.text60, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</div>
@@ -6509,7 +6570,7 @@ return (
                             })}
                           </div>
                         </button>
-                      ))}
+                      );})}
                     </div>
                   </div>
                 )}

@@ -834,9 +834,7 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
   const [refL, wL] = useContainerWidth<HTMLDivElement>(320);
   const [refB, wB] = useContainerWidth<HTMLDivElement>(320);
 
-  const dashboardSubtitle = isMolkkySport
-    ? "Analyse des performances par joueur — Mölkky"
-    : "Analyse des performances par joueur — X01, Cricket & entraînements";
+  const dashboardSubtitle = "";
   const favoriteLabel = isMolkkySport ? "Mode de jeu préféré" : "Mode de jeu préféré";
   const topModesLabel = isMolkkySport ? "Top modes" : "Top modes";
   const avgLabel = isMolkkySport ? "Moyenne / lancer" : "Moyenne / 3 flèches";
@@ -870,7 +868,7 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
             </div>
             <div style={{ minWidth: 0 }}>
               <H1>Statistiques</H1>
-              <Sub>{dashboardSubtitle}</Sub>
+              {dashboardSubtitle ? <Sub>{dashboardSubtitle}</Sub> : null}
             </div>
           </div>
 
