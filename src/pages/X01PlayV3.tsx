@@ -1225,17 +1225,22 @@ const onlineActiveIdentitySet = React.useMemo(() => {
   return new Set(ids);
 }, [onlineActivePlayerId, activePlayer]);
 
+// ONLINE STRICT : le moteur X01 V3 peut exposer la partie active en "running" OU "playing"
+// selon le chemin de lancement/reprise. Avant ce correctif, "playing" affichait le keypad
+// mais tous les handlers étaient no-op, ce qui donnait un keypad visible et inaccessible
+// sur les deux appareils.
+const onlineMatchIsLive = status === "running" || status === "playing";
 const onlineIsMyTurn = !effectiveOnline || (
-  status === "running" &&
+  onlineMatchIsLive &&
   !!onlineCurrentUserId &&
   onlineActiveIdentitySet.has(String(onlineCurrentUserId))
 );
 // En ONLINE, l'absence de session locale = verrouillé. On préfère bloquer que laisser
 // un appareil scorer pour le mauvais compte.
-const onlineTurnLocked = !!effectiveOnline && status === "running" && !onlineIsMyTurn;
+const onlineTurnLocked = !!effectiveOnline && onlineMatchIsLive && !onlineIsMyTurn;
 const onlineCanScore = !effectiveOnline || onlineIsMyTurn;
 const onlineStrictDebugLabel = effectiveOnline
-  ? `local=${onlineCurrentUserId || "NO_SESSION"} active=${onlineActivePlayerId || "NO_ACTIVE"} canScore=${onlineCanScore ? "yes" : "no"}`
+  ? `status=${status} live=${onlineMatchIsLive ? "yes" : "no"} local=${onlineCurrentUserId || "NO_SESSION"} active=${onlineActivePlayerId || "NO_ACTIVE"} canScore=${onlineCanScore ? "yes" : "no"}`
   : "local";
 
 const activePlayerCountryFlagSrc = React.useMemo(() => {
