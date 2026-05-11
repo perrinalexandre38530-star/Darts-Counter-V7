@@ -3665,7 +3665,10 @@ function buildVisitHistory(
     rec?.payload?.payload?.visitHistory,
     rec?.payload?.payload?.visitsHistory,
     rec?.payload?.payload?.summary?.visitHistory,
-    rec?.payload?.payload?.summary?.visitsHistory
+    rec?.payload?.payload?.summary?.visitsHistory,
+    rec?.resume?.visitHistory,
+    rec?.resume?.visitsHistory,
+    rec?.resume?.__legStats?.visits
   );
 
   if (!rawVisits.length) {

@@ -2119,13 +2119,39 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         const cfgLite = (basePayload as any).config ?? null;
         const stateLite = (basePayload as any).state ?? null;
         const dartsLite = Array.isArray((basePayload as any).darts)
-          ? (basePayload as any).darts.slice(-90)
+          ? (basePayload as any).darts.slice(-180)
+          : Array.isArray((basePayload as any).replayDarts)
+          ? (basePayload as any).replayDarts.slice(-180)
+          : null;
+        const visitsLite = Array.isArray((basePayload as any).visitHistory)
+          ? (basePayload as any).visitHistory.slice(-160)
+          : Array.isArray((basePayload as any).visitsHistory)
+          ? (basePayload as any).visitsHistory.slice(-160)
+          : Array.isArray((basePayload as any)?.__legStats?.visits)
+          ? (basePayload as any).__legStats.visits.slice(-160)
+          : null;
+        const legsLite = Array.isArray((basePayload as any).legs)
+          ? (basePayload as any).legs
+          : Array.isArray((basePayload as any).legDetails)
+          ? (basePayload as any).legDetails
+          : Array.isArray((basePayload as any)?.__legStats?.legs)
+          ? (basePayload as any).__legStats.legs
           : null;
 
         const resume: any = {};
         if (cfgLite) resume.config = cfgLite;
         if (stateLite) resume.state = stateLite;
         if (dartsLite) resume.darts = dartsLite;
+        if (visitsLite) {
+          resume.visitHistory = visitsLite;
+          resume.visitsHistory = visitsLite;
+          resume.__legStats = { visits: visitsLite, ...(legsLite ? { legs: legsLite } : {}) };
+        }
+        if (legsLite) {
+          resume.legs = legsLite;
+          resume.legDetails = legsLite;
+          resume.legSummaries = legsLite;
+        }
 
         (safe as any).resume = Object.keys(resume).length ? resume : null;
       } else {

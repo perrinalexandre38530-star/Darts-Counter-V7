@@ -6937,6 +6937,117 @@ function buildReplayVisitsForX01History(
   return visits;
 }
 
+
+function buildX01LegsFromReplayVisits(visitsInput: any[], playersInput: any[], opts: any = {}) {
+  const visits = Array.isArray(visitsInput) ? visitsInput : [];
+  const players = Array.isArray(playersInput) ? playersInput : [];
+  if (!visits.length || !players.length) return [];
+
+  const startScore = Math.max(1, Number(opts?.startScore ?? 501) || 501);
+  const legsPerSet = Math.max(1, Number(opts?.legsPerSet ?? 1) || 1);
+  const playerIds = players.map((p: any) => String(p?.id || p?.playerId || p?.pid || '')).filter(Boolean);
+
+  const groups = new Map<string, any[]>();
+  for (const raw of visits) {
+    const legNo = Math.max(1, Number(raw?.matchLegNo ?? raw?.legNo ?? raw?.legIndex ?? 1) || 1);
+    const setNo = Math.max(1, Number(raw?.setNo ?? raw?.setIndex ?? Math.floor((legNo - 1) / legsPerSet) + 1) || 1);
+    const legInSet = Math.max(1, Number(raw?.legInSet ?? raw?.currentLeg ?? ((legNo - 1) % legsPerSet) + 1) || 1);
+    const key = `${setNo}:${legInSet}:${legNo}`;
+    const arr = groups.get(key) || [];
+    arr.push({ ...raw, legNo, matchLegNo: legNo, setNo, legInSet });
+    groups.set(key, arr);
+  }
+
+  const dartValue = (d: any) => {
+    const seg = Number(d?.segment ?? d?.v ?? d?.value ?? 0) || 0;
+    const mult = Number(d?.multiplier ?? d?.mult ?? d?.m ?? 0) || 0;
+    if (seg === 25 && mult >= 2) return 50;
+    return seg > 0 ? seg * Math.max(1, mult || 1) : 0;
+  };
+
+  return Array.from(groups.entries())
+    .map(([key, rows]) => {
+      const first = rows[0] || {};
+      const legNo = Math.max(1, Number(first?.legNo ?? 1) || 1);
+      const setNo = Math.max(1, Number(first?.setNo ?? Math.floor((legNo - 1) / legsPerSet) + 1) || 1);
+      const legInSet = Math.max(1, Number(first?.legInSet ?? ((legNo - 1) % legsPerSet) + 1) || 1);
+      const winnerVisit = rows.find((v: any) => !!(v?.finish ?? v?.isFinish) && !(v?.bust ?? v?.isBust)) || null;
+      const winnerId = winnerVisit ? String(winnerVisit?.playerId ?? winnerVisit?.pid ?? '') : null;
+
+      const perPlayer: Record<string, any> = {};
+      for (const pid of playerIds) {
+        const pv = rows.filter((v: any) => String(v?.playerId ?? v?.pid ?? '') === pid);
+        let darts = 0;
+        let points = 0;
+        let bestVisit = 0;
+        let bestCheckout = 0;
+        let miss = 0;
+        let bust = 0;
+        let bull = 0;
+        let dBull = 0;
+        let singles = 0;
+        let doubles = 0;
+        let triples = 0;
+        const scorePerVisit: number[] = [];
+
+        for (const v of pv) {
+          const ds = Array.isArray(v?.darts) ? v.darts : [];
+          darts += ds.length;
+          const visitScore = Number(v?.score ?? ds.reduce((s: number, d: any) => s + dartValue(d), 0)) || 0;
+          points += !!(v?.bust ?? v?.isBust) ? 0 : visitScore;
+          bestVisit = Math.max(bestVisit, visitScore);
+          if (!!(v?.finish ?? v?.isFinish) && !(v?.bust ?? v?.isBust)) {
+            bestCheckout = Math.max(bestCheckout, Number(v?.scoreBefore ?? v?.before ?? visitScore) || visitScore);
+          }
+          if (!!(v?.bust ?? v?.isBust)) bust += 1;
+          scorePerVisit.push(visitScore);
+          for (const d of ds) {
+            const seg = Number(d?.segment ?? d?.v ?? 0) || 0;
+            const mult = Number(d?.multiplier ?? d?.mult ?? d?.m ?? 0) || 0;
+            if (!seg || mult <= 0) miss += 1;
+            else if (seg === 25 && mult >= 2) dBull += 1;
+            else if (seg === 25) bull += 1;
+            else if (mult >= 3) triples += 1;
+            else if (mult === 2) doubles += 1;
+            else singles += 1;
+          }
+        }
+
+        perPlayer[pid] = {
+          playerId: pid,
+          darts,
+          visits: pv.length,
+          points,
+          avg3: darts ? (points / darts) * 3 : 0,
+          bestVisit,
+          bestCheckout,
+          miss,
+          bust,
+          bull,
+          dBull,
+          singles,
+          doubles,
+          triples,
+          scorePerVisit,
+        };
+      }
+
+      return {
+        key,
+        legNo,
+        legIndex: legNo,
+        matchLegNo: legNo,
+        setNo,
+        setIndex: setNo,
+        legInSet,
+        winnerId,
+        visits: rows,
+        perPlayer,
+      };
+    })
+    .sort((a, b) => Number(a.legNo || 0) - Number(b.legNo || 0));
+}
+
 function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] = []) {
   const ids = Array.from(new Set([...(playerOrder || []).map(String), ...(visits || []).map((v: any) => String(v?.playerId || v?.pid || "")).filter(Boolean)]));
   const out: Record<string, any> = {};
@@ -7036,6 +7147,10 @@ function saveX01V3MatchToHistory({
     (config as any).outMode ?? (config as any).checkoutMode ?? (config as any).doubleOutMode ?? "double"
   );
   const replayMetricsByPlayer = deriveX01MetricsFromReplayVisits(replayVisits, playerOrderForReplay);
+  const replayLegs = buildX01LegsFromReplayVisits(replayVisits, players as any[], {
+    startScore: config.startScore ?? 501,
+    legsPerSet: (config as any)?.legsPerSet ?? 1,
+  });
 
   const matchId =
     historyId ||
@@ -7510,7 +7625,10 @@ function saveX01V3MatchToHistory({
     // Historique complet des volées, utilisé par X01End, History et overlay résumé.
     visitHistory: replayVisits,
     visitsHistory: replayVisits,
-    __legStats: { visits: replayVisits },
+    legs: replayLegs,
+    legDetails: replayLegs,
+    legSummaries: replayLegs,
+    __legStats: { visits: replayVisits, legs: replayLegs },
   };
 
   // -------------------------
@@ -7592,9 +7710,13 @@ function saveX01V3MatchToHistory({
     // ✅ V3 FIX : replay complet compact sans avatars.
     // Sans ce champ, l'historique ne peut pas reprendre la partie et les stats détaillées tombent à 0.
     darts: Array.isArray(replayDarts) ? replayDarts : [],
+    replayDarts: Array.isArray(replayDarts) ? replayDarts : [],
     visitHistory: replayVisits,
     visitsHistory: replayVisits,
-    __legStats: { visits: replayVisits },
+    legs: replayLegs,
+    legDetails: replayLegs,
+    legSummaries: replayLegs,
+    __legStats: { visits: replayVisits, legs: replayLegs },
 
     // ✅ compat dartsets (lecture simple côté agrégateurs)
     dartSetId: dartSetIdGlobal,
@@ -7636,7 +7758,10 @@ function saveX01V3MatchToHistory({
     // détaillé n'est pas encore rechargé ou si IndexedDB renvoie une carte légère.
     visitHistory: replayVisits,
     visitsHistory: replayVisits,
-    __legStats: { visits: replayVisits },
+    legs: replayLegs,
+    legDetails: replayLegs,
+    legSummaries: replayLegs,
+    __legStats: { visits: replayVisits, legs: replayLegs },
   };
 
   try {

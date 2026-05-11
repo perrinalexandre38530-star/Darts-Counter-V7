@@ -2373,7 +2373,10 @@ function buildX01HistoryVisits(e: any): HistoryVisitRow[] {
     Array.isArray(e?.payload?.__legStats?.visits) ? e.payload.__legStats.visits :
     Array.isArray(e?.__legStats?.visits) ? e.__legStats.visits :
     Array.isArray(e?.payload?.summary?.visitsHistory) ? e.payload.summary.visitsHistory :
-    Array.isArray(e?.summary?.visitsHistory) ? e.summary.visitsHistory : [];
+    Array.isArray(e?.summary?.visitsHistory) ? e.summary.visitsHistory :
+    Array.isArray(e?.resume?.visitHistory) ? e.resume.visitHistory :
+    Array.isArray(e?.resume?.visitsHistory) ? e.resume.visitsHistory :
+    Array.isArray(e?.resume?.__legStats?.visits) ? e.resume.__legStats.visits : [];
 
   if (explicitVisits.length) {
     return explicitVisits.map((v: any, idx: number) => ({
@@ -2392,6 +2395,8 @@ function buildX01HistoryVisits(e: any): HistoryVisitRow[] {
     Array.isArray(e?.payload?.replayDarts) ? e.payload.replayDarts :
     Array.isArray(e?.payload?.darts) ? e.payload.darts :
     Array.isArray(e?.payload?.allDarts) ? e.payload.allDarts :
+    Array.isArray(e?.resume?.darts) ? e.resume.darts :
+    Array.isArray(e?.resume?.throws) ? e.resume.throws :
     Array.isArray(e?.summary?.dartsReplay) ? e.summary.dartsReplay :
     Array.isArray(e?.darts) ? e.darts : [];
   if (!rawDarts.length) return [];
