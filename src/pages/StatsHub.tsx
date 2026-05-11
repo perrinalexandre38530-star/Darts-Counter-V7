@@ -6,6 +6,7 @@ const STATS_HUB_DEBUG = false;
 import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
+import { loadBots } from "../lib/bots";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, computeNasSyncSummary, getNasSyncState } from "../lib/manualNasSync";
 import StatsPlayerDashboard, {
   type PlayerDashboardStats,
@@ -489,8 +490,13 @@ const goldNeon = {
 type PlayerLite = {
   id: string;
   name?: string;
+  displayName?: string | null;
+  nickname?: string | null;
   avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
   dartSetId?: string | null;
+  isBot?: boolean;
 };
 
 type SavedMatch = {
@@ -550,6 +556,45 @@ const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const fmtDate = (ts?: number) =>
   new Date(N(ts, Date.now())).toLocaleString();
 
+const normPlayerName = (v: any) =>
+  String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ");
+
+function pickPlayerName(p: any): string {
+  return String(p?.name ?? p?.displayName ?? p?.nickname ?? p?.surname ?? p?.firstName ?? "").trim();
+}
+
+function pickPlayerAvatar(p: any): string | null {
+  return (
+    p?.avatarDataUrl ??
+    p?.avatarUrl ??
+    p?.avatar_url ??
+    p?.avatar ??
+    p?.profile?.avatarDataUrl ??
+    p?.profile?.avatarUrl ??
+    null
+  );
+}
+
+function findProfileByIdOrName(id: any, name: any, profiles: PlayerLite[]): PlayerLite | null {
+  const pid = String(id ?? "").trim();
+  const n = normPlayerName(name);
+  const list = Array.isArray(profiles) ? profiles : [];
+  if (pid) {
+    const byId = list.find((p: any) => String(p?.id ?? "") === pid);
+    if (byId) return byId;
+  }
+  if (n) {
+    const byName = list.find((p: any) => normPlayerName(pickPlayerName(p)) === n);
+    if (byName) return byName;
+  }
+  return null;
+}
+
 /* ---------- Normalise les joueurs (support X01 V3) ---------- */
 function normalizeRecordPlayers(
   rec: SavedMatch,
@@ -558,10 +603,19 @@ function normalizeRecordPlayers(
   // ⚠️ Ne pas muter/écraser rec.game (objet dans le nouveau schéma).
   // On normalise uniquement les players et on laisse la détection du mode à getGameMode().
   const players = Array.isArray((rec as any)?.players) ? (rec as any).players : [];
-  const withAvatars = players.map((p: any) => ({
-    ...p,
-    avatar: p.avatar ?? p.avatarDataUrl ?? (p.profile?.avatarDataUrl ?? null),
-  }));
+  const withAvatars = players.map((p: any) => {
+    const local = findProfileByIdOrName(p?.profileId ?? p?.id, pickPlayerName(p), storeProfiles);
+    const avatar = pickPlayerAvatar(p) ?? pickPlayerAvatar(local);
+    const name = pickPlayerName(p) || pickPlayerName(local);
+    return {
+      ...p,
+      name: name || p?.name,
+      displayName: p?.displayName ?? (local as any)?.displayName ?? null,
+      avatar,
+      avatarDataUrl: p?.avatarDataUrl ?? avatar,
+      avatarUrl: p?.avatarUrl ?? (local as any)?.avatarUrl ?? null,
+    };
+  });
 
   return {
     ...rec,
@@ -4574,15 +4628,34 @@ React.useEffect(() => {
       const store: any = await loadStore<any>();
       if (!mounted) return;
 
-      const arr: PlayerLite[] = Array.isArray(store?.profiles)
+      const profileArr: PlayerLite[] = Array.isArray(store?.profiles)
         ? store.profiles.map((p: any) => ({
             id: String(p.id),
-            name: p.name,
-            avatarDataUrl: p.avatarDataUrl ?? null,
+            name: pickPlayerName(p),
+            displayName: p.displayName ?? null,
+            nickname: p.nickname ?? null,
+            avatarDataUrl: pickPlayerAvatar(p),
+            avatarUrl: p.avatarUrl ?? p.avatar_url ?? null,
+            avatar: p.avatar ?? null,
+            isBot: false,
           }))
         : [];
 
-      setStoreProfiles(arr);
+      let botArr: PlayerLite[] = [];
+      try {
+        botArr = loadBots().map((b: any) => ({
+          id: String(b.id),
+          name: pickPlayerName(b),
+          displayName: b.displayName ?? null,
+          nickname: b.nickname ?? null,
+          avatarDataUrl: pickPlayerAvatar(b),
+          avatarUrl: b.avatarUrl ?? null,
+          avatar: b.avatar ?? null,
+          isBot: true,
+        }));
+      } catch {}
+
+      setStoreProfiles([...profileArr, ...botArr]);
     } catch {
       if (!mounted) return;
       setStoreProfiles([]);
@@ -4650,23 +4723,25 @@ const records = React.useMemo(() => {
 
 // 1) Nettoie/force des ids string dans normalizedMatches + injecte noms/avatars depuis storeProfiles
 const normalizedMatchesClean = React.useMemo(() => {
-  const byId = new Map<string, PlayerLite>();
-  for (const p of storeProfiles) byId.set(String((p as any)?.id), p as any);
-
   const nm = Array.isArray(normalizedMatches) ? normalizedMatches : [];
   return nm.map((m: any) => {
     const players = Array.isArray(m?.players) ? m.players : [];
     const fixedPlayers = players.map((pp: any) => {
-      const pid = String(pp?.id ?? "");
-      const sp = byId.get(pid);
+      const pid = String(pp?.id ?? pp?.playerId ?? "");
+      const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), storeProfiles);
+      const name = pickPlayerName(pp) || pickPlayerName(sp) || "";
+      const avatar = pickPlayerAvatar(pp) ?? pickPlayerAvatar(sp);
       return {
         ...pp,
         // ✅ IMPORTANT: les agrégateurs unifiés attendent `playerId`
         // (le centre de stats utilise `selectedPlayer.id` comme identifiant)
         id: pid,
         playerId: String(pp?.playerId ?? pid),
-        name: pp?.name ?? (sp as any)?.name ?? "",
-        avatarDataUrl: pp?.avatarDataUrl ?? (sp as any)?.avatarDataUrl ?? null,
+        profileId: pp?.profileId ?? (sp as any)?.id ?? null,
+        name,
+        avatarDataUrl: avatar,
+        avatarUrl: pp?.avatarUrl ?? (sp as any)?.avatarUrl ?? null,
+        isBot: Boolean(pp?.isBot ?? (sp as any)?.isBot ?? false),
       };
     });
 
@@ -4692,8 +4767,10 @@ function recordToNormalizedFallback(r: any): any | null {
     ? r.players.map((p: any) => ({
         id: String(p?.id ?? ""),
         playerId: String(p?.playerId ?? p?.id ?? ""),
-        name: p?.name ?? "",
-        avatarDataUrl: p?.avatarDataUrl ?? null,
+        name: pickPlayerName(p),
+        avatarDataUrl: pickPlayerAvatar(p),
+        avatarUrl: p?.avatarUrl ?? null,
+        isBot: Boolean(p?.isBot ?? false),
       }))
     : [];
 
@@ -4742,37 +4819,41 @@ const nmEffective = React.useMemo(() => {
 const allPlayers = React.useMemo(() => {
   const map = new Map<string, PlayerLite>();
 
-  // 1) Essaye d'abord nmEffective
+  // 1) Essaye d'abord nmEffective, en enrichissant par profil local si possible
   const nm = Array.isArray(nmEffective) ? nmEffective : [];
   for (const m of nm) {
     const players = Array.isArray((m as any)?.players) ? (m as any).players : [];
     for (const p of players) {
-      const pid = String((p as any)?.id ?? "");
-      if (!pid) continue;
-      if (!map.has(pid)) {
-        map.set(pid, {
-          id: pid,
-          name: (p as any)?.name ?? "",
-          avatarDataUrl: (p as any)?.avatarDataUrl ?? null,
+      const rawId = String((p as any)?.id ?? (p as any)?.playerId ?? "");
+      if (!rawId) continue;
+      const local = findProfileByIdOrName((p as any)?.profileId ?? rawId, pickPlayerName(p), storeProfiles);
+      const displayId = String((local as any)?.id ?? rawId);
+      const name = pickPlayerName(local) || pickPlayerName(p) || displayId;
+      const avatar = pickPlayerAvatar(local) ?? pickPlayerAvatar(p);
+      if (!map.has(displayId)) {
+        map.set(displayId, {
+          id: displayId,
+          name,
+          avatarDataUrl: avatar,
+          avatarUrl: (local as any)?.avatarUrl ?? (p as any)?.avatarUrl ?? null,
+          isBot: Boolean((local as any)?.isBot ?? (p as any)?.isBot ?? false),
         });
       }
     }
   }
 
-  // 2) Fallback : profils locaux du store
-  if (map.size === 0) {
-    const sp = Array.isArray(storeProfiles) ? storeProfiles : [];
-    for (const p of sp) {
-      const pid = String((p as any)?.id ?? "");
-      if (!pid) continue;
-      if (!map.has(pid)) {
-        map.set(pid, {
-          id: pid,
-          name: (p as any)?.name ?? "",
-          avatarDataUrl: (p as any)?.avatarDataUrl ?? null,
-        });
-      }
-    }
+  // 2) Ajoute les profils locaux/bots du store pour le mode Profils locaux, même sans match
+  const sp = Array.isArray(storeProfiles) ? storeProfiles : [];
+  for (const p of sp) {
+    const pid = String((p as any)?.id ?? "");
+    if (!pid || map.has(pid)) continue;
+    map.set(pid, {
+      id: pid,
+      name: pickPlayerName(p) || pid,
+      avatarDataUrl: pickPlayerAvatar(p),
+      avatarUrl: (p as any)?.avatarUrl ?? null,
+      isBot: Boolean((p as any)?.isBot ?? false),
+    });
   }
 
   // 3) Fallback ultime : profil actif (si dispo)
@@ -4780,7 +4861,7 @@ const allPlayers = React.useMemo(() => {
     map.set(String(profile.id), {
       id: String(profile.id),
       name: (profile as any)?.name ?? (profile as any)?.displayName ?? "Joueur",
-      avatarDataUrl: (profile as any)?.avatarDataUrl ?? null,
+      avatarDataUrl: pickPlayerAvatar(profile),
     });
   }
 
@@ -4827,13 +4908,18 @@ const playersForMode = React.useMemo(() => {
   if (mode === "active") {
     if (activePlayerId) {
       const found = allPlayers.find((p) => p.id === String(activePlayerId));
-      return found ? [found] : allPlayers; // ✅ fallback
+      if (found) return [found];
     }
-    return allPlayers; // ✅ pas d’id -> fallback
+    const byRaw = activePlayerIdRaw ? allPlayers.find((p) => p.id === String(activePlayerIdRaw)) : null;
+    return byRaw ? [byRaw] : [];
   }
 
-  if (mode === "locals" && activePlayerId) {
-    return allPlayers.filter((p) => p.id !== String(activePlayerId));
+  if (mode === "locals") {
+    const exclude = new Set<string>();
+    if (activePlayerId) exclude.add(String(activePlayerId));
+    if (activePlayerIdRaw) exclude.add(String(activePlayerIdRaw));
+    if ((profile as any)?.id) exclude.add(String((profile as any).id));
+    return allPlayers.filter((p) => !exclude.has(String(p.id)));
   }
 
   return allPlayers;
@@ -4873,7 +4959,7 @@ const [trainingSubView, setTrainingSubView] = React.useState<"stats" | "leaderbo
     // Autres modes : on conserve la sélection si elle existe encore dans la liste filtrée.
     const prev = selectedPlayerId;
     if (prev && filteredPlayers.some((p) => p.id === prev)) return;
-    setSelectedPlayerId(activePlayerId ? String(activePlayerId) : null);
+    setSelectedPlayerId(filteredPlayers[0]?.id ?? null);
   }, [mode, activePlayerId, selectedPlayerId, filteredPlayers]);
 
 // Si rien de sélectionné OU joueur filtré → 1er dispo
