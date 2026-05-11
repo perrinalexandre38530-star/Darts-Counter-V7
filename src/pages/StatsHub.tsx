@@ -5830,19 +5830,19 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
         ]
       : a.key === "x01"
       ? [
+          // Ordre volontairement regroupé : volume/résultat → performance → checkout → précision → cible favorite.
           { label: "Sessions", value: fmtStatValue(a.matches), tone: "gold" },
-          { label: "Avg3", value: fmtStatValue(avg3), tone: "green" },
-          { label: "Best volée", value: fmtStatValue(a.best), tone: "gold" },
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
           { label: "Legs win", value: fmtStatValue(a.legsWin || 0), tone: "gold" },
           { label: "Sets win", value: fmtStatValue(a.setsWin || 0), tone: "gold" },
+          { label: "Avg3", value: fmtStatValue(avg3), tone: "green" },
+          { label: "Best volée", value: fmtStatValue(a.best), tone: "gold" },
           { label: "Best CO", value: fmtStatValue(a.bestCheckout || 0), tone: "red" },
           { label: "Best9", value: fmtStatValue(a.best9Score || 0), tone: "blue" },
           { label: "% Simple", value: fmtStatValue(a.pctSimple || 0, "%"), tone: "green" },
           { label: "% Double", value: fmtStatValue(a.pctDouble || 0, "%"), tone: "green" },
           { label: "% Triple", value: fmtStatValue(a.pctTriple || 0, "%"), tone: "green" },
-          { label: "Bull", value: fmtStatValue(a.bull || 0), tone: "blue" },
-          { label: "DBull", value: fmtStatValue(a.dbull || 0), tone: "blue" },
+          { label: "Bull + DBull", value: fmtStatValue((a.bull || 0) + (a.dbull || 0)), tone: "blue" },
           { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
       : a.key === "cricket"
@@ -5861,6 +5861,14 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Hit rate", value: a.darts || a.hits ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
         ];
     return { ...a, winRate, accuracy, avg3, favNumber, favHits, ticker } as ModeDashboardCard;
+  }).sort((a: ModeDashboardCard, b: ModeDashboardCard) => {
+    // Les blocs résumés et le carrousel suivent le classement réel des modes favoris.
+    // Priorité : nombre de sessions, puis victoires, puis libellé pour un ordre stable.
+    const byMatches = Number(b.matches || 0) - Number(a.matches || 0);
+    if (byMatches !== 0) return byMatches;
+    const byWins = Number(b.wins || 0) - Number(a.wins || 0);
+    if (byWins !== 0) return byWins;
+    return String(a.label || "").localeCompare(String(b.label || ""));
   });
 }, [records, selectedPlayer?.id, selectedPlayer?.name, storeProfiles]);
 
@@ -6662,7 +6670,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 12 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>

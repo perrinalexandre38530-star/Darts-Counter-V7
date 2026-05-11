@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import type { X01MultiLegsSets } from "../lib/statsBridge";
+import SparklinePro from "./SparklinePro";
 
 /* CSS global : shimmer nom + shimmer titres + shimmer valeurs */
 const statsNameCss = `
@@ -438,8 +439,8 @@ function Tile({
 /* ---------- Line chart ---------- */
 function LineChart({
   points,
-  height = 240,
-  padding = 36,
+  height = 220,
+  padding = 0,
   width,
   accent,
   accentSoft,
@@ -451,36 +452,19 @@ function LineChart({
   accent: string;
   accentSoft: string;
 }) {
-  const svgW = Math.max(220, width - 32);
+  const clean = (points || [])
+    .map((p, i) => ({ x: safeDate(p.date)?.getTime() || i, y: Number(p.avg3 || 0) }))
+    .filter((p) => Number.isFinite(p.y));
 
-  const pts =
-    points.length >= 2
-      ? points
-      : [
-          { date: points[0]?.date ?? "—", avg3: points[0]?.avg3 ?? 50 },
-          { date: points[0]?.date ?? "", avg3: points[0]?.avg3 ?? 50 },
-        ];
+  const sparkPoints = clean.length >= 2
+    ? clean
+    : clean.length === 1
+      ? [{ x: clean[0].x - 1, y: clean[0].y }, { x: clean[0].x, y: clean[0].y }]
+      : [];
 
-  const startLabel = fmtStart(pts[0]?.date ?? "");
-  const endLabel = "Aujourd’hui";
-
-  const { path, area, yTicks } = useMemo(() => {
-    const max = niceMax(Math.max(...pts.map((p) => p.avg3), 10));
-    const plotW = svgW - padding * 2;
-    const plotH = height - padding * 2;
-    const x = (i: number) => (pts.length === 1 ? padding + plotW / 2 : padding + (i / (pts.length - 1)) * plotW);
-    const y = (v: number) => padding + plotH - (v / max) * plotH;
-
-    const d = pts.map((p, i) => `${i ? "L" : "M"} ${x(i)} ${y(p.avg3)}`).join(" ");
-    const a = `${d} L ${x(pts.length - 1)} ${height - padding} L ${x(0)} ${height - padding} Z`;
-
-    const ticks = rng(5).map((k) => {
-      const val = (k / 4) * max;
-      return { y: y(val), label: Math.round(val).toString() };
-    });
-
-    return { path: d, area: a, yTicks: ticks };
-  }, [pts, height, padding, svgW]);
+  const last = clean.length ? clean[clean.length - 1].y : 0;
+  const best = clean.length ? Math.max(...clean.map((p) => p.y)) : 0;
+  const startLabel = points?.[0]?.date ? fmtStart(points[0].date) : "Début";
 
   return (
     <section style={{ ...glassCard, ...fullW, overflow: "hidden" }}>
@@ -488,49 +472,32 @@ function LineChart({
         <div style={iconBadge}>
           <IconBars color={T.gold} />
         </div>
-        <div style={{ minWidth: 0 }}>
-          <BlockTitle text="Évolution" accent={accent} accentSoft={accentSoft} style={{ fontSize: 12, marginBottom: 2 }} />
-          <div style={{ fontSize: 12, color: T.text60 }}>Moyenne par partie</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <BlockTitle text="Évolution des performances" accent={accent} accentSoft={accentSoft} style={{ fontSize: 12, marginBottom: 2 }} />
+          <div style={{ fontSize: 12, color: T.text60 }}>Sparkline X01Multi · moyenne / 3 flèches</div>
         </div>
       </div>
 
-      <div style={{ padding: "0 0 12px" }}>
-        <svg
-          width={svgW}
-          height={height}
-          style={{ display: "block", width: "100%", maxWidth: "100%" }}
-          viewBox={`0 0 ${svgW} ${height}`}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          <defs>
-            <linearGradient id="goldArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={accent} stopOpacity="0.28" />
-              <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 16px 8px" }}>
+        <span style={{ borderRadius: 999, padding: "4px 9px", border: `1px solid ${T.goldEdgeStrong}`, color: T.gold, background: "rgba(246,194,86,.08)", fontSize: 10, fontWeight: 900 }}>Avg3</span>
+        <span style={{ borderRadius: 999, padding: "4px 9px", border: `1px solid ${T.edge}`, color: T.text70, background: "rgba(0,0,0,.30)", fontSize: 10, fontWeight: 800 }}>Dernière {last ? Math.round(last * 10) / 10 : "—"}</span>
+        <span style={{ borderRadius: 999, padding: "4px 9px", border: `1px solid ${T.edge}`, color: T.text70, background: "rgba(0,0,0,.30)", fontSize: 10, fontWeight: 800 }}>Best {best ? Math.round(best * 10) / 10 : "—"}</span>
+      </div>
 
-          <line x1={padding} y1={height - padding} x2={svgW - padding} y2={height - padding} stroke={T.axis} />
-          <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke={T.axis} />
-
-          {yTicks.map((t, i) => (
-            <g key={i}>
-              <line x1={padding} y1={t.y} x2={svgW - padding} y2={t.y} stroke={T.grid} />
-              <text x={padding - 10} y={t.y + 4} textAnchor="end" style={{ fontSize: 10, fill: "rgba(255,255,255,.65)" }}>
-                {t.label}
-              </text>
-            </g>
-          ))}
-
-          <path d={area} fill="url(#goldArea)" />
-          <path d={path} fill="none" stroke={accent} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-
-          <text x={padding} y={height - (padding - 14)} textAnchor="start" style={{ fontSize: 10, fill: "rgba(255,255,255,.70)" }}>
-            {startLabel}
-          </text>
-          <text x={svgW - padding} y={height - (padding - 14)} textAnchor="end" style={{ fontSize: 10, fill: "rgba(255,255,255,.80)" }}>
-            {endLabel}
-          </text>
-        </svg>
+      <div style={{ padding: "0 16px 14px" }}>
+        {sparkPoints.length ? (
+          <div style={{ minHeight: height, display: "flex", alignItems: "center" }}>
+            <SparklinePro points={sparkPoints} height={Math.max(86, height - 90)} />
+          </div>
+        ) : (
+          <div style={{ minHeight: 86, display: "grid", placeItems: "center", color: T.text70, fontSize: 12 }}>
+            Pas encore assez de données X01 pour tracer l’évolution.
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", color: T.text60, fontSize: 10, marginTop: 2 }}>
+          <span>{startLabel}</span>
+          <span>Aujourd’hui</span>
+        </div>
       </div>
     </section>
   );

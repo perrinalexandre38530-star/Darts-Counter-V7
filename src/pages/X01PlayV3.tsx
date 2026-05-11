@@ -987,8 +987,25 @@ const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary 
   const autosaveLastSigRef = React.useRef("");
   const autosaveLastPersistAtRef = React.useRef(0);
 
-  // ✅ IMPORTANT: déclarer players avant tout hook/useMemo qui l'utilise
+  // ✅ IMPORTANT : déclarer players avant tout hook/useMemo qui l'utilise
   const players = Array.isArray((config as any)?.players) ? ((config as any).players as any[]) : [];
+
+  // ONLINE STRICT : ordre de départ déterministe sur tous les appareils.
+  // En online on ne laisse jamais le moteur tirer un ordre aléatoire localement,
+  // sinon chaque téléphone peut démarrer avec un joueur actif différent.
+  const effectiveOnlinePre = !!online || !!(config as any)?.online || !!(config as any)?.lobbyCode || !!(config as any)?.onlineLobbyCode;
+  const effectiveRuntimeConfig = React.useMemo(() => {
+    if (!effectiveOnlinePre) return config;
+    return {
+      ...(config as any),
+      online: true,
+      onlineMode: (config as any)?.onlineMode || "x01",
+      serveMode: "alternate",
+      randomOrder: false,
+      randomStart: false,
+      shufflePlayers: false,
+    } as any;
+  }, [config, effectiveOnlinePre]);
 
  // =====================================================
 // ✅ Bot avatars fallback (si un BOT n'a pas avatarDataUrl dans config)
@@ -1124,28 +1141,47 @@ const {
   throwDart,
   undoLastDart, // 🔥 UNDO illimité du moteur V3
   startNextLeg,
-} = useX01EngineV3({ config });
+} = useX01EngineV3({ config: effectiveRuntimeConfig as any });
 
 const safePlayersForOnline = React.useMemo(() => (Array.isArray(players) ? players : []), [players]);
 const activePlayer = safePlayersForOnline.find((p: any) => String(p?.id) === String(activePlayerId)) || null;
 
 // ONLINE strict : X01PlayV3 est parfois lancé avec online/lobbyCode dans config sans props explicites.
 // On centralise donc l'état online ici pour éviter que les deux appareils puissent saisir en même temps.
-const effectiveOnline = !!online || !!(config as any)?.online || !!(config as any)?.lobbyCode || !!(config as any)?.onlineLobbyCode;
+const effectiveOnline = effectiveOnlinePre;
 const effectiveLobbyCode = String(lobbyCode || (config as any)?.lobbyCode || (config as any)?.onlineLobbyCode || "").trim().toUpperCase();
 const readOnlineSessionUserId = React.useCallback(() => {
   try {
-    const session = (onlineApi as any)?.loadAuthFromLS?.();
-    return String(
-      session?.user?.id ||
-      session?.userId ||
-      session?.profile?.userId ||
-      session?.profile?.user_id ||
-      ""
-    ).trim();
-  } catch {
-    return "";
-  }
+    const fromApi = (onlineApi as any)?.loadAuthFromLS?.();
+    const readRaw = (key: string) => {
+      try { return window.localStorage.getItem(key); } catch { return null; }
+    };
+    const parse = (raw: string | null) => {
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch { return null; }
+    };
+    const candidates = [
+      fromApi,
+      parse(readRaw("dc_online_auth_supabase_v1")),
+      parse(readRaw("dc_online_auth_v1")),
+      parse(readRaw("dc_auth_v7")),
+      parse(readRaw("auth")),
+    ].filter(Boolean);
+
+    for (const session of candidates as any[]) {
+      const uid = String(
+        session?.user?.id ||
+        session?.userId ||
+        session?.id ||
+        session?.profile?.userId ||
+        session?.profile?.user_id ||
+        session?.profile?.id ||
+        ""
+      ).trim();
+      if (uid) return uid;
+    }
+  } catch {}
+  return "";
 }, []);
 const [onlineLocalUserId, setOnlineLocalUserId] = React.useState<string>(() => readOnlineSessionUserId());
 React.useEffect(() => {
@@ -1508,8 +1544,8 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
         lobbyCode: onlineLobbyCode,
         lobbyId: (config as any)?.lobbyId || null,
         hostUserId: (config as any)?.hostUserId || (config as any)?.onlineHostUserId || null,
-        x01ConfigV3: config,
-        config,
+        x01ConfigV3: effectiveRuntimeConfig,
+        config: effectiveRuntimeConfig,
         players,
         __x01OnlineSyncVersion: 2,
         __x01OnlineReason: reason,
@@ -1524,7 +1560,7 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
   } finally {
     onlinePublishingRef.current = false;
   }
-}, [isOnlineMatch, onlineLobbyCode, status, config, players, onlineUserId]);
+}, [isOnlineMatch, onlineLobbyCode, status, effectiveRuntimeConfig, players, onlineUserId]);
 
 React.useEffect(() => {
   if (!isOnlineMatch || !onlineLobbyCode) return;
@@ -1729,6 +1765,7 @@ const isBotTurn = React.useMemo(() => {
       voiceScoreEnabled &&
       scoringSource !== "external" &&
       !isBotTurn &&
+      onlineCanScore &&
       status === "running",
     lang: (lang || "fr").startsWith("fr") ? "fr-FR" : "en-US",
     speak: speakVoiceScore,
@@ -2779,6 +2816,7 @@ try {
 const validateThrow = async () => {
   if (isValidatingRef.current) return;
   if (effectiveOnline && !onlineCanScore) return;
+  if (effectiveOnline && onlineCurrentUserId && !onlineActiveIdentitySet.has(String(onlineCurrentUserId))) return;
   const toSend = Array.isArray(currentThrow) ? [...currentThrow] : [];
   const pid = activePlayerId;
   if (!pid || toSend.length <= 0) return;
@@ -4040,7 +4078,7 @@ if (isLandscapeTablet) {
                 maxHeight: isTabletUi ? "100%" : "none",
               }}
             >
-              {isBotTurn ? (
+              {onlineTurnLocked ? (onlineStandbyChat || null) : isBotTurn ? (
                 <div
                   style={{
                     padding: 8,
@@ -4215,15 +4253,15 @@ if (isLandscapeTablet) {
                     <ScoreInputHub
                       currentThrow={currentThrow}
                       multiplier={multiplier}
-                      onSimple={handleSimple}
-                      onDouble={handleDouble}
-                      onTriple={handleTriple}
-                      onBackspace={handleBackspace}
-                      onCancel={handleCancel}
-                      onNumber={handleNumber}
-                      onBull={handleBull}
-                      onValidate={requestValidateThrow}
-                      onDirectDart={handleDirectDart}
+                      onSimple={onlineCanScore ? handleSimple : (() => {})}
+                      onDouble={onlineCanScore ? handleDouble : (() => {})}
+                      onTriple={onlineCanScore ? handleTriple : (() => {})}
+                      onBackspace={onlineCanScore ? handleBackspace : (() => {})}
+                      onCancel={onlineCanScore ? handleCancel : (() => {})}
+                      onNumber={onlineCanScore ? handleNumber : (() => {})}
+                      onBull={onlineCanScore ? handleBull : (() => {})}
+                      onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
+                      onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
                       hidePreview
                       showPlaceholders={false}
                       disabled={isBustLocked || !onlineCanScore}
@@ -4494,7 +4532,7 @@ if (isLandscapeTablet) {
             ref={keypadWrapRef}
             style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", paddingBottom: "calc(14px + env(safe-area-inset-bottom))" }}
           >
-            {isBotTurn ? (
+            {onlineTurnLocked ? (onlineStandbyChat || null) : isBotTurn ? (
           <div
             style={{
               padding: 14,
@@ -4657,15 +4695,15 @@ if (isLandscapeTablet) {
             <ScoreInputHub
               currentThrow={currentThrow}
               multiplier={multiplier}
-              onSimple={handleSimple}
-              onDouble={handleDouble}
-              onTriple={handleTriple}
-              onBackspace={handleBackspace}
-              onCancel={handleCancel}
-              onNumber={handleNumber}
-              onBull={handleBull}
-              onValidate={requestValidateThrow}
-              onDirectDart={handleDirectDart}
+              onSimple={onlineCanScore ? handleSimple : (() => {})}
+              onDouble={onlineCanScore ? handleDouble : (() => {})}
+              onTriple={onlineCanScore ? handleTriple : (() => {})}
+              onBackspace={onlineCanScore ? handleBackspace : (() => {})}
+              onCancel={onlineCanScore ? handleCancel : (() => {})}
+              onNumber={onlineCanScore ? handleNumber : (() => {})}
+              onBull={onlineCanScore ? handleBull : (() => {})}
+              onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
+              onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
               hidePreview
               showPlaceholders={false}
               disabled={isBustLocked || !onlineCanScore}
