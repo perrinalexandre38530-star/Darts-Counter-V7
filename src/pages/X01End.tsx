@@ -1382,6 +1382,39 @@ function getPlayerRowFromObjectOrArray(src: any, pid: string): any {
   return null;
 }
 
+function getRankingRowForPlayer(rec: any, summary: any, payloadSummary: any, pid: string): any {
+  const roots = [summary, payloadSummary, rec?.summary, rec?.payload?.summary, rec?.payload?.state, rec?.state, rec?.resume?.state];
+  for (const root of roots) {
+    const list = root?.rankings || root?.ranking || root?.playersRanking || root?.standings;
+    if (Array.isArray(list)) {
+      const hit = list.find((row: any) => String(row?.id ?? row?.playerId ?? row?.profileId ?? row?.pid ?? "") === String(pid));
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+function readScoreMapValue(rec: any, summary: any, payloadSummary: any, pid: string, kind: "legs" | "sets"): number | undefined {
+  const roots = [summary, payloadSummary, rec?.summary, rec?.payload?.summary, rec?.payload?.state, rec?.state, rec?.resume?.state];
+  const paths = kind === "legs"
+    ? ["legsByPlayer", "legsWon", "legsScore", "score.legs", "lw"]
+    : ["setsByPlayer", "setsWon", "setsScore", "score.sets", "sw"];
+  for (const root of roots) {
+    if (!root || typeof root !== "object") continue;
+    for (const path of paths) {
+      const map = pick(root, [path], undefined);
+      if (map && typeof map === "object") {
+        const direct = map[pid] ?? map[String(pid)];
+        if (direct !== undefined && direct !== null && Number.isFinite(Number(direct))) return Number(direct);
+        const shortKey = String(pid).slice(0, 20);
+        const short = map[shortKey];
+        if (short !== undefined && short !== null && Number.isFinite(Number(short))) return Number(short);
+      }
+    }
+  }
+  return undefined;
+}
+
 function winnerIdFromRecord(rec: any): string | null {
   return rec?.winnerId ?? rec?.payload?.winnerId ?? rec?.summary?.winnerId ?? null;
 }
@@ -1695,32 +1728,46 @@ function buildPerPlayerMetrics(
       rec?.payload?.setsWon ||
       {};
 
-    m.legsWon = v(
-      m.legsWon ??
-        r.legsWonTotal ??
-        r.legsWon ??
-        r.legs ??
-        r.matchLegs ??
-        r.wonLegs ??
-        summaryLegsMap?.[pid]
-    );
-    m.setsWon = v(
-      m.setsWon ??
-        r.setsWonTotal ??
-        r.setsWon ??
-        r.sets ??
-        r.matchSets ??
-        r.wonSets ??
-        summarySetsMap?.[pid]
-    );
+    const rankingRow = getRankingRowForPlayer(rec, summary, payloadSummary, pid);
+    const rankedLegs = rankingRow
+      ? Number(rankingRow.legsWon ?? rankingRow.lw ?? rankingRow.legs ?? rankingRow.matchLegs ?? rankingRow.wonLegs)
+      : NaN;
+    const rankedSets = rankingRow
+      ? Number(rankingRow.setsWon ?? rankingRow.sw ?? rankingRow.sets ?? rankingRow.matchSets ?? rankingRow.wonSets)
+      : NaN;
+    const mappedLegs = readScoreMapValue(rec, summary, payloadSummary, pid, "legs");
+    const mappedSets = readScoreMapValue(rec, summary, payloadSummary, pid, "sets");
+
+    m.legsWon = Number.isFinite(rankedLegs)
+      ? rankedLegs
+      : (mappedLegs !== undefined ? mappedLegs : v(
+        m.legsWon ??
+          r.legsWonTotal ??
+          r.legsWon ??
+          r.legs ??
+          r.matchLegs ??
+          r.wonLegs ??
+          summaryLegsMap?.[pid]
+      ));
+    m.setsWon = Number.isFinite(rankedSets)
+      ? rankedSets
+      : (mappedSets !== undefined ? mappedSets : v(
+        m.setsWon ??
+          r.setsWonTotal ??
+          r.setsWon ??
+          r.sets ??
+          r.matchSets ??
+          r.wonSets ??
+          summarySetsMap?.[pid]
+      ));
 
     m.first9 = v(r.first9Avg);
     m.highestNonCO = v(r.highestNonCheckout);
     m.dartsToFinish = v(r.dartsToFinish);
     m.avgCoDarts = v(r.avgCheckoutDarts);
     m.remaining = v(r.remaining ?? r.scoreRemaining ?? r.finalScore ?? r.scoreAfter ?? m.remaining);
-    m.setsWon = v(r.setsWonTotal ?? r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? summarySetsMap?.[pid] ?? m.setsWon);
-    m.legsWon = v(r.legsWonTotal ?? r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? summaryLegsMap?.[pid] ?? m.legsWon);
+    if (m.setsWon === undefined) m.setsWon = v(r.setsWonTotal ?? r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? summarySetsMap?.[pid]);
+    if (m.legsWon === undefined) m.legsWon = v(r.legsWonTotal ?? r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? summaryLegsMap?.[pid]);
 
     // NB de darts : on prend ce qu'on trouve de plus fiable
     const dartsFromDetail = n(
@@ -2031,8 +2078,8 @@ function buildPerPlayerMetrics(
       );
 
     m.remaining = v(pickFromAny([`remaining.${pid}`, `finalScores.${pid}`, `scoreAfter.${pid}`, `scores.${pid}`], legacyRoots), m.remaining);
-    m.setsWon = v(pickFromAny([`setsWon.${pid}`, `sets.${pid}`, `score.sets.${pid}`], legacyRoots), m.setsWon);
-    m.legsWon = v(pickFromAny([`legsWon.${pid}`, `legs.${pid}`, `score.legs.${pid}`], legacyRoots), m.legsWon);
+    if (m.setsWon === undefined) m.setsWon = v(pickFromAny([`setsWon.${pid}`, `sets.${pid}`, `score.sets.${pid}`], legacyRoots));
+    if (m.legsWon === undefined) m.legsWon = v(pickFromAny([`legsWon.${pid}`, `legs.${pid}`, `score.legs.${pid}`], legacyRoots));
 
     // ===== 3b) source de vérité replay/volées =====
     // Pour X01, les compteurs finaux/history doivent être recalculés depuis les
@@ -2743,92 +2790,169 @@ function MatchLegDetails({
     );
   }
 
+  const sets = React.useMemo(() => {
+    const map = new Map<number, LegBreakdown[]>();
+    for (const leg of breakdown) {
+      const setNo = Math.max(1, Number(leg.setNo || 1) || 1);
+      const arr = map.get(setNo) || [];
+      arr.push(leg);
+      map.set(setNo, arr);
+    }
+    return Array.from(map.entries())
+      .map(([setNo, legs]) => ({
+        setNo,
+        legs: legs.sort((a, b) => a.legInSet - b.legInSet || a.legNo - b.legNo),
+      }))
+      .sort((a, b) => a.setNo - b.setNo);
+  }, [breakdown]);
+
+  const [activeSet, setActiveSet] = React.useState<number>(sets[0]?.setNo || 1);
+  const activeSetObj = sets.find((s) => s.setNo === activeSet) || sets[0];
+  const [activeLegKey, setActiveLegKey] = React.useState<string>(activeSetObj?.legs?.[0]?.key || "");
+
+  React.useEffect(() => {
+    const setObj = sets.find((s) => s.setNo === activeSet) || sets[0];
+    if (!setObj) return;
+    if (!setObj.legs.some((leg) => leg.key === activeLegKey)) {
+      setActiveLegKey(setObj.legs[0]?.key || "");
+    }
+  }, [sets, activeSet, activeLegKey]);
+
+  const selectedSet = sets.find((s) => s.setNo === activeSet) || sets[0];
+  const selectedLeg =
+    selectedSet?.legs.find((leg) => leg.key === activeLegKey) || selectedSet?.legs?.[0];
+
+  const pill = (active: boolean): React.CSSProperties => ({
+    border: active ? "1px solid rgba(255,190,36,.85)" : "1px solid rgba(255,255,255,.10)",
+    background: active ? "linear-gradient(180deg,#ffc233,#f0a900)" : "rgba(255,255,255,.05)",
+    color: active ? "#181000" : "rgba(255,255,255,.82)",
+    borderRadius: 999,
+    padding: "8px 12px",
+    fontSize: 12,
+    fontWeight: 1000,
+    whiteSpace: "nowrap",
+    boxShadow: active ? "0 0 18px rgba(255,190,36,.22)" : "none",
+  });
+
+  const winnerName =
+    selectedLeg?.winnerId && players.find((p) => p.id === selectedLeg.winnerId)?.name
+      ? players.find((p) => p.id === selectedLeg.winnerId)?.name
+      : null;
+
   return (
     <>
       <InfoCard>
-        <b>Détails par leg</b> — chaque bloc ci-dessous isole les stats de la manche correspondante, pendant que l’onglet Résumé affiche le cumul complet du match.
+        <b>Détails par set / leg</b> — choisis d’abord le set, puis la manche. Le résumé cumulé additionne toutes les legs du match.
       </InfoCard>
 
-      {breakdown.map((leg) => {
-        const winnerName =
-          leg.winnerId && players.find((p) => p.id === leg.winnerId)?.name
-            ? players.find((p) => p.id === leg.winnerId)?.name
-            : null;
+      <Panel className="x-card" style={{ padding: D.cardPad }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 3 }}>
+          <div style={{ display: "flex", gap: 8, minWidth: "max-content" }}>
+            {sets.map((s) => (
+              <button
+                key={s.setNo}
+                type="button"
+                onClick={() => {
+                  setActiveSet(s.setNo);
+                  setActiveLegKey(s.legs[0]?.key || "");
+                }}
+                style={pill(s.setNo === selectedSet?.setNo)}
+              >
+                Set {s.setNo}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        return (
-          <Panel key={leg.key} className="x-card" style={{ padding: D.cardPad }}>
-            <div
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", marginTop: 8, paddingBottom: 3 }}>
+          <div style={{ display: "flex", gap: 8, minWidth: "max-content" }}>
+            {(selectedSet?.legs || []).map((leg) => (
+              <button
+                key={leg.key}
+                type="button"
+                onClick={() => setActiveLegKey(leg.key)}
+                style={pill(leg.key === selectedLeg?.key)}
+              >
+                Leg {leg.legInSet}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Panel>
+
+      {selectedLeg ? (
+        <Panel key={selectedLeg.key} className="x-card" style={{ padding: D.cardPad }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <h3
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                marginBottom: 6,
+                margin: 0,
+                fontSize: D.fsHead + 1,
+                letterSpacing: 0.2,
+                color: "#ffcf57",
               }}
             >
-              <h3
+              Set {selectedLeg.setNo} — Leg {selectedLeg.legInSet}
+            </h3>
+            {winnerName ? (
+              <span
                 style={{
-                  margin: 0,
-                  fontSize: D.fsHead + 1,
-                  letterSpacing: 0.2,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,207,87,.30)",
+                  background: "rgba(255,207,87,.10)",
                   color: "#ffcf57",
+                  fontSize: 10.5,
+                  fontWeight: 1000,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {leg.title}
-              </h3>
-              {winnerName ? (
-                <span
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,207,87,.30)",
-                    background: "rgba(255,207,87,.10)",
-                    color: "#ffcf57",
-                    fontSize: 10.5,
-                    fontWeight: 1000,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  🏆 {winnerName}
-                </span>
-              ) : null}
-            </div>
+                🏆 {winnerName}
+              </span>
+            ) : null}
+          </div>
 
-            <TableColMajor
-              columns={cols}
-              rowGroups={[
-                {
-                  rows: [
-                    { label: "Score restant", get: (m) => (m.remaining != null ? f0(m.remaining) : "—") },
-                    { label: "Avg/3D", get: (m) => f2(m.avg3) },
-                    { label: "Best visit", get: (m) => f0(m.bestVisit) },
-                    { label: "Darts", get: (m) => f0(m.darts) },
-                    { label: "Visits", get: (m) => f0(m.visits) },
-                    { label: "Points", get: (m) => f0(m.points) },
-                    { label: "60+", get: (m) => f0(m.t60) },
-                    { label: "100+", get: (m) => f0(m.t100) },
-                    { label: "140+", get: (m) => f0(m.t140) },
-                    { label: "180", get: (m) => f0(m.t180) },
-                    { label: "Best CO", get: (m) => f0(m.bestCO) },
-                    { label: "CO hits", get: (m) => f0(m.coHits) },
-                    { label: "CO att.", get: (m) => f0(m.coAtt) },
-                    { label: "CO %", get: (m) => pct(m.coPct) },
-                  ],
-                },
-              ]}
-              dataMap={leg.metrics}
-              tableStyle={tableStyle}
+          <TableColMajor
+            columns={cols}
+            rowGroups={[
+              {
+                rows: [
+                  { label: "Score restant", get: (m) => (m.remaining != null ? f0(m.remaining) : "—") },
+                  { label: "Avg/3D", get: (m) => f2(m.avg3) },
+                  { label: "Best visit", get: (m) => f0(m.bestVisit) },
+                  { label: "Darts", get: (m) => f0(m.darts) },
+                  { label: "Visits", get: (m) => f0(m.visits) },
+                  { label: "Points", get: (m) => f0(m.points) },
+                  { label: "60+", get: (m) => f0(m.t60) },
+                  { label: "100+", get: (m) => f0(m.t100) },
+                  { label: "140+", get: (m) => f0(m.t140) },
+                  { label: "180", get: (m) => f0(m.t180) },
+                  { label: "Best CO", get: (m) => f0(m.bestCO) },
+                  { label: "CO hits", get: (m) => f0(m.coHits) },
+                  { label: "CO att.", get: (m) => f0(m.coAtt) },
+                  { label: "CO %", get: (m) => pct(m.coPct) },
+                ],
+              },
+            ]}
+            dataMap={selectedLeg.metrics}
+            tableStyle={tableStyle}
+          />
+
+          <div style={{ marginTop: 8 }}>
+            <VisitsList
+              visits={selectedLeg.visits.map((v, idx) => ({ ...v, idx: idx + 1 }))}
+              playersById={Object.fromEntries(players.map((p) => [p.id, p]))}
             />
-
-            <div style={{ marginTop: 8 }}>
-              <VisitsList
-                visits={leg.visits.map((v, idx) => ({ ...v, idx: idx + 1 }))}
-                playersById={Object.fromEntries(players.map((p) => [p.id, p]))}
-              />
-            </div>
-          </Panel>
-        );
-      })}
+          </div>
+        </Panel>
+      ) : null}
     </>
   );
 }
