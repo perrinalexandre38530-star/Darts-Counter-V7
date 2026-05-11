@@ -44,7 +44,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 import { loadBots } from "./ProfilesBots";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 import { onlineApi } from "../lib/onlineApi";
-import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages } from "../lib/chatApi";
+import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages, subscribeMessages as subscribeOnlineChatMessages } from "../lib/chatApi";
 import { getCountryFlagSrc } from "../lib/geoAssets";
 
 
@@ -1119,7 +1119,12 @@ const {
   startNextLeg,
 } = useX01EngineV3({ config });
 
-const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+const safePlayersForOnline = React.useMemo(() => (Array.isArray(players) ? players : []), [players]);
+const activePlayer = safePlayersForOnline.find((p: any) => String(p?.id) === String(activePlayerId)) || null;
+const onlineCurrentUserId = String(onlineUserId || (config as any)?.onlineUserId || (config as any)?.currentUserId || "").trim();
+const onlineActivePlayerId = String(activePlayerId || "").trim();
+const onlineTurnLocked = !!online && !!onlineCurrentUserId && !!onlineActivePlayerId && onlineCurrentUserId !== onlineActivePlayerId && status === "running";
+const onlineCanScore = !onlineTurnLocked;
 
 const activePlayerCountryFlagSrc = React.useMemo(() => {
   const direct =
@@ -1141,12 +1146,15 @@ const normalizeOnlineChatMessage = React.useCallback((row: any) => {
   const payload = row?.message && typeof row.message === "object" ? row.message : row || {};
   const text = String(row?.text ?? payload?.text ?? payload?.message ?? "").trim();
   if (!text) return null;
+  const clientId = String(row?.clientId || row?.client_id || payload?.clientId || payload?.client_id || "");
+  const createdAt = row?.createdAt || row?.created_at || payload?.createdAt || payload?.created_at || new Date().toISOString();
   return {
-    id: String(row?.id || payload?.id || `${row?.createdAt || row?.created_at || Date.now()}:${text}`),
+    id: String(clientId || row?.id || payload?.id || `${createdAt}:${row?.userId || row?.user_id || payload?.userId || payload?.user_id || ""}:${text}`),
+    clientId,
     userId: String(row?.userId || row?.user_id || payload?.userId || payload?.user_id || ""),
     name: String(row?.name || row?.nickname || payload?.name || payload?.nickname || "Joueur"),
     text,
-    createdAt: row?.createdAt || row?.created_at || payload?.createdAt || payload?.created_at || new Date().toISOString(),
+    createdAt,
   };
 }, []);
 
@@ -1155,7 +1163,18 @@ const pushOnlineChatMessage = React.useCallback((row: any, options?: { silent?: 
   if (!msg) return;
   setOnlineChatMessages((prev) => {
     const arr = Array.isArray(prev) ? prev : [];
-    if (arr.some((m) => String(m?.id) === String(msg.id))) return arr;
+    const msgClientId = String((msg as any)?.clientId || "");
+    const msgKey = String(msg?.id || "");
+    const msgUser = String(msg?.userId || "");
+    const msgText = String(msg?.text || "");
+    const msgTime = Date.parse(String(msg?.createdAt || "")) || Date.now();
+    if (arr.some((m) => {
+      const mClientId = String((m as any)?.clientId || "");
+      if (msgClientId && mClientId && msgClientId === mClientId) return true;
+      if (msgKey && String(m?.id || "") === msgKey) return true;
+      const mTime = Date.parse(String(m?.createdAt || "")) || 0;
+      return String(m?.userId || "") === msgUser && String(m?.text || "") === msgText && Math.abs(mTime - msgTime) < 5000;
+    })) return arr;
     return [...arr.slice(-39), msg];
   });
   if (!options?.silent && !onlineChatOpen) {
@@ -1184,9 +1203,19 @@ React.useEffect(() => {
 
 React.useEffect(() => {
   if (!online || !lobbyCode) return;
-  return onlineApi.subscribeOnlineStream(lobbyCode, {
+  const cleanups: Array<() => void> = [];
+  const cleanupStream = onlineApi.subscribeOnlineStream(lobbyCode, {
     onMessage: (message: any) => pushOnlineChatMessage(message),
   });
+  if (typeof cleanupStream === "function") cleanups.push(cleanupStream);
+
+  // Fallback indispensable après veille téléphone / EventSource coupé : le chat continue par polling léger.
+  const cleanupPollMaybe = subscribeOnlineChatMessages(lobbyCode, (message: any) => pushOnlineChatMessage(message));
+  if (typeof cleanupPollMaybe === "function") {
+    cleanups.push(() => { try { (cleanupPollMaybe as any)(); } catch {} });
+  }
+
+  return () => cleanups.forEach((fn) => { try { fn(); } catch {} });
 }, [online, lobbyCode, pushOnlineChatMessage]);
 
 React.useEffect(() => {
@@ -1197,8 +1226,10 @@ const sendOnlineChat = React.useCallback(async () => {
   const text = onlineChatDraft.trim();
   if (!online || !lobbyCode || !text) return;
   const me = players.find((p: any) => String(p?.id || p?.userId || "") === String(onlineUserId || activePlayerId || "")) || activePlayer || players[0];
+  const clientId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const optimistic = {
-    id: `local:${Date.now()}`,
+    id: clientId,
+    clientId,
     userId: onlineUserId || me?.id || "",
     name: me?.name || profileById[String(me?.id || "")]?.name || "Moi",
     text,
@@ -1207,16 +1238,68 @@ const sendOnlineChat = React.useCallback(async () => {
   setOnlineChatDraft("");
   pushOnlineChatMessage(optimistic, { silent: true });
   try {
-    await postOnlineChatMessage(lobbyCode, {
+    const saved = await postOnlineChatMessage(lobbyCode, {
+      clientId,
       text,
       name: optimistic.name,
       userId: optimistic.userId,
       type: "game-chat",
     });
+    pushOnlineChatMessage(saved, { silent: true });
   } catch (e) {
     console.warn("[X01PlayV3] online chat send failed", e);
   }
 }, [online, lobbyCode, onlineChatDraft, players, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
+
+// ONLINE : empêche la mise en veille pendant une partie et tente une resynchro après retour écran/app.
+React.useEffect(() => {
+  if (!online || !lobbyCode || status === "match_end") return;
+  if (typeof window === "undefined") return;
+
+  let wakeLock: any = null;
+  let stopped = false;
+
+  const requestWakeLock = async () => {
+    try {
+      const nav: any = navigator as any;
+      if (!nav?.wakeLock?.request || document.visibilityState !== "visible") return;
+      wakeLock = await nav.wakeLock.request("screen");
+      wakeLock?.addEventListener?.("release", () => {});
+    } catch {
+      // Android/Chrome ancien ou permission refusée : on garde les resync visibilité ci-dessous.
+    }
+  };
+
+  const resyncAfterResume = async () => {
+    if (stopped) return;
+    try { await requestWakeLock(); } catch {}
+    try {
+      const row = await (onlineApi as any).fetchMatchByCode?.(String(lobbyCode).toUpperCase());
+      const statePayload = row?.state_json || row?.state || null;
+      if (statePayload && typeof statePayload === "object") {
+        try { window.localStorage.setItem(`dc_online_resume_${String(lobbyCode).toUpperCase()}`, JSON.stringify({ row, at: Date.now() })); } catch {}
+      }
+    } catch {}
+    try {
+      const rows = await fetchOnlineChatMessages(lobbyCode, 40);
+      (Array.isArray(rows) ? rows : []).forEach((m) => pushOnlineChatMessage(m, { silent: true }));
+    } catch {}
+  };
+
+  requestWakeLock().catch(() => {});
+  const onVisible = () => { if (document.visibilityState === "visible") resyncAfterResume().catch(() => {}); };
+  window.addEventListener("focus", onVisible);
+  window.addEventListener("online", onVisible);
+  document.addEventListener("visibilitychange", onVisible);
+
+  return () => {
+    stopped = true;
+    window.removeEventListener("focus", onVisible);
+    window.removeEventListener("online", onVisible);
+    document.removeEventListener("visibilitychange", onVisible);
+    try { wakeLock?.release?.(); } catch {}
+  };
+}, [online, lobbyCode, status, pushOnlineChatMessage]);
 
 
 // ============================================================
@@ -1361,10 +1444,20 @@ React.useEffect(() => {
   const fallbackTimer = window.setInterval(() => {
     if (!streamOpened) applyRemoteFetch().catch(() => {});
   }, 5000);
+  const onResume = () => {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    applyRemoteFetch().catch(() => {});
+  };
+  window.addEventListener("focus", onResume);
+  window.addEventListener("online", onResume);
+  document.addEventListener("visibilitychange", onResume);
 
   return () => {
     cancelled = true;
     window.clearInterval(fallbackTimer);
+    window.removeEventListener("focus", onResume);
+    window.removeEventListener("online", onResume);
+    document.removeEventListener("visibilitychange", onResume);
     if (typeof unsubscribe === "function") unsubscribe();
   };
 }, [isOnlineMatch, onlineLobbyCode, normalizeOnlineReplayDart, throwDart]);
@@ -3075,12 +3168,84 @@ React.useEffect(() => {
     };
   }, []);
 
+
+  const onlineStandbyChat = online && lobbyCode ? (
+    <div
+      style={{
+        height: "100%",
+        minHeight: 220,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        borderRadius: 18,
+        border: "1px solid rgba(255,207,87,.24)",
+        background: "linear-gradient(180deg, rgba(20,22,28,.92), rgba(6,7,10,.92))",
+        boxShadow: "0 18px 40px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.04)",
+        padding: 12,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ color: "#ffcf57", fontWeight: 950, fontSize: 15 }}>💬 Chat du salon</div>
+          <div style={{ color: "rgba(255,255,255,.68)", fontWeight: 800, fontSize: 12 }}>
+            Tour de {activePlayer?.name || "l’autre joueur"} — saisie verrouillée.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOnlineChatOpen(true)}
+          style={{ border: 0, borderRadius: 999, background: "rgba(255,207,87,.16)", color: "#ffcf57", padding: "8px 10px", fontWeight: 950 }}
+        >
+          Ouvrir
+        </button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        {onlineChatMessages.length ? onlineChatMessages.slice(-5).map((m) => (
+          <div key={m.id} style={{ padding: "8px 10px", borderRadius: 14, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.07)" }}>
+            <div style={{ fontSize: 11, color: "#ffcf57", fontWeight: 950 }}>{m.name}</div>
+            <div style={{ color: "#fff", fontWeight: 800, fontSize: 13 }}>{m.text}</div>
+          </div>
+        )) : (
+          <div style={{ color: "rgba(255,255,255,.62)", fontWeight: 800, textAlign: "center", padding: 18 }}>Aucun message pour l’instant.</div>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={onlineChatDraft}
+          onChange={(e) => setOnlineChatDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") sendOnlineChat(); }}
+          placeholder="Écrire pendant le tour adverse…"
+          style={{ flex: 1, minWidth: 0, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.35)", color: "#fff", padding: "0 12px", fontWeight: 800 }}
+        />
+        <button type="button" onClick={sendOnlineChat} style={{ height: 42, borderRadius: 14, border: 0, background: "linear-gradient(180deg,#ffd65c,#ffb51e)", color: "#111", padding: "0 14px", fontWeight: 950 }}>Envoyer</button>
+      </div>
+    </div>
+  ) : null;
+
    // =====================================================
   // Quitter / Rejouer / Résumé / Continuer
   // =====================================================
 
   function handleQuit() {
-    // ✅ En quittant un match, on purge l'autosave pour éviter toute reprise "fantôme"
+    // ONLINE : retour salon sans détruire l'autosave/reprise. Un téléphone peut se mettre en veille ou quitter par erreur.
+    if (online && lobbyCode) {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("dc_online_last_lobby_v1", String(lobbyCode).toUpperCase());
+        }
+      } catch {}
+      if (onExit) {
+        onExit();
+        return;
+      }
+      if (typeof window !== "undefined") {
+        window.location.hash = `#/online?lobbyCode=${encodeURIComponent(String(lobbyCode).toUpperCase())}`;
+      }
+      return;
+    }
+
+    // ✅ Hors online seulement : purge l'autosave pour éviter toute reprise fantôme.
     try {
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(AUTOSAVE_KEY);
@@ -3090,10 +3255,6 @@ React.useEffect(() => {
 
     if (onExit) {
       onExit();
-      return;
-    }
-    if (online && lobbyCode && typeof window !== "undefined") {
-      window.location.hash = "#/online";
       return;
     }
     if (typeof window !== "undefined") {
@@ -3820,6 +3981,7 @@ if (isLandscapeTablet) {
                       height: "100%",
                     }}
                   >
+                    {onlineTurnLocked && onlineStandbyChat ? onlineStandbyChat : (
                     <ScoreInputHub
                       currentThrow={currentThrow}
                       multiplier={multiplier}
@@ -3834,9 +3996,10 @@ if (isLandscapeTablet) {
                       onDirectDart={handleDirectDart}
                       hidePreview
                       showPlaceholders={false}
-                      disabled={isBustLocked}
+                      disabled={isBustLocked || !onlineCanScore}
                       switcherMode="hidden"
                     />
+                    )}
                   </div>
                 </div>
               )}
@@ -4260,6 +4423,7 @@ if (isLandscapeTablet) {
                   : "none",
             }}
           >
+            {onlineTurnLocked && onlineStandbyChat ? onlineStandbyChat : (
             <ScoreInputHub
               currentThrow={currentThrow}
               multiplier={multiplier}
@@ -4274,11 +4438,12 @@ if (isLandscapeTablet) {
               onDirectDart={handleDirectDart}
               hidePreview
               showPlaceholders={false}
-              disabled={isBustLocked}
+              disabled={isBustLocked || !onlineCanScore}
               // ✅ UX: pas de dropdown, modes visibles, et auto-fit pour que le keypad ne force JAMAIS un scroll.
               switcherMode="inline"
               fitToParent
             />
+            )}
           </div>
           </div>
         )}

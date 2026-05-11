@@ -69,7 +69,7 @@ export function subscribeMessages(lobbyCode: string, onInsert: (row: any) => voi
     };
 
     tick().catch(() => {});
-    timer = window.setInterval(() => tick().catch(() => {}), 2500);
+    timer = window.setInterval(() => tick().catch(() => {}), 1200);
     return async () => {
       stopped = true;
       if (timer) window.clearInterval(timer);
