@@ -103,15 +103,15 @@ function buildDiceDashboardForPlayer(playerId: string, playerName: string, rows:
     });
 
   // Distribution: on utilise avgScore pour ranger dans des buckets "darts-like" sans crasher l'UI.
-  const dist: any = { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 };
+  const dist: any = { "50+": 0, "80+": 0, "100+": 0, "120+": 0, "140+": 0 };
   mine.forEach((r: any) => {
     const p = (r?.payload?.stats?.players || []).find((x: any) => x?.id === playerId);
     const sc = Number(p?.score ?? 0) || 0;
-    if (sc >= 180) dist["180"]++;
-    else if (sc >= 140) dist["140+"]++;
-    else if (sc >= 100) dist["100+"]++;
-    else if (sc >= 60) dist["60-99"]++;
-    else dist["0-59"]++;
+    if (sc >= 50) dist["50+"]++;
+    if (sc >= 80) dist["80+"]++;
+    if (sc >= 100) dist["100+"]++;
+    if (sc >= 120) dist["120+"]++;
+    if (sc >= 140) dist["140+"]++;
   });
 
   return {
@@ -189,14 +189,14 @@ function buildMolkkyDashboardForPlayer(playerId: string, playerName: string, row
       avg3: Number(molkkyPlayerScore(r, playerId, playerName) || avgPts || 0),
     }));
 
-  const dist: any = { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 };
+  const dist: any = { "50+": 0, "80+": 0, "100+": 0, "120+": 0, "140+": 0 };
   mine.forEach((r: any) => {
     const turns = Number(r?.summary?.turns ?? r?.summary?.rounds ?? 0) || 0;
-    if (turns > 0 && turns <= 8) dist["180"]++;
-    else if (turns > 0 && turns <= 12) dist["140+"]++;
-    else if (turns > 0 && turns <= 16) dist["100+"]++;
-    else if (turns > 0 && turns <= 22) dist["60-99"]++;
-    else dist["0-59"]++;
+    if (turns > 0 && turns <= 36) dist["50+"]++;
+    if (turns > 0 && turns <= 24) dist["80+"]++;
+    if (turns > 0 && turns <= 18) dist["100+"]++;
+    if (turns > 0 && turns <= 15) dist["120+"]++;
+    if (turns > 0 && turns <= 12) dist["140+"]++;
   });
 
   return {
@@ -1330,11 +1330,11 @@ function buildDashboardForPlayer(
   let fbMatches = 0;
 
   const fbBuckets: Record<string, number> = {
-    "0-59": 0,
-    "60-99": 0,
+    "50+": 0,
+    "80+": 0,
     "100+": 0,
+    "120+": 0,
     "140+": 0,
-    "180": 0,
   };
 
   const evo: Array<{ date: string; avg3: number }> = [];
@@ -1349,11 +1349,11 @@ function buildDashboardForPlayer(
   // ✅ Normalisation buckets (tolère variantes de clés / formats)
   const normalizeBuckets = (raw: any): Record<string, number> => {
     const out: Record<string, number> = {
-      "0-59": 0,
-      "60-99": 0,
+      "50+": 0,
+      "80+": 0,
       "100+": 0,
+      "120+": 0,
       "140+": 0,
-      "180": 0,
     };
     if (!raw || typeof raw !== "object") return out;
 
@@ -1387,11 +1387,23 @@ function buildDashboardForPlayer(
       return null;
     };
 
-    out["0-59"] = Nn(pick("0-59") ?? pick("0_59"));
-    out["60-99"] = Nn(pick("60-99") ?? pick("60_99"));
+    out["50+"] = Nn(pick("50+") ?? pick("50plus") ?? pick("50_plus"));
+    out["80+"] = Nn(pick("80+") ?? pick("80plus") ?? pick("80_plus"));
     out["100+"] = Nn(pick("100+") ?? pick("100plus") ?? pick("100_plus"));
+    out["120+"] = Nn(pick("120+") ?? pick("120plus") ?? pick("120_plus"));
     out["140+"] = Nn(pick("140+") ?? pick("140plus") ?? pick("140_plus"));
-    out["180"] = Nn(pick("180"));
+
+    // Fallback ancien format : reconstruit les seuils cumulés quand seuls les anciens buckets existent.
+    if (!out["50+"] && !out["80+"]) {
+      const old60 = Nn(pick("60+") ?? pick("60-99") ?? pick("60_99"));
+      const old100 = out["100+"];
+      const old140 = out["140+"];
+      const old180 = Nn(pick("180"));
+      out["50+"] = old60 + old100 + old140 + old180;
+      out["80+"] = old100 + old140 + old180;
+      out["120+"] = old140 + old180;
+      out["140+"] = old140 + old180;
+    }
 
     return out;
   };
@@ -1399,11 +1411,11 @@ function buildDashboardForPlayer(
   // ✅ Ajoute un bucket normalisé dans fbBuckets (somme)
   const addBucketsToFb = (raw: any) => {
     const nb = normalizeBuckets(raw);
-    fbBuckets["0-59"] += Nloc(nb["0-59"]);
-    fbBuckets["60-99"] += Nloc(nb["60-99"]);
+    fbBuckets["50+"] += Nloc(nb["50+"]);
+    fbBuckets["80+"] += Nloc(nb["80+"]);
     fbBuckets["100+"] += Nloc(nb["100+"]);
+    fbBuckets["120+"] += Nloc(nb["120+"]);
     fbBuckets["140+"] += Nloc(nb["140+"]);
-    fbBuckets["180"] += Nloc(nb["180"]);
   };
 
   // --------- Loop records
@@ -5016,7 +5028,7 @@ const [liveDashboard, setLiveDashboard] =
 
         if (!rows.length) return dash;
 
-        let agg: any = computeX01MultiAgg(rows as any[], pid);
+        let agg: any = computeX01MultiAgg(rows as any[], pid, pname);
 
         // If playerId mismatch, try resolve by player name from payload
         if ((agg?.sessions ?? 0) == 0 && pname) {
@@ -5034,7 +5046,7 @@ const [liveDashboard, setLiveDashboard] =
             }
           }
           if (candidateId) {
-            const alt = computeX01MultiAgg(rows as any[], candidateId);
+            const alt = computeX01MultiAgg(rows as any[], candidateId, pname);
             if ((alt?.sessions ?? 0) > 0) agg = alt;
           }
         }
@@ -5048,11 +5060,11 @@ const [liveDashboard, setLiveDashboard] =
           dash.totalDarts = agg?.darts ?? dash.totalDarts;
           if (agg?.visitBuckets && typeof agg.visitBuckets === "object") {
             dash.distribution = {
-              "0-59": Number(agg.visitBuckets["0-59"] || 0),
-              "60-99": Number(agg.visitBuckets["60-99"] || 0),
+              "50+": Number(agg.visitBuckets["50+"] || 0),
+              "80+": Number(agg.visitBuckets["80+"] || 0),
               "100+": Number(agg.visitBuckets["100+"] || 0),
+              "120+": Number(agg.visitBuckets["120+"] || 0),
               "140+": Number(agg.visitBuckets["140+"] || 0),
-              "180": Number(agg.visitBuckets["180"] || 0),
             };
           }
           if (Array.isArray(agg?.progression) && agg.progression.length) {
@@ -5752,6 +5764,27 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       }
     }
 
+    if (a.key === "killer") {
+      try {
+        const kAgg: any = computeKillerAggForPlayer(rows as any[], pid, storeProfiles as any, {});
+        if (Number(kAgg?.matches || 0) > 0) {
+          a.matches = Math.max(Number(a.matches || 0), Number(kAgg.matches || 0));
+          a.wins = Math.max(Number(a.wins || 0), Number(kAgg.wins || 0));
+          a.kills = Math.max(Number(a.kills || 0), Number(kAgg.kills || 0));
+          a.hits = Math.max(Number(a.hits || 0), Number(kAgg.totalHits || 0));
+          if (!favNumber && Number(kAgg.favNumber || 0) > 0) {
+            favNumber = String(kAgg.favNumber);
+            favHits = Number(kAgg.favNumberHits || 0);
+          }
+        }
+      } catch {
+        // garde le fallback déjà extrait
+      }
+    }
+
+    // Sécurité : un taux de win ne peut jamais dépasser 100%, même si un
+    // ancien résumé duplique winnerId/winnerIds.
+    a.wins = Math.max(0, Math.min(Number(a.wins || 0), Number(a.matches || 0)));
     const winRate = a.matches ? Math.round((a.wins / a.matches) * 1000) / 10 : 0;
     const accuracy = (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 1000) / 10 : 0;
     const avg3 = a.samples.length ? Math.round((a.samples.reduce((x: number, y: any) => x + Number(y?.avg3D ?? y ?? 0), 0) / a.samples.length) * 10) / 10 : 0;
@@ -5791,7 +5824,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
         ];
     return { ...a, winRate, accuracy, avg3, favNumber, favHits, ticker } as ModeDashboardCard;
   });
-}, [records, selectedPlayer?.id]);
+}, [records, selectedPlayer?.id, selectedPlayer?.name, storeProfiles]);
 
 const dashboardToShowWithModes = React.useMemo(() => {
   if (!dashboardToShow) return dashboardToShow;

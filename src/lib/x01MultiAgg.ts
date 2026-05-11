@@ -159,7 +159,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     miss: 0,
     bust: 0,
     byNumber: Array(21).fill(0),
-    visitBuckets: { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 } as Record<string, number>,
+    visitBuckets: { "50+": 0, "80+": 0, "100+": 0, "120+": 0, "140+": 0 } as Record<string, number>,
     progression: [] as { avg3D: number; ts: number }[],
   };
 
@@ -190,11 +190,12 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
       if (!v.bust) {
         scored += v.score;
         bestVisit = Math.max(bestVisit, v.score);
-        if (v.score >= 180) out.visitBuckets["180"] += 1;
-        else if (v.score >= 140) out.visitBuckets["140+"] += 1;
-        else if (v.score >= 100) out.visitBuckets["100+"] += 1;
-        else if (v.score >= 60) out.visitBuckets["60-99"] += 1;
-        else out.visitBuckets["0-59"] += 1;
+        // Seuils cumulés demandés pour la répartition des vraies volées X01.
+        if (v.score >= 50) out.visitBuckets["50+"] += 1;
+        if (v.score >= 80) out.visitBuckets["80+"] += 1;
+        if (v.score >= 100) out.visitBuckets["100+"] += 1;
+        if (v.score >= 120) out.visitBuckets["120+"] += 1;
+        if (v.score >= 140) out.visitBuckets["140+"] += 1;
         if (v.finish) bestCO = Math.max(bestCO, v.score);
       } else {
         out.bust += 1;

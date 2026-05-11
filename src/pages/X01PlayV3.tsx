@@ -1128,10 +1128,45 @@ const {
 
 const safePlayersForOnline = React.useMemo(() => (Array.isArray(players) ? players : []), [players]);
 const activePlayer = safePlayersForOnline.find((p: any) => String(p?.id) === String(activePlayerId)) || null;
-const onlineCurrentUserId = String(onlineUserId || (config as any)?.onlineUserId || (config as any)?.currentUserId || "").trim();
+
+// ONLINE strict : X01PlayV3 est parfois lancé avec online/lobbyCode dans config sans props explicites.
+// On centralise donc l'état online ici pour éviter que les deux appareils puissent saisir en même temps.
+const effectiveOnline = !!online || !!(config as any)?.online || !!(config as any)?.lobbyCode || !!(config as any)?.onlineLobbyCode;
+const effectiveLobbyCode = String(lobbyCode || (config as any)?.lobbyCode || (config as any)?.onlineLobbyCode || "").trim().toUpperCase();
+const readOnlineSessionUserId = React.useCallback(() => {
+  try {
+    const session = (onlineApi as any)?.loadAuthFromLS?.();
+    return String(
+      session?.user?.id ||
+      session?.userId ||
+      session?.profile?.userId ||
+      session?.profile?.user_id ||
+      ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}, []);
+const [onlineLocalUserId, setOnlineLocalUserId] = React.useState<string>(() => readOnlineSessionUserId());
+React.useEffect(() => {
+  if (!effectiveOnline) return;
+  let alive = true;
+  const sync = () => {
+    const uid = readOnlineSessionUserId();
+    if (alive && uid) setOnlineLocalUserId(uid);
+  };
+  sync();
+  (onlineApi as any)?.restoreSession?.().then(sync).catch(sync);
+  const id = window.setInterval(sync, 1500);
+  return () => {
+    alive = false;
+    window.clearInterval(id);
+  };
+}, [effectiveOnline, readOnlineSessionUserId]);
+const onlineCurrentUserId = String(onlineUserId || (config as any)?.onlineUserId || (config as any)?.currentUserId || onlineLocalUserId || "").trim();
 const onlineActivePlayerId = String(activePlayerId || "").trim();
-const onlineTurnLocked = !!online && !!onlineCurrentUserId && !!onlineActivePlayerId && onlineCurrentUserId !== onlineActivePlayerId && status === "running";
-const onlineCanScore = !onlineTurnLocked;
+const onlineTurnLocked = !!effectiveOnline && status === "running" && (!onlineCurrentUserId || !onlineActivePlayerId || onlineCurrentUserId !== onlineActivePlayerId);
+const onlineCanScore = !effectiveOnline || !onlineTurnLocked;
 
 const activePlayerCountryFlagSrc = React.useMemo(() => {
   const direct =
@@ -1204,11 +1239,11 @@ const onlineSystemChatSentRef = React.useRef<Set<string>>(new Set());
 const postOnlineSystemChat = React.useCallback(async (text: string, kind: string, key: string, options?: { localOnly?: boolean }) => {
   const cleanText = String(text || "").trim();
   const cleanKey = String(key || `${kind}:${cleanText}`).trim();
-  if (!online || !lobbyCode || !cleanText || !cleanKey) return;
+  if (!effectiveOnline || !effectiveLobbyCode || !cleanText || !cleanKey) return;
   if (onlineSystemChatSentRef.current.has(cleanKey)) return;
   onlineSystemChatSentRef.current.add(cleanKey);
 
-  const clientId = `sys_${String(lobbyCode).toUpperCase()}_${kind}_${Math.abs(hashStringForOnlineChat(cleanKey))}_${Date.now()}`;
+  const clientId = `sys_${effectiveLobbyCode}_${kind}_${Math.abs(hashStringForOnlineChat(cleanKey))}_${Date.now()}`;
   const optimistic = {
     id: clientId,
     clientId,
@@ -1225,7 +1260,7 @@ const postOnlineSystemChat = React.useCallback(async (text: string, kind: string
   if (options?.localOnly) return;
 
   try {
-    const saved = await postOnlineChatMessage(lobbyCode, {
+    const saved = await postOnlineChatMessage(effectiveLobbyCode, {
       clientId,
       text: cleanText,
       name: "Système",
@@ -1239,12 +1274,12 @@ const postOnlineSystemChat = React.useCallback(async (text: string, kind: string
   } catch (e) {
     console.warn("[X01PlayV3] online system chat failed", e);
   }
-}, [online, lobbyCode, pushOnlineChatMessage]);
+}, [effectiveOnline, effectiveLobbyCode, pushOnlineChatMessage]);
 
 React.useEffect(() => {
-  if (!online || !lobbyCode) return;
+  if (!effectiveOnline || !effectiveLobbyCode) return;
   let alive = true;
-  fetchOnlineChatMessages(lobbyCode, 40)
+  fetchOnlineChatMessages(effectiveLobbyCode, 40)
     .then((rows) => {
       if (!alive) return;
       const list = (Array.isArray(rows) ? rows : [])
@@ -1254,24 +1289,24 @@ React.useEffect(() => {
     })
     .catch(() => {});
   return () => { alive = false; };
-}, [online, lobbyCode, normalizeOnlineChatMessage]);
+}, [effectiveOnline, effectiveLobbyCode, normalizeOnlineChatMessage]);
 
 React.useEffect(() => {
-  if (!online || !lobbyCode) return;
+  if (!effectiveOnline || !effectiveLobbyCode) return;
   const cleanups: Array<() => void> = [];
-  const cleanupStream = onlineApi.subscribeOnlineStream(lobbyCode, {
+  const cleanupStream = onlineApi.subscribeOnlineStream(effectiveLobbyCode, {
     onMessage: (message: any) => pushOnlineChatMessage(message),
   });
   if (typeof cleanupStream === "function") cleanups.push(cleanupStream);
 
   // Fallback indispensable après veille téléphone / EventSource coupé : le chat continue par polling léger.
-  const cleanupPollMaybe = subscribeOnlineChatMessages(lobbyCode, (message: any) => pushOnlineChatMessage(message));
+  const cleanupPollMaybe = subscribeOnlineChatMessages(effectiveLobbyCode, (message: any) => pushOnlineChatMessage(message));
   if (typeof cleanupPollMaybe === "function") {
     cleanups.push(() => { try { (cleanupPollMaybe as any)(); } catch {} });
   }
 
   return () => cleanups.forEach((fn) => { try { fn(); } catch {} });
-}, [online, lobbyCode, pushOnlineChatMessage]);
+}, [effectiveOnline, effectiveLobbyCode, pushOnlineChatMessage]);
 
 React.useEffect(() => {
   if (onlineChatOpen) setOnlineChatUnread(0);
@@ -1279,7 +1314,7 @@ React.useEffect(() => {
 
 const sendOnlineChat = React.useCallback(async () => {
   const text = onlineChatDraft.trim();
-  if (!online || !lobbyCode || !text) return;
+  if (!effectiveOnline || !effectiveLobbyCode || !text) return;
   const me = safePlayersForOnline.find((p: any) => String(p?.id || p?.userId || "") === String(onlineCurrentUserId || onlineUserId || activePlayerId || "")) || activePlayer || safePlayersForOnline[0];
   const clientId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const optimistic = {
@@ -1293,7 +1328,7 @@ const sendOnlineChat = React.useCallback(async () => {
   setOnlineChatDraft("");
   pushOnlineChatMessage(optimistic, { silent: true });
   try {
-    const saved = await postOnlineChatMessage(lobbyCode, {
+    const saved = await postOnlineChatMessage(effectiveLobbyCode, {
       clientId,
       text,
       name: optimistic.name,
@@ -1304,13 +1339,13 @@ const sendOnlineChat = React.useCallback(async () => {
   } catch (e) {
     console.warn("[X01PlayV3] online chat send failed", e);
   }
-}, [online, lobbyCode, onlineChatDraft, safePlayersForOnline, onlineCurrentUserId, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
+}, [effectiveOnline, effectiveLobbyCode, onlineChatDraft, safePlayersForOnline, onlineCurrentUserId, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
 
 // ONLINE : annonce automatiquement le joueur au trait dans le chat système.
 const onlineLastTurnSystemKeyRef = React.useRef("");
 React.useEffect(() => {
-  if (!online || !lobbyCode || status !== "running" || !activePlayer) return;
-  const code = String(lobbyCode).toUpperCase();
+  if (!effectiveOnline || !effectiveLobbyCode || status !== "running" || !activePlayer) return;
+  const code = effectiveLobbyCode;
   const hostUserId = String((config as any)?.hostUserId || (config as any)?.onlineHostUserId || safePlayersForOnline.find((p: any) => p?.isHost)?.userId || safePlayersForOnline.find((p: any) => p?.isHost)?.id || "").trim();
   const shouldAnnounce = hostUserId ? String(onlineCurrentUserId || "") === hostUserId : String(onlineCurrentUserId || "") === String(onlineActivePlayerId || "");
   if (!shouldAnnounce) return;
@@ -1322,12 +1357,12 @@ React.useEffect(() => {
   window.setTimeout(() => {
     postOnlineSystemChat(`🎯 À ${playerName} de jouer`, "turn", key).catch(() => {});
   }, 120);
-}, [online, lobbyCode, status, activePlayerId, activePlayer, onlineActivePlayerId, onlineCurrentUserId, config, safePlayersForOnline, postOnlineSystemChat]);
+}, [effectiveOnline, effectiveLobbyCode, status, activePlayerId, activePlayer, onlineActivePlayerId, onlineCurrentUserId, config, safePlayersForOnline, postOnlineSystemChat]);
 
 // ONLINE : mémorise la partie active pour pouvoir reprendre après refresh / appel / veille.
 React.useEffect(() => {
-  if (!online || !lobbyCode || typeof window === "undefined") return;
-  const code = String(lobbyCode).toUpperCase();
+  if (!effectiveOnline || !effectiveLobbyCode || typeof window === "undefined") return;
+  const code = effectiveLobbyCode;
   const payload = {
     kind: "x01",
     route: "x01_play_v3",
@@ -1350,11 +1385,11 @@ React.useEffect(() => {
     window.localStorage.setItem("dc_online_active_match_v1", JSON.stringify(payload));
     window.localStorage.setItem(`dc_online_active_match_${code}`, JSON.stringify(payload));
   } catch {}
-}, [online, lobbyCode, config, safePlayersForOnline]);
+}, [effectiveOnline, effectiveLobbyCode, config, safePlayersForOnline]);
 
 // ONLINE : empêche la mise en veille pendant une partie et tente une resynchro après retour écran/app.
 React.useEffect(() => {
-  if (!online || !lobbyCode || status === "match_end") return;
+  if (!effectiveOnline || !effectiveLobbyCode || status === "match_end") return;
   if (typeof window === "undefined") return;
 
   let wakeLock: any = null;
@@ -1375,14 +1410,14 @@ React.useEffect(() => {
     if (stopped) return;
     try { await requestWakeLock(); } catch {}
     try {
-      const row = await (onlineApi as any).fetchMatchByCode?.(String(lobbyCode).toUpperCase());
+      const row = await (onlineApi as any).fetchMatchByCode?.(effectiveLobbyCode);
       const statePayload = row?.state_json || row?.state || null;
       if (statePayload && typeof statePayload === "object") {
-        try { window.localStorage.setItem(`dc_online_resume_${String(lobbyCode).toUpperCase()}`, JSON.stringify({ row, at: Date.now() })); } catch {}
+        try { window.localStorage.setItem(`dc_online_resume_${effectiveLobbyCode}`, JSON.stringify({ row, at: Date.now() })); } catch {}
       }
     } catch {}
     try {
-      const rows = await fetchOnlineChatMessages(lobbyCode, 40);
+      const rows = await fetchOnlineChatMessages(effectiveLobbyCode, 40);
       (Array.isArray(rows) ? rows : []).forEach((m) => pushOnlineChatMessage(m, { silent: true }));
     } catch {}
   };
@@ -1400,7 +1435,7 @@ React.useEffect(() => {
     document.removeEventListener("visibilitychange", onVisible);
     try { wakeLock?.release?.(); } catch {}
   };
-}, [online, lobbyCode, status, pushOnlineChatMessage]);
+}, [effectiveOnline, effectiveLobbyCode, status, pushOnlineChatMessage]);
 
 
 // ============================================================
@@ -1409,8 +1444,8 @@ React.useEffect(() => {
 // - Les autres clients pollent le match et appliquent uniquement les nouvelles fléchettes.
 // - On garde cette couche additive: elle ne remplace pas le moteur X01 V3 local.
 // ============================================================
-const onlineLobbyCode = String(lobbyCode || (config as any)?.lobbyCode || (config as any)?.onlineLobbyCode || "").trim().toUpperCase();
-const isOnlineMatch = !!online || !!onlineLobbyCode || !!(config as any)?.online;
+const onlineLobbyCode = effectiveLobbyCode;
+const isOnlineMatch = effectiveOnline;
 const onlineAppliedDartsCountRef = React.useRef(0);
 const onlinePublishingRef = React.useRef(false);
 const onlineLastRemoteSigRef = React.useRef("");
@@ -2727,24 +2762,30 @@ const validateThrow = async () => {
     bustSoundTimeoutRef.current = null;
   }
 
+  let visitPlayerName = activePlayer?.name || "Joueur";
+  let visitScoreBefore = scores[pid] ?? config.startScore;
+  let visitScore = toSend.reduce(
+    (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
+    0
+  );
+  let visitWasBust =
+    visitScoreBefore - visitScore < 0 || ((outMode === "double" || outMode === "master") && visitScoreBefore - visitScore === 1);
+  let visitRemainingAfter = visitScoreBefore - visitScore;
+  let visitWasCheckout = false;
+
   try {
-    const playerName = activePlayer?.name || "Joueur";
-    const scoreBefore = scores[pid] ?? config.startScore;
+    const playerName = visitPlayerName;
+    const scoreBefore = visitScoreBefore;
 
-    const visitScore = toSend.reduce(
-      (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
-      0
-    );
+    const isBustNow = visitWasBust;
 
-    const isBustNow =
-      scoreBefore - visitScore < 0 || ((outMode === "double" || outMode === "master") && scoreBefore - visitScore === 1);
-
-    const remainingAfter = scoreBefore - visitScore;
+    const remainingAfter = visitRemainingAfter;
     const last = toSend[toSend.length - 1];
     const lastIsDouble = !!last && (last.mult === 2 || (last.v === 25 && last.mult === 2));
       const lastIsTriple = !!last && last.mult === 3;
       const lastIsFinisher = (outMode === "double") ? lastIsDouble : (outMode === "master") ? (lastIsDouble || lastIsTriple) : true;
     const isCheckoutNow = !isBustNow && remainingAfter === 0 && lastIsFinisher;
+    visitWasCheckout = isCheckoutNow;
 // ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
     playScoreSfxAndMaybeDelayVoice({
       playerName,
@@ -2800,14 +2841,14 @@ const validateThrow = async () => {
         window.setTimeout(() => {
           forceSyncFromEngine();
           publishOnlineReplayState("manual-visit").catch(() => {});
-          if (online && lobbyCode) {
-            const resultText = isBustNow
-              ? `💥 ${playerName} BUST — reste ${scoreBefore}`
-              : isCheckoutNow
-              ? `🏁 ${playerName} termine avec ${visitScore} — reste 0`
-              : `✅ ${playerName} : ${visitScore} point${visitScore > 1 ? "s" : ""} — reste ${Math.max(0, remainingAfter)}`;
-            const resultKey = `visit:${String(lobbyCode).toUpperCase()}:${pid}:${Date.now()}:${visitScore}:${Math.max(0, remainingAfter)}:${isBustNow ? "bust" : isCheckoutNow ? "finish" : "score"}`;
-            postOnlineSystemChat(resultText, isBustNow ? "bust" : isCheckoutNow ? "finish" : "visit_result", resultKey).catch(() => {});
+          if (effectiveOnline && effectiveLobbyCode) {
+            const resultText = visitWasBust
+              ? `💥 ${visitPlayerName} BUST — reste ${visitScoreBefore}`
+              : visitWasCheckout
+              ? `🏁 ${visitPlayerName} termine avec ${visitScore} — reste 0`
+              : `✅ ${visitPlayerName} : ${visitScore} point${visitScore > 1 ? "s" : ""} — reste ${Math.max(0, visitRemainingAfter)}`;
+            const resultKey = `visit:${effectiveLobbyCode}:${pid}:${Date.now()}:${visitScore}:${Math.max(0, visitRemainingAfter)}:${visitWasBust ? "bust" : visitWasCheckout ? "finish" : "score"}`;
+            postOnlineSystemChat(resultText, visitWasBust ? "bust" : visitWasCheckout ? "finish" : "visit_result", resultKey).catch(() => {});
           }
         }, 0);
       }
@@ -3279,7 +3320,7 @@ React.useEffect(() => {
   }, []);
 
 
-  const onlineStandbyChat = online && lobbyCode ? (
+  const onlineStandbyChat = effectiveOnline && effectiveLobbyCode ? (
     <div
       style={{
         height: "100%",
@@ -3339,10 +3380,10 @@ React.useEffect(() => {
 
   function handleQuit() {
     // ONLINE : retour salon sans détruire l'autosave/reprise. Un téléphone peut se mettre en veille ou quitter par erreur.
-    if (online && lobbyCode) {
+    if (effectiveOnline && effectiveLobbyCode) {
       try {
         if (typeof window !== "undefined") {
-          window.localStorage.setItem("dc_online_last_lobby_v1", String(lobbyCode).toUpperCase());
+          window.localStorage.setItem("dc_online_last_lobby_v1", effectiveLobbyCode);
         }
       } catch {}
       if (onExit) {
@@ -3350,7 +3391,7 @@ React.useEffect(() => {
         return;
       }
       if (typeof window !== "undefined") {
-        window.location.hash = `#/online?lobbyCode=${encodeURIComponent(String(lobbyCode).toUpperCase())}`;
+        window.location.hash = `#/online?lobbyCode=${encodeURIComponent(effectiveLobbyCode)}`;
       }
       return;
     }
@@ -4276,7 +4317,7 @@ if (isLandscapeTablet) {
                 teamLegsWon={(state as any).teamLegsWon ?? {}}
                 teamSetsWon={(state as any).teamSetsWon ?? {}}
                 checkoutText={checkoutText}
-                onChatClick={online ? () => setOnlineChatOpen(true) : undefined}
+                onChatClick={effectiveOnline ? () => setOnlineChatOpen(true) : undefined}
                 unreadChatCount={onlineChatUnread}
                 countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
@@ -4300,7 +4341,7 @@ if (isLandscapeTablet) {
                 setsWon={(state as any).setsWon ?? {}}
                 useSets={useSetsUi}
                 checkoutText={checkoutText}
-                onChatClick={online ? () => setOnlineChatOpen(true) : undefined}
+                onChatClick={effectiveOnline ? () => setOnlineChatOpen(true) : undefined}
                 unreadChatCount={onlineChatUnread}
                 countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
@@ -4561,7 +4602,7 @@ if (isLandscapeTablet) {
         }
       />
 
-      {online && lobbyCode ? (
+      {effectiveOnline && effectiveLobbyCode ? (
         <>
           {onlineChatToast && !onlineChatOpen ? (
             <div
@@ -4603,7 +4644,7 @@ if (isLandscapeTablet) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-                <div style={{ color: "#ffcf57", fontWeight: 950 }}>💬 Chat du salon {String(lobbyCode).toUpperCase()}</div>
+                <div style={{ color: "#ffcf57", fontWeight: 950 }}>💬 Chat du salon {effectiveLobbyCode}</div>
                 <button type="button" onClick={() => setOnlineChatOpen(false)} style={{ border: 0, borderRadius: 999, background: "rgba(255,255,255,.10)", color: "#fff", width: 32, height: 32, fontWeight: 950 }}>×</button>
               </div>
               <div style={{ maxHeight: 210, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>

@@ -117,7 +117,7 @@ function useInjectStatsNameCss() {
 }
 
 /* ---------- Types ---------- */
-export type VisitBucket = "0-59" | "60-99" | "100+" | "140+" | "180";
+export type VisitBucket = "50+" | "80+" | "100+" | "120+" | "140+";
 export type PlayerGamePoint = { date: string; avg3: number };
 export type PlayerDistribution = Record<VisitBucket, number>;
 export type PlayerDashboardStats = {
@@ -553,7 +553,7 @@ function BarChart({
   accentSoft: string;
 }) {
   const svgW = Math.max(220, width - 32);
-  const buckets: VisitBucket[] = ["0-59", "60-99", "100+", "140+", "180"];
+  const buckets: VisitBucket[] = ["50+", "80+", "100+", "120+", "140+"];
   const vals = buckets.map((b) => Number(data?.[b] ?? 0));
   const max = niceMax(Math.max(1, ...vals));
 
@@ -572,7 +572,7 @@ function BarChart({
         </div>
         <div style={{ minWidth: 0 }}>
           <BlockTitle text="Répartition des volées" accent={accent} accentSoft={glow} style={{ fontSize: 12 }} />
-          <div style={{ fontSize: 12, color: T.text60 }}>Valeurs affichées par segment</div>
+          <div style={{ fontSize: 12, color: T.text60 }}>Volées fortes par seuil</div>
         </div>
       </div>
 
@@ -821,11 +821,11 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
     data.bestCheckout != null && Number.isFinite(Number(data.bestCheckout)) && Number(data.bestCheckout) > 0 ? Number(data.bestCheckout) : undefined;
 
   const distribution: PlayerDistribution = {
-    "0-59": Number(data.distribution?.["0-59"] ?? 0),
-    "60-99": Number(data.distribution?.["60-99"] ?? 0),
-    "100+": Number(data.distribution?.["100+"] ?? 0),
-    "140+": Number(data.distribution?.["140+"] ?? 0),
-    "180": Number(data.distribution?.["180"] ?? 0),
+    "50+": Number((data.distribution as any)?.["50+"] ?? (data.distribution as any)?.["50plus"] ?? (data.distribution as any)?.["50_plus"] ?? 0),
+    "80+": Number((data.distribution as any)?.["80+"] ?? (data.distribution as any)?.["80plus"] ?? (data.distribution as any)?.["80_plus"] ?? 0),
+    "100+": Number((data.distribution as any)?.["100+"] ?? (data.distribution as any)?.["100plus"] ?? (data.distribution as any)?.["100_plus"] ?? 0),
+    "120+": Number((data.distribution as any)?.["120+"] ?? (data.distribution as any)?.["120plus"] ?? (data.distribution as any)?.["120_plus"] ?? 0),
+    "140+": Number((data.distribution as any)?.["140+"] ?? (data.distribution as any)?.["140plus"] ?? (data.distribution as any)?.["140_plus"] ?? 0),
   };
 
   const evolution: PlayerGamePoint[] = Array.isArray(data.evolution)

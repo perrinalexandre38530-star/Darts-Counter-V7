@@ -181,23 +181,16 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 import StatsDetail from "./pages/StatsDetail";
 
 import Profiles from "./pages/Profiles";
-
-// ONLINE V9.2 — anti-crash chunks Vite/Cloudflare
-// Ces pages sont volontairement importées en statique.
-// Avant, elles étaient chargées via React.lazy() et le navigateur pouvait garder
-// un vieux nom de chunk après déploiement (ex: FriendsPage-xxxx.js supprimé),
-// ce qui provoquait un crash "Failed to fetch dynamically imported module".
-// Le coût en poids initial est acceptable ici pour retrouver une navigation fiable.
-import ProfilesBots from "./pages/ProfilesBots";
-import FriendsPage from "./pages/FriendsPage";
-import Settings from "./pages/Settings";
-import StatsShell from "./pages/StatsShell";
-import StatsHub from "./pages/StatsHub";
-import StatsOnline from "./pages/StatsOnline";
-import StatsCricket from "./pages/StatsCricket";
-import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage";
-import SyncCenter from "./pages/SyncCenter";
-import TournamentsHome from "./pages/TournamentsHome";
+const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
+const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
+const Settings = React.lazy(() => import("./pages/Settings"));
+const StatsShell = React.lazy(() => import("./pages/StatsShell"));
+const StatsHub = React.lazy(() => import("./pages/StatsHub"));
+const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
+const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
+const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
+const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
+const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -939,7 +932,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         }
 
         try {
-          onlineApi.restoreSession().catch(() => {});
+          await onlineApi.restoreSession();
         } catch {}
 
         const { data, error } = await supabase.auth.getSession();
@@ -2647,9 +2640,13 @@ useEffect(() => {
     if (loading || showSplash) return;
     let timer: number | null = null;
     const preload = () => {
-      // ONLINE V9.2: pages critiques importées en statique ci-dessus.
-      // Ne pas précharger avec import() : après déploiement Cloudflare, ces appels
-      // peuvent relancer un vieux nom de chunk et provoquer un crash mobile.
+      void import("./pages/Profiles");
+      void import("./pages/ProfilesBots");
+      void import("./pages/Settings");
+      void import("./pages/StatsShell");
+      void import("./pages/StatsHub");
+      void import("./pages/SyncCenter");
+      void import("./pages/TournamentsHome");
     };
     const ric: any = (window as any).requestIdleCallback;
     if (typeof ric === "function") {
@@ -5003,10 +5000,8 @@ function X01PlayV3Route({
       routeParams?.initialState?.x01ConfigV3 ??
       routeParams?.initialState?.config ??
       null;
+    const cfgToStart = x01ConfigV3 || routeConfig;
     const isOnline = !!routeParams?.online || !!routeParams?.lobbyCode;
-    // En online, on privilégie toujours la config portée par le salon/route.
-    // Sinon un ancien x01ConfigV3 local peut être réutilisé après un retour navigateur.
-    const cfgToStart = isOnline ? (routeConfig || x01ConfigV3) : (x01ConfigV3 || routeConfig);
 
     if (!cfgToStart) {
       return (
@@ -5018,21 +5013,41 @@ function X01PlayV3Route({
     }
 
     const freshToken = routeParams?.fresh ?? Date.now();
+    const routeLobbyCode = String(
+      routeParams?.lobbyCode ||
+      routeParams?.lobby_code ||
+      routeConfig?.lobbyCode ||
+      routeConfig?.lobby_code ||
+      cfgToStart?.lobbyCode ||
+      cfgToStart?.lobby_code ||
+      ""
+    ).trim().toUpperCase();
+    const onlineSession = isOnline ? (onlineApi as any)?.loadAuthFromLS?.() : null;
+    const onlineSessionUserId = String(
+      onlineSession?.user?.id ||
+      onlineSession?.userId ||
+      onlineSession?.profile?.userId ||
+      onlineSession?.profile?.user_id ||
+      routeParams?.onlineUserId ||
+      routeConfig?.onlineUserId ||
+      cfgToStart?.onlineUserId ||
+      ""
+    ).trim();
     const key = isOnline
-      ? `x01v3-online-${String(routeParams?.lobbyCode || "room")}-${freshToken}`
+      ? `x01v3-online-${String(routeLobbyCode || "room")}-${freshToken}`
       : `x01v3-${freshToken}`;
 
     return (
       <X01PlayV3
         key={key}
-        config={cfgToStart}
+        config={{ ...(cfgToStart || {}), ...(isOnline ? { online: true, onlineMode: "x01", lobbyCode: routeLobbyCode || cfgToStart?.lobbyCode, onlineUserId: onlineSessionUserId || cfgToStart?.onlineUserId } : {}) }}
         online={isOnline}
-        lobbyCode={routeParams?.lobbyCode || (cfgToStart as any)?.lobbyCode || null}
-        onlineUserId={routeParams?.onlineUserId || routeParams?.userId || null}
-        onExit={() => go(isOnline ? "x01_online_setup" : "x01_config_v3", isOnline ? { ...(routeParams || {}), lobbyCode: routeParams?.lobbyCode || (cfgToStart as any)?.lobbyCode || null, online: true, onlineMode: routeParams?.onlineMode || (cfgToStart as any)?.onlineMode || "x01" } : routeParams)}
+        lobbyCode={routeLobbyCode || null}
+        onlineUserId={onlineSessionUserId || null}
+        onExit={() => go(isOnline ? "online" : "x01_config_v3", isOnline ? { lobbyCode: routeLobbyCode, resumeOnline: true } : undefined)}
         onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
         onShowSummary={(matchId: string) =>
-          go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeParams?.lobbyCode })
+          go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeLobbyCode || routeParams?.lobbyCode })
         }
       />
     );
