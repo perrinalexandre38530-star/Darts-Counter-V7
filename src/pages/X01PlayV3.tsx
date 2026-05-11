@@ -1165,8 +1165,34 @@ React.useEffect(() => {
 }, [effectiveOnline, readOnlineSessionUserId]);
 const onlineCurrentUserId = String(onlineUserId || (config as any)?.onlineUserId || (config as any)?.currentUserId || onlineLocalUserId || "").trim();
 const onlineActivePlayerId = String(activePlayerId || "").trim();
-const onlineTurnLocked = !!effectiveOnline && status === "running" && (!onlineCurrentUserId || !onlineActivePlayerId || onlineCurrentUserId !== onlineActivePlayerId);
-const onlineCanScore = !effectiveOnline || !onlineTurnLocked;
+
+// ONLINE STRICT TURN LOCK
+// Un appareil ne peut scorer QUE pour le compte connecté à cet appareil.
+// On compare plusieurs formes d'identifiant car les joueurs online peuvent arriver
+// avec id/userId/profileId selon la route de création du salon.
+const onlineActiveIdentitySet = React.useMemo(() => {
+  const ids = [
+    onlineActivePlayerId,
+    (activePlayer as any)?.id,
+    (activePlayer as any)?.userId,
+    (activePlayer as any)?.user_id,
+    (activePlayer as any)?.profileId,
+    (activePlayer as any)?.profile_id,
+    (activePlayer as any)?.ownerUserId,
+    (activePlayer as any)?.owner_user_id,
+  ]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  return new Set(ids);
+}, [onlineActivePlayerId, activePlayer]);
+
+const onlineIsMyTurn = !effectiveOnline || (
+  status === "running" &&
+  !!onlineCurrentUserId &&
+  onlineActiveIdentitySet.has(String(onlineCurrentUserId))
+);
+const onlineTurnLocked = !!effectiveOnline && status === "running" && !onlineIsMyTurn;
+const onlineCanScore = !effectiveOnline || onlineIsMyTurn;
 
 const activePlayerCountryFlagSrc = React.useMemo(() => {
   const direct =
@@ -1183,6 +1209,7 @@ const [onlineChatDraft, setOnlineChatDraft] = React.useState("");
 const [onlineChatMessages, setOnlineChatMessages] = React.useState<any[]>([]);
 const [onlineChatUnread, setOnlineChatUnread] = React.useState(0);
 const [onlineChatToast, setOnlineChatToast] = React.useState<any | null>(null);
+const [pendingOnlineVisitConfirm, setPendingOnlineVisitConfirm] = React.useState<any | null>(null);
 
 const normalizeOnlineChatMessage = React.useCallback((row: any) => {
   const payload = row?.message && typeof row.message === "object" ? row.message : row || {};
@@ -2661,34 +2688,34 @@ function pushDart(value: number, multOverride?: 1 | 2 | 3) {
 const isBustLocked = !!(activePlayerId && (lastVisitIsBustByPlayer as any)?.[activePlayerId]);
 
 const handleSimple = () => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   setMultiplier(1);
 };
 const handleDouble = () => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   setMultiplier(2);
 };
 const handleTriple = () => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   setMultiplier(3);
 };
 
 const handleNumber = (value: number) => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   pushDart(value);
 };
 const handleBull = () => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   pushDart(25);
 };
 
 const handleDirectDart = (d: UIDart) => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   pushDart(d.v, d.mult as any);
 };
 
 const handleBackspace = () => {
-  if (isBustLocked) return;
+  if (isBustLocked || !onlineCanScore) return;
   currentThrowFromEngineRef.current = false;
 
   bustPreviewPlayedRef.current = false;
@@ -2701,6 +2728,7 @@ const handleBackspace = () => {
 };
 
 const handleCancel = () => {
+  if (!onlineCanScore) return;
   // Cancel = undo last input safely.
   // - If there is a local currentThrow: remove the last dart
   // - Otherwise: ask the engine to undo the last committed dart (any player/turn)
@@ -2750,10 +2778,12 @@ try {
 
 const validateThrow = async () => {
   if (isValidatingRef.current) return;
-  isValidatingRef.current = true;
-
-  const toSend = [...currentThrow];
+  if (effectiveOnline && !onlineCanScore) return;
+  const toSend = Array.isArray(currentThrow) ? [...currentThrow] : [];
   const pid = activePlayerId;
+  if (!pid || toSend.length <= 0) return;
+
+  isValidatingRef.current = true;
 
   // ✅ on coupe tout timer bust “prévu”
   bustPreviewPlayedRef.current = false;
@@ -2856,6 +2886,55 @@ const validateThrow = async () => {
   });
 
   if (!inputs.length) isValidatingRef.current = false;
+};
+
+const buildVisitLabelForConfirm = (darts: UIDart[]) => {
+  return (Array.isArray(darts) ? darts : []).map((d) => {
+    const v = Number((d as any)?.v || 0);
+    const m = Number((d as any)?.mult || 1);
+    if (v === 25 && m === 2) return "DBULL";
+    if (v === 25) return "BULL";
+    if (m === 3) return `T${v}`;
+    if (m === 2) return `D${v}`;
+    if (v === 0) return "MISS";
+    return `S${v}`;
+  }).join(" · ");
+};
+
+const requestValidateThrow = () => {
+  if (effectiveOnline && !onlineCanScore) return;
+  const darts = Array.isArray(currentThrow) ? [...currentThrow] : [];
+  if (!darts.length || !activePlayerId) return;
+
+  if (!effectiveOnline) {
+    validateThrow();
+    return;
+  }
+
+  const scoreBefore = Number(scores?.[activePlayerId] ?? config.startScore ?? 501);
+  const visitScore = darts.reduce((sum, d) => sum + (Number((d as any).v) === 25 && Number((d as any).mult) === 2 ? 50 : Number((d as any).v || 0) * Number((d as any).mult || 1)), 0);
+  const remaining = scoreBefore - visitScore;
+  const bust = remaining < 0 || ((outMode === "double" || outMode === "master") && remaining === 1);
+
+  setPendingOnlineVisitConfirm({
+    playerId: activePlayerId,
+    playerName: activePlayer?.name || "Joueur",
+    darts,
+    dartsLabel: buildVisitLabelForConfirm(darts),
+    scoreBefore,
+    visitScore,
+    remaining,
+    bust,
+  });
+};
+
+const confirmOnlineVisit = () => {
+  if (effectiveOnline && !onlineCanScore) {
+    setPendingOnlineVisitConfirm(null);
+    return;
+  }
+  setPendingOnlineVisitConfirm(null);
+  validateThrow();
 };
 
 // =====================================================
@@ -4132,7 +4211,7 @@ if (isLandscapeTablet) {
                       height: "100%",
                     }}
                   >
-                    {onlineTurnLocked && onlineStandbyChat ? onlineStandbyChat : (
+                    {onlineTurnLocked ? (onlineStandbyChat || null) : (
                     <ScoreInputHub
                       currentThrow={currentThrow}
                       multiplier={multiplier}
@@ -4143,7 +4222,7 @@ if (isLandscapeTablet) {
                       onCancel={handleCancel}
                       onNumber={handleNumber}
                       onBull={handleBull}
-                      onValidate={validateThrow}
+                      onValidate={requestValidateThrow}
                       onDirectDart={handleDirectDart}
                       hidePreview
                       showPlaceholders={false}
@@ -4574,7 +4653,7 @@ if (isLandscapeTablet) {
                   : "none",
             }}
           >
-            {onlineTurnLocked && onlineStandbyChat ? onlineStandbyChat : (
+            {onlineTurnLocked ? (onlineStandbyChat || null) : (
             <ScoreInputHub
               currentThrow={currentThrow}
               multiplier={multiplier}
@@ -4585,7 +4664,7 @@ if (isLandscapeTablet) {
               onCancel={handleCancel}
               onNumber={handleNumber}
               onBull={handleBull}
-              onValidate={validateThrow}
+              onValidate={requestValidateThrow}
               onDirectDart={handleDirectDart}
               hidePreview
               showPlaceholders={false}
@@ -4601,6 +4680,65 @@ if (isLandscapeTablet) {
           </div>
         }
       />
+
+      {pendingOnlineVisitConfirm ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            background: "rgba(0,0,0,.62)",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div
+            style={{
+              width: "min(440px, 100%)",
+              borderRadius: 22,
+              border: "1px solid rgba(255,207,87,.34)",
+              background: "linear-gradient(180deg, rgba(25,27,34,.98), rgba(7,8,12,.98))",
+              boxShadow: "0 24px 70px rgba(0,0,0,.72), 0 0 28px rgba(255,207,87,.14)",
+              padding: 16,
+              color: "#fff",
+            }}
+          >
+            <div style={{ color: "#ffcf57", fontWeight: 950, fontSize: 18, marginBottom: 6 }}>
+              Confirmer la volée
+            </div>
+            <div style={{ opacity: .78, fontWeight: 800, fontSize: 13, marginBottom: 14 }}>
+              {pendingOnlineVisitConfirm.playerName} — vérifie avant d'envoyer aux autres joueurs.
+            </div>
+            <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.06)", padding: 12, marginBottom: 12 }}>
+              <div style={{ fontWeight: 950, fontSize: 22 }}>{pendingOnlineVisitConfirm.dartsLabel || "Volée"}</div>
+              <div style={{ marginTop: 6, fontWeight: 900, color: pendingOnlineVisitConfirm.bust ? "#ff7474" : "#8ff0a4" }}>
+                {pendingOnlineVisitConfirm.bust
+                  ? `BUST — reste ${pendingOnlineVisitConfirm.scoreBefore}`
+                  : `${pendingOnlineVisitConfirm.visitScore} points — reste ${Math.max(0, pendingOnlineVisitConfirm.remaining)}`}
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setPendingOnlineVisitConfirm(null)}
+                style={{ height: 48, borderRadius: 16, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 950 }}
+              >
+                Modifier
+              </button>
+              <button
+                type="button"
+                onClick={confirmOnlineVisit}
+                style={{ height: 48, borderRadius: 16, border: 0, background: "linear-gradient(180deg,#ffd65c,#ffb51e)", color: "#111", fontWeight: 950, boxShadow: "0 0 22px rgba(255,190,40,.28)" }}
+              >
+                Valider
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {effectiveOnline && effectiveLobbyCode ? (
         <>

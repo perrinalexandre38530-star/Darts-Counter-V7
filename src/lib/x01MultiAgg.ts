@@ -151,6 +151,9 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     sumAvg3D: 0,
     bestVisit: 0,
     bestCheckout: 0,
+    best9Score: 0,
+    legsWin: 0,
+    setsWin: 0,
     hitsSingle: 0,
     hitsDouble: 0,
     hitsTriple: 0,
@@ -184,6 +187,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     let scored = 0;
     let bestVisit = 0;
     let bestCO = 0;
+    const flatScores: number[] = [];
 
     for (const v of visits) {
       darts += v.segments.length;
@@ -201,6 +205,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
         out.bust += 1;
       }
       for (const s of v.segments) {
+        flatScores.push(v.bust ? 0 : dartScore(s));
         if (s.value === 25 && s.mult === 1) out.hitsBull++;
         else if (s.value === 25 && s.mult === 2) out.hitsDBull++;
         else if (s.value === 0 || s.mult === 0) out.miss++;
@@ -212,6 +217,29 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
         }
       }
     }
+
+    for (let i = 0; i < flatScores.length; i += 1) {
+      let windowScore = 0;
+      for (let j = i; j < Math.min(flatScores.length, i + 9); j += 1) windowScore += flatScores[j] || 0;
+      out.best9Score = Math.max(out.best9Score, windowScore);
+    }
+
+    const anyRec: any = rec as any;
+    const payload: any = anyRec?.payload ?? null;
+    const summary: any = anyRec?.summary ?? payload?.summary ?? null;
+    const matchedId = String(matched.id);
+    const pickMapValue = (...maps: any[]) => {
+      for (const map of maps) {
+        if (map && typeof map === "object" && Number.isFinite(Number(map[matchedId]))) return Number(map[matchedId]);
+      }
+      return 0;
+    };
+    const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, payload?.summary?.legsWonByPlayer);
+    const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, payload?.summary?.setsWonByPlayer);
+    out.legsWin += legsFromSummary;
+    out.setsWin += setsFromSummary;
+    const winnerId = String(anyRec?.winnerId ?? summary?.winnerId ?? payload?.winnerId ?? payload?.summary?.winnerId ?? "");
+    if (legsFromSummary <= 0 && winnerId === matchedId) out.legsWin += 1;
 
     out.darts += darts;
     const avg3 = darts > 0 ? (scored / darts) * 3 : 0;

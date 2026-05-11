@@ -5584,6 +5584,15 @@ type ModeDashboardCard = {
   shield: number;
   favNumber: string | null;
   favHits: number;
+  legsWin?: number;
+  setsWin?: number;
+  bestCheckout?: number;
+  best9Score?: number;
+  pctSimple?: number;
+  pctDouble?: number;
+  pctTriple?: number;
+  bull?: number;
+  dbull?: number;
   captures: number;
   extra: number;
   ticker: ModeTickerStat[];
@@ -5755,6 +5764,23 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           a.matches = Number(agg.sessions || a.matches || 0);
           a.darts = Number(agg.darts || a.darts || 0);
           a.best = Math.max(Number(a.best || 0), Number(agg.bestVisit || 0));
+          a.legsWin = Number(agg.legsWin || 0);
+          a.setsWin = Number(agg.setsWin || 0);
+          a.bestCheckout = Number(agg.bestCheckout || 0);
+          a.best9Score = Number(agg.best9Score || 0);
+          a.bull = Number(agg.hitsBull || 0);
+          a.dbull = Number(agg.hitsDBull || 0);
+          const hitKinds = Number(agg.hitsSingle || 0) + Number(agg.hitsDouble || 0) + Number(agg.hitsTriple || 0) + Number(agg.hitsBull || 0) + Number(agg.hitsDBull || 0) + Number(agg.miss || 0);
+          a.pctSimple = hitKinds ? Math.round((Number(agg.hitsSingle || 0) / hitKinds) * 1000) / 10 : 0;
+          a.pctDouble = hitKinds ? Math.round((Number(agg.hitsDouble || 0) / hitKinds) * 1000) / 10 : 0;
+          a.pctTriple = hitKinds ? Math.round((Number(agg.hitsTriple || 0) / hitKinds) * 1000) / 10 : 0;
+          let favN = 0;
+          let favC = 0;
+          (agg.byNumber || []).forEach((c: any, idx: number) => {
+            const val = Number(c || 0);
+            if (idx > 0 && val > favC) { favN = idx; favC = val; }
+          });
+          if (favN > 0) { favNumber = String(favN); favHits = favC; }
           if (Number(agg.sumAvg3D || 0) > 0) {
             a.samples = [{ avg3D: Number(agg.sumAvg3D || 0) / Math.max(1, Number(agg.sessions || 1)) }];
           }
@@ -5772,6 +5798,9 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           a.wins = Math.max(Number(a.wins || 0), Number(kAgg.wins || 0));
           a.kills = Math.max(Number(a.kills || 0), Number(kAgg.kills || 0));
           a.hits = Math.max(Number(a.hits || 0), Number(kAgg.totalHits || 0));
+          // Damage Killer = vies réellement retirées aux adversaires.
+          // On ne remplace plus par totalHits : ça gonflait la valeur sur certains historiques.
+          a.damage = Number(kAgg.damage || 0);
           if (!favNumber && Number(kAgg.favNumber || 0) > 0) {
             favNumber = String(kAgg.favNumber);
             favHits = Number(kAgg.favNumberHits || 0);
@@ -5793,7 +5822,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
           { label: "Kills", value: fmtStatValue(a.kills), tone: "red" },
-          { label: "Damage", value: fmtStatValue(a.damage || a.hits), tone: "red" },
+          { label: "Damage", value: fmtStatValue(a.damage), tone: "red" },
           { label: "Auto-hit", value: fmtStatValue(a.autoHit), tone: "gold" },
           { label: "Résurrection", value: fmtStatValue(a.resurrection), tone: "blue" },
           { label: "Bouclier", value: fmtStatValue(a.shield), tone: "blue" },
@@ -5805,7 +5834,16 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Avg3", value: fmtStatValue(avg3), tone: "green" },
           { label: "Best volée", value: fmtStatValue(a.best), tone: "gold" },
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
-          { label: "Darts", value: fmtStatValue(a.darts), tone: "blue" },
+          { label: "Legs win", value: fmtStatValue(a.legsWin || 0), tone: "gold" },
+          { label: "Sets win", value: fmtStatValue(a.setsWin || 0), tone: "gold" },
+          { label: "Best CO", value: fmtStatValue(a.bestCheckout || 0), tone: "red" },
+          { label: "Best9", value: fmtStatValue(a.best9Score || 0), tone: "blue" },
+          { label: "% Simple", value: fmtStatValue(a.pctSimple || 0, "%"), tone: "green" },
+          { label: "% Double", value: fmtStatValue(a.pctDouble || 0, "%"), tone: "green" },
+          { label: "% Triple", value: fmtStatValue(a.pctTriple || 0, "%"), tone: "green" },
+          { label: "Bull", value: fmtStatValue(a.bull || 0), tone: "blue" },
+          { label: "DBull", value: fmtStatValue(a.dbull || 0), tone: "blue" },
+          { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
       : a.key === "cricket"
       ? [
@@ -6624,7 +6662,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 12 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
