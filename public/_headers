@@ -1,0 +1,11 @@
+# Cloudflare Pages cache hardening — prevents stale Vite chunks after deploy
+/
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/index.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/assets/*.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/assets/*.css
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0

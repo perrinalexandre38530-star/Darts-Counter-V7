@@ -182,63 +182,22 @@ import StatsDetail from "./pages/StatsDetail";
 
 import Profiles from "./pages/Profiles";
 
-// ONLINE V9.1 / DEPLOY FIX
-// Les chunks Vite changent de nom à chaque build. Si un ancien index/SW pointe
-// vers un chunk supprimé, React.lazy plante avant d'afficher la page.
-// Ce wrapper purge SW/CacheStorage puis recharge une seule fois avec cache-buster.
-function lazyWithChunkRecovery<T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) {
-  return React.lazy(async () => {
-    try {
-      return await loader();
-    } catch (error: any) {
-      const msg = String(error?.message || error || "");
-      const isChunkError =
-        msg.includes("Failed to fetch dynamically imported module") ||
-        msg.includes("Importing a module script failed") ||
-        msg.includes("ChunkLoadError") ||
-        msg.includes("Loading chunk");
-      if (isChunkError && typeof window !== "undefined") {
-        try { localStorage.setItem("dc_last_chunk_error_v1", JSON.stringify({ at: Date.now(), href: location.href, message: msg })); } catch {}
-        try {
-          if ("serviceWorker" in navigator) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            await Promise.all(regs.map((reg) => reg.unregister().catch(() => {})));
-          }
-        } catch {}
-        try {
-          if (typeof caches !== "undefined" && (caches as any).keys) {
-            const keys = await (caches as any).keys();
-            await Promise.all(keys.map((key: string) => caches.delete(key).catch(() => false)));
-          }
-        } catch {}
-        try {
-          const key = "dc_lazy_chunk_recover_once_v1";
-          const last = Number(sessionStorage.getItem(key) || "0") || 0;
-          if (!last || Date.now() - last > 15000) {
-            sessionStorage.setItem(key, String(Date.now()));
-            const url = new URL(window.location.href);
-            url.searchParams.set("sb", String(Date.now()));
-            window.location.replace(url.toString());
-          }
-        } catch {
-          window.location.reload();
-        }
-      }
-      throw error;
-    }
-  });
-}
-
-const ProfilesBots = lazyWithChunkRecovery(() => import("./pages/ProfilesBots"));
-const FriendsPage = lazyWithChunkRecovery(() => import("./pages/FriendsPage"));
-const Settings = lazyWithChunkRecovery(() => import("./pages/Settings"));
-const StatsShell = lazyWithChunkRecovery(() => import("./pages/StatsShell"));
-const StatsHub = lazyWithChunkRecovery(() => import("./pages/StatsHub"));
-const StatsOnline = lazyWithChunkRecovery(() => import("./pages/StatsOnline"));
-const StatsCricket = lazyWithChunkRecovery(() => import("./pages/StatsCricket"));
-const StatsLeaderboardsPage = lazyWithChunkRecovery(() => import("./pages/StatsLeaderboardsPage"));
-const SyncCenter = lazyWithChunkRecovery(() => import("./pages/SyncCenter"));
-const TournamentsHome = lazyWithChunkRecovery(() => import("./pages/TournamentsHome"));
+// ONLINE V9.2 — anti-crash chunks Vite/Cloudflare
+// Ces pages sont volontairement importées en statique.
+// Avant, elles étaient chargées via React.lazy() et le navigateur pouvait garder
+// un vieux nom de chunk après déploiement (ex: FriendsPage-xxxx.js supprimé),
+// ce qui provoquait un crash "Failed to fetch dynamically imported module".
+// Le coût en poids initial est acceptable ici pour retrouver une navigation fiable.
+import ProfilesBots from "./pages/ProfilesBots";
+import FriendsPage from "./pages/FriendsPage";
+import Settings from "./pages/Settings";
+import StatsShell from "./pages/StatsShell";
+import StatsHub from "./pages/StatsHub";
+import StatsOnline from "./pages/StatsOnline";
+import StatsCricket from "./pages/StatsCricket";
+import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage";
+import SyncCenter from "./pages/SyncCenter";
+import TournamentsHome from "./pages/TournamentsHome";
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -2688,13 +2647,9 @@ useEffect(() => {
     if (loading || showSplash) return;
     let timer: number | null = null;
     const preload = () => {
-      void import("./pages/Profiles");
-      void import("./pages/ProfilesBots");
-      void import("./pages/Settings");
-      void import("./pages/StatsShell");
-      void import("./pages/StatsHub");
-      void import("./pages/SyncCenter");
-      void import("./pages/TournamentsHome");
+      // ONLINE V9.2: pages critiques importées en statique ci-dessus.
+      // Ne pas précharger avec import() : après déploiement Cloudflare, ces appels
+      // peuvent relancer un vieux nom de chunk et provoquer un crash mobile.
     };
     const ric: any = (window as any).requestIdleCallback;
     if (typeof ric === "function") {
