@@ -5029,7 +5029,7 @@ function X01PlayV3Route({
         online={isOnline}
         lobbyCode={routeParams?.lobbyCode || (cfgToStart as any)?.lobbyCode || null}
         onlineUserId={routeParams?.onlineUserId || routeParams?.userId || null}
-        onExit={() => go(isOnline ? "online" : "x01_config_v3")}
+        onExit={() => go(isOnline ? "x01_online_setup" : "x01_config_v3", isOnline ? { ...(routeParams || {}), lobbyCode: routeParams?.lobbyCode || (cfgToStart as any)?.lobbyCode || null, online: true, onlineMode: routeParams?.onlineMode || (cfgToStart as any)?.onlineMode || "x01" } : routeParams)}
         onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
         onShowSummary={(matchId: string) =>
           go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeParams?.lobbyCode })

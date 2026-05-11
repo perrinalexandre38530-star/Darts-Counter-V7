@@ -44,6 +44,8 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 import { loadBots } from "./ProfilesBots";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 import { onlineApi } from "../lib/onlineApi";
+import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages } from "../lib/chatApi";
+import { getCountryFlagSrc } from "../lib/geoAssets";
 
 
 
@@ -84,6 +86,9 @@ type HeaderBlockProps = {
   legsWon: Record<string, number>;
   setsWon: Record<string, number>;
   checkoutText: string | null;
+  onChatClick?: () => void;
+  unreadChatCount?: number;
+  countryFlagSrc?: string | null;
 };
 
 
@@ -1066,11 +1071,19 @@ const castAvatarPayloadFromAny = React.useCallback(
 );
 
 const profileById = React.useMemo(() => {
-  const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
+  const m: Record<string, { avatarDataUrl: string | null; name: string; countryCode?: string | null }> = {};
   for (const p of players as any[]) {
+    const countryCode =
+      p?.countryCode ??
+      p?.country_code ??
+      p?.country ??
+      p?.profile?.countryCode ??
+      p?.profile?.country_code ??
+      null;
     m[p.id] = {
       avatarDataUrl: resolveAvatar(p),
       name: p.name,
+      countryCode: countryCode ? String(countryCode).toUpperCase().slice(0, 2) : null,
     };
   }
   return m;
@@ -1107,6 +1120,104 @@ const {
 } = useX01EngineV3({ config });
 
 const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+
+const activePlayerCountryFlagSrc = React.useMemo(() => {
+  const direct =
+    (activePlayer as any)?.countryCode ??
+    (activePlayer as any)?.country_code ??
+    (activePlayer as any)?.country ??
+    (activePlayer ? profileById[String((activePlayer as any).id)]?.countryCode : null) ??
+    null;
+  return getCountryFlagSrc(direct ? String(direct).toUpperCase().slice(0, 2) : undefined);
+}, [activePlayer, profileById]);
+
+const [onlineChatOpen, setOnlineChatOpen] = React.useState(false);
+const [onlineChatDraft, setOnlineChatDraft] = React.useState("");
+const [onlineChatMessages, setOnlineChatMessages] = React.useState<any[]>([]);
+const [onlineChatUnread, setOnlineChatUnread] = React.useState(0);
+const [onlineChatToast, setOnlineChatToast] = React.useState<any | null>(null);
+
+const normalizeOnlineChatMessage = React.useCallback((row: any) => {
+  const payload = row?.message && typeof row.message === "object" ? row.message : row || {};
+  const text = String(row?.text ?? payload?.text ?? payload?.message ?? "").trim();
+  if (!text) return null;
+  return {
+    id: String(row?.id || payload?.id || `${row?.createdAt || row?.created_at || Date.now()}:${text}`),
+    userId: String(row?.userId || row?.user_id || payload?.userId || payload?.user_id || ""),
+    name: String(row?.name || row?.nickname || payload?.name || payload?.nickname || "Joueur"),
+    text,
+    createdAt: row?.createdAt || row?.created_at || payload?.createdAt || payload?.created_at || new Date().toISOString(),
+  };
+}, []);
+
+const pushOnlineChatMessage = React.useCallback((row: any, options?: { silent?: boolean }) => {
+  const msg = normalizeOnlineChatMessage(row);
+  if (!msg) return;
+  setOnlineChatMessages((prev) => {
+    const arr = Array.isArray(prev) ? prev : [];
+    if (arr.some((m) => String(m?.id) === String(msg.id))) return arr;
+    return [...arr.slice(-39), msg];
+  });
+  if (!options?.silent && !onlineChatOpen) {
+    setOnlineChatUnread((n) => Math.min(99, Number(n || 0) + 1));
+    setOnlineChatToast(msg);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => setOnlineChatToast((cur) => (cur?.id === msg.id ? null : cur)), 3600);
+    }
+  }
+}, [normalizeOnlineChatMessage, onlineChatOpen]);
+
+React.useEffect(() => {
+  if (!online || !lobbyCode) return;
+  let alive = true;
+  fetchOnlineChatMessages(lobbyCode, 40)
+    .then((rows) => {
+      if (!alive) return;
+      const list = (Array.isArray(rows) ? rows : [])
+        .map(normalizeOnlineChatMessage)
+        .filter(Boolean);
+      setOnlineChatMessages(list as any[]);
+    })
+    .catch(() => {});
+  return () => { alive = false; };
+}, [online, lobbyCode, normalizeOnlineChatMessage]);
+
+React.useEffect(() => {
+  if (!online || !lobbyCode) return;
+  return onlineApi.subscribeOnlineStream(lobbyCode, {
+    onMessage: (message: any) => pushOnlineChatMessage(message),
+  });
+}, [online, lobbyCode, pushOnlineChatMessage]);
+
+React.useEffect(() => {
+  if (onlineChatOpen) setOnlineChatUnread(0);
+}, [onlineChatOpen]);
+
+const sendOnlineChat = React.useCallback(async () => {
+  const text = onlineChatDraft.trim();
+  if (!online || !lobbyCode || !text) return;
+  const me = players.find((p: any) => String(p?.id || p?.userId || "") === String(onlineUserId || activePlayerId || "")) || activePlayer || players[0];
+  const optimistic = {
+    id: `local:${Date.now()}`,
+    userId: onlineUserId || me?.id || "",
+    name: me?.name || profileById[String(me?.id || "")]?.name || "Moi",
+    text,
+    createdAt: new Date().toISOString(),
+  };
+  setOnlineChatDraft("");
+  pushOnlineChatMessage(optimistic, { silent: true });
+  try {
+    await postOnlineChatMessage(lobbyCode, {
+      text,
+      name: optimistic.name,
+      userId: optimistic.userId,
+      type: "game-chat",
+    });
+  } catch (e) {
+    console.warn("[X01PlayV3] online chat send failed", e);
+  }
+}, [online, lobbyCode, onlineChatDraft, players, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
+
 
 // ============================================================
 // ONLINE X01 V3 — synchronisation NAS par replayDarts
@@ -2981,6 +3092,10 @@ React.useEffect(() => {
       onExit();
       return;
     }
+    if (online && lobbyCode && typeof window !== "undefined") {
+      window.location.hash = "#/online";
+      return;
+    }
     if (typeof window !== "undefined") {
       window.history.back();
     }
@@ -3888,6 +4003,9 @@ if (isLandscapeTablet) {
                 teamLegsWon={(state as any).teamLegsWon ?? {}}
                 teamSetsWon={(state as any).teamSetsWon ?? {}}
                 checkoutText={checkoutText}
+                onChatClick={online ? () => setOnlineChatOpen(true) : undefined}
+                unreadChatCount={onlineChatUnread}
+                countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
             />
             ) : (
@@ -3909,6 +4027,9 @@ if (isLandscapeTablet) {
                 setsWon={(state as any).setsWon ?? {}}
                 useSets={useSetsUi}
                 checkoutText={checkoutText}
+                onChatClick={online ? () => setOnlineChatOpen(true) : undefined}
+                unreadChatCount={onlineChatUnread}
+                countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
             />
             )}
@@ -4165,6 +4286,76 @@ if (isLandscapeTablet) {
         }
       />
 
+      {online && lobbyCode ? (
+        <>
+          {onlineChatToast && !onlineChatOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                left: 18,
+                right: 18,
+                bottom: "calc(118px + env(safe-area-inset-bottom))",
+                zIndex: 1200,
+                maxWidth: 520,
+                margin: "0 auto",
+                borderRadius: 16,
+                border: "1px solid rgba(255,207,87,.35)",
+                background: "rgba(10,12,16,.92)",
+                color: "#fff",
+                padding: "10px 12px",
+                boxShadow: "0 16px 34px rgba(0,0,0,.55), 0 0 18px rgba(255,207,87,.16)",
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ color: "#ffcf57", fontWeight: 950, fontSize: 12 }}>{onlineChatToast.name}</div>
+              <div style={{ fontWeight: 800, fontSize: 13 }}>{onlineChatToast.text}</div>
+            </div>
+          ) : null}
+
+          {onlineChatOpen ? (
+            <div
+              style={{
+                position: "fixed",
+                inset: "auto 12px calc(84px + env(safe-area-inset-bottom)) 12px",
+                zIndex: 1300,
+                maxWidth: 540,
+                margin: "0 auto",
+                borderRadius: 20,
+                border: "1px solid rgba(255,207,87,.35)",
+                background: "linear-gradient(180deg, rgba(20,22,28,.96), rgba(6,7,10,.96))",
+                boxShadow: "0 22px 50px rgba(0,0,0,.70), 0 0 26px rgba(255,207,87,.18)",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                <div style={{ color: "#ffcf57", fontWeight: 950 }}>💬 Chat du salon {String(lobbyCode).toUpperCase()}</div>
+                <button type="button" onClick={() => setOnlineChatOpen(false)} style={{ border: 0, borderRadius: 999, background: "rgba(255,255,255,.10)", color: "#fff", width: 32, height: 32, fontWeight: 950 }}>×</button>
+              </div>
+              <div style={{ maxHeight: 210, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                {onlineChatMessages.length ? onlineChatMessages.map((m) => (
+                  <div key={m.id} style={{ padding: "8px 10px", borderRadius: 14, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.07)" }}>
+                    <div style={{ fontSize: 11, color: "#ffcf57", fontWeight: 950 }}>{m.name}</div>
+                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 13 }}>{m.text}</div>
+                  </div>
+                )) : (
+                  <div style={{ color: "rgba(255,255,255,.66)", fontWeight: 800, textAlign: "center", padding: 16 }}>Aucun message pour l’instant.</div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                <input
+                  value={onlineChatDraft}
+                  onChange={(e) => setOnlineChatDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") sendOnlineChat(); }}
+                  placeholder="Écrire un message…"
+                  style={{ flex: 1, minWidth: 0, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.35)", color: "#fff", padding: "0 12px", fontWeight: 800 }}
+                />
+                <button type="button" onClick={sendOnlineChat} style={{ height: 42, borderRadius: 14, border: 0, background: "linear-gradient(180deg,#ffd65c,#ffb51e)", color: "#111", padding: "0 14px", fontWeight: 950 }}>Envoyer</button>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
       {/* OVERLAY FIN DE MANCHE / SET / MATCH (V3) */}
       <X01LegOverlayV3
         open={
@@ -4216,6 +4407,9 @@ function HeaderBlock(props: HeaderBlockProps) {
     legsWon,
     setsWon,
     checkoutText,
+    onChatClick,
+    unreadChatCount = 0,
+    countryFlagSrc,
     showThrowCounter = false,
   } = props;
 
@@ -4321,10 +4515,11 @@ function HeaderBlock(props: HeaderBlockProps) {
               width: 96,
               height: 96,
               borderRadius: "50%",
-              overflow: "hidden",
+              overflow: "visible",
               background:
                 "linear-gradient(180deg,#1b1b1f,#111114)",
               boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+              position: "relative",
             }}
           >
             {currentAvatar ? (
@@ -4334,6 +4529,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                   width: "100%",
                   height: "100%",
                   objectFit: "cover",
+                  borderRadius: "50%",
                 }}
               />
             ) : (
@@ -4351,6 +4547,77 @@ function HeaderBlock(props: HeaderBlockProps) {
                 ?
               </div>
             )}
+            {onChatClick ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onChatClick(); }}
+                aria-label="Chat online"
+                style={{
+                  position: "absolute",
+                  left: -8,
+                  bottom: -3,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  border: "2px solid rgba(255,207,87,.95)",
+                  background: "linear-gradient(180deg,#15171d,#050608)",
+                  color: "#ffcf57",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                  fontWeight: 900,
+                  boxShadow: "0 0 18px rgba(255,207,87,.45), 0 10px 20px rgba(0,0,0,.45)",
+                  cursor: "pointer",
+                  zIndex: 5,
+                }}
+              >
+                💬
+                {unreadChatCount > 0 ? (
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: -7,
+                      top: -7,
+                      minWidth: 18,
+                      height: 18,
+                      padding: "0 4px",
+                      borderRadius: 999,
+                      background: "#ff4055",
+                      color: "#fff",
+                      fontSize: 10,
+                      lineHeight: "18px",
+                      boxShadow: "0 0 12px rgba(255,64,85,.7)",
+                    }}
+                  >
+                    {unreadChatCount > 9 ? "9+" : unreadChatCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+            {countryFlagSrc ? (
+              <span
+                aria-label="Pays du joueur"
+                style={{
+                  position: "absolute",
+                  right: -8,
+                  bottom: -3,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  border: "2px solid rgba(255,255,255,.82)",
+                  background: "rgba(0,0,0,.65)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 0 16px rgba(255,255,255,.18), 0 10px 20px rgba(0,0,0,.45)",
+                  overflow: "hidden",
+                  zIndex: 5,
+                }}
+              >
+                <img src={countryFlagSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </span>
+            ) : null}
           </div>
           <div
             style={{
@@ -4627,6 +4894,9 @@ function TeamHeaderBlock(props: {
     teamLegsWon,
     teamSetsWon,
     checkoutText,
+    onChatClick,
+    unreadChatCount = 0,
+    countryFlagSrc,
     showThrowCounter = false,
   } = props;
 
