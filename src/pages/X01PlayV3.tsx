@@ -1202,7 +1202,10 @@ React.useEffect(() => {
 // ONLINE STRICT: priorité absolue à la session locale réelle. Les ids transportés dans
 // config/route peuvent être l'id de l'hôte ou du joueur actif, donc ils ne doivent jamais
 // déverrouiller le keypad d'un autre appareil.
-const onlineCurrentUserId = String(onlineLocalUserId || onlineUserId || "").trim();
+// ONLINE STRICT V19 : priorité au userId fourni par App.tsx (session online du compte réellement connecté).
+// Le fallback localStorage peut être stale après changement de compte/appareil et verrouiller le
+// mauvais joueur après la première rotation. Il ne sert donc qu’en secours si App ne fournit rien.
+const onlineCurrentUserId = String(onlineUserId || onlineLocalUserId || "").trim();
 const onlineActivePlayerId = String(activePlayerId || "").trim();
 
 // ONLINE STRICT TURN LOCK
@@ -1391,7 +1394,7 @@ React.useEffect(() => {
 const sendOnlineChat = React.useCallback(async () => {
   const text = onlineChatDraft.trim();
   if (!effectiveOnline || !effectiveLobbyCode || !text) return;
-  const me = safePlayersForOnline.find((p: any) => String(p?.id || p?.userId || "") === String(onlineCurrentUserId || onlineUserId || activePlayerId || "")) || activePlayer || safePlayersForOnline[0];
+  const me = safePlayersForOnline.find((p: any) => String(p?.id || p?.userId || "") === String(onlineCurrentUserId || onlineUserId || onlineLocalUserId || activePlayerId || "")) || activePlayer || safePlayersForOnline[0];
   const clientId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const optimistic = {
     id: clientId,
