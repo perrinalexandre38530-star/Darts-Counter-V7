@@ -5032,14 +5032,9 @@ const [liveDashboard, setLiveDashboard] =
           dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
           dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
           dash.totalDarts = agg?.darts ?? dash.totalDarts;
-          dash.distribution = {
-            S: agg?.hitsSingle ?? 0,
-            D: agg?.hitsDouble ?? 0,
-            T: agg?.hitsTriple ?? 0,
-            Bull: agg?.hitsBull ?? 0,
-            DBull: agg?.hitsDBull ?? 0,
-            Miss: agg?.miss ?? 0,
-          };
+          // Ne pas remplacer `distribution` ici : StatsPlayerDashboard attend les buckets
+          // de volées X01 (0-59 / 60-99 / 100+ / 140+ / 180). Les hits S/D/T/Bull
+          // appartiennent au radar X01Multi et cassaient la répartition des volées.
         }
       } catch {
         // no-op
@@ -5530,8 +5525,41 @@ React.useEffect(() => {
 }, [selectedPlayer?.id]);
 
 
-const globalModeDashboard = React.useMemo(() => {
-  const pid = selectedPlayer?.id ? String(selectedPlayer.id) : "";
+type ModeTickerStat = { label: string; value: string; tone?: "gold" | "red" | "green" | "blue" };
+type ModeDashboardCard = {
+  key: string;
+  label: string;
+  matches: number;
+  wins: number;
+  winRate: number;
+  darts: number;
+  hits: number;
+  miss: number;
+  accuracy: number;
+  points: number;
+  best: number;
+  avg3: number;
+  kills: number;
+  damage: number;
+  autoHit: number;
+  resurrection: number;
+  shield: number;
+  favNumber: string | null;
+  favHits: number;
+  captures: number;
+  extra: number;
+  ticker: ModeTickerStat[];
+};
+
+function fmtStatValue(value: any, suffix = "") {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return `—${suffix}`;
+  const rounded = Math.abs(n) >= 100 ? Math.round(n) : Math.round(n * 10) / 10;
+  return `${rounded}${suffix}`;
+}
+
+const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
+  const pid = selectedPlayer?.id ? String(selectedPlayer.id).replace(/^online:/, "") : "";
   const rows = Array.isArray(records) ? records : [];
   const modeLabels: Record<string, string> = {
     x01: "X01",
@@ -5544,12 +5572,13 @@ const globalModeDashboard = React.useMemo(() => {
     five_lives: "Les 5 vies",
     scram: "SCRAM",
     capital: "Capital",
-    batard: "BÂTARD",
+    batard: "Bâtard",
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "cricket", "killer", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
   const getWinnerIds = (r: any): string[] => {
     const raw = [r?.winnerId, r?.winner, r?.summary?.winnerId, r?.payload?.winnerId, r?.payload?.summary?.winnerId]
       .filter((v) => v !== undefined && v !== null)
@@ -5570,14 +5599,14 @@ const globalModeDashboard = React.useMemo(() => {
       r?.summary?.rankings,
       r?.players,
     ];
-    for (const arr of pools) {
-      if (!Array.isArray(arr)) continue;
-      const hit = arr.find((pl: any) => String(pl?.id ?? pl?.playerId ?? pl?.profileId ?? pl?.uid ?? pl?.userId ?? "").replace(/^online:/, "") === pid.replace(/^online:/, ""));
+    for (const src of pools) {
+      const arr = Array.isArray(src) ? src : src && typeof src === "object" ? Object.values(src) : [];
+      const hit = (arr as any[]).find((pl: any) => normId(pl?.id ?? pl?.playerId ?? pl?.profileId ?? pl?.uid ?? pl?.userId) === pid);
       if (hit) return hit;
     }
     return null;
   };
-  const byMode: Record<string, any> = {};
+  const byMode: Record<string, ModeDashboardCard & { samples: number[]; favMap: Record<string, number> }> = {} as any;
   for (const r of rows) {
     if (!pid || !recordHasPlayer(r as any, pid)) continue;
     const mode = classifyRecordMode(r as any);
@@ -5587,43 +5616,115 @@ const globalModeDashboard = React.useMemo(() => {
       label: modeLabels[mode] || mode.toUpperCase(),
       matches: 0,
       wins: 0,
+      winRate: 0,
       darts: 0,
-      points: 0,
       hits: 0,
       miss: 0,
+      accuracy: 0,
+      points: 0,
       best: 0,
+      avg3: 0,
       kills: 0,
+      damage: 0,
+      autoHit: 0,
+      resurrection: 0,
+      shield: 0,
+      favNumber: null,
+      favHits: 0,
       captures: 0,
       extra: 0,
-      samples: [] as number[],
-    });
+      ticker: [],
+      samples: [],
+      favMap: {},
+    } as any);
     const pl: any = findP(r) || {};
     const stats: any = pl?.special || pl?.stats || pl;
     const darts = n(pl?.darts?.thrown) || n(stats?.darts) || n(stats?.dartsThrown) || n(stats?.throws) || n(stats?.totalThrows);
     const hits = n(pl?.darts?.hits) || n(stats?.hits) || n(stats?.validHits) || n(stats?.totalHits) || n(stats?.hitsTotal);
-    const miss = n(pl?.darts?.misses) || n(stats?.misses) || n(stats?.miss) || Math.max(0, darts - hits);
-    const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore);
-    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || score;
+    const miss = n(pl?.darts?.misses) || n(stats?.misses) || n(stats?.miss) || (darts > 0 ? Math.max(0, darts - hits) : 0);
+    const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore) || n(stats?.scored) || n(stats?.totalPoints);
+    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || score;
     a.matches += 1;
-    if (getWinnerIds(r).some((w) => w.replace(/^online:/, "") === pid.replace(/^online:/, ""))) a.wins += 1;
+    if (getWinnerIds(r).some((w) => normId(w) === pid) || pl?.win === true || pl?.winner === true) a.wins += 1;
     a.darts += darts;
     a.hits += hits;
     a.miss += miss;
     a.points += score;
     a.best = Math.max(a.best, best);
-    a.kills += n(stats?.kills) || n(stats?.eliminations);
+    a.kills += n(stats?.kills) || n(stats?.kill) || n(stats?.eliminations);
+    a.damage += n(stats?.damage) || n(stats?.damageDone) || n(stats?.totalDamage) || n(stats?.hitsDamage);
+    a.autoHit += n(stats?.autoHit) || n(stats?.autoHits) || n(stats?.selfHits);
+    a.resurrection += n(stats?.resurrection) || n(stats?.resurrections) || n(stats?.revives);
+    a.shield += n(stats?.shield) || n(stats?.shields) || n(stats?.shieldHits) || n(stats?.bouclier);
     a.captures += n(stats?.captures) || n(stats?.territories) || n(stats?.owned) || n(stats?.steals);
     a.extra += n(stats?.marksTotal) || n(stats?.marks) || n(stats?.advances) || n(stats?.lostLives) || n(stats?.damageTaken);
-    const avg = n(pl?.averages?.avg3d) || (darts > 0 ? (score / darts) * 3 : 0);
+    const favMap = stats?.favNumberHits || stats?.numberHits || stats?.hitsByNumber || stats?.byNumber || null;
+    if (favMap && typeof favMap === "object") {
+      Object.entries(favMap).forEach(([k, v]) => {
+        const key = String(k);
+        const val = n(v);
+        if (val > 0) a.favMap[key] = (a.favMap[key] || 0) + val;
+      });
+    }
+    const avg = n(pl?.averages?.avg3d) || n(stats?.avg3) || n(stats?.avg3d) || (darts > 0 ? (score / darts) * 3 : 0);
     if (avg > 0) a.samples.push(avg);
   }
-  return order.map((key) => byMode[key]).filter(Boolean).map((a) => ({
-    ...a,
-    winRate: a.matches ? Math.round((a.wins / a.matches) * 100) : 0,
-    accuracy: (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 100) : 0,
-    avg3: a.samples.length ? Math.round((a.samples.reduce((x: number, y: number) => x + y, 0) / a.samples.length) * 10) / 10 : 0,
-  }));
+  return order.map((key) => byMode[key]).filter(Boolean).map((a: any) => {
+    let favNumber: string | null = null;
+    let favHits = 0;
+    Object.entries(a.favMap || {}).forEach(([k, v]) => {
+      const val = n(v);
+      if (val > favHits) { favNumber = k; favHits = val; }
+    });
+    const winRate = a.matches ? Math.round((a.wins / a.matches) * 1000) / 10 : 0;
+    const accuracy = (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 1000) / 10 : 0;
+    const avg3 = a.samples.length ? Math.round((a.samples.reduce((x: number, y: number) => x + y, 0) / a.samples.length) * 10) / 10 : 0;
+    const ticker: ModeTickerStat[] = a.key === "killer"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Kills", value: fmtStatValue(a.kills), tone: "red" },
+          { label: "Damage", value: fmtStatValue(a.damage || a.hits), tone: "red" },
+          { label: "Auto-hit", value: fmtStatValue(a.autoHit), tone: "gold" },
+          { label: "Résurrection", value: fmtStatValue(a.resurrection), tone: "blue" },
+          { label: "Bouclier", value: fmtStatValue(a.shield), tone: "blue" },
+          { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
+        ]
+      : a.key === "x01"
+      ? [
+          { label: "Sessions", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "Avg3", value: fmtStatValue(avg3), tone: "green" },
+          { label: "Best volée", value: fmtStatValue(a.best), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Darts", value: fmtStatValue(a.darts), tone: "blue" },
+        ]
+      : a.key === "cricket"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Marks", value: fmtStatValue(a.extra || a.hits), tone: "gold" },
+          { label: "Hit rate", value: fmtStatValue(accuracy, "%"), tone: "green" },
+          { label: "Best", value: fmtStatValue(a.best), tone: "blue" },
+        ]
+      : [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Points", value: fmtStatValue(a.points), tone: "gold" },
+          { label: "Best", value: fmtStatValue(a.best), tone: "blue" },
+          { label: "Hit rate", value: a.darts || a.hits ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+        ];
+    return { ...a, winRate, accuracy, avg3, favNumber, favHits, ticker } as ModeDashboardCard;
+  });
 }, [records, selectedPlayer?.id]);
+
+const dashboardToShowWithModes = React.useMemo(() => {
+  if (!dashboardToShow) return dashboardToShow;
+  const sessionsByMode: Record<string, number> = {};
+  for (const m of globalModeDashboard) {
+    if (m.matches > 0) sessionsByMode[m.label] = m.matches;
+  }
+  return { ...dashboardToShow, sessionsByMode } as PlayerDashboardStats;
+}, [dashboardToShow, globalModeDashboard]);
 
 // Taille du nom en fonction de la longueur
 const selectedName = selectedPlayer?.name ?? "";
@@ -6225,7 +6326,13 @@ return (
             {currentMode === "dashboard" && (
     <>
       {selectedPlayer && !isMolkkySport && globalModeDashboard.length > 0 && (
-        <div style={{ ...card, marginTop: 0 }}>
+        <div style={{ ...card, marginTop: 0, overflow: "hidden" }}>
+          <style>{`
+            @keyframes statshubModeTickerScroll {
+              0% { transform: translate3d(0,0,0); }
+              100% { transform: translate3d(-50%,0,0); }
+            }
+          `}</style>
           <div
             style={{
               display: "flex",
@@ -6237,46 +6344,44 @@ return (
           >
             <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>DASHBOARD MODES</div>
             <div style={{ fontSize: 10, color: T.text70, textAlign: "right" }}>
-              Parties réellement présentes dans l’historique
+              Résumé global · historique uniquement
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-            {globalModeDashboard.map((m: any) => {
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              overflowX: "auto",
+              paddingBottom: 2,
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none" as any,
+            }}
+          >
+            {globalModeDashboard.map((m: ModeDashboardCard, idx: number) => {
               const goToMode = () => {
-                const idx = modeDefs.findIndex((x) => x.key === m.key);
-                if (idx >= 0) setModeIndex(idx);
+                const targetKey = m.key === "clock" ? "tour_de_l_horloge" : m.key;
+                const found = modeDefs.findIndex((x) => x.key === targetKey || x.key === m.key);
+                if (found >= 0) setModeIndex(found);
               };
-              const main = m.key === "x01"
-                ? `${m.avg3 || 0} avg3`
-                : m.key === "killer"
-                ? `${m.kills || 0} kills`
-                : m.key === "cricket"
-                ? `${m.extra || m.points || 0} marks`
-                : m.key === "territories"
-                ? `${m.captures || 0} zones`
-                : m.key === "five_lives"
-                ? `${m.extra || 0} vies`
-                : `${m.points || m.best || 0} pts`;
-              const second = m.darts > 0
-                ? `${m.darts} darts · ${m.accuracy}% hit`
-                : `${m.wins}/${m.matches} wins`;
-              const width = Math.max(6, Math.min(100, Number(m.winRate || 0)));
+              const tickerItems = [...m.ticker, ...m.ticker];
               return (
                 <button
                   key={m.key}
                   type="button"
                   onClick={goToMode}
                   style={{
+                    flex: "0 0 205px",
+                    minWidth: 205,
                     textAlign: "left",
-                    borderRadius: 18,
+                    borderRadius: 19,
                     padding: 11,
                     border: `1px solid ${T.accent40}`,
-                    background: `radial-gradient(circle at 0% 0%, ${T.accent30}, transparent 62%), linear-gradient(180deg,#15171B,#0D0E12)`,
-                    boxShadow: `0 0 0 1px ${T.accent10}, 0 0 18px ${T.accent15}, 0 8px 18px rgba(0,0,0,.34)`,
+                    background: `radial-gradient(circle at 0% 0%, ${T.accent30}, transparent 58%), linear-gradient(180deg,#17191F,#090A0D)`,
+                    boxShadow: `0 0 0 1px ${T.accent10}, 0 0 18px ${T.accent15}, 0 10px 22px rgba(0,0,0,.38)`,
                     color: T.text,
                     cursor: "pointer",
-                    minHeight: 104,
+                    minHeight: 106,
                     overflow: "hidden",
                   }}
                 >
@@ -6284,21 +6389,52 @@ return (
                     <div style={{ fontSize: 11, fontWeight: 1000, color: T.accent, textTransform: "uppercase", letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${T.accentGlow ?? T.accent}` }}>
                       {m.label}
                     </div>
-                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${T.accent50}`, color: T.accent, background: "rgba(0,0,0,.28)", whiteSpace: "nowrap", boxShadow: `0 0 10px ${T.accent20}` }}>
+                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${T.accent50}`, color: T.accent, background: "rgba(0,0,0,.34)", whiteSpace: "nowrap", boxShadow: `0 0 10px ${T.accent20}` }}>
                       {m.matches} sess.
                     </div>
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 20, lineHeight: 1, fontWeight: 1000, color: m.key === "killer" ? "#FF5A5A" : T.gold, textShadow: `0 0 12px ${m.key === "killer" ? "rgba(255,90,90,.45)" : T.accentGlow ?? T.accent}` }}>
-                    {main}
+
+                  <div
+                    style={{
+                      marginTop: 9,
+                      borderRadius: 15,
+                      border: `1px solid rgba(255,255,255,.10)`,
+                      background: "rgba(0,0,0,.28)",
+                      overflow: "hidden",
+                      height: 48,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        width: "max-content",
+                        animation: `statshubModeTickerScroll ${Math.max(18, m.ticker.length * 5 + idx)}s linear infinite`,
+                      }}
+                    >
+                      {tickerItems.map((it, i) => {
+                        const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? T.accent : T.gold;
+                        return (
+                          <div
+                            key={`${it.label}-${i}`}
+                            style={{
+                              minWidth: 96,
+                              padding: "0 10px",
+                              borderRight: "1px solid rgba(255,255,255,.08)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <div style={{ fontSize: 9, color: T.text60, textTransform: "uppercase", fontWeight: 800 }}>{it.label}</div>
+                            <div style={{ marginTop: 2, fontSize: 17, lineHeight: 1, fontWeight: 1000, color, textShadow: `0 0 12px ${color}` }}>{it.value}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div style={{ marginTop: 7, fontSize: 11, color: T.text70 }}>
-                    WR {m.winRate}% · Best {m.best || "—"}
-                  </div>
-                  <div style={{ marginTop: 3, fontSize: 10, color: T.text60 }}>
-                    {second}
-                  </div>
+
                   <div style={{ marginTop: 9, height: 5, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                    <div style={{ width: `${width}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${T.accent30}, ${T.accent})`, boxShadow: `0 0 12px ${T.accent}` }} />
+                    <div style={{ width: `${Math.max(5, Math.min(100, m.winRate || m.accuracy || 0))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${T.accent30}, ${T.accent})`, boxShadow: `0 0 12px ${T.accent}` }} />
                   </div>
                 </button>
               );
@@ -6317,7 +6453,7 @@ return (
         {selectedPlayer ? (
           <StatsPlayerDashboard
             // ✅ IMPORTANT: on affiche le cache instantané, puis live recalcul, puis fallback memo
-            data={selectedPlayer ? dashboardToShow : null}
+            data={selectedPlayer ? dashboardToShowWithModes : null}
             x01MultiLegsSets={x01MultiLegsSets}
             sport={effectiveSport}
           />
@@ -6328,146 +6464,53 @@ return (
         )}
       </div>
 
-                {selectedPlayer && !isMolkkySport && (
-                  <div style={{ ...card, marginTop: 8 }}>
-                    <StatsTrainingSummary profileId={selectedPlayer.id} />
-                  </div>
-                )}
 
-                {selectedPlayer && !isMolkkySport && killerAgg && killerAgg.matches > 0 && (
-                  <div style={{ ...card, marginTop: 8 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>
-                        KILLER — RÉSUMÉ
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const idx = modeDefs.findIndex((m) => m.key === "killer");
-                          if (idx >= 0) setModeIndex(idx);
-                        }}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 999,
-                          border: `1px solid ${T.accent50}`,
-                          background: `radial-gradient(circle at 30% 30%, ${T.accent30}, rgba(0,0,0,.55))`,
-                          color: T.accent,
-                          fontSize: 11,
-                          fontWeight: 900,
-                          letterSpacing: 0.5,
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Voir détails ▶
-                      </button>
+                {selectedPlayer && !isMolkkySport && globalModeDashboard.length > 0 && (
+                  <div style={{ ...card, marginTop: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                      <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>RÉSUMÉS ESSENTIELS</div>
+                      <div style={{ fontSize: 10, color: T.text70 }}>Détails complets dans chaque onglet</div>
                     </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                        gap: 10,
-                      }}
-                    >
-                      <div
-                        style={{
-                          borderRadius: 16,
-                          padding: 10,
-                          border: `1px solid rgba(255,255,255,.10)`,
-                          background: "linear-gradient(180deg,#15171B,#0F1014)",
-                          textAlign: "center",
-                        }}
-                      >
-                        <div
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                      {globalModeDashboard.map((m: ModeDashboardCard) => (
+                        <button
+                          key={`essential-${m.key}`}
+                          type="button"
+                          onClick={() => {
+                            const targetKey = m.key === "clock" ? "tour_de_l_horloge" : m.key;
+                            const idx = modeDefs.findIndex((x) => x.key === targetKey || x.key === m.key);
+                            if (idx >= 0) setModeIndex(idx);
+                          }}
                           style={{
-                            fontSize: 10,
-                            color: T.text70,
-                            textTransform: "uppercase",
+                            borderRadius: 16,
+                            padding: 10,
+                            border: `1px solid ${T.accent30}`,
+                            background: "linear-gradient(180deg,#15171B,#0F1014)",
+                            color: T.text,
+                            textAlign: "left",
+                            cursor: "pointer",
+                            minHeight: 112,
                           }}
                         >
-                          Matchs
-                        </div>
-                        <div style={{ fontSize: 18, fontWeight: 900, color: T.gold }}>
-                          {killerAgg.matches}
-                        </div>
-                        <div style={{ fontSize: 11, color: T.text70 }}>
-                          Wins {killerAgg.wins} · {killerAgg.winRatePct}%
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          borderRadius: 16,
-                          padding: 10,
-                          border: `1px solid rgba(255,255,255,.10)`,
-                          background: "linear-gradient(180deg,#15171B,#0F1014)",
-                          textAlign: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: T.text70,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Kills
-                        </div>
-                        <div style={{ fontSize: 18, fontWeight: 900, color: "#FF4B4B" }}>
-                          {killerAgg.kills}
-                        </div>
-                        <div style={{ fontSize: 11, color: T.text70 }}>
-                          Total hits {killerAgg.totalHits}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          gridColumn: "1 / -1",
-                          borderRadius: 16,
-                          padding: 10,
-                          border: `1px solid rgba(255,255,255,.10)`,
-                          background: "linear-gradient(180deg,#15171B,#0F1014)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: T.text70,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Numéro favori
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 900, color: T.accent }}>
-                          {killerAgg.favNumber
-                            ? `${killerAgg.favNumber} (${killerAgg.favHits})`
-                            : "—"}
-                        </div>
-                      </div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                            <div style={{ fontSize: 11, fontWeight: 1000, color: T.gold, textTransform: "uppercase", letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.label}</div>
+                            <div style={{ fontSize: 9, color: T.accent, border: `1px solid ${T.accent40}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : 4).map((it) => {
+                              const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? T.accent : T.gold;
+                              return (
+                                <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
+                                  <div style={{ fontSize: 8.5, color: T.text60, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</div>
+                                  <div style={{ fontSize: 13, fontWeight: 1000, color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${color}` }}>{it.value}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                )}
-
-                {selectedPlayer && !isMolkkySport && cricketStats && (
-                  <div style={{ ...card, marginTop: 8 }}>
-                    <React.Suspense fallback={<LazyFallback label="Chargement Cricket…" />}>
-                      <StatsCricketDashboard stats={cricketStats} />
-                    </React.Suspense>
                   </div>
                 )}
               </>
