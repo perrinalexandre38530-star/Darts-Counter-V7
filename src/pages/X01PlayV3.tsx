@@ -250,6 +250,13 @@ function dartValue(d: UIDart) {
 }
 
 // Somme des points d'une volée (pour preview checkout)
+function hashStringForOnlineChat(input: string): number {
+  let h = 0;
+  const raw = String(input || "");
+  for (let i = 0; i < raw.length; i += 1) h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
+  return h || 1;
+}
+
 function sumThrow(throwDarts: UIDart[] | undefined | null): number {
   if (!throwDarts || !Array.isArray(throwDarts)) return 0;
   return throwDarts.reduce((s, d) => s + dartValue(d), 0);
@@ -1148,12 +1155,18 @@ const normalizeOnlineChatMessage = React.useCallback((row: any) => {
   if (!text) return null;
   const clientId = String(row?.clientId || row?.client_id || payload?.clientId || payload?.client_id || "");
   const createdAt = row?.createdAt || row?.created_at || payload?.createdAt || payload?.created_at || new Date().toISOString();
+  const type = String(row?.type || payload?.type || "game-chat");
+  const system = Boolean(row?.system || payload?.system || type === "system" || type.startsWith("system:"));
+  const kind = String(row?.kind || payload?.kind || "");
   return {
     id: String(clientId || row?.id || payload?.id || `${createdAt}:${row?.userId || row?.user_id || payload?.userId || payload?.user_id || ""}:${text}`),
     clientId,
     userId: String(row?.userId || row?.user_id || payload?.userId || payload?.user_id || ""),
-    name: String(row?.name || row?.nickname || payload?.name || payload?.nickname || "Joueur"),
+    name: system ? String(row?.name || row?.nickname || payload?.name || payload?.nickname || "Système") : String(row?.name || row?.nickname || payload?.name || payload?.nickname || "Joueur"),
     text,
+    type,
+    system,
+    kind,
     createdAt,
   };
 }, []);
@@ -1185,6 +1198,48 @@ const pushOnlineChatMessage = React.useCallback((row: any, options?: { silent?: 
     }
   }
 }, [normalizeOnlineChatMessage, onlineChatOpen]);
+
+const onlineSystemChatSentRef = React.useRef<Set<string>>(new Set());
+
+const postOnlineSystemChat = React.useCallback(async (text: string, kind: string, key: string, options?: { localOnly?: boolean }) => {
+  const cleanText = String(text || "").trim();
+  const cleanKey = String(key || `${kind}:${cleanText}`).trim();
+  if (!online || !lobbyCode || !cleanText || !cleanKey) return;
+  if (onlineSystemChatSentRef.current.has(cleanKey)) return;
+  onlineSystemChatSentRef.current.add(cleanKey);
+
+  const clientId = `sys_${String(lobbyCode).toUpperCase()}_${kind}_${Math.abs(hashStringForOnlineChat(cleanKey))}_${Date.now()}`;
+  const optimistic = {
+    id: clientId,
+    clientId,
+    userId: "system",
+    name: "Système",
+    text: cleanText,
+    type: "system",
+    system: true,
+    kind,
+    createdAt: new Date().toISOString(),
+  };
+
+  pushOnlineChatMessage(optimistic, { silent: false });
+  if (options?.localOnly) return;
+
+  try {
+    const saved = await postOnlineChatMessage(lobbyCode, {
+      clientId,
+      text: cleanText,
+      name: "Système",
+      userId: "system",
+      type: "system",
+      system: true,
+      kind,
+      key: cleanKey,
+    });
+    pushOnlineChatMessage(saved, { silent: true });
+  } catch (e) {
+    console.warn("[X01PlayV3] online system chat failed", e);
+  }
+}, [online, lobbyCode, pushOnlineChatMessage]);
 
 React.useEffect(() => {
   if (!online || !lobbyCode) return;
@@ -1225,7 +1280,7 @@ React.useEffect(() => {
 const sendOnlineChat = React.useCallback(async () => {
   const text = onlineChatDraft.trim();
   if (!online || !lobbyCode || !text) return;
-  const me = players.find((p: any) => String(p?.id || p?.userId || "") === String(onlineUserId || activePlayerId || "")) || activePlayer || players[0];
+  const me = safePlayersForOnline.find((p: any) => String(p?.id || p?.userId || "") === String(onlineCurrentUserId || onlineUserId || activePlayerId || "")) || activePlayer || safePlayersForOnline[0];
   const clientId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const optimistic = {
     id: clientId,
@@ -1249,7 +1304,53 @@ const sendOnlineChat = React.useCallback(async () => {
   } catch (e) {
     console.warn("[X01PlayV3] online chat send failed", e);
   }
-}, [online, lobbyCode, onlineChatDraft, players, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
+}, [online, lobbyCode, onlineChatDraft, safePlayersForOnline, onlineCurrentUserId, onlineUserId, activePlayerId, activePlayer, profileById, pushOnlineChatMessage]);
+
+// ONLINE : annonce automatiquement le joueur au trait dans le chat système.
+const onlineLastTurnSystemKeyRef = React.useRef("");
+React.useEffect(() => {
+  if (!online || !lobbyCode || status !== "running" || !activePlayer) return;
+  const code = String(lobbyCode).toUpperCase();
+  const hostUserId = String((config as any)?.hostUserId || (config as any)?.onlineHostUserId || safePlayersForOnline.find((p: any) => p?.isHost)?.userId || safePlayersForOnline.find((p: any) => p?.isHost)?.id || "").trim();
+  const shouldAnnounce = hostUserId ? String(onlineCurrentUserId || "") === hostUserId : String(onlineCurrentUserId || "") === String(onlineActivePlayerId || "");
+  if (!shouldAnnounce) return;
+  const playerName = String((activePlayer as any)?.name || (activePlayer as any)?.displayName || (activePlayer as any)?.nickname || "Joueur");
+  const replayCount = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.length : 0;
+  const key = `turn:${code}:${String(onlineActivePlayerId || "")}:${replayCount}`;
+  if (onlineLastTurnSystemKeyRef.current === key) return;
+  onlineLastTurnSystemKeyRef.current = key;
+  window.setTimeout(() => {
+    postOnlineSystemChat(`🎯 À ${playerName} de jouer`, "turn", key).catch(() => {});
+  }, 120);
+}, [online, lobbyCode, status, activePlayerId, activePlayer, onlineActivePlayerId, onlineCurrentUserId, config, safePlayersForOnline, postOnlineSystemChat]);
+
+// ONLINE : mémorise la partie active pour pouvoir reprendre après refresh / appel / veille.
+React.useEffect(() => {
+  if (!online || !lobbyCode || typeof window === "undefined") return;
+  const code = String(lobbyCode).toUpperCase();
+  const payload = {
+    kind: "x01",
+    route: "x01_play_v3",
+    lobbyCode: code,
+    lobbyId: (config as any)?.lobbyId || null,
+    onlineMode: "x01",
+    at: Date.now(),
+    params: {
+      resumeId: null,
+      fresh: Date.now(),
+      online: true,
+      onlineMode: "x01",
+      lobbyCode: code,
+      lobbyId: (config as any)?.lobbyId || null,
+      players: safePlayersForOnline,
+      config: { ...(config as any), online: true, onlineMode: "x01", lobbyCode: code },
+    },
+  };
+  try {
+    window.localStorage.setItem("dc_online_active_match_v1", JSON.stringify(payload));
+    window.localStorage.setItem(`dc_online_active_match_${code}`, JSON.stringify(payload));
+  } catch {}
+}, [online, lobbyCode, config, safePlayersForOnline]);
 
 // ONLINE : empêche la mise en veille pendant une partie et tente une resynchro après retour écran/app.
 React.useEffect(() => {
@@ -2699,6 +2800,15 @@ const validateThrow = async () => {
         window.setTimeout(() => {
           forceSyncFromEngine();
           publishOnlineReplayState("manual-visit").catch(() => {});
+          if (online && lobbyCode) {
+            const resultText = isBustNow
+              ? `💥 ${playerName} BUST — reste ${scoreBefore}`
+              : isCheckoutNow
+              ? `🏁 ${playerName} termine avec ${visitScore} — reste 0`
+              : `✅ ${playerName} : ${visitScore} point${visitScore > 1 ? "s" : ""} — reste ${Math.max(0, remainingAfter)}`;
+            const resultKey = `visit:${String(lobbyCode).toUpperCase()}:${pid}:${Date.now()}:${visitScore}:${Math.max(0, remainingAfter)}:${isBustNow ? "bust" : isCheckoutNow ? "finish" : "score"}`;
+            postOnlineSystemChat(resultText, isBustNow ? "bust" : isCheckoutNow ? "finish" : "visit_result", resultKey).catch(() => {});
+          }
         }, 0);
       }
     }, index * 10);
@@ -3202,8 +3312,8 @@ React.useEffect(() => {
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
         {onlineChatMessages.length ? onlineChatMessages.slice(-5).map((m) => (
-          <div key={m.id} style={{ padding: "8px 10px", borderRadius: 14, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.07)" }}>
-            <div style={{ fontSize: 11, color: "#ffcf57", fontWeight: 950 }}>{m.name}</div>
+          <div key={m.id} style={{ padding: "8px 10px", borderRadius: 14, background: m.system ? "rgba(255,207,87,.10)" : "rgba(255,255,255,.06)", border: m.system ? "1px solid rgba(255,207,87,.22)" : "1px solid rgba(255,255,255,.07)" }}>
+            <div style={{ fontSize: 11, color: m.system ? "#8fe6aa" : "#ffcf57", fontWeight: 950 }}>{m.system ? "ONLINE" : m.name}</div>
             <div style={{ color: "#fff", fontWeight: 800, fontSize: 13 }}>{m.text}</div>
           </div>
         )) : (
@@ -4472,7 +4582,7 @@ if (isLandscapeTablet) {
                 pointerEvents: "none",
               }}
             >
-              <div style={{ color: "#ffcf57", fontWeight: 950, fontSize: 12 }}>{onlineChatToast.name}</div>
+              <div style={{ color: onlineChatToast.system ? "#8fe6aa" : "#ffcf57", fontWeight: 950, fontSize: 12 }}>{onlineChatToast.system ? "ONLINE" : onlineChatToast.name}</div>
               <div style={{ fontWeight: 800, fontSize: 13 }}>{onlineChatToast.text}</div>
             </div>
           ) : null}
@@ -4498,8 +4608,8 @@ if (isLandscapeTablet) {
               </div>
               <div style={{ maxHeight: 210, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 {onlineChatMessages.length ? onlineChatMessages.map((m) => (
-                  <div key={m.id} style={{ padding: "8px 10px", borderRadius: 14, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.07)" }}>
-                    <div style={{ fontSize: 11, color: "#ffcf57", fontWeight: 950 }}>{m.name}</div>
+                  <div key={m.id} style={{ padding: "8px 10px", borderRadius: 14, background: m.system ? "rgba(255,207,87,.10)" : "rgba(255,255,255,.06)", border: m.system ? "1px solid rgba(255,207,87,.22)" : "1px solid rgba(255,255,255,.07)" }}>
+                    <div style={{ fontSize: 11, color: m.system ? "#8fe6aa" : "#ffcf57", fontWeight: 950 }}>{m.system ? "ONLINE" : m.name}</div>
                     <div style={{ color: "#fff", fontWeight: 800, fontSize: 13 }}>{m.text}</div>
                   </div>
                 )) : (

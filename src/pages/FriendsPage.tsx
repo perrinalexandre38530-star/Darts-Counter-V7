@@ -98,6 +98,21 @@ function loadPresenceFromLS(): StoredPresence | null {
   }
 }
 
+function loadActiveOnlineResume(): any | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("dc_online_active_match_v1");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const at = Number(parsed?.at || 0);
+    const code = String(parsed?.lobbyCode || parsed?.params?.lobbyCode || "").trim().toUpperCase();
+    if (!code || !at || Date.now() - at > 1000 * 60 * 60 * 8) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function formatLastSeenAgo(lastSeen: number | null): string | null {
   if (!lastSeen) return null;
   const diffMs = Date.now() - lastSeen;
@@ -1250,6 +1265,45 @@ const doLogout = React.useCallback(async () => {
   const [copyInfo, setCopyInfo] = React.useState<string | null>(null);
   const [selectedOnlineMode, setSelectedOnlineMode] = React.useState<OnlineGameModeId>(() => loadSelectedOnlineMode());
   const selectedOnlineModeSpec = React.useMemo(() => getOnlineModeSpec(selectedOnlineMode), [selectedOnlineMode]);
+  const [activeOnlineResume, setActiveOnlineResume] = React.useState<any | null>(() => loadActiveOnlineResume());
+
+  React.useEffect(() => {
+    const refreshResume = () => setActiveOnlineResume(loadActiveOnlineResume());
+    refreshResume();
+    window.addEventListener("focus", refreshResume);
+    document.addEventListener("visibilitychange", refreshResume);
+    return () => {
+      window.removeEventListener("focus", refreshResume);
+      document.removeEventListener("visibilitychange", refreshResume);
+    };
+  }, []);
+
+  async function resumeActiveOnlineMatch() {
+    const saved = loadActiveOnlineResume();
+    const code = String(saved?.lobbyCode || saved?.params?.lobbyCode || "").trim().toUpperCase();
+    if (!saved || !code) {
+      setJoinError("Aucune partie online à reprendre.");
+      setActiveOnlineResume(null);
+      return;
+    }
+    try {
+      const row = await onlineApi.fetchMatchByCode(code).catch(() => null as any);
+      const state = (row as any)?.state_json || (row as any)?.state || null;
+      const params = {
+        ...(saved.params || {}),
+        ...(state && typeof state === "object" ? state : {}),
+        online: true,
+        onlineMode: "x01",
+        lobbyCode: code,
+        fresh: Date.now(),
+      };
+      if ((state as any)?.config) params.config = { ...(state as any).config, online: true, onlineMode: "x01", lobbyCode: code };
+      if ((state as any)?.players) params.players = (state as any).players;
+      go?.("x01_play_v3", params);
+    } catch (e: any) {
+      setJoinError(normalizeErrMessage(e) || "Impossible de reprendre la partie online.");
+    }
+  }
 
   function selectOnlineMode(mode: OnlineGameModeId) {
     setSelectedOnlineMode(mode);
@@ -2606,6 +2660,24 @@ const doLogout = React.useCallback(async () => {
           ) : null
         }
       />
+
+      {activeOnlineResume?.lobbyCode ? (
+        <NeonCard style={{ marginTop: 10, border: "1px solid rgba(143,230,170,.35)", background: "linear-gradient(180deg, rgba(26,72,45,.42), rgba(10,16,12,.94))" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 1000, color: "#8fe6aa" }}>PARTIE ONLINE EN COURS</div>
+              <div style={{ marginTop: 4, fontSize: 13, opacity: .9 }}>Salon {String(activeOnlineResume.lobbyCode).toUpperCase()} · reprise après veille / refresh / appel</div>
+            </div>
+            <button
+              type="button"
+              onClick={resumeActiveOnlineMatch}
+              style={{ border: 0, borderRadius: 14, padding: "10px 12px", fontWeight: 1000, background: "linear-gradient(180deg,#8fe6aa,#35c978)", color: "#07130b", cursor: "pointer" }}
+            >
+              Reprendre
+            </button>
+          </div>
+        </NeonCard>
+      ) : null}
 
       <NeonCard style={{ marginTop: 10 }}>
         <div style={{ display: "grid", gap: 12 }}>
