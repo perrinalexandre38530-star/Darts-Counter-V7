@@ -2124,78 +2124,150 @@ function Sparkline(props: { values: number[]; accent: string; height?: number })
 function PrecisionRadar(props: { detail: SegDetailMap; accent: string }) {
   const { detail, accent } = props;
   const order = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
-  const totals = order.map((num) => {
-    const d = detail?.[String(num)] || blankSeg();
-    return N(d.S) + N(d.D) * 2 + N(d.T) * 3;
-  });
-  const maxV = Math.max(1, ...totals);
-  const size = 230;
+  const size = 236;
   const cx = size / 2;
   const cy = size / 2;
-  const R = 78;
-  const ang = (i: number) => (-90 + (i * 360) / order.length) * (Math.PI / 180);
-  const point = (i: number, ratio: number) => {
-    const a = ang(i);
-    const rr = R * Math.max(0.08, Math.min(1, ratio));
-    return { x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr };
+  const rings = {
+    singleInner: 32,
+    triple: 58,
+    singleOuter: 78,
+    double: 94,
+    label: 108,
   };
-  const poly = totals.map((v, i) => point(i, Math.sqrt(v / maxV))).map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const ang = (i: number) => (-90 + (i * 360) / order.length) * (Math.PI / 180);
+  const polar = (i: number, radius: number, offset = 0) => {
+    const a = ang(i) + offset;
+    return { x: cx + Math.cos(a) * radius, y: cy + Math.sin(a) * radius };
+  };
 
-  const favoriteIdx = totals.reduce((best, v, i) => (v > totals[best] ? i : best), 0);
-  const favorite = totals[favoriteIdx] > 0 ? String(order[favoriteIdx]) : "—";
+  const perSegment = order.map((num, i) => {
+    const d = detail?.[String(num)] || blankSeg();
+    const S = N(d.S, 0);
+    const D = N(d.D, 0);
+    const T = N(d.T, 0);
+    return { num, i, S, D, T, total: S + D + T };
+  });
+  const bull25 = N(detail?.["25"]?.B, 0) + N(detail?.["25"]?.S, 0);
+  const db25 = N(detail?.["DB"]?.DB, 0) + N(detail?.["25"]?.DB, 0) + N(detail?.["DB"]?.D, 0);
+  const missTotal = N(detail?.MISS?.MISS, 0) + N(detail?.["MISS"]?.MISS, 0);
+  const totalHits = perSegment.reduce((sum, x) => sum + x.total, 0) + bull25 + db25;
+  const maxSegment = Math.max(1, ...perSegment.map((x) => x.total), bull25, db25);
+
+  const favorite = (() => {
+    const best = perSegment.reduce((acc, x) => (x.total > acc.total ? x : acc), { num: 0, total: 0 } as any);
+    if (bull25 > best.total) return "25";
+    if (db25 > best.total) return "D25";
+    return best.total > 0 ? String(best.num) : "—";
+  })();
   const simpleFav = (() => {
-    let best = "—", val = 0;
-    for (const n of order) { const v = N(detail?.[String(n)]?.S, 0); if (v > val) { val = v; best = String(n); } }
-    return best;
+    const best = perSegment.reduce((acc, x) => (x.S > acc.S ? x : acc), { num: 0, S: 0 } as any);
+    return best.S > 0 ? String(best.num) : "—";
   })();
   const doubleFav = (() => {
-    let best = "—", val = 0;
-    for (const n of order) { const v = N(detail?.[String(n)]?.D, 0); if (v > val) { val = v; best = String(n); } }
-    return best;
+    const best = perSegment.reduce((acc, x) => (x.D > acc.D ? x : acc), { num: 0, D: 0 } as any);
+    return best.D > 0 ? String(best.num) : "—";
   })();
   const tripleFav = (() => {
-    let best = "—", val = 0;
-    for (const n of order) { const v = N(detail?.[String(n)]?.T, 0); if (v > val) { val = v; best = String(n); } }
-    return best;
+    const best = perSegment.reduce((acc, x) => (x.T > acc.T ? x : acc), { num: 0, T: 0 } as any);
+    return best.T > 0 ? String(best.num) : "—";
   })();
-  const least = (() => {
-    const used = order.map((n, i) => ({ n, v: totals[i] })).filter((x) => x.v > 0).sort((a, b) => a.v - b.v);
-    return used[0]?.n ? String(used[0].n) : "—";
-  })();
+
+  const drawHitDots = (seg: any, kind: "S" | "D" | "T") => {
+    const count = N(seg[kind], 0);
+    if (count <= 0) return null;
+    const baseRadius = kind === "D" ? rings.double : kind === "T" ? rings.triple : (seg.S >= 2 ? rings.singleOuter : rings.singleInner);
+    const shown = Math.min(18, count);
+    const dots = [];
+    for (let n = 0; n < shown; n += 1) {
+      // On affiche une vraie nuée de points, pas un polygone : le compteur reste exact dans les KPIs/tooltip.
+      const ringJitter = ((n % 5) - 2) * 1.8;
+      const angleJitter = ((n % 7) - 3) * 0.008;
+      const p = polar(seg.i, baseRadius + ringJitter, angleJitter);
+      const fill = kind === "D" ? "#FF6FB5" : kind === "T" ? "#FF9F43" : accent;
+      dots.push(
+        <circle
+          key={`${seg.num}-${kind}-${n}`}
+          cx={p.x}
+          cy={p.y}
+          r={count > 6 ? 2.7 : 3.2}
+          fill={fill}
+          opacity={0.38 + Math.min(0.42, count / 20)}
+          stroke="rgba(0,0,0,.38)"
+          strokeWidth="0.6"
+        />
+      );
+    }
+    return dots;
+  };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, alignItems: "center" }}>
       <svg width="100%" viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
-        {[0.25, 0.5, 0.75, 1].map((r, idx) => (
-          <circle key={idx} cx={cx} cy={cy} r={R * r} fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="1" />
+        <defs>
+          <radialGradient id="dartset-hit-radar-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor={accent} stopOpacity="0.20" />
+            <stop offset="62%" stopColor={accent} stopOpacity="0.055" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0" />
+          </radialGradient>
+          <filter id="dartset-hit-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <circle cx={cx} cy={cy} r="104" fill="url(#dartset-hit-radar-bg)" />
+        {[22, rings.singleInner, rings.triple, rings.singleOuter, rings.double].map((r, idx) => (
+          <circle key={idx} cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="1" />
         ))}
+
         {order.map((num, i) => {
           const a = ang(i);
-          const x2 = cx + Math.cos(a) * R;
-          const y2 = cy + Math.sin(a) * R;
-          const xt = cx + Math.cos(a) * (R + 16);
-          const yt = cy + Math.sin(a) * (R + 16);
+          const x1 = cx + Math.cos(a) * 18;
+          const y1 = cy + Math.sin(a) * 18;
+          const x2 = cx + Math.cos(a) * rings.double;
+          const y2 = cy + Math.sin(a) * rings.double;
+          const xt = cx + Math.cos(a) * rings.label;
+          const yt = cy + Math.sin(a) * rings.label;
+          const total = perSegment[i]?.total || 0;
           return (
             <React.Fragment key={num}>
-              <line x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(255,255,255,.08)" strokeWidth="1" />
-              <text x={xt} y={yt} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="950" fill={totals[i] > 0 ? accent : "rgba(255,255,255,.62)"}>{num}</text>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,.07)" strokeWidth="1" />
+              <text x={xt} y={yt} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="950" fill={total > 0 ? accent : "rgba(255,255,255,.60)"}>{num}</text>
             </React.Fragment>
           );
         })}
-        <polygon points={poly} fill={accent} opacity="0.24" stroke={accent} strokeWidth="2.4" filter="drop-shadow(0 0 5px rgba(246,194,86,.50))" />
-        {totals.map((v, i) => {
-          if (v <= 0) return null;
-          const p = point(i, Math.sqrt(v / maxV));
-          return <circle key={`p-${i}`} cx={p.x} cy={p.y} r="3.3" fill={accent} stroke="rgba(0,0,0,.55)" strokeWidth="1" />;
-        })}
+
+        {/* Points de repère transparents : tous les segments restent visibles même sans hit. */}
+        {perSegment.flatMap((seg) => [rings.singleInner, rings.triple, rings.double].map((r, idx) => {
+          const p = polar(seg.i, r);
+          return <circle key={`ghost-${seg.num}-${idx}`} cx={p.x} cy={p.y} r="1.9" fill={accent} opacity="0.12" />;
+        }))}
+
+        {/* Hits réels : simples, doubles et triples sont recensés séparément. */}
+        {perSegment.flatMap((seg) => [drawHitDots(seg, "S"), drawHitDots(seg, "D"), drawHitDots(seg, "T")])}
+
+        {/* Bull / D25 au centre, avec taille proportionnelle. */}
+        <circle cx={cx} cy={cy} r="15" fill="rgba(0,0,0,.28)" stroke="rgba(255,255,255,.12)" />
+        {bull25 > 0 && <circle cx={cx - 3} cy={cy + 3} r={Math.max(4, Math.min(13, 3 + Math.sqrt(bull25) * 3))} fill={accent} opacity="0.42" filter="url(#dartset-hit-glow)" />}
+        {db25 > 0 && <circle cx={cx + 3} cy={cy - 3} r={Math.max(4, Math.min(11, 3 + Math.sqrt(db25) * 2.6))} fill="#FF6FB5" opacity="0.58" filter="url(#dartset-hit-glow)" />}
+        <circle cx={cx} cy={cy} r="3.2" fill={accent} opacity="0.86" />
       </svg>
-      <div style={{ fontSize: 10.5, lineHeight: 1.55, color: "rgba(255,255,255,.70)", fontWeight: 850 }}>
-        <div style={{ color: accent, fontWeight: 950, marginBottom: 4 }}>Segments clés</div>
-        <div>Hit préféré : <b style={{ color: accent }}>{favorite}</b></div>
-        <div>Simple favori : <b style={{ color: accent }}>{simpleFav}</b></div>
-        <div>Double favori : <b style={{ color: accent }}>{doubleFav}</b></div>
-        <div>Triple favori : <b style={{ color: accent }}>{tripleFav}</b></div>
-        <div>Moins joué : <b style={{ color: accent }}>{least}</b></div>
+
+      <div style={{ display: "grid", gap: 7 }}>
+        <div style={{ fontSize: 10.5, lineHeight: 1.45, color: "rgba(255,255,255,.70)", fontWeight: 850 }}>
+          <div style={{ color: accent, fontWeight: 950, marginBottom: 4 }}>Radar hits</div>
+          <div>Total hits : <b style={{ color: accent }}>{fmt0(totalHits)}</b></div>
+          <div>Hit préféré : <b style={{ color: accent }}>{favorite}</b></div>
+          <div>Simple : <b style={{ color: accent }}>{simpleFav}</b></div>
+          <div>Double : <b style={{ color: accent }}>{doubleFav}</b></div>
+          <div>Triple : <b style={{ color: accent }}>{tripleFav}</b></div>
+        </div>
+        <SideBadge accent={accent} label="25" value={fmt0(bull25)} />
+        <SideBadge accent="#FF6FB5" label="D25" value={fmt0(db25)} />
+        <SideBadge accent="rgba(255,255,255,.72)" label="MISS" value={fmt0(missTotal)} />
       </div>
     </div>
   );
