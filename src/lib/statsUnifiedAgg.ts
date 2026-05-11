@@ -195,44 +195,110 @@ function safeDate(ts: number) {
  * - summary.players[pid].bestVisit / bestCheckout
  * ou maps : avg3ByPlayer / bestVisitByPlayer / bestCheckoutByPlayer
  */
-function readX01SummaryFallback(m: NormalizedMatch, playerId: string) {
+function normStatsName(v: any): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function idMatches(a: any, b: any): boolean {
+  const aa = String(a ?? "").trim();
+  const bb = String(b ?? "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 16 && bb.length >= 16 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+function collectPlayerAliases(m: NormalizedMatch, playerId: string, playerName?: string): string[] {
+  const out = new Set<string>();
+  const pid = String(playerId || "").trim();
+  const pname = normStatsName(playerName);
+  if (pid) out.add(pid);
+
+  const pools: any[] = [
+    ...((Array.isArray((m as any)?.players) ? (m as any).players : []) as any[]),
+    ...((Array.isArray((m as any)?.raw?.players) ? (m as any).raw.players : []) as any[]),
+    ...((Array.isArray((m as any)?.raw?.payload?.players) ? (m as any).raw.payload.players : []) as any[]),
+    ...((Array.isArray((m as any)?.raw?.summary?.players) ? (m as any).raw.summary.players : []) as any[]),
+    ...((Array.isArray((m as any)?.raw?.payload?.config?.players) ? (m as any).raw.payload.config.players : []) as any[]),
+  ];
+
+  for (const p of pools) {
+    const ids = [p?.id, p?.playerId, p?.profileId, p?.sourceId, p?.sourcePlayerId, p?.sourceProfileId, p?.userId, ...(Array.isArray(p?.aliases) ? p.aliases : [])]
+      .filter((v) => v !== undefined && v !== null)
+      .map((v) => String(v).trim())
+      .filter(Boolean);
+    const nm = normStatsName(p?.name ?? p?.displayName ?? p?.nickname ?? p?.surname);
+    const hitById = ids.some((x) => idMatches(x, pid));
+    const hitByName = !!pname && !!nm && nm === pname;
+    if (hitById || hitByName) ids.forEach((x) => out.add(x));
+  }
+  return Array.from(out);
+}
+
+function getByAlias(map: any, aliases: string[]): any {
+  if (!map || typeof map !== "object") return undefined;
+  for (const a of aliases) {
+    if (map[a] !== undefined) return map[a];
+    const hitKey = Object.keys(map).find((k) => idMatches(k, a));
+    if (hitKey) return map[hitKey];
+  }
+  return undefined;
+}
+
+function findArrayByAlias(arr: any, aliases: string[], playerName?: string): any {
+  if (!Array.isArray(arr)) return undefined;
+  const pname = normStatsName(playerName);
+  return arr.find((x: any) => {
+    const ids = [x?.id, x?.playerId, x?.profileId, x?.sourceId].filter(Boolean);
+    const nm = normStatsName(x?.name ?? x?.displayName ?? x?.nickname);
+    return ids.some((id) => aliases.some((a) => idMatches(id, a))) || (!!pname && !!nm && nm === pname);
+  });
+}
+
+function readX01SummaryFallback(m: NormalizedMatch, playerId: string, playerName?: string) {
   const rec: any = (m as any)?.raw || {};
   const sum: any = rec?.summary || rec?.payload?.summary || rec?.payload?.stats?.summary || {};
 
   const pid = String(playerId);
+  const aliases = collectPlayerAliases(m, pid, playerName);
 
   // A) summary.players map (shape X01PlayV3)
-  const sp = sum?.players?.[pid] || sum?.players?.[String(pid)] || null;
+  const sp = getByAlias(sum?.players, aliases) || getByAlias(sum?.detailedByPlayer, aliases) || getByAlias(sum?.detailedbyplayer, aliases) || null;
+  const perPlayerHit = findArrayByAlias(sum?.perPlayer, aliases, playerName);
+  const statsPlayerHit = findArrayByAlias(rec?.payload?.stats?.players, aliases, playerName);
 
   const avg3 =
     N(sp?.avg3, NaN) ||
-    N(sum?.avg3ByPlayer?.[pid], NaN) ||
-    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.avg3, NaN) ||
-    N(sum?.avg3dByPlayer?.[pid], NaN) ||
-    N(sum?.avg3d_by_player?.[pid], NaN) ||
-    N(sum?.playersAvg3?.[pid], NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.averages?.avg3d, NaN);
+    N(getByAlias(sum?.avg3ByPlayer, aliases), NaN) ||
+    N(perPlayerHit?.avg3, NaN) ||
+    N(getByAlias(sum?.avg3dByPlayer, aliases), NaN) ||
+    N(getByAlias(sum?.avg3d_by_player, aliases), NaN) ||
+    N(getByAlias(sum?.playersAvg3, aliases), NaN) ||
+    N(statsPlayerHit?.averages?.avg3d ?? statsPlayerHit?.avg3d, NaN);
 
   const visits =
     N(sp?.visits, NaN) ||
-    N(sum?.legacy?.visits?.[pid], NaN) ||
-    N(sum?.legacy?.visits?.[String(pid)], NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.special?.visits, NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.visits, NaN);
+    N(getByAlias(sum?.legacy?.visits, aliases), NaN) ||
+    N(statsPlayerHit?.special?.visits, NaN) ||
+    N(statsPlayerHit?.visits, NaN);
 
   const bestVisit =
     N(sp?.bestVisit, NaN) ||
-    N(sum?.bestVisitByPlayer?.[pid], NaN) ||
-    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.bestVisit, NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.special?.bestVisit, NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.bestVisit, NaN);
+    N(getByAlias(sum?.bestVisitByPlayer, aliases), NaN) ||
+    N(perPlayerHit?.bestVisit, NaN) ||
+    N(statsPlayerHit?.special?.bestVisit, NaN) ||
+    N(statsPlayerHit?.bestVisit, NaN);
 
   const bestCheckout =
     N(sp?.bestCheckout, NaN) ||
-    N(sum?.bestCheckoutByPlayer?.[pid], NaN) ||
-    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.bestCheckout, NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.special?.bestCheckout, NaN) ||
-    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.bestCheckout, NaN);
+    N(getByAlias(sum?.bestCheckoutByPlayer, aliases), NaN) ||
+    N(perPlayerHit?.bestCheckout, NaN) ||
+    N(statsPlayerHit?.special?.bestCheckout, NaN) ||
+    N(statsPlayerHit?.bestCheckout, NaN);
 
   return {
     has: Number.isFinite(avg3) || Number.isFinite(bestVisit) || Number.isFinite(bestCheckout),
@@ -274,7 +340,12 @@ let totalUnifiedMatchesWithAvg3 = 0;
   const evolution: Array<{ date: string; avg3: number }> = [];
 
   for (const m of matches || []) {
-    const playersIn = (m.players || []).some((p) => String(p.playerId) === String(playerId));
+    const aliases = collectPlayerAliases(m, playerId, playerName);
+    const playersIn = (m.players || []).some((p: any) => {
+      const ids = [p?.playerId, p?.id, p?.profileId, p?.sourceId, p?.sourcePlayerId, p?.sourceProfileId, ...(Array.isArray(p?.aliases) ? p.aliases : [])];
+      const nm = normStatsName(p?.name ?? p?.displayName ?? p?.nickname);
+      return ids.some((id) => aliases.some((a) => idMatches(id, a))) || (!!playerName && nm === normStatsName(playerName));
+    });
     if (!playersIn) continue;
 
     matchesPlayed += 1;
@@ -283,13 +354,13 @@ let totalUnifiedMatchesWithAvg3 = 0;
       sessionsByMode[dashboardMode] = (sessionsByMode[dashboardMode] || 0) + 1;
     }
 
-    if ((m.winnerIds || []).some((w) => String(w) === String(playerId))) {
+    if ((m.winnerIds || []).some((w) => aliases.some((a) => idMatches(w, a)))) {
       wins += 1;
     }
 
     // X01 : visits OU fallback summary
     if (isX01Mode(m.mode)) {
-      const myVisits = (m.visits || []).filter((v) => String(v.playerId) === String(playerId));
+      const myVisits = (m.visits || []).filter((v: any) => aliases.some((a) => idMatches(v?.playerId, a)));
 
       if (myVisits.length) {
         // ✅ cas idéal : on a les visits détaillées
@@ -314,7 +385,7 @@ let totalUnifiedMatchesWithAvg3 = 0;
         evolution.push({ date: safeDate(m.date || Date.now()), avg3: fmt1(matchAvg3) });
       } else {
         // ✅ fallback : X01 V3 => summary.players / avg3ByPlayer / legacy.visits
-        const fb = readX01SummaryFallback(m, playerId);
+        const fb = readX01SummaryFallback(m, playerId, playerName);
 
         if (fb.has) {
           const vCount = Math.max(0, N(fb.visits, 0));

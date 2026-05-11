@@ -585,7 +585,12 @@ function findProfileByIdOrName(id: any, name: any, profiles: PlayerLite[]): Play
   const n = normPlayerName(name);
   const list = Array.isArray(profiles) ? profiles : [];
   if (pid) {
-    const byId = list.find((p: any) => String(p?.id ?? "") === pid);
+    const byId = list.find((p: any) => {
+      const ids = [p?.id, p?.playerId, p?.profileId, p?.userId, p?.uid]
+        .filter((v) => v !== undefined && v !== null)
+        .map((v) => String(v).trim());
+      return ids.some((x) => x === pid || (x.length >= 16 && pid.length >= 16 && (x.startsWith(pid) || pid.startsWith(x))));
+    });
     if (byId) return byId;
   }
   if (n) {
@@ -4630,7 +4635,11 @@ React.useEffect(() => {
 
       const profileArr: PlayerLite[] = Array.isArray(store?.profiles)
         ? store.profiles.map((p: any) => ({
-            id: String(p.id),
+            ...p,
+            id: String(p.id ?? p.profileId ?? p.playerId ?? p.userId ?? p.name),
+            playerId: p.playerId ?? p.id ?? null,
+            profileId: p.profileId ?? p.id ?? null,
+            userId: p.userId ?? null,
             name: pickPlayerName(p),
             displayName: p.displayName ?? null,
             nickname: p.nickname ?? null,
@@ -4644,7 +4653,10 @@ React.useEffect(() => {
       let botArr: PlayerLite[] = [];
       try {
         botArr = loadBots().map((b: any) => ({
-          id: String(b.id),
+          ...b,
+          id: String(b.id ?? b.profileId ?? b.playerId ?? b.name),
+          playerId: b.playerId ?? b.id ?? null,
+          profileId: b.profileId ?? b.id ?? null,
           name: pickPlayerName(b),
           displayName: b.displayName ?? null,
           nickname: b.nickname ?? null,
@@ -4727,20 +4739,26 @@ const normalizedMatchesClean = React.useMemo(() => {
   return nm.map((m: any) => {
     const players = Array.isArray(m?.players) ? m.players : [];
     const fixedPlayers = players.map((pp: any) => {
-      const pid = String(pp?.id ?? pp?.playerId ?? "");
+      const pid = String(pp?.id ?? pp?.playerId ?? pp?.profileId ?? "");
       const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), storeProfiles);
-      const name = pickPlayerName(pp) || pickPlayerName(sp) || "";
-      const avatar = pickPlayerAvatar(pp) ?? pickPlayerAvatar(sp);
+      const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
+      const name = pickPlayerName(sp) || pickPlayerName(pp) || "";
+      const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(pp);
       return {
         ...pp,
-        // ✅ IMPORTANT: les agrégateurs unifiés attendent `playerId`
-        // (le centre de stats utilise `selectedPlayer.id` comme identifiant)
-        id: pid,
-        playerId: String(pp?.playerId ?? pid),
-        profileId: pp?.profileId ?? (sp as any)?.id ?? null,
+        sourceId: pid,
+        sourcePlayerId: pp?.playerId ?? null,
+        sourceProfileId: pp?.profileId ?? null,
+        // ✅ IMPORTANT: les agrégateurs unifiés attendent `playerId` égal au joueur sélectionné.
+        // Quand un joueur historique correspond à un profil local par nom, on réécrit donc l'id canonique.
+        id: resolvedId,
+        playerId: resolvedId,
+        profileId: resolvedId,
+        aliases: Array.from(new Set([pid, pp?.playerId, pp?.profileId, (sp as any)?.id, (sp as any)?.profileId, (sp as any)?.playerId].filter(Boolean).map(String))),
         name,
+        displayName: pp?.displayName ?? (sp as any)?.displayName ?? name,
         avatarDataUrl: avatar,
-        avatarUrl: pp?.avatarUrl ?? (sp as any)?.avatarUrl ?? null,
+        avatarUrl: pp?.avatarUrl ?? (sp as any)?.avatarUrl ?? avatar ?? null,
         isBot: Boolean(pp?.isBot ?? (sp as any)?.isBot ?? false),
       };
     });
@@ -4805,8 +4823,31 @@ const normalizedMatchesScoped = React.useMemo(() => {
 
 const nmFromRecordsFallback = React.useMemo(() => {
   const arr = Array.isArray(records) ? records : [];
-  return arr.map(recordToNormalizedFallback).filter(Boolean);
-}, [records?.length]);
+  return arr.map(recordToNormalizedFallback).filter(Boolean).map((m: any) => {
+    const players = Array.isArray(m?.players) ? m.players : [];
+    return {
+      ...m,
+      players: players.map((pp: any) => {
+        const pid = String(pp?.id ?? pp?.playerId ?? pp?.profileId ?? "");
+        const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), storeProfiles);
+        const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
+        const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(pp);
+        return {
+          ...pp,
+          sourceId: pid,
+          id: resolvedId,
+          playerId: resolvedId,
+          profileId: resolvedId,
+          aliases: Array.from(new Set([pid, pp?.playerId, pp?.profileId, (sp as any)?.id, (sp as any)?.profileId, (sp as any)?.playerId].filter(Boolean).map(String))),
+          name: pickPlayerName(sp) || pickPlayerName(pp),
+          avatarDataUrl: avatar,
+          avatarUrl: pp?.avatarUrl ?? (sp as any)?.avatarUrl ?? avatar ?? null,
+          isBot: Boolean(pp?.isBot ?? (sp as any)?.isBot ?? false),
+        };
+      }),
+    };
+  });
+}, [records?.length, storeProfiles]);
 
 // 3) ✅ SOURCE UNIQUE utilisée PARTOUT dans StatsHub
 const nmEffective = React.useMemo(() => {
@@ -4830,14 +4871,17 @@ const allPlayers = React.useMemo(() => {
       const displayId = String((local as any)?.id ?? rawId);
       const name = pickPlayerName(local) || pickPlayerName(p) || displayId;
       const avatar = pickPlayerAvatar(local) ?? pickPlayerAvatar(p);
-      if (!map.has(displayId)) {
+      const existing = map.get(displayId);
+      if (!existing) {
         map.set(displayId, {
           id: displayId,
           name,
           avatarDataUrl: avatar,
-          avatarUrl: (local as any)?.avatarUrl ?? (p as any)?.avatarUrl ?? null,
+          avatarUrl: (local as any)?.avatarUrl ?? (p as any)?.avatarUrl ?? avatar ?? null,
           isBot: Boolean((local as any)?.isBot ?? (p as any)?.isBot ?? false),
         });
+      } else if (!existing.avatarDataUrl && avatar) {
+        map.set(displayId, { ...existing, avatarDataUrl: avatar, avatarUrl: existing.avatarUrl ?? avatar });
       }
     }
   }
@@ -6606,16 +6650,16 @@ return (
                 display: "flex",
                 gap: 10,
                 width: "max-content",
-                animation: `statshubModeCardsScroll ${Math.max(34, globalModeDashboard.length * 14)}s linear infinite`,
+                animation: globalModeDashboard.length > 1 ? `statshubModeCardsScroll ${Math.max(34, globalModeDashboard.length * 14)}s linear infinite` : "none",
               }}
             >
-            {[...globalModeDashboard, ...globalModeDashboard].map((m: ModeDashboardCard, idx: number) => {
+            {(globalModeDashboard.length > 1 ? [...globalModeDashboard, ...globalModeDashboard] : globalModeDashboard).map((m: ModeDashboardCard, idx: number) => {
               const goToMode = () => {
                 const targetKey = m.key === "clock" ? "tour_de_l_horloge" : m.key;
                 const found = modeDefs.findIndex((x) => x.key === targetKey || x.key === m.key);
                 if (found >= 0) setModeIndex(found);
               };
-              const tickerItems = [...m.ticker, ...m.ticker];
+              const tickerItems = m.ticker.length > 1 ? [...m.ticker, ...m.ticker] : m.ticker;
               const mainColor = modeColor(m.key);
               const mainGlow = hexToRgba(mainColor, 0.45);
               return (
@@ -6663,7 +6707,7 @@ return (
                       style={{
                         display: "flex",
                         width: "max-content",
-                        animation: `statshubModeTickerScroll ${Math.max(18, m.ticker.length * 5 + idx)}s linear infinite`,
+                        animation: m.ticker.length > 1 ? `statshubModeTickerScroll ${Math.max(18, m.ticker.length * 5 + idx)}s linear infinite` : "none",
                       }}
                     >
                       {tickerItems.map((it, i) => {

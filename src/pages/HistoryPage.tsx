@@ -173,17 +173,39 @@ function getName(v: any): string {
   if (typeof v === "string") return v;
   return String(v.name || v.displayName || v.username || "");
 }
+function normHistoryName(v: any): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+function historyIdMatches(a: any, b: any): boolean {
+  const aa = String(a ?? "").trim();
+  const bb = String(b ?? "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 16 && bb.length >= 16 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
 function getAvatarUrl(store: Store, v: any): string | null {
-  if (v && typeof v === "object" && v.avatarDataUrl) return String(v.avatarDataUrl);
+  if (v && typeof v === "object" && (v.avatarDataUrl || v.avatarUrl || v.avatar_url || v.avatar)) {
+    return String(v.avatarDataUrl || v.avatarUrl || v.avatar_url || v.avatar);
+  }
   const id = getId(v);
+  const name = normHistoryName(getName(v));
   const anyStore: any = store as any;
   const list: any[] = Array.isArray(anyStore?.profiles)
     ? anyStore.profiles
     : Array.isArray(anyStore?.profiles?.list)
     ? anyStore.profiles.list
     : [];
-  const hit = list.find((p) => getId(p) === id);
-  return hit?.avatarDataUrl ?? null;
+  const hit = list.find((p) => {
+    const ids = [p?.id, p?.playerId, p?.profileId, p?.userId, p?.uid].filter(Boolean);
+    const pn = normHistoryName(getName(p) || p?.surname || p?.nickname || p?.displayName);
+    return ids.some((x) => historyIdMatches(x, id)) || (!!name && !!pn && pn === name);
+  });
+  return hit?.avatarDataUrl ?? hit?.avatarUrl ?? hit?.avatar_url ?? hit?.avatar ?? null;
 }
 
 /* ---------- Mode / status ---------- */
@@ -2400,7 +2422,7 @@ function buildHistoryPlayersById(e: any, store: any): Record<string, HistoryPlay
   arr.forEach((p: any) => {
     const id = String(p?.id || p?.playerId || p?.pid || "").trim();
     if (!id) return;
-    out[id] = { id, name: getName(p) || p?.name || "—", avatarDataUrl: getAvatarUrl(store, p) || p?.avatarDataUrl || null };
+    out[id] = { id, name: getName(p) || p?.name || "—", avatarDataUrl: getAvatarUrl(store, p) || p?.avatarDataUrl || p?.avatarUrl || null };
   });
   return out;
 }
