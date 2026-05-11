@@ -642,15 +642,25 @@ function BarChart({
               <g key={b}>
                 <rect x={x} y={y} width={barW} height={h} rx={12} fill={accent} />
                 <rect x={x} y={y} width={barW} height={h} rx={12} fill="transparent" stroke="rgba(122,90,22,.35)" />
-                <text
-                  x={x + barW / 2}
-                  y={labelY}
-                  textAnchor="middle"
-                  style={{ fontSize: 13, fontWeight: 900, fill: "url(#dcBarValueGrad)" }}
-                  filter="url(#dcTextGlow)"
-                >
-                  {v}
-                </text>
+                <g>
+                  <circle
+                    cx={x + barW / 2}
+                    cy={labelY - 4}
+                    r={11}
+                    fill={labelInside ? "rgba(255,255,255,.92)" : "rgba(255,255,255,.96)"}
+                    stroke={accent}
+                    strokeWidth={1.4}
+                    filter="url(#dcTextGlow)"
+                  />
+                  <text
+                    x={x + barW / 2}
+                    y={labelY}
+                    textAnchor="middle"
+                    style={{ fontSize: 12, fontWeight: 950, fill: "#111318" }}
+                  >
+                    {v}
+                  </text>
+                </g>
 
                 <text x={x + barW / 2} y={height - (padding - 14)} textAnchor="middle" style={{ fontSize: 11, fill: "rgba(255,255,255,.85)" }}>
                   {b}

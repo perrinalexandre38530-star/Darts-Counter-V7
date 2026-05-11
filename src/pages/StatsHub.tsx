@@ -1479,13 +1479,24 @@ function buildDashboardForPlayer(
   // Si aucun match et aucune quick-stat dispo → on laisse le composant gérer
   if (!fbMatches && !quick) return null;
 
-  // ✅ Distribution finale : priorité quick (mais normalisée), sinon fbBuckets (déjà agrégés)
-  const finalDistribution = normalizeBuckets(quick?.buckets ?? fbBuckets);
+  // ✅ Distribution finale : priorité aux données réellement remplies.
+  // quick vient du dashboard unifié et expose souvent `distribution` (pas `buckets`).
+  // Si le quick est présent mais vide, on bascule sur les buckets reconstruits depuis l'historique.
+  const quickDistribution = normalizeBuckets(quick?.distribution ?? quick?.buckets ?? null);
+  const quickDistributionTotal = Object.values(quickDistribution).reduce((a, b) => a + Number(b || 0), 0);
+  const fbDistribution = normalizeBuckets(fbBuckets);
+  const finalDistribution = quickDistributionTotal > 0 ? quickDistribution : fbDistribution;
+
+  const quickEvolution = Array.isArray(quick?.evolution)
+    ? quick.evolution
+        .map((p: any) => ({ date: String(p?.date ?? ""), avg3: Nloc(p?.avg3) }))
+        .filter((p: any) => p.avg3 > 0)
+    : [];
 
   return {
     playerId: pid,
     playerName: player?.name || "Joueur",
-    avg3Overall: Number.isFinite(Number(quick?.avg3)) ? Number(quick?.avg3) : fbAvg3Mean,
+    avg3Overall: Number.isFinite(Number(quick?.avg3Overall ?? quick?.avg3)) ? Number(quick?.avg3Overall ?? quick?.avg3) : fbAvg3Mean,
     bestVisit: Number.isFinite(Number(quick?.bestVisit)) ? Number(quick?.bestVisit) : fbBestVisit,
     bestCheckout: Number.isFinite(Number(quick?.bestCheckout)) ? Number(quick?.bestCheckout) : fbBestCO,
     winRatePct: Number.isFinite(Number(quick?.winRatePct)) ? Number(quick?.winRatePct) : fbWinPct,
@@ -1493,12 +1504,15 @@ function buildDashboardForPlayer(
     // ✅ IMPORTANT : normalisé pour éviter clés différentes / 0 fantômes
     distribution: finalDistribution,
 
-    evolution: evo.length
+    // ✅ Même logique que X01 multi : on affiche la progression match par match si elle existe.
+    evolution: quickEvolution.length
+      ? quickEvolution.slice(-30)
+      : evo.length
       ? evo
       : [
           {
             date: new Date().toLocaleDateString(),
-            avg3: Number.isFinite(Number(quick?.avg3)) ? Number(quick?.avg3) : fbAvg3Mean,
+            avg3: Number.isFinite(Number(quick?.avg3Overall ?? quick?.avg3)) ? Number(quick?.avg3Overall ?? quick?.avg3) : fbAvg3Mean,
           },
         ],
 
@@ -5720,9 +5734,27 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       const val = n(v);
       if (val > favHits) { favNumber = k; favHits = val; }
     });
+    if (a.key === "x01") {
+      // X01 est la source la plus riche : on réutilise le replay de X01Multi
+      // pour éviter les tuiles à 0 alors que les valeurs existent dans l'historique.
+      try {
+        const agg: any = computeX01MultiAgg(rows as any[], pid, selectedPlayer?.name);
+        if (Number(agg?.sessions || 0) > 0) {
+          a.matches = Number(agg.sessions || a.matches || 0);
+          a.darts = Number(agg.darts || a.darts || 0);
+          a.best = Math.max(Number(a.best || 0), Number(agg.bestVisit || 0));
+          if (Number(agg.sumAvg3D || 0) > 0) {
+            a.samples = [{ avg3D: Number(agg.sumAvg3D || 0) / Math.max(1, Number(agg.sessions || 1)) }];
+          }
+        }
+      } catch {
+        // garde le fallback historique
+      }
+    }
+
     const winRate = a.matches ? Math.round((a.wins / a.matches) * 1000) / 10 : 0;
     const accuracy = (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 1000) / 10 : 0;
-    const avg3 = a.samples.length ? Math.round((a.samples.reduce((x: number, y: number) => x + y, 0) / a.samples.length) * 10) / 10 : 0;
+    const avg3 = a.samples.length ? Math.round((a.samples.reduce((x: number, y: any) => x + Number(y?.avg3D ?? y ?? 0), 0) / a.samples.length) * 10) / 10 : 0;
     const ticker: ModeTickerStat[] = a.key === "killer"
       ? [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
