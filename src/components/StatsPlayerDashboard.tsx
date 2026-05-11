@@ -669,20 +669,36 @@ type ModeStat = { label: string; n: number };
 
 function normalizeModeLabel(k: string) {
   const s = String(k || "").trim().toLowerCase();
-  if (!s) return null;
-  if (s === "x01" || s === "x01v3") return "X01";
-  if (s === "cricket") return "CRICKET";
-  if (s === "killer") return "KILLER";
-  if (s === "shanghai") return "SHANGHAI";
-  return s.toUpperCase();
+  if (!s || s === "unknown" || s === "other" || s === "undefined" || s === "null") return null;
+  const labels: Record<string, string> = {
+    x01: "X01",
+    x01v3: "X01",
+    cricket: "CRICKET",
+    cricket_cut_throat: "CRICKET CUT-THROAT",
+    cut_throat: "CRICKET CUT-THROAT",
+    enculette: "CRICKET ENCULETTE",
+    killer: "KILLER",
+    shanghai: "SHANGHAI",
+    golf: "GOLF",
+    warfare: "WARFARE",
+    battle_royale: "BATTLE ROYALE",
+    territories: "TERRITORIES",
+    five_lives: "LES 5 VIES",
+    scram: "SCRAM",
+    capital: "CAPITAL",
+    batard: "BÂTARD",
+    clock: "TOUR DE L’HORLOGE",
+    tour_de_l_horloge: "TOUR DE L’HORLOGE",
+  };
+  return labels[s] || s.replace(/_/g, " ").toUpperCase();
 }
 
 function getModeStats(data: PlayerDashboardStats, x01MultiLegsSets?: X01MultiLegsSets | null, sport?: string | null): ModeStat[] {
   const sbm = data.sessionsByMode;
   if (sbm && typeof sbm === "object") {
     const entries = Object.entries(sbm)
-      .map(([k, v]) => ({ label: normalizeModeLabel(k) || String(k).toUpperCase(), n: Number(v) || 0 }))
-      .filter((x) => x.n > 0);
+      .map(([k, v]) => ({ label: normalizeModeLabel(k), n: Number(v) || 0 }))
+      .filter((x): x is ModeStat => !!x.label && x.n > 0);
     entries.sort((a, b) => b.n - a.n);
     return entries;
   }

@@ -1035,6 +1035,12 @@ function classifyRecordMode(rec: SavedMatch): string {
     payload?.variant,
     payload?.sport,
     payload?.game,
+    payload?.stats?.kind,
+    payload?.stats?.mode,
+    payload?.stats?.gameMode,
+    payload?.stats?.variant,
+    payload?.stats?.sport,
+    payload?.stats?.game,
     nested?.kind,
     nested?.mode,
     nested?.gameMode,
@@ -1070,6 +1076,8 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("babyfoot") || tag.includes("baby-foot") || tag.includes("baby_foot")) return "babyfoot";
   if (tag.includes("pingpong") || tag.includes("ping-pong") || tag.includes("ping_pong")) return "pingpong";
   if (tag.includes("petanque") || tag.includes("pétanque")) return "petanque";
+  if (tag.includes("cut-throat") || tag.includes("cut_throat") || tag.includes("cut throat")) return "cricket";
+  if (tag.includes("enculette") || tag.includes("vache")) return "cricket";
   if (tag.includes("cricket")) return "cricket";
   if (tag.includes("killer")) return "killer";
   if (tag.includes("shanghai")) return "shanghai";
@@ -1078,14 +1086,23 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("batard") || tag.includes("bastard")) return "batard";
   if (tag.includes("scram")) return "scram";
   if (tag.includes("warfare")) return "warfare";
-  if (tag.includes("five_lives") || tag.includes("five lives")) return "five_lives";
-  if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour")) return "clock";
+  if (tag.includes("five_lives") || tag.includes("five lives") || tag.includes("5 vies") || tag.includes("cinq vies")) return "five_lives";
+  if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour de")) return "clock";
   if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
 
   // X01 (inclut les variantes x01v3 / 301 / 501 / 701)
   if (tag.includes("x01") || tag.includes("301") || tag.includes("501") || tag.includes("701")) {
     return "x01";
   }
+
+  // Dernière passe défensive : plusieurs anciennes sauvegardes n'ont pas de champ mode,
+  // mais contiennent des stats X01 exploitables. On ne renvoie jamais UNKNOWN au dashboard.
+  const statKeys = [
+    summary?.avg3, summary?.bestVisit, summary?.bestCheckout, summary?.buckets,
+    payload?.stats?.avg3, payload?.stats?.bestVisit, payload?.stats?.buckets,
+    resume?.avg3, resume?.bestVisit, resume?.bestCheckout,
+  ];
+  if (statKeys.some((v) => v !== undefined && v !== null)) return "x01";
 
   return "other";
 }
@@ -1398,10 +1415,12 @@ function buildDashboardForPlayer(
 
     // ✅ Compte le mode (safe)
     try {
-      const modeKey = classifyRecordMode(r) || "other";
-      sessionsByMode[modeKey] = (sessionsByMode[modeKey] || 0) + 1;
+      const modeKey = classifyRecordMode(r);
+      if (modeKey && modeKey !== "other") {
+        sessionsByMode[modeKey] = (sessionsByMode[modeKey] || 0) + 1;
+      }
     } catch {
-      sessionsByMode.other = (sessionsByMode.other || 0) + 1;
+      // pas de UNKNOWN/OTHER dans l'affichage utilisateur
     }
 
     const ss: any = (r as any)?.summary ?? (r as any)?.payload?.summary ?? {};
@@ -6205,23 +6224,8 @@ return (
 
             {currentMode === "dashboard" && (
     <>
-      <div style={row}>
-        {selectedPlayer ? (
-          <StatsPlayerDashboard
-            // ✅ IMPORTANT: on affiche le cache instantané, puis live recalcul, puis fallback memo
-            data={selectedPlayer ? dashboardToShow : null}
-            x01MultiLegsSets={x01MultiLegsSets}
-            sport={effectiveSport}
-          />
-        ) : (
-          <div style={{ color: T.text70, fontSize: 13 }}>
-            Sélectionne un joueur pour afficher le dashboard.
-          </div>
-        )}
-      </div>
-
       {selectedPlayer && !isMolkkySport && globalModeDashboard.length > 0 && (
-        <div style={{ ...card, marginTop: 8 }}>
+        <div style={{ ...card, marginTop: 0 }}>
           <div
             style={{
               display: "flex",
@@ -6231,8 +6235,10 @@ return (
               marginBottom: 10,
             }}
           >
-            <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>RÉSUMÉ PAR MODE</div>
-            <div style={{ fontSize: 11, color: T.text70 }}>Historique enregistré uniquement</div>
+            <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>DASHBOARD MODES</div>
+            <div style={{ fontSize: 10, color: T.text70, textAlign: "right" }}>
+              Parties réellement présentes dans l’historique
+            </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
@@ -6248,11 +6254,14 @@ return (
                 : m.key === "cricket"
                 ? `${m.extra || m.points || 0} marks`
                 : m.key === "territories"
-                ? `${m.captures || 0} captures`
+                ? `${m.captures || 0} zones`
+                : m.key === "five_lives"
+                ? `${m.extra || 0} vies`
                 : `${m.points || m.best || 0} pts`;
-              const sub = m.darts > 0
+              const second = m.darts > 0
                 ? `${m.darts} darts · ${m.accuracy}% hit`
                 : `${m.wins}/${m.matches} wins`;
+              const width = Math.max(6, Math.min(100, Number(m.winRate || 0)));
               return (
                 <button
                   key={m.key}
@@ -6263,29 +6272,33 @@ return (
                     borderRadius: 18,
                     padding: 11,
                     border: `1px solid ${T.accent40}`,
-                    background: `radial-gradient(circle at 0% 0%, ${T.accent25}, transparent 58%), linear-gradient(180deg,#15171B,#0D0E12)`,
-                    boxShadow: `0 0 0 1px ${T.accent10}, 0 8px 18px rgba(0,0,0,.34)`,
+                    background: `radial-gradient(circle at 0% 0%, ${T.accent30}, transparent 62%), linear-gradient(180deg,#15171B,#0D0E12)`,
+                    boxShadow: `0 0 0 1px ${T.accent10}, 0 0 18px ${T.accent15}, 0 8px 18px rgba(0,0,0,.34)`,
                     color: T.text,
                     cursor: "pointer",
-                    minHeight: 86,
+                    minHeight: 104,
+                    overflow: "hidden",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                    <div style={{ fontSize: 11, fontWeight: 1000, color: T.accent, textTransform: "uppercase", letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div style={{ fontSize: 11, fontWeight: 1000, color: T.accent, textTransform: "uppercase", letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${T.accentGlow ?? T.accent}` }}>
                       {m.label}
                     </div>
-                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${T.accent50}`, color: T.accent, background: "rgba(0,0,0,.28)", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${T.accent50}`, color: T.accent, background: "rgba(0,0,0,.28)", whiteSpace: "nowrap", boxShadow: `0 0 10px ${T.accent20}` }}>
                       {m.matches} sess.
                     </div>
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 20, lineHeight: 1, fontWeight: 1000, color: m.key === "killer" ? "#FF5A5A" : T.gold }}>
+                  <div style={{ marginTop: 8, fontSize: 20, lineHeight: 1, fontWeight: 1000, color: m.key === "killer" ? "#FF5A5A" : T.gold, textShadow: `0 0 12px ${m.key === "killer" ? "rgba(255,90,90,.45)" : T.accentGlow ?? T.accent}` }}>
                     {main}
                   </div>
                   <div style={{ marginTop: 7, fontSize: 11, color: T.text70 }}>
                     WR {m.winRate}% · Best {m.best || "—"}
                   </div>
                   <div style={{ marginTop: 3, fontSize: 10, color: T.text60 }}>
-                    {sub}
+                    {second}
+                  </div>
+                  <div style={{ marginTop: 9, height: 5, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                    <div style={{ width: `${width}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${T.accent30}, ${T.accent})`, boxShadow: `0 0 12px ${T.accent}` }} />
                   </div>
                 </button>
               );
@@ -6293,6 +6306,27 @@ return (
           </div>
         </div>
       )}
+
+      {selectedPlayer && !isMolkkySport && globalModeDashboard.length === 0 && (
+        <div style={{ ...card, marginTop: 0, padding: 14, color: T.text70, fontSize: 12 }}>
+          Aucune statistique de mode exploitable dans l’historique pour ce joueur.
+        </div>
+      )}
+
+      <div style={row}>
+        {selectedPlayer ? (
+          <StatsPlayerDashboard
+            // ✅ IMPORTANT: on affiche le cache instantané, puis live recalcul, puis fallback memo
+            data={selectedPlayer ? dashboardToShow : null}
+            x01MultiLegsSets={x01MultiLegsSets}
+            sport={effectiveSport}
+          />
+        ) : (
+          <div style={{ color: T.text70, fontSize: 13 }}>
+            Sélectionne un joueur pour afficher le dashboard.
+          </div>
+        )}
+      </div>
 
                 {selectedPlayer && !isMolkkySport && (
                   <div style={{ ...card, marginTop: 8 }}>
