@@ -498,6 +498,78 @@ function addSeg(map: SegmentsMap, key: string, inc = 1) {
   map[key] = (map[key] || 0) + inc;
 }
 
+function normalizeSegmentKeyForAgg(key: any, forced?: string): string | null {
+  const k = String(key ?? "").trim().toUpperCase().replace(/[\s_-]+/g, "");
+  const f = String(forced ?? "").trim().toUpperCase();
+  if (!k && !f) return null;
+  if (f === "MISS" || k === "MISS" || k === "M" || k === "0") return "MISS";
+  if (f === "DB" || f === "DBULL" || k === "DB" || k === "DBULL" || k === "D25" || k === "50") return "DB";
+  if (f === "B" || f === "BULL" || f === "SB" || k === "B" || k === "BULL" || k === "SB" || k === "SBULL" || k === "S25" || k === "25") return "SB";
+  const m = k.match(/^([SDT])?(\d{1,2})$/);
+  if (m) {
+    const n = Number(m[2]);
+    if (n >= 1 && n <= 20) {
+      const mult = f === "S" || f === "D" || f === "T" ? f : (m[1] || "S");
+      return `${mult}${n}`;
+    }
+    if (n === 25) return (f === "D" || m[1] === "D") ? "DB" : "SB";
+  }
+  return null;
+}
+
+function addFlatSegment(map: SegmentsMap, key: any, value: any, forced?: string) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return;
+  const kk = normalizeSegmentKeyForAgg(key, forced);
+  if (!kk) return;
+  addSeg(map, kk, n);
+}
+
+function flattenSegmentsObject(obj: any): SegmentsMap {
+  const out: SegmentsMap = {};
+  if (!obj || typeof obj !== "object") return out;
+  const groupMap: Record<string, string> = {
+    S: "S", SIMPLE: "S", SINGLES: "S", SIMPLEHITS: "S",
+    D: "D", DOUBLE: "D", DOUBLES: "D", DOUBLEHITS: "D",
+    T: "T", TRIPLE: "T", TRIPLES: "T", TRIPLEHITS: "T",
+    B: "B", BULL: "B", BULL25: "B", SB: "B", SBULL: "B",
+    DB: "DB", DBULL: "DB", DOUBLEBULL: "DB", D25: "DB",
+    MISS: "MISS", MISSES: "MISS",
+  };
+  for (const [k, v] of Object.entries(obj)) {
+    const kk = String(k).trim().toUpperCase().replace(/[\s_-]+/g, "");
+    const forced = groupMap[kk];
+    if (forced && v && typeof v === "object") {
+      for (const [seg, count] of Object.entries(v)) addFlatSegment(out, seg, count, forced);
+      continue;
+    }
+    if (forced && typeof v === "number") {
+      addFlatSegment(out, forced === "MISS" ? "MISS" : forced === "DB" ? "DB" : forced === "B" ? "25" : k, v, forced);
+      continue;
+    }
+    if (typeof v === "number") {
+      addFlatSegment(out, k, v);
+      continue;
+    }
+    if (v && typeof v === "object") {
+      let used = false;
+      for (const [nk, nv] of Object.entries(v)) {
+        const fk = groupMap[String(nk).trim().toUpperCase().replace(/[\s_-]+/g, "")];
+        if (!fk) continue;
+        used = true;
+        addFlatSegment(out, k, nv, fk);
+      }
+      if (!used) {
+        const count = Number((v as any).count ?? (v as any).hits ?? (v as any).value ?? 0);
+        const m = String((v as any).mult ?? (v as any).multiplier ?? (v as any).type ?? (v as any).ring ?? "").toUpperCase();
+        const forced2 = m === "3" || m === "T" || m === "TRIPLE" ? "T" : m === "2" || m === "D" || m === "DOUBLE" ? "D" : m === "MISS" ? "MISS" : "S";
+        addFlatSegment(out, k, count, forced2);
+      }
+    }
+  }
+  return out;
+}
+
 // Reconstruit stats d’un match pour un profil (et si possible setId)
 function computeFromRaw(r: any, profileId: string): {
   dartSetId: string | null;
@@ -606,9 +678,10 @@ function computeFromRaw(r: any, profileId: string): {
   };
 }
 
-function mergeSegments(a: SegmentsMap, b: SegmentsMap) {
-  for (const k of Object.keys(b || {})) {
-    a[k] = (a[k] || 0) + (b[k] || 0);
+function mergeSegments(a: SegmentsMap, b: any) {
+  const flat = flattenSegmentsObject(b || {});
+  for (const k of Object.keys(flat || {})) {
+    a[k] = (a[k] || 0) + (flat[k] || 0);
   }
 }
 
@@ -816,7 +889,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
         a.n100 += rec.n100;
 
         // ✅ segments : si non dispo dans summary → raw fallback pour segments uniquement
-        const segSummary = pp?.segmentsByHit ?? pp?.hitsBySegment ?? pp?.segmentsMap ?? null;
+        const segSummary = pp?.segmentsByHit ?? pp?.hitsBySegment ?? pp?.segmentsMap ?? pp?.segments ?? pp?.segmentHits ?? pp?.segmentsHits ?? pp?.bySegment ?? pp?.hitsBySeg ?? null;
         if (segSummary && typeof segSummary === "object") {
           mergeSegments(a.segments, segSummary);
         } else {

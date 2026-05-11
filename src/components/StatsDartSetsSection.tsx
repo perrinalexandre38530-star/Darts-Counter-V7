@@ -24,6 +24,7 @@ import { dartPresets } from "../lib/dartPresets";
 import { getX01StatsByDartSetForProfile } from "../lib/statsByDartSet";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
+import TrainingRadar from "./TrainingRadar";
 
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
@@ -776,6 +777,94 @@ function extractSegmentsObjectFromPlayer(pp: any): any | null {
   );
 }
 
+function addParsedSegmentHit(outRaw: Record<string, number>, outDetail: SegDetailMap, key: any, value: any, forcedMult?: "S" | "D" | "T" | "MISS" | "B" | "DB") {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return;
+
+  let parsed = parseSegKey(String(key));
+  if (!parsed && forcedMult) {
+    const kk = normalizeSegKey(String(key));
+    if (kk === "25" || kk === "BULL" || kk === "SBULL") parsed = { mult: forcedMult === "DB" ? "DB" : forcedMult === "MISS" ? "MISS" : "B", num: forcedMult === "DB" ? "DB" : forcedMult === "MISS" ? "MISS" : "25" } as any;
+    else {
+      const nn = Number(kk);
+      if (Number.isFinite(nn) && nn >= 1 && nn <= 20) parsed = { mult: forcedMult, num: String(nn) } as any;
+    }
+  }
+  if (!parsed) return;
+
+  const rawKey = parsed.mult === "MISS" ? "MISS" : parsed.mult === "B" ? "SB" : parsed.mult === "DB" ? "DB" : `${parsed.mult}${parsed.num}`;
+  outRaw[rawKey] = (outRaw[rawKey] || 0) + n;
+
+  if (parsed.mult === "MISS") {
+    outDetail.MISS ||= blankSeg();
+    outDetail.MISS.MISS += n;
+  } else if (parsed.mult === "B") {
+    outDetail["25"] ||= blankSeg();
+    outDetail["25"].B += n;
+  } else if (parsed.mult === "DB") {
+    outDetail["DB"] ||= blankSeg();
+    outDetail["DB"].DB += n;
+  } else {
+    outDetail[parsed.num] ||= blankSeg();
+    (outDetail[parsed.num] as any)[parsed.mult] += n;
+  }
+}
+
+function absorbSegmentsObject(outRaw: Record<string, number>, outDetail: SegDetailMap, obj: any) {
+  if (!obj || typeof obj !== "object") return;
+
+  // Formats groupés : { S:{20:3}, D:{5:1}, T:{20:2}, MISS:1 }
+  const groupKeys: Array<[string, "S" | "D" | "T" | "MISS" | "B" | "DB"]> = [
+    ["S", "S"], ["SIMPLE", "S"], ["SINGLES", "S"], ["SIMPLEHITS", "S"],
+    ["D", "D"], ["DOUBLE", "D"], ["DOUBLES", "D"], ["DOUBLEHITS", "D"],
+    ["T", "T"], ["TRIPLE", "T"], ["TRIPLES", "T"], ["TRIPLEHITS", "T"],
+    ["B", "B"], ["BULL", "B"], ["BULL25", "B"], ["SB", "B"], ["SBULL", "B"],
+    ["DB", "DB"], ["DBULL", "DB"], ["DOUBLEBULL", "DB"], ["D25", "DB"],
+    ["MISS", "MISS"], ["MISSES", "MISS"],
+  ];
+
+  for (const [rawGroup, forced] of groupKeys) {
+    const group = (obj as any)[rawGroup] ?? (obj as any)[rawGroup.toLowerCase()];
+    if (group == null) continue;
+    if (typeof group === "number") {
+      addParsedSegmentHit(outRaw, outDetail, forced === "MISS" ? "MISS" : forced === "DB" ? "DB" : forced === "B" ? "25" : rawGroup, group, forced);
+    } else if (typeof group === "object") {
+      for (const [seg, count] of Object.entries(group)) addParsedSegmentHit(outRaw, outDetail, seg, count, forced);
+    }
+  }
+
+  // Formats directs : { S20:2, D5:1, T20:2, SB:1, DB:1, MISS:1 }
+  // Formats imbriqués : { 20:{S:2,D:0,T:3}, 5:{S:1}, 25:{B:1,DB:0} }
+  for (const [k, v] of Object.entries(obj)) {
+    const kk = normalizeSegKey(k);
+    if (groupKeys.some(([g]) => g === kk)) continue;
+
+    if (typeof v === "number") {
+      addParsedSegmentHit(outRaw, outDetail, k, v);
+      continue;
+    }
+
+    if (v && typeof v === "object") {
+      const nestedKeys = ["S", "D", "T", "B", "DB", "MISS", "s", "d", "t", "b", "db", "miss", "simple", "double", "triple", "bull", "dbull", "misses"];
+      let usedNested = false;
+      for (const nk of nestedKeys) {
+        if ((v as any)[nk] == null) continue;
+        usedNested = true;
+        const up = normalizeSegKey(nk);
+        const forced = up === "S" || up === "SIMPLE" ? "S" : up === "D" || up === "DOUBLE" ? "D" : up === "T" || up === "TRIPLE" ? "T" : up === "B" || up === "BULL" ? "B" : up === "DB" || up === "DBULL" ? "DB" : "MISS";
+        addParsedSegmentHit(outRaw, outDetail, k, (v as any)[nk], forced as any);
+      }
+      // Dernier recours : objet type {count: n, mult:'T'}
+      if (!usedNested) {
+        const count = Number((v as any).count ?? (v as any).hits ?? (v as any).value ?? 0);
+        const multRaw = normalizeSegKey((v as any).mult ?? (v as any).multiplier ?? (v as any).type ?? (v as any).ring ?? "");
+        const forced = multRaw === "3" || multRaw === "T" || multRaw === "TRIPLE" ? "T" : multRaw === "2" || multRaw === "D" || multRaw === "DOUBLE" ? "D" : multRaw === "MISS" ? "MISS" : "S";
+        addParsedSegmentHit(outRaw, outDetail, k, count, forced as any);
+      }
+    }
+  }
+}
+
 function extractSegmentsDetailFromSources(rowLike: any, mine: any): { rawMap: Record<string, number>; detail: SegDetailMap } {
   const outRaw: Record<string, number> = {};
   const outDetail: SegDetailMap = {};
@@ -788,37 +877,7 @@ function extractSegmentsDetailFromSources(rowLike: any, mine: any): { rawMap: Re
   const objB = extractSegmentsObjectFromPlayer(mine);
 
   const allObjs = [objA, objB].filter(Boolean);
-
-  for (const obj of allObjs) {
-    for (const [k, v] of Object.entries(obj)) {
-      const kk = normalizeSegKey(k);
-      const n = Number(v);
-      if (!kk || !Number.isFinite(n) || n <= 0) continue;
-      outRaw[kk] = (outRaw[kk] || 0) + n;
-
-      const parsed = parseSegKey(kk);
-      if (!parsed) continue;
-
-      if (parsed.mult === "MISS") {
-        outDetail.MISS ||= blankSeg();
-        outDetail.MISS.MISS += n;
-        continue;
-      }
-      if (parsed.mult === "B") {
-        outDetail["25"] ||= blankSeg();
-        outDetail["25"].B += n;
-        continue;
-      }
-      if (parsed.mult === "DB") {
-        outDetail["DB"] ||= blankSeg();
-        outDetail["DB"].DB += n;
-        continue;
-      }
-
-      outDetail[parsed.num] ||= blankSeg();
-      (outDetail[parsed.num] as any)[parsed.mult] += n;
-    }
-  }
+  for (const obj of allObjs) absorbSegmentsObject(outRaw, outDetail, obj);
 
   return { rawMap: outRaw, detail: outDetail };
 }
@@ -1345,7 +1404,10 @@ function computeAggFromHistory(allHistory: any[], profileId: string, playerName 
 
     const segObj = raw?.segments && Object.keys(raw.segments).length ? raw.segments : extractSegmentsObjectFromPlayer(mine) || null;
     if (segObj) {
-      for (const [k, v] of Object.entries(segObj)) {
+      const flatRaw: Record<string, number> = {};
+      const flatDetail: SegDetailMap = {};
+      absorbSegmentsObject(flatRaw, flatDetail, segObj);
+      for (const [k, v] of Object.entries(flatRaw)) {
         const kk = normalizeSegKey(k);
         const n = Number(v);
         if (!kk || !Number.isFinite(n) || n <= 0) continue;
@@ -2121,153 +2183,100 @@ function Sparkline(props: { values: number[]; accent: string; height?: number })
 /* ---------------- Target radar (cible) ----------------------- */
 /* ============================================================= */
 
+function detailToRadarDarts(detail: SegDetailMap): any[] {
+  const darts: any[] = [];
+  const pushMany = (count: number, v: number, mult: number) => {
+    const n = Math.max(0, Math.round(N(count, 0)));
+    for (let i = 0; i < n; i += 1) darts.push({ v, mult });
+  };
+
+  for (let seg = 1; seg <= 20; seg += 1) {
+    const d = detail?.[String(seg)] || blankSeg();
+    pushMany(d.S, seg, 1);
+    pushMany(d.D, seg, 2);
+    pushMany(d.T, seg, 3);
+  }
+
+  const b = detail?.["25"] || blankSeg();
+  const db = detail?.["DB"] || blankSeg();
+  pushMany(N(b.B, 0) + N(b.S, 0), 25, 1);
+  pushMany(N(db.DB, 0) + N(b.DB, 0) + N(db.D, 0), 25, 2);
+  return darts;
+}
+
+function detailRadarSummary(detail: SegDetailMap) {
+  const segments = Array.from({ length: 20 }, (_, i) => i + 1);
+  const totalFor = (seg: number) => {
+    const d = detail?.[String(seg)] || blankSeg();
+    return N(d.S, 0) + N(d.D, 0) + N(d.T, 0);
+  };
+  const bestBy = (field: "S" | "D" | "T" | "TOTAL") => {
+    let bestSeg: number | null = null;
+    let best = 0;
+    for (const seg of segments) {
+      const d = detail?.[String(seg)] || blankSeg();
+      const val = field === "TOTAL" ? totalFor(seg) : N((d as any)[field], 0);
+      if (val > best) {
+        best = val;
+        bestSeg = seg;
+      }
+    }
+    return bestSeg ? String(bestSeg) : "-";
+  };
+
+  let leastSeg: number | null = null;
+  let least = Infinity;
+  for (const seg of segments) {
+    const total = totalFor(seg);
+    if (total > 0 && total < least) {
+      least = total;
+      leastSeg = seg;
+    }
+  }
+
+  const b = detail?.["25"] || blankSeg();
+  const db = detail?.["DB"] || blankSeg();
+  const bull25 = N(b.B, 0) + N(b.S, 0);
+  const db25 = N(db.DB, 0) + N(b.DB, 0) + N(db.D, 0);
+  const missTotal = N(detail?.MISS?.MISS, 0) + N(detail?.["MISS"]?.MISS, 0);
+  const totalHits = segments.reduce((sum, seg) => sum + totalFor(seg), 0) + bull25 + db25;
+
+  return {
+    totalHits,
+    bull25,
+    db25,
+    missTotal,
+    favorite: bestBy("TOTAL"),
+    simple: bestBy("S"),
+    double: bestBy("D"),
+    triple: bestBy("T"),
+    least: leastSeg ? String(leastSeg) : "-",
+  };
+}
+
 function PrecisionRadar(props: { detail: SegDetailMap; accent: string }) {
   const { detail, accent } = props;
-  const order = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
-  const size = 236;
-  const cx = size / 2;
-  const cy = size / 2;
-  const rings = {
-    singleInner: 32,
-    triple: 58,
-    singleOuter: 78,
-    double: 94,
-    label: 108,
-  };
-  const ang = (i: number) => (-90 + (i * 360) / order.length) * (Math.PI / 180);
-  const polar = (i: number, radius: number, offset = 0) => {
-    const a = ang(i) + offset;
-    return { x: cx + Math.cos(a) * radius, y: cy + Math.sin(a) * radius };
-  };
-
-  const perSegment = order.map((num, i) => {
-    const d = detail?.[String(num)] || blankSeg();
-    const S = N(d.S, 0);
-    const D = N(d.D, 0);
-    const T = N(d.T, 0);
-    return { num, i, S, D, T, total: S + D + T };
-  });
-  const bull25 = N(detail?.["25"]?.B, 0) + N(detail?.["25"]?.S, 0);
-  const db25 = N(detail?.["DB"]?.DB, 0) + N(detail?.["25"]?.DB, 0) + N(detail?.["DB"]?.D, 0);
-  const missTotal = N(detail?.MISS?.MISS, 0) + N(detail?.["MISS"]?.MISS, 0);
-  const totalHits = perSegment.reduce((sum, x) => sum + x.total, 0) + bull25 + db25;
-  const maxSegment = Math.max(1, ...perSegment.map((x) => x.total), bull25, db25);
-
-  const favorite = (() => {
-    const best = perSegment.reduce((acc, x) => (x.total > acc.total ? x : acc), { num: 0, total: 0 } as any);
-    if (bull25 > best.total) return "25";
-    if (db25 > best.total) return "D25";
-    return best.total > 0 ? String(best.num) : "—";
-  })();
-  const simpleFav = (() => {
-    const best = perSegment.reduce((acc, x) => (x.S > acc.S ? x : acc), { num: 0, S: 0 } as any);
-    return best.S > 0 ? String(best.num) : "—";
-  })();
-  const doubleFav = (() => {
-    const best = perSegment.reduce((acc, x) => (x.D > acc.D ? x : acc), { num: 0, D: 0 } as any);
-    return best.D > 0 ? String(best.num) : "—";
-  })();
-  const tripleFav = (() => {
-    const best = perSegment.reduce((acc, x) => (x.T > acc.T ? x : acc), { num: 0, T: 0 } as any);
-    return best.T > 0 ? String(best.num) : "—";
-  })();
-
-  const drawHitDots = (seg: any, kind: "S" | "D" | "T") => {
-    const count = N(seg[kind], 0);
-    if (count <= 0) return null;
-    const baseRadius = kind === "D" ? rings.double : kind === "T" ? rings.triple : (seg.S >= 2 ? rings.singleOuter : rings.singleInner);
-    const shown = Math.min(18, count);
-    const dots = [];
-    for (let n = 0; n < shown; n += 1) {
-      // On affiche une vraie nuée de points, pas un polygone : le compteur reste exact dans les KPIs/tooltip.
-      const ringJitter = ((n % 5) - 2) * 1.8;
-      const angleJitter = ((n % 7) - 3) * 0.008;
-      const p = polar(seg.i, baseRadius + ringJitter, angleJitter);
-      const fill = kind === "D" ? "#FF6FB5" : kind === "T" ? "#FF9F43" : accent;
-      dots.push(
-        <circle
-          key={`${seg.num}-${kind}-${n}`}
-          cx={p.x}
-          cy={p.y}
-          r={count > 6 ? 2.7 : 3.2}
-          fill={fill}
-          opacity={0.38 + Math.min(0.42, count / 20)}
-          stroke="rgba(0,0,0,.38)"
-          strokeWidth="0.6"
-        />
-      );
-    }
-    return dots;
-  };
+  const darts = detailToRadarDarts(detail);
+  const s = detailRadarSummary(detail);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, alignItems: "center" }}>
-      <svg width="100%" viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
-        <defs>
-          <radialGradient id="dartset-hit-radar-bg" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={accent} stopOpacity="0.20" />
-            <stop offset="62%" stopColor={accent} stopOpacity="0.055" />
-            <stop offset="100%" stopColor="#000" stopOpacity="0" />
-          </radialGradient>
-          <filter id="dartset-hit-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2.6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        <circle cx={cx} cy={cy} r="104" fill="url(#dartset-hit-radar-bg)" />
-        {[22, rings.singleInner, rings.triple, rings.singleOuter, rings.double].map((r, idx) => (
-          <circle key={idx} cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="1" />
-        ))}
-
-        {order.map((num, i) => {
-          const a = ang(i);
-          const x1 = cx + Math.cos(a) * 18;
-          const y1 = cy + Math.sin(a) * 18;
-          const x2 = cx + Math.cos(a) * rings.double;
-          const y2 = cy + Math.sin(a) * rings.double;
-          const xt = cx + Math.cos(a) * rings.label;
-          const yt = cy + Math.sin(a) * rings.label;
-          const total = perSegment[i]?.total || 0;
-          return (
-            <React.Fragment key={num}>
-              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,.07)" strokeWidth="1" />
-              <text x={xt} y={yt} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="950" fill={total > 0 ? accent : "rgba(255,255,255,.60)"}>{num}</text>
-            </React.Fragment>
-          );
-        })}
-
-        {/* Points de repère transparents : tous les segments restent visibles même sans hit. */}
-        {perSegment.flatMap((seg) => [rings.singleInner, rings.triple, rings.double].map((r, idx) => {
-          const p = polar(seg.i, r);
-          return <circle key={`ghost-${seg.num}-${idx}`} cx={p.x} cy={p.y} r="1.9" fill={accent} opacity="0.12" />;
-        }))}
-
-        {/* Hits réels : simples, doubles et triples sont recensés séparément. */}
-        {perSegment.flatMap((seg) => [drawHitDots(seg, "S"), drawHitDots(seg, "D"), drawHitDots(seg, "T")])}
-
-        {/* Bull / D25 au centre, avec taille proportionnelle. */}
-        <circle cx={cx} cy={cy} r="15" fill="rgba(0,0,0,.28)" stroke="rgba(255,255,255,.12)" />
-        {bull25 > 0 && <circle cx={cx - 3} cy={cy + 3} r={Math.max(4, Math.min(13, 3 + Math.sqrt(bull25) * 3))} fill={accent} opacity="0.42" filter="url(#dartset-hit-glow)" />}
-        {db25 > 0 && <circle cx={cx + 3} cy={cy - 3} r={Math.max(4, Math.min(11, 3 + Math.sqrt(db25) * 2.6))} fill="#FF6FB5" opacity="0.58" filter="url(#dartset-hit-glow)" />}
-        <circle cx={cx} cy={cy} r="3.2" fill={accent} opacity="0.86" />
-      </svg>
-
-      <div style={{ display: "grid", gap: 7 }}>
-        <div style={{ fontSize: 10.5, lineHeight: 1.45, color: "rgba(255,255,255,.70)", fontWeight: 850 }}>
-          <div style={{ color: accent, fontWeight: 950, marginBottom: 4 }}>Radar hits</div>
-          <div>Total hits : <b style={{ color: accent }}>{fmt0(totalHits)}</b></div>
-          <div>Hit préféré : <b style={{ color: accent }}>{favorite}</b></div>
-          <div>Simple : <b style={{ color: accent }}>{simpleFav}</b></div>
-          <div>Double : <b style={{ color: accent }}>{doubleFav}</b></div>
-          <div>Triple : <b style={{ color: accent }}>{tripleFav}</b></div>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 132px", gap: 10, alignItems: "center" }}>
+      <div style={{ minWidth: 0 }}>
+        <TrainingRadar darts={darts} />
+      </div>
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,.72)", display: "flex", flexDirection: "column", gap: 5, lineHeight: 1.25 }}>
+        <div style={{ fontWeight: 950, color: accent, textShadow: `0 0 10px ${accent}66` }}>Segments clés</div>
+        <div>Total hits : <span style={{ color: accent, fontWeight: 950 }}>{fmt0(s.totalHits)}</span></div>
+        <div>Hit préféré : <span style={{ color: "#7CFF9A", fontWeight: 950 }}>{s.favorite}</span></div>
+        <div>Simple favori : <span style={{ color: "#47B5FF", fontWeight: 950 }}>{s.simple}</span></div>
+        <div>Double favori : <span style={{ color: "#FFB8DE", fontWeight: 950 }}>{s.double}</span></div>
+        <div>Triple favori : <span style={{ color: "#FF9F43", fontWeight: 950 }}>{s.triple}</span></div>
+        <div>Moins joué : <span style={{ color: "#AAAAAA", fontWeight: 950 }}>{s.least}</span></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6, marginTop: 4 }}>
+          <SideBadge accent={accent} label="25" value={fmt0(s.bull25)} />
+          <SideBadge accent="#FF6FB5" label="D25" value={fmt0(s.db25)} />
+          <SideBadge accent="rgba(255,255,255,.72)" label="MISS" value={fmt0(s.missTotal)} />
         </div>
-        <SideBadge accent={accent} label="25" value={fmt0(bull25)} />
-        <SideBadge accent="#FF6FB5" label="D25" value={fmt0(db25)} />
-        <SideBadge accent="rgba(255,255,255,.72)" label="MISS" value={fmt0(missTotal)} />
       </div>
     </div>
   );
