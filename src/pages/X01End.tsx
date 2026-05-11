@@ -2738,7 +2738,7 @@ function MatchLegDetails({
   if (!breakdown.length) {
     return (
       <InfoCard>
-        Aucun détail de leg disponible pour ce match.
+        Aucun détail de leg disponible pour ce match. Pour les anciennes sauvegardes, seuls le score cumulé sets/legs et les stats globales peuvent être récupérés.
       </InfoCard>
     );
   }
@@ -3631,6 +3631,103 @@ function buildVisitHistory(
 ): VisitRow[] {
   if (!players.length) return [];
 
+
+  const buildSyntheticVisitsFromScorePerVisit = (): VisitRow[] => {
+    const detailedSources = [
+      rec?.summary?.detailedByPlayer,
+      rec?.payload?.summary?.detailedByPlayer,
+      rec?.resume?.summary?.detailedByPlayer,
+      rec?.compact?.d?.summary?.detailedbyplayer,
+    ].filter((x) => x && typeof x === "object");
+
+    const detailed: Record<string, any> = {};
+    for (const source of detailedSources) {
+      for (const p of players) {
+        const shortId = String(p.id || "").slice(0, 20);
+        const row = source?.[p.id] || source?.[shortId];
+        if (row && !detailed[p.id]) detailed[p.id] = row;
+      }
+    }
+
+    const scoreLists: Record<string, number[]> = {};
+    for (const p of players) {
+      const row = detailed[p.id] || {};
+      const list = row.scorePerVisit || row.scorepervisit || row.visitsScores || row.visitScores;
+      if (Array.isArray(list) && list.length) {
+        scoreLists[p.id] = list.map((x: any) => Math.max(0, Number(x) || 0));
+      }
+    }
+    if (!Object.keys(scoreLists).length) return [];
+
+    const order: string[] = (
+      Array.isArray(rec?.payload?.state?.throwOrder) && rec.payload.state.throwOrder.length
+        ? rec.payload.state.throwOrder
+        : Array.isArray(rec?.resume?.state?.throwOrder) && rec.resume.state.throwOrder.length
+        ? rec.resume.state.throwOrder
+        : Array.isArray(rec?.summary?.throwOrder) && rec.summary.throwOrder.length
+        ? rec.summary.throwOrder
+        : players.map((p) => p.id)
+    ).map((x: any) => String(x));
+    const finalOrder = order.filter((id) => players.some((p) => p.id === id));
+    if (!finalOrder.length) finalOrder.push(...players.map((p) => p.id));
+
+    const startScore = Number(getX01StartScore(rec) || 501) || 501;
+    const legsPerSet = getLegsPerSetFromRecord(rec);
+    const scores: Record<string, number> = {};
+    const indexes: Record<string, number> = {};
+    finalOrder.forEach((pid) => { scores[pid] = startScore; indexes[pid] = 0; });
+
+    const resetScores = () => finalOrder.forEach((pid) => { scores[pid] = startScore; });
+    const visitsOut: VisitRow[] = [];
+    let legNo = 1;
+    let done = false;
+
+    while (!done) {
+      let consumedInRound = false;
+      for (const pid of finalOrder) {
+        const arr = scoreLists[pid] || [];
+        const idx = indexes[pid] || 0;
+        if (idx >= arr.length) continue;
+        consumedInRound = true;
+        indexes[pid] = idx + 1;
+
+        const before = scores[pid] ?? startScore;
+        const points = Math.max(0, Number(arr[idx]) || 0);
+        const afterCandidate = before - points;
+        const finish = points > 0 && afterCandidate === 0;
+        const bust = points === 0 && before > 0;
+        const after = finish ? 0 : points > 0 && afterCandidate > 1 ? afterCandidate : before;
+        const setNo = Math.floor((legNo - 1) / legsPerSet) + 1;
+        const legInSet = ((legNo - 1) % legsPerSet) + 1;
+
+        visitsOut.push({
+          idx: visitsOut.length + 1,
+          legNo,
+          setNo,
+          legInSet,
+          playerId: pid,
+          darts: [],
+          dartsCount: finish ? 1 : 3,
+          scoreBefore: before,
+          scoreAfter: after,
+          bust,
+          finish,
+          score: finish || !bust ? points : 0,
+        } as any);
+
+        scores[pid] = after;
+        if (finish) {
+          legNo += 1;
+          resetScores();
+          break;
+        }
+      }
+      done = !consumedInRound || Object.entries(scoreLists).every(([pid, arr]) => (indexes[pid] || 0) >= arr.length);
+    }
+
+    return visitsOut;
+  };
+
   // 1) Si legStats / __legStats possède déjà les visits : on les utilise.
   // IMPORTANT : ne jamais s'arrêter sur un tableau vide. C'était la cause du bug
   // Historique : legStats reconstruit depuis un summary léger fournissait visits=[],
@@ -3680,6 +3777,10 @@ function buildVisitHistory(
       pv.forEach((v: any) => rebuilt.push({ ...v, playerId: v?.playerId ?? v?.pid ?? p.id }));
     }
     rawVisits = rebuilt;
+  }
+
+  if (!rawVisits.length) {
+    rawVisits = buildSyntheticVisitsFromScorePerVisit();
   }
 
   if (rawVisits.length) {

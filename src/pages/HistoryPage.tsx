@@ -654,7 +654,56 @@ function cleanScore(raw: any): string | undefined {
   return s;
 }
 
+
+function isX01Entry(e: SavedEntry): boolean {
+  const m = String(baseMode(e) || "").toLowerCase();
+  return m === "x01" || m === "training_x01" || m.includes("x01");
+}
+
+function getX01LegsPerSetForHistory(e: SavedEntry): number {
+  const anyE: any = e;
+  const raw =
+    anyE.summary?.game?.legsPerSet ??
+    anyE.payload?.summary?.game?.legsPerSet ??
+    anyE.payload?.config?.legsPerSet ??
+    anyE.resume?.config?.legsPerSet ??
+    anyE.game?.legsPerSet ??
+    1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function summarizeX01SetsLegsScore(e: SavedEntry): string {
+  const anyE: any = e;
+  const data: any = anyE.summary || {};
+  const result = data.result || {};
+  const rankings = data.rankings || result.rankings || anyE.payload?.summary?.rankings || anyE.resume?.summary?.rankings || [];
+  if (!Array.isArray(rankings) || !rankings.length) return "";
+
+  const legsPerSet = getX01LegsPerSetForHistory(e);
+  const parts = rankings
+    .map((r: any) => {
+      const name = cleanName(r.name || r.playerName || r.label || r.id || r.playerId) || undefined;
+      const legs = cleanScore(r.legsWon ?? r.lw ?? r.legs ?? r.legsScore);
+      const sets = cleanScore(r.setsWon ?? r.sw ?? r.sets ?? r.setsScore);
+      const generic = cleanScore(r.score ?? r.points ?? r.total);
+      if (!name) return null;
+      if (legsPerSet > 1 && legs != null) return `${name}: ${legs}`;
+      if (sets != null && Number(sets) > 0) return `${name}: ${sets}S${legs != null ? `/${legs}L` : ""}`;
+      if (legs != null) return `${name}: ${legs}`;
+      if (generic != null) return `${name}: ${generic}`;
+      return name;
+    })
+    .filter(Boolean) as string[];
+  return parts.join(" • ");
+}
+
 function summarizeScore(e: SavedEntry): string {
+  if (isX01Entry(e)) {
+    const x01Score = summarizeX01SetsLegsScore(e);
+    if (x01Score) return x01Score;
+  }
+
   const data: any = e.summary || {};
   const result = data.result || {};
 
