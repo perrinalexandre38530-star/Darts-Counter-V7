@@ -5510,6 +5510,102 @@ React.useEffect(() => {
   };
 }, [selectedPlayer?.id]);
 
+
+const globalModeDashboard = React.useMemo(() => {
+  const pid = selectedPlayer?.id ? String(selectedPlayer.id) : "";
+  const rows = Array.isArray(records) ? records : [];
+  const modeLabels: Record<string, string> = {
+    x01: "X01",
+    cricket: "Cricket",
+    killer: "Killer",
+    shanghai: "Shanghai",
+    golf: "Golf",
+    battle_royale: "Battle Royale",
+    warfare: "Warfare",
+    five_lives: "Les 5 vies",
+    scram: "SCRAM",
+    capital: "Capital",
+    batard: "BÂTARD",
+    territories: "Territories",
+    clock: "Tour de l’horloge",
+  };
+  const order = ["x01", "cricket", "killer", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories", "clock"];
+  const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const getWinnerIds = (r: any): string[] => {
+    const raw = [r?.winnerId, r?.winner, r?.summary?.winnerId, r?.payload?.winnerId, r?.payload?.summary?.winnerId]
+      .filter((v) => v !== undefined && v !== null)
+      .map((v) => String(v));
+    const arr = [r?.winnerIds, r?.summary?.winnerIds, r?.payload?.winnerIds, r?.payload?.summary?.winnerIds]
+      .flatMap((x) => (Array.isArray(x) ? x : []))
+      .map((v) => String(v));
+    return [...raw, ...arr];
+  };
+  const findP = (r: any) => {
+    const pools = [
+      r?.payload?.stats?.players,
+      r?.payload?.players,
+      r?.payload?.summary?.players,
+      r?.payload?.summary?.perPlayer,
+      r?.summary?.players,
+      r?.summary?.perPlayer,
+      r?.summary?.rankings,
+      r?.players,
+    ];
+    for (const arr of pools) {
+      if (!Array.isArray(arr)) continue;
+      const hit = arr.find((pl: any) => String(pl?.id ?? pl?.playerId ?? pl?.profileId ?? pl?.uid ?? pl?.userId ?? "").replace(/^online:/, "") === pid.replace(/^online:/, ""));
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const byMode: Record<string, any> = {};
+  for (const r of rows) {
+    if (!pid || !recordHasPlayer(r as any, pid)) continue;
+    const mode = classifyRecordMode(r as any);
+    if (!mode || mode === "other") continue;
+    const a = byMode[mode] || (byMode[mode] = {
+      key: mode,
+      label: modeLabels[mode] || mode.toUpperCase(),
+      matches: 0,
+      wins: 0,
+      darts: 0,
+      points: 0,
+      hits: 0,
+      miss: 0,
+      best: 0,
+      kills: 0,
+      captures: 0,
+      extra: 0,
+      samples: [] as number[],
+    });
+    const pl: any = findP(r) || {};
+    const stats: any = pl?.special || pl?.stats || pl;
+    const darts = n(pl?.darts?.thrown) || n(stats?.darts) || n(stats?.dartsThrown) || n(stats?.throws) || n(stats?.totalThrows);
+    const hits = n(pl?.darts?.hits) || n(stats?.hits) || n(stats?.validHits) || n(stats?.totalHits) || n(stats?.hitsTotal);
+    const miss = n(pl?.darts?.misses) || n(stats?.misses) || n(stats?.miss) || Math.max(0, darts - hits);
+    const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore);
+    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || score;
+    a.matches += 1;
+    if (getWinnerIds(r).some((w) => w.replace(/^online:/, "") === pid.replace(/^online:/, ""))) a.wins += 1;
+    a.darts += darts;
+    a.hits += hits;
+    a.miss += miss;
+    a.points += score;
+    a.best = Math.max(a.best, best);
+    a.kills += n(stats?.kills) || n(stats?.eliminations);
+    a.captures += n(stats?.captures) || n(stats?.territories) || n(stats?.owned) || n(stats?.steals);
+    a.extra += n(stats?.marksTotal) || n(stats?.marks) || n(stats?.advances) || n(stats?.lostLives) || n(stats?.damageTaken);
+    const avg = n(pl?.averages?.avg3d) || (darts > 0 ? (score / darts) * 3 : 0);
+    if (avg > 0) a.samples.push(avg);
+  }
+  return order.map((key) => byMode[key]).filter(Boolean).map((a) => ({
+    ...a,
+    winRate: a.matches ? Math.round((a.wins / a.matches) * 100) : 0,
+    accuracy: (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 100) : 0,
+    avg3: a.samples.length ? Math.round((a.samples.reduce((x: number, y: number) => x + y, 0) / a.samples.length) * 10) / 10 : 0,
+  }));
+}, [records, selectedPlayer?.id]);
+
 // Taille du nom en fonction de la longueur
 const selectedName = selectedPlayer?.name ?? "";
 const nameLen = selectedName.length;
@@ -6123,6 +6219,80 @@ return (
           </div>
         )}
       </div>
+
+      {selectedPlayer && !isMolkkySport && globalModeDashboard.length > 0 && (
+        <div style={{ ...card, marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ ...goldNeon, fontSize: 13, marginBottom: 0 }}>RÉSUMÉ PAR MODE</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>Historique enregistré uniquement</div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+            {globalModeDashboard.map((m: any) => {
+              const goToMode = () => {
+                const idx = modeDefs.findIndex((x) => x.key === m.key);
+                if (idx >= 0) setModeIndex(idx);
+              };
+              const main = m.key === "x01"
+                ? `${m.avg3 || 0} avg3`
+                : m.key === "killer"
+                ? `${m.kills || 0} kills`
+                : m.key === "cricket"
+                ? `${m.extra || m.points || 0} marks`
+                : m.key === "territories"
+                ? `${m.captures || 0} captures`
+                : `${m.points || m.best || 0} pts`;
+              const sub = m.darts > 0
+                ? `${m.darts} darts · ${m.accuracy}% hit`
+                : `${m.wins}/${m.matches} wins`;
+              return (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={goToMode}
+                  style={{
+                    textAlign: "left",
+                    borderRadius: 18,
+                    padding: 11,
+                    border: `1px solid ${T.accent40}`,
+                    background: `radial-gradient(circle at 0% 0%, ${T.accent25}, transparent 58%), linear-gradient(180deg,#15171B,#0D0E12)`,
+                    boxShadow: `0 0 0 1px ${T.accent10}, 0 8px 18px rgba(0,0,0,.34)`,
+                    color: T.text,
+                    cursor: "pointer",
+                    minHeight: 86,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <div style={{ fontSize: 11, fontWeight: 1000, color: T.accent, textTransform: "uppercase", letterSpacing: .7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {m.label}
+                    </div>
+                    <div style={{ fontSize: 10, borderRadius: 999, padding: "3px 7px", border: `1px solid ${T.accent50}`, color: T.accent, background: "rgba(0,0,0,.28)", whiteSpace: "nowrap" }}>
+                      {m.matches} sess.
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 20, lineHeight: 1, fontWeight: 1000, color: m.key === "killer" ? "#FF5A5A" : T.gold }}>
+                    {main}
+                  </div>
+                  <div style={{ marginTop: 7, fontSize: 11, color: T.text70 }}>
+                    WR {m.winRate}% · Best {m.best || "—"}
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 10, color: T.text60 }}>
+                    {sub}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
                 {selectedPlayer && !isMolkkySport && (
                   <div style={{ ...card, marginTop: 8 }}>
@@ -6844,7 +7014,7 @@ return (
               </div>
             )}
 
-{["battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories"].includes(String(currentMode)) && (
+{["battle_royale", "warfare", "five_lives", "scram", "capital"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>

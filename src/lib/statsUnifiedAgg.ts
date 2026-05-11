@@ -130,6 +130,37 @@ export type UnifiedPlayerDashboardStats = {
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const fmt1 = (x: number) => Math.round(x * 10) / 10;
 
+
+function normalizeDashboardMode(mode: any, raw?: any): string {
+  const tag = [
+    mode,
+    raw?.kind, raw?.game, raw?.mode, raw?.variant, raw?.sport,
+    raw?.summary?.kind, raw?.summary?.mode, raw?.summary?.gameMode, raw?.summary?.sport, raw?.summary?.game?.mode, raw?.summary?.game?.game,
+    raw?.payload?.kind, raw?.payload?.game, raw?.payload?.mode, raw?.payload?.gameMode, raw?.payload?.variant, raw?.payload?.sport,
+    raw?.payload?.stats?.mode, raw?.payload?.stats?.sport,
+    raw?.payload?.summary?.kind, raw?.payload?.summary?.mode, raw?.payload?.summary?.gameMode, raw?.payload?.summary?.sport, raw?.payload?.summary?.game?.mode, raw?.payload?.summary?.game?.game,
+  ]
+    .filter((v) => v !== undefined && v !== null && String(v).trim())
+    .map((v) => String(v).toLowerCase())
+    .join('|');
+
+  if (!tag) return '';
+  if (tag.includes('x01') || tag.includes('301') || tag.includes('501') || tag.includes('701')) return 'x01';
+  if (tag.includes('cricket')) return 'cricket';
+  if (tag.includes('killer')) return 'killer';
+  if (tag.includes('shanghai')) return 'shanghai';
+  if (tag.includes('golf')) return 'golf';
+  if (tag.includes('territ') || tag.includes('departement')) return 'territories';
+  if (tag.includes('batard') || tag.includes('bâtard') || tag.includes('bastard')) return 'batard';
+  if (tag.includes('scram')) return 'scram';
+  if (tag.includes('warfare')) return 'warfare';
+  if (tag.includes('five_lives') || tag.includes('five lives') || tag.includes('5 vies') || tag.includes('cinq vies')) return 'five_lives';
+  if (tag.includes('battle') || tag.includes('royale')) return 'battle_royale';
+  if (tag.includes('capital')) return 'capital';
+  if (tag.includes('clock') || tag.includes('horloge') || tag.includes('tour')) return 'clock';
+  return String(mode || '').trim().toLowerCase();
+}
+
 function isX01Mode(mode: string): boolean {
   const m = String(mode || '').toLowerCase();
   return m === 'x01' || m.startsWith('x01') || m.includes('x01');
@@ -247,7 +278,10 @@ let totalUnifiedMatchesWithAvg3 = 0;
     if (!playersIn) continue;
 
     matchesPlayed += 1;
-    sessionsByMode[m.mode || "unknown"] = (sessionsByMode[m.mode || "unknown"] || 0) + 1;
+    const dashboardMode = normalizeDashboardMode((m as any)?.mode, (m as any)?.raw);
+    if (dashboardMode) {
+      sessionsByMode[dashboardMode] = (sessionsByMode[dashboardMode] || 0) + 1;
+    }
 
     if ((m.winnerIds || []).some((w) => String(w) === String(playerId))) {
       wins += 1;
