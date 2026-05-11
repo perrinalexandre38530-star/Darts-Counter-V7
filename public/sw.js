@@ -5,7 +5,7 @@
 // - permettre purge des caches si demandé
 // - éviter les vieux modules cassés après déploiement
 
-const SW_VERSION = "dc-sw-2026-03-08-02";
+const SW_VERSION = "dc-sw-2026-05-10-online-v9-1";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

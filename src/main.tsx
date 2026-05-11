@@ -129,6 +129,55 @@ async function startupHardResetIfRequested() {
   }
 }
 
+
+// ---- ONLINE V9.1 / DEPLOY FIX: hard recovery for stale Vite chunks ----
+// Quand Cloudflare + Service Worker gardent un ancien index qui pointe vers un
+// chunk supprimé (ex: StatsHub-xxxx.js), on purge vraiment SW/CacheStorage
+// avant reload. Sans ça le navigateur recharge la même référence morte.
+const DC_CHUNK_HARD_RECOVER_TS_KEY = "dc_chunk_hard_recover_ts_v1";
+
+async function hardRecoverFromChunkFailure(reason: any) {
+  try { rememberChunkFailure(reason); } catch {}
+
+  const now = Date.now();
+  let last = 0;
+  try { last = Number(localStorage.getItem(DC_CHUNK_HARD_RECOVER_TS_KEY) || "0") || 0; } catch {}
+
+  // Évite une boucle infinie: au 2e échec rapproché, on active le safe mode
+  // mais on ne laisse plus l'écran CRASH bloquer avant tentative de purge.
+  if (last && now - last < 15000) {
+    try { localStorage.setItem("dc_safe_mode_v1", "1"); } catch {}
+  }
+  try { localStorage.setItem(DC_CHUNK_HARD_RECOVER_TS_KEY, String(now)); } catch {}
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((reg) => reg.unregister().catch(() => {})));
+    }
+  } catch {}
+
+  try {
+    if (typeof caches !== "undefined" && (caches as any).keys) {
+      const keys = await (caches as any).keys();
+      await Promise.all(keys.map((key: string) => caches.delete(key).catch(() => false)));
+    }
+  } catch {}
+
+  try { sessionStorage.removeItem("dc:chunk-reload"); } catch {}
+  try { sessionStorage.removeItem("dc_sb_recover_once_v1"); } catch {}
+  try { sessionStorage.removeItem("dc_dyn_import_recover_once_v1"); } catch {}
+
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("purge");
+    url.searchParams.set("sb", String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 // ---- PATCH: one-shot recovery for Vite lazy chunk load errors (Cloudflare cache mismatch, etc.) ----
 try {
   const KEY = "dc:chunk-reload";
@@ -145,24 +194,15 @@ try {
   window.addEventListener("error", (e: any) => {
     const message = String(e?.message || e?.error?.message || "");
     if (!shouldReloadOnce(message)) return;
-    rememberChunkFailure(message);
-    if (sessionStorage.getItem(KEY) === "1") return;
-    sessionStorage.setItem(KEY, "1");
-    // cache-buster
-    const url = new URL(window.location.href);
-    url.searchParams.set("r", String(Date.now()));
-    window.location.replace(url.toString());
+    try { e.preventDefault?.(); } catch {}
+    void hardRecoverFromChunkFailure(message);
   });
 
   window.addEventListener("unhandledrejection", (e: any) => {
     const message = String(e?.reason?.message || e?.reason || "");
     if (!shouldReloadOnce(message)) return;
-    rememberChunkFailure(message);
-    if (sessionStorage.getItem(KEY) === "1") return;
-    sessionStorage.setItem(KEY, "1");
-    const url = new URL(window.location.href);
-    url.searchParams.set("r", String(Date.now()));
-    window.location.replace(url.toString());
+    try { e.preventDefault?.(); } catch {}
+    void hardRecoverFromChunkFailure(message);
   });
 } catch {}
 // ---- END PATCH ----
@@ -333,8 +373,9 @@ async function recoverDynamicImportOnce() {
       localStorage.setItem("dc_last_runtime_error_v1", JSON.stringify({ at: Date.now(), type: "error", message: String(payload?.message || payload || ""), stack: String(payload?.stack || ""), href: location.href }));
     } catch {}
     if (_isDynImportFail(payload)) {
-      rememberChunkFailure(payload);
-      recoverOnce();
+      try { e.preventDefault?.(); } catch {}
+      void hardRecoverFromChunkFailure(payload);
+      return;
     }
     show("window.error", payload);
   });
@@ -344,8 +385,9 @@ async function recoverDynamicImportOnce() {
       localStorage.setItem("dc_last_runtime_error_v1", JSON.stringify({ at: Date.now(), type: "unhandledrejection", message: String(payload?.message || payload || ""), stack: String(payload?.stack || ""), href: location.href }));
     } catch {}
     if (_isDynImportFail(payload)) {
-      rememberChunkFailure(payload);
-      recoverOnce();
+      try { e.preventDefault?.(); } catch {}
+      void hardRecoverFromChunkFailure(payload);
+      return;
     }
     show("unhandledrejection", payload);
   });

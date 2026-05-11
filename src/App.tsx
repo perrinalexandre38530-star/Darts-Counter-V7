@@ -181,16 +181,64 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 import StatsDetail from "./pages/StatsDetail";
 
 import Profiles from "./pages/Profiles";
-const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
-const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
-const Settings = React.lazy(() => import("./pages/Settings"));
-const StatsShell = React.lazy(() => import("./pages/StatsShell"));
-const StatsHub = React.lazy(() => import("./pages/StatsHub"));
-const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
-const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
-const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
-const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
-const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
+
+// ONLINE V9.1 / DEPLOY FIX
+// Les chunks Vite changent de nom à chaque build. Si un ancien index/SW pointe
+// vers un chunk supprimé, React.lazy plante avant d'afficher la page.
+// Ce wrapper purge SW/CacheStorage puis recharge une seule fois avec cache-buster.
+function lazyWithChunkRecovery<T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) {
+  return React.lazy(async () => {
+    try {
+      return await loader();
+    } catch (error: any) {
+      const msg = String(error?.message || error || "");
+      const isChunkError =
+        msg.includes("Failed to fetch dynamically imported module") ||
+        msg.includes("Importing a module script failed") ||
+        msg.includes("ChunkLoadError") ||
+        msg.includes("Loading chunk");
+      if (isChunkError && typeof window !== "undefined") {
+        try { localStorage.setItem("dc_last_chunk_error_v1", JSON.stringify({ at: Date.now(), href: location.href, message: msg })); } catch {}
+        try {
+          if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((reg) => reg.unregister().catch(() => {})));
+          }
+        } catch {}
+        try {
+          if (typeof caches !== "undefined" && (caches as any).keys) {
+            const keys = await (caches as any).keys();
+            await Promise.all(keys.map((key: string) => caches.delete(key).catch(() => false)));
+          }
+        } catch {}
+        try {
+          const key = "dc_lazy_chunk_recover_once_v1";
+          const last = Number(sessionStorage.getItem(key) || "0") || 0;
+          if (!last || Date.now() - last > 15000) {
+            sessionStorage.setItem(key, String(Date.now()));
+            const url = new URL(window.location.href);
+            url.searchParams.set("sb", String(Date.now()));
+            window.location.replace(url.toString());
+          }
+        } catch {
+          window.location.reload();
+        }
+      }
+      throw error;
+    }
+  });
+}
+
+const ProfilesBots = lazyWithChunkRecovery(() => import("./pages/ProfilesBots"));
+const FriendsPage = lazyWithChunkRecovery(() => import("./pages/FriendsPage"));
+const Settings = lazyWithChunkRecovery(() => import("./pages/Settings"));
+const StatsShell = lazyWithChunkRecovery(() => import("./pages/StatsShell"));
+const StatsHub = lazyWithChunkRecovery(() => import("./pages/StatsHub"));
+const StatsOnline = lazyWithChunkRecovery(() => import("./pages/StatsOnline"));
+const StatsCricket = lazyWithChunkRecovery(() => import("./pages/StatsCricket"));
+const StatsLeaderboardsPage = lazyWithChunkRecovery(() => import("./pages/StatsLeaderboardsPage"));
+const SyncCenter = lazyWithChunkRecovery(() => import("./pages/SyncCenter"));
+const TournamentsHome = lazyWithChunkRecovery(() => import("./pages/TournamentsHome"));
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
