@@ -841,27 +841,53 @@ function detailToTopStacks(detail: SegDetailMap, limit = 12) {
 
 function extractSparkValuesFromRow(r: any, recent: MiniMatch[]): number[] {
   const evo = Array.isArray(r?.evoAvg3) ? r.evoAvg3 : null;
-  if (evo && evo.length >= 2) {
-    const vals = evo.map((x: any) => N(x, 0)).filter((n: number) => Number.isFinite(n));
-    if (vals.length >= 2) return vals.slice(-18);
+  if (evo && evo.length) {
+    const vals = evo.map((x: any) => N(x, 0)).filter((n: number) => Number.isFinite(n) && n > 0);
+    if (vals.length) return vals.slice(-18);
   }
 
   const arr = pickArr(r, "spark", "sparkline", "avg3Spark", "avg3Series", "seriesAvg3", "lastAvg3") || null;
-
   if (arr && arr.length) {
-    const vals = arr.map((x: any) => N(x, 0)).filter((n: number) => Number.isFinite(n));
-    if (vals.length >= 2) return vals.slice(-18);
+    const vals = arr.map((x: any) => N(x, 0)).filter((n: number) => Number.isFinite(n) && n > 0);
+    if (vals.length) return vals.slice(-18);
   }
 
   const vals2 = (recent || [])
     .slice()
     .reverse()
     .map((m) => N(m?.avg3, NaN))
-    .filter((n) => Number.isFinite(n)) as number[];
+    .filter((n) => Number.isFinite(n) && n > 0) as number[];
+  if (vals2.length) return vals2.slice(-18);
 
-  if (vals2.length >= 2) return vals2.slice(-18);
+  const single = pickNum(r, "avg3", "avg3d", "avgPer3", "average3");
+  return single && single > 0 ? [single] : [];
+}
 
-  return [];
+function detailToOrderedStacks(detail: SegDetailMap) {
+  const order: (string | number)[] = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5, 25, "MISS"];
+  return order.map((seg) => {
+    const k = String(seg);
+    if (k === "25") {
+      const b = detail?.["25"] || blankSeg();
+      const db = detail?.["DB"] || blankSeg();
+      const S = N(b.B, 0) + N(b.S, 0);
+      const D = N(db.DB, 0) + N(b.DB, 0) + N(db.D, 0);
+      const T = N(b.T, 0) + N(db.T, 0);
+      const MISS = N(b.MISS, 0) + N(db.MISS, 0);
+      return { k, label: "25", S, D, T, MISS, B: S, DB: D, total: S + D + T + MISS };
+    }
+    if (k === "MISS") {
+      const d = detail?.MISS || blankSeg();
+      const MISS = N(d.MISS, 0) + N(d.S, 0) + N(d.D, 0) + N(d.T, 0);
+      return { k, label: "MISS", S: 0, D: 0, T: 0, MISS, B: 0, DB: 0, total: MISS };
+    }
+    const d = detail?.[k] || blankSeg();
+    const S = N(d.S, 0);
+    const D = N(d.D, 0);
+    const T = N(d.T, 0);
+    const MISS = N(d.MISS, 0);
+    return { k, label: k, S, D, T, MISS, B: N(d.B, 0), DB: N(d.DB, 0), total: S + D + T + MISS + N(d.B, 0) + N(d.DB, 0) };
+  });
 }
 
 /** ---------- Nom + image ---------- **/
@@ -1710,7 +1736,8 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
     };
   }
 
-  const topStacks = detailToTopStacks(segDetail, 12);
+  const orderedStacks = detailToOrderedStacks(segDetail);
+  const nonEmptyStackCount = orderedStacks.filter((x: any) => N(x.total, 0) > 0).length;
 
   const quality = clamp01(avg3v / 90);
   const glow = quality > 0.72 ? "#7fe2a9" : quality > 0.45 ? accent : "#cfd1d7";
@@ -1827,25 +1854,25 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
       <div style={{ marginTop: 12 }}>
         <BlockTitle title={t("stats.dartSets.spark", "Sparkline AVG/3D")} />
         <div style={wideBoxStyle()}>
-          {(sparkVals.length >= 1) ? <Sparkline values={(sparkVals.length===1?[sparkVals[0],sparkVals[0]]:sparkVals)} accent={accent} height={84} /> : <EmptySmall text={t("common.na", "—")} />}
+          {(sparkVals.length >= 1) ? <Sparkline values={sparkVals} accent={accent} height={116} /> : <EmptySmall text={t("common.na", "—")} />}
         </div>
       </div>
 
       <div style={{ marginTop: 12 }}>
         <BlockTitle title={t("stats.dartSets.radarHits", "Radar Hits")} />
         <div style={wideBoxStyle()}>
-          <TargetRadar detail={segDetail} accent={accent} />
+          <PrecisionRadar detail={segDetail} accent={accent} />
         </div>
       </div>
 
       <div style={{ marginTop: 12 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
           <BlockTitle title={t("stats.dartSets.hitsBySegment", "Hits par segment (S/D/T/Miss)")} />
-          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", fontWeight: 900 }}>{topStacks.length ? `${topStacks.length}` : "0"}</div>
+          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", fontWeight: 900 }}>{nonEmptyStackCount ? `${nonEmptyStackCount}` : "0"}</div>
         </div>
 
         <div style={wideBoxStyle()}>
-          {!topStacks.length ? (
+          {!nonEmptyStackCount ? (
             <div style={{ fontSize: 11, color: "rgba(255,255,255,.55)" }}>
               {t(
                 "stats.dartSets.noSegments",
@@ -1853,7 +1880,7 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
               )}
             </div>
           ) : (
-            <SegmentsStacks items={topStacks} accent={accent} />
+            <SegmentsStacks items={orderedStacks} accent={accent} />
           )}
         </div>
       </div>
@@ -2040,39 +2067,51 @@ function ArrowBtn(props: { right?: boolean; disabled?: boolean; onClick?: () => 
 
 function Sparkline(props: { values: number[]; accent: string; height?: number }) {
   const { values, accent } = props;
-  const h = Math.max(58, Math.min(120, Number(props.height ?? 60)));
-  const w = 260;
-  const pad = 6;
+  const h = Math.max(96, Math.min(150, Number(props.height ?? 116)));
+  const w = 320;
+  const padX = 16;
+  const padY = 18;
 
-  const vals = (values || []).slice(-18).map((x) => N(x, 0));
-  if (vals.length < 2) return <EmptySmall text="—" />;
+  const vals = (values || []).slice(-18).map((x) => N(x, 0)).filter((x) => x > 0);
+  if (!vals.length) return <EmptySmall text="—" />;
 
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
+  const visualVals = vals.length === 1 ? [Math.max(0, vals[0] * 0.72), vals[0]] : vals;
+  const minRaw = Math.min(...visualVals);
+  const maxRaw = Math.max(...visualVals);
+  const padVal = Math.max(4, (maxRaw - minRaw) * 0.18);
+  const min = Math.max(0, minRaw - padVal);
+  const max = maxRaw + padVal;
   const span = Math.max(1e-6, max - min);
 
-  const pts = vals.map((v, i) => {
-    const x = pad + (i * (w - pad * 2)) / Math.max(1, vals.length - 1);
-    const y = pad + (h - pad * 2) * (1 - (v - min) / span);
+  const pts = visualVals.map((v, i) => {
+    const x = padX + (i * (w - padX * 2)) / Math.max(1, visualVals.length - 1);
+    const y = padY + (h - padY * 2) * (1 - (v - min) / span);
     return { x, y, v };
   });
 
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
-  const last = pts[pts.length - 1]?.v ?? null;
+  const area = `${d} L ${pts[pts.length - 1].x.toFixed(2)} ${h - padY} L ${pts[0].x.toFixed(2)} ${h - padY} Z`;
+  const last = vals[vals.length - 1];
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        <path d={d} fill="none" stroke={accent} strokeWidth="2.2" />
-        <path d={`${d} L ${pts[pts.length - 1].x.toFixed(2)} ${h - pad} L ${pts[0].x.toFixed(2)} ${h - pad} Z`} fill={accent} opacity="0.10" />
-        <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="3.4" fill={accent} />
+    <div style={{ display: "grid", gap: 6 }}>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", overflow: "visible" }}>
+        {[0, 1, 2].map((i) => {
+          const y = padY + (i * (h - padY * 2)) / 2;
+          return <line key={i} x1={padX} x2={w - padX} y1={y} y2={y} stroke="rgba(255,255,255,.07)" strokeWidth="1" />;
+        })}
+        <path d={area} fill={accent} opacity="0.10" />
+        <path d={d} fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" filter="drop-shadow(0 0 5px rgba(246,194,86,.45))" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={i === pts.length - 1 ? 4.2 : 3.1} fill={accent} stroke="rgba(0,0,0,.55)" strokeWidth="1" />
+        ))}
       </svg>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
         <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.65)", fontWeight: 950 }}>
-          min {fmt1(min)} • max {fmt1(max)}
+          min {fmt1(vals.length === 1 ? vals[0] : Math.min(...vals))} • max {fmt1(Math.max(...vals))}
         </div>
-        <div style={{ fontSize: 11.5, color: accent, fontWeight: 950, textShadow: `0 0 12px ${accent}66` }}>{last !== null ? `dernier ${fmt1(last)}` : "—"}</div>
+        <div style={{ fontSize: 11.5, color: accent, fontWeight: 950, textShadow: `0 0 12px ${accent}66` }}>dernier {fmt1(last)}</div>
       </div>
     </div>
   );
@@ -2082,67 +2121,81 @@ function Sparkline(props: { values: number[]; accent: string; height?: number })
 /* ---------------- Target radar (cible) ----------------------- */
 /* ============================================================= */
 
-function TargetRadar(props: { detail: SegDetailMap; accent: string }) {
+function PrecisionRadar(props: { detail: SegDetailMap; accent: string }) {
   const { detail, accent } = props;
-
-  const totals: Record<string, number> = {};
-  for (let i = 1; i <= 20; i++) {
-    const k = String(i);
-    const d = detail?.[k] || blankSeg();
-    totals[k] = N(d.S) + N(d.D) + N(d.T) + N(d.MISS);
-  }
-
-  const total25 = N(detail?.["25"]?.B, 0);
-  const totalDB = N(detail?.["DB"]?.DB, 0);
-  const totalMiss = N(detail?.["MISS"]?.MISS, 0);
-
-  const maxV = Math.max(1, ...Object.values(totals), total25, totalDB, totalMiss);
-
-  const size = 220;
+  const order = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+  const totals = order.map((num) => {
+    const d = detail?.[String(num)] || blankSeg();
+    return N(d.S) + N(d.D) * 2 + N(d.T) * 3;
+  });
+  const maxV = Math.max(1, ...totals);
+  const size = 230;
   const cx = size / 2;
   const cy = size / 2;
   const R = 78;
+  const ang = (i: number) => (-90 + (i * 360) / order.length) * (Math.PI / 180);
+  const point = (i: number, ratio: number) => {
+    const a = ang(i);
+    const rr = R * Math.max(0.08, Math.min(1, ratio));
+    return { x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr };
+  };
+  const poly = totals.map((v, i) => point(i, Math.sqrt(v / maxV))).map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 
-  const order = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
-  const angleForIndex = (i: number) => (-90 + (i * 360) / 20) * (Math.PI / 180);
+  const favoriteIdx = totals.reduce((best, v, i) => (v > totals[best] ? i : best), 0);
+  const favorite = totals[favoriteIdx] > 0 ? String(order[favoriteIdx]) : "—";
+  const simpleFav = (() => {
+    let best = "—", val = 0;
+    for (const n of order) { const v = N(detail?.[String(n)]?.S, 0); if (v > val) { val = v; best = String(n); } }
+    return best;
+  })();
+  const doubleFav = (() => {
+    let best = "—", val = 0;
+    for (const n of order) { const v = N(detail?.[String(n)]?.D, 0); if (v > val) { val = v; best = String(n); } }
+    return best;
+  })();
+  const tripleFav = (() => {
+    let best = "—", val = 0;
+    for (const n of order) { const v = N(detail?.[String(n)]?.T, 0); if (v > val) { val = v; best = String(n); } }
+    return best;
+  })();
+  const least = (() => {
+    const used = order.map((n, i) => ({ n, v: totals[i] })).filter((x) => x.v > 0).sort((a, b) => a.v - b.v);
+    return used[0]?.n ? String(used[0].n) : "—";
+  })();
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 92px", gap: 10, alignItems: "center" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10, alignItems: "center" }}>
       <svg width="100%" viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
-        <circle cx={cx} cy={cy} r={R + 26} fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.10)" />
-        <circle cx={cx} cy={cy} r={R} fill="rgba(0,0,0,.30)" stroke="rgba(255,255,255,.10)" />
-        <circle cx={cx} cy={cy} r={R * 0.66} fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.08)" />
-        <circle cx={cx} cy={cy} r={R * 0.33} fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.08)" />
-
+        {[0.25, 0.5, 0.75, 1].map((r, idx) => (
+          <circle key={idx} cx={cx} cy={cy} r={R * r} fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="1" />
+        ))}
         {order.map((num, i) => {
-          const ang = angleForIndex(i);
-          const x = cx + Math.cos(ang) * (R * 0.8);
-          const y = cy + Math.sin(ang) * (R * 0.8);
-          const v = totals[String(num)] || 0;
-          const rr = 2.5 + 8 * Math.sqrt(v / maxV);
-          const op = 0.12 + 0.7 * (v / maxV);
-          return <circle key={num} cx={x} cy={y} r={rr} fill={accent} opacity={op} />;
-        })}
-
-        {order.map((num, i) => {
-          const ang = angleForIndex(i);
-          const x = cx + Math.cos(ang) * (R + 16);
-          const y = cy + Math.sin(ang) * (R + 16);
+          const a = ang(i);
+          const x2 = cx + Math.cos(a) * R;
+          const y2 = cy + Math.sin(a) * R;
+          const xt = cx + Math.cos(a) * (R + 16);
+          const yt = cy + Math.sin(a) * (R + 16);
           return (
-            <text key={`t-${num}`} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="900" fill="rgba(255,255,255,.80)">
-              {num}
-            </text>
+            <React.Fragment key={num}>
+              <line x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(255,255,255,.08)" strokeWidth="1" />
+              <text x={xt} y={yt} textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="950" fill={totals[i] > 0 ? accent : "rgba(255,255,255,.62)"}>{num}</text>
+            </React.Fragment>
           );
         })}
-
-        <circle cx={cx} cy={cy} r={10} fill={accent} opacity={0.18} stroke={accent} strokeOpacity={0.35} />
-        <circle cx={cx} cy={cy} r={5} fill={accent} opacity={0.35} stroke={accent} strokeOpacity={0.6} />
+        <polygon points={poly} fill={accent} opacity="0.24" stroke={accent} strokeWidth="2.4" filter="drop-shadow(0 0 5px rgba(246,194,86,.50))" />
+        {totals.map((v, i) => {
+          if (v <= 0) return null;
+          const p = point(i, Math.sqrt(v / maxV));
+          return <circle key={`p-${i}`} cx={p.x} cy={p.y} r="3.3" fill={accent} stroke="rgba(0,0,0,.55)" strokeWidth="1" />;
+        })}
       </svg>
-
-      <div style={{ display: "grid", gap: 8 }}>
-        <SideBadge label="25" value={fmt0(total25)} accent={accent} />
-        <SideBadge label="D25" value={fmt0(totalDB)} accent={accent} />
-        <SideBadge label="MISS" value={fmt0(totalMiss)} accent={accent} />
+      <div style={{ fontSize: 10.5, lineHeight: 1.55, color: "rgba(255,255,255,.70)", fontWeight: 850 }}>
+        <div style={{ color: accent, fontWeight: 950, marginBottom: 4 }}>Segments clés</div>
+        <div>Hit préféré : <b style={{ color: accent }}>{favorite}</b></div>
+        <div>Simple favori : <b style={{ color: accent }}>{simpleFav}</b></div>
+        <div>Double favori : <b style={{ color: accent }}>{doubleFav}</b></div>
+        <div>Triple favori : <b style={{ color: accent }}>{tripleFav}</b></div>
+        <div>Moins joué : <b style={{ color: accent }}>{least}</b></div>
       </div>
     </div>
   );
@@ -2163,51 +2216,87 @@ function SideBadge(props: { label: string; value: string; accent: string }) {
 /* ============================================================= */
 
 function SegmentsStacks(props: { items: any[]; accent: string }) {
-  const { items, accent } = props;
+  const { items } = props;
+  const max = Math.max(1, ...items.map((x) => N(x.total, 0)));
+  const barH = 70;
 
-  const max = Math.max(1, ...items.map((x) => N(x.S) + N(x.D) + N(x.T) + N(x.MISS) + N(x.B) + N(x.DB)));
-  const barH = 58;
+  const colorS = "linear-gradient(180deg,#47B5FF,#1F5F9F)";
+  const colorD = "linear-gradient(180deg,#FF6FB5,#8F2B64)";
+  const colorT = "linear-gradient(180deg,#FF9F43,#C25B0F)";
+  const colorM = "linear-gradient(180deg,#555,#999)";
 
   return (
-    <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" }}>
-      {items.map((it) => {
-        const total = N(it.total, 0);
-        const h = Math.max(8, Math.round((barH * total) / max));
+    <div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(11, minmax(18px, 1fr))",
+          alignItems: "end",
+          gap: "8px 5px",
+          minHeight: 168,
+        }}
+      >
+        {items.map((it) => {
+          const total = N(it.total, 0);
+          const stackH = total > 0 ? Math.max(8, Math.round((barH * total) / max)) : 6;
+          const hS = total > 0 ? Math.round((stackH * N(it.S)) / total) : 0;
+          const hD = total > 0 ? Math.round((stackH * N(it.D)) / total) : 0;
+          const hT = total > 0 ? Math.round((stackH * N(it.T)) / total) : 0;
+          const hM = total > 0 ? Math.max(0, stackH - hS - hD - hT) : 0;
 
-        const hS = Math.round((h * N(it.S)) / Math.max(1, total));
-        const hD = Math.round((h * N(it.D)) / Math.max(1, total));
-        const hT = Math.round((h * N(it.T)) / Math.max(1, total));
-        const hM = Math.max(0, h - hS - hD - hT);
+          return (
+            <div key={it.k} style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
+              <div
+                style={{
+                  height: barH,
+                  width: 14,
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  title={`S:${fmt0(it.S)} D:${fmt0(it.D)} T:${fmt0(it.T)} Miss:${fmt0(it.MISS)}`}
+                  style={{
+                    height: stackH,
+                    width: 14,
+                    borderRadius: 5,
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column-reverse",
+                    background: "rgba(255,255,255,.05)",
+                    boxShadow: total > 0 ? "0 0 8px rgba(255,255,255,.24)" : "inset 0 0 0 1px rgba(255,255,255,.05)",
+                  }}
+                >
+                  {hS > 0 && <div style={{ height: hS, background: colorS }} />}
+                  {hD > 0 && <div style={{ height: hD, background: colorD }} />}
+                  {hT > 0 && <div style={{ height: hT, background: colorT }} />}
+                  {hM > 0 && <div style={{ height: hM, background: colorM }} />}
+                </div>
+              </div>
+              <div style={{ marginTop: 3, textAlign: "center", fontSize: 9, fontWeight: 900, color: "rgba(255,255,255,.72)", whiteSpace: "nowrap" }}>
+                {it.label || it.k}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-        return (
-          <div key={it.k} style={{ minWidth: 44 }}>
-            <div
-              style={{
-                height: barH,
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,.10)",
-                background: "rgba(255,255,255,.03)",
-                display: "flex",
-                flexDirection: "column-reverse",
-                overflow: "hidden",
-              }}
-              title={`S:${fmt0(it.S)} D:${fmt0(it.D)} T:${fmt0(it.T)} Miss:${fmt0(it.MISS)} 25:${fmt0(it.B)} D25:${fmt0(it.DB)}`}
-            >
-              <div style={{ height: hS, background: "rgba(255,255,255,.18)" }} />
-              <div style={{ height: hD, background: "rgba(255,255,255,.10)" }} />
-              <div style={{ height: hT, background: "rgba(255,255,255,.26)" }} />
-              <div style={{ height: hM, background: `${accent}22` }} />
-            </div>
-
-            <div style={{ marginTop: 6, textAlign: "center", fontSize: 11, fontWeight: 950, color: accent, textShadow: `0 0 10px ${accent}44` }}>
-              {it.k}
-            </div>
-            <div style={{ marginTop: 2, textAlign: "center", fontSize: 10.5, fontWeight: 900, color: "rgba(255,255,255,.70)" }}>
-              {fmt0(total)}
-            </div>
-          </div>
-        );
-      })}
+      <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 12, marginTop: 8, fontSize: 10, color: "rgba(255,255,255,.70)", fontWeight: 900 }}>
+        <LegendDot bg={colorS} label="S" />
+        <LegendDot bg={colorD} label="D" />
+        <LegendDot bg={colorT} label="T" />
+        <LegendDot bg={colorM} label="Miss" />
+      </div>
     </div>
+  );
+}
+
+function LegendDot(props: { bg: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 3, background: props.bg, display: "inline-block" }} />
+      {props.label}
+    </span>
   );
 }
