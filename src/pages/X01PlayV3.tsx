@@ -1440,15 +1440,26 @@ React.useEffect(() => {
 }, [effectiveOnline, effectiveLobbyCode, status, activePlayerId, activePlayer, onlineActivePlayerId, onlineCurrentUserId, config, safePlayersForOnline, postOnlineSystemChat]);
 
 // ONLINE : mémorise la partie active pour pouvoir reprendre après refresh / appel / veille.
+// Important : on nettoie cette entrée dès que le match est réellement terminé, sinon le hub
+// peut proposer de reprendre une ancienne partie et rouvrir un état incomplet.
 React.useEffect(() => {
   if (!effectiveOnline || !effectiveLobbyCode || typeof window === "undefined") return;
   const code = effectiveLobbyCode;
+  const terminalStatus = String(status || "").toLowerCase();
+  if (terminalStatus === "match_end" || terminalStatus === "ended" || terminalStatus === "finished" || terminalStatus === "closed") {
+    try {
+      window.localStorage.removeItem("dc_online_active_match_v1");
+      window.localStorage.removeItem(`dc_online_active_match_${code}`);
+    } catch {}
+    return;
+  }
   const payload = {
     kind: "x01",
     route: "x01_play_v3",
     lobbyCode: code,
     lobbyId: (config as any)?.lobbyId || null,
     onlineMode: "x01",
+    status: terminalStatus || "playing",
     at: Date.now(),
     params: {
       resumeId: null,
@@ -1465,11 +1476,12 @@ React.useEffect(() => {
     window.localStorage.setItem("dc_online_active_match_v1", JSON.stringify(payload));
     window.localStorage.setItem(`dc_online_active_match_${code}`, JSON.stringify(payload));
   } catch {}
-}, [effectiveOnline, effectiveLobbyCode, config, safePlayersForOnline]);
+}, [effectiveOnline, effectiveLobbyCode, status, config, safePlayersForOnline]);
 
 // ONLINE : empêche la mise en veille pendant une partie et tente une resynchro après retour écran/app.
 React.useEffect(() => {
-  if (!effectiveOnline || !effectiveLobbyCode || status === "match_end") return;
+  const terminalStatus = String(status || "").toLowerCase();
+  if (!effectiveOnline || !effectiveLobbyCode || terminalStatus === "match_end" || terminalStatus === "ended" || terminalStatus === "finished" || terminalStatus === "closed") return;
   if (typeof window === "undefined") return;
 
   let wakeLock: any = null;
@@ -3529,6 +3541,11 @@ React.useEffect(() => {
       try {
         if (typeof window !== "undefined") {
           window.localStorage.setItem("dc_online_last_lobby_v1", effectiveLobbyCode);
+          const terminalStatus = String(status || "").toLowerCase();
+          if (terminalStatus === "match_end" || terminalStatus === "ended" || terminalStatus === "finished" || terminalStatus === "closed") {
+            window.localStorage.removeItem("dc_online_active_match_v1");
+            window.localStorage.removeItem(`dc_online_active_match_${effectiveLobbyCode}`);
+          }
         }
       } catch {}
       const exitNow = () => {

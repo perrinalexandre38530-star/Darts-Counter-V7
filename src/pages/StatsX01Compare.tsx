@@ -14,6 +14,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
+import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
 
 import {
   ResponsiveContainer,
@@ -786,331 +787,42 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
       }
 
       try {
-        let allMatches: any[] = [];
-
-        if (History && typeof (History as any).getAllMatches === "function") {
-          allMatches = await (History as any).getAllMatches();
-        } else if (History && typeof (History as any).list === "function") {
-          allMatches = await (History as any).list();
-        } else if (typeof window !== "undefined" && (window as any).History?.list) {
-          allMatches = await (window as any).History.list();
-        }
-
-        const result: X01Sample[] = [];
         const pid = targetProfile.id;
+        const result: X01Sample[] = [];
 
-        for (const m of allMatches) {
-          const createdAt: number =
-            m.createdAt ||
-            m.updatedAt ||
-            m.summary?.createdAt ||
-            m.summary?.endedAt ||
-            Date.now();
-
-          const kind = m.kind || m.summary?.kind;
-          const gameType =
-            m.game ||
-            m.gameType ||
-            m.mode ||
-            m.variant ||
-            m.summary?.gameType ||
-            m.summary?.mode;
-
-          const isTrainingX01 =
-            kind === "training_x01" ||
-            gameType === "training_x01" ||
-            gameType === "training-x01";
-
-          const isX01 =
-            !isTrainingX01 &&
-            (gameType === "x01" ||
-              gameType === "x01v3" ||
-              kind === "x01" ||
-              m.mode === "x01" ||
-              m.variant === "x01v3");
-
-          if (!isX01 && !isTrainingX01) continue;
-
-          const isOnline =
-            m.summary?.online === true ||
-            m.meta?.online === true ||
-            m.mode === "x01_online" ||
-            m.game === "x01_online";
-
-          let mode: ModeKey | null = null;
-          if (isTrainingX01) mode = "training_x01";
-          else if (isX01 && isOnline) mode = "x01_online";
-          else if (isX01 && !isOnline) mode = "x01_local";
-          if (!mode) continue;
-
-          const ss: any = m.summary ?? m.payload?.summary ?? {};
-
-          const perArray: any[] = Array.isArray(ss.perPlayer)
-            ? ss.perPlayer
-            : Array.isArray(ss.players)
-            ? ss.players
-            : [];
-
-          const keyCandidates = [
-            pid,
-            (targetProfile as any).profileId,
-            targetProfile.name,
-            (targetProfile as any).uuid,
-            (targetProfile as any)._id,
-          ]
-            .filter(Boolean)
-            .map((x) => String(x));
-
-          let statsForTarget: any = null;
-
-          if (perArray.length) {
-            statsForTarget =
-              perArray.find((x) =>
-                keyCandidates.includes(String(x.playerId ?? x.id ?? x.profileId))
-              ) || null;
-          }
-
-          if (!statsForTarget) {
-            const perMap = ss.perPlayer || ss.players || ss.detailedByPlayer || {};
-            for (const k of keyCandidates) {
-              if (perMap[k]) {
-                statsForTarget = perMap[k];
-                break;
-              }
-            }
-          }
-
-          if (!statsForTarget) continue;
-
-          // console.log("X01Compare statsForTarget", statsForTarget);
-
-          const avg3 =
-            N(statsForTarget.avg3) ||
-            N(statsForTarget.avg_3) ||
-            N(statsForTarget.avg3Darts) ||
-            N(statsForTarget.average3);
-
-          const bestVisit =
-            N(statsForTarget.bestVisit) ||
-            N(statsForTarget.bestVisitScore) ||
-            N(statsForTarget.bestThreeDarts) ||
-            N(statsForTarget.best_visit);
-
-          const bestCheckout =
-            N(statsForTarget.bestCheckout) ||
-            N(statsForTarget.bestFinish) ||
-            N(statsForTarget.bestCo) ||
-            N(statsForTarget.checkout);
-
-          const darts =
-            N(statsForTarget.darts) ||
-            N(statsForTarget.dartsThrown) ||
-            N(statsForTarget.totalDarts);
-
-          const legsWon =
-            N(
-              statsForTarget.legsWon ??
-                statsForTarget.legsW ??
-                statsForTarget.legs_won
-            ) || 0;
-          const legsLost =
-            N(
-              statsForTarget.legsLost ??
-                statsForTarget.legsL ??
-                statsForTarget.legs_lost
-            ) || 0;
-
-          const isWinner =
-            statsForTarget.isWinner === true ||
-            statsForTarget.winner === true ||
-            (m.winnerId && String(m.winnerId) === String(pid));
-
-          // -------- HITS : récupération depuis statsForTarget --------
-          const hits =
-            statsForTarget.hits ||
-            statsForTarget.precision ||
-            statsForTarget.details ||
-            {};
-
-          const hitsTotal =
-            pickNum(
-              hits.total,
-              hits.totalHits,
-              hits.count,
-              statsForTarget.totalHits,
-              statsForTarget.hitsTotal
-            ) ?? findNumberDeep(statsForTarget, ["totalhits", "hits_total"]);
-
-          const hits60 =
-            pickNum(
-              hits["60+"],
-              hits["60"],
-              hits.s60,
-              hits.h60,
-              statsForTarget["60+"],
-              statsForTarget.h60
-            ) ?? findNumberDeep(statsForTarget, ["60+","60plus","h60"]);
-
-          const hits80 =
-            pickNum(
-              hits["80+"],
-              hits["80"],
-              hits.s80,
-              hits.h80,
-              statsForTarget["80+"],
-              statsForTarget.h80
-            ) ?? findNumberDeep(statsForTarget, ["80+","80plus","h80"]);
-
-          const hits100 =
-            pickNum(
-              hits["100+"],
-              hits["100"],
-              hits.s100,
-              hits.h100,
-              statsForTarget["100+"],
-              statsForTarget.h100
-            ) ?? findNumberDeep(statsForTarget, ["100+","100plus","h100"]);
-
-          const hits120 =
-            pickNum(
-              hits["120+"],
-              hits["120"],
-              hits.s120,
-              hits.h120,
-              statsForTarget["120+"],
-              statsForTarget.h120
-            ) ?? findNumberDeep(statsForTarget, ["120+","120plus","h120"]);
-
-          const hits140 =
-            pickNum(
-              hits["140+"],
-              hits["140"],
-              hits.s140,
-              hits.h140,
-              statsForTarget["140+"],
-              statsForTarget.h140
-            ) ?? findNumberDeep(statsForTarget, ["140+","140plus","h140"]);
-
-          const hits180 =
-            pickNum(
-              hits["180"],
-              hits.s180,
-              hits.h180,
-              statsForTarget["180"],
-              statsForTarget.h180
-            ) ?? findNumberDeep(statsForTarget, ["180"]);
-
-          const miss =
-            pickNum(
-              hits.miss,
-              hits.misses,
-              hits.missDarts,
-              statsForTarget.miss,
-              statsForTarget.misses
-            ) ?? findNumberDeep(statsForTarget, ["miss"]);
-
-          const singleHits =
-            pickNum(
-              hits.single,
-              hits.singles,
-              hits.s,
-              statsForTarget.simpleHits,
-              statsForTarget.singles
-            ) ?? findNumberDeep(statsForTarget, ["single","simple"]);
-
-          const doubleHits =
-            pickNum(
-              hits.double,
-              hits.doubles,
-              hits.d,
-              statsForTarget.doubleHits,
-              statsForTarget.doubles
-            ) ?? findNumberDeep(statsForTarget, ["double"]);
-
-          const tripleHits =
-            pickNum(
-              hits.triple,
-              hits.triples,
-              hits.t,
-              statsForTarget.tripleHits,
-              statsForTarget.triples
-            ) ?? findNumberDeep(statsForTarget, ["triple"]);
-
-          const bull25 =
-            pickNum(
-              hits.bull25,
-              hits.bull,
-              hits.sb,
-              statsForTarget.bull25,
-              statsForTarget.bull
-            ) ?? findNumberDeep(statsForTarget, ["bull25","singlebull","bull_25"]);
-
-          const bull50 =
-            pickNum(
-              hits.bull50,
-              hits.dbull,
-              hits.db,
-              statsForTarget.bull50,
-              statsForTarget.dbull
-            ) ?? findNumberDeep(statsForTarget, ["bull50","doublebull","bull_50","dbull"]);
-
-          const bust =
-            pickNum(
-              hits.bust,
-              hits.busts,
-              statsForTarget.bust,
-              statsForTarget.busts
-            ) ?? findNumberDeep(statsForTarget, ["bust"]);
-
-          const coAttempts =
-            pickNum(
-              hits.coAttempts,
-              hits.checkoutAttempts,
-              statsForTarget.coAttempts,
-              statsForTarget.checkoutAttempts
-            ) ?? findNumberDeep(statsForTarget, ["coattempt","checkout_attempt"]);
-
-          const coSuccess =
-            pickNum(
-              hits.coSuccess,
-              hits.checkoutHits,
-              hits.coHits,
-              statsForTarget.coSuccess,
-              statsForTarget.checkoutSuccess
-            ) ?? findNumberDeep(statsForTarget, ["co_success","checkout_hit"]);
-
-          const sample: X01Sample = {
-            createdAt,
-            mode,
+        const historySamples = await loadX01SamplesForProfile(targetProfile, { scope: "all" });
+        for (const hs of historySamples) {
+          if (hs.scope === "training") continue;
+          result.push({
+            createdAt: hs.createdAt,
+            mode: hs.scope === "online" ? "x01_online" : "x01_local",
             profileId: pid,
-            avg3: avg3 || undefined,
-            bestVisit: bestVisit || undefined,
-            bestCheckout: bestCheckout || undefined,
-            dartsThrown: darts || undefined,
-            legsWon,
-            legsLost,
-            matchesPlayed: 1,
-            matchesWon: isWinner ? 1 : 0,
-
-            hitsTotal,
-            hits60,
-            hits80,
-            hits100,
-            hits120,
-            hits140,
-            hits180,
-            miss,
-            singleHits,
-            doubleHits,
-            tripleHits,
-            bull25,
-            bull50,
-            bust,
-            coAttempts,
-            coSuccess,
-          };
-
-          result.push(sample);
+            avg3: hs.avg3 || undefined,
+            bestVisit: hs.bestVisit || undefined,
+            bestCheckout: hs.bestCheckout || undefined,
+            best9Score: hs.best9Score || undefined,
+            dartsThrown: hs.darts || undefined,
+            legsWon: hs.legsWon || undefined,
+            legsLost: undefined,
+            matchesPlayed: hs.matchesPlayed || 1,
+            matchesWon: hs.matchesWon || 0,
+            hitsTotal: (hs.singleHits + hs.doubleHits + hs.tripleHits + hs.bull25 + hs.bull50) || undefined,
+            hits60: hs.h60 || undefined,
+            hits80: hs.h80 || undefined,
+            hits100: hs.h100 || undefined,
+            hits120: hs.h120 || undefined,
+            hits140: hs.h140 || undefined,
+            hits180: hs.h180 || undefined,
+            miss: hs.miss || undefined,
+            singleHits: hs.singleHits || undefined,
+            doubleHits: hs.doubleHits || undefined,
+            tripleHits: hs.tripleHits || undefined,
+            bull25: hs.bull25 || undefined,
+            bull50: hs.bull50 || undefined,
+            bust: hs.bust || undefined,
+            coAttempts: hs.coAttempts || undefined,
+            coSuccess: hs.coSuccess || undefined,
+          });
         }
 
         const trainingSessions = loadTrainingSessionsForProfile(pid);

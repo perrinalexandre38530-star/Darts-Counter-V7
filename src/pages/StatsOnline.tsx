@@ -101,24 +101,48 @@ function toNumber(value: any, fallback = 0): number {
 function normalizeOnlineHistoryMatch(row: any, idx = 0): any | null {
   if (!row || typeof row !== "object") return null;
   const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
-  const summary = row.summary && typeof row.summary === "object" ? row.summary : payload.summary || {};
-  const isOnline = row.online === true || payload.online === true || payload.source === "online" || !!payload.lobbyCode || !!row.lobbyCode;
-  const mode = String(row.kind || payload.mode || payload.onlineMode || row.mode || "").toLowerCase();
+  const nestedPayload = payload?.payload && typeof payload.payload === "object" ? payload.payload : {};
+  const summary = row.summary && typeof row.summary === "object"
+    ? row.summary
+    : payload.summary && typeof payload.summary === "object"
+    ? payload.summary
+    : nestedPayload.summary && typeof nestedPayload.summary === "object"
+    ? nestedPayload.summary
+    : {};
+  const isOnline =
+    row.online === true ||
+    payload.online === true ||
+    nestedPayload.online === true ||
+    payload.source === "online" ||
+    nestedPayload.source === "online" ||
+    !!payload.lobbyCode ||
+    !!nestedPayload.lobbyCode ||
+    !!row.lobbyCode;
+  const mode = String(row.kind || payload.mode || payload.onlineMode || nestedPayload.mode || nestedPayload.onlineMode || row.mode || "").toLowerCase();
   if (!isOnline && mode !== "x01_online") return null;
 
   const players = Array.isArray(row.players) && row.players.length
     ? row.players
-    : Array.isArray(payload.players)
+    : Array.isArray(payload.players) && payload.players.length
     ? payload.players
+    : Array.isArray(nestedPayload.players)
+    ? nestedPayload.players
     : [];
   const perPlayer = Array.isArray(summary.perPlayer)
     ? summary.perPlayer
     : Array.isArray(payload?.summary?.perPlayer)
     ? payload.summary.perPlayer
+    : Array.isArray(nestedPayload?.summary?.perPlayer)
+    ? nestedPayload.summary.perPlayer
     : [];
   const summaryPlayers = summary.players && typeof summary.players === "object" ? summary.players : {};
+  const detailedByPlayer = summary.detailedByPlayer && typeof summary.detailedByPlayer === "object"
+    ? summary.detailedByPlayer
+    : summary.detailedbyplayer && typeof summary.detailedbyplayer === "object"
+    ? summary.detailedbyplayer
+    : {};
 
-  const hasStructuredPlayerStats = perPlayer.length > 0 || Object.keys(summaryPlayers || {}).length > 0;
+  const hasStructuredPlayerStats = perPlayer.length > 0 || Object.keys(summaryPlayers || {}).length > 0 || Object.keys(detailedByPlayer || {}).length > 0;
   let darts = hasStructuredPlayerStats ? 0 : toNumber(row.darts ?? payload.dartsCount ?? summary.darts, 0);
   let totalScore = hasStructuredPlayerStats ? 0 : toNumber(row.totalScore ?? payload.totalScore ?? summary.totalScore, 0);
   let bestVisit = toNumber(row.bestVisit ?? summary.bestVisit, 0);
@@ -128,16 +152,16 @@ function normalizeOnlineHistoryMatch(row: any, idx = 0): any | null {
 
   const consumePlayerStats = (st: any) => {
     if (!st || typeof st !== "object") return;
-    darts += toNumber(st.darts, 0);
-    totalScore += toNumber(st._sumPoints ?? st.points ?? st.totalScore, 0);
-    bestVisit = Math.max(bestVisit, toNumber(st.bestVisit, 0));
-    bestCheckout = Math.max(bestCheckout, toNumber(st.bestCheckout, 0));
-    s += toNumber(st.singles ?? st.hitsS ?? st?.hits?.S, 0);
-    d += toNumber(st.doubles ?? st.hitsD ?? st?.hits?.D, 0);
-    t += toNumber(st.triples ?? st.hitsT ?? st?.hits?.T, 0);
-    miss += toNumber(st.misses ?? st.miss ?? st?.hits?.M, 0);
-    bull += toNumber(st.bulls ?? st.bull, 0);
-    dbull += toNumber(st.dbulls ?? st.dBull ?? st.dbull, 0);
+    darts += toNumber(st.darts ?? st.dt ?? st.dartsThrown, 0);
+    totalScore += toNumber(st._sumPoints ?? st.points ?? st.totalScore ?? st.totalscore, 0);
+    bestVisit = Math.max(bestVisit, toNumber(st.bestVisit ?? st.bv, 0));
+    bestCheckout = Math.max(bestCheckout, toNumber(st.bestCheckout ?? st.bc, 0));
+    s += toNumber(st.singles ?? st.hitsS ?? st.hitsSingle ?? st?.hits?.S ?? st?.hits?.s, 0);
+    d += toNumber(st.doubles ?? st.hitsD ?? st.hitsDouble ?? st?.hits?.D ?? st?.hits?.d, 0);
+    t += toNumber(st.triples ?? st.hitsT ?? st.hitsTriple ?? st?.hits?.T ?? st?.hits?.t, 0);
+    miss += toNumber(st.misses ?? st.miss ?? st?.hits?.M ?? st?.hits?.m, 0);
+    bull += toNumber(st.bulls ?? st.bull ?? st?.hits?.Bull ?? st?.hits?.bull, 0);
+    dbull += toNumber(st.dbulls ?? st.dBull ?? st.dbull ?? st?.hits?.DBull ?? st?.hits?.dbull, 0);
     bust += toNumber(st.busts ?? st.bust, 0);
     const buckets = st.buckets || {};
     h60 += toNumber(buckets["60+"] ?? st.h60, 0);
@@ -148,8 +172,10 @@ function normalizeOnlineHistoryMatch(row: any, idx = 0): any | null {
 
   if (perPlayer.length) {
     perPlayer.forEach(consumePlayerStats);
-  } else {
+  } else if (Object.keys(summaryPlayers || {}).length) {
     Object.values(summaryPlayers).forEach(consumePlayerStats);
+  } else {
+    Object.values(detailedByPlayer || {}).forEach(consumePlayerStats);
   }
 
   if (!darts) {
@@ -187,9 +213,9 @@ function normalizeOnlineHistoryMatch(row: any, idx = 0): any | null {
 
   return {
     id: String(row.id || row.matchId || payload.matchId || `online-history-${idx}`),
-    mode: String(payload.onlineMode || payload.mode || row.kind || row.mode || "x01"),
-    createdAt: toNumber(row.createdAt ?? row.updatedAt ?? payload.createdAt ?? Date.now(), Date.now()),
-    finishedAt: toNumber(row.updatedAt ?? payload.finishedAt ?? row.finishedAt ?? Date.now(), Date.now()),
+    mode: String(payload.onlineMode || payload.mode || nestedPayload.onlineMode || nestedPayload.mode || row.kind || row.mode || "x01"),
+    createdAt: toNumber(row.createdAt ?? row.updatedAt ?? payload.createdAt ?? nestedPayload.createdAt ?? Date.now(), Date.now()),
+    finishedAt: toNumber(row.updatedAt ?? payload.finishedAt ?? nestedPayload.finishedAt ?? row.finishedAt ?? Date.now(), Date.now()),
     players,
     winnerId: row.winnerId ?? summary.winnerId ?? payload.winnerId ?? null,
     payload,
@@ -232,7 +258,8 @@ function loadOnlineMatchesFromLocalStorage(range: TimeRange) {
 
     const all = JSON.parse(raw) || [];
     const filtered = (Array.isArray(all) ? all : [])
-      .map((m: any, idx: number) => normalizeOnlineHistoryMatch(m, idx) || m)
+      .map((m: any, idx: number) => normalizeOnlineHistoryMatch(m, idx))
+      .filter(Boolean)
       .filter((m: any) => inSelectedRange(m?.createdAt ?? m?.date ?? m?.ts, range));
 
     const sessions: OnlineSession[] = filtered.map((m: any, idx: number) => {
@@ -395,6 +422,7 @@ function buildLeaderboard(matches: any[]): LeaderRow[] {
       m?.stats?.winnerId ??
       null;
 
+    const detailed = m?.summary?.detailedByPlayer || m?.summary?.detailedbyplayer || m?.payload?.summary?.detailedByPlayer || {};
     const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
     const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);
     const matchAvg3 = darts ? (totalScore / darts) * 3 : 0;
@@ -402,6 +430,10 @@ function buildLeaderboard(matches: any[]): LeaderRow[] {
     for (const p of players) {
       const id = String(p?.id ?? "");
       if (!id) continue;
+      const st = detailed[id] || detailed[id.slice(0, 20)] || null;
+      const playerDarts = Number(st?.darts ?? st?.dt ?? 0);
+      const playerScore = Number(st?.totalScore ?? st?.totalscore ?? 0);
+      const playerAvg3 = Number(st?.avg3 ?? 0) || (playerDarts ? (playerScore / playerDarts) * 3 : matchAvg3);
 
       const entry = map.get(id) ?? {
         playerId: id,
@@ -413,7 +445,7 @@ function buildLeaderboard(matches: any[]): LeaderRow[] {
       };
 
       entry.matches++;
-      entry._sumAvg3 += matchAvg3;
+      entry._sumAvg3 += playerAvg3;
       if (winnerId === id) entry.wins++;
 
       entry.name = p?.name ?? entry.name;

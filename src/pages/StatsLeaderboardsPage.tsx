@@ -24,6 +24,7 @@ import { History } from "../lib/history";
 import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territories/territoriesStats";
 // Optionnel (si tu l’as dans ton projet). On n’en dépend pas pour éviter de casser.
 import { computeKillerAgg } from "../lib/statsKillerAgg";
+import { isOnlineRecord, idLooseMatch, normText } from "../lib/x01StatsSource";
 
 type Props = {
   store: Store;
@@ -282,7 +283,9 @@ function inPeriod(rec: any, period: PeriodKey): boolean {
 }
 
 function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): boolean {
-  void scope;
+  const recIsOnline = isOnlineRecord(rec);
+  if (scope === "online" && !recIsOnline) return false;
+  if (scope === "local" && recIsOnline) return false;
 
   const payload = rec?.payload ?? null;
   const nested = payload?.payload ?? null;
@@ -629,6 +632,16 @@ function computeRowsFromHistory(
     };
   }
 
+  const resolvePid = (rawPid: any, detail?: any): string => {
+    const pid0 = String(rawPid || "").trim();
+    const nm = normText(detail?.name || detail?.playerName || detail?.profileName || detail?.displayName || "");
+    for (const p of profiles || []) {
+      if (pid0 && idLooseMatch((p as any).id, pid0)) return String((p as any).id);
+      if (nm && normText((p as any).name || (p as any).displayName || "") === nm) return String((p as any).id);
+    }
+    return pid0;
+  };
+
   for (const rec of history || []) {
     if (!rec) continue;
     if (!inPeriod(rec, period)) continue;
@@ -660,7 +673,7 @@ function computeRowsFromHistory(
         null;
 
       for (const p of playersArr) {
-        const pid = String(p?.id || p?.profileId || "");
+        const pid = resolvePid(p?.id || p?.profileId || "", p);
         if (!pid) continue;
         if (!aggByPlayer[pid]) {
           aggByPlayer[pid] = {
@@ -717,7 +730,7 @@ function computeRowsFromHistory(
     if (per && Object.keys(per).length > 0) {
       for (const key of Object.keys(per2)) {
         const det: any = per2[key] || {};
-        const pid: string = String(pickId(det) || key || "");
+        const pid: string = resolvePid(pickId(det) || key || "", det);
         if (!pid) continue;
 
         if (!aggByPlayer[pid]) {
@@ -825,7 +838,7 @@ function computeRowsFromHistory(
     if (!playersArr.length) continue;
 
     for (const pl of playersArr) {
-      const pid0 = pickId(pl);
+      const pid0 = resolvePid(pickId(pl), pl);
       const name = pickName(pl);
       const avatar = pickAvatar(pl);
 

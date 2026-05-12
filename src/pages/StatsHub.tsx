@@ -6670,15 +6670,15 @@ return (
             style={{
               overflow: "hidden",
               paddingBottom: 2,
-              WebkitMaskImage: "linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%)",
-              maskImage: "linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%)",
+              WebkitMaskImage: globalModeDashboard.length > 1 ? "linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%)" : "none",
+              maskImage: globalModeDashboard.length > 1 ? "linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%)" : "none",
             }}
           >
             <div
               style={{
                 display: "flex",
                 gap: 10,
-                width: "max-content",
+                width: globalModeDashboard.length === 1 ? "100%" : "max-content",
                 animation: globalModeDashboard.length > 1 ? `statshubModeCardsScroll ${Math.max(34, globalModeDashboard.length * 14)}s linear infinite` : "none",
               }}
             >

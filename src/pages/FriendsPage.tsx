@@ -98,6 +98,15 @@ function loadPresenceFromLS(): StoredPresence | null {
   }
 }
 
+function clearActiveOnlineResume(code?: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const c = String(code || "").trim().toUpperCase();
+    window.localStorage.removeItem("dc_online_active_match_v1");
+    if (c) window.localStorage.removeItem(`dc_online_active_match_${c}`);
+  } catch {}
+}
+
 function loadActiveOnlineResume(): any | null {
   if (typeof window === "undefined") return null;
   try {
@@ -106,7 +115,15 @@ function loadActiveOnlineResume(): any | null {
     const parsed = JSON.parse(raw);
     const at = Number(parsed?.at || 0);
     const code = String(parsed?.lobbyCode || parsed?.params?.lobbyCode || "").trim().toUpperCase();
-    if (!code || !at || Date.now() - at > 1000 * 60 * 60 * 8) return null;
+    const status = String(parsed?.status || parsed?.params?.status || parsed?.state?.status || "").toLowerCase();
+    if (!code || !at || Date.now() - at > 1000 * 60 * 60 * 8) {
+      clearActiveOnlineResume(code);
+      return null;
+    }
+    if (status === "ended" || status === "finished" || status === "match_end" || status === "closed") {
+      clearActiveOnlineResume(code);
+      return null;
+    }
     return parsed;
   } catch {
     return null;
@@ -1289,6 +1306,13 @@ const doLogout = React.useCallback(async () => {
     try {
       const row = await onlineApi.fetchMatchByCode(code).catch(() => null as any);
       const state = (row as any)?.state_json || (row as any)?.state || null;
+      const liveStatus = String((row as any)?.status || (state as any)?.status || "").toLowerCase();
+      if (liveStatus === "ended" || liveStatus === "finished" || liveStatus === "match_end" || liveStatus === "closed") {
+        clearActiveOnlineResume(code);
+        setActiveOnlineResume(null);
+        setJoinInfo("Cette partie online est terminée. Elle reste disponible dans l’historique/statistiques.");
+        return;
+      }
       const params = {
         ...(saved.params || {}),
         ...(state && typeof state === "object" ? state : {}),
