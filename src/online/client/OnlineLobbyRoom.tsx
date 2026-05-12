@@ -8,6 +8,7 @@
 
 import React from "react";
 import { useOnlineRoom } from "./useOnlineRoom";
+import OnlineCameraPanel from "./OnlineCameraPanel";
 import type { OnlineLobby } from "../../lib/onlineApi";
 import type { ServerEvent } from "../shared/types"; // si types différents → remplace par "any"
 import { useTheme } from "../../contexts/ThemeContext";
@@ -32,7 +33,7 @@ export default function OnlineLobbyRoom({
   // On utilise le CODE de salon comme roomId WS (ex: "GFBB")
   const roomId = lobby.code.toUpperCase();
 
-  const { connected, state, lastEvent, send } = useOnlineRoom({
+  const { connected, state, lastEvent, send, cameraStates, sendCameraState } = useOnlineRoom({
     roomId,
     playerId,
     nickname,
@@ -159,6 +160,18 @@ export default function OnlineLobbyRoom({
         </div>
       </div>
 
+
+      {/* Fondation caméra ONLINE : permissions locales + état synchronisable */}
+      <div style={{ marginTop: 12 }}>
+        <OnlineCameraPanel
+          selfId={playerId}
+          activePlayerId={match?.turn || clients[0]?.id || playerId}
+          players={clients}
+          cameraStates={cameraStates}
+          onCameraStateChange={sendCameraState}
+        />
+      </div>
+
       {/* Liste joueurs */}
       <div
         style={{
@@ -257,6 +270,10 @@ export default function OnlineLobbyRoom({
                           {t("online.lobby.you", "C’est toi")}
                         </div>
                       )}
+                      <div style={{ marginTop: 2, fontSize: 10, opacity: 0.72 }}>
+                        {cameraStates[c.id]?.cameraEnabled ? "📷 caméra" : "caméra off"}
+                        {cameraStates[c.id]?.micEnabled ? " · 🎙️ micro" : ""}
+                      </div>
                     </div>
                   </div>
                 </div>

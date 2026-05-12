@@ -1130,6 +1130,8 @@ export default function Profiles({
     const thumbDataUrl = safeDataUrl;
     const fullDataUrl = safeDataUrl;
     const castDataUrl = safeDataUrl;
+    let finalAvatarUrl: string | undefined = undefined;
+    let finalAvatarPath: string | undefined = undefined;
     const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
     const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
 
@@ -1167,6 +1169,8 @@ export default function Profiles({
 
         const publicUrl = String(uploaded?.publicUrl || "").trim();
         if (publicUrl) {
+          finalAvatarUrl = publicUrl;
+          finalAvatarPath = String(uploaded?.path || "") || undefined;
           setProfilesSafe((arr) =>
             arr.map((p) =>
               p.id === id
@@ -1214,7 +1218,41 @@ export default function Profiles({
       setAvatarGalleryItems(nextGallery);
     } catch {}
 
-    scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: thumbDataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 6000 });
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
+      const nextProfiles = prevProfiles.map((p: any) =>
+        String(p?.id || "") === String(id || "")
+          ? {
+              ...(p || {}),
+              avatarUrl: finalAvatarUrl,
+              avatarPath: finalAvatarPath,
+              avatarDataUrl: thumbDataUrl,
+              avatarUpdatedAt: now,
+            }
+          : p
+      );
+      nextStoreSnapshot = { ...(s || {}), profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
+
+    setProfilesSafe((arr) =>
+      arr.map((p: any) =>
+        String(p?.id || "") === String(id || "")
+          ? {
+              ...(p || {}),
+              avatarUrl: finalAvatarUrl,
+              avatarPath: finalAvatarPath,
+              avatarDataUrl: thumbDataUrl,
+              avatarUpdatedAt: now,
+            }
+          : p
+      )
+    );
+
+    if (nextStoreSnapshot) {
+      scheduleProfilesPersist("profiles_avatar", nextStoreSnapshot, { cloud: false, delayMs: 6000 });
+    }
     try { URL.revokeObjectURL(objectUrl); } catch {}
   }
 
@@ -2056,12 +2094,12 @@ React.useEffect(() => {
         }));
       }}
       onQuit={handleQuit}
-      onEdit={(n, f) => {
-        if (n && n !== active.name) renameProfile(active.id, n);
+      onEdit={async (n, f) => {
+        if (n && n !== active.name) await renameProfile(active.id, n);
       
         if (f) {
-          // ✅ C’EST LA SEULE SOURCE : changeAvatar gère local preview + upload online + URL publique
-          changeAvatar(active.id, f);
+          // ✅ C’EST LA SEULE SOURCE : changeAvatar gère preview locale + upload online + URL publique
+          await changeAvatar(active.id, f);
         }
       }}
       onOpenStats={() => {
@@ -2075,6 +2113,17 @@ React.useEffect(() => {
         });
       }}
       onResetStats={resetActiveStats}
+      onSyncProfile={async () => {
+        try {
+          await markNasDirtySafe("profiles_manual_sync_from_card");
+          setToast({ type: "success", message: "Synchronisation demandée" });
+        } catch {
+          setToast({ type: "error", message: "Erreur de synchronisation" });
+        }
+      }}
+      onPullProfile={async () => {
+        setToast({ type: "success", message: "Profil local déjà chargé" });
+      }}
     />
   ) : (
     <UnifiedAuthBlock
@@ -2928,15 +2977,19 @@ function ActiveProfileBlock({
   onEdit,
   onOpenStats,
   onResetStats,
+  onSyncProfile,
+  onPullProfile,
 }: {
   active: Profile;
   activeAvg3D: number | null;
   selfStatus: "online" | "away" | "offline";
   onToggleAway: () => void;
   onQuit: () => void;
-  onEdit: (name: string, avatar?: File | null) => void;
+  onEdit: (name: string, avatar?: File | null) => void | Promise<void>;
   onOpenStats?: () => void;
   onResetStats?: () => void;
+  onSyncProfile?: () => void | Promise<void>;
+  onPullProfile?: () => void | Promise<void>;
 }) {
   const { theme } = useTheme();
 
@@ -2993,6 +3046,8 @@ function ActiveProfileBlock({
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [avatarRefreshKey, setAvatarRefreshKey] = React.useState(0);
+  const [actionBusy, setActionBusy] = React.useState<null | "save" | "sync" | "pull">(null);
 
   React.useEffect(() => {
     setEditName(active?.name || "");
@@ -3024,12 +3079,18 @@ function ActiveProfileBlock({
     setEditName(active?.name || "");
   }
 
-  function handleSaveEdit() {
+  async function handleSaveEdit() {
     const trimmed = editName.trim() || active?.name || "";
-    onEdit(trimmed, editFile || undefined);
-    setIsEditing(false);
-    setEditFile(null);
-    setEditPreview(null);
+    setActionBusy("save");
+    try {
+      await onEdit(trimmed, editFile || undefined);
+      setAvatarRefreshKey(Date.now());
+      setIsEditing(false);
+      setEditFile(null);
+      setEditPreview(null);
+    } finally {
+      setActionBusy(null);
+    }
   }
 
   // =========================
@@ -3060,21 +3121,28 @@ function ActiveProfileBlock({
   // STYLES BOUTONS
   // =========================
   const pillBtnBase: React.CSSProperties = {
-    flex: 1,
+    flex: "1 1 0",
     minWidth: 0,
-    maxWidth: 120,
-    borderRadius: 999,
-    border: `1px solid ${primary}AA`,
-    background: `linear-gradient(135deg, ${primary}33, ${primary}99)`,
-    color: "#000",
-    fontWeight: 800,
-    fontSize: 11,
+    height: 34,
+    borderRadius: 14,
+    border: `1px solid ${primary}99`,
+    background: `linear-gradient(180deg, ${primary}44, ${primary}AA)`,
+    color: "#050606",
+    fontWeight: 900,
+    fontSize: 10.5,
     textTransform: "uppercase",
-    letterSpacing: 0.7,
-    padding: "6px 8px",
-    boxShadow: "0 8px 16px rgba(0,0,0,.45)",
+    letterSpacing: 0.35,
+    padding: "0 6px",
+    boxShadow: `0 8px 18px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.18)`,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    lineHeight: 1,
   };
 
   const pillBtnGhost: React.CSSProperties = {
@@ -3097,10 +3165,18 @@ function ActiveProfileBlock({
         title={t("profiles.avatarPicker.title", "Choisir un avatar")}
         onClose={() => setAvatarPickerOpen(false)}
         onSelectFile={async (file) => {
-          onEdit(editName.trim() || active?.name || "", file);
-          setEditFile(null);
-          setEditPreview(null);
-          setIsEditing(false);
+          const localPreview = URL.createObjectURL(file);
+          setEditPreview(localPreview);
+          setAvatarRefreshKey(Date.now());
+          try {
+            await onEdit(editName.trim() || active?.name || "", file);
+          } finally {
+            setEditFile(null);
+            setEditPreview(null);
+            setIsEditing(false);
+            setAvatarRefreshKey(Date.now());
+            try { URL.revokeObjectURL(localPreview); } catch {}
+          }
         }}
       />
       {/* input fichier caché */}
@@ -3109,7 +3185,11 @@ function ActiveProfileBlock({
         type="file"
         accept="image/*"
         style={{ display: "none" }}
-        onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          setEditFile(file);
+          if (file) setAvatarRefreshKey(Date.now());
+        }}
       />
 
       {/* MÉDAILLON + AVATAR */}
@@ -3145,24 +3225,40 @@ function ActiveProfileBlock({
         </div>
 
         {isEditing && (
-          <div
+          <button
+            type="button"
+            aria-label={t("profiles.edit.avatarHint", "Modifier l’avatar")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setAvatarPickerOpen(true);
+            }}
             style={{
               position: "absolute",
-              bottom: 2,
-              right: 2,
+              bottom: 0,
+              right: 0,
+              zIndex: 3,
+              width: 34,
+              height: 34,
               borderRadius: 999,
-              padding: "2px 6px",
-              fontSize: 9,
-              fontWeight: 700,
-              background: "rgba(0,0,0,.7)",
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              fontWeight: 900,
+              background: "rgba(0,0,0,.78)",
+              color: primary,
               border: `1px solid ${primary}`,
+              boxShadow: `0 0 14px ${primary}66`,
+              cursor: "pointer",
             }}
           >
-            {t("profiles.edit.avatarHint", "Changer")}
-          </div>
+            📷
+          </button>
         )}
 
         <AvatarLite
+          key={`${active?.id || "profile"}-${avatarRefreshKey}-${(active as any)?.avatarUpdatedAt || ""}`}
           size={AVATAR}
           src={avatarSrc}
           label={displayName?.[0]?.toUpperCase() || "?"}
@@ -3215,21 +3311,21 @@ function ActiveProfileBlock({
           </div>
         )}
 
-        <div className="row apb__actions" style={{ gap: 6, marginTop: 12 }}>
+        <div className="row apb__actions" style={{ gap: 6, marginTop: 12, width: "100%", flexWrap: "nowrap" }}>
           <button
             className="btn sm"
             onClick={() => setIsEditing((v) => !v)}
             style={pillBtnGhost}
           >
-            {t("profiles.locals.actions.edit", "EDITER")}
+            {t("profiles.locals.actions.edit", "ÉDITER")}
           </button>
 
           <button className="btn sm" onClick={() => setAvatarPickerOpen(true)} style={pillBtnBase}>
             {t("profiles.locals.actions.avatar", "AVATAR")}
           </button>
 
-          <button className="btn sm" onClick={onToggleAway} style={pillBtnBase}>
-            {selfStatus === "away" ? "EN LIGNE" : "ABSENT"}
+          <button className="btn sm" onClick={onToggleAway} style={pillBtnBase} title={statusLabel}>
+            STATUT
           </button>
 
           {onResetStats && (
@@ -3238,31 +3334,40 @@ function ActiveProfileBlock({
               onClick={onResetStats}
               style={pillBtnDanger}
             >
-              RESET STATS
+              <span aria-hidden>🗑</span><span>STATS</span>
             </button>
           )}
         </div>
 
         {isEditing && (
-          <div className="row" style={{ marginTop: 10, gap: 8 }}>
-            <button className="btn sm" onClick={handleCancelEdit}>
+          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
+            <button className="btn sm" onClick={handleCancelEdit} disabled={!!actionBusy}>
               Annuler
             </button>
-            <button className="btn ok sm" onClick={handleSaveEdit}>
-              Enregistrer
+            <button className="btn ok sm" onClick={handleSaveEdit} disabled={!!actionBusy}>
+              {actionBusy === "save" ? "Enregistrement..." : "Enregistrer"}
             </button>
             <button
               className="btn sm"
-              onClick={() => {
-                try {
-                  onSync?.({ ...draft });
-                } catch {}
+              disabled={!!actionBusy || !onSyncProfile}
+              onClick={async () => {
+                if (!onSyncProfile) return;
+                setActionBusy("sync");
+                try { await onSyncProfile(); } finally { setActionBusy(null); }
               }}
             >
-              Synchroniser
+              {actionBusy === "sync" ? "Synchronisation..." : "Synchroniser"}
             </button>
-            <button className="btn sm" onClick={() => onPull?.()}>
-              Récupérer
+            <button
+              className="btn sm"
+              disabled={!!actionBusy || !onPullProfile}
+              onClick={async () => {
+                if (!onPullProfile) return;
+                setActionBusy("pull");
+                try { await onPullProfile(); } finally { setActionBusy(null); }
+              }}
+            >
+              {actionBusy === "pull" ? "Récupération..." : "Récupérer"}
             </button>
           </div>
         )}
@@ -5105,7 +5210,7 @@ function LocalProfilesRefonte({
                   onClick={() => setIsEditing((v) => !v)}
                   style={pillBtnGhost}
                 >
-                  {t("profiles.locals.actions.edit", "EDITER")}
+                  {t("profiles.locals.actions.edit", "ÉDITER")}
                 </button>
 
                 <button
@@ -5215,7 +5320,11 @@ function LocalProfilesRefonte({
                         type="file"
                         accept="image/*"
                         style={{ display: "none" }}
-                        onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          setEditFile(file);
+          if (file) setAvatarRefreshKey(Date.now());
+        }}
                       />
                       {editPreview ? (
                         <img

@@ -3,23 +3,35 @@ export type RoomId = string;
 
 export type VisitInput = number[]; // ex: [60, 0, 5] ou [85] si tu entres un agrégat
 
+export type OnlineCameraState = {
+  playerId: PlayerId;
+  cameraEnabled: boolean;
+  micEnabled: boolean;
+  hasVideo?: boolean;
+  hasAudio?: boolean;
+  updatedAt: number;
+};
+
 export type ClientEvent =
-  | { t: "join_room"; roomId: RoomId; playerId: PlayerId; name: string }
+  | { t: "join_room"; roomId?: RoomId; playerId: PlayerId; name: string }
   | { t: "start_match"; start: { game: "x01"; startScore: number; order: PlayerId[] } }
   | { t: "throw_visit"; darts: VisitInput } // pour le joueur actif
   | { t: "undo_last" }
   | { t: "leave_room" }
-  | { t: "ping" };
+  | { t: "ping" }
+  | { t: "camera_state"; playerId: PlayerId; state: OnlineCameraState };
 
 export type ServerEvent =
   | { t: "server_update"; v: number; state: RoomState }
   | { t: "error"; code: string; msg: string }
-  | { t: "pong" };
+  | { t: "pong" }
+  | { t: "camera_state"; playerId: PlayerId; state: OnlineCameraState };
 
 export type RoomState = {
   roomId: RoomId;
   clients: { id: PlayerId; name: string }[];   // connectés connus du serveur
   match?: X01Match | null;
+  cameraStates?: Record<PlayerId, OnlineCameraState>;
 };
 
 export type X01Match = {

@@ -14,6 +14,7 @@ import { useX01OnlineV3 } from "../hooks/useX01OnlineV3";
 import ScoreInputHub from "../components/ScoreInputHub";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
 import X01LegOverlayV3 from "../components/x01v3/X01LegOverlayV3";
+import OnlineCameraPanel from "../online/client/OnlineCameraPanel";
 
 import { useTheme } from "../contexts/ThemeContext";
 import type { Dart as UIDart } from "../lib/types";
@@ -106,6 +107,15 @@ export default function X01PlayOnline({
       </header>
 
       <main className="x01-main">
+        <section style={{ padding: 12, paddingBottom: 0 }}>
+          <OnlineCameraPanel
+            compact
+            selfId={localPlayerId || "local"}
+            activePlayerId={activePlayerId}
+            players={(config.players || []).map((p: any) => ({ id: p.id, name: p.name }))}
+          />
+        </section>
+
         {/* Ici, on garde la page volontairement légère : le gros rendu ONLINE est dans X01OnlinePlayV3.
             Cette page sert de "Play" réutilisable quand le parent gère le WS. */}
         <section style={{ padding: 12 }}>

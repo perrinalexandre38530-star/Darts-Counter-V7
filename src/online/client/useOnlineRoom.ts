@@ -11,6 +11,7 @@ import type {
   ClientEvent,
   ServerEvent,
   RoomState,
+  OnlineCameraState,
   PlayerId,
   RoomId,
 } from "../shared/types";
@@ -46,6 +47,7 @@ type UseOnlineRoomReturn = {
   state: RoomState | null;
   lastEvent: ServerEvent | null;
   error: string | null;
+  cameraStates: Record<PlayerId, OnlineCameraState>;
 
   // API générique
   send: (ev: ClientEvent) => void;
@@ -62,6 +64,7 @@ type UseOnlineRoomReturn = {
   }) => void;
   sendVisit: (darts: { value: number; mult: 1 | 2 | 3 | 25 | 50 }[]) => void;
   undoLast: () => void;
+  sendCameraState: (state: OnlineCameraState) => void;
 };
 
 // ---------------------------------------------------------
@@ -90,6 +93,7 @@ export function useOnlineRoom(opts: UseOnlineRoomOptions): UseOnlineRoomReturn {
   const [status, setStatus] = React.useState<WsStatus>("idle");
   const [error, setError] = React.useState<string | null>(null);
   const [lastEvent, setLastEvent] = React.useState<ServerEvent | null>(null);
+  const [cameraStates, setCameraStates] = React.useState<Record<PlayerId, OnlineCameraState>>({});
 
   const wsRef = React.useRef<WebSocket | null>(null);
   const reconnectTokenRef = React.useRef(0);
@@ -129,6 +133,14 @@ export function useOnlineRoom(opts: UseOnlineRoomOptions): UseOnlineRoomReturn {
       case "server_update": {
         // État complet de la room : clients + match + version
         setState(ev.state);
+        if ((ev.state as any)?.cameraStates) {
+          setCameraStates((prev) => ({ ...prev, ...(ev.state as any).cameraStates }));
+        }
+        return;
+      }
+
+      case "camera_state": {
+        setCameraStates((prev) => ({ ...prev, [ev.playerId]: ev.state }));
         return;
       }
 
@@ -319,6 +331,15 @@ export function useOnlineRoom(opts: UseOnlineRoomOptions): UseOnlineRoomReturn {
     send({ t: "undo_last" } as ClientEvent);
   }, [send]);
 
+  const sendCameraState = React.useCallback((state: OnlineCameraState) => {
+    setCameraStates((prev) => ({ ...prev, [state.playerId]: state }));
+    send({
+      t: "camera_state",
+      playerId: state.playerId,
+      state,
+    } as ClientEvent);
+  }, [send]);
+
   // --------- Retour hook ---------
 
   return {
@@ -327,6 +348,7 @@ export function useOnlineRoom(opts: UseOnlineRoomOptions): UseOnlineRoomReturn {
     state,
     lastEvent,
     error,
+    cameraStates,
     send,
     reconnect,
     close,
@@ -336,5 +358,6 @@ export function useOnlineRoom(opts: UseOnlineRoomOptions): UseOnlineRoomReturn {
     startX01Match,
     sendVisit,
     undoLast,
+    sendCameraState,
   };
 }
