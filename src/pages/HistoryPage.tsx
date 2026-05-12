@@ -21,6 +21,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useSport, type SportId } from "../contexts/SportContext";
 import { History, type SavedMatch } from "../lib/history";
+import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
@@ -503,7 +504,17 @@ function modeLabel(e: SavedEntry) {
   const m = baseMode(e);
   if (m === "x01") {
     const sc = getStartScore(e);
-    return `X01 · ${sc}`;
+    const raw = [
+      e?.kind, e?.mode, e?.variant, e?.game?.mode,
+      e?.payload?.mode, e?.payload?.variant, e?.payload?.gameMode, e?.payload?.config?.mode,
+      e?.summary?.mode, e?.summary?.game?.mode, e?.resume?.config?.mode,
+    ].filter(Boolean).map((x: any) => String(x).toLowerCase()).join("|");
+    const isTraining = raw.includes("training_x01") || raw.includes("training-x01") || raw.includes("training");
+    const isOnline = isOnlineRecord(e);
+    const playerCount = getAllEntryPlayers(e).length || Number((e as any)?.summary?.playersCount || 0) || 0;
+    const hasSetsLegs = Number((e as any)?.summary?.game?.legsPerSet || (e as any)?.payload?.summary?.game?.legsPerSet || (e as any)?.payload?.config?.legsPerSet || 0) > 1;
+    const prefix = isTraining ? "TRAINING X01" : isOnline ? "X01 ONLINE" : playerCount > 2 ? "X01 MULTI" : playerCount === 2 || hasSetsLegs ? "X01 DUO" : "X01";
+    return `${prefix} · ${sc}`;
   }
   return m.toUpperCase();
 }

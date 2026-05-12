@@ -146,8 +146,22 @@ export function isTrainingRecord(rec: any): boolean {
 }
 
 export function isOnlineRecord(rec: any): boolean {
-  const vals = [rec?.online, rec?.source, rec?.onlineMode, rec?.lobbyCode, rec?.lobbyId, rec?.summary?.online, rec?.summary?.source, rec?.summary?.onlineMode, rec?.summary?.lobbyCode, rec?.summary?.lobbyId, rec?.meta?.online, rec?.meta?.source, rec?.payload?.online, rec?.payload?.source, rec?.payload?.onlineMode, rec?.payload?.lobbyCode, rec?.payload?.lobbyId, rec?.payload?.config?.online, rec?.payload?.config?.onlineMode, rec?.payload?.config?.lobbyCode, rec?.payload?.summary?.online, rec?.payload?.summary?.source, rec?.payload?.summary?.onlineMode, rec?.resume?.config?.online, rec?.resume?.config?.onlineMode, rec?.resume?.config?.lobbyCode];
-  return vals.some((v) => v === true || String(v ?? "").toLowerCase() === "online" || String(v ?? "").trim().length >= 3 && /^(olb_|[a-z0-9]{4,8})$/i.test(String(v ?? "").trim()) && vals.includes(v));
+  const vals = [
+    rec?.online, rec?.source, rec?.onlineMode, rec?.lobbyCode, rec?.lobbyId, rec?.roomCode, rec?.roomId,
+    rec?.kind, rec?.mode, rec?.variant, rec?.matchMode, rec?.gameMode,
+    rec?.summary?.online, rec?.summary?.source, rec?.summary?.onlineMode, rec?.summary?.lobbyCode, rec?.summary?.lobbyId, rec?.summary?.mode,
+    rec?.meta?.online, rec?.meta?.source, rec?.meta?.onlineMode, rec?.meta?.lobbyCode, rec?.meta?.lobbyId,
+    rec?.payload?.online, rec?.payload?.source, rec?.payload?.onlineMode, rec?.payload?.lobbyCode, rec?.payload?.lobbyId, rec?.payload?.roomCode, rec?.payload?.roomId, rec?.payload?.mode, rec?.payload?.matchMode, rec?.payload?.gameMode,
+    rec?.payload?.config?.online, rec?.payload?.config?.onlineMode, rec?.payload?.config?.lobbyCode, rec?.payload?.config?.onlineLobbyCode, rec?.payload?.config?.matchMode, rec?.payload?.config?.gameMode,
+    rec?.payload?.summary?.online, rec?.payload?.summary?.source, rec?.payload?.summary?.onlineMode, rec?.payload?.summary?.lobbyCode, rec?.payload?.summary?.mode,
+    rec?.resume?.config?.online, rec?.resume?.config?.onlineMode, rec?.resume?.config?.lobbyCode, rec?.resume?.config?.onlineLobbyCode, rec?.resume?.config?.matchMode, rec?.resume?.config?.gameMode,
+    rec?.compact?.o?.online, rec?.compact?.o?.onlinemode, rec?.compact?.o?.lobbycode, rec?.compact?.o?.source,
+  ];
+  const joined = vals.map((v) => String(v ?? "").trim().toLowerCase()).filter(Boolean).join("|");
+  if (vals.some((v) => v === true)) return true;
+  if (/online|nas-online|x01_online|online_lobby|online-match/.test(joined)) return true;
+  const codeVals = [rec?.lobbyCode, rec?.lobbyId, rec?.roomCode, rec?.roomId, rec?.payload?.lobbyCode, rec?.payload?.lobbyId, rec?.payload?.roomCode, rec?.payload?.roomId, rec?.payload?.config?.lobbyCode, rec?.payload?.config?.onlineLobbyCode, rec?.resume?.config?.lobbyCode, rec?.resume?.config?.onlineLobbyCode].filter(Boolean);
+  return codeVals.some((v) => String(v ?? "").trim().length >= 3);
 }
 
 function mapsFromRec(rec: any): any[] {
@@ -310,11 +324,48 @@ export function aggregateX01Samples(samples: X01PlayerSample[]): X01Agg {
 }
 
 export async function loadAllHistoryRecords(): Promise<any[]> {
+  const byId = new Map<string, any>();
+  const push = (rec: any, idx = 0) => {
+    if (!rec || typeof rec !== "object") return;
+    const id = String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? `rec-${idx}`).trim();
+    if (!id) return;
+    byId.set(id, { ...(byId.get(id) || {}), ...rec });
+  };
+
   try {
-    if (History && typeof (History as any).getAllMatches === "function") return await (History as any).getAllMatches();
-    if (History && typeof (History as any).list === "function") return await (History as any).list();
+    const rows = typeof (History as any)?.listFinished === "function"
+      ? await (History as any).listFinished()
+      : typeof (History as any)?.list === "function"
+      ? await (History as any).list()
+      : [];
+    for (let i = 0; i < (Array.isArray(rows) ? rows : []).length; i++) {
+      const row: any = rows[i];
+      const id = String(row?.matchId ?? row?.id ?? "").trim();
+      let full = row;
+      try {
+        if (id && typeof (History as any)?.get === "function") {
+          full = (await (History as any).get(id)) || row;
+        }
+      } catch {}
+      push(full, i);
+    }
   } catch {}
-  return [];
+
+  try {
+    const store = loadStore();
+    const hist = Array.isArray((store as any)?.history) ? (store as any).history : [];
+    hist.forEach(push);
+  } catch {}
+
+  try {
+    if (typeof window !== "undefined") {
+      const raw = window.localStorage.getItem("dc_online_matches_v1");
+      const arr = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(arr)) arr.forEach((r, i) => push({ ...r, online: true, source: r?.source || "online" }, 100000 + i));
+    }
+  } catch {}
+
+  return Array.from(byId.values());
 }
 
 export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X01Scope | "all" }): Promise<X01PlayerSample[]> {
@@ -336,6 +387,28 @@ export async function loadOnlineX01SamplesForActiveProfile(): Promise<X01PlayerS
   const active = profiles.find((p: any) => p.id === store?.activeProfileId) || profiles[0] || null;
   if (!active) return [];
   return loadX01SamplesForProfile(active, { scope: "online" });
+}
+
+export async function loadAllOnlineX01Samples(profiles: any[] = []): Promise<X01PlayerSample[]> {
+  const all = await loadAllHistoryRecords();
+  const out: X01PlayerSample[] = [];
+  for (const rec of all || []) {
+    if ((!isX01Record(rec) && !isTrainingRecord(rec)) || !isOnlineRecord(rec)) continue;
+    const players = collectPlayers(rec);
+    const targets = players.length ? players : Object.keys(Object.assign({}, ...mapsFromRec(rec))).map((id) => ({ id }));
+    for (const p of targets) {
+      const profile = findProfileForPlayer(profiles || [], p) || { id: p?.id ?? p?.profileId ?? p?.playerId, name: p?.name ?? p?.playerName ?? p?.displayName, avatarDataUrl: p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar };
+      const smp = sampleFromRec(rec, profile);
+      if (smp && smp.scope === "online") out.push(smp);
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((s) => {
+    const k = `${s.matchId}|${s.playerId}|${s.createdAt}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function buildOnlineX01Leaderboard(profiles: any[] = []): Promise<any[]> {

@@ -12,6 +12,8 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { loadStore } from "../lib/storage";
+import { loadAllOnlineX01Samples } from "../lib/x01StatsSource";
 
 const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
 
@@ -487,34 +489,71 @@ export default function StatsOnline() {
 
   React.useEffect(() => {
     let cancelled = false;
-    const local = loadOnlineMatchesFromLocalStorage(range);
-    setMatches(local.matches);
-    setSessions(local.sessions);
 
-    loadOnlineMatchesFromHistory(range).then((historyMatches) => {
-      if (cancelled) return;
-      const byId = new Map<string, any>();
-      [...historyMatches, ...local.matches].forEach((m: any, idx: number) => {
-        const id = String(m?.id || m?.matchId || `online-${idx}`);
-        if (!byId.has(id)) byId.set(id, m);
-      });
-      const merged = Array.from(byId.values()).sort((a: any, b: any) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
-      const mergedSessions: OnlineSession[] = merged.map((m: any, idx: number) => {
-        const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
-        const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);
-        return {
-          id: String(m?.id || m?.matchId || `sess-${idx}`),
-          createdAt: Number(m?.createdAt ?? Date.now()),
-          darts,
-          avg3: darts > 0 ? Math.round(((totalScore / darts) * 3) * 10) / 10 : Number(m?.avg3 || 0),
-          bestVisit: Number(m?.stats?.bestVisit ?? m?.bestVisit ?? 0),
-          bestCheckout: Number(m?.stats?.bestCheckout ?? m?.bestCheckout ?? 0),
-        };
-      });
-      setMatches(merged);
-      setSessions(mergedSessions);
-    });
+    async function loadOnline() {
+      try {
+        const store = loadStore?.() || {};
+        const profiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+        const samples = await loadAllOnlineX01Samples(profiles);
+        if (cancelled) return;
+        const fromTs = getRangeStart(range);
+        const filteredSamples = samples.filter((s: any) => !fromTs || Number(s.createdAt || 0) >= fromTs);
+        const matches = filteredSamples.map((s: any, idx: number) => {
+          const hits = Number(s.singleHits || 0) + Number(s.doubleHits || 0) + Number(s.tripleHits || 0) + Number(s.bull25 || 0) + Number(s.bull50 || 0);
+          return {
+            id: `${s.matchId || s.id || "online"}:${s.playerId || idx}`,
+            matchId: s.matchId || s.id,
+            createdAt: Number(s.createdAt || Date.now()),
+            winnerId: s.winnerId,
+            players: [{ id: s.playerId, name: s.playerName }],
+            stats: {
+              darts: Number(s.darts || 0),
+              totalScore: Number(s.totalScore || 0),
+              bestVisit: Number(s.bestVisit || 0),
+              bestCheckout: Number(s.bestCheckout || 0),
+              breakdown: {
+                hits,
+                miss: Number(s.miss || 0),
+                s: Number(s.singleHits || 0),
+                d: Number(s.doubleHits || 0),
+                t: Number(s.tripleHits || 0),
+                bull: Number(s.bull25 || 0),
+                dbull: Number(s.bull50 || 0),
+                bust: Number(s.bust || 0),
+              },
+              buckets: {
+                "60+": Number(s.h60 || 0),
+                "100+": Number(s.h100 || 0),
+                "140+": Number(s.h140 || 0),
+                "180": Number(s.h180 || 0),
+              },
+            },
+          };
+        });
+        const sessions: OnlineSession[] = matches.map((m: any, idx: number) => {
+          const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
+          const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);
+          return {
+            id: String(m?.id || m?.matchId || `sess-${idx}`),
+            createdAt: Number(m?.createdAt ?? Date.now()),
+            darts,
+            avg3: darts > 0 ? Math.round(((totalScore / darts) * 3) * 10) / 10 : 0,
+            bestVisit: Number(m?.stats?.bestVisit ?? m?.bestVisit ?? 0),
+            bestCheckout: Number(m?.stats?.bestCheckout ?? m?.bestCheckout ?? 0),
+          };
+        });
+        setMatches(matches);
+        setSessions(sessions);
+      } catch (err) {
+        console.warn("[StatsOnline] load online x01 samples failed", err);
+        if (!cancelled) {
+          setMatches([]);
+          setSessions([]);
+        }
+      }
+    }
 
+    loadOnline();
     return () => { cancelled = true; };
   }, [range]);
 
