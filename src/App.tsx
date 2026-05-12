@@ -2727,15 +2727,48 @@ useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_ONLINE_MATCHES_KEY);
       const list = raw ? safeJsonParse<any[]>(raw, []) : [];
+      const onlineSummary: any = saved.summary ?? (saved.payload as any)?.summary ?? null;
+      const onlinePerPlayer: any[] = Array.isArray(onlineSummary?.perPlayer) ? onlineSummary.perPlayer : [];
+      const onlineSummaryPlayers = onlineSummary?.players && typeof onlineSummary.players === "object" ? onlineSummary.players : {};
+      const onlineStatsSource = onlinePerPlayer.length ? onlinePerPlayer : Object.values(onlineSummaryPlayers || {});
+      const onlineStats = onlineStatsSource.reduce((acc: any, st: any) => {
+        const buckets = st?.buckets || {};
+        const hitsS = Number(st?.singles ?? st?.hitsS ?? st?.hits?.S ?? 0);
+        const hitsD = Number(st?.doubles ?? st?.hitsD ?? st?.hits?.D ?? 0);
+        const hitsT = Number(st?.triples ?? st?.hitsT ?? st?.hits?.T ?? 0);
+        const bull = Number(st?.bull ?? st?.bulls ?? 0);
+        const dbull = Number(st?.dBull ?? st?.dbull ?? st?.dbulls ?? 0);
+        acc.darts += Number(st?.darts ?? 0);
+        acc.totalScore += Number(st?._sumPoints ?? st?.points ?? st?.totalScore ?? 0);
+        acc.bestVisit = Math.max(acc.bestVisit, Number(st?.bestVisit ?? 0));
+        acc.bestCheckout = Math.max(acc.bestCheckout, Number(st?.bestCheckout ?? 0));
+        acc.breakdown.s += hitsS;
+        acc.breakdown.d += hitsD;
+        acc.breakdown.t += hitsT;
+        acc.breakdown.bull += bull;
+        acc.breakdown.dbull += dbull;
+        acc.breakdown.miss += Number(st?.miss ?? st?.misses ?? st?.hits?.M ?? 0);
+        acc.breakdown.bust += Number(st?.bust ?? st?.busts ?? 0);
+        acc.breakdown.hits += hitsS + hitsD + hitsT + bull + dbull;
+        acc.buckets["60+"] += Number(buckets["60+"] ?? st?.h60 ?? 0);
+        acc.buckets["100+"] += Number(buckets["100+"] ?? st?.h100 ?? 0);
+        acc.buckets["140+"] += Number(buckets["140+"] ?? st?.h140 ?? 0);
+        acc.buckets["180"] += Number(buckets["180"] ?? st?.h180 ?? 0);
+        return acc;
+      }, { darts: 0, totalScore: 0, bestVisit: 0, bestCheckout: 0, breakdown: { hits: 0, miss: 0, s: 0, d: 0, t: 0, bull: 0, dbull: 0, bust: 0 }, buckets: { "60+": 0, "100+": 0, "140+": 0, "180": 0 } });
       list.unshift({
         id: saved.id,
-        mode: saved.kind,
+        mode: (saved.payload as any)?.onlineMode || saved.kind,
+        online: !!(saved.payload as any)?.online,
+        source: (saved.payload as any)?.source || ((saved.payload as any)?.online ? "online" : undefined),
+        lobbyCode: (saved.payload as any)?.lobbyCode || null,
         createdAt: saved.createdAt,
         finishedAt: saved.updatedAt,
         players: saved.players,
         winnerId: saved.winnerId,
-        summary: saved.summary ?? null,
-        stats: (saved.payload as any)?.stats ?? null,
+        summary: onlineSummary,
+        payload: saved.payload ?? null,
+        stats: (saved.payload as any)?.stats ?? onlineStats,
       });
       localStorage.setItem(LS_ONLINE_MATCHES_KEY, safeJsonStringify(list.slice(0, 200), "[]"));
     } catch {}

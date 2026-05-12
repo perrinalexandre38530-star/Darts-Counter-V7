@@ -11,6 +11,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { History } from "../lib/history";
 
 const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
 
@@ -85,22 +86,154 @@ function getRangeStart(range: TimeRange): number | null {
   }
 }
 
-// Lecture souple de l’historique Online
-function loadOnlineMatches(range: TimeRange) {
+function inSelectedRange(createdAt: any, range: TimeRange): boolean {
+  const fromTs = getRangeStart(range);
+  if (!fromTs) return true;
+  const ts = Number(createdAt || 0);
+  return Number.isFinite(ts) && ts >= fromTs;
+}
+
+function toNumber(value: any, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeOnlineHistoryMatch(row: any, idx = 0): any | null {
+  if (!row || typeof row !== "object") return null;
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const summary = row.summary && typeof row.summary === "object" ? row.summary : payload.summary || {};
+  const isOnline = row.online === true || payload.online === true || payload.source === "online" || !!payload.lobbyCode || !!row.lobbyCode;
+  const mode = String(row.kind || payload.mode || payload.onlineMode || row.mode || "").toLowerCase();
+  if (!isOnline && mode !== "x01_online") return null;
+
+  const players = Array.isArray(row.players) && row.players.length
+    ? row.players
+    : Array.isArray(payload.players)
+    ? payload.players
+    : [];
+  const perPlayer = Array.isArray(summary.perPlayer)
+    ? summary.perPlayer
+    : Array.isArray(payload?.summary?.perPlayer)
+    ? payload.summary.perPlayer
+    : [];
+  const summaryPlayers = summary.players && typeof summary.players === "object" ? summary.players : {};
+
+  const hasStructuredPlayerStats = perPlayer.length > 0 || Object.keys(summaryPlayers || {}).length > 0;
+  let darts = hasStructuredPlayerStats ? 0 : toNumber(row.darts ?? payload.dartsCount ?? summary.darts, 0);
+  let totalScore = hasStructuredPlayerStats ? 0 : toNumber(row.totalScore ?? payload.totalScore ?? summary.totalScore, 0);
+  let bestVisit = toNumber(row.bestVisit ?? summary.bestVisit, 0);
+  let bestCheckout = toNumber(row.bestCheckout ?? summary.bestCheckout, 0);
+  let s = 0, d = 0, t = 0, miss = 0, bull = 0, dbull = 0, bust = 0;
+  let h60 = 0, h100 = 0, h140 = 0, h180 = 0;
+
+  const consumePlayerStats = (st: any) => {
+    if (!st || typeof st !== "object") return;
+    darts += toNumber(st.darts, 0);
+    totalScore += toNumber(st._sumPoints ?? st.points ?? st.totalScore, 0);
+    bestVisit = Math.max(bestVisit, toNumber(st.bestVisit, 0));
+    bestCheckout = Math.max(bestCheckout, toNumber(st.bestCheckout, 0));
+    s += toNumber(st.singles ?? st.hitsS ?? st?.hits?.S, 0);
+    d += toNumber(st.doubles ?? st.hitsD ?? st?.hits?.D, 0);
+    t += toNumber(st.triples ?? st.hitsT ?? st?.hits?.T, 0);
+    miss += toNumber(st.misses ?? st.miss ?? st?.hits?.M, 0);
+    bull += toNumber(st.bulls ?? st.bull, 0);
+    dbull += toNumber(st.dbulls ?? st.dBull ?? st.dbull, 0);
+    bust += toNumber(st.busts ?? st.bust, 0);
+    const buckets = st.buckets || {};
+    h60 += toNumber(buckets["60+"] ?? st.h60, 0);
+    h100 += toNumber(buckets["100+"] ?? st.h100, 0);
+    h140 += toNumber(buckets["140+"] ?? st.h140, 0);
+    h180 += toNumber(buckets["180"] ?? st.h180, 0);
+  };
+
+  if (perPlayer.length) {
+    perPlayer.forEach(consumePlayerStats);
+  } else {
+    Object.values(summaryPlayers).forEach(consumePlayerStats);
+  }
+
+  if (!darts) {
+    const replay = Array.isArray(payload.replayDarts) ? payload.replayDarts : Array.isArray(payload.darts) ? payload.darts : [];
+    darts = replay.length;
+    for (const dart of replay) {
+      const mult = toNumber(dart?.mult ?? dart?.m ?? dart?.multiplier, 0);
+      const v = toNumber(dart?.v ?? dart?.value ?? dart?.segment, 0);
+      if (v === 0 || String(dart?.code || "").toUpperCase() === "MISS") miss += 1;
+      else if (v === 25 && mult === 2) dbull += 1;
+      else if (v === 25) bull += 1;
+      else if (mult === 3) t += 1;
+      else if (mult === 2) d += 1;
+      else s += 1;
+    }
+  }
+
+  const statsFromRow = row.stats || {};
+  const breakdown = statsFromRow.breakdown || row.breakdown || {};
+  if (!s && !d && !t && !miss && breakdown) {
+    s = toNumber(breakdown.s ?? breakdown.S, 0);
+    d = toNumber(breakdown.d ?? breakdown.D, 0);
+    t = toNumber(breakdown.t ?? breakdown.T, 0);
+    miss = toNumber(breakdown.miss, 0);
+    bull = toNumber(breakdown.bull, 0);
+    dbull = toNumber(breakdown.dbull ?? breakdown.dBull, 0);
+    bust = toNumber(breakdown.bust, 0);
+  }
+  const hits = s + d + t + bull + dbull;
+  const buckets = statsFromRow.buckets || row.buckets || {};
+  h60 = h60 || toNumber(buckets["60+"] ?? buckets.h60, 0);
+  h100 = h100 || toNumber(buckets["100+"] ?? buckets.h100, 0);
+  h140 = h140 || toNumber(buckets["140+"] ?? buckets.h140, 0);
+  h180 = h180 || toNumber(buckets["180"] ?? buckets.h180, 0);
+
+  return {
+    id: String(row.id || row.matchId || payload.matchId || `online-history-${idx}`),
+    mode: String(payload.onlineMode || payload.mode || row.kind || row.mode || "x01"),
+    createdAt: toNumber(row.createdAt ?? row.updatedAt ?? payload.createdAt ?? Date.now(), Date.now()),
+    finishedAt: toNumber(row.updatedAt ?? payload.finishedAt ?? row.finishedAt ?? Date.now(), Date.now()),
+    players,
+    winnerId: row.winnerId ?? summary.winnerId ?? payload.winnerId ?? null,
+    payload,
+    summary,
+    darts,
+    totalScore,
+    bestVisit,
+    bestCheckout,
+    stats: {
+      darts,
+      totalScore,
+      bestVisit,
+      bestCheckout,
+      breakdown: { hits, miss, s, d, t, bull, dbull, bust },
+      buckets: { "60+": h60, "100+": h100, "140+": h140, "180": h180 },
+    },
+  };
+}
+
+async function loadOnlineMatchesFromHistory(range: TimeRange) {
+  try {
+    const rows = await History.listFinished();
+    const normalized = (Array.isArray(rows) ? rows : [])
+      .map((row, idx) => normalizeOnlineHistoryMatch(row, idx))
+      .filter(Boolean)
+      .filter((row: any) => inSelectedRange(row.createdAt, range));
+    return normalized as any[];
+  } catch (err) {
+    console.warn("[StatsOnline] Impossible de lire History online", err);
+    return [] as any[];
+  }
+}
+
+// Lecture souple de l’historique Online localStorage
+function loadOnlineMatchesFromLocalStorage(range: TimeRange) {
   try {
     const raw = window.localStorage.getItem(LS_ONLINE_MATCHES_KEY);
     if (!raw)
       return { matches: [] as any[], sessions: [] as OnlineSession[] };
 
     const all = JSON.parse(raw) || [];
-    const fromTs = getRangeStart(range);
-
-    const filtered = fromTs
-      ? all.filter((m: any) => {
-          const ts = m?.createdAt ?? m?.date ?? m?.ts ?? 0;
-          return typeof ts === "number" && ts >= fromTs;
-        })
-      : all;
+    const filtered = (Array.isArray(all) ? all : [])
+      .map((m: any, idx: number) => normalizeOnlineHistoryMatch(m, idx) || m)
+      .filter((m: any) => inSelectedRange(m?.createdAt ?? m?.date ?? m?.ts, range));
 
     const sessions: OnlineSession[] = filtered.map((m: any, idx: number) => {
       const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
@@ -317,10 +450,42 @@ export default function StatsOnline() {
   const { t } = useLang();
   const [range, setRange] = React.useState<TimeRange>("day");
 
-  const { matches, sessions } = React.useMemo(
-    () => loadOnlineMatches(range),
-    [range]
-  );
+  const [matches, setMatches] = React.useState<any[]>([]);
+  const [sessions, setSessions] = React.useState<OnlineSession[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const local = loadOnlineMatchesFromLocalStorage(range);
+    setMatches(local.matches);
+    setSessions(local.sessions);
+
+    loadOnlineMatchesFromHistory(range).then((historyMatches) => {
+      if (cancelled) return;
+      const byId = new Map<string, any>();
+      [...historyMatches, ...local.matches].forEach((m: any, idx: number) => {
+        const id = String(m?.id || m?.matchId || `online-${idx}`);
+        if (!byId.has(id)) byId.set(id, m);
+      });
+      const merged = Array.from(byId.values()).sort((a: any, b: any) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+      const mergedSessions: OnlineSession[] = merged.map((m: any, idx: number) => {
+        const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
+        const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);
+        return {
+          id: String(m?.id || m?.matchId || `sess-${idx}`),
+          createdAt: Number(m?.createdAt ?? Date.now()),
+          darts,
+          avg3: darts > 0 ? Math.round(((totalScore / darts) * 3) * 10) / 10 : Number(m?.avg3 || 0),
+          bestVisit: Number(m?.stats?.bestVisit ?? m?.bestVisit ?? 0),
+          bestCheckout: Number(m?.stats?.bestCheckout ?? m?.bestCheckout ?? 0),
+        };
+      });
+      setMatches(merged);
+      setSessions(mergedSessions);
+    });
+
+    return () => { cancelled = true; };
+  }, [range]);
+
   const { agg, row } = React.useMemo(
     () => aggregateOnline(matches),
     [matches]
