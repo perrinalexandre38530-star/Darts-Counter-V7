@@ -1,32 +1,18 @@
 // =============================================================
 // src/lib/babyfootStore.ts
 // Baby-Foot (LOCAL ONLY)
-// ✅ options avancées + phases (play/overtime/penalties) + sets + handicap
-// ✅ chrono manuel (start / pause / reprise)
-// ✅ actions spéciales (gamelle / pêche / demi empilable)
-// - Backward compatible avec l'état existant
+// ✅ V3: options avancées + phases (play/overtime/penalties) + sets + handicap
+// - Backward compatible avec l'état V2 existant
 // - AUCUNE dépendance Darts / Pétanque / PingPong
 // =============================================================
 
 export type BabyFootTeamId = "A" | "B";
 export type BabyFootMode = "1v1" | "2v2" | "2v1";
 export type BabyFootPhase = "play" | "overtime" | "penalties" | "finished";
-export type BabyFootGoalKind = "normal" | "gamelle" | "peche";
-export type BabyFootScoreAction = "goal" | "gamelle" | "peche" | "demi";
 
 export type BabyFootEvent =
   | { t: "start"; at: number }
-  | {
-      t: "goal";
-      at: number;
-      team: BabyFootTeamId;
-      scorerId?: string | null;
-      phase?: BabyFootPhase;
-      kind?: BabyFootGoalKind;
-      points?: number;
-      demiBonusApplied?: number;
-    }
-  | { t: "demi"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase }
+  | { t: "goal"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase }
   | { t: "pen_shot"; at: number; team: BabyFootTeamId; scored: boolean; scorerId?: string | null }
   | { t: "set_win"; at: number; team: BabyFootTeamId; setIndex: number }
   | { t: "phase"; at: number; phase: BabyFootPhase }
@@ -34,10 +20,13 @@ export type BabyFootEvent =
   | { t: "finish"; at: number; winner: BabyFootTeamId | null; reason: "target" | "golden" | "time" | "sets" | "penalties" | "draw" };
 
 export type PenaltiesState = {
+  // total shots taken
   shotsA: number;
   shotsB: number;
+  // goals
   goalsA: number;
   goalsB: number;
+  // next team to shoot
   turn: BabyFootTeamId;
 };
 
@@ -46,61 +35,68 @@ export type BabyFootState = {
   createdAt: number;
   updatedAt: number;
 
+  // display
   teamA: string;
   teamB: string;
 
+  // ✅ optional: link to Teams catalog (Profils > Teams)
   teamARefId?: string | null;
   teamBRefId?: string | null;
   teamALogoDataUrl?: string | null;
   teamBLogoDataUrl?: string | null;
 
+  // match format
   mode: BabyFootMode;
   teamAPlayers: number;
   teamBPlayers: number;
 
+  // selected profile ids (for stats/history)
   teamAProfileIds: string[];
   teamBProfileIds: string[];
 
+  // current score (either match score, or set score when setsEnabled)
   scoreA: number;
   scoreB: number;
+
+  // classic match target (when setsEnabled=false)
   target: number;
 
-  // chrono manuel
+  // timer
   startedAt: number | null;
   finishedAt: number | null;
-  clockRunning: boolean;
-  pausedAt: number | null;
-  pausedTotalMs: number;
-  phaseStartedElapsedMs: number;
 
+  // phases
   phase: BabyFootPhase;
 
-  matchDurationSec: number | null;
-  overtimeSec: number | null;
-  goldenGoal: boolean;
-  overtimeGoldenGoal: boolean;
-  handicapA: number;
-  handicapB: number;
-  allowDrawOnTimeEnd?: boolean;
-  requireTwoGoalLead?: boolean;
+  // options (V3)
+  matchDurationSec: number | null;       // time limit for regular play
+  overtimeSec: number | null;            // overtime duration when draw by time
+  goldenGoal: boolean;                   // first goal ends match (regular play)
+  overtimeGoldenGoal: boolean;           // first goal ends match during overtime
+  handicapA: number;                     // starting bonus goals for team A
+  handicapB: number;                     // starting bonus goals for team B
+  allowDrawOnTimeEnd?: boolean;          // if draw at end of regulation time, finish as draw (no OT/penalties)
+  requireTwoGoalLead?: boolean;          // when no chrono: require 2-goal margin to win by target/sets
 
+  // sets
   setsEnabled: boolean;
   setsBestOf: 1 | 3 | 5;
-  setTarget: number;
+  setTarget: number;                     // goals to win a set
   setsA: number;
   setsB: number;
-  setIndex: number;
+  setIndex: number;                      // 1-based
 
+  // penalties (when time draw persists after overtime)
   penalties: PenaltiesState | null;
 
-  // spéciaux
-  pendingDemiBonus: number;
-
+  // status
   finished: boolean;
   winner: BabyFootTeamId | null;
 
+  // events log
   events: BabyFootEvent[];
 
+  // undo stack
   undo: Array<
     Pick<
       BabyFootState,
@@ -115,12 +111,6 @@ export type BabyFootState = {
       | "setsB"
       | "setIndex"
       | "penalties"
-      | "startedAt"
-      | "clockRunning"
-      | "pausedAt"
-      | "pausedTotalMs"
-      | "phaseStartedElapsedMs"
-      | "pendingDemiBonus"
     >
   >;
 };
@@ -129,12 +119,6 @@ const LS_KEY = "babyfoot_state_v3";
 
 function uid() {
   return `bf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function normalizeBestOf(v: any): 1 | 3 | 5 {
-  if (v === 1 || v === 3 || v === 5) return v;
-  if (v === 0) return 1;
-  return 3;
 }
 
 export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFootState {
@@ -165,10 +149,6 @@ export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFoot
 
     startedAt: null,
     finishedAt: null,
-    clockRunning: false,
-    pausedAt: null,
-    pausedTotalMs: 0,
-    phaseStartedElapsedMs: 0,
 
     phase: "play",
 
@@ -189,7 +169,6 @@ export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFoot
     setIndex: 1,
 
     penalties: null,
-    pendingDemiBonus: 0,
 
     finished: false,
     winner: null,
@@ -200,14 +179,18 @@ export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFoot
   };
 }
 
+function normalizeBestOf(v: any): 1 | 3 | 5 {
+  if (v === 1 || v === 3 || v === 5) return v;
+  if (v === 0) return 1;
+  return 3;
+}
+
 function migrate(raw: any): BabyFootState {
   if (!raw || typeof raw !== "object") return defaultBabyFootState();
 
   const now = Date.now();
-  const startedAt = raw.startedAt ?? null;
-  const finished = !!raw.finished;
-  const inferredClockRunning = !!(startedAt && !finished);
 
+  // V2 -> V3 key change (LS_KEY). If user still has v2, we migrate from it.
   const v3: BabyFootState = defaultBabyFootState({
     matchId: raw.matchId || raw.id || uid(),
     createdAt: raw.createdAt || now,
@@ -222,7 +205,9 @@ function migrate(raw: any): BabyFootState {
     teamBLogoDataUrl: raw.teamBLogoDataUrl ?? null,
 
     mode: raw.mode ?? "1v1",
-    teamAPlayers: raw.teamAPlayers ?? (raw.mode === "2v2" || raw.mode === "2v1" ? 2 : 1),
+    teamAPlayers:
+      raw.teamAPlayers ??
+      (raw.mode === "2v2" || raw.mode === "2v1" ? 2 : 1),
     teamBPlayers: raw.teamBPlayers ?? (raw.mode === "2v2" ? 2 : 1),
 
     teamAProfileIds: Array.isArray(raw.teamAProfileIds) ? raw.teamAProfileIds : [],
@@ -232,12 +217,8 @@ function migrate(raw: any): BabyFootState {
     scoreB: Number.isFinite(raw.scoreB) ? raw.scoreB : 0,
     target: Number.isFinite(raw.target) ? raw.target : 10,
 
-    startedAt,
+    startedAt: raw.startedAt ?? null,
     finishedAt: raw.finishedAt ?? null,
-    clockRunning: typeof raw.clockRunning === "boolean" ? raw.clockRunning : inferredClockRunning,
-    pausedAt: raw.pausedAt ?? null,
-    pausedTotalMs: Number.isFinite(raw.pausedTotalMs) ? raw.pausedTotalMs : 0,
-    phaseStartedElapsedMs: Number.isFinite(raw.phaseStartedElapsedMs) ? raw.phaseStartedElapsedMs : 0,
 
     phase: (raw.phase as BabyFootPhase) || (raw.finished ? "finished" : "play"),
 
@@ -247,8 +228,6 @@ function migrate(raw: any): BabyFootState {
     overtimeGoldenGoal: raw.overtimeGoldenGoal === undefined ? true : !!raw.overtimeGoldenGoal,
     handicapA: Number.isFinite(raw.handicapA) ? raw.handicapA : 0,
     handicapB: Number.isFinite(raw.handicapB) ? raw.handicapB : 0,
-    allowDrawOnTimeEnd: !!raw.allowDrawOnTimeEnd,
-    requireTwoGoalLead: !!raw.requireTwoGoalLead,
 
     setsEnabled: !!raw.setsEnabled,
     setsBestOf: normalizeBestOf(raw.setsBestOf),
@@ -258,16 +237,16 @@ function migrate(raw: any): BabyFootState {
     setIndex: Number.isFinite(raw.setIndex) ? raw.setIndex : 1,
 
     penalties: raw.penalties ?? null,
-    pendingDemiBonus: Number.isFinite(raw.pendingDemiBonus) ? raw.pendingDemiBonus : 0,
 
-    finished,
+    finished: !!raw.finished,
     winner: raw.winner ?? null,
 
     events: Array.isArray(raw.events) ? raw.events : [],
     undo: Array.isArray(raw.undo) ? raw.undo : [],
   });
 
-  if (v3.scoreA === 0 && v3.scoreB === 0 && (v3.handicapA || v3.handicapB)) {
+  // If not started yet and handicap exists, apply it to score baseline
+  if ((v3.scoreA === 0 && v3.scoreB === 0) && (v3.handicapA || v3.handicapB)) {
     v3.scoreA = Math.max(0, v3.handicapA || 0);
     v3.scoreB = Math.max(0, v3.handicapB || 0);
   }
@@ -281,6 +260,7 @@ export function loadBabyFootState(): BabyFootState {
     if (rawV3) return migrate(JSON.parse(rawV3));
   } catch {}
 
+  // try v2 key for migration
   try {
     const rawV2 = localStorage.getItem("babyfoot_state_v2");
     if (rawV2) return migrate(JSON.parse(rawV2));
@@ -302,16 +282,6 @@ export function saveBabyFootStatePatch(partial: Partial<BabyFootState>) {
   return next;
 }
 
-export function computeDurationMs(s: BabyFootState) {
-  if (!s.startedAt) return 0;
-  const end = s.finishedAt ?? Date.now();
-  let pausedMs = Math.max(0, Number(s.pausedTotalMs) || 0);
-  if (!s.clockRunning && s.pausedAt != null) {
-    pausedMs += Math.max(0, end - s.pausedAt);
-  }
-  return Math.max(0, end - s.startedAt - pausedMs);
-}
-
 function pushUndo(s: BabyFootState) {
   const snap: any = {
     scoreA: s.scoreA,
@@ -324,20 +294,9 @@ function pushUndo(s: BabyFootState) {
     setsB: s.setsB,
     setIndex: s.setIndex,
     penalties: s.penalties ? { ...s.penalties } : null,
-    startedAt: s.startedAt ?? null,
-    clockRunning: !!s.clockRunning,
-    pausedAt: s.pausedAt ?? null,
-    pausedTotalMs: Math.max(0, Number(s.pausedTotalMs) || 0),
-    phaseStartedElapsedMs: Math.max(0, Number(s.phaseStartedElapsedMs) || 0),
-    pendingDemiBonus: Math.max(0, Number(s.pendingDemiBonus) || 0),
     events: [...(s.events || [])],
   };
   return [...(s.undo || []), snap].slice(-50);
-}
-
-function persist(next: BabyFootState) {
-  saveBabyFootState(next);
-  return next;
 }
 
 function setPhase(s: BabyFootState, phase: BabyFootPhase) {
@@ -346,68 +305,26 @@ function setPhase(s: BabyFootState, phase: BabyFootPhase) {
   const next: BabyFootState = {
     ...s,
     phase,
-    phaseStartedElapsedMs: computeDurationMs(s),
     events: [...(s.events || []), { t: "phase", at: now, phase }],
     updatedAt: now,
   };
-  return persist(next);
-}
-
-export function startClock() {
-  const s = loadBabyFootState();
-  if (s.finished) return s;
-  const now = Date.now();
-
-  if (!s.startedAt) {
-    const next: BabyFootState = {
-      ...s,
-      startedAt: now,
-      clockRunning: true,
-      pausedAt: null,
-      pausedTotalMs: 0,
-      phaseStartedElapsedMs: 0,
-      phase: "play",
-      events: [...(s.events || []), { t: "start", at: now }],
-      updatedAt: now,
-    };
-    return persist(next);
-  }
-
-  if (s.clockRunning) return s;
-
-  const pausedChunk = s.pausedAt != null ? Math.max(0, now - s.pausedAt) : 0;
-  const next: BabyFootState = {
-    ...s,
-    clockRunning: true,
-    pausedAt: null,
-    pausedTotalMs: Math.max(0, Number(s.pausedTotalMs) || 0) + pausedChunk,
-    updatedAt: now,
-  };
-  return persist(next);
-}
-
-export function pauseClock() {
-  const s = loadBabyFootState();
-  if (s.finished || !s.startedAt || !s.clockRunning) return s;
-  const now = Date.now();
-  const next: BabyFootState = {
-    ...s,
-    clockRunning: false,
-    pausedAt: now,
-    updatedAt: now,
-  };
-  return persist(next);
-}
-
-export function toggleClock() {
-  const s = loadBabyFootState();
-  return s.clockRunning ? pauseClock() : startClock();
+  saveBabyFootState(next);
+  return next;
 }
 
 export function startIfNeeded() {
   const s = loadBabyFootState();
-  if (!s.startedAt || !s.clockRunning) return startClock();
-  return s;
+  if (s.startedAt) return s;
+  const now = Date.now();
+  const next: BabyFootState = {
+    ...s,
+    startedAt: now,
+    phase: "play",
+    events: [...(s.events || []), { t: "start", at: now }],
+    updatedAt: now,
+  };
+  saveBabyFootState(next);
+  return next;
 }
 
 function finishMatch(winner: BabyFootTeamId | null, reason: BabyFootEvent extends any ? any : any) {
@@ -419,12 +336,12 @@ function finishMatch(winner: BabyFootTeamId | null, reason: BabyFootEvent extend
     finished: true,
     winner,
     phase: "finished",
-    clockRunning: false,
     finishedAt: now,
     events: [...(s.events || []), { t: "finish", at: now, winner, reason }],
     updatedAt: now,
   };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
 function maybeWinSet(s: BabyFootState) {
@@ -432,8 +349,8 @@ function maybeWinSet(s: BabyFootState) {
 
   const target = Math.max(1, s.setTarget || 5);
   const require2 = !!s.requireTwoGoalLead && !Number.isFinite(s.matchDurationSec as any);
-  const aWon = require2 ? s.scoreA >= target && s.scoreA >= s.scoreB + 2 : s.scoreA >= target;
-  const bWon = require2 ? s.scoreB >= target && s.scoreB >= s.scoreA + 2 : s.scoreB >= target;
+  const aWon = require2 ? (s.scoreA >= target && s.scoreA >= s.scoreB + 2) : (s.scoreA >= target);
+  const bWon = require2 ? (s.scoreB >= target && s.scoreB >= s.scoreA + 2) : (s.scoreB >= target);
 
   if (!aWon && !bWon) return s;
 
@@ -452,149 +369,135 @@ function maybeWinSet(s: BabyFootState) {
     setIndex: s.setIndex + 1,
     scoreA: Math.max(0, s.handicapA || 0),
     scoreB: Math.max(0, s.handicapB || 0),
-    pendingDemiBonus: 0,
     events: [...(s.events || []), { t: "set_win", at: now, team: winner, setIndex: s.setIndex }],
     updatedAt: now,
   };
 
+  // match won by sets
   if (setsA >= needed || setsB >= needed) {
     next = {
       ...next,
       finished: true,
       winner: setsA >= needed ? "A" : "B",
       phase: "finished",
-      clockRunning: false,
       finishedAt: now,
       events: [...(next.events || []), { t: "finish", at: now, winner: setsA >= needed ? "A" : "B", reason: "sets" }],
     };
   }
 
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
-function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, scorerId?: string | null) {
+export function addGoal(team: BabyFootTeamId, scorerId?: string | null) {
   let s = startIfNeeded();
-  if (s.finished || s.phase === "penalties") return s;
+
+  if (s.finished) return s;
+
+  // penalties handled elsewhere
+  if (s.phase === "penalties") return s;
 
   const now = Date.now();
   const undo = pushUndo(s);
 
-  if (kind === "demi") {
-    const next: BabyFootState = {
-      ...s,
-      undo,
-      pendingDemiBonus: Math.max(0, Number(s.pendingDemiBonus) || 0) + 1,
-      events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase }],
-      updatedAt: now,
-    };
-    return persist(next);
-  }
-
-  const demiBonusApplied = Math.max(0, Number(s.pendingDemiBonus) || 0);
-  const points = 1 + demiBonusApplied;
-  const nextScoreA = s.scoreA + (team === "A" ? points : 0);
-  const nextScoreB = s.scoreB + (team === "B" ? points : 0);
+  const nextScoreA = s.scoreA + (team === "A" ? 1 : 0);
+  const nextScoreB = s.scoreB + (team === "B" ? 1 : 0);
 
   let next: BabyFootState = {
     ...s,
     undo,
     scoreA: nextScoreA,
     scoreB: nextScoreB,
-    pendingDemiBonus: 0,
-    events: [
-      ...(s.events || []),
-      {
-        t: "goal",
-        at: now,
-        team,
-        scorerId: scorerId ?? null,
-        phase: s.phase,
-        kind: kind === "goal" ? "normal" : kind,
-        points,
-        demiBonusApplied,
-      },
-    ],
+    events: [...(s.events || []), { t: "goal", at: now, team, scorerId: scorerId ?? null, phase: s.phase }],
     updatedAt: now,
   };
 
+  // Golden goal (regular play)
   if (s.phase === "play" && s.goldenGoal) {
     next = {
       ...next,
       finished: true,
       winner: team,
       phase: "finished",
-      clockRunning: false,
       finishedAt: now,
       events: [...(next.events || []), { t: "finish", at: now, winner: team, reason: "golden" }],
     };
-    return persist(next);
+    saveBabyFootState(next);
+    return next;
   }
 
+  // Golden goal overtime
   if (s.phase === "overtime" && s.overtimeGoldenGoal) {
     next = {
       ...next,
       finished: true,
       winner: team,
       phase: "finished",
-      clockRunning: false,
       finishedAt: now,
       events: [...(next.events || []), { t: "finish", at: now, winner: team, reason: "golden" }],
     };
-    return persist(next);
+    saveBabyFootState(next);
+    return next;
   }
 
+  // sets
   next = maybeWinSet(next);
   if (next.finished) return next;
 
+  // classic target (no sets)
   if (!next.setsEnabled) {
     const target = Math.max(1, next.target || 10);
     if (next.scoreA >= target || next.scoreB >= target) {
       const require2 = !!next.requireTwoGoalLead && !Number.isFinite(next.matchDurationSec as any);
-      const aOk = require2 ? next.scoreA >= target && next.scoreA >= next.scoreB + 2 : next.scoreA >= target;
-      const bOk = require2 ? next.scoreB >= target && next.scoreB >= next.scoreA + 2 : next.scoreB >= target;
-      if (!aOk && !bOk) return persist(next);
+      const aOk = require2 ? (next.scoreA >= target && next.scoreA >= next.scoreB + 2) : (next.scoreA >= target);
+      const bOk = require2 ? (next.scoreB >= target && next.scoreB >= next.scoreA + 2) : (next.scoreB >= target);
+      if (!aOk && !bOk) {
+        saveBabyFootState(next);
+        return next;
+      }
       const winner: BabyFootTeamId = aOk ? "A" : "B";
       next = {
         ...next,
         finished: true,
         winner,
         phase: "finished",
-        clockRunning: false,
         finishedAt: now,
         events: [...(next.events || []), { t: "finish", at: now, winner, reason: "target" }],
       };
     }
   }
 
-  return persist(next);
-}
-
-export function addGoal(team: BabyFootTeamId, scorerId?: string | null) {
-  return applyScoreAction("goal", team, scorerId);
-}
-
-export function addSpecialScoreEvent(team: BabyFootTeamId, action: Exclude<BabyFootScoreAction, "goal">, scorerId?: string | null) {
-  return applyScoreAction(action, team, scorerId);
+  saveBabyFootState(next);
+  return next;
 }
 
 function penaltyIsDecided(p: PenaltiesState) {
   const maxInitial = 5;
+
   const aShots = p.shotsA;
   const bShots = p.shotsB;
+
   const aGoals = p.goalsA;
   const bGoals = p.goalsB;
 
+  const aInInitial = aShots <= maxInitial;
+  const bInInitial = bShots <= maxInitial;
+
+  // During initial 5 each: early win if opponent can't catch up
   if (aShots <= maxInitial && bShots <= maxInitial) {
     const aRemaining = maxInitial - aShots;
     const bRemaining = maxInitial - bShots;
 
     if (aGoals > bGoals + bRemaining) return "A";
     if (bGoals > aGoals + aRemaining) return "B";
+    // after 5 each and unequal -> decided
     if (aShots === maxInitial && bShots === maxInitial && aGoals !== bGoals) return aGoals > bGoals ? "A" : "B";
     return null;
   }
 
+  // Sudden death: after each pair of shots (same number of shots), if different -> decided
   if (aShots === bShots && aShots > maxInitial && aGoals !== bGoals) return aGoals > bGoals ? "A" : "B";
+
   return null;
 }
 
@@ -602,11 +505,17 @@ export function addPenaltyShot(team: BabyFootTeamId, scored: boolean, scorerId?:
   let s = startIfNeeded();
   if (s.finished) return s;
 
-  if (s.phase !== "penalties") s = setPhase(s, "penalties");
+  // Ensure penalties phase exists
+  if (s.phase !== "penalties") {
+    s = setPhase(s, "penalties");
+  }
 
   const now = Date.now();
   const undo = pushUndo(s);
+
   const p: PenaltiesState = s.penalties ?? { shotsA: 0, shotsB: 0, goalsA: 0, goalsB: 0, turn: "A" };
+
+  // Enforce turn order
   if (p.turn !== team) return s;
 
   const nextP: PenaltiesState = {
@@ -633,13 +542,13 @@ export function addPenaltyShot(team: BabyFootTeamId, scored: boolean, scorerId?:
       finished: true,
       winner: decided,
       phase: "finished",
-      clockRunning: false,
       finishedAt: now,
       events: [...(next.events || []), { t: "finish", at: now, winner: decided, reason: "penalties" }],
     };
   }
 
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
 export function undo() {
@@ -661,22 +570,24 @@ export function undo() {
     setsB: last.setsB ?? 0,
     setIndex: last.setIndex ?? 1,
     penalties: last.penalties ?? null,
-    startedAt: last.startedAt ?? null,
-    clockRunning: !!last.clockRunning,
-    pausedAt: last.pausedAt ?? null,
-    pausedTotalMs: Math.max(0, Number(last.pausedTotalMs) || 0),
-    phaseStartedElapsedMs: Math.max(0, Number(last.phaseStartedElapsedMs) || 0),
-    pendingDemiBonus: Math.max(0, Number(last.pendingDemiBonus) || 0),
     events: [...(last.events || []), { t: "undo", at: now }],
     undo: stack.slice(0, -1),
     updatedAt: now,
   };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
+
+
+
+// -------------------------------------------------------------
+// Public setters used by Config (keep API stable)
+// -------------------------------------------------------------
 
 export function resetBabyFoot(partial?: Partial<BabyFootState>) {
   const next = defaultBabyFootState(partial);
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
 export function setMode(mode: BabyFootMode) {
@@ -690,7 +601,8 @@ export function setMode(mode: BabyFootMode) {
     teamBPlayers,
     updatedAt: Date.now(),
   };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
 export function setTeams(
@@ -714,7 +626,8 @@ export function setTeams(
     teamBLogoDataUrl: opt?.teamBLogoDataUrl ?? (s as any).teamBLogoDataUrl ?? null,
     updatedAt: Date.now(),
   };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
 export function setTeamsProfiles(teamAProfileIds: string[], teamBProfileIds: string[]) {
@@ -725,34 +638,32 @@ export function setTeamsProfiles(teamAProfileIds: string[], teamBProfileIds: str
     teamBProfileIds: Array.isArray(teamBProfileIds) ? teamBProfileIds : [],
     updatedAt: Date.now(),
   };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
 export function setTarget(target: number) {
   const s = loadBabyFootState();
   const t = Math.max(1, Math.floor(Number(target) || 10));
   const next: BabyFootState = { ...s, target: t, updatedAt: Date.now() };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
-export function setAdvancedOptions(
-  partial: Partial<
-    Pick<
-      BabyFootState,
-      | "matchDurationSec"
-      | "overtimeSec"
-      | "goldenGoal"
-      | "overtimeGoldenGoal"
-      | "setsEnabled"
-      | "setsBestOf"
-      | "setTarget"
-      | "handicapA"
-      | "handicapB"
-      | "allowDrawOnTimeEnd"
-      | "requireTwoGoalLead"
-    >
-  >
-) {
+export function setAdvancedOptions(partial: Partial<Pick<
+  BabyFootState,
+  | "matchDurationSec"
+  | "overtimeSec"
+  | "goldenGoal"
+  | "overtimeGoldenGoal"
+  | "setsEnabled"
+  | "setsBestOf"
+  | "setTarget"
+  | "handicapA"
+  | "handicapB"
+  | "allowDrawOnTimeEnd"
+  | "requireTwoGoalLead"
+>>) {
   const s = loadBabyFootState();
   const next: BabyFootState = {
     ...s,
@@ -760,12 +671,15 @@ export function setAdvancedOptions(
     setsBestOf: normalizeBestOf((partial as any)?.setsBestOf ?? s.setsBestOf),
     updatedAt: Date.now(),
   };
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
 }
 
+// Start a fresh match from current config/options (new matchId, reset scores, clear events)
 export function startMatch() {
   const s = loadBabyFootState();
   const now = Date.now();
+
   const baseA = Math.max(0, Math.floor(Number(s.handicapA) || 0));
   const baseB = Math.max(0, Math.floor(Number(s.handicapB) || 0));
 
@@ -774,48 +688,67 @@ export function startMatch() {
     matchId: uid(),
     createdAt: now,
     updatedAt: now,
+
     scoreA: baseA,
     scoreB: baseB,
-    startedAt: null,
+
+    startedAt: now,
     finishedAt: null,
-    clockRunning: false,
-    pausedAt: null,
-    pausedTotalMs: 0,
-    phaseStartedElapsedMs: 0,
+
     phase: "play",
+
+    // reset sets counters on new match
     setsA: 0,
     setsB: 0,
     setIndex: 1,
+
     penalties: null,
-    pendingDemiBonus: 0,
+
     finished: false,
     winner: null,
-    events: [],
+
+    events: [{ t: "start", at: now }],
     undo: [],
   };
 
-  return persist(next);
+  saveBabyFootState(next);
+  return next;
+}
+export function computeDurationMs(s: BabyFootState) {
+  const start = s.startedAt ?? s.createdAt;
+  const end = s.finishedAt ?? Date.now();
+  return Math.max(0, end - start);
 }
 
+// Called by Play when time limit reached.
+// Handles draw -> overtime -> penalties.
 export function finishByTime() {
-  let s = loadBabyFootState();
-  if (!s.startedAt) s = startClock();
+  let s = startIfNeeded();
   if (s.finished) return s;
 
+  // decide winner if not draw
   if (s.scoreA !== s.scoreB) {
     const winner: BabyFootTeamId = s.scoreA > s.scoreB ? "A" : "B";
     return finishMatch(winner, "time");
   }
 
-  if (s.allowDrawOnTimeEnd) return finishMatch(null, "draw");
+  // Draw cases
+  if (s.allowDrawOnTimeEnd) {
+    return finishMatch(null, "draw");
+  }
 
+  // Draw: go overtime if configured and not already in overtime
   const ot = Number.isFinite(s.overtimeSec) ? (s.overtimeSec as number) : 0;
-  if (ot > 0 && s.phase === "play") return setPhase(s, "overtime");
+  if (ot > 0 && s.phase === "play") {
+    return setPhase(s, "overtime");
+  }
 
+  // Draw after overtime -> penalties
   const next = setPhase(s, "penalties");
   const ensured: BabyFootState = {
     ...next,
     penalties: next.penalties ?? { shotsA: 0, shotsB: 0, goalsA: 0, goalsB: 0, turn: "A" },
   };
-  return persist(ensured);
+  saveBabyFootState(ensured);
+  return ensured;
 }
