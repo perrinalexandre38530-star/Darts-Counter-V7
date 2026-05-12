@@ -24,7 +24,7 @@ import { History } from "../lib/history";
 import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territories/territoriesStats";
 // Optionnel (si tu l’as dans ton projet). On n’en dépend pas pour éviter de casser.
 import { computeKillerAgg } from "../lib/statsKillerAgg";
-import { isOnlineRecord, idLooseMatch, normText } from "../lib/x01StatsSource";
+import { isOnlineRecord, idLooseMatch, normText, isX01Record, sampleFromRec, collectPlayers } from "../lib/x01StatsSource";
 
 type Props = {
   store: Store;
@@ -358,7 +358,7 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
     tag.includes("x01_multi") ||
     tag.includes("x01_teams");
 
-  if (mode === "x01_multi") return isX01;
+  if (mode === "x01_multi") return isX01 || isX01Record(rec);
   if (mode === "cricket") return tag.includes("cricket");
   if (mode === "killer") return tag.includes("killer");
   if (mode === "shanghai") return tag.includes("shanghai");
@@ -654,7 +654,36 @@ function computeRowsFromHistory(
       rec.payload?.summary?.winnerId ||
       null;
 
-    const summary = rec.summary || rec.payload?.summary || null;
+    // X01 : utilise l’agrégateur robuste commun (ID tronqués, payload imbriqués, online/local).
+    if (mode === "x01_multi") {
+      const playersForX01 = collectPlayers(rec);
+      const targets = playersForX01.length ? playersForX01 : profiles;
+      for (const pl of targets as any[]) {
+        const smp = sampleFromRec(rec, { id: pickId(pl), profileId: pickId(pl), name: pickName(pl) });
+        if (!smp) continue;
+        const pid = resolvePid(smp.playerId || pickId(pl), { ...pl, name: smp.playerName });
+        if (!pid) continue;
+        if (!aggByPlayer[pid]) {
+          aggByPlayer[pid] = {
+            wins: 0, matches: 0, avg3Sum: 0, avg3Count: 0, bestVisit: 0, bestCheckout: 0, kills: 0, hitsBySegmentAgg: {}, totalHits: 0,
+            batardPoints: 0, batardDarts: 0, batardTurns: 0, batardFails: 0, batardValidHits: 0, batardAdvances: 0,
+          };
+        }
+        if (!infoByPlayer[pid]) infoByPlayer[pid] = {};
+        if (!infoByPlayer[pid].name) infoByPlayer[pid].name = smp.playerName || pickName(pl) || (profileById[pid] as any)?.name || "—";
+        if (!infoByPlayer[pid].avatarDataUrl) infoByPlayer[pid].avatarDataUrl = pickAvatar(pl) || (profileById[pid] as any)?.avatarDataUrl || (profileById[pid] as any)?.avatar || null;
+        const agg = aggByPlayer[pid];
+        agg.matches += Number(smp.matchesPlayed || 0) || 1;
+        agg.wins += Number(smp.matchesWon || 0);
+        if (Number(smp.avg3 || 0) > 0) { agg.avg3Sum += Number(smp.avg3); agg.avg3Count += 1; }
+        agg.bestVisit = Math.max(agg.bestVisit, Number(smp.bestVisit || 0));
+        agg.bestCheckout = Math.max(agg.bestCheckout, Number(smp.bestCheckout || 0));
+        agg.totalHits += Number(smp.singleHits || 0) + Number(smp.doubleHits || 0) + Number(smp.tripleHits || 0) + Number(smp.bull25 || 0) + Number(smp.bull50 || 0);
+      }
+      continue;
+    }
+
+    const summary = rec.summary || rec.payload?.summary || rec.payload?.payload?.summary || rec.payload?.finalState?.summary || rec.state_json?.summary || rec.state?.summary || null;
     const payloadStatsPlayers: any[] = Array.isArray(rec?.payload?.stats?.players)
       ? rec.payload.stats.players
       : Array.isArray(rec?.payload?.stats?.playersStats)

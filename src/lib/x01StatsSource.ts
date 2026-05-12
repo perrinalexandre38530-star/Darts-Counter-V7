@@ -76,6 +76,55 @@ const num = (v: any, d = 0) => {
   return Number.isFinite(n) ? n : d;
 };
 
+function walkObjects(root: any, maxDepth = 5): any[] {
+  const out: any[] = [];
+  const seen = new WeakSet<object>();
+  const walk = (x: any, depth: number) => {
+    if (!x || typeof x !== "object" || Array.isArray(x) || depth > maxDepth) return;
+    if (seen.has(x)) return;
+    seen.add(x);
+    out.push(x);
+    for (const key of ["payload", "summary", "state", "state_json", "finalState", "data", "resume", "compact", "d", "s", "config", "game", "stats", "meta"]) {
+      const v = x?.[key];
+      if (v && typeof v === "object" && !Array.isArray(v)) walk(v, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+function deepStringBag(root: any): string {
+  const vals: string[] = [];
+  for (const obj of walkObjects(root, 5)) {
+    for (const [k, v] of Object.entries(obj)) {
+      const lk = String(k).toLowerCase();
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        if (/mode|kind|source|online|lobby|room|sport|variant|status|type|game|start/.test(lk)) vals.push(String(v));
+      }
+    }
+  }
+  return vals.map((v) => String(v ?? "").trim().toLowerCase()).filter(Boolean).join("|");
+}
+
+function deepFirst(root: any, keys: string[]): any {
+  const want = new Set(keys.map((k) => k.toLowerCase()));
+  for (const obj of walkObjects(root, 5)) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (want.has(String(k).toLowerCase()) && v !== undefined && v !== null && v !== "") return v;
+    }
+  }
+  return undefined;
+}
+
+function looksLikeStatsMap(x: any): boolean {
+  if (!x || typeof x !== "object" || Array.isArray(x)) return false;
+  const vals = Object.values(x);
+  if (!vals.length) return false;
+  return vals.some((v: any) => v && typeof v === "object" && (
+    "darts" in v || "dt" in v || "dartsThrown" in v || "totalScore" in v || "totalscore" in v || "hits" in v || "scorePerVisit" in v || "scorepervisit" in v
+  ));
+}
+
 export function normText(v: any): string {
   return String(v ?? "")
     .normalize("NFD")
@@ -108,21 +157,18 @@ export function profileMatchesPlayer(profile: any, playerLike: any, key?: any): 
 export function collectPlayers(rec: any): any[] {
   const out: any[] = [];
   const push = (arr: any) => { if (Array.isArray(arr)) arr.forEach((p) => p && out.push(p)); };
-  push(rec?.players);
-  push(rec?.summary?.players);
-  push(rec?.summary?.rankings);
-  push(rec?.payload?.players);
-  push(rec?.payload?.summary?.players);
-  push(rec?.payload?.summary?.rankings);
-  push(rec?.payload?.config?.players);
-  push(rec?.payload?.state?.players);
-  push(rec?.resume?.config?.players);
-  push(rec?.resume?.state?.players);
-  push(rec?.compact?.pn ? Object.entries(rec.compact.pn).map(([i, name]) => ({ id: rec?.compact?.p?.[Number(i)], name })) : []);
+  for (const obj of walkObjects(rec, 5)) {
+    push(obj?.players);
+    push(obj?.rankings);
+    push(obj?.perPlayer);
+    if (obj?.pn && Array.isArray(obj?.p)) {
+      push(Object.entries(obj.pn).map(([i, name]) => ({ id: obj.p?.[Number(i)], name })));
+    }
+  }
   const seen = new Set<string>();
   return out.filter((p) => {
-    const k = String(p?.id ?? p?.profileId ?? p?.playerId ?? p?.name ?? JSON.stringify(p));
-    if (seen.has(k)) return false;
+    const k = String(p?.id ?? p?.profileId ?? p?.playerId ?? p?.pid ?? p?.uid ?? p?.name ?? p?.playerName ?? JSON.stringify(p));
+    if (!k || seen.has(k)) return false;
     seen.add(k);
     return true;
   });
@@ -134,51 +180,103 @@ export function findProfileForPlayer(profiles: any[], playerLike: any, key?: any
 }
 
 export function isX01Record(rec: any): boolean {
-  const s = [rec?.kind, rec?.mode, rec?.variant, rec?.game?.mode, rec?.summary?.game?.mode, rec?.summary?.mode, rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.game?.mode, rec?.payload?.summary?.game?.mode, rec?.payload?.config?.mode, rec?.resume?.config?.mode]
-    .filter(Boolean).map((x) => String(x).toLowerCase()).join("|");
-  return /(^|\|)(x01|x01v3|301|501|701)(\||$)/.test(s) || s.includes("x01");
+  const bag = deepStringBag(rec);
+  if (/x01|x01v3|x01_online|training_x01|training-x01/.test(bag)) return true;
+  const startScore = deepFirst(rec, ["startScore", "startscore", "x01StartScore"]);
+  const n = num(startScore);
+  return [301, 501, 701, 901].includes(n);
 }
 
 export function isTrainingRecord(rec: any): boolean {
-  const s = [rec?.kind, rec?.mode, rec?.game?.mode, rec?.summary?.mode, rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.config?.mode]
-    .filter(Boolean).map((x) => String(x).toLowerCase()).join("|");
-  return s.includes("training_x01") || s.includes("training-x01");
+  const bag = deepStringBag(rec);
+  return bag.includes("training_x01") || bag.includes("training-x01") || bag.includes("trainingx01");
 }
 
 export function isOnlineRecord(rec: any): boolean {
-  const vals = [
-    rec?.online, rec?.source, rec?.onlineMode, rec?.lobbyCode, rec?.lobbyId, rec?.roomCode, rec?.roomId,
-    rec?.kind, rec?.mode, rec?.variant, rec?.matchMode, rec?.gameMode,
-    rec?.summary?.online, rec?.summary?.source, rec?.summary?.onlineMode, rec?.summary?.lobbyCode, rec?.summary?.lobbyId, rec?.summary?.mode,
-    rec?.meta?.online, rec?.meta?.source, rec?.meta?.onlineMode, rec?.meta?.lobbyCode, rec?.meta?.lobbyId,
-    rec?.payload?.online, rec?.payload?.source, rec?.payload?.onlineMode, rec?.payload?.lobbyCode, rec?.payload?.lobbyId, rec?.payload?.roomCode, rec?.payload?.roomId, rec?.payload?.mode, rec?.payload?.matchMode, rec?.payload?.gameMode,
-    rec?.payload?.config?.online, rec?.payload?.config?.onlineMode, rec?.payload?.config?.lobbyCode, rec?.payload?.config?.onlineLobbyCode, rec?.payload?.config?.matchMode, rec?.payload?.config?.gameMode,
-    rec?.payload?.summary?.online, rec?.payload?.summary?.source, rec?.payload?.summary?.onlineMode, rec?.payload?.summary?.lobbyCode, rec?.payload?.summary?.mode,
-    rec?.resume?.config?.online, rec?.resume?.config?.onlineMode, rec?.resume?.config?.lobbyCode, rec?.resume?.config?.onlineLobbyCode, rec?.resume?.config?.matchMode, rec?.resume?.config?.gameMode,
-    rec?.compact?.o?.online, rec?.compact?.o?.onlinemode, rec?.compact?.o?.lobbycode, rec?.compact?.o?.source,
-  ];
-  const joined = vals.map((v) => String(v ?? "").trim().toLowerCase()).filter(Boolean).join("|");
-  if (vals.some((v) => v === true)) return true;
-  if (/online|nas-online|x01_online|online_lobby|online-match/.test(joined)) return true;
-  const codeVals = [rec?.lobbyCode, rec?.lobbyId, rec?.roomCode, rec?.roomId, rec?.payload?.lobbyCode, rec?.payload?.lobbyId, rec?.payload?.roomCode, rec?.payload?.roomId, rec?.payload?.config?.lobbyCode, rec?.payload?.config?.onlineLobbyCode, rec?.resume?.config?.lobbyCode, rec?.resume?.config?.onlineLobbyCode].filter(Boolean);
-  return codeVals.some((v) => String(v ?? "").trim().length >= 3);
+  for (const obj of walkObjects(rec, 5)) {
+    if (obj?.online === true || obj?.isOnline === true || obj?.onlineV10 === true || obj?.onlineMatch === true) return true;
+    const code = obj?.lobbyCode ?? obj?.onlineLobbyCode ?? obj?.lobbyId ?? obj?.roomCode ?? obj?.roomId ?? obj?.code;
+    if (code && String(code).trim().length >= 3) return true;
+  }
+  const bag = deepStringBag(rec);
+  return /online|nas-online|x01_online|online_lobby|online-match|onlinematch/.test(bag);
+}
+
+
+
+function scoreOfDart(d: any): number {
+  const seg = num(d?.segment, num(d?.v, num(d?.value, 0)));
+  const mult = num(d?.multiplier, num(d?.mult, num(d?.m, 1))) || 1;
+  if (d?.isMiss || d?.ismiss || seg === 0 || String(d?.code || "").toUpperCase() === "MISS") return 0;
+  if (seg === 25 && mult === 2) return 50;
+  if (seg === 25) return 25;
+  return seg * mult;
+}
+
+function findReplayDarts(root: any): any[] {
+  for (const obj of walkObjects(root, 6)) {
+    for (const key of ["__x01OnlineDarts", "replayDarts", "dartsDetail", "dartsdetail", "darts"]) {
+      const arr = obj?.[key];
+      if (Array.isArray(arr) && arr.some((d: any) => d && typeof d === "object" && ("playerId" in d || "pid" in d || "profileId" in d))) return arr;
+    }
+  }
+  return [];
+}
+
+function buildStatsMapFromReplay(rec: any): any | null {
+  const darts = findReplayDarts(rec);
+  if (!darts.length) return null;
+  const out: Record<string, any> = {};
+  const visitAcc: Record<string, { n: number; sum: number }> = {};
+  const finishVisit = (pid: string) => {
+    const acc = visitAcc[pid];
+    if (!acc || acc.n <= 0) return;
+    out[pid].scorePerVisit.push(acc.sum);
+    out[pid].bestVisit = Math.max(out[pid].bestVisit, acc.sum);
+    visitAcc[pid] = { n: 0, sum: 0 };
+  };
+  for (const d of darts) {
+    const pid = String(d?.playerId ?? d?.pid ?? d?.profileId ?? d?.id ?? "").trim();
+    if (!pid) continue;
+    if (!out[pid]) out[pid] = { darts: 0, totalScore: 0, bestVisit: 0, hits: { S: 0, D: 0, T: 0, M: 0, Bull: 0, DBull: 0 }, scorePerVisit: [], miss: 0, bust: 0 };
+    if (!visitAcc[pid]) visitAcc[pid] = { n: 0, sum: 0 };
+    const seg = num(d?.segment, num(d?.v, num(d?.value, 0)));
+    const mult = num(d?.multiplier, num(d?.mult, num(d?.m, 1))) || 1;
+    const sc = scoreOfDart(d);
+    out[pid].darts += 1;
+    out[pid].totalScore += sc;
+    if (d?.isBust || d?.isbust || d?.bust) out[pid].bust += 1;
+    if (sc <= 0 || seg === 0 || d?.isMiss || d?.ismiss) { out[pid].hits.M += 1; out[pid].miss += 1; }
+    else if (seg === 25 && mult === 2) out[pid].hits.DBull += 1;
+    else if (seg === 25) out[pid].hits.Bull += 1;
+    else if (mult === 3) out[pid].hits.T += 1;
+    else if (mult === 2) out[pid].hits.D += 1;
+    else out[pid].hits.S += 1;
+    visitAcc[pid].n += 1;
+    visitAcc[pid].sum += sc;
+    if (visitAcc[pid].n >= 3 || d?.endsVisit || d?.visitEnd) finishVisit(pid);
+  }
+  Object.keys(visitAcc).forEach(finishVisit);
+  for (const [pid, st] of Object.entries(out)) {
+    const thresholds = countVisitsFromScores((st as any).scorePerVisit);
+    Object.assign(st as any, thresholds);
+    (st as any).avg3 = (st as any).darts > 0 ? ((st as any).totalScore / (st as any).darts) * 3 : 0;
+  }
+  return out;
 }
 
 function mapsFromRec(rec: any): any[] {
   const out: any[] = [];
-  const add = (x: any) => { if (x && typeof x === "object" && !Array.isArray(x)) out.push(x); };
-  add(rec?.summary?.detailedByPlayer);
-  add(rec?.summary?.detailedbyplayer);
-  add(rec?.summary?.perPlayer);
-  add(rec?.payload?.summary?.detailedByPlayer);
-  add(rec?.payload?.summary?.detailedbyplayer);
-  add(rec?.payload?.summary?.perPlayer);
-  add(rec?.payload?.state?.liveStatsByPlayer);
-  add(rec?.payload?.state?.livestatsbyplayer);
-  add(rec?.resume?.state?.liveStatsByPlayer);
-  add(rec?.resume?.state?.livestatsbyplayer);
-  add(rec?.compact?.d?.s?.livestatsbyplayer);
-  add(rec?.compact?.d?.s?.liveStatsByPlayer);
+  const add = (x: any) => { if (looksLikeStatsMap(x)) out.push(x); };
+  add(buildStatsMapFromReplay(rec));
+  for (const obj of walkObjects(rec, 5)) {
+    add(obj?.detailedByPlayer);
+    add(obj?.detailedbyplayer);
+    add(obj?.perPlayer && Array.isArray(obj.perPlayer) ? Object.fromEntries(obj.perPlayer.map((p: any, i: number) => [String(p?.id ?? p?.profileId ?? p?.playerId ?? p?.name ?? i), p])) : null);
+    add(obj?.liveStatsByPlayer);
+    add(obj?.livestatsbyplayer);
+    add(obj?.players && !Array.isArray(obj.players) ? obj.players : null);
+  }
   return out;
 }
 
@@ -197,7 +295,10 @@ export function findStatsForProfile(rec: any, profile: any): { key: string; stat
   }
   const players = collectPlayers(rec);
   const p = players.find((pl) => profileMatchesPlayer(profile, pl));
-  if (p) return { key: String(p.id ?? p.profileId ?? p.playerId ?? p.name), stats: p, player: p };
+  if (p) {
+    const fallbackStats = (rec?.stats && typeof rec.stats === "object") ? rec.stats : (rec?.payload?.stats && typeof rec.payload.stats === "object") ? rec.payload.stats : {};
+    return { key: String(p.id ?? p.profileId ?? p.playerId ?? p.name), stats: { ...fallbackStats, ...p }, player: p };
+  }
   return null;
 }
 
@@ -249,8 +350,8 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const player = found.player || s;
   const playerId = String(player?.id ?? player?.profileId ?? player?.playerId ?? found.key ?? profile?.id ?? "");
   const playerName = String(player?.name ?? player?.playerName ?? s?.name ?? profile?.name ?? "");
-  const winnerId = rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? null;
-  const winnerName = rec?.winnerName ?? rec?.summary?.winnerName ?? rec?.payload?.winnerName ?? rec?.payload?.summary?.winnerName ?? null;
+  const winnerId = rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? deepFirst(rec, ["winnerId", "lastWinnerId", "lastLegWinnerId", "winner"] ) ?? null;
+  const winnerName = rec?.winnerName ?? rec?.summary?.winnerName ?? rec?.payload?.winnerName ?? rec?.payload?.summary?.winnerName ?? deepFirst(rec, ["winnerName"] ) ?? null;
   const won = (winnerId && idLooseMatch(winnerId, playerId)) || (winnerName && normText(winnerName) === normText(playerName));
   const darts = num(s.darts, num(s.dartsThrown, num(s.dt, num(s.totalDarts))));
   const totalScore = num(s.totalScore, num(s.totalscore, num(s.points)));
@@ -267,7 +368,7 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   return {
     id: String(rec?.id ?? rec?.matchId ?? rec?.payload?.id ?? `${playerId}-${rec?.createdAt ?? Date.now()}`),
     matchId: String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? ""),
-    createdAt: num(rec?.createdAt, num(rec?.updatedAt, num(rec?.summary?.finishedAt, num(rec?.payload?.createdAt, Date.now())))),
+    createdAt: num(rec?.createdAt, num(rec?.updatedAt, num(rec?.summary?.finishedAt, num(rec?.payload?.createdAt, num(deepFirst(rec, ["createdAt", "updatedAt", "finishedAt", "t", "u"]), Date.now()))))),
     scope: isTrainingRecord(rec) ? "training" : isOnlineRecord(rec) ? "online" : "local",
     playerId,
     playerName,
@@ -327,7 +428,7 @@ export async function loadAllHistoryRecords(): Promise<any[]> {
   const byId = new Map<string, any>();
   const push = (rec: any, idx = 0) => {
     if (!rec || typeof rec !== "object") return;
-    const id = String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? `rec-${idx}`).trim();
+    const id = String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? deepFirst(rec, ["matchId", "id"]) ?? `rec-${idx}`).trim();
     if (!id) return;
     byId.set(id, { ...(byId.get(id) || {}), ...rec });
   };
