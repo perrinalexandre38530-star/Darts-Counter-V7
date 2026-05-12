@@ -11,6 +11,7 @@ import React, { useDeferredValue } from "react";
 import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import AvatarLite from "../components/profile/AvatarLite";
+import BackDot from "../components/BackDot";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
 import {
@@ -937,6 +938,10 @@ export default function Profiles({
     const src = String(item?.src || "").trim();
     const id = String(targetProfileId || "").trim();
     if (!src || !id) return;
+    if (src.startsWith("blob:")) {
+      setToast({ type: "error", message: "Avatar temporaire expiré : importe ou resélectionne cette image." });
+      return;
+    }
 
     const nowTs = Date.now();
     const isData = src.startsWith("data:image/");
@@ -970,9 +975,13 @@ export default function Profiles({
       ...(p0 || {}),
       avatarUrl: isData ? undefined : src,
       avatarPath: undefined,
-      avatarDataUrl: isData ? src : (p0 as any).avatarDataUrl,
+      avatarDataUrl: isData ? src : undefined,
       avatarUpdatedAt: nowTs,
     } : p0));
+
+    try {
+      window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: nowTs } }));
+    } catch {}
 
     if (nextStoreSnapshot) {
       scheduleProfilesPersist("profiles_avatar_gallery_apply", nextStoreSnapshot, { cloud: false, delayMs: 2500 });
@@ -1117,7 +1126,7 @@ export default function Profiles({
   }
 
   async function changeAvatar(id: string, file: File) {
-    const now = Date.now();
+    const now = Date.now() + Math.floor(Math.random() * 1000);
     const objectUrl = URL.createObjectURL(file);
     setProfilesSafe((arr) =>
       arr.map((p) =>
@@ -1253,6 +1262,9 @@ export default function Profiles({
     if (nextStoreSnapshot) {
       scheduleProfilesPersist("profiles_avatar", nextStoreSnapshot, { cloud: false, delayMs: 6000 });
     }
+    try {
+      window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: now } }));
+    } catch {}
     try { URL.revokeObjectURL(objectUrl); } catch {}
   }
 
@@ -2060,26 +2072,20 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            <button
-              className="btn sm"
-              onClick={() => openView("menu")}
-              style={{
-                marginBottom: 10,
-                borderRadius: 999,
-                paddingInline: 14,
-                background: "transparent",
-                border: `1px solid ${theme.borderSoft}`,
-                fontSize: 12,
-              }}
-            >
-              ← {t("profiles.menu.back", "Retour au menu Profils")}
-            </button>
+            <div style={{ marginBottom: 10, display: "flex", alignItems: "center" }}>
+              <BackDot
+                size={36}
+                title={t("profiles.menu.back", "Retour au menu Profils")}
+                onClick={() => openView("menu")}
+              />
+            </div>
 
             {view === "me" && (
               <>
                 <Card>
   {active && !forceAuth ? (
     <MemoActiveProfileBlock
+      key={`${(active as any)?.id || "active"}-${(active as any)?.avatarUpdatedAt || 0}-${firstStringChunk((active as any)?.avatarUrl, 48)}-${firstStringChunk((active as any)?.avatarDataUrl, 48)}`}
       selfStatus={onlineStatusForUi}
       active={active}
       activeAvg3D={activeAvg3D}
@@ -2649,8 +2655,8 @@ function AvatarGalleryPanel({
             onClick={() => moveTab(-1)}
             aria-label="Catégorie précédente"
             style={{
-              width: 34,
-              height: 34,
+              width: 38,
+              height: 38,
               borderRadius: 999,
               border: `1px solid ${theme.borderSoft}`,
               background: "rgba(255,255,255,.05)",
@@ -2927,6 +2933,34 @@ function AvatarGalleryPanel({
    Sous-composants communs
 ================================ */
 
+/* ================================
+   Icônes inline thème profil
+================================ */
+function NeonCameraIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" style={{ display: "block" }}>
+      <path d="M8.2 7.2 9.4 5.4c.25-.38.67-.6 1.13-.6h2.94c.46 0 .88.22 1.13.6l1.2 1.8h2.05c1.05 0 1.9.85 1.9 1.9v8.05c0 1.05-.85 1.9-1.9 1.9H6.15c-1.05 0-1.9-.85-1.9-1.9V9.1c0-1.05.85-1.9 1.9-1.9H8.2Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 16.25a3.15 3.15 0 1 0 0-6.3 3.15 3.15 0 0 0 0 6.3Z" stroke="currentColor" strokeWidth="1.9"/>
+      <path d="M17.55 9.85h.01" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function NeonTrashIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false" style={{ display: "block" }}>
+      <path d="M5 7h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M9.2 7V5.6c0-.75.6-1.35 1.35-1.35h2.9c.75 0 1.35.6 1.35 1.35V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7.1 7.5 8 19.1c.08.95.86 1.65 1.8 1.65h4.4c.94 0 1.72-.7 1.8-1.65l.9-11.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M10.35 11v5.6M13.65 11v5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function firstStringChunk(value: any, len = 80): string {
+  return typeof value === "string" ? value.slice(0, len) : "";
+}
+
 function Card({
   title,
   children,
@@ -3055,6 +3089,18 @@ function ActiveProfileBlock({
     setEditPreview(null);
     setIsEditing(false);
   }, [active?.id]);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<any>)?.detail || {};
+      if (String(detail?.profileId || "") === String((active as any)?.id || "")) {
+        setAvatarRefreshKey(Number(detail?.avatarUpdatedAt || Date.now()));
+      }
+    };
+    window.addEventListener("dc:profile-avatar-updated", handler as EventListener);
+    return () => window.removeEventListener("dc:profile-avatar-updated", handler as EventListener);
+  }, [(active as any)?.id]);
+
 
   React.useEffect(() => {
     if (!editFile) {
@@ -3153,9 +3199,10 @@ function ActiveProfileBlock({
 
   const pillBtnDanger: React.CSSProperties = {
     ...pillBtnBase,
-    background: "linear-gradient(135deg, #ff4b5c, #ff8a80)",
-    border: "1px solid #ffb3b3",
-    color: "#000",
+    background: `linear-gradient(180deg, ${primary}24, ${primary}66)`,
+    border: `1px solid ${primary}`,
+    color: primary,
+    boxShadow: `0 0 14px ${primary}44, inset 0 1px 0 rgba(255,255,255,.16)`,
   };
 
   return (
@@ -3244,16 +3291,15 @@ function ActiveProfileBlock({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 16,
-              fontWeight: 900,
-              background: "rgba(0,0,0,.78)",
               color: primary,
-              border: `1px solid ${primary}`,
-              boxShadow: `0 0 14px ${primary}66`,
+              background: "rgba(0,0,0,.72)",
+              border: `2px solid ${primary}`,
+              boxShadow: `0 0 0 2px rgba(0,0,0,.28), 0 0 18px ${primary}99, 0 0 34px ${primary}55`,
+              filter: `drop-shadow(0 0 10px ${primary}AA)`,
               cursor: "pointer",
             }}
           >
-            📷
+            <NeonCameraIcon size={20} />
           </button>
         )}
 
@@ -3334,7 +3380,7 @@ function ActiveProfileBlock({
               onClick={onResetStats}
               style={pillBtnDanger}
             >
-              <span aria-hidden>🗑</span><span>STATS</span>
+              <span aria-hidden style={{ color: "inherit", filter: `drop-shadow(0 0 9px ${primary}AA)` }}><NeonTrashIcon size={17} /></span><span>STATS</span>
             </button>
           )}
         </div>
@@ -4800,9 +4846,10 @@ function LocalProfilesRefonte({
 
   const pillBtnDanger: React.CSSProperties = {
     ...pillBtnBase,
-    background: "linear-gradient(135deg, #ff4b5c, #ff8a80)",
-    border: "1px solid #ffb3b3",
-    color: "#000",
+    background: `linear-gradient(180deg, ${primary}24, ${primary}66)`,
+    border: `1px solid ${primary}`,
+    color: primary,
+    boxShadow: `0 0 14px ${primary}44, inset 0 1px 0 rgba(255,255,255,.16)`,
   };
 
   return (
@@ -6224,6 +6271,8 @@ const MemoActiveProfileBlock = React.memo(ActiveProfileBlock, (prev, next) => {
     prev.active?.id === next.active?.id &&
     prev.active?.name === next.active?.name &&
     (prev.active as any)?.avatarUpdatedAt === (next.active as any)?.avatarUpdatedAt &&
+    firstStringChunk((prev.active as any)?.avatarUrl, 80) === firstStringChunk((next.active as any)?.avatarUrl, 80) &&
+    firstStringChunk((prev.active as any)?.avatarDataUrl, 80) === firstStringChunk((next.active as any)?.avatarDataUrl, 80) &&
     prev.selfStatus === next.selfStatus &&
     prev.activeAvg3D === next.activeAvg3D
   );
