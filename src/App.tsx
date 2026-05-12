@@ -179,7 +179,6 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 
 // Stats pages
 import StatsDetail from "./pages/StatsDetail";
-import StatsOnline from "./pages/StatsOnline";
 
 import Profiles from "./pages/Profiles";
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
@@ -187,6 +186,7 @@ const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
+const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
 const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
 const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
@@ -5044,7 +5044,14 @@ function X01PlayV3Route({
         online={isOnline}
         lobbyCode={routeLobbyCode || null}
         onlineUserId={onlineSessionUserId || null}
-        onExit={() => go(isOnline ? "online" : "x01_config_v3", isOnline ? { lobbyCode: routeLobbyCode, resumeOnline: true } : undefined)}
+        onExit={() => {
+          if (isOnline) {
+            setX01ConfigV3(null);
+            go("online", { lobbyCode: routeLobbyCode, resumeOnline: true });
+            return;
+          }
+          go("x01_config_v3");
+        }}
         onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
         onShowSummary={(matchId: string) =>
           go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeLobbyCode || routeParams?.lobbyCode })

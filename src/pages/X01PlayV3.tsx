@@ -907,6 +907,7 @@ export default function X01PlayV3({
   resume,
 }: Props) {
   const [castStatusTick, setCastStatusTick] = React.useState(0);
+  const [onlineExitingToLobby, setOnlineExitingToLobby] = React.useState(false);
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   // Fullscreen gameplay (mobile) — hide tabbar + lock global scroll
   useFullscreenPlay();
@@ -3524,18 +3525,25 @@ React.useEffect(() => {
   function handleQuit() {
     // ONLINE : retour salon sans détruire l'autosave/reprise. Un téléphone peut se mettre en veille ou quitter par erreur.
     if (effectiveOnline && effectiveLobbyCode) {
+      setOnlineExitingToLobby(true);
       try {
         if (typeof window !== "undefined") {
           window.localStorage.setItem("dc_online_last_lobby_v1", effectiveLobbyCode);
         }
       } catch {}
-      if (onExit) {
-        onExit();
-        return;
-      }
-      if (typeof window !== "undefined") {
-        window.location.hash = `#/online?lobbyCode=${encodeURIComponent(effectiveLobbyCode)}`;
-      }
+      const exitNow = () => {
+        if (onExit) {
+          onExit();
+          return;
+        }
+        if (typeof window !== "undefined") {
+          window.location.hash = `#/online?lobbyCode=${encodeURIComponent(effectiveLobbyCode)}`;
+        }
+      };
+      // Laisse React masquer l'overlay avant le changement de route : évite le crash .filter
+      // constaté à la sortie de match quand la config online est nettoyée pendant le teardown.
+      if (typeof window !== "undefined") window.setTimeout(exitNow, 0);
+      else exitNow();
       return;
     }
 
@@ -4304,7 +4312,7 @@ if (isLandscapeTablet) {
 
       {/* OVERLAYS (inchangés) */}
       <X01LegOverlayV3
-        open={status === "leg_end" || status === "set_end" || status === "match_end"}
+        open={!onlineExitingToLobby && (status === "leg_end" || status === "set_end" || status === "match_end")}
         status={status}
         config={config}
         state={state}
@@ -4321,7 +4329,7 @@ if (isLandscapeTablet) {
         open={summaryOpen && !!summaryLegStats}
         result={summaryLegStats}
         playersById={summaryPlayersById}
-        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, players.map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
+        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, (Array.isArray(players) ? players : []).map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
         onClose={() => setSummaryOpen(false)}
         onReplay={handleReplaySameConfig}
       />
@@ -4898,7 +4906,7 @@ if (isLandscapeTablet) {
         open={summaryOpen && !!summaryLegStats}
         result={summaryLegStats}
         playersById={summaryPlayersById}
-        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, players.map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
+        visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, (Array.isArray(players) ? players : []).map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
         onClose={() => setSummaryOpen(false)}
         onReplay={handleReplaySameConfig}
       />
@@ -7146,7 +7154,9 @@ function saveX01V3MatchToHistory({
   historyId,
   darts: replayDarts,
 }: X01V3HistoryPayload) {
-  const players = config.players || [];
+  const players = Array.isArray((config as any)?.players) ? (config as any).players : [];
+  const isOnlineMatch = !!((config as any)?.online || (config as any)?.lobbyCode || (config as any)?.onlineMode);
+  const onlineLobbyCode = String((config as any)?.lobbyCode || (config as any)?.lobby_code || "").trim().toUpperCase() || null;
   const playerOrderForReplay = (players as any[]).map((p: any) => String(p?.id || "")).filter(Boolean);
   const replayVisits = buildReplayVisitsForX01History(
     replayDarts,
@@ -7590,6 +7600,9 @@ function saveX01V3MatchToHistory({
 
     kind: "x01" as const,
     matchId,
+    online: isOnlineMatch,
+    onlineMode: isOnlineMatch ? "x01" : undefined,
+    lobbyCode: onlineLobbyCode,
 
     game: {
       ...engineGame,
@@ -7707,6 +7720,10 @@ function saveX01V3MatchToHistory({
     mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
     variant: "x01_v3",
     game: "x01",
+    online: isOnlineMatch,
+    onlineMode: isOnlineMatch ? "x01" : undefined,
+    lobbyCode: onlineLobbyCode,
+    source: isOnlineMatch ? "online" : undefined,
     startScore: config.startScore,
     matchId, // 🧷 idem summary
     resumeId: matchId,
@@ -7746,6 +7763,10 @@ function saveX01V3MatchToHistory({
     resumeId: matchId, // pour matchLink() dans HistoryPage
     kind: "x01",
     status: "finished",
+    online: isOnlineMatch,
+    onlineMode: isOnlineMatch ? "x01" : undefined,
+    lobbyCode: onlineLobbyCode,
+    source: isOnlineMatch ? "online" : undefined,
     createdAt,
     updatedAt: createdAt,
     // ✅ compat dartsets (lecture simple)

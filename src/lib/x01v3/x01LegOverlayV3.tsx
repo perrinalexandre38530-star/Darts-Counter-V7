@@ -60,15 +60,17 @@ export default function X01LegOverlayV3({
   // on ne rend rien.
   if (!open || status === "playing") return null;
 
-  const players = config?.players ?? [];
-  const scores = state?.scores ?? {};
-  const legsWon = state?.legsWon ?? {};
-  const setsWon = state?.setsWon ?? {};
+  // ONLINE EXIT SAFE: pendant le retour salon, le parent peut nettoyer la config
+  // avant que React ait démonté l’overlay. Tous les tableaux sont donc normalisés.
+  const players = Array.isArray(config?.players) ? config.players : [];
+  const scores = state?.scores && typeof state.scores === "object" ? state.scores : {};
+  const legsWon = state?.legsWon && typeof state.legsWon === "object" ? state.legsWon : {};
+  const setsWon = state?.setsWon && typeof state.setsWon === "object" ? state.setsWon : {};
 
   const isTeams = (config as any)?.gameMode === "teams" && Array.isArray((config as any)?.teams) && ((config as any)?.teams?.length ?? 0) >= 2;
-  const teams = ((config as any)?.teams ?? []) as any[];
-  const teamLegsWon = (state as any)?.teamLegsWon ?? {};
-  const teamSetsWon = (state as any)?.teamSetsWon ?? {};
+  const teams = Array.isArray((config as any)?.teams) ? ((config as any).teams as any[]) : [];
+  const teamLegsWon = (state as any)?.teamLegsWon && typeof (state as any).teamLegsWon === "object" ? (state as any).teamLegsWon : {};
+  const teamSetsWon = (state as any)?.teamSetsWon && typeof (state as any).teamSetsWon === "object" ? (state as any).teamSetsWon : {};
 
   const currentSet = state?.currentSet ?? 1;
   const currentLeg = state?.currentLeg ?? 1;
@@ -144,7 +146,7 @@ export default function X01LegOverlayV3({
   )} ${currentSet}/${setsToWin}`;
 
   // CONTINUER (3+ joueurs)
-  const finishedCount = players.filter((p: any) => scores[p.id] === 0).length;
+  const finishedCount = (Array.isArray(players) ? players : []).filter((p: any) => scores?.[p?.id] === 0).length;
   const showContinueMulti =
     players.length >= 3 &&
     finishedCount >= 1 &&
@@ -812,7 +814,7 @@ function TeamRankingLayout({
           const st = (teamSetsWon as any)[team.id] ?? 0;
           const lg = (teamLegsWon as any)[team.id] ?? 0;
 
-          const memberIds: string[] = (team.players || []).filter(Boolean);
+          const memberIds: string[] = (Array.isArray(team?.players) ? team.players : []).filter(Boolean);
           const remaining = memberIds.reduce(
             (sum, pid) => sum + ((scores as any)[pid] ?? startScore),
             0
