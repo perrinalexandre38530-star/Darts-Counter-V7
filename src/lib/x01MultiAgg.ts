@@ -144,6 +144,49 @@ function extractVisits(rec: SavedMatch, pid: string, order: string[] = []) {
   return visits;
 }
 
+
+function x01NormName(v: any): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function x01IdMatches(a: any, b: any): boolean {
+  const aa = String(a ?? "").replace(/^online:/, "").trim();
+  const bb = String(b ?? "").replace(/^online:/, "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+function x01PlayerIds(p: any): string[] {
+  return [p?.id, p?.playerId, p?.profileId, p?.sourceId, p?.sourcePlayerId, p?.sourceProfileId, p?.userId, p?.uid, ...(Array.isArray(p?.aliases) ? p.aliases : [])]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).replace(/^online:/, "").trim())
+    .filter(Boolean);
+}
+
+function x01FindMapValue(map: any, ids: string[]): any {
+  if (!map || typeof map !== "object") return undefined;
+  for (const id of ids) {
+    if (map[id] !== undefined) return map[id];
+    const k = Object.keys(map).find((key) => x01IdMatches(key, id));
+    if (k) return map[k];
+  }
+  return undefined;
+}
+
+function x01ReadNum(...vals: any[]): number {
+  for (const v of vals) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
 export function computeX01MultiAgg(records: SavedMatch[], playerId: string, playerName?: string) {
   const out = {
     sessions: 0,
@@ -174,13 +217,14 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     if ((rec as any).id) seen.add((rec as any).id);
 
     const players = pickPlayers(rec);
-    const pname = (playerName || "").trim().toLowerCase();
-    const matched = players.find((p: any) => String(p?.id) === String(playerId)) || (pname ? players.find((p: any) => String(p?.name || "").trim().toLowerCase() === pname) : undefined);
-    if (!matched?.id) continue;
+    const pname = x01NormName(playerName);
+    const matched = players.find((p: any) => x01PlayerIds(p).some((id) => x01IdMatches(id, playerId))) || (pname ? players.find((p: any) => x01NormName(p?.name || p?.displayName || p?.nickname) === pname) : undefined);
+    if (!matched?.id && !matched?.playerId && !matched?.profileId) continue;
 
-    const order = players.map((p: any) => String(p?.id || "")).filter(Boolean);
-    const visits = extractVisits(rec, String(matched.id), order);
-    if (!visits.length) continue;
+    const matchedIds = Array.from(new Set([...x01PlayerIds(matched), String(playerId || "")].filter(Boolean)));
+    const canonicalMatchedId = String(matched.id || matched.playerId || matched.profileId || matchedIds[0] || "");
+    const order = players.map((p: any) => String(p?.id || p?.playerId || p?.profileId || "")).filter(Boolean);
+    const visits = extractVisits(rec, canonicalMatchedId, order);
 
     out.sessions++;
     let darts = 0;
@@ -227,26 +271,62 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     const anyRec: any = rec as any;
     const payload: any = anyRec?.payload ?? null;
     const summary: any = anyRec?.summary ?? payload?.summary ?? null;
-    const matchedId = String(matched.id);
     const pickMapValue = (...maps: any[]) => {
       for (const map of maps) {
-        if (map && typeof map === "object" && Number.isFinite(Number(map[matchedId]))) return Number(map[matchedId]);
+        const val = x01FindMapValue(map, matchedIds);
+        if (Number.isFinite(Number(val))) return Number(val);
       }
       return 0;
     };
-    const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, payload?.summary?.legsWonByPlayer);
-    const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, payload?.summary?.setsWonByPlayer);
+    const rankings = Array.isArray(summary?.rankings) ? summary.rankings : Array.isArray(payload?.summary?.rankings) ? payload.summary.rankings : [];
+    const rankHit = rankings.find((rr: any) => x01PlayerIds(rr).some((id) => matchedIds.some((a) => x01IdMatches(id, a))) || (pname && x01NormName(rr?.name) === pname));
+    const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, payload?.summary?.legsWonByPlayer) || x01ReadNum(rankHit?.legsWon, rankHit?.lw);
+    const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, payload?.summary?.setsWonByPlayer) || x01ReadNum(rankHit?.setsWon, rankHit?.sw);
     out.legsWin += legsFromSummary;
     out.setsWin += setsFromSummary;
     const winnerId = String(anyRec?.winnerId ?? summary?.winnerId ?? payload?.winnerId ?? payload?.summary?.winnerId ?? "");
-    if (legsFromSummary <= 0 && winnerId === matchedId) out.legsWin += 1;
+    if (legsFromSummary <= 0 && matchedIds.some((id) => x01IdMatches(winnerId, id))) out.legsWin += 1;
 
-    out.darts += darts;
-    const avg3 = darts > 0 ? (scored / darts) * 3 : 0;
-    out.sumAvg3D += avg3;
-    out.bestVisit = Math.max(out.bestVisit, bestVisit);
-    out.bestCheckout = Math.max(out.bestCheckout, bestCO);
-    out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+    const detailed = x01FindMapValue(summary?.detailedByPlayer, matchedIds) || x01FindMapValue(summary?.detailedbyplayer, matchedIds) || null;
+    if (visits.length) {
+      out.darts += darts;
+      const avg3 = darts > 0 ? (scored / darts) * 3 : 0;
+      out.sumAvg3D += avg3;
+      out.bestVisit = Math.max(out.bestVisit, bestVisit);
+      out.bestCheckout = Math.max(out.bestCheckout, bestCO);
+      out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+    } else if (detailed && typeof detailed === "object") {
+      const d = x01ReadNum(detailed.darts, detailed.dt, detailed.dartsThrown);
+      const avg3 = x01ReadNum(detailed.avg3, detailed.avg3D, detailed.avg3d);
+      out.darts += d;
+      out.sumAvg3D += avg3;
+      out.bestVisit = Math.max(out.bestVisit, x01ReadNum(detailed.bestVisit, detailed.bv));
+      out.bestCheckout = Math.max(out.bestCheckout, x01ReadNum(detailed.bestCheckout, detailed.bc));
+      out.hitsSingle += x01ReadNum(detailed.hits?.S, detailed.hits?.s, detailed.hitsSingle, detailed.hitssingle);
+      out.hitsDouble += x01ReadNum(detailed.hits?.D, detailed.hits?.d, detailed.hitsDouble, detailed.hitsdouble);
+      out.hitsTriple += x01ReadNum(detailed.hits?.T, detailed.hits?.t, detailed.hitsTriple, detailed.hitstriple);
+      out.miss += x01ReadNum(detailed.hits?.M, detailed.hits?.m, detailed.miss);
+      out.bust += x01ReadNum(detailed.bust);
+      out.hitsBull += x01ReadNum(detailed.bull, detailed.hits?.Bull, detailed.hits?.bull);
+      out.hitsDBull += x01ReadNum(detailed.dBull, detailed.dbull, detailed.hits?.DBull, detailed.hits?.dbull);
+      const spv = Array.isArray(detailed.scorePerVisit) ? detailed.scorePerVisit : Array.isArray(detailed.scorepervisit) ? detailed.scorepervisit : [];
+      for (const score of spv) {
+        const sc = Number(score || 0);
+        if (sc >= 50) out.visitBuckets["50+"] += 1;
+        if (sc >= 80) out.visitBuckets["80+"] += 1;
+        if (sc >= 100) out.visitBuckets["100+"] += 1;
+        if (sc >= 120) out.visitBuckets["120+"] += 1;
+        if (sc >= 140) out.visitBuckets["140+"] += 1;
+      }
+      const hbs = detailed.hitsBySegment || detailed.hitsbysegment || detailed.bySegment || detailed.bysegment || {};
+      if (hbs && typeof hbs === "object") {
+        Object.entries(hbs).forEach(([seg, val]: any) => {
+          const k = Number(seg);
+          if (k >= 1 && k <= 20) out.byNumber[k] += x01ReadNum(val?.S, val?.s) + x01ReadNum(val?.D, val?.d) + x01ReadNum(val?.T, val?.t);
+        });
+      }
+      out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+    }
   }
 
   out.progression.sort((a, b) => a.ts - b.ts);

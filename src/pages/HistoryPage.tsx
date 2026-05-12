@@ -171,7 +171,7 @@ function getId(v: any): string {
 function getName(v: any): string {
   if (!v) return "";
   if (typeof v === "string") return v;
-  return String(v.name || v.displayName || v.username || "");
+  return String(v.name || v.displayName || v.username || v.nickname || v.surname || v.firstName || "");
 }
 function normHistoryName(v: any): string {
   return String(v ?? "")
@@ -195,17 +195,21 @@ function getAvatarUrl(store: Store, v: any): string | null {
   const id = getId(v);
   const name = normHistoryName(getName(v));
   const anyStore: any = store as any;
-  const list: any[] = Array.isArray(anyStore?.profiles)
-    ? anyStore.profiles
-    : Array.isArray(anyStore?.profiles?.list)
-    ? anyStore.profiles.list
-    : [];
+  const list: any[] = [
+    ...(Array.isArray(anyStore?.profiles) ? anyStore.profiles : []),
+    ...(Array.isArray(anyStore?.profiles?.list) ? anyStore.profiles.list : []),
+    ...(Array.isArray(anyStore?.localProfiles) ? anyStore.localProfiles : []),
+    ...(Array.isArray(anyStore?.bots) ? anyStore.bots : []),
+    ...(Array.isArray(anyStore?.cpuBots) ? anyStore.cpuBots : []),
+    ...(Array.isArray(anyStore?.teams) ? anyStore.teams : []),
+    ...(Array.isArray(anyStore?.avatarGallery) ? anyStore.avatarGallery : []),
+  ];
   const hit = list.find((p) => {
-    const ids = [p?.id, p?.playerId, p?.profileId, p?.userId, p?.uid].filter(Boolean);
-    const pn = normHistoryName(getName(p) || p?.surname || p?.nickname || p?.displayName);
+    const ids = [p?.id, p?.playerId, p?.profileId, p?.userId, p?.uid, p?.ownerId].filter(Boolean);
+    const pn = normHistoryName(getName(p) || p?.surname || p?.nickname || p?.displayName || p?.label);
     return ids.some((x) => historyIdMatches(x, id)) || (!!name && !!pn && pn === name);
   });
-  return hit?.avatarDataUrl ?? hit?.avatarUrl ?? hit?.avatar_url ?? hit?.avatar ?? null;
+  return hit?.avatarDataUrl ?? hit?.avatarUrl ?? hit?.avatar_url ?? hit?.avatar ?? hit?.imageUrl ?? hit?.url ?? null;
 }
 
 /* ---------- Mode / status ---------- */

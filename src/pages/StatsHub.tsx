@@ -1253,23 +1253,47 @@ function normalizedMatchMatchesEffectiveSport(m: any, sportName: string): boolea
 
 // Dashboard: certains records n'ont pas `players` au niveau racine (ils sont dans payload).
 // Si on ne détecte pas le joueur, tout le dashboard tombe à 0/UNKNOWN.
-function recordHasPlayer(r: any, pid: string): boolean {
+function statHubIdMatches(a: any, b: any): boolean {
+  const aa = String(a ?? "").replace(/^online:/, "").trim();
+  const bb = String(b ?? "").replace(/^online:/, "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+function statHubNormName(v: any): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function statHubPlayerIds(p: any): string[] {
+  return [p?.id, p?.playerId, p?.profileId, p?.sourceId, p?.sourcePlayerId, p?.sourceProfileId, p?.userId, p?.uid, p?.pid, p?.key, ...(Array.isArray(p?.aliases) ? p.aliases : [])]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).replace(/^online:/, "").trim())
+    .filter(Boolean);
+}
+
+function recordHasPlayer(r: any, pid: string, playerName?: string): boolean {
   if (!r || !pid) return false;
 
   const norm = (v: any) => String(v ?? "").replace(/^online:/, "");
   const target = norm(pid);
+  const targetName = statHubNormName(playerName);
 
   const matchAny = (p: any) => {
     if (!p) return false;
 
     // Snapshot variants sometimes store ids as plain strings
-    if (typeof p === "string" || typeof p === "number") return norm(p) === target;
+    if (typeof p === "string" || typeof p === "number") return statHubIdMatches(norm(p), target);
 
-    const candidates = [p?.id, p?.playerId, p?.profileId, p?.uid, p?.userId, p?.pid, p?.key]
-      .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
-      .map(norm);
+    const candidates = statHubPlayerIds(p).map(norm);
+    const nm = statHubNormName(p?.name ?? p?.displayName ?? p?.nickname ?? p?.surname);
 
-    return candidates.includes(target);
+    return candidates.some((x: string) => statHubIdMatches(x, target)) || (!!targetName && !!nm && nm === targetName);
   };
 
   const direct = toArrLoc<any>(r?.players);
@@ -1301,7 +1325,7 @@ function recordHasPlayer(r: any, pid: string): boolean {
   for (const map of keyedMaps) {
     if (map && typeof map === "object") {
       const keys = Object.keys(map).map(norm);
-      if (keys.includes(target)) return true;
+      if (keys.some((k) => statHubIdMatches(k, target))) return true;
     }
   }
 
@@ -5767,6 +5791,7 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+
 const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
   const pid = selectedPlayer?.id ? String(selectedPlayer.id).replace(/^online:/, "") : "";
   const rows = Array.isArray(records) ? records : [];
@@ -5810,14 +5835,18 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     ];
     for (const src of pools) {
       const arr = Array.isArray(src) ? src : src && typeof src === "object" ? Object.values(src) : [];
-      const hit = (arr as any[]).find((pl: any) => normId(pl?.id ?? pl?.playerId ?? pl?.profileId ?? pl?.uid ?? pl?.userId) === pid);
+      const hit = (arr as any[]).find((pl: any) => {
+        const ids = statHubPlayerIds(pl).map(normId);
+        const nm = statHubNormName(pl?.name ?? pl?.displayName ?? pl?.nickname ?? pl?.surname);
+        return ids.some((id) => statHubIdMatches(id, pid)) || (!!selectedPlayer?.name && nm === statHubNormName(selectedPlayer.name));
+      });
       if (hit) return hit;
     }
     return null;
   };
   const byMode: Record<string, ModeDashboardCard & { samples: number[]; favMap: Record<string, number> }> = {} as any;
   for (const r of rows) {
-    if (!pid || !recordHasPlayer(r as any, pid)) continue;
+    if (!pid || !recordHasPlayer(r as any, pid, selectedPlayer?.name)) continue;
     const mode = classifyRecordMode(r as any);
     if (!mode || mode === "other") continue;
     const a = byMode[mode] || (byMode[mode] = {
@@ -5854,7 +5883,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore) || n(stats?.scored) || n(stats?.totalPoints);
     const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || score;
     a.matches += 1;
-    if (getWinnerIds(r).some((w) => normId(w) === pid) || pl?.win === true || pl?.winner === true) a.wins += 1;
+    if (getWinnerIds(r).some((w) => statHubIdMatches(normId(w), pid)) || pl?.win === true || pl?.winner === true) a.wins += 1;
     a.darts += darts;
     a.hits += hits;
     a.miss += miss;
@@ -6668,8 +6697,8 @@ return (
                   type="button"
                   onClick={goToMode}
                   style={{
-                    flex: "0 0 205px",
-                    minWidth: 205,
+                    flex: globalModeDashboard.length === 1 ? "0 0 100%" : "0 0 205px",
+                    minWidth: globalModeDashboard.length === 1 ? "100%" : 205,
                     textAlign: "left",
                     borderRadius: 19,
                     padding: 11,

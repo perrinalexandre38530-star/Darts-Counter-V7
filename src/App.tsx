@@ -179,6 +179,7 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 
 // Stats pages
 import StatsDetail from "./pages/StatsDetail";
+import StatsOnline from "./pages/StatsOnline";
 
 import Profiles from "./pages/Profiles";
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
@@ -186,7 +187,6 @@ const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
-const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
 const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
 const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
