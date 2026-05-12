@@ -49,7 +49,9 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
 function isValidSrc(src: any): src is string {
   const value = String(src || "").trim();
   if (!value) return false;
-  return value.startsWith("data:image/") || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/media/") || value.startsWith("/images/") || value.startsWith("blob:");
+  // Les blob: sont temporaires et deviennent vite invalides après navigation/rerender.
+  // La galerie doit uniquement stocker des sources durables.
+  return value.startsWith("data:image/") || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/media/") || value.startsWith("/images/");
 }
 
 export function avatarGalleryHash(src: string): string {
@@ -163,7 +165,7 @@ export function collectAvatarGalleryFromSources(opts: {
     if (!p) continue;
     const ownerId = String(p.id || "").trim();
     const name = String(p.name || p.displayName || p.nickname || "Profil").trim();
-    const src = String(p.avatarDataUrl || p.avatarFullDataUrl || p.avatarThumbDataUrl || p.avatarUrl || p.avatar || "").trim();
+    const src = String(p.avatarUrl || p.avatarFullDataUrl || p.avatarThumbDataUrl || p.avatarDataUrl || p.avatar || "").trim();
     if (!src) continue;
     const isAccount = String(ownerId) === String(opts.activeProfileId || opts.accountId || "");
     push({
@@ -182,7 +184,7 @@ export function collectAvatarGalleryFromSources(opts: {
     if (!b) continue;
     const ownerId = String(b.id || "").trim();
     const name = String(b.name || b.displayName || "Bot CPU").trim();
-    const src = String(b.avatarDataUrl || b.avatarFullDataUrl || b.avatarThumbDataUrl || b.avatarUrl || b.avatar || "").trim();
+    const src = String(b.avatarUrl || b.avatarFullDataUrl || b.avatarThumbDataUrl || b.avatarDataUrl || b.avatar || b.avatar || "").trim();
     if (!src) continue;
     push({ category: "bot", ownerId, ownerName: name, name, src, updatedAt: Number(b.avatarUpdatedAt || b.updatedAt || at), createdAt: Number(b.createdAt || at), source: "bot_cpu" });
   }
