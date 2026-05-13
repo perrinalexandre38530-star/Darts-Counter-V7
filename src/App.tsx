@@ -2739,7 +2739,55 @@ useEffect(() => {
         const onlinePerPlayer: any[] = Array.isArray(onlineSummary?.perPlayer) ? onlineSummary.perPlayer : [];
         const onlineSummaryPlayers = onlineSummary?.players && typeof onlineSummary.players === "object" ? onlineSummary.players : {};
         const onlineDetailedByPlayer = onlineSummary?.detailedByPlayer && typeof onlineSummary.detailedByPlayer === "object" ? onlineSummary.detailedByPlayer : {};
-        const onlineStatsSource = onlinePerPlayer.length ? onlinePerPlayer : Object.values(onlineSummaryPlayers || {}).length ? Object.values(onlineSummaryPlayers || {}) : Object.values(onlineDetailedByPlayer || {});
+
+        // V5 CLEANUP/STATS FIX : certains matchs Online X01 ont un summary.players
+        // ou un summary.legacy complet, mais pas de perPlayer exploitable. Le miroir
+        // dc_online_matches_v1 ne doit plus enregistrer darts/score à 0 dans ce cas.
+        const legacyMaps: any = onlineSummary?.legacy && typeof onlineSummary.legacy === "object" ? onlineSummary.legacy : {};
+        const legacyIds = Array.from(new Set([
+          ...Object.keys(legacyMaps?.darts || {}),
+          ...Object.keys(legacyMaps?.points || {}),
+          ...Object.keys(legacyMaps?.avg3 || {}),
+          ...Object.keys(legacyMaps?.bestVisit || {}),
+          ...Object.keys(legacyMaps?.bestCheckout || {}),
+          ...Object.keys(legacyMaps?.singles || {}),
+          ...Object.keys(legacyMaps?.doubles || {}),
+          ...Object.keys(legacyMaps?.triples || {}),
+          ...Object.keys(legacyMaps?.bulls || {}),
+          ...Object.keys(legacyMaps?.dbulls || {}),
+          ...Object.keys(legacyMaps?.misses || {}),
+          ...Object.keys(legacyMaps?.busts || {}),
+        ]));
+        const onlineLegacyRows = legacyIds.map((pid: any) => ({
+          id: pid,
+          playerId: pid,
+          name: (saved.players || []).find((p: any) => String(p?.id) === String(pid))?.name || String(pid),
+          darts: Number(legacyMaps?.darts?.[pid] || 0),
+          _sumPoints: Number(legacyMaps?.points?.[pid] || 0),
+          avg3: Number(legacyMaps?.avg3?.[pid] || 0),
+          bestVisit: Number(legacyMaps?.bestVisit?.[pid] || 0),
+          bestCheckout: Number(legacyMaps?.bestCheckout?.[pid] || 0),
+          singles: Number(legacyMaps?.singles?.[pid] || 0),
+          doubles: Number(legacyMaps?.doubles?.[pid] || 0),
+          triples: Number(legacyMaps?.triples?.[pid] || 0),
+          bull: Number(legacyMaps?.bulls?.[pid] || 0),
+          dBull: Number(legacyMaps?.dbulls?.[pid] || 0),
+          miss: Number(legacyMaps?.misses?.[pid] || 0),
+          bust: Number(legacyMaps?.busts?.[pid] || 0),
+          buckets: {
+            "60+": Number(legacyMaps?.h60?.[pid] || 0),
+            "100+": Number(legacyMaps?.h100?.[pid] || 0),
+            "140+": Number(legacyMaps?.h140?.[pid] || 0),
+            "180": Number(legacyMaps?.h180?.[pid] || 0),
+          },
+        }));
+        const onlineStatsSource = onlinePerPlayer.length
+          ? onlinePerPlayer
+          : Object.values(onlineSummaryPlayers || {}).length
+          ? Object.values(onlineSummaryPlayers || {})
+          : Object.values(onlineDetailedByPlayer || {}).length
+          ? Object.values(onlineDetailedByPlayer || {})
+          : onlineLegacyRows;
         const onlineStats = onlineStatsSource.reduce((acc: any, st: any) => {
           const buckets = st?.buckets || {};
           const hitsS = Number(st?.singles ?? st?.hitsS ?? st?.hits?.S ?? st?.hits?.s ?? st?.hitsSingle ?? 0);
