@@ -1,6 +1,6 @@
 // =========================================================
 // src/online/client/useOnlineCamera.ts
-// Fondation caméra ONLINE v23
+// Fondation caméra ONLINE v23.1
 // - Permissions caméra / micro
 // - Activation / désactivation locale par joueur
 // - Préparation WebRTC légère (RTCPeerConnection sans échange forcé)
@@ -62,12 +62,17 @@ function setTrackKindEnabled(stream: MediaStream | null, kind: "audio" | "video"
   for (const track of tracks) track.enabled = enabled;
 }
 
+function hasMediaDevices() {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+}
+
 export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCameraValue {
   const { playerId, initialCameraEnabled = false, initialMicEnabled = false, onStateChange } = options;
 
   const [status, setStatus] = React.useState<OnlineCameraStatus>("idle");
   const [error, setError] = React.useState<string | null>(null);
   const [localStream, setLocalStream] = React.useState<MediaStream | null>(null);
+  const localStreamRef = React.useRef<MediaStream | null>(null);
   const [cameraEnabled, setCameraEnabledState] = React.useState(initialCameraEnabled);
   const [micEnabled, setMicEnabledState] = React.useState(initialMicEnabled);
 
@@ -76,84 +81,105 @@ export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCamer
 
   const publishState = React.useCallback(
     (next?: Partial<OnlineCameraPlayerState>) => {
+      const stream = localStreamRef.current;
+      const computedCameraEnabled = next?.cameraEnabled ?? cameraEnabled;
+      const computedMicEnabled = next?.micEnabled ?? micEnabled;
       onStateChange?.({
         playerId,
-        cameraEnabled,
-        micEnabled,
-        hasVideo,
-        hasAudio,
+        cameraEnabled: computedCameraEnabled,
+        micEnabled: computedMicEnabled,
+        hasVideo: next?.hasVideo ?? !!stream?.getVideoTracks().length,
+        hasAudio: next?.hasAudio ?? !!stream?.getAudioTracks().length,
         updatedAt: Date.now(),
         ...next,
       });
     },
-    [cameraEnabled, hasAudio, hasVideo, micEnabled, onStateChange, playerId]
+    [cameraEnabled, micEnabled, onStateChange, playerId]
   );
+
+  const openStream = React.useCallback(
+    async (nextCameraEnabled: boolean, nextMicEnabled: boolean) => {
+      if (!hasMediaDevices()) {
+        setStatus("error");
+        setError("Caméra/micro indisponibles sur ce navigateur.");
+        publishState({ cameraEnabled: false, micEnabled: false, hasVideo: false, hasAudio: false });
+        return null;
+      }
+
+      setStatus("requesting");
+      setError(null);
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        stopStream(localStreamRef.current);
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+        setTrackKindEnabled(stream, "video", nextCameraEnabled);
+        setTrackKindEnabled(stream, "audio", nextMicEnabled);
+        setStatus("ready");
+        publishState({
+          cameraEnabled: nextCameraEnabled,
+          micEnabled: nextMicEnabled,
+          hasVideo: stream.getVideoTracks().length > 0,
+          hasAudio: stream.getAudioTracks().length > 0,
+        });
+        return stream;
+      } catch (e: any) {
+        const name = String(e?.name || "");
+        const blocked = name === "NotAllowedError" || name === "PermissionDeniedError";
+        setStatus(blocked ? "blocked" : "error");
+        setError(blocked ? "Permission caméra/micro refusée." : e?.message || "Impossible d’ouvrir caméra/micro.");
+        publishState({ cameraEnabled: false, micEnabled: false, hasVideo: false, hasAudio: false });
+        return null;
+      }
+    },
+    [publishState]
+  );
+
+  React.useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   React.useEffect(() => {
     publishState();
   }, [publishState]);
 
+  React.useEffect(() => {
+    return () => stopStream(localStreamRef.current);
+  }, []);
+
   const requestPermissions = React.useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setStatus("error");
-      setError("Caméra/micro indisponibles sur ce navigateur.");
-      publishState({ cameraEnabled: false, micEnabled: false, hasVideo: false, hasAudio: false });
+    const stream = localStreamRef.current;
+    if (stream) {
+      setStatus("ready");
+      publishState();
       return;
     }
-
-    setStatus("requesting");
-    setError(null);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      stopStream(localStream);
-      setLocalStream(stream);
-      setTrackKindEnabled(stream, "video", cameraEnabled);
-      setTrackKindEnabled(stream, "audio", micEnabled);
-      setStatus("ready");
-      publishState({
-        cameraEnabled,
-        micEnabled,
-        hasVideo: stream.getVideoTracks().length > 0,
-        hasAudio: stream.getAudioTracks().length > 0,
-      });
-    } catch (e: any) {
-      const name = String(e?.name || "");
-      const blocked = name === "NotAllowedError" || name === "PermissionDeniedError";
-      setStatus(blocked ? "blocked" : "error");
-      setError(blocked ? "Permission caméra/micro refusée." : e?.message || "Impossible d’ouvrir caméra/micro.");
-      publishState({ cameraEnabled: false, micEnabled: false, hasVideo: false, hasAudio: false });
-    }
-  }, [cameraEnabled, localStream, micEnabled, publishState]);
-
-  const ensureStream = React.useCallback(async () => {
-    if (localStream) return localStream;
-    await requestPermissions();
-    return null;
-  }, [localStream, requestPermissions]);
+    await openStream(cameraEnabled, micEnabled);
+  }, [cameraEnabled, micEnabled, openStream, publishState]);
 
   const setCameraEnabled = React.useCallback(
     async (enabled: boolean) => {
+      const nextMicEnabled = micEnabled;
       setCameraEnabledState(enabled);
-      if (enabled && !localStream) await ensureStream();
-      setTrackKindEnabled(localStream, "video", enabled);
-      publishState({ cameraEnabled: enabled });
+      let stream = localStreamRef.current;
+      if (enabled && !stream) stream = await openStream(true, nextMicEnabled);
+      setTrackKindEnabled(stream, "video", enabled);
+      publishState({ cameraEnabled: enabled, micEnabled: nextMicEnabled });
     },
-    [ensureStream, localStream, publishState]
+    [micEnabled, openStream, publishState]
   );
 
   const setMicEnabled = React.useCallback(
     async (enabled: boolean) => {
+      const nextCameraEnabled = cameraEnabled;
       setMicEnabledState(enabled);
-      if (enabled && !localStream) await ensureStream();
-      setTrackKindEnabled(localStream, "audio", enabled);
-      publishState({ micEnabled: enabled });
+      let stream = localStreamRef.current;
+      if (enabled && !stream) stream = await openStream(nextCameraEnabled, true);
+      setTrackKindEnabled(stream, "audio", enabled);
+      publishState({ cameraEnabled: nextCameraEnabled, micEnabled: enabled });
     },
-    [ensureStream, localStream, publishState]
+    [cameraEnabled, openStream, publishState]
   );
 
   const toggleCamera = React.useCallback(async () => {
@@ -165,26 +191,32 @@ export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCamer
   }, [micEnabled, setMicEnabled]);
 
   const stop = React.useCallback(() => {
-    stopStream(localStream);
+    stopStream(localStreamRef.current);
+    localStreamRef.current = null;
     setLocalStream(null);
     setCameraEnabledState(false);
     setMicEnabledState(false);
     setStatus("idle");
     publishState({ cameraEnabled: false, micEnabled: false, hasVideo: false, hasAudio: false });
-  }, [localStream, publishState]);
+  }, [publishState]);
 
   const createPeerConnection = React.useCallback(() => {
     if (typeof RTCPeerConnection === "undefined") return null;
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-    if (localStream) {
-      for (const track of localStream.getTracks()) pc.addTrack(track, localStream);
+    const stream = localStreamRef.current;
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        try {
+          pc.addTrack(track, stream);
+        } catch {
+          // ignore duplicate tracks
+        }
+      }
     }
     return pc;
-  }, [localStream]);
-
-  React.useEffect(() => stop, [stop]);
+  }, []);
 
   return {
     status,

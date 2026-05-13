@@ -46,6 +46,8 @@ import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } fro
 import { onlineApi } from "../lib/onlineApi";
 import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages, subscribeMessages as subscribeOnlineChatMessages } from "../lib/chatApi";
 import { getCountryFlagSrc } from "../lib/geoAssets";
+import OnlineCameraPanel from "../online/client/OnlineCameraPanel";
+import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
 
 
 
@@ -3476,6 +3478,20 @@ React.useEffect(() => {
   }, []);
 
 
+  const [x01OnlineCameraStates, setX01OnlineCameraStates] = React.useState<Record<string, OnlineCameraPlayerState>>({});
+
+  const x01OnlineCameraPlayers = React.useMemo(() => {
+    return (Array.isArray(players) ? players : []).map((p: any) => ({
+      id: String(p?.id || p?.userId || p?.profileId || "player"),
+      name: String(p?.name || p?.displayName || p?.nickname || "Joueur"),
+    }));
+  }, [players]);
+
+  const handleX01OnlineCameraStateChange = React.useCallback((state: OnlineCameraPlayerState) => {
+    const id = String(state?.playerId || onlineCurrentUserId || activePlayerId || "local");
+    setX01OnlineCameraStates((prev) => ({ ...prev, [id]: { ...state, playerId: id } }));
+  }, [onlineCurrentUserId, activePlayerId]);
+
   const onlineStandbyChat = effectiveOnline && effectiveLobbyCode ? (
     <div
       style={{
@@ -4515,6 +4531,26 @@ if (isLandscapeTablet) {
               showThrowCounter={showThrowCounter}
             />
             )}
+
+            {effectiveOnline ? (
+              <div
+                className="x01-online-camera-slot"
+                style={{
+                  margin: "8px 0 0",
+                  borderRadius: 18,
+                  overflow: "hidden",
+                }}
+              >
+                <OnlineCameraPanel
+                  compact
+                  selfId={String(onlineCurrentUserId || activePlayerId || "local")}
+                  activePlayerId={String(activePlayerId || onlineCurrentUserId || "")}
+                  players={x01OnlineCameraPlayers}
+                  cameraStates={x01OnlineCameraStates}
+                  onCameraStateChange={handleX01OnlineCameraStateChange}
+                />
+              </div>
+            ) : null}
           </div>
         }
         playersRowLabel="JOUEURS"
