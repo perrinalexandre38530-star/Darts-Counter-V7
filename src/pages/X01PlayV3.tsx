@@ -91,6 +91,8 @@ type HeaderBlockProps = {
   onChatClick?: () => void;
   unreadChatCount?: number;
   countryFlagSrc?: string | null;
+  onlineCameraPanel?: React.ReactNode;
+  onlineCameraActive?: boolean;
 };
 
 
@@ -3492,6 +3494,24 @@ React.useEffect(() => {
     setX01OnlineCameraStates((prev) => ({ ...prev, [id]: { ...state, playerId: id } }));
   }, [onlineCurrentUserId, activePlayerId]);
 
+  const x01OnlineCameraSelfId = String(onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local");
+  const x01OnlineCameraActivePlayerId = String(activePlayerId || x01OnlineCameraSelfId);
+  const x01OnlineCameraActive = Boolean(
+    effectiveOnline &&
+      x01OnlineCameraStates[x01OnlineCameraActivePlayerId]?.cameraEnabled
+  );
+  const x01OnlineCameraPanel = effectiveOnline ? (
+    <OnlineCameraPanel
+      compact
+      embedded
+      selfId={x01OnlineCameraSelfId}
+      activePlayerId={x01OnlineCameraActivePlayerId}
+      players={x01OnlineCameraPlayers}
+      cameraStates={x01OnlineCameraStates}
+      onCameraStateChange={handleX01OnlineCameraStateChange}
+    />
+  ) : null;
+
   const onlineStandbyChat = effectiveOnline && effectiveLobbyCode ? (
     <div
       style={{
@@ -4083,6 +4103,8 @@ if (isLandscapeTablet) {
               setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
               checkoutText={checkoutText}
+              onlineCameraPanel={x01OnlineCameraPanel}
+              onlineCameraActive={x01OnlineCameraActive}
             showThrowCounter={showThrowCounter}
             />
           )}
@@ -4528,29 +4550,11 @@ if (isLandscapeTablet) {
                 onChatClick={effectiveOnline ? () => setOnlineChatOpen(true) : undefined}
                 unreadChatCount={onlineChatUnread}
                 countryFlagSrc={activePlayerCountryFlagSrc}
+                onlineCameraPanel={x01OnlineCameraPanel}
+                onlineCameraActive={x01OnlineCameraActive}
               showThrowCounter={showThrowCounter}
             />
             )}
-
-            {effectiveOnline ? (
-              <div
-                className="x01-online-camera-slot"
-                style={{
-                  margin: "8px 0 0",
-                  borderRadius: 18,
-                  overflow: "hidden",
-                }}
-              >
-                <OnlineCameraPanel
-                  compact
-                  selfId={String(onlineCurrentUserId || activePlayerId || "local")}
-                  activePlayerId={String(activePlayerId || onlineCurrentUserId || "")}
-                  players={x01OnlineCameraPlayers}
-                  cameraStates={x01OnlineCameraStates}
-                  onCameraStateChange={handleX01OnlineCameraStateChange}
-                />
-              </div>
-            ) : null}
           </div>
         }
         playersRowLabel="JOUEURS"
@@ -4990,6 +4994,8 @@ function HeaderBlock(props: HeaderBlockProps) {
     unreadChatCount = 0,
     countryFlagSrc,
     showThrowCounter = false,
+    onlineCameraPanel = null,
+    onlineCameraActive = false,
   } = props;
 
   const legsWonThisSet =
@@ -5220,31 +5226,81 @@ function HeaderBlock(props: HeaderBlockProps) {
             ) : null}
           </div>
 
-          {/* Mini card stats joueur actif */}
+          {/* Mini card : stats classiques OFF / score + volée ON */}
           <div
             style={{
               ...miniCard,
               width: 176,
               height: "auto",
-              padding: 7,
+              padding: onlineCameraActive ? 8 : 7,
             }}
           >
-            <div style={miniText}>
-              <div>
-                Meilleure volée : <b>{bestVisit}</b>
-              </div>
-              <div>
-                Moy/3D : <b>{curM3D}</b>
-              </div>
-              <div>
-                Darts jouées : <b>{curDarts}</b>
-              </div>
-              {showThrowCounter && currentThrow.length > 0 ? (
-                <div>
+            {onlineCameraActive ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
+                <div
+                  style={{
+                    color: "#ffcf57",
+                    fontWeight: 950,
+                    fontSize: 30,
+                    lineHeight: 1,
+                    textShadow: "0 4px 16px rgba(255,195,26,.24)",
+                  }}
+                >
+                  {remainingAfterAll}
+                </div>
+                <div style={{ display: "flex", gap: 4, justifyContent: "center", width: "100%" }}>
+                  {[0, 1, 2].map((i) => {
+                    const d = currentThrow[i];
+                    const wouldBust =
+                      currentRemaining -
+                        currentThrow.slice(0, i + 1).reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
+                      0;
+                    const st = chipStyle(d, wouldBust);
+                    return (
+                      <span
+                        key={i}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          minWidth: 34,
+                          height: 25,
+                          padding: "0 7px",
+                          borderRadius: 9,
+                          border: st.border as string,
+                          background: st.background as string,
+                          color: st.color as string,
+                          fontWeight: 900,
+                          fontSize: 12,
+                        }}
+                      >
+                        {fmt(d)}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.70)", fontWeight: 850 }}>
                   Volée : <b>{currentThrow.length}/3</b>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : (
+              <div style={miniText}>
+                <div>
+                  Meilleure volée : <b>{bestVisit}</b>
+                </div>
+                <div>
+                  Moy/3D : <b>{curM3D}</b>
+                </div>
+                <div>
+                  Darts jouées : <b>{curDarts}</b>
+                </div>
+                {showThrowCounter && currentThrow.length > 0 ? (
+                  <div>
+                    Volée : <b>{currentThrow.length}/3</b>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
 
@@ -5265,7 +5321,22 @@ function HeaderBlock(props: HeaderBlockProps) {
           {/* BG ancré AU SCORE (centre = centre du 501) */}
           
 
+          {onlineCameraPanel ? (
+            <div
+              style={{
+                width: "min(250px, 100%)",
+                alignSelf: "center",
+                position: "relative",
+                zIndex: 4,
+                marginBottom: onlineCameraActive ? 2 : -2,
+              }}
+            >
+              {onlineCameraPanel}
+            </div>
+          ) : null}
+
           {/* SCORE CENTRAL */}
+          {!onlineCameraActive ? (
           <div
             style={{
               fontSize: 64,
@@ -5279,8 +5350,10 @@ function HeaderBlock(props: HeaderBlockProps) {
           >
             {remainingAfterAll}
           </div>
+          ) : null}
 
           {/* Pastilles live */}
+          {!onlineCameraActive ? (
           <div
             style={{
               display: "flex",
@@ -5328,9 +5401,10 @@ function HeaderBlock(props: HeaderBlockProps) {
               );
             })}
           </div>
+          ) : null}
 
           {/* Checkout suggestion (moteur V3) */}
-          {checkoutText ? (
+          {!onlineCameraActive && checkoutText ? (
             <div
               style={{
                 marginTop: 3,
