@@ -9,7 +9,7 @@
 // =============================================================
 
 import { History } from "./history";
-import { scopedStorageKey } from "./storage";
+import { loadStore, scopedStorageKey } from "./storage";
 
 const ONLINE_STATS_EXCLUDED_KEY = "dc_online_stats_excluded_ids_v1";
 const ONLINE_MATCHES_KEY = "dc_online_matches_v1";
@@ -18,7 +18,7 @@ export type OnlineStatsCleanupSession = {
   id: string;
   matchId: string;
   keys: string[];
-  source: "history" | "localStorage";
+  source: "history" | "store" | "localStorage";
   mode: string;
   createdAt: number;
   updatedAt: number;
@@ -106,53 +106,25 @@ function uniq(list: any[]): string[] {
   return out;
 }
 
-function walkObjects(root: any, maxDepth = 4): any[] {
+function walkObjects(root: any, maxDepth = 6): any[] {
   const out: any[] = [];
   const seen = new WeakSet<object>();
+  const skip = /avatar|dataurl|image|photo|thumb|blob|base64|file|bytes/i;
   const walk = (x: any, depth: number) => {
     if (!x || typeof x !== "object" || depth > maxDepth) return;
     if (seen.has(x)) return;
+    if (out.length > 1200) return;
     seen.add(x);
     out.push(x);
     if (Array.isArray(x)) {
-      x.slice(0, 40).forEach((v) => walk(v, depth + 1));
+      x.slice(0, 160).forEach((v) => walk(v, depth + 1));
       return;
     }
-    for (const key of [
-      "payload",
-      "summary",
-      "match",
-      "room",
-      "stats",
-      "meta",
-      "statsMeta",
-      "cleanup",
-      "game",
-      "config",
-      "cfg",
-      "result",
-      "state",
-      "players",
-      "perPlayer",
-      "rankings",
-      "detailedByPlayer",
-      "liveStatsByPlayer",
-      "playerStats",
-      "statsByPlayer",
-      "legacy",
-      "visits",
-      "visitsHistory",
-      "visitHistory",
-      "darts",
-      "turns",
-      "finalScores",
-      "scores",
-      "scoreByPlayer",
-      "pointsByPlayer",
-      "remaining",
-    ]) {
-      const v = x?.[key];
-      if (v && typeof v === "object") walk(v, depth + 1);
+    for (const [key, v] of Object.entries(x)) {
+      if (!v || typeof v !== "object") continue;
+      // On ignore seulement les gros médias, pas les maps joueurs.
+      if (skip.test(String(key))) continue;
+      walk(v, depth + 1);
     }
   };
   walk(root, 0);
@@ -424,7 +396,7 @@ function collectPerPlayerRows(row: any): any[] {
     for (const key of ["players", "perPlayer", "rankings"]) {
       if (Array.isArray(obj?.[key])) obj[key].forEach(add);
     }
-    for (const key of ["detailedByPlayer", "liveStatsByPlayer", "playerStats", "statsByPlayer"]) {
+    for (const key of ["detailedByPlayer", "detailedbyplayer", "liveStatsByPlayer", "livestatsbyplayer", "playerStats", "statsByPlayer", "players", "stats", "statsById", "statsByPlayerId"]) {
       const map = obj?.[key];
       if (map && typeof map === "object" && !Array.isArray(map)) Object.values(map).forEach(add);
     }
@@ -678,6 +650,51 @@ function playerShortName(name: string): string {
   return s.length > 14 ? `${s.slice(0, 13)}…` : s;
 }
 
+function numberFromStatRow(p: any, keys: string[]): number {
+  const direct = shallowNumber(p, keys);
+  return direct !== null && Number.isFinite(direct) ? Number(direct) : 0;
+}
+
+function playerNameFromStatRow(row: any, p: any, index: number): string {
+  const direct = str(p?.name ?? p?.playerName ?? p?.displayName ?? p?.nickname ?? p?.profileName ?? p?.label);
+  if (direct) return direct;
+  const names = collectPlayerNameMap(row);
+  const id = str(p?.id ?? p?.profileId ?? p?.playerId ?? p?.pid ?? p?.uid);
+  if (id && names[id]) return names[id];
+  return `J${index + 1}`;
+}
+
+function collectPerPlayerStatsLabel(row: any): string {
+  const rows = collectPerPlayerRows(row);
+  if (!rows.length) return "";
+
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const startScore = Number(firstDeep(row, ["startScore", "startscore", "x01", "targetScore", "x01StartScore"]));
+
+  rows.forEach((p, index) => {
+    const name = playerShortName(playerNameFromStatRow(row, p, index));
+    const darts = numberFromStatRow(p, ["darts", "totalDarts", "totalDartsThrown", "dartsThrown", "dt", "dartsCount", "totalThrows"]);
+    const total = numberFromStatRow(p, ["points", "totalScore", "totalscore", "pointsScored", "scored", "score", "rawScore", "_sumPoints"]);
+    const avg = numberFromStatRow(p, ["avg3", "avg3D", "moy3", "average3"]);
+    const bv = numberFromStatRow(p, ["bestVisit", "bv", "best_visit", "maxVisit", "highestVisit"]);
+    const rest = Number.isFinite(startScore) && startScore > 0 && total > 0 ? Math.max(0, startScore - total) : NaN;
+    if (!darts && !total && !avg && !bv && !Number.isFinite(rest)) return;
+    const sig = `${name}|${darts}|${total}|${avg}|${bv}|${rest}`;
+    if (seen.has(sig)) return;
+    seen.add(sig);
+    const bits: string[] = [];
+    if (Number.isFinite(rest)) bits.push(`reste ${rest}`);
+    if (total > 0) bits.push(`${Math.round(total)} pts`);
+    if (darts > 0) bits.push(`${Math.round(darts)}D`);
+    if (avg > 0) bits.push(`M3 ${Math.round(avg * 10) / 10}`);
+    if (bv > 0) bits.push(`BV ${Math.round(bv)}`);
+    parts.push(`${name} ${bits.join(" /")}`);
+  });
+
+  return parts.slice(0, 4).join(" · ");
+}
+
 function findNamedMap(row: any, mapKeys: string[]): any | null {
   const want = new Set(mapKeys.map((k) => k.toLowerCase()));
   for (const obj of walkObjects(row, 7)) {
@@ -724,6 +741,9 @@ function collectScoreLabel(row: any): string {
     }).join(" · ");
   }
 
+  const perPlayer = collectPerPlayerStatsLabel(row);
+  if (perPlayer) return perPlayer;
+
   return "Score non disponible";
 }
 
@@ -740,7 +760,7 @@ function collectDetailLabel(row: any): string {
   return parts.join(" · ");
 }
 
-function normalizeCleanupSession(row: any, source: "history" | "localStorage", idx = 0): OnlineStatsCleanupSession | null {
+function normalizeCleanupSession(row: any, source: "history" | "store" | "localStorage", idx = 0): OnlineStatsCleanupSession | null {
   if (!row || typeof row !== "object") return null;
   if (!isLikelyOnlineRecord(row)) return null;
 
@@ -791,6 +811,34 @@ async function loadHistoryOnlineRows(): Promise<OnlineStatsCleanupSession[]> {
   }
 }
 
+function loadStoreOnlineRows(): OnlineStatsCleanupSession[] {
+  try {
+    const store: any = loadStore?.() || {};
+    const buckets: any[] = [];
+    const pushArray = (arr: any) => {
+      if (Array.isArray(arr)) buckets.push(...arr);
+    };
+
+    // Beaucoup de stats X01 Online exploitables sont dans le store applicatif,
+    // alors que dc_online_matches_v1 peut ne contenir qu'un miroir léger.
+    pushArray(store.history);
+    pushArray(store.saved);
+    pushArray(store.matches);
+    pushArray(store.onlineMatches);
+    pushArray(store.historyRows);
+    pushArray(store.historyCache);
+
+    const out: OnlineStatsCleanupSession[] = [];
+    buckets.forEach((row, idx) => {
+      const normalized = normalizeCleanupSession(row, "store", idx);
+      if (normalized) out.push(normalized);
+    });
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 function loadLocalStorageOnlineRows(): OnlineStatsCleanupSession[] {
   if (!isBrowser()) return [];
   const out: OnlineStatsCleanupSession[] = [];
@@ -808,27 +856,84 @@ function loadLocalStorageOnlineRows(): OnlineStatsCleanupSession[] {
   return out;
 }
 
+function isInformativeScore(label: any): boolean {
+  const s = str(label).toLowerCase();
+  return !!s && !s.includes("score non disponible") && !s.includes("non disponible");
+}
+
+function preferLabel(a: any, b: any, unavailableFallback = ""): string {
+  const aa = str(a);
+  const bb = str(b);
+  const ai = isInformativeScore(aa);
+  const bi = isInformativeScore(bb);
+  if (bi && !ai) return bb;
+  if (ai && !bi) return aa;
+  if (bi && ai) return bb.length > aa.length ? bb : aa;
+  return aa || bb || unavailableFallback;
+}
+
+function sessionStatsPower(s: OnlineStatsCleanupSession): number {
+  return num(s?.darts) + num(s?.bestVisit) + num(s?.bestCheckout) + num(s?.avg3) + num(s?.hitPct);
+}
+
+function mergeCleanupSessions(a: OnlineStatsCleanupSession, b: OnlineStatsCleanupSession): OnlineStatsCleanupSession {
+  const bHasMoreStats = sessionStatsPower(b) > sessionStatsPower(a);
+  const richer = bHasMoreStats ? b : a;
+  const base = bHasMoreStats ? a : b;
+  return {
+    ...base,
+    ...richer,
+    id: a.id || b.id,
+    matchId: a.matchId || b.matchId || a.id || b.id,
+    keys: uniq([...(a.keys || []), ...(b.keys || []), a.id, a.matchId, b.id, b.matchId]),
+    source: bHasMoreStats ? b.source : a.source,
+    createdAt: Math.min(num(a.createdAt, Date.now()), num(b.createdAt, Date.now())),
+    updatedAt: Math.max(num(a.updatedAt, 0), num(b.updatedAt, 0)),
+    playersLabel: str(b.playersLabel) && b.playersLabel !== "Joueurs inconnus" && String(b.playersLabel).length >= String(a.playersLabel || "").length ? b.playersLabel : a.playersLabel,
+    winnerLabel: str(b.winnerLabel) || str(a.winnerLabel),
+    scoreLabel: preferLabel(a.scoreLabel, b.scoreLabel, "Score non disponible"),
+    detailLabel: preferLabel(a.detailLabel, b.detailLabel, ""),
+    darts: Math.max(num(a.darts), num(b.darts)),
+    avg3: num(b.avg3) > 0 ? num(b.avg3) : num(a.avg3),
+    bestVisit: Math.max(num(a.bestVisit), num(b.bestVisit)),
+    bestCheckout: Math.max(num(a.bestCheckout), num(b.bestCheckout)),
+    hitPct: num(b.hitPct) > 0 ? num(b.hitPct) : num(a.hitPct),
+    excludedFromStats: a.excludedFromStats || b.excludedFromStats,
+    deletedAt: a.deletedAt || b.deletedAt,
+    raw: bHasMoreStats ? b.raw : a.raw,
+  };
+}
+
 export async function listOnlineStatsCleanupSessions(): Promise<OnlineStatsCleanupSession[]> {
-  const byId = new Map<string, OnlineStatsCleanupSession>();
-  const push = (session: OnlineStatsCleanupSession) => {
-    const key = session.keys[0] || session.id;
-    const existing = byId.get(key);
-    if (!existing) byId.set(key, session);
-    else {
-      byId.set(key, {
-        ...existing,
-        ...session,
-        source: existing.source === "history" ? existing.source : session.source,
-        excludedFromStats: existing.excludedFromStats || session.excludedFromStats,
-        keys: uniq([...(existing.keys || []), ...(session.keys || [])]),
-      });
+  const byPrimary = new Map<string, OnlineStatsCleanupSession>();
+  const aliasToPrimary = new Map<string, string>();
+
+  const push = (session: OnlineStatsCleanupSession | null) => {
+    if (!session) return;
+    const aliases = uniq([session.id, session.matchId, ...(session.keys || [])]);
+    let primary = aliases.map((a) => aliasToPrimary.get(a)).find(Boolean) || "";
+    if (!primary) {
+      for (const [p, existing] of byPrimary.entries()) {
+        const existingAliases = new Set([existing.id, existing.matchId, ...(existing.keys || [])].map(str).filter(Boolean));
+        if (aliases.some((a) => existingAliases.has(a))) {
+          primary = p;
+          break;
+        }
+      }
     }
+    if (!primary) primary = aliases[0] || session.id;
+
+    const existing = byPrimary.get(primary);
+    const next = existing ? mergeCleanupSessions(existing, { ...session, keys: aliases }) : { ...session, keys: aliases };
+    byPrimary.set(primary, next);
+    for (const alias of next.keys || []) aliasToPrimary.set(alias, primary);
   };
 
   (await loadHistoryOnlineRows()).forEach(push);
+  loadStoreOnlineRows().forEach(push);
   loadLocalStorageOnlineRows().forEach(push);
 
-  return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt);
+  return Array.from(byPrimary.values()).sort((a, b) => b.createdAt - a.createdAt);
 }
 
 function mergeExcludedSummary(summary: any, excluded: boolean, reason?: string) {

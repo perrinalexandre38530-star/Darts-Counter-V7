@@ -324,7 +324,7 @@ export default function OnlineStatsCleanupPanel() {
                   <SmallMetric label="Hits %" value={session.hitPct ? `${session.hitPct.toFixed(1)}%` : "—"} />
                   <SmallMetric label="BV" value={session.bestVisit || "—"} />
                   <SmallMetric label="CO" value={session.bestCheckout || "—"} />
-                  <SmallMetric label="Source" value={session.source === "history" ? "Hist." : "Local"} />
+                  <SmallMetric label="Source" value={session.source === "history" ? "Hist." : session.source === "store" ? "Store" : "Local"} />
                 </div>
 
                 <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 10, marginTop: 8, wordBreak: "break-all" }}>
