@@ -25,6 +25,7 @@ import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territorie
 // Optionnel (si tu l’as dans ton projet). On n’en dépend pas pour éviter de casser.
 import { computeKillerAgg } from "../lib/statsKillerAgg";
 import { isOnlineRecord, idLooseMatch, normText, isX01Record, sampleFromRec, collectPlayers } from "../lib/x01StatsSource";
+import { isOnlineStatsExcluded } from "../lib/onlineStatsExclusions";
 
 type Props = {
   store: Store;
@@ -284,6 +285,7 @@ function inPeriod(rec: any, period: PeriodKey): boolean {
 
 function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): boolean {
   const recIsOnline = isOnlineRecord(rec);
+  if (recIsOnline && isOnlineStatsExcluded(rec)) return false;
   if (scope === "online" && !recIsOnline) return false;
   if (scope === "local" && recIsOnline) return false;
 

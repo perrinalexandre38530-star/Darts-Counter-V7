@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { History } from "./history";
 import { loadStore } from "./storage";
+import { isOnlineStatsExcluded } from "./onlineStatsExclusions";
 
 export type X01Scope = "local" | "online" | "training";
 export type X01PlayerSample = {
@@ -473,6 +474,8 @@ export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X0
   const all = await loadAllHistoryRecords();
   const out: X01PlayerSample[] = [];
   for (const rec of all || []) {
+    const recIsOnline = isOnlineRecord(rec);
+    if (recIsOnline && isOnlineStatsExcluded(rec)) continue;
     if (!isX01Record(rec) && !isTrainingRecord(rec)) continue;
     const smp = sampleFromRec(rec, profile);
     if (!smp) continue;
@@ -495,6 +498,7 @@ export async function loadAllOnlineX01Samples(profiles: any[] = []): Promise<X01
   const out: X01PlayerSample[] = [];
   for (const rec of all || []) {
     if ((!isX01Record(rec) && !isTrainingRecord(rec)) || !isOnlineRecord(rec)) continue;
+    if (isOnlineStatsExcluded(rec)) continue;
     const players = collectPlayers(rec);
     const targets = players.length ? players : Object.keys(Object.assign({}, ...mapsFromRec(rec))).map((id) => ({ id }));
     for (const p of targets) {
@@ -524,6 +528,7 @@ export async function buildOnlineX01Leaderboard(profiles: any[] = []): Promise<a
   };
   for (const rec of all || []) {
     if (!isX01Record(rec) || !isOnlineRecord(rec)) continue;
+    if (isOnlineStatsExcluded(rec)) continue;
     const players = collectPlayers(rec);
     for (const p of players) {
       const profile = findProfileForPlayer(profiles, p) || p;

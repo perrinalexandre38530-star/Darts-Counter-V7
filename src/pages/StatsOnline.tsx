@@ -486,6 +486,17 @@ export default function StatsOnline() {
 
   const [matches, setMatches] = React.useState<any[]>([]);
   const [sessions, setSessions] = React.useState<OnlineSession[]>([]);
+  const [refreshToken, setRefreshToken] = React.useState(0);
+
+  React.useEffect(() => {
+    const refresh = () => setRefreshToken((v) => v + 1);
+    window.addEventListener("dc-history-updated", refresh);
+    window.addEventListener("dc-online-stats-exclusions-changed", refresh);
+    return () => {
+      window.removeEventListener("dc-history-updated", refresh);
+      window.removeEventListener("dc-online-stats-exclusions-changed", refresh);
+    };
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -555,7 +566,7 @@ export default function StatsOnline() {
 
     loadOnline();
     return () => { cancelled = true; };
-  }, [range]);
+  }, [range, refreshToken]);
 
   const { agg, row } = React.useMemo(
     () => aggregateOnline(matches),

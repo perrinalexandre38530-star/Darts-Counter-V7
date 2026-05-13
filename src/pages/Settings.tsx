@@ -31,6 +31,7 @@ import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
+import OnlineStatsCleanupPanel from "../components/OnlineStatsCleanupPanel";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, getNasSyncState, computeNasSyncSummary } from "../lib/manualNasSync";
 import { getApiUrl } from "../lib/apiClient";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
@@ -2575,7 +2576,7 @@ export function Settings({ go }: Props) {
 
 
   function DeveloperSection() {
-    type DevSub = "menu" | "diagnostics" | "tests" | "nas" | "logs" | "security";
+    type DevSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
     const [devSub, setDevSub] = React.useState<DevSub>("menu");
 
     const box: React.CSSProperties = {
@@ -2591,6 +2592,7 @@ export function Settings({ go }: Props) {
         menu: "Développeur",
         diagnostics: "Diagnostic",
         tests: "Tests & simulations",
+        onlineCleanup: "Nettoyage Online",
         nas: "Push / Pull NAS",
         logs: "Logs techniques",
         security: "Sécurité technique",
@@ -2625,6 +2627,7 @@ export function Settings({ go }: Props) {
 
           {devSub === "diagnostics" && <DiagnosticsSection />}
           {devSub === "tests" && <DevModeBlock go={go} />}
+          {devSub === "onlineCleanup" && <OnlineStatsCleanupPanel />}
           {devSub === "nas" && <AccountToolsPanel go={go} />}
           {devSub === "logs" && <AccountToolsPanel go={go} />}
           {devSub === "security" && <AccountToolsPanel go={go} />}
@@ -2645,6 +2648,7 @@ export function Settings({ go }: Props) {
 
         <SettingsMenuCard title="Diagnostic" subtitle="Mémoire, store, routes, warnings, erreurs runtime et crashs capturés." theme={theme} onClick={() => setDevSub("diagnostics")} />
         <SettingsMenuCard title="Tests & simulations" subtitle="Déverrouillage DEV, simulation offline/online et création de parties fictives tous jeux." theme={theme} onClick={() => setDevSub("tests")} />
+        <SettingsMenuCard title="Nettoyage Online" subtitle="Exclure/restaurer les sessions de test pour que Stats Online, X01Compare et Classements Online restent propres." theme={theme} onClick={() => setDevSub("onlineCleanup")} />
         <SettingsMenuCard title="Push / Pull NAS" subtitle="Actions techniques de synchronisation, comparaison local/cloud et refresh session." theme={theme} onClick={() => setDevSub("nas")} />
         <SettingsMenuCard title="Logs" subtitle="Réponses API, état session, snapshots locaux/cloud et exports de debug." theme={theme} onClick={() => setDevSub("logs")} />
         <SettingsMenuCard title="Sécurité technique" subtitle="Session, logout, purge locale, merge et outils compte réservés au debug." theme={theme} onClick={() => setDevSub("security")} />
