@@ -296,15 +296,39 @@ export default function OnlineStatsCleanupPanel() {
                   <span style={chip(session.excludedFromStats)}>{session.excludedFromStats ? "Exclue" : "Comptée"}</span>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6, marginTop: 9 }}>
-                  <SmallMetric label="Darts" value={session.darts} />
-                  <SmallMetric label="Moy.3D" value={session.avg3.toFixed(1)} />
-                  <SmallMetric label="BV" value={session.bestVisit} />
-                  <SmallMetric label="CO" value={session.bestCheckout} />
+                <div
+                  style={{
+                    marginTop: 9,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(0,0,0,0.24)",
+                    padding: "7px 8px",
+                  }}
+                >
+                  <div style={{ color: "rgba(255,255,255,0.52)", fontSize: 9, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                    Score / repère
+                  </div>
+                  <div style={{ color: theme.text, fontSize: 11, fontWeight: 850, marginTop: 2, lineHeight: 1.25 }}>
+                    {session.scoreLabel || "Score non disponible"}
+                  </div>
+                  {session.detailLabel ? (
+                    <div style={{ color: theme.textSoft, fontSize: 10, fontWeight: 750, marginTop: 2, lineHeight: 1.25 }}>
+                      {session.detailLabel}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, marginTop: 9 }}>
+                  <SmallMetric label="Darts" value={session.darts || "—"} />
+                  <SmallMetric label="Moy.3D" value={session.avg3 ? session.avg3.toFixed(1) : "—"} />
+                  <SmallMetric label="Hits %" value={session.hitPct ? `${session.hitPct.toFixed(1)}%` : "—"} />
+                  <SmallMetric label="BV" value={session.bestVisit || "—"} />
+                  <SmallMetric label="CO" value={session.bestCheckout || "—"} />
+                  <SmallMetric label="Source" value={session.source === "history" ? "Hist." : "Local"} />
                 </div>
 
                 <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 10, marginTop: 8, wordBreak: "break-all" }}>
-                  ID : {session.matchId || session.id} · source {session.source}
+                  ID : {session.matchId || session.id}
                 </div>
               </button>
             );

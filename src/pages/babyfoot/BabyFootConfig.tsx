@@ -35,6 +35,12 @@ import {
   setAdvancedOptions,
   startMatch,
   type BabyFootMode,
+  type BabyFootRulePreset,
+  type BabyFootDemiRule,
+  type BabyFootPissetteRule,
+  type BabyFootGamelleRule,
+  type BabyFootPecheOffRule,
+  type BabyFootPecheDefRule,
 } from "../../lib/babyfootStore";
 
 // ✅ Tickers images (Vite)
@@ -72,6 +78,36 @@ type Props = { go: (t: any, p?: any) => void; params?: any; store: Store };
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
+
+const DEMI_OPTIONS: Array<{ value: BabyFootDemiRule; label: string }> = [
+  { value: "point", label: "+1 immédiat" },
+  { value: "suspend", label: "Suspendu cumulatif" },
+  { value: "forbidden", label: "Interdit" },
+];
+
+const PISSETTE_OPTIONS: Array<{ value: BabyFootPissetteRule; label: string }> = [
+  { value: "point", label: "+1 autorisée" },
+  { value: "forbidden_stat", label: "Interdite + stat" },
+  { value: "stat_only", label: "Stat seulement" },
+];
+
+const GAMELLE_OPTIONS: Array<{ value: BabyFootGamelleRule; label: string }> = [
+  { value: "plus_one_scoring_team", label: "+1 à l'équipe qui la fait" },
+  { value: "minus_one_conceding_team", label: "-1 à l'équipe qui la subit" },
+  { value: "stat_only", label: "Stat seulement" },
+];
+
+const PECHE_OFF_OPTIONS: Array<{ value: BabyFootPecheOffRule; label: string }> = [
+  { value: "forbidden", label: "Interdite" },
+  { value: "minus_one_conceding_team", label: "-1 à l'équipe qui la subit" },
+  { value: "stat_only", label: "Stat seulement" },
+];
+
+const PECHE_DEF_OPTIONS: Array<{ value: BabyFootPecheDefRule; label: string }> = [
+  { value: "forbidden", label: "Interdite" },
+  { value: "cancel_goal", label: "Annule le but" },
+  { value: "stat_only", label: "Stat seulement" },
+];
 
 function pillStyle(
   active: boolean,
@@ -507,6 +543,38 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       : false
   );
 
+  const [rulesPreset, setRulesPreset] = useState<BabyFootRulePreset>(
+    (saved as any).rulesPreset === "bar" ? "bar" : "competition"
+  );
+  const [demiRule, setDemiRule] = useState<BabyFootDemiRule>(
+    (saved as any).demiRule === "suspend" || (saved as any).demiRule === "forbidden"
+      ? (saved as any).demiRule
+      : "point"
+  );
+  const [pissetteRule, setPissetteRule] = useState<BabyFootPissetteRule>(
+    (saved as any).pissetteRule === "forbidden_stat" || (saved as any).pissetteRule === "stat_only"
+      ? (saved as any).pissetteRule
+      : "point"
+  );
+  const [gamelleRule, setGamelleRule] = useState<BabyFootGamelleRule>(
+    (saved as any).gamelleRule === "minus_one_conceding_team" || (saved as any).gamelleRule === "stat_only"
+      ? (saved as any).gamelleRule
+      : "plus_one_scoring_team"
+  );
+  const [pecheOffRule, setPecheOffRule] = useState<BabyFootPecheOffRule>(
+    (saved as any).pecheOffRule === "minus_one_conceding_team" || (saved as any).pecheOffRule === "stat_only"
+      ? (saved as any).pecheOffRule
+      : "forbidden"
+  );
+  const [pecheDefRule, setPecheDefRule] = useState<BabyFootPecheDefRule>(
+    (saved as any).pecheDefRule === "cancel_goal" || (saved as any).pecheDefRule === "stat_only"
+      ? (saved as any).pecheDefRule
+      : "forbidden"
+  );
+  const [allowRoulette, setAllowRoulette] = useState<boolean>(!!(saved as any).allowRoulette);
+  const [allowTacles, setAllowTacles] = useState<boolean>(!!(saved as any).allowTacles);
+  const [allowLobShot, setAllowLobShot] = useState<boolean>(!!(saved as any).allowLobShot);
+
   const [selA, setSelA] = useState<string[]>(
     Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []
   );
@@ -522,6 +590,29 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   const showTeamsPicker = mode === "2v2" || mode === "2v1";
   const showTeamsPickerB = mode === "2v2";
+
+  const applyRulePreset = (preset: BabyFootRulePreset) => {
+    setRulesPreset(preset);
+    if (preset === "bar") {
+      setDemiRule("suspend");
+      setPissetteRule("forbidden_stat");
+      setGamelleRule("minus_one_conceding_team");
+      setPecheOffRule("minus_one_conceding_team");
+      setPecheDefRule("cancel_goal");
+      setAllowRoulette(false);
+      setAllowTacles(false);
+      setAllowLobShot(false);
+      return;
+    }
+    setDemiRule("point");
+    setPissetteRule("point");
+    setGamelleRule("plus_one_scoring_team");
+    setPecheOffRule("forbidden");
+    setPecheDefRule("forbidden");
+    setAllowRoulette(false);
+    setAllowTacles(false);
+    setAllowLobShot(false);
+  };
 
   const profiles: Profile[] = ((store as any)?.profiles || []) as Profile[];
 
@@ -872,6 +963,15 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           : setTargetValue,
       allowDrawOnTimeEnd: useTimer ? !!allowDrawOnTimeEnd : false,
       requireTwoGoalLead: !!requireTwoGoalLead,
+      rulesPreset,
+      demiRule,
+      pissetteRule,
+      gamelleRule,
+      pecheOffRule,
+      pecheDefRule,
+      allowRoulette,
+      allowTacles,
+      allowLobShot,
     });
 
     startMatch();
@@ -915,6 +1015,15 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         : true
     );
     setRequireTwoGoalLead(!!(s as any).requireTwoGoalLead);
+    setRulesPreset((s as any).rulesPreset === "bar" ? "bar" : "competition");
+    setDemiRule((s as any).demiRule === "suspend" || (s as any).demiRule === "forbidden" ? (s as any).demiRule : "point");
+    setPissetteRule((s as any).pissetteRule === "forbidden_stat" || (s as any).pissetteRule === "stat_only" ? (s as any).pissetteRule : "point");
+    setGamelleRule((s as any).gamelleRule === "minus_one_conceding_team" || (s as any).gamelleRule === "stat_only" ? (s as any).gamelleRule : "plus_one_scoring_team");
+    setPecheOffRule((s as any).pecheOffRule === "minus_one_conceding_team" || (s as any).pecheOffRule === "stat_only" ? (s as any).pecheOffRule : "forbidden");
+    setPecheDefRule((s as any).pecheDefRule === "cancel_goal" || (s as any).pecheDefRule === "stat_only" ? (s as any).pecheDefRule : "forbidden");
+    setAllowRoulette(!!(s as any).allowRoulette);
+    setAllowTacles(!!(s as any).allowTacles);
+    setAllowLobShot(!!(s as any).allowLobShot);
     setSelA(Array.isArray(s.teamAProfileIds) ? s.teamAProfileIds : []);
     setSelB(Array.isArray(s.teamBProfileIds) ? s.teamBProfileIds : []);
     setConfirmA(false);
@@ -1439,6 +1548,62 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           </div>
         </div>
       </div>
+
+        <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+          {sectionTitle("RÈGLES SPÉCIALES", primary)}
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={pillStyle(rulesPreset === "competition", primary, primarySoft)} onClick={() => applyRulePreset("competition")}>RÈGLE DE COMPÉTITION</div>
+            <div style={pillStyle(rulesPreset === "bar", primary, primarySoft)} onClick={() => applyRulePreset("bar")}>RÈGLE DE BAR</div>
+          </div>
+
+          <div style={{ fontSize: 12, opacity: 0.76, lineHeight: 1.4, marginBottom: 10 }}>
+            Compétition : demi = +1, pissette autorisée, pêche interdite. Bar : demi suspendu, pissette interdite + stat, pêche offensive = -1 subi, pêche défensive = but annulé.
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Demi</div>
+              <select value={demiRule} onChange={(e) => setDemiRule(e.target.value as BabyFootDemiRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {DEMI_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pissette</div>
+              <select value={pissetteRule} onChange={(e) => setPissetteRule(e.target.value as BabyFootPissetteRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {PISSETTE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Gamelle</div>
+              <select value={gamelleRule} onChange={(e) => setGamelleRule(e.target.value as BabyFootGamelleRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {GAMELLE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche offensive</div>
+              <select value={pecheOffRule} onChange={(e) => setPecheOffRule(e.target.value as BabyFootPecheOffRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {PECHE_OFF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche défensive</div>
+              <select value={pecheDefRule} onChange={(e) => setPecheDefRule(e.target.value as BabyFootPecheDefRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {PECHE_DEF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={pillStyle(allowRoulette, primary, primarySoft)} onClick={() => setAllowRoulette((v) => !v)}>Roulette {allowRoulette ? "ON" : "OFF"}</div>
+            <div style={pillStyle(allowTacles, primary, primarySoft)} onClick={() => setAllowTacles((v) => !v)}>Tacles {allowTacles ? "ON" : "OFF"}</div>
+            <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Lob / choc {allowLobShot ? "ON" : "OFF"}</div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, lineHeight: 1.45 }}>
+            Râteaux : interdits. Les variations choisies ici sont appliquées au score live et aux statistiques du match.
+          </div>
+        </div>
 
       <div
         style={{

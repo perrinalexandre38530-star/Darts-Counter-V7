@@ -339,14 +339,19 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const totalGoals = scoredPointsA + scoredPointsB;
   const penaltiesA = state.penalties?.goalsA ?? 0;
   const penaltiesB = state.penalties?.goalsB ?? 0;
-  const demiA = demiEvents.filter((event) => event.team === "A").length;
-  const demiB = demiEvents.filter((event) => event.team === "B").length;
-  const gamelleA = goalEvents.filter((event) => event.team === "A" && event.kind === "gamelle").length;
-  const gamelleB = goalEvents.filter((event) => event.team === "B" && event.kind === "gamelle").length;
-  const pecheA = goalEvents.filter((event) => event.team === "A" && event.kind === "peche").length;
-  const pecheB = goalEvents.filter((event) => event.team === "B" && event.kind === "peche").length;
-  const demiBonusA = goalEvents.filter((event) => event.team === "A").reduce((acc, event) => acc + Math.max(0, Number(event.demiBonusApplied) || 0), 0);
-  const demiBonusB = goalEvents.filter((event) => event.team === "B").reduce((acc, event) => acc + Math.max(0, Number(event.demiBonusApplied) || 0), 0);
+  const specialStats = state.specialStats || ({} as any);
+  const demiA = Number(specialStats.demiA || demiEvents.filter((event) => event.team === "A").length || 0);
+  const demiB = Number(specialStats.demiB || demiEvents.filter((event) => event.team === "B").length || 0);
+  const gamelleA = Number(specialStats.gamelleA || 0);
+  const gamelleB = Number(specialStats.gamelleB || 0);
+  const pissetteA = Number(specialStats.pissetteA || 0);
+  const pissetteB = Number(specialStats.pissetteB || 0);
+  const pecheOffA = Number(specialStats.pecheOffA || 0);
+  const pecheOffB = Number(specialStats.pecheOffB || 0);
+  const pecheDefA = Number(specialStats.pecheDefA || 0);
+  const pecheDefB = Number(specialStats.pecheDefB || 0);
+  const demiBonusA = Number(specialStats.demiBonusAppliedA || goalEvents.filter((event) => event.team === "A").reduce((acc, event) => acc + Math.max(0, Number(event.demiBonusApplied) || 0), 0));
+  const demiBonusB = Number(specialStats.demiBonusAppliedB || goalEvents.filter((event) => event.team === "B").reduce((acc, event) => acc + Math.max(0, Number(event.demiBonusApplied) || 0), 0));
 
   const lastGoalEvent = goalEvents.length ? goalEvents[goalEvents.length - 1] : null;
   const leaderLabel = displayedScore.scoreA === displayedScore.scoreB ? "Égalité" : displayedScore.scoreA > displayedScore.scoreB ? state.teamA : state.teamB;
@@ -372,7 +377,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     if (!lastGoalEvent) return state.pendingDemiBonus > 0 ? `Demi active x${state.pendingDemiBonus}` : "Aucun but pour le moment";
     const teamName = lastGoalEvent.team === "A" ? state.teamA : state.teamB;
     const scorer = lastGoalEvent.scorerId ? getProfile(lastGoalEvent.scorerId)?.name || lastGoalEvent.scorerId : null;
-    const base = lastGoalEvent.kind === "gamelle" ? "Gamelle" : lastGoalEvent.kind === "peche" ? "Pêche" : "But";
+    const base = lastGoalEvent.kind === "gamelle" ? "Gamelle" : lastGoalEvent.kind === "peche" ? "Pêche" : lastGoalEvent.kind === "pissette" ? "Pissette" : "But";
     const bonus = Math.max(0, Number(lastGoalEvent.demiBonusApplied) || 0);
     const suffix = bonus > 0 ? ` • +${1 + bonus}` : "";
     return `${base} ${scorer || teamName}${suffix}`;
@@ -407,24 +412,54 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     state.pendingDemiBonus > 0 ? `Demi x${state.pendingDemiBonus}` : null,
   ].filter((entry): entry is string => Boolean(entry));
 
-  const infoBody = `Baby-Foot live — règles & commandes
+  const infoBody = (() => {
+    const demiRuleLabel = state.demiRule === "suspend"
+      ? "Demi : ne compte pas tout de suite. Chaque demi ajoute 1 demi en suspens ; le prochain but valable encaisse 1 point normal + tous les demis en suspens."
+      : state.demiRule === "forbidden"
+      ? "Demi : interdit."
+      : "Demi : vaut 1 point immédiat.";
+    const pissetteLabel = state.pissetteRule === "point"
+      ? "Pissette : autorisée et vaut 1 point."
+      : state.pissetteRule === "stat_only"
+      ? "Pissette : ne modifie pas le score, statistique seulement."
+      : "Pissette : interdite ; 0 point mais statistique comptabilisée.";
+    const gamelleLabel = state.gamelleRule === "minus_one_conceding_team"
+      ? "Gamelle : retire 1 point à l'équipe qui la subit."
+      : state.gamelleRule === "stat_only"
+      ? "Gamelle : statistique seulement."
+      : "Gamelle : ajoute 1 point à l'équipe qui la réalise.";
+    const pecheOffLabel = state.pecheOffRule === "minus_one_conceding_team"
+      ? "Pêche offensive : retire 1 point à l'équipe qui la subit."
+      : state.pecheOffRule === "stat_only"
+      ? "Pêche offensive : statistique seulement."
+      : "Pêche offensive : interdite.";
+    const pecheDefLabel = state.pecheDefRule === "cancel_goal"
+      ? "Pêche défensive : annule le but en récupérant la balle avant validation."
+      : state.pecheDefRule === "stat_only"
+      ? "Pêche défensive : statistique seulement."
+      : "Pêche défensive : interdite.";
+    return `Baby-Foot live — règles & commandes
 
 Chrono
 • Démarrer : lance manuellement la partie et le chrono.
 • Pause : stoppe le chrono pour une interruption sans perdre l'état du match.
 • Reprendre : relance le chrono après la pause.
 
-Score
-• BUT : +1 point immédiat.
-• GAMELLE : +1 point immédiat et compteur gamelle.
-• PÊCHE : +1 point immédiat et compteur pêche.
-• DEMI : ne compte pas tout de suite ; il arme un bonus pour le prochain but validé.
-• Demi sur demi : dans cette version, le bonus s'empile. On peut parler de trémi, puis d'empilement supplémentaire, mais l'app l'affiche simplement en bonus x2 / x3 / x4.
-• Le prochain but validé, par n'importe quel joueur, consomme tout le bonus en attente. Exemple : 2 demis actifs => prochain but = 3 points.
+Règle active
+• Preset : ${state.rulesPreset === "bar" ? "Règle de bar" : "Règle de compétition"}.
+• ${demiRuleLabel}
+• ${pissetteLabel}
+• ${gamelleLabel}
+• ${pecheOffLabel}
+• ${pecheDefLabel}
+• Râteaux : interdits.
+• Roulette : ${state.allowRoulette ? "autorisée" : "interdite"}.
+• Tacles : ${state.allowTacles ? "autorisés" : "interdits"}.
+• Lob / coup sur la table : ${state.allowLobShot ? "autorisé" : "interdit"}.
 
 Stats
-• L'onglet Stats suit les buts, handicaps, penalties, demis, gamelles, pêches et bonus demi appliqués.
-• L'onglet Contexte résume l'état live de la partie.`;
+• L'onglet Stats suit les buts, handicaps, penalties, demis, pissettes, gamelles, pêches offensives, pêches défensives et bonus demi appliqués.`;
+  })();
 
   useEffect(() => {
     try {
@@ -492,8 +527,12 @@ Stats
         demiB,
         gamelleA,
         gamelleB,
-        pecheA,
-        pecheB,
+        pissetteA,
+        pissetteB,
+        pecheOffA,
+        pecheOffB,
+        pecheDefA,
+        pecheDefB,
       },
       events: state.events || [],
     };
@@ -595,18 +634,22 @@ Stats
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#c7ff26", textTransform: "uppercase" }}>{visualA.name}</div>
-            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
               <button type="button" onClick={() => runAction("A", "demi")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>DEMI</button>
               <button type="button" onClick={() => runAction("A", "gamelle")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>GAMELLE</button>
-              <button type="button" onClick={() => runAction("A", "peche")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>PÊCHE</button>
+              <button type="button" onClick={() => runAction("A", "pissette")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>PISSETTE</button>
+              <button type="button" onClick={() => runAction("A", "peche_off")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>PÊCHE OFF</button>
+              <button type="button" onClick={() => runAction("A", "peche_def")} disabled={liveEditDisabled} style={{ ...miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled), gridColumn: "1 / -1" }}>PÊCHE DEF</button>
             </div>
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#ff59b0", textTransform: "uppercase", textAlign: "right" }}>{visualB.name}</div>
-            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
               <button type="button" onClick={() => runAction("B", "demi")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>DEMI</button>
               <button type="button" onClick={() => runAction("B", "gamelle")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>GAMELLE</button>
-              <button type="button" onClick={() => runAction("B", "peche")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>PÊCHE</button>
+              <button type="button" onClick={() => runAction("B", "pissette")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>PISSETTE</button>
+              <button type="button" onClick={() => runAction("B", "peche_off")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>PÊCHE OFF</button>
+              <button type="button" onClick={() => runAction("B", "peche_def")} disabled={liveEditDisabled} style={{ ...miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled), gridColumn: "1 / -1" }}>PÊCHE DEF</button>
             </div>
           </div>
         </div>
@@ -652,8 +695,12 @@ Stats
       demiB={demiB}
       gamelleA={gamelleA}
       gamelleB={gamelleB}
-      pecheA={pecheA}
-      pecheB={pecheB}
+      pissetteA={pissetteA}
+      pissetteB={pissetteB}
+      pecheOffA={pecheOffA}
+      pecheOffB={pecheOffB}
+      pecheDefA={pecheDefA}
+      pecheDefB={pecheDefB}
       demiBonusA={demiBonusA}
       demiBonusB={demiBonusB}
     />
@@ -753,7 +800,7 @@ Stats
           <div style={{ ...shellCard(), width: "100%", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 19, fontWeight: 1100 }}>Choisir le joueur</div>
             <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
-              Sélectionne le joueur concerné pour {pickAction.action === "goal" ? "le but" : pickAction.action === "demi" ? "le demi" : pickAction.action === "gamelle" ? "la gamelle" : "la pêche"} de {pickAction.team === "A" ? visualA.name : visualB.name}.
+              Sélectionne le joueur concerné pour {pickAction.action === "goal" ? "le but" : pickAction.action === "demi" ? "le demi" : pickAction.action === "gamelle" ? "la gamelle" : pickAction.action === "pissette" ? "la pissette" : pickAction.action === "peche_off" ? "la pêche offensive" : "la pêche défensive"} de {pickAction.team === "A" ? visualA.name : visualB.name}.
             </div>
             <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
               {(pickAction.team === "A" ? teamAIds : teamBIds).map((playerId) => {

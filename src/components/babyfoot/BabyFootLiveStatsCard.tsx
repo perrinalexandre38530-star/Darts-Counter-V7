@@ -18,8 +18,12 @@ type Props = {
   demiB?: number;
   gamelleA?: number;
   gamelleB?: number;
-  pecheA?: number;
-  pecheB?: number;
+  pissetteA?: number;
+  pissetteB?: number;
+  pecheOffA?: number;
+  pecheOffB?: number;
+  pecheDefA?: number;
+  pecheDefB?: number;
   demiBonusA?: number;
   demiBonusB?: number;
 };
@@ -78,8 +82,12 @@ export default function BabyFootLiveStatsCard({
   demiB = 0,
   gamelleA = 0,
   gamelleB = 0,
-  pecheA = 0,
-  pecheB = 0,
+  pissetteA = 0,
+  pissetteB = 0,
+  pecheOffA = 0,
+  pecheOffB = 0,
+  pecheDefA = 0,
+  pecheDefB = 0,
   demiBonusA = 0,
   demiBonusB = 0,
 }: Props) {
@@ -89,7 +97,9 @@ export default function BabyFootLiveStatsCard({
     ["Penalties", penaltiesA, penaltiesB],
     ["Demis", demiA, demiB],
     ["Gamelles", gamelleA, gamelleB],
-    ["Pêches", pecheA, pecheB],
+    ["Pissettes", pissetteA, pissetteB],
+    ["Pêche off", pecheOffA, pecheOffB],
+    ["Pêche def", pecheDefA, pecheDefB],
     ["Bonus demi", demiBonusA, demiBonusB],
   ] as const;
 

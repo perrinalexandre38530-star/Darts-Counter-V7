@@ -24,10 +24,13 @@ export type OnlineStatsCleanupSession = {
   updatedAt: number;
   playersLabel: string;
   winnerLabel: string;
+  scoreLabel?: string;
+  detailLabel?: string;
   darts: number;
   avg3: number;
   bestVisit: number;
   bestCheckout: number;
+  hitPct?: number;
   excludedFromStats: boolean;
   deletedAt: number | null;
   raw?: any;
@@ -118,6 +121,8 @@ function walkObjects(root: any, maxDepth = 4): any[] {
     for (const key of [
       "payload",
       "summary",
+      "match",
+      "room",
       "stats",
       "meta",
       "statsMeta",
@@ -127,6 +132,24 @@ function walkObjects(root: any, maxDepth = 4): any[] {
       "cfg",
       "result",
       "state",
+      "players",
+      "perPlayer",
+      "rankings",
+      "detailedByPlayer",
+      "liveStatsByPlayer",
+      "playerStats",
+      "statsByPlayer",
+      "legacy",
+      "visits",
+      "visitsHistory",
+      "visitHistory",
+      "darts",
+      "turns",
+      "finalScores",
+      "scores",
+      "scoreByPlayer",
+      "pointsByPlayer",
+      "remaining",
     ]) {
       const v = x?.[key];
       if (v && typeof v === "object") walk(v, depth + 1);
@@ -296,33 +319,425 @@ function getDeletedAt(row: any): number | null {
   return n || nowTs();
 }
 
-function getStatsNumber(row: any, keys: string[], fallback = 0): number {
-  const direct = firstDeep(row, keys);
-  return num(direct, fallback);
+
+function shallowNumber(obj: any, keys: string[]): number | null {
+  if (!obj || typeof obj !== "object") return null;
+  const want = new Set(keys.map((k) => k.toLowerCase()));
+  for (const [key, value] of Object.entries(obj)) {
+    if (!want.has(String(key).toLowerCase())) continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
+function collectNumbersDeep(row: any, keys: string[], opts: { positiveOnly?: boolean } = {}): number[] {
+  const want = new Set(keys.map((k) => k.toLowerCase()));
+  const out: number[] = [];
+  for (const obj of walkObjects(row, 7)) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    for (const [key, value] of Object.entries(obj)) {
+      if (!want.has(String(key).toLowerCase())) continue;
+      const n = Number(value);
+      if (!Number.isFinite(n)) continue;
+      if (opts.positiveOnly && n <= 0) continue;
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+function firstPositiveDeep(row: any, keys: string[], fallback = 0): number {
+  const values = collectNumbersDeep(row, keys, { positiveOnly: true });
+  if (!values.length) return fallback;
+  // On prend le maximum : si summary.darts=24 et perPlayer.darts=14/10,
+  // le maximum évite de retomber sur une ligne joueur partielle.
+  return Math.max(...values);
+}
+
+function maxDeep(row: any, keys: string[], fallback = 0): number {
+  const values = collectNumbersDeep(row, keys, { positiveOnly: true });
+  return values.length ? Math.max(...values) : fallback;
+}
+
+function valuesFromMapLike(value: any): number[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const out: number[] = [];
+  for (const v of Object.values(value)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return out;
+}
+
+function collectPlayerNameMap(row: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  const add = (p: any) => {
+    if (!p || typeof p !== "object") return;
+    const id = str(p?.id ?? p?.playerId ?? p?.profileId ?? p?.pid ?? p?.selectedPlayerId);
+    const name = str(p?.name ?? p?.playerName ?? p?.displayName ?? p?.nickname ?? p?.profileName ?? p?.label);
+    if (id && name && !out[id]) out[id] = name;
+  };
+
+  for (const obj of walkObjects(row, 7)) {
+    if (!obj || typeof obj !== "object") continue;
+    if (Array.isArray(obj)) obj.forEach(add);
+    else {
+      add(obj);
+      for (const key of ["players", "perPlayer", "rankings"]) {
+        if (Array.isArray(obj?.[key])) obj[key].forEach(add);
+      }
+      for (const key of ["detailedByPlayer", "liveStatsByPlayer", "playerStats", "statsByPlayer"]) {
+        const map = obj?.[key];
+        if (map && typeof map === "object" && !Array.isArray(map)) Object.values(map).forEach(add);
+      }
+    }
+  }
+  return out;
+}
+
+function collectPerPlayerRows(row: any): any[] {
+  const out: any[] = [];
+  const seen = new WeakSet<object>();
+  const hasStatsShape = (p: any) => {
+    if (!p || typeof p !== "object" || Array.isArray(p)) return false;
+    return [
+      "darts", "totalDarts", "dartsThrown", "totalThrows", "dt", "points", "totalScore", "pointsScored", "scored",
+      "avg3", "avg3D", "moy3", "average3", "bestVisit", "best_checkout", "bestCheckout", "bestCo", "bestCO",
+      "score", "remaining", "finalScore", "hits", "miss", "misses", "singles", "doubles", "triples", "bulls", "dbulls",
+    ].some((k) => p[k] !== undefined && p[k] !== null);
+  };
+  const add = (p: any) => {
+    if (!p || typeof p !== "object" || Array.isArray(p) || seen.has(p)) return;
+    if (!hasStatsShape(p)) return;
+    seen.add(p);
+    out.push(p);
+  };
+
+  for (const obj of walkObjects(row, 7)) {
+    if (!obj || typeof obj !== "object") continue;
+    if (Array.isArray(obj)) {
+      obj.forEach(add);
+      continue;
+    }
+    add(obj);
+    for (const key of ["players", "perPlayer", "rankings"]) {
+      if (Array.isArray(obj?.[key])) obj[key].forEach(add);
+    }
+    for (const key of ["detailedByPlayer", "liveStatsByPlayer", "playerStats", "statsByPlayer"]) {
+      const map = obj?.[key];
+      if (map && typeof map === "object" && !Array.isArray(map)) Object.values(map).forEach(add);
+    }
+  }
+  return out;
+}
+
+function sumFromPerPlayer(row: any, keys: string[]): number {
+  let total = 0;
+  for (const p of collectPerPlayerRows(row)) {
+    const n = shallowNumber(p, keys);
+    if (n !== null && Number.isFinite(n) && n > 0) total += n;
+  }
+  return total;
+}
+
+function maxFromPerPlayer(row: any, keys: string[]): number {
+  let max = 0;
+  for (const p of collectPerPlayerRows(row)) {
+    const n = shallowNumber(p, keys);
+    if (n !== null && Number.isFinite(n) && n > max) max = n;
+  }
+  return max;
+}
+
+function sumFromNamedMaps(row: any, mapKeys: string[]): number {
+  let best = 0;
+  const want = new Set(mapKeys.map((k) => k.toLowerCase()));
+  for (const obj of walkObjects(row, 6)) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    for (const [key, value] of Object.entries(obj)) {
+      if (!want.has(String(key).toLowerCase())) continue;
+      const sum = valuesFromMapLike(value).filter((n) => n > 0).reduce((a, n) => a + n, 0);
+      if (sum > best) best = sum;
+    }
+  }
+  return best;
+}
+
+function maxFromNamedMaps(row: any, mapKeys: string[]): number {
+  let best = 0;
+  const want = new Set(mapKeys.map((k) => k.toLowerCase()));
+  for (const obj of walkObjects(row, 6)) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    for (const [key, value] of Object.entries(obj)) {
+      if (!want.has(String(key).toLowerCase())) continue;
+      const values = valuesFromMapLike(value).filter((n) => n > 0);
+      if (values.length) best = Math.max(best, ...values);
+    }
+  }
+  return best;
+}
+
+
+
+type VisitAgg = { darts: number; points: number; bestVisit: number; bestCheckout: number; visits: number };
+
+function scoreFromSegments(segments: any[]): number {
+  if (!Array.isArray(segments)) return 0;
+  return segments.reduce((a, d: any) => {
+    if (d?.isMiss) return a;
+    const direct = Number(d?.score);
+    if (Number.isFinite(direct)) return a + direct;
+    const segRaw = d?.segment ?? d?.value ?? d?.v;
+    const mult = Number(d?.multiplier ?? d?.mult ?? d?.m ?? 1) || 1;
+    const seg = String(segRaw ?? "").toLowerCase();
+    if (seg === "miss" || seg === "m") return a;
+    if (seg === "bull") return a + 25;
+    if (seg === "dbull" || seg === "doublebull") return a + 50;
+    const n = Number(segRaw);
+    return Number.isFinite(n) ? a + n * mult : a;
+  }, 0);
+}
+
+function normalizeVisitEntry(entry: any, fallbackPid?: string): any | null {
+  if (Array.isArray(entry)) {
+    const vals = entry.map((x) => Number(x)).filter((n) => Number.isFinite(n));
+    return { playerId: fallbackPid || "", darts: vals.length, score: vals.reduce((a, n) => a + n, 0), checkout: false };
+  }
+  if (!entry || typeof entry !== "object") return null;
+
+  const segments = Array.isArray(entry.segments) ? entry.segments : Array.isArray(entry.darts) ? entry.darts : Array.isArray(entry.throws) ? entry.throws : [];
+  let darts = Number(entry.dartsCount ?? entry.dartCount ?? entry.dartsThrown ?? entry.totalDarts ?? entry.dt ?? 0);
+  if (!Number.isFinite(darts) || darts <= 0) darts = Array.isArray(segments) ? segments.length : 0;
+  if ((!darts || darts <= 0) && Array.isArray(entry.values)) darts = entry.values.length;
+
+  let score = Number(entry.score ?? entry.visitScore ?? entry.points ?? entry.total ?? entry.rawScore ?? NaN);
+  if (!Number.isFinite(score)) {
+    if (Array.isArray(segments) && segments.length) score = scoreFromSegments(segments);
+    else if (Array.isArray(entry.values)) score = entry.values.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n)).reduce((a: number, n: number) => a + n, 0);
+    else score = 0;
+  }
+  if (entry.bust === true || entry.isBust === true) score = Number(entry.score ?? 0) || 0;
+
+  const checkout = entry.isCheckout === true || entry.checkout === true || entry.finish === true || Number(entry.remainingAfter) === 0;
+  return {
+    playerId: str(entry.playerId ?? entry.pid ?? entry.p ?? fallbackPid),
+    darts: Math.max(0, Math.round(darts || 0)),
+    score: Math.max(0, score || 0),
+    checkout,
+    ts: entry.ts ?? entry.time ?? entry.createdAt ?? "",
+  };
+}
+
+function getVisitAgg(row: any): VisitAgg {
+  const entries: any[] = [];
+  const seen = new Set<string>();
+  const add = (visit: any, fallbackPid?: string) => {
+    const v = normalizeVisitEntry(visit, fallbackPid);
+    if (!v || (!v.darts && !v.score)) return;
+    const sig = `${v.playerId}|${v.ts}|${v.darts}|${v.score}|${v.checkout}`;
+    if (seen.has(sig)) return;
+    seen.add(sig);
+    entries.push(v);
+  };
+
+  for (const obj of walkObjects(row, 7)) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+
+    const visitsMap = obj?.visits;
+    if (visitsMap && typeof visitsMap === "object" && !Array.isArray(visitsMap)) {
+      for (const [pid, list] of Object.entries(visitsMap)) {
+        if (Array.isArray(list)) list.forEach((v) => add(v, String(pid)));
+      }
+    }
+
+    for (const key of ["visitsHistory", "visitHistory", "turns", "darts"]) {
+      const list = obj?.[key];
+      if (Array.isArray(list)) list.forEach((v) => add(v));
+    }
+  }
+
+  let darts = 0;
+  let points = 0;
+  let bestVisit = 0;
+  let bestCheckout = 0;
+  for (const v of entries) {
+    darts += Number(v.darts || 0);
+    points += Number(v.score || 0);
+    bestVisit = Math.max(bestVisit, Number(v.score || 0));
+    if (v.checkout) bestCheckout = Math.max(bestCheckout, Number(v.score || 0));
+  }
+  return { darts, points, bestVisit, bestCheckout, visits: entries.length };
+}
 function getDarts(row: any): number {
-  return getStatsNumber(row, ["darts", "totalDarts", "dartsThrown", "dt", "dartsCount"], 0);
+  const direct = firstPositiveDeep(row, ["darts", "totalDarts", "totalDartsThrown", "dartsThrown", "dt", "dartsCount", "totalThrows"], 0);
+  const perPlayer = sumFromPerPlayer(row, ["darts", "totalDarts", "totalDartsThrown", "dartsThrown", "dt", "dartsCount", "totalThrows"]);
+  const byPlayer = sumFromNamedMaps(row, ["dartsByPlayer", "darts", "dartsThrownByPlayer", "totalDartsByPlayer"]);
+  const visit = getVisitAgg(row);
+  return Math.max(direct, perPlayer, byPlayer, visit.darts, 0);
 }
 
 function getTotalScore(row: any): number {
-  return getStatsNumber(row, ["totalScore", "totalscore", "points", "_sumPoints"], 0);
+  const perPlayer = sumFromPerPlayer(row, ["points", "totalScore", "pointsScored", "scored", "score", "rawScore"]);
+  const byPlayer = sumFromNamedMaps(row, ["pointsByPlayer", "scoreByPlayer", "totalScoreByPlayer", "pointsScoredByPlayer"]);
+  const direct = firstPositiveDeep(row, ["totalScore", "totalscore", "points", "pointsScored", "scored", "_sumPoints"], 0);
+  const visit = getVisitAgg(row);
+  return Math.max(perPlayer, byPlayer, direct, visit.points, 0);
 }
 
 function getAvg3(row: any): number {
-  const avg = getStatsNumber(row, ["avg3", "avg3D", "moy3", "average3"], 0);
-  if (avg > 0) return Math.round(avg * 10) / 10;
+  const rows = collectPerPlayerRows(row)
+    .map((p) => ({
+      avg: shallowNumber(p, ["avg3", "avg3D", "moy3", "average3"]),
+      darts: shallowNumber(p, ["darts", "totalDarts", "totalDartsThrown", "dartsThrown", "dt", "dartsCount", "totalThrows"]),
+    }))
+    .filter((x) => x.avg !== null && Number.isFinite(Number(x.avg)) && Number(x.avg) > 0);
+
+  const weighted = rows.filter((x) => x.darts !== null && Number(x.darts) > 0);
+  const dartsSum = weighted.reduce((a, x) => a + Number(x.darts || 0), 0);
+  if (dartsSum > 0) {
+    const v = weighted.reduce((a, x) => a + Number(x.avg || 0) * Number(x.darts || 0), 0) / dartsSum;
+    if (Number.isFinite(v) && v > 0) return Math.round(v * 10) / 10;
+  }
+
+  const avgMapValues: number[] = [];
+  const want = new Set(["avg3byplayer", "avg3dbyplayer", "moy3byplayer", "average3byplayer"]);
+  for (const obj of walkObjects(row, 6)) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    for (const [key, value] of Object.entries(obj)) {
+      if (!want.has(String(key).toLowerCase())) continue;
+      avgMapValues.push(...valuesFromMapLike(value).filter((n) => n > 0));
+    }
+  }
+  if (avgMapValues.length) {
+    const v = avgMapValues.reduce((a, n) => a + n, 0) / avgMapValues.length;
+    return Math.round(v * 10) / 10;
+  }
+
+  const direct = firstPositiveDeep(row, ["avg3", "avg3D", "moy3", "average3", "avg3Global"], 0);
+  if (direct > 0) return Math.round(direct * 10) / 10;
+
   const darts = getDarts(row);
   const score = getTotalScore(row);
-  return darts > 0 ? Math.round(((score / darts) * 3) * 10) / 10 : 0;
+  return darts > 0 && score > 0 ? Math.round(((score / darts) * 3) * 10) / 10 : 0;
+}
+
+function getBestVisit(row: any): number {
+  return Math.max(
+    maxDeep(row, ["bestVisit", "bv", "best_visit", "maxVisit", "highestVisit"], 0),
+    maxFromPerPlayer(row, ["bestVisit", "bv", "best_visit", "maxVisit", "highestVisit"]),
+    maxFromNamedMaps(row, ["bestVisitByPlayer", "best_visit_by_player", "bvByPlayer", "maxVisitByPlayer"]),
+    getVisitAgg(row).bestVisit,
+    0,
+  );
+}
+
+function getBestCheckout(row: any): number {
+  return Math.max(
+    maxDeep(row, ["bestCheckout", "bestCo", "bestCO", "highestCheckout", "checkout", "co", "bestFinish"], 0),
+    maxFromPerPlayer(row, ["bestCheckout", "bestCo", "bestCO", "highestCheckout", "checkout", "co", "bestFinish"]),
+    maxFromNamedMaps(row, ["bestCheckoutByPlayer", "bestCoByPlayer", "bestFinishByPlayer", "highestCheckoutByPlayer"]),
+    getVisitAgg(row).bestCheckout,
+    0,
+  );
+}
+
+function getHitPct(row: any): number {
+  const darts = getDarts(row);
+  if (!darts) return 0;
+  const misses = Math.max(
+    sumFromPerPlayer(row, ["miss", "misses"]),
+    sumFromNamedMaps(row, ["missByPlayer", "missesByPlayer"]),
+    0,
+  );
+  if (misses >= 0 && darts > 0) return Math.max(0, Math.min(100, Math.round(((darts - misses) / darts) * 1000) / 10));
+  return 0;
 }
 
 function getCreatedAt(row: any): number {
-  return num(firstDeep(row, ["createdAt", "created_at", "date", "ts", "startedAt", "started_at", "finishedAt", "finished_at"]), Date.now());
+  const raw = firstDeep(row, ["createdAt", "created_at", "date", "ts", "startedAt", "started_at", "finishedAt", "finished_at"]);
+  if (typeof raw === "string") {
+    const t = Date.parse(raw);
+    if (Number.isFinite(t)) return t;
+  }
+  return num(raw, Date.now());
 }
 
 function getUpdatedAt(row: any): number {
-  return num(firstDeep(row, ["updatedAt", "updated_at", "finishedAt", "finished_at", "createdAt", "created_at", "date", "ts"]), getCreatedAt(row));
+  const raw = firstDeep(row, ["updatedAt", "updated_at", "finishedAt", "finished_at", "createdAt", "created_at", "date", "ts"]);
+  if (typeof raw === "string") {
+    const t = Date.parse(raw);
+    if (Number.isFinite(t)) return t;
+  }
+  return num(raw, getCreatedAt(row));
+}
+
+function playerShortName(name: string): string {
+  const s = str(name);
+  if (!s) return "?";
+  return s.length > 14 ? `${s.slice(0, 13)}…` : s;
+}
+
+function findNamedMap(row: any, mapKeys: string[]): any | null {
+  const want = new Set(mapKeys.map((k) => k.toLowerCase()));
+  for (const obj of walkObjects(row, 7)) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    for (const [key, value] of Object.entries(obj)) {
+      if (!want.has(String(key).toLowerCase())) continue;
+      if (value && typeof value === "object" && !Array.isArray(value) && valuesFromMapLike(value).length) return value;
+    }
+  }
+  return null;
+}
+
+function mapLabel(row: any, title: string, mapKeys: string[], maxItems = 4): string {
+  const map = findNamedMap(row, mapKeys);
+  if (!map) return "";
+  const names = collectPlayerNameMap(row);
+  const entries = Object.entries(map)
+    .map(([id, value]) => ({ id: String(id), value: Number(value) }))
+    .filter((x) => Number.isFinite(x.value));
+  if (!entries.length) return "";
+  const body = entries.slice(0, maxItems).map((x) => `${playerShortName(names[x.id] || x.id)} ${Math.round(x.value * 10) / 10}`).join(" · ");
+  return `${title}: ${body}${entries.length > maxItems ? "…" : ""}`;
+}
+
+function collectScoreLabel(row: any): string {
+  const explicit = str(firstDeep(row, ["scoreLine", "line", "finalScoreLabel", "scoreLabel"]));
+  if (explicit) return explicit;
+
+  const remainingLabel = mapLabel(row, "Restes", ["finalScores", "remaining", "scores", "scoreRemainingByPlayer", "remainingByPlayer"], 4);
+  if (remainingLabel) return remainingLabel;
+
+  const scoreLabel = mapLabel(row, "Score", ["scoreByPlayer", "pointsByPlayer", "scoresByPlayer", "finalScoreByPlayer"], 4);
+  if (scoreLabel) return scoreLabel;
+
+  const rankings: any[] = [];
+  for (const obj of walkObjects(row, 6)) {
+    if (Array.isArray(obj?.rankings)) rankings.push(...obj.rankings);
+  }
+  if (rankings.length) {
+    return rankings.slice(0, 4).map((r: any, i: number) => {
+      const name = playerShortName(str(r?.name ?? r?.displayName ?? r?.playerName ?? r?.id ?? `J${i + 1}`));
+      const score = r?.score ?? r?.points ?? r?.legsWon ?? r?.setsWon ?? "";
+      return `${i + 1}. ${name}${score !== "" ? ` ${score}` : ""}`;
+    }).join(" · ");
+  }
+
+  return "Score non disponible";
+}
+
+function collectDetailLabel(row: any): string {
+  const parts: string[] = [];
+  const winner = str(firstDeep(row, ["winnerName", "winner", "winnerLabel"]));
+  if (winner) parts.push(`Gagnant: ${winner}`);
+  const startScore = firstDeep(row, ["startScore", "x01", "targetScore"]);
+  if (startScore !== undefined && startScore !== null && String(startScore).trim() !== "") parts.push(`X01 ${startScore}`);
+  const legs = firstDeep(row, ["legs", "legsWon", "legsToWin"]);
+  const sets = firstDeep(row, ["sets", "setsWon", "setsToWin"]);
+  if (legs && Number(legs) > 1) parts.push(`${legs} legs`);
+  if (sets && Number(sets) > 1) parts.push(`${sets} sets`);
+  return parts.join(" · ");
 }
 
 function normalizeCleanupSession(row: any, source: "history" | "localStorage", idx = 0): OnlineStatsCleanupSession | null {
@@ -343,10 +758,13 @@ function normalizeCleanupSession(row: any, source: "history" | "localStorage", i
     updatedAt: getUpdatedAt(row),
     playersLabel: collectPlayersLabel(row),
     winnerLabel: str(firstDeep(row, ["winnerName", "winner", "winnerLabel"]) || firstDeep(row, ["winnerId"])),
+    scoreLabel: collectScoreLabel(row),
+    detailLabel: collectDetailLabel(row),
     darts: getDarts(row),
     avg3: getAvg3(row),
-    bestVisit: getStatsNumber(row, ["bestVisit", "bv", "best_visit"], 0),
-    bestCheckout: getStatsNumber(row, ["bestCheckout", "bestCo", "bc", "best_checkout"], 0),
+    bestVisit: getBestVisit(row),
+    bestCheckout: getBestCheckout(row),
+    hitPct: getHitPct(row),
     excludedFromStats: isOnlineStatsExcluded(row),
     deletedAt: getDeletedAt(row),
     raw: row,
