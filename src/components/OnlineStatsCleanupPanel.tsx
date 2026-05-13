@@ -8,7 +8,6 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import {
   hardDeleteOnlineStatsSessions,
-  keepOnlyOnlineStatsSessions,
   listOnlineStatsCleanupSessions,
   setOnlineStatsSessionsExcluded,
   type OnlineStatsCleanupSession,
@@ -34,6 +33,29 @@ function uniqKeysForSessions(sessions: OnlineStatsCleanupSession[]) {
     }
   }
   return out;
+}
+
+function isMissingScore(label: any) {
+  const s = String(label || "").trim().toLowerCase();
+  return !s || s.includes("score non disponible") || s.includes("non disponible");
+}
+
+function compactTopScore(session: OnlineStatsCleanupSession) {
+  const raw = String(session.scoreLabel || "").trim();
+  if (isMissingScore(raw)) return "";
+
+  const chunks = raw.split(/\s+·\s+/).map((x) => x.trim()).filter(Boolean);
+  const playerScoreParts: string[] = [];
+  for (let i = 0; i < chunks.length; i += 1) {
+    const c = chunks[i];
+    if (!/:/.test(c)) continue;
+    if (/\b(reste|score|set|sets|leg|legs|manche|pts|points)\b/i.test(c)) {
+      playerScoreParts.push(c.replace(/:\s*/g, " "));
+    }
+  }
+  if (playerScoreParts.length) return playerScoreParts.slice(0, 4).join(" / ");
+
+  return raw.length > 96 ? `${raw.slice(0, 93)}…` : raw;
 }
 
 export default function OnlineStatsCleanupPanel() {
@@ -121,10 +143,10 @@ export default function OnlineStatsCleanupPanel() {
 
   const excludeSelected = () => {
     if (!selectedKeys.length) {
-      setMessage("Sélectionne au moins une session à exclure.");
+      setMessage("Sélectionne au moins une session à exclure des stats.");
       return;
     }
-    runAction("Session(s) exclue(s) des stats Online.", () => setOnlineStatsSessionsExcluded(selectedKeys, true, "manual-online-cleanup"));
+    runAction("Session(s) masquée(s) des stats Online. Rien n’a été supprimé.", () => setOnlineStatsSessionsExcluded(selectedKeys, true, "manual-online-cleanup"));
   };
 
   const restoreSelected = () => {
@@ -132,20 +154,7 @@ export default function OnlineStatsCleanupPanel() {
       setMessage("Sélectionne au moins une session à restaurer.");
       return;
     }
-    runAction("Session(s) restaurée(s) dans les stats Online.", () => setOnlineStatsSessionsExcluded(selectedKeys, false, "manual-online-restore"));
-  };
-
-  const keepOnlySelected = () => {
-    if (selectedSessions.length !== 1) {
-      setMessage("Sélectionne exactement 1 vraie session, puis relance cette action.");
-      return;
-    }
-    const ok = window.confirm(
-      "Garder uniquement cette session dans les stats Online ?\n\n" +
-        "Toutes les autres sessions Online seront marquées comme tests/exclues. Elles resteront restaurables."
-    );
-    if (!ok) return;
-    runAction("Nettoyage terminé : seule la session choisie reste comptée.", () => keepOnlyOnlineStatsSessions(selectedKeys, "keep-only-one-official-online-session"));
+    runAction("Session(s) remise(s) dans les stats Online.", () => setOnlineStatsSessionsExcluded(selectedKeys, false, "manual-online-restore"));
   };
 
   const hardDeleteSelected = () => {
@@ -211,7 +220,7 @@ export default function OnlineStatsCleanupPanel() {
             Nettoyage Online
           </div>
           <div style={{ color: theme.textSoft, fontSize: 12, lineHeight: 1.35, marginTop: 5 }}>
-            Exclut les sessions de test des stats sans casser l’historique. Les pages Online, X01Compare et Classements Online ignorent automatiquement les sessions exclues.
+            Exclut les sessions de test des stats sans casser l’historique. Le compteur ci-dessous liste les sessions détectées comme nettoyables ; l’onglet Online peut aussi compter des miroirs/tests incomplets sans statistiques.
           </div>
         </div>
         <button type="button" onClick={load} style={btn("soft")} disabled={busy}>
@@ -227,22 +236,25 @@ export default function OnlineStatsCleanupPanel() {
           marginTop: 12,
         }}
       >
-        <MiniStat label="Total" value={summary.total} color={theme.text} />
+        <MiniStat label="Listées" value={summary.total} color={theme.text} />
         <MiniStat label="Comptées" value={summary.counted} color={theme.primary} />
-        <MiniStat label="Exclues" value={summary.excluded} color="#ff9d9d" />
+        <MiniStat label="Masquées" value={summary.excluded} color="#ff9d9d" />
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button type="button" onClick={excludeSelected} style={btn("primary")} disabled={busy}>Exclure sélection</button>
-        <button type="button" onClick={restoreSelected} style={btn("soft")} disabled={busy}>Restaurer</button>
-        <button type="button" onClick={keepOnlySelected} style={btn("primary")} disabled={busy}>Garder uniquement 1 vraie session</button>
-        <button type="button" onClick={hardDeleteSelected} style={btn("danger")} disabled={busy}>Supprimer définitif</button>
+        <button type="button" onClick={excludeSelected} style={btn("primary")} disabled={busy}>Exclure des stats</button>
+        <button type="button" onClick={restoreSelected} style={btn("soft")} disabled={busy}>Restaurer dans les stats</button>
+        <button type="button" onClick={hardDeleteSelected} style={btn("danger")} disabled={busy}>Supprimer définitivement</button>
+      </div>
+
+      <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.35, marginTop: 7 }}>
+        <strong style={{ color: theme.primary }}>Exclure des stats</strong> ne supprime rien : la partie est seulement masquée des stats/classements et reste restaurable. <strong style={{ color: "#ffb4b4" }}>Supprimer définitivement</strong> retire la session source.
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="button" onClick={selectAllVisible} style={btn("soft")} disabled={busy}>Tout cocher</button>
-          <button type="button" onClick={clearSelection} style={btn("soft")} disabled={busy}>Décocher</button>
+          <button type="button" onClick={selectAllVisible} style={btn("soft")} disabled={busy}>Tout sélectionner</button>
+          <button type="button" onClick={clearSelection} style={btn("soft")} disabled={busy}>Désélectionner</button>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 7, color: theme.textSoft, fontSize: 12, fontWeight: 800 }}>
           <input type="checkbox" checked={showExcluded} onChange={(e) => setShowExcluded(e.target.checked)} />
@@ -264,6 +276,7 @@ export default function OnlineStatsCleanupPanel() {
         ) : (
           visibleSessions.map((session) => {
             const checked = !!selected[session.id];
+            const topScore = compactTopScore(session);
             return (
               <button
                 key={`${session.source}-${session.id}`}
@@ -288,8 +301,27 @@ export default function OnlineStatsCleanupPanel() {
                       <div style={{ color: theme.primary, fontWeight: 950, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.7 }}>
                         {session.mode || "Online"} · {formatDate(session.createdAt)}
                       </div>
-                      <div style={{ color: theme.textSoft, fontSize: 11, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {session.playersLabel}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 3 }}>
+                        <span style={{ color: theme.textSoft, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {session.playersLabel}
+                        </span>
+                        {topScore ? (
+                          <span
+                            style={{
+                              borderRadius: 999,
+                              border: `1px solid ${theme.primary}66`,
+                              background: `${theme.primary}14`,
+                              color: theme.primary,
+                              fontSize: 10,
+                              fontWeight: 950,
+                              lineHeight: 1.2,
+                              padding: "3px 7px",
+                              maxWidth: "100%",
+                            }}
+                          >
+                            {topScore}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>

@@ -4,11 +4,11 @@
 // Nettoyage statistiques ONLINE — exclusion/restauration sans supprimer
 // brutalement les matchs sources.
 //
-// V5 : le panneau de nettoyage ne s'appuie plus uniquement sur le miroir
-// dc_online_matches_v1. Il relit l'historique complet, le payload X01,
-// les maps legacy, les perPlayer/detailedByPlayer et les visitHistory pour
-// reconstruire darts, score, Moy.3D, BV, CO et hits quand les miroirs sont
-// incomplets.
+// V6 : correction importante du nettoyage Online. Les clés de dédoublonnage
+// ne prennent plus les id des joueurs/profils ni les roomId/lobbyCode, car
+// cela fusionnait plusieurs matchs d'un même salon en une seule carte.
+// On utilise uniquement des identifiants forts de match/session + une signature
+// stable date/mode/joueurs en secours.
 // =============================================================
 
 import { History } from "./history";
@@ -808,34 +808,74 @@ function buildDetailLabel(row: any, info: { darts: number; points: number; hits:
   return parts.join(" · ");
 }
 
+function hashLite(input: any): string {
+  const text = String(input ?? "");
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function pushSessionKey(keys: any[], value: any, allowColonBase = true) {
+  const s = str(value);
+  if (!s) return;
+  keys.push(s);
+  if (allowColonBase && s.includes(":")) {
+    const base = s.split(":")[0]?.trim();
+    if (base && base.length >= 6) keys.push(base);
+  }
+}
+
+function collectStrongSessionKeysFrom(obj: any, keys: any[], includeGenericId = false) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+  pushSessionKey(keys, obj.matchId);
+  pushSessionKey(keys, obj.match_id);
+  pushSessionKey(keys, obj.resumeId);
+  pushSessionKey(keys, obj.resume_id);
+  pushSessionKey(keys, obj.sessionId);
+  pushSessionKey(keys, obj.session_id);
+  pushSessionKey(keys, obj.onlineMatchId);
+  pushSessionKey(keys, obj.online_match_id);
+  pushSessionKey(keys, obj.lobbyMatchId);
+  pushSessionKey(keys, obj.lobby_match_id);
+  pushSessionKey(keys, obj.historyId);
+  pushSessionKey(keys, obj.history_id);
+
+  // id générique autorisé seulement sur les objets racines de match.
+  // Surtout ne pas prendre les id rencontrés en profondeur : ce sont souvent
+  // des ids de joueurs/profils et ça fusionne plusieurs parties ensemble.
+  if (includeGenericId) {
+    const id = str(obj.id);
+    if (id && !/^usr_|^profile_|^player_|^bot_|^team_/i.test(id)) pushSessionKey(keys, id);
+  }
+}
+
+function buildFallbackSessionKey(row: any): string {
+  const created = getCreatedAt(row) || 0;
+  const mode = getModeLabel(row) || "online";
+  const players = collectPlayersLabel(row) || "players";
+  const score = str(deepFirst(row, ["scoreLine", "finalScoreLabel", "scoreLabel", "winnerName", "winnerId"]));
+  return `online-session:${created}:${normKey(mode)}:${hashLite(`${players}|${score}`)}`;
+}
+
 export function getOnlineStatsSessionKeys(row: any): string[] {
   const keys: any[] = [];
-  const push = (v: any) => {
-    const s = str(v);
-    if (!s) return;
-    keys.push(s);
-    if (s.includes(":")) {
-      const base = s.split(":")[0]?.trim();
-      if (base) keys.push(base);
-    }
-  };
 
-  for (const obj of walkObjects(row, 5)) {
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
-    push(obj?.id);
-    push(obj?.matchId);
-    push(obj?.match_id);
-    push(obj?.resumeId);
-    push(obj?.resume_id);
-    push(obj?.sessionId);
-    push(obj?.session_id);
-    push(obj?.onlineMatchId);
-    push(obj?.online_match_id);
-    push(obj?.lobbyMatchId);
-    push(obj?.lobby_match_id);
-    push(obj?.roomId);
-    push(obj?.lobbyCode);
-  }
+  collectStrongSessionKeysFrom(row, keys, true);
+  collectStrongSessionKeysFrom(row?.payload, keys, true);
+  collectStrongSessionKeysFrom(row?.summary, keys, true);
+  collectStrongSessionKeysFrom(row?.payload?.summary, keys, true);
+  collectStrongSessionKeysFrom(row?.match, keys, true);
+  collectStrongSessionKeysFrom(row?.payload?.match, keys, true);
+  collectStrongSessionKeysFrom(row?.state?.match, keys, true);
+  collectStrongSessionKeysFrom(row?.payload?.state?.match, keys, true);
+
+  // Ne pas ajouter roomId/lobbyCode ici : un salon peut contenir plusieurs matchs.
+  // Ces valeurs servent uniquement à détecter qu'une ligne est Online, pas à
+  // identifier une session statistique unique.
+  if (isLikelyOnlineRecord(row)) pushSessionKey(keys, buildFallbackSessionKey(row), false);
 
   return uniq(keys);
 }
