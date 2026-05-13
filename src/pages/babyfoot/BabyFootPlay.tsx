@@ -17,16 +17,13 @@ import { sendCastSnapshot } from "../../cast/googleCast";
 import {
   addGoal,
   addPenaltyShot,
-  addSpecialScoreEvent,
   computeDurationMs,
   finishByTime,
   loadBabyFootState,
-  pauseClock,
-  startClock,
+  startIfNeeded,
   startMatch,
   undo as undoGoal,
   type BabyFootEvent,
-  type BabyFootScoreAction,
   type BabyFootState,
   type BabyFootTeamId,
 } from "../../lib/babyfootStore";
@@ -74,8 +71,9 @@ type ProfileLike = {
 } | null;
 
 type GoalLikeEvent = Extract<BabyFootEvent, { t: "goal" }>;
-type DemiLikeEvent = Extract<BabyFootEvent, { t: "demi" }>;
 type FinishLikeEvent = Extract<BabyFootEvent, { t: "finish" }>;
+
+type ReconstructedScore = { scoreA: number; scoreB: number };
 
 type ScoreVisual = {
   name: string;
@@ -83,30 +81,25 @@ type ScoreVisual = {
   roleLabel: string;
 };
 
-type ActionPicker = {
-  team: BabyFootTeamId;
-  action: BabyFootScoreAction;
-} | null;
-
-type PlayTab = "score" | "composition" | "stats" | "context" | "actions";
-
 function tourResultKey(tournamentId: unknown, matchId: unknown) {
   return `bf_tour_result_${String(tournamentId || "")}_${String(matchId || "")}`;
 }
 
 function fmt(ms: number) {
-  const safe = Math.max(0, Math.floor(ms / 1000));
-  const mm = String(Math.floor(safe / 60)).padStart(2, "0");
-  const ss = String(safe % 60).padStart(2, "0");
+  const s = Math.floor(ms / 1000);
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
   return `${mm}:${ss}`;
+}
+
+function lastPhaseAt(state: BabyFootState, phase: string) {
+  const reversed = [...(state.events || [])].reverse();
+  const found = reversed.find((event) => event?.t === "phase" && event?.phase === phase);
+  return found?.at ?? null;
 }
 
 function getGoalEvents(events: BabyFootEvent[]) {
   return events.filter((event): event is GoalLikeEvent => event.t === "goal");
-}
-
-function getDemiEvents(events: BabyFootEvent[]) {
-  return events.filter((event): event is DemiLikeEvent => event.t === "demi");
 }
 
 function getFinishEvent(events: BabyFootEvent[]) {
@@ -114,8 +107,10 @@ function getFinishEvent(events: BabyFootEvent[]) {
   return reversed.find((event): event is FinishLikeEvent => event.t === "finish") ?? null;
 }
 
-function reconstructDisplayedScore(state: BabyFootState) {
-  if (!state.setsEnabled) return { scoreA: state.scoreA, scoreB: state.scoreB };
+function reconstructDisplayedScore(state: BabyFootState): ReconstructedScore {
+  if (!state.setsEnabled) {
+    return { scoreA: state.scoreA, scoreB: state.scoreB };
+  }
 
   const baseA = Math.max(0, Number(state.handicapA) || 0);
   const baseB = Math.max(0, Number(state.handicapB) || 0);
@@ -139,13 +134,60 @@ function reconstructDisplayedScore(state: BabyFootState) {
     const event = events[index];
     if (!event) continue;
     if (event.t === "goal") {
-      const points = Math.max(1, Number(event.points) || 1);
-      if (event.team === "A") scoreA += points;
-      if (event.team === "B") scoreB += points;
+      if (event.team === "A") scoreA += 1;
+      if (event.team === "B") scoreB += 1;
     }
   }
 
   return { scoreA, scoreB };
+}
+
+function computeMomentumLabel(goalEvents: GoalLikeEvent[], teamA: string, teamB: string) {
+  if (!goalEvents.length) return "Match équilibré";
+  const last = goalEvents[goalEvents.length - 1];
+  if (!last) return "Match équilibré";
+
+  let streak = 0;
+  for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
+    const event = goalEvents[index];
+    if (!event || event.team !== last.team) break;
+    streak += 1;
+  }
+
+  const teamName = last.team === "A" ? teamA : teamB;
+  return streak > 1 ? `${teamName} sur ${streak} buts de suite` : `${teamName} a repris la main`;
+}
+
+function shellCard(): React.CSSProperties {
+  return {
+    borderRadius: 24,
+    padding: 16,
+    border: "1px solid rgba(120,150,255,0.14)",
+    background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
+    boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
+  };
+}
+
+function actionStyle(tone: "neutral" | "danger" | "primary", disabled = false): React.CSSProperties {
+  const bg =
+    tone === "primary"
+      ? "linear-gradient(180deg, rgba(199,255,38,0.24), rgba(199,255,38,0.10))"
+      : tone === "danger"
+      ? "linear-gradient(180deg, rgba(255,89,176,0.16), rgba(255,89,176,0.06))"
+      : "rgba(255,255,255,0.04)";
+
+  return {
+    width: "100%",
+    minHeight: 48,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: disabled ? "rgba(255,255,255,0.04)" : bg,
+    color: disabled ? "rgba(255,255,255,0.42)" : tone === "danger" ? "#ff77b9" : "#fff",
+    fontSize: 15,
+    fontWeight: 1000,
+    letterSpacing: 0.2,
+    cursor: disabled ? "default" : "pointer",
+  };
 }
 
 function normalizeSrc(v: unknown): string | null {
@@ -162,70 +204,6 @@ function profileImage(profile: ProfileLike): string | null {
   return normalizeSrc(profile.avatarDataUrl) || normalizeSrc(profile.avatarUrl) || null;
 }
 
-function shellCard(): React.CSSProperties {
-  return {
-    borderRadius: 22,
-    padding: 14,
-    border: "1px solid rgba(120,150,255,0.14)",
-    background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
-    boxShadow: "0 16px 36px rgba(0,0,0,0.30)",
-  };
-}
-
-function actionStyle(tone: "neutral" | "danger" | "primary", disabled = false): React.CSSProperties {
-  const bg =
-    tone === "primary"
-      ? "linear-gradient(180deg, rgba(199,255,38,0.24), rgba(199,255,38,0.10))"
-      : tone === "danger"
-      ? "linear-gradient(180deg, rgba(255,89,176,0.16), rgba(255,89,176,0.06))"
-      : "rgba(255,255,255,0.04)";
-
-  return {
-    width: "100%",
-    minHeight: 44,
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: disabled ? "rgba(255,255,255,0.04)" : bg,
-    color: disabled ? "rgba(255,255,255,0.42)" : tone === "danger" ? "#ff77b9" : "#fff",
-    fontSize: 14,
-    fontWeight: 1000,
-    letterSpacing: 0.16,
-    cursor: disabled ? "default" : "pointer",
-  };
-}
-
-function miniActionStyle(accent: string, disabled: boolean): React.CSSProperties {
-  return {
-    minHeight: 34,
-    borderRadius: 12,
-    border: `1px solid ${disabled ? "rgba(255,255,255,0.08)" : `${accent}50`}`,
-    background: disabled ? "rgba(255,255,255,0.04)" : `linear-gradient(180deg, ${accent}2c, ${accent}12)`,
-    color: disabled ? "rgba(255,255,255,0.42)" : "#fff",
-    fontSize: 10.5,
-    fontWeight: 1000,
-    letterSpacing: 0.12,
-    cursor: disabled ? "default" : "pointer",
-    whiteSpace: "nowrap",
-    boxShadow: disabled ? "none" : `0 0 10px ${accent}18`,
-  };
-}
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    minHeight: 32,
-    borderRadius: 999,
-    border: active ? "1px solid rgba(199,255,38,0.34)" : "1px solid rgba(255,255,255,0.08)",
-    background: active ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.06))" : "rgba(255,255,255,0.04)",
-    color: active ? "#f0ff9a" : "rgba(255,255,255,0.86)",
-    fontSize: 10.5,
-    fontWeight: 1000,
-    letterSpacing: 0.14,
-    cursor: "pointer",
-    padding: "0 6px",
-    whiteSpace: "nowrap",
-  };
-}
-
 function MiniCompositionCard({
   label,
   name,
@@ -238,15 +216,40 @@ function MiniCompositionCard({
   accent: string;
 }) {
   return (
-    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-      <div style={{ width: 52, height: 52, borderRadius: 999, padding: 2, flex: "0 0 auto", background: `linear-gradient(180deg, ${accent}bb, ${accent}22)`, boxShadow: `0 0 14px ${accent}28` }}>
-        <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.30)", display: "grid", placeItems: "center" }}>
-          {imageSrc ? <img src={imageSrc} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 22, fontWeight: 1100 }}>{name.trim().slice(0, 1).toUpperCase() || "?"}</span>}
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
+      <div
+        style={{
+          width: 54,
+          height: 54,
+          borderRadius: 999,
+          padding: 2,
+          flex: "0 0 auto",
+          background: `linear-gradient(180deg, ${accent}bb, ${accent}22)`,
+          boxShadow: `0 0 16px ${accent}28`,
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: 999,
+            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(0,0,0,0.30)",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          {imageSrc ? (
+            <img src={imageSrc} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ fontSize: 22, fontWeight: 1100 }}>{name.trim().slice(0, 1).toUpperCase() || "?"}</span>
+          )}
         </div>
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.85, textTransform: "uppercase", color: accent }}>{label}</div>
-        <div title={name} style={{ marginTop: 2, fontSize: 14, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+        <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 0.85, textTransform: "uppercase", color: accent }}>{label}</div>
+        <div title={name} style={{ marginTop: 2, fontSize: 16, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
       </div>
     </div>
   );
@@ -269,40 +272,73 @@ function TeamCompositionColumn({
 }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 999, padding: 2, background: `linear-gradient(180deg, ${accent}bb, ${accent}25)`, boxShadow: `0 0 14px ${accent}2a`, flex: "0 0 auto" }}>
-          <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.28)", display: "grid", placeItems: "center" }}>
-            {teamLogo ? <img src={teamLogo} alt={teamName} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 20, fontWeight: 1100 }}>{teamName.trim().slice(0, 1).toUpperCase() || "?"}</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <div
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 999,
+            padding: 2,
+            background: `linear-gradient(180deg, ${accent}bb, ${accent}25)`,
+            boxShadow: `0 0 16px ${accent}2a`,
+            flex: "0 0 auto",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              borderRadius: 999,
+              overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(0,0,0,0.28)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            {teamLogo ? (
+              <img src={teamLogo} alt={teamName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <span style={{ fontSize: 22, fontWeight: 1100 }}>{teamName.trim().slice(0, 1).toUpperCase() || "?"}</span>
+            )}
           </div>
         </div>
+
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: accent, textTransform: "uppercase" }}>{title}</div>
-          <div title={teamName} style={{ marginTop: 2, fontSize: 14, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamName}</div>
+          <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 0.9, color: accent, textTransform: "uppercase" }}>{title}</div>
+          <div
+            title={teamName}
+            style={{
+              marginTop: 2,
+              fontSize: 16,
+              fontWeight: 1100,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {teamName}
+          </div>
         </div>
       </div>
-      <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+
+      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {playerIds.map((id) => {
           const profile = getProfile(id);
-          return <ProfileAvatar key={id} profile={profile || { id, name: id }} size={30} />;
+          return <ProfileAvatar key={id} profile={profile || { id, name: id }} size={34} />;
         })}
       </div>
     </div>
   );
 }
 
-function applyAction(team: BabyFootTeamId, action: BabyFootScoreAction, scorerId?: string | null) {
-  if (action === "goal") return addGoal(team, scorerId);
-  return addSpecialScoreEvent(team, action as Exclude<BabyFootScoreAction, "goal">, scorerId);
-}
-
 export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const { theme } = useTheme();
   const { store } = useStore() as any;
 
-  const [state, setState] = useState<BabyFootState>(() => loadBabyFootState());
+  const [state, setState] = useState<BabyFootState>(() => startIfNeeded());
   const [now, setNow] = useState(Date.now());
-  const [pickAction, setPickAction] = useState<ActionPicker>(null);
-  const [activeTab, setActiveTab] = useState<PlayTab>("score");
+  const [pickTeam, setPickTeam] = useState<BabyFootTeamId | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 250);
@@ -320,78 +356,66 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   const teamAIds = state.teamAProfileIds || [];
   const teamBIds = state.teamBProfileIds || [];
-  const players = useMemo(() => [...teamAIds.map((id) => ({ id })), ...teamBIds.map((id) => ({ id }))], [teamAIds.join("|"), teamBIds.join("|")]);
+
+  const players = useMemo(() => {
+    const makePlayer = (id: string) => ({ id });
+    return [...teamAIds.map(makePlayer), ...teamBIds.map(makePlayer)];
+  }, [teamAIds.join("|"), teamBIds.join("|")]);
 
   const durationMs = computeDurationMs(state);
-  const currentPhaseElapsed = Math.max(0, durationMs - Math.max(0, Number(state.phaseStartedElapsedMs) || 0));
+  const regularStart = state.startedAt ?? state.createdAt;
   const regularLimitMs = state.matchDurationSec ? state.matchDurationSec * 1000 : null;
-  const regularRemain = regularLimitMs != null ? Math.max(0, regularLimitMs - currentPhaseElapsed) : null;
+  const regularElapsed = Math.max(0, now - regularStart);
+  const regularRemain = regularLimitMs != null ? Math.max(0, regularLimitMs - regularElapsed) : null;
+
+  const otStart = lastPhaseAt(state, "overtime") ?? regularStart;
   const otLimitMs = state.overtimeSec != null ? Math.max(0, state.overtimeSec) * 1000 : null;
-  const otRemain = otLimitMs != null ? Math.max(0, otLimitMs - currentPhaseElapsed) : null;
+  const otRemain = otLimitMs != null ? Math.max(0, otLimitMs - Math.max(0, now - otStart)) : null;
 
-  const goalEvents = useMemo(() => getGoalEvents(state.events || []), [state.events]);
-  const demiEvents = useMemo(() => getDemiEvents(state.events || []), [state.events]);
-  const displayedScore = useMemo(() => reconstructDisplayedScore(state), [state]);
   const canUndo = !state.finished && Array.isArray(state.events) && state.events.length > 0;
+  const goalEvents = useMemo(() => getGoalEvents(state.events || []), [state.events]);
+  const displayedScore = useMemo(() => reconstructDisplayedScore(state), [state]);
 
-  const scoredPointsA = goalEvents.filter((event) => event.team === "A").reduce((acc, event) => acc + Math.max(1, Number(event.points) || 1), 0);
-  const scoredPointsB = goalEvents.filter((event) => event.team === "B").reduce((acc, event) => acc + Math.max(1, Number(event.points) || 1), 0);
-  const totalGoals = scoredPointsA + scoredPointsB;
+  const goalCountA = goalEvents.filter((event) => event.team === "A").length;
+  const goalCountB = goalEvents.filter((event) => event.team === "B").length;
+  const totalGoals = goalCountA + goalCountB;
   const penaltiesA = state.penalties?.goalsA ?? 0;
   const penaltiesB = state.penalties?.goalsB ?? 0;
-  const specialStats = state.specialStats || ({} as any);
-  const demiA = Number(specialStats.demiA || demiEvents.filter((event) => event.team === "A").length || 0);
-  const demiB = Number(specialStats.demiB || demiEvents.filter((event) => event.team === "B").length || 0);
-  const gamelleA = Number(specialStats.gamelleA || 0);
-  const gamelleB = Number(specialStats.gamelleB || 0);
-  const pissetteA = Number(specialStats.pissetteA || 0);
-  const pissetteB = Number(specialStats.pissetteB || 0);
-  const pecheOffA = Number(specialStats.pecheOffA || 0);
-  const pecheOffB = Number(specialStats.pecheOffB || 0);
-  const pecheDefA = Number(specialStats.pecheDefA || 0);
-  const pecheDefB = Number(specialStats.pecheDefB || 0);
-  const demiBonusA = Number(specialStats.demiBonusAppliedA || goalEvents.filter((event) => event.team === "A").reduce((acc, event) => acc + Math.max(0, Number(event.demiBonusApplied) || 0), 0));
-  const demiBonusB = Number(specialStats.demiBonusAppliedB || goalEvents.filter((event) => event.team === "B").reduce((acc, event) => acc + Math.max(0, Number(event.demiBonusApplied) || 0), 0));
 
   const lastGoalEvent = goalEvents.length ? goalEvents[goalEvents.length - 1] : null;
-  const leaderLabel = displayedScore.scoreA === displayedScore.scoreB ? "Égalité" : displayedScore.scoreA > displayedScore.scoreB ? state.teamA : state.teamB;
-  const momentumLabel = (() => {
-    if (!goalEvents.length) return "Match équilibré";
-    const last = goalEvents[goalEvents.length - 1];
-    if (!last) return "Match équilibré";
-    let streak = 0;
-    for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
-      const event = goalEvents[index];
-      if (!event || event.team !== last.team) break;
-      streak += 1;
-    }
-    const teamName = last.team === "A" ? state.teamA : state.teamB;
-    return streak > 1 ? `${teamName} sur ${streak} actions de suite` : `${teamName} a repris la main`;
-  })();
+  const lastGoalTeamName = lastGoalEvent?.team === "A" ? state.teamA : lastGoalEvent?.team === "B" ? state.teamB : null;
+  const lastGoalScorer = lastGoalEvent?.scorerId ? getProfile(lastGoalEvent.scorerId)?.name || lastGoalEvent.scorerId : null;
+  const lastGoalLabel = lastGoalEvent ? (lastGoalScorer ? `${lastGoalScorer} • ${lastGoalTeamName}` : `But ${lastGoalTeamName}`) : "Aucun but pour le moment";
+
+  const leaderLabel =
+    displayedScore.scoreA === displayedScore.scoreB
+      ? "Égalité"
+      : displayedScore.scoreA > displayedScore.scoreB
+      ? state.teamA
+      : state.teamB;
+
+  const momentumLabel = computeMomentumLabel(goalEvents, state.teamA, state.teamB);
   const cadenceLabel = (() => {
     const mins = durationMs / 60000;
     if (mins <= 0 || totalGoals === 0) return "0 but/min";
     return `${(totalGoals / mins).toFixed(2)} but/min`;
   })();
-  const lastGoalLabel = (() => {
-    if (!lastGoalEvent) return state.pendingDemiBonus > 0 ? `Demi active x${state.pendingDemiBonus}` : "Aucun but pour le moment";
-    const teamName = lastGoalEvent.team === "A" ? state.teamA : state.teamB;
-    const scorer = lastGoalEvent.scorerId ? getProfile(lastGoalEvent.scorerId)?.name || lastGoalEvent.scorerId : null;
-    const base = lastGoalEvent.kind === "gamelle" ? "Gamelle" : lastGoalEvent.kind === "peche" ? "Pêche" : lastGoalEvent.kind === "pissette" ? "Pissette" : "But";
-    const bonus = Math.max(0, Number(lastGoalEvent.demiBonusApplied) || 0);
-    const suffix = bonus > 0 ? ` • +${1 + bonus}` : "";
-    return `${base} ${scorer || teamName}${suffix}`;
-  })();
 
   const finishEvent = getFinishEvent(state.events || []);
   const finishReasonLabel = (() => {
     switch (finishEvent?.reason) {
-      case "sets": return "Victoire aux sets";
-      case "target": return "Target atteinte";
-      case "penalties": return "Victoire aux penalties";
-      case "golden": return "Golden goal";
-      case "time": return "Fin du temps";
-      default: return undefined;
+      case "sets":
+        return "Victoire aux sets";
+      case "target":
+        return "Target atteinte";
+      case "penalties":
+        return "Victoire aux penalties";
+      case "golden":
+        return "Golden goal";
+      case "time":
+        return "Fin du temps";
+      default:
+        return undefined;
     }
   })();
 
@@ -401,65 +425,23 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     : state.phase === "overtime"
     ? fmt(otRemain ?? 0)
     : regularLimitMs != null
-    ? fmt(state.startedAt ? regularRemain ?? 0 : regularLimitMs)
-    : fmt(durationMs);
-  const targetLabel = state.phase === "penalties" ? "Séance de penalties" : `Objectif ${state.setsEnabled ? state.setTarget || state.target : state.target}`;
+    ? fmt(regularRemain ?? 0)
+    : fmt(regularElapsed);
+  const targetLabel = state.phase === "penalties" ? "Séance en cours" : `Objectif ${state.setsEnabled ? state.setTarget || state.target : state.target}`;
   const secondaryLabel = state.setsEnabled ? `BO${state.setsBestOf || 3}` : `Target ${state.target}`;
+
   const liveContext = [
     `Leader ${leaderLabel}`,
-    regularLimitMs != null ? `Chrono ${fmt(regularLimitMs)}` : state.clockRunning ? "Chrono libre" : "Sans chrono fixe",
+    regularLimitMs != null ? `Chrono ${fmt(regularLimitMs)}` : "Sans chrono fixe",
     `Mode ${state.mode}`,
-    state.pendingDemiBonus > 0 ? `Demi x${state.pendingDemiBonus}` : null,
   ].filter((entry): entry is string => Boolean(entry));
 
-  const infoBody = (() => {
-    const demiRuleLabel = state.demiRule === "suspend"
-      ? "Demi : ne compte pas tout de suite. Chaque demi ajoute 1 demi en suspens ; le prochain but valable encaisse 1 point normal + tous les demis en suspens."
-      : state.demiRule === "forbidden"
-      ? "Demi : interdit."
-      : "Demi : vaut 1 point immédiat.";
-    const pissetteLabel = state.pissetteRule === "point"
-      ? "Pissette : autorisée et vaut 1 point."
-      : state.pissetteRule === "stat_only"
-      ? "Pissette : ne modifie pas le score, statistique seulement."
-      : "Pissette : interdite ; 0 point mais statistique comptabilisée.";
-    const gamelleLabel = state.gamelleRule === "minus_one_conceding_team"
-      ? "Gamelle : retire 1 point à l'équipe qui la subit."
-      : state.gamelleRule === "stat_only"
-      ? "Gamelle : statistique seulement."
-      : "Gamelle : ajoute 1 point à l'équipe qui la réalise.";
-    const pecheOffLabel = state.pecheOffRule === "minus_one_conceding_team"
-      ? "Pêche offensive : retire 1 point à l'équipe qui la subit."
-      : state.pecheOffRule === "stat_only"
-      ? "Pêche offensive : statistique seulement."
-      : "Pêche offensive : interdite.";
-    const pecheDefLabel = state.pecheDefRule === "cancel_goal"
-      ? "Pêche défensive : annule le but en récupérant la balle avant validation."
-      : state.pecheDefRule === "stat_only"
-      ? "Pêche défensive : statistique seulement."
-      : "Pêche défensive : interdite.";
-    return `Baby-Foot live — règles & commandes
-
-Chrono
-• Démarrer : lance manuellement la partie et le chrono.
-• Pause : stoppe le chrono pour une interruption sans perdre l'état du match.
-• Reprendre : relance le chrono après la pause.
-
-Règle active
-• Preset : ${state.rulesPreset === "bar" ? "Règle de bar" : "Règle de compétition"}.
-• ${demiRuleLabel}
-• ${pissetteLabel}
-• ${gamelleLabel}
-• ${pecheOffLabel}
-• ${pecheDefLabel}
-• Râteaux : interdits.
-• Roulette : ${state.allowRoulette ? "autorisée" : "interdite"}.
-• Tacles : ${state.allowTacles ? "autorisés" : "interdits"}.
-• Lob / coup sur la table : ${state.allowLobShot ? "autorisé" : "interdit"}.
-
-Stats
-• L'onglet Stats suit les buts, handicaps, penalties, demis, pissettes, gamelles, pêches offensives, pêches défensives et bonus demi appliqués.`;
-  })();
+  const infoBody =
+    "Nouvelle page live Baby-Foot inspirée de la structure Pétanque Play et du rappel visuel X01 pour les sets.\n\n" +
+    "• + BUT A / B : ajoute un but à l'équipe\n" +
+    "• Annuler : retire le dernier évènement\n" +
+    "• Fin du match : laisse le moteur décider overtime / penalties / fin\n" +
+    "• Stats / Configuration : raccourcis rapides";
 
   useEffect(() => {
     try {
@@ -480,21 +462,19 @@ Stats
   }, [displayedScore.scoreA, displayedScore.scoreB, state]);
 
   useEffect(() => {
-    if (!state.finished && state.clockRunning) {
-      if (state.phase === "play" && regularLimitMs != null && (regularRemain ?? 1) === 0) {
-        setState(finishByTime());
-        return;
-      }
-      if (state.phase === "overtime" && otLimitMs != null && (otRemain ?? 1) === 0) {
-        setState(finishByTime());
-      }
+    if (state.finished) return;
+    if (state.phase === "play" && regularLimitMs != null && regularRemain === 0) {
+      setState(finishByTime());
+      return;
     }
-  }, [otLimitMs, otRemain, regularLimitMs, regularRemain, state.clockRunning, state.finished, state.phase]);
+    if (state.phase === "overtime" && otLimitMs != null && otRemain === 0) setState(finishByTime());
+  }, [otLimitMs, otRemain, regularLimitMs, regularRemain, state.finished, state.phase]);
 
   useEffect(() => {
     if (!state.finished) return;
 
-    const winnerTeam: BabyFootTeamId = (state.winner as BabyFootTeamId | null) || (displayedScore.scoreA >= displayedScore.scoreB ? "A" : "B");
+    const winnerTeam: BabyFootTeamId =
+      (state.winner as BabyFootTeamId | null) || (displayedScore.scoreA >= displayedScore.scoreB ? "A" : "B");
     const winnerId = winnerTeam === "A" ? teamAIds[0] || null : teamBIds[0] || null;
 
     const payload = {
@@ -523,16 +503,6 @@ Stats
         setsBestOf: state.setsBestOf,
         handicapA: state.handicapA ?? 0,
         handicapB: state.handicapB ?? 0,
-        demiA,
-        demiB,
-        gamelleA,
-        gamelleB,
-        pissetteA,
-        pissetteB,
-        pecheOffA,
-        pecheOffB,
-        pecheDefA,
-        pecheDefB,
       },
       events: state.events || [],
     };
@@ -540,7 +510,17 @@ Stats
     const tournamentId = (params as any)?.tournamentId;
     if (tournamentId) {
       try {
-        localStorage.setItem(tourResultKey(tournamentId, state.matchId), JSON.stringify({ at: Date.now(), winnerTeam, scoreA: displayedScore.scoreA, scoreB: displayedScore.scoreB, setsA: state.setsA, setsB: state.setsB }));
+        localStorage.setItem(
+          tourResultKey(tournamentId, state.matchId),
+          JSON.stringify({
+            at: Date.now(),
+            winnerTeam,
+            scoreA: displayedScore.scoreA,
+            scoreB: displayedScore.scoreB,
+            setsA: state.setsA,
+            setsB: state.setsB,
+          })
+        );
       } catch {
         // noop
       }
@@ -550,10 +530,25 @@ Stats
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedScore.scoreA, displayedScore.scoreB, durationMs, players, state.finished]);
 
-  const headerTicker = useMemo(() => pickTicker(`babyfoot_${state.mode}`) || pickTicker("babyfoot_match") || pickTicker("babyfoot_games"), [state.mode]);
-  const isOneVsOne = state.mode === "1v1" && teamAIds.length <= 1 && teamBIds.length <= 1;
+  const headerTicker = useMemo(
+    () => pickTicker(`babyfoot_${state.mode}`) || pickTicker("babyfoot_match") || pickTicker("babyfoot_games"),
+    [state.mode]
+  );
+
+  const isPickScorerNeeded = (team: BabyFootTeamId) => (team === "A" ? teamAIds : teamBIds).length > 1;
+  const addForTeam = (team: BabyFootTeamId) => {
+    if (state.finished || state.phase === "penalties") return;
+    if (isPickScorerNeeded(team)) {
+      setPickTeam(team);
+      return;
+    }
+    const scorerId = (team === "A" ? teamAIds[0] : teamBIds[0]) || null;
+    setState(addGoal(team, scorerId));
+  };
+
   const teamAProfile = teamAIds[0] ? getProfile(teamAIds[0]) : null;
   const teamBProfile = teamBIds[0] ? getProfile(teamBIds[0]) : null;
+  const isOneVsOne = state.mode === "1v1" && teamAIds.length <= 1 && teamBIds.length <= 1;
 
   const visualA: ScoreVisual = {
     name: isOneVsOne ? teamAProfile?.name || state.teamA : state.teamA,
@@ -566,167 +561,8 @@ Stats
     roleLabel: isOneVsOne ? "Joueur B" : "Équipe B",
   };
 
-  const liveEditDisabled = !state.startedAt || !state.clockRunning || state.finished || state.phase === "penalties";
-
-  const runAction = (team: BabyFootTeamId, action: BabyFootScoreAction) => {
-    if (state.finished || state.phase === "penalties" || !state.startedAt || !state.clockRunning) return;
-    const ids = team === "A" ? teamAIds : teamBIds;
-    if (ids.length > 1) {
-      setPickAction({ team, action });
-      return;
-    }
-    const scorerId = ids[0] || null;
-    setState(applyAction(team, action, scorerId));
-  };
-
   const winnerLabel = state.winner === "A" ? visualA.name : state.winner === "B" ? visualB.name : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
-
-  const tabs: Array<{ id: PlayTab; label: string }> = [
-    { id: "score", label: "SCORE" },
-    { id: "composition", label: "COMPOSITION" },
-    { id: "stats", label: "STATS" },
-    { id: "context", label: "CONTEXTE" },
-    { id: "actions", label: "ACTIONS" },
-  ];
-
-  const renderScoreTab = () => (
-    <div style={{ display: "grid", gap: 10 }}>
-      {state.setsEnabled ? (
-        <BabyFootSetsBar
-          setsA={state.setsA || 0}
-          setsB={state.setsB || 0}
-          bestOf={state.setsBestOf || 3}
-          currentSet={state.setIndex || 1}
-          teamAName={visualA.name}
-          teamBName={visualB.name}
-        />
-      ) : null}
-
-      <BabyFootDuelScoreCard
-        visualA={visualA}
-        visualB={visualB}
-        scoreA={displayedScore.scoreA}
-        scoreB={displayedScore.scoreB}
-        setsEnabled={state.setsEnabled}
-        setsA={state.setsA || 0}
-        setsB={state.setsB || 0}
-        setTarget={state.setTarget || state.target}
-        target={state.target}
-        handicapA={state.handicapA}
-        handicapB={state.handicapB}
-        onAddGoalA={() => runAction("A", "goal")}
-        onAddGoalB={() => runAction("B", "goal")}
-        goalsDisabled={liveEditDisabled}
-        footerSuffix={state.pendingDemiBonus > 0 ? `Match en cours • bonus demi x${state.pendingDemiBonus} • objectif ${state.setsEnabled ? state.setTarget || state.target : state.target}` : undefined}
-      />
-
-      <div style={shellCard()}>
-        <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Modifs du score</div>
-        {!state.startedAt ? (
-          <div style={{ marginTop: 8, fontSize: 12, fontWeight: 900, color: "rgba(255,255,255,0.82)" }}>Démarre le chrono pour ouvrir les actions de score.</div>
-        ) : null}
-        {state.pendingDemiBonus > 0 ? (
-          <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, minHeight: 28, padding: "0 12px", borderRadius: 999, border: "1px solid rgba(199,255,38,0.18)", background: "rgba(199,255,38,0.08)", color: "#efffa1", fontSize: 11, fontWeight: 1000 }}>
-            Bonus demi en attente : x{state.pendingDemiBonus}
-          </div>
-        ) : null}
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#c7ff26", textTransform: "uppercase" }}>{visualA.name}</div>
-            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-              <button type="button" onClick={() => runAction("A", "demi")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>DEMI</button>
-              <button type="button" onClick={() => runAction("A", "gamelle")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>GAMELLE</button>
-              <button type="button" onClick={() => runAction("A", "pissette")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>PISSETTE</button>
-              <button type="button" onClick={() => runAction("A", "peche_off")} disabled={liveEditDisabled} style={miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled)}>PÊCHE OFF</button>
-              <button type="button" onClick={() => runAction("A", "peche_def")} disabled={liveEditDisabled} style={{ ...miniActionStyle("rgba(199,255,38,0.95)", liveEditDisabled), gridColumn: "1 / -1" }}>PÊCHE DEF</button>
-            </div>
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.8, color: "#ff59b0", textTransform: "uppercase", textAlign: "right" }}>{visualB.name}</div>
-            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-              <button type="button" onClick={() => runAction("B", "demi")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>DEMI</button>
-              <button type="button" onClick={() => runAction("B", "gamelle")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>GAMELLE</button>
-              <button type="button" onClick={() => runAction("B", "pissette")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>PISSETTE</button>
-              <button type="button" onClick={() => runAction("B", "peche_off")} disabled={liveEditDisabled} style={miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled)}>PÊCHE OFF</button>
-              <button type="button" onClick={() => runAction("B", "peche_def")} disabled={liveEditDisabled} style={{ ...miniActionStyle("rgba(255,89,176,0.95)", liveEditDisabled), gridColumn: "1 / -1" }}>PÊCHE DEF</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderCompositionTab = () => (
-    <div style={shellCard()}>
-      <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Composition</div>
-      {isOneVsOne ? (
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 14, alignItems: "center" }}>
-          <MiniCompositionCard label="Joueur A" name={visualA.name} imageSrc={visualA.imageSrc} accent="#c7ff26" />
-          <div style={{ width: 1, alignSelf: "stretch", background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
-          <MiniCompositionCard label="Joueur B" name={visualB.name} imageSrc={visualB.imageSrc} accent="#ff59b0" />
-        </div>
-      ) : (
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 14, alignItems: "stretch" }}>
-          <TeamCompositionColumn title="Équipe A" accent="#c7ff26" teamName={state.teamA} teamLogo={normalizeSrc(state.teamALogoDataUrl)} playerIds={teamAIds} getProfile={getProfile} />
-          <div style={{ width: 1, background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
-          <TeamCompositionColumn title="Équipe B" accent="#ff59b0" teamName={state.teamB} teamLogo={normalizeSrc(state.teamBLogoDataUrl)} playerIds={teamBIds} getProfile={getProfile} />
-        </div>
-      )}
-    </div>
-  );
-
-  const renderStatsTab = () => (
-    <BabyFootLiveStatsCard
-      teamAName={visualA.name}
-      teamBName={visualB.name}
-      goalsA={scoredPointsA}
-      goalsB={scoredPointsB}
-      totalGoals={totalGoals}
-      durationLabel={fmt(durationMs)}
-      lastGoalLabel={lastGoalLabel}
-      momentumLabel={momentumLabel}
-      cadenceLabel={cadenceLabel}
-      handicapA={state.handicapA || 0}
-      handicapB={state.handicapB || 0}
-      penaltiesA={penaltiesA}
-      penaltiesB={penaltiesB}
-      demiA={demiA}
-      demiB={demiB}
-      gamelleA={gamelleA}
-      gamelleB={gamelleB}
-      pissetteA={pissetteA}
-      pissetteB={pissetteB}
-      pecheOffA={pecheOffA}
-      pecheOffB={pecheOffB}
-      pecheDefA={pecheDefA}
-      pecheDefB={pecheDefB}
-      demiBonusA={demiBonusA}
-      demiBonusB={demiBonusB}
-    />
-  );
-
-  const renderContextTab = () => (
-    <BabyFootPhasePanel state={state} lastGoalLabel={lastGoalLabel} liveContext={liveContext} onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))} />
-  );
-
-  const renderActionsTab = () => (
-    <div style={shellCard()}>
-      <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Actions</div>
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <button type="button" onClick={() => setState(undoGoal())} disabled={!canUndo} style={actionStyle("neutral", !canUndo)}>Annuler</button>
-        <button type="button" onClick={() => setState(finishByTime())} disabled={state.finished} style={actionStyle("danger", state.finished)}>Fin du match</button>
-        <button type="button" onClick={() => setState(startMatch())} style={actionStyle("primary")}>Nouvelle partie</button>
-        <button type="button" onClick={() => go("babyfoot_stats_center")} style={actionStyle("neutral")}>Stats</button>
-        <div style={{ gridColumn: "1 / -1" }}>
-          <button type="button" onClick={() => go("babyfoot_config")} style={actionStyle("neutral")}>Configuration</button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const toggleClock = () => setState(state.clockRunning ? pauseClock() : startClock());
-
 
   return (
     <div className="page" style={{ background: theme.bg, color: theme.text }}>
@@ -738,72 +574,153 @@ Stats
         right={<InfoDot title="Baby-Foot" content={infoBody} glow={(theme?.colors?.primary ?? "#9dff57") + "88"} />}
       />
 
-      <div style={{ padding: "0 10px 24px", overflowX: "hidden" }}>
-        <div style={{ width: "100%", maxWidth: 430, margin: "0 auto" }}>
-          <div
-            style={{
-              position: "sticky",
-              top: 94,
-              zIndex: 20,
-              paddingTop: 8,
-              paddingBottom: 10,
-              background: theme.bg,
-            }}
-          >
-            <div style={{ display: "grid", gap: 8 }}>
-              <BabyFootLiveHeader
-                phaseLabel={phaseLabel}
-                modeLabel={state.mode}
-                clockLabel={clockLabel}
-                targetLabel={targetLabel}
-                secondaryLabel={secondaryLabel}
-                clockRunning={state.clockRunning}
-                hasStarted={!!state.startedAt}
-                onToggleClock={toggleClock}
-              />
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(5, minmax(0,1fr))",
-                  gap: 6,
-                  padding: 6,
-                  borderRadius: 18,
-                  border: "1px solid rgba(120,150,255,0.12)",
-                  background: "linear-gradient(180deg, rgba(14,18,36,0.98), rgba(8,10,24,0.99))",
-                  boxShadow: "0 12px 24px rgba(0,0,0,0.22)",
-                }}
-              >
-                {tabs.map((tab) => (
-                  <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} style={tabStyle(activeTab === tab.id)}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+      <div style={{ padding: 10, paddingBottom: 24, overflowX: "hidden" }}>
+        <div style={{ width: "100%", maxWidth: 430, margin: "0 auto", display: "grid", gap: 14 }}>
+          <BabyFootLiveHeader
+            phaseLabel={phaseLabel}
+            modeLabel={state.mode}
+            clockLabel={clockLabel}
+            targetLabel={targetLabel}
+            secondaryLabel={secondaryLabel}
+          />
+
+          {state.setsEnabled ? (
+            <BabyFootSetsBar
+              setsA={state.setsA || 0}
+              setsB={state.setsB || 0}
+              bestOf={state.setsBestOf || 3}
+              currentSet={state.setIndex || 1}
+              teamAName={visualA.name}
+              teamBName={visualB.name}
+            />
+          ) : null}
+
+          <BabyFootDuelScoreCard
+            visualA={visualA}
+            visualB={visualB}
+            scoreA={displayedScore.scoreA}
+            scoreB={displayedScore.scoreB}
+            setsEnabled={state.setsEnabled}
+            setsA={state.setsA || 0}
+            setsB={state.setsB || 0}
+            setTarget={state.setTarget || state.target}
+            target={state.target}
+            handicapA={state.handicapA}
+            handicapB={state.handicapB}
+            onAddGoalA={() => addForTeam("A")}
+            onAddGoalB={() => addForTeam("B")}
+            goalsDisabled={state.finished || state.phase === "penalties"}
+          />
+
+          <div style={shellCard()}>
+            <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>
+              Composition
             </div>
+
+            {isOneVsOne ? (
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 14, alignItems: "center" }}>
+                <MiniCompositionCard label="Joueur A" name={visualA.name} imageSrc={visualA.imageSrc} accent="#c7ff26" />
+                <div style={{ width: 1, alignSelf: "stretch", background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
+                <MiniCompositionCard label="Joueur B" name={visualB.name} imageSrc={visualB.imageSrc} accent="#ff59b0" />
+              </div>
+            ) : (
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 14, alignItems: "stretch" }}>
+                <TeamCompositionColumn
+                  title="Équipe A"
+                  accent="#c7ff26"
+                  teamName={state.teamA}
+                  teamLogo={normalizeSrc(state.teamALogoDataUrl)}
+                  playerIds={teamAIds}
+                  getProfile={getProfile}
+                />
+                <div style={{ width: 1, background: "linear-gradient(180deg, transparent, rgba(255,255,255,0.10), transparent)" }} />
+                <TeamCompositionColumn
+                  title="Équipe B"
+                  accent="#ff59b0"
+                  teamName={state.teamB}
+                  teamLogo={normalizeSrc(state.teamBLogoDataUrl)}
+                  playerIds={teamBIds}
+                  getProfile={getProfile}
+                />
+              </div>
+            )}
           </div>
 
-          <div style={{ display: "grid", gap: 12 }}>
-            {activeTab === "score" ? renderScoreTab() : null}
-            {activeTab === "composition" ? renderCompositionTab() : null}
-            {activeTab === "stats" ? renderStatsTab() : null}
-            {activeTab === "context" ? renderContextTab() : null}
-            {activeTab === "actions" ? renderActionsTab() : null}
+          <BabyFootLiveStatsCard
+            teamAName={visualA.name}
+            teamBName={visualB.name}
+            goalsA={goalCountA}
+            goalsB={goalCountB}
+            totalGoals={totalGoals}
+            durationLabel={fmt(durationMs)}
+            lastGoalLabel={lastGoalLabel}
+            momentumLabel={momentumLabel}
+            cadenceLabel={cadenceLabel}
+            setsEnabled={state.setsEnabled}
+            setsA={state.setsA || 0}
+            setsB={state.setsB || 0}
+            handicapA={state.handicapA || 0}
+            handicapB={state.handicapB || 0}
+            penaltiesA={penaltiesA}
+            penaltiesB={penaltiesB}
+          />
+
+          <BabyFootPhasePanel
+            state={state}
+            lastGoalLabel={lastGoalLabel}
+            liveContext={liveContext}
+            onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
+          />
+
+          <div style={shellCard()}>
+            <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>
+              Actions
+            </div>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button type="button" onClick={() => setState(undoGoal())} disabled={!canUndo} style={actionStyle("neutral", !canUndo)}>
+                Annuler
+              </button>
+              <button type="button" onClick={() => setState(finishByTime())} disabled={state.finished} style={actionStyle("danger", state.finished)}>
+                Fin du match
+              </button>
+              <button type="button" onClick={() => setState(startMatch())} style={actionStyle("primary")}>
+                Nouvelle partie
+              </button>
+              <button type="button" onClick={() => go("babyfoot_stats_center")} style={actionStyle("neutral")}>
+                Stats
+              </button>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <button type="button" onClick={() => go("babyfoot_config")} style={actionStyle("neutral")}>
+                  Configuration
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {pickAction ? (
+      {pickTeam ? (
         <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.62)", backdropFilter: "blur(6px)", display: "grid", placeItems: "center", padding: 16, zIndex: 80 }}
-          onClick={() => setPickAction(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.62)",
+            backdropFilter: "blur(6px)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            zIndex: 80,
+          }}
+          onClick={() => setPickTeam(null)}
         >
           <div style={{ ...shellCard(), width: "100%", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: 19, fontWeight: 1100 }}>Choisir le joueur</div>
+            <div style={{ fontSize: 20, fontWeight: 1100 }}>Choisir le buteur</div>
             <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
-              Sélectionne le joueur concerné pour {pickAction.action === "goal" ? "le but" : pickAction.action === "demi" ? "le demi" : pickAction.action === "gamelle" ? "la gamelle" : pickAction.action === "pissette" ? "la pissette" : pickAction.action === "peche_off" ? "la pêche offensive" : "la pêche défensive"} de {pickAction.team === "A" ? visualA.name : visualB.name}.
+              Sélectionne le joueur qui a marqué pour {pickTeam === "A" ? visualA.name : visualB.name}.
             </div>
+
             <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
-              {(pickAction.team === "A" ? teamAIds : teamBIds).map((playerId) => {
+              {(pickTeam === "A" ? teamAIds : teamBIds).map((playerId) => {
                 const profile = getProfile(playerId);
                 const label = profile?.name || playerId;
                 return (
@@ -811,10 +728,23 @@ Stats
                     key={playerId}
                     type="button"
                     onClick={() => {
-                      setState(applyAction(pickAction.team, pickAction.action, playerId));
-                      setPickAction(null);
+                      setState(addGoal(pickTeam, playerId));
+                      setPickTeam(null);
                     }}
-                    style={{ width: "100%", minHeight: 52, borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#fff", fontWeight: 1000, display: "flex", alignItems: "center", gap: 12, padding: "0 14px", cursor: "pointer" }}
+                    style={{
+                      width: "100%",
+                      minHeight: 54,
+                      borderRadius: 16,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "#fff",
+                      fontWeight: 1000,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "0 14px",
+                      cursor: "pointer",
+                    }}
                   >
                     <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={34} />
                     <span style={{ fontSize: 15 }}>{label}</span>
@@ -822,7 +752,10 @@ Stats
                 );
               })}
             </div>
-            <button type="button" onClick={() => setPickAction(null)} style={{ ...actionStyle("neutral"), marginTop: 14 }}>Fermer</button>
+
+            <button type="button" onClick={() => setPickTeam(null)} style={{ ...actionStyle("neutral"), marginTop: 14 }}>
+              Fermer
+            </button>
           </div>
         </div>
       ) : null}
