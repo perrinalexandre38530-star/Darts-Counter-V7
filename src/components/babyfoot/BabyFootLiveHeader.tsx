@@ -1,11 +1,22 @@
 import React from "react";
 
+type TabItem = {
+  key: string;
+  label: string;
+};
+
 type Props = {
   phaseLabel: string;
   modeLabel: string;
   clockLabel: string;
-  targetLabel: string;
   secondaryLabel?: string;
+  clockRunning: boolean;
+  hasStarted: boolean;
+  onStartClock: () => void;
+  onPauseClock: () => void;
+  tabs: TabItem[];
+  activeTab: string;
+  onTabChange: (key: string) => void;
 };
 
 function pill(accent = false): React.CSSProperties {
@@ -13,8 +24,8 @@ function pill(accent = false): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 36,
-    padding: "0 16px",
+    minHeight: 34,
+    padding: "0 14px",
     borderRadius: 999,
     border: accent ? "1px solid rgba(199,255,38,0.34)" : "1px solid rgba(255,255,255,0.08)",
     background: accent ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
@@ -27,18 +38,85 @@ function pill(accent = false): React.CSSProperties {
   };
 }
 
-export default function BabyFootLiveHeader({ phaseLabel, modeLabel, clockLabel, targetLabel, secondaryLabel }: Props) {
+function transportButton(disabled: boolean): React.CSSProperties {
+  return {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: `1px solid ${disabled ? "rgba(255,255,255,0.10)" : "rgba(199,255,38,0.26)"}`,
+    background: disabled ? "rgba(255,255,255,0.04)" : "linear-gradient(180deg, rgba(199,255,38,0.14), rgba(199,255,38,0.06))",
+    color: disabled ? "rgba(255,255,255,0.32)" : "#eaff84",
+    display: "grid",
+    placeItems: "center",
+    cursor: disabled ? "default" : "pointer",
+    boxShadow: disabled ? "none" : "0 0 12px rgba(199,255,38,0.10)",
+    padding: 0,
+  };
+}
+
+function tabButton(active: boolean): React.CSSProperties {
+  return {
+    width: "100%",
+    minWidth: 0,
+    minHeight: 34,
+    padding: "0 8px",
+    borderRadius: 999,
+    border: active ? "1px solid rgba(199,255,38,0.30)" : "1px solid rgba(255,255,255,0.08)",
+    background: active ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
+    color: active ? "#f5ffbf" : "rgba(255,255,255,0.92)",
+    fontSize: 11,
+    fontWeight: 1000,
+    letterSpacing: 0.35,
+    textTransform: "uppercase",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    cursor: "pointer",
+    boxShadow: active ? "0 0 12px rgba(199,255,38,0.12)" : "none",
+  };
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="8,5 19,12 8,19 8,5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export default function BabyFootLiveHeader({
+  phaseLabel,
+  modeLabel,
+  clockLabel,
+  secondaryLabel,
+  clockRunning,
+  hasStarted,
+  onStartClock,
+  onPauseClock,
+  tabs,
+  activeTab,
+  onTabChange,
+}: Props) {
   return (
     <div
       style={{
         borderRadius: 24,
-        padding: 14,
+        padding: 12,
         border: "1px solid rgba(120,150,255,0.14)",
         background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
           <span style={pill(true)}>{phaseLabel}</span>
           <span style={pill()}>{modeLabel}</span>
@@ -47,36 +125,51 @@ export default function BabyFootLiveHeader({ phaseLabel, modeLabel, clockLabel, 
 
         <div
           style={{
-            minWidth: 108,
+            minWidth: 118,
             borderRadius: 18,
-            padding: "9px 12px",
+            padding: "8px 10px",
             border: "1px solid rgba(199,255,38,0.30)",
             background: "linear-gradient(180deg, rgba(18,22,28,0.96), rgba(10,12,20,0.98))",
             boxShadow: "0 0 16px rgba(199,255,38,0.10)",
             textAlign: "center",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "#ebff86", fontSize: 12, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "#ebff86", fontSize: 11, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>
             <span style={{ fontSize: 18, lineHeight: 1 }}>◔</span>
             <span>Chrono</span>
           </div>
-          <div style={{ marginTop: 2, fontSize: 25, lineHeight: 1, fontWeight: 1100, color: "#fff3a3" }}>{clockLabel}</div>
+          <div style={{ marginTop: 1, fontSize: 22, lineHeight: 1, fontWeight: 1100, color: "#fff3a3" }}>{clockLabel}</div>
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 8 }}>
+            <button
+              type="button"
+              aria-label={hasStarted ? "Reprendre" : "Démarrer"}
+              title={hasStarted ? "Reprendre" : "Démarrer"}
+              onClick={onStartClock}
+              disabled={clockRunning}
+              style={transportButton(clockRunning)}
+            >
+              <PlayIcon />
+            </button>
+            <button
+              type="button"
+              aria-label="Pause"
+              title="Pause"
+              onClick={onPauseClock}
+              disabled={!clockRunning}
+              style={transportButton(!clockRunning)}
+            >
+              <PauseIcon />
+            </button>
+          </div>
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 10,
-          borderRadius: 15,
-          padding: "11px 14px",
-          border: "1px solid rgba(255,255,255,0.06)",
-          background: "rgba(0,0,0,0.20)",
-          fontSize: 12,
-          fontWeight: 1000,
-          color: "rgba(255,255,255,0.96)",
-        }}
-      >
-        {targetLabel}
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 8 }}>
+        {tabs.map((tab) => (
+          <button key={tab.key} type="button" onClick={() => onTabChange(tab.key)} style={tabButton(activeTab === tab.key)}>
+            {tab.label}
+          </button>
+        ))}
       </div>
     </div>
   );
