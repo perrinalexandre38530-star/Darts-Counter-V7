@@ -1689,21 +1689,42 @@ function subscribeOnlineStream(lobbyCode: string, handlers: OnlineStreamHandlers
 // Matchs “historique” (compat OnlineMatch de ton app)
 // ============================================================
 function mapOnlineMatchFromRow(row: OnlineMatchRow): OnlineMatch {
+  const startedAt = row.created_at ? Date.parse(row.created_at) : now();
+  const finishedAt = row.finished_at
+    ? Date.parse(row.finished_at)
+    : row.status === "ended"
+      ? (row.updated_at ? Date.parse(row.updated_at) : startedAt)
+      : (row.updated_at ? Date.parse(row.updated_at) : now());
+
+  // On conserve les identifiants racines NAS dans l'objet mappé :
+  // ils servent au nettoyage Online pour masquer/supprimer durablement un match
+  // même après un refresh qui recharge /online/matches.
   return {
     id: String(row.id),
+    matchId: String(row.id),
+    onlineMatchId: String(row.id),
+    lobbyCode: row.lobby_code || null,
+    status: row.status,
     userId: String(row.owner_user || "unknown"),
     mode: String((row as any)?.mode || (row as any)?.state_json?.mode || (row as any)?.state_json?.onlineMode || "x01") as any,
     payload: {
+      id: String(row.id),
+      matchId: String(row.id),
+      onlineMatchId: String(row.id),
       lobbyCode: row.lobby_code,
+      status: row.status,
+      createdAt: startedAt,
+      updatedAt: row.updated_at ? Date.parse(row.updated_at) : finishedAt,
+      finishedAt,
       state: row.state_json,
+      rawOnlineMatchRow: row,
     },
     isTraining: false,
-    startedAt: row.created_at ? Date.parse(row.created_at) : now(),
-    finishedAt: row.finished_at
-      ? Date.parse(row.finished_at)
-      : row.status === "ended"
-        ? now()
-        : now(),
+    startedAt,
+    createdAt: startedAt,
+    finishedAt,
+    updatedAt: row.updated_at ? Date.parse(row.updated_at) : finishedAt,
+    rawOnlineMatchRow: row,
   } as any;
 }
 

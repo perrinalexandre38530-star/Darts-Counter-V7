@@ -875,6 +875,165 @@ function directTs(...values: any[]): number {
   return 0;
 }
 
+
+function timeKey(value: any): string {
+  const ts = directTs(value);
+  if (!ts) return "";
+  // Arrondi à la seconde : évite les écarts ms entre History / miroir local / NAS.
+  return String(Math.floor(ts / 1000));
+}
+
+function collectFirstDeepValue(row: any, aliases: string[]): any {
+  return deepFirst(row, aliases);
+}
+
+function collectLobbyCode(row: any): string {
+  const value = collectFirstDeepValue(row, [
+    "lobbyCode",
+    "onlineLobbyCode",
+    "lobby_code",
+    "roomCode",
+    "room_code",
+  ]);
+  return str(value).toUpperCase();
+}
+
+function collectOnlineStatus(row: any): string {
+  return str(collectFirstDeepValue(row, ["status", "matchStatus", "stateStatus"])).toLowerCase();
+}
+
+function collectCreatedKey(row: any): string {
+  return timeKey(collectFirstDeepValue(row, [
+    "createdAt",
+    "created_at",
+    "startedAt",
+    "started_at",
+    "date",
+    "ts",
+  ]));
+}
+
+function collectUpdatedKey(row: any): string {
+  return timeKey(collectFirstDeepValue(row, [
+    "updatedAt",
+    "updated_at",
+    "finishedAt",
+    "finished_at",
+    "endedAt",
+    "ended_at",
+    "date",
+    "ts",
+  ]));
+}
+
+function collectPlayersFingerprint(row: any): string {
+  const names: string[] = [];
+  const pushPlayer = (p: any) => {
+    const n = playerNameOf(p) || playerIdOf(p);
+    if (n) names.push(normKey(n));
+  };
+
+  try {
+    for (const obj of walkObjects(row, 4)) {
+      if (!obj || typeof obj !== "object") continue;
+      if (Array.isArray(obj?.players)) obj.players.slice(0, 8).forEach(pushPlayer);
+      if (Array.isArray(obj?.rankings)) obj.rankings.slice(0, 8).forEach(pushPlayer);
+      if (Array.isArray(obj?.perPlayer)) obj.perPlayer.slice(0, 8).forEach(pushPlayer);
+    }
+  } catch {}
+
+  const clean = uniq(names).sort().slice(0, 8);
+  return clean.length ? clean.join("-") : "";
+}
+
+function collectScoreFingerprint(row: any): string {
+  const raw = str(collectFirstDeepValue(row, [
+    "scoreLine",
+    "finalScoreLabel",
+    "scoreLabel",
+    "winnerName",
+    "winnerId",
+    "winner",
+  ]));
+  if (raw) return hashLite(raw.toLowerCase());
+
+  const finalScores = collectFirstDeepValue(row, ["finalScores", "remaining", "remainingByPlayer", "scoreRemainingByPlayer"]);
+  if (finalScores && typeof finalScores === "object") return hashLite(JSON.stringify(finalScores));
+
+  const stats = (row as any)?.stats || (row as any)?.summary || (row as any)?.payload?.summary || {};
+  const statSig = [
+    num(stats?.darts ?? (row as any)?.darts),
+    num(stats?.totalScore ?? stats?.points ?? (row as any)?.totalScore),
+    num(stats?.bestVisit ?? (row as any)?.bestVisit),
+    num(stats?.bestCheckout ?? (row as any)?.bestCheckout),
+  ].join(":");
+  return statSig !== "0:0:0:0" ? hashLite(statSig) : "";
+}
+
+function pushFingerprint(keys: any[], value: any) {
+  const s = str(value);
+  if (s) keys.push(s);
+}
+
+function collectStableOnlineFingerprints(row: any): string[] {
+  const keys: any[] = [];
+  if (!row || typeof row !== "object") return [];
+
+  const rootIds = [
+    (row as any).id,
+    (row as any).matchId,
+    (row as any).match_id,
+    (row as any).onlineMatchId,
+    (row as any).online_match_id,
+    (row as any).historyId,
+    (row as any).sessionId,
+    (row as any)?.payload?.id,
+    (row as any)?.payload?.matchId,
+    (row as any)?.payload?.onlineMatchId,
+    (row as any)?.payload?.state?.id,
+    (row as any)?.payload?.state?.matchId,
+    (row as any)?.payload?.state?.onlineMatchId,
+    (row as any)?.state?.id,
+    (row as any)?.state?.matchId,
+    (row as any)?.summary?.matchId,
+    (row as any)?.summary?.id,
+  ];
+
+  for (const id of rootIds) {
+    const s = str(id);
+    if (!s || !isGenericMatchId(s)) continue;
+    pushFingerprint(keys, `online-id:${s}`);
+    pushFingerprint(keys, `online-id:${normKey(s)}`);
+  }
+
+  const lobby = collectLobbyCode(row);
+  const created = collectCreatedKey(row);
+  const updated = collectUpdatedKey(row);
+  const status = collectOnlineStatus(row);
+  const players = collectPlayersFingerprint(row);
+  const score = collectScoreFingerprint(row);
+  const mode = normKey(getModeLabelSafe(row));
+
+  // Signature principale : stable entre le miroir local et le NAS pour un même match.
+  if (lobby && created) pushFingerprint(keys, `online-lobby-created:${normKey(lobby)}:${created}`);
+  if (lobby && created && players) pushFingerprint(keys, `online-lobby-created-players:${normKey(lobby)}:${created}:${players}`);
+  if (lobby && created && score) pushFingerprint(keys, `online-lobby-created-score:${normKey(lobby)}:${created}:${score}`);
+  if (lobby && updated && status === "ended") pushFingerprint(keys, `online-lobby-ended:${normKey(lobby)}:${updated}`);
+  if (created && players && score) pushFingerprint(keys, `online-created-players-score:${created}:${players}:${score}`);
+  if (created && mode && players) pushFingerprint(keys, `online-created-mode-players:${created}:${mode}:${players}`);
+
+  return uniq(keys);
+}
+
+function getModeLabelSafe(row: any): string {
+  try {
+    const mode = collectFirstDeepValue(row, ["onlineMode", "gameMode", "mode", "kind", "variant", "sport", "game"]);
+    return str(mode || "online");
+  } catch {
+    return "online";
+  }
+}
+
 function buildFallbackSessionKey(row: any): string {
   if (!row || typeof row !== "object") return "";
   const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
@@ -908,7 +1067,11 @@ export function getOnlineStatsSessionKeys(row: any): string[] {
   collectRootSessionKeys(row?.state?.match, keys, true);
   collectRootSessionKeys(row?.payload?.state?.match, keys, true);
 
-  // Important : pas de roomId/lobbyCode ici. Un salon peut contenir plusieurs matchs.
+  // Important : jamais de roomId/lobbyCode seul. Un salon peut contenir plusieurs matchs.
+  // On ajoute uniquement des empreintes stables qui combinent id ou lobby+date+joueurs/score,
+  // pour que la suppression locale survive au rafraîchissement NAS sans fusionner plusieurs matchs.
+  for (const fp of collectStableOnlineFingerprints(row)) pushSessionKey(keys, fp, false);
+
   const fallback = buildFallbackSessionKey(row);
   if (fallback) pushSessionKey(keys, fallback, false);
 
@@ -968,7 +1131,11 @@ export function readOnlineStatsDeletedMap(): ExclusionMap {
 
 function saveOnlineStatsDeletedMap(map: ExclusionMap) {
   if (!isBrowser()) return;
-  writeJson(scopedStorageKey(ONLINE_STATS_DELETED_KEY), map || {});
+  const next = map || {};
+  writeJson(scopedStorageKey(ONLINE_STATS_DELETED_KEY), next);
+  // Compat : certaines pages historiques lisent/écrivent encore la clé non scopée.
+  // On la garde synchronisée pour éviter qu'un refresh Online réinjecte les matchs supprimés.
+  try { writeJson(ONLINE_STATS_DELETED_KEY, next); } catch {}
 }
 
 export function isOnlineStatsHardDeleted(row: any): boolean {
@@ -1467,7 +1634,14 @@ export async function hardDeleteOnlineStatsSessions(idsOrKeys: string[]) {
   const ts = nowTs();
   for (const key of keys) deletedMap[key] = { excludedAt: ts, reason: "manual-hard-delete" };
   for (const session of selected) {
-    for (const key of uniq([session.id, session.matchId, ...(session.keys || [])])) {
+    const aliases = uniq([
+      session.id,
+      session.matchId,
+      ...(session.keys || []),
+      ...getOnlineStatsSessionKeys(session.raw || {}),
+      ...collectStableOnlineFingerprints(session.raw || {}),
+    ]);
+    for (const key of aliases) {
       deletedMap[key] = { excludedAt: ts, reason: "manual-hard-delete" };
     }
   }
@@ -1483,11 +1657,20 @@ export async function hardDeleteOnlineStatsSessions(idsOrKeys: string[]) {
   const allSelectedKeys = new Set<string>();
   for (const key of keys) allSelectedKeys.add(key);
   for (const session of selected) {
-    uniq([session.id, session.matchId, ...(session.keys || [])]).forEach((k) => allSelectedKeys.add(k));
+    uniq([
+      session.id,
+      session.matchId,
+      ...(session.keys || []),
+      ...getOnlineStatsSessionKeys(session.raw || {}),
+      ...collectStableOnlineFingerprints(session.raw || {}),
+    ]).forEach((k) => allSelectedKeys.add(k));
   }
 
   const shouldRemoveRow = (row: any) => {
-    const rowKeys = getOnlineStatsSessionKeys(row);
+    const rowKeys = uniq([
+      ...getOnlineStatsSessionKeys(row),
+      ...collectStableOnlineFingerprints(row),
+    ]);
     return rowKeys.some((k) => allSelectedKeys.has(k) || !!deletedMap[k]);
   };
 

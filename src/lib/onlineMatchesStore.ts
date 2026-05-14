@@ -5,6 +5,8 @@
 // - Utilisé par FriendsPage (historique) + StatsOnline
 // ============================================
 
+import { filterOnlineStatsHardDeleted } from "./onlineStatsExclusions";
+
 export const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
 
 export type OnlineMatchLite = {
@@ -45,7 +47,7 @@ export function loadOnlineMatches(): OnlineMatchLite[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(LS_ONLINE_MATCHES_KEY);
-    return safeParse(raw);
+    return filterOnlineStatsHardDeleted(safeParse(raw));
   } catch {
     return [];
   }
@@ -54,7 +56,7 @@ export function loadOnlineMatches(): OnlineMatchLite[] {
 export function saveOnlineMatches(list: OnlineMatchLite[]) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(list));
+    window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(filterOnlineStatsHardDeleted(list || [])));
   } catch {
     // ignore quota / private mode
   }
