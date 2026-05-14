@@ -3892,6 +3892,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
           pushEvent({ t: Date.now(), type: "MISS_AUTO_HIT", actorId: me.id, throw: thr, loss: missLoss });
 
           if (me.lives <= 0) {
+            me.autoKills = (me.autoKills ?? 0) + 1;
             me.eliminated = true;
             me.resurrected = false;
             me.resurrectShield = false;
@@ -4276,6 +4277,7 @@ if (isActiveKiller(me)) {
     });
 
     if (me.lives <= 0) {
+      me.autoKills = (me.autoKills ?? 0) + 1;
       me.eliminated = true;
       me.resurrected = false;
       me.resurrectShield = false;
@@ -4698,6 +4700,7 @@ React.useEffect(() => {
           });
 
           if (me2.lives <= 0) {
+            me2.autoKills = (me2.autoKills ?? 0) + 1;
             me2.eliminated = true;
             me2.resurrected = false;
             me2.resurrectShield = false;
@@ -5069,7 +5072,8 @@ React.useEffect(() => {
         // ✅ AUTO-PÉNALITÉ (BOT)
         if (me2.number && thrSafe.target === me2.number && selfPenaltyOn) {
           me2.hitsOnSelf = (me2.hitsOnSelf ?? 0) + 1;
-    me2.selfPenaltyHits = (me2.selfPenaltyHits ?? 0) + 1;
+          me2.selfPenaltyHits = (me2.selfPenaltyHits ?? 0) + 1;
+          me2.autoHits = (me2.autoHits ?? 0) + 1;
       
           const dmg = selfPenaltyMultOn ? dmgFrom(thrSafe.mult, "multiplier") : 1;
       

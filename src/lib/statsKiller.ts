@@ -327,9 +327,17 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     livesTakenTotal += numOr0(me?.livesTaken, me?.damageDealt, me?.dmgDealt, special?.livesTaken, sp?.livesTaken, sp?.damageDealt, sp?.dmgDealt);
     livesLostTotal += numOr0(me?.livesLost, me?.damageTaken, me?.dmgTaken, special?.livesLost, sp?.livesLost, sp?.damageTaken, sp?.dmgTaken);
 
-    autoKillsTotal += numOr0(me?.autoKills, me?.auto_kills, special?.autoKills, sp?.autoKills, sp?.auto_kills);
-    autoHitsTotal += numOr0(me?.autoHits, me?.auto_hits, special?.autoHits, sp?.autoHits, sp?.auto_hits);
-    selfPenaltyHitsTotal += numOr0(me?.selfPenaltyHits, me?.self_penalty_hits, me?.selfHits, me?.hitsOnSelf, special?.selfPenaltyHits, sp?.selfPenaltyHits, sp?.self_penalty_hits, sp?.selfHits, sp?.hitsOnSelf);
+    const selfPenaltyHitsForPlayer = numOr0(me?.selfPenaltyHits, me?.self_penalty_hits, me?.selfHits, me?.hitsOnSelf, special?.selfPenaltyHits, sp?.selfPenaltyHits, sp?.self_penalty_hits, sp?.selfHits, sp?.hitsOnSelf);
+    const autoHitsForPlayerRaw = numOr0(me?.autoHits, me?.auto_hits, special?.autoHits, sp?.autoHits, sp?.auto_hits);
+    const autoKillsForPlayerRaw = numOr0(me?.autoKills, me?.auto_kills, special?.autoKills, sp?.autoKills, sp?.auto_kills);
+
+    // AUTO-HIT legacy/fallback:
+    // older killer summaries stored self-hit penalties as selfPenaltyHits/hitsOnSelf
+    // while the displayed autoHits field could remain 0. In Killer UI, these are the
+    // same family of stat: a player hit/penalized themselves.
+    autoKillsTotal += autoKillsForPlayerRaw;
+    autoHitsTotal += Math.max(autoHitsForPlayerRaw, selfPenaltyHitsForPlayer);
+    selfPenaltyHitsTotal += selfPenaltyHitsForPlayer;
     livesStolenTotal += numOr0(me?.livesStolen, me?.lives_stolen, special?.livesStolen, sp?.livesStolen, sp?.lives_stolen);
     livesHealedTotal += numOr0(me?.livesHealed, me?.lives_healed, special?.livesHealed, sp?.livesHealed, sp?.lives_healed);
     disarmsTriggeredTotal += numOr0(me?.disarmsTriggered, me?.disarms_triggered, special?.disarmsTriggered, sp?.disarmsTriggered, sp?.disarms_triggered);

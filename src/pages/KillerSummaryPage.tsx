@@ -187,8 +187,11 @@ function normalizeRow(p: any) {
 
   // ✅ variantes (si dispo)
   const autoKills = clampInt(p?.autoKills ?? p?.auto_kills, 0, 9999, 0);
-  const autoHits = clampInt(p?.autoHits ?? p?.auto_hits, 0, 9999, 0);
-  const selfPenaltyHits = clampInt(p?.selfPenaltyHits ?? p?.self_penalty_hits ?? p?.selfHits, 0, 9999, 0);
+  const selfPenaltyHits = clampInt(p?.selfPenaltyHits ?? p?.self_penalty_hits ?? p?.selfHits ?? p?.hitsOnSelf, 0, 9999, 0);
+  const autoHitsRaw = clampInt(p?.autoHits ?? p?.auto_hits, 0, 9999, 0);
+  // Compat anciennes parties : l'auto-hit était souvent enregistré dans selfPenaltyHits/hitsOnSelf
+  // mais le champ autoHits restait à 0 dans les cartes résumé.
+  const autoHits = Math.max(autoHitsRaw, selfPenaltyHits);
   const livesStolen = clampInt(p?.livesStolen ?? p?.lives_stolen, 0, 9999, 0);
   const livesHealed = clampInt(p?.livesHealed ?? p?.lives_healed, 0, 9999, 0);
 
@@ -540,8 +543,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
                 {line("Total lancers", totalThrows)}
                 {line("Total kills", totalKills)}
                 {line("Total dégâts (vies prises)", totalDmg)}
-                {meta.selfPenaltyOn && line("Total auto-hit", rows.reduce((a, b) => a + (b.selfPenaltyHits || 0), 0))}
-                {line("Total auto-hit", rows.reduce((a, b) => a + (b.autoHits || 0), 0))}
+                {line("Total auto-hit", rows.reduce((a, b) => a + Math.max(b.autoHits || 0, b.selfPenaltyHits || 0), 0))}
                 {line("Total autokill", rows.reduce((a, b) => a + (b.autoKills || 0), 0))}
                 {meta.lifeStealOn && line("Total vies volées", rows.reduce((a, b) => a + (b.livesStolen || 0), 0))}
                 {meta.bullHealOn && line("Total vies gagnées", rows.reduce((a, b) => a + (b.livesHealed || 0), 0))}

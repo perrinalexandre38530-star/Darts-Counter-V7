@@ -1,10 +1,10 @@
 // =========================================================
 // src/online/client/OnlineCameraPanel.tsx
-// ONLINE caméra X01
-// - Contrôles locaux caméra/micro
-// - Affichage caméra du joueur actif
-// - Diffusion WebRTC légère active-player -> autres joueurs
-// - Signalisation transport-agnostique via l'état online existant
+// ONLINE caméra X01 — WebRTC persistant / non bloquant
+// - Connexions peer-to-peer gardées pendant toute la présence dans le salon
+// - Aucun close/recreate lors des changements de tour
+// - Le tour actif change uniquement le flux affiché
+// - La caméra reste optionnelle : aucune validation de score n'attend WebRTC
 // =========================================================
 
 import React from "react";
@@ -39,7 +39,19 @@ type Props = {
   embedded?: boolean;
 };
 
+type PeerEntry = {
+  pc: RTCPeerConnection;
+  peerId: string;
+  polite: boolean;
+  makingOffer: boolean;
+  ignoreOffer: boolean;
+  remoteStream: MediaStream;
+  queuedIce: RTCIceCandidateInit[];
+  lastOfferAt: number;
+};
+
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const NEGOTIATION_THROTTLE_MS = 2500;
 
 const WS_BASE: string =
   ((import.meta as any)?.env?.VITE_ONLINE_WS_BASE_URL as string | undefined) ||
@@ -71,11 +83,42 @@ function safeSignalPayload(payload: any) {
   }
 }
 
-function stopRemoteStream(stream: MediaStream | null) {
+function closePeer(entry: PeerEntry | null | undefined) {
+  if (!entry) return;
+  try { entry.pc.onicecandidate = null; } catch {}
+  try { entry.pc.ontrack = null; } catch {}
+  try { entry.pc.onnegotiationneeded = null; } catch {}
+  try { entry.pc.onconnectionstatechange = null; } catch {}
+  try { entry.pc.close(); } catch {}
+}
+
+function makeRemoteStreamFromTrack(event: RTCTrackEvent) {
+  return event.streams?.[0] || new MediaStream([event.track]);
+}
+
+function addOrReplaceLocalTracks(pc: RTCPeerConnection, stream: MediaStream | null) {
   if (!stream) return;
+  const senders = pc.getSenders();
   for (const track of stream.getTracks()) {
-    try { track.stop(); } catch {}
+    const existing = senders.find((sender) => sender.track?.kind === track.kind);
+    try {
+      if (existing) {
+        if (existing.track !== track) void existing.replaceTrack(track);
+      } else {
+        pc.addTrack(track, stream);
+      }
+    } catch {
+      // Une piste absente/neuve ne doit jamais casser la boucle de jeu.
+    }
   }
+}
+
+function ensureRecvTransceivers(pc: RTCPeerConnection) {
+  const transceivers = pc.getTransceivers?.() || [];
+  const hasVideo = transceivers.some((t) => t.receiver?.track?.kind === "video" || t.sender?.track?.kind === "video");
+  const hasAudio = transceivers.some((t) => t.receiver?.track?.kind === "audio" || t.sender?.track?.kind === "audio");
+  try { if (!hasVideo) pc.addTransceiver("video", { direction: "recvonly" }); } catch {}
+  try { if (!hasAudio) pc.addTransceiver("audio", { direction: "recvonly" }); } catch {}
 }
 
 export default function OnlineCameraPanel({
@@ -97,24 +140,27 @@ export default function OnlineCameraPanel({
   const active = players.find((p) => String(p.id) === String(activePlayerId)) || players[0] || null;
   const activeId = String(active?.id || activePlayerId || "");
   const self = String(selfId || "local");
-  const activeState = active ? cameraStates[String(active.id)] : null;
   const selfIsActive = !!activeId && activeId === self;
+  const activeState = active ? cameraStates[String(active.id)] : null;
   const activeCameraEnabled = !!activeState?.cameraEnabled || (selfIsActive && camera.cameraEnabled);
 
-  const [remoteStream, setRemoteStream] = React.useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = React.useState<Record<string, MediaStream>>({});
   const [webrtcStatus, setWebrtcStatus] = React.useState<"idle" | "connecting" | "live" | "waiting" | "error">("idle");
   const [webrtcError, setWebrtcError] = React.useState<string | null>(null);
 
-  const viewerPcRef = React.useRef<RTCPeerConnection | null>(null);
-  const activePeersRef = React.useRef<Record<string, RTCPeerConnection>>({});
+  const peersRef = React.useRef<Record<string, PeerEntry>>({});
   const processedSignalsRef = React.useRef<Set<string>>(new Set());
-  const offerKeyRef = React.useRef<string>("");
   const wsRef = React.useRef<WebSocket | null>(null);
   const wsQueueRef = React.useRef<OnlineCameraSignal[]>([]);
   const [liveSignals, setLiveSignals] = React.useState<OnlineCameraSignal[]>([]);
-  const pendingIceRef = React.useRef<Record<string, RTCIceCandidateInit[]>>({});
   const cameraRef = React.useRef(camera);
   React.useEffect(() => { cameraRef.current = camera; }, [camera]);
+
+  const playerIds = React.useMemo(
+    () => players.map((p) => String(p.id || "")).filter((id) => id && id !== self),
+    [players, self]
+  );
+  const playerIdsKey = React.useMemo(() => playerIds.slice().sort().join("|"), [playerIds]);
 
   React.useEffect(() => {
     const url = buildCameraWsUrl(roomId);
@@ -152,14 +198,14 @@ export default function OnlineCameraPanel({
             if (!signal) return;
             if (signal.to && String(signal.to) !== self) return;
             setLiveSignals((prev) => {
-              const cutoff = Date.now() - 60000;
+              const cutoff = Date.now() - 90000;
               const byId = new Map<string, OnlineCameraSignal>();
               [...prev, signal].forEach((sig: any) => {
                 if (!sig?.id) return;
                 if (Number(sig.createdAt || 0) < cutoff) return;
                 byId.set(String(sig.id), sig as OnlineCameraSignal);
               });
-              return Array.from(byId.values()).sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0)).slice(-240);
+              return Array.from(byId.values()).sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0)).slice(-320);
             });
           } catch {}
         };
@@ -187,7 +233,6 @@ export default function OnlineCameraPanel({
   }, [roomId, self]);
 
   const publishSignal = React.useCallback((signal: OnlineCameraSignal) => {
-    // 1) Canal direct WebSocket pour WebRTC temps réel.
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       try {
@@ -197,237 +242,211 @@ export default function OnlineCameraPanel({
       }
     } else {
       wsQueueRef.current.push(signal);
-      if (wsQueueRef.current.length > 80) wsQueueRef.current = wsQueueRef.current.slice(-80);
+      if (wsQueueRef.current.length > 100) wsQueueRef.current = wsQueueRef.current.slice(-100);
     }
 
-    // 2) Fallback état online existant : garde la compat si le WS caméra est absent.
     onCameraSignalSend?.(signal);
   }, [onCameraSignalSend]);
 
   const sendSignal = React.useCallback((to: string, type: OnlineCameraSignalType, payload?: any) => {
-    if (!to || !activeId || !self) return;
+    if (!to || !self) return;
     publishSignal({
       id: makeSignalId(self, to, type),
       roomId,
       from: self,
       to,
-      activePlayerId: activeId,
+      // Gardé pour compat backend, mais la connexion n'est plus liée au tour.
+      activePlayerId: activeId || self,
       type,
       payload: safeSignalPayload(payload),
       createdAt: Date.now(),
     });
   }, [activeId, publishSignal, roomId, self]);
 
+  const negotiate = React.useCallback(async (peerId: string, reason = "sync") => {
+    const entry = peersRef.current[peerId];
+    if (!entry || entry.pc.signalingState === "closed") return;
+    const now = Date.now();
+    if (now - entry.lastOfferAt < NEGOTIATION_THROTTLE_MS && reason !== "initial") return;
+    entry.lastOfferAt = now;
+    try {
+      entry.makingOffer = true;
+      addOrReplaceLocalTracks(entry.pc, cameraRef.current.localStream);
+      ensureRecvTransceivers(entry.pc);
+      await entry.pc.setLocalDescription(await entry.pc.createOffer());
+      sendSignal(peerId, "viewer_offer", entry.pc.localDescription);
+      setWebrtcStatus((prev) => (prev === "live" ? prev : "connecting"));
+      setWebrtcError(null);
+    } catch (error: any) {
+      setWebrtcStatus("error");
+      setWebrtcError(error?.message || "Négociation WebRTC impossible.");
+    } finally {
+      entry.makingOffer = false;
+    }
+  }, [sendSignal]);
+
+  const ensurePeer = React.useCallback((peerId: string) => {
+    if (!peerId || peerId === self || typeof RTCPeerConnection === "undefined") return null;
+    const existing = peersRef.current[peerId];
+    if (existing && existing.pc.signalingState !== "closed") return existing;
+
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const remoteStream = new MediaStream();
+    const entry: PeerEntry = {
+      pc,
+      peerId,
+      polite: self.localeCompare(peerId) > 0,
+      makingOffer: false,
+      ignoreOffer: false,
+      remoteStream,
+      queuedIce: [],
+      lastOfferAt: 0,
+    };
+    peersRef.current[peerId] = entry;
+
+    ensureRecvTransceivers(pc);
+    addOrReplaceLocalTracks(pc, cameraRef.current.localStream);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) sendSignal(peerId, "ice", event.candidate.toJSON());
+    };
+
+    pc.ontrack = (event) => {
+      const stream = makeRemoteStreamFromTrack(event);
+      setRemoteStreams((prev) => ({ ...prev, [peerId]: stream }));
+      setWebrtcStatus("live");
+      setWebrtcError(null);
+    };
+
+    pc.onnegotiationneeded = () => {
+      // Best-effort uniquement : ne jamais bloquer l'UI/le gameplay.
+      void negotiate(peerId, "needed");
+    };
+
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState;
+      if (st === "connected") {
+        setWebrtcStatus("live");
+        setWebrtcError(null);
+      }
+      if (st === "failed") {
+        setWebrtcStatus("error");
+        setWebrtcError("Connexion caméra instable. Le score reste utilisable.");
+        try { pc.restartIce?.(); } catch {}
+        void negotiate(peerId, "restart");
+      }
+      if (st === "closed") {
+        if (peersRef.current[peerId] === entry) delete peersRef.current[peerId];
+      }
+    };
+
+    return entry;
+  }, [negotiate, self, sendSignal]);
+
   React.useEffect(() => {
     if (!localVideoRef.current) return;
     localVideoRef.current.srcObject = camera.localStream;
   }, [camera.localStream]);
 
+  const displayedRemoteStream = !selfIsActive && activeId ? remoteStreams[activeId] || null : null;
   React.useEffect(() => {
     if (!remoteVideoRef.current) return;
-    remoteVideoRef.current.srcObject = remoteStream;
-  }, [remoteStream]);
+    remoteVideoRef.current.srcObject = displayedRemoteStream;
+  }, [displayedRemoteStream]);
 
-  const cleanupViewerPc = React.useCallback(() => {
-    const pc = viewerPcRef.current;
-    viewerPcRef.current = null;
-    if (pc) {
-      try { pc.onicecandidate = null; pc.ontrack = null; pc.close(); } catch {}
-    }
-    setRemoteStream((old) => {
-      stopRemoteStream(old);
-      return null;
-    });
-  }, []);
-
-  const cleanupActivePeers = React.useCallback(() => {
-    const peers = activePeersRef.current;
-    activePeersRef.current = {};
-    Object.values(peers).forEach((pc) => {
-      try { pc.onicecandidate = null; pc.close(); } catch {}
-    });
-  }, []);
-
-  React.useEffect(() => () => {
-    cleanupViewerPc();
-    cleanupActivePeers();
-  }, [cleanupActivePeers, cleanupViewerPc]);
-
-  // Quand le joueur actif change ou coupe sa caméra, on remet la session viewer à zéro.
   React.useEffect(() => {
-    if (!activeCameraEnabled || !activeId) {
-      offerKeyRef.current = "";
-      cleanupViewerPc();
-      cleanupActivePeers();
-      setWebrtcStatus("idle");
-      return;
-    }
-    if (selfIsActive) {
-      cleanupViewerPc();
-      setWebrtcStatus(camera.cameraEnabled && camera.localStream ? "live" : "waiting");
-    } else {
-      cleanupActivePeers();
-    }
-  }, [activeCameraEnabled, activeId, camera.cameraEnabled, camera.localStream, cleanupActivePeers, cleanupViewerPc, selfIsActive]);
-
-  // VIEWER -> crée une offre recvonly vers le joueur actif.
-  React.useEffect(() => {
-    if (!activeCameraEnabled || selfIsActive || !activeId || !onCameraSignalSend) return;
     if (typeof RTCPeerConnection === "undefined") {
       setWebrtcStatus("error");
       setWebrtcError("WebRTC indisponible sur ce navigateur.");
       return;
     }
-
-    const offerKey = `${roomId || "room"}:${self}->${activeId}:${activeState?.updatedAt || 0}:${activeState?.cameraEnabled ? 1 : 0}`;
-    if (offerKeyRef.current === offerKey && viewerPcRef.current) return;
-    offerKeyRef.current = offerKey;
-    cleanupViewerPc();
-
-    let stopped = false;
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    viewerPcRef.current = pc;
-    setWebrtcStatus("connecting");
-    setWebrtcError(null);
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) sendSignal(activeId, "ice", event.candidate.toJSON());
-    };
-    pc.ontrack = (event) => {
-      const stream = event.streams?.[0] || new MediaStream([event.track]);
-      setRemoteStream(stream);
-      setWebrtcStatus("live");
-    };
-    pc.onconnectionstatechange = () => {
-      if (stopped) return;
-      const st = pc.connectionState;
-      if (st === "connected") setWebrtcStatus("live");
-      if (st === "failed" || st === "disconnected" || st === "closed") {
-        if (st === "failed") setWebrtcStatus("error");
-      }
-    };
-
-    try {
-      pc.addTransceiver("video", { direction: "recvonly" });
-      pc.addTransceiver("audio", { direction: "recvonly" });
-    } catch {}
-
-    (async () => {
-      try {
-        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true } as any);
-        if (stopped) return;
-        await pc.setLocalDescription(offer);
-        if (stopped) return;
-        sendSignal(activeId, "viewer_offer", offer);
-      } catch (error: any) {
-        if (stopped) return;
-        setWebrtcStatus("error");
-        setWebrtcError(error?.message || "Impossible de créer l'offre WebRTC.");
-      }
-    })();
-
-    return () => {
-      stopped = true;
-    };
-  }, [activeCameraEnabled, activeId, activeState?.cameraEnabled, activeState?.updatedAt, cleanupViewerPc, onCameraSignalSend, roomId, self, selfIsActive, sendSignal]);
-
-  // ACTIVE -> répond aux offres des viewers avec son flux local.
-  const ensureActivePeer = React.useCallback((viewerId: string) => {
-    if (!viewerId || typeof RTCPeerConnection === "undefined") return null;
-    const existing = activePeersRef.current[viewerId];
-    if (existing && existing.signalingState !== "closed") return existing;
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    activePeersRef.current[viewerId] = pc;
-    pc.onicecandidate = (event) => {
-      if (event.candidate) sendSignal(viewerId, "ice", event.candidate.toJSON());
-    };
-    pc.onconnectionstatechange = () => {
-      const st = pc.connectionState;
-      if (st === "failed" || st === "closed" || st === "disconnected") {
-        try { pc.close(); } catch {}
-        if (activePeersRef.current[viewerId] === pc) delete activePeersRef.current[viewerId];
-      }
-    };
-    const stream = cameraRef.current.localStream;
-    if (stream) {
-      for (const track of stream.getTracks()) {
-        try { pc.addTrack(track, stream); } catch {}
+    for (const peerId of playerIds) {
+      ensurePeer(peerId);
+    }
+    const known = new Set(playerIds);
+    for (const [peerId, entry] of Object.entries(peersRef.current)) {
+      if (!known.has(peerId)) {
+        closePeer(entry);
+        delete peersRef.current[peerId];
+        setRemoteStreams((prev) => {
+          const next = { ...prev };
+          delete next[peerId];
+          return next;
+        });
       }
     }
-    return pc;
-  }, [sendSignal]);
+  }, [ensurePeer, playerIds, playerIdsKey]);
+
+  // Quand la caméra locale est activée ou que ses pistes changent, on réutilise les connexions existantes.
+  React.useEffect(() => {
+    for (const [peerId, entry] of Object.entries(peersRef.current)) {
+      addOrReplaceLocalTracks(entry.pc, camera.localStream);
+      if (camera.localStream && camera.cameraEnabled) void negotiate(peerId, "local-stream");
+    }
+  }, [camera.localStream, camera.cameraEnabled, negotiate]);
+
+  // Premier handshake persistant : une fois les joueurs connus, chaque client ouvre une connexion durable vers chaque autre client.
+  React.useEffect(() => {
+    for (const peerId of playerIds) {
+      ensurePeer(peerId);
+      void negotiate(peerId, "initial");
+    }
+  }, [ensurePeer, negotiate, playerIdsKey]);
+
+  React.useEffect(() => () => {
+    const peers = peersRef.current;
+    peersRef.current = {};
+    Object.values(peers).forEach(closePeer);
+  }, []);
 
   React.useEffect(() => {
     const allSignals = [...(Array.isArray(cameraSignals) ? cameraSignals : []), ...liveSignals];
-    if (!allSignals.length || !activeId) return;
+    if (!allSignals.length) return;
 
     const now = Date.now();
     for (const signal of allSignals) {
       if (!signal?.id || processedSignalsRef.current.has(signal.id)) continue;
       if (signal.to && String(signal.to) !== self) continue;
-      if (signal.activePlayerId && String(signal.activePlayerId) !== activeId) continue;
-      if (signal.createdAt && now - Number(signal.createdAt) > 45000) {
+      if (signal.createdAt && now - Number(signal.createdAt) > 90000) {
         processedSignalsRef.current.add(signal.id);
         continue;
       }
       processedSignalsRef.current.add(signal.id);
-
-      // Limite mémoire du Set.
-      if (processedSignalsRef.current.size > 600) {
-        processedSignalsRef.current = new Set(Array.from(processedSignalsRef.current).slice(-300));
+      if (processedSignalsRef.current.size > 800) {
+        processedSignalsRef.current = new Set(Array.from(processedSignalsRef.current).slice(-400));
       }
 
       const from = String(signal.from || "");
-      if (!from) continue;
+      if (!from || from === self) continue;
+      const entry = ensurePeer(from);
+      if (!entry) continue;
 
-      if (selfIsActive && signal.type === "viewer_offer") {
+      if (signal.type === "viewer_offer" || signal.type === "active_answer") {
         (async () => {
           try {
-            if (!cameraRef.current.localStream) {
-              await cameraRef.current.setCameraEnabled(true);
-            }
-            const pc = ensureActivePeer(from);
-            if (!pc || !signal.payload) return;
-            await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
-            const queuedIce = pendingIceRef.current[from] || [];
-            pendingIceRef.current[from] = [];
-            for (const ice of queuedIce) {
-              try { await pc.addIceCandidate(new RTCIceCandidate(ice)); } catch {}
-            }
-            const stream = cameraRef.current.localStream;
-            if (stream && pc.getSenders().length === 0) {
-              for (const track of stream.getTracks()) {
-                try { pc.addTrack(track, stream); } catch {}
-              }
-            }
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            sendSignal(from, "active_answer", answer);
-            setWebrtcStatus("live");
-          } catch (error: any) {
-            setWebrtcStatus("error");
-            setWebrtcError(error?.message || "Réponse WebRTC impossible.");
-          }
-        })();
-        continue;
-      }
+            const pc = entry.pc;
+            const description = new RTCSessionDescription(signal.payload);
+            const offerCollision = description.type === "offer" && (entry.makingOffer || pc.signalingState !== "stable");
+            entry.ignoreOffer = !entry.polite && offerCollision;
+            if (entry.ignoreOffer) return;
 
-      if (!selfIsActive && signal.type === "active_answer") {
-        (async () => {
-          try {
-            const pc = viewerPcRef.current;
-            if (!pc || !signal.payload) return;
-            if (pc.signalingState === "stable") return;
-            await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
-            const queuedIce = pendingIceRef.current.viewer || [];
-            pendingIceRef.current.viewer = [];
-            for (const ice of queuedIce) {
+            addOrReplaceLocalTracks(pc, cameraRef.current.localStream);
+            await pc.setRemoteDescription(description);
+
+            while (entry.queuedIce.length) {
+              const ice = entry.queuedIce.shift();
+              if (!ice) continue;
               try { await pc.addIceCandidate(new RTCIceCandidate(ice)); } catch {}
             }
-            setWebrtcStatus("connecting");
+
+            if (description.type === "offer") {
+              addOrReplaceLocalTracks(pc, cameraRef.current.localStream);
+              await pc.setLocalDescription(await pc.createAnswer());
+              sendSignal(from, "active_answer", pc.localDescription);
+            }
           } catch (error: any) {
             setWebrtcStatus("error");
-            setWebrtcError(error?.message || "Réponse caméra distante invalide.");
+            setWebrtcError(error?.message || "Signal caméra invalide. Le match continue.");
           }
         })();
         continue;
@@ -436,43 +455,56 @@ export default function OnlineCameraPanel({
       if (signal.type === "ice") {
         (async () => {
           try {
-            const pc = selfIsActive ? activePeersRef.current[from] : viewerPcRef.current;
-            if (!pc || !signal.payload) return;
-            const key = selfIsActive ? from : "viewer";
-            if (!pc.remoteDescription) {
-              pendingIceRef.current[key] = [...(pendingIceRef.current[key] || []), signal.payload];
+            if (!signal.payload) return;
+            if (!entry.pc.remoteDescription) {
+              entry.queuedIce.push(signal.payload);
+              if (entry.queuedIce.length > 40) entry.queuedIce = entry.queuedIce.slice(-40);
               return;
             }
-            await pc.addIceCandidate(new RTCIceCandidate(signal.payload));
+            await entry.pc.addIceCandidate(new RTCIceCandidate(signal.payload));
           } catch {
-            // Les ICE qui arrivent trop tôt/trop tard ne doivent jamais casser la partie.
+            // ICE tardif/obsolète : ignore, surtout ne pas casser l'UI.
           }
         })();
+        continue;
       }
 
       if (signal.type === "hangup") {
-        if (selfIsActive) {
-          const pc = activePeersRef.current[from];
-          if (pc) { try { pc.close(); } catch {} delete activePeersRef.current[from]; }
-        } else {
-          cleanupViewerPc();
-        }
+        closePeer(entry);
+        delete peersRef.current[from];
+        setRemoteStreams((prev) => {
+          const next = { ...prev };
+          delete next[from];
+          return next;
+        });
       }
     }
-  }, [activeId, cameraSignals, liveSignals, cleanupViewerPc, ensureActivePeer, self, selfIsActive, sendSignal]);
+  }, [cameraSignals, ensurePeer, liveSignals, self, sendSignal]);
+
+  React.useEffect(() => {
+    if (selfIsActive) {
+      setWebrtcStatus(camera.cameraEnabled && camera.localStream ? "live" : "waiting");
+      return;
+    }
+    if (displayedRemoteStream) {
+      setWebrtcStatus("live");
+      return;
+    }
+    setWebrtcStatus(activeCameraEnabled ? "waiting" : "idle");
+  }, [activeCameraEnabled, camera.cameraEnabled, camera.localStream, displayedRemoteStream, selfIsActive]);
 
   const canShowLocalPreview = selfIsActive && camera.cameraEnabled && camera.localStream;
-  const canShowRemote = !selfIsActive && !!remoteStream;
+  const canShowRemote = !selfIsActive && !!displayedRemoteStream;
   const showVideo = canShowLocalPreview || canShowRemote;
   const statusLabel = selfIsActive
-    ? "Caméra locale diffusée"
+    ? camera.cameraEnabled
+      ? "Caméra locale prête"
+      : "Tour actif — caméra optionnelle"
     : webrtcStatus === "live"
       ? `Caméra de ${active?.name || "joueur actif"}`
-      : webrtcStatus === "connecting"
-        ? "Connexion caméra…"
-        : activeCameraEnabled
-          ? "Caméra active — attente flux"
-          : "Caméra OFF";
+      : activeCameraEnabled
+        ? "Flux prêt dès connexion"
+        : "Caméra OFF";
 
   const videoBox = (
     <div
@@ -491,8 +523,8 @@ export default function OnlineCameraPanel({
       }}
     >
       <div style={{ position: "absolute", right: 6, top: 6, zIndex: 4, display: "flex", gap: 5 }}>
-        <button type="button" onClick={() => camera.toggleCamera()} aria-label="Caméra online" style={iconButtonStyle(camera.cameraEnabled)}>📷</button>
-        <button type="button" onClick={() => camera.toggleMic()} aria-label="Micro online" style={iconButtonStyle(camera.micEnabled)}>🎙️</button>
+        <button type="button" onClick={() => void camera.toggleCamera()} aria-label="Caméra online" style={iconButtonStyle(camera.cameraEnabled)}>📷</button>
+        <button type="button" onClick={() => void camera.toggleMic()} aria-label="Micro online" style={iconButtonStyle(camera.micEnabled)}>🎙️</button>
       </div>
 
       {canShowLocalPreview ? (
@@ -514,7 +546,7 @@ export default function OnlineCameraPanel({
 
       {showVideo ? (
         <div style={{ position: "absolute", left: 7, bottom: 6, right: 7, zIndex: 3, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-          <span style={liveBadgeStyle(webrtcStatus === "live" || selfIsActive)}>{selfIsActive ? "LIVE LOCAL" : webrtcStatus === "live" ? "LIVE" : "SYNC"}</span>
+          <span style={liveBadgeStyle(webrtcStatus === "live" || selfIsActive)}>{selfIsActive ? "LOCAL" : webrtcStatus === "live" ? "LIVE" : "SYNC"}</span>
           <span style={{ fontSize: 8.5, fontWeight: 900, color: "rgba(255,255,255,.78)", textShadow: "0 1px 4px #000", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {active?.name || "Joueur actif"}
           </span>
@@ -541,11 +573,11 @@ export default function OnlineCameraPanel({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "#ffd56a" }}>Caméra online</div>
-          {!compact && <div style={{ fontSize: 10.5, opacity: 0.72, marginTop: 2 }}>Diffusion WebRTC du joueur actif</div>}
+          {!compact && <div style={{ fontSize: 10.5, opacity: 0.72, marginTop: 2 }}>Flux persistant — affichage du joueur actif</div>}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" onClick={() => camera.toggleCamera()} style={pillStyle(camera.cameraEnabled)}>📷</button>
-          <button type="button" onClick={() => camera.toggleMic()} style={pillStyle(camera.micEnabled)}>🎙️</button>
+          <button type="button" onClick={() => void camera.toggleCamera()} style={pillStyle(camera.cameraEnabled)}>📷</button>
+          <button type="button" onClick={() => void camera.toggleMic()} style={pillStyle(camera.micEnabled)}>🎙️</button>
         </div>
       </div>
       {(camera.error || webrtcError) && <div style={{ marginTop: 8, fontSize: 11, color: "#ff9a9a", fontWeight: 800 }}>{camera.error || webrtcError}</div>}

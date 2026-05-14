@@ -3563,8 +3563,31 @@ React.useEffect(() => {
     return (Array.isArray(players) ? players : []).map((p: any) => ({
       id: String(p?.id || p?.userId || p?.profileId || "player"),
       name: String(p?.name || p?.displayName || p?.nickname || "Joueur"),
+      userId: String(p?.userId || p?.user_id || p?.ownerUserId || p?.owner_user_id || ""),
+      profileId: String(p?.profileId || p?.profile_id || p?.id || ""),
     }));
   }, [players]);
+
+  const x01OnlineCameraLocalPlayerId = React.useMemo(() => {
+    const current = String(onlineCurrentUserId || onlineUserId || onlineLocalUserId || "").trim();
+    if (!current) return String(activePlayerId || "local");
+    const candidates = Array.isArray(players) ? players : [];
+    const found = candidates.find((p: any) => {
+      const ids = [
+        p?.id,
+        p?.userId,
+        p?.user_id,
+        p?.profileId,
+        p?.profile_id,
+        p?.ownerUserId,
+        p?.owner_user_id,
+      ]
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      return ids.includes(current);
+    });
+    return String(found?.id || found?.profileId || found?.userId || current || activePlayerId || "local");
+  }, [players, onlineCurrentUserId, onlineUserId, onlineLocalUserId, activePlayerId]);
 
   const handleX01OnlineCameraStateChange = React.useCallback((state: OnlineCameraPlayerState) => {
     const id = String(state?.playerId || onlineCurrentUserId || activePlayerId || "local");
@@ -3631,11 +3654,12 @@ React.useEffect(() => {
   // doit être identifié comme CE joueur actif pour répondre aux offres WebRTC.
   // Sinon on diffuse sous l'id utilisateur et les autres clients attendent l'id joueur actif.
   const x01OnlineCameraActivePlayerId = String(activePlayerId || onlineCurrentUserId || onlineLocalUserId || "local");
-  const x01OnlineCameraSelfId = String(
-    onlineCanScore && activePlayerId
-      ? activePlayerId
-      : onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local"
-  );
+  // IMPORTANT : WebRTC doit parler avec les ids JOUEURS de la partie, pas avec les ids
+  // de compte quand l'appareil n'est pas actif. Sinon les offres envoyées au joueur
+  // "Barton" sont ignorées par le téléphone connecté avec son userId, et l'écran reste
+  // bloqué sur CAMERA OFF. Chaque appareil garde donc son playerId local stable pendant
+  // toute la partie ; le tour actif ne change que le flux affiché.
+  const x01OnlineCameraSelfId = String(x01OnlineCameraLocalPlayerId || onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local");
   const x01OnlineCameraActive = Boolean(
     effectiveOnline &&
       (x01OnlineCameraStates[x01OnlineCameraActivePlayerId]?.cameraEnabled ||

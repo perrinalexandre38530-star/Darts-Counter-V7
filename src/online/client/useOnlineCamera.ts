@@ -3,7 +3,8 @@
 // Fondation caméra ONLINE v23.1
 // - Permissions caméra / micro
 // - Activation / désactivation locale par joueur
-// - Préparation WebRTC légère (RTCPeerConnection sans échange forcé)
+// - Préparation du flux local une seule fois
+// - Caméra/micro optionnels et non bloquants pour le gameplay
 // - Synchronisation d'état via callback WS optionnel
 // =========================================================
 
@@ -110,7 +111,22 @@ export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCamer
       setError(null);
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        let stream: MediaStream | null = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch (firstError: any) {
+          // Certains mobiles refusent l'audio ou gardent le micro occupé. La vidéo ne doit pas bloquer la partie.
+          if (nextCameraEnabled) {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+              nextMicEnabled = false;
+            } catch {
+              throw firstError;
+            }
+          } else {
+            throw firstError;
+          }
+        }
         stopStream(localStreamRef.current);
         localStreamRef.current = stream;
         setLocalStream(stream);
@@ -141,8 +157,10 @@ export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCamer
   }, [localStream]);
 
   React.useEffect(() => {
+    // Publication initiale uniquement : évite de spammer le temps réel à chaque render React.
     publishState();
-  }, [publishState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
 
   React.useEffect(() => {
     return () => stopStream(localStreamRef.current);
