@@ -1586,6 +1586,8 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
         __x01OnlineDartsCount: darts.length,
         __x01OnlineUpdatedAt: Date.now(),
         __x01OnlineUpdatedBy: onlineCurrentUserId || null,
+        __x01OnlineCameraStates: x01OnlineCameraStatesRef.current || {},
+        __x01OnlineCameraUpdatedAt: Date.now(),
       },
     });
   } catch (error) {
@@ -1607,6 +1609,17 @@ React.useEffect(() => {
         (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
         (row?.state && typeof row.state === "object" ? row.state : null) ||
         {};
+      const remoteCameraStates =
+        statePayload.__x01OnlineCameraStates && typeof statePayload.__x01OnlineCameraStates === "object"
+          ? statePayload.__x01OnlineCameraStates
+          : null;
+      if (remoteCameraStates) {
+        setX01OnlineCameraStates((prev) => {
+          const next = { ...prev, ...remoteCameraStates };
+          x01OnlineCameraStatesRef.current = next;
+          return next;
+        });
+      }
       const remoteDarts = Array.isArray(statePayload.__x01OnlineDarts) ? statePayload.__x01OnlineDarts : [];
       const remoteCount = Number(statePayload.__x01OnlineDartsCount ?? remoteDarts.length) || 0;
       const sig = `${String(row?.id || onlineLobbyCode)}:${String(row?.updated_at || row?.updatedAt || statePayload.__x01OnlineUpdatedAt || "")}:${remoteCount}`;
@@ -3481,6 +3494,45 @@ React.useEffect(() => {
 
 
   const [x01OnlineCameraStates, setX01OnlineCameraStates] = React.useState<Record<string, OnlineCameraPlayerState>>({});
+  const x01OnlineCameraStatesRef = React.useRef<Record<string, OnlineCameraPlayerState>>({});
+  React.useEffect(() => {
+    x01OnlineCameraStatesRef.current = x01OnlineCameraStates;
+  }, [x01OnlineCameraStates]);
+
+  const x01OnlineCameraPublishTimerRef = React.useRef<number | null>(null);
+  const publishX01OnlineCameraStates = React.useCallback((nextStates: Record<string, OnlineCameraPlayerState>) => {
+    if (!effectiveOnline || !effectiveLobbyCode) return;
+    if (x01OnlineCameraPublishTimerRef.current) {
+      window.clearTimeout(x01OnlineCameraPublishTimerRef.current);
+    }
+    x01OnlineCameraPublishTimerRef.current = window.setTimeout(async () => {
+      try {
+        const row = await (onlineApi as any).fetchMatchByCode?.(effectiveLobbyCode);
+        const baseState =
+          (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
+          (row?.state && typeof row.state === "object" ? row.state : null) ||
+          {};
+        await (onlineApi as any).updateMatchState?.({
+          lobbyCode: effectiveLobbyCode,
+          status: row?.status === "ended" ? "ended" : "started",
+          state: {
+            ...baseState,
+            __x01OnlineCameraStates: nextStates,
+            __x01OnlineCameraUpdatedAt: Date.now(),
+            __x01OnlineCameraUpdatedBy: onlineCurrentUserId || null,
+          },
+        });
+      } catch (error) {
+        console.warn("[X01PlayV3][ONLINE] publish camera state failed", error);
+      }
+    }, 180);
+  }, [effectiveOnline, effectiveLobbyCode, onlineCurrentUserId]);
+
+  React.useEffect(() => {
+    return () => {
+      if (x01OnlineCameraPublishTimerRef.current) window.clearTimeout(x01OnlineCameraPublishTimerRef.current);
+    };
+  }, []);
 
   const x01OnlineCameraPlayers = React.useMemo(() => {
     return (Array.isArray(players) ? players : []).map((p: any) => ({
@@ -3491,14 +3543,21 @@ React.useEffect(() => {
 
   const handleX01OnlineCameraStateChange = React.useCallback((state: OnlineCameraPlayerState) => {
     const id = String(state?.playerId || onlineCurrentUserId || activePlayerId || "local");
-    setX01OnlineCameraStates((prev) => ({ ...prev, [id]: { ...state, playerId: id } }));
-  }, [onlineCurrentUserId, activePlayerId]);
+    setX01OnlineCameraStates((prev) => {
+      const next = { ...prev, [id]: { ...state, playerId: id } };
+      x01OnlineCameraStatesRef.current = next;
+      publishX01OnlineCameraStates(next);
+      return next;
+    });
+  }, [onlineCurrentUserId, activePlayerId, publishX01OnlineCameraStates]);
 
   const x01OnlineCameraSelfId = String(onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local");
   const x01OnlineCameraActivePlayerId = String(activePlayerId || x01OnlineCameraSelfId);
   const x01OnlineCameraActive = Boolean(
     effectiveOnline &&
-      x01OnlineCameraStates[x01OnlineCameraActivePlayerId]?.cameraEnabled
+      (x01OnlineCameraStates[x01OnlineCameraActivePlayerId]?.cameraEnabled ||
+        (String(x01OnlineCameraSelfId) === String(x01OnlineCameraActivePlayerId) &&
+          x01OnlineCameraStates[x01OnlineCameraSelfId]?.cameraEnabled))
   );
   const x01OnlineCameraPanel = effectiveOnline ? (
     <OnlineCameraPanel
@@ -5213,6 +5272,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           >
             {currentPlayer?.name ?? "—"}
           </div>
+          {!onlineCameraActive ? (
           <div
             style={{
               fontSize: 11.5,
@@ -5225,12 +5285,14 @@ function HeaderBlock(props: HeaderBlockProps) {
               </>
             ) : null}
           </div>
+          ) : null}
 
           {/* Mini card : stats classiques OFF / score + volée ON */}
           <div
             style={{
               ...miniCard,
               width: 176,
+              minHeight: onlineCameraActive ? 92 : undefined,
               height: "auto",
               padding: onlineCameraActive ? 8 : 7,
             }}
@@ -5279,9 +5341,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                     );
                   })}
                 </div>
-                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.70)", fontWeight: 850 }}>
-                  Volée : <b>{currentThrow.length}/3</b>
-                </div>
+
               </div>
             ) : (
               <div style={miniText}>
@@ -5316,6 +5376,8 @@ function HeaderBlock(props: HeaderBlockProps) {
             minWidth: 0,
             overflow: "hidden",
             boxSizing: "border-box",
+            height: onlineCameraActive ? 218 : undefined,
+            justifyContent: onlineCameraActive ? "stretch" : undefined,
           }}
         >
           {/* BG ancré AU SCORE (centre = centre du 501) */}
@@ -5329,6 +5391,8 @@ function HeaderBlock(props: HeaderBlockProps) {
                 position: "relative",
                 zIndex: 4,
                 marginBottom: onlineCameraActive ? 2 : -2,
+                flex: onlineCameraActive ? "1 1 auto" : undefined,
+                minHeight: onlineCameraActive ? 0 : undefined,
               }}
             >
               {onlineCameraPanel}
@@ -5456,8 +5520,9 @@ function HeaderBlock(props: HeaderBlockProps) {
               ...miniCard,
               alignSelf: "center",
               width: "min(310px,100%)",
-              height: "auto",
+              height: onlineCameraActive ? 72 : "auto",
               padding: 6,
+              flex: onlineCameraActive ? "0 0 72px" : undefined,
               position: "relative",
               zIndex: 2,
             }}

@@ -36,9 +36,9 @@ export default function OnlineCameraPanel({
     videoRef.current.srcObject = camera.localStream;
   }, [camera.localStream]);
 
-  const active = players.find((p) => p.id === activePlayerId) || players[0] || null;
-  const activeState = active ? cameraStates[active.id] : null;
-  const selfIsActive = !!active && active.id === selfId;
+  const active = players.find((p) => String(p.id) === String(activePlayerId)) || players[0] || null;
+  const activeState = active ? cameraStates[String(active.id)] : null;
+  const selfIsActive = !!active && String(active.id) === String(selfId);
   const activeCameraEnabled = !!activeState?.cameraEnabled || (selfIsActive && camera.cameraEnabled);
   const canShowLocalPreview = selfIsActive && camera.cameraEnabled && camera.localStream;
 
@@ -47,51 +47,77 @@ export default function OnlineCameraPanel({
       <section
         style={{
           width: "100%",
-          borderRadius: 16,
-          padding: activeCameraEnabled ? 6 : 0,
-          border: activeCameraEnabled ? "1px solid rgba(127,226,169,.26)" : "0",
-          background: activeCameraEnabled ? "linear-gradient(180deg, rgba(5,10,12,.78), rgba(0,0,0,.72))" : "transparent",
-          boxShadow: activeCameraEnabled ? "0 10px 24px rgba(0,0,0,.42), 0 0 18px rgba(127,226,169,.14)" : "none",
+          height: "100%",
+          minHeight: 0,
+          borderRadius: 15,
+          padding: 5,
+          border: activeCameraEnabled ? "1px solid rgba(127,226,169,.30)" : "1px solid rgba(255,255,255,.08)",
+          background: activeCameraEnabled
+            ? "linear-gradient(180deg, rgba(4,8,10,.82), rgba(0,0,0,.70))"
+            : "linear-gradient(180deg, rgba(255,255,255,.045), rgba(0,0,0,.20))",
+          boxShadow: activeCameraEnabled ? "0 10px 24px rgba(0,0,0,.38), 0 0 18px rgba(127,226,169,.14)" : "none",
           overflow: "hidden",
+          position: "relative",
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 5, marginBottom: activeCameraEnabled ? 5 : 0 }}>
-          <button type="button" onClick={() => camera.toggleCamera()} style={{ ...pillStyle(camera.cameraEnabled), padding: "5px 8px", fontSize: 10.5 }}>
-            📷 {camera.cameraEnabled ? "ON" : "OFF"}
-          </button>
-          <button type="button" onClick={() => camera.toggleMic()} style={{ ...pillStyle(camera.micEnabled), padding: "5px 8px", fontSize: 10.5 }}>
-            🎙️ {camera.micEnabled ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        {activeCameraEnabled ? (
+        <div
+          style={{
+            height: "100%",
+            minHeight: 82,
+            borderRadius: 12,
+            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,.10)",
+            background: activeCameraEnabled
+              ? "radial-gradient(circle at 50% 20%, rgba(127,226,169,.16), rgba(0,0,0,.88) 62%)"
+              : "radial-gradient(circle at 50% 20%, rgba(255,255,255,.08), rgba(0,0,0,.88) 66%)",
+            display: "grid",
+            placeItems: "center",
+            position: "relative",
+          }}
+        >
           <div
             style={{
-              height: 64,
-              borderRadius: 12,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,.10)",
-              background: "radial-gradient(circle at 50% 20%, rgba(127,226,169,.16), rgba(0,0,0,.88) 62%)",
-              display: "grid",
-              placeItems: "center",
+              position: "absolute",
+              right: 6,
+              top: 6,
+              zIndex: 3,
+              display: "flex",
+              gap: 5,
             }}
           >
-            {canShowLocalPreview ? (
-              <video ref={videoRef} muted playsInline autoPlay style={{ width: "100%", height: 64, objectFit: "cover", transform: "scaleX(-1)" }} />
-            ) : (
-              <div style={{ textAlign: "center", padding: "4px 6px" }}>
-                <div style={{ fontSize: 16, lineHeight: 1 }}>🎥</div>
-                <div style={{ marginTop: 2, fontSize: 10.5, fontWeight: 950, color: "#fff" }}>
-                  {active ? active.name || "Joueur actif" : "Joueur actif"}
-                </div>
-                <div style={{ marginTop: 1, fontSize: 9, opacity: 0.68 }}>Caméra active · WebRTC prêt</div>
-              </div>
-            )}
+            <button type="button" onClick={() => camera.toggleCamera()} aria-label="Caméra online" style={iconButtonStyle(camera.cameraEnabled)}>
+              📷
+            </button>
+            <button type="button" onClick={() => camera.toggleMic()} aria-label="Micro online" style={iconButtonStyle(camera.micEnabled)}>
+              🎙️
+            </button>
           </div>
-        ) : null}
 
-        {status === "blocked" || status === "error" ? (
-          <div style={{ marginTop: 4, fontSize: 9.5, color: "#ff9aa8", fontWeight: 800, textAlign: "right" }}>{error || "Caméra indisponible"}</div>
+          {canShowLocalPreview ? (
+            <video ref={videoRef} muted playsInline autoPlay style={{ width: "100%", height: "100%", minHeight: 82, objectFit: "cover", transform: "scaleX(-1)" }} />
+          ) : activeCameraEnabled ? (
+            <div style={{ textAlign: "center", padding: "18px 8px 8px" }}>
+              <div style={{ fontSize: 17, lineHeight: 1 }}>🎥</div>
+              <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 950, color: "#fff" }}>
+                {active ? active.name || "Joueur actif" : "Joueur actif"}
+              </div>
+              <div style={{ marginTop: 2, fontSize: 8.5, opacity: 0.66, fontWeight: 750 }}>
+                Caméra joueur actif
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "18px 8px 8px", opacity: 0.72 }}>
+              <div style={{ fontSize: 16, lineHeight: 1 }}>📷</div>
+              <div style={{ marginTop: 3, fontSize: 9.5, fontWeight: 900 }}>Caméra OFF</div>
+            </div>
+          )}
+        </div>
+
+        {camera.error ? (
+          <div style={{ position: "absolute", left: 8, right: 8, bottom: 6, fontSize: 8.5, color: "#ff9aa8", fontWeight: 800, textAlign: "center", textShadow: "0 1px 3px #000" }}>
+            {camera.error}
+          </div>
         ) : null}
       </section>
     );
@@ -169,7 +195,7 @@ export default function OnlineCameraPanel({
       {!compact && players.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
           {players.map((p) => {
-            const st = p.id === selfId ? { cameraEnabled: camera.cameraEnabled, micEnabled: camera.micEnabled } : cameraStates[p.id];
+            const st = String(p.id) === String(selfId) ? { cameraEnabled: camera.cameraEnabled, micEnabled: camera.micEnabled } : cameraStates[String(p.id)];
             return (
               <span key={p.id} style={badgeStyle(!!st?.cameraEnabled)}>
                 {p.name || "Joueur"} · {st?.cameraEnabled ? "📷" : "—"}{st?.micEnabled ? " 🎙️" : ""}
@@ -180,6 +206,25 @@ export default function OnlineCameraPanel({
       )}
     </section>
   );
+}
+
+function iconButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    width: 30,
+    height: 24,
+    borderRadius: 999,
+    border: active ? "1px solid rgba(127,226,169,.82)" : "1px solid rgba(255,255,255,.22)",
+    background: active ? "linear-gradient(180deg,#78f0ab,#24c46a)" : "linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.07))",
+    color: active ? "#061006" : "#f7f7fb",
+    boxShadow: active ? "0 0 13px rgba(57,255,140,.34), 0 6px 14px rgba(0,0,0,.35)" : "0 6px 14px rgba(0,0,0,.30)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: "pointer",
+    backdropFilter: "blur(8px)",
+  };
 }
 
 function pillStyle(active: boolean): React.CSSProperties {

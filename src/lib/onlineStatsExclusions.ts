@@ -4,11 +4,11 @@
 // Nettoyage statistiques ONLINE — exclusion/restauration sans supprimer
 // brutalement les matchs sources.
 //
-// V6 : correction importante du nettoyage Online. Les clés de dédoublonnage
-// ne prennent plus les id des joueurs/profils ni les roomId/lobbyCode, car
-// cela fusionnait plusieurs matchs d'un même salon en une seule carte.
-// On utilise uniquement des identifiants forts de match/session + une signature
-// stable date/mode/joueurs en secours.
+// V7 SAFE : base stable V5 + correction ciblée du dédoublonnage.
+// On ne dédoublonne plus avec roomId/lobbyCode ni avec les id trouvés en
+// profondeur, car ce sont souvent des salons ou des joueurs et non des matchs.
+// Les lignes sans identifiant fort gardent une clé de secours source+date+score
+// pour rester sélectionnables sans fusionner plusieurs parties.
 // =============================================================
 
 import { History } from "./history";
@@ -828,7 +828,17 @@ function pushSessionKey(keys: any[], value: any, allowColonBase = true) {
   }
 }
 
-function collectStrongSessionKeysFrom(obj: any, keys: any[], includeGenericId = false) {
+function isGenericMatchId(value: any): boolean {
+  const id = str(value);
+  if (!id) return false;
+  // Évite les ids de joueurs/profils/bots/teams qui étaient la cause des fusions.
+  if (/^(usr|user|profile|player|bot|team|avatar|friend|req)[_:-]/i.test(id)) return false;
+  // Un id numérique court ou un nom de joueur n'identifie pas une session.
+  if (/^\d{1,5}$/.test(id)) return false;
+  return id.length >= 6;
+}
+
+function collectRootSessionKeys(obj: any, keys: any[], includeGenericId = false) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
   pushSessionKey(keys, obj.matchId);
   pushSessionKey(keys, obj.match_id);
@@ -842,40 +852,58 @@ function collectStrongSessionKeysFrom(obj: any, keys: any[], includeGenericId = 
   pushSessionKey(keys, obj.lobby_match_id);
   pushSessionKey(keys, obj.historyId);
   pushSessionKey(keys, obj.history_id);
+  if (includeGenericId && isGenericMatchId(obj.id)) pushSessionKey(keys, obj.id);
+}
 
-  // id générique autorisé seulement sur les objets racines de match.
-  // Surtout ne pas prendre les id rencontrés en profondeur : ce sont souvent
-  // des ids de joueurs/profils et ça fusionne plusieurs parties ensemble.
-  if (includeGenericId) {
-    const id = str(obj.id);
-    if (id && !/^usr_|^profile_|^player_|^bot_|^team_/i.test(id)) pushSessionKey(keys, id);
+function directTs(...values: any[]): number {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+    if (typeof value === "string") {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
   }
+  return 0;
 }
 
 function buildFallbackSessionKey(row: any): string {
-  const created = getCreatedAt(row) || 0;
-  const mode = getModeLabel(row) || "online";
+  if (!row || typeof row !== "object") return "";
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const summary = row.summary && typeof row.summary === "object" ? row.summary : payload.summary && typeof payload.summary === "object" ? payload.summary : {};
+  const created = directTs(
+    row.createdAt, row.created_at, row.date, row.ts, row.startedAt, row.finishedAt,
+    payload.createdAt, payload.created_at, payload.startedAt, payload.finishedAt,
+    summary.createdAt, summary.finishedAt, summary.updatedAt,
+  );
+  const mode = str(row.mode || row.kind || payload.mode || payload.onlineMode || summary.mode || "online");
   const players = collectPlayersLabel(row) || "players";
-  const score = str(deepFirst(row, ["scoreLine", "finalScoreLabel", "scoreLabel", "winnerName", "winnerId"]));
-  return `online-session:${created}:${normKey(mode)}:${hashLite(`${players}|${score}`)}`;
+  const score = str(row.scoreLabel || row.finalScoreLabel || summary.scoreLabel || summary.finalScoreLabel || summary.winnerName || row.winnerName || "");
+  const statSig = `${num(row?.stats?.darts ?? row?.darts)}:${num(row?.stats?.totalScore ?? row?.totalScore)}:${num(row?.stats?.bestVisit ?? row?.bestVisit)}`;
+  const storageKey = str(row.__localStorageKey || row.__historySource || row.__storeSource || "src");
+  const storageIndex = str(row.__cleanupIndex ?? "");
+
+  if (!created && !score && !storageIndex) return "";
+  return `online-session:${storageKey}:${storageIndex}:${created || "no-date"}:${normKey(mode)}:${hashLite(`${players}|${score}|${statSig}`)}`;
 }
 
 export function getOnlineStatsSessionKeys(row: any): string[] {
   const keys: any[] = [];
 
-  collectStrongSessionKeysFrom(row, keys, true);
-  collectStrongSessionKeysFrom(row?.payload, keys, true);
-  collectStrongSessionKeysFrom(row?.summary, keys, true);
-  collectStrongSessionKeysFrom(row?.payload?.summary, keys, true);
-  collectStrongSessionKeysFrom(row?.match, keys, true);
-  collectStrongSessionKeysFrom(row?.payload?.match, keys, true);
-  collectStrongSessionKeysFrom(row?.state?.match, keys, true);
-  collectStrongSessionKeysFrom(row?.payload?.state?.match, keys, true);
+  // Seulement des objets racines connus : jamais de scan profond des ids.
+  collectRootSessionKeys(row, keys, true);
+  collectRootSessionKeys(row?.payload, keys, true);
+  collectRootSessionKeys(row?.summary, keys, true);
+  collectRootSessionKeys(row?.payload?.summary, keys, true);
+  collectRootSessionKeys(row?.match, keys, true);
+  collectRootSessionKeys(row?.payload?.match, keys, true);
+  collectRootSessionKeys(row?.state?.match, keys, true);
+  collectRootSessionKeys(row?.payload?.state?.match, keys, true);
 
-  // Ne pas ajouter roomId/lobbyCode ici : un salon peut contenir plusieurs matchs.
-  // Ces valeurs servent uniquement à détecter qu'une ligne est Online, pas à
-  // identifier une session statistique unique.
-  if (isLikelyOnlineRecord(row)) pushSessionKey(keys, buildFallbackSessionKey(row), false);
+  // Important : pas de roomId/lobbyCode ici. Un salon peut contenir plusieurs matchs.
+  const fallback = buildFallbackSessionKey(row);
+  if (fallback) pushSessionKey(keys, fallback, false);
 
   return uniq(keys);
 }
@@ -1083,7 +1111,7 @@ async function loadHistoryOnlineRows(): Promise<OnlineStatsCleanupSession[]> {
         const id = str(row?.id ?? row?.matchId);
         if (id) full = mergeHistoryFull(row, (await History.get(id)) || {});
       } catch {}
-      const normalized = normalizeCleanupSession(full, "history", i);
+      const normalized = normalizeCleanupSession({ ...(full || {}), __historySource: "history", __cleanupIndex: i }, "history", i);
       if (normalized) out.push(normalized);
     }
     return out;
@@ -1111,7 +1139,7 @@ async function loadStoreOnlineRows(): Promise<OnlineStatsCleanupSession[]> {
 
     const out: OnlineStatsCleanupSession[] = [];
     buckets.forEach((row, idx) => {
-      const normalized = normalizeCleanupSession(row, "store", idx);
+      const normalized = normalizeCleanupSession({ ...(row || {}), __storeSource: "store", __cleanupIndex: idx }, "store", idx);
       if (normalized) out.push(normalized);
     });
     return out;
@@ -1155,7 +1183,7 @@ function loadLocalStorageOnlineRows(): OnlineStatsCleanupSession[] {
   const out: OnlineStatsCleanupSession[] = [];
   for (const bucket of localStorageOnlineArrays()) {
     bucket.rows.forEach((row, idx) => {
-      const normalized = normalizeCleanupSession({ ...(row || {}), source: row?.source || "online", __localStorageKey: bucket.key }, "localStorage", idx);
+      const normalized = normalizeCleanupSession({ ...(row || {}), source: row?.source || "online", __localStorageKey: bucket.key, __cleanupIndex: idx }, "localStorage", idx);
       if (normalized) out.push(normalized);
     });
   }
