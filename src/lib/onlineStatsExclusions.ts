@@ -12,10 +12,12 @@
 // =============================================================
 
 import { History } from "./history";
-import { loadStore, scopedStorageKey } from "./storage";
+import { apiDelete, apiPost } from "./apiClient";
+import { loadStore, saveStore, scopedStorageKey } from "./storage";
 
 const ONLINE_STATS_EXCLUDED_KEY = "dc_online_stats_excluded_ids_v1";
 const ONLINE_MATCHES_KEY = "dc_online_matches_v1";
+const ONLINE_STATS_DELETED_KEY = "dc_online_stats_deleted_ids_v1";
 
 export type OnlineStatsCleanupSession = {
   id: string;
@@ -102,6 +104,11 @@ function storageKeys() {
 function onlineMatchStorageKeys() {
   const scoped = scopedStorageKey(ONLINE_MATCHES_KEY);
   return scoped === ONLINE_MATCHES_KEY ? [ONLINE_MATCHES_KEY] : [scoped, ONLINE_MATCHES_KEY];
+}
+
+function deletedStorageKeys() {
+  const scoped = scopedStorageKey(ONLINE_STATS_DELETED_KEY);
+  return scoped === ONLINE_STATS_DELETED_KEY ? [ONLINE_STATS_DELETED_KEY] : [scoped, ONLINE_STATS_DELETED_KEY];
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -936,6 +943,45 @@ function saveOnlineStatsExcludedMap(map: ExclusionMap) {
   writeJson(scopedStorageKey(ONLINE_STATS_EXCLUDED_KEY), map || {});
 }
 
+export function readOnlineStatsDeletedMap(): ExclusionMap {
+  if (!isBrowser()) return {};
+  const merged: ExclusionMap = {};
+  for (const key of deletedStorageKeys()) {
+    const parsed = readJson<any>(key, {});
+    if (Array.isArray(parsed)) {
+      parsed.forEach((id) => {
+        const k = str(id);
+        if (k) merged[k] = { excludedAt: 1, reason: "legacy-deleted-array" };
+      });
+    } else if (parsed && typeof parsed === "object") {
+      for (const [id, entry] of Object.entries(parsed)) {
+        const k = str(id);
+        if (!k) continue;
+        merged[k] = typeof entry === "object" && entry
+          ? { excludedAt: num((entry as any).excludedAt, 1), restoredAt: (entry as any).restoredAt, reason: (entry as any).reason || "hard-delete" }
+          : { excludedAt: 1, reason: "legacy-deleted-map" };
+      }
+    }
+  }
+  return merged;
+}
+
+function saveOnlineStatsDeletedMap(map: ExclusionMap) {
+  if (!isBrowser()) return;
+  writeJson(scopedStorageKey(ONLINE_STATS_DELETED_KEY), map || {});
+}
+
+export function isOnlineStatsHardDeleted(row: any): boolean {
+  if (!row) return false;
+  const deleted = readOnlineStatsDeletedMap();
+  const keys = getOnlineStatsSessionKeys(row);
+  return keys.some((k) => !!deleted[k]);
+}
+
+export function filterOnlineStatsHardDeleted<T>(rows: T[]): T[] {
+  return (rows || []).filter((row: any) => !isOnlineStatsHardDeleted(row));
+}
+
 function hasFlagInRecord(row: any): boolean {
   const flagKeys = new Set([
     "excludedFromStats",
@@ -966,6 +1012,7 @@ function hasFlagInRecord(row: any): boolean {
 
 export function isOnlineStatsExcluded(row: any): boolean {
   if (!row) return false;
+  if (isOnlineStatsHardDeleted(row)) return true;
   if (hasFlagInRecord(row)) return true;
   const excluded = readOnlineStatsExcludedMap();
   const keys = getOnlineStatsSessionKeys(row);
@@ -1070,6 +1117,7 @@ function mergeHistoryFull(light: any, full: any): any {
 
 function normalizeCleanupSession(row: any, source: "history" | "store" | "localStorage", idx = 0): OnlineStatsCleanupSession | null {
   if (!row || typeof row !== "object") return null;
+  if (isOnlineStatsHardDeleted(row)) return null;
   if (!isLikelyOnlineRecord(row)) return null;
 
   const stats = extractStats(row);
@@ -1383,6 +1431,27 @@ export async function keepOnlyOnlineStatsSessions(idsOrKeysToKeep: string[], rea
   await setOnlineStatsSessionsExcluded(Array.from(keep), false, "online-cleanup-kept-session");
 }
 
+async function tryRemoteHardDeleteOnlineSession(session: OnlineStatsCleanupSession) {
+  const ids = uniq([session.matchId, session.id, ...(session.keys || [])])
+    .filter((id) => id && !String(id).startsWith("online-session:"));
+  const raw: any = session.raw || {};
+  const lobbyCode = str(
+    raw?.lobbyCode || raw?.onlineLobbyCode || raw?.payload?.lobbyCode || raw?.payload?.onlineLobbyCode || raw?.payload?.state?.lobbyCode || raw?.state?.lobbyCode
+  );
+
+  // Le zip front ne contient pas le server.js : on tente donc plusieurs routes
+  // compatibles sans bloquer si le backend NAS ne les expose pas encore.
+  for (const id of ids.slice(0, 4)) {
+    try { await apiDelete(`/online/matches/${encodeURIComponent(id)}`); return; } catch {}
+    try { await apiPost(`/online/matches/delete-safe`, { id, matchId: id, lobbyCode: lobbyCode || undefined }); return; } catch {}
+    try { await apiPost(`/online/matches/delete`, { id, matchId: id, lobbyCode: lobbyCode || undefined }); return; } catch {}
+  }
+  if (lobbyCode) {
+    try { await apiPost(`/online/matches/delete-safe`, { lobbyCode }); return; } catch {}
+    try { await apiDelete(`/online/matches/by-code-safe/${encodeURIComponent(lobbyCode)}`); return; } catch {}
+  }
+}
+
 export async function hardDeleteOnlineStatsSessions(idsOrKeys: string[]) {
   const keys = uniq(idsOrKeys || []);
   if (!keys.length) return;
@@ -1390,28 +1459,89 @@ export async function hardDeleteOnlineStatsSessions(idsOrKeys: string[]) {
   const sessions = await listOnlineStatsCleanupSessions();
   const selected = sessions.filter((s) => s.keys.some((k) => keySet.has(k)) || keySet.has(s.id) || keySet.has(s.matchId));
 
+  // Tombstone local persistant : indispensable parce que l'onglet ONLINE recharge
+  // aussi les matchs NAS via onlineApi.listMatches(), puis les réécrit dans
+  // dc_online_matches_v1. Sans cette liste noire, une suppression locale revient
+  // au prochain refresh/reload.
+  const deletedMap = readOnlineStatsDeletedMap();
+  const ts = nowTs();
+  for (const key of keys) deletedMap[key] = { excludedAt: ts, reason: "manual-hard-delete" };
   for (const session of selected) {
-    try { await History.remove(session.matchId || session.id); } catch {}
+    for (const key of uniq([session.id, session.matchId, ...(session.keys || [])])) {
+      deletedMap[key] = { excludedAt: ts, reason: "manual-hard-delete" };
+    }
+  }
+  saveOnlineStatsDeletedMap(deletedMap);
 
-    if (isBrowser()) {
-      for (const bucket of localStorageOnlineArrays()) {
-        const arr = bucket.rows;
-        if (!Array.isArray(arr) || !arr.length) continue;
-        const next = arr.filter((row) => !getOnlineStatsSessionKeys(row).some((k) => session.keys.includes(k)));
-        if (next.length !== arr.length) writeJson(bucket.key, next);
-      }
+  // Retire aussi les éventuelles exclusions correspondantes : une session supprimée
+  // ne doit plus rester dans l'onglet "Voir exclues".
+  const exclusionMap = readOnlineStatsExcludedMap();
+  for (const key of Object.keys(deletedMap)) delete exclusionMap[key];
+  for (const session of selected) for (const key of session.keys || []) delete exclusionMap[key];
+  saveOnlineStatsExcludedMap(exclusionMap);
+
+  const allSelectedKeys = new Set<string>();
+  for (const key of keys) allSelectedKeys.add(key);
+  for (const session of selected) {
+    uniq([session.id, session.matchId, ...(session.keys || [])]).forEach((k) => allSelectedKeys.add(k));
+  }
+
+  const shouldRemoveRow = (row: any) => {
+    const rowKeys = getOnlineStatsSessionKeys(row);
+    return rowKeys.some((k) => allSelectedKeys.has(k) || !!deletedMap[k]);
+  };
+
+  for (const session of selected) {
+    try { await tryRemoteHardDeleteOnlineSession(session); } catch {}
+
+    const idsToTry = uniq([session.matchId, session.id, ...(session.keys || [])]);
+    for (const id of idsToTry) {
+      try { await History.remove(id); } catch {}
     }
   }
 
-  const map = readOnlineStatsExcludedMap();
-  for (const session of selected) {
-    for (const key of session.keys) delete map[key];
+  // Nettoyage du store principal, sinon loadStore().history / store.matches
+  // peut recréer les cartes dans Nettoyage Online après suppression.
+  try {
+    const store: any = await loadStore<any>();
+    if (store && typeof store === "object") {
+      const fields = [
+        "history",
+        "saved",
+        "matches",
+        "onlineMatches",
+        "historyRows",
+        "historyCache",
+        "savedMatches",
+        "matchHistory",
+        "recentMatches",
+        "resumes",
+      ];
+      let changed = false;
+      for (const field of fields) {
+        if (!Array.isArray(store[field])) continue;
+        const before = store[field].length;
+        store[field] = store[field].filter((row: any) => !shouldRemoveRow(row));
+        if (store[field].length !== before) changed = true;
+      }
+      if (changed) await saveStore(store, { skipAsyncNormalize: true } as any);
+    }
+  } catch {}
+
+  if (isBrowser()) {
+    for (const bucket of localStorageOnlineArrays()) {
+      const arr = bucket.rows;
+      if (!Array.isArray(arr) || !arr.length) continue;
+      const next = arr.filter((row) => !shouldRemoveRow(row));
+      if (next.length !== arr.length) writeJson(bucket.key, next);
+    }
   }
-  saveOnlineStatsExcludedMap(map);
 
   try { window.dispatchEvent(new Event("dc-online-stats-exclusions-changed")); } catch {}
+  try { window.dispatchEvent(new Event("dc-online-matches-deleted")); } catch {}
   try { window.dispatchEvent(new Event("dc-history-updated")); } catch {}
 }
+
 
 export function clearOnlineStatsExclusionLocalIndex() {
   saveOnlineStatsExcludedMap({});

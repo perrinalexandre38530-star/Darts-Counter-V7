@@ -61,6 +61,7 @@ import { joinPresence } from "../lib/onlinePresence";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import { History } from "../lib/history";
 import { getTicker } from "../lib/tickers";
+import { filterOnlineStatsHardDeleted } from "../lib/onlineStatsExclusions";
 
 /* -------------------------------------------------
    Constantes localStorage
@@ -1219,10 +1220,11 @@ const doLogout = React.useCallback(async () => {
       setLoadingMatches(true);
       try {
         const list = await onlineApi.listMatches(50);
+        const cleanList = filterOnlineStatsHardDeleted(list || []);
         if (!cancelled) {
-          setMatches(list || []);
+          setMatches(cleanList || []);
           try {
-            window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(list || []));
+            window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(cleanList || []));
           } catch {}
         }
       } catch {
@@ -1232,8 +1234,13 @@ const doLogout = React.useCallback(async () => {
       }
     }
     load();
+    const onCleanupChanged = () => load();
+    window.addEventListener("dc-online-matches-deleted", onCleanupChanged);
+    window.addEventListener("dc-online-stats-exclusions-changed", onCleanupChanged);
     return () => {
       cancelled = true;
+      window.removeEventListener("dc-online-matches-deleted", onCleanupChanged);
+      window.removeEventListener("dc-online-stats-exclusions-changed", onCleanupChanged);
     };
   }, []);
 
