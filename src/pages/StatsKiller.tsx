@@ -136,6 +136,8 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
     { label: "Darts", total: agg.dartsTotal || 0, avg: agg.dartsAvg || 0, pct: null },
     { label: "Vies prises", total: agg.livesTakenTotal || 0, avg: agg.played ? num(agg.livesTakenTotal) / Math.max(1, num(agg.played)) : 0, pct: null },
     { label: "Vies perdues", total: agg.livesLostTotal || 0, avg: agg.played ? num(agg.livesLostTotal) / Math.max(1, num(agg.played)) : 0, pct: null },
+    { label: "Auto-hits", total: agg.autoHitsTotal || 0, avg: agg.autoHitsAvg || 0, pct: null },
+    { label: "Auto-kills", total: agg.autoKillsTotal || 0, avg: agg.autoKillsAvg || 0, pct: null },
     { label: "Résurrections", total: agg.resurrectionsGivenTotal || 0, avg: agg.played ? num(agg.resurrectionsGivenTotal) / Math.max(1, num(agg.played)) : 0, pct: null },
     { label: "Désarmements", total: agg.disarmsTriggeredTotal || 0, avg: agg.played ? num(agg.disarmsTriggeredTotal) / Math.max(1, num(agg.played)) : 0, pct: null },
     { label: "Contres bouclier", total: shieldCounters, avg: agg.played ? shieldCounters / Math.max(1, num(agg.played)) : 0, pct: null },

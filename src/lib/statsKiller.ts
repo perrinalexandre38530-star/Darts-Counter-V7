@@ -25,6 +25,8 @@ export type KillerStatsAgg = {
 
   autoKillsTotal: number;
   autoKillsAvg: number;
+  autoHitsTotal: number;
+  autoHitsAvg: number;
   selfPenaltyHitsTotal: number;
   selfPenaltyHitsAvg: number;
   livesStolenTotal: number;
@@ -285,7 +287,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
   let played = 0, wins = 0, lastAt = 0;
   let killsTotal = 0, deathsTotal = 0, dartsTotal = 0;
   let livesTakenTotal = 0, livesLostTotal = 0;
-  let autoKillsTotal = 0, selfPenaltyHitsTotal = 0, livesStolenTotal = 0, livesHealedTotal = 0;
+  let autoKillsTotal = 0, autoHitsTotal = 0, selfPenaltyHitsTotal = 0, livesStolenTotal = 0, livesHealedTotal = 0;
   let disarmsTriggeredTotal = 0, disarmsReceivedTotal = 0, shieldBreaksTotal = 0, shieldHalfBreaksTotal = 0;
   let resurrectionsGivenTotal = 0, resurrectionsReceivedTotal = 0;
   let offensiveThrowsTotal = 0, killerThrowsTotal = 0, uselessHitsTotal = 0, rearmThrowsTotal = 0;
@@ -326,6 +328,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     livesLostTotal += numOr0(me?.livesLost, me?.damageTaken, me?.dmgTaken, special?.livesLost, sp?.livesLost, sp?.damageTaken, sp?.dmgTaken);
 
     autoKillsTotal += numOr0(me?.autoKills, me?.auto_kills, special?.autoKills, sp?.autoKills, sp?.auto_kills);
+    autoHitsTotal += numOr0(me?.autoHits, me?.auto_hits, special?.autoHits, sp?.autoHits, sp?.auto_hits);
     selfPenaltyHitsTotal += numOr0(me?.selfPenaltyHits, me?.self_penalty_hits, me?.selfHits, me?.hitsOnSelf, special?.selfPenaltyHits, sp?.selfPenaltyHits, sp?.self_penalty_hits, sp?.selfHits, sp?.hitsOnSelf);
     livesStolenTotal += numOr0(me?.livesStolen, me?.lives_stolen, special?.livesStolen, sp?.livesStolen, sp?.lives_stolen);
     livesHealedTotal += numOr0(me?.livesHealed, me?.lives_healed, special?.livesHealed, sp?.livesHealed, sp?.lives_healed);
@@ -394,6 +397,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
   const deathsAvg = played > 0 ? deathsTotal / played : 0;
   const dartsAvg = played > 0 ? dartsTotal / played : 0;
   const autoKillsAvg = played > 0 ? autoKillsTotal / played : 0;
+  const autoHitsAvg = played > 0 ? autoHitsTotal / played : 0;
   const selfPenaltyHitsAvg = played > 0 ? selfPenaltyHitsTotal / played : 0;
   const livesStolenAvg = played > 0 ? livesStolenTotal / played : 0;
   const livesHealedAvg = played > 0 ? livesHealedTotal / played : 0;
@@ -404,7 +408,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     played, wins, winRate, lastAt, lastPlayedAt: lastAt,
     killsTotal, killsAvg, deathsTotal, deathsAvg, dartsTotal, dartsAvg, totalHits,
     livesTakenTotal, livesLostTotal, livesDeltaTotal: livesTakenTotal - livesLostTotal,
-    autoKillsTotal, autoKillsAvg, selfPenaltyHitsTotal, selfPenaltyHitsAvg,
+    autoKillsTotal, autoKillsAvg, autoHitsTotal, autoHitsAvg, selfPenaltyHitsTotal, selfPenaltyHitsAvg,
     livesStolenTotal, livesStolenAvg, livesHealedTotal, livesHealedAvg,
     disarmsTriggeredTotal, disarmsTriggeredAvg, disarmsReceivedTotal,
     shieldBreaksTotal, shieldHalfBreaksTotal,

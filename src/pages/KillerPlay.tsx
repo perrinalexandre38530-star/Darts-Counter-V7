@@ -120,6 +120,7 @@ type KillerPlayerState = {
 
   kills: number;
   autoKills?: number;
+  autoHits?: number;
   // ✅ Variantes (stats)
   // Auto-hit = occurrences de touches sur SON numéro en phase ACTIVE quand l'option est activée.
   // (Version B demandée : occurrences, pas pondéré S/D/T)
@@ -246,6 +247,8 @@ function tryResurrectOnHit(args: {
     resurrectionEnabled,
     resurrectionMode,
     resurrectionLives,
+    resGlobalUsedRef,
+    resByPidUsedRef,
     elimOrderRef,
     pushLog,
     pushEvent,
@@ -254,9 +257,18 @@ function tryResurrectOnHit(args: {
 
   if (!actor || actor.eliminated) return false;
 
-  const normalizedMode = String(resurrectionMode ?? "").toLowerCase().trim();
+  const normalizedModeRaw = String(resurrectionMode ?? "").toLowerCase().trim();
+  const normalizedMode =
+    ["one_player_once", "one-player-once", "one_player", "one", "single", "1", "1_player", "1joueur"].includes(normalizedModeRaw)
+      ? "one_player_once"
+      : ["all_once", "all-once", "all_1x", "all1x", "all_once_per_player"].includes(normalizedModeRaw)
+      ? "all_once"
+      : ["all", "unlimited", "illimite", "illimité", "infinite", "∞"].includes(normalizedModeRaw)
+      ? "all"
+      : normalizedModeRaw;
   const resurrectionOn = !!resurrectionEnabled || normalizedMode !== "off";
-  if (!resurrectionOn) return false;
+  if (!resurrectionOn || normalizedMode === "off") return false;
+  if (normalizedMode === "one_player_once" && !!resGlobalUsedRef?.current) return false;
 
   const tt = Number(target ?? 0);
   if (!Number.isFinite(tt) || tt <= 0 || tt > 20) return false;
@@ -268,6 +280,16 @@ function tryResurrectOnHit(args: {
 
   const dead = players[deadIdx];
   if (!dead || dead.id === actor.id) return false;
+
+  const deadId = String(dead.id || "");
+  const usedByPlayer = (resByPidUsedRef?.current || {}) as Record<string, boolean>;
+  if (normalizedMode === "all_once" && deadId && usedByPlayer[deadId]) return false;
+
+  if (normalizedMode === "one_player_once") {
+    if (resGlobalUsedRef) resGlobalUsedRef.current = true;
+  } else if (normalizedMode === "all_once" && deadId) {
+    if (resByPidUsedRef) resByPidUsedRef.current = { ...(resByPidUsedRef.current || {}), [deadId]: true };
+  }
 
   dead.eliminated = false;
   dead.eliminatedAt = null;
@@ -298,7 +320,7 @@ function tryResurrectOnHit(args: {
     targetNumber: dead.number,
     throw: { target: tt, mult: 1 },
     lives: dead.lives,
-    mode: "simple",
+    mode: normalizedMode,
   });
 
   pendingSfxRef.current = { kind: "resurrect" };
@@ -2674,6 +2696,7 @@ React.useEffect(() => {
         killerPhase: phase,
         kills: 0,
         autoKills: 0,
+        autoHits: 0,
         selfPenaltyHits: 0,
         livesStolen: 0,
         livesHealed: 0,
@@ -3055,7 +3078,7 @@ React.useEffect(() => {
             shieldTurns: Number(p?.shieldTurnsLeft ?? 0),
             lives: Number(p?.lives ?? 0),
             number: Number(p?.number ?? 0),
-            autoHits: Number(autoHitByActor.get(String(p?.id ?? idx)) || 0),
+            autoHits: Number(p?.autoHits ?? autoHitByActor.get(String(p?.id ?? idx)) ?? 0),
             resurrectionsGiven: Number(p?.resurrectionsGiven ?? 0),
             resurrectionsReceived: Number(p?.resurrectionsReceived ?? 0),
           },
@@ -3302,7 +3325,7 @@ React.useEffect(() => {
       const nextP = base[nextIdx];
       setPlayers((curr) => curr.map((p, i) => (i === nextIdx && p.resurrectShield ? { ...p, resurrectShield: false } : p)));
       setDartsLeft(nextP?.killerPhase === "SELECT" ? 1 : 3);
-      setTurnCount((n) => n + 1);
+      setTurnCount((n) => (nextIdx <= prev ? n + 1 : n));
       if (bullRotateOn) setBullRotateStep((n) => n + 1);
       if (dbullRotateOn) setDbullRotateStep((n) => n + 1);
       return nextIdx;
@@ -3422,6 +3445,7 @@ React.useEffect(() => {
         killerPhase: p.killerPhase,
         kills: p.kills,
         autoKills: p.autoKills ?? 0,
+        autoHits: p.autoHits ?? 0,
         selfPenaltyHits: p.selfPenaltyHits ?? 0,
         livesStolen: p.livesStolen ?? 0,
         livesHealed: p.livesHealed ?? 0,
@@ -3479,6 +3503,7 @@ React.useEffect(() => {
       eliminated: p.eliminated,
       kills: p.kills,
       autoKills: p.autoKills ?? 0,
+      autoHits: p.autoHits ?? 0,
       livesTaken: p.livesTaken,
       win: p.id === winnerId,
       winner: p.id === winnerId,
@@ -3533,6 +3558,7 @@ React.useEffect(() => {
         special: {
           kills: Number(p.kills || 0),
           autoKills: Number(p.autoKills || 0),
+          autoHits: Number(p.autoHits || 0),
           livesTaken: Number(p.livesTaken || 0),
           livesLost: Number(p.livesLost || 0),
           uselessHits: Number(p.uselessHits || 0),
@@ -3851,6 +3877,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         me.uselessHits += 1;
 
         if (missAutoHitOn) {
+          me.autoHits = (me.autoHits ?? 0) + 1;
           const beforeMiss = me.lives;
           me.lives = Math.max(0, me.lives - 1);
           const missLoss = Math.max(0, beforeMiss - me.lives);
@@ -4120,6 +4147,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
       if (autoKillOn && me.number && thr.target === me.number) {
         me.hitsOnSelf += 1;
         me.autoKills = (me.autoKills ?? 0) + 1;
+        me.autoHits = (me.autoHits ?? 0) + 1;
         me.livesLost += Math.max(0, me.lives);
         me.lives = 0;
         me.eliminated = true;
@@ -4211,6 +4239,7 @@ if (isActiveKiller(me)) {
   if (me.number && thr.target === me.number && selfPenaltyOn) {
     me.hitsOnSelf = (me.hitsOnSelf ?? 0) + 1;
     me.selfPenaltyHits = (me.selfPenaltyHits ?? 0) + 1;
+    me.autoHits = (me.autoHits ?? 0) + 1;
 
     const dmg = selfPenaltyMultOn ? dmgFrom(thr.mult, "multiplier") : 1;
 
@@ -4634,6 +4663,7 @@ React.useEffect(() => {
         me2.uselessHits += 1;
 
         if (missAutoHitOn) {
+          me2.autoHits = (me2.autoHits ?? 0) + 1;
           const beforeMiss = me2.lives;
           me2.lives = Math.max(0, me2.lives - 1);
           const missLoss = Math.max(0, beforeMiss - me2.lives);
@@ -4957,6 +4987,7 @@ React.useEffect(() => {
       if (autoKillOn && me2.number && thrSafe.target === me2.number) {
         me2.hitsOnSelf += 1;
         me2.autoKills = (me2.autoKills ?? 0) + 1;
+        me2.autoHits = (me2.autoHits ?? 0) + 1;
         me2.livesLost += Math.max(0, me2.lives);
         me2.lives = 0;
         me2.eliminated = true;
@@ -5220,8 +5251,13 @@ React.useEffect(() => {
   React.useEffect(() => {
     if (!players.length) return;
     const me = players[turnIndex];
-    if (!me || me.eliminated)
-      setTurnIndex((prev) => nextAliveIndex(players, prev));
+    if (!me || me.eliminated) {
+      const nextIdx = nextAliveIndex(players, turnIndex);
+      setVisit([]);
+      setMultiplier(1);
+      setDartsLeft(players[nextIdx]?.killerPhase === "SELECT" ? 1 : 3);
+      setTurnIndex(nextIdx);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players]);
 

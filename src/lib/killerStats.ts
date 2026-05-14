@@ -180,6 +180,7 @@ export function computeKillerRows(
 
       deaths: agg.deaths || agg.deathsTotal || 0,
       deathsAvg: agg.avgDeaths || agg.deathsAvg || 0,
+      autoHits: agg.autoHitsTotal || 0,
       resurrectionsGiven: agg.resurrectionsGivenTotal || 0,
       resurrectionsReceived: agg.resurrectionsReceivedTotal || 0,
       disarmsTriggered: agg.disarmsTriggeredTotal || 0,

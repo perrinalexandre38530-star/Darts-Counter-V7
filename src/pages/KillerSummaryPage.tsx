@@ -187,6 +187,7 @@ function normalizeRow(p: any) {
 
   // ✅ variantes (si dispo)
   const autoKills = clampInt(p?.autoKills ?? p?.auto_kills, 0, 9999, 0);
+  const autoHits = clampInt(p?.autoHits ?? p?.auto_hits, 0, 9999, 0);
   const selfPenaltyHits = clampInt(p?.selfPenaltyHits ?? p?.self_penalty_hits ?? p?.selfHits, 0, 9999, 0);
   const livesStolen = clampInt(p?.livesStolen ?? p?.lives_stolen, 0, 9999, 0);
   const livesHealed = clampInt(p?.livesHealed ?? p?.lives_healed, 0, 9999, 0);
@@ -210,6 +211,7 @@ function normalizeRow(p: any) {
     killerHits,
     uselessHits,
     autoKills,
+    autoHits,
     selfPenaltyHits,
     livesStolen,
     livesHealed,
@@ -484,6 +486,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
                   </div>
                   <div style={{ fontSize: 11, opacity: 0.85 }}>
                     kills {p.kills} · dmg {p.dmg} · lancers {p.throwsTotal}
+                    {p.autoHits ? ` · auto-hit ${p.autoHits}` : ""}
                     {p.autoKills ? ` · autokill ${p.autoKills}` : ""}
                     {meta.selfPenaltyOn ? ` · auto-hit ${p.selfPenaltyHits || 0}` : ""}
                     {meta.lifeStealOn ? ` · vies volées ${p.livesStolen || 0}` : ""}
@@ -538,6 +541,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
                 {line("Total kills", totalKills)}
                 {line("Total dégâts (vies prises)", totalDmg)}
                 {meta.selfPenaltyOn && line("Total auto-hit", rows.reduce((a, b) => a + (b.selfPenaltyHits || 0), 0))}
+                {line("Total auto-hit", rows.reduce((a, b) => a + (b.autoHits || 0), 0))}
                 {line("Total autokill", rows.reduce((a, b) => a + (b.autoKills || 0), 0))}
                 {meta.lifeStealOn && line("Total vies volées", rows.reduce((a, b) => a + (b.livesStolen || 0), 0))}
                 {meta.bullHealOn && line("Total vies gagnées", rows.reduce((a, b) => a + (b.livesHealed || 0), 0))}
