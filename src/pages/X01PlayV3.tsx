@@ -46,7 +46,7 @@ import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } fro
 import { onlineApi } from "../lib/onlineApi";
 import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages, subscribeMessages as subscribeOnlineChatMessages } from "../lib/chatApi";
 import { getCountryFlagSrc } from "../lib/geoAssets";
-import OnlineCameraPanel from "../online/client/OnlineCameraPanel";
+import OnlineCameraPanel, { type OnlineCameraSignal } from "../online/client/OnlineCameraPanel";
 import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
 
 
@@ -1587,6 +1587,7 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
         __x01OnlineUpdatedAt: Date.now(),
         __x01OnlineUpdatedBy: onlineCurrentUserId || null,
         __x01OnlineCameraStates: x01OnlineCameraStatesRef.current || {},
+        __x01OnlineCameraSignals: x01OnlineCameraSignalsRef.current || [],
         __x01OnlineCameraUpdatedAt: Date.now(),
       },
     });
@@ -1617,6 +1618,23 @@ React.useEffect(() => {
         setX01OnlineCameraStates((prev) => {
           const next = { ...prev, ...remoteCameraStates };
           x01OnlineCameraStatesRef.current = next;
+          return next;
+        });
+      }
+      const remoteCameraSignals = Array.isArray(statePayload.__x01OnlineCameraSignals)
+        ? statePayload.__x01OnlineCameraSignals
+        : [];
+      if (remoteCameraSignals.length) {
+        setX01OnlineCameraSignals((prev) => {
+          const byId = new Map<string, OnlineCameraSignal>();
+          const cutoff = Date.now() - 60000;
+          [...prev, ...remoteCameraSignals].forEach((sig: any) => {
+            if (!sig?.id) return;
+            if (Number(sig.createdAt || 0) < cutoff) return;
+            byId.set(String(sig.id), sig as OnlineCameraSignal);
+          });
+          const next = Array.from(byId.values()).sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0)).slice(-240);
+          x01OnlineCameraSignalsRef.current = next;
           return next;
         });
       }
@@ -3499,6 +3517,12 @@ React.useEffect(() => {
     x01OnlineCameraStatesRef.current = x01OnlineCameraStates;
   }, [x01OnlineCameraStates]);
 
+  const [x01OnlineCameraSignals, setX01OnlineCameraSignals] = React.useState<OnlineCameraSignal[]>([]);
+  const x01OnlineCameraSignalsRef = React.useRef<OnlineCameraSignal[]>([]);
+  React.useEffect(() => {
+    x01OnlineCameraSignalsRef.current = x01OnlineCameraSignals;
+  }, [x01OnlineCameraSignals]);
+
   const x01OnlineCameraPublishTimerRef = React.useRef<number | null>(null);
   const publishX01OnlineCameraStates = React.useCallback((nextStates: Record<string, OnlineCameraPlayerState>) => {
     if (!effectiveOnline || !effectiveLobbyCode) return;
@@ -3518,6 +3542,7 @@ React.useEffect(() => {
           state: {
             ...baseState,
             __x01OnlineCameraStates: nextStates,
+            __x01OnlineCameraSignals: x01OnlineCameraSignalsRef.current || [],
             __x01OnlineCameraUpdatedAt: Date.now(),
             __x01OnlineCameraUpdatedBy: onlineCurrentUserId || null,
           },
@@ -3551,6 +3576,57 @@ React.useEffect(() => {
     });
   }, [onlineCurrentUserId, activePlayerId, publishX01OnlineCameraStates]);
 
+  const handleX01OnlineCameraSignalSend = React.useCallback((signal: OnlineCameraSignal) => {
+    if (!effectiveOnline || !effectiveLobbyCode || !signal?.id) return;
+    setX01OnlineCameraSignals((prev) => {
+      const cutoff = Date.now() - 60000;
+      const byId = new Map<string, OnlineCameraSignal>();
+      [...prev, signal].forEach((sig: any) => {
+        if (!sig?.id) return;
+        if (Number(sig.createdAt || 0) < cutoff) return;
+        byId.set(String(sig.id), sig as OnlineCameraSignal);
+      });
+      const next = Array.from(byId.values())
+        .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
+        .slice(-240);
+      x01OnlineCameraSignalsRef.current = next;
+
+      window.setTimeout(async () => {
+        try {
+          const row = await (onlineApi as any).fetchMatchByCode?.(effectiveLobbyCode);
+          const baseState =
+            (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
+            (row?.state && typeof row.state === "object" ? row.state : null) ||
+            {};
+          const existing = Array.isArray(baseState.__x01OnlineCameraSignals) ? baseState.__x01OnlineCameraSignals : [];
+          const merged = new Map<string, OnlineCameraSignal>();
+          [...existing, ...next].forEach((sig: any) => {
+            if (!sig?.id) return;
+            if (Number(sig.createdAt || 0) < cutoff) return;
+            merged.set(String(sig.id), sig as OnlineCameraSignal);
+          });
+          await (onlineApi as any).updateMatchState?.({
+            lobbyCode: effectiveLobbyCode,
+            status: row?.status === "ended" ? "ended" : "started",
+            state: {
+              ...baseState,
+              __x01OnlineCameraStates: x01OnlineCameraStatesRef.current || {},
+              __x01OnlineCameraSignals: Array.from(merged.values())
+                .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
+                .slice(-240),
+              __x01OnlineCameraUpdatedAt: Date.now(),
+              __x01OnlineCameraUpdatedBy: onlineCurrentUserId || null,
+            },
+          });
+        } catch (error) {
+          console.warn("[X01PlayV3][ONLINE] publish camera signal failed", error);
+        }
+      }, 0);
+
+      return next;
+    });
+  }, [effectiveOnline, effectiveLobbyCode, onlineCurrentUserId]);
+
   const x01OnlineCameraSelfId = String(onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local");
   const x01OnlineCameraActivePlayerId = String(activePlayerId || x01OnlineCameraSelfId);
   const x01OnlineCameraActive = Boolean(
@@ -3567,7 +3643,10 @@ React.useEffect(() => {
       activePlayerId={x01OnlineCameraActivePlayerId}
       players={x01OnlineCameraPlayers}
       cameraStates={x01OnlineCameraStates}
+      cameraSignals={x01OnlineCameraSignals}
+      roomId={effectiveLobbyCode || onlineLobbyCode || null}
       onCameraStateChange={handleX01OnlineCameraStateChange}
+      onCameraSignalSend={handleX01OnlineCameraSignalSend}
     />
   ) : null;
 
