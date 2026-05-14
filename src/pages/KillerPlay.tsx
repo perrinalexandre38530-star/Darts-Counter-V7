@@ -2529,6 +2529,10 @@ export default function KillerPlay({ store, go, config, onFinish }: Props) {
   // ✅ Son/voix à jouer après la mise à jour d'état (robuste React 18)
   const pendingSfxRef = React.useRef<PendingSfx>(null);
   const pendingDeathAfterRef = React.useRef(false);
+  // Quand un joueur se tue lui-même (MISS auto-hit, auto-kill, auto-pénalité),
+  // on doit vider immédiatement le buffer de volée AVANT que le profil actif passe au suivant.
+  // Sinon la volée affichée reste collée au joueur suivant et l'undo semble repartir au mauvais endroit.
+  const pendingSelfDeathTurnResetRef = React.useRef(false);
   const pendingVoiceRef = React.useRef<
     { kind: VoiceKind; killer: string; victim?: string } | null
   >(null);
@@ -3768,7 +3772,7 @@ function pickRotatingFunction(keys: string[], rotationOn: boolean, idx: number):
 }
 
 // Tracking usages
-const resGlobalUsedRef = React.useRef<boolean>(false); // "1 seul ressuscité (1×)"
+const resGlobalUsedRef = React.useRef<boolean>(false); // Mode "1 Joueur (1x)" : UNE SEULE résurrection totale dans toute la partie
 const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
 
 
@@ -3852,6 +3856,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     // ✅ Reset pending events (sera rempli dans setPlayers)
     pendingSfxRef.current = null;
     pendingDeathAfterRef.current = false;
+    pendingSelfDeathTurnResetRef.current = false;
     pendingVoiceRef.current = null;
   
     setPlayers((prev) => {
@@ -3900,6 +3905,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
               elimOrderRef.current = [...(elimOrderRef.current || []), me.id];
             }
             pendingDeathAfterRef.current = true;
+            pendingSelfDeathTurnResetRef.current = true;
           }
           return next;
         }
@@ -4176,6 +4182,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         // ✅ SFX + voice (après commit)
         pendingSfxRef.current = { kind: "auto_kill", mult: thr.mult };
         pendingDeathAfterRef.current = true;
+        pendingSelfDeathTurnResetRef.current = true;
         pendingVoiceRef.current = { kind: "auto_kill", killer: me.name };
   
         return next;
@@ -4287,6 +4294,7 @@ if (isActiveKiller(me)) {
       // ✅ enchaîner death après le SFX de self-hit
       pendingSfxRef.current = pendingSfxRef.current || { kind: "self_hit", mult: thr.mult };
       pendingDeathAfterRef.current = true;
+      pendingSelfDeathTurnResetRef.current = true;
     }
 
     return next;
@@ -4459,6 +4467,14 @@ if (isActiveKiller(me)) {
       return next;
     });
   
+    // ✅ Si le lancer tue le joueur actif lui-même, on purge tout de suite la volée locale.
+    // La sélection du prochain joueur est ensuite faite par l'effet de sécurité sur players.
+    if (pendingSelfDeathTurnResetRef.current) {
+      setVisit([]);
+      setDartsLeft(0);
+      setMultiplier(1);
+    }
+
     // ✅ Jouer SFX + Voice APRÈS la maj d'état (robuste React 18)
     setTimeout(() => {
       const ps = pendingSfxRef.current;
@@ -4469,6 +4485,7 @@ if (isActiveKiller(me)) {
       pendingSfxRef.current = null;
       pendingVoiceRef.current = null;
       pendingDeathAfterRef.current = false;
+      pendingSelfDeathTurnResetRef.current = false;
 
       try {
         if (!ps) {
@@ -4641,6 +4658,7 @@ React.useEffect(() => {
     pendingSfxRef.current = null;
     pendingVoiceRef.current = null;
     pendingDeathAfterRef.current = false;
+    pendingSelfDeathTurnResetRef.current = false;
 
     setPlayers((prev) => {
       const next = prev.map((p) => ({
@@ -4693,6 +4711,7 @@ React.useEffect(() => {
               elimOrderRef.current = [...(elimOrderRef.current || []), me2.id];
             }
             pendingDeathAfterRef.current = true;
+            pendingSelfDeathTurnResetRef.current = true;
           }
 
           return next;
@@ -5014,6 +5033,7 @@ React.useEffect(() => {
 
         pendingSfxRef.current = { kind: "auto_kill", mult: thrSafe.mult };
         pendingDeathAfterRef.current = true;
+        pendingSelfDeathTurnResetRef.current = true;
         pendingVoiceRef.current = { kind: "auto_kill", killer: me2.name };
 
         return next;
@@ -5190,6 +5210,12 @@ React.useEffect(() => {
       return next;
     });
 
+    if (pendingSelfDeathTurnResetRef.current) {
+      setVisit([]);
+      setDartsLeft(0);
+      setMultiplier(1);
+    }
+
     // ✅ Jouer SFX + Voice BOT APRÈS la maj d'état (robuste React 18)
     setTimeout(() => {
       const ps = pendingSfxRef.current;
@@ -5200,6 +5226,7 @@ React.useEffect(() => {
       pendingSfxRef.current = null;
       pendingVoiceRef.current = null;
       pendingDeathAfterRef.current = false;
+      pendingSelfDeathTurnResetRef.current = false;
 
       try {
         if (!ps) {
