@@ -3627,8 +3627,15 @@ React.useEffect(() => {
     });
   }, [effectiveOnline, effectiveLobbyCode, onlineCurrentUserId]);
 
-  const x01OnlineCameraSelfId = String(onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local");
-  const x01OnlineCameraActivePlayerId = String(activePlayerId || x01OnlineCameraSelfId);
+  // Caméra anti-triche : le navigateur qui peut saisir la volée du joueur actif
+  // doit être identifié comme CE joueur actif pour répondre aux offres WebRTC.
+  // Sinon on diffuse sous l'id utilisateur et les autres clients attendent l'id joueur actif.
+  const x01OnlineCameraActivePlayerId = String(activePlayerId || onlineCurrentUserId || onlineLocalUserId || "local");
+  const x01OnlineCameraSelfId = String(
+    onlineCanScore && activePlayerId
+      ? activePlayerId
+      : onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local"
+  );
   const x01OnlineCameraActive = Boolean(
     effectiveOnline &&
       (x01OnlineCameraStates[x01OnlineCameraActivePlayerId]?.cameraEnabled ||

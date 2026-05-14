@@ -41,6 +41,23 @@ type Props = {
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
+const WS_BASE: string =
+  ((import.meta as any)?.env?.VITE_ONLINE_WS_BASE_URL as string | undefined) ||
+  ((import.meta as any)?.env?.DEV ? "ws://127.0.0.1:8787" : "");
+
+function buildCameraWsUrl(roomId?: string | null) {
+  const code = String(roomId || "").trim();
+  if (!code || !WS_BASE) return "";
+  return `${WS_BASE.replace(/\/+$/, "")}/room/${encodeURIComponent(code)}`;
+}
+
+function normalizeIncomingSignal(raw: any): OnlineCameraSignal | null {
+  const data = raw?.kind === "command" ? raw?.data : raw?.data || raw;
+  const signal = data?.type === "x01_camera_signal" ? data.signal : data?.signal || data?.cameraSignal || null;
+  if (!signal || typeof signal !== "object" || !signal.id || !signal.from || !signal.to || !signal.type) return null;
+  return signal as OnlineCameraSignal;
+}
+
 function makeSignalId(from: string, to: string, type: string) {
   const rnd = Math.random().toString(36).slice(2, 9);
   return `cam_${Date.now().toString(36)}_${from}_${to}_${type}_${rnd}`;
@@ -92,12 +109,104 @@ export default function OnlineCameraPanel({
   const activePeersRef = React.useRef<Record<string, RTCPeerConnection>>({});
   const processedSignalsRef = React.useRef<Set<string>>(new Set());
   const offerKeyRef = React.useRef<string>("");
+  const wsRef = React.useRef<WebSocket | null>(null);
+  const wsQueueRef = React.useRef<OnlineCameraSignal[]>([]);
+  const [liveSignals, setLiveSignals] = React.useState<OnlineCameraSignal[]>([]);
+  const pendingIceRef = React.useRef<Record<string, RTCIceCandidateInit[]>>({});
   const cameraRef = React.useRef(camera);
   React.useEffect(() => { cameraRef.current = camera; }, [camera]);
 
+  React.useEffect(() => {
+    const url = buildCameraWsUrl(roomId);
+    if (!url || !self) return;
+
+    let closed = false;
+    let retryTimer: number | null = null;
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        const ws = new WebSocket(url);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          try {
+            ws.send(JSON.stringify({
+              kind: "join",
+              role: "guest",
+              lobbyCode: roomId,
+              matchId: roomId,
+              playerId: self,
+            }));
+          } catch {}
+          const queued = wsQueueRef.current.splice(0);
+          queued.forEach((signal) => {
+            try { ws.send(JSON.stringify({ kind: "command", data: { type: "x01_camera_signal", signal } })); } catch {}
+          });
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const raw = typeof event.data === "string" ? JSON.parse(event.data) : JSON.parse(new TextDecoder().decode(event.data as ArrayBuffer));
+            const signal = normalizeIncomingSignal(raw);
+            if (!signal) return;
+            if (signal.to && String(signal.to) !== self) return;
+            setLiveSignals((prev) => {
+              const cutoff = Date.now() - 60000;
+              const byId = new Map<string, OnlineCameraSignal>();
+              [...prev, signal].forEach((sig: any) => {
+                if (!sig?.id) return;
+                if (Number(sig.createdAt || 0) < cutoff) return;
+                byId.set(String(sig.id), sig as OnlineCameraSignal);
+              });
+              return Array.from(byId.values()).sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0)).slice(-240);
+            });
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          if (wsRef.current === ws) wsRef.current = null;
+          if (!closed) retryTimer = window.setTimeout(connect, 1200);
+        };
+        ws.onerror = () => {
+          try { ws.close(); } catch {}
+        };
+      } catch {
+        if (!closed) retryTimer = window.setTimeout(connect, 1600);
+      }
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      const ws = wsRef.current;
+      wsRef.current = null;
+      try { ws?.close(); } catch {}
+    };
+  }, [roomId, self]);
+
+  const publishSignal = React.useCallback((signal: OnlineCameraSignal) => {
+    // 1) Canal direct WebSocket pour WebRTC temps réel.
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ kind: "command", data: { type: "x01_camera_signal", signal } }));
+      } catch {
+        wsQueueRef.current.push(signal);
+      }
+    } else {
+      wsQueueRef.current.push(signal);
+      if (wsQueueRef.current.length > 80) wsQueueRef.current = wsQueueRef.current.slice(-80);
+    }
+
+    // 2) Fallback état online existant : garde la compat si le WS caméra est absent.
+    onCameraSignalSend?.(signal);
+  }, [onCameraSignalSend]);
+
   const sendSignal = React.useCallback((to: string, type: OnlineCameraSignalType, payload?: any) => {
-    if (!onCameraSignalSend || !to || !activeId || !self) return;
-    onCameraSignalSend({
+    if (!to || !activeId || !self) return;
+    publishSignal({
       id: makeSignalId(self, to, type),
       roomId,
       from: self,
@@ -107,7 +216,7 @@ export default function OnlineCameraPanel({
       payload: safeSignalPayload(payload),
       createdAt: Date.now(),
     });
-  }, [activeId, onCameraSignalSend, roomId, self]);
+  }, [activeId, publishSignal, roomId, self]);
 
   React.useEffect(() => {
     if (!localVideoRef.current) return;
@@ -249,10 +358,11 @@ export default function OnlineCameraPanel({
   }, [sendSignal]);
 
   React.useEffect(() => {
-    if (!Array.isArray(cameraSignals) || !cameraSignals.length || !activeId) return;
+    const allSignals = [...(Array.isArray(cameraSignals) ? cameraSignals : []), ...liveSignals];
+    if (!allSignals.length || !activeId) return;
 
     const now = Date.now();
-    for (const signal of cameraSignals) {
+    for (const signal of allSignals) {
       if (!signal?.id || processedSignalsRef.current.has(signal.id)) continue;
       if (signal.to && String(signal.to) !== self) continue;
       if (signal.activePlayerId && String(signal.activePlayerId) !== activeId) continue;
@@ -279,6 +389,11 @@ export default function OnlineCameraPanel({
             const pc = ensureActivePeer(from);
             if (!pc || !signal.payload) return;
             await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
+            const queuedIce = pendingIceRef.current[from] || [];
+            pendingIceRef.current[from] = [];
+            for (const ice of queuedIce) {
+              try { await pc.addIceCandidate(new RTCIceCandidate(ice)); } catch {}
+            }
             const stream = cameraRef.current.localStream;
             if (stream && pc.getSenders().length === 0) {
               for (const track of stream.getTracks()) {
@@ -304,6 +419,11 @@ export default function OnlineCameraPanel({
             if (!pc || !signal.payload) return;
             if (pc.signalingState === "stable") return;
             await pc.setRemoteDescription(new RTCSessionDescription(signal.payload));
+            const queuedIce = pendingIceRef.current.viewer || [];
+            pendingIceRef.current.viewer = [];
+            for (const ice of queuedIce) {
+              try { await pc.addIceCandidate(new RTCIceCandidate(ice)); } catch {}
+            }
             setWebrtcStatus("connecting");
           } catch (error: any) {
             setWebrtcStatus("error");
@@ -318,6 +438,11 @@ export default function OnlineCameraPanel({
           try {
             const pc = selfIsActive ? activePeersRef.current[from] : viewerPcRef.current;
             if (!pc || !signal.payload) return;
+            const key = selfIsActive ? from : "viewer";
+            if (!pc.remoteDescription) {
+              pendingIceRef.current[key] = [...(pendingIceRef.current[key] || []), signal.payload];
+              return;
+            }
             await pc.addIceCandidate(new RTCIceCandidate(signal.payload));
           } catch {
             // Les ICE qui arrivent trop tôt/trop tard ne doivent jamais casser la partie.
@@ -334,7 +459,7 @@ export default function OnlineCameraPanel({
         }
       }
     }
-  }, [activeId, cameraSignals, cleanupViewerPc, ensureActivePeer, self, selfIsActive, sendSignal]);
+  }, [activeId, cameraSignals, liveSignals, cleanupViewerPc, ensureActivePeer, self, selfIsActive, sendSignal]);
 
   const canShowLocalPreview = selfIsActive && camera.cameraEnabled && camera.localStream;
   const canShowRemote = !selfIsActive && !!remoteStream;
