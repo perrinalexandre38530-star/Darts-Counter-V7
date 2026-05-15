@@ -2872,12 +2872,20 @@ const handleCancel = () => {
 // 2) Engine undo: revert the last committed dart from history
 botUndoGuardRef.current = true;
 try {
-  undoLastDart();
-  persistAutosave();
+  // Le moteur retire bien la dernière fléchette, mais l'UI/historique local
+  // utilise aussi replayDartsRef. Sans ce pop, une fléchette fantôme peut
+  // être resauvée après un ANNULER qui revient au joueur précédent.
+  if (Array.isArray(replayDartsRef.current) && replayDartsRef.current.length > 0) {
+    replayDartsRef.current = replayDartsRef.current.slice(0, -1);
+  }
 
-  // ✅ RESYNC UI après UNDO (y compris si on revient au joueur précédent)
+  undoLastDart();
+
+  // ✅ RESYNC UI après UNDO (y compris si on revient au joueur précédent),
+  // puis autosave seulement après alignement UI + moteur.
   window.setTimeout(() => {
     forceSyncFromEngine();
+    persistAutosave();
   }, 0);
 } finally {
   window.setTimeout(() => {

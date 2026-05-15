@@ -43,6 +43,7 @@ import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 
 // UI-only: "multi" = plusieurs joueurs en mode classique (pas teams)
 type MatchModeV3 = "solo" | "multi" | "teams";
+type MultiFinishModeV3 = "stop_on_first" | "continue_ranking";
 type InModeV3 = "simple" | "double" | "master";
 type OutModeV3 = "simple" | "double" | "master";
 type ServiceModeV3 = "random" | "alternate";
@@ -550,6 +551,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [setsToWin, setSetsToWin] = React.useState<number>(1);
   const [serveMode, setServeMode] = React.useState<ServiceModeV3>("alternate");
   const [matchMode, setMatchMode] = React.useState<MatchModeV3>("solo");
+  const [multiFinishMode, setMultiFinishMode] = React.useState<MultiFinishModeV3>("stop_on_first");
 
   // ---- NEW : AUDIO OPTIONS ----
   const [arcadeEnabled, setArcadeEnabled] = React.useState<boolean>(true);
@@ -835,10 +837,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       legsPerSet,
       setsToWin,
       serveMode,
-      // ✅ L'engine V3 se base sur `gameMode` ("solo" | "teams")
+      // ✅ L'engine V3 se base sur `gameMode` ("solo" | "multi" | "teams")
       // `matchMode` reste un champ UI/backward-compat ("solo" | "multi" | "teams")
-      gameMode: matchMode === "teams" ? "teams" : "solo",
+      gameMode: matchMode === "teams" ? "teams" : matchMode === "multi" ? "multi" : "solo",
       matchMode,
+      // MULTI / FFA : choix utilisateur après le premier joueur fini
+      multiFinishMode: matchMode === "multi" ? multiFinishMode : "stop_on_first",
       players,
       createdAt: Date.now(),
 
@@ -1423,6 +1427,35 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               />
             </div>
           </div>
+
+          {matchMode === "multi" && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
+                {t("x01v3.multiFinishMode", "Après le 1er joueur terminé")}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <PillButton
+                  label={t("x01v3.multiFinish.stop", "Terminer la partie")}
+                  active={multiFinishMode === "stop_on_first"}
+                  onClick={() => setMultiFinishMode("stop_on_first")}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+                <PillButton
+                  label={t("x01v3.multiFinish.continue", "Continuer le classement")}
+                  active={multiFinishMode === "continue_ranking"}
+                  onClick={() => setMultiFinishMode("continue_ranking")}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+              </div>
+              <div style={{ marginTop: 6, fontSize: 11, color: "rgba(230,234,255,0.68)", lineHeight: 1.35 }}>
+                {multiFinishMode === "continue_ranking"
+                  ? t("x01v3.multiFinish.continueHelp", "Les joueurs déjà sortis sont sautés, les autres continuent jusqu'au classement final.")
+                  : t("x01v3.multiFinish.stopHelp", "La partie se termine dès que le premier joueur atteint 0.")}
+              </div>
+            </div>
+          )}
           </div>
 
 {/* ✅ AUDIO / VOIX */}
