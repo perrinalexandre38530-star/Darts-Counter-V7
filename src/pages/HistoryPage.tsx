@@ -713,6 +713,38 @@ function getX01LegsPerSetForHistory(e: SavedEntry): number {
 function summarizeX01SetsLegsScore(e: SavedEntry): string {
   const anyE: any = e;
   const data: any = anyE.summary || {};
+
+  // Import / export X01 : pour une partie terminée, l'historique doit afficher
+  // les scores restants finaux (Jean: 0, etc.), pas le score sets/legs.
+  const finalScores =
+    data.finalRemainingScores ||
+    data.finalScores ||
+    data.scoresFinal ||
+    anyE.payload?.summary?.finalRemainingScores ||
+    anyE.payload?.summary?.finalScores ||
+    anyE.payload?.resume?.state?.scores ||
+    anyE.resume?.state?.scores ||
+    null;
+
+  if (finalScores && typeof finalScores === "object") {
+    const players = getAllEntryPlayers(e);
+    const parts = players
+      .map((p: any) => {
+        const id = String(p?.id || p?.playerId || p?.profileId || "");
+        const name = cleanName(p?.name || p?.displayName || p?.username || id) || undefined;
+        if (!name || !id) return null;
+        const score =
+          finalScores[id] ??
+          finalScores[id.slice(0, 18)] ??
+          finalScores[name] ??
+          finalScores[String(name).toLowerCase()];
+        if (typeof score === "number" || typeof score === "string") return `${name}: ${score}`;
+        return null;
+      })
+      .filter(Boolean) as string[];
+    if (parts.length) return parts.join(" • ");
+  }
+
   const result = data.result || {};
   const rankings = data.rankings || result.rankings || anyE.payload?.summary?.rankings || anyE.resume?.summary?.rankings || [];
   if (!Array.isArray(rankings) || !rankings.length) return "";
@@ -1483,17 +1515,139 @@ export default function HistoryPage({
     }
   }
 
+
+function _packetPlayersFrom(packet: MatchSharePacketV1, source: any): any[] {
+  const players =
+    (Array.isArray(source?.players) && source.players.length ? source.players : null) ||
+    (Array.isArray(source?.resume?.config?.players) && source.resume.config.players.length ? source.resume.config.players : null) ||
+    (Array.isArray(source?.config?.players) && source.config.players.length ? source.config.players : null) ||
+    (Array.isArray(packet?.summary?.players) ? packet.summary.players : []);
+  return players.map((p: any) => ({
+    ...p,
+    id: String(p?.id || p?.playerId || p?.profileId || ""),
+    name: String(p?.name || p?.displayName || p?.username || p?.id || "Joueur").trim(),
+  })).filter((p: any) => p.id || p.name);
+}
+
+function _packetFinalScores(packet: MatchSharePacketV1, source: any): Record<string, number> | null {
+  const candidates = [
+    source?.summary?.finalRemainingScores,
+    source?.summary?.finalScores,
+    source?.finalRemainingScores,
+    source?.finalScores,
+    source?.resume?.state?.scores,
+    source?.state?.scores,
+    source?.payload?.resume?.state?.scores,
+    source?.payload?.state?.scores,
+  ];
+  for (const c of candidates) {
+    if (c && typeof c === "object" && !Array.isArray(c)) {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(c as any)) {
+        const n = Number(v);
+        if (Number.isFinite(n)) out[String(k)] = n;
+      }
+      if (Object.keys(out).length) return out;
+    }
+  }
+  return null;
+}
+
+function _scoreLineFromFinalScores(players: any[], scores: Record<string, number> | null): string | undefined {
+  if (!scores || !players.length) return undefined;
+  const parts = players.map((p: any) => {
+    const id = String(p?.id || "");
+    const name = String(p?.name || p?.displayName || "Joueur").trim();
+    const score = scores[id] ?? scores[id.slice(0, 18)] ?? scores[name] ?? scores[name.toLowerCase()];
+    return typeof score === "number" ? `${name}: ${score}` : null;
+  }).filter(Boolean);
+  return parts.length ? parts.join(" • ") : undefined;
+}
+
+function _winnerIdFromPacket(packet: MatchSharePacketV1, source: any, players: any[], finalScores: Record<string, number> | null): string | null {
+  const direct = source?.winnerId || source?.winner_id || source?.summary?.winnerId || source?.payload?.winnerId;
+  if (direct) return String(direct);
+  const winnerName = String(source?.winnerName || source?.summary?.winnerName || packet?.summary?.winnerName || "").trim().toLowerCase();
+  if (winnerName) {
+    const p = players.find((x: any) => String(x?.name || "").trim().toLowerCase() === winnerName);
+    if (p?.id) return String(p.id);
+  }
+  if (finalScores) {
+    const zero = players.find((p: any) => {
+      const id = String(p?.id || "");
+      const score = finalScores[id] ?? finalScores[id.slice(0, 18)] ?? finalScores[String(p?.name || "")];
+      return Number(score) === 0;
+    });
+    if (zero?.id) return String(zero.id);
+  }
+  return null;
+}
+
+
   async function acceptPacket(packet: MatchSharePacketV1) {
-    // transforme packet -> SavedMatch (History.upsert compresse si besoin)
+    // Transforme le packet importé en SavedMatch complet.
+    // IMPORTANT : ne pas stocker uniquement packet.payload, sinon la carte historique
+    // perd players/game/winnerId/scoreLine et l'acceptation donne une carte vide.
+    const source: any = packet?.payload && typeof packet.payload === "object" ? packet.payload : {};
+    const players = _packetPlayersFrom(packet, source);
+    const finalScores = _packetFinalScores(packet, source);
+    const scoreLine = packet.summary?.scoreLine || _scoreLineFromFinalScores(players, finalScores);
+    const winnerId = _winnerIdFromPacket(packet, source, players, finalScores);
+    const winnerName =
+      String(source?.winnerName || source?.summary?.winnerName || "") ||
+      (winnerId ? String(players.find((p: any) => String(p.id) === String(winnerId))?.name || "") : "");
+
+    const sourceSummary = source?.summary && typeof source.summary === "object" ? source.summary : {};
+    const sourceGame =
+      source?.game ||
+      sourceSummary?.game ||
+      source?.resume?.config ||
+      source?.config ||
+      null;
+
     const rec: any = {
-      id: packet.matchId,
-      kind: packet.kind,
+      id: String(packet.matchId || source?.matchId || source?.id || crypto.randomUUID?.() || Date.now()),
+      matchId: String(packet.matchId || source?.matchId || source?.id || ""),
+      kind: String(packet.kind || source?.kind || sourceGame?.mode || "x01").toLowerCase(),
       status: packet.summary?.status === "in_progress" ? "in_progress" : "finished",
-      createdAt: packet.exportedAt,
-      updatedAt: new Date().toISOString(),
-      finishedAt: packet.summary?.finishedAt || null,
-      payload: packet.payload,
+      players,
+      winnerId,
+      winnerName: winnerName || undefined,
+      game: sourceGame
+        ? {
+            ...(sourceGame || {}),
+            mode: sourceGame?.mode || packet.kind || source?.kind || "x01",
+            startScore: Number(sourceGame?.startScore || sourceGame?.startscore || sourceSummary?.game?.startScore || 0) || undefined,
+          }
+        : source?.game ?? null,
+      createdAt: Number(source?.createdAt || source?.created_at || Date.parse(packet.exportedAt)) || Date.now(),
+      updatedAt: Date.now(),
+      finishedAt: packet.summary?.finishedAt || source?.finishedAt || source?.updatedAt || null,
+      summary: {
+        ...sourceSummary,
+        title: packet.summary?.title || sourceSummary?.title || packet.kind?.toUpperCase?.() || "MATCH",
+        status: packet.summary?.status || sourceSummary?.status || "finished",
+        players: players.map((p: any) => ({ id: p.id, name: p.name })),
+        ...(scoreLine ? { scoreLine } : {}),
+        ...(finalScores ? { finalRemainingScores: finalScores, finalScores } : {}),
+        ...(winnerName ? { winnerName } : {}),
+        ...(winnerId ? { winnerId } : {}),
+      },
+      payload: {
+        ...source,
+        players: source?.players || players,
+        winnerId: source?.winnerId || winnerId,
+        winnerName: source?.winnerName || winnerName || undefined,
+        summary: {
+          ...sourceSummary,
+          ...(scoreLine ? { scoreLine } : {}),
+          ...(finalScores ? { finalRemainingScores: finalScores, finalScores } : {}),
+          ...(winnerName ? { winnerName } : {}),
+          ...(winnerId ? { winnerId } : {}),
+        },
+      },
     };
+
     await History.upsert(rec as any);
     await loadHistory();
   }
