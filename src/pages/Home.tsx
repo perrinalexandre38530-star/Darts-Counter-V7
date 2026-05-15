@@ -2716,55 +2716,6 @@ React.useEffect(() => {
           </div>
         )}
   
-        {/* Gros boutons de navigation */}
-        <div
-          style={{
-            marginTop: 22,
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          <HomeBigButton
-            label={t("home.nav.profiles", "Profils")}
-            subtitle={t("home.nav.profiles.desc", "Profils locaux, avatars & BOTS")}
-            icon="user"
-            onClick={() => go("profiles")}
-          />
-  
-          <HomeBigButton
-            label={t("home.nav.local", "Local")}
-            subtitle={t("home.nav.local.desc", "Joue en présentiel sur cette cible")}
-            icon="target"
-            onClick={() => go("games")}
-          />
-  
-          {showOnline && (
-            <HomeBigButton
-              label={t("home.nav.online", "Online")}
-              subtitle={t(
-                "home.nav.online.desc",
-                "Matchs à distance avec tes amis"
-              )}
-              icon="globe"
-              onClick={() => go("friends")}
-            />
-          )}
-  
-          <HomeBigButton
-            label={t("home.nav.stats", "Stats")}
-            subtitle={t("home.nav.stats.desc", "Dashboards, courbes, historique")}
-            icon="stats"
-            onClick={() => go("stats")}
-          />
-  
-          <HomeBigButton
-            label={t("home.nav.settings", "Réglages")}
-            subtitle={t("home.nav.settings.desc", "Thèmes, langue, reset complet")}
-            icon="settings"
-            onClick={() => go("settings")}
-          />
-        </div>
       </div>
     </div>
   );    
