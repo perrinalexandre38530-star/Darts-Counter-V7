@@ -7472,6 +7472,23 @@ function saveX01V3MatchToHistory({
     legsPerSet: (config as any)?.legsPerSet ?? 1,
   });
 
+  // Source de vérité des scores finaux : le replay/visitHistory, pas state.scores.
+  // Après un checkout, le moteur peut déjà avoir préparé la manche suivante et remettre
+  // state.scores à startScore. En sauvegarde/historique, cela réattribue ensuite les
+  // scores restants aux mauvais joueurs ou affiche tous les joueurs à 301.
+  const finalRemainingFromReplay: Record<string, number> = {};
+  for (const p of players as any[]) {
+    const pid = String(p?.id || "");
+    if (!pid) continue;
+    finalRemainingFromReplay[pid] = Number(config.startScore ?? 501) || 501;
+  }
+  for (const v of Array.isArray(replayVisits) ? replayVisits : []) {
+    const pid = String(v?.playerId ?? v?.pid ?? "");
+    if (!pid) continue;
+    const after = Number(v?.scoreAfter ?? v?.after);
+    if (Number.isFinite(after)) finalRemainingFromReplay[pid] = Math.max(0, after);
+  }
+
   const matchId =
     historyId ||
     state?.matchId ||
@@ -7522,7 +7539,8 @@ function saveX01V3MatchToHistory({
     const pid = p.id as string;
     const live = (liveStatsByPlayer && liveStatsByPlayer[pid]) || {};
     const startScore = config.startScore ?? 501;
-    const scoreNow = scores[pid] ?? startScore;
+    const scoreNowRaw = Number(finalRemainingFromReplay[pid]);
+    const scoreNow = Number.isFinite(scoreNowRaw) ? scoreNowRaw : (scores[pid] ?? startScore);
     const scored = startScore - scoreNow;
 
     const replayMetricAtTop = replayMetricsByPlayer[pid] || null;
@@ -7566,7 +7584,12 @@ function saveX01V3MatchToHistory({
           bySegmentT: replayMetric.bySegmentT,
         }
       : mergeDetailedStats(liveDetail, replayDetail);
-    detailedByPlayer[pid] = detail;
+    detailedByPlayer[pid] = {
+      ...detail,
+      remaining: scoreNow,
+      finalScore: scoreNow,
+      scoreRemaining: scoreNow,
+    };
 
     // Reformatage compatible V2/V1 pour StatsHub et tous les dashboards
     const segments = {
@@ -7883,6 +7906,9 @@ function saveX01V3MatchToHistory({
       _sumVisits: visits || undefined,
       matches: 1,
       legs: legsPlayedByPlayer[pid] || 1,
+      remaining: legacyRemaining[pid] ?? 0,
+      finalScore: legacyRemaining[pid] ?? 0,
+      scoreRemaining: legacyRemaining[pid] ?? 0,
       avgCheckoutDarts: replayMetricsByPlayer[pid]?.checkoutDarts ?? 0,
       dartsCheckout: replayMetricsByPlayer[pid]?.checkoutDarts ?? 0,
       checkoutHits: legacyCheckoutHits[pid] || 0,
@@ -8031,7 +8057,9 @@ function saveX01V3MatchToHistory({
     resumeId: matchId,
     config: lightConfig,
     players: lightPlayers,
-    finalScores: scores,
+    finalScores: legacyRemaining,
+    remaining: legacyRemaining,
+    scores: legacyRemaining,
     summary,
 
     // ✅ V3 FIX : replay complet compact sans avatars.
@@ -8082,6 +8110,8 @@ function saveX01V3MatchToHistory({
       dartPresetId: p.dartPresetId ?? null,
     })),
     winnerId,
+    finalScores: legacyRemaining,
+    remaining: legacyRemaining,
     summary,
     payload,
     // CRITIQUE HISTORIQUE : garder les volées au niveau header aussi.
