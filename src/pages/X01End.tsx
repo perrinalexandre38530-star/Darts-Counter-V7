@@ -458,6 +458,15 @@ export default function X01End({ go, params }: Props) {
         bz = remaining[b] === 0;
       if (az && !bz) return -1;
       if (!az && bz) return 1;
+
+      // En X01, le classement de fin de manche doit suivre le score restant
+      // croissant : 0, 35, 45, 91, 106...
+      // L'ancien fallback triait les perdants à la moyenne, ce qui inversait
+      // Ninja/Chevroute ou Jess/Jems selon les stats.
+      const ar = Number.isFinite(Number(remaining[a])) ? Number(remaining[a]) : Number.POSITIVE_INFINITY;
+      const br = Number.isFinite(Number(remaining[b])) ? Number(remaining[b]) : Number.POSITIVE_INFINITY;
+      if (ar !== br) return ar - br;
+
       return (avg3[b] ?? 0) - (avg3[a] ?? 0);
     });
 

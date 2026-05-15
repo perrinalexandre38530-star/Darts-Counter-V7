@@ -708,6 +708,18 @@ function mergeOverlayRows(baseRows: any[] = [], visitRows: any[] = []) {
     const v: any = visitById[pid] || {};
     const r: any = { ...b, ...v, pid, name: v.name || b.name };
 
+    // Les scores finaux/remaining importés dans le résumé sont la source de vérité.
+    // Le replay des volées peut contenir seulement le dernier scoreAfter d'une visite
+    // partielle ou d'une branche ancienne ; s'il écrase remaining ici, on obtient
+    // typiquement 240 (=301-61) ou 276 (=301-25) au lieu de 35/45.
+    const finiteNum = (x: any) => Number.isFinite(Number(x));
+    if (finiteNum(b.remaining)) r.remaining = Number(b.remaining);
+    else if (finiteNum(v.remaining)) r.remaining = Number(v.remaining);
+
+    if (finiteNum(b.remainingRaw)) r.remainingRaw = Number(b.remainingRaw);
+    else if (finiteNum(b.remaining)) r.remainingRaw = Number(b.remaining);
+    else if (finiteNum(v.remainingRaw)) r.remainingRaw = Number(v.remainingRaw);
+
     // Volumes : le replay est fiable pour les hits ; le résumé sauvegardé peut
     // être plus fiable pour les buckets/checkout. On fusionne donc champ par champ.
     for (const k of ["darts", "visits", "points", "best", "singles", "misses", "busts", "doubles", "triples", "ob", "ib", "bulls"]) {
