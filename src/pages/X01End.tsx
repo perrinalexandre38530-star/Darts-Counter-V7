@@ -1419,6 +1419,70 @@ function winnerIdFromRecord(rec: any): string | null {
   return rec?.winnerId ?? rec?.payload?.winnerId ?? rec?.summary?.winnerId ?? null;
 }
 
+function readExplicitX01FinalScore(rec: any, pid: string): number | undefined {
+  const id = String(pid || "");
+  if (!id) return undefined;
+  const roots = [
+    rec?.summary,
+    rec?.payload?.summary,
+    rec?.resume?.state,
+    rec?.payload?.resume?.state,
+    rec?.payload,
+    rec,
+  ].filter(Boolean);
+
+  const maps = [
+    "finalScores",
+    "remainingScores",
+    "scoreByPlayer",
+    "scores",
+  ];
+
+  for (const root of roots) {
+    for (const key of maps) {
+      const map = root?.[key];
+      if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+      const direct = map[id] ?? map[String(id)];
+      if (direct !== undefined && direct !== null && Number.isFinite(Number(direct))) return Number(direct);
+      const shortHit = Object.keys(map).find((k) => id.startsWith(k) || k.startsWith(id));
+      if (shortHit && Number.isFinite(Number(map[shortHit]))) return Number(map[shortHit]);
+    }
+  }
+
+  const playerRows = [
+    rec?.players,
+    rec?.payload?.players,
+    rec?.summary?.players,
+    rec?.payload?.summary?.players,
+    rec?.resume?.config?.players,
+    rec?.payload?.resume?.config?.players,
+  ];
+  for (const arr of playerRows) {
+    if (!Array.isArray(arr)) continue;
+    const row = arr.find((p: any) => String(p?.id ?? p?.playerId ?? p?.profileId ?? "") === id);
+    if (!row) continue;
+    const raw = row.finalScore ?? row.remainingScore ?? row.score;
+    if (raw !== undefined && raw !== null && Number.isFinite(Number(raw))) return Number(raw);
+  }
+
+  const detailRows = [
+    rec?.summary?.detailedByPlayer,
+    rec?.payload?.summary?.detailedByPlayer,
+    rec?.resume?.state?.summary?.detailedByPlayer,
+    rec?.payload?.resume?.state?.summary?.detailedByPlayer,
+    rec?.resume?.state?.liveStatsByPlayer,
+    rec?.payload?.resume?.state?.liveStatsByPlayer,
+  ];
+  for (const obj of detailRows) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) continue;
+    const row = obj[id] || obj[String(id)] || obj[Object.keys(obj).find((k) => id.startsWith(k) || k.startsWith(id)) || ""];
+    if (!row) continue;
+    const raw = row.finalScore ?? row.remainingScore ?? row.scoreRemaining ?? row.remaining;
+    if (raw !== undefined && raw !== null && Number.isFinite(Number(raw))) return Number(raw);
+  }
+  return undefined;
+}
+
 function computeX01RemainingScore(
   m: Partial<PlayerMetrics> & { id?: string },
   rec: any,
@@ -1427,6 +1491,11 @@ function computeX01RemainingScore(
   const pid = String(m?.id ?? "");
   const winner = explicitWinnerId ? String(explicitWinnerId) : null;
   const startScore = getX01StartScore(rec);
+
+  // Source de vérité import/historique : si le record transporte explicitement
+  // un score final corrigé, on le respecte avant tout recalcul depuis les volées.
+  const explicitFinal = readExplicitX01FinalScore(rec, pid);
+  if (explicitFinal !== undefined) return explicitFinal;
 
   // Le vainqueur est le seul joueur dont le score restant doit être forcé à 0.
   if ((winner && pid && winner === pid) || (!winner && n(m.bestCO, 0) > 0 && n(m.remaining, 0) === 0)) {
@@ -2177,6 +2246,7 @@ function buildPerPlayerMetrics(
 
     // Dernier filet de sécurité : certains historiques anciens portent remaining/finalScore à 0
     // pour tous les joueurs. Après avoir stabilisé points/avg/darts, on recalcule le perdant.
+    // Si un import corrigé porte finalScores/remainingScores, cette valeur gagne toujours.
     const safeRemaining = computeX01RemainingScore(m, rec, winnerIdFromRecord(rec));
     if (safeRemaining !== undefined) {
       m.remaining = safeRemaining;

@@ -1460,10 +1460,12 @@ export default function HistoryPage({
 
   function packetPlayers(packet: any): Array<{ id?: string; name: string; avatarDataUrl?: string | null }> {
     const candidates = [
-      packet?.summary?.players,
+      // IMPORTANT: le header summary.players peut être un résumé léger sans avatars.
+      // Pour l'import/historique, on privilégie toujours les joueurs complets du payload.
       packet?.payload?.players,
       packet?.payload?.resume?.config?.players,
       packet?.payload?.config?.players,
+      packet?.summary?.players,
     ];
     for (const arr of candidates) {
       if (Array.isArray(arr) && arr.length) {
@@ -1499,9 +1501,18 @@ export default function HistoryPage({
     };
 
     const scoreSources = [
+      // Scores finaux explicites : source de vérité pour les imports X01 corrigés.
+      packet?.summary?.finalScores,
+      packet?.payload?.summary?.finalScores,
+      packet?.payload?.summary?.remainingScores,
+      packet?.payload?.summary?.scoreByPlayer,
+      packet?.payload?.resume?.state?.finalScores,
+      packet?.payload?.finalScores,
+      // Puis seulement les états live sauvegardés.
       packet?.payload?.resume?.state?.scores,
       packet?.payload?.state?.scores,
       packet?.payload?.scores,
+      // Le compact peut contenir un état obsolète/raccourci : on le garde en dernier.
       packet?.payload?.compact?.d?.s?.scores,
     ];
     for (const src of scoreSources) {
@@ -1589,6 +1600,11 @@ export default function HistoryPage({
         status: packet.summary?.status || payload?.summary?.status || "finished",
         players,
         scoreLine,
+        finalScores: {
+          ...(packet?.summary?.finalScores || {}),
+          ...(payload?.summary?.finalScores || {}),
+          ...packetScoreMap(packet),
+        },
       },
       payload,
       resume: payload?.resume || undefined,
