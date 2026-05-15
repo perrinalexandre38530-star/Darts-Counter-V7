@@ -4,6 +4,7 @@
 // - Connexions peer-to-peer gardées pendant toute la présence dans le salon
 // - Aucun close/recreate lors des changements de tour
 // - Le tour actif change uniquement le flux affiché
+// - Négociation sérialisée par peer : les réponses WebRTC périmées sont ignorées
 // - La caméra reste optionnelle : aucune validation de score n'attend WebRTC
 // =========================================================
 
@@ -48,6 +49,8 @@ type PeerEntry = {
   remoteStream: MediaStream;
   queuedIce: RTCIceCandidateInit[];
   lastOfferAt: number;
+  operation: Promise<void>;
+  pendingRenegotiate: boolean;
 };
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
@@ -119,6 +122,30 @@ function ensureRecvTransceivers(pc: RTCPeerConnection) {
   const hasAudio = transceivers.some((t) => t.receiver?.track?.kind === "audio" || t.sender?.track?.kind === "audio");
   try { if (!hasVideo) pc.addTransceiver("video", { direction: "recvonly" }); } catch {}
   try { if (!hasAudio) pc.addTransceiver("audio", { direction: "recvonly" }); } catch {}
+}
+
+function enqueuePeerTask(
+  entry: PeerEntry,
+  task: () => Promise<void>,
+  onError?: (error: any) => void
+) {
+  const run = entry.operation.catch(() => undefined).then(task);
+  entry.operation = run.catch(() => undefined);
+  run.catch((error) => onError?.(error));
+  return run;
+}
+
+function isPeerConnectionOpen(pc: RTCPeerConnection) {
+  return pc.signalingState !== "closed" && pc.connectionState !== "closed";
+}
+
+function toSessionDescription(payload: any): RTCSessionDescriptionInit | null {
+  const raw = payload?.description || payload;
+  if (!raw || typeof raw !== "object") return null;
+  if ((raw.type === "offer" || raw.type === "answer") && typeof raw.sdp === "string") {
+    return { type: raw.type, sdp: raw.sdp };
+  }
+  return null;
 }
 
 export default function OnlineCameraPanel({
@@ -263,26 +290,53 @@ export default function OnlineCameraPanel({
     });
   }, [activeId, publishSignal, roomId, self]);
 
-  const negotiate = React.useCallback(async (peerId: string, reason = "sync") => {
+  const negotiate = React.useCallback((peerId: string, reason = "sync") => {
     const entry = peersRef.current[peerId];
-    if (!entry || entry.pc.signalingState === "closed") return;
-    const now = Date.now();
-    if (now - entry.lastOfferAt < NEGOTIATION_THROTTLE_MS && reason !== "initial") return;
-    entry.lastOfferAt = now;
-    try {
-      entry.makingOffer = true;
-      addOrReplaceLocalTracks(entry.pc, cameraRef.current.localStream);
-      ensureRecvTransceivers(entry.pc);
-      await entry.pc.setLocalDescription(await entry.pc.createOffer());
-      sendSignal(peerId, "viewer_offer", entry.pc.localDescription);
-      setWebrtcStatus((prev) => (prev === "live" ? prev : "connecting"));
-      setWebrtcError(null);
-    } catch (error: any) {
-      setWebrtcStatus("error");
-      setWebrtcError(error?.message || "Négociation WebRTC impossible.");
-    } finally {
-      entry.makingOffer = false;
-    }
+    if (!entry || !isPeerConnectionOpen(entry.pc)) return Promise.resolve();
+
+    return enqueuePeerTask(
+      entry,
+      async () => {
+        const pc = entry.pc;
+        if (!isPeerConnectionOpen(pc)) return;
+
+        const now = Date.now();
+        if (now - entry.lastOfferAt < NEGOTIATION_THROTTLE_MS && reason !== "initial") {
+          entry.pendingRenegotiate = true;
+          return;
+        }
+
+        // Un offer ne doit jamais partir pendant une réponse/rollback en cours :
+        // c'est la cause typique du "setRemoteDescription(answer) in wrong state: stable" sur mobile.
+        if (entry.makingOffer || pc.signalingState !== "stable") {
+          entry.pendingRenegotiate = true;
+          return;
+        }
+
+        try {
+          entry.makingOffer = true;
+          entry.pendingRenegotiate = false;
+          entry.lastOfferAt = now;
+          addOrReplaceLocalTracks(pc, cameraRef.current.localStream);
+          ensureRecvTransceivers(pc);
+          const offer = await pc.createOffer();
+          if (!isPeerConnectionOpen(pc) || pc.signalingState !== "stable") {
+            entry.pendingRenegotiate = true;
+            return;
+          }
+          await pc.setLocalDescription(offer);
+          sendSignal(peerId, "viewer_offer", pc.localDescription);
+          setWebrtcStatus((prev) => (prev === "live" ? prev : "connecting"));
+          setWebrtcError(null);
+        } finally {
+          entry.makingOffer = false;
+        }
+      },
+      (error) => {
+        setWebrtcStatus("error");
+        setWebrtcError(error?.message || "Négociation WebRTC impossible.");
+      }
+    );
   }, [sendSignal]);
 
   const ensurePeer = React.useCallback((peerId: string) => {
@@ -301,6 +355,8 @@ export default function OnlineCameraPanel({
       remoteStream,
       queuedIce: [],
       lastOfferAt: 0,
+      operation: Promise.resolve(),
+      pendingRenegotiate: false,
     };
     peersRef.current[peerId] = entry;
 
@@ -344,14 +400,20 @@ export default function OnlineCameraPanel({
   }, [negotiate, self, sendSignal]);
 
   React.useEffect(() => {
-    if (!localVideoRef.current) return;
-    localVideoRef.current.srcObject = camera.localStream;
+    const video = localVideoRef.current;
+    if (!video) return;
+    video.srcObject = camera.localStream;
+    if (camera.localStream) void video.play?.().catch(() => undefined);
   }, [camera.localStream]);
 
   const displayedRemoteStream = !selfIsActive && activeId ? remoteStreams[activeId] || null : null;
   React.useEffect(() => {
-    if (!remoteVideoRef.current) return;
-    remoteVideoRef.current.srcObject = displayedRemoteStream;
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    video.srcObject = displayedRemoteStream;
+    // Android/Chrome bloque souvent l'autoplay si un flux distant contient une piste audio.
+    // La prévisualisation anti-triche doit rester vidéo-first, donc on force lecture muted.
+    if (displayedRemoteStream) void video.play?.().catch(() => undefined);
   }, [displayedRemoteStream]);
 
   React.useEffect(() => {
@@ -422,13 +484,34 @@ export default function OnlineCameraPanel({
       if (!entry) continue;
 
       if (signal.type === "viewer_offer" || signal.type === "active_answer") {
-        (async () => {
-          try {
+        void enqueuePeerTask(
+          entry,
+          async () => {
             const pc = entry.pc;
-            const description = new RTCSessionDescription(signal.payload);
+            if (!isPeerConnectionOpen(pc)) return;
+
+            const description = toSessionDescription(signal.payload);
+            if (!description) return;
+
+            // Très important : une ANSWER n'est valable que si on attend vraiment une réponse.
+            // Sur Android/Chrome, une réponse arrivée en retard ou en double fait planter avec :
+            // "Failed to set remote answer sdp: Called in wrong state: stable".
+            // On l'ignore donc proprement au lieu d'afficher une erreur et de casser la caméra.
+            if (description.type === "answer" && pc.signalingState !== "have-local-offer") {
+              return;
+            }
+
             const offerCollision = description.type === "offer" && (entry.makingOffer || pc.signalingState !== "stable");
             entry.ignoreOffer = !entry.polite && offerCollision;
             if (entry.ignoreOffer) return;
+
+            if (description.type === "offer" && offerCollision && pc.signalingState !== "stable") {
+              try {
+                await pc.setLocalDescription({ type: "rollback" } as RTCSessionDescriptionInit);
+              } catch {
+                // Certains navigateurs gèrent le rollback implicitement, d'autres non.
+              }
+            }
 
             addOrReplaceLocalTracks(pc, cameraRef.current.localStream);
             await pc.setRemoteDescription(description);
@@ -444,18 +527,24 @@ export default function OnlineCameraPanel({
               await pc.setLocalDescription(await pc.createAnswer());
               sendSignal(from, "active_answer", pc.localDescription);
             }
-          } catch (error: any) {
+
+            if (entry.pendingRenegotiate && pc.signalingState === "stable") {
+              entry.pendingRenegotiate = false;
+              window.setTimeout(() => void negotiate(from, "pending"), 120);
+            }
+          },
+          (error) => {
             setWebrtcStatus("error");
             setWebrtcError(error?.message || "Signal caméra invalide. Le match continue.");
           }
-        })();
+        );
         continue;
       }
 
       if (signal.type === "ice") {
-        (async () => {
+        void enqueuePeerTask(entry, async () => {
           try {
-            if (!signal.payload) return;
+            if (!signal.payload || entry.ignoreOffer || !isPeerConnectionOpen(entry.pc)) return;
             if (!entry.pc.remoteDescription) {
               entry.queuedIce.push(signal.payload);
               if (entry.queuedIce.length > 40) entry.queuedIce = entry.queuedIce.slice(-40);
@@ -465,7 +554,7 @@ export default function OnlineCameraPanel({
           } catch {
             // ICE tardif/obsolète : ignore, surtout ne pas casser l'UI.
           }
-        })();
+        });
         continue;
       }
 
@@ -479,7 +568,7 @@ export default function OnlineCameraPanel({
         });
       }
     }
-  }, [cameraSignals, ensurePeer, liveSignals, self, sendSignal]);
+  }, [cameraSignals, ensurePeer, liveSignals, negotiate, self, sendSignal]);
 
   React.useEffect(() => {
     if (selfIsActive) {
@@ -530,7 +619,7 @@ export default function OnlineCameraPanel({
       {canShowLocalPreview ? (
         <video ref={localVideoRef} muted playsInline autoPlay style={videoStyle(true, embedded, compact)} />
       ) : canShowRemote ? (
-        <video ref={remoteVideoRef} playsInline autoPlay style={videoStyle(false, embedded, compact)} />
+        <video ref={remoteVideoRef} muted playsInline autoPlay style={videoStyle(false, embedded, compact)} />
       ) : activeCameraEnabled ? (
         <div style={{ textAlign: "center", padding: "18px 8px 8px" }}>
           <div style={{ fontSize: embedded ? 17 : 24, lineHeight: 1 }}>🎥</div>

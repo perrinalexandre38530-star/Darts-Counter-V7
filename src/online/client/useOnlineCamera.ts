@@ -181,7 +181,14 @@ export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCamer
       const nextMicEnabled = micEnabled;
       setCameraEnabledState(enabled);
       let stream = localStreamRef.current;
-      if (enabled && !stream) stream = await openStream(true, nextMicEnabled);
+      if (enabled && !stream) {
+        stream = await openStream(true, nextMicEnabled);
+        if (!stream) {
+          setCameraEnabledState(false);
+          publishState({ cameraEnabled: false, micEnabled: nextMicEnabled, hasVideo: false, hasAudio: false });
+          return;
+        }
+      }
       setTrackKindEnabled(stream, "video", enabled);
       publishState({ cameraEnabled: enabled, micEnabled: nextMicEnabled });
     },
@@ -193,7 +200,14 @@ export function useOnlineCamera(options: UseOnlineCameraOptions): UseOnlineCamer
       const nextCameraEnabled = cameraEnabled;
       setMicEnabledState(enabled);
       let stream = localStreamRef.current;
-      if (enabled && !stream) stream = await openStream(nextCameraEnabled, true);
+      if (enabled && !stream) {
+        stream = await openStream(nextCameraEnabled, true);
+        if (!stream) {
+          setMicEnabledState(false);
+          publishState({ cameraEnabled: nextCameraEnabled, micEnabled: false, hasVideo: false, hasAudio: false });
+          return;
+        }
+      }
       setTrackKindEnabled(stream, "audio", enabled);
       publishState({ cameraEnabled: nextCameraEnabled, micEnabled: enabled });
     },

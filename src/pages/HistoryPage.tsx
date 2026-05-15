@@ -713,38 +713,6 @@ function getX01LegsPerSetForHistory(e: SavedEntry): number {
 function summarizeX01SetsLegsScore(e: SavedEntry): string {
   const anyE: any = e;
   const data: any = anyE.summary || {};
-
-  // Import / export X01 : pour une partie terminée, l'historique doit afficher
-  // les scores restants finaux (Jean: 0, etc.), pas le score sets/legs.
-  const finalScores =
-    data.finalRemainingScores ||
-    data.finalScores ||
-    data.scoresFinal ||
-    anyE.payload?.summary?.finalRemainingScores ||
-    anyE.payload?.summary?.finalScores ||
-    anyE.payload?.resume?.state?.scores ||
-    anyE.resume?.state?.scores ||
-    null;
-
-  if (finalScores && typeof finalScores === "object") {
-    const players = getAllEntryPlayers(e);
-    const parts = players
-      .map((p: any) => {
-        const id = String(p?.id || p?.playerId || p?.profileId || "");
-        const name = cleanName(p?.name || p?.displayName || p?.username || id) || undefined;
-        if (!name || !id) return null;
-        const score =
-          finalScores[id] ??
-          finalScores[id.slice(0, 18)] ??
-          finalScores[name] ??
-          finalScores[String(name).toLowerCase()];
-        if (typeof score === "number" || typeof score === "string") return `${name}: ${score}`;
-        return null;
-      })
-      .filter(Boolean) as string[];
-    if (parts.length) return parts.join(" • ");
-  }
-
   const result = data.result || {};
   const rankings = data.rankings || result.rankings || anyE.payload?.summary?.rankings || anyE.resume?.summary?.rankings || [];
   if (!Array.isArray(rankings) || !rankings.length) return "";
@@ -768,6 +736,9 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
 }
 
 function summarizeScore(e: SavedEntry): string {
+  const explicitScoreLine = cleanName((e as any)?.summary?.scoreLine || (e as any)?.scoreLine || "");
+  if (explicitScoreLine) return explicitScoreLine;
+
   if (isX01Entry(e)) {
     const x01Score = summarizeX01SetsLegsScore(e);
     if (x01Score) return x01Score;
@@ -1486,6 +1457,144 @@ export default function HistoryPage({
     }
   }
 
+
+  function packetPlayers(packet: any): Array<{ id?: string; name: string; avatarDataUrl?: string | null }> {
+    const candidates = [
+      packet?.summary?.players,
+      packet?.payload?.players,
+      packet?.payload?.resume?.config?.players,
+      packet?.payload?.config?.players,
+    ];
+    for (const arr of candidates) {
+      if (Array.isArray(arr) && arr.length) {
+        return arr
+          .map((p: any) => ({
+            id: String(p?.id || p?.playerId || p?.profileId || p?._id || ""),
+            name: String(p?.name || p?.displayName || p?.username || p?.nickname || p || "").trim(),
+            avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
+          }))
+          .filter((p: any) => p.name);
+      }
+    }
+    return [];
+  }
+
+  function packetStartScore(packet: any): number | null {
+    const raw =
+      packet?.payload?.game?.startScore ??
+      packet?.payload?.summary?.game?.startScore ??
+      packet?.payload?.resume?.config?.startScore ??
+      packet?.payload?.compact?.o?.startscore ??
+      packet?.payload?.compact?.o?.startScore;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function packetScoreMap(packet: any): Record<string, number> {
+    const out: Record<string, number> = {};
+    const push = (k: any, v: any) => {
+      const id = String(k || "").trim();
+      const n = Number(v);
+      if (id && Number.isFinite(n)) out[id] = n;
+    };
+
+    const scoreSources = [
+      packet?.payload?.resume?.state?.scores,
+      packet?.payload?.state?.scores,
+      packet?.payload?.scores,
+      packet?.payload?.compact?.d?.s?.scores,
+    ];
+    for (const src of scoreSources) {
+      if (src && typeof src === "object" && !Array.isArray(src)) {
+        for (const [k, v] of Object.entries(src)) push(k, v);
+      }
+    }
+
+    // Fallback: si l'état final a été perdu, on déduit le score restant depuis startScore - totalScore.
+    // On ne l'utilise que pour combler les trous, car le state.scores final reste la source la plus fiable.
+    const start = packetStartScore(packet);
+    const detailed =
+      packet?.payload?.summary?.detailedByPlayer ||
+      packet?.payload?.resume?.state?.summary?.detailedByPlayer ||
+      packet?.payload?.resume?.state?.liveStatsByPlayer ||
+      packet?.payload?.summary?.detailedbyplayer ||
+      null;
+    if (start && detailed && typeof detailed === "object") {
+      for (const [k, v] of Object.entries(detailed as any)) {
+        const total = Number((v as any)?.totalScore ?? (v as any)?.totalscore);
+        if (Number.isFinite(total) && out[String(k)] == null) out[String(k)] = Math.max(0, start - total);
+      }
+    }
+
+    return out;
+  }
+
+  function scoreForPacketPlayer(scoreMap: Record<string, number>, playerId: string): number | null {
+    if (!playerId) return null;
+    if (scoreMap[playerId] != null) return scoreMap[playerId];
+    const hit = Object.keys(scoreMap).find((k) => playerId.startsWith(k) || k.startsWith(playerId));
+    return hit ? scoreMap[hit] : null;
+  }
+
+  function packetPreviewLine(packet: any): string {
+    const explicit = String(packet?.summary?.scoreLine || "").trim();
+    if (explicit) return explicit;
+
+    const players = packetPlayers(packet);
+    const scoreMap = packetScoreMap(packet);
+    const parts = players.map((p) => {
+      const score = scoreForPacketPlayer(scoreMap, String(p.id || ""));
+      return score == null ? p.name : `${p.name}: ${score}`;
+    }).filter(Boolean);
+    return parts.join(" • ") || "Partie importée";
+  }
+
+  function buildHistoryRecordFromPacket(packet: MatchSharePacketV1): SavedMatch {
+    const payload: any = packet?.payload || {};
+    const players = packetPlayers(packet);
+    const scoreLine = packetPreviewLine(packet);
+    const winnerId =
+      payload?.winnerId ||
+      payload?.resume?.state?.lastWinnerId ||
+      payload?.resume?.state?.lastLegWinnerId ||
+      payload?.resume?.state?.lastWinningPlayerId ||
+      payload?.compact?.d?.s?.lastwinnerid ||
+      null;
+    const game =
+      payload?.game ||
+      payload?.summary?.game ||
+      payload?.resume?.state?.summary?.game ||
+      {
+        mode: packet.kind,
+        startScore: packetStartScore(packet) || undefined,
+      };
+
+    const created = Number(payload?.createdAt || payload?.created_at || Date.parse(packet.exportedAt));
+    const updated = Number(payload?.updatedAt || payload?.updated_at || Date.now());
+
+    return {
+      id: packet.matchId,
+      matchId: packet.matchId,
+      kind: packet.kind,
+      status: packet.summary?.status === "in_progress" ? "in_progress" : "finished",
+      players: players as any,
+      winnerId,
+      createdAt: Number.isFinite(created) ? created : Date.now(),
+      updatedAt: Number.isFinite(updated) ? updated : Date.now(),
+      finishedAt: packet.summary?.finishedAt || payload?.finishedAt || payload?.updatedAt || null,
+      game,
+      summary: {
+        ...(payload?.summary && typeof payload.summary === "object" ? payload.summary : {}),
+        title: packet.summary?.title || payload?.summary?.title || String(packet.kind || "match").toUpperCase(),
+        status: packet.summary?.status || payload?.summary?.status || "finished",
+        players,
+        scoreLine,
+      },
+      payload,
+      resume: payload?.resume || undefined,
+    } as any;
+  }
+
   useEffect(() => {
     // refresh inbox quand on l'ouvre
     if (tab === "inbox") loadInbox();
@@ -1515,139 +1624,8 @@ export default function HistoryPage({
     }
   }
 
-
-function _packetPlayersFrom(packet: MatchSharePacketV1, source: any): any[] {
-  const players =
-    (Array.isArray(source?.players) && source.players.length ? source.players : null) ||
-    (Array.isArray(source?.resume?.config?.players) && source.resume.config.players.length ? source.resume.config.players : null) ||
-    (Array.isArray(source?.config?.players) && source.config.players.length ? source.config.players : null) ||
-    (Array.isArray(packet?.summary?.players) ? packet.summary.players : []);
-  return players.map((p: any) => ({
-    ...p,
-    id: String(p?.id || p?.playerId || p?.profileId || ""),
-    name: String(p?.name || p?.displayName || p?.username || p?.id || "Joueur").trim(),
-  })).filter((p: any) => p.id || p.name);
-}
-
-function _packetFinalScores(packet: MatchSharePacketV1, source: any): Record<string, number> | null {
-  const candidates = [
-    source?.summary?.finalRemainingScores,
-    source?.summary?.finalScores,
-    source?.finalRemainingScores,
-    source?.finalScores,
-    source?.resume?.state?.scores,
-    source?.state?.scores,
-    source?.payload?.resume?.state?.scores,
-    source?.payload?.state?.scores,
-  ];
-  for (const c of candidates) {
-    if (c && typeof c === "object" && !Array.isArray(c)) {
-      const out: Record<string, number> = {};
-      for (const [k, v] of Object.entries(c as any)) {
-        const n = Number(v);
-        if (Number.isFinite(n)) out[String(k)] = n;
-      }
-      if (Object.keys(out).length) return out;
-    }
-  }
-  return null;
-}
-
-function _scoreLineFromFinalScores(players: any[], scores: Record<string, number> | null): string | undefined {
-  if (!scores || !players.length) return undefined;
-  const parts = players.map((p: any) => {
-    const id = String(p?.id || "");
-    const name = String(p?.name || p?.displayName || "Joueur").trim();
-    const score = scores[id] ?? scores[id.slice(0, 18)] ?? scores[name] ?? scores[name.toLowerCase()];
-    return typeof score === "number" ? `${name}: ${score}` : null;
-  }).filter(Boolean);
-  return parts.length ? parts.join(" • ") : undefined;
-}
-
-function _winnerIdFromPacket(packet: MatchSharePacketV1, source: any, players: any[], finalScores: Record<string, number> | null): string | null {
-  const direct = source?.winnerId || source?.winner_id || source?.summary?.winnerId || source?.payload?.winnerId;
-  if (direct) return String(direct);
-  const winnerName = String(source?.winnerName || source?.summary?.winnerName || packet?.summary?.winnerName || "").trim().toLowerCase();
-  if (winnerName) {
-    const p = players.find((x: any) => String(x?.name || "").trim().toLowerCase() === winnerName);
-    if (p?.id) return String(p.id);
-  }
-  if (finalScores) {
-    const zero = players.find((p: any) => {
-      const id = String(p?.id || "");
-      const score = finalScores[id] ?? finalScores[id.slice(0, 18)] ?? finalScores[String(p?.name || "")];
-      return Number(score) === 0;
-    });
-    if (zero?.id) return String(zero.id);
-  }
-  return null;
-}
-
-
   async function acceptPacket(packet: MatchSharePacketV1) {
-    // Transforme le packet importé en SavedMatch complet.
-    // IMPORTANT : ne pas stocker uniquement packet.payload, sinon la carte historique
-    // perd players/game/winnerId/scoreLine et l'acceptation donne une carte vide.
-    const source: any = packet?.payload && typeof packet.payload === "object" ? packet.payload : {};
-    const players = _packetPlayersFrom(packet, source);
-    const finalScores = _packetFinalScores(packet, source);
-    const scoreLine = packet.summary?.scoreLine || _scoreLineFromFinalScores(players, finalScores);
-    const winnerId = _winnerIdFromPacket(packet, source, players, finalScores);
-    const winnerName =
-      String(source?.winnerName || source?.summary?.winnerName || "") ||
-      (winnerId ? String(players.find((p: any) => String(p.id) === String(winnerId))?.name || "") : "");
-
-    const sourceSummary = source?.summary && typeof source.summary === "object" ? source.summary : {};
-    const sourceGame =
-      source?.game ||
-      sourceSummary?.game ||
-      source?.resume?.config ||
-      source?.config ||
-      null;
-
-    const rec: any = {
-      id: String(packet.matchId || source?.matchId || source?.id || crypto.randomUUID?.() || Date.now()),
-      matchId: String(packet.matchId || source?.matchId || source?.id || ""),
-      kind: String(packet.kind || source?.kind || sourceGame?.mode || "x01").toLowerCase(),
-      status: packet.summary?.status === "in_progress" ? "in_progress" : "finished",
-      players,
-      winnerId,
-      winnerName: winnerName || undefined,
-      game: sourceGame
-        ? {
-            ...(sourceGame || {}),
-            mode: sourceGame?.mode || packet.kind || source?.kind || "x01",
-            startScore: Number(sourceGame?.startScore || sourceGame?.startscore || sourceSummary?.game?.startScore || 0) || undefined,
-          }
-        : source?.game ?? null,
-      createdAt: Number(source?.createdAt || source?.created_at || Date.parse(packet.exportedAt)) || Date.now(),
-      updatedAt: Date.now(),
-      finishedAt: packet.summary?.finishedAt || source?.finishedAt || source?.updatedAt || null,
-      summary: {
-        ...sourceSummary,
-        title: packet.summary?.title || sourceSummary?.title || packet.kind?.toUpperCase?.() || "MATCH",
-        status: packet.summary?.status || sourceSummary?.status || "finished",
-        players: players.map((p: any) => ({ id: p.id, name: p.name })),
-        ...(scoreLine ? { scoreLine } : {}),
-        ...(finalScores ? { finalRemainingScores: finalScores, finalScores } : {}),
-        ...(winnerName ? { winnerName } : {}),
-        ...(winnerId ? { winnerId } : {}),
-      },
-      payload: {
-        ...source,
-        players: source?.players || players,
-        winnerId: source?.winnerId || winnerId,
-        winnerName: source?.winnerName || winnerName || undefined,
-        summary: {
-          ...sourceSummary,
-          ...(scoreLine ? { scoreLine } : {}),
-          ...(finalScores ? { finalRemainingScores: finalScores, finalScores } : {}),
-          ...(winnerName ? { winnerName } : {}),
-          ...(winnerId ? { winnerId } : {}),
-        },
-      },
-    };
-
+    const rec = buildHistoryRecordFromPacket(packet);
     await History.upsert(rec as any);
     await loadHistory();
   }
@@ -2378,7 +2356,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       </div>
 
                       <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)" }}>
-                        {row.packet?.summary?.scoreLine || "—"}
+                        {packetPreviewLine(row.packet)}
                       </div>
 
                       <div style={S.pillRow}>
@@ -2417,7 +2395,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       </div>
 
                       <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)" }}>
-                        {it.packet?.summary?.scoreLine || "—"}
+                        {packetPreviewLine(it.packet)}
                       </div>
 
                       <div style={S.pillRow}>

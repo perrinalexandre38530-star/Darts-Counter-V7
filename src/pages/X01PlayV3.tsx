@@ -3563,8 +3563,31 @@ React.useEffect(() => {
     return (Array.isArray(players) ? players : []).map((p: any) => ({
       id: String(p?.id || p?.userId || p?.profileId || "player"),
       name: String(p?.name || p?.displayName || p?.nickname || "Joueur"),
+      userId: String(p?.userId || p?.user_id || p?.ownerUserId || p?.owner_user_id || ""),
+      profileId: String(p?.profileId || p?.profile_id || p?.id || ""),
     }));
   }, [players]);
+
+  const x01OnlineCameraLocalPlayerId = React.useMemo(() => {
+    const current = String(onlineCurrentUserId || onlineUserId || onlineLocalUserId || "").trim();
+    if (!current) return String(activePlayerId || "local");
+    const candidates = Array.isArray(players) ? players : [];
+    const found = candidates.find((p: any) => {
+      const ids = [
+        p?.id,
+        p?.userId,
+        p?.user_id,
+        p?.profileId,
+        p?.profile_id,
+        p?.ownerUserId,
+        p?.owner_user_id,
+      ]
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      return ids.includes(current);
+    });
+    return String(found?.id || found?.profileId || found?.userId || current || activePlayerId || "local");
+  }, [players, onlineCurrentUserId, onlineUserId, onlineLocalUserId, activePlayerId]);
 
   const handleX01OnlineCameraStateChange = React.useCallback((state: OnlineCameraPlayerState) => {
     const id = String(state?.playerId || onlineCurrentUserId || activePlayerId || "local");
@@ -3627,40 +3650,16 @@ React.useEffect(() => {
     });
   }, [effectiveOnline, effectiveLobbyCode, onlineCurrentUserId]);
 
-  // Caméra anti-triche : WebRTC doit parler dans le même espace d'identifiants que les joueurs X01.
-  // Sur un invité, onlineCurrentUserId peut être l'id du compte alors que players[].id est l'id joueur/profil.
-  // Si on utilise l'id compte comme selfId, le téléphone ignore les offres envoyées à son joueur et reste OFF.
-  const x01OnlineCameraActivePlayer = React.useMemo(() => {
-    const target = String(activePlayerId || "").trim();
-    if (!target) return activePlayer || null;
-    return (safePlayersForOnline as any[]).find((p: any) => {
-      const ids = [p?.id, p?.userId, p?.user_id, p?.profileId, p?.profile_id, p?.ownerUserId, p?.owner_user_id]
-        .map((v) => String(v || "").trim())
-        .filter(Boolean);
-      return ids.includes(target);
-    }) || activePlayer || null;
-  }, [activePlayerId, activePlayer, safePlayersForOnline]);
-
-  const x01OnlineCameraSelfPlayer = React.useMemo(() => {
-    const uid = String(onlineCurrentUserId || onlineLocalUserId || "").trim();
-    if (!uid) return onlineCanScore ? x01OnlineCameraActivePlayer : null;
-    return (safePlayersForOnline as any[]).find((p: any) => {
-      const ids = [p?.id, p?.userId, p?.user_id, p?.profileId, p?.profile_id, p?.ownerUserId, p?.owner_user_id]
-        .map((v) => String(v || "").trim())
-        .filter(Boolean);
-      return ids.includes(uid);
-    }) || (onlineCanScore ? x01OnlineCameraActivePlayer : null);
-  }, [onlineCurrentUserId, onlineLocalUserId, onlineCanScore, x01OnlineCameraActivePlayer, safePlayersForOnline]);
-
-  const x01OnlineCameraActivePlayerId = String((x01OnlineCameraActivePlayer as any)?.id || activePlayerId || onlineCurrentUserId || onlineLocalUserId || "local");
-  const x01OnlineCameraSelfId = String(
-    (x01OnlineCameraSelfPlayer as any)?.id ||
-      (onlineCanScore && x01OnlineCameraActivePlayerId ? x01OnlineCameraActivePlayerId : "") ||
-      onlineCurrentUserId ||
-      onlineLocalUserId ||
-      activePlayerId ||
-      "local"
-  );
+  // Caméra anti-triche : le navigateur qui peut saisir la volée du joueur actif
+  // doit être identifié comme CE joueur actif pour répondre aux offres WebRTC.
+  // Sinon on diffuse sous l'id utilisateur et les autres clients attendent l'id joueur actif.
+  const x01OnlineCameraActivePlayerId = String(activePlayerId || onlineCurrentUserId || onlineLocalUserId || "local");
+  // IMPORTANT : WebRTC doit parler avec les ids JOUEURS de la partie, pas avec les ids
+  // de compte quand l'appareil n'est pas actif. Sinon les offres envoyées au joueur
+  // "Barton" sont ignorées par le téléphone connecté avec son userId, et l'écran reste
+  // bloqué sur CAMERA OFF. Chaque appareil garde donc son playerId local stable pendant
+  // toute la partie ; le tour actif ne change que le flux affiché.
+  const x01OnlineCameraSelfId = String(x01OnlineCameraLocalPlayerId || onlineCurrentUserId || onlineLocalUserId || activePlayerId || "local");
   const x01OnlineCameraActive = Boolean(
     effectiveOnline &&
       (x01OnlineCameraStates[x01OnlineCameraActivePlayerId]?.cameraEnabled ||
@@ -7468,25 +7467,27 @@ function saveX01V3MatchToHistory({
     (config as any).outMode ?? (config as any).checkoutMode ?? (config as any).doubleOutMode ?? "double"
   );
   const replayMetricsByPlayer = deriveX01MetricsFromReplayVisits(replayVisits, playerOrderForReplay);
-
-  // ✅ Source de vérité pour les scores finaux sauvegardés.
-  // Ne jamais se baser uniquement sur `scores` ici : en fin de manche le state peut
-  // déjà avoir été réinitialisé / réordonné, ce qui attribue les restes aux mauvais joueurs.
-  const finalScoresFromReplay: Record<string, number> = {};
-  for (const p of players as any[]) {
-    finalScoresFromReplay[String(p.id)] = Number(config.startScore ?? 501);
-  }
-  for (const v of Array.isArray(replayVisits) ? replayVisits : []) {
-    const pid = String((v as any)?.playerId || (v as any)?.pid || "");
-    if (!pid) continue;
-    const after = Number((v as any)?.scoreAfter ?? (v as any)?.after);
-    if (Number.isFinite(after)) finalScoresFromReplay[pid] = Math.max(0, after);
-  }
-
   const replayLegs = buildX01LegsFromReplayVisits(replayVisits, players as any[], {
     startScore: config.startScore ?? 501,
     legsPerSet: (config as any)?.legsPerSet ?? 1,
   });
+
+  // Source de vérité des scores finaux : le replay/visitHistory, pas state.scores.
+  // Après un checkout, le moteur peut déjà avoir préparé la manche suivante et remettre
+  // state.scores à startScore. En sauvegarde/historique, cela réattribue ensuite les
+  // scores restants aux mauvais joueurs ou affiche tous les joueurs à 301.
+  const finalRemainingFromReplay: Record<string, number> = {};
+  for (const p of players as any[]) {
+    const pid = String(p?.id || "");
+    if (!pid) continue;
+    finalRemainingFromReplay[pid] = Number(config.startScore ?? 501) || 501;
+  }
+  for (const v of Array.isArray(replayVisits) ? replayVisits : []) {
+    const pid = String(v?.playerId ?? v?.pid ?? "");
+    if (!pid) continue;
+    const after = Number(v?.scoreAfter ?? v?.after);
+    if (Number.isFinite(after)) finalRemainingFromReplay[pid] = Math.max(0, after);
+  }
 
   const matchId =
     historyId ||
@@ -7538,7 +7539,8 @@ function saveX01V3MatchToHistory({
     const pid = p.id as string;
     const live = (liveStatsByPlayer && liveStatsByPlayer[pid]) || {};
     const startScore = config.startScore ?? 501;
-    const scoreNow = finalScoresFromReplay[pid] ?? scores[pid] ?? startScore;
+    const scoreNowRaw = Number(finalRemainingFromReplay[pid]);
+    const scoreNow = Number.isFinite(scoreNowRaw) ? scoreNowRaw : (scores[pid] ?? startScore);
     const scored = startScore - scoreNow;
 
     const replayMetricAtTop = replayMetricsByPlayer[pid] || null;
@@ -7582,7 +7584,12 @@ function saveX01V3MatchToHistory({
           bySegmentT: replayMetric.bySegmentT,
         }
       : mergeDetailedStats(liveDetail, replayDetail);
-    detailedByPlayer[pid] = detail;
+    detailedByPlayer[pid] = {
+      ...detail,
+      remaining: scoreNow,
+      finalScore: scoreNow,
+      scoreRemaining: scoreNow,
+    };
 
     // Reformatage compatible V2/V1 pour StatsHub et tous les dashboards
     const segments = {
@@ -7899,6 +7906,9 @@ function saveX01V3MatchToHistory({
       _sumVisits: visits || undefined,
       matches: 1,
       legs: legsPlayedByPlayer[pid] || 1,
+      remaining: legacyRemaining[pid] ?? 0,
+      finalScore: legacyRemaining[pid] ?? 0,
+      scoreRemaining: legacyRemaining[pid] ?? 0,
       avgCheckoutDarts: replayMetricsByPlayer[pid]?.checkoutDarts ?? 0,
       dartsCheckout: replayMetricsByPlayer[pid]?.checkoutDarts ?? 0,
       checkoutHits: legacyCheckoutHits[pid] || 0,
@@ -7932,12 +7942,6 @@ function saveX01V3MatchToHistory({
 
     rankings,
     winnerName,
-
-    finalScores: finalScoresFromReplay,
-    finalRemainingScores: finalScoresFromReplay,
-    scoreLine: (players as any[])
-      .map((p: any) => `${p.name}: ${finalScoresFromReplay[String(p.id)] ?? ""}`)
-      .join(" • "),
 
     updatedAt: createdAt,
 
@@ -8053,8 +8057,9 @@ function saveX01V3MatchToHistory({
     resumeId: matchId,
     config: lightConfig,
     players: lightPlayers,
-    finalScores: finalScoresFromReplay,
-    finalRemainingScores: finalScoresFromReplay,
+    finalScores: legacyRemaining,
+    remaining: legacyRemaining,
+    scores: legacyRemaining,
     summary,
 
     // ✅ V3 FIX : replay complet compact sans avatars.
@@ -8105,6 +8110,8 @@ function saveX01V3MatchToHistory({
       dartPresetId: p.dartPresetId ?? null,
     })),
     winnerId,
+    finalScores: legacyRemaining,
+    remaining: legacyRemaining,
     summary,
     payload,
     // CRITIQUE HISTORIQUE : garder les volées au niveau header aussi.
