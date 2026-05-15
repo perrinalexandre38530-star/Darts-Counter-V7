@@ -24,6 +24,10 @@ export type KillerAggRow = {
   favNumber: number; // 1..20 ou 25, 0 si inconnu
   favNumberHits: number;
   damage: number;
+  autoHits: number;
+  autoKills: number;
+  resurrections: number;
+  shield: number;
 };
 
 function safeStr(v: any): string {
@@ -181,6 +185,10 @@ export function computeKillerAgg(
       favNumber: 0,
       favNumberHits: 0,
       damage: 0,
+      autoHits: 0,
+      autoKills: 0,
+      resurrections: 0,
+      shield: 0,
     };
     return byId[pid];
   };
@@ -228,6 +236,24 @@ export function computeKillerAgg(
           det.special?.livesTaken, det.special?.damageDealt, det.stats?.livesTaken, det.stats?.damageDealt
         );
 
+        // Variantes KILLER : compat anciennes parties + patch auto-hit.
+        // Les auto-hits historiques ont souvent été stockés dans selfPenaltyHits/hitsOnSelf
+        // alors que autoHits restait à 0. Pour le Dashboard, on affiche le meilleur champ réel.
+        row.autoHits += Math.max(
+          numOr0(det.autoHits, det.auto_hit, det.autoHit, det.special?.autoHits, det.stats?.autoHits),
+          numOr0(det.selfPenaltyHits, det.self_penalty_hits, det.special?.selfPenaltyHits, det.stats?.selfPenaltyHits)
+        );
+        row.autoKills += numOr0(det.autoKills, det.auto_kills, det.autoKill, det.special?.autoKills, det.stats?.autoKills);
+        row.resurrections += Math.max(
+          numOr0(det.resurrections, det.resurrection, det.special?.resurrections, det.stats?.resurrections),
+          numOr0(det.resurrectionsGiven, det.resurrectionsReceived, det.special?.resurrectionsGiven, det.stats?.resurrectionsGiven)
+        );
+        row.shield += numOr0(
+          det.shield, det.shields, det.shieldHits, det.bouclier,
+          det.shieldBreaks, det.shieldHalfBreaks,
+          det.special?.shield, det.stats?.shield
+        );
+
         // hits
         const hbs = det.hitsBySegment || det.hits_by_segment || det.hits || null;
         if (hbs && typeof hbs === "object") {
@@ -271,6 +297,20 @@ export function computeKillerAgg(
         pl.livesTaken, pl.damageDealt, pl.dmgDealt,
         pl.special?.livesTaken, pl.special?.damageDealt, pl.stats?.livesTaken, pl.stats?.damageDealt
       );
+      row.autoHits += Math.max(
+        numOr0(pl.autoHits, pl.auto_hit, pl.autoHit, pl.special?.autoHits, pl.stats?.autoHits),
+        numOr0(pl.selfPenaltyHits, pl.self_penalty_hits, pl.special?.selfPenaltyHits, pl.stats?.selfPenaltyHits)
+      );
+      row.autoKills += numOr0(pl.autoKills, pl.auto_kills, pl.autoKill, pl.special?.autoKills, pl.stats?.autoKills);
+      row.resurrections += Math.max(
+        numOr0(pl.resurrections, pl.resurrection, pl.special?.resurrections, pl.stats?.resurrections),
+        numOr0(pl.resurrectionsGiven, pl.resurrectionsReceived, pl.special?.resurrectionsGiven, pl.stats?.resurrectionsGiven)
+      );
+      row.shield += numOr0(
+        pl.shield, pl.shields, pl.shieldHits, pl.bouclier,
+        pl.shieldBreaks, pl.shieldHalfBreaks,
+        pl.special?.shield, pl.stats?.shield
+      );
     }
   }
 
@@ -306,6 +346,10 @@ favSegmentHits: number;
 favNumber: number;
 favNumberHits: number;
 damage: number;
+autoHits: number;
+autoKills: number;
+resurrections: number;
+shield: number;
 };
 
 export function computeKillerAggForPlayer(
@@ -332,6 +376,10 @@ return {
   favNumber: numOr0(row?.favNumber),
   favNumberHits: numOr0(row?.favNumberHits),
   damage: numOr0(row?.damage),
+  autoHits: numOr0(row?.autoHits),
+  autoKills: numOr0(row?.autoKills),
+  resurrections: numOr0(row?.resurrections),
+  shield: numOr0(row?.shield),
 };
 }
 

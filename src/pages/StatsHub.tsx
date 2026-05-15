@@ -5383,6 +5383,10 @@ type KillerAgg = {
   totalHits: number;
   favNumber: string | null;
   favHits: number;
+  autoHit: number;
+  autoKill: number;
+  resurrection: number;
+  shield: number;
 };
 
 const killerAgg = React.useMemo<KillerAgg | null>(() => {
@@ -5393,6 +5397,10 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
   let wins = 0;
   let kills = 0;
   let totalHits = 0;
+  let autoHit = 0;
+  let autoKill = 0;
+  let resurrection = 0;
+  let shield = 0;
 
   const hitsByNumber: Record<string, number> = {};
 
@@ -5422,6 +5430,16 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
       {};
 
     kills += Nn(pstat.kills ?? pstat.kill ?? pstat.kOs ?? 0);
+    autoHit += Math.max(
+      Nn(pstat.autoHit ?? pstat.autoHits ?? pstat.auto_hit ?? 0),
+      Nn(pstat.selfPenaltyHits ?? pstat.self_penalty_hits ?? 0)
+    );
+    autoKill += Nn(pstat.autoKill ?? pstat.autoKills ?? pstat.auto_kills ?? 0);
+    resurrection += Math.max(
+      Nn(pstat.resurrection ?? pstat.resurrections ?? 0),
+      Nn(pstat.resurrectionsGiven ?? pstat.resurrectionsReceived ?? 0)
+    );
+    shield += Nn(pstat.shield ?? pstat.shields ?? pstat.shieldHits ?? pstat.shieldBreaks ?? pstat.shieldHalfBreaks ?? 0);
 
     const th =
       Nn(pstat.totalHits ?? 0) ||
@@ -5463,6 +5481,10 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     winRatePct,
     kills,
     totalHits,
+    autoHit,
+    autoKill,
+    resurrection,
+    shield,
     favNumber,
     favHits,
   };
@@ -5960,6 +5982,10 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           // Damage Killer = vies réellement retirées aux adversaires.
           // On ne remplace plus par totalHits : ça gonflait la valeur sur certains historiques.
           a.damage = Number(kAgg.damage || 0);
+          a.autoHit = Math.max(Number(a.autoHit || 0), Number(kAgg.autoHits || 0));
+          a.resurrection = Math.max(Number(a.resurrection || 0), Number(kAgg.resurrections || 0));
+          a.shield = Math.max(Number(a.shield || 0), Number(kAgg.shield || 0));
+          // autoKills existe dans l’agrégateur, mais le Dashboard compact affiche seulement Auto-hit.
           if (!favNumber && Number(kAgg.favNumber || 0) > 0) {
             favNumber = String(kAgg.favNumber);
             favHits = Number(kAgg.favNumberHits || 0);
