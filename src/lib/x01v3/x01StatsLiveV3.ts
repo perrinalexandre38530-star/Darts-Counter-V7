@@ -14,6 +14,7 @@ import type {
   X01VisitStateV3,
   X01SegmentHits,
 } from "../../types/x01v3";
+import { getAdaptiveCheckoutSuggestionV3 } from "./x01CheckoutV3";
 
 /* -------------------------------------------------------
    Création d'un objet stats LIVE vide
@@ -83,6 +84,26 @@ export function createEmptyLiveStatsV3(): X01StatsLiveV3 {
 /* -------------------------------------------------------
    Helper interne : assure l'entrée bySegment["N"]
 ------------------------------------------------------- */
+function normalizeOutModeForCheckout(input: any): "simple" | "double" | "master" {
+  const s = String(input ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (s === "single" || s === "straight" || s === "simple" || s.includes("simple")) return "simple";
+  if (s === "master" || s.includes("master")) return "master";
+  return "double";
+}
+
+function isCheckoutFinishableScore(score: number, outMode: any): boolean {
+  if (!Number.isFinite(score) || score <= 1 || score > 170) return false;
+  return !!getAdaptiveCheckoutSuggestionV3({
+    score,
+    dartsLeft: 3,
+    outMode: normalizeOutModeForCheckout(outMode),
+  });
+}
+
 function ensureSegmentBucket(stats: X01StatsLiveV3, segment: number | 25) {
   const key = String(segment);
   if (!stats.bySegment[key]) {
@@ -100,7 +121,8 @@ export function applyVisitToLiveStatsV3(
   stats: X01StatsLiveV3,
   visit: X01VisitStateV3,
   wasBust: boolean,
-  isCheckout: boolean
+  isCheckout: boolean,
+  outMode: any = "double"
 ): X01StatsLiveV3 {
   // On modifie en place et on renvoie (pour chainage)
   stats.visits += 1;
@@ -128,11 +150,17 @@ export function applyVisitToLiveStatsV3(
   else if (visitScore >= 100) (stats as any).h100 += 1;
   else if (visitScore >= 60) (stats as any).h60 += 1;
 
-  // Checkout attempt heuristic: any visit starting on a finish (<=170)
-  if (visit.startingScore <= 170 && visit.startingScore > 0) {
+  // Checkout attempt = volée commencée avec un finish mathématique réel.
+  // Important : ce n'est PAS juste <=170 ; on respecte le mode de sortie
+  // (Double Out / Master Out / Straight Out) via le moteur de suggestions.
+  const isCheckoutAttemptVisit = isCheckoutFinishableScore(Number(visit.startingScore) || 0, outMode);
+  if (isCheckoutAttemptVisit) {
     (stats as any).checkoutAttempts = ((stats as any).checkoutAttempts || 0) + 1;
+    (stats as any).checkoutDarts = ((stats as any).checkoutDarts || 0) + (Array.isArray(visit.darts) ? visit.darts.length : 0);
+    (stats as any).dartsCheckout = (stats as any).checkoutDarts;
+    (stats as any).checkoutDartsTotal = (stats as any).checkoutDarts;
 
-    // doubles attempts: number of double darts thrown during checkout-range visits
+    // doubles attempts: number of double darts thrown during checkout visits
     const dAtt = visit.darts.reduce((acc, d) => acc + (d?.multiplier === 2 && (Number(d?.score) || 0) > 0 ? 1 : 0), 0);
     (stats as any).doublesAttempts = ((stats as any).doublesAttempts || 0) + dAtt;
   }
@@ -145,6 +173,8 @@ export function applyVisitToLiveStatsV3(
 
   // ✅ Meilleur checkout (uniquement si la volée finit le leg)
   if (!wasBust && isCheckout && visitScore > 0) {
+    (stats as any).checkoutHits = ((stats as any).checkoutHits || 0) + 1;
+    (stats as any).coHits = (stats as any).checkoutHits;
     if (!stats.bestCheckout || visitScore > stats.bestCheckout) {
       stats.bestCheckout = visitScore;
     }

@@ -842,15 +842,15 @@ export default function X01End({ go, params }: Props) {
             {
               rows: [
                 { label: "Best CO", get: (m) => f0(m.bestCO) },
+                { label: "CO", get: (m) => f0(m.coAtt) },
                 { label: "CO hits", get: (m) => f0(m.coHits) },
-                { label: "CO att.", get: (m) => f0(m.coAtt) },
                 {
                   label: "CO %",
                   get: (m) => pct(m.coPct),
                 },
                 {
                   label: "Darts CO",
-                  get: (m) => m.avgCoDarts != null && m.avgCoDarts > 0 ? f2(m.avgCoDarts) : "0.00",
+                  get: (m) => m.avgCoDarts != null && m.avgCoDarts > 0 ? f0(m.avgCoDarts) : "0",
                 },
               ],
             },
@@ -1242,6 +1242,7 @@ type PlayerMetrics = {
   dartsToFinish?: number;
   highestNonCO?: number;
   avgCoDarts?: number;
+  checkoutDartsTotal?: number;
   t180: number;
   t140: number;
   t100: number;
@@ -1272,6 +1273,57 @@ type PlayerMetrics = {
   segMiss?: number;
   byNumber?: ByNumber;
 };
+
+function getX01OutMode(rec: any): "simple" | "double" | "master" {
+  const raw =
+    rec?.resume?.config?.outMode ??
+    rec?.summary?.game?.outMode ??
+    rec?.summary?.outMode ??
+    rec?.payload?.config?.outMode ??
+    rec?.payload?.game?.outMode ??
+    rec?.payload?.outMode ??
+    rec?.config?.outMode ??
+    rec?.game?.outMode ??
+    rec?.outMode ??
+    "double";
+  const v = String(raw).toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (v === "single" || v === "straight" || v === "simple" || v.includes("simple")) return "simple";
+  if (v === "master" || v.includes("master")) return "master";
+  return "double";
+}
+
+const X01_FINISH_DARTS = (() => {
+  const out: Array<{ value: number; mult: 1 | 2 | 3; seg: number }> = [];
+  for (let seg = 1; seg <= 20; seg += 1) {
+    out.push({ seg, mult: 1, value: seg });
+    out.push({ seg, mult: 2, value: seg * 2 });
+    out.push({ seg, mult: 3, value: seg * 3 });
+  }
+  out.push({ seg: 25, mult: 1, value: 25 });
+  out.push({ seg: 25, mult: 2, value: 50 });
+  return out;
+})();
+
+function isX01FinishableScore(score: number, outMode: any): boolean {
+  const target = Number(score);
+  if (!Number.isFinite(target) || target <= 1 || target > 170) return false;
+  const mode = String(outMode || "double");
+  const finishers = X01_FINISH_DARTS.filter((d) => {
+    if (mode === "simple") return true;
+    if (mode === "master") return d.mult === 2 || d.mult === 3;
+    return d.mult === 2;
+  });
+  for (const last of finishers) {
+    if (last.value === target) return true;
+    for (const a of X01_FINISH_DARTS) {
+      if (a.value + last.value === target) return true;
+      for (const b of X01_FINISH_DARTS) {
+        if (a.value + b.value + last.value === target) return true;
+      }
+    }
+  }
+  return false;
+}
 
 function getX01StartScore(rec: any): number {
   const raw =
@@ -1322,6 +1374,7 @@ function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
     dartsToFinish: undefined,
     highestNonCO: undefined,
     avgCoDarts: undefined,
+    checkoutDartsTotal: undefined,
     t180: 0,
     t140: 0,
     t100: 0,
@@ -1543,6 +1596,7 @@ function buildPerPlayerMetrics(
   legStats?: LegStats
 ) {
   const out: Record<string, PlayerMetrics> = {};
+  const outMode = getX01OutMode(rec);
 
   // ---- sources "riches" possibles ----
   const rich =
@@ -1726,18 +1780,21 @@ function buildPerPlayerMetrics(
     else if (visitPoints >= 100) row.t100 += 1;
     else if (visitPoints >= 60) row.t60 += 1;
 
-    // Tentatives de checkout : fallback historique.
-    // Une volée commencée à <=170 est considérée comme une opportunité CO potentielle.
-    // Si la volée finit la manche, elle devient un CO hit.
-    if (n(v.scoreBefore, 0) > 1 && n(v.scoreBefore, 0) <= 170) {
+    // Tentative de checkout : volée commencée avec un finish mathématique réel,
+    // selon le mode de sortie de la partie (Double/Master/Straight Out).
+    const isCheckoutAttemptVisit = isX01FinishableScore(n(v.scoreBefore, 0), outMode);
+    if (isCheckoutAttemptVisit) {
       row.coAtt += 1;
+      row.checkoutDarts = n(row.checkoutDarts, 0) + (Array.isArray(v.darts) ? v.darts.length : 0);
     }
 
     if (v.finish) {
       row.bestCO = Math.max(row.bestCO, visitPoints);
       row.coHits += 1;
-      row.checkoutDarts = Array.isArray(v.darts) ? v.darts.length : 0;
-      if (row.coAtt <= 0) row.coAtt = 1;
+      if (!isCheckoutAttemptVisit && row.coAtt <= 0) {
+        row.coAtt = 1;
+        row.checkoutDarts = Math.max(n(row.checkoutDarts, 0), Array.isArray(v.darts) ? v.darts.length : 0);
+      }
     }
 
     return acc;
@@ -1782,7 +1839,7 @@ function buildPerPlayerMetrics(
       m.t60 = n(s.h60 ?? s.t60 ?? s["60+"] ?? s["60-99"], m.t60);
       m.coHits = n(s.checkoutHits ?? s.coHits ?? s.coSuccess ?? s.hitsCheckout ?? s.hitsCO, m.coHits);
       m.coAtt = n(s.checkoutAttempts ?? s.coAtt ?? s.coAttempts ?? s.co_attempts ?? s.attemptsCheckout, m.coAtt);
-      if (!m.avgCoDarts) m.avgCoDarts = v(s.avgCheckoutDarts ?? s.dartsCheckout ?? s.checkoutDarts);
+      if (!m.avgCoDarts) m.avgCoDarts = v(s.checkoutDartsTotal ?? s.dartsCheckout ?? s.checkoutDarts ?? s.avgCheckoutDarts);
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
@@ -3014,8 +3071,8 @@ function MatchLegDetails({
                   { label: "140+", get: (m) => f0(m.t140) },
                   { label: "180", get: (m) => f0(m.t180) },
                   { label: "Best CO", get: (m) => f0(m.bestCO) },
+                  { label: "CO", get: (m) => f0(m.coAtt) },
                   { label: "CO hits", get: (m) => f0(m.coHits) },
-                  { label: "CO att.", get: (m) => f0(m.coAtt) },
                   { label: "CO %", get: (m) => pct(m.coPct) },
                 ],
               },

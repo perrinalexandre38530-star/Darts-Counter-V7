@@ -10,7 +10,24 @@ import type {
   X01StatsLiveV3,
 } from "../../types/x01v3";
 import type { LegStats } from "../stats";
+import { getAdaptiveCheckoutSuggestionV3, type X01OutModeV3 } from "./x01CheckoutV3";
 
+
+function normalizeOutModeForCheckout(input: any): X01OutModeV3 {
+  const s = String(input ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (s === "single" || s === "straight" || s === "simple" || s.includes("simple")) return "simple";
+  if (s === "master" || s.includes("master")) return "master";
+  return "double";
+}
+
+function isCheckoutFinishableScore(score: number, outMode: any): boolean {
+  if (!Number.isFinite(score) || score <= 1 || score > 170) return false;
+  return !!getAdaptiveCheckoutSuggestionV3({ score, dartsLeft: 3, outMode: normalizeOutModeForCheckout(outMode) });
+}
 
 function parseVisitDart(raw: any): { segment: number; multiplier: 0 | 1 | 2 | 3 } {
   const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.dart ?? raw?.hit ?? raw?.code ?? raw?.text ?? raw?.name ?? "")
@@ -40,7 +57,7 @@ function parseVisitDart(raw: any): { segment: number; multiplier: 0 | 1 | 2 | 3 
   return { segment, multiplier: multiplier as 0 | 1 | 2 | 3 };
 }
 
-function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], startScore: number): Record<string, any> {
+function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], startScore: number, outMode: any = "double"): Record<string, any> {
   const out: Record<string, any> = {};
   const ensure = (pid: string) => out[pid] || (out[pid] = {
     darts: 0, points: 0, visits: 0, avg3d: 0, avg3: 0, bestVisit: 0,
@@ -96,15 +113,23 @@ function derivePerPlayerFromVisitHistory(rawVisits: any[], playerIds: string[], 
     else if (score >= 140) m.h140 += 1;
     else if (score >= 100) m.h100 += 1;
     else if (score >= 60) m.h60 += 1;
-    if (before > 1 && before <= 170) m.coAtt += 1;
+    const isCheckoutAttemptVisit = isCheckoutFinishableScore(before, outMode);
+    if (isCheckoutAttemptVisit) {
+      m.coAtt += 1;
+      m.checkoutDarts = (m.checkoutDarts || 0) + darts.length;
+      m.avgCheckoutDarts = m.checkoutDarts;
+      m.dartsCheckout = m.checkoutDarts;
+    }
     if (bust) m.busts += 1;
     if (finish) {
       m.bestCheckout = Math.max(m.bestCheckout, score);
       m.coHits += 1;
-      m.checkoutDarts = darts.length;
-      m.avgCheckoutDarts = darts.length;
-      m.dartsCheckout = darts.length;
-      if (m.coAtt <= 0) m.coAtt = 1;
+      if (!isCheckoutAttemptVisit && m.coAtt <= 0) {
+        m.coAtt = 1;
+        m.checkoutDarts = Math.max(m.checkoutDarts || 0, darts.length);
+        m.avgCheckoutDarts = m.checkoutDarts;
+        m.dartsCheckout = m.checkoutDarts;
+      }
     }
   }
   for (const pid of Object.keys(out)) {
@@ -315,7 +340,7 @@ export function buildLegStatsFromV3LiveForOverlay(
     ? summary.__legStats.visits
     : [];
   if (replayVisits.length) {
-    const replayPerPlayer = derivePerPlayerFromVisitHistory(replayVisits, playerIds, startScore);
+    const replayPerPlayer = derivePerPlayerFromVisitHistory(replayVisits, playerIds, startScore, (config as any)?.outMode ?? (config as any)?.checkoutMode ?? "double");
     for (const pid of Object.keys(replayPerPlayer)) {
       perPlayer[pid] = { ...(perPlayer[pid] || {}), ...replayPerPlayer[pid] };
     }

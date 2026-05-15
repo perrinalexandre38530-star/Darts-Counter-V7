@@ -7374,7 +7374,27 @@ function buildX01LegsFromReplayVisits(visitsInput: any[], playersInput: any[], o
     .sort((a, b) => Number(a.legNo || 0) - Number(b.legNo || 0));
 }
 
-function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] = []) {
+function normalizeOutModeForCheckoutReplay(input: any): X01OutModeV3 {
+  const s = String(input ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (s === "single" || s === "straight" || s === "simple" || s.includes("simple")) return "simple";
+  if (s === "master" || s.includes("master")) return "master";
+  return "double";
+}
+
+function isCheckoutFinishableReplay(score: number, outMode: any): boolean {
+  if (!Number.isFinite(score) || score <= 1 || score > 170) return false;
+  return !!extAdaptCheckoutSuggestion({
+    score,
+    dartsLeft: 3,
+    outMode: normalizeOutModeForCheckoutReplay(outMode),
+  });
+}
+
+function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] = [], outModeInput: any = "double") {
   const ids = Array.from(new Set([...(playerOrder || []).map(String), ...(visits || []).map((v: any) => String(v?.playerId || v?.pid || "")).filter(Boolean)]));
   const out: Record<string, any> = {};
   const ensure = (pid: string) => out[pid] || (out[pid] = {
@@ -7440,12 +7460,20 @@ function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] =
     else if (visitScore >= 140) m.h140 += 1;
     else if (visitScore >= 100) m.h100 += 1;
     else if (visitScore >= 60) m.h60 += 1;
-    if (before > 1 && before <= 170) m.checkoutAttempts += 1;
+    const isCheckoutAttemptVisit = isCheckoutFinishableReplay(before, outModeInput);
+    if (isCheckoutAttemptVisit) {
+      m.checkoutAttempts += 1;
+      m.checkoutDarts += darts.length;
+    }
     if (finish) {
       m.checkoutHits += 1;
       m.bestCheckout = Math.max(m.bestCheckout, visitScore);
-      m.checkoutDarts = darts.length;
-      if (m.checkoutAttempts <= 0) m.checkoutAttempts = 1;
+      // Sécurité legacy : un finish doit toujours compter comme tentative CO,
+      // même si un ancien replay ne fournit pas assez de contexte.
+      if (!isCheckoutAttemptVisit && m.checkoutAttempts <= 0) {
+        m.checkoutAttempts = 1;
+        m.checkoutDarts = Math.max(m.checkoutDarts, darts.length);
+      }
     }
   }
 
@@ -7474,7 +7502,7 @@ function saveX01V3MatchToHistory({
     config.startScore ?? 501,
     (config as any).outMode ?? (config as any).checkoutMode ?? (config as any).doubleOutMode ?? "double"
   );
-  const replayMetricsByPlayer = deriveX01MetricsFromReplayVisits(replayVisits, playerOrderForReplay);
+  const replayMetricsByPlayer = deriveX01MetricsFromReplayVisits(replayVisits, playerOrderForReplay, (config as any).outMode ?? (config as any).checkoutMode ?? (config as any).doubleOutMode ?? "double");
   const replayLegs = buildX01LegsFromReplayVisits(replayVisits, players as any[], {
     startScore: config.startScore ?? 501,
     legsPerSet: (config as any)?.legsPerSet ?? 1,

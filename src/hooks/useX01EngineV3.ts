@@ -485,7 +485,7 @@ score: visit.currentScore,
     ) as X01StatsLiveV3;
 
     // Stats live "classiques"
-    applyVisitToLiveStatsV3(stPlayer, visit as any, result.bust, isCheckout);
+    applyVisitToLiveStatsV3(stPlayer, visit as any, result.bust, isCheckout, config.outMode);
 
     // Patch étendu : hits/miss/bust/segments + power scoring
     ensureExtendedStatsFor(stPlayer);
@@ -788,7 +788,7 @@ score: visit.currentScore,
   const st: X01StatsLiveV3 = structuredClone(base) as X01StatsLiveV3;
 
   // Stats live "classiques"
-  applyVisitToLiveStatsV3(st, visit as any, result.bust, isCheckout);
+  applyVisitToLiveStatsV3(st, visit as any, result.bust, isCheckout, config.outMode);
 
   // Patch étendu : hits/miss/bust/segments + power scoring
   ensureExtendedStatsFor(st);
