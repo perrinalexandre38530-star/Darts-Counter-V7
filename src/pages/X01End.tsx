@@ -108,12 +108,20 @@ const D = {
   cardPad: 10,
   radius: 14,
 };
+
+const THEME_ACCENT = "var(--dc-accent, var(--accent, #f6c256))";
+const THEME_ACCENT_SOFT = "color-mix(in srgb, var(--dc-accent, #f6c256) 62%, white 38%)";
+const THEME_PANEL =
+  "radial-gradient(130% 160% at 0% 0%, color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent), transparent 48%), linear-gradient(180deg, rgba(10,17,26,.96), rgba(7,10,15,.985))";
+const THEME_PANEL_BORDER = "color-mix(in srgb, var(--dc-accent, #f6c256) 42%, rgba(255,255,255,.10))";
 const mobileDenseCss = `
 @media (max-width: 420px){
   .x-end h2{ font-size:16px; }
   .x-card h3{ font-size:13px; }
   .x-table{ font-size:11px; }
   .x-th, .x-td{ padding:4px 6px; }
+  .x-player-avatar{ width:28px !important; height:28px !important; }
+  .x-rank-badge{ transform:scale(.86); }
   .selector button{ font-size:11px; padding:4px 8px; }
 }
 `;
@@ -555,10 +563,25 @@ export default function X01End({ go, params }: Props) {
     ? M[chartPlayer.id] || emptyMetrics(chartPlayer)
     : null;
 
+  const getFinalRankTuple = (p: PlayerLite): [number, number, number, number, string] => {
+    const m = M[p.id] || emptyMetrics(p);
+    const remaining = computeX01RemainingScore(m, rec, winnerId);
+    const setsWon = n(m.setsWon ?? (winnerId && p.id === winnerId ? 1 : 0), 0);
+    const legsWon = n(m.legsWon ?? (winnerId && p.id === winnerId ? 1 : 0), 0);
+    const safeRemaining = remaining == null ? Number.MAX_SAFE_INTEGER : n(remaining, Number.MAX_SAFE_INTEGER);
+    return [-setsWon, -legsWon, safeRemaining, -n(m.avg3, 0), String(p.name || "")];
+  };
+
   const rankedPlayers = [...players].sort((a, b) => {
-    if (winnerId && a.id === winnerId && b.id !== winnerId) return -1;
-    if (winnerId && b.id === winnerId && a.id !== winnerId) return 1;
-    return n(M[b.id]?.avg3, 0) - n(M[a.id]?.avg3, 0);
+    const ta = getFinalRankTuple(a);
+    const tb = getFinalRankTuple(b);
+    for (let i = 0; i < ta.length; i++) {
+      const av = ta[i] as any;
+      const bv = tb[i] as any;
+      if (av < bv) return -1;
+      if (av > bv) return 1;
+    }
+    return 0;
   });
 
   const customHeader = (
@@ -583,14 +606,14 @@ export default function X01End({ go, params }: Props) {
             width: 34,
             height: 34,
             borderRadius: 999,
-            border: "1px solid rgba(255,207,87,.28)",
+            border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 28%, transparent)",
             background:
-              "radial-gradient(circle at 30% 30%, rgba(255,207,87,.22), rgba(255,207,87,.06) 45%, rgba(255,255,255,.02) 100%)",
-            color: "#ffcf57",
+              "radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--dc-accent, #f6c256) 22%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent) 45%, rgba(255,255,255,.02) 100%)",
+            color: THEME_ACCENT,
             display: "grid",
             placeItems: "center",
             cursor: "pointer",
-            boxShadow: "0 0 14px rgba(255,207,87,.18), inset 0 0 10px rgba(255,207,87,.06)",
+            boxShadow: "0 0 14px color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent), inset 0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent)",
             marginTop: 2,
           }}
         >
@@ -603,10 +626,10 @@ export default function X01End({ go, params }: Props) {
               fontSize: 19,
               fontWeight: 1000,
               lineHeight: 1.05,
-              color: "#ffcf57",
+              color: THEME_ACCENT,
               textTransform: "uppercase",
               letterSpacing: 0.5,
-              textShadow: "0 0 10px rgba(255,207,87,.30), 0 0 24px rgba(255,207,87,.18)",
+              textShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 30%, transparent), 0 0 24px color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)",
             }}
           >
             {modeTitleFromRec(rec)}
@@ -652,7 +675,7 @@ export default function X01End({ go, params }: Props) {
                       placeItems: "center",
                       background: "linear-gradient(180deg,#ffe58a,#ffb300)",
                       color: "#17130a",
-                      boxShadow: "0 0 10px rgba(255,207,87,.32)",
+                      boxShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 32%, transparent)",
                       border: "1px solid rgba(0,0,0,.25)",
                       flex: "0 0 auto",
                     }}
@@ -697,7 +720,16 @@ export default function X01End({ go, params }: Props) {
   );
 
   /* ========= Tableaux COL-MAJOR (colonnes = joueurs) ========= */
-  const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
+  const cols = rankedPlayers.map((p, idx) => ({
+    key: p.id,
+    title: p.name || "—",
+    player: p,
+    rank: idx + 1,
+    remaining: (() => {
+      const m = M[p.id] || emptyMetrics(p);
+      return computeX01RemainingScore(m, rec, winnerId);
+    })(),
+  }));
 
   const tableStyle: React.CSSProperties = {
     width: "100%",
@@ -899,7 +931,7 @@ export default function X01End({ go, params }: Props) {
                 margin: "0 0 6px",
                 fontSize: D.fsHead + 1,
                 letterSpacing: 0.2,
-                color: "#ffcf57",
+                color: THEME_ACCENT,
               }}
             >
               Radar — répartition des hits
@@ -961,7 +993,7 @@ export default function X01End({ go, params }: Props) {
                 margin: "0 0 6px",
                 fontSize: D.fsHead + 1,
                 letterSpacing: 0.2,
-                color: "#ffcf57",
+                color: THEME_ACCENT,
               }}
             >
               Hits par segments
@@ -979,7 +1011,7 @@ export default function X01End({ go, params }: Props) {
               margin: "0 0 6px",
               fontSize: D.fsHead + 1,
               letterSpacing: 0.2,
-              color: "#ffcf57",
+              color: THEME_ACCENT,
             }}
           >
             Historique des volées
@@ -2825,7 +2857,7 @@ function CardTable({
           margin: "0 0 6px",
           fontSize: D.fsHead + 1,
           letterSpacing: 0.2,
-          color: "#ffcf57",
+          color: THEME_ACCENT,
         }}
       >
         {title}
@@ -2860,7 +2892,7 @@ function SummaryDetailsTabs({
         onClick={() => onChange(key)}
         style={{
           flex: 1,
-          border: active ? "1px solid rgba(255,207,87,.58)" : "1px solid rgba(255,255,255,.10)",
+          border: active ? "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 57%, transparent)" : "1px solid rgba(255,255,255,.10)",
           background: active
             ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
             : "linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03))",
@@ -2870,7 +2902,7 @@ function SummaryDetailsTabs({
           fontSize: 12,
           fontWeight: 1000,
           cursor: "pointer",
-          boxShadow: active ? "0 0 16px rgba(255,207,87,.22)" : "none",
+          boxShadow: active ? "0 0 16px color-mix(in srgb, var(--dc-accent, #f6c256) 22%, transparent)" : "none",
         }}
       >
         {label}
@@ -3032,7 +3064,7 @@ function MatchLegDetails({
                 margin: 0,
                 fontSize: D.fsHead + 1,
                 letterSpacing: 0.2,
-                color: "#ffcf57",
+                color: THEME_ACCENT,
               }}
             >
               Set {selectedLeg.setNo} — Leg {selectedLeg.legInSet}
@@ -3042,9 +3074,9 @@ function MatchLegDetails({
                 style={{
                   padding: "4px 8px",
                   borderRadius: 999,
-                  border: "1px solid rgba(255,207,87,.30)",
-                  background: "rgba(255,207,87,.10)",
-                  color: "#ffcf57",
+                  border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 30%, transparent)",
+                  background: "color-mix(in srgb, var(--dc-accent, #f6c256) 10%, transparent)",
+                  color: THEME_ACCENT,
                   fontSize: 10.5,
                   fontWeight: 1000,
                   whiteSpace: "nowrap",
@@ -3138,37 +3170,41 @@ function avatarInitials(name?: string) {
 function AvatarBubble({
   player,
   crowned,
+  size = 34,
 }: {
   player: PlayerLite;
   crowned?: boolean;
+  size?: number;
 }) {
+  const src = getAvatarSrc(player);
   return (
     <div
+      className="x-player-avatar"
       style={{
         position: "relative",
-        width: 34,
-        height: 34,
+        width: size,
+        height: size,
         borderRadius: 999,
         border: crowned
-          ? "2px solid rgba(255,207,87,.88)"
+          ? "2px solid color-mix(in srgb, var(--dc-accent, #f6c256) 88%, transparent)"
           : "2px solid rgba(255,255,255,.18)",
         boxShadow: crowned
-          ? "0 0 16px rgba(255,207,87,.28)"
+          ? "0 0 16px color-mix(in srgb, var(--dc-accent, #f6c256) 28%, transparent)"
           : "0 6px 14px rgba(0,0,0,.22)",
         overflow: "hidden",
         background: "linear-gradient(180deg,#2a2a31,#121218)",
         display: "grid",
         placeItems: "center",
         color: "#fff",
-        fontSize: 11,
+        fontSize: Math.max(9, Math.round(size * 0.32)),
         fontWeight: 900,
         flex: "0 0 auto",
       }}
       title={player?.name || "Joueur"}
     >
-      {player?.avatarDataUrl ? (
+      {src ? (
         <img
-          src={player.avatarDataUrl}
+          src={src}
           alt={player.name || "avatar"}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
@@ -3179,11 +3215,29 @@ function AvatarBubble({
   );
 }
 
+function getAvatarSrc(player?: PlayerLite | null): string | null {
+  return (
+    player?.avatarDataUrl ||
+    player?.avatarUrl ||
+    player?.photoUrl ||
+    player?.imageUrl ||
+    null
+  );
+}
+
 /* ================================
    Table COL-MAJOR (lignes = stats)
 ================================ */
-type Col = { key: string; title: string };
+type Col = {
+  key: string;
+  title: string;
+  player?: PlayerLite;
+  rank?: number;
+  remaining?: number | null;
+};
 type RowDef = { label: string; get: (m: PlayerMetrics) => string | number };
+
+type CellTone = "best" | "second" | "neutral";
 
 function TableColMajor({
   columns,
@@ -3196,7 +3250,24 @@ function TableColMajor({
   dataMap: Record<string, PlayerMetrics>;
   tableStyle?: React.CSSProperties;
 }) {
+  const rows = rowGroups.flatMap((g) => g.rows);
   const isDuel = columns.length === 2;
+
+  const rankForRow = (row: RowDef): Record<string, CellTone> => {
+    const vals = columns
+      .map((c) => ({ key: c.key, value: parseStatNumber(row.get(dataMap[c.key] || emptyMetrics({ id: c.key }))) }))
+      .filter((x) => Number.isFinite(x.value));
+    if (!vals.length) return {};
+    const unique = Array.from(new Set(vals.map((x) => x.value))).sort((a, b) =>
+      isLowBetterRow(row.label) ? a - b : b - a
+    );
+    if (!unique.length || unique.every((v) => v === 0)) return {};
+    const best = unique[0];
+    const second = unique.length > 1 ? unique[1] : undefined;
+    return Object.fromEntries(
+      vals.map((x) => [x.key, x.value === best ? "best" : second !== undefined && x.value === second ? "second" : "neutral"])
+    ) as Record<string, CellTone>;
+  };
 
   if (isDuel) {
     const left = columns[0];
@@ -3205,44 +3276,38 @@ function TableColMajor({
     const rightM = dataMap[right.key] || emptyMetrics({ id: right.key });
 
     return (
-      <div
-        className="x-table x-table-duel"
-        style={{
-          overflowX: "auto",
-          border: "1px solid rgba(255,255,255,.08)",
-          borderRadius: D.radius,
-        }}
-      >
+      <div className="x-table x-table-duel" style={tableWrapStyle()}>
         <table style={tableStyle}>
           <thead>
             <tr>
               <th className="x-th" style={{ ...thStyle(false), textAlign: "left" }}>
-                <span style={{ fontWeight: 900, color: "#ffcf57" }}>{left.title}</span>
+                <PlayerColHeader col={left} align="left" />
               </th>
-              <th className="x-th" style={{ ...thStyle(false), textAlign: "center", color: "#ffcf57" }}>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "center", color: THEME_ACCENT }}>
                 Stat
               </th>
               <th className="x-th" style={{ ...thStyle(false), textAlign: "right" }}>
-                <span style={{ fontWeight: 900, color: "#ffcf57" }}>{right.title}</span>
+                <PlayerColHeader col={right} align="right" />
               </th>
             </tr>
           </thead>
           <tbody>
-            {rowGroups.flatMap((g, gi) =>
-              g.rows.map((r, ri) => (
-                <tr key={`duel-r-${gi}-${ri}`}>
-                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "left", fontWeight: 800 }}>
+            {rows.map((r, ri) => {
+              const tones = rankForRow(r);
+              return (
+                <tr key={`duel-r-${ri}`}>
+                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "left", ...valueToneStyle(tones[left.key]) }}>
                     {r.get(leftM)}
                   </td>
-                  <td className="x-td" style={{ ...tdStyle(true), textAlign: "center", color: "#ffcf57", fontWeight: 900 }}>
+                  <td className="x-td" style={{ ...tdStyle(true), textAlign: "center", color: THEME_ACCENT, fontWeight: 900 }}>
                     {r.label}
                   </td>
-                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "right", fontWeight: 800 }}>
+                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "right", ...valueToneStyle(tones[right.key]) }}>
                     {r.get(rightM)}
                   </td>
                 </tr>
-              ))
-            )}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -3250,72 +3315,157 @@ function TableColMajor({
   }
 
   return (
-    <div
-      className="x-table"
-      style={{
-        overflowX: "auto",
-        border: "1px solid rgba(255,255,255,.08)",
-        borderRadius: D.radius,
-      }}
-    >
+    <div className="x-table" style={tableWrapStyle()}>
       <table style={tableStyle}>
         <thead>
           <tr>
-            <th className="x-th" style={thStyle(true)}>
-              Stat
-            </th>
+            <th className="x-th" style={thStyle(true)}>Stat</th>
             {columns.map((c) => (
-              <th
-                key={c.key}
-                className="x-th"
-                style={thStyle(false)}
-              >
-                <span
-                  style={{
-                    fontWeight: 900,
-                    color: "#ffcf57",
-                  }}
-                >
-                  {c.title}
-                </span>
+              <th key={c.key} className="x-th" style={thStyle(false)}>
+                <PlayerColHeader col={c} />
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rowGroups.flatMap((g, gi) =>
-            g.rows.map((r, ri) => (
-              <tr key={`r-${gi}-${ri}`}>
-                <td className="x-td" style={tdStyle(true)}>
-                  {r.label}
-                </td>
+          {rows.map((r, ri) => {
+            const tones = rankForRow(r);
+            return (
+              <tr key={`r-${ri}`}>
+                <td className="x-td" style={tdStyle(true)}>{r.label}</td>
                 {columns.map((c) => {
-                  const m =
-                    dataMap[c.key] ||
-                    emptyMetrics({ id: c.key });
+                  const m = dataMap[c.key] || emptyMetrics({ id: c.key });
                   return (
-                    <td
-                      key={c.key}
-                      className="x-td"
-                      style={tdStyle(false)}
-                    >
+                    <td key={c.key} className="x-td" style={{ ...tdStyle(false), ...valueToneStyle(tones[c.key]) }}>
                       {r.get(m)}
                     </td>
                   );
                 })}
               </tr>
-            ))
-          )}
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
+
+function tableWrapStyle(): React.CSSProperties {
+  return {
+    overflowX: "auto",
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: D.radius,
+    background: "linear-gradient(90deg, rgba(255,255,255,.025), rgba(255,255,255,.01))",
+  };
+}
+
+function PlayerColHeader({ col, align = "center" }: { col: Col; align?: "left" | "center" | "right" }) {
+  const player = col.player || { id: col.key, name: col.title };
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center",
+        justifyContent: "center",
+        gap: 3,
+        minWidth: 42,
+      }}
+      title={col.title}
+    >
+      <div style={{ position: "relative", display: "inline-flex" }}>
+        <AvatarBubble player={player} crowned={col.rank === 1} size={30} />
+        {col.rank ? <RankBadge rank={col.rank} /> : null}
+      </div>
+      {col.remaining != null ? (
+        <span
+          style={{
+            fontSize: 10,
+            lineHeight: 1,
+            fontWeight: 1000,
+            color: col.rank === 1 ? THEME_ACCENT : "rgba(255,255,255,.70)",
+            textShadow: col.rank === 1 ? "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 28%, transparent)" : "none",
+          }}
+        >
+          {f0(col.remaining)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  return (
+    <span
+      className="x-rank-badge"
+      style={{
+        position: "absolute",
+        top: -7,
+        right: -7,
+        width: 16,
+        height: 16,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        fontSize: 9,
+        fontWeight: 1000,
+        color: rank === 1 ? "#15110a" : "#101116",
+        background: rank === 1 ? THEME_ACCENT : "rgba(255,255,255,.82)",
+        border: "1px solid rgba(0,0,0,.38)",
+        boxShadow: rank === 1 ? "0 0 12px color-mix(in srgb, var(--dc-accent, #f6c256) 34%, transparent)" : "0 2px 8px rgba(0,0,0,.35)",
+      }}
+    >
+      {rank}
+    </span>
+  );
+}
+
+function parseStatNumber(value: string | number): number {
+  if (typeof value === "number") return value;
+  const cleaned = String(value ?? "")
+    .replace(/%/g, "")
+    .replace(/,/g, ".")
+    .replace(/[^0-9.\-]/g, "")
+    .trim();
+  if (!cleaned) return Number.NaN;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function isLowBetterRow(label: string): boolean {
+  const l = String(label || "").toLowerCase();
+  return (
+    l.includes("score restant") ||
+    l === "darts" ||
+    l.includes("darts→") ||
+    l.includes("bust") ||
+    l.includes("miss")
+  );
+}
+
+function valueToneStyle(tone?: CellTone): React.CSSProperties {
+  if (tone === "best") {
+    return {
+      color: THEME_ACCENT,
+      fontWeight: 1000,
+      textShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 34%, transparent)",
+    };
+  }
+  if (tone === "second") {
+    return {
+      color: THEME_ACCENT_SOFT,
+      fontWeight: 900,
+      textShadow: "0 0 8px color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)",
+    };
+  }
+  return { fontWeight: 760 };
+}
+
 function thStyle(isRowHeader: boolean): React.CSSProperties {
   return {
     textAlign: isRowHeader ? "left" : "right",
     padding: `${D.padCellV}px ${D.padCellH}px`,
-    color: "#ffcf57",
+    color: THEME_ACCENT,
     fontWeight: 800,
     background: "rgba(255,255,255,.04)",
     position: "sticky",
@@ -3501,7 +3651,7 @@ function HitsRadar({ m }: { m: PlayerMetrics }) {
           <>
             <polyline
               points={polyPoints}
-              fill="rgba(255,207,87,.18)"
+              fill="color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)"
               stroke="#ffcf57"
               strokeWidth={2}
               strokeLinejoin="round"
@@ -4380,7 +4530,7 @@ function VisitsList({
                 style={{
                   fontSize: 11,
                   fontWeight: 900,
-                  color: "#ffcf57",
+                  color: THEME_ACCENT,
                   letterSpacing: 0.2,
                 }}
               >
@@ -4493,13 +4643,13 @@ function VisitsList({
                     marginLeft: 2,
                     padding: "7px 10px",
                     borderRadius: 12,
-                    border: "1px solid rgba(255,207,87,.18)",
+                    border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)",
                     background:
-                      "linear-gradient(180deg, rgba(255,207,87,.16), rgba(255,207,87,.06))",
-                    color: "#ffcf57",
+                      "linear-gradient(180deg, color-mix(in srgb, var(--dc-accent, #f6c256) 16%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent))",
+                    color: THEME_ACCENT,
                     fontSize: 11,
                     fontWeight: 900,
-                    boxShadow: "0 0 10px rgba(255,207,87,.14)",
+                    boxShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 14%, transparent)",
                   }}
                 >
                   {v.bust ? "BUST" : `+${visitTotal}`}
@@ -4634,16 +4784,16 @@ function scoreBoxStyle(isAfter: boolean): React.CSSProperties {
     padding: "7px 8px",
     borderRadius: 12,
     border: isAfter
-      ? "1px solid rgba(255,207,87,.24)"
+      ? "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 24%, transparent)"
       : "1px solid rgba(255,255,255,.10)",
     background: isAfter
-      ? "linear-gradient(180deg, rgba(255,207,87,.16), rgba(255,207,87,.06))"
+      ? "linear-gradient(180deg, color-mix(in srgb, var(--dc-accent, #f6c256) 16%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent))"
       : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
     color: isAfter ? "#ffcf57" : "#f3f3f7",
     fontWeight: 900,
     fontSize: 12,
     boxShadow: isAfter
-      ? "0 0 10px rgba(255,207,87,.12)"
+      ? "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 12%, transparent)"
       : "none",
   };
 }
