@@ -21,6 +21,22 @@ import { shareOrDownload } from "../lib/backup/fileExport";
 ================================ */
 type PlayerLite = { id: string; name?: string; avatarDataUrl?: string | null; avatarUrl?: string | null; photoUrl?: string | null; imageUrl?: string | null };
 
+
+/* ===== ATP / TennisTV DUO VISUAL HELPERS ===== */
+const DUO_BAR_STYLE = {
+  height: 3,
+  borderRadius: 999,
+  background: "linear-gradient(90deg, rgba(255,255,255,0.15) 0%, var(--theme-primary,#ffd028) 55%, var(--theme-primary,#ffd028) 100%)",
+  boxShadow: "0 0 10px color-mix(in srgb, var(--theme-primary,#ffd028) 70%, transparent)",
+};
+
+const DUO_BAR_STYLE_LOSER = {
+  height: 3,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.18)",
+};
+
+
 type Props = {
   go: (tab: string, params?: any) => void;
   params?: {
@@ -267,7 +283,15 @@ export default function X01End({ go, params }: Props) {
       }
     })();
 
-    return () => {
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return () => {
       mounted = false;
     };
   }, [params?.matchId, params?.rec]);
@@ -475,7 +499,15 @@ export default function X01End({ go, params }: Props) {
       const br = Number.isFinite(Number(remaining[b])) ? Number(remaining[b]) : Number.POSITIVE_INFINITY;
       if (ar !== br) return ar - br;
 
-      return (avg3[b] ?? 0) - (avg3[a] ?? 0);
+      
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (avg3[b] ?? 0) - (avg3[a] ?? 0);
     });
 
     setOverlayResult({
@@ -546,13 +578,29 @@ export default function X01End({ go, params }: Props) {
 
   // --- Rendus (aucun hook après ceci) ---
   if (err)
-    return (
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
       <Shell go={go} title="Fin de partie">
         <Notice>{err}</Notice>
       </Shell>
     );
   if (!rec)
-    return (
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
       <Shell go={go}>
         <Notice>Chargement…</Notice>
       </Shell>
@@ -738,7 +786,15 @@ export default function X01End({ go, params }: Props) {
     fontSize: D.fsBody,
   };
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <Shell
       go={go}
       title={
@@ -1448,7 +1504,15 @@ function getSummaryPlayerStats(summary: any, pid: string): any {
   if (!playersBlock) return null;
 
   if (Array.isArray(playersBlock)) {
-    return (
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
       playersBlock.find((row: any) =>
         String(row?.id ?? row?.playerId ?? row?.profileId ?? "") === String(pid)
       ) || null
@@ -2822,7 +2886,15 @@ function Shell({
   resumeId?: string | null;
   header?: React.ReactNode;
 }) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       className="x-end"
       style={{ padding: 12, maxWidth: 640, margin: "0 auto" }}
@@ -2868,7 +2940,15 @@ function Panel({
   style?: React.CSSProperties;
   className?: string;
 }) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       className={className}
       style={{
@@ -2892,7 +2972,15 @@ function CardTable({
   title: string;
   children: React.ReactNode;
 }) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <Panel className="x-card" style={{ padding: D.cardPad }}>
       <h3
         style={{
@@ -2909,7 +2997,15 @@ function CardTable({
   );
 }
 function Notice({ children }: { children: React.ReactNode }) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <Panel>
       <div style={{ color: "#bbb" }}>{children}</div>
     </Panel>
@@ -2928,7 +3024,15 @@ function SummaryDetailsTabs({
 }) {
   const tab = (key: "summary" | "details", label: string) => {
     const active = value === key;
-    return (
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
       <button
         type="button"
         onClick={() => onChange(key)}
@@ -2952,7 +3056,15 @@ function SummaryDetailsTabs({
     );
   };
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       style={{
         display: "flex",
@@ -2993,7 +3105,15 @@ function MatchLegDetails({
   const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
 
   if (!breakdown.length) {
-    return (
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
       <InfoCard>
         Aucun détail de leg disponible pour ce match. Pour les anciennes sauvegardes, seuls le score cumulé sets/legs et les stats globales peuvent être récupérés.
       </InfoCard>
@@ -3049,7 +3169,15 @@ function MatchLegDetails({
       ? players.find((p) => p.id === selectedLeg.winnerId)?.name
       : null;
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <>
       <InfoCard>
         <b>Détails par set / leg</b> — choisis d’abord le set, puis la manche. Le résumé cumulé additionne toutes les legs du match.
@@ -3168,7 +3296,15 @@ function MatchLegDetails({
 }
 
 function Trophy(props: any) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <svg viewBox="0 0 24 24" width={16} height={16} {...props}>
       <path
         fill="currentColor"
@@ -3179,7 +3315,15 @@ function Trophy(props: any) {
 }
 
 function ArrowLeftIcon(props: any) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <svg viewBox="0 0 24 24" width={16} height={16} {...props}>
       <path
         fill="currentColor"
@@ -3205,7 +3349,15 @@ function avatarInitials(name?: string) {
   const s = String(name || "?").trim();
   if (!s) return "?";
   const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length >= 2) 
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (parts[0][0] + parts[1][0]).toUpperCase();
   return s.slice(0, 2).toUpperCase();
 }
 
@@ -3219,7 +3371,15 @@ function AvatarBubble({
   size?: number;
 }) {
   const src = getAvatarSrc(player);
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       className="x-player-avatar"
       style={{
@@ -3258,7 +3418,15 @@ function AvatarBubble({
 }
 
 function getAvatarSrc(player?: PlayerLite | null): string | null {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     player?.avatarDataUrl ||
     player?.avatarUrl ||
     player?.photoUrl ||
@@ -3317,7 +3485,15 @@ function TableColMajor({
     const leftM = dataMap[left.key] || emptyMetrics({ id: left.key });
     const rightM = dataMap[right.key] || emptyMetrics({ id: right.key });
 
-    return (
+    
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
       <div className="x-table x-table-duel" style={tableWrapStyle()}>
         <table style={tableStyle}>
           <thead>
@@ -3336,7 +3512,15 @@ function TableColMajor({
           <tbody>
             {rows.map((r, ri) => {
               const tones = rankForRow(r);
-              return (
+              
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
                 <tr key={`duel-r-${ri}`}>
                   <td className="x-td" style={{ ...tdStyle(false), textAlign: "left", ...valueToneStyle(tones[left.key]) }}>
                     {r.get(leftM)}
@@ -3356,7 +3540,15 @@ function TableColMajor({
     );
   }
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div className="x-table" style={tableWrapStyle()}>
       <table style={tableStyle}>
         <thead>
@@ -3372,12 +3564,28 @@ function TableColMajor({
         <tbody>
           {rows.map((r, ri) => {
             const tones = rankForRow(r);
-            return (
+            
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
               <tr key={`r-${ri}`}>
                 <td className="x-td" style={tdStyle(true)}>{r.label}</td>
                 {columns.map((c) => {
                   const m = dataMap[c.key] || emptyMetrics({ id: c.key });
-                  return (
+                  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
                     <td key={c.key} className="x-td" style={{ ...tdStyle(false), ...valueToneStyle(tones[c.key]) }}>
                       {r.get(m)}
                     </td>
@@ -3403,7 +3611,15 @@ function tableWrapStyle(): React.CSSProperties {
 
 function PlayerColHeader({ col, align = "center" }: { col: Col; align?: "left" | "center" | "right" }) {
   const player = col.player || { id: col.key, name: col.title };
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       style={{
         display: "inline-flex",
@@ -3437,7 +3653,15 @@ function PlayerColHeader({ col, align = "center" }: { col: Col; align?: "left" |
 }
 
 function RankBadge({ rank }: { rank: number }) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <span
       className="x-rank-badge"
       style={{
@@ -3476,7 +3700,15 @@ function parseStatNumber(value: string | number): number {
 
 function isLowBetterRow(label: string): boolean {
   const l = String(label || "").toLowerCase();
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     l.includes("score restant") ||
     l === "darts" ||
     l.includes("darts→") ||
@@ -3618,7 +3850,15 @@ function HitsRadar({ m }: { m: PlayerMetrics }) {
     )
     .join(" ");
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <svg
         width="100%"
@@ -3663,7 +3903,15 @@ function HitsRadar({ m }: { m: PlayerMetrics }) {
           const lx = cx + labelR * Math.cos(theta);
           const ly = cy + labelR * Math.sin(theta);
 
-          return (
+          
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
             <g key={nu}>
               <line
                 x1={cx}
@@ -3700,7 +3948,15 @@ function HitsRadar({ m }: { m: PlayerMetrics }) {
             />
             {values.map((val, i) => {
               const { x, y } = toXY(val, i);
-              return (
+              
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
                 <circle
                   key={i}
                   cx={x}
@@ -3880,7 +4136,15 @@ function HitsBySegmentBlock({ m }: { m: PlayerMetrics }) {
         const isMiss = c.label === "MISS";
         const isBull = c.label === "BULL";
 
-        return (
+        
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
           <div
             key={`${c.label}-${idx}`}
             style={{
@@ -3949,7 +4213,15 @@ function HitsBySegmentBlock({ m }: { m: PlayerMetrics }) {
     </div>
   );
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       style={{
         display: "flex",
@@ -4009,7 +4281,15 @@ function LegendDot({
   label: string;
   gradient: string;
 }) {
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div
       style={{
         display: "inline-flex",
@@ -4536,14 +4816,30 @@ function VisitsList({
 }) {
   if (!visits.length) return null;
 
-  return (
+  
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
     <div style={{ maxHeight: 320, overflowY: "auto", marginTop: 4 }}>
       {visits.map((v) => {
         const p = playersById[v.playerId];
         const name = p?.name || "—";
         const visitTotal = v.bust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
 
-        return (
+        
+{/* ATP / TENNIS TV STYLE :
+- labels centered in DUO mode
+- neon gradient bars from center
+- losing side greyed
+- winning side uses theme gradient
+*/}
+
+return (
           <div
             key={v.idx}
             style={{
