@@ -3304,7 +3304,7 @@ function TableColMajor({
       isLowBetterRow(row.label) ? a.value - b.value : b.value - a.value
     );
     const best = sorted[0]?.value;
-    if (!Number.isFinite(best) || best === 0) return {};
+    if (!Number.isFinite(best)) return {};
 
     // IMPORTANT VISUEL : on ne colore QUE le meilleur unique.
     // S'il y a égalité sur la meilleure valeur, on ne colore rien.
@@ -3327,7 +3327,7 @@ function TableColMajor({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr minmax(116px, .92fr) 1fr",
+            gridTemplateColumns: "1fr minmax(104px, .82fr) 1fr",
             alignItems: "stretch",
             background: "rgba(255,255,255,.035)",
             borderBottom: "1px solid rgba(255,255,255,.06)",
@@ -3412,22 +3412,30 @@ function DuelStatRow({
   leftBest: boolean;
   rightBest: boolean;
 }) {
-  const baseLine = "rgba(255,255,255,.24)";
+  const accentStrong = "color-mix(in srgb, var(--dc-accent, #f6c256) 96%, transparent)";
+  const accentSoft = "color-mix(in srgb, var(--dc-accent, #f6c256) 44%, transparent)";
+  const whiteStrong = "rgba(255,255,255,.72)";
+  const whiteSoft = "rgba(255,255,255,.18)";
+
+  // Barres façon ATP/TennisTV : elles partent du libellé central en fondu
+  // invisible, puis deviennent plus visibles vers l'extérieur.
   const leftLine = leftBest
-    ? "linear-gradient(90deg, color-mix(in srgb, var(--dc-accent, #f6c256) 100%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 74%, transparent), rgba(255,255,255,.24))"
-    : baseLine;
+    ? `linear-gradient(90deg, ${accentStrong} 0%, ${accentSoft} 46%, rgba(255,255,255,0) 100%)`
+    : `linear-gradient(90deg, ${whiteStrong} 0%, ${whiteSoft} 46%, rgba(255,255,255,0) 100%)`;
   const rightLine = rightBest
-    ? "linear-gradient(90deg, rgba(255,255,255,.24), color-mix(in srgb, var(--dc-accent, #f6c256) 74%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 100%, transparent))"
-    : baseLine;
+    ? `linear-gradient(90deg, rgba(255,255,255,0) 0%, ${accentSoft} 54%, ${accentStrong} 100%)`
+    : `linear-gradient(90deg, rgba(255,255,255,0) 0%, ${whiteSoft} 54%, ${whiteStrong} 100%)`;
 
   const valueBase: React.CSSProperties = {
     position: "relative",
-    padding: `${D.padCellV}px ${D.padCellH}px 8px`,
+    padding: `${D.padCellV}px ${D.padCellH}px 7px`,
     color: "#e8e8ec",
     whiteSpace: "nowrap",
     fontVariantNumeric: "tabular-nums",
     borderTop: "1px solid rgba(255,255,255,.05)",
-    fontWeight: 780,
+    fontSize: D.fsBody,
+    fontWeight: 760,
+    lineHeight: 1.15,
     minWidth: 0,
   };
 
@@ -3438,14 +3446,15 @@ function DuelStatRow({
     bottom: 2,
     height: 2,
     borderRadius: 999,
-    opacity: .96,
+    opacity: .95,
+    pointerEvents: "none",
   };
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr minmax(116px, .92fr) 1fr",
+        gridTemplateColumns: "1fr minmax(104px, .82fr) 1fr",
         alignItems: "stretch",
       }}
     >
@@ -3465,9 +3474,10 @@ function DuelStatRow({
           ...valueBase,
           textAlign: "center",
           color: "rgba(255,255,255,.90)",
-          fontWeight: 900,
-          textTransform: "uppercase",
-          letterSpacing: .15,
+          fontSize: D.fsBody,
+          fontWeight: 800,
+          textTransform: "none",
+          letterSpacing: .1,
         }}
       >
         {label}
