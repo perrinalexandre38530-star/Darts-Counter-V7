@@ -151,6 +151,23 @@ const MODE_DEFS: {
   },
 ];
 
+
+const S = {
+  select: (theme: any): React.CSSProperties => ({
+    width: "100%",
+    minHeight: 34,
+    borderRadius: 12,
+    padding: "7px 10px",
+    border: `1px solid ${theme?.borderSoft || "rgba(255,255,255,.18)"}`,
+    background: theme?.card || "#050608",
+    color: theme?.text || "#fff",
+    fontSize: 11,
+    fontWeight: 800,
+    outline: "none",
+    boxShadow: "0 8px 20px rgba(0,0,0,.35)",
+  }),
+};
+
 // ------------------------------
 // Utils robustes
 // ------------------------------

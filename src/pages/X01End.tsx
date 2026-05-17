@@ -1,3 +1,10 @@
+
+/* FINAL TENNIS TV PATCH
+- underline bars only under values
+- no underline under stat labels
+- neon gradient bars preserved
+*/
+
 // ============================================
 // src/pages/X01End.tsx
 // Fin de partie “maxi-stats” (LEG/MATCH) — colonnes = joueurs
