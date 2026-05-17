@@ -1751,10 +1751,11 @@ const currentReplayLegMeta = React.useCallback(() => {
 // 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
 // - Sync currentThrow + lastVisitsByPlayer (utilisé par PlayersListOnly)
 // ============================================================
-const forceSyncFromEngine = React.useCallback(() => {
+const syncUiFromEngineState = React.useCallback((engineState: any) => {
   currentThrowFromEngineRef.current = true;
 
-  const v: any = (state as any)?.visit;
+  const pid = String(engineState?.activePlayer || "");
+  const v: any = engineState?.visit;
 
   const raw: UIDart[] =
     v?.darts && Array.isArray(v.darts) && v.darts.length
@@ -1762,19 +1763,27 @@ const forceSyncFromEngine = React.useCallback(() => {
           v: d.segment,
           mult: d.multiplier as 1 | 2 | 3,
         }))
+      : v?.dartsThrown && Array.isArray(v.dartsThrown) && v.dartsThrown.length
+      ? v.dartsThrown.map((d: any) => ({
+          v: d.value,
+          mult: d.mult as 1 | 2 | 3,
+        }))
       : [];
 
   setCurrentThrow(raw);
 
-  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
-  // ⚠️ IMPORTANT: ne JAMAIS écraser la dernière volée avec "[]".
-  // Le moteur remet souvent state.visit à vide au changement de joueur.
-  // Si on écrase ici, la dernière volée disparaît pour tous les joueurs.
-  if (activePlayerId && raw.length > 0) {
-    setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
-    setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
+  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow.
+  // On ne nettoie jamais une dernière volée avec [] : un changement de joueur
+  // crée souvent une visite vide côté moteur.
+  if (pid && raw.length > 0) {
+    setLastVisitsByPlayer((m) => ({ ...m, [pid]: raw }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [pid]: false }));
   }
-}, [state, activePlayerId]);
+}, []);
+
+const forceSyncFromEngine = React.useCallback(() => {
+  syncUiFromEngineState(state as any);
+}, [state, syncUiFromEngineState]);
 
 // =====================================================
 // ✅ BOT TURN — DOIT ÊTRE DÉCLARÉ AVANT TOUT useEffect QUI L’UTILISE
@@ -2861,38 +2870,43 @@ const handleCancel = () => {
   setBustBanner(false);
   setIsBust(false);
 
-  // 1) Local edit: pop one dart from the current visit
-  if (currentThrow.length > 0) {
+  // 1) Local edit: on ne modifie que la saisie EN COURS, jamais une volée
+  // recopiée depuis le moteur après un changement de joueur / UNDO.
+  // Sinon ANNULER efface l'affichage local mais laisse la vraie fléchette
+  // dans le moteur, ce qui provoque les scores incohérents.
+  if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
     setCurrentThrow((prev) => prev.slice(0, -1));
-    currentThrowFromEngineRef.current = false;
     setMultiplier(1);
     return;
   }
 
-// 2) Engine undo: revert the last committed dart from history
-botUndoGuardRef.current = true;
-try {
-  // Le moteur retire bien la dernière fléchette, mais l'UI/historique local
-  // utilise aussi replayDartsRef. Sans ce pop, une fléchette fantôme peut
-  // être resauvée après un ANNULER qui revient au joueur précédent.
-  if (Array.isArray(replayDartsRef.current) && replayDartsRef.current.length > 0) {
-    replayDartsRef.current = replayDartsRef.current.slice(0, -1);
+  // 2) Engine undo: supprimer exactement la dernière fléchette validée,
+  // quel que soit le joueur actif, puis resynchroniser l'UI sur le nouvel
+  // état retourné par le moteur (pas sur le state React possiblement stale).
+  botUndoGuardRef.current = true;
+  try {
+    if (Array.isArray(replayDartsRef.current) && replayDartsRef.current.length > 0) {
+      replayDartsRef.current = replayDartsRef.current.slice(0, -1);
+    }
+
+    const undoResult: any = undoLastDart();
+
+    if (undoResult?.state) {
+      syncUiFromEngineState(undoResult.state);
+    } else {
+      currentThrowFromEngineRef.current = false;
+      setCurrentThrow([]);
+    }
+
+    window.setTimeout(() => {
+      persistAutosave();
+    }, 0);
+  } finally {
+    window.setTimeout(() => {
+      botUndoGuardRef.current = false;
+      publishOnlineReplayState("undo").catch(() => {});
+    }, 0);
   }
-
-  undoLastDart();
-
-  // ✅ RESYNC UI après UNDO (y compris si on revient au joueur précédent),
-  // puis autosave seulement après alignement UI + moteur.
-  window.setTimeout(() => {
-    forceSyncFromEngine();
-    persistAutosave();
-  }, 0);
-} finally {
-  window.setTimeout(() => {
-    botUndoGuardRef.current = false;
-    publishOnlineReplayState("undo").catch(() => {});
-  }, 0);
-}
 };
 
 const validateThrow = async () => {
@@ -7386,11 +7400,49 @@ function normalizeOutModeForCheckoutReplay(input: any): X01OutModeV3 {
 }
 
 function isCheckoutFinishableReplay(score: number, outMode: any): boolean {
-  if (!Number.isFinite(score) || score <= 1 || score > 170) return false;
+  const target = Number(score);
+  if (!Number.isFinite(target) || target <= 0 || target > 180) return false;
+
+  const normalizedOutMode = normalizeOutModeForCheckoutReplay(outMode);
+
+  const scoredDarts: Array<{ score: number; multiplier: number; segment: number }> = [];
+  for (let segment = 1; segment <= 20; segment += 1) {
+    scoredDarts.push({ score: segment, multiplier: 1, segment });
+    scoredDarts.push({ score: segment * 2, multiplier: 2, segment });
+    scoredDarts.push({ score: segment * 3, multiplier: 3, segment });
+  }
+  scoredDarts.push({ score: 25, multiplier: 1, segment: 25 });
+  scoredDarts.push({ score: 50, multiplier: 2, segment: 25 });
+
+  const canBeLastDart = (dart: { score: number; multiplier: number; segment: number }) => {
+    if (normalizedOutMode === "simple") return true;
+    if (normalizedOutMode === "master") {
+      return dart.multiplier === 2 || dart.multiplier === 3;
+    }
+    return dart.multiplier === 2;
+  };
+
+  // Une tentative de CO existe dès que le score peut être fini en 1, 2 ou 3 fléchettes
+  // avec le mode de sortie configuré. Contrairement à l'ancien seuil fixe 170,
+  // cela couvre aussi les finishes possibles à 171-180 en sortie simple/master.
+  for (const last of scoredDarts) {
+    if (!canBeLastDart(last)) continue;
+    if (last.score === target) return true;
+
+    for (const first of scoredDarts) {
+      if (first.score + last.score === target) return true;
+      for (const second of scoredDarts) {
+        if (first.score + second.score + last.score === target) return true;
+      }
+    }
+  }
+
+  // Fallback legacy : conserve la compatibilité avec l'adapter existant si celui-ci
+  // connaît des contraintes supplémentaires non modélisées ci-dessus.
   return !!extAdaptCheckoutSuggestion({
-    score,
+    score: target,
     dartsLeft: 3,
-    outMode: normalizeOutModeForCheckoutReplay(outMode),
+    outMode: normalizedOutMode,
   });
 }
 

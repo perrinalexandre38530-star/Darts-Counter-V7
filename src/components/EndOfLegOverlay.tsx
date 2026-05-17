@@ -250,18 +250,28 @@ function checkoutFromNew(leg: LegStats, pid: string) {
       0
   );
 
-  let avg = n(
-    co.avgCODarts ??
-      co.avgDarts ??
-      st.coAvgDarts ??
-      st.checkoutAvgDarts ??
-      st.co_avg_darts ??
-      0
+  const attempts = n(
+    co.attempts ??
+      co.coAttempts ??
+      st.checkoutAttempts ??
+      st.coAtt ??
+      st.coAttempts ??
+      st.co_attempts ??
+      count
   );
 
-  if (!avg && count && dartsTotal) {
-    avg = dartsTotal / count;
-  }
+  // Darts CO = total de fléchettes jouées pendant les volées de tentative CO,
+  // pas une moyenne et pas seulement la volée gagnante.
+  const totalDarts = n(
+    co.coDartsTotal ??
+      co.dartsTotal ??
+      st.coDartsTotal ??
+      st.checkoutDartsTotal ??
+      st.dartsCheckout ??
+      st.checkoutDarts ??
+      st.co_darts_total ??
+      0
+  );
 
   const hi = n(
     co.highestCO ??
@@ -272,7 +282,7 @@ function checkoutFromNew(leg: LegStats, pid: string) {
       0
   );
 
-  return { coCount: count, coDartsAvg: avg, highestCO: hi };
+  return { coCount: count || attempts, coAtt: attempts, coDartsTotal: totalDarts, coDartsAvg: totalDarts, highestCO: hi };
 }
 
 function rowFromNew(leg: LegStats, pid: string, nameOf: (id: string) => string) {
@@ -338,6 +348,8 @@ function rowFromNew(leg: LegStats, pid: string, nameOf: (id: string) => string) 
     pBull: imp.pBull,
     pDBull: imp.pDBull,
     coCount: co.coCount,
+    coAtt: co.coAtt,
+    coDartsTotal: co.coDartsTotal,
     coDartsAvg: co.coDartsAvg,
     highestCO: co.highestCO,
   };
@@ -441,11 +453,11 @@ function rowFromLegacy(
   const highestCO = n(res.bestCheckout?.[pid] ?? 0);
   const coDartsAvgArr = res.checkoutDartsByPlayer?.[pid];
   const coCount = n(
-    res.coHits?.[pid] ?? res.checkoutDartsByPlayer?.[pid]?.length ?? (highestCO > 0 ? 1 : 0)
+    (res as any).checkoutAttempts?.[pid] ?? (res as any).coAttempts?.[pid] ?? (res as any).coAtt?.[pid] ?? res.coHits?.[pid] ?? res.checkoutDartsByPlayer?.[pid]?.length ?? (highestCO > 0 ? 1 : 0)
   );
   const coDartsAvg =
-    coCount && coDartsAvgArr?.length
-      ? Number(f2(coDartsAvgArr.reduce((s, x) => s + x, 0) / coDartsAvgArr.length))
+    coDartsAvgArr?.length
+      ? Number(f2(coDartsAvgArr.reduce((s, x) => s + x, 0)))
       : highestCO > 0 && darts > 0 && visits > 0
       ? Math.max(1, Math.min(3, darts - (visits - 1) * 3))
       : 0;
@@ -725,7 +737,7 @@ function mergeOverlayRows(baseRows: any[] = [], visitRows: any[] = []) {
     for (const k of ["darts", "visits", "points", "best", "singles", "misses", "busts", "doubles", "triples", "ob", "ib", "bulls"]) {
       r[k] = pickNum(v[k], b[k]);
     }
-    for (const k of ["h60", "h100", "h140", "h180", "highestCO", "coCount", "coDartsAvg"]) {
+    for (const k of ["h60", "h100", "h140", "h180", "highestCO", "coCount", "coAtt", "coDartsTotal", "coDartsAvg"]) {
       r[k] = pickNum(v[k], b[k]);
     }
 
@@ -735,9 +747,9 @@ function mergeOverlayRows(baseRows: any[] = [], visitRows: any[] = []) {
       if (!r.coCount) r.coCount = 1;
       if (!r.coAtt) r.coAtt = 1;
       if (!r.coPct || r.coPct === "0%" || r.coPct === "0.0%") r.coPct = "100%";
-      if (!r.coDartsAvg || r.coDartsAvg <= 0) {
+      if ((!r.coDartsTotal || r.coDartsTotal <= 0) && (!r.coDartsAvg || r.coDartsAvg <= 0)) {
         const lastVisitDarts = r.darts > 0 && r.visits > 0 ? r.darts - (r.visits - 1) * 3 : 0;
-        if (lastVisitDarts > 0 && lastVisitDarts <= 3) r.coDartsAvg = lastVisitDarts;
+        if (lastVisitDarts > 0 && lastVisitDarts <= 3) { r.coDartsAvg = lastVisitDarts; r.coDartsTotal = lastVisitDarts; }
       }
     }
 
@@ -1439,7 +1451,7 @@ function Inner({
                     <tr key={`darts-${r.pid}`} style={rowLine}>
                       <TDStrong>{r.name}</TDStrong>
                       <TD>{r.coCount}</TD>
-                      <TD>{f2(r.coDartsAvg)}</TD>
+                      <TD>{f2(r.coDartsTotal ?? r.coDartsAvg)}</TD>
                       <TD>{r.singles ?? 0}</TD>
                       <TD>{r.misses ?? 0}</TD>
                       <TD>{r.busts ?? 0}</TD>

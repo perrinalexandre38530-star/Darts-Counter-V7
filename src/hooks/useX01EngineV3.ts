@@ -1277,8 +1277,11 @@ export function useX01EngineV3({
   // -----------------------------------------------------------
 
   const undoLastDart = React.useCallback(() => {
-    // ✅ Option A (robuste) : UNDO = pop dernier dart + rebuild complet depuis l'historique
-    if (dartsHistoryRef.current.length === 0) return;
+    // ✅ UNDO = supprimer exactement la dernière fléchette réelle du moteur,
+    // puis reconstruire toute la manche courante depuis l'historique interne.
+    // IMPORTANT: on retourne le nouvel état immédiatement pour que l'UI ne se
+    // resynchronise jamais sur un state React périmé (cas changement joueur / sets-legs).
+    if (dartsHistoryRef.current.length === 0) return null;
 
     dartsHistoryRef.current.pop();
 
@@ -1293,8 +1296,10 @@ export function useX01EngineV3({
     liveStatsByPlayerRef.current = newLiveStats;
 
     setLiveStatsByPlayer(newLiveStats);
-      setLiveLegStatsByPlayer(computeLegStats(newLiveStats as any));
+    setLiveLegStatsByPlayer(computeLegStats(newLiveStats as any));
     setState(newState);
+
+    return { state: newState, liveStatsByPlayer: newLiveStats };
   }, [config]);
 
   // -----------------------------------------------------------

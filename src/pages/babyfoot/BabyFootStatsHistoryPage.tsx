@@ -15,6 +15,7 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
 import { computeDecisiveGoals, computeMomentum, computePenaltyImpact, computeShotConversion } from "../../lib/babyfootQualityStats";
+import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 
 type Props = {
   store: any;
@@ -902,6 +903,7 @@ if (conv?.shots > 0) {
           const { teamA, teamB, scoreA, scoreB } = getTeams(payload);
           const dur = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
           const players = Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : [];
+          const rich = computeBabyFootRichStats(payload);
           return (
             <div key={h.id} style={historyRow(theme)}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -925,10 +927,43 @@ if (conv?.shots > 0) {
                   </div>
                 ))}
               </div>
+
+              <div style={{ marginTop: 12, borderRadius: 16, padding: 12, border: "1px solid rgba(255,255,255,0.08)", background: "linear-gradient(180deg, rgba(7,10,24,0.92), rgba(5,8,18,0.98))" }}>
+                <div style={{ textAlign: "center", fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: "rgba(255,255,255,0.56)", textTransform: "uppercase" }}>Tableau stats</div>
+                <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                  <HistoryStatsRow label="Sets" left={rich.teamA.sets} right={rich.teamB.sets} />
+                  <HistoryStatsRow label="Legs" left={rich.teamA.legs} right={rich.teamB.legs} />
+                  <HistoryStatsRow label="Buts totaux" left={rich.teamA.goals} right={rich.teamB.goals} />
+                  <HistoryStatsRow label="Moy. buts / leg" left={rich.teamA.avgGoalsPerLeg.toFixed(1)} right={rich.teamB.avgGoalsPerLeg.toFixed(1)} />
+                  <HistoryStatsRow label="Gamelle" left={rich.teamA.gamelle} right={rich.teamB.gamelle} />
+                  <HistoryStatsRow label="Pêche" left={rich.teamA.peche} right={rich.teamB.peche} />
+                  <HistoryStatsRow label="Demi" left={rich.teamA.demi} right={rich.teamB.demi} />
+                  <HistoryStatsRow label="Pissette" left={rich.teamA.pissette} right={rich.teamB.pissette} />
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function HistoryStatsRow({ label, left, right }: { label: string; left: string | number; right: string | number }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "56px minmax(0,1fr) 56px",
+        gap: 10,
+        alignItems: "center",
+        padding: "8px 0",
+        borderBottom: "1px solid rgba(255,255,255,0.05)",
+      }}
+    >
+      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1000, color: "#c7ff26" }}>{left}</div>
+      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 950, color: "rgba(255,255,255,0.94)" }}>{label}</div>
+      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1000, color: "#ff59b0" }}>{right}</div>
     </div>
   );
 }

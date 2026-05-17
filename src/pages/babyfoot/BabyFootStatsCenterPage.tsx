@@ -19,6 +19,7 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { GoldPill } from "../../components/StatsPlayerDashboard";
+import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 
 // Effet shimmer à l'intérieur des lettres (même esprit que StatsHub Darts)
 const statsNameCss = `
@@ -82,6 +83,95 @@ function clampIndex(idx: number, len: number) {
   if (len <= 0) return 0;
   const m = idx % len;
   return m < 0 ? m + len : m;
+}
+
+function bfPayload(entry: any) {
+  const p0 = entry?.payload ?? {};
+  return p0?.payload ?? p0;
+}
+
+function bfMode(payload: any): "1v1" | "2v2" | "2v1" | "unknown" {
+  const raw = String(payload?.mode ?? payload?.summary?.mode ?? "").trim();
+  return raw === "1v1" || raw === "2v2" || raw === "2v1" ? raw : "unknown";
+}
+
+function bfCutoff(period: PeriodKey) {
+  const now = Date.now();
+  if (period === "J") return now - 24 * 3600 * 1000;
+  if (period === "S") return now - 7 * 24 * 3600 * 1000;
+  if (period === "M") return now - 30 * 24 * 3600 * 1000;
+  if (period === "A") return now - 365 * 24 * 3600 * 1000;
+  return null;
+}
+
+function boardRow(label: string, left: string | number, right: string | number) {
+  return (
+    <div key={label} style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1100, color: "#c7ff26" }}>{left}</div>
+      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 1000, color: "rgba(255,255,255,0.94)" }}>{label}</div>
+      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1100, color: "#ff59b0" }}>{right}</div>
+    </div>
+  );
+}
+
+
+function roundStat(value: number) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 10) / 10;
+}
+
+function formatDuration(ms: number) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+type MatchStatsBoardRow = { label: string; left: string | number; right: string | number };
+
+function MatchStatsBoard({
+  title,
+  leftLabel,
+  rightLabel,
+  softCard,
+  rows,
+}: {
+  title: string;
+  leftLabel: string;
+  rightLabel: string;
+  softCard: React.CSSProperties;
+  rows: MatchStatsBoardRow[];
+}) {
+  return (
+    <div style={softCard}>
+      <div style={{ textAlign: "center", marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "rgba(255,255,255,.68)" }}>
+          Statistiques
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 1000, color: "#fff", marginTop: 2 }}>{title}</div>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,.62)", marginTop: 2 }}>
+          {leftLabel} vs {rightLabel}
+        </div>
+      </div>
+
+      <div
+        style={{
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,.08)",
+          background: "linear-gradient(180deg, rgba(10,11,16,.96), rgba(14,16,24,.92))",
+          padding: "2px 12px",
+          overflow: "hidden",
+        }}
+      >
+        {rows.map((row) => boardRow(row.label, row.left, row.right))}
+      </div>
+    </div>
+  );
 }
 
 export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
@@ -201,10 +291,27 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     padding: 12,
   };
 
-  // --- Placeholders SAFE (valeurs = 0 / null) ---
-  // NOTE: on n'accède à aucun store.history ici (patch SAFE). Branchage ensuite.
+  const filteredMatchHistory = React.useMemo(() => {
+    const allHistory = Array.isArray((store as any)?.history) ? (store as any).history : [];
+    const cutoff = bfCutoff(period);
+    const selectedId = selectedProfile?.id ? String(selectedProfile.id) : "";
+
+    return allHistory.filter((entry: any) => {
+      if (entry?.sport !== "babyfoot" && entry?.kind !== "babyfoot") return false;
+      if (entry?.status && entry.status !== "finished") return false;
+      if (cutoff != null && Number(entry?.createdAt || 0) < cutoff) return false;
+      const payload = bfPayload(entry);
+      const mode = bfMode(payload);
+      if (topTab === "match" && currentMode?.key && currentMode.key !== "all" && mode !== currentMode.key) return false;
+      if (!selectedId) return true;
+      const teamAIds = Array.isArray(payload?.teamAProfileIds) ? payload.teamAProfileIds.map(String) : [];
+      const teamBIds = Array.isArray(payload?.teamBProfileIds) ? payload.teamBProfileIds.map(String) : [];
+      return teamAIds.includes(selectedId) || teamBIds.includes(selectedId);
+    });
+  }, [currentMode?.key, period, selectedProfile?.id, store, topTab]);
+
   const kpis = React.useMemo(() => {
-    return {
+    const base = {
       matches: 0,
       goals: 0,
       conceded: 0,
@@ -222,12 +329,187 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
       convPct: null as number | null,
       avgDuration: "00:00",
       avgGoalsPerMin: "—",
+      sets: 0,
+      legs: 0,
+      avgGoalsPerLeg: 0,
+      gamelle: 0,
+      peche: 0,
+      pecheOff: 0,
+      pecheDef: 0,
+      demi: 0,
+      pissette: 0,
+      demiBonus: 0,
+      penalties: 0,
+      handicap: 0,
+      oppSets: 0,
+      oppLegs: 0,
+      oppGoals: 0,
+      oppAvgGoalsPerLeg: 0,
+      oppGamelle: 0,
+      oppPeche: 0,
+      oppDemi: 0,
+      oppPissette: 0,
+      oppPenalties: 0,
+      oppHandicap: 0,
     };
-  }, []);
+    if (!filteredMatchHistory.length) return base;
+
+    const selectedId = selectedProfile?.id ? String(selectedProfile.id) : "";
+    let matches = 0;
+    let wins = 0;
+    let goals = 0;
+    let conceded = 0;
+    let cleanSheets = 0;
+    let decisiveGoals = 0;
+    let decisivePens = 0;
+    let momentum = 0;
+    let streakBest = 0;
+    let streakNow = 0;
+    let currentStreak = 0;
+    let totalDuration = 0;
+    let totalMinutes = 0;
+    let sets = 0;
+    let legs = 0;
+    let gamelle = 0;
+    let peche = 0;
+    let pecheOff = 0;
+    let pecheDef = 0;
+    let demi = 0;
+    let pissette = 0;
+    let demiBonus = 0;
+    let penalties = 0;
+    let handicap = 0;
+    let oppSets = 0;
+    let oppLegs = 0;
+    let oppGoals = 0;
+    let oppGamelle = 0;
+    let oppPeche = 0;
+    let oppDemi = 0;
+    let oppPissette = 0;
+    let oppPenalties = 0;
+    let oppHandicap = 0;
+
+    for (const entry of filteredMatchHistory) {
+      const payload = bfPayload(entry);
+      const teamAIds = Array.isArray(payload?.teamAProfileIds) ? payload.teamAProfileIds.map(String) : [];
+      const isA = selectedId ? teamAIds.includes(selectedId) : true;
+      const rich = computeBabyFootRichStats(payload);
+      const mine = isA ? rich.teamA : rich.teamB;
+      const opp = isA ? rich.teamB : rich.teamA;
+      const events = Array.isArray(payload?.events) ? payload.events : [];
+
+      matches += 1;
+      goals += mine.goals;
+      conceded += mine.goalsConceded;
+      if (mine.goalsConceded === 0) cleanSheets += 1;
+      totalDuration += Number(payload?.summary?.durationMs ?? payload?.durationMs ?? 0) || 0;
+      totalMinutes += (Number(payload?.summary?.durationMs ?? payload?.durationMs ?? 0) || 0) / 60000;
+      sets += mine.sets;
+      legs += mine.legs;
+      gamelle += mine.gamelle;
+      peche += mine.peche;
+      pecheOff += mine.pecheOff;
+      pecheDef += mine.pecheDef;
+      demi += mine.demi;
+      pissette += mine.pissette;
+      demiBonus += mine.demiBonus;
+      penalties += mine.penalties;
+      handicap += mine.handicap;
+      oppSets += opp.sets;
+      oppLegs += opp.legs;
+      oppGoals += opp.goals;
+      oppGamelle += opp.gamelle;
+      oppPeche += opp.peche;
+      oppDemi += opp.demi;
+      oppPissette += opp.pissette;
+      oppPenalties += opp.penalties;
+      oppHandicap += opp.handicap;
+
+      if (mine.score > opp.score) {
+        wins += 1;
+        currentStreak += 1;
+        if (currentStreak > streakBest) streakBest = currentStreak;
+      } else {
+        currentStreak = 0;
+      }
+
+      const decisive = events.filter((event: any) => event?.t === "goal" && event?.team === (isA ? "A" : "B") && (Number(event?.points || 1) > 0));
+      decisiveGoals += decisive.length;
+      decisivePens += mine.penalties;
+      momentum += mine.longestRun >= 2 ? 1 : 0;
+    }
+
+    streakNow = currentStreak;
+    const avgGoalsPerLeg = legs > 0 ? goals / legs : 0;
+    const oppAvgGoalsPerLeg = oppLegs > 0 ? oppGoals / oppLegs : 0;
+
+    return {
+      ...base,
+      matches,
+      goals,
+      conceded,
+      winrate: matches > 0 ? Math.round((wins / matches) * 100) : 0,
+      gpm: matches > 0 ? roundStat(goals / matches) : 0,
+      gcm: matches > 0 ? roundStat(conceded / matches) : 0,
+      diff: goals - conceded,
+      cleanSheets,
+      decisiveGoals,
+      decisivePens,
+      momentum,
+      streakBest,
+      streakNow,
+      avgDuration: formatDuration(totalDuration / Math.max(1, matches)),
+      avgGoalsPerMin: totalMinutes > 0 ? `${roundStat(goals / totalMinutes)}` : "—",
+      sets,
+      legs,
+      avgGoalsPerLeg: roundStat(avgGoalsPerLeg),
+      gamelle,
+      peche,
+      pecheOff,
+      pecheDef,
+      demi,
+      pissette,
+      demiBonus,
+      penalties,
+      handicap,
+      oppSets,
+      oppLegs,
+      oppGoals,
+      oppAvgGoalsPerLeg: roundStat(oppAvgGoalsPerLeg),
+      oppGamelle,
+      oppPeche,
+      oppDemi,
+      oppPissette,
+      oppPenalties,
+      oppHandicap,
+    };
+  }, [filteredMatchHistory, selectedProfile?.id]);
 
   const periodLabel = React.useMemo(() => {
     return PERIODS.find((p) => p.key === period)?.hint ?? "Mois";
   }, [period]);
+
+  const matchBoard = React.useMemo(() => {
+    const label = selectedProfile?.name || selectedProfile?.displayName || "Moi";
+    return (
+      <MatchStatsBoard
+        title="Lecture rapide du mode"
+        leftLabel={label}
+        rightLabel="Adversaires"
+        softCard={softCard}
+        rows={[
+          { label: "Sets", left: kpis.sets, right: kpis.oppSets },
+          { label: "Legs", left: kpis.legs, right: kpis.oppLegs },
+          { label: "Buts", left: kpis.goals, right: kpis.oppGoals },
+          { label: "Moy. buts / leg", left: kpis.avgGoalsPerLeg.toFixed(1), right: kpis.oppAvgGoalsPerLeg.toFixed(1) },
+          { label: "Gamelle", left: kpis.gamelle, right: kpis.oppGamelle },
+          { label: "Pêche", left: kpis.peche, right: kpis.oppPeche },
+          { label: "Demi", left: kpis.demi, right: kpis.oppDemi },
+          { label: "Pissette", left: kpis.pissette, right: kpis.oppPissette },
+        ]}
+      />
+    );
+  }, [kpis, selectedProfile?.displayName, selectedProfile?.name, softCard]);
 
   const matchContent = React.useMemo(() => {
     const modeKey = String(currentMode?.key || "all");
@@ -236,6 +518,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     if (modeKey === "1v1") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {matchBoard}
           <div style={softCard}>
             <SectionTitle title={`Résumé 1V1 — ${periodLabel}`} T={T} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -256,6 +539,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <KpiTile label="Encaissés / match" value={String(kpis.gcm)} />
               <KpiTile label="Clean sheets" value={String(kpis.cleanSheets)} />
               <KpiTile label="Buts / min" value={kpis.avgGoalsPerMin} />
+              <KpiTile label="Gamelles" value={String(kpis.gamelle)} />
+              <KpiTile label="Pêches" value={String(kpis.peche)} />
             </div>
           </div>
 
@@ -264,8 +549,10 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <KpiTile label="Buts décisifs" value={String(kpis.decisiveGoals)} />
               <KpiTile label="Pénalties décisifs" value={String(kpis.decisivePens)} />
-              <KpiTile label="Comebacks" value={String(kpis.comebacks)} />
-              <KpiTile label="Momentum (bursts)" value={String(kpis.momentum)} />
+              <KpiTile label="Demi" value={String(kpis.demi)} />
+              <KpiTile label="Pissettes" value={String(kpis.pissette)} />
+              <KpiTile label="Pêche off." value={String(kpis.pecheOff)} />
+              <KpiTile label="Pêche déf." value={String(kpis.pecheDef)} />
             </div>
 
             <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,.55)" }}>
@@ -292,6 +579,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     if (modeKey === "2v2") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {matchBoard}
           <div style={softCard}>
             <SectionTitle title={`Résumé 2V2 — ${periodLabel}`} T={T} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -337,6 +625,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     if (modeKey === "2v1") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {matchBoard}
           <div style={softCard}>
             <SectionTitle title={`Résumé 2V1 — ${periodLabel}`} T={T} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -379,6 +668,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     // TOUS
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {matchBoard}
         <div style={softCard}>
           <SectionTitle title={`Résumé (Tous modes MATCH) — ${periodLabel}`} T={T} />
 

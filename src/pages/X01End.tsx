@@ -882,7 +882,10 @@ export default function X01End({ go, params }: Props) {
                 },
                 {
                   label: "Darts CO",
-                  get: (m) => m.avgCoDarts != null && m.avgCoDarts > 0 ? f0(m.avgCoDarts) : "0",
+                  get: (m) => {
+                    const total = n(m.checkoutDartsTotal ?? m.avgCoDarts, 0);
+                    return total > 0 ? f0(total) : "0";
+                  },
                 },
               ],
             },
@@ -1338,8 +1341,9 @@ const X01_FINISH_DARTS = (() => {
 
 function isX01FinishableScore(score: number, outMode: any): boolean {
   const target = Number(score);
-  if (!Number.isFinite(target) || target <= 1 || target > 170) return false;
   const mode = String(outMode || "double");
+  const maxFinish = mode === "double" ? 170 : 180;
+  if (!Number.isFinite(target) || target <= 1 || target > maxFinish) return false;
   const finishers = X01_FINISH_DARTS.filter((d) => {
     if (mode === "simple") return true;
     if (mode === "master") return d.mult === 2 || d.mult === 3;
@@ -1816,16 +1820,18 @@ function buildPerPlayerMetrics(
     // selon le mode de sortie de la partie (Double/Master/Straight Out).
     const isCheckoutAttemptVisit = isX01FinishableScore(n(v.scoreBefore, 0), outMode);
     if (isCheckoutAttemptVisit) {
+      const checkoutVisitDarts = visitDarts.length || explicitDartsCount;
       row.coAtt += 1;
-      row.checkoutDarts = n(row.checkoutDarts, 0) + (Array.isArray(v.darts) ? v.darts.length : 0);
+      row.checkoutDarts = n(row.checkoutDarts, 0) + checkoutVisitDarts;
     }
 
     if (v.finish) {
       row.bestCO = Math.max(row.bestCO, visitPoints);
       row.coHits += 1;
       if (!isCheckoutAttemptVisit && row.coAtt <= 0) {
+        const checkoutVisitDarts = visitDarts.length || explicitDartsCount;
         row.coAtt = 1;
-        row.checkoutDarts = Math.max(n(row.checkoutDarts, 0), Array.isArray(v.darts) ? v.darts.length : 0);
+        row.checkoutDarts = Math.max(n(row.checkoutDarts, 0), checkoutVisitDarts);
       }
     }
 
@@ -1871,7 +1877,19 @@ function buildPerPlayerMetrics(
       m.t60 = n(s.h60 ?? s.t60 ?? s["60+"] ?? s["60-99"], m.t60);
       m.coHits = n(s.checkoutHits ?? s.coHits ?? s.coSuccess ?? s.hitsCheckout ?? s.hitsCO, m.coHits);
       m.coAtt = n(s.checkoutAttempts ?? s.coAtt ?? s.coAttempts ?? s.co_attempts ?? s.attemptsCheckout, m.coAtt);
-      if (!m.avgCoDarts) m.avgCoDarts = v(s.checkoutDartsTotal ?? s.dartsCheckout ?? s.checkoutDarts ?? s.avgCheckoutDarts);
+      const summaryCheckoutDartsTotal = v(
+        s.checkoutDartsTotal ??
+          s.checkoutDartsThrown ??
+          s.dartsCheckout ??
+          s.checkoutDarts ??
+          s.dartsCO
+      );
+      if (summaryCheckoutDartsTotal != null) {
+        m.checkoutDartsTotal = summaryCheckoutDartsTotal;
+        m.avgCoDarts = summaryCheckoutDartsTotal;
+      } else if (!m.avgCoDarts) {
+        m.avgCoDarts = v(s.avgCheckoutDarts);
+      }
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
@@ -1931,7 +1949,19 @@ function buildPerPlayerMetrics(
     m.first9 = v(r.first9Avg);
     m.highestNonCO = v(r.highestNonCheckout);
     m.dartsToFinish = v(r.dartsToFinish);
-    m.avgCoDarts = v(r.avgCheckoutDarts);
+    const richCheckoutDartsTotal = v(
+      r.checkoutDartsTotal ??
+        r.checkoutDartsThrown ??
+        r.dartsCheckout ??
+        r.checkoutDarts ??
+        r.dartsCO
+    );
+    if (richCheckoutDartsTotal != null) {
+      m.checkoutDartsTotal = richCheckoutDartsTotal;
+      m.avgCoDarts = richCheckoutDartsTotal;
+    } else {
+      m.avgCoDarts = v(r.avgCheckoutDarts);
+    }
     m.remaining = v(r.remaining ?? r.scoreRemaining ?? r.finalScore ?? r.scoreAfter ?? m.remaining);
     if (m.setsWon === undefined) m.setsWon = v(r.setsWonTotal ?? r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? summarySetsMap?.[pid]);
     if (m.legsWon === undefined) m.legsWon = v(r.legsWonTotal ?? r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? summaryLegsMap?.[pid]);
@@ -2302,7 +2332,10 @@ function buildPerPlayerMetrics(
         m.coHits = n(dv.coHits, m.coHits ?? 0);
         m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
       }
-      if (n(dv.checkoutDarts, 0) > 0) m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
+      if (n(dv.checkoutDarts, 0) > 0) {
+        m.checkoutDartsTotal = n(dv.checkoutDarts, m.checkoutDartsTotal ?? 0);
+        m.avgCoDarts = m.checkoutDartsTotal;
+      }
 
       // En multi-legs, un joueur peut ne pas relancer dans le leg décisif
       // (ex. l'adversaire check-out au premier tour). Dans ce cas son dernier
@@ -2474,27 +2507,36 @@ function buildPerPlayerMetrics(
       if (m.coHits <= 0) m.coHits = 1;
       if (m.coAtt <= 0) m.coAtt = 1;
 
-      if (!m.avgCoDarts || m.avgCoDarts <= 0) {
+      if (!m.checkoutDartsTotal || m.checkoutDartsTotal <= 0) {
         const finishVisit = derivedVisits
           .filter((vv) => String(vv.playerId) === String(pid))
           .slice()
           .reverse()
           .find((vv) => !!vv.finish || n(vv.score, 0) === sanitizeCO(m.bestCO));
         const fd = Array.isArray(finishVisit?.darts) ? finishVisit!.darts.length : 0;
-        if (fd > 0) m.avgCoDarts = fd;
+        if (fd > 0) {
+          m.checkoutDartsTotal = fd;
+          m.avgCoDarts = fd;
+        }
       }
     }
 
     // Darts CO fallback : quand le résumé historique indique bien un checkout
     // réussi mais ne stocke pas la longueur exacte de la volée de finish, on
     // déduit le nombre de fléchettes de la dernière volée du joueur.
-    if ((!m.avgCoDarts || m.avgCoDarts <= 0) && m.coHits > 0) {
+    if ((!m.checkoutDartsTotal || m.checkoutDartsTotal <= 0) && m.coHits > 0) {
       const lastVisitDarts = m.darts > 0 && m.visits > 0 ? m.darts - (m.visits - 1) * 3 : 0;
       if (lastVisitDarts > 0 && lastVisitDarts <= 3) {
+        m.checkoutDartsTotal = lastVisitDarts;
         m.avgCoDarts = lastVisitDarts;
       } else if (m.dartsToFinish != null && m.dartsToFinish > 0) {
+        m.checkoutDartsTotal = m.dartsToFinish;
         m.avgCoDarts = m.dartsToFinish;
       }
+    }
+
+    if ((m.checkoutDartsTotal == null || m.checkoutDartsTotal <= 0) && m.avgCoDarts != null && m.avgCoDarts > 0) {
+      m.checkoutDartsTotal = m.avgCoDarts;
     }
 
     // CO%

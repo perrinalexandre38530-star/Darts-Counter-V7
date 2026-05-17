@@ -12,6 +12,7 @@ import BabyFootDuelScoreCard from "../../components/babyfoot/BabyFootDuelScoreCa
 import BabyFootLiveHeader from "../../components/babyfoot/BabyFootLiveHeader";
 import BabyFootLiveStatsCard from "../../components/babyfoot/BabyFootLiveStatsCard";
 import BabyFootPhasePanel from "../../components/babyfoot/BabyFootPhasePanel";
+import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 
 import { sendCastSnapshot } from "../../cast/googleCast";
 import {
@@ -382,11 +383,28 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const goalEvents = useMemo(() => getGoalEvents(state.events || []), [state.events]);
   const displayedScore = useMemo(() => reconstructDisplayedScore(state), [state]);
 
-  const goalCountA = goalEvents.filter((event) => event.team === "A").length;
-  const goalCountB = goalEvents.filter((event) => event.team === "B").length;
-  const totalGoals = goalCountA + goalCountB;
-  const penaltiesA = state.penalties?.goalsA ?? 0;
-  const penaltiesB = state.penalties?.goalsB ?? 0;
+  const richStats = useMemo(
+    () =>
+      computeBabyFootRichStats({
+        ...state,
+        scoreA: displayedScore.scoreA,
+        scoreB: displayedScore.scoreB,
+        summary: {
+          ...state,
+          scoreA: displayedScore.scoreA,
+          scoreB: displayedScore.scoreB,
+          penalties: state.penalties ? { ...state.penalties } : null,
+          specialStats: state.specialStats,
+        },
+      }),
+    [displayedScore.scoreA, displayedScore.scoreB, state]
+  );
+
+  const goalCountA = richStats.teamA.goals;
+  const goalCountB = richStats.teamB.goals;
+  const totalGoals = richStats.totalGoals;
+  const penaltiesA = richStats.teamA.penalties;
+  const penaltiesB = richStats.teamB.penalties;
 
   const lastGoalEvent = goalEvents.length ? goalEvents[goalEvents.length - 1] : null;
   const lastGoalTeamName = lastGoalEvent?.team === "A" ? state.teamA : lastGoalEvent?.team === "B" ? state.teamB : null;
@@ -511,6 +529,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         setsBestOf: state.setsBestOf,
         handicapA: state.handicapA ?? 0,
         handicapB: state.handicapB ?? 0,
+        specialStats: state.specialStats,
+        stats: richStats,
       },
       events: state.events || [],
     };
@@ -684,13 +704,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
               lastGoalLabel={lastGoalLabel}
               momentumLabel={momentumLabel}
               cadenceLabel={cadenceLabel}
-              setsEnabled={state.setsEnabled}
-              setsA={state.setsA || 0}
-              setsB={state.setsB || 0}
-              handicapA={state.handicapA || 0}
-              handicapB={state.handicapB || 0}
-              penaltiesA={penaltiesA}
-              penaltiesB={penaltiesB}
+              stats={richStats}
             />
           ) : null}
 
