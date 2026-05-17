@@ -21,22 +21,6 @@ import { shareOrDownload } from "../lib/backup/fileExport";
 ================================ */
 type PlayerLite = { id: string; name?: string; avatarDataUrl?: string | null; avatarUrl?: string | null; photoUrl?: string | null; imageUrl?: string | null };
 
-
-/* ===== ATP / TennisTV DUO VISUAL HELPERS ===== */
-const DUO_BAR_STYLE = {
-  height: 3,
-  borderRadius: 999,
-  background: "linear-gradient(90deg, rgba(255,255,255,0.15) 0%, var(--theme-primary,#ffd028) 55%, var(--theme-primary,#ffd028) 100%)",
-  boxShadow: "0 0 10px color-mix(in srgb, var(--theme-primary,#ffd028) 70%, transparent)",
-};
-
-const DUO_BAR_STYLE_LOSER = {
-  height: 3,
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.18)",
-};
-
-
 type Props = {
   go: (tab: string, params?: any) => void;
   params?: {
@@ -283,15 +267,7 @@ export default function X01End({ go, params }: Props) {
       }
     })();
 
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return () => {
+    return () => {
       mounted = false;
     };
   }, [params?.matchId, params?.rec]);
@@ -499,15 +475,7 @@ return () => {
       const br = Number.isFinite(Number(remaining[b])) ? Number(remaining[b]) : Number.POSITIVE_INFINITY;
       if (ar !== br) return ar - br;
 
-      
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (avg3[b] ?? 0) - (avg3[a] ?? 0);
+      return (avg3[b] ?? 0) - (avg3[a] ?? 0);
     });
 
     setOverlayResult({
@@ -578,29 +546,13 @@ return (avg3[b] ?? 0) - (avg3[a] ?? 0);
 
   // --- Rendus (aucun hook après ceci) ---
   if (err)
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+    return (
       <Shell go={go} title="Fin de partie">
         <Notice>{err}</Notice>
       </Shell>
     );
   if (!rec)
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+    return (
       <Shell go={go}>
         <Notice>Chargement…</Notice>
       </Shell>
@@ -786,15 +738,7 @@ return (
     fontSize: D.fsBody,
   };
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <Shell
       go={go}
       title={
@@ -1504,15 +1448,7 @@ function getSummaryPlayerStats(summary: any, pid: string): any {
   if (!playersBlock) return null;
 
   if (Array.isArray(playersBlock)) {
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+    return (
       playersBlock.find((row: any) =>
         String(row?.id ?? row?.playerId ?? row?.profileId ?? "") === String(pid)
       ) || null
@@ -2886,15 +2822,7 @@ function Shell({
   resumeId?: string | null;
   header?: React.ReactNode;
 }) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       className="x-end"
       style={{ padding: 12, maxWidth: 640, margin: "0 auto" }}
@@ -2940,15 +2868,7 @@ function Panel({
   style?: React.CSSProperties;
   className?: string;
 }) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       className={className}
       style={{
@@ -2972,15 +2892,7 @@ function CardTable({
   title: string;
   children: React.ReactNode;
 }) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <Panel className="x-card" style={{ padding: D.cardPad }}>
       <h3
         style={{
@@ -2997,15 +2909,7 @@ return (
   );
 }
 function Notice({ children }: { children: React.ReactNode }) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <Panel>
       <div style={{ color: "#bbb" }}>{children}</div>
     </Panel>
@@ -3024,15 +2928,7 @@ function SummaryDetailsTabs({
 }) {
   const tab = (key: "summary" | "details", label: string) => {
     const active = value === key;
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+    return (
       <button
         type="button"
         onClick={() => onChange(key)}
@@ -3056,15 +2952,7 @@ return (
     );
   };
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       style={{
         display: "flex",
@@ -3105,15 +2993,7 @@ function MatchLegDetails({
   const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
 
   if (!breakdown.length) {
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+    return (
       <InfoCard>
         Aucun détail de leg disponible pour ce match. Pour les anciennes sauvegardes, seuls le score cumulé sets/legs et les stats globales peuvent être récupérés.
       </InfoCard>
@@ -3169,15 +3049,7 @@ return (
       ? players.find((p) => p.id === selectedLeg.winnerId)?.name
       : null;
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <>
       <InfoCard>
         <b>Détails par set / leg</b> — choisis d’abord le set, puis la manche. Le résumé cumulé additionne toutes les legs du match.
@@ -3296,15 +3168,7 @@ return (
 }
 
 function Trophy(props: any) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <svg viewBox="0 0 24 24" width={16} height={16} {...props}>
       <path
         fill="currentColor"
@@ -3315,15 +3179,7 @@ return (
 }
 
 function ArrowLeftIcon(props: any) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <svg viewBox="0 0 24 24" width={16} height={16} {...props}>
       <path
         fill="currentColor"
@@ -3349,15 +3205,7 @@ function avatarInitials(name?: string) {
   const s = String(name || "?").trim();
   if (!s) return "?";
   const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) 
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return s.slice(0, 2).toUpperCase();
 }
 
@@ -3371,15 +3219,7 @@ function AvatarBubble({
   size?: number;
 }) {
   const src = getAvatarSrc(player);
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       className="x-player-avatar"
       style={{
@@ -3418,15 +3258,7 @@ return (
 }
 
 function getAvatarSrc(player?: PlayerLite | null): string | null {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     player?.avatarDataUrl ||
     player?.avatarUrl ||
     player?.photoUrl ||
@@ -3447,7 +3279,7 @@ type Col = {
 };
 type RowDef = { label: string; get: (m: PlayerMetrics) => string | number };
 
-type CellTone = "best" | "second" | "neutral";
+type CellTone = "best" | "neutral";
 
 function TableColMajor({
   columns,
@@ -3468,14 +3300,19 @@ function TableColMajor({
       .map((c) => ({ key: c.key, value: parseStatNumber(row.get(dataMap[c.key] || emptyMetrics({ id: c.key }))) }))
       .filter((x) => Number.isFinite(x.value));
     if (!vals.length) return {};
-    const unique = Array.from(new Set(vals.map((x) => x.value))).sort((a, b) =>
-      isLowBetterRow(row.label) ? a - b : b - a
+    const sorted = [...vals].sort((a, b) =>
+      isLowBetterRow(row.label) ? a.value - b.value : b.value - a.value
     );
-    if (!unique.length || unique.every((v) => v === 0)) return {};
-    const best = unique[0];
-    const second = unique.length > 1 ? unique[1] : undefined;
+    const best = sorted[0]?.value;
+    if (!Number.isFinite(best) || best === 0) return {};
+
+    // IMPORTANT VISUEL : on ne colore QUE le meilleur unique.
+    // S'il y a égalité sur la meilleure valeur, on ne colore rien.
+    const bestCount = vals.filter((x) => x.value === best).length;
+    if (bestCount !== 1) return {};
+
     return Object.fromEntries(
-      vals.map((x) => [x.key, x.value === best ? "best" : second !== undefined && x.value === second ? "second" : "neutral"])
+      vals.map((x) => [x.key, x.value === best ? "best" : "neutral"])
     ) as Record<string, CellTone>;
   };
 
@@ -3485,70 +3322,48 @@ function TableColMajor({
     const leftM = dataMap[left.key] || emptyMetrics({ id: left.key });
     const rightM = dataMap[right.key] || emptyMetrics({ id: right.key });
 
-    
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
+    return (
+      <div className="x-table x-table-duel" style={{ ...tableWrapStyle(), overflow: "hidden" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr minmax(116px, .92fr) 1fr",
+            alignItems: "stretch",
+            background: "rgba(255,255,255,.035)",
+            borderBottom: "1px solid rgba(255,255,255,.06)",
+          }}
+        >
+          <div className="x-th" style={{ ...thStyle(false), textAlign: "left", position: "relative", top: "auto" }}>
+            <PlayerColHeader col={left} align="left" />
+          </div>
+          <div className="x-th" style={{ ...thStyle(false), textAlign: "center", color: THEME_ACCENT, position: "relative", top: "auto" }}>
+            Stat
+          </div>
+          <div className="x-th" style={{ ...thStyle(false), textAlign: "right", position: "relative", top: "auto" }}>
+            <PlayerColHeader col={right} align="right" />
+          </div>
+        </div>
 
-return (
-      <div className="x-table x-table-duel" style={tableWrapStyle()}>
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th className="x-th" style={{ ...thStyle(false), textAlign: "left" }}>
-                <PlayerColHeader col={left} align="left" />
-              </th>
-              <th className="x-th" style={{ ...thStyle(false), textAlign: "center", color: THEME_ACCENT }}>
-                Stat
-              </th>
-              <th className="x-th" style={{ ...thStyle(false), textAlign: "right" }}>
-                <PlayerColHeader col={right} align="right" />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, ri) => {
-              const tones = rankForRow(r);
-              
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
-                <tr key={`duel-r-${ri}`}>
-                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "left", ...valueToneStyle(tones[left.key]) }}>
-                    {r.get(leftM)}
-                  </td>
-                  <td className="x-td" style={{ ...tdStyle(true), textAlign: "center", color: THEME_ACCENT, fontWeight: 900 }}>
-                    {r.label}
-                  </td>
-                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "right", ...valueToneStyle(tones[right.key]) }}>
-                    {r.get(rightM)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {rows.map((r, ri) => {
+          const tones = rankForRow(r);
+          const leftBest = tones[left.key] === "best";
+          const rightBest = tones[right.key] === "best";
+          return (
+            <DuelStatRow
+              key={`duel-r-${ri}`}
+              label={r.label}
+              leftValue={r.get(leftM)}
+              rightValue={r.get(rightM)}
+              leftBest={leftBest}
+              rightBest={rightBest}
+            />
+          );
+        })}
       </div>
     );
   }
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div className="x-table" style={tableWrapStyle()}>
       <table style={tableStyle}>
         <thead>
@@ -3564,28 +3379,12 @@ return (
         <tbody>
           {rows.map((r, ri) => {
             const tones = rankForRow(r);
-            
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+            return (
               <tr key={`r-${ri}`}>
                 <td className="x-td" style={tdStyle(true)}>{r.label}</td>
                 {columns.map((c) => {
                   const m = dataMap[c.key] || emptyMetrics({ id: c.key });
-                  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+                  return (
                     <td key={c.key} className="x-td" style={{ ...tdStyle(false), ...valueToneStyle(tones[c.key]) }}>
                       {r.get(m)}
                     </td>
@@ -3596,6 +3395,114 @@ return (
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function DuelStatRow({
+  label,
+  leftValue,
+  rightValue,
+  leftBest,
+  rightBest,
+}: {
+  label: string;
+  leftValue: string | number;
+  rightValue: string | number;
+  leftBest: boolean;
+  rightBest: boolean;
+}) {
+  const baseLine = "rgba(255,255,255,.24)";
+  const leftLine = leftBest
+    ? "linear-gradient(90deg, color-mix(in srgb, var(--dc-accent, #f6c256) 100%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 74%, transparent), rgba(255,255,255,.24))"
+    : baseLine;
+  const rightLine = rightBest
+    ? "linear-gradient(90deg, rgba(255,255,255,.24), color-mix(in srgb, var(--dc-accent, #f6c256) 74%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 100%, transparent))"
+    : baseLine;
+
+  const valueBase: React.CSSProperties = {
+    position: "relative",
+    padding: `${D.padCellV}px ${D.padCellH}px 8px`,
+    color: "#e8e8ec",
+    whiteSpace: "nowrap",
+    fontVariantNumeric: "tabular-nums",
+    borderTop: "1px solid rgba(255,255,255,.05)",
+    fontWeight: 780,
+    minWidth: 0,
+  };
+
+  const lineBase: React.CSSProperties = {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 2,
+    height: 2,
+    borderRadius: 999,
+    opacity: .96,
+  };
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr minmax(116px, .92fr) 1fr",
+        alignItems: "stretch",
+      }}
+    >
+      <div style={{ ...valueBase, textAlign: "left", ...valueToneStyle(leftBest ? "best" : "neutral") }}>
+        {leftValue}
+        <span
+          aria-hidden="true"
+          style={{
+            ...lineBase,
+            background: leftLine,
+            boxShadow: leftBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
+          }}
+        />
+      </div>
+      <div
+        style={{
+          ...valueBase,
+          textAlign: "center",
+          color: "rgba(255,255,255,.90)",
+          fontWeight: 900,
+          textTransform: "uppercase",
+          letterSpacing: .15,
+        }}
+      >
+        {label}
+        <span
+          aria-hidden="true"
+          style={{
+            ...lineBase,
+            left: 0,
+            right: "50%",
+            background: leftLine,
+            boxShadow: leftBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
+          }}
+        />
+        <span
+          aria-hidden="true"
+          style={{
+            ...lineBase,
+            left: "50%",
+            right: 0,
+            background: rightLine,
+            boxShadow: rightBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
+          }}
+        />
+      </div>
+      <div style={{ ...valueBase, textAlign: "right", ...valueToneStyle(rightBest ? "best" : "neutral") }}>
+        {rightValue}
+        <span
+          aria-hidden="true"
+          style={{
+            ...lineBase,
+            background: rightLine,
+            boxShadow: rightBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -3611,15 +3518,7 @@ function tableWrapStyle(): React.CSSProperties {
 
 function PlayerColHeader({ col, align = "center" }: { col: Col; align?: "left" | "center" | "right" }) {
   const player = col.player || { id: col.key, name: col.title };
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       style={{
         display: "inline-flex",
@@ -3653,15 +3552,7 @@ return (
 }
 
 function RankBadge({ rank }: { rank: number }) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <span
       className="x-rank-badge"
       style={{
@@ -3700,15 +3591,7 @@ function parseStatNumber(value: string | number): number {
 
 function isLowBetterRow(label: string): boolean {
   const l = String(label || "").toLowerCase();
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     l.includes("score restant") ||
     l === "darts" ||
     l.includes("darts→") ||
@@ -3723,13 +3606,6 @@ function valueToneStyle(tone?: CellTone): React.CSSProperties {
       color: THEME_ACCENT,
       fontWeight: 1000,
       textShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 34%, transparent)",
-    };
-  }
-  if (tone === "second") {
-    return {
-      color: THEME_ACCENT_SOFT,
-      fontWeight: 900,
-      textShadow: "0 0 8px color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)",
     };
   }
   return { fontWeight: 760 };
@@ -3850,15 +3726,7 @@ function HitsRadar({ m }: { m: PlayerMetrics }) {
     )
     .join(" ");
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <svg
         width="100%"
@@ -3903,15 +3771,7 @@ return (
           const lx = cx + labelR * Math.cos(theta);
           const ly = cy + labelR * Math.sin(theta);
 
-          
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+          return (
             <g key={nu}>
               <line
                 x1={cx}
@@ -3948,15 +3808,7 @@ return (
             />
             {values.map((val, i) => {
               const { x, y } = toXY(val, i);
-              
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+              return (
                 <circle
                   key={i}
                   cx={x}
@@ -4136,15 +3988,7 @@ function HitsBySegmentBlock({ m }: { m: PlayerMetrics }) {
         const isMiss = c.label === "MISS";
         const isBull = c.label === "BULL";
 
-        
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+        return (
           <div
             key={`${c.label}-${idx}`}
             style={{
@@ -4213,15 +4057,7 @@ return (
     </div>
   );
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       style={{
         display: "flex",
@@ -4281,15 +4117,7 @@ function LegendDot({
   label: string;
   gradient: string;
 }) {
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div
       style={{
         display: "inline-flex",
@@ -4816,30 +4644,14 @@ function VisitsList({
 }) {
   if (!visits.length) return null;
 
-  
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+  return (
     <div style={{ maxHeight: 320, overflowY: "auto", marginTop: 4 }}>
       {visits.map((v) => {
         const p = playersById[v.playerId];
         const name = p?.name || "—";
         const visitTotal = v.bust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
 
-        
-{/* ATP / TENNIS TV STYLE :
-- labels centered in DUO mode
-- neon gradient bars from center
-- losing side greyed
-- winning side uses theme gradient
-*/}
-
-return (
+        return (
           <div
             key={v.idx}
             style={{
