@@ -3488,26 +3488,6 @@ function DuelStatRow({
         }}
       >
         {label}
-        <span
-          aria-hidden="true"
-          style={{
-            ...lineBase,
-            left: 0,
-            right: "50%",
-            background: leftLine,
-            boxShadow: leftBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
-          }}
-        />
-        <span
-          aria-hidden="true"
-          style={{
-            ...lineBase,
-            left: "50%",
-            right: 0,
-            background: rightLine,
-            boxShadow: rightBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
-          }}
-        />
       </div>
       <div style={{ ...valueBase, textAlign: "right", ...valueToneStyle(rightBest ? "best" : "neutral") }}>
         {rightValue}
