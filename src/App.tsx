@@ -2671,12 +2671,33 @@ useEffect(() => {
     const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
+      ? (m as any).teamAProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamAProfileIds)
+      ? (m as any).summary.teamAProfileIds.map((v: any) => String(v))
+      : [];
+    const teamBProfileIds = Array.isArray((m as any)?.teamBProfileIds)
+      ? (m as any).teamBProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamBProfileIds)
+      ? (m as any).summary.teamBProfileIds.map((v: any) => String(v))
+      : [];
     const players = rawPlayers.map((p: any) => {
-      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
+      const pid = String(p?.id ?? "");
+      const prof = safeArray(store?.profiles).find((pr) => String(pr.id) === pid);
+      const teamIndex = p?.teamIndex !== undefined
+        ? Number(p.teamIndex)
+        : teamAProfileIds.includes(pid)
+        ? 0
+        : teamBProfileIds.includes(pid)
+        ? 1
+        : undefined;
       return {
-        id: p?.id,
-        name: p?.name ?? prof?.name ?? "",
+        id: pid,
+        name: p?.name ?? prof?.name ?? prof?.displayName ?? "",
+        avatarUrl: p?.avatarUrl ?? prof?.avatarUrl ?? null,
         avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+        teamIndex,
+        team: p?.team ?? (teamIndex === 0 ? "A" : teamIndex === 1 ? "B" : undefined),
       };
     });
 
@@ -2899,12 +2920,33 @@ useEffect(() => {
     const id = (m as any)?.id || (m as any)?.matchId || `petanque-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
+      ? (m as any).teamAProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamAProfileIds)
+      ? (m as any).summary.teamAProfileIds.map((v: any) => String(v))
+      : [];
+    const teamBProfileIds = Array.isArray((m as any)?.teamBProfileIds)
+      ? (m as any).teamBProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamBProfileIds)
+      ? (m as any).summary.teamBProfileIds.map((v: any) => String(v))
+      : [];
     const players = rawPlayers.map((p: any) => {
-      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
+      const pid = String(p?.id ?? "");
+      const prof = safeArray(store?.profiles).find((pr) => String(pr.id) === pid);
+      const teamIndex = p?.teamIndex !== undefined
+        ? Number(p.teamIndex)
+        : teamAProfileIds.includes(pid)
+        ? 0
+        : teamBProfileIds.includes(pid)
+        ? 1
+        : undefined;
       return {
-        id: p?.id,
-        name: p?.name ?? prof?.name ?? "",
+        id: pid,
+        name: p?.name ?? prof?.name ?? prof?.displayName ?? "",
+        avatarUrl: p?.avatarUrl ?? prof?.avatarUrl ?? null,
         avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+        teamIndex,
+        team: p?.team ?? (teamIndex === 0 ? "A" : teamIndex === 1 ? "B" : undefined),
       };
     });
 
@@ -2951,12 +2993,33 @@ useEffect(() => {
     const id = (m as any)?.id || (m as any)?.matchId || `babyfoot-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
+      ? (m as any).teamAProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamAProfileIds)
+      ? (m as any).summary.teamAProfileIds.map((v: any) => String(v))
+      : [];
+    const teamBProfileIds = Array.isArray((m as any)?.teamBProfileIds)
+      ? (m as any).teamBProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamBProfileIds)
+      ? (m as any).summary.teamBProfileIds.map((v: any) => String(v))
+      : [];
     const players = rawPlayers.map((p: any) => {
-      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
+      const pid = String(p?.id ?? "");
+      const prof = safeArray(store?.profiles).find((pr) => String(pr.id) === pid);
+      const teamIndex = p?.teamIndex !== undefined
+        ? Number(p.teamIndex)
+        : teamAProfileIds.includes(pid)
+        ? 0
+        : teamBProfileIds.includes(pid)
+        ? 1
+        : undefined;
       return {
-        id: p?.id,
-        name: p?.name ?? prof?.name ?? "",
+        id: pid,
+        name: p?.name ?? prof?.name ?? prof?.displayName ?? "",
+        avatarUrl: p?.avatarUrl ?? prof?.avatarUrl ?? null,
         avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+        teamIndex,
+        team: p?.team ?? (teamIndex === 0 ? "A" : teamIndex === 1 ? "B" : undefined),
       };
     });
 
@@ -3003,7 +3066,19 @@ const unifiedStats = (() => {
       createdAt: (m as any)?.createdAt || now,
       updatedAt: now,
       summary,
-      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "babyfoot", sport: "babyfoot", stats: unifiedStats },
+      teamAProfileIds,
+      teamBProfileIds,
+      payload: {
+        ...(m as any),
+        players,
+        summary,
+        teamAProfileIds,
+        teamBProfileIds,
+        kind: (m as any)?.kind || "babyfoot",
+        sport: "babyfoot",
+        status: "finished",
+        stats: unifiedStats,
+      },
     };
 
 
@@ -3040,12 +3115,33 @@ try {
     const id = (m as any)?.id || (m as any)?.matchId || `pingpong-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
+      ? (m as any).teamAProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamAProfileIds)
+      ? (m as any).summary.teamAProfileIds.map((v: any) => String(v))
+      : [];
+    const teamBProfileIds = Array.isArray((m as any)?.teamBProfileIds)
+      ? (m as any).teamBProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamBProfileIds)
+      ? (m as any).summary.teamBProfileIds.map((v: any) => String(v))
+      : [];
     const players = rawPlayers.map((p: any) => {
-      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
+      const pid = String(p?.id ?? "");
+      const prof = safeArray(store?.profiles).find((pr) => String(pr.id) === pid);
+      const teamIndex = p?.teamIndex !== undefined
+        ? Number(p.teamIndex)
+        : teamAProfileIds.includes(pid)
+        ? 0
+        : teamBProfileIds.includes(pid)
+        ? 1
+        : undefined;
       return {
-        id: p?.id,
-        name: p?.name ?? prof?.name ?? "",
+        id: pid,
+        name: p?.name ?? prof?.name ?? prof?.displayName ?? "",
+        avatarUrl: p?.avatarUrl ?? prof?.avatarUrl ?? null,
         avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+        teamIndex,
+        team: p?.team ?? (teamIndex === 0 ? "A" : teamIndex === 1 ? "B" : undefined),
       };
     });
 
@@ -3125,12 +3221,33 @@ try {
     const id = (m as any)?.id || (m as any)?.matchId || `molkky-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
+      ? (m as any).teamAProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamAProfileIds)
+      ? (m as any).summary.teamAProfileIds.map((v: any) => String(v))
+      : [];
+    const teamBProfileIds = Array.isArray((m as any)?.teamBProfileIds)
+      ? (m as any).teamBProfileIds.map((v: any) => String(v))
+      : Array.isArray((m as any)?.summary?.teamBProfileIds)
+      ? (m as any).summary.teamBProfileIds.map((v: any) => String(v))
+      : [];
     const players = rawPlayers.map((p: any) => {
-      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
+      const pid = String(p?.id ?? "");
+      const prof = safeArray(store?.profiles).find((pr) => String(pr.id) === pid);
+      const teamIndex = p?.teamIndex !== undefined
+        ? Number(p.teamIndex)
+        : teamAProfileIds.includes(pid)
+        ? 0
+        : teamBProfileIds.includes(pid)
+        ? 1
+        : undefined;
       return {
-        id: p?.id,
-        name: p?.name ?? prof?.name ?? "",
+        id: pid,
+        name: p?.name ?? prof?.name ?? prof?.displayName ?? "",
+        avatarUrl: p?.avatarUrl ?? prof?.avatarUrl ?? null,
         avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+        teamIndex,
+        team: p?.team ?? (teamIndex === 0 ? "A" : teamIndex === 1 ? "B" : undefined),
       };
     });
 
