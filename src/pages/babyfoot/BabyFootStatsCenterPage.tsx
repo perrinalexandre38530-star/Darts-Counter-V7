@@ -21,6 +21,7 @@ import ProfileStarRing from "../../components/ProfileStarRing";
 import { GoldPill } from "../../components/StatsPlayerDashboard";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
+import type { BabyFootCompareMode, BabyFootStatRow } from "../../lib/babyfootStatSections";
 
 // Effet shimmer à l'intérieur des lettres (même esprit que StatsHub Darts)
 const statsNameCss = `
@@ -105,27 +106,75 @@ function bfCutoff(period: PeriodKey) {
   return null;
 }
 
-function neonValue(value: string | number, side: "left" | "right") {
-  const color = side === "left" ? "#c7ff26" : "#ff59b0";
-  const glow = side === "left" ? "rgba(199,255,38,.46)" : "rgba(255,89,176,.44)";
-  const bar = side === "left"
-    ? "linear-gradient(90deg, rgba(199,255,38,.95), rgba(246,194,86,.72))"
-    : "linear-gradient(90deg, rgba(255,89,176,.78), rgba(136,94,255,.95))";
+type WinnerSide = "left" | "right" | "tie" | "none";
 
+function toNum(value: string | number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getWinner(left: string | number, right: string | number, compare: BabyFootCompareMode = "high"): WinnerSide {
+  if (compare === "none") return "none";
+  const l = toNum(left);
+  const r = toNum(right);
+  if (l === r) return "tie";
+  if (compare === "low") return l < r ? "left" : "right";
+  return l > r ? "left" : "right";
+}
+
+function valueStyle(side: "left" | "right", isBest: boolean): React.CSSProperties {
+  const activeColor = side === "left" ? "#d9ff3f" : "#ff67bd";
+  const activeGlow = side === "left" ? "rgba(210,255,73,.42)" : "rgba(255,103,189,.34)";
+  return {
+    minWidth: 52,
+    textAlign: side === "left" ? "left" : "right",
+    fontSize: 20,
+    lineHeight: 1,
+    fontWeight: 1100,
+    color: isBest ? activeColor : "#f4f5fb",
+    textShadow: isBest ? `0 0 12px ${activeGlow}` : "none",
+    fontVariantNumeric: "tabular-nums",
+  };
+}
+
+function underlineHalf(side: "left" | "right", active: boolean) {
+  const background = active
+    ? side === "left"
+      ? "linear-gradient(90deg, rgba(255,207,87,0.00) 0%, rgba(214,255,62,0.95) 62%, rgba(214,255,62,0.22) 100%)"
+      : "linear-gradient(270deg, rgba(255,207,87,0.00) 0%, rgba(255,103,189,0.96) 62%, rgba(255,103,189,0.22) 100%)"
+    : side === "left"
+      ? "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)"
+      : "linear-gradient(270deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)";
+  const boxShadow = active
+    ? side === "left"
+      ? "0 0 12px rgba(214,255,62,.18)"
+      : "0 0 12px rgba(255,103,189,.16)"
+    : "none";
+  return <div style={{ flex: 1, height: 3, borderRadius: 999, background, boxShadow }} />;
+}
+
+function statLabel(label: string, winner: WinnerSide) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: side === "left" ? "flex-start" : "flex-end", gap: 5 }}>
-      <div style={{ minWidth: 48, textAlign: side === "left" ? "left" : "right", fontSize: 20, lineHeight: 1, fontWeight: 1100, color, textShadow: `0 0 10px ${glow}` }}>{value}</div>
-      <div style={{ width: 32, height: 4, borderRadius: 999, background: bar, boxShadow: `0 0 10px ${glow}` }} />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
+      <div style={{ textAlign: "center", fontSize: 12, fontWeight: 1000, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+        {underlineHalf("left", winner === "left")}
+        <div style={{ width: 10, height: 3, borderRadius: 999, background: "rgba(255,255,255,.08)" }} />
+        {underlineHalf("right", winner === "right")}
+      </div>
     </div>
   );
 }
 
-function boardRow(label: string, left: string | number, right: string | number) {
+function boardRow(row: BabyFootStatRow) {
+  const winner = getWinner(row.left, row.right, row.compare);
+  const leftBest = winner === "left";
+  const rightBest = winner === "right";
   return (
-    <div key={label} style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-      {neonValue(left, "left")}
-      <div style={{ textAlign: "center", fontSize: 12, fontWeight: 1000, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>{neonValue(right, "right")}</div>
+    <div key={row.label} style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={valueStyle("left", leftBest)}>{row.left}</div>
+      {statLabel(row.label, winner)}
+      <div style={{ ...valueStyle("right", rightBest), justifySelf: "end" }}>{row.right}</div>
     </div>
   );
 }
@@ -148,7 +197,7 @@ function formatDuration(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-type MatchStatsBoardRow = { label: string; left: string | number; right: string | number };
+type MatchStatsBoardRow = BabyFootStatRow;
 type MatchStatsBoardSection = { key: string; title: string; rows: MatchStatsBoardRow[] };
 
 function sectionHeader(label: string) {
@@ -211,7 +260,7 @@ function MatchStatsBoard({
         {sections.map((section) => (
           <React.Fragment key={section.key}>
             {sectionHeader(section.title)}
-            {section.rows.map((row) => boardRow(row.label, row.left, row.right))}
+            {section.rows.map((row) => boardRow(row))}
           </React.Fragment>
         ))}
       </div>
@@ -588,7 +637,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     const sections = buildBabyFootStatSections(syntheticStats).map((section) => ({
       key: section.key,
       title: section.title,
-      rows: section.rows.map((row) => ({ label: row.label, left: row.left, right: row.right })),
+      rows: section.rows.map((row) => ({ label: row.label, left: row.left, right: row.right, accent: row.accent, compare: row.compare })),
     }));
     return (
       <MatchStatsBoard

@@ -1,5 +1,6 @@
 import React from "react";
 import type { BabyFootRichStats } from "../../lib/babyfootRichStats";
+import type { BabyFootCompareMode, BabyFootStatRow } from "../../lib/babyfootStatSections";
 import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
 
 type Props = {
@@ -12,73 +13,101 @@ type Props = {
   stats: BabyFootRichStats;
 };
 
-function neonValue(value: string | number, side: "left" | "right", accent = false) {
-  const color = side === "left" ? "#c7ff26" : "#ff59b0";
-  const glow = side === "left"
-    ? "rgba(199,255,38,.46)"
-    : "rgba(255,89,176,.44)";
-  const bar = side === "left"
-    ? "linear-gradient(90deg, rgba(199,255,38,.95), rgba(246,194,86,.72))"
-    : "linear-gradient(90deg, rgba(255,89,176,.78), rgba(136,94,255,.95))";
+type WinnerSide = "left" | "right" | "tie" | "none";
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: side === "left" ? "flex-start" : "flex-end", gap: 5 }}>
-      <div
-        style={{
-          minWidth: 58,
-          textAlign: side === "left" ? "left" : "right",
-          fontSize: accent ? 26 : 22,
-          lineHeight: 1,
-          fontWeight: 1100,
-          color,
-          textShadow: `0 0 10px ${glow}`,
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          width: accent ? 40 : 34,
-          height: 4,
-          borderRadius: 999,
-          background: bar,
-          boxShadow: `0 0 10px ${glow}`,
-        }}
-      />
-    </div>
-  );
+function toNum(value: string | number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function boardRow(label: string, left: string | number, right: string | number, accent = false) {
+function getWinner(left: string | number, right: string | number, compare: BabyFootCompareMode = "high"): WinnerSide {
+  if (compare === "none") return "none";
+  const l = toNum(left);
+  const r = toNum(right);
+  if (l === r) return "tie";
+  if (compare === "low") return l < r ? "left" : "right";
+  return l > r ? "left" : "right";
+}
+
+function valueStyle(side: "left" | "right", isBest: boolean, accent = false): React.CSSProperties {
+  const activeColor = side === "left" ? "#d9ff3f" : "#ff67bd";
+  const activeGlow = side === "left" ? "rgba(210,255,73,.42)" : "rgba(255,103,189,.34)";
+  return {
+    minWidth: 56,
+    textAlign: side === "left" ? "left" : "right",
+    fontSize: accent ? 24 : 21,
+    lineHeight: 1,
+    fontWeight: 1100,
+    color: isBest ? activeColor : "#f4f5fb",
+    textShadow: isBest ? `0 0 12px ${activeGlow}` : "none",
+    fontVariantNumeric: "tabular-nums",
+  };
+}
+
+function underlineHalf(side: "left" | "right", active: boolean) {
+  const background = active
+    ? side === "left"
+      ? "linear-gradient(90deg, rgba(255,207,87,0.00) 0%, rgba(214,255,62,0.95) 62%, rgba(214,255,62,0.22) 100%)"
+      : "linear-gradient(270deg, rgba(255,207,87,0.00) 0%, rgba(255,103,189,0.96) 62%, rgba(255,103,189,0.22) 100%)"
+    : side === "left"
+      ? "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)"
+      : "linear-gradient(270deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)";
+  const boxShadow = active
+    ? side === "left"
+      ? "0 0 12px rgba(214,255,62,.18)"
+      : "0 0 12px rgba(255,103,189,.16)"
+    : "none";
+
+  return <div style={{ flex: 1, height: 3, borderRadius: 999, background, boxShadow }} />;
+}
+
+function statLabel(label: string, winner: WinnerSide, accent = false) {
   return (
-    <div
-      key={label}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "76px minmax(0,1fr) 76px",
-        gap: 10,
-        alignItems: "center",
-        padding: "10px 2px",
-        borderBottom: "1px solid rgba(255,255,255,0.05)",
-      }}
-    >
-      {neonValue(left, "left", accent)}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
       <div
         style={{
           textAlign: "center",
-          fontSize: accent ? 14 : 13,
+          fontSize: accent ? 13 : 12,
           fontWeight: 1000,
-          letterSpacing: accent ? 0.8 : 0.2,
+          letterSpacing: accent ? 0.55 : 0.15,
           color: "rgba(255,255,255,0.98)",
           textTransform: accent ? "uppercase" : "none",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
+          width: "100%",
         }}
       >
         {label}
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>{neonValue(right, "right", accent)}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+        {underlineHalf("left", winner === "left")}
+        <div style={{ width: 10, height: 3, borderRadius: 999, background: "rgba(255,255,255,.08)" }} />
+        {underlineHalf("right", winner === "right")}
+      </div>
+    </div>
+  );
+}
+
+function boardRow(row: BabyFootStatRow) {
+  const winner = getWinner(row.left, row.right, row.compare);
+  const leftBest = winner === "left";
+  const rightBest = winner === "right";
+  return (
+    <div
+      key={row.label}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "70px minmax(0,1fr) 70px",
+        gap: 10,
+        alignItems: "center",
+        padding: "9px 2px",
+        borderBottom: "1px solid rgba(255,255,255,0.05)",
+      }}
+    >
+      <div style={valueStyle("left", leftBest, row.accent)}>{row.left}</div>
+      {statLabel(row.label, winner, row.accent)}
+      <div style={{ ...valueStyle("right", rightBest, row.accent), justifySelf: "end" }}>{row.right}</div>
     </div>
   );
 }
@@ -176,7 +205,7 @@ export default function BabyFootLiveStatsCard({
         {sections.map((section) => (
           <React.Fragment key={section.key}>
             {sectionHeader(section.title)}
-            {section.rows.map((row) => boardRow(row.label, row.left, row.right, row.accent))}
+            {section.rows.map((row) => boardRow(row))}
           </React.Fragment>
         ))}
       </div>
