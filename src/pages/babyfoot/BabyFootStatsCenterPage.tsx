@@ -105,12 +105,27 @@ function bfCutoff(period: PeriodKey) {
   return null;
 }
 
+function neonValue(value: string | number, side: "left" | "right") {
+  const color = side === "left" ? "#c7ff26" : "#ff59b0";
+  const glow = side === "left" ? "rgba(199,255,38,.46)" : "rgba(255,89,176,.44)";
+  const bar = side === "left"
+    ? "linear-gradient(90deg, rgba(199,255,38,.95), rgba(246,194,86,.72))"
+    : "linear-gradient(90deg, rgba(255,89,176,.78), rgba(136,94,255,.95))";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: side === "left" ? "flex-start" : "flex-end", gap: 5 }}>
+      <div style={{ minWidth: 48, textAlign: side === "left" ? "left" : "right", fontSize: 20, lineHeight: 1, fontWeight: 1100, color, textShadow: `0 0 10px ${glow}` }}>{value}</div>
+      <div style={{ width: 32, height: 4, borderRadius: 999, background: bar, boxShadow: `0 0 10px ${glow}` }} />
+    </div>
+  );
+}
+
 function boardRow(label: string, left: string | number, right: string | number) {
   return (
-    <div key={label} style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1100, color: "#c7ff26" }}>{left}</div>
-      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 1000, color: "rgba(255,255,255,0.94)" }}>{label}</div>
-      <div style={{ textAlign: "center", fontSize: 18, fontWeight: 1100, color: "#ff59b0" }}>{right}</div>
+    <div key={label} style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      {neonValue(left, "left")}
+      <div style={{ textAlign: "center", fontSize: 12, fontWeight: 1000, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>{neonValue(right, "right")}</div>
     </div>
   );
 }
@@ -134,19 +149,43 @@ function formatDuration(ms: number) {
 }
 
 type MatchStatsBoardRow = { label: string; left: string | number; right: string | number };
+type MatchStatsBoardSection = { key: string; title: string; rows: MatchStatsBoardRow[] };
+
+function sectionHeader(label: string) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        marginBottom: 4,
+        padding: "5px 10px",
+        borderRadius: 999,
+        background: "linear-gradient(90deg, rgba(41,74,255,0.98), rgba(66,111,255,0.56))",
+        boxShadow: "0 0 16px rgba(62,104,255,0.28)",
+        textAlign: "center",
+        fontSize: 10,
+        fontWeight: 1100,
+        letterSpacing: 1.2,
+        color: "#fff",
+        textTransform: "uppercase",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 function MatchStatsBoard({
   title,
   leftLabel,
   rightLabel,
   softCard,
-  rows,
+  sections,
 }: {
   title: string;
   leftLabel: string;
   rightLabel: string;
   softCard: React.CSSProperties;
-  rows: MatchStatsBoardRow[];
+  sections: MatchStatsBoardSection[];
 }) {
   return (
     <div style={softCard}>
@@ -165,11 +204,16 @@ function MatchStatsBoard({
           borderRadius: 18,
           border: "1px solid rgba(255,255,255,.08)",
           background: "linear-gradient(180deg, rgba(10,11,16,.96), rgba(14,16,24,.92))",
-          padding: "2px 12px",
+          padding: "4px 12px 10px",
           overflow: "hidden",
         }}
       >
-        {rows.map((row) => boardRow(row.label, row.left, row.right))}
+        {sections.map((section) => (
+          <React.Fragment key={section.key}>
+            {sectionHeader(section.title)}
+            {section.rows.map((row) => boardRow(row.label, row.left, row.right))}
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );
@@ -541,14 +585,18 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
       totalDemi: kpis.demi + kpis.oppDemi,
       totalPissette: kpis.pissette + kpis.oppPissette,
     };
-    const rows = buildBabyFootStatSections(syntheticStats).flatMap((section) => section.rows);
+    const sections = buildBabyFootStatSections(syntheticStats).map((section) => ({
+      key: section.key,
+      title: section.title,
+      rows: section.rows.map((row) => ({ label: row.label, left: row.left, right: row.right })),
+    }));
     return (
       <MatchStatsBoard
         title="Lecture rapide du mode"
         leftLabel={label}
         rightLabel="Adversaires"
         softCard={softCard}
-        rows={rows}
+        sections={sections}
       />
     );
   }, [kpis, selectedProfile?.displayName, selectedProfile?.name, softCard]);
