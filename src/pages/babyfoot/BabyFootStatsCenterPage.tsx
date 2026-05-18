@@ -20,6 +20,7 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { GoldPill } from "../../components/StatsPlayerDashboard";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
+import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
 
 // Effet shimmer à l'intérieur des lettres (même esprit que StatsHub Darts)
 const statsNameCss = `
@@ -491,22 +492,63 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
   const matchBoard = React.useMemo(() => {
     const label = selectedProfile?.name || selectedProfile?.displayName || "Moi";
+    const syntheticStats = {
+      teamA: {
+        name: label,
+        score: kpis.goals,
+        sets: kpis.sets,
+        legs: kpis.legs,
+        goals: kpis.goals,
+        goalsConceded: kpis.conceded,
+        avgGoalsPerLeg: kpis.avgGoalsPerLeg,
+        goalDiff: kpis.diff,
+        gamelle: kpis.gamelle,
+        peche: kpis.peche,
+        pecheOff: kpis.pecheOff,
+        pecheDef: kpis.pecheDef,
+        demi: kpis.demi,
+        pissette: kpis.pissette,
+        demiBonus: kpis.demiBonus,
+        penalties: kpis.penalties,
+        handicap: kpis.handicap,
+        longestRun: kpis.streakBest,
+      },
+      teamB: {
+        name: 'Adversaires',
+        score: kpis.oppGoals,
+        sets: kpis.oppSets,
+        legs: kpis.oppLegs,
+        goals: kpis.oppGoals,
+        goalsConceded: kpis.goals,
+        avgGoalsPerLeg: kpis.oppAvgGoalsPerLeg,
+        goalDiff: -kpis.diff,
+        gamelle: kpis.oppGamelle,
+        peche: kpis.oppPeche,
+        pecheOff: 0,
+        pecheDef: 0,
+        demi: kpis.oppDemi,
+        pissette: kpis.oppPissette,
+        demiBonus: 0,
+        penalties: kpis.oppPenalties,
+        handicap: kpis.oppHandicap,
+        longestRun: 0,
+      },
+      setsEnabled: true,
+      totalLegs: kpis.legs,
+      totalGoals: kpis.goals + kpis.oppGoals,
+      totalGamelle: kpis.gamelle + kpis.oppGamelle,
+      totalPeche: kpis.peche + kpis.oppPeche,
+      totalDemi: kpis.demi + kpis.oppDemi,
+      totalPissette: kpis.pissette + kpis.oppPissette,
+    };
+    const rows = buildBabyFootStatSections(syntheticStats).flatMap((section) => section.rows);
     return (
       <MatchStatsBoard
         title="Lecture rapide du mode"
         leftLabel={label}
         rightLabel="Adversaires"
         softCard={softCard}
-        rows={[
-          { label: "Sets", left: kpis.sets, right: kpis.oppSets },
-          { label: "Legs", left: kpis.legs, right: kpis.oppLegs },
-          { label: "Buts", left: kpis.goals, right: kpis.oppGoals },
-          { label: "Moy. buts / leg", left: kpis.avgGoalsPerLeg.toFixed(1), right: kpis.oppAvgGoalsPerLeg.toFixed(1) },
-          { label: "Gamelle", left: kpis.gamelle, right: kpis.oppGamelle },
-          { label: "Pêche", left: kpis.peche, right: kpis.oppPeche },
-          { label: "Demi", left: kpis.demi, right: kpis.oppDemi },
-          { label: "Pissette", left: kpis.pissette, right: kpis.oppPissette },
-        ]}
+        rows={rows}
       />
     );
   }, [kpis, selectedProfile?.displayName, selectedProfile?.name, softCard]);

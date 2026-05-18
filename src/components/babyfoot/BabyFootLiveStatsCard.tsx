@@ -1,5 +1,6 @@
 import React from "react";
 import type { BabyFootRichStats } from "../../lib/babyfootRichStats";
+import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
 
 type Props = {
   teamAName: string;
@@ -17,23 +18,37 @@ function boardRow(label: string, left: string | number, right: string | number, 
       key={label}
       style={{
         display: "grid",
-        gridTemplateColumns: "68px minmax(0,1fr) 68px",
+        gridTemplateColumns: "76px minmax(0,1fr) 76px",
         gap: 10,
         alignItems: "center",
-        padding: "10px 0",
+        padding: "9px 0",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      <div style={{ textAlign: "center", fontSize: accent ? 22 : 18, fontWeight: 1100, color: "#c7ff26" }}>{left}</div>
-      <div style={{ textAlign: "center", fontSize: 14, fontWeight: 1000, letterSpacing: 0.3, color: "rgba(255,255,255,0.96)", textTransform: accent ? "uppercase" : "none" }}>{label}</div>
-      <div style={{ textAlign: "center", fontSize: accent ? 22 : 18, fontWeight: 1100, color: "#ff59b0" }}>{right}</div>
+      <div style={{ textAlign: "left", fontSize: accent ? 23 : 18, fontWeight: 1100, color: "#c7ff26" }}>{left}</div>
+      <div style={{ textAlign: "center", fontSize: 13, fontWeight: 1000, letterSpacing: accent ? 0.9 : 0.2, color: "rgba(255,255,255,0.96)", textTransform: accent ? "uppercase" : "none" }}>{label}</div>
+      <div style={{ textAlign: "right", fontSize: accent ? 23 : 18, fontWeight: 1100, color: "#ff59b0" }}>{right}</div>
     </div>
   );
 }
 
-function sectionTitle(label: string) {
+function sectionHeader(label: string) {
   return (
-    <div style={{ marginTop: 12, marginBottom: 6, textAlign: "center", fontSize: 11, fontWeight: 1000, letterSpacing: 1.2, color: "rgba(255,255,255,0.56)", textTransform: "uppercase" }}>
+    <div
+      style={{
+        marginTop: 12,
+        marginBottom: 2,
+        padding: "4px 8px",
+        borderRadius: 999,
+        background: "linear-gradient(90deg, rgba(56,92,255,0.88), rgba(56,92,255,0.34))",
+        textAlign: "center",
+        fontSize: 11,
+        fontWeight: 1100,
+        letterSpacing: 1.1,
+        color: "#fff",
+        textTransform: "uppercase",
+      }}
+    >
       {label}
     </div>
   );
@@ -74,28 +89,7 @@ export default function BabyFootLiveStatsCard({
   cadenceLabel,
   stats,
 }: Props) {
-  const topRows = [
-    boardRow("Sets", stats.teamA.sets, stats.teamB.sets, true),
-    boardRow("Legs", stats.teamA.legs, stats.teamB.legs),
-    boardRow("Buts", stats.teamA.goals, stats.teamB.goals),
-    boardRow("Moy. buts / leg", stats.teamA.avgGoalsPerLeg.toFixed(1), stats.teamB.avgGoalsPerLeg.toFixed(1)),
-  ];
-
-  const specialRows = [
-    boardRow("Gamelle", stats.teamA.gamelle, stats.teamB.gamelle),
-    boardRow("Pêche", stats.teamA.peche, stats.teamB.peche),
-    boardRow("Demi", stats.teamA.demi, stats.teamB.demi),
-    boardRow("Pissette", stats.teamA.pissette, stats.teamB.pissette),
-  ];
-
-  const impactRows = [
-    boardRow("Pêche off.", stats.teamA.pecheOff, stats.teamB.pecheOff),
-    boardRow("Pêche déf.", stats.teamA.pecheDef, stats.teamB.pecheDef),
-    boardRow("Bonus demi", stats.teamA.demiBonus, stats.teamB.demiBonus),
-    boardRow("Pénalties", stats.teamA.penalties, stats.teamB.penalties),
-    boardRow("Handicap", stats.teamA.handicap, stats.teamB.handicap),
-    boardRow("Diff. buts", stats.teamA.goalDiff, stats.teamB.goalDiff),
-  ];
+  const sections = buildBabyFootStatSections(stats);
 
   return (
     <div
@@ -121,18 +115,18 @@ export default function BabyFootLiveStatsCard({
         style={{
           marginTop: 14,
           borderRadius: 18,
-          padding: "0 14px 4px",
+          padding: "4px 14px 8px",
           border: "1px solid rgba(255,255,255,0.08)",
           background: "linear-gradient(180deg, rgba(4,8,20,0.78), rgba(2,5,14,0.92))",
           boxShadow: "inset 0 0 0 1px rgba(56,88,220,0.08)",
         }}
       >
-        {sectionTitle("Match")}
-        {topRows}
-        {sectionTitle("Coups spéciaux")}
-        {specialRows}
-        {sectionTitle("Impact")}
-        {impactRows.map((row, idx) => React.cloneElement(row, { key: `impact-${idx}` }))}
+        {sections.map((section) => (
+          <React.Fragment key={section.key}>
+            {sectionHeader(section.title)}
+            {section.rows.map((row) => boardRow(row.label, row.left, row.right, row.accent))}
+          </React.Fragment>
+        ))}
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
