@@ -110,6 +110,8 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
   const hasGoalActivity = goalEvents.length > 0 || scoreA > handicapA || scoreB > handicapB;
   const baseLegs = setsEnabled ? (setsA + setsB) : 1;
   const totalLegs = Math.max(1, baseLegs + (setsEnabled && !finished && hasGoalActivity ? 1 : 0));
+  const legsWonA = safeNum(summary?.legsWonA ?? input?.legsWonA ?? (!setsEnabled && finished && scoreA !== scoreB ? (scoreA > scoreB ? 1 : 0) : 0));
+  const legsWonB = safeNum(summary?.legsWonB ?? input?.legsWonB ?? (!setsEnabled && finished && scoreA !== scoreB ? (scoreB > scoreA ? 1 : 0) : 0));
 
   const goalsA = goalEvents.reduce((acc: number, event: any) => acc + (event?.team === 'A' ? Math.max(1, safeNum(event?.points, 1)) : 0), 0);
   const goalsB = goalEvents.reduce((acc: number, event: any) => acc + (event?.team === 'B' ? Math.max(1, safeNum(event?.points, 1)) : 0), 0);
@@ -126,7 +128,7 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     name: teamAName,
     score: scoreA,
     sets: setsA,
-    legs: totalLegs,
+    legs: legsWonA,
     goals: goalsA,
     goalsConceded: goalsB,
     avgGoalsPerLeg: round1(goalsA / Math.max(1, totalLegs)),
@@ -147,7 +149,7 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     name: teamBName,
     score: scoreB,
     sets: setsB,
-    legs: totalLegs,
+    legs: legsWonB,
     goals: goalsB,
     goalsConceded: goalsA,
     avgGoalsPerLeg: round1(goalsB / Math.max(1, totalLegs)),

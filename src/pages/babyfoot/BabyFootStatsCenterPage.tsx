@@ -52,6 +52,8 @@ const TOP_TABS: { key: TopTab; label: string }[] = [
   { key: "defis", label: "DÉFIS" },
 ];
 
+const CARTOON_FONT = '"Comic Sans MS", "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif';
+
 const PERIODS: { key: PeriodKey; label: string; hint: string }[] = [
   { key: "J", label: "J", hint: "Jour" },
   { key: "S", label: "S", hint: "Semaine" },
@@ -122,6 +124,15 @@ function getWinner(left: string | number, right: string | number, compare: BabyF
   return l > r ? "left" : "right";
 }
 
+function initials(name: string) {
+  return String(name || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase() || "")
+    .join("");
+}
+
 function valueStyle(side: "left" | "right", isBest: boolean): React.CSSProperties {
   const activeColor = side === "left" ? "#d9ff3f" : "#ff67bd";
   const activeGlow = side === "left" ? "rgba(210,255,73,.42)" : "rgba(255,103,189,.34)";
@@ -131,6 +142,7 @@ function valueStyle(side: "left" | "right", isBest: boolean): React.CSSPropertie
     fontSize: 20,
     lineHeight: 1,
     fontWeight: 1100,
+    fontFamily: CARTOON_FONT,
     color: isBest ? activeColor : "#f4f5fb",
     textShadow: isBest ? `0 0 12px ${activeGlow}` : "none",
     fontVariantNumeric: "tabular-nums",
@@ -140,11 +152,11 @@ function valueStyle(side: "left" | "right", isBest: boolean): React.CSSPropertie
 function underlineHalf(side: "left" | "right", active: boolean) {
   const background = active
     ? side === "left"
-      ? "linear-gradient(90deg, rgba(255,207,87,0.00) 0%, rgba(214,255,62,0.95) 62%, rgba(214,255,62,0.22) 100%)"
-      : "linear-gradient(270deg, rgba(255,207,87,0.00) 0%, rgba(255,103,189,0.96) 62%, rgba(255,103,189,0.22) 100%)"
+      ? "linear-gradient(90deg, rgba(214,255,62,0.96) 0%, rgba(214,255,62,0.72) 38%, rgba(214,255,62,0.00) 100%)"
+      : "linear-gradient(90deg, rgba(255,103,189,0.00) 0%, rgba(255,103,189,0.72) 62%, rgba(255,103,189,0.96) 100%)"
     : side === "left"
-      ? "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)"
-      : "linear-gradient(270deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)";
+      ? "linear-gradient(90deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.00) 100%)"
+      : "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.05) 62%, rgba(255,255,255,0.10) 100%)";
   const boxShadow = active
     ? side === "left"
       ? "0 0 12px rgba(214,255,62,.18)"
@@ -156,7 +168,7 @@ function underlineHalf(side: "left" | "right", active: boolean) {
 function statLabel(label: string, winner: WinnerSide) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
-      <div style={{ textAlign: "center", fontSize: 12, fontWeight: 1000, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{label}</div>
+      <div style={{ textAlign: "center", fontSize: 12, fontWeight: 1000, fontFamily: CARTOON_FONT, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
         {underlineHalf("left", winner === "left")}
         <div style={{ width: 10, height: 3, borderRadius: 999, background: "rgba(255,255,255,.08)" }} />
@@ -175,6 +187,15 @@ function boardRow(row: BabyFootStatRow) {
       <div style={valueStyle("left", leftBest)}>{row.left}</div>
       {statLabel(row.label, winner)}
       <div style={{ ...valueStyle("right", rightBest), justifySelf: "end" }}>{row.right}</div>
+    </div>
+  );
+}
+
+function boardAvatar(name: string, color: string) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+      <div style={{ width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center", border: `2px solid ${color}`, boxShadow: `0 0 14px ${color}55`, background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,.28), ${color}cc 62%, rgba(5,7,18,.96) 100%)`, fontFamily: CARTOON_FONT, fontSize: 14, fontWeight: 1100, color: "#fff" }}>{initials(name)}</div>
+      <div style={{ fontSize: 13, fontWeight: 1100, fontFamily: CARTOON_FONT, lineHeight: 1.05, color, textAlign: "center", textShadow: `0 0 10px ${color}44`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 90 }}>{name}</div>
     </div>
   );
 }
@@ -213,6 +234,7 @@ function sectionHeader(label: string) {
         textAlign: "center",
         fontSize: 10,
         fontWeight: 1100,
+        fontFamily: CARTOON_FONT,
         letterSpacing: 1.2,
         color: "#fff",
         textTransform: "uppercase",
@@ -238,14 +260,13 @@ function MatchStatsBoard({
 }) {
   return (
     <div style={softCard}>
-      <div style={{ textAlign: "center", marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "rgba(255,255,255,.68)" }}>
-          Statistiques
+      <div style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) 88px", alignItems: "end", gap: 10, marginBottom: 10 }}>
+        <div style={{ justifySelf: "start" }}>{boardAvatar(leftLabel, "#c7ff26")}</div>
+        <div style={{ textAlign: "center", alignSelf: "center" }}>
+          <div style={{ fontSize: 20, fontWeight: 1100, fontFamily: CARTOON_FONT, letterSpacing: 1.4, textTransform: "uppercase", color: "#fff" }}>STATS</div>
+          <div style={{ fontSize: 13, fontWeight: 1000, fontFamily: CARTOON_FONT, color: "rgba(255,255,255,.68)", marginTop: 2 }}>{title}</div>
         </div>
-        <div style={{ fontSize: 16, fontWeight: 1000, color: "#fff", marginTop: 2 }}>{title}</div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,.62)", marginTop: 2 }}>
-          {leftLabel} vs {rightLabel}
-        </div>
+        <div style={{ justifySelf: "end" }}>{boardAvatar(rightLabel, "#ff59b0")}</div>
       </div>
 
       <div
@@ -637,7 +658,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     const sections = buildBabyFootStatSections(syntheticStats).map((section) => ({
       key: section.key,
       title: section.title,
-      rows: section.rows.map((row) => ({ label: row.label, left: row.left, right: row.right, accent: row.accent, compare: row.compare })),
+      rows: section.rows.map((row) => ({ label: row.label, left: row.left, right: row.right })),
     }));
     return (
       <MatchStatsBoard

@@ -14,6 +14,7 @@ type Props = {
 };
 
 type WinnerSide = "left" | "right" | "tie" | "none";
+const CARTOON_FONT = '"Comic Sans MS", "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif';
 
 function toNum(value: string | number) {
   const n = Number(value);
@@ -29,6 +30,15 @@ function getWinner(left: string | number, right: string | number, compare: BabyF
   return l > r ? "left" : "right";
 }
 
+function initials(name: string) {
+  return String(name || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase() || "")
+    .join("");
+}
+
 function valueStyle(side: "left" | "right", isBest: boolean, accent = false): React.CSSProperties {
   const activeColor = side === "left" ? "#d9ff3f" : "#ff67bd";
   const activeGlow = side === "left" ? "rgba(210,255,73,.42)" : "rgba(255,103,189,.34)";
@@ -38,6 +48,7 @@ function valueStyle(side: "left" | "right", isBest: boolean, accent = false): Re
     fontSize: accent ? 24 : 21,
     lineHeight: 1,
     fontWeight: 1100,
+    fontFamily: CARTOON_FONT,
     color: isBest ? activeColor : "#f4f5fb",
     textShadow: isBest ? `0 0 12px ${activeGlow}` : "none",
     fontVariantNumeric: "tabular-nums",
@@ -47,11 +58,11 @@ function valueStyle(side: "left" | "right", isBest: boolean, accent = false): Re
 function underlineHalf(side: "left" | "right", active: boolean) {
   const background = active
     ? side === "left"
-      ? "linear-gradient(90deg, rgba(255,207,87,0.00) 0%, rgba(214,255,62,0.95) 62%, rgba(214,255,62,0.22) 100%)"
-      : "linear-gradient(270deg, rgba(255,207,87,0.00) 0%, rgba(255,103,189,0.96) 62%, rgba(255,103,189,0.22) 100%)"
+      ? "linear-gradient(90deg, rgba(214,255,62,0.96) 0%, rgba(214,255,62,0.72) 38%, rgba(214,255,62,0.00) 100%)"
+      : "linear-gradient(90deg, rgba(255,103,189,0.00) 0%, rgba(255,103,189,0.72) 62%, rgba(255,103,189,0.96) 100%)"
     : side === "left"
-      ? "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)"
-      : "linear-gradient(270deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)";
+      ? "linear-gradient(90deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.05) 38%, rgba(255,255,255,0.00) 100%)"
+      : "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.05) 62%, rgba(255,255,255,0.10) 100%)";
   const boxShadow = active
     ? side === "left"
       ? "0 0 12px rgba(214,255,62,.18)"
@@ -69,7 +80,8 @@ function statLabel(label: string, winner: WinnerSide, accent = false) {
           textAlign: "center",
           fontSize: accent ? 13 : 12,
           fontWeight: 1000,
-          letterSpacing: accent ? 0.55 : 0.15,
+          fontFamily: CARTOON_FONT,
+          letterSpacing: accent ? 0.55 : 0.1,
           color: "rgba(255,255,255,0.98)",
           textTransform: accent ? "uppercase" : "none",
           whiteSpace: "nowrap",
@@ -125,6 +137,7 @@ function sectionHeader(label: string) {
         textAlign: "center",
         fontSize: 10,
         fontWeight: 1100,
+        fontFamily: CARTOON_FONT,
         letterSpacing: 1.2,
         color: "#fff",
         textTransform: "uppercase",
@@ -146,17 +159,35 @@ function infoCard(label: string, value: string, valueColor?: string) {
         background: "rgba(255,255,255,0.03)",
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.9, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 6, fontSize: 15, fontWeight: 1000, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
+      <div style={{ fontSize: 10, fontWeight: 1000, fontFamily: CARTOON_FONT, letterSpacing: 0.9, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 6, fontSize: 15, fontWeight: 1000, fontFamily: CARTOON_FONT, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
     </div>
   );
 }
 
 function sideLegend(name: string, color: string, align: "left" | "right") {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "flex-end", gap: 4, minWidth: 0 }}>
-      <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1.1, color, textTransform: "uppercase" }}>{align === "left" ? "Joueur A" : "Joueur B"}</div>
-      <div style={{ fontSize: 17, fontWeight: 1100, color, lineHeight: 1.05, textAlign: align, textShadow: `0 0 10px ${align === 'left' ? 'rgba(199,255,38,.22)' : 'rgba(255,89,176,.20)'}` }}>{name}</div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "flex-end", gap: 5, minWidth: 0 }}>
+      <div
+        style={{
+          width: 54,
+          height: 54,
+          borderRadius: "50%",
+          display: "grid",
+          placeItems: "center",
+          border: `2px solid ${color}`,
+          boxShadow: `0 0 16px ${align === "left" ? "rgba(199,255,38,.28)" : "rgba(255,89,176,.26)"}`,
+          background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,.28), ${align === "left" ? "rgba(130,170,20,.88)" : "rgba(149,39,106,.9)"} 62%, rgba(5,7,18,.96) 100%)`,
+          fontFamily: CARTOON_FONT,
+          fontSize: 18,
+          fontWeight: 1100,
+          color: "#fff",
+        }}
+      >
+        {initials(name)}
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 1000, fontFamily: CARTOON_FONT, letterSpacing: 1.1, color, textTransform: "uppercase" }}>{align === "left" ? "Joueur A" : "Joueur B"}</div>
+      <div style={{ fontSize: 17, fontWeight: 1100, fontFamily: CARTOON_FONT, color, lineHeight: 1.05, textAlign: align, textShadow: `0 0 10px ${align === 'left' ? 'rgba(199,255,38,.22)' : 'rgba(255,89,176,.20)'}` }}>{name}</div>
     </div>
   );
 }
@@ -184,10 +215,8 @@ export default function BabyFootLiveStatsCard({
     >
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 12, alignItems: "end" }}>
         {sideLegend(teamAName, "#c7ff26", "left")}
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Statistiques</div>
-          <div style={{ marginTop: 5, fontSize: 19, fontWeight: 1100 }}>Lecture rapide</div>
-          <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.72)" }}>{teamAName} vs {teamBName}</div>
+        <div style={{ textAlign: "center", alignSelf: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 1100, fontFamily: CARTOON_FONT, letterSpacing: 1.4, color: "#fff", textTransform: "uppercase", textShadow: "0 0 12px rgba(255,255,255,.16)" }}>STATS</div>
         </div>
         {sideLegend(teamBName, "#ff59b0", "right")}
       </div>
