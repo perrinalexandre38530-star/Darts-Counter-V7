@@ -14,6 +14,14 @@ type Props = {
 };
 
 type WinnerSide = "left" | "right" | "tie" | "none";
+const FONTZILLA_FONT = '"Fontzilla Comic", "Comic Sans MS", system-ui, sans-serif';
+const FONTZILLA_FACE = `
+@font-face {
+  font-family: "Fontzilla Comic";
+  src: local("Fontzilla Comic"), url("/fonts/Fontzilla Comic.ttf") format("truetype");
+  font-display: swap;
+}
+`;
 
 function toNum(value: string | number) {
   const n = Number(value);
@@ -29,36 +37,46 @@ function getWinner(left: string | number, right: string | number, compare: BabyF
   return l > r ? "left" : "right";
 }
 
+function initials(name: string) {
+  return String(name || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase() || "")
+    .join("");
+}
+
 function valueStyle(side: "left" | "right", isBest: boolean, accent = false): React.CSSProperties {
   const activeColor = side === "left" ? "#d9ff3f" : "#ff67bd";
   const activeGlow = side === "left" ? "rgba(210,255,73,.42)" : "rgba(255,103,189,.34)";
   return {
-    minWidth: 56,
+    minWidth: 60,
     textAlign: side === "left" ? "left" : "right",
-    fontSize: accent ? 24 : 21,
+    fontSize: accent ? 28 : 24,
     lineHeight: 1,
     fontWeight: 1100,
+    fontFamily: FONTZILLA_FONT,
     color: isBest ? activeColor : "#f4f5fb",
-    textShadow: isBest ? `0 0 12px ${activeGlow}` : "none",
+    textShadow: isBest ? `0 0 14px ${activeGlow}` : "none",
     fontVariantNumeric: "tabular-nums",
+    letterSpacing: 0.2,
   };
 }
 
 function underlineHalf(side: "left" | "right", active: boolean) {
   const background = active
     ? side === "left"
-      ? "linear-gradient(90deg, rgba(255,207,87,0.00) 0%, rgba(214,255,62,0.95) 62%, rgba(214,255,62,0.22) 100%)"
-      : "linear-gradient(270deg, rgba(255,207,87,0.00) 0%, rgba(255,103,189,0.96) 62%, rgba(255,103,189,0.22) 100%)"
+      ? "linear-gradient(90deg, rgba(214,255,62,1) 0%, rgba(214,255,62,.72) 36%, rgba(214,255,62,0) 100%)"
+      : "linear-gradient(90deg, rgba(255,103,189,0) 0%, rgba(255,103,189,.72) 64%, rgba(255,103,189,1) 100%)"
     : side === "left"
-      ? "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)"
-      : "linear-gradient(270deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)";
+      ? "linear-gradient(90deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.06) 36%, rgba(255,255,255,0) 100%)"
+      : "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.06) 64%, rgba(255,255,255,.12) 100%)";
   const boxShadow = active
     ? side === "left"
-      ? "0 0 12px rgba(214,255,62,.18)"
-      : "0 0 12px rgba(255,103,189,.16)"
+      ? "0 0 12px rgba(214,255,62,.24)"
+      : "0 0 12px rgba(255,103,189,.22)"
     : "none";
-
-  return <div style={{ flex: 1, height: 3, borderRadius: 999, background, boxShadow }} />;
+  return <div style={{ flex: 1, height: 4, borderRadius: 999, background, boxShadow }} />;
 }
 
 function statLabel(label: string, winner: WinnerSide, accent = false) {
@@ -67,9 +85,10 @@ function statLabel(label: string, winner: WinnerSide, accent = false) {
       <div
         style={{
           textAlign: "center",
-          fontSize: accent ? 13 : 12,
+          fontSize: accent ? 14 : 13,
           fontWeight: 1000,
-          letterSpacing: accent ? 0.55 : 0.15,
+          fontFamily: FONTZILLA_FONT,
+          letterSpacing: accent ? 0.5 : 0.1,
           color: "rgba(255,255,255,0.98)",
           textTransform: accent ? "uppercase" : "none",
           whiteSpace: "nowrap",
@@ -98,7 +117,7 @@ function boardRow(row: BabyFootStatRow) {
       key={row.label}
       style={{
         display: "grid",
-        gridTemplateColumns: "70px minmax(0,1fr) 70px",
+        gridTemplateColumns: "72px minmax(0,1fr) 72px",
         gap: 10,
         alignItems: "center",
         padding: "9px 2px",
@@ -125,6 +144,7 @@ function sectionHeader(label: string) {
         textAlign: "center",
         fontSize: 10,
         fontWeight: 1100,
+        fontFamily: FONTZILLA_FONT,
         letterSpacing: 1.2,
         color: "#fff",
         textTransform: "uppercase",
@@ -146,17 +166,35 @@ function infoCard(label: string, value: string, valueColor?: string) {
         background: "rgba(255,255,255,0.03)",
       }}
     >
-      <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 0.9, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 6, fontSize: 15, fontWeight: 1000, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
+      <div style={{ fontSize: 10, fontWeight: 1000, fontFamily: FONTZILLA_FONT, letterSpacing: 0.9, color: "rgba(255,255,255,0.60)", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 6, fontSize: 15, fontWeight: 1000, fontFamily: FONTZILLA_FONT, lineHeight: 1.15, color: valueColor || "#fff" }}>{value}</div>
     </div>
   );
 }
 
-function sideLegend(name: string, color: string, align: "left" | "right") {
+function avatarBadge(name: string, color: string, sideLabel: string) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "flex-end", gap: 4, minWidth: 0 }}>
-      <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1.1, color, textTransform: "uppercase" }}>{align === "left" ? "Joueur A" : "Joueur B"}</div>
-      <div style={{ fontSize: 17, fontWeight: 1100, color, lineHeight: 1.05, textAlign: align, textShadow: `0 0 10px ${align === 'left' ? 'rgba(199,255,38,.22)' : 'rgba(255,89,176,.20)'}` }}>{name}</div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
+      <div
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: "50%",
+          display: "grid",
+          placeItems: "center",
+          border: `2px solid ${color}`,
+          boxShadow: `0 0 16px ${color}55`,
+          background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,.28), ${color}cc 62%, rgba(5,7,18,.96) 100%)`,
+          fontFamily: FONTZILLA_FONT,
+          fontSize: 18,
+          fontWeight: 1100,
+          color: "#fff",
+        }}
+      >
+        {initials(name)}
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 1000, fontFamily: FONTZILLA_FONT, letterSpacing: 1.1, color, textTransform: "uppercase" }}>{sideLabel}</div>
+      <div style={{ fontSize: 17, fontWeight: 1100, fontFamily: FONTZILLA_FONT, color, lineHeight: 1.05, textAlign: "center", textShadow: `0 0 10px ${color}44`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 108 }}>{name}</div>
     </div>
   );
 }
@@ -182,14 +220,13 @@ export default function BabyFootLiveStatsCard({
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
       }}
     >
+      <style>{FONTZILLA_FACE}</style>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 12, alignItems: "end" }}>
-        {sideLegend(teamAName, "#c7ff26", "left")}
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, fontWeight: 1000, letterSpacing: 1.1, color: "rgba(255,255,255,0.66)", textTransform: "uppercase" }}>Statistiques</div>
-          <div style={{ marginTop: 5, fontSize: 19, fontWeight: 1100 }}>Lecture rapide</div>
-          <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.72)" }}>{teamAName} vs {teamBName}</div>
+        {avatarBadge(teamAName, "#c7ff26", "Joueur A")}
+        <div style={{ textAlign: "center", alignSelf: "center" }}>
+          <div style={{ fontSize: 24, fontWeight: 1100, fontFamily: FONTZILLA_FONT, letterSpacing: 1.5, color: "#fff", textTransform: "uppercase", textShadow: "0 0 12px rgba(255,255,255,.16)" }}>STATS</div>
         </div>
-        {sideLegend(teamBName, "#ff59b0", "right")}
+        {avatarBadge(teamBName, "#ff59b0", "Joueur B")}
       </div>
 
       <div
