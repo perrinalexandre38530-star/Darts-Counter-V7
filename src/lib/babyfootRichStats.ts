@@ -13,12 +13,20 @@ export type BabyFootRichSideStats = {
   pecheDef: number;
   demi: number;
   pissette: number;
+  pissetteValid: number;
+  pissetteRefused: number;
+  csc: number;
   demiBonus: number;
   goalAv: number;
   goalDef: number;
   goalGb: number;
   penalties: number;
   handicap: number;
+  goalsConcededAv: number;
+  goalsConcededDef: number;
+  goalsConcededGb: number;
+  equalizations: number;
+  leadChanges: number;
   longestRun: number;
 };
 
@@ -66,6 +74,10 @@ function normalizeSpecialStats(raw: any) {
     gamelleB: safeNum(stats.gamelleB),
     pissetteA: safeNum(stats.pissetteA),
     pissetteB: safeNum(stats.pissetteB),
+    pissetteValidA: safeNum(stats.pissetteValidA),
+    pissetteValidB: safeNum(stats.pissetteValidB),
+    pissetteRefusedA: safeNum(stats.pissetteRefusedA),
+    pissetteRefusedB: safeNum(stats.pissetteRefusedB),
     pecheOffA: safeNum(stats.pecheOffA),
     pecheOffB: safeNum(stats.pecheOffB),
     pecheDefA: safeNum(stats.pecheDefA),
@@ -78,6 +90,8 @@ function normalizeSpecialStats(raw: any) {
     goalDefB: safeNum(stats.goalDefB),
     goalGbA: safeNum(stats.goalGbA),
     goalGbB: safeNum(stats.goalGbB),
+    cscA: safeNum(stats.cscA),
+    cscB: safeNum(stats.cscB),
   };
 }
 
@@ -94,6 +108,33 @@ function getLongestRun(events: any[], team: 'A' | 'B') {
     }
   }
   return best;
+}
+
+function computeLeadStats(goalEvents: any[]) {
+  let a = 0;
+  let b = 0;
+  let lastLeader: 'A' | 'B' | null = null;
+  let equalizationsA = 0;
+  let equalizationsB = 0;
+  let leadChangesA = 0;
+  let leadChangesB = 0;
+  for (const event of goalEvents) {
+    if (!event || event.t !== 'goal') continue;
+    const points = Math.max(1, safeNum(event.points, 1));
+    if (event.team === 'A') a += points;
+    if (event.team === 'B') b += points;
+    const nextLeader: 'A' | 'B' | null = a === b ? null : a > b ? 'A' : 'B';
+    if (nextLeader === null && lastLeader) {
+      if (event.team === 'A') equalizationsA += 1;
+      if (event.team === 'B') equalizationsB += 1;
+    }
+    if (nextLeader && lastLeader && nextLeader !== lastLeader) {
+      if (nextLeader === 'A') leadChangesA += 1;
+      if (nextLeader === 'B') leadChangesB += 1;
+    }
+    lastLeader = nextLeader;
+  }
+  return { equalizationsA, equalizationsB, leadChangesA, leadChangesB };
 }
 
 export function computeBabyFootRichStats(input: any): BabyFootRichStats {
@@ -129,6 +170,7 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
   const penaltiesB = safeNum(summary?.penalties?.goalsB ?? input?.penalties?.goalsB ?? penEvents.filter((event: any) => event?.team === 'B' && event?.scored).length);
 
   const specialStats = normalizeSpecialStats(summary?.specialStats ?? input?.specialStats);
+  const leadStats = computeLeadStats(goalEvents);
 
   const teamAName = String(summary?.teamA ?? input?.teamA ?? 'Équipe A');
   const teamBName = String(summary?.teamB ?? input?.teamB ?? 'Équipe B');
@@ -148,12 +190,20 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     pecheDef: specialStats.pecheDefA,
     demi: specialStats.demiA,
     pissette: specialStats.pissetteA,
+    pissetteValid: specialStats.pissetteValidA,
+    pissetteRefused: specialStats.pissetteRefusedA,
+    csc: specialStats.cscA,
     demiBonus: specialStats.demiBonusAppliedA,
     goalAv: specialStats.goalAvA,
     goalDef: specialStats.goalDefA,
     goalGb: specialStats.goalGbA,
     penalties: penaltiesA,
     handicap: handicapA,
+    goalsConcededAv: specialStats.goalAvB,
+    goalsConcededDef: specialStats.goalDefB,
+    goalsConcededGb: specialStats.goalGbB,
+    equalizations: leadStats.equalizationsA,
+    leadChanges: leadStats.leadChangesA,
     longestRun: getLongestRun(goalEvents, 'A'),
   };
 
@@ -172,12 +222,20 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     pecheDef: specialStats.pecheDefB,
     demi: specialStats.demiB,
     pissette: specialStats.pissetteB,
+    pissetteValid: specialStats.pissetteValidB,
+    pissetteRefused: specialStats.pissetteRefusedB,
+    csc: specialStats.cscB,
     demiBonus: specialStats.demiBonusAppliedB,
     goalAv: specialStats.goalAvB,
     goalDef: specialStats.goalDefB,
     goalGb: specialStats.goalGbB,
     penalties: penaltiesB,
     handicap: handicapB,
+    goalsConcededAv: specialStats.goalAvA,
+    goalsConcededDef: specialStats.goalDefA,
+    goalsConcededGb: specialStats.goalGbA,
+    equalizations: leadStats.equalizationsB,
+    leadChanges: leadStats.leadChangesB,
     longestRun: getLongestRun(goalEvents, 'B'),
   };
 

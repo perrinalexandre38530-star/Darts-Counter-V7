@@ -18,6 +18,7 @@ import { sendCastSnapshot } from "../../cast/googleCast";
 import {
   addGoal,
   addPenaltyShot,
+  addSpecialScoreEvent,
   type BabyFootGoalSource,
   computeDurationMs,
   finishByTime,
@@ -85,7 +86,8 @@ type ScoreVisual = {
   roleLabel: string;
 };
 
-type PlayTab = "score" | "compo" | "stats" | "actions";
+type PlayTab = "score" | "compo" | "stats" | "individual" | "actions";
+type QuickAction = "goal" | "demi" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "csc";
 
 function tourResultKey(tournamentId: unknown, matchId: unknown) {
   return `bf_tour_result_${String(tournamentId || "")}_${String(matchId || "")}`;
@@ -118,8 +120,9 @@ function reconstructDisplayedScore(state: BabyFootState): ReconstructedScore {
     return { scoreA: state.scoreA, scoreB: state.scoreB };
   }
 
-  const baseA = Math.max(0, Number(state.handicapA) || 0);
-  const baseB = Math.max(0, Number(state.handicapB) || 0);
+  // Handicap = malus : le score initial est attribué à l’adversaire.
+  const baseA = Math.max(0, Number(state.handicapB) || 0);
+  const baseB = Math.max(0, Number(state.handicapA) || 0);
   const events = state.events || [];
   const finishEvent = getFinishEvent(events);
   const setWinIndexes = events.reduce<number[]>((acc, event, index) => {
@@ -338,6 +341,150 @@ function TeamCompositionColumn({
   );
 }
 
+function tinyActionBtn(disabled = false): React.CSSProperties {
+  return {
+    minHeight: 34, borderRadius: 12, padding: "0 12px", border: "1px solid rgba(255,255,255,.10)",
+    background: disabled ? "rgba(255,255,255,.04)" : "linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.035))",
+    color: "#fff", fontWeight: 1000, cursor: disabled ? "not-allowed" : "pointer"
+  };
+}
+
+function tileStyle(accent = "#c7ff26"): React.CSSProperties {
+  return {
+    minHeight: 42, borderRadius: 14, border: `1px solid ${accent}44`,
+    background: `linear-gradient(180deg, ${accent}20, rgba(255,255,255,.035))`,
+    color: "#fff", fontWeight: 1100, fontSize: 11, letterSpacing: .2, cursor: "pointer",
+    boxShadow: `0 0 16px ${accent}18`,
+  };
+}
+
+function QuickTeamPad({ label, accent, onPick }: { label: string; accent: string; onPick: (source: BabyFootGoalSource) => void }) {
+  return (
+    <div style={{ borderRadius: 18, padding: 10, border: `1px solid ${accent}40`, background: `linear-gradient(180deg, ${accent}16, rgba(255,255,255,.025))` }}>
+      <div style={{ color: accent, fontWeight: 1100, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+        <button type="button" style={tileStyle(accent)} onClick={() => onPick("AV")}>⚽ AV</button>
+        <button type="button" style={tileStyle(accent)} onClick={() => onPick("DEF")}>🛡 DEF</button>
+        <button type="button" style={tileStyle(accent)} onClick={() => onPick("GB")}>🥅 GB</button>
+        <button type="button" style={tileStyle(accent)} onClick={() => onPick("MIL")}>⚡ DEMI</button>
+      </div>
+    </div>
+  );
+}
+
+function ActionTiles({
+  state,
+  onAction,
+}: {
+  state: BabyFootState;
+  onAction: (action: QuickAction, source: BabyFootGoalSource) => void;
+}) {
+  const pissetteLabel =
+    state.pissetteRule === "point"
+      ? "PISSETTE +1"
+      : state.pissetteRule === "forbidden_stat"
+      ? "PISSETTE REFUS"
+      : "PISSETTE STAT";
+  const gamelleLabel =
+    state.gamelleRule === "plus_one_scoring_team"
+      ? "GAMELLE +1"
+      : state.gamelleRule === "minus_one_conceding_team"
+      ? "GAMELLE -1"
+      : "GAMELLE STAT";
+  const pecheOffLabel =
+    state.pecheOffRule === "minus_one_conceding_team"
+      ? "PÊCHE OFF -1"
+      : state.pecheOffRule === "stat_only"
+      ? "PÊCHE OFF STAT"
+      : "PÊCHE OFF ✕";
+  const pecheDefLabel =
+    state.pecheDefRule === "cancel_goal"
+      ? "PÊCHE DEF ANNUL."
+      : state.pecheDefRule === "stat_only"
+      ? "PÊCHE DEF STAT"
+      : "PÊCHE DEF ✕";
+
+  const tiles: Array<{ label: string; action: QuickAction; source: BabyFootGoalSource; accent?: string; muted?: boolean }> = [
+    { label: "BUT AV", action: "goal", source: "AV", accent: "#c7ff26" },
+    { label: "BUT DEF", action: "goal", source: "DEF", accent: "#8dd7ff" },
+    { label: "BUT GB", action: "goal", source: "GB", accent: "#ffd36b" },
+    { label: "DEMI", action: "demi", source: "MIL", accent: "#b78cff", muted: state.demiRule === "forbidden" },
+    { label: gamelleLabel, action: "gamelle", source: "AV", accent: "#ffcf5a", muted: state.gamelleRule === "stat_only" },
+    { label: pecheOffLabel, action: "peche_off", source: "AV", accent: "#ff8b5a", muted: state.pecheOffRule === "forbidden" },
+    { label: pecheDefLabel, action: "peche_def", source: "DEF", accent: "#5ad7ff", muted: state.pecheDefRule === "forbidden" },
+    { label: pissetteLabel, action: "pissette", source: "AV", accent: "#ff59b0", muted: state.pissetteRule !== "point" },
+    { label: "CSC", action: "csc", source: "AV", accent: "#ff4f6d" },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}>
+      {tiles.map((tile) => (
+        <button
+          key={tile.label}
+          type="button"
+          onClick={() => onAction(tile.action, tile.source)}
+          style={{ ...tileStyle(tile.accent), opacity: tile.muted ? 0.62 : 1 }}
+        >
+          {tile.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function IndividualStatsTabs({ rows }: { rows: Array<{ id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number }> }) {
+  const [tab, setTab] = useState<"A" | "B" | "ALL">("ALL");
+  const filtered = rows.filter((row) => tab === "ALL" || row.team === tab);
+  const statItems = (row: typeof rows[number]) => [
+    ["Buts", row.goals],
+    ["AV", row.av],
+    ["DEF", row.def],
+    ["GB", row.gb],
+    ["Demis", row.demi],
+    ["Pts demi", row.ptsDemi],
+    ["Gamelle", row.gamelle],
+    ["Pêche +", row.pecheOff],
+    ["Pêche -", row.pecheDef],
+    ["Pissette", row.pissette],
+    ["CSC", row.csc],
+  ] as const;
+
+  return (
+    <div style={shellCard()}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 1100, letterSpacing: 1, color: "rgba(255,255,255,.7)", textTransform: "uppercase" }}>Stats individuelles</div>
+          <div style={{ marginTop: 4, fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,.48)" }}>Vue séparée équipe / joueur — aucun tableau horizontal.</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+          {(["ALL", "A", "B"] as const).map((key) => <button key={key} type="button" onClick={() => setTab(key)} style={{ ...tinyActionBtn(false), minHeight: 30, padding: "0 9px", color: tab === key ? "#d9ff57" : "#fff" }}>{key === "ALL" ? "Tous" : `Team ${key}`}</button>)}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+        {filtered.map((row) => {
+          const accent = row.team === "A" ? "#c7ff26" : "#ff59b0";
+          return (
+            <div key={row.id} style={{ borderRadius: 16, padding: 10, border: `1px solid ${accent}40`, background: `linear-gradient(180deg, ${accent}12, rgba(255,255,255,.025))`, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0, color: accent, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
+                <div style={{ flex: "0 0 auto", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, color: accent, border: `1px solid ${accent}55`, background: `${accent}12` }}>TEAM {row.team}</div>
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+                {statItems(row).map(([label, value]) => (
+                  <div key={label} style={{ minWidth: 0, borderRadius: 12, padding: "7px 8px", background: "rgba(0,0,0,.22)", border: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ minWidth: 0, color: "rgba(255,255,255,.58)", fontSize: 10, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+                    <strong style={{ flex: "0 0 auto", color: "#fff", fontSize: 11 }}>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const { theme } = useTheme();
   const { store } = useStore() as any;
@@ -346,6 +493,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const [now, setNow] = useState(Date.now());
   const [pickTeam, setPickTeam] = useState<BabyFootTeamId | null>(null);
   const [pickGoalSource, setPickGoalSource] = useState<BabyFootGoalSource>("AV");
+  const [cscAwardedTeam, setCscAwardedTeam] = useState<BabyFootTeamId | null>(null);
   const [activeTab, setActiveTab] = useState<PlayTab>("score");
 
   useEffect(() => {
@@ -566,15 +714,45 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   );
 
   const isPickScorerNeeded = (team: BabyFootTeamId) => (team === "A" ? teamAIds : teamBIds).length > 1;
-  const addForTeam = (team: BabyFootTeamId) => {
+  const openQuickSheet = (team: BabyFootTeamId, source: BabyFootGoalSource = "AV") => {
     if (state.finished || state.phase === "penalties") return;
-    setPickGoalSource("AV");
+    setPickGoalSource(source);
     setPickTeam(team);
+  };
+
+  const closeQuickSheet = () => {
+    setPickGoalSource("AV");
+    setPickTeam(null);
+    setCscAwardedTeam(null);
+  };
+
+  const openCscPicker = (awardedTeam: BabyFootTeamId) => {
+    if (state.finished || state.phase === "penalties") return;
+    setCscAwardedTeam(awardedTeam);
+  };
+
+  const applyCsc = (awardedTeam: BabyFootTeamId, guiltyPlayerId?: string | null) => {
+    if (state.finished || state.phase === "penalties") return;
+    const guiltyTeam: BabyFootTeamId = awardedTeam === "A" ? "B" : "A";
+    setState(addSpecialScoreEvent(guiltyTeam, "csc", guiltyPlayerId ?? null, "AV"));
+    closeQuickSheet();
+  };
+
+  const applyQuickAction = (team: BabyFootTeamId, action: QuickAction, playerId?: string | null, source: BabyFootGoalSource = pickGoalSource) => {
+    if (state.finished || state.phase === "penalties") return;
+    if (action === "csc") {
+      openCscPicker(team);
+      return;
+    }
+    if (action === "goal") setState(addGoal(team, playerId ?? null, source));
+    else setState(addSpecialScoreEvent(team, action as any, playerId ?? null, action === "demi" ? "MIL" : source));
+    closeQuickSheet();
   };
 
   const teamAProfile = teamAIds[0] ? getProfile(teamAIds[0]) : null;
   const teamBProfile = teamBIds[0] ? getProfile(teamBIds[0]) : null;
   const isOneVsOne = state.mode === "1v1" && teamAIds.length <= 1 && teamBIds.length <= 1;
+  const hasTeamIndividualStats = state.mode === "2v1" || state.mode === "2v2" || teamAIds.length > 1 || teamBIds.length > 1;
 
   const visualA: ScoreVisual = {
     name: isOneVsOne ? teamAProfile?.name || state.teamA : state.teamA,
@@ -589,6 +767,45 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   const winnerLabel = state.winner === "A" ? visualA.name : state.winner === "B" ? visualB.name : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
+
+  const individualStats = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number }>();
+    const ensure = (id: string | null | undefined, team: BabyFootTeamId) => {
+      const safeId = id || `${team}-collectif`;
+      const profile = id ? getProfile(id) : null;
+      if (!byId.has(safeId)) byId.set(safeId, { id: safeId, name: profile?.name || (team === "A" ? visualA.name : visualB.name), team, goals: 0, av: 0, def: 0, gb: 0, demi: 0, ptsDemi: 0, gamelle: 0, pecheOff: 0, pecheDef: 0, pissette: 0, csc: 0 });
+      return byId.get(safeId)!;
+    };
+    for (const id of teamAIds) ensure(id, "A");
+    for (const id of teamBIds) ensure(id, "B");
+    for (const event of state.events || []) {
+      if (event?.t !== "goal" && event?.t !== "demi" && event?.t !== "special") continue;
+      if (event.t === "goal" && (event as any).kind === "csc") {
+        const guiltyTeam = ((event as any).ownGoalTeam || ((event as any).team === "A" ? "B" : "A")) as BabyFootTeamId;
+        const ownRow = ensure((event as any).ownGoalById, guiltyTeam);
+        ownRow.csc += 1;
+        continue;
+      }
+      const row = ensure((event as any).scorerId, (event as any).team);
+      if (event.t === "goal") {
+        row.goals += Math.max(1, Number((event as any).points) || 1);
+        row.ptsDemi += Math.max(0, Number((event as any).demiBonusApplied) || 0);
+        if ((event as any).sourceLine === "AV") row.av += 1;
+        if ((event as any).sourceLine === "DEF") row.def += 1;
+        if ((event as any).sourceLine === "GB") row.gb += 1;
+        if ((event as any).sourceLine === "MIL") row.demi += 1;
+      }
+      if (event.t === "demi") row.demi += 1;
+      if (event.t === "special") {
+        if ((event as any).kind === "gamelle") row.gamelle += 1;
+        if ((event as any).kind === "peche_off") row.pecheOff += 1;
+        if ((event as any).kind === "peche_def") row.pecheDef += 1;
+        if ((event as any).kind === "pissette") row.pissette += 1;
+        if ((event as any).kind === "csc") row.csc += 1;
+      }
+    }
+    return Array.from(byId.values()).filter((row) => row.name);
+  }, [state.events, teamAIds.join("|"), teamBIds.join("|"), visualA.name, visualB.name]);
 
   return (
     <div className="page" style={{ background: theme.bg, color: theme.text }}>
@@ -616,6 +833,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                 { key: "score", label: "Score" },
                 { key: "compo", label: "Compo" },
                 { key: "stats", label: "Stats" },
+                ...(hasTeamIndividualStats ? [{ key: "individual", label: "Indiv." }] : []),
                 { key: "actions", label: "Actions" },
               ]}
               activeTab={activeTab}
@@ -648,10 +866,38 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                 target={state.target}
                 handicapA={state.handicapA}
                 handicapB={state.handicapB}
-                onAddGoalA={() => addForTeam("A")}
-                onAddGoalB={() => addForTeam("B")}
+                onAddGoalA={() => openQuickSheet("A", "AV")}
+                onAddGoalB={() => openQuickSheet("B", "AV")}
                 goalsDisabled={state.finished || state.phase === "penalties"}
               />
+
+              {(state.pendingDemiBonus || 0) > 0 ? (
+                <div style={{
+                  marginTop: 10,
+                  borderRadius: 16,
+                  padding: "10px 12px",
+                  border: "1px solid rgba(183,140,255,.45)",
+                  background: "linear-gradient(180deg, rgba(183,140,255,.18), rgba(255,255,255,.035))",
+                  boxShadow: "0 0 18px rgba(183,140,255,.18)",
+                  color: "#fff",
+                  fontWeight: 1000,
+                  textAlign: "center",
+                  fontSize: 12,
+                }}>
+                  ⚡ {state.pendingDemiBonus} point{state.pendingDemiBonus > 1 ? "s" : ""} demi en suspens — prochain BUT AV/DEF/GB = +{1 + state.pendingDemiBonus}
+                </div>
+              ) : null}
+
+              <div style={{ ...shellCard(), marginTop: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontSize: 12, fontWeight: 1100, letterSpacing: 1, textTransform: "uppercase", color: "rgba(255,255,255,.68)" }}>Saisie rapide</div>
+                  <button type="button" onClick={() => setState(undoGoal())} disabled={!canUndo} style={{ ...tinyActionBtn(!canUndo), opacity: canUndo ? 1 : 0.45 }}>↶ Annuler</button>
+                </div>
+                <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <QuickTeamPad label={visualA.name} accent="#c7ff26" onPick={(source) => openQuickSheet("A", source)} />
+                  <QuickTeamPad label={visualB.name} accent="#ff59b0" onPick={(source) => openQuickSheet("B", source)} />
+                </div>
+              </div>
             </>
           ) : null}
 
@@ -692,20 +938,26 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           ) : null}
 
           {activeTab === "stats" ? (
-            <BabyFootLiveStatsCard
-              teamAName={visualA.name}
-              teamBName={visualB.name}
-              teamAImageSrc={visualA.imageSrc}
-              teamBImageSrc={visualB.imageSrc}
-              goalsA={goalCountA}
-              goalsB={goalCountB}
-              totalGoals={totalGoals}
-              durationLabel={fmt(durationMs)}
-              lastGoalLabel={lastGoalLabel}
-              momentumLabel={momentumLabel}
-              cadenceLabel={cadenceLabel}
-              stats={richStats}
-            />
+            <>
+              <BabyFootLiveStatsCard
+                teamAName={visualA.name}
+                teamBName={visualB.name}
+                teamAImageSrc={visualA.imageSrc}
+                teamBImageSrc={visualB.imageSrc}
+                goalsA={goalCountA}
+                goalsB={goalCountB}
+                totalGoals={totalGoals}
+                durationLabel={fmt(durationMs)}
+                lastGoalLabel={lastGoalLabel}
+                momentumLabel={momentumLabel}
+                cadenceLabel={cadenceLabel}
+                stats={richStats}
+              />
+            </>
+          ) : null}
+
+          {activeTab === "individual" && hasTeamIndividualStats ? (
+            <IndividualStatsTabs rows={individualStats} />
           ) : null}
 
           {activeTab === "actions" ? (
@@ -757,74 +1009,67 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             padding: 16,
             zIndex: 80,
           }}
-          onClick={() => { setPickGoalSource("AV"); setPickTeam(null); }}
+          onClick={closeQuickSheet}
         >
           <div style={{ ...shellCard(), width: "100%", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: 20, fontWeight: 1100 }}>Choisir le buteur</div>
-            <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
-              Sélectionne le joueur qui a marqué pour {pickTeam === "A" ? visualA.name : visualB.name}. Les milieux comptent comme un demi.
-            </div>
+            {!cscAwardedTeam ? (
+              <>
+                <div style={{ fontSize: 20, fontWeight: 1100 }}>Bloc flottant — {pickTeam === "A" ? visualA.name : visualB.name}</div>
+                <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
+                  Choisis le joueur puis l’action. Le bouton CSC ouvre le choix du joueur adverse fautif.
+                </div>
+                <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", fontSize: 12, lineHeight: 1.45, color: "rgba(255,255,255,.74)" }}>
+                  Règles actives : pissette {state.pissetteRule === "point" ? "validée +1" : state.pissetteRule === "forbidden_stat" ? "refusée" : "stat seulement"} · gamelle {state.gamelleRule === "plus_one_scoring_team" ? "+1" : state.gamelleRule === "minus_one_conceding_team" ? "-1 subi" : "stat"} · pêche off {state.pecheOffRule === "minus_one_conceding_team" ? "-1 subi" : state.pecheOffRule === "stat_only" ? "stat" : "interdite"} · pêche def {state.pecheDefRule === "cancel_goal" ? "annule le dernier but adverse" : state.pecheDefRule === "stat_only" ? "stat" : "interdite"}.
+                </div>
 
-            <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 0.8, color: "rgba(255,255,255,0.72)", textTransform: "uppercase" }}>Ligne du but</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                {(["AV", "DEF", "GB", "MIL"] as BabyFootGoalSource[]).map((source) => {
-                  const active = pickGoalSource === source;
-                  return (
-                    <button
-                      key={source}
-                      type="button"
-                      onClick={() => setPickGoalSource(source)}
-                      style={{
-                        minHeight: 44,
-                        borderRadius: 14,
-                        border: `1px solid ${active ? "rgba(157,255,87,0.55)" : "rgba(255,255,255,0.08)"}`,
-                        background: active ? "linear-gradient(180deg, rgba(157,255,87,0.18), rgba(157,255,87,0.06))" : "rgba(255,255,255,0.04)",
-                        color: active ? "#d9ff57" : "#fff",
-                        fontWeight: 1000,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {source}
+                <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 0.8, color: "rgba(255,255,255,0.72)", textTransform: "uppercase" }}>Joueur / équipe</div>
+                  {(pickTeam === "A" ? teamAIds : teamBIds).length ? (pickTeam === "A" ? teamAIds : teamBIds).map((playerId) => {
+                    const profile = getProfile(playerId);
+                    const label = profile?.name || playerId;
+                    return (
+                      <div key={playerId} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 8, padding: 10, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 1100 }}>
+                          <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={34} />
+                          <span>{label}</span>
+                        </div>
+                        <ActionTiles state={state} onAction={(action, source) => applyQuickAction(pickTeam, action, playerId, source)} />
+                      </div>
+                    );
+                  }) : (
+                    <ActionTiles state={state} onAction={(action, source) => applyQuickAction(pickTeam, action, null, source)} />
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 20, fontWeight: 1100 }}>CSC — point pour {cscAwardedTeam === "A" ? visualA.name : visualB.name}</div>
+                <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
+                  Sélectionne le joueur adverse qui a marqué contre son camp. Le point sera ajouté automatiquement à l’équipe opposée.
+                </div>
+                <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  {(cscAwardedTeam === "A" ? teamBIds : teamAIds).length ? (cscAwardedTeam === "A" ? teamBIds : teamAIds).map((playerId) => {
+                    const profile = getProfile(playerId);
+                    const label = profile?.name || playerId;
+                    return (
+                      <button key={playerId} type="button" onClick={() => applyCsc(cscAwardedTeam, playerId)} style={{ minWidth: 0, borderRadius: 18, padding: 10, border: "1px solid rgba(255,79,109,.40)", background: "linear-gradient(180deg, rgba(255,79,109,.16), rgba(255,255,255,.035))", color: "#fff", display: "grid", gap: 8, justifyItems: "center", cursor: "pointer" }}>
+                        <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={54} />
+                        <span style={{ maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 12, fontWeight: 1100 }}>{label}</span>
+                      </button>
+                    );
+                  }) : (
+                    <button type="button" onClick={() => applyCsc(cscAwardedTeam, null)} style={{ ...actionStyle("danger"), gridColumn: "1 / -1" }}>
+                      CSC collectif adverse
                     </button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>AV = avant • DEF = défense • GB = gardien • MIL = demi</div>
-              {(pickTeam === "A" ? teamAIds : teamBIds).map((playerId) => {
-                const profile = getProfile(playerId);
-                const label = profile?.name || playerId;
-                return (
-                  <button
-                    key={playerId}
-                    type="button"
-                    onClick={() => {
-                      setState(addGoal(pickTeam, playerId, pickGoalSource));
-                      setPickTeam(null);
-                    }}
-                    style={{
-                      width: "100%",
-                      minHeight: 54,
-                      borderRadius: 16,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background: "rgba(255,255,255,0.04)",
-                      color: "#fff",
-                      fontWeight: 1000,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "0 14px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={34} />
-                    <span style={{ fontSize: 15 }}>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
+                  )}
+                </div>
+                <button type="button" onClick={() => setCscAwardedTeam(null)} style={{ ...actionStyle("neutral"), marginTop: 12 }}>
+                  Retour aux actions
+                </button>
+              </>
+            )}
 
-            <button type="button" onClick={() => { setPickGoalSource("AV"); setPickTeam(null); }} style={{ ...actionStyle("neutral"), marginTop: 14 }}>
+            <button type="button" onClick={closeQuickSheet} style={{ ...actionStyle("neutral"), marginTop: 14 }}>
               Fermer
             </button>
           </div>

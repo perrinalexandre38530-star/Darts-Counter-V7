@@ -11,11 +11,11 @@
 export type BabyFootTeamId = "A" | "B";
 export type BabyFootMode = "1v1" | "2v2" | "2v1";
 export type BabyFootPhase = "play" | "overtime" | "penalties" | "finished";
-export type BabyFootGoalKind = "normal" | "gamelle" | "peche" | "pissette";
+export type BabyFootGoalKind = "normal" | "gamelle" | "peche" | "pissette" | "csc";
 export type BabyFootGoalSource = "AV" | "DEF" | "GB" | "MIL";
-export type BabyFootScoreAction = "goal" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "demi";
+export type BabyFootScoreAction = "goal" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "demi" | "csc";
 export type BabyFootRulePreset = "competition" | "bar";
-export type BabyFootDemiRule = "point" | "suspend" | "forbidden";
+export type BabyFootDemiRule = "point" | "suspend" | "forbidden"; // point conservé pour compatibilité: traité comme suspendu
 export type BabyFootPissetteRule = "point" | "forbidden_stat" | "stat_only";
 export type BabyFootGamelleRule = "plus_one_scoring_team" | "minus_one_conceding_team" | "stat_only";
 export type BabyFootPecheOffRule = "forbidden" | "minus_one_conceding_team" | "stat_only";
@@ -28,6 +28,10 @@ export type BabyFootSpecialStats = {
   gamelleB: number;
   pissetteA: number;
   pissetteB: number;
+  pissetteValidA: number;
+  pissetteValidB: number;
+  pissetteRefusedA: number;
+  pissetteRefusedB: number;
   pecheOffA: number;
   pecheOffB: number;
   pecheDefA: number;
@@ -40,6 +44,8 @@ export type BabyFootSpecialStats = {
   goalDefB: number;
   goalGbA: number;
   goalGbB: number;
+  cscA: number;
+  cscB: number;
 };
 
 export type BabyFootEvent =
@@ -49,6 +55,8 @@ export type BabyFootEvent =
       at: number;
       team: BabyFootTeamId;
       scorerId?: string | null;
+      ownGoalById?: string | null;
+      ownGoalTeam?: BabyFootTeamId | null;
       phase?: BabyFootPhase;
       kind?: BabyFootGoalKind;
       points?: number;
@@ -186,6 +194,10 @@ function emptySpecialStats(): BabyFootSpecialStats {
     gamelleB: 0,
     pissetteA: 0,
     pissetteB: 0,
+    pissetteValidA: 0,
+    pissetteValidB: 0,
+    pissetteRefusedA: 0,
+    pissetteRefusedB: 0,
     pecheOffA: 0,
     pecheOffB: 0,
     pecheDefA: 0,
@@ -198,6 +210,8 @@ function emptySpecialStats(): BabyFootSpecialStats {
     goalDefB: 0,
     goalGbA: 0,
     goalGbB: 0,
+    cscA: 0,
+    cscB: 0,
   };
 }
 
@@ -211,6 +225,10 @@ function normalizeSpecialStats(raw: any): BabyFootSpecialStats {
     gamelleB: Number.isFinite(raw.gamelleB) ? raw.gamelleB : base.gamelleB,
     pissetteA: Number.isFinite(raw.pissetteA) ? raw.pissetteA : base.pissetteA,
     pissetteB: Number.isFinite(raw.pissetteB) ? raw.pissetteB : base.pissetteB,
+    pissetteValidA: Number.isFinite(raw.pissetteValidA) ? raw.pissetteValidA : base.pissetteValidA,
+    pissetteValidB: Number.isFinite(raw.pissetteValidB) ? raw.pissetteValidB : base.pissetteValidB,
+    pissetteRefusedA: Number.isFinite(raw.pissetteRefusedA) ? raw.pissetteRefusedA : base.pissetteRefusedA,
+    pissetteRefusedB: Number.isFinite(raw.pissetteRefusedB) ? raw.pissetteRefusedB : base.pissetteRefusedB,
     pecheOffA: Number.isFinite(raw.pecheOffA) ? raw.pecheOffA : base.pecheOffA,
     pecheOffB: Number.isFinite(raw.pecheOffB) ? raw.pecheOffB : base.pecheOffB,
     pecheDefA: Number.isFinite(raw.pecheDefA) ? raw.pecheDefA : base.pecheDefA,
@@ -223,6 +241,8 @@ function normalizeSpecialStats(raw: any): BabyFootSpecialStats {
     goalDefB: Number.isFinite(raw.goalDefB) ? raw.goalDefB : base.goalDefB,
     goalGbA: Number.isFinite(raw.goalGbA) ? raw.goalGbA : base.goalGbA,
     goalGbB: Number.isFinite(raw.goalGbB) ? raw.goalGbB : base.goalGbB,
+    cscA: Number.isFinite(raw.cscA) ? raw.cscA : base.cscA,
+    cscB: Number.isFinite(raw.cscB) ? raw.cscB : base.cscB,
   };
 }
 
@@ -250,7 +270,7 @@ function applyPresetDefaults(preset: BabyFootRulePreset) {
   }
   return {
     rulesPreset: "competition" as BabyFootRulePreset,
-    demiRule: "point" as BabyFootDemiRule,
+    demiRule: "suspend" as BabyFootDemiRule,
     pissetteRule: "point" as BabyFootPissetteRule,
     gamelleRule: "plus_one_scoring_team" as BabyFootGamelleRule,
     pecheOffRule: "forbidden" as BabyFootPecheOffRule,
@@ -386,6 +406,17 @@ function migrate(raw: any): BabyFootState {
     penalties: raw.penalties ?? null,
     pendingDemiBonus: Number.isFinite(raw.pendingDemiBonus) ? raw.pendingDemiBonus : 0,
 
+    rulesPreset: raw.rulesPreset === "bar" ? "bar" : "competition",
+    demiRule: raw.demiRule || (raw.rulesPreset === "bar" ? "suspend" : "point"),
+    pissetteRule: raw.pissetteRule || (raw.rulesPreset === "bar" ? "forbidden_stat" : "point"),
+    gamelleRule: raw.gamelleRule || (raw.rulesPreset === "bar" ? "minus_one_conceding_team" : "plus_one_scoring_team"),
+    pecheOffRule: raw.pecheOffRule || (raw.rulesPreset === "bar" ? "minus_one_conceding_team" : "forbidden"),
+    pecheDefRule: raw.pecheDefRule || (raw.rulesPreset === "bar" ? "cancel_goal" : "forbidden"),
+    allowRoulette: !!raw.allowRoulette,
+    allowTacles: !!raw.allowTacles,
+    allowLobShot: !!raw.allowLobShot,
+    specialStats: normalizeSpecialStats(raw.specialStats),
+
     finished,
     winner: raw.winner ?? null,
 
@@ -393,9 +424,10 @@ function migrate(raw: any): BabyFootState {
     undo: Array.isArray(raw.undo) ? raw.undo : [],
   });
 
+  // Handicap = malus pour l’équipe concernée : les buts de départ sont donnés à l’adversaire.
   if (v3.scoreA === 0 && v3.scoreB === 0 && (v3.handicapA || v3.handicapB)) {
-    v3.scoreA = Math.max(0, v3.handicapA || 0);
-    v3.scoreB = Math.max(0, v3.handicapB || 0);
+    v3.scoreA = Math.max(0, v3.handicapB || 0);
+    v3.scoreB = Math.max(0, v3.handicapA || 0);
   }
 
   return v3;
@@ -584,8 +616,8 @@ function maybeWinSet(s: BabyFootState) {
     setsA,
     setsB,
     setIndex: s.setIndex + 1,
-    scoreA: Math.max(0, s.handicapA || 0),
-    scoreB: Math.max(0, s.handicapB || 0),
+    scoreA: Math.max(0, s.handicapB || 0),
+    scoreB: Math.max(0, s.handicapA || 0),
     pendingDemiBonus: 0,
     events: [...(s.events || []), { t: "set_win", at: now, team: winner, setIndex: s.setIndex }],
     updatedAt: now,
@@ -620,7 +652,10 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     nextScoreB: number,
     goalKind: BabyFootGoalKind,
     points: number,
-    demiBonusApplied: number
+    demiBonusApplied: number,
+    eventTeam: BabyFootTeamId = team,
+    eventScorerId: string | null | undefined = scorerId,
+    ownGoal?: { byId?: string | null; team?: BabyFootTeamId | null }
   ) => {
     let next: BabyFootState = {
       ...s,
@@ -634,8 +669,10 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
         {
           t: "goal",
           at: now,
-          team,
-          scorerId: scorerId ?? null,
+          team: eventTeam,
+          scorerId: eventScorerId ?? null,
+          ownGoalById: ownGoal?.byId ?? null,
+          ownGoalTeam: ownGoal?.team ?? null,
           phase: s.phase,
           kind: goalKind,
           points,
@@ -650,11 +687,11 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
       next = {
         ...next,
         finished: true,
-        winner: team,
+        winner: eventTeam,
         phase: "finished",
         clockRunning: false,
         finishedAt: now,
-        events: [...(next.events || []), { t: "finish", at: now, winner: team, reason: "golden" }],
+        events: [...(next.events || []), { t: "finish", at: now, winner: eventTeam, reason: "golden" }],
       };
       return persist(next);
     }
@@ -663,11 +700,11 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
       next = {
         ...next,
         finished: true,
-        winner: team,
+        winner: eventTeam,
         phase: "finished",
         clockRunning: false,
         finishedAt: now,
-        events: [...(next.events || []), { t: "finish", at: now, winner: team, reason: "golden" }],
+        events: [...(next.events || []), { t: "finish", at: now, winner: eventTeam, reason: "golden" }],
       };
       return persist(next);
     }
@@ -739,9 +776,11 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
       };
       return persist(next);
     }
-    if (s.demiRule === "point") {
-      return withGoalEvent(s.scoreA + (team === "A" ? 1 : 0), s.scoreB + (team === "B" ? 1 : 0), "normal", 1, 0);
-    }
+    // Règle Baby-Foot validée : un DEMI ne donne jamais le point immédiatement.
+    // Chaque demi ajoute 1 point en suspens. Le prochain BUT NORMAL (AV/DEF/GB)
+    // récupère son point + tous les points de demis en attente, quelle que soit l’équipe
+    // qui avait marqué les demis. L’ancienne valeur demiRule="point" est donc traitée
+    // comme "suspend" pour ne pas casser les anciennes sauvegardes/configs.
     const next: BabyFootState = {
       ...s,
       undo,
@@ -783,12 +822,33 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
   if (kind === "pissette") {
     stats = bumpSpecialStats(stats, team === "A" ? "pissetteA" : "pissetteB");
     if (s.pissetteRule === "point") {
-      const bonus = pending;
-      if (team === "A" && bonus > 0) stats = bumpSpecialStats(stats, "demiBonusAppliedA", bonus);
-      if (team === "B" && bonus > 0) stats = bumpSpecialStats(stats, "demiBonusAppliedB", bonus);
-      return withGoalEvent(s.scoreA + (team === "A" ? 1 + bonus : 0), s.scoreB + (team === "B" ? 1 + bonus : 0), "pissette", 1 + bonus, bonus);
+      stats = bumpSpecialStats(stats, team === "A" ? "pissetteValidA" : "pissetteValidB");
+      // Une pissette validée marque son point, mais ne consomme pas les demis en suspens :
+      // seuls les BUTS NORMAUX AV/DEF/GB récupèrent la réserve de demis.
+      return withGoalEvent(s.scoreA + (team === "A" ? 1 : 0), s.scoreB + (team === "B" ? 1 : 0), "pissette", 1, 0);
     }
+    if (s.pissetteRule === "forbidden_stat") stats = bumpSpecialStats(stats, team === "A" ? "pissetteRefusedA" : "pissetteRefusedB");
     return withSpecialEvent({}, "pissette", { counted: s.pissetteRule === "forbidden_stat", scoreDeltaA: 0, scoreDeltaB: 0 });
+  }
+
+
+  if (kind === "csc") {
+    // CSC = le joueur sélectionné marque contre son camp.
+    // La stat CSC est attribuée à son équipe, mais le point est offert à l'équipe adverse.
+    const ownGoalTeam = team;
+    const awardedTeam: BabyFootTeamId = ownGoalTeam === "A" ? "B" : "A";
+    const ownKey = ownGoalTeam === "A" ? "cscA" : "cscB";
+    stats = bumpSpecialStats(stats, ownKey);
+    return withGoalEvent(
+      s.scoreA + (awardedTeam === "A" ? 1 : 0),
+      s.scoreB + (awardedTeam === "B" ? 1 : 0),
+      "csc",
+      1,
+      0,
+      awardedTeam,
+      null,
+      { byId: scorerId ?? null, team: ownGoalTeam }
+    );
   }
 
   if (kind === "peche_off") {
@@ -803,7 +863,19 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
 
   if (kind === "peche_def") {
     stats = bumpSpecialStats(stats, team === "A" ? "pecheDefA" : "pecheDefB");
-    return withSpecialEvent({}, "peche_def", { counted: s.pecheDefRule !== "forbidden", scoreDeltaA: 0, scoreDeltaB: 0 });
+    if (s.pecheDefRule === "cancel_goal") {
+      // Pêche défensive autorisée : elle annule le dernier point adverse possible.
+      // On ne touche pas aux demis en suspens : seuls les buts normaux les consomment.
+      const opponent: BabyFootTeamId = team === "A" ? "B" : "A";
+      const scoreA = opponent === "A" ? Math.max(0, s.scoreA - 1) : s.scoreA;
+      const scoreB = opponent === "B" ? Math.max(0, s.scoreB - 1) : s.scoreB;
+      return withSpecialEvent({ scoreA, scoreB }, "peche_def", {
+        counted: true,
+        scoreDeltaA: scoreA - s.scoreA,
+        scoreDeltaB: scoreB - s.scoreB,
+      });
+    }
+    return withSpecialEvent({}, "peche_def", { counted: s.pecheDefRule === "stat_only", scoreDeltaA: 0, scoreDeltaB: 0 });
   }
 
   return s;
@@ -1016,8 +1088,9 @@ export function setAdvancedOptions(
 export function startMatch() {
   const s = loadBabyFootState();
   const now = Date.now();
-  const baseA = Math.max(0, Math.floor(Number(s.handicapA) || 0));
-  const baseB = Math.max(0, Math.floor(Number(s.handicapB) || 0));
+  // Handicap = malus : si A a 1 de handicap, B démarre avec +1.
+  const baseA = Math.max(0, Math.floor(Number(s.handicapB) || 0));
+  const baseB = Math.max(0, Math.floor(Number(s.handicapA) || 0));
 
   const next: BabyFootState = {
     ...s,

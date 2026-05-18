@@ -114,7 +114,7 @@ export default function BabyFootTeamCard({
               {name}
             </div>
             <div style={{ marginTop: 4, fontSize: 11, fontWeight: 1000, opacity: 0.72 }}>
-              {playerIds.length} joueur{playerIds.length > 1 ? "s" : ""}{handicap > 0 ? ` • +${handicap}` : ""}
+              {playerIds.length} joueur{playerIds.length > 1 ? "s" : ""}{handicap > 0 ? ` • Hcap ${handicap}` : ""}
             </div>
           </div>
         </div>

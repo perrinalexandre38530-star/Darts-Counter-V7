@@ -80,33 +80,32 @@ function clamp(n: number, a: number, b: number) {
 }
 
 const DEMI_OPTIONS: Array<{ value: BabyFootDemiRule; label: string }> = [
-  { value: "point", label: "+1 immédiat" },
   { value: "suspend", label: "Suspendu cumulatif" },
   { value: "forbidden", label: "Interdit" },
 ];
 
 const PISSETTE_OPTIONS: Array<{ value: BabyFootPissetteRule; label: string }> = [
-  { value: "point", label: "+1 autorisée" },
-  { value: "forbidden_stat", label: "Interdite + stat" },
-  { value: "stat_only", label: "Stat seulement" },
+  { value: "point", label: "Autorisée : +1 but" },
+  { value: "forbidden_stat", label: "Interdite : tentative + refus, 0 point" },
+  { value: "stat_only", label: "Stat seulement : 0 point" },
 ];
 
 const GAMELLE_OPTIONS: Array<{ value: BabyFootGamelleRule; label: string }> = [
-  { value: "plus_one_scoring_team", label: "+1 à l'équipe qui la fait" },
-  { value: "minus_one_conceding_team", label: "-1 à l'équipe qui la subit" },
-  { value: "stat_only", label: "Stat seulement" },
+  { value: "plus_one_scoring_team", label: "Autorisée : +1 à l'équipe qui la fait" },
+  { value: "minus_one_conceding_team", label: "Bar : -1 à l'équipe qui la subit" },
+  { value: "stat_only", label: "Stat seulement : 0 point" },
 ];
 
 const PECHE_OFF_OPTIONS: Array<{ value: BabyFootPecheOffRule; label: string }> = [
-  { value: "forbidden", label: "Interdite" },
-  { value: "minus_one_conceding_team", label: "-1 à l'équipe qui la subit" },
-  { value: "stat_only", label: "Stat seulement" },
+  { value: "forbidden", label: "Interdite : bouton neutre / stat non comptée" },
+  { value: "minus_one_conceding_team", label: "Autorisée : -1 à l'équipe qui la subit" },
+  { value: "stat_only", label: "Stat seulement : 0 point" },
 ];
 
 const PECHE_DEF_OPTIONS: Array<{ value: BabyFootPecheDefRule; label: string }> = [
-  { value: "forbidden", label: "Interdite" },
-  { value: "cancel_goal", label: "Annule le but" },
-  { value: "stat_only", label: "Stat seulement" },
+  { value: "forbidden", label: "Interdite : bouton neutre / stat non comptée" },
+  { value: "cancel_goal", label: "Autorisée : annule le dernier but adverse" },
+  { value: "stat_only", label: "Stat seulement : 0 point" },
 ];
 
 function pillStyle(
@@ -547,9 +546,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     (saved as any).rulesPreset === "bar" ? "bar" : "competition"
   );
   const [demiRule, setDemiRule] = useState<BabyFootDemiRule>(
-    (saved as any).demiRule === "suspend" || (saved as any).demiRule === "forbidden"
-      ? (saved as any).demiRule
-      : "point"
+    (saved as any).demiRule === "forbidden" ? "forbidden" : "suspend"
   );
   const [pissetteRule, setPissetteRule] = useState<BabyFootPissetteRule>(
     (saved as any).pissetteRule === "forbidden_stat" || (saved as any).pissetteRule === "stat_only"
@@ -604,7 +601,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       setAllowLobShot(false);
       return;
     }
-    setDemiRule("point");
+    setDemiRule("suspend");
     setPissetteRule("point");
     setGamelleRule("plus_one_scoring_team");
     setPecheOffRule("forbidden");
@@ -1016,7 +1013,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     );
     setRequireTwoGoalLead(!!(s as any).requireTwoGoalLead);
     setRulesPreset((s as any).rulesPreset === "bar" ? "bar" : "competition");
-    setDemiRule((s as any).demiRule === "suspend" || (s as any).demiRule === "forbidden" ? (s as any).demiRule : "point");
+    setDemiRule((s as any).demiRule === "forbidden" ? "forbidden" : "suspend");
     setPissetteRule((s as any).pissetteRule === "forbidden_stat" || (s as any).pissetteRule === "stat_only" ? (s as any).pissetteRule : "point");
     setGamelleRule((s as any).gamelleRule === "minus_one_conceding_team" || (s as any).gamelleRule === "stat_only" ? (s as any).gamelleRule : "plus_one_scoring_team");
     setPecheOffRule((s as any).pecheOffRule === "minus_one_conceding_team" || (s as any).pecheOffRule === "stat_only" ? (s as any).pecheOffRule : "forbidden");
@@ -1381,6 +1378,62 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         </div>
 
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+          {sectionTitle("RÈGLES SPÉCIALES", primary)}
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={pillStyle(rulesPreset === "competition", primary, primarySoft)} onClick={() => applyRulePreset("competition")}>RÈGLE DE COMPÉTITION</div>
+            <div style={pillStyle(rulesPreset === "bar", primary, primarySoft)} onClick={() => applyRulePreset("bar")}>RÈGLE DE BAR</div>
+          </div>
+
+          <div style={{ fontSize: 12, opacity: 0.76, lineHeight: 1.4, marginBottom: 10 }}>
+            Chaque bouton du scoring suit exactement ces réglages. Pissette interdite = tentative + refus, sans point. Gamelle / pêche peuvent être autorisées, interdites ou en stat seulement selon ta règle locale.
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Demi</div>
+              <select value={demiRule} onChange={(e) => setDemiRule(e.target.value as BabyFootDemiRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {DEMI_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pissette</div>
+              <select value={pissetteRule} onChange={(e) => setPissetteRule(e.target.value as BabyFootPissetteRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {PISSETTE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Gamelle</div>
+              <select value={gamelleRule} onChange={(e) => setGamelleRule(e.target.value as BabyFootGamelleRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {GAMELLE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche offensive</div>
+              <select value={pecheOffRule} onChange={(e) => setPecheOffRule(e.target.value as BabyFootPecheOffRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {PECHE_OFF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche défensive</div>
+              <select value={pecheDefRule} onChange={(e) => setPecheDefRule(e.target.value as BabyFootPecheDefRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                {PECHE_DEF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={pillStyle(allowRoulette, primary, primarySoft)} onClick={() => setAllowRoulette((v) => !v)}>Roulette {allowRoulette ? "ON" : "OFF"}</div>
+            <div style={pillStyle(allowTacles, primary, primarySoft)} onClick={() => setAllowTacles((v) => !v)}>Tacles {allowTacles ? "ON" : "OFF"}</div>
+            <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Lob / choc {allowLobShot ? "ON" : "OFF"}</div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, lineHeight: 1.45 }}>
+            Râteaux : interdits. Les variations choisies ici sont appliquées au score live et aux statistiques du match.
+          </div>
+        </div>
+
+        <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <div
               style={{
@@ -1544,66 +1597,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             </div>
           </div>
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.70 }}>
-            {t("bf_handicap_hint", "Handicap = buts ajoutés au départ.")}
+            {t("bf_handicap_hint", "Handicap = malus : les buts de départ sont donnés à l’adversaire.")}
           </div>
         </div>
       </div>
 
-        <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
-          {sectionTitle("RÈGLES SPÉCIALES", primary)}
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-            <div style={pillStyle(rulesPreset === "competition", primary, primarySoft)} onClick={() => applyRulePreset("competition")}>RÈGLE DE COMPÉTITION</div>
-            <div style={pillStyle(rulesPreset === "bar", primary, primarySoft)} onClick={() => applyRulePreset("bar")}>RÈGLE DE BAR</div>
-          </div>
-
-          <div style={{ fontSize: 12, opacity: 0.76, lineHeight: 1.4, marginBottom: 10 }}>
-            Compétition : demi = +1, pissette autorisée, pêche interdite. Bar : demi suspendu, pissette interdite + stat, pêche offensive = -1 subi, pêche défensive = but annulé.
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Demi</div>
-              <select value={demiRule} onChange={(e) => setDemiRule(e.target.value as BabyFootDemiRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                {DEMI_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pissette</div>
-              <select value={pissetteRule} onChange={(e) => setPissetteRule(e.target.value as BabyFootPissetteRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                {PISSETTE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Gamelle</div>
-              <select value={gamelleRule} onChange={(e) => setGamelleRule(e.target.value as BabyFootGamelleRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                {GAMELLE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche offensive</div>
-              <select value={pecheOffRule} onChange={(e) => setPecheOffRule(e.target.value as BabyFootPecheOffRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                {PECHE_OFF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche défensive</div>
-              <select value={pecheDefRule} onChange={(e) => setPecheDefRule(e.target.value as BabyFootPecheDefRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                {PECHE_DEF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={pillStyle(allowRoulette, primary, primarySoft)} onClick={() => setAllowRoulette((v) => !v)}>Roulette {allowRoulette ? "ON" : "OFF"}</div>
-            <div style={pillStyle(allowTacles, primary, primarySoft)} onClick={() => setAllowTacles((v) => !v)}>Tacles {allowTacles ? "ON" : "OFF"}</div>
-            <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Lob / choc {allowLobShot ? "ON" : "OFF"}</div>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, lineHeight: 1.45 }}>
-            Râteaux : interdits. Les variations choisies ici sont appliquées au score live et aux statistiques du match.
-          </div>
-        </div>
 
       <div
         style={{

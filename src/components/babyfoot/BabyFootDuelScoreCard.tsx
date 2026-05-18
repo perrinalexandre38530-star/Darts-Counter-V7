@@ -219,12 +219,12 @@ export default function BabyFootDuelScoreCard({
             <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
               {handicapA > 0 ? (
                 <span style={{ borderRadius: 999, padding: "6px 10px", border: "1px solid rgba(199,255,38,0.24)", background: "rgba(199,255,38,0.08)", fontSize: 12, fontWeight: 1000 }}>
-                  {visualA.name} +{handicapA}
+                  {visualA.name} Hcap {handicapA}
                 </span>
               ) : null}
               {handicapB > 0 ? (
                 <span style={{ borderRadius: 999, padding: "6px 10px", border: "1px solid rgba(255,89,176,0.24)", background: "rgba(255,89,176,0.08)", fontSize: 12, fontWeight: 1000 }}>
-                  {visualB.name} +{handicapB}
+                  {visualB.name} Hcap {handicapB}
                 </span>
               ) : null}
             </div>
