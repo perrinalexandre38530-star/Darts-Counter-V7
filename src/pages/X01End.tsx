@@ -1,10 +1,3 @@
-
-/* FINAL TENNIS TV PATCH
-- underline bars only under values
-- no underline under stat labels
-- neon gradient bars preserved
-*/
-
 // ============================================
 // src/pages/X01End.tsx
 // Fin de partie “maxi-stats” (LEG/MATCH) — colonnes = joueurs
@@ -115,20 +108,12 @@ const D = {
   cardPad: 10,
   radius: 14,
 };
-
-const THEME_ACCENT = "var(--dc-accent, var(--accent, #f6c256))";
-const THEME_ACCENT_SOFT = "color-mix(in srgb, var(--dc-accent, #f6c256) 62%, white 38%)";
-const THEME_PANEL =
-  "radial-gradient(130% 160% at 0% 0%, color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent), transparent 48%), linear-gradient(180deg, rgba(10,17,26,.96), rgba(7,10,15,.985))";
-const THEME_PANEL_BORDER = "color-mix(in srgb, var(--dc-accent, #f6c256) 42%, rgba(255,255,255,.10))";
 const mobileDenseCss = `
 @media (max-width: 420px){
   .x-end h2{ font-size:16px; }
   .x-card h3{ font-size:13px; }
   .x-table{ font-size:11px; }
   .x-th, .x-td{ padding:4px 6px; }
-  .x-player-avatar{ width:28px !important; height:28px !important; }
-  .x-rank-badge{ transform:scale(.86); }
   .selector button{ font-size:11px; padding:4px 8px; }
 }
 `;
@@ -570,25 +555,10 @@ export default function X01End({ go, params }: Props) {
     ? M[chartPlayer.id] || emptyMetrics(chartPlayer)
     : null;
 
-  const getFinalRankTuple = (p: PlayerLite): [number, number, number, number, string] => {
-    const m = M[p.id] || emptyMetrics(p);
-    const remaining = computeX01RemainingScore(m, rec, winnerId);
-    const setsWon = n(m.setsWon ?? (winnerId && p.id === winnerId ? 1 : 0), 0);
-    const legsWon = n(m.legsWon ?? (winnerId && p.id === winnerId ? 1 : 0), 0);
-    const safeRemaining = remaining == null ? Number.MAX_SAFE_INTEGER : n(remaining, Number.MAX_SAFE_INTEGER);
-    return [-setsWon, -legsWon, safeRemaining, -n(m.avg3, 0), String(p.name || "")];
-  };
-
   const rankedPlayers = [...players].sort((a, b) => {
-    const ta = getFinalRankTuple(a);
-    const tb = getFinalRankTuple(b);
-    for (let i = 0; i < ta.length; i++) {
-      const av = ta[i] as any;
-      const bv = tb[i] as any;
-      if (av < bv) return -1;
-      if (av > bv) return 1;
-    }
-    return 0;
+    if (winnerId && a.id === winnerId && b.id !== winnerId) return -1;
+    if (winnerId && b.id === winnerId && a.id !== winnerId) return 1;
+    return n(M[b.id]?.avg3, 0) - n(M[a.id]?.avg3, 0);
   });
 
   const customHeader = (
@@ -613,14 +583,14 @@ export default function X01End({ go, params }: Props) {
             width: 34,
             height: 34,
             borderRadius: 999,
-            border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 28%, transparent)",
+            border: "1px solid rgba(255,207,87,.28)",
             background:
-              "radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--dc-accent, #f6c256) 22%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent) 45%, rgba(255,255,255,.02) 100%)",
-            color: THEME_ACCENT,
+              "radial-gradient(circle at 30% 30%, rgba(255,207,87,.22), rgba(255,207,87,.06) 45%, rgba(255,255,255,.02) 100%)",
+            color: "#ffcf57",
             display: "grid",
             placeItems: "center",
             cursor: "pointer",
-            boxShadow: "0 0 14px color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent), inset 0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent)",
+            boxShadow: "0 0 14px rgba(255,207,87,.18), inset 0 0 10px rgba(255,207,87,.06)",
             marginTop: 2,
           }}
         >
@@ -633,10 +603,10 @@ export default function X01End({ go, params }: Props) {
               fontSize: 19,
               fontWeight: 1000,
               lineHeight: 1.05,
-              color: THEME_ACCENT,
+              color: "#ffcf57",
               textTransform: "uppercase",
               letterSpacing: 0.5,
-              textShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 30%, transparent), 0 0 24px color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)",
+              textShadow: "0 0 10px rgba(255,207,87,.30), 0 0 24px rgba(255,207,87,.18)",
             }}
           >
             {modeTitleFromRec(rec)}
@@ -682,7 +652,7 @@ export default function X01End({ go, params }: Props) {
                       placeItems: "center",
                       background: "linear-gradient(180deg,#ffe58a,#ffb300)",
                       color: "#17130a",
-                      boxShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 32%, transparent)",
+                      boxShadow: "0 0 10px rgba(255,207,87,.32)",
                       border: "1px solid rgba(0,0,0,.25)",
                       flex: "0 0 auto",
                     }}
@@ -727,16 +697,7 @@ export default function X01End({ go, params }: Props) {
   );
 
   /* ========= Tableaux COL-MAJOR (colonnes = joueurs) ========= */
-  const cols = rankedPlayers.map((p, idx) => ({
-    key: p.id,
-    title: p.name || "—",
-    player: p,
-    rank: idx + 1,
-    remaining: (() => {
-      const m = M[p.id] || emptyMetrics(p);
-      return computeX01RemainingScore(m, rec, winnerId);
-    })(),
-  }));
+  const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
 
   const tableStyle: React.CSSProperties = {
     width: "100%",
@@ -881,18 +842,15 @@ export default function X01End({ go, params }: Props) {
             {
               rows: [
                 { label: "Best CO", get: (m) => f0(m.bestCO) },
-                { label: "CO", get: (m) => f0(m.coAtt) },
                 { label: "CO hits", get: (m) => f0(m.coHits) },
+                { label: "CO att.", get: (m) => f0(m.coAtt) },
                 {
                   label: "CO %",
                   get: (m) => pct(m.coPct),
                 },
                 {
                   label: "Darts CO",
-                  get: (m) => {
-                    const total = n(m.checkoutDartsTotal ?? m.avgCoDarts, 0);
-                    return total > 0 ? f0(total) : "0";
-                  },
+                  get: (m) => m.avgCoDarts != null && m.avgCoDarts > 0 ? f2(m.avgCoDarts) : "0.00",
                 },
               ],
             },
@@ -941,7 +899,7 @@ export default function X01End({ go, params }: Props) {
                 margin: "0 0 6px",
                 fontSize: D.fsHead + 1,
                 letterSpacing: 0.2,
-                color: THEME_ACCENT,
+                color: "#ffcf57",
               }}
             >
               Radar — répartition des hits
@@ -1003,7 +961,7 @@ export default function X01End({ go, params }: Props) {
                 margin: "0 0 6px",
                 fontSize: D.fsHead + 1,
                 letterSpacing: 0.2,
-                color: THEME_ACCENT,
+                color: "#ffcf57",
               }}
             >
               Hits par segments
@@ -1021,7 +979,7 @@ export default function X01End({ go, params }: Props) {
               margin: "0 0 6px",
               fontSize: D.fsHead + 1,
               letterSpacing: 0.2,
-              color: THEME_ACCENT,
+              color: "#ffcf57",
             }}
           >
             Historique des volées
@@ -1284,7 +1242,6 @@ type PlayerMetrics = {
   dartsToFinish?: number;
   highestNonCO?: number;
   avgCoDarts?: number;
-  checkoutDartsTotal?: number;
   t180: number;
   t140: number;
   t100: number;
@@ -1315,58 +1272,6 @@ type PlayerMetrics = {
   segMiss?: number;
   byNumber?: ByNumber;
 };
-
-function getX01OutMode(rec: any): "simple" | "double" | "master" {
-  const raw =
-    rec?.resume?.config?.outMode ??
-    rec?.summary?.game?.outMode ??
-    rec?.summary?.outMode ??
-    rec?.payload?.config?.outMode ??
-    rec?.payload?.game?.outMode ??
-    rec?.payload?.outMode ??
-    rec?.config?.outMode ??
-    rec?.game?.outMode ??
-    rec?.outMode ??
-    "double";
-  const v = String(raw).toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (v === "single" || v === "straight" || v === "simple" || v.includes("simple")) return "simple";
-  if (v === "master" || v.includes("master")) return "master";
-  return "double";
-}
-
-const X01_FINISH_DARTS = (() => {
-  const out: Array<{ value: number; mult: 1 | 2 | 3; seg: number }> = [];
-  for (let seg = 1; seg <= 20; seg += 1) {
-    out.push({ seg, mult: 1, value: seg });
-    out.push({ seg, mult: 2, value: seg * 2 });
-    out.push({ seg, mult: 3, value: seg * 3 });
-  }
-  out.push({ seg: 25, mult: 1, value: 25 });
-  out.push({ seg: 25, mult: 2, value: 50 });
-  return out;
-})();
-
-function isX01FinishableScore(score: number, outMode: any): boolean {
-  const target = Number(score);
-  const mode = String(outMode || "double");
-  const maxFinish = mode === "double" ? 170 : 180;
-  if (!Number.isFinite(target) || target <= 1 || target > maxFinish) return false;
-  const finishers = X01_FINISH_DARTS.filter((d) => {
-    if (mode === "simple") return true;
-    if (mode === "master") return d.mult === 2 || d.mult === 3;
-    return d.mult === 2;
-  });
-  for (const last of finishers) {
-    if (last.value === target) return true;
-    for (const a of X01_FINISH_DARTS) {
-      if (a.value + last.value === target) return true;
-      for (const b of X01_FINISH_DARTS) {
-        if (a.value + b.value + last.value === target) return true;
-      }
-    }
-  }
-  return false;
-}
 
 function getX01StartScore(rec: any): number {
   const raw =
@@ -1417,7 +1322,6 @@ function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
     dartsToFinish: undefined,
     highestNonCO: undefined,
     avgCoDarts: undefined,
-    checkoutDartsTotal: undefined,
     t180: 0,
     t140: 0,
     t100: 0,
@@ -1639,7 +1543,6 @@ function buildPerPlayerMetrics(
   legStats?: LegStats
 ) {
   const out: Record<string, PlayerMetrics> = {};
-  const outMode = getX01OutMode(rec);
 
   // ---- sources "riches" possibles ----
   const rich =
@@ -1823,23 +1726,18 @@ function buildPerPlayerMetrics(
     else if (visitPoints >= 100) row.t100 += 1;
     else if (visitPoints >= 60) row.t60 += 1;
 
-    // Tentative de checkout : volée commencée avec un finish mathématique réel,
-    // selon le mode de sortie de la partie (Double/Master/Straight Out).
-    const isCheckoutAttemptVisit = isX01FinishableScore(n(v.scoreBefore, 0), outMode);
-    if (isCheckoutAttemptVisit) {
-      const checkoutVisitDarts = visitDarts.length || explicitDartsCount;
+    // Tentatives de checkout : fallback historique.
+    // Une volée commencée à <=170 est considérée comme une opportunité CO potentielle.
+    // Si la volée finit la manche, elle devient un CO hit.
+    if (n(v.scoreBefore, 0) > 1 && n(v.scoreBefore, 0) <= 170) {
       row.coAtt += 1;
-      row.checkoutDarts = n(row.checkoutDarts, 0) + checkoutVisitDarts;
     }
 
     if (v.finish) {
       row.bestCO = Math.max(row.bestCO, visitPoints);
       row.coHits += 1;
-      if (!isCheckoutAttemptVisit && row.coAtt <= 0) {
-        const checkoutVisitDarts = visitDarts.length || explicitDartsCount;
-        row.coAtt = 1;
-        row.checkoutDarts = Math.max(n(row.checkoutDarts, 0), checkoutVisitDarts);
-      }
+      row.checkoutDarts = Array.isArray(v.darts) ? v.darts.length : 0;
+      if (row.coAtt <= 0) row.coAtt = 1;
     }
 
     return acc;
@@ -1884,19 +1782,7 @@ function buildPerPlayerMetrics(
       m.t60 = n(s.h60 ?? s.t60 ?? s["60+"] ?? s["60-99"], m.t60);
       m.coHits = n(s.checkoutHits ?? s.coHits ?? s.coSuccess ?? s.hitsCheckout ?? s.hitsCO, m.coHits);
       m.coAtt = n(s.checkoutAttempts ?? s.coAtt ?? s.coAttempts ?? s.co_attempts ?? s.attemptsCheckout, m.coAtt);
-      const summaryCheckoutDartsTotal = v(
-        s.checkoutDartsTotal ??
-          s.checkoutDartsThrown ??
-          s.dartsCheckout ??
-          s.checkoutDarts ??
-          s.dartsCO
-      );
-      if (summaryCheckoutDartsTotal != null) {
-        m.checkoutDartsTotal = summaryCheckoutDartsTotal;
-        m.avgCoDarts = summaryCheckoutDartsTotal;
-      } else if (!m.avgCoDarts) {
-        m.avgCoDarts = v(s.avgCheckoutDarts);
-      }
+      if (!m.avgCoDarts) m.avgCoDarts = v(s.avgCheckoutDarts ?? s.dartsCheckout ?? s.checkoutDarts);
     }
 
     // ===== 2) perPlayer riche (V3, training, etc.) =====
@@ -1956,19 +1842,7 @@ function buildPerPlayerMetrics(
     m.first9 = v(r.first9Avg);
     m.highestNonCO = v(r.highestNonCheckout);
     m.dartsToFinish = v(r.dartsToFinish);
-    const richCheckoutDartsTotal = v(
-      r.checkoutDartsTotal ??
-        r.checkoutDartsThrown ??
-        r.dartsCheckout ??
-        r.checkoutDarts ??
-        r.dartsCO
-    );
-    if (richCheckoutDartsTotal != null) {
-      m.checkoutDartsTotal = richCheckoutDartsTotal;
-      m.avgCoDarts = richCheckoutDartsTotal;
-    } else {
-      m.avgCoDarts = v(r.avgCheckoutDarts);
-    }
+    m.avgCoDarts = v(r.avgCheckoutDarts);
     m.remaining = v(r.remaining ?? r.scoreRemaining ?? r.finalScore ?? r.scoreAfter ?? m.remaining);
     if (m.setsWon === undefined) m.setsWon = v(r.setsWonTotal ?? r.setsWon ?? r.sets ?? r.matchSets ?? r.wonSets ?? summarySetsMap?.[pid]);
     if (m.legsWon === undefined) m.legsWon = v(r.legsWonTotal ?? r.legsWon ?? r.legs ?? r.matchLegs ?? r.wonLegs ?? summaryLegsMap?.[pid]);
@@ -2339,10 +2213,7 @@ function buildPerPlayerMetrics(
         m.coHits = n(dv.coHits, m.coHits ?? 0);
         m.coAtt = n(dv.coAtt, m.coAtt ?? 0);
       }
-      if (n(dv.checkoutDarts, 0) > 0) {
-        m.checkoutDartsTotal = n(dv.checkoutDarts, m.checkoutDartsTotal ?? 0);
-        m.avgCoDarts = m.checkoutDartsTotal;
-      }
+      if (n(dv.checkoutDarts, 0) > 0) m.avgCoDarts = n(dv.checkoutDarts, m.avgCoDarts ?? 0);
 
       // En multi-legs, un joueur peut ne pas relancer dans le leg décisif
       // (ex. l'adversaire check-out au premier tour). Dans ce cas son dernier
@@ -2514,36 +2385,27 @@ function buildPerPlayerMetrics(
       if (m.coHits <= 0) m.coHits = 1;
       if (m.coAtt <= 0) m.coAtt = 1;
 
-      if (!m.checkoutDartsTotal || m.checkoutDartsTotal <= 0) {
+      if (!m.avgCoDarts || m.avgCoDarts <= 0) {
         const finishVisit = derivedVisits
           .filter((vv) => String(vv.playerId) === String(pid))
           .slice()
           .reverse()
           .find((vv) => !!vv.finish || n(vv.score, 0) === sanitizeCO(m.bestCO));
         const fd = Array.isArray(finishVisit?.darts) ? finishVisit!.darts.length : 0;
-        if (fd > 0) {
-          m.checkoutDartsTotal = fd;
-          m.avgCoDarts = fd;
-        }
+        if (fd > 0) m.avgCoDarts = fd;
       }
     }
 
     // Darts CO fallback : quand le résumé historique indique bien un checkout
     // réussi mais ne stocke pas la longueur exacte de la volée de finish, on
     // déduit le nombre de fléchettes de la dernière volée du joueur.
-    if ((!m.checkoutDartsTotal || m.checkoutDartsTotal <= 0) && m.coHits > 0) {
+    if ((!m.avgCoDarts || m.avgCoDarts <= 0) && m.coHits > 0) {
       const lastVisitDarts = m.darts > 0 && m.visits > 0 ? m.darts - (m.visits - 1) * 3 : 0;
       if (lastVisitDarts > 0 && lastVisitDarts <= 3) {
-        m.checkoutDartsTotal = lastVisitDarts;
         m.avgCoDarts = lastVisitDarts;
       } else if (m.dartsToFinish != null && m.dartsToFinish > 0) {
-        m.checkoutDartsTotal = m.dartsToFinish;
         m.avgCoDarts = m.dartsToFinish;
       }
-    }
-
-    if ((m.checkoutDartsTotal == null || m.checkoutDartsTotal <= 0) && m.avgCoDarts != null && m.avgCoDarts > 0) {
-      m.checkoutDartsTotal = m.avgCoDarts;
     }
 
     // CO%
@@ -2906,7 +2768,7 @@ function CardTable({
           margin: "0 0 6px",
           fontSize: D.fsHead + 1,
           letterSpacing: 0.2,
-          color: THEME_ACCENT,
+          color: "#ffcf57",
         }}
       >
         {title}
@@ -2941,7 +2803,7 @@ function SummaryDetailsTabs({
         onClick={() => onChange(key)}
         style={{
           flex: 1,
-          border: active ? "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 57%, transparent)" : "1px solid rgba(255,255,255,.10)",
+          border: active ? "1px solid rgba(255,207,87,.58)" : "1px solid rgba(255,255,255,.10)",
           background: active
             ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
             : "linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03))",
@@ -2951,7 +2813,7 @@ function SummaryDetailsTabs({
           fontSize: 12,
           fontWeight: 1000,
           cursor: "pointer",
-          boxShadow: active ? "0 0 16px color-mix(in srgb, var(--dc-accent, #f6c256) 22%, transparent)" : "none",
+          boxShadow: active ? "0 0 16px rgba(255,207,87,.22)" : "none",
         }}
       >
         {label}
@@ -3113,7 +2975,7 @@ function MatchLegDetails({
                 margin: 0,
                 fontSize: D.fsHead + 1,
                 letterSpacing: 0.2,
-                color: THEME_ACCENT,
+                color: "#ffcf57",
               }}
             >
               Set {selectedLeg.setNo} — Leg {selectedLeg.legInSet}
@@ -3123,9 +2985,9 @@ function MatchLegDetails({
                 style={{
                   padding: "4px 8px",
                   borderRadius: 999,
-                  border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 30%, transparent)",
-                  background: "color-mix(in srgb, var(--dc-accent, #f6c256) 10%, transparent)",
-                  color: THEME_ACCENT,
+                  border: "1px solid rgba(255,207,87,.30)",
+                  background: "rgba(255,207,87,.10)",
+                  color: "#ffcf57",
                   fontSize: 10.5,
                   fontWeight: 1000,
                   whiteSpace: "nowrap",
@@ -3152,8 +3014,8 @@ function MatchLegDetails({
                   { label: "140+", get: (m) => f0(m.t140) },
                   { label: "180", get: (m) => f0(m.t180) },
                   { label: "Best CO", get: (m) => f0(m.bestCO) },
-                  { label: "CO", get: (m) => f0(m.coAtt) },
                   { label: "CO hits", get: (m) => f0(m.coHits) },
+                  { label: "CO att.", get: (m) => f0(m.coAtt) },
                   { label: "CO %", get: (m) => pct(m.coPct) },
                 ],
               },
@@ -3219,41 +3081,37 @@ function avatarInitials(name?: string) {
 function AvatarBubble({
   player,
   crowned,
-  size = 34,
 }: {
   player: PlayerLite;
   crowned?: boolean;
-  size?: number;
 }) {
-  const src = getAvatarSrc(player);
   return (
     <div
-      className="x-player-avatar"
       style={{
         position: "relative",
-        width: size,
-        height: size,
+        width: 34,
+        height: 34,
         borderRadius: 999,
         border: crowned
-          ? "2px solid color-mix(in srgb, var(--dc-accent, #f6c256) 88%, transparent)"
+          ? "2px solid rgba(255,207,87,.88)"
           : "2px solid rgba(255,255,255,.18)",
         boxShadow: crowned
-          ? "0 0 16px color-mix(in srgb, var(--dc-accent, #f6c256) 28%, transparent)"
+          ? "0 0 16px rgba(255,207,87,.28)"
           : "0 6px 14px rgba(0,0,0,.22)",
         overflow: "hidden",
         background: "linear-gradient(180deg,#2a2a31,#121218)",
         display: "grid",
         placeItems: "center",
         color: "#fff",
-        fontSize: Math.max(9, Math.round(size * 0.32)),
+        fontSize: 11,
         fontWeight: 900,
         flex: "0 0 auto",
       }}
       title={player?.name || "Joueur"}
     >
-      {src ? (
+      {player?.avatarDataUrl ? (
         <img
-          src={src}
+          src={player.avatarDataUrl}
           alt={player.name || "avatar"}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
@@ -3264,29 +3122,11 @@ function AvatarBubble({
   );
 }
 
-function getAvatarSrc(player?: PlayerLite | null): string | null {
-  return (
-    player?.avatarDataUrl ||
-    player?.avatarUrl ||
-    player?.photoUrl ||
-    player?.imageUrl ||
-    null
-  );
-}
-
 /* ================================
    Table COL-MAJOR (lignes = stats)
 ================================ */
-type Col = {
-  key: string;
-  title: string;
-  player?: PlayerLite;
-  rank?: number;
-  remaining?: number | null;
-};
+type Col = { key: string; title: string };
 type RowDef = { label: string; get: (m: PlayerMetrics) => string | number };
-
-type CellTone = "best" | "neutral";
 
 function TableColMajor({
   columns,
@@ -3299,29 +3139,7 @@ function TableColMajor({
   dataMap: Record<string, PlayerMetrics>;
   tableStyle?: React.CSSProperties;
 }) {
-  const rows = rowGroups.flatMap((g) => g.rows);
   const isDuel = columns.length === 2;
-
-  const rankForRow = (row: RowDef): Record<string, CellTone> => {
-    const vals = columns
-      .map((c) => ({ key: c.key, value: parseStatNumber(row.get(dataMap[c.key] || emptyMetrics({ id: c.key }))) }))
-      .filter((x) => Number.isFinite(x.value));
-    if (!vals.length) return {};
-    const sorted = [...vals].sort((a, b) =>
-      isLowBetterRow(row.label) ? a.value - b.value : b.value - a.value
-    );
-    const best = sorted[0]?.value;
-    if (!Number.isFinite(best)) return {};
-
-    // IMPORTANT VISUEL : on ne colore QUE le meilleur unique.
-    // S'il y a égalité sur la meilleure valeur, on ne colore rien.
-    const bestCount = vals.filter((x) => x.value === best).length;
-    if (bestCount !== 1) return {};
-
-    return Object.fromEntries(
-      vals.map((x) => [x.key, x.value === best ? "best" : "neutral"])
-    ) as Record<string, CellTone>;
-  };
 
   if (isDuel) {
     const left = columns[0];
@@ -3330,289 +3148,117 @@ function TableColMajor({
     const rightM = dataMap[right.key] || emptyMetrics({ id: right.key });
 
     return (
-      <div className="x-table x-table-duel" style={{ ...tableWrapStyle(), overflow: "hidden" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr minmax(104px, .82fr) 1fr",
-            alignItems: "stretch",
-            background: "rgba(255,255,255,.035)",
-            borderBottom: "1px solid rgba(255,255,255,.06)",
-          }}
-        >
-          <div className="x-th" style={{ ...thStyle(false), textAlign: "left", position: "relative", top: "auto" }}>
-            <PlayerColHeader col={left} align="left" />
-          </div>
-          <div className="x-th" style={{ ...thStyle(false), textAlign: "center", color: THEME_ACCENT, position: "relative", top: "auto" }}>
-            Stat
-          </div>
-          <div className="x-th" style={{ ...thStyle(false), textAlign: "right", position: "relative", top: "auto" }}>
-            <PlayerColHeader col={right} align="right" />
-          </div>
-        </div>
-
-        {rows.map((r, ri) => {
-          const tones = rankForRow(r);
-          const leftBest = tones[left.key] === "best";
-          const rightBest = tones[right.key] === "best";
-          return (
-            <DuelStatRow
-              key={`duel-r-${ri}`}
-              label={r.label}
-              leftValue={r.get(leftM)}
-              rightValue={r.get(rightM)}
-              leftBest={leftBest}
-              rightBest={rightBest}
-            />
-          );
-        })}
+      <div
+        className="x-table x-table-duel"
+        style={{
+          overflowX: "auto",
+          border: "1px solid rgba(255,255,255,.08)",
+          borderRadius: D.radius,
+        }}
+      >
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "left" }}>
+                <span style={{ fontWeight: 900, color: "#ffcf57" }}>{left.title}</span>
+              </th>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "center", color: "#ffcf57" }}>
+                Stat
+              </th>
+              <th className="x-th" style={{ ...thStyle(false), textAlign: "right" }}>
+                <span style={{ fontWeight: 900, color: "#ffcf57" }}>{right.title}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowGroups.flatMap((g, gi) =>
+              g.rows.map((r, ri) => (
+                <tr key={`duel-r-${gi}-${ri}`}>
+                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "left", fontWeight: 800 }}>
+                    {r.get(leftM)}
+                  </td>
+                  <td className="x-td" style={{ ...tdStyle(true), textAlign: "center", color: "#ffcf57", fontWeight: 900 }}>
+                    {r.label}
+                  </td>
+                  <td className="x-td" style={{ ...tdStyle(false), textAlign: "right", fontWeight: 800 }}>
+                    {r.get(rightM)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     );
   }
 
   return (
-    <div className="x-table" style={tableWrapStyle()}>
+    <div
+      className="x-table"
+      style={{
+        overflowX: "auto",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: D.radius,
+      }}
+    >
       <table style={tableStyle}>
         <thead>
           <tr>
-            <th className="x-th" style={thStyle(true)}>Stat</th>
+            <th className="x-th" style={thStyle(true)}>
+              Stat
+            </th>
             {columns.map((c) => (
-              <th key={c.key} className="x-th" style={thStyle(false)}>
-                <PlayerColHeader col={c} />
+              <th
+                key={c.key}
+                className="x-th"
+                style={thStyle(false)}
+              >
+                <span
+                  style={{
+                    fontWeight: 900,
+                    color: "#ffcf57",
+                  }}
+                >
+                  {c.title}
+                </span>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, ri) => {
-            const tones = rankForRow(r);
-            return (
-              <tr key={`r-${ri}`}>
-                <td className="x-td" style={tdStyle(true)}>{r.label}</td>
+          {rowGroups.flatMap((g, gi) =>
+            g.rows.map((r, ri) => (
+              <tr key={`r-${gi}-${ri}`}>
+                <td className="x-td" style={tdStyle(true)}>
+                  {r.label}
+                </td>
                 {columns.map((c) => {
-                  const m = dataMap[c.key] || emptyMetrics({ id: c.key });
+                  const m =
+                    dataMap[c.key] ||
+                    emptyMetrics({ id: c.key });
                   return (
-                    <td key={c.key} className="x-td" style={{ ...tdStyle(false), ...valueToneStyle(tones[c.key]) }}>
+                    <td
+                      key={c.key}
+                      className="x-td"
+                      style={tdStyle(false)}
+                    >
                       {r.get(m)}
                     </td>
                   );
                 })}
               </tr>
-            );
-          })}
+            ))
+          )}
         </tbody>
       </table>
     </div>
   );
 }
-
-function DuelStatRow({
-  label,
-  leftValue,
-  rightValue,
-  leftBest,
-  rightBest,
-}: {
-  label: string;
-  leftValue: string | number;
-  rightValue: string | number;
-  leftBest: boolean;
-  rightBest: boolean;
-}) {
-  const accentStrong = "color-mix(in srgb, var(--dc-accent, #f6c256) 96%, transparent)";
-  const accentSoft = "color-mix(in srgb, var(--dc-accent, #f6c256) 44%, transparent)";
-  const whiteStrong = "rgba(255,255,255,.72)";
-  const whiteSoft = "rgba(255,255,255,.18)";
-
-  // Barres façon ATP/TennisTV : elles partent du libellé central en fondu
-  // invisible, puis deviennent plus visibles vers l'extérieur.
-  const leftLine = leftBest
-    ? `linear-gradient(90deg, ${accentStrong} 0%, ${accentSoft} 46%, rgba(255,255,255,0) 100%)`
-    : `linear-gradient(90deg, ${whiteStrong} 0%, ${whiteSoft} 46%, rgba(255,255,255,0) 100%)`;
-  const rightLine = rightBest
-    ? `linear-gradient(90deg, rgba(255,255,255,0) 0%, ${accentSoft} 54%, ${accentStrong} 100%)`
-    : `linear-gradient(90deg, rgba(255,255,255,0) 0%, ${whiteSoft} 54%, ${whiteStrong} 100%)`;
-
-  const valueBase: React.CSSProperties = {
-    position: "relative",
-    padding: `${D.padCellV}px ${D.padCellH}px 7px`,
-    color: "#e8e8ec",
-    whiteSpace: "nowrap",
-    fontVariantNumeric: "tabular-nums",
-    borderTop: "1px solid rgba(255,255,255,.05)",
-    fontSize: D.fsBody,
-    fontWeight: 760,
-    lineHeight: 1.15,
-    minWidth: 0,
-  };
-
-  const lineBase: React.CSSProperties = {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 2,
-    height: 2,
-    borderRadius: 999,
-    opacity: .95,
-    pointerEvents: "none",
-  };
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr minmax(104px, .82fr) 1fr",
-        alignItems: "stretch",
-      }}
-    >
-      <div style={{ ...valueBase, textAlign: "left", ...valueToneStyle(leftBest ? "best" : "neutral") }}>
-        {leftValue}
-        <span
-          aria-hidden="true"
-          style={{
-            ...lineBase,
-            background: leftLine,
-            boxShadow: leftBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
-          }}
-        />
-      </div>
-      <div
-        style={{
-          ...valueBase,
-          textAlign: "center",
-          color: "rgba(255,255,255,.90)",
-          fontSize: D.fsBody,
-          fontWeight: 800,
-          textTransform: "none",
-          letterSpacing: .1,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ ...valueBase, textAlign: "right", ...valueToneStyle(rightBest ? "best" : "neutral") }}>
-        {rightValue}
-        <span
-          aria-hidden="true"
-          style={{
-            ...lineBase,
-            background: rightLine,
-            boxShadow: rightBest ? "0 0 9px color-mix(in srgb, var(--dc-accent, #f6c256) 48%, transparent)" : "none",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function tableWrapStyle(): React.CSSProperties {
-  return {
-    overflowX: "auto",
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: D.radius,
-    background: "linear-gradient(90deg, rgba(255,255,255,.025), rgba(255,255,255,.01))",
-  };
-}
-
-function PlayerColHeader({ col, align = "center" }: { col: Col; align?: "left" | "center" | "right" }) {
-  const player = col.player || { id: col.key, name: col.title };
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        flexDirection: "column",
-        alignItems: align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center",
-        justifyContent: "center",
-        gap: 3,
-        minWidth: 42,
-      }}
-      title={col.title}
-    >
-      <div style={{ position: "relative", display: "inline-flex" }}>
-        <AvatarBubble player={player} crowned={col.rank === 1} size={30} />
-        {col.rank ? <RankBadge rank={col.rank} /> : null}
-      </div>
-      {col.remaining != null ? (
-        <span
-          style={{
-            fontSize: 10,
-            lineHeight: 1,
-            fontWeight: 1000,
-            color: col.rank === 1 ? THEME_ACCENT : "rgba(255,255,255,.70)",
-            textShadow: col.rank === 1 ? "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 28%, transparent)" : "none",
-          }}
-        >
-          {f0(col.remaining)}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function RankBadge({ rank }: { rank: number }) {
-  return (
-    <span
-      className="x-rank-badge"
-      style={{
-        position: "absolute",
-        top: -7,
-        right: -7,
-        width: 16,
-        height: 16,
-        borderRadius: 999,
-        display: "grid",
-        placeItems: "center",
-        fontSize: 9,
-        fontWeight: 1000,
-        color: rank === 1 ? "#15110a" : "#101116",
-        background: rank === 1 ? THEME_ACCENT : "rgba(255,255,255,.82)",
-        border: "1px solid rgba(0,0,0,.38)",
-        boxShadow: rank === 1 ? "0 0 12px color-mix(in srgb, var(--dc-accent, #f6c256) 34%, transparent)" : "0 2px 8px rgba(0,0,0,.35)",
-      }}
-    >
-      {rank}
-    </span>
-  );
-}
-
-function parseStatNumber(value: string | number): number {
-  if (typeof value === "number") return value;
-  const cleaned = String(value ?? "")
-    .replace(/%/g, "")
-    .replace(/,/g, ".")
-    .replace(/[^0-9.\-]/g, "")
-    .trim();
-  if (!cleaned) return Number.NaN;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
-}
-
-function isLowBetterRow(label: string): boolean {
-  const l = String(label || "").toLowerCase();
-  return (
-    l.includes("score restant") ||
-    l === "darts" ||
-    l.includes("darts→") ||
-    l.includes("bust") ||
-    l.includes("miss")
-  );
-}
-
-function valueToneStyle(tone?: CellTone): React.CSSProperties {
-  if (tone === "best") {
-    return {
-      color: THEME_ACCENT,
-      fontWeight: 1000,
-      textShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 34%, transparent)",
-    };
-  }
-  return { fontWeight: 760 };
-}
-
 function thStyle(isRowHeader: boolean): React.CSSProperties {
   return {
     textAlign: isRowHeader ? "left" : "right",
     padding: `${D.padCellV}px ${D.padCellH}px`,
-    color: THEME_ACCENT,
+    color: "#ffcf57",
     fontWeight: 800,
     background: "rgba(255,255,255,.04)",
     position: "sticky",
@@ -3798,7 +3444,7 @@ function HitsRadar({ m }: { m: PlayerMetrics }) {
           <>
             <polyline
               points={polyPoints}
-              fill="color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)"
+              fill="rgba(255,207,87,.18)"
               stroke="#ffcf57"
               strokeWidth={2}
               strokeLinejoin="round"
@@ -4677,7 +4323,7 @@ function VisitsList({
                 style={{
                   fontSize: 11,
                   fontWeight: 900,
-                  color: THEME_ACCENT,
+                  color: "#ffcf57",
                   letterSpacing: 0.2,
                 }}
               >
@@ -4790,13 +4436,13 @@ function VisitsList({
                     marginLeft: 2,
                     padding: "7px 10px",
                     borderRadius: 12,
-                    border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 18%, transparent)",
+                    border: "1px solid rgba(255,207,87,.18)",
                     background:
-                      "linear-gradient(180deg, color-mix(in srgb, var(--dc-accent, #f6c256) 16%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent))",
-                    color: THEME_ACCENT,
+                      "linear-gradient(180deg, rgba(255,207,87,.16), rgba(255,207,87,.06))",
+                    color: "#ffcf57",
                     fontSize: 11,
                     fontWeight: 900,
-                    boxShadow: "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 14%, transparent)",
+                    boxShadow: "0 0 10px rgba(255,207,87,.14)",
                   }}
                 >
                   {v.bust ? "BUST" : `+${visitTotal}`}
@@ -4931,16 +4577,16 @@ function scoreBoxStyle(isAfter: boolean): React.CSSProperties {
     padding: "7px 8px",
     borderRadius: 12,
     border: isAfter
-      ? "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 24%, transparent)"
+      ? "1px solid rgba(255,207,87,.24)"
       : "1px solid rgba(255,255,255,.10)",
     background: isAfter
-      ? "linear-gradient(180deg, color-mix(in srgb, var(--dc-accent, #f6c256) 16%, transparent), color-mix(in srgb, var(--dc-accent, #f6c256) 6%, transparent))"
+      ? "linear-gradient(180deg, rgba(255,207,87,.16), rgba(255,207,87,.06))"
       : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
     color: isAfter ? "#ffcf57" : "#f3f3f7",
     fontWeight: 900,
     fontSize: 12,
     boxShadow: isAfter
-      ? "0 0 10px color-mix(in srgb, var(--dc-accent, #f6c256) 12%, transparent)"
+      ? "0 0 10px rgba(255,207,87,.12)"
       : "none",
   };
 }
