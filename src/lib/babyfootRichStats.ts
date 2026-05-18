@@ -14,6 +14,9 @@ export type BabyFootRichSideStats = {
   demi: number;
   pissette: number;
   demiBonus: number;
+  goalAv: number;
+  goalDef: number;
+  goalGb: number;
   penalties: number;
   handicap: number;
   longestRun: number;
@@ -69,6 +72,12 @@ function normalizeSpecialStats(raw: any) {
     pecheDefB: safeNum(stats.pecheDefB),
     demiBonusAppliedA: safeNum(stats.demiBonusAppliedA),
     demiBonusAppliedB: safeNum(stats.demiBonusAppliedB),
+    goalAvA: safeNum(stats.goalAvA),
+    goalAvB: safeNum(stats.goalAvB),
+    goalDefA: safeNum(stats.goalDefA),
+    goalDefB: safeNum(stats.goalDefB),
+    goalGbA: safeNum(stats.goalGbA),
+    goalGbB: safeNum(stats.goalGbB),
   };
 }
 
@@ -140,6 +149,9 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     demi: specialStats.demiA,
     pissette: specialStats.pissetteA,
     demiBonus: specialStats.demiBonusAppliedA,
+    goalAv: specialStats.goalAvA,
+    goalDef: specialStats.goalDefA,
+    goalGb: specialStats.goalGbA,
     penalties: penaltiesA,
     handicap: handicapA,
     longestRun: getLongestRun(goalEvents, 'A'),
@@ -161,6 +173,9 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     demi: specialStats.demiB,
     pissette: specialStats.pissetteB,
     demiBonus: specialStats.demiBonusAppliedB,
+    goalAv: specialStats.goalAvB,
+    goalDef: specialStats.goalDefB,
+    goalGb: specialStats.goalGbB,
     penalties: penaltiesB,
     handicap: handicapB,
     longestRun: getLongestRun(goalEvents, 'B'),

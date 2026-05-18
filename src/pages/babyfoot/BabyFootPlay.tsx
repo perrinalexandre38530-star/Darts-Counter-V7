@@ -18,6 +18,7 @@ import { sendCastSnapshot } from "../../cast/googleCast";
 import {
   addGoal,
   addPenaltyShot,
+  type BabyFootGoalSource,
   computeDurationMs,
   finishByTime,
   loadBabyFootState,
@@ -344,6 +345,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const [state, setState] = useState<BabyFootState>(() => startIfNeeded());
   const [now, setNow] = useState(Date.now());
   const [pickTeam, setPickTeam] = useState<BabyFootTeamId | null>(null);
+  const [pickGoalSource, setPickGoalSource] = useState<BabyFootGoalSource>("AV");
   const [activeTab, setActiveTab] = useState<PlayTab>("score");
 
   useEffect(() => {
@@ -566,12 +568,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const isPickScorerNeeded = (team: BabyFootTeamId) => (team === "A" ? teamAIds : teamBIds).length > 1;
   const addForTeam = (team: BabyFootTeamId) => {
     if (state.finished || state.phase === "penalties") return;
-    if (isPickScorerNeeded(team)) {
-      setPickTeam(team);
-      return;
-    }
-    const scorerId = (team === "A" ? teamAIds[0] : teamBIds[0]) || null;
-    setState(addGoal(team, scorerId));
+    setPickGoalSource("AV");
+    setPickTeam(team);
   };
 
   const teamAProfile = teamAIds[0] ? getProfile(teamAIds[0]) : null;
@@ -697,6 +695,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             <BabyFootLiveStatsCard
               teamAName={visualA.name}
               teamBName={visualB.name}
+              teamAImageSrc={visualA.imageSrc}
+              teamBImageSrc={visualB.imageSrc}
               goalsA={goalCountA}
               goalsB={goalCountB}
               totalGoals={totalGoals}
@@ -757,15 +757,40 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             padding: 16,
             zIndex: 80,
           }}
-          onClick={() => setPickTeam(null)}
+          onClick={() => { setPickGoalSource("AV"); setPickTeam(null); }}
         >
           <div style={{ ...shellCard(), width: "100%", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 20, fontWeight: 1100 }}>Choisir le buteur</div>
             <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
-              Sélectionne le joueur qui a marqué pour {pickTeam === "A" ? visualA.name : visualB.name}.
+              Sélectionne le joueur qui a marqué pour {pickTeam === "A" ? visualA.name : visualB.name}. Les milieux comptent comme un demi.
             </div>
 
             <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 0.8, color: "rgba(255,255,255,0.72)", textTransform: "uppercase" }}>Ligne du but</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {(["AV", "DEF", "GB", "MIL"] as BabyFootGoalSource[]).map((source) => {
+                  const active = pickGoalSource === source;
+                  return (
+                    <button
+                      key={source}
+                      type="button"
+                      onClick={() => setPickGoalSource(source)}
+                      style={{
+                        minHeight: 44,
+                        borderRadius: 14,
+                        border: `1px solid ${active ? "rgba(157,255,87,0.55)" : "rgba(255,255,255,0.08)"}`,
+                        background: active ? "linear-gradient(180deg, rgba(157,255,87,0.18), rgba(157,255,87,0.06))" : "rgba(255,255,255,0.04)",
+                        color: active ? "#d9ff57" : "#fff",
+                        fontWeight: 1000,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {source}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>AV = avant • DEF = défense • GB = gardien • MIL = demi</div>
               {(pickTeam === "A" ? teamAIds : teamBIds).map((playerId) => {
                 const profile = getProfile(playerId);
                 const label = profile?.name || playerId;
@@ -774,7 +799,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                     key={playerId}
                     type="button"
                     onClick={() => {
-                      setState(addGoal(pickTeam, playerId));
+                      setState(addGoal(pickTeam, playerId, pickGoalSource));
                       setPickTeam(null);
                     }}
                     style={{
@@ -799,7 +824,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
               })}
             </div>
 
-            <button type="button" onClick={() => setPickTeam(null)} style={{ ...actionStyle("neutral"), marginTop: 14 }}>
+            <button type="button" onClick={() => { setPickGoalSource("AV"); setPickTeam(null); }} style={{ ...actionStyle("neutral"), marginTop: 14 }}>
               Fermer
             </button>
           </div>

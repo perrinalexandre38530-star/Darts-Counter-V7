@@ -12,6 +12,7 @@ export type BabyFootTeamId = "A" | "B";
 export type BabyFootMode = "1v1" | "2v2" | "2v1";
 export type BabyFootPhase = "play" | "overtime" | "penalties" | "finished";
 export type BabyFootGoalKind = "normal" | "gamelle" | "peche" | "pissette";
+export type BabyFootGoalSource = "AV" | "DEF" | "GB" | "MIL";
 export type BabyFootScoreAction = "goal" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "demi";
 export type BabyFootRulePreset = "competition" | "bar";
 export type BabyFootDemiRule = "point" | "suspend" | "forbidden";
@@ -33,6 +34,12 @@ export type BabyFootSpecialStats = {
   pecheDefB: number;
   demiBonusAppliedA: number;
   demiBonusAppliedB: number;
+  goalAvA: number;
+  goalAvB: number;
+  goalDefA: number;
+  goalDefB: number;
+  goalGbA: number;
+  goalGbB: number;
 };
 
 export type BabyFootEvent =
@@ -46,9 +53,10 @@ export type BabyFootEvent =
       kind?: BabyFootGoalKind;
       points?: number;
       demiBonusApplied?: number;
+      sourceLine?: BabyFootGoalSource;
     }
-  | { t: "demi"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase }
-  | { t: "special"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; kind: Exclude<BabyFootScoreAction, "goal" | "demi">; counted?: boolean; scoreDeltaA?: number; scoreDeltaB?: number; demiBonusApplied?: number }
+  | { t: "demi"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; sourceLine?: BabyFootGoalSource }
+  | { t: "special"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; kind: Exclude<BabyFootScoreAction, "goal" | "demi">; counted?: boolean; scoreDeltaA?: number; scoreDeltaB?: number; demiBonusApplied?: number; sourceLine?: BabyFootGoalSource }
   | { t: "pen_shot"; at: number; team: BabyFootTeamId; scored: boolean; scorerId?: string | null }
   | { t: "set_win"; at: number; team: BabyFootTeamId; setIndex: number }
   | { t: "phase"; at: number; phase: BabyFootPhase }
@@ -184,6 +192,12 @@ function emptySpecialStats(): BabyFootSpecialStats {
     pecheDefB: 0,
     demiBonusAppliedA: 0,
     demiBonusAppliedB: 0,
+    goalAvA: 0,
+    goalAvB: 0,
+    goalDefA: 0,
+    goalDefB: 0,
+    goalGbA: 0,
+    goalGbB: 0,
   };
 }
 
@@ -203,6 +217,12 @@ function normalizeSpecialStats(raw: any): BabyFootSpecialStats {
     pecheDefB: Number.isFinite(raw.pecheDefB) ? raw.pecheDefB : base.pecheDefB,
     demiBonusAppliedA: Number.isFinite(raw.demiBonusAppliedA) ? raw.demiBonusAppliedA : base.demiBonusAppliedA,
     demiBonusAppliedB: Number.isFinite(raw.demiBonusAppliedB) ? raw.demiBonusAppliedB : base.demiBonusAppliedB,
+    goalAvA: Number.isFinite(raw.goalAvA) ? raw.goalAvA : base.goalAvA,
+    goalAvB: Number.isFinite(raw.goalAvB) ? raw.goalAvB : base.goalAvB,
+    goalDefA: Number.isFinite(raw.goalDefA) ? raw.goalDefA : base.goalDefA,
+    goalDefB: Number.isFinite(raw.goalDefB) ? raw.goalDefB : base.goalDefB,
+    goalGbA: Number.isFinite(raw.goalGbA) ? raw.goalGbA : base.goalGbA,
+    goalGbB: Number.isFinite(raw.goalGbB) ? raw.goalGbB : base.goalGbB,
   };
 }
 
@@ -586,7 +606,7 @@ function maybeWinSet(s: BabyFootState) {
   return persist(next);
 }
 
-function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, scorerId?: string | null) {
+function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, scorerId?: string | null, sourceLine?: BabyFootGoalSource) {
   let s = startIfNeeded();
   if (s.finished || s.phase === "penalties") return s;
 
@@ -620,6 +640,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
           kind: goalKind,
           points,
           demiBonusApplied,
+          sourceLine,
         },
       ],
       updatedAt: now,
@@ -698,6 +719,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
           scoreDeltaA: extra?.scoreDeltaA,
           scoreDeltaB: extra?.scoreDeltaB,
           demiBonusApplied: extra?.demiBonusApplied,
+          sourceLine,
         },
       ],
       updatedAt: now,
@@ -712,7 +734,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
         ...s,
         undo,
         specialStats: stats,
-        events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase }],
+        events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
         updatedAt: now,
       };
       return persist(next);
@@ -725,13 +747,20 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
       undo,
       pendingDemiBonus: pending + 1,
       specialStats: stats,
-      events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase }],
+      events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
       updatedAt: now,
     };
     return persist(next);
   }
 
+  if (kind === "goal" && sourceLine === "MIL") {
+    return applyScoreAction("demi", team, scorerId, "MIL");
+  }
+
   if (kind === "goal") {
+    if (sourceLine === "AV") stats = bumpSpecialStats(stats, team === "A" ? "goalAvA" : "goalAvB");
+    if (sourceLine === "DEF") stats = bumpSpecialStats(stats, team === "A" ? "goalDefA" : "goalDefB");
+    if (sourceLine === "GB") stats = bumpSpecialStats(stats, team === "A" ? "goalGbA" : "goalGbB");
     const bonus = pending;
     if (team === "A" && bonus > 0) stats = bumpSpecialStats(stats, "demiBonusAppliedA", bonus);
     if (team === "B" && bonus > 0) stats = bumpSpecialStats(stats, "demiBonusAppliedB", bonus);
@@ -780,12 +809,12 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
   return s;
 }
 
-export function addGoal(team: BabyFootTeamId, scorerId?: string | null) {
-  return applyScoreAction("goal", team, scorerId);
+export function addGoal(team: BabyFootTeamId, scorerId?: string | null, sourceLine?: BabyFootGoalSource) {
+  return applyScoreAction("goal", team, scorerId, sourceLine);
 }
 
-export function addSpecialScoreEvent(team: BabyFootTeamId, action: Exclude<BabyFootScoreAction, "goal">, scorerId?: string | null) {
-  return applyScoreAction(action, team, scorerId);
+export function addSpecialScoreEvent(team: BabyFootTeamId, action: Exclude<BabyFootScoreAction, "goal">, scorerId?: string | null, sourceLine?: BabyFootGoalSource) {
+  return applyScoreAction(action, team, scorerId, sourceLine);
 }
 
 function penaltyIsDecided(p: PenaltiesState) {

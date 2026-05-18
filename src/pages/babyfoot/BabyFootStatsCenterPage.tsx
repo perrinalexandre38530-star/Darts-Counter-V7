@@ -52,6 +52,8 @@ const TOP_TABS: { key: TopTab; label: string }[] = [
   { key: "defis", label: "DÉFIS" },
 ];
 
+const STATS_FONT = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
 const PERIODS: { key: PeriodKey; label: string; hint: string }[] = [
   { key: "J", label: "J", hint: "Jour" },
   { key: "S", label: "S", hint: "Semaine" },
@@ -124,46 +126,38 @@ function getWinner(left: string | number, right: string | number, compare: BabyF
 
 function valueStyle(side: "left" | "right", isBest: boolean): React.CSSProperties {
   const activeColor = side === "left" ? "#d9ff3f" : "#ff67bd";
-  const activeGlow = side === "left" ? "rgba(210,255,73,.42)" : "rgba(255,103,189,.34)";
+  const activeGlow = side === "left" ? "rgba(210,255,73,.44)" : "rgba(255,103,189,.36)";
   return {
-    minWidth: 52,
+    minWidth: 74,
     textAlign: side === "left" ? "left" : "right",
-    fontSize: 20,
+    fontSize: 30,
     lineHeight: 1,
     fontWeight: 1100,
-    color: isBest ? activeColor : "#f4f5fb",
-    textShadow: isBest ? `0 0 12px ${activeGlow}` : "none",
+    fontFamily: STATS_FONT,
+    color: isBest ? activeColor : "#f7f8fe",
+    textShadow: isBest ? `0 0 14px ${activeGlow}` : "none",
     fontVariantNumeric: "tabular-nums",
   };
 }
 
-function underlineHalf(side: "left" | "right", active: boolean) {
+function barStyle(side: "left" | "right", active: boolean): React.CSSProperties {
   const background = active
     ? side === "left"
-      ? "linear-gradient(90deg, rgba(255,207,87,0.00) 0%, rgba(214,255,62,0.95) 62%, rgba(214,255,62,0.22) 100%)"
-      : "linear-gradient(270deg, rgba(255,207,87,0.00) 0%, rgba(255,103,189,0.96) 62%, rgba(255,103,189,0.22) 100%)"
+      ? "linear-gradient(90deg, rgba(214,255,62,1) 0%, rgba(214,255,62,.78) 35%, rgba(214,255,62,0) 100%)"
+      : "linear-gradient(90deg, rgba(255,103,189,0) 0%, rgba(255,103,189,.78) 65%, rgba(255,103,189,1) 100%)"
     : side === "left"
-      ? "linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)"
-      : "linear-gradient(270deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.07) 72%, rgba(255,255,255,0.02) 100%)";
+      ? "linear-gradient(90deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.06) 35%, rgba(255,255,255,0) 100%)"
+      : "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.06) 65%, rgba(255,255,255,.14) 100%)";
   const boxShadow = active
     ? side === "left"
-      ? "0 0 12px rgba(214,255,62,.18)"
-      : "0 0 12px rgba(255,103,189,.16)"
+      ? "0 0 14px rgba(214,255,62,.26)"
+      : "0 0 14px rgba(255,103,189,.24)"
     : "none";
-  return <div style={{ flex: 1, height: 3, borderRadius: 999, background, boxShadow }} />;
+  return { height: 4, borderRadius: 999, background, boxShadow };
 }
 
-function statLabel(label: string, winner: WinnerSide) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
-      <div style={{ textAlign: "center", fontSize: 12, fontWeight: 1000, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
-        {underlineHalf("left", winner === "left")}
-        <div style={{ width: 10, height: 3, borderRadius: 999, background: "rgba(255,255,255,.08)" }} />
-        {underlineHalf("right", winner === "right")}
-      </div>
-    </div>
-  );
+function statLabel(label: string) {
+  return <div style={{ textAlign: "center", fontSize: 11, fontWeight: 1000, fontFamily: STATS_FONT, color: "rgba(255,255,255,0.94)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{label}</div>;
 }
 
 function boardRow(row: BabyFootStatRow) {
@@ -171,14 +165,20 @@ function boardRow(row: BabyFootStatRow) {
   const leftBest = winner === "left";
   const rightBest = winner === "right";
   return (
-    <div key={row.label} style={{ display: "grid", gridTemplateColumns: "68px minmax(0,1fr) 68px", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-      <div style={valueStyle("left", leftBest)}>{row.left}</div>
-      {statLabel(row.label, winner)}
-      <div style={{ ...valueStyle("right", rightBest), justifySelf: "end" }}>{row.right}</div>
+    <div key={row.label} style={{ padding: "8px 0 10px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "74px minmax(0,1fr) 74px", gap: 8, alignItems: "center" }}>
+        <div style={valueStyle("left", leftBest)}>{row.left}</div>
+        {statLabel(row.label)}
+        <div style={{ ...valueStyle("right", rightBest), justifySelf: "end" }}>{row.right}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 26px 1fr", alignItems: "center", marginTop: 4 }}>
+        <div style={barStyle("left", leftBest)} />
+        <div />
+        <div style={barStyle("right", rightBest)} />
+      </div>
     </div>
   );
 }
-
 
 function roundStat(value: number) {
   const n = Number(value || 0);
@@ -213,6 +213,7 @@ function sectionHeader(label: string) {
         textAlign: "center",
         fontSize: 10,
         fontWeight: 1100,
+        fontFamily: STATS_FONT,
         letterSpacing: 1.2,
         color: "#fff",
         textTransform: "uppercase",
@@ -239,13 +240,8 @@ function MatchStatsBoard({
   return (
     <div style={softCard}>
       <div style={{ textAlign: "center", marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "rgba(255,255,255,.68)" }}>
-          Statistiques
-        </div>
-        <div style={{ fontSize: 16, fontWeight: 1000, color: "#fff", marginTop: 2 }}>{title}</div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,.62)", marginTop: 2 }}>
-          {leftLabel} vs {rightLabel}
-        </div>
+                <div style={{ fontSize: 22, fontWeight: 1100, fontFamily: STATS_FONT, letterSpacing: 1.3, textTransform: "uppercase", color: "#fff" }}>STATS</div>
+        <div style={{ fontSize: 13, fontWeight: 1000, fontFamily: STATS_FONT, color: "rgba(255,255,255,.68)", marginTop: 2 }}>{title}</div>
       </div>
 
       <div
