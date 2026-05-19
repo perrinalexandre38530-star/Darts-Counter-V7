@@ -2298,6 +2298,9 @@ function ProfilesMenuView({
   // (prop `sport` + hook `useSport()`)
   const { sport: sportCtx } = useSport();
   const sportResolved = (sportCtx as any) || sport;
+  const sportKey = String(sportResolved || "").toLowerCase();
+  const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
+  const isDarts = sportKey.includes("darts");
   const { t } = useLang();
   const primary = theme.primary;
 
@@ -2442,11 +2445,13 @@ function ProfilesMenuView({
         onClick={onSelectMe}
       />
   
-      <CardBtn
-        title={t("profiles.menu.friends.title", "AMIS")}
-        subtitle={t("profiles.menu.friends.subtitle", "Amis en ligne et absents.")}
-        onClick={onSelectFriends}
-      />
+      {!isBabyFoot && (
+        <CardBtn
+          title={t("profiles.menu.friends.title", "AMIS")}
+          subtitle={t("profiles.menu.friends.subtitle", "Amis en ligne et absents.")}
+          onClick={onSelectFriends}
+        />
+      )}
   
       <CardBtn
         title={t("profiles.menu.locals.title", "PROFILS LOCAUX")}
@@ -2457,18 +2462,18 @@ function ProfilesMenuView({
         onClick={onSelectLocals}
       />
   
-      <CardBtn
-        title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}
-        subtitle={t("profiles.menu.dartsets.subtitle", "Gère tous les jeux de fléchettes dans une vue dédiée plus fluide.")}
-        onClick={onSelectDartSets}
-      />
+      {isDarts && (
+        <CardBtn
+          title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}
+          subtitle={t("profiles.menu.dartsets.subtitle", "Gère tous les jeux de fléchettes dans une vue dédiée plus fluide.")}
+          onClick={onSelectDartSets}
+        />
+      )}
 
       {/* ✅ Remplacement BOTS -> condition sport (robuste) */}
       {(() => {
-        const key = String(sportResolved || "").toLowerCase();
+        const key = sportKey;
         const isPetanque = key.includes("petanque");
-        const isBabyFoot = key.includes("babyfoot") || key.includes("baby-foot") || key.includes("baby_foot");
-        const isDarts = key.includes("darts");
   
         if (isDarts) {
           return (
