@@ -12,11 +12,11 @@ function normalizeBase(raw: any) {
 function baseCandidates() {
   const env = (import.meta as any)?.env || {};
   const list = [
-    "",
     normalizeBase(env.VITE_VIEWER_API_URL),
     normalizeBase(NAS_API_URL),
     normalizeBase(env.VITE_ONLINE_API_URL),
     normalizeBase(env.VITE_ONLINE_WS_BASE_URL),
+    "",
   ];
   return Array.from(new Set(list.filter((v, idx, arr) => arr.indexOf(v) === idx)));
 }
