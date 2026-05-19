@@ -21,6 +21,7 @@ import {
   loadBabyFootLeagues,
   scopeLabel,
   setBabyFootFixtureScore,
+  upsertBabyFootLeague,
   type BabyFootLeague,
   type BabyFootLeagueKind,
   type BabyFootLeagueScope,
@@ -35,6 +36,14 @@ import {
   setAdvancedOptions as setBabyFootAdvancedOptions,
   startMatch as startBabyFootMatch,
 } from "../../lib/babyfootStore";
+import {
+  deleteBabyFootLeagueOnline,
+  getBabyFootLeagueOnlineId,
+  publishBabyFootLeagueOnline,
+  syncBabyFootLeagueOnline,
+  submitBabyFootLeagueOnlineResult,
+  type BabyFootLeagueVisibility,
+} from "../../lib/babyfootLeagueOnlineApi";
 
 type Props = { go: (tab: any, params?: any) => void; onBack?: () => void; store?: any; params?: any };
 
@@ -750,6 +759,47 @@ function LeagueDetail({ theme, go, store, league, initialTab, onRefresh, onDelet
     go("babyfoot_play" as any, { leagueId: league.id, fixtureId: fixture.id, fromLeague: true });
   }
 
+  const [onlineBusy, setOnlineBusy] = React.useState(false);
+  const [onlineMessage, setOnlineMessage] = React.useState<string | null>(null);
+  const onlineId = getBabyFootLeagueOnlineId(league as any);
+  const onlineVisibility = ((league as any).visibility === "public" ? "public" : "private") as BabyFootLeagueVisibility;
+
+  async function publishOrSyncOnline(visibility?: BabyFootLeagueVisibility) {
+    try {
+      setOnlineBusy(true);
+      setOnlineMessage(null);
+      const nextVisibility = visibility || onlineVisibility;
+      const remote = onlineId
+        ? await syncBabyFootLeagueOnline({ ...(league as any), visibility: nextVisibility }, nextVisibility)
+        : await publishBabyFootLeagueOnline({ ...(league as any), visibility: nextVisibility }, nextVisibility);
+      upsertBabyFootLeague({ ...(league as any), ...(remote as any), visibility: nextVisibility } as any);
+      setOnlineMessage(nextVisibility === "public" ? "Ligue publiée en public." : "Ligue publiée en privé.");
+      onRefresh();
+    } catch (error: any) {
+      setOnlineMessage(error?.message || "Erreur publication online.");
+    } finally {
+      setOnlineBusy(false);
+    }
+  }
+
+  async function removeOnline() {
+    if (!onlineId) return;
+    if (!confirm("Retirer cette ligue du online ? La ligue locale sera conservée.")) return;
+    try {
+      setOnlineBusy(true);
+      setOnlineMessage(null);
+      await deleteBabyFootLeagueOnline(league as any);
+      const next = { ...(league as any), onlineId: null, online: null, visibility: undefined, shareCode: null };
+      upsertBabyFootLeague(next as any);
+      setOnlineMessage("Ligue retirée du online.");
+      onRefresh();
+    } catch (error: any) {
+      setOnlineMessage(error?.message || "Erreur suppression online.");
+    } finally {
+      setOnlineBusy(false);
+    }
+  }
+
   return (
     <div style={{ display: "grid", gridTemplateRows: "auto auto 1fr", gap: 10, height: "calc(100vh - 218px)", minHeight: 430, overflow: "hidden" }}>
       <div style={{ ...panel(theme), padding: 10 }}>
@@ -770,6 +820,16 @@ function LeagueDetail({ theme, go, store, league, initialTab, onRefresh, onDelet
           <MiniStat theme={theme} label={league.kind === "season" ? "À VENIR" : "MATCHS"} value={league.kind === "season" ? upcomingCount : playedCount} />
           <HighlightMiniStat theme={theme} item={highlights[highlightIndex % Math.max(1, highlights.length)]} getAvatar={participantAvatar} index={highlightIndex} fallback={leader} />
         </div>
+        <OnlineLeagueControls
+          theme={theme}
+          league={league as any}
+          busy={onlineBusy}
+          message={onlineMessage}
+          onPublishPrivate={() => publishOrSyncOnline("private")}
+          onPublishPublic={() => publishOrSyncOnline("public")}
+          onSync={() => publishOrSyncOnline(onlineVisibility)}
+          onRemove={removeOnline}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: league.kind === "infinite" ? "repeat(3, 1fr)" : "repeat(4, 1fr)", gap: 8 }}>
@@ -785,6 +845,59 @@ function LeagueDetail({ theme, go, store, league, initialTab, onRefresh, onDelet
         {tab === "standings" && <StandingsPane theme={theme} rows={rows} getAvatar={participantAvatar} />}
         {tab === "stats" && <LeagueStatsPane theme={theme} league={league} rows={rows} getAvatar={participantAvatar} />}
       </div>
+    </div>
+  );
+}
+
+
+
+function OnlineLeagueControls({
+  theme,
+  league,
+  busy,
+  message,
+  onPublishPrivate,
+  onPublishPublic,
+  onSync,
+  onRemove,
+}: {
+  theme: any;
+  league: BabyFootLeague & any;
+  busy: boolean;
+  message: string | null;
+  onPublishPrivate: () => void;
+  onPublishPublic: () => void;
+  onSync: () => void;
+  onRemove: () => void;
+}) {
+  const onlineId = getBabyFootLeagueOnlineId(league);
+  const visibility = league.visibility === "public" ? "public" : "private";
+  return (
+    <div style={{ marginTop: 10, border: `1px solid ${onlineId ? theme.primary + "77" : theme.borderSoft ?? "rgba(255,255,255,.14)"}`, borderRadius: 14, padding: 8, background: onlineId ? `${theme.primary}10` : "rgba(255,255,255,.035)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 1000, color: onlineId ? theme.primary : theme.textSoft }}>
+            {onlineId ? `ONLINE ${visibility === "public" ? "PUBLIC" : "PRIVÉ"}` : "ONLINE NON PUBLIÉ"}
+          </div>
+          <div style={{ ...small(theme), fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {onlineId ? `Code: ${league.shareCode || "—"}` : "Publie la ligue pour partage, spectateurs, forum et résultats distants."}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {onlineId ? (
+            <>
+              <button type="button" disabled={busy} style={{ ...ghostBtn(theme), padding: "8px 9px", fontSize: 11 }} onClick={onSync}>SYNC</button>
+              <button type="button" disabled={busy} style={{ ...dangerBtn(theme), padding: "8px 9px", fontSize: 11 }} onClick={onRemove}>OFF</button>
+            </>
+          ) : (
+            <>
+              <button type="button" disabled={busy} style={{ ...ghostBtn(theme), padding: "8px 9px", fontSize: 11 }} onClick={onPublishPrivate}>PRIVÉ</button>
+              <button type="button" disabled={busy} style={{ ...primaryBtn(theme), padding: "8px 9px", fontSize: 11 }} onClick={onPublishPublic}>PUBLIC</button>
+            </>
+          )}
+        </div>
+      </div>
+      {message ? <div style={{ ...small(theme), color: message.toLowerCase().includes("erreur") ? "#ff8080" : theme.primary, marginTop: 6, fontWeight: 900 }}>{message}</div> : null}
     </div>
   );
 }
@@ -1301,6 +1414,7 @@ function HistoryImportPanel({ theme, store, league, onDone }: { theme: any; stor
                       <button type="button" style={{ ...primaryBtn(theme), padding: "7px 10px" }} onClick={() => {
                         if (!home || !away) return;
                         addBabyFootLeagueManualMatch(league.id, home.id, away.id, c.scoreHome, c.scoreAway, { playedAt: c.date });
+                        submitBabyFootLeagueOnlineResult(league as any, { homeId: home.id, awayId: away.id, scoreHome: c.scoreHome, scoreAway: c.scoreAway, playedAt: c.date, source: "manual" }).catch(() => {});
                         onDone();
                         setOpen(false);
                       }}>Ajouter</button>
@@ -1332,7 +1446,13 @@ function ManualMatchForm({ theme, league, onDone }: { theme: any; league: BabyFo
         <select value={awayId} onChange={(e) => setAwayId(e.target.value)} style={input(theme)}>{league.participants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <input type="number" min={0} value={away} onChange={(e) => setAway(Number(e.target.value))} style={input(theme)} />
       </div>
-      <button style={{ ...primaryBtn(theme), marginTop: 10, width: "100%" }} onClick={() => { if (homeId === awayId) return alert("Choisis deux participants différents."); addBabyFootLeagueManualMatch(league.id, homeId, awayId, home, away); onDone(); }}>AJOUTER LE RÉSULTAT</button>
+      <button style={{ ...primaryBtn(theme), marginTop: 10, width: "100%" }} onClick={() => {
+        if (homeId === awayId) return alert("Choisis deux participants différents.");
+        const playedAt = Date.now();
+        addBabyFootLeagueManualMatch(league.id, homeId, awayId, home, away, { playedAt });
+        submitBabyFootLeagueOnlineResult(league as any, { homeId, awayId, scoreHome: home, scoreAway: away, playedAt, source: "manual" }).catch(() => {});
+        onDone();
+      }}>AJOUTER LE RÉSULTAT</button>
     </div>
   );
 }

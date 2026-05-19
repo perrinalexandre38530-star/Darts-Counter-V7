@@ -19,6 +19,7 @@ import {
   setBabyFootFixtureScore,
   type BabyFootLeague,
 } from "../../lib/babyfootLeagueStore";
+import { submitBabyFootLeagueOnlineResult } from "../../lib/babyfootLeagueOnlineApi";
 
 import { sendCastSnapshot } from "../../cast/googleCast";
 import {
@@ -763,6 +764,20 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       leagueResultSavedRef.current = true;
       try {
         setBabyFootFixtureScore(String(leagueId), String(fixtureId), displayedScore.scoreA, displayedScore.scoreB);
+        const league = loadBabyFootLeagues().find((l) => l.id === String(leagueId));
+        const fixture = league?.fixtures.find((f) => f.id === String(fixtureId));
+        if (league && fixture) {
+          submitBabyFootLeagueOnlineResult(league as any, {
+            fixtureId: String(fixtureId),
+            homeId: fixture.homeId,
+            awayId: fixture.awayId,
+            scoreHome: displayedScore.scoreA,
+            scoreAway: displayedScore.scoreB,
+            playedAt: state.finishedAt ?? Date.now(),
+            source: "calendar",
+            stats: richStats,
+          }).catch((error) => console.warn("[BabyFootPlay] unable to sync online league fixture score", error));
+        }
       } catch (e) {
         console.warn("[BabyFootPlay] unable to save league fixture score", e);
       }
@@ -856,7 +871,17 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       alert("Impossible d’ajouter ce match : les deux joueurs/camps doivent déjà exister dans la ligue infinie choisie.");
       return;
     }
-    addBabyFootLeagueManualMatch(league.id, a.id, b.id, displayedScore.scoreA, displayedScore.scoreB, { playedAt: state.finishedAt ?? Date.now() });
+    const playedAt = state.finishedAt ?? Date.now();
+    addBabyFootLeagueManualMatch(league.id, a.id, b.id, displayedScore.scoreA, displayedScore.scoreB, { playedAt });
+    submitBabyFootLeagueOnlineResult(league as any, {
+      homeId: a.id,
+      awayId: b.id,
+      scoreHome: displayedScore.scoreA,
+      scoreAway: displayedScore.scoreB,
+      playedAt,
+      source: "manual",
+      stats: richStats,
+    }).catch((error) => console.warn("[BabyFootPlay] unable to sync online infinite league result", error));
     setLeagueSaveDone(league.name);
   };
 

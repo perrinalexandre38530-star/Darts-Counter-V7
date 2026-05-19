@@ -43,6 +43,24 @@ export type BabyFootLeague = {
   lossPts: number;
   participants: BabyFootLeagueParticipant[];
   fixtures: BabyFootLeagueFixture[];
+
+  // ONLINE NAS (additif, optionnel)
+  onlineId?: string | null;
+  visibility?: "private" | "public";
+  shareCode?: string | null;
+  ownerUserId?: string | null;
+  onlineStatus?: string | null;
+  onlineUpdatedAt?: string | null;
+  onlineCreatedAt?: string | null;
+  online?: {
+    id?: string | null;
+    visibility?: "private" | "public";
+    shareCode?: string | null;
+    ownerUserId?: string | null;
+    status?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
 };
 
 export type BabyFootLeagueStandingRow = {
@@ -117,6 +135,22 @@ function normalizeLeague(raw: any): BabyFootLeague | null {
     lossPts: Number.isFinite(Number(raw.lossPts)) ? Number(raw.lossPts) : 0,
     participants,
     fixtures,
+    onlineId: raw.onlineId || raw.online?.id || null,
+    visibility: raw.visibility === "public" || raw.online?.visibility === "public" ? "public" : (raw.visibility === "private" || raw.online?.visibility === "private" ? "private" : undefined),
+    shareCode: raw.shareCode || raw.online?.shareCode || null,
+    ownerUserId: raw.ownerUserId || raw.online?.ownerUserId || null,
+    onlineStatus: raw.onlineStatus || raw.online?.status || null,
+    onlineUpdatedAt: raw.onlineUpdatedAt || raw.online?.updatedAt || null,
+    onlineCreatedAt: raw.onlineCreatedAt || raw.online?.createdAt || null,
+    online: raw.online || (raw.onlineId ? {
+      id: raw.onlineId,
+      visibility: raw.visibility === "public" ? "public" : "private",
+      shareCode: raw.shareCode || null,
+      ownerUserId: raw.ownerUserId || null,
+      status: raw.onlineStatus || "active",
+      createdAt: raw.onlineCreatedAt || null,
+      updatedAt: raw.onlineUpdatedAt || null,
+    } : null),
   };
 }
 
