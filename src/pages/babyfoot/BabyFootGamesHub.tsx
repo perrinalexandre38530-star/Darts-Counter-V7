@@ -40,7 +40,7 @@ function getTicker(id: string | null | undefined) {
   return null;
 }
 
-type Section = "match" | "fun" | "defis" | "training";
+type Section = "match" | "fun" | "defis" | "training" | "tournoi";
 
 type Props = {
   onBack: () => void;
@@ -86,6 +86,17 @@ const CARDS: CardDef[] = [
     infoTitle: "Fun",
     infoBody: "Variantes fun à venir : golden goal, handicaps, défis rapides.",
     tickerId: "babyfoot_fun",
+  },
+
+  {
+    id: "tournoi",
+    title: "TOURNOIS",
+    subtitle: "Tournoi • Ligue",
+    status: "BETA",
+    infoTitle: "Tournois / Ligues",
+    infoBody:
+      "Accès aux tournois et aux ligues baby-foot. La ligue propose une saison calendrier ou un championnat infini amical.",
+    tickerId: "babyfoot_tournoi",
   },
   {
     id: "defis",

@@ -53,6 +53,7 @@ function getTicker(id: string | null | undefined) {
 type Props = {
   onBack: () => void;
   go: (t: any, p?: any) => void;
+  onOpenLeague?: () => void;
 };
 
 type ModeId =
@@ -165,12 +166,12 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Ligue Baby-Foot",
     infoBodyKey: "babyfoot.modes.league.infoBody",
     infoBodyDefault:
-      "Ligue (à venir)\n" +
-      "• Saisons, clubs, classement, ELO/points, calendrier.\n" +
-      "• Stats : buts, séries, victoires/défaites, duels, compositions.\n" +
-      "• Intégration : les matchs du module MATCH alimenteront la ligue.",
-    enabled: false,
-    status: "WIP",
+      "Ligue Baby-Foot\n" +
+      "• Saison calendrier ou championnat infini amical.\n" +
+      "• SOLO = 1v1 uniquement. ÉQUIPE = 2v2 et 2v1 fusionnés.\n" +
+      "• Classement local automatique sur les matchs ajoutés.",
+    enabled: true,
+    status: "BETA",
     tickerId: "babyfoot_ligue",
   },
 ];
@@ -185,7 +186,7 @@ const TICKER_Y: Partial<Record<ModeId, number>> = {
   league: 50,
 };
 
-export default function BabyFootMenuMatch({ onBack, go }: Props) {
+export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
   const { theme } = useTheme();
   const lang = useLang() as any;
   const t = lang?.t ?? ((_: string, fallback: string) => fallback);
@@ -197,7 +198,11 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
   }
 
   function openLeague() {
-    // placeholder (page à créer plus tard)
+    if (onOpenLeague) return onOpenLeague();
+    // Fallback si le menu est monté sans callback dédié.
+    try {
+      go("babyfoot_league");
+    } catch {}
   }
 
   function navigate(mode: ModeId) {

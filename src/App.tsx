@@ -250,6 +250,7 @@ import BabyFootTeamEdit from "./pages/babyfoot/BabyFootTeamEdit";
 import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
 import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
 import BabyFootStatsCenterPage from "./pages/babyfoot/BabyFootStatsCenterPage";
+import BabyFootLeagueHome from "./pages/babyfoot/BabyFootLeagueHome";
 
 // ✅ NEW: Ping-Pong (LOCAL)
 import PingPongHome from "./pages/pingpong/PingPongHome";
@@ -3563,6 +3564,10 @@ try {
 
       case "babyfoot_config":
         page = <BabyFootConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "babyfoot_league":
+        page = <BabyFootLeagueHome go={go} />;
         break;
 
       case "babyfoot_play":

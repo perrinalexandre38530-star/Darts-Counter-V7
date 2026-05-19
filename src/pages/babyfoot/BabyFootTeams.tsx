@@ -100,10 +100,19 @@ export default function BabyFootTeams({ go }: Props) {
     setTeams(loadBabyFootTeams());
   }
 
+  function isReturningToLeagueCreate() {
+    return sessionStorage.getItem("return_to_babyfoot_league") === "1";
+  }
+
+  function backFromTeams() {
+    if (isReturningToLeagueCreate()) return go("babyfoot_league" as any);
+    go("babyfoot_menu" as any);
+  }
+
   function handleCreate() {
     const team = createBabyFootTeam();
     upsertBabyFootTeam(team);
-    go("babyfoot_team_edit" as any, { teamId: team.id });
+    go("babyfoot_team_edit" as any, { teamId: team.id, returnToLeagueCreate: isReturningToLeagueCreate() });
   }
 
   function handleDelete(teamId: string) {
@@ -192,7 +201,7 @@ export default function BabyFootTeams({ go }: Props) {
 
           {/* Main content (clickable => edit) */}
           <button
-            onClick={() => go("babyfoot_team_edit" as any, { teamId: tm.id })}
+            onClick={() => go("babyfoot_team_edit" as any, { teamId: tm.id, returnToLeagueCreate: isReturningToLeagueCreate() })}
             style={cardMainBtn(theme)}
             title={t("common.edit", "Éditer")}
           >
@@ -369,7 +378,7 @@ export default function BabyFootTeams({ go }: Props) {
               zIndex: 3,
             }}
           >
-            <BackDot onClick={() => go("babyfoot_menu" as any)} />
+            <BackDot onClick={backFromTeams} />
           </div>
 
           {/* InfoDot superposé */}

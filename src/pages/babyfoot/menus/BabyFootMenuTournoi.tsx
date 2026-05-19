@@ -12,9 +12,10 @@ import InfoDot from "../../../components/InfoDot";
 type Props = {
   onBack: () => void;
   go: (t: any, p?: any) => void;
+  onOpenLeague?: () => void;
 };
 
-export default function BabyFootMenuTournoi({ onBack, go }: Props) {
+export default function BabyFootMenuTournoi({ onBack, go, onOpenLeague }: Props) {
   const { theme } = useTheme();
 
   const openTournaments = () => {
@@ -37,8 +38,15 @@ export default function BabyFootMenuTournoi({ onBack, go }: Props) {
           <div style={pill}>OPEN</div>
         </button>
 
+        <button style={card(theme)} onClick={() => onOpenLeague?.()}>
+          <div style={cardTitle}>LIGUE</div>
+          <div style={cardSub}>Saison calendrier • championnat infini amical</div>
+          <div style={pill}>NEW</div>
+        </button>
+
         <div style={note}>
-          Ici, on enverra vers le module Tournois global, mais avec un contexte baby-foot (forceMode).
+          LIGUE est séparée de TOURNOIS : tu peux créer une saison classique ou une ligue amicale infinie.
+          Le mode ÉQUIPE regroupe 2v2 et 2v1. Le mode SOLO reste strictement 1v1.
         </div>
       </div>
     </div>

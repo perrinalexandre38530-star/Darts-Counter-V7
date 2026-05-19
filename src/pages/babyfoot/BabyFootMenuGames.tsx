@@ -15,12 +15,13 @@ import BabyFootMenuFun from "./menus/BabyFootMenuFun";
 import BabyFootMenuDefis from "./menus/BabyFootMenuDefis";
 import BabyFootMenuTraining from "./menus/BabyFootMenuTraining";
 import BabyFootMenuTournoi from "./menus/BabyFootMenuTournoi";
+import BabyFootLeagueHome from "./BabyFootLeagueHome";
 
 type Props = {
   go: (tab: any, params?: any) => void;
 };
 
-type Section = "hub" | "match" | "fun" | "defis" | "training" | "tournoi" | "teams";
+type Section = "hub" | "match" | "fun" | "defis" | "training" | "tournoi" | "league" | "teams";
 
 export default function BabyFootMenuGames({ go }: Props) {
   const [section, setSection] = React.useState<Section>("hub");
@@ -41,7 +42,7 @@ export default function BabyFootMenuGames({ go }: Props) {
   };
 
   if (section === "match")
-    return <BabyFootMenuMatch onBack={backToHub} go={go} />;
+    return <BabyFootMenuMatch onBack={backToHub} go={go} onOpenLeague={() => setSection("league")} />;
   if (section === "training")
     return <BabyFootMenuTraining onBack={backToHub} go={go} />;
   if (section === "fun") return <BabyFootMenuFun onBack={backToHub} go={go} />;
@@ -49,7 +50,9 @@ export default function BabyFootMenuGames({ go }: Props) {
     return <BabyFootMenuDefis onBack={backToHub} go={go} />;
   if (section === "teams") return <BabyFootTeams go={go} params={{}} />;
   if (section === "tournoi")
-    return <BabyFootMenuTournoi onBack={backToHub} go={go} />;
+    return <BabyFootMenuTournoi onBack={backToHub} go={go} onOpenLeague={() => setSection("league")} />;
+  if (section === "league")
+    return <BabyFootLeagueHome go={go} onBack={() => setSection("tournoi")} />;
 
   return (
     <BabyFootGamesHub
@@ -61,6 +64,7 @@ export default function BabyFootMenuGames({ go }: Props) {
         if (s === "defis") return setSection("defis");
         if (s === "teams") return setSection("teams");
         if (s === "tournoi") return setSection("tournoi");
+        if (s === "league") return setSection("league");
       }}
     />
   );
