@@ -887,6 +887,49 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   const winnerLabel = state.winner === "A" ? visualA.name : state.winner === "B" ? visualB.name : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
+  const finishedEndPayload = {
+    kind: "babyfoot",
+    sport: "babyfoot",
+    matchId: state.matchId,
+    id: state.matchId,
+    createdAt: state.createdAt,
+    finishedAt: state.finishedAt ?? Date.now(),
+    winnerTeam: state.winner || (displayedScore.scoreA > displayedScore.scoreB ? "A" : displayedScore.scoreB > displayedScore.scoreA ? "B" : "D"),
+    teamA: state.teamA,
+    teamB: state.teamB,
+    teamAProfileIds: [...(state.teamAProfileIds || [])],
+    teamBProfileIds: [...(state.teamBProfileIds || [])],
+    mode: state.mode,
+    scoreA: displayedScore.scoreA,
+    scoreB: displayedScore.scoreB,
+    durationMs,
+    players: players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      avatarUrl: player.avatarUrl ?? null,
+      avatarDataUrl: player.avatarDataUrl ?? null,
+      teamIndex: teamAIds.includes(String(player.id)) ? 0 : teamBIds.includes(String(player.id)) ? 1 : undefined,
+      team: teamAIds.includes(String(player.id)) ? "A" : teamBIds.includes(String(player.id)) ? "B" : undefined,
+    })),
+    summary: {
+      teamA: state.teamA,
+      teamB: state.teamB,
+      scoreA: displayedScore.scoreA,
+      scoreB: displayedScore.scoreB,
+      durationMs,
+      mode: state.mode,
+      stats: richStats,
+      specialStats: state.specialStats,
+      target: state.target,
+      setsEnabled: state.setsEnabled,
+      setsA: state.setsA,
+      setsB: state.setsB,
+    },
+    events: state.events || [],
+    leagueId: (params as any)?.leagueId || null,
+    fixtureId: (params as any)?.fixtureId || null,
+    fromLeague: Boolean((params as any)?.fromLeague),
+  };
 
   const individualStats = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number }>();
@@ -1212,7 +1255,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           scoreLine={state.setsEnabled ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}` : `${displayedScore.scoreA}–${displayedScore.scoreB}`}
           detailsLine={detailsLine}
           onReplay={() => setState(startMatch())}
-          onStats={() => go("babyfoot_stats_history" as any, { focusMatchId: state.matchId })}
+          onStats={() => go("babyfoot_end" as any, { matchId: state.matchId, matchPayload: finishedEndPayload, leagueId: (params as any)?.leagueId || null, fixtureId: (params as any)?.fixtureId || null, fromLeague: Boolean((params as any)?.fromLeague) })}
           onClose={returnAfterPlay}
         >
           {infiniteLeagueChoices.length ? (

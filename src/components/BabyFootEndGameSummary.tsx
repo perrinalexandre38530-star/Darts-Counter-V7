@@ -124,7 +124,7 @@ export default function BabyFootEndGameSummary({
               boxShadow: "0 16px 44px rgba(0,0,0,0.45)",
             }}
           >
-            VOIR STATS / HISTORIQUE
+            VOIR PAGE FIN / STATS
           </button> : null}
 
           <button

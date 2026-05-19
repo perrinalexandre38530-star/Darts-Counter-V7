@@ -245,6 +245,7 @@ import BabyFootHome from "./pages/babyfoot/BabyFootHome";
 import BabyFootMenuGames from "./pages/babyfoot/BabyFootMenuGames";
 import BabyFootConfig from "./pages/babyfoot/BabyFootConfig";
 import BabyFootPlay from "./pages/babyfoot/BabyFootPlay";
+import BabyFootEndPage from "./pages/babyfoot/BabyFootEndPage";
 import BabyFootTeams from "./pages/babyfoot/BabyFootTeams";
 import BabyFootTeamEdit from "./pages/babyfoot/BabyFootTeamEdit";
 import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
@@ -768,6 +769,7 @@ type Tab =
   | "babyfoot_menu"
   | "babyfoot_config"
   | "babyfoot_play"
+  | "babyfoot_end"
   | "babyfoot_stats_history"
   | "babyfoot_stats_center"
   // ✅ NEW: Tabs Ping-Pong (LOCAL)
@@ -3574,6 +3576,10 @@ try {
 
       case "babyfoot_play":
         page = <BabyFootPlay go={go} params={routeParams} onFinish={(m: any) => pushBabyFootHistory(m)} />;
+        break;
+
+      case "babyfoot_end":
+        page = <BabyFootEndPage go={go} store={store} params={routeParams} />;
         break;
 
 // ✅ NEW: Teams Baby-Foot (CRUD local)

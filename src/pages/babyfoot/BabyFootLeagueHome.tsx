@@ -58,6 +58,7 @@ type LeagueDraft = {
   logoDataUrl?: string | null;
   selectedTeamIds?: string[];
   selectedProfileIds?: string[];
+  onlineAccess?: "none" | "private" | "public";
 };
 
 const DEFAULT_PARTICIPANTS = "BSS\nPissette FC\nRicard United\nPastaga Boys";
@@ -79,6 +80,7 @@ function readDraft(): LeagueDraft | null {
       logoDataUrl: parsed.logoDataUrl || null,
       selectedTeamIds: Array.isArray(parsed.selectedTeamIds) ? parsed.selectedTeamIds.map(String) : [],
       selectedProfileIds: Array.isArray(parsed.selectedProfileIds) ? parsed.selectedProfileIds.map(String) : [],
+      onlineAccess: parsed.onlineAccess === "public" ? "public" : parsed.onlineAccess === "private" ? "private" : "none",
     };
   } catch {
     return null;
@@ -416,6 +418,8 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
   const [logoDataUrl, setLogoDataUrl] = React.useState<string | null>(draft?.logoDataUrl || null);
   const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>(draft?.selectedTeamIds || []);
   const [selectedProfileIds, setSelectedProfileIds] = React.useState<string[]>(draft?.selectedProfileIds || []);
+  const [onlineAccess, setOnlineAccess] = React.useState<"none" | "private" | "public">((draft?.onlineAccess as any) || "none");
+  const [creating, setCreating] = React.useState(false);
   const [showTeamPicker, setShowTeamPicker] = React.useState(false);
   const [showProfilePicker, setShowProfilePicker] = React.useState(false);
   const [showLogoPicker, setShowLogoPicker] = React.useState(false);
@@ -431,7 +435,7 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const currentDraft: LeagueDraft = { name, kind, scope, format, participants, logoDataUrl, selectedTeamIds, selectedProfileIds };
+  const currentDraft: LeagueDraft = { name, kind, scope, format, participants, logoDataUrl, selectedTeamIds, selectedProfileIds, onlineAccess };
 
   function saveCurrentDraft() {
     writeDraft(currentDraft);
@@ -449,7 +453,8 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
     setShowProfilePicker(false);
   }
 
-  function submit() {
+  async function submit() {
+    if (creating) return;
     const lines = participants.split(/\n|,/g).map((s) => s.trim()).filter(Boolean);
     let entries: Array<string | { id?: string; name: string; avatarDataUrl?: string | null; logoDataUrl?: string | null; refId?: string | null }> = lines;
 
@@ -465,8 +470,22 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
     }
 
     if (entries.length < 2) return alert("Ajoute au moins 2 participants.");
-    const league = createBabyFootLeague({ name, kind, scope, format, participants: entries, logoDataUrl });
-    onCreated(league.id);
+    setCreating(true);
+    try {
+      let league: any = createBabyFootLeague({ name, kind, scope, format, participants: entries, logoDataUrl });
+      if (onlineAccess !== "none") {
+        try {
+          const remote = await publishBabyFootLeagueOnline({ ...(league as any), visibility: onlineAccess }, onlineAccess as BabyFootLeagueVisibility);
+          league = { ...(league as any), ...(remote as any), visibility: onlineAccess };
+          upsertBabyFootLeague(league as any);
+        } catch (error: any) {
+          alert(error?.message || "Ligue créée localement, mais publication online impossible. Vérifie la connexion au NAS / ton compte.");
+        }
+      }
+      onCreated(league.id);
+    } finally {
+      setCreating(false);
+    }
   }
 
   function goCreateTeam() {
@@ -527,6 +546,21 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
         </>
       )}
 
+      <Label theme={theme} text="Online" />
+      <div style={{ ...panel(theme), padding: 10, marginBottom: 10 }}>
+        <div style={{ ...small(theme), marginBottom: 8 }}>
+          Pour jouer à distance, les joueurs doivent avoir un compte online. Cette option publie la ligue au NAS dès sa création.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          <Choice theme={theme} active={onlineAccess === "none"} onClick={() => setOnlineAccess("none")} title="LOCAL" sub="Appareil" />
+          <Choice theme={theme} active={onlineAccess === "private"} onClick={() => setOnlineAccess("private")} title="PRIVÉ" sub="Code" />
+          <Choice theme={theme} active={onlineAccess === "public"} onClick={() => setOnlineAccess("public")} title="PUBLIC" sub="Spectateurs" />
+        </div>
+        <div style={{ ...small(theme), marginTop: 8 }}>
+          Étape suivante : les participants online seront liés à des comptes/amis pour lancer leurs matchs sans que le créateur soit présent.
+        </div>
+      </div>
+
       <Label theme={theme} text={scope === "solo" ? "Joueurs / profils" : "Équipes / camps"} />
 
       {scope === "team" ? (
@@ -546,7 +580,7 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
         <button style={ghostBtn(theme)} onClick={onCancel}>ANNULER</button>
-        <button style={primaryBtn(theme)} onClick={submit}>CRÉER</button>
+        <button style={primaryBtn(theme)} disabled={creating} onClick={submit}>{creating ? "CRÉATION..." : "CRÉER"}</button>
       </div>
 
       {showTeamPicker && (
