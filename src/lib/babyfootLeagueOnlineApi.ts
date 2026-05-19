@@ -9,6 +9,30 @@ import type { BabyFootLeague, BabyFootLeagueFixture } from "./babyfootLeagueStor
 
 export type BabyFootLeagueVisibility = "private" | "public";
 
+
+export type BabyFootOnlineFriend = {
+  id: string;
+  userId: string;
+  displayName: string;
+  nickname?: string;
+  avatarUrl?: string | null;
+  status?: string;
+};
+
+export async function listBabyFootOnlineFriends(): Promise<BabyFootOnlineFriend[]> {
+  const res = await apiGet("/online/friends");
+  const list = Array.isArray(res?.friends) ? res.friends : [];
+  return list.map((f: any) => ({
+    id: String(f?.userId || f?.id || ""),
+    userId: String(f?.userId || f?.id || ""),
+    displayName: String(f?.displayName || f?.nickname || "Ami"),
+    nickname: f?.nickname || undefined,
+    avatarUrl: f?.avatarUrl || f?.avatar_url || null,
+    status: f?.status || "offline",
+  })).filter((f: BabyFootOnlineFriend) => !!f.userId);
+}
+
+
 function normalizeVisibility(value: any): BabyFootLeagueVisibility {
   return String(value || "private").toLowerCase() === "public" ? "public" : "private";
 }
@@ -140,4 +164,11 @@ export async function addBabyFootLeagueForumPost(league: BabyFootLeague & any, t
   if (!onlineId) throw new Error("Ligue non publiée online");
   const res = await apiPost(`/babyfoot/leagues/${encodeURIComponent(onlineId)}/forum/${encodeURIComponent(threadId)}`, { message });
   return res?.post || null;
+}
+
+
+export async function startBabyFootLeagueFixtureOnline(league: BabyFootLeague & any, fixtureId: string) {
+  const onlineId = getBabyFootLeagueOnlineId(league);
+  if (!onlineId) throw new Error("Ligue non publiée online");
+  return apiPost(`/babyfoot/leagues/${encodeURIComponent(onlineId)}/fixtures/${encodeURIComponent(String(fixtureId || ""))}/lobby`, {});
 }

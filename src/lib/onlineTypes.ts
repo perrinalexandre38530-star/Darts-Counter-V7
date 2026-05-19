@@ -55,7 +55,8 @@ export type OnlineMatch = {
     | "killer"
     | "shanghai"
     | "training_x01"
-    | "clock";
+    | "clock"
+    | "babyfoot";
   payload: any;
   startedAt: number;
   finishedAt: number;
@@ -83,7 +84,7 @@ export type OnlineRoom = {
   code: string; // code à partager, ex: AB42FK
   hostUserId: string;
   status: "lobby" | "playing" | "finished";
-  mode: "x01" | "cricket" | "training_x01";
+  mode: "x01" | "cricket" | "training_x01" | "babyfoot";
   createdAt: number;
   updatedAt: number;
 };

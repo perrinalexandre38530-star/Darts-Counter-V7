@@ -15,6 +15,10 @@ export type BabyFootLeagueParticipant = {
   name: string;
   avatarDataUrl?: string | null;
   refId?: string | null;
+  onlineUserId?: string | null;
+  onlineDisplayName?: string | null;
+  onlineAvatarUrl?: string | null;
+  role?: "player" | "admin" | "spectator" | string;
 };
 
 export type BabyFootLeagueFixture = {
@@ -101,7 +105,16 @@ function normalizeLeague(raw: any): BabyFootLeague | null {
   const format: BabyFootLeagueFormat = raw.format === "double" ? "double" : "single";
   const participants = Array.isArray(raw.participants)
     ? raw.participants
-        .map((p: any) => ({ id: String(p?.id || uid("p")), name: String(p?.name || "Participant").trim() || "Participant", avatarDataUrl: p?.avatarDataUrl ?? p?.logoDataUrl ?? null, refId: p?.refId ? String(p.refId) : null }))
+        .map((p: any) => ({
+          id: String(p?.id || uid("p")),
+          name: String(p?.name || "Participant").trim() || "Participant",
+          avatarDataUrl: p?.avatarDataUrl ?? p?.logoDataUrl ?? p?.onlineAvatarUrl ?? null,
+          refId: p?.refId ? String(p.refId) : null,
+          onlineUserId: p?.onlineUserId || p?.userId || p?.online_user_id || null,
+          onlineDisplayName: p?.onlineDisplayName || p?.displayName || p?.nickname || null,
+          onlineAvatarUrl: p?.onlineAvatarUrl || p?.avatarUrl || null,
+          role: p?.role || "player",
+        }))
         .filter((p: BabyFootLeagueParticipant) => p.name)
     : [];
   const participantIds = new Set(participants.map((p: BabyFootLeagueParticipant) => p.id));
@@ -183,7 +196,7 @@ export function createBabyFootLeague(input: {
   kind: BabyFootLeagueKind;
   scope: BabyFootLeagueScope;
   format?: BabyFootLeagueFormat;
-  participants: Array<string | { id?: string; name: string; avatarDataUrl?: string | null; logoDataUrl?: string | null; refId?: string | null }>;
+  participants: Array<string | { id?: string; name: string; avatarDataUrl?: string | null; logoDataUrl?: string | null; refId?: string | null; onlineUserId?: string | null; onlineDisplayName?: string | null; onlineAvatarUrl?: string | null; role?: string }>;
   logoDataUrl?: string | null;
   winPts?: number;
   drawPts?: number;
@@ -195,15 +208,19 @@ export function createBabyFootLeague(input: {
     .map((raw) => {
       if (typeof raw === "string") {
         const name = raw.trim();
-        return name ? { id: uid("p"), name, avatarDataUrl: null, refId: null } : null;
+        return name ? { id: uid("p"), name, avatarDataUrl: null, refId: null, onlineUserId: null, onlineDisplayName: null, onlineAvatarUrl: null, role: "player" } : null;
       }
       const name = String(raw?.name || "").trim();
       if (!name) return null;
       return {
         id: String(raw?.id || uid("p")),
         name,
-        avatarDataUrl: raw?.avatarDataUrl ?? raw?.logoDataUrl ?? null,
+        avatarDataUrl: raw?.avatarDataUrl ?? raw?.logoDataUrl ?? raw?.onlineAvatarUrl ?? null,
         refId: raw?.refId ? String(raw.refId) : null,
+        onlineUserId: raw?.onlineUserId || null,
+        onlineDisplayName: raw?.onlineDisplayName || null,
+        onlineAvatarUrl: raw?.onlineAvatarUrl || null,
+        role: raw?.role || "player",
       };
     })
     .filter(Boolean) as BabyFootLeagueParticipant[];

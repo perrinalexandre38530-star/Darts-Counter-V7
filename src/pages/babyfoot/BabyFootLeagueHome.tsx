@@ -42,7 +42,10 @@ import {
   publishBabyFootLeagueOnline,
   syncBabyFootLeagueOnline,
   submitBabyFootLeagueOnlineResult,
+  listBabyFootOnlineFriends,
+  startBabyFootLeagueFixtureOnline,
   type BabyFootLeagueVisibility,
+  type BabyFootOnlineFriend,
 } from "../../lib/babyfootLeagueOnlineApi";
 
 type Props = { go: (tab: any, params?: any) => void; onBack?: () => void; store?: any; params?: any };
@@ -59,6 +62,7 @@ type LeagueDraft = {
   selectedTeamIds?: string[];
   selectedProfileIds?: string[];
   onlineAccess?: "none" | "private" | "public";
+  participantOnlineLinks?: Record<string, string>;
 };
 
 const DEFAULT_PARTICIPANTS = "BSS\nPissette FC\nRicard United\nPastaga Boys";
@@ -81,6 +85,7 @@ function readDraft(): LeagueDraft | null {
       selectedTeamIds: Array.isArray(parsed.selectedTeamIds) ? parsed.selectedTeamIds.map(String) : [],
       selectedProfileIds: Array.isArray(parsed.selectedProfileIds) ? parsed.selectedProfileIds.map(String) : [],
       onlineAccess: parsed.onlineAccess === "public" ? "public" : parsed.onlineAccess === "private" ? "private" : "none",
+      participantOnlineLinks: parsed.participantOnlineLinks && typeof parsed.participantOnlineLinks === "object" ? parsed.participantOnlineLinks : {},
     };
   } catch {
     return null;
@@ -419,6 +424,10 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
   const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>(draft?.selectedTeamIds || []);
   const [selectedProfileIds, setSelectedProfileIds] = React.useState<string[]>(draft?.selectedProfileIds || []);
   const [onlineAccess, setOnlineAccess] = React.useState<"none" | "private" | "public">((draft?.onlineAccess as any) || "none");
+  const [participantOnlineLinks, setParticipantOnlineLinks] = React.useState<Record<string, string>>(draft?.participantOnlineLinks || {});
+  const [onlineFriends, setOnlineFriends] = React.useState<BabyFootOnlineFriend[]>([]);
+  const [loadingFriends, setLoadingFriends] = React.useState(false);
+  const [showOnlineLinker, setShowOnlineLinker] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [showTeamPicker, setShowTeamPicker] = React.useState(false);
   const [showProfilePicker, setShowProfilePicker] = React.useState(false);
@@ -435,7 +444,7 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const currentDraft: LeagueDraft = { name, kind, scope, format, participants, logoDataUrl, selectedTeamIds, selectedProfileIds, onlineAccess };
+  const currentDraft: LeagueDraft = { name, kind, scope, format, participants, logoDataUrl, selectedTeamIds, selectedProfileIds, onlineAccess, participantOnlineLinks };
 
   function saveCurrentDraft() {
     writeDraft(currentDraft);
@@ -453,10 +462,44 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
     setShowProfilePicker(false);
   }
 
+  function draftParticipantNames() {
+    if (scope === "team" && selectedTeamIds.length >= 2) return teams.filter((t) => selectedTeamIds.includes(String(t.id))).map((t) => t.name).filter(Boolean);
+    if (scope === "solo" && selectedProfileIds.length >= 2) return profiles.filter((p) => selectedProfileIds.includes(String(p.id))).map((p) => p.name).filter(Boolean);
+    return participants.split(/\n|,/g).map((s) => s.trim()).filter(Boolean);
+  }
+
+  async function openOnlineLinker() {
+    setShowOnlineLinker(true);
+    if (onlineFriends.length || loadingFriends) return;
+    try {
+      setLoadingFriends(true);
+      setOnlineFriends(await listBabyFootOnlineFriends());
+    } catch (error: any) {
+      alert(error?.message || "Impossible de charger les amis online. Vérifie que tu es connecté au compte NAS.");
+    } finally {
+      setLoadingFriends(false);
+    }
+  }
+
+  function withOnlineLink(entry: any) {
+    const name = typeof entry === "string" ? entry : entry?.name;
+    const friendId = participantOnlineLinks[String(name || "")];
+    const friend = onlineFriends.find((f) => f.userId === friendId || f.id === friendId);
+    if (!friendId) return entry;
+    const base = typeof entry === "string" ? { name: entry } : { ...entry };
+    return {
+      ...base,
+      onlineUserId: friend?.userId || friendId,
+      onlineDisplayName: friend?.displayName || null,
+      onlineAvatarUrl: friend?.avatarUrl || null,
+      role: "player",
+    };
+  }
+
   async function submit() {
     if (creating) return;
     const lines = participants.split(/\n|,/g).map((s) => s.trim()).filter(Boolean);
-    let entries: Array<string | { id?: string; name: string; avatarDataUrl?: string | null; logoDataUrl?: string | null; refId?: string | null }> = lines;
+    let entries: Array<string | { id?: string; name: string; avatarDataUrl?: string | null; logoDataUrl?: string | null; refId?: string | null; onlineUserId?: string | null; onlineDisplayName?: string | null; onlineAvatarUrl?: string | null; role?: string }> = lines;
 
     if (scope === "team" && selectedTeamIds.length >= 2) {
       entries = teams
@@ -470,6 +513,7 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
     }
 
     if (entries.length < 2) return alert("Ajoute au moins 2 participants.");
+    if (onlineAccess !== "none") entries = entries.map(withOnlineLink);
     setCreating(true);
     try {
       let league: any = createBabyFootLeague({ name, kind, scope, format, participants: entries, logoDataUrl });
@@ -556,8 +600,13 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
           <Choice theme={theme} active={onlineAccess === "private"} onClick={() => setOnlineAccess("private")} title="PRIVÉ" sub="Code" />
           <Choice theme={theme} active={onlineAccess === "public"} onClick={() => setOnlineAccess("public")} title="PUBLIC" sub="Spectateurs" />
         </div>
-        <div style={{ ...small(theme), marginTop: 8 }}>
-          Étape suivante : les participants online seront liés à des comptes/amis pour lancer leurs matchs sans que le créateur soit présent.
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginTop: 8 }}>
+          <button type="button" style={onlineAccess === "none" ? ghostBtn(theme) : primaryBtn(theme)} disabled={onlineAccess === "none"} onClick={openOnlineLinker}>
+            👥 Associer participants ↔ amis online
+          </button>
+          <div style={small(theme)}>
+            {onlineAccess === "none" ? "Active PRIVÉ ou PUBLIC pour lier des amis online." : `${Object.keys(participantOnlineLinks).filter((k) => participantOnlineLinks[k]).length} liaison(s) online configurée(s).`}
+          </div>
         </div>
       </div>
 
@@ -619,6 +668,23 @@ function CreateLeague({ theme, go, store, onCancel, onCreated }: { theme: any; g
           onToggle={(id) => setSelectedProfileIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
           onClose={() => setShowProfilePicker(false)}
           onApply={() => applyProfiles()}
+        />
+      )}
+
+      {showOnlineLinker && (
+        <OnlineFriendsLinkModal
+          theme={theme}
+          participants={draftParticipantNames()}
+          friends={onlineFriends}
+          links={participantOnlineLinks}
+          loading={loadingFriends}
+          onChange={(participantName, userId) => setParticipantOnlineLinks((prev) => ({ ...prev, [participantName]: userId }))}
+          onRefresh={async () => {
+            try { setLoadingFriends(true); setOnlineFriends(await listBabyFootOnlineFriends()); }
+            catch (error: any) { alert(error?.message || "Impossible de charger les amis online."); }
+            finally { setLoadingFriends(false); }
+          }}
+          onClose={() => setShowOnlineLinker(false)}
         />
       )}
     </div>
@@ -720,6 +786,38 @@ function PickerModal({ theme, title, empty, items, selectedIds, onToggle, onClos
   );
 }
 
+
+function OnlineFriendsLinkModal({ theme, participants, friends, links, loading, onChange, onRefresh, onClose }: { theme: any; participants: string[]; friends: BabyFootOnlineFriend[]; links: Record<string, string>; loading: boolean; onChange: (participantName: string, userId: string) => void; onRefresh: () => void; onClose: () => void }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.68)", display: "grid", placeItems: "center", zIndex: 10010, padding: 16 }} onClick={onClose}>
+      <div style={{ width: "100%", maxWidth: 520, maxHeight: "82vh", overflow: "auto", ...panel(theme) }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <div>
+            <div style={{ ...sectionTitle(theme), fontSize: 18 }}>Associer aux amis online</div>
+            <div style={small(theme)}>Chaque participant local peut être lié à un compte ami. Cette liaison donnera le droit de jouer ses matchs de ligue depuis un autre appareil.</div>
+          </div>
+          <button type="button" style={iconDangerBtn(theme)} onClick={onClose}>×</button>
+        </div>
+        <button type="button" style={{ ...ghostBtn(theme), width: "100%", marginTop: 10 }} onClick={onRefresh} disabled={loading}>{loading ? "Chargement..." : "⟳ Recharger mes amis"}</button>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          {participants.map((name) => (
+            <div key={name} style={{ border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, borderRadius: 14, padding: 10, background: "rgba(255,255,255,.04)" }}>
+              <div style={{ fontWeight: 1000, color: theme.primary, marginBottom: 6, textTransform: "uppercase" }}>{name}</div>
+              <select value={links[name] || ""} onChange={(e) => onChange(name, e.target.value)} style={input(theme)}>
+                <option value="">Profil local seulement</option>
+                {friends.map((f) => <option key={f.userId} value={f.userId}>{f.displayName}{f.status ? ` · ${f.status}` : ""}</option>)}
+              </select>
+            </div>
+          ))}
+          {!participants.length ? <div style={small(theme)}>Aucun participant à lier pour l’instant.</div> : null}
+          {!friends.length && !loading ? <div style={{ ...small(theme), border: `1px dashed ${theme.borderSoft ?? "rgba(255,255,255,.16)"}`, borderRadius: 14, padding: 10 }}>Aucun ami online trouvé. Ajoute d’abord des amis dans la page Online/Amis.</div> : null}
+        </div>
+        <button type="button" style={{ ...primaryBtn(theme), width: "100%", marginTop: 12 }} onClick={onClose}>VALIDER LES LIAISONS</button>
+      </div>
+    </div>
+  );
+}
+
 function LeagueDetail({ theme, go, store, league, initialTab, onRefresh, onDelete }: { theme: any; go: (tab: any, params?: any) => void; store?: any; league: BabyFootLeague; initialTab?: any; onRefresh: () => void; onDelete: () => void }) {
   type LeagueTab = "calendar" | "results" | "standings" | "stats";
   const normalizeTab = (value: any): LeagueTab => {
@@ -767,10 +865,27 @@ function LeagueDetail({ theme, go, store, league, initialTab, onRefresh, onDelet
     return pr?.avatar || pr?.avatarUrl || pr?.avatarDataUrl || null;
   }
 
-  function launchFixture(fixture: BabyFootLeague["fixtures"][number]) {
+  async function launchFixture(fixture: BabyFootLeague["fixtures"][number]) {
     const home = byId.get(fixture.homeId);
     const away = byId.get(fixture.awayId);
     if (!home || !away || fixture.playedAt) return;
+    const onlineIdForFixture = getBabyFootLeagueOnlineId(league as any);
+    const hasOnlinePlayers = !!((home as any)?.onlineUserId || (away as any)?.onlineUserId);
+    if (onlineIdForFixture && hasOnlinePlayers) {
+      try {
+        setOnlineBusy(true);
+        setOnlineMessage(null);
+        const res: any = await startBabyFootLeagueFixtureOnline(league as any, fixture.id);
+        const code = String(res?.lobbyCode || res?.lobby?.code || "").trim();
+        setOnlineMessage(code ? `Salon Baby-Foot créé : ${code}` : "Salon Baby-Foot créé.");
+        go("online" as any, { lobbyCode: code, onlineMode: "babyfoot", mode: "babyfoot", source: "babyfoot_league", leagueId: league.id, fixtureId: fixture.id });
+        return;
+      } catch (error: any) {
+        setOnlineMessage(error?.message || "Impossible de créer le salon online. Lancement local conservé.");
+      } finally {
+        setOnlineBusy(false);
+      }
+    }
     const homeTeam = findTeam(home);
     const awayTeam = findTeam(away);
     const homeProfile = findProfile(home);
