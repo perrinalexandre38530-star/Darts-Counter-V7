@@ -9,7 +9,8 @@
 //   - Dégradé sur le bord GAUCHE du ticker pour laisser le titre (couleur thème) lisible
 //   - AUCUNE annotation visible sous les titres (tout passe dans InfoDot => modal)
 // ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
-// ✅ Modes: 1v1 / 2v2 / 2v1 + TOURNOI + LIGUE
+// ✅ Modes: 1v1 / 2v2 / 2v1 / Training
+// ✅ Tournoi + Ligue déplacés vers BottomNav > Compétition
 // =============================================================
 
 import React from "react";
@@ -53,6 +54,7 @@ function getTicker(id: string | null | undefined) {
 type Props = {
   onBack: () => void;
   go: (t: any, p?: any) => void;
+  onOpenTraining?: () => void;
   onOpenLeague?: () => void;
 };
 
@@ -60,6 +62,7 @@ type ModeId =
   | "match_1v1"
   | "match_2v2"
   | "match_2v1"
+  | "training"
   | "tournament"
   | "league";
 
@@ -139,6 +142,24 @@ const MODES: ModeDef[] = [
     tickerId: "babyfoot_2v1",
   },
   {
+    id: "training",
+    titleKey: "babyfoot.modes.training.title",
+    titleDefault: "TRAINING",
+    subtitleKey: "babyfoot.modes.training.subtitle",
+    subtitleDefault: "Entraînement rapide",
+    infoTitleKey: "babyfoot.modes.training.infoTitle",
+    infoTitleDefault: "Training Baby-Foot",
+    infoBodyKey: "babyfoot.modes.training.infoBody",
+    infoBodyDefault:
+      "Training Baby-Foot\n" +
+      "• Accès aux presets d’entraînement.\n" +
+      "• Match rapide, score cible et options dédiées.\n" +
+      "• Reste dans LOCAL, séparé des compétitions Tournoi/Ligue.",
+    enabled: true,
+    status: "BETA",
+    tickerId: "babyfoot_training",
+  },
+  {
     id: "tournament",
     titleKey: "babyfoot.modes.tournament.title",
     titleDefault: "TOURNOI",
@@ -182,11 +203,12 @@ const TICKER_Y: Partial<Record<ModeId, number>> = {
   match_1v1: 50,
   match_2v2: 50,
   match_2v1: 50,
+  training: 50,
   tournament: 50,
   league: 50,
 };
 
-export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
+export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLeague }: Props) {
   const { theme } = useTheme();
   const lang = useLang() as any;
   const t = lang?.t ?? ((_: string, fallback: string) => fallback);
@@ -205,7 +227,15 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
     } catch {}
   }
 
+  function openTraining() {
+    if (onOpenTraining) return onOpenTraining();
+    try {
+      go("babyfoot_menu", { section: "training" });
+    } catch {}
+  }
+
   function navigate(mode: ModeId) {
+    if (mode === "training") return openTraining();
     if (mode === "tournament") return openTournaments();
     if (mode === "league") return openLeague();
 
@@ -233,9 +263,10 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
   const cardHeight = 86;
 
   // panneau ticker à droite ≈ 3/4 (style Games)
-  const tickerPanelW = "76%"; // ✅ ~3/4 de la carte
+  const tickerPanelW = "112%"; // ticker volontairement plus large : une partie sort à droite
+  const tickerPanelRight = "-30%"; // ≈ 1/3 du visuel hors carte à droite
   const leftFade =
-    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.86) 35%, rgba(10,10,14,0.55) 60%, rgba(10,10,14,0.00) 100%)";
+    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.88) 28%, rgba(10,10,14,0.62) 52%, rgba(10,10,14,0.00) 100%)";
   const tickerLeftEdgeFade =
     "linear-gradient(90deg, rgba(10,10,14,0.92) 0%, rgba(10,10,14,0.72) 38%, rgba(10,10,14,0.25) 70%, rgba(10,10,14,0.00) 100%)";
 
@@ -296,7 +327,7 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
 
       {/* CARTES */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {MODES.map((m) => {
+        {MODES.filter((m) => m.id === "match_1v1" || m.id === "match_2v2" || m.id === "match_2v1" || m.id === "training").map((m) => {
           const title = t(m.titleKey, m.titleDefault);
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
@@ -327,7 +358,7 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
                 <div
                   style={{
                     position: "absolute",
-                    right: 0,
+                    right: tickerPanelRight,
                     top: 0,
                     height: "100%",
                     width: tickerPanelW,
@@ -344,7 +375,7 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenLeague }: Props) {
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
-                      objectPosition: `50% ${y}%`,
+                      objectPosition: `34% ${y}%`,
                       opacity: 0.95,
                       transform: "translateZ(0)",
                     }}

@@ -6,9 +6,11 @@ type Props = {
   winnerLabel: string;
   scoreLine: string;
   detailsLine?: string;
-  onReplay: () => void;
-  onStats: () => void;
-  onGames: () => void;
+  onReplay?: () => void;
+  onStats?: () => void;
+  onGames?: () => void;
+  onClose?: () => void;
+  children?: React.ReactNode;
 };
 
 export default function BabyFootEndGameSummary({
@@ -20,8 +22,12 @@ export default function BabyFootEndGameSummary({
   onReplay,
   onStats,
   onGames,
+  onClose,
+  children,
 }: Props) {
-  if (!open) return null;
+  if (open === false) return null;
+  const close = onClose || onGames || (() => {});
+
 
   return (
     <div
@@ -86,7 +92,8 @@ export default function BabyFootEndGameSummary({
         </div>
 
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-          <button
+          {children}
+          {onReplay ? <button
             onClick={onReplay}
             style={{
               height: 54,
@@ -101,9 +108,9 @@ export default function BabyFootEndGameSummary({
             }}
           >
             REJOUER
-          </button>
+          </button> : null}
 
-          <button
+          {onStats ? <button
             onClick={onStats}
             style={{
               height: 54,
@@ -118,10 +125,10 @@ export default function BabyFootEndGameSummary({
             }}
           >
             VOIR STATS / HISTORIQUE
-          </button>
+          </button> : null}
 
           <button
-            onClick={onGames}
+            onClick={close}
             style={{
               height: 54,
               borderRadius: 16,
@@ -133,7 +140,7 @@ export default function BabyFootEndGameSummary({
               cursor: "pointer",
             }}
           >
-            RETOUR GAMES
+            RETOUR
           </button>
         </div>
       </div>

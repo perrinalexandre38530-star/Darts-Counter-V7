@@ -184,21 +184,24 @@ const availableProfiles = React.useMemo(() => {
 }, [filteredProfiles, team.playerIds]);
 
   const maxPlayers = 2;
-  const returnToLeagueCreate = params?.returnToLeagueCreate || sessionStorage.getItem("return_to_babyfoot_league") === "1";
+  const fromLeagueCreate =
+    params?.returnTo === "babyfoot_league_create" ||
+    (typeof sessionStorage !== "undefined" && sessionStorage.getItem("babyfoot_league_return_create") === "1");
 
-  function goBackAfterTeamEdit() {
-    if (returnToLeagueCreate) {
-      sessionStorage.setItem("return_to_babyfoot_league", "1");
-      return go("babyfoot_league" as any);
+  function goBack() {
+    if (fromLeagueCreate) {
+      go("babyfoot_league" as any, { view: "create", restoreDraft: true });
+      return;
     }
-    return go("babyfoot_teams" as any);
+    go("babyfoot_teams" as any);
   }
 
-  function saveAndReturn() {
+  function saveAndMaybeReturn() {
     save(team);
-    if (returnToLeagueCreate) {
-      sessionStorage.setItem("return_to_babyfoot_league", "1");
-      return go("babyfoot_league" as any);
+    if (fromLeagueCreate) {
+      try { sessionStorage.setItem("babyfoot_league_return_create", "1"); } catch {}
+      go("babyfoot_league" as any, { view: "create", restoreDraft: true });
+      return;
     }
     alert(t("common.saved", "Équipe enregistrée."));
   }
@@ -376,7 +379,7 @@ const availableProfiles = React.useMemo(() => {
         }}
       >
         <button
-          onClick={goBackAfterTeamEdit}
+          onClick={goBack}
           style={btnGhost(theme)}
         >
           ← {t("common.back", "Retour")}
@@ -395,7 +398,7 @@ const availableProfiles = React.useMemo(() => {
         </div>
 
         <button
-          onClick={saveAndReturn}
+          onClick={saveAndMaybeReturn}
           style={btnPrimary(theme)}
         >
           {t("common.save", "Enregistrer")}

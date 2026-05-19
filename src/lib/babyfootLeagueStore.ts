@@ -13,6 +13,8 @@ export type BabyFootLeagueFormat = "single" | "double";
 export type BabyFootLeagueParticipant = {
   id: string;
   name: string;
+  avatarDataUrl?: string | null;
+  refId?: string | null;
 };
 
 export type BabyFootLeagueFixture = {
@@ -35,6 +37,7 @@ export type BabyFootLeague = {
   format: BabyFootLeagueFormat;
   createdAt: number;
   updatedAt: number;
+  logoDataUrl?: string | null;
   winPts: number;
   drawPts: number;
   lossPts: number;
@@ -80,7 +83,7 @@ function normalizeLeague(raw: any): BabyFootLeague | null {
   const format: BabyFootLeagueFormat = raw.format === "double" ? "double" : "single";
   const participants = Array.isArray(raw.participants)
     ? raw.participants
-        .map((p: any) => ({ id: String(p?.id || uid("p")), name: String(p?.name || "Participant").trim() || "Participant" }))
+        .map((p: any) => ({ id: String(p?.id || uid("p")), name: String(p?.name || "Participant").trim() || "Participant", avatarDataUrl: p?.avatarDataUrl ?? p?.logoDataUrl ?? null, refId: p?.refId ? String(p.refId) : null }))
         .filter((p: BabyFootLeagueParticipant) => p.name)
     : [];
   const participantIds = new Set(participants.map((p: BabyFootLeagueParticipant) => p.id));
@@ -108,6 +111,7 @@ function normalizeLeague(raw: any): BabyFootLeague | null {
     format,
     createdAt: Number(raw.createdAt || now),
     updatedAt: Number(raw.updatedAt || now),
+    logoDataUrl: raw.logoDataUrl || null,
     winPts: Number.isFinite(Number(raw.winPts)) ? Number(raw.winPts) : 3,
     drawPts: Number.isFinite(Number(raw.drawPts)) ? Number(raw.drawPts) : 1,
     lossPts: Number.isFinite(Number(raw.lossPts)) ? Number(raw.lossPts) : 0,
@@ -145,7 +149,8 @@ export function createBabyFootLeague(input: {
   kind: BabyFootLeagueKind;
   scope: BabyFootLeagueScope;
   format?: BabyFootLeagueFormat;
-  participants: string[];
+  participants: Array<string | { id?: string; name: string; avatarDataUrl?: string | null; logoDataUrl?: string | null; refId?: string | null }>;
+  logoDataUrl?: string | null;
   winPts?: number;
   drawPts?: number;
   lossPts?: number;
@@ -153,9 +158,21 @@ export function createBabyFootLeague(input: {
   const leagueId = uid();
   const now = Date.now();
   const participants = input.participants
-    .map((name) => String(name || "").trim())
-    .filter(Boolean)
-    .map((name) => ({ id: uid("p"), name }));
+    .map((raw) => {
+      if (typeof raw === "string") {
+        const name = raw.trim();
+        return name ? { id: uid("p"), name, avatarDataUrl: null, refId: null } : null;
+      }
+      const name = String(raw?.name || "").trim();
+      if (!name) return null;
+      return {
+        id: String(raw?.id || uid("p")),
+        name,
+        avatarDataUrl: raw?.avatarDataUrl ?? raw?.logoDataUrl ?? null,
+        refId: raw?.refId ? String(raw.refId) : null,
+      };
+    })
+    .filter(Boolean) as BabyFootLeagueParticipant[];
   const league: BabyFootLeague = {
     id: leagueId,
     name: input.name.trim() || "Ligue Baby-Foot",
@@ -164,6 +181,7 @@ export function createBabyFootLeague(input: {
     format: input.format || "single",
     createdAt: now,
     updatedAt: now,
+    logoDataUrl: input.logoDataUrl || null,
     winPts: Number.isFinite(input.winPts) ? Number(input.winPts) : 3,
     drawPts: Number.isFinite(input.drawPts) ? Number(input.drawPts) : 1,
     lossPts: Number.isFinite(input.lossPts) ? Number(input.lossPts) : 0,
@@ -236,12 +254,33 @@ export function setBabyFootFixtureScore(leagueId: string, fixtureId: string, sco
   saveBabyFootLeagues(leagues);
 }
 
-export function addBabyFootLeagueManualMatch(leagueId: string, homeId: string, awayId: string, scoreHome: number, scoreAway: number) {
+export function addBabyFootLeagueManualMatch(
+  leagueId: string,
+  homeId: string,
+  awayId: string,
+  scoreHome: number,
+  scoreAway: number,
+  options?: { playedAt?: number | null; source?: "manual" | "calendar" }
+) {
   const leagues = loadBabyFootLeagues();
   const league = leagues.find((l) => l.id === leagueId);
   if (!league || homeId === awayId) return;
   const ids = new Set(league.participants.map((p) => p.id));
   if (!ids.has(homeId) || !ids.has(awayId)) return;
+  const safeHome = Math.max(0, Math.floor(Number(scoreHome) || 0));
+  const safeAway = Math.max(0, Math.floor(Number(scoreAway) || 0));
+  const playedAt = typeof options?.playedAt === "number" && Number.isFinite(options.playedAt) ? options.playedAt : Date.now();
+
+  const alreadyExists = league.fixtures.some((f) =>
+    f.source === "manual" &&
+    f.homeId === homeId &&
+    f.awayId === awayId &&
+    f.scoreHome === safeHome &&
+    f.scoreAway === safeAway &&
+    Math.abs(Number(f.playedAt || 0) - playedAt) < 2000
+  );
+  if (alreadyExists) return;
+
   const maxRound = league.fixtures.reduce((m, f) => Math.max(m, f.round), 0);
   league.fixtures.unshift({
     id: uid("f"),
@@ -249,9 +288,9 @@ export function addBabyFootLeagueManualMatch(leagueId: string, homeId: string, a
     round: Math.max(1, maxRound + 1),
     homeId,
     awayId,
-    scoreHome: Math.max(0, Math.floor(Number(scoreHome) || 0)),
-    scoreAway: Math.max(0, Math.floor(Number(scoreAway) || 0)),
-    playedAt: Date.now(),
+    scoreHome: safeHome,
+    scoreAway: safeAway,
+    playedAt,
     source: "manual",
   });
   league.updatedAt = Date.now();

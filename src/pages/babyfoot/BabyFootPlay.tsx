@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useStore } from "../../contexts/StoreContext";
 
@@ -13,6 +13,12 @@ import BabyFootLiveHeader from "../../components/babyfoot/BabyFootLiveHeader";
 import BabyFootLiveStatsCard from "../../components/babyfoot/BabyFootLiveStatsCard";
 import BabyFootPhasePanel from "../../components/babyfoot/BabyFootPhasePanel";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
+import {
+  addBabyFootLeagueManualMatch,
+  loadBabyFootLeagues,
+  setBabyFootFixtureScore,
+  type BabyFootLeague,
+} from "../../lib/babyfootLeagueStore";
 
 import { sendCastSnapshot } from "../../cast/googleCast";
 import {
@@ -495,6 +501,9 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const [pickGoalSource, setPickGoalSource] = useState<BabyFootGoalSource>("AV");
   const [cscAwardedTeam, setCscAwardedTeam] = useState<BabyFootTeamId | null>(null);
   const [activeTab, setActiveTab] = useState<PlayTab>("score");
+  const leagueResultSavedRef = useRef(false);
+  const [leagueSaveChoice, setLeagueSaveChoice] = useState("");
+  const [leagueSaveDone, setLeagueSaveDone] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 250);
@@ -723,6 +732,10 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         stats: richStats,
       },
       events: state.events || [],
+      leagueId: (params as any)?.leagueId || null,
+      fixtureId: (params as any)?.fixtureId || null,
+      fromLeague: Boolean((params as any)?.fromLeague),
+      stayOnBabyFootPlayAfterFinish: true,
     };
 
     const tournamentId = (params as any)?.tournamentId;
@@ -741,6 +754,17 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         );
       } catch {
         // noop
+      }
+    }
+
+    const leagueId = (params as any)?.leagueId;
+    const fixtureId = (params as any)?.fixtureId;
+    if (leagueId && fixtureId && !leagueResultSavedRef.current) {
+      leagueResultSavedRef.current = true;
+      try {
+        setBabyFootFixtureScore(String(leagueId), String(fixtureId), displayedScore.scoreA, displayedScore.scoreB);
+      } catch (e) {
+        console.warn("[BabyFootPlay] unable to save league fixture score", e);
       }
     }
 
@@ -805,6 +829,37 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     roleLabel: isOneVsOne ? "Joueur B" : "Équipe B",
   };
 
+  const infiniteLeagueChoices = useMemo(() => {
+    if (!state.finished) return [] as BabyFootLeague[];
+    try {
+      const scope = state.mode === "1v1" ? "solo" : "team";
+      return loadBabyFootLeagues().filter((league) => league.kind === "infinite" && league.scope === scope);
+    } catch {
+      return [] as BabyFootLeague[];
+    }
+  }, [state.finished, state.mode]);
+
+  const saveFinishedMatchToInfiniteLeague = () => {
+    const league = infiniteLeagueChoices.find((l) => l.id === leagueSaveChoice);
+    if (!league) return;
+    const findBy = (name: string, ref?: string | null, profileId?: string | null) => {
+      const n = String(name || "").trim().toLowerCase();
+      const r = String(ref || profileId || "").trim();
+      return league.participants.find((p) =>
+        (r && (String(p.refId || "") === r || String(p.id) === r)) ||
+        String(p.name || "").trim().toLowerCase() === n
+      ) || null;
+    };
+    const a = findBy(visualA.name, state.teamARefId ?? null, teamAIds[0] || null);
+    const b = findBy(visualB.name, state.teamBRefId ?? null, teamBIds[0] || null);
+    if (!a || !b || a.id === b.id) {
+      alert("Impossible d’ajouter ce match : les deux joueurs/camps doivent déjà exister dans la ligue infinie choisie.");
+      return;
+    }
+    addBabyFootLeagueManualMatch(league.id, a.id, b.id, displayedScore.scoreA, displayedScore.scoreB, { playedAt: state.finishedAt ?? Date.now() });
+    setLeagueSaveDone(league.name);
+  };
+
   const winnerLabel = state.winner === "A" ? visualA.name : state.winner === "B" ? visualB.name : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
 
@@ -847,13 +902,21 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     return Array.from(byId.values()).filter((row) => row.name);
   }, [state.events, teamAIds.join("|"), teamBIds.join("|"), visualA.name, visualB.name]);
 
+  const leagueReturnParams = params?.fromLeague && params?.leagueId
+    ? { leagueId: String(params.leagueId), view: "detail", tab: "calendar" }
+    : null;
+  const returnAfterPlay = () => {
+    if (leagueReturnParams) go("babyfoot_league" as any, leagueReturnParams);
+    else go("babyfoot_menu");
+  };
+
   return (
     <div className="page" style={{ background: theme.bg, color: theme.text }}>
       <PageHeader
         tickerSrc={headerTicker || undefined}
         tickerAlt="Baby-Foot — Play"
         tickerHeight={94}
-        left={<BackDot onClick={() => go("babyfoot_menu")} />}
+        left={<BackDot onClick={returnAfterPlay} />}
         right={<InfoDot title="Baby-Foot" content={infoBody} glow={(theme?.colors?.primary ?? "#9dff57") + "88"} />}
       />
 
@@ -1118,11 +1181,31 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
       {state.finished ? (
         <BabyFootEndGameSummary
+          open={true}
+          theme={theme}
           winnerLabel={winnerLabel}
           scoreLine={state.setsEnabled ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}` : `${displayedScore.scoreA}–${displayedScore.scoreB}`}
           detailsLine={detailsLine}
-          onClose={() => go("babyfoot_menu")}
-        />
+          onReplay={() => setState(startMatch())}
+          onStats={() => go("babyfoot_stats_history" as any, { focusMatchId: state.matchId })}
+          onClose={returnAfterPlay}
+        >
+          {infiniteLeagueChoices.length ? (
+            <div style={{ border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, borderRadius: 16, padding: 10, background: "rgba(255,255,255,.055)" }}>
+              <div style={{ fontWeight: 1000, color: theme.primary, marginBottom: 6 }}>AJOUTER À UNE LIGUE INFINIE</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                <select value={leagueSaveChoice} onChange={(e) => setLeagueSaveChoice(e.target.value)} style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "rgba(0,0,0,.35)", color: theme.text, padding: "10px", fontWeight: 900 }}>
+                  <option value="">Choisir une ligue</option>
+                  {infiniteLeagueChoices.map((league) => <option key={league.id} value={league.id}>{league.name}</option>)}
+                </select>
+                <button type="button" disabled={!leagueSaveChoice || Boolean(leagueSaveDone)} onClick={saveFinishedMatchToInfiniteLeague} style={{ borderRadius: 12, border: `1px solid ${theme.primary}`, background: `${theme.primary}22`, color: theme.text, padding: "0 12px", fontWeight: 1000 }}>
+                  AJOUTER
+                </button>
+              </div>
+              {leagueSaveDone ? <div style={{ marginTop: 6, fontSize: 12, fontWeight: 900, color: theme.primary }}>Match ajouté dans {leagueSaveDone}.</div> : null}
+            </div>
+          ) : null}
+        </BabyFootEndGameSummary>
       ) : null}
     </div>
   );

@@ -251,6 +251,7 @@ import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
 import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
 import BabyFootStatsCenterPage from "./pages/babyfoot/BabyFootStatsCenterPage";
 import BabyFootLeagueHome from "./pages/babyfoot/BabyFootLeagueHome";
+import BabyFootCompetitionHome from "./pages/babyfoot/BabyFootCompetitionHome";
 
 // ✅ NEW: Ping-Pong (LOCAL)
 import PingPongHome from "./pages/pingpong/PingPongHome";
@@ -3103,6 +3104,7 @@ try {
       (History as any)?.upsert?.(saved);
     } catch {}
 
+    if ((m as any)?.stayOnBabyFootPlayAfterFinish) return;
     go("babyfoot_stats_history", { focusMatchId: id });
   }
 
@@ -3512,7 +3514,7 @@ try {
           ) : activeSport === "dicegame" ? (
             <DiceMenuGames go={go} />
           ) : activeSport === "babyfoot" ? (
-            <BabyFootMenuGames go={go} />
+            <BabyFootMenuGames go={go} store={store} params={routeParams} />
           ) : activeSport === "pingpong" ? (
             <PingPongMenuGames go={go} />
           ) : (
@@ -3559,7 +3561,7 @@ try {
 
       // ✅ NEW: Baby-Foot flow (LOCAL)
       case "babyfoot_menu":
-        page = <BabyFootMenuGames go={go} />;
+        page = <BabyFootMenuGames go={go} store={store} params={routeParams} />;
         break;
 
       case "babyfoot_config":
@@ -3567,7 +3569,7 @@ try {
         break;
 
       case "babyfoot_league":
-        page = <BabyFootLeagueHome go={go} />;
+        page = <BabyFootLeagueHome go={go} store={store} params={routeParams} />;
         break;
 
       case "babyfoot_play":
@@ -3856,15 +3858,24 @@ case "babyfoot_team_edit":
         break;
 
         case "tournaments": {
-          const isPetanque = String(activeSport || "").toLowerCase() === "petanque";
-        
-          page = (
+          const sportLc = String(activeSport || "").toLowerCase();
+          const isPetanque = sportLc === "petanque";
+          const isBabyFoot = sportLc === "babyfoot";
+
+          const openBabyFootTournamentModule =
+            isBabyFoot &&
+            ((routeParams as any)?.openTournamentModule === true ||
+              (routeParams as any)?.openTournamentModule === "true");
+
+          page = isBabyFoot && !openBabyFootTournamentModule ? (
+            <BabyFootCompetitionHome go={go} />
+          ) : (
             <TournamentsHome
               store={store}
               go={go}
               update={update}
               source="local"
-              params={isPetanque ? { forceMode: "petanque" } : undefined}
+              params={isPetanque ? { forceMode: "petanque" } : isBabyFoot ? { forceMode: "babyfoot" } : undefined}
             />
           );
           break;

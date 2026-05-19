@@ -32,7 +32,9 @@ type TabKey =
   | "petanque_home"
   | "petanque_menu"
   | "petanque_config"
-  | "petanque_play";
+  | "petanque_play"
+  | "babyfoot_menu"
+  | "babyfoot_league";
 
 type NavItem = {
   k: Exclude<
@@ -215,7 +217,7 @@ export default function BottomNav({
     { k: "home", label: "Accueil", icon: <Icon name="home" /> },
     { k: "profiles", label: "Profils", icon: <Icon name="profiles" /> },
     { k: "games", label: "Local", icon: <Icon name="games" /> },
-    { k: "tournaments", label: "Tournois", icon: <Icon name="tournaments" /> },
+    { k: "tournaments", label: sportLc === "babyfoot" ? "Compétition" : "Tournois", icon: <Icon name="tournaments" /> },
 
     ...(hideOnline ? [] : [{ k: "friends", label: "Online", icon: <Icon name="friends" /> }]),
 
@@ -238,7 +240,9 @@ export default function BottomNav({
     value === "tournaments" ||
     value === "tournament_create" ||
     value === "tournament_view" ||
-    value === "tournament_match_play";
+    value === "tournament_match_play" ||
+    value === "babyfoot_league" ||
+    (value === "babyfoot_menu" && sportLc === "babyfoot");
 
   return (
     <nav

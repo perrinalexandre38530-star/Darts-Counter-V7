@@ -67,7 +67,7 @@ function getTicker(id: string | null | undefined) {
   return null;
 }
 
-export default function BabyFootTeams({ go }: Props) {
+export default function BabyFootTeams({ go, params }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
   const { store } = useStore() as any;
@@ -87,6 +87,17 @@ export default function BabyFootTeams({ go }: Props) {
   const customTeams = React.useMemo(() => teams.filter((t) => !isDefaultTeam(t.id)), [teams]);
 
   const [showInfo, setShowInfo] = React.useState(false);
+  const fromLeagueCreate =
+    params?.returnTo === "babyfoot_league_create" ||
+    (typeof sessionStorage !== "undefined" && sessionStorage.getItem("babyfoot_league_return_create") === "1");
+
+  function backFromTeams() {
+    if (fromLeagueCreate) {
+      go("babyfoot_league" as any, { view: "create", restoreDraft: true });
+      return;
+    }
+    go("babyfoot_menu" as any);
+  }
 
   React.useEffect(() => {
     const onVis = () => {
@@ -100,19 +111,10 @@ export default function BabyFootTeams({ go }: Props) {
     setTeams(loadBabyFootTeams());
   }
 
-  function isReturningToLeagueCreate() {
-    return sessionStorage.getItem("return_to_babyfoot_league") === "1";
-  }
-
-  function backFromTeams() {
-    if (isReturningToLeagueCreate()) return go("babyfoot_league" as any);
-    go("babyfoot_menu" as any);
-  }
-
   function handleCreate() {
     const team = createBabyFootTeam();
     upsertBabyFootTeam(team);
-    go("babyfoot_team_edit" as any, { teamId: team.id, returnToLeagueCreate: isReturningToLeagueCreate() });
+    go("babyfoot_team_edit" as any, fromLeagueCreate ? { teamId: team.id, returnTo: "babyfoot_league_create" } : { teamId: team.id });
   }
 
   function handleDelete(teamId: string) {
@@ -201,7 +203,7 @@ export default function BabyFootTeams({ go }: Props) {
 
           {/* Main content (clickable => edit) */}
           <button
-            onClick={() => go("babyfoot_team_edit" as any, { teamId: tm.id, returnToLeagueCreate: isReturningToLeagueCreate() })}
+            onClick={() => go("babyfoot_team_edit" as any, fromLeagueCreate ? { teamId: tm.id, returnTo: "babyfoot_league_create" } : { teamId: tm.id })}
             style={cardMainBtn(theme)}
             title={t("common.edit", "Éditer")}
           >
