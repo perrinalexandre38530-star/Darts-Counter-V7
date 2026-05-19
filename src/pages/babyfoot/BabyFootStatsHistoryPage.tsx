@@ -313,9 +313,6 @@ export default function BabyFootStatsHistoryPage({ store, go, params }: Props) {
           decisiveGoals: 0,
           momentumBursts: 0,
 
-          points: 0,
-          draws: 0,
-          losses: 0,
           gf: 0,
           ga: 0,
         };
@@ -1016,128 +1013,152 @@ function HistoryCardsView({
       focusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 90);
     return () => window.clearTimeout(id);
-  }, [focusMatchId]);
+  }, [focusMatchId, filtered.length]);
+
+  const doneCount = filtered.filter((h: any) => !h?.status || h.status === "finished").length;
+  const runningCount = filtered.filter((h: any) => h?.status === "in_progress" || h?.status === "running").length;
+
+  const setQuickPeriod = (key: "today" | "week" | "month" | "year" | "archives") => {
+    if (key === "week") return setPeriod("7");
+    if (key === "month") return setPeriod("30");
+    if (key === "year") return setPeriod("90");
+    return setPeriod("all");
+  };
+
+  const activeQuick = period === "7" ? "week" : period === "30" ? "month" : period === "90" ? "year" : "archives";
 
   return (
-    <div style={wrap(theme)}>
-      <div style={topRow}>
-        <BackDot onClick={() => go("babyfoot_stats_shell")} />
-        <div style={topTitle}>BABY-FOOT — HISTORIQUE</div>
-        <div />
+    <div style={historyPage(theme)}>
+      <div style={historyTitle(theme)}>HISTORIQUE</div>
+
+      <div style={historyKpiRow}>
+        <div style={historyKpiCard(theme, true)}>
+          <div style={historyKpiLabel}>ALL</div>
+          <div style={historyKpiValue(theme)}>{filtered.length}</div>
+        </div>
+        <div style={historyKpiCard(theme, true)}>
+          <div style={historyKpiLabel}>Terminées</div>
+          <div style={historyKpiValue(theme)}>{doneCount}</div>
+        </div>
+        <div style={historyKpiCard(theme, false)}>
+          <div style={historyKpiLabel}>En cours</div>
+          <div style={{ ...historyKpiValue(theme), color: "#ff5b5b" }}>{runningCount}</div>
+        </div>
+        <div style={historyKpiCard(theme, false)}>
+          <div style={historyKpiLabel}>Reçues</div>
+          <div style={historyKpiValue(theme)}>0</div>
+        </div>
       </div>
 
-      <div style={card(theme)}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ fontWeight: 950, opacity: 0.9 }}>Période</div>
-          {(["7", "30", "90", "all"] as const).map((p) => (
-            <div key={p} style={pill(theme, period === p)} onClick={() => setPeriod(p)}>
-              {p === "all" ? "Total" : `${p}j`}
-            </div>
+      <div style={historyToolbar}>
+        <button type="button" style={historyToolIconBtn(theme)} title="Recharger">
+          <HistIcon.Refresh />
+        </button>
+        <button type="button" style={historyToolIconBtn(theme)} title="Importer">
+          <HistIcon.Upload />
+        </button>
+        <div style={{ position: "relative" }}>
+          <button type="button" style={historyToolIconBtn(theme, mode !== "all" || !!q.trim())} title="Filtres">
+            <HistIcon.Filter />
+          </button>
+        </div>
+        <button type="button" style={historyToolIconBtn(theme, false, true)} title="Supprimer">
+          <HistIcon.Trash />
+        </button>
+      </div>
+
+      <div style={historyFiltersRow}>
+        {([
+          ["week", "S"],
+          ["month", "M"],
+          ["year", "A"],
+          ["archives", "ARV"],
+        ] as const).map(([key, label]) => (
+          <button key={key} type="button" style={historyRangeBtn(theme, activeQuick === key)} onClick={() => setQuickPeriod(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={historySearchBar(theme)}>
+        <input
+          style={historySearchInput(theme)}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Recherche (joueur / équipe…)"
+        />
+        <select style={historySelect(theme)} value={mode} onChange={(e) => setMode(e.target.value as any)}>
+          <option value="all">Tous</option>
+          {availableModes.map((m) => (
+            <option key={m} value={m}>{m.toUpperCase()}</option>
           ))}
-
-          <div style={{ width: 10 }} />
-          <div style={{ fontWeight: 950, opacity: 0.9 }}>Mode</div>
-          <select style={select(theme)} value={mode} onChange={(e) => setMode(e.target.value as any)}>
-            <option value="all">Tous</option>
-            {availableModes.map((m) => (
-              <option key={m} value={m}>
-                {m.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-          <input
-            style={search(theme)}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Recherche (joueur / équipe…)"
-          />
-          <div style={pill(theme, true)}>
-            {filtered.length} matchs • {modeLabel} • {periodLabel}
-          </div>
-        </div>
+        </select>
       </div>
 
-      <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+      <div style={historyList}>
         {filtered.length === 0 ? (
-          <div style={{ ...card(theme), textAlign: "center", opacity: 0.78, fontWeight: 900 }}>
-            Aucun match Baby-Foot trouvé pour ces filtres.
+          <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20, fontWeight: 900 }}>
+            Aucune partie Baby-Foot ici.
           </div>
         ) : (
           filtered.map((h: any) => {
             const payload = getPayload(h);
             const { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds } = getTeams(payload);
             const rich = computeBabyFootRichStats(payload);
-            const dur = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
             const winner = getWinnerTeam(payload);
             const modeRaw = getMode(payload);
-            const modeChip = modeRaw === "unknown" ? "MATCH" : modeRaw.toUpperCase();
+            const modeChip = modeRaw === "unknown" ? "BABY-FOOT" : `BABY-FOOT ${modeRaw.toUpperCase()}`;
             const isFocus = !!focusMatchId && String(h?.id || "") === focusMatchId;
-            const aProfiles = (teamAIds || []).map((id: string) => profilesById[id]).filter(Boolean);
-            const bProfiles = (teamBIds || []).map((id: string) => profilesById[id]).filter(Boolean);
+            const ids = [...(teamAIds || []), ...(teamBIds || [])].filter(Boolean);
+            const players = ids.length
+              ? ids.map((id: string) => profilesById[id] || { id, name: id.slice(0, 6) })
+              : (Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : []);
+            const summaryLine = `${teamA} : ${scoreA} • ${teamB} : ${scoreB}`;
+            const statusLabel = h?.status === "in_progress" || h?.status === "running" ? "En cours" : "Terminé";
 
             return (
-              <div
-                key={h.id}
-                ref={isFocus ? focusRef : null}
-                style={{
-                  ...historyMatchCard(theme, isFocus),
-                  boxShadow: isFocus
-                    ? `0 0 0 1px ${theme?.primary ?? "#c7ff26"}, 0 18px 40px rgba(0,0,0,0.42), 0 0 24px ${String(theme?.primary ?? "#c7ff26")}55`
-                    : historyMatchCard(theme, false).boxShadow,
-                }}
-              >
-                <img src={logoBabyFoot} alt="BabyFoot" style={historyWatermark} />
+              <div key={h.id} ref={isFocus ? focusRef : null} style={historyMatchCard(theme, isFocus)}>
+                <img src={logoBabyFoot} alt="" style={historyWatermark} />
 
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <div style={historyBadge(theme)}>BABYFOOT COUNTER</div>
-                    <div style={historySoftChip(modeChip)}>{modeChip}</div>
-                    {rich.setsEnabled ? <div style={historySoftChip(`SETS ${rich.teamA.sets}-${rich.teamB.sets}`)}>SETS {rich.teamA.sets}-{rich.teamB.sets}</div> : null}
+                <div style={historyRowBetween}>
+                  <div style={{ display: "flex", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
+                    <span style={historyModeBadge(theme)}>{modeChip}</span>
+                    <span style={historyStatusBadge(theme, statusLabel !== "Terminé")}>{statusLabel}</span>
                   </div>
-                  <div style={{ textAlign: "right", display: "grid", gap: 2 }}>
-                    <div style={{ fontSize: 11, color: theme?.primary ?? "#c7ff26", fontWeight: 900 }}>{new Date(h?.createdAt || Date.now()).toLocaleDateString()}</div>
-                    <div style={{ fontSize: 11, opacity: 0.68, fontWeight: 800 }}>{fmt(dur)}</div>
-                  </div>
+                  <span style={historyDate(theme)}>{new Date(h?.updatedAt || h?.createdAt || Date.now()).toLocaleString()}</span>
                 </div>
 
-                <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <HistoryTeamHeader profiles={aProfiles} fallbackLabel={teamA} align="left" win={winner === "A"} />
+                <div style={historyPreviewLine}>
+                  {summaryLine}
+                  {rich.setsEnabled ? ` • Sets ${rich.teamA.sets}-${rich.teamB.sets}` : ""}
+                  {rich.totalLegs ? ` • Legs ${rich.teamA.legs}-${rich.teamB.legs}` : ""}
+                  {winner ? ` • Vainqueur ${winner === "A" ? teamA : teamB}` : ""}
+                </div>
+
+                <div style={{ ...historyRowBetween, marginTop: 10 }}>
+                  <div style={historyAvatars}>
+                    {players.slice(0, 6).map((p: any, i: number) => (
+                      <div key={p?.id || i} style={{ ...historyAvWrap, marginLeft: i === 0 ? 0 : -8 }}>
+                        <ProfileAvatar profile={p} size={42} />
+                      </div>
+                    ))}
                   </div>
-                  <div style={historyScoreBox}>
-                    <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 1000, letterSpacing: 0.8 }}>SCORE</div>
-                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 10 }}>
-                      <span style={{ fontSize: 38, lineHeight: 1, fontWeight: 1000, color: "#c7ff26" }}>{scoreA}</span>
-                      <span style={{ fontSize: 16, fontWeight: 900, opacity: 0.6 }}>—</span>
-                      <span style={{ fontSize: 38, lineHeight: 1, fontWeight: 1000, color: "#ff59b0" }}>{scoreB}</span>
+
+                  {winner ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: theme?.primary ?? "#c7ff26", fontWeight: 900 }}>
+                      <HistIcon.Trophy /> {winner === "A" ? teamA : teamB}
                     </div>
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <HistoryTeamHeader profiles={bProfiles} fallbackLabel={teamB} align="right" win={winner === "B"} />
-                  </div>
+                  ) : null}
                 </div>
 
-                <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
-                  <MiniInfo theme={theme} label="Legs" value={String(rich.totalLegs)} />
-                  <MiniInfo theme={theme} label="Buts" value={String(rich.totalGoals)} />
-                  <MiniInfo theme={theme} label="Moy./leg" value={`${formatBabyFootAvg((rich.teamA.avgGoalsPerLeg + rich.teamB.avgGoalsPerLeg) / 2)}`} />
-                  <MiniInfo theme={theme} label="Diff." value={`${scoreA - scoreB > 0 ? "+" : ""}${scoreA - scoreB}`} />
-                </div>
-
-                <div style={{ marginTop: 12, borderRadius: 16, padding: 12, border: "1px solid rgba(255,255,255,0.08)", background: "linear-gradient(180deg, rgba(7,10,24,0.92), rgba(5,8,18,0.98))" }}>
-                  <div style={{ textAlign: "center", fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: "rgba(255,255,255,0.56)", textTransform: "uppercase" }}>Tableau stats</div>
-                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                  {buildBabyFootStatSections(rich).map((section) => (
-                    <React.Fragment key={section.key}>
-                      <div style={{ marginTop: 4, textAlign: "center", fontSize: 11, fontWeight: 1000, letterSpacing: 1, color: "rgba(255,255,255,0.52)", textTransform: "uppercase" }}>{section.title}</div>
-                      {section.rows.map((row) => (
-                        <HistoryStatsRow key={`${section.key}-${row.label}`} label={row.label} left={row.left} right={row.right} />
-                      ))}
-                    </React.Fragment>
-                  ))}
+                <div style={historyActionRow}>
+                  <button type="button" style={historyPrimaryAction(theme)} onClick={() => go("babyfoot_stats_history", { section: "history", focusMatchId: h.id })}>
+                    <HistIcon.Eye /> Voir stats
+                  </button>
+                  <div style={historyIconRow}>
+                    <button type="button" style={historyIconBtn(theme)} title="Partager"><HistIcon.Share /></button>
+                    <button type="button" style={historyIconBtn(theme)} title="Envoyer"><HistIcon.Send /></button>
+                    <button type="button" style={historyIconBtn(theme, true)} title="Supprimer"><HistIcon.Trash /></button>
                   </div>
                 </div>
               </div>
@@ -1174,7 +1195,7 @@ function MiniInfo({ theme, label, value }: { theme: any; label: string; value: s
   );
 }
 
-function HistoryStatsRow({ label, left, right }: { label: string; left: string | number; right: string | number }) {
+function HistoryStatsRow({ label, left, right }: { key?: string; label: string; left: string | number; right: string | number }) {
   return (
     <div
       style={{
@@ -1192,6 +1213,134 @@ function HistoryStatsRow({ label, left, right }: { label: string; left: string |
     </div>
   );
 }
+
+
+const HistIcon = {
+  Trophy: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M6 2h12v2h3a1 1 0 0 1 1 1v1a5 5 0 0 1-5 5h-1.1A6 6 0 0 1 13 13.9V16h3v2H8v-2h3v-2.1A6 6 0 0 1 8.1 11H7A5 5 0 0 1 2 6V5a1 1 0 0 1 1-1h3V2Z" /></svg>),
+  Eye: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M12 5c5.5 0 9.5 4.5 10 7-.5 2.5-4.5 7-10 7S2.5 14.5 2 12c.5-2.5 4.5-7 10-7Zm0 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /></svg>),
+  Share: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M18 16a3 3 0 0 0-2.4 1.2L8.9 13.7a3.2 3.2 0 0 0 0-3.4l6.6-3.5A3 3 0 1 0 15 5a3 3 0 0 0 .1.7L8.5 9.2A3 3 0 1 0 9 15l6.1 3.2A3 3 0 1 0 18 16Z" /></svg>),
+  Send: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2v7Z" /></svg>),
+  Trash: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M9 3h6l1 2h5v2H3V5h5l1-2Zm-3 6h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9Z" /></svg>),
+  Refresh: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.76-4.24L13 11h8V3l-3.3 3.3Z" /></svg>),
+  Upload: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M11 16h2V8l3 3 1.4-1.4L12 4 6.6 9.6 8 11l3-3v8Zm-7 2h16v2H4v-2Z" /></svg>),
+  Filter: (p: any) => (<svg viewBox="0 0 24 24" width={18} height={18} {...p}><path fill="currentColor" d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" /></svg>),
+};
+
+const historyPage = (theme: any): React.CSSProperties => ({
+  minHeight: "100vh",
+  padding: "28px 16px 96px",
+  background: theme?.bg ?? "#05060a",
+  color: theme?.text ?? "#fff",
+});
+
+const historyTitle = (theme: any): React.CSSProperties => ({
+  textAlign: "center",
+  color: theme?.primary ?? "#c7ff26",
+  fontSize: 30,
+  lineHeight: 1,
+  fontWeight: 1000,
+  letterSpacing: 2,
+  textShadow: `0 0 18px ${theme?.primary ?? "#c7ff26"}`,
+  margin: "4px 0 18px",
+});
+
+const historyKpiRow: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+  margin: "0 auto 12px",
+  maxWidth: 520,
+};
+
+const historyKpiCard = (theme: any, active = false): React.CSSProperties => ({
+  borderRadius: 14,
+  border: `1px solid ${active ? (theme?.primary ?? "#c7ff26") : "rgba(255,255,255,.18)"}`,
+  background: "linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.32))",
+  boxShadow: active ? `0 0 18px ${(theme?.primary ?? "#c7ff26")}55` : "0 10px 24px rgba(0,0,0,.35)",
+  padding: "10px 6px",
+  textAlign: "center",
+  minWidth: 0,
+});
+
+const historyKpiLabel: React.CSSProperties = { fontSize: 12, opacity: 0.72, fontWeight: 900 };
+const historyKpiValue = (theme: any): React.CSSProperties => ({ fontSize: 24, lineHeight: 1.1, fontWeight: 1000, color: theme?.text ?? "#fff" });
+
+const historyToolbar: React.CSSProperties = { display: "flex", justifyContent: "center", gap: 12, margin: "12px 0 12px" };
+const historyToolIconBtn = (theme: any, active = false, danger = false): React.CSSProperties => ({
+  width: 52,
+  height: 52,
+  borderRadius: 14,
+  border: `1px solid ${danger ? (theme?.danger ?? "#ff4b4b") : active ? (theme?.primary ?? "#c7ff26") : "rgba(255,255,255,.18)"}`,
+  background: danger ? "rgba(255,0,0,.12)" : "rgba(0,0,0,.38)",
+  color: danger ? (theme?.danger ?? "#ff4b4b") : (theme?.primary ?? "#c7ff26"),
+  boxShadow: active ? `0 0 16px ${(theme?.primary ?? "#c7ff26")}55` : "none",
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+});
+
+const historyFiltersRow: React.CSSProperties = { display: "flex", justifyContent: "center", gap: 8, margin: "4px 0 12px", flexWrap: "wrap" };
+const historyRangeBtn = (theme: any, active = false): React.CSSProperties => ({
+  minWidth: active ? 42 : 34,
+  height: 34,
+  padding: "0 12px",
+  borderRadius: 12,
+  border: `1px solid ${active ? (theme?.primary ?? "#c7ff26") : "rgba(255,255,255,.18)"}`,
+  background: active ? `${theme?.primary ?? "#c7ff26"}18` : "rgba(255,255,255,.06)",
+  color: active ? (theme?.primary ?? "#c7ff26") : "rgba(255,255,255,.82)",
+  fontWeight: 1000,
+  cursor: "pointer",
+});
+
+const historySearchBar = (theme: any): React.CSSProperties => ({
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: 8,
+  margin: "0 8px 12px",
+});
+const historySearchInput = (theme: any): React.CSSProperties => ({
+  minWidth: 0,
+  height: 42,
+  borderRadius: 14,
+  border: `1px solid ${theme?.primary ?? "#c7ff26"}66`,
+  background: "rgba(0,0,0,.25)",
+  color: theme?.text ?? "#fff",
+  padding: "0 12px",
+  fontWeight: 900,
+  outline: "none",
+});
+const historySelect = (theme: any): React.CSSProperties => ({
+  height: 42,
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,.18)",
+  background: "rgba(0,0,0,.35)",
+  color: theme?.text ?? "#fff",
+  padding: "0 10px",
+  fontWeight: 900,
+  outline: "none",
+});
+
+const historyList: React.CSSProperties = { marginTop: 14, padding: "0 8px", display: "grid", gap: 14 };
+
+function babyFootMetalBackground(theme: any) {
+  const c = theme?.primary ?? "#c7ff26";
+  const noiseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="180" height="180" filter="url(#n)" opacity="0.18"/></svg>`;
+  const noiseUri = `url("data:image/svg+xml,${encodeURIComponent(noiseSvg)}")`;
+  return `radial-gradient(120% 90% at 10% 10%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%),radial-gradient(90% 70% at 85% 0%, rgba(255,255,255,0.18), rgba(255,255,255,0) 55%),linear-gradient(180deg, rgba(255,255,255,0.12), rgba(0,0,0,0) 38%, rgba(0,0,0,0.28)),linear-gradient(160deg, ${c}14, rgba(0,0,0,0.80) 62%, ${c}10),${noiseUri}`;
+}
+
+
+const historyExtraBubble: React.CSSProperties = {
+  minWidth: 28,
+  height: 28,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(255,255,255,0.08)",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 12,
+  fontWeight: 1000,
+};
 
 /* ---------- small components ---------- */
 
@@ -1293,76 +1442,137 @@ function StatLine({ label, value }: { label: string; value: string }) {
 /* ---------- styles ---------- */
 
 
-const historyMatchCard = (theme: any, focus = false) => ({
-  position: "relative" as const,
-  overflow: "hidden" as const,
-  borderRadius: 22,
-  border: `1px solid ${focus ? (theme?.primary ?? "#c7ff26") : (theme?.borderSoft ?? theme?.border ?? "rgba(255,255,255,0.14)")}`,
-  background: "linear-gradient(180deg, rgba(8,12,28,0.98), rgba(5,7,18,0.98))",
+const historyMatchCard = (theme: any, focus = false): React.CSSProperties => ({
+  position: "relative",
+  overflow: "hidden",
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box",
+  borderRadius: 18,
+  border: `1px solid ${focus ? (theme?.primary ?? "#c7ff26") : `${theme?.primary ?? "#c7ff26"}55`}`,
+  background: babyFootMetalBackground(theme),
   padding: 14,
-  boxShadow: "0 18px 40px rgba(0,0,0,0.42)",
+  boxShadow: focus
+    ? `0 14px 30px rgba(0,0,0,.45), 0 0 24px ${(theme?.primary ?? "#c7ff26")}66`
+    : `0 14px 30px rgba(0,0,0,.45), 0 0 18px ${(theme?.primary ?? "#c7ff26")}22`,
 });
 
 const historyWatermark: React.CSSProperties = {
   position: "absolute",
-  top: 12,
-  right: 12,
-  width: 92,
-  opacity: 0.12,
+  left: -74,
+  top: 6,
+  width: 220,
+  height: 220,
+  objectFit: "contain",
+  opacity: 0.13,
+  filter: "grayscale(1) contrast(1.08) brightness(1.15)",
+  transform: "rotate(-8deg)",
   pointerEvents: "none",
-  filter: "drop-shadow(0 0 16px rgba(0,0,0,0.35))",
 };
 
-const historyBadge = (theme: any): React.CSSProperties => ({
-  display: "inline-flex",
+const historyRowBetween: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
   alignItems: "center",
-  gap: 8,
-  padding: "6px 12px",
+  gap: 10,
+};
+
+const historyModeBadge = (theme: any): React.CSSProperties => ({
+  padding: "4px 10px",
   borderRadius: 999,
-  background: "rgba(199,255,38,0.12)",
-  border: `1px solid ${theme?.primary ?? "#c7ff26"}88`,
-  color: theme?.primary ?? "#c7ff26",
   fontSize: 11,
   fontWeight: 1000,
-  letterSpacing: 0.8,
-  textTransform: "uppercase",
+  background: `${theme?.primary ?? "#c7ff26"}22`,
+  border: `1px solid ${(theme?.primary ?? "#c7ff26")}99`,
+  color: theme?.primary ?? "#c7ff26",
+  textShadow: "0 0 4px rgba(0,0,0,0.6)",
+  whiteSpace: "nowrap",
 });
 
-const historySoftChip = (label: string): React.CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "6px 10px",
+const historyStatusBadge = (theme: any, running = false): React.CSSProperties => ({
+  padding: "4px 10px",
   borderRadius: 999,
-  background: "rgba(255,255,255,0.07)",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(255,255,255,0.92)",
   fontSize: 11,
-  fontWeight: 900,
-  letterSpacing: 0.5,
+  fontWeight: 1000,
+  background: running ? "rgba(255,0,0,0.1)" : `${theme?.primary ?? "#c7ff26"}22`,
+  border: `1px solid ${running ? (theme?.danger ?? "#ff4b4b") : (theme?.primary ?? "#c7ff26")}`,
+  color: running ? (theme?.danger ?? "#ff4b4b") : (theme?.primary ?? "#c7ff26"),
+  textShadow: "0 0 4px rgba(0,0,0,0.6)",
+  whiteSpace: "nowrap",
 });
 
-const historyScoreBox: React.CSSProperties = {
-  minWidth: 124,
-  borderRadius: 18,
-  padding: "10px 12px",
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "linear-gradient(180deg, rgba(12,16,38,0.96), rgba(6,10,24,0.96))",
-  display: "grid",
-  gap: 6,
-  justifyItems: "center",
+const historyDate = (theme: any): React.CSSProperties => ({
+  fontSize: 11,
+  color: theme?.primary ?? "#c7ff26",
+  fontWeight: 900,
+  textAlign: "right",
+  whiteSpace: "nowrap",
+});
+
+const historyPreviewLine: React.CSSProperties = {
+  marginTop: 8,
+  fontSize: 12,
+  color: "rgba(255,255,255,0.9)",
+  fontWeight: 800,
+  position: "relative",
+  zIndex: 1,
 };
 
-const historyExtraBubble: React.CSSProperties = {
-  minWidth: 28,
-  height: 28,
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.08)",
+const historyAvatars: React.CSSProperties = { display: "flex", position: "relative", zIndex: 1 };
+const historyAvWrap: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: "50%",
+  overflow: "hidden",
+  background: "rgba(255,255,255,.08)",
+  border: "2px solid rgba(0,0,0,.4)",
   display: "grid",
   placeItems: "center",
-  fontSize: 12,
-  fontWeight: 1000,
 };
+
+const historyActionRow: React.CSSProperties = {
+  marginTop: 12,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  width: "100%",
+  maxWidth: "100%",
+  flexWrap: "nowrap",
+  position: "relative",
+  zIndex: 1,
+};
+
+const historyPrimaryAction = (theme: any): React.CSSProperties => ({
+  flex: "0 0 auto",
+  padding: "8px 8px",
+  minWidth: 92,
+  borderRadius: 12,
+  fontWeight: 1000,
+  fontSize: 11,
+  cursor: "pointer",
+  border: `1px solid ${theme?.primary ?? "#c7ff26"}`,
+  background: "rgba(0,0,0,.45)",
+  color: theme?.primary ?? "#c7ff26",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  boxShadow: `0 0 14px ${(theme?.primary ?? "#c7ff26")}55`,
+  userSelect: "none",
+});
+const historyIconRow: React.CSSProperties = { display: "flex", gap: 8, alignItems: "center", marginLeft: "auto", flexWrap: "nowrap" };
+const historyIconBtn = (theme: any, danger = false): React.CSSProperties => ({
+  width: 38,
+  height: 38,
+  borderRadius: 12,
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+  border: `1px solid ${danger ? (theme?.danger ?? "#ff4b4b") : "rgba(255,255,255,.18)"}`,
+  background: danger ? "rgba(255,0,0,.12)" : "rgba(255,255,255,.06)",
+  color: danger ? (theme?.danger ?? "#ff4b4b") : (theme?.text ?? "#fff"),
+  userSelect: "none",
+});
 
 const wrap = (theme: any) => ({
   minHeight: "100vh",
