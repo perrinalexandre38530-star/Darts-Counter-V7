@@ -9,7 +9,7 @@
 // ✅ Sous le nom: mini-avatars des joueurs de l’équipe
 // ✅ Slogan (50 max) + Description
 // ✅ Joueurs : ajouter profils locaux existants + créer profil local (inline modal)
-// ✅ Baby-Foot : limite 2 joueurs (1v1 / 2v2 / 2v1)
+// ✅ Baby-Foot : effectif illimité (on choisit les titulaires dans la config match)
 // =============================================================
 
 import React from "react";
@@ -183,7 +183,8 @@ const availableProfiles = React.useMemo(() => {
   return filteredProfiles.filter((p) => !picked.has(String(p.id)));
 }, [filteredProfiles, team.playerIds]);
 
-  const maxPlayers = 2;
+  // Une équipe Baby-Foot est un effectif/club : pas de limite ici.
+  // La limitation 1v1 / 2v2 / 2v1 se fait uniquement au lancement du match.
   const fromLeagueCreate =
     params?.returnTo === "babyfoot_league_create" ||
     (typeof sessionStorage !== "undefined" && sessionStorage.getItem("babyfoot_league_return_create") === "1");
@@ -224,8 +225,8 @@ const availableProfiles = React.useMemo(() => {
           : next.regionName || "",
       slogan: clamp50(next.slogan || ""),
       description: next.description || "",
-      // ✅ Baby-Foot : 2 joueurs max
-      playerIds: Array.isArray(next.playerIds) ? next.playerIds.slice(0, maxPlayers) : [],
+      // Effectif complet conservé : les titulaires sont choisis ensuite dans les modes de jeu.
+      playerIds: Array.isArray(next.playerIds) ? next.playerIds.map(String).filter(Boolean) : [],
       updatedAt: Date.now(),
     };
     setTeam(fixed);
@@ -275,9 +276,6 @@ const availableProfiles = React.useMemo(() => {
   function togglePlayer(pid: string) {
     const ids = Array.isArray(team.playerIds) ? team.playerIds : [];
     const has = ids.includes(pid);
-    if (!has && ids.length >= maxPlayers) {
-      return alert("Baby-Foot : 2 joueurs maximum par équipe.");
-    }
     save({
       ...team,
       playerIds: has ? ids.filter((x) => x !== pid) : [...ids, pid],
@@ -321,17 +319,12 @@ const availableProfiles = React.useMemo(() => {
       });
     }
 
-    // 2) Sélectionne directement dans l'équipe
+    // 2) Sélectionne directement dans l'effectif de l'équipe
     const ids = Array.isArray(team.playerIds) ? team.playerIds : [];
-    // ✅ Baby-Foot : max 2 joueurs
-    if (ids.length >= maxPlayers) {
-      alert("Baby-Foot : 2 joueurs maximum par équipe.");
-    } else {
-      save({
-        ...team,
-        playerIds: ids.includes(p.id) ? ids : [...ids, p.id],
-      });
-    }
+    save({
+      ...team,
+      playerIds: ids.includes(p.id) ? ids : [...ids, p.id],
+    });
 
     setProfileModalOpen(false);
   }
@@ -739,7 +732,7 @@ const availableProfiles = React.useMemo(() => {
             {/* Joueurs */}
             <div style={sectionTitleRow}>
               <div style={{ fontWeight: 900, letterSpacing: 0.5 }}>
-                {t("teams.edit.players", "Joueurs")}
+                {t("teams.edit.players", "Joueurs")} <span style={{ opacity: 0.62, fontSize: 12 }}>({(team.playerIds || []).length})</span>
               </div>
               <button style={btnSmall(theme)} onClick={openCreateProfile}>
                 + {t("profiles.create", "Créer un profil")}
@@ -835,7 +828,7 @@ const availableProfiles = React.useMemo(() => {
 </div>
 
             <div style={{ marginTop: 14, fontSize: 11, opacity: 0.7 }}>
-              {t("teams.edit.hint", "Ces équipes sont utilisées uniquement en Baby-Foot.")}
+              {t("teams.edit.hint", "Ajoute ici tout l’effectif de l’équipe. Dans les modes 1v1 / 2v1 / 2v2, tu choisiras ensuite les joueurs titulaires pour le match.")}
             </div>
           </div>
         </div>
