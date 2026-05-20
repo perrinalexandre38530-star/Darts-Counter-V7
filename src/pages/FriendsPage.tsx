@@ -167,6 +167,111 @@ function fmt1(n: number) {
   return n.toFixed(1);
 }
 
+
+function onlineNum(value: any, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeOnlineHistoryForHub(row: any, idx = 0): any | null {
+  if (!row || typeof row !== "object") return null;
+  const payload = row.payload && typeof row.payload === "object" ? row.payload : {};
+  const nestedPayload = payload?.payload && typeof payload.payload === "object" ? payload.payload : {};
+  const summary = row.summary && typeof row.summary === "object"
+    ? row.summary
+    : payload.summary && typeof payload.summary === "object"
+    ? payload.summary
+    : nestedPayload.summary && typeof nestedPayload.summary === "object"
+    ? nestedPayload.summary
+    : {};
+
+  const rawMode = String(row.kind || row.mode || payload.mode || payload.onlineMode || nestedPayload.mode || nestedPayload.onlineMode || "").toLowerCase();
+  const isOnline =
+    row.online === true ||
+    payload.online === true ||
+    nestedPayload.online === true ||
+    payload.source === "online" ||
+    nestedPayload.source === "online" ||
+    rawMode.includes("online") ||
+    !!row.lobbyCode ||
+    !!row.lobby_code ||
+    !!payload.lobbyCode ||
+    !!payload.lobby_code ||
+    !!nestedPayload.lobbyCode ||
+    !!nestedPayload.lobby_code;
+  if (!isOnline) return null;
+
+  const mode = rawMode.includes("x01") ? "x01" : String(payload.onlineMode || payload.mode || row.mode || row.kind || "online").toLowerCase();
+  const createdRaw = row.createdAt ?? row.created_at ?? row.date ?? payload.createdAt ?? payload.created_at ?? summary.createdAt ?? nestedPayload.createdAt ?? Date.now();
+  const finishedRaw = row.finishedAt ?? row.finished_at ?? row.updatedAt ?? row.updated_at ?? payload.finishedAt ?? payload.finished_at ?? createdRaw;
+  const createdAt = typeof createdRaw === "number" ? createdRaw : Date.parse(String(createdRaw));
+  const finishedAt = typeof finishedRaw === "number" ? finishedRaw : Date.parse(String(finishedRaw));
+
+  const statsFromRow = row.stats || {};
+  const statsFromPayload = payload.stats || nestedPayload.stats || {};
+  const darts = onlineNum(row.darts ?? statsFromRow.darts ?? payload.darts ?? payload.dartsCount ?? summary.darts ?? statsFromPayload.darts, 0);
+  const totalScore = onlineNum(row.totalScore ?? statsFromRow.totalScore ?? payload.totalScore ?? summary.totalScore ?? statsFromPayload.totalScore, 0);
+  const bestVisit = onlineNum(row.bestVisit ?? statsFromRow.bestVisit ?? summary.bestVisit ?? statsFromPayload.bestVisit, 0);
+  const bestCheckout = onlineNum(row.bestCheckout ?? statsFromRow.bestCheckout ?? summary.bestCheckout ?? statsFromPayload.bestCheckout, 0);
+
+  return {
+    ...row,
+    id: String(row.id || row.matchId || row.match_id || payload.matchId || payload.id || `online-history-${idx}`),
+    mode,
+    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    finishedAt: Number.isFinite(finishedAt) ? finishedAt : (Number.isFinite(createdAt) ? createdAt : Date.now()),
+    payload,
+    summary,
+    stats: {
+      ...(statsFromPayload || {}),
+      ...(statsFromRow || {}),
+      darts,
+      totalScore,
+      bestVisit,
+      bestCheckout,
+      avg3D: onlineNum(statsFromRow.avg3D ?? statsFromRow.avg3 ?? statsFromPayload.avg3D ?? statsFromPayload.avg3, darts > 0 ? (totalScore / darts) * 3 : 0),
+      checkoutPct: onlineNum(statsFromRow.checkoutPct ?? statsFromPayload.checkoutPct ?? row.checkoutPct ?? payload.checkoutPct, 0),
+    },
+  };
+}
+
+function onlineHubMatchKey(row: any): string {
+  const candidates = [
+    row?.id,
+    row?.matchId,
+    row?.match_id,
+    row?.lobbyCode,
+    row?.lobby_code,
+    row?.payload?.matchId,
+    row?.payload?.id,
+    row?.payload?.lobbyCode,
+    row?.payload?.lobby_code,
+    row?.summary?.matchId,
+  ];
+  for (const candidate of candidates) {
+    const key = String(candidate || "").trim();
+    if (key) return key.toLowerCase();
+  }
+  return `${String(row?.mode || "online").toLowerCase()}::${toTs(row)}::${JSON.stringify(row?.players || row?.payload?.players || []).slice(0, 160)}`;
+}
+
+async function loadOnlineHubMatchesFromHistoryAndCache(): Promise<any[]> {
+  const out: any[] = [];
+  try {
+    const api: any = History as any;
+    const rows = typeof api.listFinished === "function" ? await api.listFinished() : typeof api.list === "function" ? await api.list() : [];
+    if (Array.isArray(rows)) out.push(...rows.map(normalizeOnlineHistoryForHub).filter(Boolean));
+  } catch (err) {
+    console.warn("[OnlineHub] lecture History online impossible", err);
+  }
+  try {
+    const raw = window.localStorage.getItem(LS_ONLINE_MATCHES_KEY);
+    const rows = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(rows)) out.push(...rows.map(normalizeOnlineHistoryForHub).filter(Boolean));
+  } catch {}
+  return filterOnlineStatsHardDeleted(out);
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: number | null = null;
   const timeout = new Promise<T>((_, reject) => {
@@ -1288,8 +1393,17 @@ const doLogout = React.useCallback(async () => {
     async function load() {
       setLoadingMatches(true);
       try {
-        const list = await onlineApi.listMatches(50);
-        const cleanList = filterOnlineStatsHardDeleted(list || []);
+        const [serverList, historyList] = await Promise.all([
+          onlineApi.listMatches(50).catch(() => [] as any[]),
+          loadOnlineHubMatchesFromHistoryAndCache(),
+        ]);
+        const merged = new Map<string, any>();
+        for (const row of [...(Array.isArray(serverList) ? serverList : []), ...(Array.isArray(historyList) ? historyList : [])]) {
+          const normalized = normalizeOnlineHistoryForHub(row) || row;
+          if (!normalized) continue;
+          merged.set(onlineHubMatchKey(normalized), normalized);
+        }
+        const cleanList = filterOnlineStatsHardDeleted(Array.from(merged.values()));
         if (!cancelled) {
           setMatches(cleanList || []);
           try {
@@ -1297,7 +1411,10 @@ const doLogout = React.useCallback(async () => {
           } catch {}
         }
       } catch {
-        if (!cancelled) setMatches([]);
+        if (!cancelled) {
+          const fallback = await loadOnlineHubMatchesFromHistoryAndCache().catch(() => []);
+          setMatches(fallback || []);
+        }
       } finally {
         if (!cancelled) setLoadingMatches(false);
       }
