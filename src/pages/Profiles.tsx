@@ -16,6 +16,7 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
 import {
   getBasicProfileStats,
+  getBasicProfileStatsAsync,
   type BasicProfileStats,
 } from "../lib/statsBridge";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
@@ -165,40 +166,108 @@ export type PrivateInfo = {
   sfxVolume?: number;
 };
 
-/* ===== Helper lecture instantanée (mini-cache IDB + quick-stats) ===== */
+/* ===== Helper stats profil : même source centrale que Home / Stats X01 / Historique ===== */
+type ProfileMiniStats = {
+  avg3: number;
+  bestVisit: number;
+  bestCheckout: number;
+  wins: number;
+  games: number;
+  winRate: number;
+  darts: number;
+};
+
+const EMPTY_PROFILE_MINI_STATS: ProfileMiniStats = {
+  avg3: 0,
+  bestVisit: 0,
+  bestCheckout: 0,
+  wins: 0,
+  games: 0,
+  winRate: 0,
+  darts: 0,
+};
+
+const profileMiniStatsCache = new Map<string, ProfileMiniStats>();
+
+function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
+  const games = Number(basic?.games ?? 0) || 0;
+  const wins = Number(basic?.wins ?? 0) || 0;
+  const rawWinRate = Number(basic?.winRate ?? NaN);
+  const winRate = Number.isFinite(rawWinRate)
+    ? Math.max(0, Math.min(100, rawWinRate))
+    : games > 0
+      ? Math.max(0, Math.min(100, (wins / games) * 100))
+      : 0;
+
+  return {
+    avg3: Number(basic?.avg3 ?? 0) || 0,
+    bestVisit: Number(basic?.bestVisit ?? 0) || 0,
+    bestCheckout: Number(basic?.bestCheckout ?? 0) || 0,
+    wins,
+    games,
+    winRate,
+    darts: Number(basic?.darts ?? 0) || 0,
+  };
+}
+
+function readProfileMiniStatsSync(playerId: string | undefined | null): ProfileMiniStats {
+  if (!playerId) return EMPTY_PROFILE_MINI_STATS;
+  const key = String(playerId);
+  const cached = profileMiniStatsCache.get(key);
+  if (cached) return cached;
+
+  try {
+    const syncStats = normalizeProfileMiniStats(getBasicProfileStats(key));
+    profileMiniStatsCache.set(key, syncStats);
+    return syncStats;
+  } catch {
+    return EMPTY_PROFILE_MINI_STATS;
+  }
+}
+
 function useBasicStats(playerId: string | undefined | null, enabled: boolean = true) {
-  const empty = React.useMemo(
-    () => ({
-      avg3: 0,
-      bestVisit: 0,
-      bestCheckout: 0,
-      wins: 0,
-      games: 0,
-      winRate: 0,
-      darts: 0,
-    }),
-    []
+  const key = playerId ? String(playerId) : "";
+  const [stats, setStats] = React.useState<ProfileMiniStats>(() =>
+    enabled && key ? readProfileMiniStatsSync(key) : EMPTY_PROFILE_MINI_STATS
   );
 
-  return React.useMemo(() => {
-    if (!enabled || !playerId) return empty;
-    try {
-      const basic: any = getBasicProfileStats(playerId) || {};
-      const games = Number(basic.games ?? 0);
-      const wins = Number(basic.wins ?? 0);
-      return {
-        avg3: Number(basic.avg3 ?? 0),
-        bestVisit: Number(basic.bestVisit ?? 0),
-        bestCheckout: Number(basic.bestCheckout ?? 0),
-        wins,
-        games,
-        winRate: games > 0 ? Math.round((wins / games) * 100) : 0,
-        darts: Number(basic.darts ?? 0),
-      };
-    } catch {
-      return empty;
+  React.useEffect(() => {
+    if (!enabled || !key) {
+      setStats(EMPTY_PROFILE_MINI_STATS);
+      return;
     }
-  }, [playerId, enabled, empty]);
+
+    let cancelled = false;
+
+    const refresh = async () => {
+      const syncStats = readProfileMiniStatsSync(key);
+      if (!cancelled) setStats(syncStats);
+
+      try {
+        const asyncStats = normalizeProfileMiniStats(await getBasicProfileStatsAsync(key));
+        profileMiniStatsCache.set(key, asyncStats);
+        if (!cancelled) setStats(asyncStats);
+      } catch (err) {
+        console.warn("[Profiles] stats profil centralisées indisponibles", err);
+      }
+    };
+
+    void refresh();
+
+    const onStatsUpdated = () => void refresh();
+    window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+    window.addEventListener("dc-history-updated", onStatsUpdated as EventListener);
+    window.addEventListener("storage", onStatsUpdated as EventListener);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+      window.removeEventListener("dc-history-updated", onStatsUpdated as EventListener);
+      window.removeEventListener("storage", onStatsUpdated as EventListener);
+    };
+  }, [key, enabled]);
+
+  return stats;
 }
 
 function useDeferredSectionReady(active: boolean, delay = 420) {
