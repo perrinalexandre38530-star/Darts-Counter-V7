@@ -1430,21 +1430,93 @@ function buildDashboardForPlayer(
   const Nloc = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : 0);
   const normWinId = (v: any) => String(v ?? "").replace(/^online:/, "").trim();
   const playerWonRecord = (r: any, pstat: any): boolean => {
+    const playerNameNorm = statHubNormName(player?.name);
+    const valueMatchesPlayer = (v: any): boolean => {
+      if (v === undefined || v === null) return false;
+      if (typeof v === "object") {
+        const ids = statHubPlayerIds(v);
+        if (ids.some((id) => statHubIdMatches(normWinId(id), normWinId(pid)))) return true;
+        const nm = statHubNormName(v?.name ?? v?.playerName ?? v?.displayName ?? v?.nickname ?? v?.surname ?? v?.winnerName);
+        return !!playerNameNorm && !!nm && nm === playerNameNorm;
+      }
+      const raw = String(v ?? "").trim();
+      if (statHubIdMatches(normWinId(raw), normWinId(pid))) return true;
+      return !!playerNameNorm && statHubNormName(raw) === playerNameNorm;
+    };
+
     const rawWinners = [
       r?.winnerId,
       r?.winner,
+      r?.winnerName,
+      r?.winnerPlayer,
       r?.summary?.winnerId,
+      r?.summary?.winner,
+      r?.summary?.winnerName,
+      r?.summary?.result?.winnerId,
+      r?.summary?.result?.winnerName,
       r?.payload?.winnerId,
+      r?.payload?.winner,
+      r?.payload?.winnerName,
+      r?.payload?.result?.winnerId,
+      r?.payload?.result?.winnerName,
       r?.payload?.summary?.winnerId,
+      r?.payload?.summary?.winner,
+      r?.payload?.summary?.winnerName,
+      r?.payload?.summary?.result?.winnerId,
+      r?.payload?.summary?.result?.winnerName,
       ...(Array.isArray(r?.winnerIds) ? r.winnerIds : []),
       ...(Array.isArray(r?.summary?.winnerIds) ? r.summary.winnerIds : []),
       ...(Array.isArray(r?.payload?.winnerIds) ? r.payload.winnerIds : []),
       ...(Array.isArray(r?.payload?.summary?.winnerIds) ? r.payload.summary.winnerIds : []),
     ].filter((v) => v !== undefined && v !== null);
-    if (rawWinners.some((w) => statHubIdMatches(normWinId(w), normWinId(pid)))) return true;
-    if (pstat?.win === true || pstat?.winner === true || pstat?.isWinner === true) return true;
-    const place = Number(pstat?.place ?? pstat?.rank ?? pstat?.position ?? 0);
+    if (rawWinners.some(valueMatchesPlayer)) return true;
+
+    const truthyWin = [pstat?.win, pstat?.won, pstat?.winner, pstat?.isWinner, pstat?.victory, pstat?.hasWon].some((v) => v === true || v === 1 || v === "1");
+    if (truthyWin) return true;
+
+    const resultText = String(
+      pstat?.result ??
+      pstat?.outcome ??
+      pstat?.status ??
+      pstat?.matchResult ??
+      pstat?.finalResult ??
+      pstat?.label ??
+      ""
+    ).trim().toLowerCase();
+    if (["w", "win", "winner", "won", "victory", "victoire", "gagne", "gagné", "vainqueur", "1er", "1ere", "1ère"].includes(resultText)) return true;
+
+    const place = Number(pstat?.place ?? pstat?.rank ?? pstat?.finalRank ?? pstat?.position ?? pstat?.standing ?? 0);
     if (Number.isFinite(place) && place === 1) return true;
+
+    // Fallback DUO/X01 : si le record contient un tableau de joueurs avec un score de sets/legs,
+    // on considère gagnant le joueur qui a le plus de sets, puis le plus de legs.
+    const playersRows: any[] = [
+      ...toArrLoc<any>(r?.players),
+      ...toArrLoc<any>(r?.summary?.players),
+      ...toArrLoc<any>(r?.summary?.perPlayer),
+      ...toArrLoc<any>(r?.summary?.rankings),
+      ...toArrLoc<any>(r?.payload?.players),
+      ...toArrLoc<any>(r?.payload?.summary?.players),
+      ...toArrLoc<any>(r?.payload?.summary?.perPlayer),
+      ...toArrLoc<any>(r?.payload?.summary?.rankings),
+    ];
+    const scored = playersRows
+      .map((x) => ({
+        row: x,
+        sets: Number(x?.setsWon ?? x?.setsWin ?? x?.sets ?? x?.setWins ?? x?.matchSetsWon ?? 0),
+        legs: Number(x?.legsWon ?? x?.legsWin ?? x?.legs ?? x?.legWins ?? x?.matchLegsWon ?? 0),
+      }))
+      .filter((x) => Number.isFinite(x.sets) || Number.isFinite(x.legs));
+    if (scored.length >= 2) {
+      const mine = scored.find((x) => valueMatchesPlayer(x.row));
+      if (mine) {
+        const maxSets = Math.max(...scored.map((x) => Number.isFinite(x.sets) ? x.sets : 0));
+        const maxLegs = Math.max(...scored.map((x) => Number.isFinite(x.legs) ? x.legs : 0));
+        if ((mine.sets || 0) > 0 && mine.sets === maxSets && scored.filter((x) => x.sets === maxSets).length === 1) return true;
+        if (maxSets <= 0 && (mine.legs || 0) > 0 && mine.legs === maxLegs && scored.filter((x) => x.legs === maxLegs).length === 1) return true;
+      }
+    }
+
     return false;
   };
 
@@ -1543,8 +1615,15 @@ function buildDashboardForPlayer(
 
     const pstat =
       (ss?.players && typeof ss.players === "object" ? ss.players[pid] : null) ??
-      (perArr.find((x) => String(x?.playerId ?? x?.id ?? x?.profileId ?? "") === String(pid))) ??
-      (perSrc && !Array.isArray(perSrc) && typeof perSrc === "object" ? perSrc[pid] : null) ??
+      (perArr.find((x) => {
+        const ids = statHubPlayerIds(x);
+        const nm = statHubNormName(x?.name ?? x?.playerName ?? x?.displayName ?? x?.nickname ?? x?.surname);
+        const targetNm = statHubNormName(player?.name);
+        return ids.some((id) => statHubIdMatches(id, pid)) || (!!targetNm && !!nm && nm === targetNm);
+      })) ??
+      (perSrc && !Array.isArray(perSrc) && typeof perSrc === "object"
+        ? (perSrc[pid] ?? Object.entries(perSrc).find(([k]) => statHubIdMatches(k, pid))?.[1])
+        : null) ??
       (ss?.[pid]) ??
       {};
 
