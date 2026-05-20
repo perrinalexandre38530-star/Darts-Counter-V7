@@ -570,10 +570,33 @@ function x01ReadPlayerMapValue(match: any, keys: string[], player: any, pid: any
   return { value: 0, total: 0, map: null };
 }
 
+function x01PlayersCount(match: any): number {
+  const roots = [match, match?.summary, match?.payload, match?.payload?.summary, match?.payload?.payload, match?.payload?.payload?.summary];
+  for (const root of roots) {
+    const arr = root?.players || root?.summary?.players;
+    if (Array.isArray(arr) && arr.length) return arr.length;
+  }
+  return 0;
+}
+
+function x01ReadDuoMatchScoreAsSets(match: any, player: any, pid: any): { value: number; total: number; map: any | null } {
+  // Dans X01PlayV3, summary.matchScore est le vrai score de MATCH pour un duel :
+  // ce sont les SETS gagnés par joueur. Pour les matchs multi, matchScore contient
+  // plutôt des rangs 1/2/3, donc on ne l'utilise JAMAIS si le match a plus de 2 joueurs.
+  if (x01PlayersCount(match) !== 2) return { value: 0, total: 0, map: null };
+  const info = x01ReadPlayerMapValue(match, ["matchScore", "matchScores", "finalMatchScore", "scoreByPlayer"], player, pid);
+  if (!info.map) return { value: 0, total: 0, map: null };
+  // Sécurité : un score de sets duo doit contenir au moins un 2/3/etc. OU être cohérent 1-0 uniquement
+  // pour les matchs sans sets. On le retourne tel quel : il sera prioritaire sur les faux fallbacks.
+  return info;
+}
+
 function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
-  const setInfo = x01ReadPlayerMapValue(match, [
+  const setInfoRaw = x01ReadPlayerMapValue(match, [
     "setsWonByPlayer", "setsWinByPlayer", "setsByPlayer", "setsWon", "setsScore", "sets"
   ], player, pid);
+  const matchScoreAsSets = x01ReadDuoMatchScoreAsSets(match, player, pid);
+  const setInfo = matchScoreAsSets.map ? matchScoreAsSets : setInfoRaw;
   const legInfo = x01ReadPlayerMapValue(match, [
     "legsWonByPlayer", "legsWinByPlayer", "legsByPlayer", "legsWon", "legsScore", "legs"
   ], player, pid);
@@ -587,7 +610,9 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
   // le score de match puisse afficher les SETS gagnés (2-0 / 2-1) et non un
   // vieux fallback win/loss 1-0.
   const directRows = collectX01RankingRows(match);
-  const directRow = directRows.find((r) => x01RowMatchesPid(r, String(pid), playerNameFromLike(player)));
+  const directRow = directRows.find((r) =>
+    playerKeysFromLike(player, pid).some((k) => x01RowMatchesPid(r, k, playerNameFromLike(player)))
+  );
   const directSetsWon = numOr0(
     player?.setsWon, player?.setWon, player?.sets, player?.matchSets, player?.wonSets,
     directRow?.setsWon, directRow?.setWon, directRow?.sets, directRow?.matchSets, directRow?.wonSets, directRow?.sw
