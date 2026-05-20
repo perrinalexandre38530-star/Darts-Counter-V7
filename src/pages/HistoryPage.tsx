@@ -562,9 +562,38 @@ async function decodePayload(raw: any): Promise<any | null> {
 
 /* ---------- Dédup + range ---------- */
 
+function asHistoryTs(v: any): number {
+  if (v == null || v === "") return 0;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (!trimmed) return 0;
+    const n = Number(trimmed);
+    if (Number.isFinite(n) && n > 0) return n;
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function historyPlayedAt(e: any): number {
+  // Source de vérité pour une carte historique = date de fin/joué du match,
+  // pas la date à laquelle le JSON a été importé localement.
+  return (
+    asHistoryTs(e?.finishedAt) ||
+    asHistoryTs(e?.summary?.finishedAt) ||
+    asHistoryTs(e?.payload?.finishedAt) ||
+    asHistoryTs(e?.payload?.summary?.finishedAt) ||
+    asHistoryTs(e?.payload?.updatedAt) ||
+    asHistoryTs(e?.updatedAt) ||
+    asHistoryTs(e?.payload?.createdAt) ||
+    asHistoryTs(e?.createdAt)
+  );
+}
+
 function better(a: SavedEntry, b: SavedEntry): SavedEntry {
-  const ta = a.updatedAt || a.createdAt || 0;
-  const tb = b.updatedAt || b.createdAt || 0;
+  const ta = historyPlayedAt(a);
+  const tb = historyPlayedAt(b);
   if (ta !== tb) return ta > tb ? a : b;
   const sa = statusOf(a),
     sb = statusOf(b);
@@ -574,8 +603,8 @@ function better(a: SavedEntry, b: SavedEntry): SavedEntry {
 
 function sameBucket(a: SavedEntry, b: SavedEntry): boolean {
   if (baseMode(a) !== baseMode(b)) return false;
-  const ta = a.updatedAt || a.createdAt || 0;
-  const tb = b.updatedAt || b.createdAt || 0;
+  const ta = historyPlayedAt(a);
+  const tb = historyPlayedAt(b);
   if (Math.abs(ta - tb) > 20 * 60 * 1000) return false;
   const A = new Set((a.players || []).map(getId).filter(Boolean));
   const B = new Set((b.players || []).map(getId).filter(Boolean));
@@ -604,7 +633,7 @@ function dedupe(list: SavedEntry[]): SavedEntry[] {
 
   return Array.from(byKey.values())
     .filter(isUsableSavedEntry)
-    .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+    .sort((a, b) => historyPlayedAt(b) - historyPlayedAt(a));
 }
 
 /* ---------- Range filters ---------- */
@@ -1596,8 +1625,9 @@ export default function HistoryPage({
         startScore: packetStartScore(packet) || undefined,
       };
 
-    const created = Number(payload?.createdAt || payload?.created_at || Date.parse(packet.exportedAt));
-    const updated = Number(payload?.updatedAt || payload?.updated_at || Date.now());
+    const packetFinishedAt = asHistoryTs(packet?.summary?.finishedAt || payload?.finishedAt || payload?.summary?.finishedAt);
+    const created = asHistoryTs(payload?.createdAt || payload?.created_at || packetFinishedAt || packet.exportedAt);
+    const updated = asHistoryTs(payload?.updatedAt || payload?.updated_at || packetFinishedAt || payload?.createdAt || packet.exportedAt);
 
     return {
       id: packet.matchId,
@@ -1606,9 +1636,9 @@ export default function HistoryPage({
       status: packet.summary?.status === "in_progress" ? "in_progress" : "finished",
       players: players as any,
       winnerId,
-      createdAt: Number.isFinite(created) ? created : Date.now(),
-      updatedAt: Number.isFinite(updated) ? updated : Date.now(),
-      finishedAt: packet.summary?.finishedAt || payload?.finishedAt || payload?.updatedAt || null,
+      createdAt: created || Date.now(),
+      updatedAt: updated || created || Date.now(),
+      finishedAt: packetFinishedAt || updated || created || null,
       game,
       summary: {
         ...(payload?.summary && typeof payload.summary === "object" ? payload.summary : {}),
@@ -1775,7 +1805,7 @@ export default function HistoryPage({
 
   const filtered = useMemo(() => {
     return sportSource
-      .filter((e) => inRange(e.updatedAt || e.createdAt, sub))
+      .filter((e) => inRange(historyPlayedAt(e), sub))
       .filter((e) => gameFilter === "all" || inferGameFilterKey(e, sport) === gameFilter)
       .filter((e) => entryHasPlayer(e, playerFilter));
   }, [sportSource, sub, gameFilter, playerFilter, sport]);
@@ -2489,7 +2519,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       {inProg ? "En cours" : "Terminé"}
                     </span>
                   </div>
-                  <span style={{ fontSize: 11, color: theme.primary }}>{fmtDate(e.updatedAt || e.createdAt)}</span>
+                  <span style={{ fontSize: 11, color: theme.primary }}>{fmtDate(historyPlayedAt(e))}</span>
                 </div>
 
                 <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)" }}>

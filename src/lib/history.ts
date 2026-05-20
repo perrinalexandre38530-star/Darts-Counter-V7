@@ -1829,7 +1829,10 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     players: Array.isArray(rec.players) ? rec.players : [],
     winnerId: rec.winnerId ?? null,
     createdAt: rec.createdAt ?? now,
-    updatedAt: now,
+    // IMPORTANT IMPORT/HISTORIQUE : ne pas écraser la date jouée/importée par Date.now().
+    // Les imports X01 fournissent déjà payload.createdAt/updatedAt ; si on force Date.now(),
+    // la carte Historique affiche la date d'import au lieu de la date réelle de partie.
+    updatedAt: rec.updatedAt ?? now,
     summary: rec.summary || null,
   });
 
