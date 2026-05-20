@@ -347,6 +347,128 @@ function getRankFromRows(match: any, pid: string, playerName?: any): number | nu
   return null;
 }
 
+
+function collectScoreMaps(match: any, keys: string[]): any[] {
+  const roots = [
+    match,
+    match?.summary,
+    match?.payload,
+    match?.payload?.summary,
+    match?.payload?.payload,
+    match?.payload?.payload?.summary,
+    match?.resume,
+    match?.resume?.summary,
+    match?.resume?.state,
+    match?.resume?.state?.summary,
+  ];
+  const out: any[] = [];
+  for (const root of roots) {
+    if (!root || typeof root !== "object") continue;
+    for (const key of keys) {
+      const v = root[key];
+      if (v && typeof v === "object" && !Array.isArray(v)) out.push(v);
+    }
+  }
+  return out;
+}
+
+function playerKeysFromLike(player: any, fallbackPid?: any): string[] {
+  return [
+    fallbackPid,
+    player?.id,
+    player?.playerId,
+    player?.profileId,
+    player?.selectedPlayerId,
+    player?.pid,
+    player?.uid,
+  ]
+    .filter((v) => v !== undefined && v !== null && String(v).trim())
+    .map((v) => String(v));
+}
+
+function playerNameFromLike(player: any): string {
+  return String(player?.name ?? player?.playerName ?? player?.displayName ?? player?.nickname ?? player?.label ?? "").trim();
+}
+
+function getRobustRankForPlayer(match: any, player: any, fallbackPid?: any): number | null {
+  const keys = playerKeysFromLike(player, fallbackPid);
+  const name = playerNameFromLike(player);
+  for (const k of keys) {
+    const r = getRankFromRows(match, k, name);
+    if (r && r > 0) return r;
+  }
+
+  // Fallback X01 FFA : si le moteur a sauvegardé les scores/restants par joueur
+  // mais pas de rang explicite, on classe au score restant (0 en premier, puis plus petit reste).
+  const scoreMaps = collectScoreMaps(match, [
+    "finalScores",
+    "remainingScores",
+    "remainingByPlayer",
+    "scoreRemainingByPlayer",
+    "scoreAfterByPlayer",
+    "scores",
+  ]);
+  const firstMap = scoreMaps.find((m) => m && typeof m === "object" && Object.keys(m).length >= 2);
+  if (!firstMap) return null;
+
+  const rows = Object.entries(firstMap)
+    .map(([id, value]) => ({ id: String(id), score: Number(value) }))
+    .filter((r) => Number.isFinite(r.score))
+    .sort((a, b) => a.score - b.score);
+
+  if (rows.length < 2) return null;
+  const wanted = keys.find((k) => rows.some((r) => sameId(r.id, k) || r.id === k));
+  if (!wanted) return null;
+  const idx = rows.findIndex((r) => sameId(r.id, wanted) || r.id === wanted);
+  return idx >= 0 ? idx + 1 : null;
+}
+
+function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[]) {
+  const ownLegs = Number(line.legsWon || 0);
+  const ownSets = Number(line.setsWon || 0);
+  const maxOtherLegs = group
+    .filter((x) => x.selectedPlayerId !== line.selectedPlayerId)
+    .reduce((m, x) => Math.max(m, Number(x.legsWon || 0)), 0);
+  const maxOtherSets = group
+    .filter((x) => x.selectedPlayerId !== line.selectedPlayerId)
+    .reduce((m, x) => Math.max(m, Number(x.setsWon || 0)), 0);
+
+  const groupSetTotal = ownSets + maxOtherSets;
+  const groupLegTotal = ownLegs + maxOtherLegs;
+
+  if (groupSetTotal > 0) {
+    return {
+      played: groupSetTotal,
+      won: ownSets,
+      lost: maxOtherSets,
+      label: `${ownSets}-${maxOtherSets}`,
+      margin: ownSets - maxOtherSets,
+      unit: "sets" as const,
+    };
+  }
+
+  if (groupLegTotal > 0) {
+    return {
+      played: groupLegTotal,
+      won: ownLegs,
+      lost: maxOtherLegs,
+      label: `${ownLegs}-${maxOtherLegs}`,
+      margin: ownLegs - maxOtherLegs,
+      unit: "legs" as const,
+    };
+  }
+
+  const win = !!line.isWin;
+  return {
+    played: 1,
+    won: win ? 1 : 0,
+    lost: win ? 0 : 1,
+    label: win ? "1-0" : "0-1",
+    margin: win ? 1 : -1,
+    unit: "match" as const,
+  };
+}
+
 /**
  * Détail summary => X01MultiSession partiel (sans meta)
  * Utilise en priorité :
@@ -903,6 +1025,7 @@ async function loadX01MultiSessions(
         isTeam,
         teamId,
         ...base,
+        rank: getRobustRankForPlayer(match, player, pid) ?? base.rank ?? null,
       });
     }
   }
@@ -1076,7 +1199,18 @@ export default function X01MultiStatsTabFull({
           }
         }
 
-        const r = s.rank ?? null;
+        let r = s.rank ?? null;
+        // Fallback : si le rang n'a pas été persisté mais les restes sont présents,
+        // on classe le groupe par score restant / score final croissant.
+        if (!r || r < 1) {
+          const sorted = [...arr].sort((a, b) => {
+            const ar = Number((a as any).remaining ?? (a as any).finalScore ?? 999999);
+            const br = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
+            return ar - br;
+          });
+          const idx = sorted.findIndex((x) => x.selectedPlayerId === s.selectedPlayerId);
+          if (idx >= 0) r = idx + 1;
+        }
         if (!r || r < 1) continue;
 
         if (r === 1) stats.first++;
@@ -1115,24 +1249,27 @@ export default function X01MultiStatsTabFull({
     const numPlayers = group.length;
     const isDuo = !isTeam && numPlayers === 2;
 
-    let legsPlayed = line.legsPlayed ?? 0;
-    let legsWon = line.legsWon ?? 0;
-    let setsPlayed = line.setsPlayed ?? 0;
-    let setsWon = line.setsWon ?? 0;
+    let legsWon = Number(line.legsWon || 0);
+    let setsWon = Number(line.setsWon || 0);
+    let legsPlayed = Number(line.legsPlayed || 0);
+    let setsPlayed = Number(line.setsPlayed || 0);
+
+    const groupLegsTotal = group.reduce((sum, x) => sum + Number(x.legsWon || 0), 0);
+    const groupSetsTotal = group.reduce((sum, x) => sum + Number(x.setsWon || 0), 0);
+
+    // Source prioritaire : score final réellement stocké par joueur.
+    // Évite les anciens fallbacks 1-0 quand le match était en réalité 2-0 / 2-1.
+    if (groupLegsTotal > 0) legsPlayed = groupLegsTotal;
+    if (groupSetsTotal > 0) setsPlayed = groupSetsTotal;
 
     const myFinishes = (line as any).finishes ?? 0;
 
-    // 🔥 DUO : si on n'a pas les legs / sets, on les reconstruit
+    // DUO legacy : si aucun compteur leg n'a été sauvegardé, on reconstruit via finishes.
     if (isDuo) {
-      const opp = group.find(
-        (x) => x.selectedPlayerId !== line.selectedPlayerId
-      );
+      const opp = group.find((x) => x.selectedPlayerId !== line.selectedPlayerId);
       const oppFinishes = (opp as any)?.finishes ?? 0;
-
-      // 1 leg gagné = 1 finish
-      if (!legsWon) legsWon = myFinishes;
-      // 1 leg joué = 1 finish (quel que soit le joueur)
-      if (!legsPlayed) legsPlayed = myFinishes + oppFinishes;
+      if (!legsWon && myFinishes) legsWon = myFinishes;
+      if (!legsPlayed && (myFinishes || oppFinishes)) legsPlayed = myFinishes + oppFinishes;
     }
 
     return { legsPlayed, legsWon, setsPlayed, setsWon };
@@ -2030,24 +2167,12 @@ for (const matchId in groupedByMatch) {
     )
     .map((s) => s.selectedPlayerId);
 
-  // Calcul marge + score affichable (on privilégie les LEGS, puis les SETS)
-  let margin: number | null = null;
-  let scoreLabel: string | null = null;
-
-  if (legsPlayed > 0) {
-    const legsLost = Math.max(0, legsPlayed - legsWon);
-    margin = legsWon - legsLost;
-    scoreLabel = `${legsWon}-${legsLost}`;
-  } else if (setsPlayed > 0) {
-    const setsLost = Math.max(0, setsPlayed - setsWon);
-    margin = setsWon - setsLost;
-    scoreLabel = `${setsWon}-${setsLost}`;
-  } else {
-    // Dernier recours : on retombe sur 1-0 / 0-1
-    const isWin = !!myLine.isWin;
-    margin = isWin ? 1 : -1;
-    scoreLabel = isWin ? "1-0" : "0-1";
-  }
+  // Calcul marge + score affichable.
+  // IMPORTANT : sur les matchs Sets/Legs, les SETS gagnés représentent le vrai score final du match.
+  // On les privilégie donc avant les legs pour éviter les faux 1-0.
+  const finalScore = readLineScoreFromGroup(myLine, arr);
+  let margin: number | null = finalScore.margin;
+  let scoreLabel: string | null = finalScore.label;
 
   outcomes.push({
     matchId,
