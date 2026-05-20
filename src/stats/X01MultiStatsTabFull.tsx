@@ -197,6 +197,10 @@ export type X01MultiSession = {
 
   // ➕ rang du joueur sur le match (multi)
   rank?: number | null;
+  scoreLabel?: string | null;
+  scoreUnit?: "sets" | "legs" | "match" | null;
+  finalScore?: number | null;
+  remaining?: number | null;
 
   // ➕ avatar compressé (si dispo dans History.players)
   avatarDataUrl?: string | null;
@@ -281,6 +285,10 @@ function collectX01RankingRows(match: any): any[] {
     match?.payload?.summary?.result,
     match?.payload?.payload,
     match?.payload?.payload?.summary,
+    match?.payload?.state,
+    match?.payload?.payload?.state,
+    match?.engineState,
+    match?.state,
     match?.resume,
     match?.resume?.summary,
     match?.resume?.state,
@@ -334,15 +342,41 @@ function getLooseObjectValue(map: any, keys: any[]): any {
 }
 
 function getRankFromRows(match: any, pid: string, playerName?: any): number | null {
-  const rows = collectX01RankingRows(match);
-  for (let i = 0; i < rows.length; i += 1) {
-    const r = rows[i];
-    if (!x01RowMatchesPid(r, pid, playerName)) continue;
-    const raw = r?.rank ?? r?.finalRank ?? r?.place ?? r?.position ?? r?.standing;
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) return n;
-    // Beaucoup d'anciens matchs X01 Multi gardent le classement uniquement par ordre du tableau.
-    return i + 1;
+  const roots = [
+    match, match?.summary, match?.summary?.result,
+    match?.payload, match?.payload?.summary, match?.payload?.summary?.result,
+    match?.payload?.payload, match?.payload?.payload?.summary,
+    match?.resume, match?.resume?.summary, match?.resume?.state, match?.resume?.state?.summary,
+  ];
+
+  // 1) Vraies tables de classement : l'ordre peut être utilisé en fallback.
+  for (const root of roots) {
+    if (!root || typeof root !== "object") continue;
+    for (const key of ["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking"]) {
+      const rows = root[key];
+      if (!Array.isArray(rows)) continue;
+      for (let i = 0; i < rows.length; i += 1) {
+        const r = rows[i];
+        if (!x01RowMatchesPid(r, pid, playerName)) continue;
+        const raw = r?.rank ?? r?.finalRank ?? r?.place ?? r?.position ?? r?.standing;
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) return n;
+        return i + 1;
+      }
+    }
+  }
+
+  // 2) Tableau players : on lit seulement un rang explicite.
+  // Ne JAMAIS déduire le rang depuis l'ordre de players, car l'historique
+  // remet souvent le profil courant en premier -> faux "1er" partout.
+  for (const root of roots) {
+    if (!root || typeof root !== "object" || !Array.isArray(root.players)) continue;
+    for (const r of root.players) {
+      if (!x01RowMatchesPid(r, pid, playerName)) continue;
+      const raw = r?.rank ?? r?.finalRank ?? r?.place ?? r?.position ?? r?.standing;
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
   }
   return null;
 }
@@ -356,6 +390,10 @@ function collectScoreMaps(match: any, keys: string[]): any[] {
     match?.payload?.summary,
     match?.payload?.payload,
     match?.payload?.payload?.summary,
+    match?.payload?.state,
+    match?.payload?.payload?.state,
+    match?.engineState,
+    match?.state,
     match?.resume,
     match?.resume?.summary,
     match?.resume?.state,
@@ -424,6 +462,20 @@ function getRobustRankForPlayer(match: any, player: any, fallbackPid?: any): num
 }
 
 function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[]) {
+  if ((line as any).scoreLabel && String((line as any).scoreLabel).includes("-")) {
+    const [a, b] = String((line as any).scoreLabel).split("-").map((x) => Number(x));
+    const won = Number.isFinite(a) ? a : 0;
+    const lost = Number.isFinite(b) ? b : 0;
+    return {
+      played: won + lost,
+      won,
+      lost,
+      label: `${won}-${lost}`,
+      margin: won - lost,
+      unit: ((line as any).scoreUnit || (Number((line as any).setsPlayed || 0) > 0 ? "sets" : "legs")) as any,
+    };
+  }
+
   const ownLegs = Number(line.legsWon || 0);
   const ownSets = Number(line.setsWon || 0);
   const maxOtherLegs = group
@@ -466,6 +518,106 @@ function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[])
     label: win ? "1-0" : "0-1",
     margin: win ? 1 : -1,
     unit: "match" as const,
+  };
+}
+
+
+function x01ScoreMapsFor(match: any, keys: string[]): any[] {
+  return collectScoreMaps(match, keys).filter((m) => m && typeof m === "object" && !Array.isArray(m));
+}
+
+function x01MapValueLooseRaw(map: any, keys: any[]): number | null {
+  if (!map || typeof map !== "object") return null;
+  const wanted = keys.filter((v) => v !== undefined && v !== null && String(v).trim()).map((v) => String(v));
+  for (const key of wanted) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      const n = Number(map[key]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (wanted.some((id) => sameId(k, id) || k === id)) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+function x01BestScoreMap(match: any, keys: string[]): any | null {
+  const maps = x01ScoreMapsFor(match, keys);
+  return maps.find((m) => Object.keys(m || {}).length >= 2) || maps[0] || null;
+}
+
+function x01MapTotal(map: any): number {
+  if (!map || typeof map !== "object") return 0;
+  return Object.values(map).reduce((sum: number, v: any) => {
+    const n = Number(v);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+function x01ReadPlayerMapValue(match: any, keys: string[], player: any, pid: any): { value: number; total: number; map: any | null } {
+  const wanted = playerKeysFromLike(player, pid);
+  for (const map of x01ScoreMapsFor(match, keys)) {
+    const val = x01MapValueLooseRaw(map, wanted);
+    if (val !== null) return { value: val, total: x01MapTotal(map), map };
+  }
+  return { value: 0, total: 0, map: null };
+}
+
+function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
+  const setInfo = x01ReadPlayerMapValue(match, [
+    "setsWonByPlayer", "setsWinByPlayer", "setsByPlayer", "setsWon", "setsScore", "sets"
+  ], player, pid);
+  const legInfo = x01ReadPlayerMapValue(match, [
+    "legsWonByPlayer", "legsWinByPlayer", "legsByPlayer", "legsWon", "legsScore", "legs"
+  ], player, pid);
+
+  const finalInfo = x01ReadPlayerMapValue(match, [
+    "finalScores", "remainingScores", "remainingByPlayer", "scoreRemainingByPlayer", "scoreAfterByPlayer", "scores"
+  ], player, pid);
+
+  let rank: number | null = getRobustRankForPlayer(match, player, pid);
+  if (!rank) {
+    const finalMap = finalInfo.map || x01BestScoreMap(match, [
+      "finalScores", "remainingScores", "remainingByPlayer", "scoreRemainingByPlayer", "scoreAfterByPlayer", "scores"
+    ]);
+    if (finalMap) {
+      const rows = Object.entries(finalMap)
+        .map(([id, value]) => ({ id: String(id), score: Number(value) }))
+        .filter((r) => Number.isFinite(r.score))
+        .sort((a, b) => a.score - b.score);
+      const wanted = playerKeysFromLike(player, pid);
+      const idx = rows.findIndex((r) => wanted.some((k) => sameId(r.id, k) || r.id === k));
+      if (idx >= 0) rank = idx + 1;
+    }
+  }
+
+  const scoreUnit = setInfo.total > 0 ? "sets" : legInfo.total > 0 ? "legs" : "match";
+  const myWon = scoreUnit === "sets" ? setInfo.value : scoreUnit === "legs" ? legInfo.value : 0;
+  let otherBest = 0;
+  const map = scoreUnit === "sets" ? setInfo.map : scoreUnit === "legs" ? legInfo.map : null;
+  if (map && typeof map === "object") {
+    const wanted = playerKeysFromLike(player, pid);
+    for (const [k, v] of Object.entries(map)) {
+      if (wanted.some((id) => sameId(k, id) || k === id)) continue;
+      const n = Number(v);
+      if (Number.isFinite(n)) otherBest = Math.max(otherBest, n);
+    }
+  }
+  const scoreLabel = scoreUnit === "match" ? null : `${myWon}-${otherBest}`;
+
+  return {
+    setsWon: setInfo.value,
+    setsPlayed: setInfo.total,
+    legsWon: legInfo.value,
+    legsPlayed: legInfo.total,
+    rank,
+    scoreLabel,
+    scoreUnit,
+    finalScore: finalInfo.value,
+    remaining: finalInfo.value,
   };
 }
 
@@ -1012,6 +1164,7 @@ async function loadX01MultiSessions(
         player.label ||
         "Player";
 
+      const scorePatch = x01ScorePatchForPlayer(match, player, pid);
       out.push({
         id: `${matchId}:${pid}`,
         matchId,
@@ -1025,7 +1178,16 @@ async function loadX01MultiSessions(
         isTeam,
         teamId,
         ...base,
-        rank: getRobustRankForPlayer(match, player, pid) ?? base.rank ?? null,
+        // Score final réel du match, prioritaire sur les anciens fallbacks 1-0.
+        legsWon: scorePatch.legsPlayed > 0 ? scorePatch.legsWon : base.legsWon,
+        legsPlayed: scorePatch.legsPlayed > 0 ? scorePatch.legsPlayed : base.legsPlayed,
+        setsWon: scorePatch.setsPlayed > 0 ? scorePatch.setsWon : base.setsWon,
+        setsPlayed: scorePatch.setsPlayed > 0 ? scorePatch.setsPlayed : base.setsPlayed,
+        scoreLabel: scorePatch.scoreLabel,
+        scoreUnit: scorePatch.scoreUnit,
+        finalScore: Number.isFinite(Number(scorePatch.finalScore)) ? Number(scorePatch.finalScore) : null,
+        remaining: Number.isFinite(Number(scorePatch.remaining)) ? Number(scorePatch.remaining) : null,
+        rank: scorePatch.rank ?? base.rank ?? null,
       });
     }
   }
@@ -1194,7 +1356,7 @@ export default function X01MultiStatsTabFull({
           const linePlayerId =
             s.selectedPlayerId != null ? String(s.selectedPlayerId) : null;
 
-          if (lineProfileId !== target && linePlayerId !== target) {
+          if (!sameId(lineProfileId, target) && !sameId(linePlayerId, target)) {
             continue;
           }
         }
@@ -1208,7 +1370,7 @@ export default function X01MultiStatsTabFull({
             const br = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
             return ar - br;
           });
-          const idx = sorted.findIndex((x) => x.selectedPlayerId === s.selectedPlayerId);
+          const idx = sorted.findIndex((x) => sameId(x.selectedPlayerId, s.selectedPlayerId));
           if (idx >= 0) r = idx + 1;
         }
         if (!r || r < 1) continue;
