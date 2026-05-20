@@ -712,22 +712,38 @@ function getX01LegsPerSetForHistory(e: SavedEntry): number {
 
 function summarizeX01SetsLegsScore(e: SavedEntry): string {
   const anyE: any = e;
-  const data: any = anyE.summary || {};
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
   const rankings = data.rankings || result.rankings || anyE.payload?.summary?.rankings || anyE.resume?.summary?.rankings || [];
   if (!Array.isArray(rankings) || !rankings.length) return "";
 
-  const legsPerSet = getX01LegsPerSetForHistory(e);
-  const parts = rankings
-    .map((r: any) => {
+  const looseMap = (map: any, r: any) => {
+    if (!map || typeof map !== "object") return undefined;
+    const ids = [r.id, r.playerId, r.profileId, r.selectedPlayerId, r.pid].filter(Boolean).map(String);
+    for (const id of ids) if (Object.prototype.hasOwnProperty.call(map, id)) return map[id];
+    return undefined;
+  };
+  const maps = {
+    sets: data.setsWonByPlayer || data.setsByPlayer || data.setsWon || data.setsScore || anyE.payload?.summary?.setsWonByPlayer || anyE.payload?.summary?.setsWon,
+    legs: data.legsWonByPlayer || data.legsByPlayer || data.legsWon || data.legsScore || anyE.payload?.summary?.legsWonByPlayer || anyE.payload?.summary?.legsWon,
+  };
+
+  const values = rankings.map((r: any) => ({
+    r,
+    sets: cleanScore(r.setsWon ?? r.sw ?? r.sets ?? r.setsScore ?? looseMap(maps.sets, r)),
+    legs: cleanScore(r.legsWon ?? r.lw ?? r.legs ?? r.legsScore ?? looseMap(maps.legs, r)),
+  }));
+  const hasSets = values.some((x) => x.sets != null && Number(x.sets) > 0);
+
+  const parts = values
+    .map(({ r, sets, legs }) => {
       const name = cleanName(r.name || r.playerName || r.label || r.id || r.playerId) || undefined;
-      const legs = cleanScore(r.legsWon ?? r.lw ?? r.legs ?? r.legsScore);
-      const sets = cleanScore(r.setsWon ?? r.sw ?? r.sets ?? r.setsScore);
       const generic = cleanScore(r.score ?? r.points ?? r.total);
       if (!name) return null;
-      if (legsPerSet > 1 && legs != null) return `${name}: ${legs}`;
-      if (sets != null && Number(sets) > 0) return `${name}: ${sets}S${legs != null ? `/${legs}L` : ""}`;
+      // Matchs multi en sets : le score principal doit être les SETS gagnés (2-0 / 2-1), pas le dernier leg.
+      if (hasSets && sets != null) return `${name}: ${sets}${legs != null ? ` (${legs}L)` : ""}`;
       if (legs != null) return `${name}: ${legs}`;
+      if (sets != null) return `${name}: ${sets}`;
       if (generic != null) return `${name}: ${generic}`;
       return name;
     })

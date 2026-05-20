@@ -366,6 +366,63 @@ function countFinishedPlayers(rec: any): number {
   return 0;
 }
 
+function rankingRows(rec: any): any[] {
+  const out: any[] = [];
+  for (const obj of walkObjects(rec, 6)) {
+    for (const key of ["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking", "players"]) {
+      const arr = obj?.[key];
+      if (Array.isArray(arr)) out.push(...arr);
+    }
+  }
+  return out;
+}
+
+function rowMatches(row: any, playerId: string, playerName: string): boolean {
+  const ids = [row?.id, row?.playerId, row?.profileId, row?.selectedPlayerId, row?.pid, row?.uid]
+    .filter(Boolean)
+    .map((v) => String(v));
+  if (ids.some((id) => idLooseMatch(id, playerId) || id === playerId)) return true;
+  const rn = normText(row?.name ?? row?.playerName ?? row?.displayName ?? row?.label);
+  return !!rn && !!playerName && rn === normText(playerName);
+}
+
+function findRankingRow(rec: any, playerId: string, playerName: string): { row: any; rank: number | null } | null {
+  const rows = rankingRows(rec);
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    if (!rowMatches(r, playerId, playerName)) continue;
+    const explicit = num(r?.rank, num(r?.finalRank, num(r?.place, num(r?.position, num(r?.standing)))));
+    return { row: r, rank: explicit > 0 ? explicit : i + 1 };
+  }
+  return null;
+}
+
+function mapValueLoose(map: any, keys: any[]): number {
+  if (!map || typeof map !== "object") return 0;
+  const ks = keys.filter(Boolean).map((x) => String(x));
+  for (const k of ks) {
+    if (Object.prototype.hasOwnProperty.call(map, k)) return num(map[k]);
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (ks.some((id) => idLooseMatch(k, id) || k === id)) return num(v);
+  }
+  return 0;
+}
+
+function scoreMapsFor(rec: any, kind: "legs" | "sets"): any[] {
+  const keys = kind === "legs"
+    ? ["legsWonByPlayer", "legsWinByPlayer", "legsByPlayer", "legsWon", "legsScore", "legs"]
+    : ["setsWonByPlayer", "setsWinByPlayer", "setsByPlayer", "setsWon", "setsScore", "sets"];
+  const out: any[] = [];
+  for (const obj of walkObjects(rec, 6)) {
+    for (const k of keys) {
+      const v = obj?.[k];
+      if (v && typeof v === "object" && !Array.isArray(v)) out.push(v);
+    }
+  }
+  return out;
+}
+
 export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const found = findStatsForProfile(rec, profile);
   if (!found) return null;
@@ -378,7 +435,8 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const playerName = String(player?.name ?? player?.playerName ?? s?.name ?? profile?.name ?? "");
   const winnerId = rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? deepFirst(rec, ["winnerId", "lastWinnerId", "lastLegWinnerId", "winner"] ) ?? null;
   const winnerName = rec?.winnerName ?? rec?.summary?.winnerName ?? rec?.payload?.winnerName ?? rec?.payload?.summary?.winnerName ?? deepFirst(rec, ["winnerName"] ) ?? null;
-  const rank = findPlayerRank(rec, playerId, playerName);
+  const ranked = findRankingRow(rec, playerId, playerName);
+  const rank = ranked?.rank ?? findPlayerRank(rec, playerId, playerName);
   const won = (rank === 1) || (winnerId && idLooseMatch(winnerId, playerId)) || (winnerName && normText(winnerName) === normText(playerName));
   const darts = num(s.darts, num(s.dartsThrown, num(s.dt, num(s.totalDarts))));
   const totalScore = num(s.totalScore, num(s.totalscore, num(s.points)));
@@ -406,8 +464,14 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
     // non typé volontairement : utilisé par X01MultiStatsTabFull pour les classements FFA
     rank: rank ?? null,
     playerCount: countFinishedPlayers(rec),
-    legsWon: num(s.legsWon, num(s.lw, num(s.legs_won))),
-    setsWon: num(s.setsWon, num(s.sw, num(s.sets_won))),
+    legsWon: num(
+      s.legsWon,
+      num(s.lw, num(s.legs_won, num(ranked?.row?.legsWon, num(ranked?.row?.lw, num(ranked?.row?.legs, mapValueLoose(scoreMapsFor(rec, "legs")[0], [playerId, found.key, player?.profileId, player?.playerId]))))))
+    ),
+    setsWon: num(
+      s.setsWon,
+      num(s.sw, num(s.sets_won, num(ranked?.row?.setsWon, num(ranked?.row?.sw, num(ranked?.row?.sets, mapValueLoose(scoreMapsFor(rec, "sets")[0], [playerId, found.key, player?.profileId, player?.playerId]))))))
+    ),
     darts,
     totalScore,
     avg3,

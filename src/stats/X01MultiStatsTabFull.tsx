@@ -271,6 +271,82 @@ function numOr0(...values: any[]): number {
   return 0;
 }
 
+function collectX01RankingRows(match: any): any[] {
+  const roots = [
+    match,
+    match?.summary,
+    match?.summary?.result,
+    match?.payload,
+    match?.payload?.summary,
+    match?.payload?.summary?.result,
+    match?.payload?.payload,
+    match?.payload?.payload?.summary,
+    match?.resume,
+    match?.resume?.summary,
+    match?.resume?.state,
+    match?.resume?.state?.summary,
+  ];
+  const out: any[] = [];
+  for (const root of roots) {
+    if (!root || typeof root !== "object") continue;
+    for (const key of ["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking", "players"]) {
+      const arr = root[key];
+      if (Array.isArray(arr)) out.push(...arr);
+    }
+  }
+  return out;
+}
+
+function x01RowMatchesPid(row: any, pid: string, name?: any): boolean {
+  const ids = [row?.id, row?.playerId, row?.profileId, row?.selectedPlayerId, row?.pid, row?.uid]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v));
+  if (ids.some((id) => sameId(id, pid) || id === pid)) return true;
+  const n1 = String(row?.name ?? row?.playerName ?? row?.displayName ?? "").trim().toLowerCase();
+  const n2 = String(name ?? "").trim().toLowerCase();
+  return !!n1 && !!n2 && n1 === n2;
+}
+
+function getLooseMapValue(map: any, keys: any[]): number {
+  if (!map || typeof map !== "object") return 0;
+  const wanted = keys.filter((v) => v !== undefined && v !== null && String(v).trim()).map((v) => String(v));
+  for (const key of wanted) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      const n = Number(map[key]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (wanted.some((id) => sameId(k, id) || k === id)) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return 0;
+}
+
+function getLooseObjectValue(map: any, keys: any[]): any {
+  if (!map || typeof map !== "object") return undefined;
+  const wanted = keys.filter((v) => v !== undefined && v !== null && String(v).trim()).map((v) => String(v));
+  for (const key of wanted) if (Object.prototype.hasOwnProperty.call(map, key)) return map[key];
+  for (const [k, v] of Object.entries(map)) if (wanted.some((id) => sameId(k, id) || k === id)) return v;
+  return undefined;
+}
+
+function getRankFromRows(match: any, pid: string, playerName?: any): number | null {
+  const rows = collectX01RankingRows(match);
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    if (!x01RowMatchesPid(r, pid, playerName)) continue;
+    const raw = r?.rank ?? r?.finalRank ?? r?.place ?? r?.position ?? r?.standing;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+    // Beaucoup d'anciens matchs X01 Multi gardent le classement uniquement par ordre du tableau.
+    return i + 1;
+  }
+  return null;
+}
+
 /**
  * Détail summary => X01MultiSession partiel (sans meta)
  * Utilise en priorité :
@@ -308,8 +384,8 @@ function buildSessionFromSummary(
       return candidates.includes(pidStr);
     }) || {};
 
-  // Détail V3
-  const detail: any = detailedByPlayer[pid] || {};
+  // Détail V3 (lookup exact + lookup loose : certains historiques gardent profileId/id mélangés)
+  const detail: any = getLooseObjectValue(detailedByPlayer, [pid, row.playerId, row.selectedPlayerId, row.profileId, row.id, row.pid]) || {};
 
   // ---------- Darts ----------
   let darts = numOr0(detail.darts, row.darts);
@@ -491,8 +567,15 @@ function buildSessionFromSummary(
 
   // maps "legs gagnés"
   const legsMapCandidates: any[] = [
+    summary?.legsWonByPlayer,
+    summary?.legsWinByPlayer,
     summary?.legsByPlayer,
+    summary?.legsWon,
     summary?.legsScore,
+    summary?.score?.legs,
+    match?.payload?.summary?.legsWonByPlayer,
+    match?.payload?.summary?.legsByPlayer,
+    match?.payload?.summary?.legsWon,
     match?.payload?.legsWon,
     match?.legsWon,
   ];
@@ -505,8 +588,15 @@ function buildSessionFromSummary(
 
   // maps "sets gagnés"
   const setsMapCandidates: any[] = [
+    summary?.setsWonByPlayer,
+    summary?.setsWinByPlayer,
     summary?.setsByPlayer,
+    summary?.setsWon,
     summary?.setsScore,
+    summary?.score?.sets,
+    match?.payload?.summary?.setsWonByPlayer,
+    match?.payload?.summary?.setsByPlayer,
+    match?.payload?.summary?.setsWon,
     match?.payload?.setsWon,
     match?.setsWon,
   ];
@@ -529,16 +619,12 @@ function buildSessionFromSummary(
     .filter(Boolean)
     .map((x: any) => String(x));
 
+  const rankingRow = collectX01RankingRows(match).find((r) => x01RowMatchesPid(r, pidStr, row?.name || row?.playerName));
+
   function lookupValueInMaps(maps: any[]): number {
     for (const map of maps) {
-      if (!map || typeof map !== "object") continue;
-      for (const key of candidateKeys) {
-        if (key in map) {
-          const v = (map as any)[key];
-          const n = Number(v);
-          if (Number.isFinite(n)) return n;
-        }
-      }
+      const n = getLooseMapValue(map, candidateKeys);
+      if (n) return n;
     }
     return 0;
   }
@@ -556,7 +642,12 @@ function buildSessionFromSummary(
   let legsWon = numOr0(
     detail.legsWonTotal,
     detail.legsWon,
-    row.legsWon
+    row.legsWon,
+    rankingRow?.legsWon,
+    rankingRow?.lw,
+    rankingRow?.legs,
+    rankingRow?.matchLegs,
+    rankingRow?.wonLegs
   );
   let legsPlayed = numOr0(
     detail.legsPlayedTotal,
@@ -567,7 +658,12 @@ function buildSessionFromSummary(
   let setsWon = numOr0(
     detail.setsWonTotal,
     detail.setsWon,
-    row.setsWon
+    row.setsWon,
+    rankingRow?.setsWon,
+    rankingRow?.sw,
+    rankingRow?.sets,
+    rankingRow?.matchSets,
+    rankingRow?.wonSets
   );
   let setsPlayed = numOr0(
     detail.setsPlayedTotal,
@@ -605,11 +701,18 @@ function buildSessionFromSummary(
   // ---------- Rang multi ----------
   const rawRank =
     (row as any).rank ??
+    (row as any).finalRank ??
     (row as any).position ??
     (row as any).place ??
     (row as any).standing ??
     (detail as any).rank ??
+    (detail as any).finalRank ??
     (detail as any).position ??
+    rankingRow?.rank ??
+    rankingRow?.finalRank ??
+    rankingRow?.place ??
+    rankingRow?.position ??
+    rankingRow?.standing ??
     null;
 
   let rank: number | null = null;
@@ -620,6 +723,7 @@ function buildSessionFromSummary(
         : parseInt(String(rawRank), 10);
     rank = Number.isFinite(n) && n > 0 ? n : null;
   }
+  if (!rank) rank = getRankFromRows(match, pidStr, row?.name || row?.playerName);
 
   // Si vraiment rien → on ignore ce match
   if (!darts && !hitsS && !hitsD && !hitsT && !miss) return null;
@@ -743,7 +847,7 @@ async function loadX01MultiSessions(
     // --------- 4) si profileId fourni → on ne garde que les matchs où il joue ----------
     if (profileId) {
       const playsThisMatch = players.some(
-        (p) => p?.profileId === profileId || p?.id === profileId
+        (p) => sameId(p?.profileId, profileId) || sameId(p?.id, profileId) || sameId(p?.playerId, profileId)
       );
       if (!playsThisMatch) continue;
     }
@@ -835,7 +939,7 @@ async function loadX01MultiSessions(
           dBull: Number(smp.bull50 || 0),
           bust: Number(smp.bust || 0),
           isWin: Number(smp.matchesWon || 0) > 0,
-          legsPlayed: Math.max(Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
+          legsPlayed: Math.max(Number(smp.legsPlayed || 0), Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
           legsWon: Number(smp.legsWon || smp.matchesWon || 0),
           setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
           setsWon: Number(smp.setsWon || 0),
