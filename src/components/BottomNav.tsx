@@ -22,6 +22,7 @@ type TabKey =
   | "tournament_match_play"
   | "profiles"
   | "friends"
+  | "online"
   | "stats"
   | "statsHub"
   | "settings"
@@ -202,9 +203,10 @@ export default function BottomNav({
   const sportFromLS: SportId | null = React.useMemo(() => readSportFromLS(), []);
   const sport: SportId = sportFromCtx ?? sportFromLS ?? "darts";
 
-  // ✅ Règle demandée : pas de Online en Pétanque / Baby-Foot / Ping-Pong
+  // Online masqué uniquement pour les sports sans salon en ligne dédié.
+  // Baby-Foot utilise le hub Online existant via l'onglet `friends`.
   const sportLc = String(sport).toLowerCase();
-  const hideOnline = sportLc === "petanque" || sportLc === "babyfoot" || sportLc === "pingpong";
+  const hideOnline = sportLc === "petanque" || sportLc === "pingpong";
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";
@@ -219,7 +221,7 @@ export default function BottomNav({
     { k: "games", label: "Local", icon: <Icon name="games" /> },
     { k: "tournaments", label: sportLc === "babyfoot" ? "Compétition" : "Tournois", icon: <Icon name="tournaments" /> },
 
-    ...(hideOnline ? [] : [{ k: "friends", label: "Online", icon: <Icon name="friends" /> }]),
+    ...(hideOnline ? [] : [{ k: "online", label: "Online", icon: <Icon name="friends" /> }]),
 
     { k: "stats", label: "Stats", icon: <Icon name="stats" /> },
     { k: "settings", label: "Réglages", icon: <Icon name="settings" /> },
@@ -258,7 +260,8 @@ export default function BottomNav({
         const activeStats = t.k === "stats" && value === "statsHub";
         const activeTournaments = t.k === "tournaments" && isTournamentRoute;
         const activeScreens = t.k === "cast_host" && (value === "viewer_host" || value === "cast_room");
-        const active = value === t.k || activeStats || activeTournaments || activeScreens;
+        const activeOnline = t.k === "online" && (value === "online" || value === "friends");
+        const active = value === t.k || activeStats || activeTournaments || activeScreens || activeOnline;
 
         const halo = active ? accent : "transparent";
 

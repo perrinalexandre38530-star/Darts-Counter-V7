@@ -4,7 +4,7 @@
 // Objectif: rendu + UX calqués sur X01ConfigV3 (DartsCounter)
 // ✅ Presets depuis menus (MATCH / FUN / TRAINING / DÉFIS) -> config spécifique par carte
 // ✅ Sélection ÉQUIPES via catalogue (Profils > Teams) en carrousel (flèches)
-// ✅ Sélection JOUEURS par camp en carrousel : si une équipe est choisie, on pioche dans son effectif
+// ✅ Sélection JOUEURS par camp en carrousel (flèches) + quota strict (1v1/2v2/2v1)
 // ✅ Règles épurées
 // ✅ FIX: profilesForA / profilesForB déclarés
 // ✅ FIX: alias storeSetTarget pour éviter le conflit avec le state local
@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import { onlineApi } from "../../lib/onlineApi";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -420,7 +421,10 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  const routeModeId = (params as any)?.mode as string | undefined;
+  // En provenance du hub Online, params.mode vaut "babyfoot" : ce n’est PAS un format de match.
+  // On l’ignore ici pour ne pas verrouiller la sélection 1v1 / 2v2 / 2v1.
+  const rawRouteModeId = (params as any)?.mode as string | undefined;
+  const routeModeId = String(rawRouteModeId || "").toLowerCase() === "babyfoot" ? undefined : rawRouteModeId;
   const presetMode = (params as any)?.presetMode as BabyFootMode | undefined;
   const presetTarget = (params as any)?.presetTarget as number | undefined;
   const presetVariantId = (params as any)?.presetVariantId as string | undefined;
@@ -457,6 +461,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     (presetTraining ? String(presetTraining) : undefined);
 
   const lockFormat = !!routeModeId || !!routeCategory || !!presetTraining;
+  const isOnlineBabyFoot = Boolean((params as any)?.online || (params as any)?.lobbyCode);
+  const onlineLobbyCode = String((params as any)?.lobbyCode || "").trim().toUpperCase();
 
   const presetSetsEnabled =
     (params as any)?.presetSetsEnabled ??
@@ -613,27 +619,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   const profiles: Profile[] = ((store as any)?.profiles || []) as Profile[];
 
-  const headerTickerId =
-    routeVariant || (routeCategory ? `${routeCategory}_${mode}` : null) || `babyfoot_${mode}`;
-  const headerTicker = pickTicker(headerTickerId) || pickTicker(`babyfoot_${mode}`) || null;
-
-  const findTeam = (id: string) => teamsCatalog.find((x) => x.id === id) ?? null;
-  const teamAObj = teamARefId ? findTeam(teamARefId) : null;
-  const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
-
   const selectedASet = new Set(selA.map(String));
   const selectedBSet = new Set(selB.map(String));
-
-  const teamRosterIds = (team: BabyFootTeam | null | undefined) =>
-    new Set((Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x)).filter(Boolean));
-
-  const rosterASet = showTeamsPicker ? teamRosterIds(teamAObj) : null;
-  const rosterBSet = showTeamsPickerB ? teamRosterIds(teamBObj) : null;
 
   const profilesForA: Profile[] = profiles.filter((p: any) => {
     const id = String(p?.id || "");
     if (!id) return false;
-    if (rosterASet && rosterASet.size > 0 && !rosterASet.has(id)) return false;
     if (selectedASet.has(id)) return true;
     if (selectedBSet.has(id)) return false;
     return true;
@@ -642,11 +633,18 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const profilesForB: Profile[] = profiles.filter((p: any) => {
     const id = String(p?.id || "");
     if (!id) return false;
-    if (rosterBSet && rosterBSet.size > 0 && !rosterBSet.has(id)) return false;
     if (selectedBSet.has(id)) return true;
     if (selectedASet.has(id)) return false;
     return true;
   });
+
+  const headerTickerId =
+    routeVariant || (routeCategory ? `${routeCategory}_${mode}` : null) || `babyfoot_${mode}`;
+  const headerTicker = pickTicker(headerTickerId) || pickTicker(`babyfoot_${mode}`) || null;
+
+  const findTeam = (id: string) => teamsCatalog.find((x) => x.id === id) ?? null;
+  const teamAObj = teamARefId ? findTeam(teamARefId) : null;
+  const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
 
   useEffect(() => {
     if (mode === "2v1" && teamBRefId) setTeamBRefId("");
@@ -684,19 +682,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   useEffect(() => {
     if (!showTeamsPicker) return;
-    const allowed = new Set((Array.isArray((teamAObj as any)?.playerIds) ? (teamAObj as any).playerIds : []).map((x: any) => String(x)));
-    if (!allowed.size) return;
-    setSelA((prev) => prev.filter((id) => allowed.has(String(id))).slice(0, capA));
-    setConfirmA(false);
-  }, [showTeamsPicker, teamARefId, capA]);
-
-  useEffect(() => {
-    if (!showTeamsPickerB) return;
-    const allowed = new Set((Array.isArray((teamBObj as any)?.playerIds) ? (teamBObj as any).playerIds : []).map((x: any) => String(x)));
-    if (!allowed.size) return;
-    setSelB((prev) => prev.filter((id) => allowed.has(String(id))).slice(0, capB));
-    setConfirmB(false);
-  }, [showTeamsPickerB, teamBRefId, capB]);
+    if (mode !== "2v2") return;
+    if (!teamARefId || !teamBRefId) return;
+    if (teamARefId !== teamBRefId) return;
+    const nextB = teamsCatalog.find((t) => t?.id && t.id !== teamARefId);
+    if (nextB?.id) setTeamBRefId(String(nextB.id));
+  }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
 
   const canStart = selA.length === capA && selB.length === capB && confirmA && confirmB;
 
@@ -922,7 +913,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (m && (m === "1v1" || m === "2v2" || m === "2v1")) setModeUI(m);
   }, [presetMode, routeModeFromId]);
 
-  const applyAndStart = () => {
+  const applyAndStart = async () => {
     setMode(mode);
 
     const playerA = profiles.find(
@@ -986,11 +977,38 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       allowLobShot,
     });
 
-    startMatch();
+    const nextState = startMatch();
+
+    if (isOnlineBabyFoot && onlineLobbyCode) {
+      try {
+        await onlineApi.startMatch({
+          lobbyCode: onlineLobbyCode,
+          initialState: {
+            ...nextState,
+            config: nextState,
+            sport: "babyfoot",
+            mode: "babyfoot",
+            onlineMode: "babyfoot",
+            online: true,
+            lobbyCode: onlineLobbyCode,
+            lobbyId: (params as any)?.lobbyId || null,
+            source: "babyfoot_config",
+          },
+        } as any);
+      } catch (error: any) {
+        window.alert(error?.message || "Impossible de lancer le match Baby-Foot online. Vérifie que tu es l’hôte et que tous les joueurs sont prêts.");
+        return;
+      }
+    }
 
     go("babyfoot_play", {
+      ...(params || {}),
       presetCategory: routeCategory,
       presetVariantId: routeVariant,
+      online: isOnlineBabyFoot,
+      onlineMode: isOnlineBabyFoot ? "babyfoot" : (params as any)?.onlineMode,
+      lobbyCode: onlineLobbyCode || (params as any)?.lobbyCode,
+      lobbyId: (params as any)?.lobbyId || null,
     });
   };
 
@@ -1164,8 +1182,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 <div style={{ height: 8 }} />
                 <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 900, letterSpacing: 1.2 }}>
                   {mode === "2v1"
-                    ? `${t("bf_team_roster", "Équipe")}${teamAObj?.playerIds?.length ? ` · ${teamAObj.playerIds.length} joueurs` : ""}`
-                    : `${t("bf_team_a", "Équipe A")}${teamAObj?.playerIds?.length ? ` · ${teamAObj.playerIds.length} joueurs` : ""}`}
+                    ? t("bf_team_2players", "Équipe (2 joueurs)")
+                    : t("bf_team_a", "Équipe A")}
                 </div>
               </div>
 
@@ -1183,7 +1201,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                     </div>
                     <div style={{ height: 8 }} />
                     <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 900, letterSpacing: 1.2 }}>
-                      {`${t("bf_team_b", "Équipe B")}${teamBObj?.playerIds?.length ? ` · ${teamBObj.playerIds.length} joueurs` : ""}`}
+                      {t("bf_team_b", "Équipe B")}
                     </div>
                   </div>
                 </>
@@ -1204,9 +1222,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           {sectionTitle(t("bf_players", "JOUEURS"), primary)}
           <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 800, marginBottom: 10 }}>
-            {showTeamsPicker
-              ? t("bf_pick_from_roster", "Choisis les titulaires dans l’effectif sélectionné :")
-              : t("bf_pick_exact", "Sélectionne exactement")} {capA} vs {capB}
+            {t("bf_pick_exact", "Sélectionne exactement")} {capA} vs {capB}
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>

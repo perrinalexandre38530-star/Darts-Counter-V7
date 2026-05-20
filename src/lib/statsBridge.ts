@@ -54,6 +54,7 @@ function __ms_get(obj:any,...paths:string[]){
 // ============================================
 
 import { History } from "./history";
+import { loadX01SamplesForProfile, aggregateX01Samples } from "./x01StatsSource";
 import type { SavedMatch } from "./history";
 import {
   aggregateCricketProfileStats,
@@ -2046,7 +2047,26 @@ export const StatsBridge = {
   },
 
   async getBasicProfileStatsAsync(profileId: string): Promise<BasicProfileStats> {
-    // ⚠️ nouveau : on se base sur le vrai index (moins de “0 partout”)
+    // Source prioritaire : agrégateur X01 central, commun Home / Profils / Stats / Online.
+    try {
+      const samples = await loadX01SamplesForProfile({ id: profileId, profileId }, { scope: "all" });
+      const agg = aggregateX01Samples(samples);
+      if (agg.matchesPlayed > 0 || agg.darts > 0) {
+        return {
+          games: agg.matchesPlayed,
+          wins: agg.matchesWon,
+          winRate: agg.matchesPlayed ? (agg.matchesWon / agg.matchesPlayed) * 100 : 0,
+          darts: agg.darts,
+          avg3: agg.avg3,
+          bestVisit: agg.bestVisit,
+          bestCheckout: agg.bestCheckout,
+          coTotal: agg.coSuccess,
+        };
+      }
+    } catch (e) {
+      console.warn("[StatsBridge] central X01 stats fallback failed", e);
+    }
+
     const x01 = await getX01ProfileStats(profileId, "all", "all");
     return {
       games: x01.games,

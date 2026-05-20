@@ -341,6 +341,31 @@ function best9FromScores(scores: number[]): number {
   return best;
 }
 
+
+function findPlayerRank(rec: any, playerId: string, playerName: string): number | null {
+  const pools: any[] = [];
+  for (const obj of walkObjects(rec, 6)) {
+    if (Array.isArray(obj?.rankings)) pools.push(...obj.rankings);
+    if (Array.isArray(obj?.ranking)) pools.push(...obj.ranking);
+    if (Array.isArray(obj?.players)) pools.push(...obj.players);
+  }
+  for (const r of pools) {
+    const rid = r?.id ?? r?.profileId ?? r?.playerId ?? r?.pid ?? r?.uid;
+    const rn = r?.name ?? r?.playerName ?? r?.displayName;
+    const ok = idLooseMatch(rid, playerId) || (playerName && normText(rn) === normText(playerName));
+    if (!ok) continue;
+    const rank = num(r?.rank, num(r?.place, num(r?.position)));
+    if (rank > 0) return rank;
+  }
+  return null;
+}
+
+function countFinishedPlayers(rec: any): number {
+  const players = collectPlayers(rec);
+  if (players.length) return players.length;
+  return 0;
+}
+
 export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const found = findStatsForProfile(rec, profile);
   if (!found) return null;
@@ -353,7 +378,8 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const playerName = String(player?.name ?? player?.playerName ?? s?.name ?? profile?.name ?? "");
   const winnerId = rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? deepFirst(rec, ["winnerId", "lastWinnerId", "lastLegWinnerId", "winner"] ) ?? null;
   const winnerName = rec?.winnerName ?? rec?.summary?.winnerName ?? rec?.payload?.winnerName ?? rec?.payload?.summary?.winnerName ?? deepFirst(rec, ["winnerName"] ) ?? null;
-  const won = (winnerId && idLooseMatch(winnerId, playerId)) || (winnerName && normText(winnerName) === normText(playerName));
+  const rank = findPlayerRank(rec, playerId, playerName);
+  const won = (rank === 1) || (winnerId && idLooseMatch(winnerId, playerId)) || (winnerName && normText(winnerName) === normText(playerName));
   const darts = num(s.darts, num(s.dartsThrown, num(s.dt, num(s.totalDarts))));
   const totalScore = num(s.totalScore, num(s.totalscore, num(s.points)));
   const avg3 = num(s.avg3, num(s.avg3D, num(s.moy3, darts ? (totalScore / darts) * 3 : 0)));
@@ -377,6 +403,9 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
     winnerName: winnerName ? String(winnerName) : null,
     matchesPlayed: isTrainingRecord(rec) ? 0 : 1,
     matchesWon: won ? 1 : 0,
+    // non typé volontairement : utilisé par X01MultiStatsTabFull pour les classements FFA
+    rank: rank ?? null,
+    playerCount: countFinishedPlayers(rec),
     legsWon: num(s.legsWon, num(s.lw, num(s.legs_won))),
     setsWon: num(s.setsWon, num(s.sw, num(s.sets_won))),
     darts,

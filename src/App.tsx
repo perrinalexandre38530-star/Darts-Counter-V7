@@ -379,6 +379,8 @@ const ONLINE_CONTEXT_TABS = new Set<string>([
   "departements_config",
   "departements_play",
   "training_clock",
+  "babyfoot_config",
+  "babyfoot_play",
 ]);
 
 const ONLINE_GAMEPLAY_TABS = new Set<string>([
@@ -396,6 +398,7 @@ const ONLINE_GAMEPLAY_TABS = new Set<string>([
   "capital_play",
   "departements_play",
   "training_clock",
+  "babyfoot_play",
 ]);
 
 function readOnlineRouteContext(params: any) {
@@ -3106,6 +3109,49 @@ try {
       (History as any)?.upsert?.(saved);
     } catch {}
 
+    try {
+      const payloadAny: any = saved.payload ?? {};
+      const lobbyCode = String(payloadAny?.lobbyCode || payloadAny?.onlineLobbyCode || "").trim().toUpperCase();
+      const isOnlineMatch = payloadAny?.online === true || payloadAny?.source === "online" || !!lobbyCode || String(payloadAny?.onlineMode || "").toLowerCase() === "babyfoot";
+      if (isOnlineMatch) {
+        const raw = localStorage.getItem(LS_ONLINE_MATCHES_KEY);
+        const list = raw ? safeJsonParse<any[]>(raw, []) : [];
+        list.unshift({
+          id: saved.id,
+          mode: "babyfoot",
+          online: true,
+          source: "online",
+          lobbyCode: lobbyCode || null,
+          createdAt: saved.createdAt,
+          finishedAt: saved.updatedAt,
+          players: saved.players,
+          winnerId: saved.winnerId,
+          summary: saved.summary,
+          payload: saved.payload ?? null,
+          stats: payloadAny?.stats ?? unifiedStats,
+        });
+        localStorage.setItem(LS_ONLINE_MATCHES_KEY, safeJsonStringify(list.slice(0, 200), "[]"));
+
+        if (lobbyCode) {
+          onlineApi
+            .uploadMatch({
+              mode: "babyfoot" as any,
+              payload: {
+                lobbyCode,
+                online: true,
+                onlineV10: true,
+                summary: saved.summary ?? null,
+                payload: saved.payload ?? null,
+              },
+              isTraining: false,
+              startedAt: saved.createdAt,
+              finishedAt: saved.updatedAt,
+            } as any)
+            .catch((error: any) => console.warn("[BabyFoot Online] uploadMatch failed", error?.message || error));
+        }
+      }
+    } catch {}
+
     if ((m as any)?.stayOnBabyFootPlayAfterFinish) return;
     go("babyfoot_stats_history", { focusMatchId: id });
   }
@@ -3758,7 +3804,7 @@ case "babyfoot_team_edit":
         break;
 
       case "online":
-        page = <LobbyPick store={store as any} update={update as any} go={go as any} />;
+        page = <FriendsPage store={store} update={update} go={go} />;
         break;
 
       case "spectator":
@@ -4908,7 +4954,7 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
   const { status, ready } = useAuthOnline();
 
   // pages qui nécessitent une session online active
-  const needsSession = tab === "stats_online" || tab === "x01_online_setup" || tab === "online";
+  const needsSession = tab === "stats_online" || tab === "x01_online_setup";
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =

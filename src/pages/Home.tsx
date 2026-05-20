@@ -23,6 +23,7 @@ import {
   getCricketProfileStats,
 } from "../lib/statsBridge";
 import { History } from "../lib/history";
+import { loadX01SamplesForProfile, aggregateX01Samples } from "../lib/x01StatsSource";
 
 type Props = {
   store: Store;
@@ -582,6 +583,14 @@ async function buildStatsForProfile(
     ]);
 
     const multiMatches: any[] = Array.isArray(multiRaw) ? multiRaw : [];
+    let centralX01Agg: any = null;
+    try {
+      centralX01Agg = aggregateX01Samples(
+        await loadX01SamplesForProfile({ id: profileId, profileId }, { scope: "all" })
+      );
+    } catch (e) {
+      console.warn("[Home] central X01 stats failed", e);
+    }
 
     /* ---------------------- GLOBAL (base brut) ---------------------- */
 
@@ -1015,6 +1024,25 @@ async function buildStatsForProfile(
       clockTotalTimeSec,
       clockBestStreak,
     };
+
+    // ✅ Harmonisation finale Home/Profils/Stats : on laisse la construction historique
+    // existante en place, puis on remplace les valeurs X01 par la source centrale si elle
+    // contient des données plus fiables.
+    if (centralX01Agg && (centralX01Agg.matchesPlayed > 0 || centralX01Agg.darts > 0)) {
+      const mp = Number(centralX01Agg.matchesPlayed || 0);
+      const mw = Number(centralX01Agg.matchesWon || 0);
+      const wr = mp > 0 ? mw / mp : 0;
+      s.sessionsGlobal = Math.max(Number(s.sessionsGlobal || 0), mp);
+      s.x01MultiSessions = Math.max(Number(s.x01MultiSessions || 0), mp);
+      s.winrateGlobal = wr || s.winrateGlobal;
+      s.x01MultiWinrate = wr || s.x01MultiWinrate;
+      s.avg3DGlobal = Number(centralX01Agg.avg3 || 0) || s.avg3DGlobal;
+      s.x01MultiAvg3D = Number(centralX01Agg.avg3 || 0) || s.x01MultiAvg3D;
+      s.recordBestVisitX01 = Math.max(Number(s.recordBestVisitX01 || 0), Number(centralX01Agg.bestVisit || 0));
+      s.x01MultiBestVisit = s.recordBestVisitX01;
+      s.recordBestCOX01 = Math.max(Number(s.recordBestCOX01 || 0), Number(centralX01Agg.bestCheckout || 0));
+      s.x01MultiBestCO = s.recordBestCOX01;
+    }
 
     // ✅ Attache les stats KILLER (sans toucher au type ActiveProfileStats)
     ;(s as any).killerSessions = killerAgg.sessions;

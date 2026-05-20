@@ -16,6 +16,7 @@ import SparklinePro from "../components/SparklinePro";
 import TrainingRadar from "../components/TrainingRadar";
 import { GoldPill } from "../components/StatsPlayerDashboard";
 import { History } from "../lib/history";
+import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
 import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
 
@@ -231,6 +232,17 @@ function filterByRange(
       : 365 * ONE_DAY;
   const minDate = now - delta;
   return sessions.filter((s) => s.date >= minDate);
+}
+
+
+function sameId(a: any, b: any): boolean {
+  if (a == null || b == null) return false;
+  const aa = String(a).replace(/^online:/, "").trim();
+  const bb = String(b).replace(/^online:/, "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  if (aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa))) return true;
+  return false;
 }
 
 function formatShortDate(ts: number) {
@@ -791,6 +803,52 @@ async function loadX01MultiSessions(
     }
   }
 
+  // Fallback centralisé : si certains écrans ont sauvegardé les stats X01 dans
+  // detailedByPlayer / replayDarts / online cache, on récupère la même source que
+  // Home / Profils / Leaderboards. On fusionne sans dupliquer les lignes déjà lues.
+  if (profileId) {
+    try {
+      const samples = await loadX01SamplesForProfile({ id: profileId, profileId });
+      const existing = new Set(out.map((x) => `${x.matchId}|${x.selectedPlayerId}`));
+      for (const smp of samples as any[]) {
+        const key = `${smp.matchId || smp.id}|${smp.playerId || profileId}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        out.push({
+          id: `${smp.id || smp.matchId || key}::central`,
+          matchId: String(smp.matchId || smp.id || key),
+          date: Number(smp.createdAt || Date.now()),
+          selectedPlayerId: String(smp.playerId || profileId),
+          playerName: String(smp.playerName || "Joueur"),
+          profileId: String(profileId),
+          avatarDataUrl: null,
+          darts: Number(smp.darts || 0),
+          avg3D: Number(smp.avg3 || 0),
+          avg1D: Number(smp.avg3 || 0) / 3,
+          bestVisit: Number(smp.bestVisit || 0),
+          bestCheckout: Number(smp.bestCheckout || 0) || null,
+          hitsS: Number(smp.singleHits || 0),
+          hitsD: Number(smp.doubleHits || 0),
+          hitsT: Number(smp.tripleHits || 0),
+          miss: Number(smp.miss || 0),
+          bull: Number(smp.bull25 || 0),
+          dBull: Number(smp.bull50 || 0),
+          bust: Number(smp.bust || 0),
+          isWin: Number(smp.matchesWon || 0) > 0,
+          legsPlayed: Math.max(Number(smp.legsWon || 0), Number(smp.matchesPlayed || 0)),
+          legsWon: Number(smp.legsWon || smp.matchesWon || 0),
+          setsPlayed: Number(smp.setsWon || 0) > 0 ? Number(smp.setsWon || 0) : 0,
+          setsWon: Number(smp.setsWon || 0),
+          finishes: Number(smp.coSuccess || 0),
+          isTeam: false,
+          rank: (smp as any).rank ?? null,
+        });
+      }
+    } catch (e) {
+      console.warn("[X01MultiStatsTabFull] central fallback failed", e);
+    }
+  }
+
   // Tri chronologique
   return out.sort((a, b) => a.date - b.date);
 }
@@ -1012,10 +1070,12 @@ export default function X01MultiStatsTabFull({
     let playerLine: X01MultiSession | undefined;
 
     if (effectiveProfileId) {
-      playerLine =
-        arr.find(
-          (s) => String(s.selectedPlayerId) === String(effectiveProfileId)
-        ) || arr[0]; // fallback si les IDs ne matchent pas
+      playerLine = arr.find((s) =>
+        sameId(s.selectedPlayerId, effectiveProfileId) ||
+        sameId((s as any).profileId, effectiveProfileId)
+      );
+      // Ne jamais prendre arr[0] au hasard : ça fausse les victoires, legs/sets et classements.
+      if (!playerLine) continue;
     } else {
       playerLine = arr[0];
     }
@@ -2254,6 +2314,51 @@ return (
         </div>
       </div>
 
+      {/* Onglets rapides : évite de scroller toute la page pour retrouver une famille de stats. */}
+      <div
+        style={{
+          ...card,
+          padding: 8,
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 6,
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+        }}
+      >
+        {[
+          ["Résumé", "x01multi-summary"],
+          ["Matchs", "x01multi-matches"],
+          ["Courbes", "x01multi-charts"],
+          ["Détails", "x01multi-history"],
+        ].map(([label, id]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => {
+              const el = typeof document !== "undefined" ? document.getElementById(id) : null;
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            style={{
+              border: "1px solid rgba(246,194,86,.35)",
+              borderRadius: 999,
+              background: "rgba(0,0,0,.45)",
+              color: T.gold,
+              fontSize: 10,
+              fontWeight: 900,
+              padding: "7px 4px",
+              textTransform: "uppercase",
+              letterSpacing: .35,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div id="x01multi-summary" />
+
       {/* KPI carrousels */}
       {totalSessions > 0 && hasAnyKpi && (
         <div
@@ -2890,6 +2995,7 @@ return (
           </div>
 
 
+                  <div id="x01multi-matches" />
                   {/* ====== STATS MATCHS X01 — DUO / MULTI / TEAM ====== */}
 <div style={{ ...card }}>
 
@@ -3797,6 +3903,7 @@ return (
   </div>
 </div>
 
+          <div id="x01multi-charts" />
           {/* Sparkline + choix de métrique */}
           <div style={{ ...card }}>
             <div
@@ -4214,6 +4321,7 @@ return (
             </div>
           </div>
 
+          <div id="x01multi-history" />
           {/* Liste des lignes / matchs */}
           <div style={{ ...card }}>
             <div

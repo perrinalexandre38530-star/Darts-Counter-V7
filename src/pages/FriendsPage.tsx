@@ -32,6 +32,7 @@
 // ============================================
 
 import React from "react";
+import { useSport } from "../contexts/SportContext";
 import type { Store } from "../lib/types";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
@@ -791,6 +792,7 @@ type OnlineTabSpec = {
   tone?: "gold" | "blue" | "green" | "red" | "orange" | "gray";
 };
 type OnlineGameModeId =
+  | "babyfoot"
   | "x01"
   | "killer"
   | "shanghai"
@@ -819,6 +821,7 @@ type OnlineGameModeSpec = {
 const LS_ONLINE_SELECTED_MODE_KEY = "dc_online_selected_mode_v1";
 
 const ONLINE_GAME_MODES: OnlineGameModeSpec[] = [
+  { id: "babyfoot", label: "Baby-Foot", shortLabel: "Baby-Foot", icon: "⚽", route: "babyfoot_config", hint: "1v1 / 2v2 / 2v1 en ligne", tickerKey: "babyfoot_match", favorite: true },
   { id: "battle_royale", label: "Battle Royale", shortLabel: "Battle", icon: "👑", route: "battle_royale", hint: "Survie multi-joueurs", tickerKey: "ticker_battle_royale", favorite: true },
   { id: "x01", label: "X01", shortLabel: "X01", icon: "🎯", route: "x01_online_setup", hint: "501 / 301 / sets / legs", tickerKey: "x01", favorite: true },
   { id: "batard", label: "Bâtard", shortLabel: "Bâtard", icon: "😈", route: "batard_config", hint: "Mode fun / gages", tickerKey: "ticker_batard_players" },
@@ -1024,6 +1027,13 @@ type Props = {
 };
 
 export default function FriendsPage({ store, update, go }: Props) {
+  const sportCtx = useSport() as any;
+  const activeSportId = String(sportCtx?.sport || "darts").toLowerCase();
+  const onlineModesForSport = React.useMemo(() => {
+    if (activeSportId === "babyfoot") return SORTED_ONLINE_GAME_MODES.filter((mode) => mode.id === "babyfoot");
+    return SORTED_ONLINE_GAME_MODES.filter((mode) => mode.id !== "babyfoot");
+  }, [activeSportId]);
+
   // Profil actif local
   const activeProfile =
     (store.profiles || []).find((p: any) => p.id === (store as any).activeProfileId) ||
@@ -1288,7 +1298,24 @@ const doLogout = React.useCallback(async () => {
   const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
   const [copyInfo, setCopyInfo] = React.useState<string | null>(null);
   const [selectedOnlineMode, setSelectedOnlineMode] = React.useState<OnlineGameModeId>(() => loadSelectedOnlineMode());
-  const selectedOnlineModeSpec = React.useMemo(() => getOnlineModeSpec(selectedOnlineMode), [selectedOnlineMode]);
+  const safeSelectedOnlineMode: OnlineGameModeId =
+    activeSportId === "babyfoot"
+      ? "babyfoot"
+      : selectedOnlineMode === "babyfoot"
+      ? "x01"
+      : selectedOnlineMode;
+  const selectedOnlineModeSpec = React.useMemo(() => getOnlineModeSpec(safeSelectedOnlineMode), [safeSelectedOnlineMode]);
+
+  React.useEffect(() => {
+    if (activeSportId === "babyfoot" && selectedOnlineMode !== "babyfoot") {
+      setSelectedOnlineMode("babyfoot");
+      saveSelectedOnlineMode("babyfoot");
+    } else if (activeSportId !== "babyfoot" && selectedOnlineMode === "babyfoot") {
+      setSelectedOnlineMode("x01");
+      saveSelectedOnlineMode("x01");
+    }
+  }, [activeSportId, selectedOnlineMode]);
+
   const [activeOnlineResume, setActiveOnlineResume] = React.useState<any | null>(() => loadActiveOnlineResume());
 
   React.useEffect(() => {
@@ -1320,17 +1347,19 @@ const doLogout = React.useCallback(async () => {
         setJoinInfo("Cette partie online est terminée. Elle reste disponible dans l’historique/statistiques.");
         return;
       }
+      const liveMode = String((state as any)?.onlineMode || (state as any)?.mode || saved?.onlineMode || saved?.mode || "x01").toLowerCase();
       const params = {
         ...(saved.params || {}),
         ...(state && typeof state === "object" ? state : {}),
         online: true,
-        onlineMode: "x01",
+        onlineMode: liveMode === "babyfoot" ? "babyfoot" : "x01",
+        mode: liveMode === "babyfoot" ? "babyfoot" : "x01",
         lobbyCode: code,
         fresh: Date.now(),
       };
-      if ((state as any)?.config) params.config = { ...(state as any).config, online: true, onlineMode: "x01", lobbyCode: code };
+      if ((state as any)?.config) params.config = { ...(state as any).config, online: true, onlineMode: params.onlineMode, lobbyCode: code };
       if ((state as any)?.players) params.players = (state as any).players;
-      go?.("x01_play_v3", params);
+      go?.(liveMode === "babyfoot" ? "babyfoot_play" : "x01_play_v3", params);
     } catch (e: any) {
       setJoinError(normalizeErrMessage(e) || "Impossible de reprendre la partie online.");
     }
@@ -1365,11 +1394,12 @@ const doLogout = React.useCallback(async () => {
       const lobby = await withTimeout(
         onlineApi.createLobby({
           mode: selectedOnlineModeSpec.id,
-          maxPlayers: selectedOnlineModeSpec.id === "x01" ? 2 : 8,
+          maxPlayers: selectedOnlineModeSpec.id === "x01" ? 2 : selectedOnlineModeSpec.id === "babyfoot" ? 4 : 8,
           settings: {
             mode: selectedOnlineModeSpec.id,
             label: selectedOnlineModeSpec.label,
             route: selectedOnlineModeSpec.route,
+            sport: selectedOnlineModeSpec.id === "babyfoot" ? "babyfoot" : "darts",
             start: (store as any).settings?.defaultX01,
             doubleOut: (store as any).settings?.doubleOut,
           },
@@ -1445,6 +1475,43 @@ const doLogout = React.useCallback(async () => {
   }
 
   const lobby = joinedLobby || lastCreatedLobby;
+  const currentLobbyCode = String((lobby as any)?.code || "").trim().toUpperCase();
+  const currentLobbyHostUserId = String((lobby as any)?.hostUserId || (lobby as any)?.host_user_id || "").trim();
+  const isCurrentLobbyHost = !!sessionUserId && currentLobbyHostUserId === String(sessionUserId);
+  const currentLobbyPlayer = React.useMemo(() => {
+    const uid = String(sessionUserId || "").trim();
+    return ((lobby as any)?.players || []).find((player: any) => String(player?.userId || player?.user_id || player?.id || "") === uid) || null;
+  }, [lobby, sessionUserId]);
+  const currentLobbyReady = String(currentLobbyPlayer?.status || "").toLowerCase() === "ready";
+  const [updatingLobbyReady, setUpdatingLobbyReady] = React.useState(false);
+
+  function replaceCurrentLobby(nextLobby: OnlineLobby) {
+    const nextCode = String((nextLobby as any)?.code || "").trim().toUpperCase();
+    if (!nextCode) return;
+    setJoinedLobby((prev) => String((prev as any)?.code || "").trim().toUpperCase() === nextCode ? nextLobby : prev);
+    setLastCreatedLobby((prev) => String((prev as any)?.code || "").trim().toUpperCase() === nextCode ? nextLobby : prev);
+  }
+
+  async function toggleCurrentLobbyReady() {
+    if (!currentLobbyCode || updatingLobbyReady || isCurrentLobbyHost) return;
+    if (!requireSignedInOrExplain()) return;
+    setUpdatingLobbyReady(true);
+    setJoinError(null);
+    setJoinInfo(null);
+    try {
+      const nextLobby = await withTimeout(
+        onlineApi.setLobbyReady({ code: currentLobbyCode, ready: !currentLobbyReady, nickname: displayName || "Joueur" } as any),
+        10_000,
+        "Statut prêt : délai dépassé. Réessaie."
+      );
+      replaceCurrentLobby(nextLobby);
+      setJoinInfo(!currentLobbyReady ? "Statut : prêt." : "Statut : en attente.");
+    } catch (e: any) {
+      setJoinError(normalizeErrMessage(e) || "Impossible de modifier le statut prêt.");
+    } finally {
+      setUpdatingLobbyReady(false);
+    }
+  }
 
   /* -----------------------------
      Chat MVP (si lobby existe)
@@ -1925,7 +1992,7 @@ const doLogout = React.useCallback(async () => {
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
 
 
-  const [activeOnlineTab, setActiveOnlineTab] = React.useState<OnlineMainTab>("hub");
+  const [activeOnlineTab, setActiveOnlineTab] = React.useState<OnlineMainTab>(() => (activeSportId === "babyfoot" ? "play" : "hub"));
 
   const unreadSharesCount = React.useMemo(
     () => incomingShares.filter((it) => !it.readAt).length,
@@ -1985,6 +2052,12 @@ const doLogout = React.useCallback(async () => {
     ],
     [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, lobbyModeSpec.shortLabel, selectedOnlineModeSpec.shortLabel, sortedMatches.length]
   );
+
+  React.useEffect(() => {
+    if (activeSportId === "babyfoot") {
+      setActiveOnlineTab("play");
+    }
+  }, [activeSportId]);
 
   const showHubTab = activeOnlineTab === "hub";
   const showFriendsTab = activeOnlineTab === "friends";
@@ -2664,7 +2737,7 @@ const doLogout = React.useCallback(async () => {
         <>
       <SectionTitle
         title="Jouer en ligne"
-        subtitle="Choisis le mode, crée un salon ou rejoins un ami"
+        subtitle={activeSportId === "babyfoot" ? "Baby-Foot Online · crée un salon ou rejoins un ami" : "Choisis le mode, crée un salon ou rejoins un ami"}
         right={
           creatingLobby ? (
             <button
@@ -2727,7 +2800,7 @@ const doLogout = React.useCallback(async () => {
                 WebkitOverflowScrolling: "touch",
               }}
             >
-              {SORTED_ONLINE_GAME_MODES.map((mode) => {
+              {onlineModesForSport.map((mode) => {
                 const active = selectedOnlineMode === mode.id;
                 const tickerUrl = getOnlineModeTicker(mode);
                 return (
@@ -2944,6 +3017,13 @@ const doLogout = React.useCallback(async () => {
           </div>
 
           <div style={{ display: "grid", gap: 10 }}>
+            {!isCurrentLobbyHost ? (
+              <GhostButton
+                label={updatingLobbyReady ? "⏳ Mise à jour…" : currentLobbyReady ? "✅ Je suis prêt" : "☑️ Me mettre prêt"}
+                onClick={toggleCurrentLobbyReady}
+                disabled={updatingLobbyReady || !currentLobbyCode}
+              />
+            ) : null}
             <GhostButton
               label={`🚪 Ouvrir le salon ${lobbyModeSpec.shortLabel}`}
               onClick={launchOnlineLobby}

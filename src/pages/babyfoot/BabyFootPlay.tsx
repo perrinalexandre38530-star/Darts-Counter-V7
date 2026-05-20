@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useStore } from "../../contexts/StoreContext";
+import { onlineApi } from "../../lib/onlineApi";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -505,6 +506,9 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const leagueResultSavedRef = useRef(false);
   const [leagueSaveChoice, setLeagueSaveChoice] = useState("");
   const [leagueSaveDone, setLeagueSaveDone] = useState<string | null>(null);
+  const isOnlineBabyFoot = Boolean((params as any)?.online || (params as any)?.lobbyCode);
+  const onlineLobbyCode = String((params as any)?.lobbyCode || "").trim().toUpperCase();
+  const onlineStatePushTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 250);
@@ -648,6 +652,31 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   }, [displayedScore.scoreA, displayedScore.scoreB, state]);
 
   useEffect(() => {
+    if (!isOnlineBabyFoot || !onlineLobbyCode) return;
+    if (onlineStatePushTimerRef.current) window.clearTimeout(onlineStatePushTimerRef.current);
+    onlineStatePushTimerRef.current = window.setTimeout(() => {
+      onlineApi.updateMatchState({
+        lobbyCode: onlineLobbyCode,
+        status: state.finished ? "ended" : "started",
+        state: {
+          ...state,
+          sport: "babyfoot",
+          mode: "babyfoot",
+          onlineMode: "babyfoot",
+          online: true,
+          lobbyCode: onlineLobbyCode,
+          scoreA: displayedScore.scoreA,
+          scoreB: displayedScore.scoreB,
+          updatedAt: Date.now(),
+        },
+      } as any).catch((error) => console.warn("[BabyFootPlay] unable to publish online state", error));
+    }, 550);
+    return () => {
+      if (onlineStatePushTimerRef.current) window.clearTimeout(onlineStatePushTimerRef.current);
+    };
+  }, [displayedScore.scoreA, displayedScore.scoreB, isOnlineBabyFoot, onlineLobbyCode, state]);
+
+  useEffect(() => {
     if (state.finished) return;
     if (state.phase === "play" && regularLimitMs != null && regularRemain === 0) {
       setState(finishByTime());
@@ -736,6 +765,10 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       leagueId: (params as any)?.leagueId || null,
       fixtureId: (params as any)?.fixtureId || null,
       fromLeague: Boolean((params as any)?.fromLeague),
+      online: isOnlineBabyFoot,
+      onlineMode: isOnlineBabyFoot ? "babyfoot" : undefined,
+      lobbyCode: onlineLobbyCode || undefined,
+      source: isOnlineBabyFoot ? "online" : undefined,
       stayOnBabyFootPlayAfterFinish: true,
     };
 
@@ -781,6 +814,12 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       } catch (e) {
         console.warn("[BabyFootPlay] unable to save league fixture score", e);
       }
+    }
+
+    if (isOnlineBabyFoot && onlineLobbyCode) {
+      onlineApi.endMatch({ lobbyCode: onlineLobbyCode, finalState: payload } as any).catch((error) =>
+        console.warn("[BabyFootPlay] unable to close online babyfoot match", error)
+      );
     }
 
     onFinish?.(payload);
@@ -1255,7 +1294,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           scoreLine={state.setsEnabled ? `${state.setsA || 0}–${state.setsB || 0} sets • ${displayedScore.scoreA}–${displayedScore.scoreB}` : `${displayedScore.scoreA}–${displayedScore.scoreB}`}
           detailsLine={detailsLine}
           onReplay={() => setState(startMatch())}
-          onStats={() => go("babyfoot_end" as any, { matchId: state.matchId, matchPayload: finishedEndPayload, leagueId: (params as any)?.leagueId || null, fixtureId: (params as any)?.fixtureId || null, fromLeague: Boolean((params as any)?.fromLeague) })}
+          onStats={() => go("babyfoot_end" as any, { matchId: state.matchId, matchPayload: finishedEndPayload, leagueId: (params as any)?.leagueId || null, fixtureId: (params as any)?.fixtureId || null, fromLeague: Boolean((params as any)?.fromLeague), online: isOnlineBabyFoot, onlineMode: isOnlineBabyFoot ? "babyfoot" : undefined, lobbyCode: onlineLobbyCode || undefined })}
           onClose={returnAfterPlay}
         >
           {infiniteLeagueChoices.length ? (
