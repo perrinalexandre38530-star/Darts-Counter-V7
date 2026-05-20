@@ -259,6 +259,180 @@ function findArrayByAlias(arr: any, aliases: string[], playerName?: string): any
   });
 }
 
+
+function statWinText(v: any): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function statTruthyWin(v: any): boolean {
+  return v === true || v === 1 || v === "1" || statWinText(v) === "true";
+}
+
+function statTextIsWin(v: any): boolean {
+  const t = statWinText(v);
+  return [
+    "w",
+    "win",
+    "winner",
+    "won",
+    "victory",
+    "victoire",
+    "gagne",
+    "gagnant",
+    "vainqueur",
+    "1er",
+    "1ere",
+    "1ere place",
+    "first",
+  ].includes(t) || t.startsWith("win") || t.startsWith("gagn");
+}
+
+function statValueMatchesPlayer(v: any, aliases: string[], playerName?: string): boolean {
+  const pname = normStatsName(playerName);
+  if (v === undefined || v === null) return false;
+  if (typeof v === "object") {
+    const ids = [
+      v?.id,
+      v?.playerId,
+      v?.profileId,
+      v?.sourceId,
+      v?.sourcePlayerId,
+      v?.sourceProfileId,
+      v?.userId,
+      v?.uid,
+      ...(Array.isArray(v?.aliases) ? v.aliases : []),
+    ]
+      .filter((x) => x !== undefined && x !== null)
+      .map((x) => String(x).replace(/^online:/, "").trim())
+      .filter(Boolean);
+    if (ids.some((id) => aliases.some((a) => idMatches(id, a)))) return true;
+    const nm = normStatsName(v?.name ?? v?.playerName ?? v?.displayName ?? v?.nickname ?? v?.surname ?? v?.winnerName);
+    return !!pname && !!nm && nm === pname;
+  }
+  const raw = String(v).replace(/^online:/, "").trim();
+  if (aliases.some((a) => idMatches(raw, a))) return true;
+  return !!pname && normStatsName(raw) === pname;
+}
+
+function statPlayerRows(raw: any): any[] {
+  const rec = raw || {};
+  const payload = rec?.payload || {};
+  const nested = payload?.payload || {};
+  const summary = rec?.summary || payload?.summary || nested?.summary || {};
+  const out: any[] = [];
+  const add = (v: any) => {
+    if (Array.isArray(v)) out.push(...v);
+    else if (v && typeof v === "object") {
+      for (const [k, row] of Object.entries(v)) {
+        if (row && typeof row === "object") out.push({ id: k, ...(row as any) });
+      }
+    }
+  };
+  add(rec?.players);
+  add(rec?.perPlayer);
+  add(rec?.rankings);
+  add(rec?.detailedByPlayer);
+  add(payload?.players);
+  add(payload?.stats?.players);
+  add(payload?.perPlayer);
+  add(payload?.rankings);
+  add(nested?.players);
+  add(nested?.stats?.players);
+  add(summary?.players);
+  add(summary?.perPlayer);
+  add(summary?.rankings);
+  add(summary?.detailedByPlayer);
+  add(summary?.detailedbyplayer);
+  add(summary?.standings);
+  return out;
+}
+
+function statReadScore(row: any, keys: string[]): number {
+  for (const k of keys) {
+    const n = Number(row?.[k]);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function playerWonMatch(m: NormalizedMatch, aliases: string[], playerName?: string): boolean {
+  const raw = (m as any)?.raw || {};
+  const payload = raw?.payload || {};
+  const nested = payload?.payload || {};
+  const summary = raw?.summary || payload?.summary || nested?.summary || {};
+
+  const directWinners = [
+    ...(Array.isArray((m as any)?.winnerIds) ? (m as any).winnerIds : []),
+    raw?.winnerId,
+    raw?.winner,
+    raw?.winnerName,
+    raw?.winnerPlayer,
+    raw?.result?.winnerId,
+    raw?.result?.winnerName,
+    summary?.winnerId,
+    summary?.winner,
+    summary?.winnerName,
+    summary?.result?.winnerId,
+    summary?.result?.winnerName,
+    payload?.winnerId,
+    payload?.winner,
+    payload?.winnerName,
+    payload?.result?.winnerId,
+    payload?.result?.winnerName,
+    payload?.summary?.winnerId,
+    payload?.summary?.winner,
+    payload?.summary?.winnerName,
+    payload?.summary?.result?.winnerId,
+    payload?.summary?.result?.winnerName,
+    nested?.winnerId,
+    nested?.winner,
+    nested?.winnerName,
+    ...(Array.isArray(raw?.winnerIds) ? raw.winnerIds : []),
+    ...(Array.isArray(summary?.winnerIds) ? summary.winnerIds : []),
+    ...(Array.isArray(payload?.winnerIds) ? payload.winnerIds : []),
+    ...(Array.isArray(payload?.summary?.winnerIds) ? payload.summary.winnerIds : []),
+    ...(Array.isArray(nested?.winnerIds) ? nested.winnerIds : []),
+  ].filter((v) => v !== undefined && v !== null && String(v).trim() !== "");
+
+  if (directWinners.some((v) => statValueMatchesPlayer(v, aliases, playerName))) return true;
+
+  const rows = statPlayerRows(raw);
+  const myRow = rows.find((r) => statValueMatchesPlayer(r, aliases, playerName));
+  if (myRow) {
+    if ([myRow?.win, myRow?.won, myRow?.winner, myRow?.isWinner, myRow?.victory, myRow?.hasWon].some(statTruthyWin)) return true;
+    if ([myRow?.result, myRow?.outcome, myRow?.status, myRow?.matchResult, myRow?.finalResult, myRow?.label].some(statTextIsWin)) return true;
+    const place = Number(myRow?.place ?? myRow?.rank ?? myRow?.finalRank ?? myRow?.position ?? myRow?.standing ?? 0);
+    if (Number.isFinite(place) && place === 1) return true;
+  }
+
+  // Fallback classement : vainqueur = meilleur score de sets, sinon de legs, sinon place/rank min.
+  const uniqueRows = rows.filter(Boolean);
+  const scoreRows = uniqueRows.map((row) => ({
+    row,
+    sets: statReadScore(row, ["setsWon", "setsWin", "setWins", "matchSetsWon", "sets"]),
+    legs: statReadScore(row, ["legsWon", "legsWin", "legWins", "matchLegsWon", "legs"]),
+    place: Number(row?.place ?? row?.rank ?? row?.finalRank ?? row?.position ?? row?.standing ?? NaN),
+  }));
+  const mine = scoreRows.find((x) => statValueMatchesPlayer(x.row, aliases, playerName));
+  if (mine && scoreRows.length >= 2) {
+    const maxSets = Math.max(...scoreRows.map((x) => Number.isFinite(x.sets) ? x.sets : 0));
+    if (maxSets > 0 && mine.sets === maxSets && scoreRows.filter((x) => x.sets === maxSets).length === 1) return true;
+    const maxLegs = Math.max(...scoreRows.map((x) => Number.isFinite(x.legs) ? x.legs : 0));
+    if (maxSets <= 0 && maxLegs > 0 && mine.legs === maxLegs && scoreRows.filter((x) => x.legs === maxLegs).length === 1) return true;
+    const places = scoreRows.map((x) => x.place).filter((x) => Number.isFinite(x) && x > 0);
+    if (places.length >= 2) {
+      const bestPlace = Math.min(...places);
+      if (mine.place === bestPlace && scoreRows.filter((x) => x.place === bestPlace).length === 1) return true;
+    }
+  }
+
+  return false;
+}
+
 function readX01SummaryFallback(m: NormalizedMatch, playerId: string, playerName?: string) {
   const rec: any = (m as any)?.raw || {};
   const sum: any = rec?.summary || rec?.payload?.summary || rec?.payload?.stats?.summary || {};
@@ -354,7 +528,7 @@ let totalUnifiedMatchesWithAvg3 = 0;
       sessionsByMode[dashboardMode] = (sessionsByMode[dashboardMode] || 0) + 1;
     }
 
-    if ((m.winnerIds || []).some((w) => aliases.some((a) => idMatches(w, a)))) {
+    if (playerWonMatch(m, aliases, playerName)) {
       wins += 1;
     }
 
