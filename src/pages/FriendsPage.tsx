@@ -819,6 +819,65 @@ type OnlineGameModeSpec = {
 };
 
 const LS_ONLINE_SELECTED_MODE_KEY = "dc_online_selected_mode_v1";
+const LS_BABYFOOT_ONLINE_SCOPE_KEY = "dc_babyfoot_online_scope_v1";
+
+type BabyFootOnlineScope = "match" | "league" | "tournament";
+
+type BabyFootOnlineScopeSpec = {
+  id: BabyFootOnlineScope;
+  label: string;
+  shortLabel: string;
+  icon: string;
+  createHint: string;
+  joinHint: string;
+};
+
+const BABYFOOT_ONLINE_SCOPES: BabyFootOnlineScopeSpec[] = [
+  {
+    id: "match",
+    label: "Match classique",
+    shortLabel: "Match",
+    icon: "⚽",
+    createHint: "Salon Baby-Foot simple",
+    joinHint: "Rejoindre un match avec un code salon",
+  },
+  {
+    id: "league",
+    label: "Ligue",
+    shortLabel: "Ligue",
+    icon: "🏆",
+    createHint: "Salon lié à une ligue",
+    joinHint: "Rejoindre une ligue ou un match de ligue",
+  },
+  {
+    id: "tournament",
+    label: "Tournoi",
+    shortLabel: "Tournoi",
+    icon: "🏅",
+    createHint: "Salon lié à un tournoi",
+    joinHint: "Rejoindre un tournoi ou un match de tournoi",
+  },
+];
+
+function getBabyFootOnlineScopeSpec(scope: any): BabyFootOnlineScopeSpec {
+  const id = String(scope || "match").toLowerCase();
+  return BABYFOOT_ONLINE_SCOPES.find((item) => item.id === id) || BABYFOOT_ONLINE_SCOPES[0];
+}
+
+function loadBabyFootOnlineScope(): BabyFootOnlineScope {
+  if (typeof window === "undefined") return "match";
+  try {
+    const raw = String(window.localStorage.getItem(LS_BABYFOOT_ONLINE_SCOPE_KEY) || "match").toLowerCase();
+    return getBabyFootOnlineScopeSpec(raw).id;
+  } catch {
+    return "match";
+  }
+}
+
+function saveBabyFootOnlineScope(scope: BabyFootOnlineScope) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(LS_BABYFOOT_ONLINE_SCOPE_KEY, scope); } catch {}
+}
 
 const ONLINE_GAME_MODES: OnlineGameModeSpec[] = [
   { id: "babyfoot", label: "Baby-Foot", shortLabel: "Baby-Foot", icon: "⚽", route: "babyfoot_config", hint: "1v1 / 2v2 / 2v1 en ligne", tickerKey: "babyfoot_match", favorite: true },
@@ -1298,6 +1357,8 @@ const doLogout = React.useCallback(async () => {
   const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
   const [copyInfo, setCopyInfo] = React.useState<string | null>(null);
   const [selectedOnlineMode, setSelectedOnlineMode] = React.useState<OnlineGameModeId>(() => loadSelectedOnlineMode());
+  const [selectedBabyFootOnlineScope, setSelectedBabyFootOnlineScope] = React.useState<BabyFootOnlineScope>(() => loadBabyFootOnlineScope());
+  const selectedBabyFootOnlineScopeSpec = React.useMemo(() => getBabyFootOnlineScopeSpec(selectedBabyFootOnlineScope), [selectedBabyFootOnlineScope]);
   const safeSelectedOnlineMode: OnlineGameModeId =
     activeSportId === "babyfoot"
       ? "babyfoot"
@@ -1372,6 +1433,13 @@ const doLogout = React.useCallback(async () => {
     setJoinError(null);
   }
 
+  function selectBabyFootOnlineScope(scope: BabyFootOnlineScope) {
+    setSelectedBabyFootOnlineScope(scope);
+    saveBabyFootOnlineScope(scope);
+    setJoinInfo(null);
+    setJoinError(null);
+  }
+
   const createReqIdRef = React.useRef(0);
   const joinReqIdRef = React.useRef(0);
 
@@ -1391,15 +1459,22 @@ const doLogout = React.useCallback(async () => {
     setJoinError(null);
 
     try {
+      const isBabyFootOnline = selectedOnlineModeSpec.id === "babyfoot";
+      const babyFootScope = isBabyFootOnline ? selectedBabyFootOnlineScopeSpec.id : null;
+      const babyFootScopeLabel = isBabyFootOnline ? selectedBabyFootOnlineScopeSpec.label : null;
       const lobby = await withTimeout(
         onlineApi.createLobby({
           mode: selectedOnlineModeSpec.id,
           maxPlayers: selectedOnlineModeSpec.id === "x01" ? 2 : selectedOnlineModeSpec.id === "babyfoot" ? 4 : 8,
           settings: {
             mode: selectedOnlineModeSpec.id,
-            label: selectedOnlineModeSpec.label,
+            label: isBabyFootOnline ? `Baby-Foot · ${babyFootScopeLabel}` : selectedOnlineModeSpec.label,
             route: selectedOnlineModeSpec.route,
-            sport: selectedOnlineModeSpec.id === "babyfoot" ? "babyfoot" : "darts",
+            sport: isBabyFootOnline ? "babyfoot" : "darts",
+            babyfootOnlineScope: babyFootScope,
+            competitionScope: babyFootScope,
+            competitionKind: babyFootScope === "league" ? "league" : babyFootScope === "tournament" ? "tournament" : "match",
+            source: isBabyFootOnline ? `babyfoot_online_${babyFootScope || "match"}` : "online_lobby",
             start: (store as any).settings?.defaultX01,
             doubleOut: (store as any).settings?.doubleOut,
           },
@@ -1412,7 +1487,7 @@ const doLogout = React.useCallback(async () => {
 
       setLastCreatedLobby(lobby);
       setJoinedLobby(null);
-      setJoinInfo(`Salon ${selectedOnlineModeSpec.label} créé.`);
+      setJoinInfo(selectedOnlineModeSpec.id === "babyfoot" ? `Salon Baby-Foot · ${selectedBabyFootOnlineScopeSpec.label} créé.` : `Salon ${selectedOnlineModeSpec.label} créé.`);
     } catch (e: any) {
       if (createReqIdRef.current !== reqId) return;
       setJoinError(normalizeErrMessage(e) || "Impossible de créer un salon.");
@@ -1423,7 +1498,7 @@ const doLogout = React.useCallback(async () => {
 
   async function handleJoinLobby() {
     const code = joinCode.trim().toUpperCase();
-    if (!code) return setJoinError("Entre un code de salon.");
+    if (!code) return setJoinError(activeSportId === "babyfoot" ? "Entre un code salon, ligue ou tournoi." : "Entre un code de salon.");
     if (joiningLobby) return;
     if (!requireSignedInOrExplain()) return;
 
@@ -1536,6 +1611,11 @@ const doLogout = React.useCallback(async () => {
     setJoinError(null);
     setJoinInfo(`Ouverture du salon ${spec.label}…`);
 
+    const lobbySettings = ((lobby as any)?.settings || {}) as any;
+    const babyFootScope = spec.id === "babyfoot"
+      ? getBabyFootOnlineScopeSpec(lobbySettings.babyfootOnlineScope || lobbySettings.competitionScope || selectedBabyFootOnlineScope).id
+      : null;
+
     go(spec.route as any, {
       online: true,
       onlineV9: true,
@@ -1544,7 +1624,10 @@ const doLogout = React.useCallback(async () => {
       lobbyCode: code,
       lobbyId: (lobby as any)?.id || null,
       lobby,
-      source: "online_lobby_waiting_room",
+      babyfootOnlineScope: babyFootScope,
+      competitionScope: babyFootScope,
+      competitionKind: babyFootScope === "league" ? "league" : babyFootScope === "tournament" ? "tournament" : "match",
+      source: spec.id === "babyfoot" ? `babyfoot_online_${babyFootScope || "match"}` : "online_lobby_waiting_room",
     });
   }
 
@@ -2787,84 +2870,132 @@ const doLogout = React.useCallback(async () => {
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.86 }}>Mode de jeu</div>
-              <Pill label={selectedOnlineModeSpec.shortLabel} tone="gold" />
+              <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.86 }}>{activeSportId === "babyfoot" ? "Type de salon" : "Mode de jeu"}</div>
+              <Pill label={activeSportId === "babyfoot" ? selectedBabyFootOnlineScopeSpec.shortLabel : selectedOnlineModeSpec.shortLabel} tone="gold" />
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                overflowX: "auto",
-                padding: "4px 2px 10px",
-                scrollSnapType: "x mandatory",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {onlineModesForSport.map((mode) => {
-                const active = selectedOnlineMode === mode.id;
-                const tickerUrl = getOnlineModeTicker(mode);
-                return (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    onClick={() => selectOnlineMode(mode.id)}
-                    disabled={!!lobby?.code}
-                    style={{
-                      flex: "0 0 168px",
-                      minHeight: 92,
-                      textAlign: "left",
-                      borderRadius: 16,
-                      border: active ? "1px solid rgba(255,213,106,.82)" : "1px solid rgba(255,255,255,.12)",
-                      background: tickerUrl
-                        ? `linear-gradient(90deg, rgba(0,0,0,.86), rgba(0,0,0,.30)), url(${tickerUrl}) center / cover no-repeat`
-                        : active
-                        ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
-                        : "rgba(255,255,255,.045)",
-                      boxShadow: active ? "0 0 20px rgba(255,213,106,.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
-                      color: "#f5f5f7",
-                      padding: "10px 11px",
-                      fontWeight: 1000,
-                      cursor: lobby?.code ? "not-allowed" : "pointer",
-                      opacity: lobby?.code && !active ? 0.55 : 1,
-                      position: "relative",
-                      overflow: "hidden",
-                      scrollSnapAlign: "start",
-                    }}
-                    title={lobby?.code ? "Quitte ou crée un nouveau salon pour changer de mode" : mode.hint}
-                  >
-                    {mode.favorite ? (
-                      <span
+
+            {activeSportId === "babyfoot" ? (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {BABYFOOT_ONLINE_SCOPES.map((scope) => {
+                    const active = selectedBabyFootOnlineScope === scope.id;
+                    return (
+                      <button
+                        key={scope.id}
+                        type="button"
+                        onClick={() => selectBabyFootOnlineScope(scope.id)}
+                        disabled={!!lobby?.code}
                         style={{
-                          position: "absolute",
-                          top: 7,
-                          left: 7,
-                          borderRadius: 999,
-                          padding: "3px 7px",
-                          background: "rgba(188,255,0,.18)",
-                          border: "1px solid rgba(188,255,0,.32)",
-                          color: "#c8ff00",
-                          fontSize: 9.5,
+                          minHeight: 88,
+                          borderRadius: 16,
+                          border: active ? "1px solid rgba(255,213,106,.86)" : "1px solid rgba(255,255,255,.12)",
+                          background: active
+                            ? "radial-gradient(circle at 50% 0%, rgba(255,213,106,.22), rgba(255,255,255,.055))"
+                            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+                          boxShadow: active ? "0 0 22px rgba(255,213,106,.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
+                          color: "#f5f5f7",
+                          padding: "9px 7px",
                           fontWeight: 1000,
-                          letterSpacing: .4,
+                          cursor: lobby?.code ? "not-allowed" : "pointer",
+                          opacity: lobby?.code && !active ? 0.55 : 1,
+                          textAlign: "center",
                         }}
+                        title={scope.joinHint}
                       >
-                        ★ FAVORI
-                      </span>
-                    ) : null}
-                    <div style={{ position: "absolute", left: 11, right: 11, bottom: 10 }}>
-                      <div style={{ fontSize: 14, textShadow: "0 2px 10px rgba(0,0,0,.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mode.shortLabel}</div>
-                      <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.84, fontWeight: 850, lineHeight: 1.15, textShadow: "0 2px 8px rgba(0,0,0,.9)" }}>{mode.hint}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                        <div style={{ fontSize: 20, lineHeight: 1 }}>{scope.icon}</div>
+                        <div style={{ marginTop: 6, fontSize: 11.5, color: active ? "#ffd56a" : "#f5f5f7", textTransform: "uppercase", letterSpacing: .2 }}>{scope.shortLabel}</div>
+                        <div style={{ marginTop: 4, fontSize: 9.7, opacity: .78, lineHeight: 1.15 }}>{scope.id === "match" ? "Classique" : scope.id === "league" ? "Rejoindre ligue" : "Rejoindre tournoi"}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,213,106,.18)", background: "rgba(255,213,106,.07)", padding: "8px 10px", fontSize: 11.2, lineHeight: 1.3, color: "#ffe4a0", fontWeight: 850 }}>
+                  <b>CRÉER</b> ouvre un salon Baby-Foot du type choisi. <b>REJOINDRE</b> accepte un code de salon, de ligue ou de tournoi.
+                </div>
+              </>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  overflowX: "auto",
+                  padding: "4px 2px 10px",
+                  scrollSnapType: "x mandatory",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {onlineModesForSport.map((mode) => {
+                  const active = selectedOnlineMode === mode.id;
+                  const tickerUrl = getOnlineModeTicker(mode);
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => selectOnlineMode(mode.id)}
+                      disabled={!!lobby?.code}
+                      style={{
+                        flex: "0 0 168px",
+                        minHeight: 92,
+                        textAlign: "left",
+                        borderRadius: 16,
+                        border: active ? "1px solid rgba(255,213,106,.82)" : "1px solid rgba(255,255,255,.12)",
+                        background: tickerUrl
+                          ? `linear-gradient(90deg, rgba(0,0,0,.86), rgba(0,0,0,.30)), url(${tickerUrl}) center / cover no-repeat`
+                          : active
+                          ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
+                          : "rgba(255,255,255,.045)",
+                        boxShadow: active ? "0 0 20px rgba(255,213,106,.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
+                        color: "#f5f5f7",
+                        padding: "10px 11px",
+                        fontWeight: 1000,
+                        cursor: lobby?.code ? "not-allowed" : "pointer",
+                        opacity: lobby?.code && !active ? 0.55 : 1,
+                        position: "relative",
+                        overflow: "hidden",
+                        scrollSnapAlign: "start",
+                      }}
+                      title={lobby?.code ? "Quitte ou crée un nouveau salon pour changer de mode" : mode.hint}
+                    >
+                      {mode.favorite ? (
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: 7,
+                            left: 7,
+                            borderRadius: 999,
+                            padding: "3px 7px",
+                            background: "rgba(188,255,0,.18)",
+                            border: "1px solid rgba(188,255,0,.32)",
+                            color: "#c8ff00",
+                            fontSize: 9.5,
+                            fontWeight: 1000,
+                            letterSpacing: .4,
+                          }}
+                        >
+                          ★ FAVORI
+                        </span>
+                      ) : null}
+                      <div style={{ position: "absolute", left: 11, right: 11, bottom: 10 }}>
+                        <div style={{ fontSize: 14, textShadow: "0 2px 10px rgba(0,0,0,.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mode.shortLabel}</div>
+                        <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.84, fontWeight: 850, lineHeight: 1.15, textShadow: "0 2px 8px rgba(0,0,0,.9)" }}>{mode.hint}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <PrimaryButton
               label={creatingLobby ? "Création…" : "CRÉER"}
-              subLabel={`Salon ${selectedOnlineModeSpec.shortLabel}`}
+              subLabel={activeSportId === "babyfoot" ? selectedBabyFootOnlineScopeSpec.createHint : `Salon ${selectedOnlineModeSpec.shortLabel}`}
               disabled={creatingLobby || !canPlayOnline}
               onClick={handleCreateLobby}
               tone={!canPlayOnline ? "gray" : "gold"}
@@ -2872,7 +3003,7 @@ const doLogout = React.useCallback(async () => {
 
             <PrimaryButton
               label={joiningLobby ? "Recherche…" : "REJOINDRE"}
-              subLabel="Avec un code"
+              subLabel={activeSportId === "babyfoot" ? selectedBabyFootOnlineScopeSpec.joinHint : "Avec un code"}
               disabled={joiningLobby || !canPlayOnline}
               onClick={handleJoinLobby}
               tone={!canPlayOnline ? "gray" : "blue"}
@@ -2880,13 +3011,13 @@ const doLogout = React.useCallback(async () => {
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.85 }}>Code salon</div>
+            <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.85 }}>{activeSportId === "babyfoot" ? "Code salon / ligue / tournoi" : "Code salon"}</div>
             <input
               type="text"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               maxLength={8}
-              placeholder="EX : 4F9Q"
+              placeholder={activeSportId === "babyfoot" ? "EX : 4F9Q / LIGUE" : "EX : 4F9Q"}
               style={{
                 width: "100%",
                 borderRadius: 12,
