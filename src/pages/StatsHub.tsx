@@ -1428,6 +1428,25 @@ function buildDashboardForPlayer(
 
   // --------- Helpers
   const Nloc = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+  const normWinId = (v: any) => String(v ?? "").replace(/^online:/, "").trim();
+  const playerWonRecord = (r: any, pstat: any): boolean => {
+    const rawWinners = [
+      r?.winnerId,
+      r?.winner,
+      r?.summary?.winnerId,
+      r?.payload?.winnerId,
+      r?.payload?.summary?.winnerId,
+      ...(Array.isArray(r?.winnerIds) ? r.winnerIds : []),
+      ...(Array.isArray(r?.summary?.winnerIds) ? r.summary.winnerIds : []),
+      ...(Array.isArray(r?.payload?.winnerIds) ? r.payload.winnerIds : []),
+      ...(Array.isArray(r?.payload?.summary?.winnerIds) ? r.payload.summary.winnerIds : []),
+    ].filter((v) => v !== undefined && v !== null);
+    if (rawWinners.some((w) => statHubIdMatches(normWinId(w), normWinId(pid)))) return true;
+    if (pstat?.win === true || pstat?.winner === true || pstat?.isWinner === true) return true;
+    const place = Number(pstat?.place ?? pstat?.rank ?? pstat?.position ?? 0);
+    if (Number.isFinite(place) && place === 1) return true;
+    return false;
+  };
 
   // ✅ Normalisation buckets (tolère variantes de clés / formats)
   const normalizeBuckets = (raw: any): Record<string, number> => {
@@ -1548,7 +1567,7 @@ function buildDashboardForPlayer(
     fbAvg3 += a3;
     fbBestVisit = Math.max(fbBestVisit, bestV);
     fbBestCO = Math.max(fbBestCO, bestCO);
-    if ((r as any)?.winnerId === pid) fbWins++;
+    if (playerWonRecord(r as any, pstat)) fbWins++;
 
     // Buckets : on tente plusieurs sources
     const bucketsFromSummary = ss?.buckets?.[pid];
@@ -1594,7 +1613,10 @@ function buildDashboardForPlayer(
     avg3Overall: Number.isFinite(Number(quick?.avg3Overall ?? quick?.avg3)) ? Number(quick?.avg3Overall ?? quick?.avg3) : fbAvg3Mean,
     bestVisit: Number.isFinite(Number(quick?.bestVisit)) ? Number(quick?.bestVisit) : fbBestVisit,
     bestCheckout: Number.isFinite(Number(quick?.bestCheckout)) ? Number(quick?.bestCheckout) : fbBestCO,
-    winRatePct: Number.isFinite(Number(quick?.winRatePct)) ? Number(quick?.winRatePct) : fbWinPct,
+    // ✅ Le taux de victoire du dashboard doit suivre l'historique visible.
+    // Si des anciennes stats persistées existent encore dans profiles.stats / index, elles ne doivent
+    // plus pouvoir afficher 0% ou une valeur fantôme après suppression de cartes.
+    winRatePct: fbMatches > 0 ? fbWinPct : (Number.isFinite(Number(quick?.winRatePct)) ? Number(quick?.winRatePct) : 0),
 
     // ✅ IMPORTANT : normalisé pour éviter clés différentes / 0 fantômes
     distribution: finalDistribution,
@@ -4711,22 +4733,40 @@ const pseudoStoreForCompare = React.useMemo(
 
 // Fusion en éliminant doublons (mem + api + store)
 const combinedHistory = React.useMemo(() => {
+  const api = toArr<SavedMatch>(apiHistory);
   const mem = toArr<SavedMatch>(memHistory);
-  const all = [...mem, ...apiHistory, ...storeHistory];
+  const store = toArr<SavedMatch>(storeHistory);
+
+  // ✅ SOURCE DE VÉRITÉ : History/IndexedDB.
+  // Quand une carte est supprimée de l'historique, elle disparaît de History.list().
+  // Les anciens snapshots store.history / props memHistory peuvent encore contenir des
+  // copies fantômes : on ne les laisse plus réinjecter des matchs supprimés dans les stats.
+  const authoritativeIds = new Set(
+    api.map((r: any) => String(r?.id ?? r?.matchId ?? r?.resumeId ?? "")).filter(Boolean)
+  );
+  const source = api.length > 0
+    ? [
+        ...api,
+        ...mem.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
+        ...store.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
+      ]
+    : [...mem, ...store];
 
   const byId = new Map<string, SavedMatch>();
-  for (const r of all) {
-    const id = String((r as any)?.id ?? "");
+  for (const r of source) {
+    const id = String((r as any)?.id ?? (r as any)?.matchId ?? (r as any)?.resumeId ?? "");
     if (!id) continue;
 
     const existing = byId.get(id);
     if (!existing) {
       byId.set(id, r);
     } else {
+      const hasPayloadNew = !!(r as any)?.payload;
+      const hasPayloadOld = !!(existing as any)?.payload;
       const tNew = (r as any)?.updatedAt ?? (r as any)?.createdAt ?? 0;
-      const tOld =
-        (existing as any)?.updatedAt ?? (existing as any)?.createdAt ?? 0;
-      if (tNew >= tOld) byId.set(id, r);
+      const tOld = (existing as any)?.updatedAt ?? (existing as any)?.createdAt ?? 0;
+      // Garde la version la plus complète, puis la plus récente.
+      if ((hasPayloadNew && !hasPayloadOld) || (hasPayloadNew === hasPayloadOld && tNew >= tOld)) byId.set(id, r);
     }
   }
 
@@ -5313,10 +5353,12 @@ const computedDashboard = React.useMemo(() => {
   }
 }, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
 
-// ✅ Dashboard final à passer au composant (priorité: cache instant -> live recalcul -> memo)
+// ✅ Dashboard final à passer au composant.
+// Pour les fléchettes, l'historique est la source de vérité : le cache ne passe plus devant
+// le recalcul, sinon une suppression de carte peut laisser un ancien 0% / une vieille session.
 const dashboardToShow = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
   ? (liveDashboard ?? computedDashboard)
-  : (cachedDashboard ?? liveDashboard ?? computedDashboard)) as
+  : (liveDashboard ?? computedDashboard ?? cachedDashboard)) as
   | PlayerDashboardStats
   | null;
 
