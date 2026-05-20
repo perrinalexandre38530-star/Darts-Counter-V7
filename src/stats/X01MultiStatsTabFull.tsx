@@ -462,20 +462,6 @@ function getRobustRankForPlayer(match: any, player: any, fallbackPid?: any): num
 }
 
 function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[]) {
-  if ((line as any).scoreLabel && String((line as any).scoreLabel).includes("-")) {
-    const [a, b] = String((line as any).scoreLabel).split("-").map((x) => Number(x));
-    const won = Number.isFinite(a) ? a : 0;
-    const lost = Number.isFinite(b) ? b : 0;
-    return {
-      played: won + lost,
-      won,
-      lost,
-      label: `${won}-${lost}`,
-      margin: won - lost,
-      unit: ((line as any).scoreUnit || (Number((line as any).setsPlayed || 0) > 0 ? "sets" : "legs")) as any,
-    };
-  }
-
   const ownLegs = Number(line.legsWon || 0);
   const ownSets = Number(line.setsWon || 0);
   const maxOtherLegs = group
@@ -488,6 +474,9 @@ function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[])
   const groupSetTotal = ownSets + maxOtherSets;
   const groupLegTotal = ownLegs + maxOtherLegs;
 
+  // Score de match X01 = SETS remportés quand le match est joué en sets.
+  // On ignore volontairement les anciens scoreLabel sauvegardés en 1-0,
+  // car ils représentaient seulement win/loss et écrasaient les vrais scores 2-0 / 2-1.
   if (groupSetTotal > 0) {
     return {
       played: groupSetTotal,
@@ -507,6 +496,21 @@ function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[])
       label: `${ownLegs}-${maxOtherLegs}`,
       margin: ownLegs - maxOtherLegs,
       unit: "legs" as const,
+    };
+  }
+
+  // Dernier recours seulement : scoreLabel historique si aucun set/leg exploitable.
+  if ((line as any).scoreLabel && String((line as any).scoreLabel).includes("-")) {
+    const [a, b] = String((line as any).scoreLabel).split("-").map((x) => Number(x));
+    const won = Number.isFinite(a) ? a : 0;
+    const lost = Number.isFinite(b) ? b : 0;
+    return {
+      played: won + lost,
+      won,
+      lost,
+      label: `${won}-${lost}`,
+      margin: won - lost,
+      unit: ((line as any).scoreUnit || "match") as any,
     };
   }
 
@@ -578,6 +582,29 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
     "finalScores", "remainingScores", "remainingByPlayer", "scoreRemainingByPlayer", "scoreAfterByPlayer", "scores"
   ], player, pid);
 
+  // Certains historiques stockent les sets/legs directement dans les lignes
+  // players/ranking plutôt que dans des maps summary.*. On complète ici afin que
+  // le score de match puisse afficher les SETS gagnés (2-0 / 2-1) et non un
+  // vieux fallback win/loss 1-0.
+  const directRows = collectX01RankingRows(match);
+  const directRow = directRows.find((r) => x01RowMatchesPid(r, String(pid), playerNameFromLike(player)));
+  const directSetsWon = numOr0(
+    player?.setsWon, player?.setWon, player?.sets, player?.matchSets, player?.wonSets,
+    directRow?.setsWon, directRow?.setWon, directRow?.sets, directRow?.matchSets, directRow?.wonSets, directRow?.sw
+  );
+  const directLegsWon = numOr0(
+    player?.legsWon, player?.legWon, player?.legs, player?.matchLegs, player?.wonLegs,
+    directRow?.legsWon, directRow?.legWon, directRow?.legs, directRow?.matchLegs, directRow?.wonLegs, directRow?.lw
+  );
+  const directSetsTotal = directRows.reduce((sum: number, r: any) => {
+    const n = numOr0(r?.setsWon, r?.setWon, r?.sets, r?.matchSets, r?.wonSets, r?.sw);
+    return sum + n;
+  }, 0);
+  const directLegsTotal = directRows.reduce((sum: number, r: any) => {
+    const n = numOr0(r?.legsWon, r?.legWon, r?.legs, r?.matchLegs, r?.wonLegs, r?.lw);
+    return sum + n;
+  }, 0);
+
   let rank: number | null = getRobustRankForPlayer(match, player, pid);
   if (!rank) {
     const finalMap = finalInfo.map || x01BestScoreMap(match, [
@@ -594,8 +621,13 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
     }
   }
 
-  const scoreUnit = setInfo.total > 0 ? "sets" : legInfo.total > 0 ? "legs" : "match";
-  const myWon = scoreUnit === "sets" ? setInfo.value : scoreUnit === "legs" ? legInfo.value : 0;
+  const effectiveSetValue = setInfo.value || directSetsWon;
+  const effectiveSetTotal = setInfo.total || directSetsTotal;
+  const effectiveLegValue = legInfo.value || directLegsWon;
+  const effectiveLegTotal = legInfo.total || directLegsTotal;
+
+  const scoreUnit = effectiveSetTotal > 0 ? "sets" : effectiveLegTotal > 0 ? "legs" : "match";
+  const myWon = scoreUnit === "sets" ? effectiveSetValue : scoreUnit === "legs" ? effectiveLegValue : 0;
   let otherBest = 0;
   const map = scoreUnit === "sets" ? setInfo.map : scoreUnit === "legs" ? legInfo.map : null;
   if (map && typeof map === "object") {
@@ -606,13 +638,23 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
       if (Number.isFinite(n)) otherBest = Math.max(otherBest, n);
     }
   }
+  if (!otherBest && !map && scoreUnit !== "match") {
+    const wanted = playerKeysFromLike(player, pid);
+    for (const r of directRows) {
+      if (wanted.some((id) => x01RowMatchesPid(r, id, playerNameFromLike(player)))) continue;
+      const n = scoreUnit === "sets"
+        ? numOr0(r?.setsWon, r?.setWon, r?.sets, r?.matchSets, r?.wonSets, r?.sw)
+        : numOr0(r?.legsWon, r?.legWon, r?.legs, r?.matchLegs, r?.wonLegs, r?.lw);
+      if (Number.isFinite(n)) otherBest = Math.max(otherBest, n);
+    }
+  }
   const scoreLabel = scoreUnit === "match" ? null : `${myWon}-${otherBest}`;
 
   return {
-    setsWon: setInfo.value,
-    setsPlayed: setInfo.total,
-    legsWon: legInfo.value,
-    legsPlayed: legInfo.total,
+    setsWon: effectiveSetValue,
+    setsPlayed: effectiveSetTotal,
+    legsWon: effectiveLegValue,
+    legsPlayed: effectiveLegTotal,
     rank,
     scoreLabel,
     scoreUnit,
@@ -1346,46 +1388,53 @@ export default function X01MultiStatsTabFull({
       const isTeamMatch = arr.some((p) => p.isTeam);
       if (isTeamMatch) continue;
 
-      for (const s of arr) {
-        // 🔥 On ne garde que les lignes du joueur sélectionné :
-        //    on compare d'abord profileId, puis on fallback sur selectedPlayerId
-        if (effectiveProfileId) {
-          const target = String(effectiveProfileId);
-          const lineProfileId =
-            s.profileId != null ? String(s.profileId) : null;
-          const linePlayerId =
-            s.selectedPlayerId != null ? String(s.selectedPlayerId) : null;
+      const targetLine = effectiveProfileId
+        ? arr.find((s) => {
+            const target = String(effectiveProfileId);
+            const lineProfileId = s.profileId != null ? String(s.profileId) : null;
+            const linePlayerId = s.selectedPlayerId != null ? String(s.selectedPlayerId) : null;
+            return sameId(lineProfileId, target) || sameId(linePlayerId, target);
+          })
+        : arr[0];
 
-          if (!sameId(lineProfileId, target) && !sameId(linePlayerId, target)) {
-            continue;
-          }
-        }
+      if (!targetLine) continue;
 
-        let r = s.rank ?? null;
-        // Fallback : si le rang n'a pas été persisté mais les restes sont présents,
-        // on classe le groupe par score restant / score final croissant.
-        if (!r || r < 1) {
-          const sorted = [...arr].sort((a, b) => {
-            const ar = Number((a as any).remaining ?? (a as any).finalScore ?? 999999);
-            const br = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
-            return ar - br;
-          });
-          const idx = sorted.findIndex((x) => sameId(x.selectedPlayerId, s.selectedPlayerId));
-          if (idx >= 0) r = idx + 1;
-        }
-        if (!r || r < 1) continue;
+      // Le compteur 1er doit rester strictement cohérent avec Matchs multi Win/Total.
+      // Donc : victoire réelle => rang 1, défaite réelle => jamais rang 1 même si un
+      // vieux score restant / ordre de players ferait croire le contraire.
+      let r: number | null = targetLine.isWin ? 1 : Number(targetLine.rank || 0) || null;
+      if (!targetLine.isWin && r === 1) r = null;
 
-        if (r === 1) stats.first++;
-        else if (r === 2) stats.second++;
-        else if (r === 3) stats.third++;
-        else if (r === 4) stats.place4++;
-        else if (r === 5) stats.place5++;
-        else if (r === 6) stats.place6++;
-        else if (r === 7) stats.place7++;
-        else if (r === 8) stats.place8++;
-        else if (r === 9) stats.place9++;
-        else stats.place10plus++;
+      // Fallback pour les places 2..10 : on classe les non-vainqueurs au score/restant,
+      // en gardant toujours les vainqueurs devant. Cela remplit les places perdues sans
+      // créer de fausses victoires.
+      if (!r || r < 1) {
+        const sorted = [...arr].sort((a, b) => {
+          const aw = a.isWin ? 0 : 1;
+          const bw = b.isWin ? 0 : 1;
+          if (aw !== bw) return aw - bw;
+          const ar = Number((a as any).remaining ?? (a as any).finalScore ?? 999999);
+          const br = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
+          if (ar !== br) return ar - br;
+          return String(a.selectedPlayerId).localeCompare(String(b.selectedPlayerId));
+        });
+        const idx = sorted.findIndex((x) => sameId(x.selectedPlayerId, targetLine.selectedPlayerId));
+        if (idx >= 0) r = idx + 1;
       }
+
+      if (!targetLine.isWin && r === 1) r = 2;
+      if (!r || r < 1) continue;
+
+      if (r === 1) stats.first++;
+      else if (r === 2) stats.second++;
+      else if (r === 3) stats.third++;
+      else if (r === 4) stats.place4++;
+      else if (r === 5) stats.place5++;
+      else if (r === 6) stats.place6++;
+      else if (r === 7) stats.place7++;
+      else if (r === 8) stats.place8++;
+      else if (r === 9) stats.place9++;
+      else stats.place10plus++;
     }
 
     return stats;
