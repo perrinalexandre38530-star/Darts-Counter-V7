@@ -2552,6 +2552,16 @@ export async function clearConflicts(baseId?: string): Promise<void> {
   }
 }
 
+function invalidateStatsAfterHistoryMutation(reason: string): void {
+  try {
+    void scheduleStatsIndexRefresh({
+      reason,
+      debounceMs: 80,
+      includeNonFinished: false,
+    });
+  } catch {}
+}
+
 export async function remove(id: string): Promise<void> {
   await migrateFromLocalStorageOnce();
 
@@ -2629,6 +2639,7 @@ export async function remove(id: string): Promise<void> {
       }
     } catch {}
 
+    invalidateStatsAfterHistoryMutation("history:remove");
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
   } catch {
@@ -2646,6 +2657,7 @@ export async function remove(id: string): Promise<void> {
         }
       } catch {}
 
+      invalidateStatsAfterHistoryMutation("history:remove:ls_fallback");
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
       try { emitCloudChange("history:remove:ls_fallback"); } catch {}
       try { _resumeIndexRemove(wanted); } catch {}
@@ -2677,6 +2689,7 @@ export async function clear(): Promise<void> {
       }
     } catch {}
 
+    invalidateStatsAfterHistoryMutation("history:clear");
     scheduleCloudSnapshotPush("history:clear");
     try { emitCloudChange("history:clear"); } catch {}
     try { _resumeIndexWrite([]); } catch {}
@@ -2690,6 +2703,7 @@ export async function clear(): Promise<void> {
         }
       } catch {}
 
+      invalidateStatsAfterHistoryMutation("history:clear:ls_fallback");
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
       try { emitCloudChange("history:clear:ls_fallback"); } catch {}
       try { _resumeIndexWrite([]); } catch {}

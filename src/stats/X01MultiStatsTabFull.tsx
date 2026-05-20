@@ -1560,6 +1560,7 @@ export default function X01MultiStatsTabFull({
   );
 
   const [sessions, setSessions] = React.useState<X01MultiSession[]>([]);
+  const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
   const [selected, setSelected] = React.useState<X01MultiSession | null>(null);
 
@@ -1574,7 +1575,17 @@ export default function X01MultiStatsTabFull({
   const [metricLocked, setMetricLocked] = React.useState(false);
   const [page, setPage] = React.useState(1);
 
-  // Chargement des matchs (une fois + quand l’ID effectif change)
+  React.useEffect(() => {
+    const onHistoryUpdated = () => setHistoryVersion((v) => v + 1);
+    window.addEventListener("dc-history-updated", onHistoryUpdated as EventListener);
+    window.addEventListener("dc-stats-index-updated", onHistoryUpdated as EventListener);
+    return () => {
+      window.removeEventListener("dc-history-updated", onHistoryUpdated as EventListener);
+      window.removeEventListener("dc-stats-index-updated", onHistoryUpdated as EventListener);
+    };
+  }, []);
+
+  // Chargement des matchs (une fois + quand l’ID effectif change + après suppression historique)
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1586,7 +1597,7 @@ export default function X01MultiStatsTabFull({
     return () => {
       cancelled = true;
     };
-  }, [effectiveProfileId]);
+  }, [effectiveProfileId, historyVersion]);
 
   // Auto-défilement métriques
   React.useEffect(() => {
@@ -1615,6 +1626,16 @@ export default function X01MultiStatsTabFull({
     () => filterByRange(sessions, range).sort((a, b) => a.date - b.date),
     [sessions, range]
   );
+
+  const selectedSessions = React.useMemo(() => {
+    if (!effectiveProfileId) return filtered;
+    const target = String(effectiveProfileId);
+    return filtered.filter((s: any) =>
+      sameId(s?.selectedPlayerId, target) ||
+      sameId(s?.profileId, target) ||
+      sameId(s?.playerId, target)
+    );
+  }, [filtered, effectiveProfileId]);
 
   // Classements multi pour le joueur (ou tous si aucun ID fourni)
   const multiRanks = React.useMemo(() => {
@@ -1877,30 +1898,31 @@ const pct = (num: number, den: number) =>
   // 🔥 % FINISH multi
   const multiPctFinish = pct(multiFinishCount, multiTotal);
 
-  const totalSessions = filtered.length;
-  const totalDarts = filtered.reduce((s: any, x: any) => s + x.darts, 0);
+  const statsSessions = selectedSessions;
+  const totalSessions = statsSessions.length;
+  const totalDarts = statsSessions.reduce((s: any, x: any) => s + x.darts, 0);
   const avgDarts = totalSessions > 0 ? totalDarts / totalSessions : 0;
 
   const bestVisit =
-    totalSessions > 0 ? Math.max(...filtered.map((x: any) => x.bestVisit)) : 0;
+    totalSessions > 0 ? Math.max(...statsSessions.map((x: any) => x.bestVisit)) : 0;
 
   const bestCheckout =
     totalSessions > 0
-      ? Math.max(...filtered.map((x: any) => (x.bestCheckout ?? 0) || 0))
+      ? Math.max(...statsSessions.map((x: any) => (x.bestCheckout ?? 0) || 0))
       : 0;
 
   const globalAvg3D =
     totalSessions > 0
-      ? filtered.reduce((s: any, x: any) => s + x.avg3D, 0) / totalSessions
+      ? statsSessions.reduce((s: any, x: any) => s + x.avg3D, 0) / totalSessions
       : 0;
 
   const globalAvg1D =
     totalSessions > 0
-      ? filtered.reduce((s: any, x: any) => s + x.avg1D, 0) / totalSessions
+      ? statsSessions.reduce((s: any, x: any) => s + x.avg1D, 0) / totalSessions
       : 0;
 
   // Agrégats hits / miss / bull etc.
-  // (on réutilise totalSessions = filtered.length; défini juste au-dessus)
+  // (on réutilise totalSessions = statsSessions.length; défini juste au-dessus)
 
   let gHitsS = 0,
     gHitsD = 0,
@@ -1935,7 +1957,7 @@ const pct = (num: number, den: number) =>
   // nombre de sessions où il y a AU MOINS un checkout
   let sessionsWithCO = 0;
 
-  for (const s of filtered) {
+  for (const s of statsSessions) {
     const darts = s.darts || 0;
     const sS = s.hitsS ?? 0;
     const sD = s.hitsD ?? 0;
@@ -2022,7 +2044,7 @@ const pct = (num: number, den: number) =>
 
   const bestAvg3DSession =
     totalSessions > 0
-      ? Math.max(...filtered.map((x: any) => x.avg3D || 0))
+      ? Math.max(...statsSessions.map((x: any) => x.avg3D || 0))
       : 0;
 
   const pctHitsGlobal = totalThrows > 0 ? hitsPercent : null;
@@ -2086,7 +2108,7 @@ const pctSetsWinX01 =
   const x01DartsAll: UIDart[] = React.useMemo(() => {
     const out: UIDart[] = [];
 
-    for (const s of filtered) {
+    for (const s of statsSessions) {
       const { bySegmentS, bySegmentD, bySegmentT } = s;
 
       if (
@@ -2127,7 +2149,7 @@ const pctSetsWinX01 =
     }
 
     return out;
-  }, [filtered]);
+  }, [statsSessions]);
 
   // Hit préféré / favoris
   const segmentCount: Record<string, number> = {};
@@ -2247,7 +2269,7 @@ const pctSetsWinX01 =
     }
   }
 
-  const sparkSeries = filtered.map((s: any) => ({
+  const sparkSeries = statsSessions.map((s: any) => ({
     x: s.date,
     y: valueForMetric(s, metric),
     session: s,
@@ -2555,13 +2577,13 @@ const pctSetsWinX01 =
 
   React.useEffect(() => {
     setPage(1);
-  }, [range, sessions.length]);
+  }, [range, selectedSessions.length]);
 
   const pageSize = 10;
   const totalPages =
-    totalSessions > 0 ? Math.max(1, Math.ceil(totalSessions / pageSize)) : 1;
+    selectedSessions.length > 0 ? Math.max(1, Math.ceil(selectedSessions.length / pageSize)) : 1;
 
-  const reversedSessions = filtered.slice().reverse();
+  const reversedSessions = selectedSessions.slice().reverse();
   const pagedSessions = reversedSessions.slice(
     (page - 1) * pageSize,
     page * pageSize
@@ -2849,7 +2871,7 @@ const getProfileIdFromSession = (s: any): string | undefined => {
     (s.player_profile_id && String(s.player_profile_id)) ||
     undefined
   );
-};
+ };
 
 // Mapping id (selectedPlayerId) -> nom + profileId + avatar
 const playerNameMap: Record<string, string> = {};
