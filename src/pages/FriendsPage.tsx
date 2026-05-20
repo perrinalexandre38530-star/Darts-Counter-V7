@@ -62,7 +62,10 @@ import { joinPresence } from "../lib/onlinePresence";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import { History } from "../lib/history";
 import { getTicker } from "../lib/tickers";
-import { filterOnlineStatsHardDeleted } from "../lib/onlineStatsExclusions";
+import {
+  filterOnlineStatsHardDeleted,
+  listOnlineStatsCleanupSessions,
+} from "../lib/onlineStatsExclusions";
 
 /* -------------------------------------------------
    Constantes localStorage
@@ -257,6 +260,44 @@ function onlineHubMatchKey(row: any): string {
 
 async function loadOnlineHubMatchesFromHistoryAndCache(): Promise<any[]> {
   const out: any[] = [];
+
+  // ✅ Source prioritaire : exactement la même que le panneau
+  // Réglages > Développeur > Nettoyage Online.
+  // Avant, le Hub tentait de relire History/localStorage avec une normalisation
+  // trop restrictive : les cartes existaient bien dans l'historique, mais le Hub
+  // pouvait rester à 0. Ici on compte les sessions Online agrégées/non supprimées
+  // par onlineStatsExclusions, donc Hub / Stats / Nettoyage parlent la même langue.
+  try {
+    const cleanupSessions = await listOnlineStatsCleanupSessions();
+    if (Array.isArray(cleanupSessions)) {
+      out.push(
+        ...cleanupSessions
+          .filter((session: any) => !session?.excludedFromStats && !session?.deletedAt)
+          .map((session: any, idx: number) => ({
+            ...session,
+            id: String(session?.id || session?.matchId || `online-cleanup-${idx}`),
+            matchId: session?.matchId || session?.id,
+            mode: String(session?.mode || session?.sport || "x01").toLowerCase().includes("x01") ? "x01" : String(session?.mode || "online").toLowerCase(),
+            createdAt: Number(session?.createdAt || session?.finishedAt || Date.now()),
+            finishedAt: Number(session?.finishedAt || session?.createdAt || Date.now()),
+            payload: session?.raw || session?.payload || {},
+            summary: session?.summary || session?.raw?.summary || {},
+            stats: {
+              darts: onlineNum(session?.darts, 0),
+              totalScore: onlineNum(session?.totalScore, 0),
+              bestVisit: onlineNum(session?.bestVisit, 0),
+              bestCheckout: onlineNum(session?.bestCheckout, 0),
+              avg3D: onlineNum(session?.avg3D ?? session?.avg3, 0),
+              checkoutPct: onlineNum(session?.checkoutPct, 0),
+            },
+          })),
+      );
+    }
+  } catch (err) {
+    console.warn("[OnlineHub] lecture sessions nettoyage online impossible", err);
+  }
+
+  // Fallbacks conservés : utile pour les anciennes sauvegardes non indexées.
   try {
     const api: any = History as any;
     const rows = typeof api.listFinished === "function" ? await api.listFinished() : typeof api.list === "function" ? await api.list() : [];
@@ -269,7 +310,12 @@ async function loadOnlineHubMatchesFromHistoryAndCache(): Promise<any[]> {
     const rows = raw ? JSON.parse(raw) : [];
     if (Array.isArray(rows)) out.push(...rows.map(normalizeOnlineHistoryForHub).filter(Boolean));
   } catch {}
-  return filterOnlineStatsHardDeleted(out);
+
+  const merged = new Map<string, any>();
+  for (const row of filterOnlineStatsHardDeleted(out) || []) {
+    merged.set(onlineHubMatchKey(row), row);
+  }
+  return Array.from(merged.values());
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
