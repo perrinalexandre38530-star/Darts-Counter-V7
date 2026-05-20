@@ -7913,6 +7913,55 @@ function saveX01V3MatchToHistory({
     };
   }
 
+  // Source de vérité complémentaire : replayLegs / legDetails.
+  // Les anciens états pouvaient ne stocker que match gagné/perdu (1-0), alors que
+  // le vrai score de match doit être le nombre de SETS remportés (2-0 / 2-1).
+  const replayLegRowsForScore = Array.isArray(replayLegs) ? replayLegs : [];
+  if (replayLegRowsForScore.length > 0) {
+    const replayLegsByPlayer: Record<string, number> = {};
+    const replaySetsByPlayer: Record<string, number> = {};
+    const setGroups: Record<string, Record<string, number>> = {};
+    for (const p of players as any[]) {
+      const pid = String(p?.id || "");
+      if (!pid) continue;
+      replayLegsByPlayer[pid] = 0;
+      replaySetsByPlayer[pid] = 0;
+    }
+    const legsPerSetForReplay = Math.max(1, Number((config as any)?.legsPerSet ?? 1) || 1);
+    for (let i = 0; i < replayLegRowsForScore.length; i += 1) {
+      const leg: any = replayLegRowsForScore[i];
+      const winnerId = String(leg?.winnerId ?? leg?.winner ?? "");
+      if (!winnerId) continue;
+      const pid = (players as any[]).find((p: any) => String(p?.id) === winnerId)?.id || winnerId;
+      replayLegsByPlayer[pid] = (replayLegsByPlayer[pid] || 0) + 1;
+      const legNo = Math.max(1, Number(leg?.matchLegNo ?? leg?.legNo ?? leg?.legIndex ?? i + 1) || i + 1);
+      const setNo = Math.max(1, Number(leg?.setNo ?? leg?.setIndex ?? Math.floor((legNo - 1) / legsPerSetForReplay) + 1) || 1);
+      const key = String(setNo);
+      if (!setGroups[key]) setGroups[key] = {};
+      setGroups[key][pid] = (setGroups[key][pid] || 0) + 1;
+    }
+    for (const group of Object.values(setGroups)) {
+      const entries = Object.entries(group).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) continue;
+      const [setWinnerId] = entries[0];
+      replaySetsByPlayer[setWinnerId] = (replaySetsByPlayer[setWinnerId] || 0) + 1;
+    }
+    const replayLegTotal = Object.values(replayLegsByPlayer).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    const replaySetTotal = Object.values(replaySetsByPlayer).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    if (replayLegTotal > 0) {
+      for (const [pid, val] of Object.entries(replayLegsByPlayer)) {
+        legsByPlayer[pid] = Number(val) || 0;
+        legsPlayedByPlayer[pid] = replayLegTotal;
+      }
+    }
+    if (replaySetTotal > 0) {
+      for (const [pid, val] of Object.entries(replaySetsByPlayer)) {
+        setsByPlayer[pid] = Number(val) || 0;
+        setsPlayedByPlayer[pid] = replaySetTotal;
+      }
+    }
+  }
+
   // Score final DUEL (ex : 2–1)
   let matchScore: { [pid: string]: number } = {};
   if (players.length === 2) {

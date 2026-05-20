@@ -276,22 +276,62 @@ function numOr0(...values: any[]): number {
 }
 
 function collectX01RankingRows(match: any): any[] {
-  const out: any[] = [];
-  const seen = new Set<string>();
+  const rows: any[] = [];
   const keys = new Set(["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking", "players", "perPlayer"]);
+
+  const rowIdentity = (row: any) => String(
+    row?.id ??
+      row?.playerId ??
+      row?.profileId ??
+      row?.selectedPlayerId ??
+      row?.pid ??
+      row?.uid ??
+      row?.name ??
+      row?.playerName ??
+      JSON.stringify(row)
+  );
+
+  // Les anciennes versions de l'écran Stats prenaient parfois le premier
+  // tableau `players` rencontré. Or ce tableau est souvent juste la config
+  // des joueurs et ne contient ni sets/legs ni rang final. On collecte donc
+  // tout, puis on garde pour chaque joueur la ligne la plus riche.
+  const richness = (row: any): number => {
+    if (!row || typeof row !== "object") return 0;
+    let score = 0;
+    for (const k of [
+      "setsWon", "setWon", "sets", "matchSets", "wonSets", "sw",
+      "legsWon", "legWon", "legs", "matchLegs", "wonLegs", "lw",
+      "rank", "finalRank", "place", "position", "standing",
+      "score", "points", "total", "remaining", "finalScore"
+    ]) {
+      const v = row[k];
+      if (v !== undefined && v !== null && String(v) !== "") score += 3;
+    }
+    // Les lignes rankings/standings ont souvent name + valeurs, les lignes config
+    // seulement name/avatar/id. On pénalise les lignes sans aucune stat chiffrée.
+    const numericValues = Object.values(row).filter((v: any) => Number.isFinite(Number(v))).length;
+    score += numericValues;
+    return score;
+  };
+
   for (const root of deepX01Objects(match, 7)) {
     for (const [key, arr] of Object.entries(root)) {
       if (!keys.has(String(key)) || !Array.isArray(arr)) continue;
       for (const row of arr as any[]) {
         if (!row || typeof row !== "object") continue;
-        const sig = String(row?.id ?? row?.playerId ?? row?.profileId ?? row?.selectedPlayerId ?? row?.name ?? JSON.stringify(row));
-        if (seen.has(sig)) continue;
-        seen.add(sig);
-        out.push(row);
+        rows.push(row);
       }
     }
   }
-  return out;
+
+  const best = new Map<string, any>();
+  for (const row of rows) {
+    const id = rowIdentity(row);
+    const prev = best.get(id);
+    if (!prev || richness(row) > richness(prev)) best.set(id, row);
+  }
+
+  return Array.from(best.values());
 }
 
 function x01RowMatchesPid(row: any, pid: string, name?: any): boolean {
@@ -536,7 +576,13 @@ function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[])
   // Score de match X01 = SETS remportés quand le match est joué en sets.
   // On ignore volontairement les anciens scoreLabel sauvegardés en 1-0,
   // car ils représentaient seulement win/loss et écrasaient les vrais scores 2-0 / 2-1.
-  if (groupSetTotal > 0) {
+  // Dans beaucoup d'anciens historiques DUO, `setsWon` vaut seulement 1-0
+  // alors que le vrai score affiché attendu correspond aux manches/legs gagnés
+  // du match (ex: 2-0 / 2-1). On évite donc de privilégier un 1-0 pauvre
+  // quand les legs donnent un score plus précis.
+  const bestSetScore = Math.max(ownSets, maxOtherSets);
+  const bestLegScore = Math.max(ownLegs, maxOtherLegs);
+  if (groupSetTotal > 0 && !(bestSetScore <= 1 && bestLegScore > bestSetScore)) {
     return {
       played: groupSetTotal,
       won: ownSets,
@@ -629,6 +675,108 @@ function x01ReadPlayerMapValue(match: any, keys: string[], player: any, pid: any
   return { value: 0, total: 0, map: null };
 }
 
+
+function x01ReadNumberDeep(match: any, keys: string[], fallback = 0): number {
+  const want = new Set(keys.map((k) => k.toLowerCase()));
+  for (const root of deepX01Objects(match, 7)) {
+    if (!root || typeof root !== "object" || Array.isArray(root)) continue;
+    for (const [k, v] of Object.entries(root)) {
+      if (!want.has(String(k).toLowerCase())) continue;
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return fallback;
+}
+
+function x01CollectLegRows(match: any): any[] {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  const keys = new Set([
+    "legs", "legdetails", "legdetails", "legsummaries", "legsummaries",
+    "legresults", "legresults", "__legstats"
+  ]);
+  const addRows = (arr: any) => {
+    if (!Array.isArray(arr)) return;
+    for (const row of arr) {
+      if (!row || typeof row !== "object") continue;
+      const winner = row.winnerId ?? row.winner ?? row.playerIdWinner ?? row.winnerPlayerId ?? row.winPlayerId;
+      const hasLegShape = winner || row.legNo || row.legIndex || row.matchLegNo || row.setNo || row.setIndex || row.perPlayer || row.visits;
+      if (!hasLegShape) continue;
+      const sig = JSON.stringify({
+        l: row.legNo ?? row.legIndex ?? row.matchLegNo,
+        s: row.setNo ?? row.setIndex,
+        w: winner,
+      });
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      out.push(row);
+    }
+  };
+  for (const root of deepX01Objects(match, 7)) {
+    if (!root || typeof root !== "object" || Array.isArray(root)) continue;
+    for (const [k, v] of Object.entries(root)) {
+      const lk = String(k).toLowerCase();
+      if (lk === "__legstats" && v && typeof v === "object") addRows((v as any).legs);
+      if (keys.has(lk)) addRows(v);
+    }
+  }
+  return out;
+}
+
+function x01DeriveScoreMapsFromLegRows(match: any, players: any[]): {
+  legsByPlayer: Record<string, number>;
+  setsByPlayer: Record<string, number>;
+  legsPlayedByPlayer: Record<string, number>;
+  setsPlayedByPlayer: Record<string, number>;
+} {
+  const playerIds = (players || [])
+    .map((p: any) => String(p?.id ?? p?.playerId ?? p?.profileId ?? p?.selectedPlayerId ?? p?.pid ?? ""))
+    .filter(Boolean);
+  const legsPerSet = Math.max(1, x01ReadNumberDeep(match, ["legsPerSet", "legsperset", "legsToWin", "legstowin"], 1));
+  const legsByPlayer: Record<string, number> = Object.fromEntries(playerIds.map((id) => [id, 0]));
+  const setsByPlayer: Record<string, number> = Object.fromEntries(playerIds.map((id) => [id, 0]));
+  const setGroups: Record<string, Record<string, number>> = {};
+
+  const rows = x01CollectLegRows(match);
+  for (let i = 0; i < rows.length; i += 1) {
+    const leg: any = rows[i];
+    const winnerRaw = leg.winnerId ?? leg.winner ?? leg.playerIdWinner ?? leg.winnerPlayerId ?? leg.winPlayerId;
+    if (!winnerRaw) continue;
+    const winner = String(winnerRaw);
+    const knownId = playerIds.find((id) => sameId(id, winner) || id === winner) || winner;
+    legsByPlayer[knownId] = (legsByPlayer[knownId] || 0) + 1;
+    const legNo = Math.max(1, Number(leg.matchLegNo ?? leg.legNo ?? leg.legIndex ?? i + 1) || i + 1);
+    const setNo = Math.max(1, Number(leg.setNo ?? leg.setIndex ?? Math.floor((legNo - 1) / legsPerSet) + 1) || 1);
+    const key = String(setNo);
+    if (!setGroups[key]) setGroups[key] = {};
+    setGroups[key][knownId] = (setGroups[key][knownId] || 0) + 1;
+  }
+
+  for (const group of Object.values(setGroups)) {
+    const entries = Object.entries(group).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) continue;
+    const [winnerId, wins] = entries[0];
+    if (wins > 0) setsByPlayer[winnerId] = (setsByPlayer[winnerId] || 0) + 1;
+  }
+
+  const totalLegs = Object.values(legsByPlayer).reduce((a, b) => a + (Number(b) || 0), 0);
+  const totalSets = Object.values(setsByPlayer).reduce((a, b) => a + (Number(b) || 0), 0);
+  const legsPlayedByPlayer: Record<string, number> = Object.fromEntries(playerIds.map((id) => [id, totalLegs]));
+  const setsPlayedByPlayer: Record<string, number> = Object.fromEntries(playerIds.map((id) => [id, totalSets]));
+  return { legsByPlayer, setsByPlayer, legsPlayedByPlayer, setsPlayedByPlayer };
+}
+
+function x01MapValueForPlayer(map: Record<string, number>, player: any, pid: any): number {
+  const wanted = playerKeysFromLike(player, pid);
+  for (const id of wanted) {
+    for (const [k, v] of Object.entries(map || {})) {
+      if (sameId(k, id) || k === id) return Number(v) || 0;
+    }
+  }
+  return 0;
+}
+
 function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
   const rawPlayers = (Array.isArray(match?.players) && match.players.length ? match.players
     : Array.isArray(match?.summary?.players) && match.summary.players.length ? match.summary.players
@@ -638,10 +786,10 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
     : Array.isArray(match?.payload?.payload?.config?.players) ? match.payload.payload.config.players
     : []) || [];
   const isDuoMatchForScore = rawPlayers.length === 2;
+  const derivedFromLegRows = x01DeriveScoreMapsFromLegRows(match, rawPlayers);
 
   const setScoreKeys = [
     "setsWonByPlayer", "setsWinByPlayer", "setsByPlayer", "setsWon", "setsScore", "sets",
-    "matchScore", "matchScores", "matchScoreByPlayer", "finalMatchScore", "finalMatchScores",
     "scoreSets", "scoreSetsByPlayer", "setScore", "setScores", "setsResult", "setsByProfile"
   ];
   // En DUO, le moteur X01 sauvegarde souvent le vrai score final en SETS dans summary.matchScore.
@@ -696,15 +844,40 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
     }
   }
 
-  const effectiveSetValue = setInfo.value || directSetsWon;
-  const effectiveSetTotal = setInfo.total || directSetsTotal;
-  const effectiveLegValue = legInfo.value || directLegsWon;
-  const effectiveLegTotal = legInfo.total || directLegsTotal;
+  const replaySetsWon = x01MapValueForPlayer(derivedFromLegRows.setsByPlayer, player, pid);
+  const replayLegsWon = x01MapValueForPlayer(derivedFromLegRows.legsByPlayer, player, pid);
+  const replaySetsTotal = x01MapTotal(derivedFromLegRows.setsByPlayer);
+  const replayLegsTotal = x01MapTotal(derivedFromLegRows.legsByPlayer);
 
-  const scoreUnit = effectiveSetTotal > 0 ? "sets" : effectiveLegTotal > 0 ? "legs" : "match";
+  // Priorité : replay/legDetails reconstruits depuis les volées sauvegardées.
+  // C'est la seule source qui ne confond pas "match gagné" (1-0) et score de sets (2-0 / 2-1).
+  const effectiveSetValue = replaySetsTotal > 0 ? replaySetsWon : (setInfo.value || directSetsWon);
+  const effectiveSetTotal = replaySetsTotal > 0 ? replaySetsTotal : (setInfo.total || directSetsTotal);
+  const effectiveLegValue = replayLegsTotal > 0 ? replayLegsWon : (legInfo.value || directLegsWon);
+  const effectiveLegTotal = replayLegsTotal > 0 ? replayLegsTotal : (legInfo.total || directLegsTotal);
+
+  const bestSetScoreForMatch = Math.max(effectiveSetValue, Math.max(0, effectiveSetTotal - effectiveSetValue));
+  const bestLegScoreForMatch = Math.max(effectiveLegValue, Math.max(0, effectiveLegTotal - effectiveLegValue));
+
+  // Score affiché : on privilégie les sets uniquement lorsqu'ils portent un vrai
+  // score de match. Si les vieux matchs n'ont conservé que 1-0 en sets mais
+  // possèdent des legs/ manches plus détaillés, on affiche les legs pour éviter
+  // le faux 1-0 permanent.
+  const scoreUnit =
+    effectiveSetTotal > 0 && !(bestSetScoreForMatch <= 1 && bestLegScoreForMatch > bestSetScoreForMatch)
+      ? "sets"
+      : effectiveLegTotal > 0
+      ? "legs"
+      : effectiveSetTotal > 0
+      ? "sets"
+      : "match";
   const myWon = scoreUnit === "sets" ? effectiveSetValue : scoreUnit === "legs" ? effectiveLegValue : 0;
   let otherBest = 0;
-  const map = scoreUnit === "sets" ? setInfo.map : scoreUnit === "legs" ? legInfo.map : null;
+  const map = scoreUnit === "sets"
+    ? (replaySetsTotal > 0 ? derivedFromLegRows.setsByPlayer : setInfo.map)
+    : scoreUnit === "legs"
+    ? (replayLegsTotal > 0 ? derivedFromLegRows.legsByPlayer : legInfo.map)
+    : null;
   if (map && typeof map === "object") {
     const wanted = playerKeysFromLike(player, pid);
     for (const [k, v] of Object.entries(map)) {
