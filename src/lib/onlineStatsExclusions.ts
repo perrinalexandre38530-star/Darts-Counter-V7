@@ -1599,23 +1599,49 @@ export async function keepOnlyOnlineStatsSessions(idsOrKeysToKeep: string[], rea
 }
 
 async function tryRemoteHardDeleteOnlineSession(session: OnlineStatsCleanupSession) {
-  const ids = uniq([session.matchId, session.id, ...(session.keys || [])])
-    .filter((id) => id && !String(id).startsWith("online-session:"));
   const raw: any = session.raw || {};
-  const lobbyCode = str(
-    raw?.lobbyCode || raw?.onlineLobbyCode || raw?.payload?.lobbyCode || raw?.payload?.onlineLobbyCode || raw?.payload?.state?.lobbyCode || raw?.state?.lobbyCode
-  );
+  const aliases = uniq([
+    session.matchId,
+    session.id,
+    ...(session.keys || []),
+    ...getOnlineStatsSessionKeys(raw),
+    ...collectStableOnlineFingerprints(raw),
+  ]).filter((id) => id && !String(id).startsWith("online-session:"));
 
-  // Le zip front ne contient pas le server.js : on tente donc plusieurs routes
-  // compatibles sans bloquer si le backend NAS ne les expose pas encore.
-  for (const id of ids.slice(0, 4)) {
-    try { await apiDelete(`/online/matches/${encodeURIComponent(id)}`); return; } catch {}
-    try { await apiPost(`/online/matches/delete-safe`, { id, matchId: id, lobbyCode: lobbyCode || undefined }); return; } catch {}
-    try { await apiPost(`/online/matches/delete`, { id, matchId: id, lobbyCode: lobbyCode || undefined }); return; } catch {}
+  const lobbyCodes = uniq([
+    raw?.lobbyCode,
+    raw?.onlineLobbyCode,
+    raw?.roomCode,
+    raw?.roomId,
+    raw?.payload?.lobbyCode,
+    raw?.payload?.onlineLobbyCode,
+    raw?.payload?.roomCode,
+    raw?.payload?.roomId,
+    raw?.payload?.state?.lobbyCode,
+    raw?.state?.lobbyCode,
+  ].map((value) => str(value)).filter(Boolean));
+  const lobbyCode = lobbyCodes[0] || "";
+
+  const body = {
+    id: aliases[0] || undefined,
+    matchId: session.matchId || aliases[0] || undefined,
+    ids: aliases,
+    identifiers: aliases,
+    lobbyCode: lobbyCode || undefined,
+    lobbyCodes,
+  };
+
+  // Route NAS corrigée : suppression atomique par id + lobbyCode + alias.
+  // Les fallbacks restent présents pour les déploiements qui n'ont pas encore
+  // le dernier server.js, mais ils ne doivent plus être la source principale.
+  try { await apiPost(`/online/matches/delete-safe`, body); return; } catch {}
+  try { await apiPost(`/online/matches/delete`, body); return; } catch {}
+  for (const code of lobbyCodes) {
+    try { await apiDelete(`/online/matches/by-code-safe/${encodeURIComponent(code)}`); return; } catch {}
+    try { await apiDelete(`/online/matches/by-code/${encodeURIComponent(code)}`); return; } catch {}
   }
-  if (lobbyCode) {
-    try { await apiPost(`/online/matches/delete-safe`, { lobbyCode }); return; } catch {}
-    try { await apiDelete(`/online/matches/by-code-safe/${encodeURIComponent(lobbyCode)}`); return; } catch {}
+  for (const id of aliases.slice(0, 6)) {
+    try { await apiDelete(`/online/matches/${encodeURIComponent(id)}`); return; } catch {}
   }
 }
 
