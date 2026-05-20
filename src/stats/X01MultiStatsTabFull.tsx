@@ -276,30 +276,19 @@ function numOr0(...values: any[]): number {
 }
 
 function collectX01RankingRows(match: any): any[] {
-  const roots = [
-    match,
-    match?.summary,
-    match?.summary?.result,
-    match?.payload,
-    match?.payload?.summary,
-    match?.payload?.summary?.result,
-    match?.payload?.payload,
-    match?.payload?.payload?.summary,
-    match?.payload?.state,
-    match?.payload?.payload?.state,
-    match?.engineState,
-    match?.state,
-    match?.resume,
-    match?.resume?.summary,
-    match?.resume?.state,
-    match?.resume?.state?.summary,
-  ];
   const out: any[] = [];
-  for (const root of roots) {
-    if (!root || typeof root !== "object") continue;
-    for (const key of ["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking", "players"]) {
-      const arr = root[key];
-      if (Array.isArray(arr)) out.push(...arr);
+  const seen = new Set<string>();
+  const keys = new Set(["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking", "players", "perPlayer"]);
+  for (const root of deepX01Objects(match, 7)) {
+    for (const [key, arr] of Object.entries(root)) {
+      if (!keys.has(String(key)) || !Array.isArray(arr)) continue;
+      for (const row of arr as any[]) {
+        if (!row || typeof row !== "object") continue;
+        const sig = String(row?.id ?? row?.playerId ?? row?.profileId ?? row?.selectedPlayerId ?? row?.name ?? JSON.stringify(row));
+        if (seen.has(sig)) continue;
+        seen.add(sig);
+        out.push(row);
+      }
     }
   }
   return out;
@@ -382,29 +371,80 @@ function getRankFromRows(match: any, pid: string, playerName?: any): number | nu
 }
 
 
-function collectScoreMaps(match: any, keys: string[]): any[] {
-  const roots = [
-    match,
-    match?.summary,
-    match?.payload,
-    match?.payload?.summary,
-    match?.payload?.payload,
-    match?.payload?.payload?.summary,
-    match?.payload?.state,
-    match?.payload?.payload?.state,
-    match?.engineState,
-    match?.state,
-    match?.resume,
-    match?.resume?.summary,
-    match?.resume?.state,
-    match?.resume?.state?.summary,
-  ];
+
+function deepX01Objects(root: any, maxDepth = 7): any[] {
   const out: any[] = [];
-  for (const root of roots) {
-    if (!root || typeof root !== "object") continue;
-    for (const key of keys) {
-      const v = root[key];
-      if (v && typeof v === "object" && !Array.isArray(v)) out.push(v);
+  const seen = new WeakSet<object>();
+  const walk = (x: any, depth: number) => {
+    if (!x || typeof x !== "object" || depth > maxDepth) return;
+    if (seen.has(x)) return;
+    seen.add(x);
+    if (!Array.isArray(x)) out.push(x);
+    if (Array.isArray(x)) {
+      for (const it of x) walk(it, depth + 1);
+      return;
+    }
+    for (const v of Object.values(x)) {
+      if (v && typeof v === "object") walk(v, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+function normalizeScoreMapCandidate(v: any): any | null {
+  if (!v || typeof v !== "object") return null;
+  if (Array.isArray(v)) {
+    const map: Record<string, number> = {};
+    for (const row of v) {
+      if (!row || typeof row !== "object") continue;
+      const id = row.id ?? row.playerId ?? row.profileId ?? row.selectedPlayerId ?? row.pid ?? row.uid;
+      const val = row.setsWon ?? row.sets ?? row.scoreSets ?? row.matchSets ?? row.wonSets ?? row.score ?? row.value ?? row.points;
+      const n = Number(val);
+      if (id != null && Number.isFinite(n)) map[String(id)] = n;
+    }
+    return Object.keys(map).length ? map : null;
+  }
+  const vals = Object.values(v);
+  if (!vals.length) return null;
+  const primitiveNumeric = vals.every((x: any) => x == null || typeof x === "number" || typeof x === "string");
+  if (primitiveNumeric) {
+    const map: Record<string, number> = {};
+    for (const [k, val] of Object.entries(v)) {
+      const n = Number(val);
+      if (Number.isFinite(n)) map[String(k)] = n;
+    }
+    return Object.keys(map).length ? map : null;
+  }
+
+  // Forme fréquente : { playerId: { setsWon: 2, ... }, otherId: { setsWon: 1, ... } }
+  // Les anciens patchs perdaient la clé joueur ici et retombaient ensuite sur 1-0.
+  const keyedRows: Record<string, number> = {};
+  for (const [k, row] of Object.entries(v)) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const val = (row as any).setsWon ?? (row as any).sets ?? (row as any).scoreSets ?? (row as any).matchSets ??
+      (row as any).wonSets ?? (row as any).score ?? (row as any).value ?? (row as any).points;
+    const n = Number(val);
+    if (Number.isFinite(n)) keyedRows[String(k)] = n;
+  }
+  if (Object.keys(keyedRows).length) return keyedRows;
+
+  return normalizeScoreMapCandidate(vals);
+}
+
+function collectScoreMaps(match: any, keys: string[]): any[] {
+  const want = new Set(keys.map((k) => String(k).toLowerCase()));
+  const out: any[] = [];
+  const seen = new Set<string>();
+  for (const root of deepX01Objects(match, 7)) {
+    for (const [key, value] of Object.entries(root)) {
+      if (!want.has(String(key).toLowerCase())) continue;
+      const normalized = normalizeScoreMapCandidate(value);
+      if (!normalized) continue;
+      const sig = JSON.stringify(normalized);
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      out.push(normalized);
     }
   }
   return out;
@@ -462,6 +502,25 @@ function getRobustRankForPlayer(match: any, player: any, fallbackPid?: any): num
 }
 
 function readLineScoreFromGroup(line: X01MultiSession, group: X01MultiSession[]) {
+  // Priorité absolue au score final explicite en SETS stocké sur la ligne.
+  // C'est le score de match attendu par l'écran stats : 2-0 / 2-1, pas le fallback win/loss 1-0.
+  const explicitLabel = String((line as any).scoreLabel ?? "").trim();
+  if (explicitLabel.includes("-") && ((line as any).scoreUnit === "sets" || /^(\d+)\s*-\s*(\d+)$/.test(explicitLabel))) {
+    const [aRaw, bRaw] = explicitLabel.split("-");
+    const won = Number(aRaw);
+    const lost = Number(bRaw);
+    if (Number.isFinite(won) && Number.isFinite(lost) && (won + lost) > 0) {
+      return {
+        played: won + lost,
+        won,
+        lost,
+        label: `${won}-${lost}`,
+        margin: won - lost,
+        unit: ((line as any).scoreUnit || "sets") as any,
+      };
+    }
+  }
+
   const ownLegs = Number(line.legsWon || 0);
   const ownSets = Number(line.setsWon || 0);
   const maxOtherLegs = group
@@ -581,12 +640,13 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
   const isDuoMatchForScore = rawPlayers.length === 2;
 
   const setScoreKeys = [
-    "setsWonByPlayer", "setsWinByPlayer", "setsByPlayer", "setsWon", "setsScore", "sets"
+    "setsWonByPlayer", "setsWinByPlayer", "setsByPlayer", "setsWon", "setsScore", "sets",
+    "matchScore", "matchScores", "matchScoreByPlayer", "finalMatchScore", "finalMatchScores",
+    "scoreSets", "scoreSetsByPlayer", "setScore", "setScores", "setsResult", "setsByProfile"
   ];
   // En DUO, le moteur X01 sauvegarde souvent le vrai score final en SETS dans summary.matchScore.
   // En MULTI FFA, ce même champ peut contenir le classement (1er/2e/3e...), donc on ne l'utilise jamais
   // comme score de sets hors duel, sinon les stats deviennent incohérentes.
-  if (isDuoMatchForScore) setScoreKeys.push("matchScore");
 
   const setInfo = x01ReadPlayerMapValue(match, setScoreKeys, player, pid);
   const legInfo = x01ReadPlayerMapValue(match, [
