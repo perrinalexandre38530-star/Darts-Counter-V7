@@ -5957,13 +5957,99 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
   const getWinnerIds = (r: any): string[] => {
-    const raw = [r?.winnerId, r?.winner, r?.summary?.winnerId, r?.payload?.winnerId, r?.payload?.summary?.winnerId]
+    const raw = [
+      r?.winnerId,
+      r?.winner,
+      r?.winnerName,
+      r?.winnerPlayer,
+      r?.summary?.winnerId,
+      r?.summary?.winner,
+      r?.summary?.winnerName,
+      r?.summary?.result?.winnerId,
+      r?.summary?.result?.winnerName,
+      r?.payload?.winnerId,
+      r?.payload?.winner,
+      r?.payload?.winnerName,
+      r?.payload?.result?.winnerId,
+      r?.payload?.result?.winnerName,
+      r?.payload?.summary?.winnerId,
+      r?.payload?.summary?.winner,
+      r?.payload?.summary?.winnerName,
+      r?.payload?.summary?.result?.winnerId,
+      r?.payload?.summary?.result?.winnerName,
+    ]
       .filter((v) => v !== undefined && v !== null)
       .map((v) => String(v));
     const arr = [r?.winnerIds, r?.summary?.winnerIds, r?.payload?.winnerIds, r?.payload?.summary?.winnerIds]
       .flatMap((x) => (Array.isArray(x) ? x : []))
       .map((v) => String(v));
     return [...raw, ...arr];
+  };
+
+  const isWinningPlayer = (r: any, pl: any): boolean => {
+    const targetName = statHubNormName(selectedPlayer?.name);
+    const valueMatchesPlayer = (v: any): boolean => {
+      if (v === undefined || v === null) return false;
+      if (typeof v === "object") {
+        const ids = statHubPlayerIds(v).map(normId);
+        if (ids.some((id) => statHubIdMatches(id, pid))) return true;
+        const nm = statHubNormName(v?.name ?? v?.playerName ?? v?.displayName ?? v?.nickname ?? v?.surname ?? v?.winnerName);
+        return !!targetName && !!nm && nm === targetName;
+      }
+      const raw = String(v ?? "").trim();
+      if (statHubIdMatches(normId(raw), pid)) return true;
+      return !!targetName && statHubNormName(raw) === targetName;
+    };
+
+    if (getWinnerIds(r).some(valueMatchesPlayer)) return true;
+
+    const truthy = [pl?.win, pl?.won, pl?.winner, pl?.isWinner, pl?.victory, pl?.hasWon].some((v) => v === true || v === 1 || v === "1");
+    if (truthy) return true;
+
+    const resultText = String(
+      pl?.result ??
+      pl?.outcome ??
+      pl?.status ??
+      pl?.matchResult ??
+      pl?.finalResult ??
+      pl?.label ??
+      ""
+    ).trim().toLowerCase();
+    if (["w", "win", "winner", "won", "victory", "victoire", "gagne", "gagné", "vainqueur", "1er", "1ere", "1ère"].includes(resultText)) return true;
+
+    const place = Number(pl?.place ?? pl?.rank ?? pl?.finalRank ?? pl?.position ?? pl?.standing ?? 0);
+    if (Number.isFinite(place) && place === 1) return true;
+
+    // Fallback set/leg : si aucun winner explicite n'est exploitable, on déduit
+    // le vainqueur au plus grand nombre de sets, puis de legs.
+    const pools = [
+      r?.payload?.stats?.players,
+      r?.payload?.players,
+      r?.payload?.summary?.players,
+      r?.payload?.summary?.perPlayer,
+      r?.payload?.summary?.rankings,
+      r?.summary?.players,
+      r?.summary?.perPlayer,
+      r?.summary?.rankings,
+      r?.players,
+    ];
+    const rows = pools.flatMap((src: any) => Array.isArray(src) ? src : src && typeof src === "object" ? Object.values(src) : []);
+    const scored = rows.map((row: any) => ({
+      row,
+      sets: Number(row?.setsWon ?? row?.setsWin ?? row?.sets ?? row?.setWins ?? row?.matchSetsWon ?? 0),
+      legs: Number(row?.legsWon ?? row?.legsWin ?? row?.legs ?? row?.legWins ?? row?.matchLegsWon ?? 0),
+    })).filter((x: any) => Number.isFinite(x.sets) || Number.isFinite(x.legs));
+    if (scored.length >= 2) {
+      const mine = scored.find((x: any) => valueMatchesPlayer(x.row));
+      if (mine) {
+        const maxSets = Math.max(...scored.map((x: any) => Number.isFinite(x.sets) ? x.sets : 0));
+        const maxLegs = Math.max(...scored.map((x: any) => Number.isFinite(x.legs) ? x.legs : 0));
+        if ((mine.sets || 0) > 0 && mine.sets === maxSets && scored.filter((x: any) => x.sets === maxSets).length === 1) return true;
+        if (maxSets <= 0 && (mine.legs || 0) > 0 && mine.legs === maxLegs && scored.filter((x: any) => x.legs === maxLegs).length === 1) return true;
+      }
+    }
+
+    return false;
   };
   const findP = (r: any) => {
     const pools = [
@@ -6026,7 +6112,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore) || n(stats?.scored) || n(stats?.totalPoints);
     const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || score;
     a.matches += 1;
-    if (getWinnerIds(r).some((w) => statHubIdMatches(normId(w), pid)) || pl?.win === true || pl?.winner === true) a.wins += 1;
+    if (isWinningPlayer(r, pl)) a.wins += 1;
     a.darts += darts;
     a.hits += hits;
     a.miss += miss;
@@ -6181,10 +6267,30 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
 const dashboardToShowWithModes = React.useMemo(() => {
   if (!dashboardToShow) return dashboardToShow;
   const sessionsByMode: Record<string, number> = {};
+  let totalMatches = 0;
+  let totalWins = 0;
+
   for (const m of globalModeDashboard) {
-    if (m.matches > 0) sessionsByMode[m.label] = m.matches;
+    const matches = Number(m.matches || 0);
+    const wins = Number(m.wins || 0);
+    if (matches > 0) {
+      sessionsByMode[m.label] = matches;
+      totalMatches += matches;
+      totalWins += Math.max(0, Math.min(wins, matches));
+    }
   }
-  return { ...dashboardToShow, sessionsByMode } as PlayerDashboardStats;
+
+  const totalWinRatePct = totalMatches > 0
+    ? Math.round((totalWins / totalMatches) * 1000) / 10
+    : Number(dashboardToShow.winRatePct || 0);
+
+  return {
+    ...dashboardToShow,
+    sessionsByMode,
+    // Source de vérité du dashboard : toutes les cartes visibles/valides de l'historique,
+    // tous modes confondus. Ça évite l'ancien 0% issu du cache ou d'un agrégat X01 incomplet.
+    winRatePct: totalWinRatePct,
+  } as PlayerDashboardStats;
 }, [dashboardToShow, globalModeDashboard]);
 
 // Taille du nom en fonction de la longueur
