@@ -5874,6 +5874,11 @@ type ModeDashboardCard = {
   points: number;
   best: number;
   avg3: number;
+  holes?: number;
+  p1?: number;
+  p2?: number;
+  p3?: number;
+  shanghais?: number;
   kills: number;
   damage: number;
   autoHit: number;
@@ -5955,6 +5960,19 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
   };
   const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  const sumNumericValues = (v: any): number => {
+    if (!v || typeof v !== "object") return 0;
+    try {
+      return Object.values(v).reduce((acc: number, x: any) => {
+        if (typeof x === "number" || typeof x === "string") return acc + n(x);
+        if (x && typeof x === "object") return acc + sumNumericValues(x);
+        return acc;
+      }, 0);
+    } catch {
+      return 0;
+    }
+  };
+  const pct = (num: number, den: number) => den > 0 ? Math.round((num / den) * 1000) / 10 : 0;
   const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
   const getWinnerIds = (r: any): string[] => {
     const raw = [
@@ -6091,6 +6109,11 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       points: 0,
       best: 0,
       avg3: 0,
+      holes: 0,
+      p1: 0,
+      p2: 0,
+      p3: 0,
+      shanghais: 0,
       kills: 0,
       damage: 0,
       autoHit: 0,
@@ -6106,25 +6129,56 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     } as any);
     const pl: any = findP(r) || {};
     const stats: any = pl?.special || pl?.stats || pl;
-    const darts = n(pl?.darts?.thrown) || n(stats?.darts) || n(stats?.dartsThrown) || n(stats?.throws) || n(stats?.totalThrows);
-    const hits = n(pl?.darts?.hits) || n(stats?.hits) || n(stats?.validHits) || n(stats?.totalHits) || n(stats?.hitsTotal);
-    const miss = n(pl?.darts?.misses) || n(stats?.misses) || n(stats?.miss) || (darts > 0 ? Math.max(0, darts - hits) : 0);
+    const rawDarts = pl?.darts && typeof pl.darts === "object" ? pl.darts : {};
+    const darts = n(rawDarts?.thrown) || n(rawDarts?.total) || n(pl?.dartsThrown) || n(stats?.darts) || n(stats?.dartsThrown) || n(stats?.throws) || n(stats?.totalThrows);
+    const hits = n(rawDarts?.hits) || n(pl?.hitCount) || n(stats?.hits) || n(stats?.validHits) || n(stats?.totalHits) || n(stats?.hitsTotal);
+    const miss = n(rawDarts?.misses) || n(stats?.misses) || n(stats?.miss) || (darts > 0 ? Math.max(0, darts - hits) : 0);
+    const marksTotal =
+      n(stats?.marksTotal) ||
+      n(stats?.totalMarks) ||
+      n(pl?.marksTotal) ||
+      n(pl?.totalMarks) ||
+      sumNumericValues(stats?.marks) ||
+      sumNumericValues(pl?.marks);
     const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore) || n(stats?.scored) || n(stats?.totalPoints);
-    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || score;
+    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || (mode === "cricket" ? Math.max(score, marksTotal) : score);
     a.matches += 1;
     if (isWinningPlayer(r, pl)) a.wins += 1;
     a.darts += darts;
     a.hits += hits;
     a.miss += miss;
     a.points += score;
-    a.best = Math.max(a.best, best);
+    if (mode === "golf") {
+      // Au Golf, le meilleur score est le total le plus BAS exploitable, pas le plus haut.
+      if (score > 0) a.best = a.best > 0 ? Math.min(a.best, score) : score;
+    } else {
+      a.best = Math.max(a.best, best);
+    }
+    if (mode === "cricket") {
+      a.extra += marksTotal;
+      // Si les anciennes parties Cricket n'ont pas de hitCount précis, les marks donnent
+      // quand même une métrique utile et évitent les cartes vides à 0.
+      if (!hits && marksTotal > 0) a.hits += marksTotal;
+    }
+    if (mode === "shanghai") {
+      const shanghaiDone = Boolean(stats?.shanghai || stats?.isShanghai || pl?.shanghai || pl?.isShanghai);
+      if (shanghaiDone) a.shanghais = Number(a.shanghais || 0) + 1;
+    }
+    if (mode === "golf") {
+      a.holes = Number(a.holes || 0) + (n(r?.payload?.stats?.global?.holes) || n(r?.payload?.global?.holes) || n(r?.summary?.holes) || n(r?.game?.holes));
+      a.p1 = Number(a.p1 || 0) + n(stats?.p1);
+      a.p2 = Number(a.p2 || 0) + n(stats?.p2);
+      a.p3 = Number(a.p3 || 0) + n(stats?.p3);
+    }
     a.kills += n(stats?.kills) || n(stats?.kill) || n(stats?.eliminations);
     a.damage += n(stats?.damage) || n(stats?.damageDone) || n(stats?.totalDamage) || n(stats?.hitsDamage);
     a.autoHit += n(stats?.autoHit) || n(stats?.autoHits) || n(stats?.selfHits);
     a.resurrection += n(stats?.resurrection) || n(stats?.resurrections) || n(stats?.revives);
     a.shield += n(stats?.shield) || n(stats?.shields) || n(stats?.shieldHits) || n(stats?.bouclier);
     a.captures += n(stats?.captures) || n(stats?.territories) || n(stats?.owned) || n(stats?.steals);
-    a.extra += n(stats?.marksTotal) || n(stats?.marks) || n(stats?.advances) || n(stats?.lostLives) || n(stats?.damageTaken);
+    if (mode !== "cricket") {
+      a.extra += n(stats?.marksTotal) || n(stats?.marks) || n(stats?.advances) || n(stats?.lostLives) || n(stats?.damageTaken);
+    }
     const favMap = stats?.favNumberHits || stats?.numberHits || stats?.hitsByNumber || stats?.byNumber || null;
     if (favMap && typeof favMap === "object") {
       Object.entries(favMap).forEach(([k, v]) => {
@@ -6242,8 +6296,30 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
           { label: "Marks", value: fmtStatValue(a.extra || a.hits), tone: "gold" },
-          { label: "Hit rate", value: fmtStatValue(accuracy, "%"), tone: "green" },
+          { label: "Marks/match", value: fmtStatValue(a.matches ? (a.extra || a.hits) / a.matches : 0), tone: "gold" },
+          { label: "Hit rate", value: (a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
           { label: "Best", value: fmtStatValue(a.best), tone: "blue" },
+        ]
+      : a.key === "shanghai"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Points", value: fmtStatValue(a.points), tone: "gold" },
+          { label: "Pts/match", value: fmtStatValue(a.matches ? a.points / a.matches : 0), tone: "gold" },
+          { label: "Best", value: fmtStatValue(a.best), tone: "blue" },
+          { label: "Darts", value: fmtStatValue(a.darts), tone: "gold" },
+          { label: "Hit rate", value: (a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+          { label: "Shanghai", value: fmtStatValue(a.shanghais || 0), tone: "red" },
+        ]
+      : a.key === "golf"
+      ? [
+          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+          { label: "Score total", value: fmtStatValue(a.points), tone: "gold" },
+          { label: "Score moy.", value: fmtStatValue(a.matches ? a.points / a.matches : 0), tone: "gold" },
+          { label: "Best", value: a.best ? fmtStatValue(a.best) : "—", tone: "blue" },
+          { label: "Trous", value: fmtStatValue(a.holes || 0), tone: "gold" },
+          { label: "P1 / P2 / P3", value: `${fmtStatValue(a.p1 || 0)} / ${fmtStatValue(a.p2 || 0)} / ${fmtStatValue(a.p3 || 0)}`, tone: "blue" },
         ]
       : [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
@@ -7082,7 +7158,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : ["cricket", "shanghai", "golf"].includes(m.key) ? 8 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>

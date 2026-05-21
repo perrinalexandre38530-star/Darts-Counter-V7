@@ -452,9 +452,13 @@ function LineChart({
   accent: string;
   accentSoft: string;
 }) {
+  // ✅ Ne jamais injecter de points à 0 dans la sparkline :
+  // les anciennes sauvegardes / imports incomplets peuvent contenir avg3=0
+  // (partie vide, brouillon, record tronqué). Les garder créait des cassures
+  // visuelles artificielles jusqu'à la ligne de base.
   const clean = (points || [])
-    .map((p, i) => ({ x: safeDate(p.date)?.getTime() || i, y: Number(p.avg3 || 0) }))
-    .filter((p) => Number.isFinite(p.y));
+    .map((p, i) => ({ x: safeDate(p.date)?.getTime() || i, y: Number((p as any).avg3 ?? 0) }))
+    .filter((p) => Number.isFinite(p.y) && p.y > 0);
 
   const sparkPoints = clean.length >= 2
     ? clean

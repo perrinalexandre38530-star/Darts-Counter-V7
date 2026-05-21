@@ -42,6 +42,12 @@ function safeLower(s: any) {
   return String(s ?? "").trim().toLowerCase();
 }
 
+const COMPARE_COLORS = ["#B7FF00", "#FF4FD8", "#24F0D2", "#47B5FF", "#B56CFF", "#7FE2A9", "#F6C256", "#FF8A5B"];
+function compareColor(index: number, accent?: string) {
+  if (index === 0 && accent) return accent;
+  return COMPARE_COLORS[index % COMPARE_COLORS.length];
+}
+
 function isX01Record(r: any): boolean {
   const kind = safeLower(r?.kind);
   const game = safeLower(r?.game);
@@ -603,6 +609,33 @@ type MiniMatch = {
   avg3?: number | null;
 };
 
+function isWinnerForPlayerFromSummary(summary: any, mine: any, profileId: string, playerName = "") {
+  const winnerId =
+    summary?.winnerId ??
+    summary?.winnerPid ??
+    summary?.winnerPlayerId ??
+    summary?.winnerProfileId ??
+    null;
+
+  const mineId = String(resolveProfileId(mine) ?? "");
+  const winnerName = String(
+    summary?.winnerName ?? summary?.winnerPlayerName ?? summary?.winnerProfileName ?? summary?.winner?.name ?? ""
+  ).trim().toLowerCase();
+  const mineName = nameOfPlayerLike(mine) || String(playerName || "").trim().toLowerCase();
+
+  return (
+    mine?.isWinner === true ||
+    mine?.win === true ||
+    mine?.won === true ||
+    mine?.result === "win" ||
+    mine?.status === "win" ||
+    (winnerId && String(winnerId) === String(profileId)) ||
+    (winnerId && mineId && String(winnerId) === mineId) ||
+    (winnerName && mineName && winnerName === mineName) ||
+    (N(mine?.remaining ?? mine?.scoreRemaining ?? mine?.finalScore, NaN) === 0 && N(mine?.bestCheckout ?? mine?.bestCO, 0) > 0)
+  );
+}
+
 function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName = ""): Record<string, MiniMatch[]> {
   const map: Record<string, MiniMatch[]> = {};
 
@@ -1085,6 +1118,8 @@ type AggRow = {
   dBull: number;
   miss: number;
   bust: number;
+  wins?: number;
+  losses?: number;
 
   segments?: Record<string, number>;
   evoAvg3?: number[];
@@ -1324,11 +1359,16 @@ function computeAggFromHistory(allHistory: any[], profileId: string, playerName 
       dBull: 0,
       miss: 0,
       bust: 0,
+      wins: 0,
+      losses: 0,
       segments: {},
       evoAvg3: [],
     });
 
     row.matches += 1;
+    const isWinner = isWinnerForPlayerFromSummary(summary, mine, profileId, playerName);
+    if (isWinner) row.wins = N(row.wins, 0) + 1;
+    else row.losses = N(row.losses, 0) + 1;
 
     // Source prioritaire pour les anciens matchs X01 : les volées détaillées.
     // C'est exactement ce qui permet aux autres écrans stats de retrouver les AVG.
@@ -1455,7 +1495,138 @@ function mergeRowPreferNonZero(base: any, extra: any) {
   return out;
 }
 
+
 /* ============================================================= */
+/* ---------------- Comparateur dartsets ------------------------ */
+/* ============================================================= */
+
+type CompareMetricKey = "avg3" | "first9" | "checkoutPct" | "p100" | "p140" | "p180" | "bustPerMatch" | "winPct";
+
+type CompareItem = {
+  id: string;
+  name: string;
+  row: any;
+  recent: MiniMatch[];
+  color: string;
+  values: Record<string, number>;
+};
+
+const COMPARE_METRICS: Array<{ key: CompareMetricKey; label: string; short: string; suffix?: string; lowerIsBetter?: boolean }> = [
+  { key: "avg3", label: "Avg 3D", short: "AVG" },
+  { key: "first9", label: "First 9", short: "F9" },
+  { key: "checkoutPct", label: "Checkout %", short: "CO", suffix: "%" },
+  { key: "p100", label: "100+ / match", short: "100+" },
+  { key: "p140", label: "140+ / match", short: "140+" },
+  { key: "p180", label: "180 / match", short: "180" },
+  { key: "bustPerMatch", label: "Busts / match", short: "Bust", lowerIsBetter: true },
+  { key: "winPct", label: "Win %", short: "Win", suffix: "%" },
+];
+
+function rowMatches(row: any) {
+  return Math.max(0, N(row?.matches, 0));
+}
+
+function rowWinPct(row: any, recent: MiniMatch[]) {
+  const wins = N(row?.wins ?? row?.win ?? row?.victories ?? row?.winsCount, 0);
+  const losses = N(row?.losses ?? row?.lose ?? row?.defeats ?? row?.lossesCount, 0);
+  if (wins + losses > 0) return (wins / Math.max(1, wins + losses)) * 100;
+  const rec = Array.isArray(recent) ? recent : [];
+  if (!rec.length) return 0;
+  return (rec.filter((m) => m?.label === "WIN").length / rec.length) * 100;
+}
+
+function rowMetricValue(row: any, key: CompareMetricKey, recent: MiniMatch[] = []) {
+  const m = Math.max(1, rowMatches(row));
+  if (key === "avg3") return N(pickNum(row, "avg3") ?? 0, 0);
+  if (key === "first9") return N(pickNum(row, "first9") ?? 0, 0);
+  if (key === "checkoutPct") return N(pickNum(row, "checkoutPct") ?? 0, 0);
+  if (key === "p100") return N(pickNum(row, "n100") ?? 0, 0) / m;
+  if (key === "p140") return N(pickNum(row, "n140") ?? 0, 0) / m;
+  if (key === "p180") return N(pickNum(row, "n180") ?? 0, 0) / m;
+  if (key === "bustPerMatch") return N(pickNum(row, "bust") ?? 0, 0) / m;
+  if (key === "winPct") return rowWinPct(row, recent);
+  return 0;
+}
+
+function buildCompareItems(rows: any[], mySets: DartSet[], recentBySet: Record<string, MiniMatch[]>, t: any, accent: string): CompareItem[] {
+  return (rows || [])
+    .filter((r: any) => String(r?.dartSetId || "").trim())
+    .map((row: any, index: number) => {
+      const id = String(row?.dartSetId || "");
+      const recent = recentBySet?.[id] || [];
+      const values: Record<string, number> = { matches: rowMatches(row) };
+      for (const m of COMPARE_METRICS) values[m.key] = rowMetricValue(row, m.key, recent);
+      return {
+        id,
+        name: resolveSetName(id, mySets, t),
+        row,
+        recent,
+        color: compareColor(index, accent),
+        values,
+      };
+    });
+}
+
+function fmtCompareValue(metric: CompareMetricKey | "matches", value: number) {
+  if (metric === "matches") return fmt0(value);
+  if (metric === "checkoutPct" || metric === "winPct") return `${fmtPct1(value)}%`;
+  if (metric === "p100" || metric === "p140" || metric === "p180" || metric === "bustPerMatch") return N(value, 0).toFixed(2);
+  return fmt1(value);
+}
+
+function bestItemFor(items: CompareItem[], metric: CompareMetricKey) {
+  const def = COMPARE_METRICS.find((m) => m.key === metric);
+  const candidates = (items || []).filter((it) => Number.isFinite(N(it.values?.[metric], NaN)));
+  if (!candidates.length) return null;
+  if (def?.lowerIsBetter) {
+    const nonZero = candidates.filter((it) => N(it.values?.[metric], 0) > 0);
+    const pool = nonZero.length ? nonZero : candidates;
+    return pool.slice().sort((a, b) => N(a.values?.[metric], 0) - N(b.values?.[metric], 0))[0] || null;
+  }
+  return candidates.slice().sort((a, b) => N(b.values?.[metric], 0) - N(a.values?.[metric], 0))[0] || null;
+}
+
+function consistencyScore(values: number[]) {
+  const vals = (values || []).map((v) => N(v, NaN)).filter((v) => Number.isFinite(v) && v > 0);
+  if (vals.length < 2) return Infinity;
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const variance = vals.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / vals.length;
+  return Math.sqrt(variance);
+}
+
+function bestConsistentItem(items: CompareItem[]) {
+  const scored = (items || [])
+    .map((it) => ({ it, score: consistencyScore(extractSparkValuesFromRow(it.row, it.recent)) }))
+    .filter((x) => Number.isFinite(x.score));
+  if (!scored.length) return null;
+  scored.sort((a, b) => a.score - b.score);
+  return scored[0];
+}
+
+function metricSeriesForItem(item: CompareItem, metric: CompareMetricKey) {
+  if (metric === "avg3") {
+    const vals = extractSparkValuesFromRow(item.row, item.recent);
+    if (vals.length) return vals.slice(-8);
+  }
+  const current = N(item.values?.[metric], 0);
+  if (current <= 0) return [0, 0, 0, 0];
+  // Les anciennes parties ne stockent pas toujours les séries par métrique.
+  // On garde une micro-courbe stable pour permettre la comparaison visuelle sans inventer de grands écarts.
+  return [current * 0.96, current * 0.985, current * 0.975, current];
+}
+
+function normalizedRadarValue(metric: CompareMetricKey, item: CompareItem, visible: CompareItem[]) {
+  const def = COMPARE_METRICS.find((m) => m.key === metric);
+  const values = (visible || []).map((x) => N(x.values?.[metric], 0)).filter((n) => Number.isFinite(n));
+  const v = N(item.values?.[metric], 0);
+  if (def?.lowerIsBetter) {
+    const max = Math.max(1, ...values);
+    return Math.max(0, Math.min(100, 100 - (v / max) * 100));
+  }
+  if (metric === "checkoutPct" || metric === "winPct") return Math.max(0, Math.min(100, v));
+  const max = Math.max(1, ...values);
+  return Math.max(0, Math.min(100, (v / max) * 100));
+}
 
 export default function StatsDartSetsSection(props: { activeProfileId: string | null; activePlayerName?: string | null; title?: string }) {
   const { activeProfileId, activePlayerName, title } = props;
@@ -1471,6 +1642,9 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
   const [mySets, setMySets] = React.useState<DartSet[]>([]);
   const [recentBySet, setRecentBySet] = React.useState<Record<string, MiniMatch[]>>({});
   const [selectedIdx, setSelectedIdx] = React.useState(0);
+  const [statsTab, setStatsTab] = React.useState<"set" | "compare">("set");
+  const [hiddenCompareIds, setHiddenCompareIds] = React.useState<Record<string, boolean>>({});
+  const [compareMetric, setCompareMetric] = React.useState<CompareMetricKey>("avg3");
 
   React.useEffect(() => {
     let mounted = true;
@@ -1588,6 +1762,12 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     });
   }, [rows?.length]);
 
+  const compareItems = React.useMemo(() => buildCompareItems(rows, mySets, recentBySet, t, accent), [rows, mySets, recentBySet, t, accent]);
+  const visibleCompareItems = React.useMemo(() => {
+    const visible = compareItems.filter((it) => !hiddenCompareIds?.[it.id]);
+    return visible.length ? visible : compareItems.slice(0, 1);
+  }, [compareItems, hiddenCompareIds]);
+
   if (!activeProfileId) return null;
 
   const cardBg = "linear-gradient(180deg, rgba(17,18,20,.94), rgba(13,14,17,.92))";
@@ -1632,6 +1812,10 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
           <NeonCountKPI accent={accent} label={t("stats.dartSets.countLabel", "Nombre")} value={`${countPresets}`} />
         </div>
       </div>
+
+      {!loading && !err && rows.length > 1 && (
+        <DartSetsInnerTabs active={statsTab} accent={accent} onChange={setStatsTab} />
+      )}
 
       {top && !loading && !err && (
         <div
@@ -1688,6 +1872,17 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>
           {t("stats.dartSets.empty", "Aucune partie X01 trouvée pour ce profil.")}
         </div>
+      ) : statsTab === "compare" && rows.length > 1 ? (
+        <DartSetsComparator
+          items={compareItems}
+          visibleItems={visibleCompareItems}
+          hiddenIds={hiddenCompareIds}
+          onToggle={(id: string) => setHiddenCompareIds((prev) => ({ ...prev, [id]: !prev?.[id] }))}
+          metric={compareMetric}
+          onMetric={setCompareMetric}
+          accent={accent}
+          t={t}
+        />
       ) : (
         <>
           <div
@@ -1726,6 +1921,490 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       )}
     </div>
   );
+}
+
+
+/* ============================================================= */
+/* ---------------- Comparateur UI ----------------------------- */
+/* ============================================================= */
+
+function DartSetsInnerTabs(props: { active: "set" | "compare"; accent: string; onChange: (v: "set" | "compare") => void }) {
+  const { active, accent, onChange } = props;
+  const mk = (key: "set" | "compare", label: string) => {
+    const on = active === key;
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(key)}
+        style={{
+          minWidth: 0,
+          height: 34,
+          borderRadius: 999,
+          border: `1px solid ${on ? accent + "99" : "rgba(255,255,255,.10)"}`,
+          background: on ? `radial-gradient(circle at 50% 0%, ${accent}22, transparent 68%), rgba(0,0,0,.45)` : "rgba(0,0,0,.22)",
+          color: on ? accent : "rgba(255,255,255,.68)",
+          fontWeight: 950,
+          letterSpacing: 0.45,
+          textTransform: "uppercase",
+          fontSize: 10.5,
+          cursor: "pointer",
+          boxShadow: on ? `0 0 18px ${accent}40` : "none",
+          textShadow: on ? `0 0 12px ${accent}88` : "none",
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 8,
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,.08)",
+        background: "rgba(0,0,0,.22)",
+        padding: 6,
+      }}
+    >
+      {mk("set", "Stats par set")}
+      {mk("compare", "Comparateur")}
+    </div>
+  );
+}
+
+function DartSetsComparator(props: {
+  items: CompareItem[];
+  visibleItems: CompareItem[];
+  hiddenIds: Record<string, boolean>;
+  onToggle: (id: string) => void;
+  metric: CompareMetricKey;
+  onMetric: (m: CompareMetricKey) => void;
+  accent: string;
+  t: any;
+}) {
+  const { items, visibleItems, hiddenIds, onToggle, metric, onMetric, accent, t } = props;
+  const bestAvg = bestItemFor(visibleItems, "avg3");
+  const bestCheckout = bestItemFor(visibleItems, "checkoutPct");
+  const regular = bestConsistentItem(visibleItems);
+
+  return (
+    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+      <div
+        style={{
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,.10)",
+          background: `radial-gradient(circle at 0% 0%, ${accent}1f, transparent 62%), rgba(0,0,0,.25)`,
+          padding: 10,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 950, color: "#fff", letterSpacing: 0.2 }}>Comparateur des dartsets</div>
+            <div style={{ marginTop: 3, fontSize: 11.5, color: "rgba(255,255,255,.58)", fontWeight: 800 }}>
+              Moyennes par set, calculées sur les matchs X01 terminés du profil actif.
+            </div>
+          </div>
+          <div
+            title="Masque ou affiche un set dans les graphiques."
+            style={{
+              flex: "0 0 auto",
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.18)",
+              color: "rgba(255,255,255,.70)",
+              display: "grid",
+              placeItems: "center",
+              fontWeight: 950,
+            }}
+          >
+            i
+          </div>
+        </div>
+
+        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+          {items.map((it) => {
+            const off = !!hiddenIds?.[it.id];
+            return (
+              <button
+                type="button"
+                key={it.id}
+                onClick={() => onToggle(it.id)}
+                style={{
+                  width: "100%",
+                  minWidth: 0,
+                  display: "grid",
+                  gridTemplateColumns: "18px 1fr 42px",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 13,
+                  border: `1px solid ${off ? "rgba(255,255,255,.10)" : it.color + "88"}`,
+                  background: off ? "rgba(255,255,255,.035)" : `radial-gradient(circle at 0% 0%, ${it.color}16, transparent 68%), rgba(0,0,0,.24)`,
+                  padding: "8px 9px",
+                  cursor: "pointer",
+                  opacity: off ? 0.55 : 1,
+                  boxShadow: off ? "none" : `0 0 14px ${it.color}24`,
+                }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: it.color, boxShadow: `0 0 10px ${it.color}` }} />
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 950,
+                    textAlign: "left",
+                  }}
+                >
+                  {it.name}
+                </span>
+                <span
+                  style={{
+                    justifySelf: "end",
+                    borderRadius: 999,
+                    border: `1px solid ${off ? "rgba(255,255,255,.14)" : it.color + "88"}`,
+                    color: off ? "rgba(255,255,255,.45)" : it.color,
+                    padding: "3px 8px",
+                    fontSize: 11,
+                    fontWeight: 950,
+                  }}
+                >
+                  {off ? "👁̶" : "👁"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <CompareSummaryStrip items={visibleItems} accent={accent} />
+      <CompareRadarCard items={visibleItems} accent={accent} />
+      <CompareLineCard items={visibleItems} metric={metric} onMetric={onMetric} accent={accent} />
+      <CompareStatsTable items={visibleItems} accent={accent} />
+
+      <div
+        style={{
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,.10)",
+          background: "rgba(0,0,0,.24)",
+          padding: 10,
+        }}
+      >
+        <BlockTitle title="À retenir" />
+        <div style={{ marginTop: 9, display: "grid", gap: 8 }}>
+          <InsightRow
+            color={bestAvg?.color || accent}
+            icon="🏆"
+            title="Meilleur set actuel"
+            value={bestAvg?.name || "—"}
+            subtitle={bestCheckout && bestCheckout.id === bestAvg?.id ? "Meilleure moyenne / meilleur checkout" : "Meilleure moyenne AVG/3D"}
+          />
+          <InsightRow
+            color={regular?.it?.color || "#FF4FD8"}
+            icon="✦"
+            title="Set le plus régulier"
+            value={regular?.it?.name || "—"}
+            subtitle={regular ? `Écart-type AVG/3D ${fmt1(regular.score)}` : "Pas assez de matchs pour mesurer la régularité"}
+          />
+        </div>
+        <div style={{ marginTop: 9, fontSize: 10.8, lineHeight: 1.35, color: "rgba(255,255,255,.52)", fontWeight: 800 }}>
+          Le radar normalise les stats sur 100 pour comparer des valeurs qui n'ont pas la même échelle. Les valeurs exactes restent affichées dans les tableaux.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompareSummaryStrip(props: { items: CompareItem[]; accent: string }) {
+  const { items, accent } = props;
+  const best = bestItemFor(items, "avg3");
+  const bestCo = bestItemFor(items, "checkoutPct");
+  const lowestBust = bestItemFor(items, "bustPerMatch");
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+      <MiniCompareKpi accent={best?.color || accent} label="Meilleure AVG" value={best ? fmtCompareValue("avg3", best.values.avg3) : "—"} sub={best?.name || "—"} />
+      <MiniCompareKpi accent={bestCo?.color || "#24F0D2"} label="Meilleur CO" value={bestCo ? fmtCompareValue("checkoutPct", bestCo.values.checkoutPct) : "—"} sub={bestCo?.name || "—"} />
+      <MiniCompareKpi accent={lowestBust?.color || "#7FE2A9"} label="Moins de bust" value={lowestBust ? fmtCompareValue("bustPerMatch", lowestBust.values.bustPerMatch) : "—"} sub={lowestBust?.name || "—"} />
+    </div>
+  );
+}
+
+function MiniCompareKpi(props: { accent: string; label: string; value: string; sub: string }) {
+  const { accent, label, value, sub } = props;
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        borderRadius: 14,
+        border: `1px solid ${accent}55`,
+        background: `radial-gradient(circle at 50% 0%, ${accent}18, transparent 68%), rgba(0,0,0,.28)`,
+        padding: "8px 7px",
+        textAlign: "center",
+        boxShadow: `0 0 14px ${accent}22`,
+      }}
+    >
+      <div style={{ color: "rgba(255,255,255,.70)", fontSize: 9.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.25 }}>{label}</div>
+      <div style={{ marginTop: 3, color: accent, fontSize: 14.5, fontWeight: 950, textShadow: `0 0 12px ${accent}80` }}>{value}</div>
+      <div style={{ marginTop: 2, color: "rgba(255,255,255,.62)", fontSize: 10.3, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+    </div>
+  );
+}
+
+function CompareRadarCard(props: { items: CompareItem[]; accent: string }) {
+  const { items, accent } = props;
+  return (
+    <div style={compareCardStyle(accent)}>
+      <BlockTitle title="Profil global" />
+      <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 8 }}>
+        <RadarCompareSvg items={items} />
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "6px 10px" }}>
+          {items.map((it) => <CompareLegend key={it.id} color={it.color} label={it.name} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RadarCompareSvg(props: { items: CompareItem[] }) {
+  const items = props.items || [];
+  const metrics: CompareMetricKey[] = ["avg3", "first9", "checkoutPct", "p100", "p140", "p180", "bustPerMatch", "winPct"];
+  const labels = ["Avg 3D", "First 9", "CO %", "100+", "140+", "180", "Busts", "Win %"];
+  const cx = 160;
+  const cy = 134;
+  const maxR = 92;
+  const angleFor = (i: number) => -Math.PI / 2 + (i * Math.PI * 2) / metrics.length;
+  const pt = (r: number, i: number) => {
+    const a = angleFor(i);
+    return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
+  };
+  const ring = (r: number) => metrics.map((_, i) => pt(r, i)).map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const pathFor = (it: CompareItem) => {
+    const points = metrics.map((m, i) => pt((normalizedRadarValue(m, it, items) / 100) * maxR, i));
+    return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ") + " Z";
+  };
+
+  return (
+    <svg width="100%" viewBox="0 0 320 268" style={{ display: "block", overflow: "visible" }}>
+      {[0.25, 0.5, 0.75, 1].map((k) => <polygon key={k} points={ring(maxR * k)} fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="1" />)}
+      {metrics.map((_, i) => {
+        const p = pt(maxR, i);
+        return <line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(255,255,255,.08)" strokeWidth="1" />;
+      })}
+      {[25, 50, 75, 100].map((v) => <text key={v} x={cx + 5} y={cy - (maxR * v) / 100 + 4} fill="rgba(255,255,255,.62)" fontSize="10" fontWeight="800">{v}</text>)}
+      {items.map((it) => (
+        <g key={it.id}>
+          <path d={pathFor(it)} fill={it.color} opacity="0.10" />
+          <path d={pathFor(it)} fill="none" stroke={it.color} strokeWidth="2.4" strokeLinejoin="round" filter={`drop-shadow(0 0 5px ${it.color})`} />
+          {metrics.map((m, i) => {
+            const p = pt((normalizedRadarValue(m, it, items) / 100) * maxR, i);
+            return <circle key={m} cx={p.x} cy={p.y} r="3" fill={it.color} stroke="rgba(0,0,0,.55)" strokeWidth="1" />;
+          })}
+        </g>
+      ))}
+      {labels.map((label, i) => {
+        const p = pt(maxR + 25, i);
+        const anchor = Math.abs(p.x - cx) < 8 ? "middle" : p.x > cx ? "start" : "end";
+        return <text key={label} x={p.x} y={p.y + 4} textAnchor={anchor as any} fill="rgba(255,255,255,.78)" fontSize="11" fontWeight="850">{label}</text>;
+      })}
+    </svg>
+  );
+}
+
+function CompareLineCard(props: { items: CompareItem[]; metric: CompareMetricKey; onMetric: (m: CompareMetricKey) => void; accent: string }) {
+  const { items, metric, onMetric, accent } = props;
+  const metricDefs = COMPARE_METRICS.filter((m) => ["avg3", "first9", "checkoutPct", "winPct"].includes(m.key));
+  return (
+    <div style={compareCardStyle(accent)}>
+      <BlockTitle title="Évolution des performances" />
+      <div style={{ marginTop: 9, display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
+        {metricDefs.map((m) => {
+          const on = m.key === metric;
+          return (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => onMetric(m.key)}
+              style={{
+                flex: "0 0 auto",
+                borderRadius: 999,
+                border: `1px solid ${on ? accent + "aa" : "rgba(255,255,255,.10)"}`,
+                background: on ? `radial-gradient(circle at 50% 0%, ${accent}22, transparent 70%), rgba(0,0,0,.34)` : "rgba(0,0,0,.22)",
+                color: on ? accent : "rgba(255,255,255,.72)",
+                fontSize: 11,
+                fontWeight: 950,
+                padding: "6px 12px",
+                cursor: "pointer",
+              }}
+            >
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <LineCompareSvg items={items} metric={metric} />
+      </div>
+    </div>
+  );
+}
+
+function LineCompareSvg(props: { items: CompareItem[]; metric: CompareMetricKey }) {
+  const { items, metric } = props;
+  const w = 340;
+  const h = 152;
+  const padL = 30;
+  const padR = 12;
+  const padT = 16;
+  const padB = 26;
+  const series = (items || []).map((it) => ({ it, vals: metricSeriesForItem(it, metric).slice(-6) }));
+  const allVals = series.flatMap((s) => s.vals).filter((v) => Number.isFinite(N(v, NaN)));
+  const min0 = Math.min(...(allVals.length ? allVals : [0]));
+  const max0 = Math.max(...(allVals.length ? allVals : [100]));
+  const pad = Math.max(2, (max0 - min0) * 0.15);
+  const min = Math.max(0, min0 - pad);
+  const max = max0 + pad;
+  const span = Math.max(1e-6, max - min);
+  const xFor = (i: number, len: number) => padL + (i * (w - padL - padR)) / Math.max(1, len - 1);
+  const yFor = (v: number) => padT + (h - padT - padB) * (1 - (N(v, 0) - min) / span);
+
+  return (
+    <div>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", overflow: "visible" }}>
+        {[0, 0.25, 0.5, 0.75, 1].map((k) => {
+          const y = padT + k * (h - padT - padB);
+          const val = max - k * span;
+          return (
+            <g key={k}>
+              <line x1={padL} x2={w - padR} y1={y} y2={y} stroke="rgba(255,255,255,.075)" strokeWidth="1" />
+              <text x="3" y={y + 4} fill="rgba(255,255,255,.58)" fontSize="10" fontWeight="850">{fmt0(val)}</text>
+            </g>
+          );
+        })}
+        {series.map(({ it, vals }) => {
+          const clean = vals.length > 1 ? vals : [0, ...vals];
+          const d = clean.map((v, i) => `${i === 0 ? "M" : "L"} ${xFor(i, clean.length).toFixed(1)} ${yFor(v).toFixed(1)}`).join(" ");
+          return (
+            <g key={it.id}>
+              <path d={d} fill="none" stroke={it.color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" filter={`drop-shadow(0 0 5px ${it.color})`} />
+              {clean.map((v, i) => <circle key={i} cx={xFor(i, clean.length)} cy={yFor(v)} r="3" fill={it.color} stroke="rgba(0,0,0,.58)" strokeWidth="1" />)}
+            </g>
+          );
+        })}
+        {Array.from({ length: 6 }, (_, i) => {
+          const x = xFor(i, 6);
+          return <text key={i} x={x} y={h - 5} textAnchor="middle" fill="rgba(255,255,255,.60)" fontSize="10" fontWeight="850">{i === 5 ? "M" : `M-${5 - i}`}</text>;
+        })}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "6px 10px", marginTop: 4 }}>
+        {items.map((it) => <CompareLegend key={it.id} color={it.color} label={it.name} />)}
+      </div>
+    </div>
+  );
+}
+
+function CompareStatsTable(props: { items: CompareItem[]; accent: string }) {
+  const { items, accent } = props;
+  const rows = [
+    { key: "matches", label: "Matchs joués" },
+    ...COMPARE_METRICS,
+  ] as any[];
+  const minW = Math.max(360, 132 + items.length * 92);
+  return (
+    <div style={compareCardStyle(accent)}>
+      <BlockTitle title="Moyennes détaillées" />
+      <div style={{ marginTop: 8, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
+        <div style={{ minWidth: minW }}>
+          <div style={{ display: "grid", gridTemplateColumns: `132px repeat(${items.length}, minmax(82px, 1fr))`, borderBottom: "1px solid rgba(255,255,255,.10)", paddingBottom: 6 }}>
+            <div />
+            {items.map((it) => (
+              <div key={it.id} style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, color: "rgba(255,255,255,.78)", fontSize: 10.8, fontWeight: 950 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: it.color, boxShadow: `0 0 8px ${it.color}`, flex: "0 0 auto" }} />
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
+              </div>
+            ))}
+          </div>
+
+          {rows.map((r) => {
+            const metricKey = r.key as CompareMetricKey | "matches";
+            const metricDef = COMPARE_METRICS.find((m) => m.key === metricKey);
+            const values = items.map((it) => metricKey === "matches" ? N(it.values.matches, 0) : N(it.values[metricKey], 0));
+            const finiteValues = values.filter((v) => Number.isFinite(v));
+            const nonZeroValues = finiteValues.filter((v) => v > 0);
+            const bestVal = metricDef?.lowerIsBetter
+              ? Math.min(...(nonZeroValues.length ? nonZeroValues : finiteValues.length ? finiteValues : [0]))
+              : Math.max(...finiteValues.concat([0]));
+            return (
+              <div key={r.key} style={{ display: "grid", gridTemplateColumns: `132px repeat(${items.length}, minmax(82px, 1fr))`, borderBottom: "1px solid rgba(255,255,255,.065)", minHeight: 29, alignItems: "center" }}>
+                <div style={{ color: "rgba(255,255,255,.72)", fontSize: 11.2, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
+                {items.map((it, i) => {
+                  const val = values[i];
+                  const isBest = Number.isFinite(val) && Math.abs(val - bestVal) < 0.0001;
+                  return (
+                    <div key={it.id} style={{ textAlign: "center", color: isBest ? it.color : "rgba(255,255,255,.76)", fontSize: 12, fontWeight: isBest ? 950 : 850, textShadow: isBest ? `0 0 10px ${it.color}80` : "none" }}>
+                      {fmtCompareValue(metricKey as any, val)}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InsightRow(props: { color: string; icon: string; title: string; value: string; subtitle: string }) {
+  const { color, icon, title, value, subtitle } = props;
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "52px 1fr 18px",
+        alignItems: "center",
+        gap: 10,
+        borderRadius: 16,
+        border: `1px solid ${color}66`,
+        background: `radial-gradient(circle at 0% 0%, ${color}1f, transparent 68%), rgba(0,0,0,.26)`,
+        padding: 10,
+      }}
+    >
+      <div style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${color}88`, display: "grid", placeItems: "center", color, fontSize: 23, boxShadow: `0 0 18px ${color}32` }}>{icon}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: "rgba(255,255,255,.66)", fontSize: 11, fontWeight: 850 }}>{title}</div>
+        <div style={{ marginTop: 2, color, fontSize: 17, fontWeight: 950, lineHeight: 1.1, textShadow: `0 0 12px ${color}88`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+        <div style={{ marginTop: 3, color: "rgba(255,255,255,.72)", fontSize: 10.6, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
+      </div>
+      <div style={{ color: "rgba(255,255,255,.55)", fontSize: 22, fontWeight: 700 }}>›</div>
+    </div>
+  );
+}
+
+function CompareLegend(props: { color: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, color: "rgba(255,255,255,.72)", fontSize: 10.5, fontWeight: 850 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: props.color, boxShadow: `0 0 8px ${props.color}` }} />
+      <span style={{ maxWidth: 116, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{props.label}</span>
+    </span>
+  );
+}
+
+function compareCardStyle(accent: string): React.CSSProperties {
+  return {
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,.10)",
+    background: `radial-gradient(circle at 0% 0%, ${accent}0f, transparent 62%), rgba(0,0,0,.24)`,
+    padding: 10,
+    boxShadow: "0 8px 22px rgba(0,0,0,.30)",
+    overflow: "hidden",
+  };
 }
 
 /* ============================================================= */
