@@ -102,3 +102,63 @@ export async function markSharedItemRead(id: string) {
   const res = await apiPut(`/online/shared/${qs(id)}/read`, {});
   return res?.item ?? res;
 }
+
+export type SharedMatchItem = {
+  id: string;
+  type?: string;
+  title?: string | null;
+  sport?: string | null;
+  matchId?: string | null;
+  status?: "pending" | "accepted" | "refused" | "imported" | string;
+  message?: string | null;
+  payload?: any;
+  createdAt?: string;
+  readAt?: string | null;
+  acceptedAt?: string | null;
+  refusedAt?: string | null;
+  importedAt?: string | null;
+  direction?: "incoming" | "outgoing";
+  ownerUser?: OnlineFriendUser & { email?: string | null };
+  targetUser?: OnlineFriendUser & { email?: string | null };
+};
+
+export async function shareMatchToFriend(input: {
+  targetUserId: string;
+  title?: string;
+  sport?: string;
+  matchId?: string;
+  message?: string;
+  payload: any;
+}) {
+  const res = await apiPost("/online/share-match", input);
+  return res?.item ?? res;
+}
+
+export async function listSharedMatches(): Promise<SharedMatchItem[]> {
+  const res = await apiGet("/online/shared-matches");
+  return Array.isArray(res?.items) ? res.items : [];
+}
+
+export async function countPendingSharedMatches(): Promise<number> {
+  const res = await apiGet("/online/shared-matches/count");
+  return Number(res?.pending || 0);
+}
+
+export async function markSharedMatchRead(id: string) {
+  const res = await apiPut(`/online/shared-matches/${qs(id)}/read`, {});
+  return res?.item ?? res;
+}
+
+export async function acceptSharedMatch(id: string) {
+  return apiPost(`/online/shared-matches/${qs(id)}/accept`, {});
+}
+
+export async function importSharedMatch(id: string) {
+  return apiPost(`/online/shared-matches/${qs(id)}/import`, {});
+}
+
+export async function refuseSharedMatch(id: string) {
+  const res = await apiPost(`/online/shared-matches/${qs(id)}/refuse`, {});
+  return res?.item ?? res;
+}
+

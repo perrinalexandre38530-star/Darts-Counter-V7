@@ -915,6 +915,41 @@ export default function Profiles({
   }, [view, refreshProfileOnlineFriends]);
 
 
+  const linkLocalProfileToFriend = React.useCallback((profileId: string, friend: FriendLike | null) => {
+    const friendUserId = friend ? String((friend as any)?.userId || (friend as any)?.id || "").trim() : "";
+    const friendName = friend ? String((friend as any)?.displayName || (friend as any)?.nickname || (friend as any)?.name || "").trim() : "";
+    const friendAvatarUrl = friend ? String((friend as any)?.avatarUrl || "").trim() : "";
+    const nextProfiles = (Array.isArray((store as any)?.profiles) ? (store as any).profiles : []).map((p: any) => {
+      if (String(p?.id || "") !== String(profileId || "")) return p;
+      const prevInfo = p?.privateInfo || p?.private_info || {};
+      const nextInfo = { ...prevInfo };
+      if (friend && friendUserId) {
+        nextInfo.linkedFriendUserId = friendUserId;
+        nextInfo.linkedUserId = friendUserId;
+        nextInfo.linkedFriendName = friendName;
+        nextInfo.linkedFriendAvatarUrl = friendAvatarUrl || null;
+      } else {
+        delete nextInfo.linkedFriendUserId;
+        delete nextInfo.linkedUserId;
+        delete nextInfo.linkedFriendName;
+        delete nextInfo.linkedFriendAvatarUrl;
+      }
+      return {
+        ...p,
+        linkedFriendUserId: friend && friendUserId ? friendUserId : undefined,
+        linkedUserId: friend && friendUserId ? friendUserId : undefined,
+        linkedFriendName: friend && friendUserId ? friendName : undefined,
+        privateInfo: nextInfo,
+        updatedAt: Date.now(),
+      };
+    });
+    update((prev: any) => ({ ...(prev || {}), profiles: nextProfiles }));
+    writeProfilesCache(nextProfiles as any);
+    scheduleProfilesPersist(friend ? "profiles_link_friend" : "profiles_unlink_friend", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 2500 });
+    setToast({ type: "success", message: friend ? "Profil local associé à l'ami NAS" : "Association supprimée" });
+  }, [store, update, scheduleProfilesPersist]);
+
+
   // 🔥 Shimmer du nom "NINJA" (copie du Home)
   const primary = theme.primary ?? "#F6C256";
   const profileHeaderCss = `
@@ -2274,6 +2309,8 @@ React.useEffect(() => {
                   onAvatar={changeAvatar}
                   onDelete={delProfile}
                   onOpenAvatarCreator={openAvatarCreator}
+                  onlineFriends={friends}
+                  onLinkFriend={linkLocalProfileToFriend}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
                   deferHeavy={!localsHeavyReady}
@@ -4698,6 +4735,8 @@ function LocalProfilesRefonte({
   onAvatar,
   onDelete,
   onOpenAvatarCreator,
+  onlineFriends = [],
+  onLinkFriend,
   onboardingMode = false,
   autoFocusCreate = false,
   deferHeavy = false,
@@ -4714,6 +4753,8 @@ function LocalProfilesRefonte({
   onAvatar: (id: string, file: File) => void;
   onDelete: (id: string) => void;
   onOpenAvatarCreator?: () => void;
+  onlineFriends?: FriendLike[];
+  onLinkFriend?: (profileId: string, friend: FriendLike | null) => void;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
   deferHeavy?: boolean;
@@ -4794,6 +4835,9 @@ function LocalProfilesRefonte({
   }, [locals, locals.length, index]);
   const current = locals[index] || null;
   const renderedCurrent = current;
+  const linkedFriendUserId = String((current as any)?.linkedFriendUserId || (current as any)?.linkedUserId || (current as any)?.privateInfo?.linkedFriendUserId || (current as any)?.privateInfo?.linkedUserId || "").trim();
+  const linkedFriend = linkedFriendUserId ? (onlineFriends || []).find((f: any) => String(f?.userId || f?.id || "") === linkedFriendUserId) : null;
+  const linkedFriendName = String((linkedFriend as any)?.displayName || (linkedFriend as any)?.nickname || (current as any)?.privateInfo?.linkedFriendName || (current as any)?.linkedFriendName || "").trim();
 
 
 
@@ -5310,6 +5354,58 @@ function LocalProfilesRefonte({
                   label={t("home.stats.winPct", "Win %")}
                   value={`${winPct}%`}
                 />
+              </div>
+
+              {/* Association profil local ↔ compte ami NAS */}
+              <div
+                style={{
+                  margin: "8px 0",
+                  padding: 10,
+                  borderRadius: 14,
+                  border: `1px solid ${linkedFriendUserId ? primary + "88" : "rgba(255,255,255,0.12)"}`,
+                  background: linkedFriendUserId ? `${primary}14` : "rgba(255,255,255,0.045)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: primary, fontWeight: 950, fontSize: 12 }}>Compte ami associé</div>
+                    <div className="subtitle" style={{ fontSize: 11 }}>
+                      {linkedFriendUserId ? `Lié à ${linkedFriendName || "un ami NAS"}` : "Associe ce profil à un ami pour fusionner/identifier les stats partagées."}
+                    </div>
+                  </div>
+                  {linkedFriendUserId && onLinkFriend ? (
+                    <button type="button" className="btn sm" style={{ ...pillBtnDanger, maxWidth: 92 }} onClick={() => onLinkFriend(current.id, null)}>
+                      Dissocier
+                    </button>
+                  ) : null}
+                </div>
+                {onLinkFriend ? (
+                  <select
+                    value={linkedFriendUserId}
+                    onChange={(e) => {
+                      const id = (e.target as HTMLSelectElement).value;
+                      const f = (onlineFriends || []).find((row: any) => String(row?.userId || row?.id || "") === id) || null;
+                      onLinkFriend(current.id, f as any);
+                    }}
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      padding: "9px 10px",
+                      border: `1px solid ${primary}66`,
+                      background: "rgba(0,0,0,0.35)",
+                      color: "inherit",
+                      outline: "none",
+                      fontWeight: 800,
+                    }}
+                  >
+                    <option value="">— Aucun ami associé —</option>
+                    {(onlineFriends || []).map((f: any) => {
+                      const id = String(f?.userId || f?.id || "");
+                      const name = f?.displayName || f?.nickname || f?.name || "Ami";
+                      return <option key={id} value={id}>{name}</option>;
+                    })}
+                  </select>
+                ) : null}
               </div>
 
               {/* Sets de fléchettes déplacés vers une vue dédiée dédiée du menu Profils */}
@@ -6361,14 +6457,17 @@ const MemoPrivateInfoBlock = React.memo(PrivateInfoBlock, (prev, next) => {
 });
 
 const MemoLocalProfilesRefonte = React.memo(LocalProfilesRefonte, (prev, next) => {
-  const prevIds = (prev.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}`).join('|');
-  const nextIds = (next.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}`).join('|');
+  const prevIds = (prev.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}:${(p as any)?.linkedFriendUserId || (p as any)?.privateInfo?.linkedFriendUserId || ''}`).join('|');
+  const nextIds = (next.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}:${(p as any)?.linkedFriendUserId || (p as any)?.privateInfo?.linkedFriendUserId || ''}`).join('|');
+  const prevFriends = (prev.onlineFriends || []).map((f: any) => `${f?.id || f?.userId || ''}:${f?.displayName || f?.nickname || f?.name || ''}`).join('|');
+  const nextFriends = (next.onlineFriends || []).map((f: any) => `${f?.id || f?.userId || ''}:${f?.displayName || f?.nickname || f?.name || ''}`).join('|');
   return (
     prevIds === nextIds &&
     prev.activeProfileId === next.activeProfileId &&
     prev.onboardingMode === next.onboardingMode &&
     prev.autoFocusCreate === next.autoFocusCreate &&
-    prev.deferHeavy === next.deferHeavy
+    prev.deferHeavy === next.deferHeavy &&
+    prevFriends === nextFriends
   );
 });
 

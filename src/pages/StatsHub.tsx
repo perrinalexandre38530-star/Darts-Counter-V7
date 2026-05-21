@@ -5883,6 +5883,7 @@ type ModeDashboardCard = {
   tripleHits?: number;
   bullHits?: number;
   dbullHits?: number;
+  missHits?: number;
   bestHole?: number;
   bestRound?: number;
   shanghais?: number;
@@ -6145,6 +6146,25 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       if (Array.isArray(src)) {
         let visitScore = 0;
         for (const h of src) {
+          if (typeof h === "string") {
+            const raw = h.trim().toUpperCase();
+            out.darts += 1;
+            if (!raw || raw === "0" || raw === "M" || raw === "MISS") { out.miss += 1; continue; }
+            const bullLike = raw === "BULL" || raw === "SBULL" || raw === "SB" || raw === "S25";
+            const dbullLike = raw === "DBULL" || raw === "DB" || raw === "D25";
+            if (dbullLike) { out.dbull += 1; visitScore += 50; addFav("DBull"); continue; }
+            if (bullLike) { out.bull += 1; visitScore += 25; addFav("Bull"); continue; }
+            const m = raw.match(/^([SDT])\s*(\d{1,2})$/);
+            if (m) {
+              const ring = m[1];
+              const seg = Number(m[2]);
+              if (ring === "T") { out.t += 1; visitScore += seg * 3; addFav(seg); continue; }
+              if (ring === "D") { out.d += 1; visitScore += seg * 2; addFav(seg); continue; }
+              out.s += 1; visitScore += seg; addFav(seg); continue;
+            }
+            out.miss += 1;
+            continue;
+          }
           if (h && typeof h === "object") {
             if (h.S != null || h.D != null || h.T != null || h.MISS != null) {
               walk(h);
@@ -6157,8 +6177,8 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
             const isMiss = ringRaw.includes("MISS") || String(segRaw).toUpperCase() === "MISS" || segNum === 0;
             out.darts += 1;
             if (isMiss) { out.miss += 1; continue; }
-            if (segNum === 25 && (ringRaw.includes("DBULL") || ringRaw.includes("DOUBLE") || multNum === 2)) { out.dbull += 1; visitScore += 50; addFav("DBull"); continue; }
-            if (segNum === 25 || ringRaw.includes("BULL")) { out.bull += 1; visitScore += 25; addFav("Bull"); continue; }
+            if (segNum === 25 && (ringRaw === "DB" || ringRaw.includes("DBULL") || ringRaw.includes("DOUBLE") || multNum === 2)) { out.dbull += 1; visitScore += 50; addFav("DBull"); continue; }
+            if (segNum === 25 || ringRaw === "SB" || ringRaw.includes("BULL")) { out.bull += 1; visitScore += 25; addFav("Bull"); continue; }
             if (ringRaw === "T" || ringRaw.includes("TRIPLE") || multNum === 3) { out.t += 1; visitScore += (segNum || 0) * 3; addFav(segNum); continue; }
             if (ringRaw === "D" || ringRaw.includes("DOUBLE") || multNum === 2) { out.d += 1; visitScore += (segNum || 0) * 2; addFav(segNum); continue; }
             out.s += 1; visitScore += segNum || 0; addFav(segNum);
@@ -6180,7 +6200,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       out.d += n(src.d ?? src.D ?? src.double ?? src.doubles ?? src.hit2 ?? src.p2);
       out.t += n(src.t ?? src.T ?? src.triple ?? src.triples ?? src.hit3 ?? src.p3);
       out.bull += n(src.b ?? src.bull ?? src.BULL ?? src.bulls);
-      out.dbull += n(src.db ?? src.dbull ?? src.DBULL ?? src.doubleBull ?? src.doubleBulls);
+      out.dbull += n(src.db ?? src.DB ?? src.dbull ?? src.DBULL ?? src.doubleBull ?? src.doubleBulls);
       out.miss += n(src.miss ?? src.MISS ?? src.misses);
       out.darts += n(src.darts ?? src.dartsThrown ?? src.thrown ?? src.totalDarts);
       out.score += n(src.score ?? src.points ?? src.total ?? src.totalScore);
@@ -6231,6 +6251,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       tripleHits: 0,
       bullHits: 0,
       dbullHits: 0,
+      missHits: 0,
       bestHole: 0,
       bestRound: 0,
       shanghais: 0,
@@ -6304,6 +6325,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.tripleHits = Number(a.tripleHits || 0) + shCounts.t;
       a.bullHits = Number(a.bullHits || 0) + shCounts.bull;
       a.dbullHits = Number(a.dbullHits || 0) + shCounts.dbull;
+      a.missHits = Number(a.missHits || 0) + shCounts.miss;
       a.bestRound = Math.max(Number(a.bestRound || 0), shCounts.bestRound);
       mergeFavMap(a.favMap, shCounts.favMap);
     }
@@ -6320,6 +6342,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.tripleHits = Number(a.tripleHits || 0) + crCounts.t;
       a.bullHits = Number(a.bullHits || 0) + crCounts.bull;
       a.dbullHits = Number(a.dbullHits || 0) + crCounts.dbull;
+      a.missHits = Number(a.missHits || 0) + crCounts.miss;
       a.bestRound = Math.max(Number(a.bestRound || 0), crCounts.bestRound, marksTotal > 0 ? Math.min(9, marksTotal) : 0);
       mergeFavMap(a.favMap, crCounts.favMap);
     }
@@ -6333,6 +6356,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.tripleHits = Number(a.tripleHits || 0) + golfCounts.t;
       a.bullHits = Number(a.bullHits || 0) + golfCounts.bull;
       a.dbullHits = Number(a.dbullHits || 0) + golfCounts.dbull;
+      a.missHits = Number(a.missHits || 0) + golfCounts.miss;
       a.bestHole = a.bestHole && score > 0 ? Math.min(Number(a.bestHole), score) : Math.max(Number(a.bestHole || 0), Number(score || 0));
       mergeFavMap(a.favMap, golfCounts.favMap);
     }
@@ -6460,7 +6484,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const winRate = a.matches ? Math.round((a.wins / a.matches) * 1000) / 10 : 0;
     const accuracy = (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 1000) / 10 : 0;
     const avg3 = a.samples.length ? Math.round((a.samples.reduce((x: number, y: any) => x + Number(y?.avg3D ?? y ?? 0), 0) / a.samples.length) * 10) / 10 : 0;
-    const ringTotal = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0);
+    const ringTotal = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0) + Number(a.missHits || 0);
     const ringLabel = (count: number, total = ringTotal) => total > 0 ? `${fmtStatValue((count / total) * 100, "%")} (${fmtStatValue(count)})` : "—";
     const scorePerHole = Number(a.holes || 0) > 0 ? Number(a.points || 0) / Number(a.holes || 1) : 0;
     const ticker: ModeTickerStat[] = a.key === "killer"
@@ -6515,6 +6539,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Hit rate", value: (a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
           { label: "S / D / T", value: `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}`, tone: "blue" },
           { label: "Shanghai", value: fmtStatValue(a.shanghais || 0), tone: "red" },
+          { label: "Best volée", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
           { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
       : a.key === "golf"
@@ -6524,12 +6549,13 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Score total", value: fmtStatValue(a.points), tone: "gold" },
           { label: "Score moy./trou", value: fmtStatValue(scorePerHole || (a.matches ? a.points / a.matches : 0)), tone: "gold" },
           { label: "Best parcours", value: a.best ? fmtStatValue(a.best) : "—", tone: "blue" },
-          { label: "Trous", value: fmtStatValue(a.holes || 0), tone: "gold" },
+          { label: "Trous joués", value: fmtStatValue(a.holes || 0), tone: "gold" },
+          { label: "% Miss", value: ringLabel(Number(a.missHits || 0)), tone: "red" },
           { label: "% S (Par)", value: ringLabel(Number(a.simpleHits || 0)), tone: "green" },
           { label: "% D (Birdie)", value: ringLabel(Number(a.doubleHits || 0)), tone: "green" },
           { label: "% T (Eagle)", value: ringLabel(Number(a.tripleHits || 0)), tone: "green" },
-          { label: "Bull", value: ringLabel(Number(a.bullHits || 0)), tone: "blue" },
-          { label: "DBull", value: ringLabel(Number(a.dbullHits || 0)), tone: "blue" },
+          { label: "% Bull", value: ringLabel(Number(a.bullHits || 0)), tone: "blue" },
+          { label: "% DBull", value: ringLabel(Number(a.dbullHits || 0)), tone: "blue" },
           { label: "Trou favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
       : [
@@ -7369,7 +7395,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : ["cricket", "shanghai", "golf"].includes(m.key) ? 8 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 10 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>

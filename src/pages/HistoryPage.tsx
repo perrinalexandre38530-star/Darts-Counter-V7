@@ -25,7 +25,8 @@ import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
-import { listInboxCloud, sendMatchToEmail, setInboxStatusCloud, type InboxRowCloud, ensureDirectoryEntry } from "../lib/matchInboxCloud";
+import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
+import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
 import logoDarts from "../assets/games/logo-darts.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
@@ -1390,6 +1391,11 @@ export default function HistoryPage({
   const [inboxLocal, setInboxLocal] = useState<InboxItemLocal[]>([]);
   const [inboxCloud, setInboxCloud] = useState<InboxRowCloud[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
+  const [friendShareEntry, setFriendShareEntry] = useState<SavedEntry | null>(null);
+  const [friendShareFriends, setFriendShareFriends] = useState<OnlineFriendUser[]>([]);
+  const [friendShareLoading, setFriendShareLoading] = useState(false);
+  const [friendShareSending, setFriendShareSending] = useState<string | null>(null);
+  const [friendShareMessage, setFriendShareMessage] = useState("");
 
   // ============================================================
   // 🔎 DEBUG HISTORYPAGE — voir RAW vs filtré (pour "Aucune partie ici")
@@ -1739,26 +1745,85 @@ export default function HistoryPage({
     }
   }
 
-  async function handleSendToFriend(entry: SavedEntry) {
-    const email = window.prompt("Envoyer à quel email (compte ami) ?");
-    if (!email) return;
-
-
-    // Auto opt-in: ensure YOU are discoverable in user_directory (email_norm)
-    await ensureDirectoryEntry();
-    const packet = buildMatchSharePacket(entry);
-    const res = await sendMatchToEmail(email, packet);
-    if (res.ok) {
-      window.alert("Envoyé ✅ (en attente d'acceptation côté ami)");
-    } else if (res.error === "not-found") {
-      window.alert(
-        "Ami introuvable. Il doit ouvrir l'app, se connecter ONLINE puis activer l'annuaire (user_directory).\n\nAstuce: utilise \"Partager\" pour lui envoyer le fichier JSON en attendant."
-      );
-    } else if (res.error === "no-user") {
-      window.alert("Tu dois être connecté (ONLINE) pour envoyer à un ami.");
-    } else {
-      window.alert("Erreur envoi: " + (res.message || "db"));
+  function enrichPacketWithProfileFriendLinks(entry: SavedEntry, packet: MatchSharePacketV1) {
+    const profiles = Array.isArray((storeRef.current as any)?.profiles) ? (storeRef.current as any).profiles : [];
+    const byProfileId = new Map<string, any>();
+    for (const p of profiles) {
+      const id = String((p as any)?.id || "").trim();
+      if (!id) continue;
+      const pi = (p as any)?.privateInfo || (p as any)?.private_info || {};
+      const linkedUserId = String(
+        (p as any)?.linkedFriendUserId ||
+        (p as any)?.linkedUserId ||
+        pi.linkedFriendUserId ||
+        pi.linkedUserId ||
+        pi.onlineUserId ||
+        ""
+      ).trim();
+      if (linkedUserId) byProfileId.set(id, { profileId: id, profileName: (p as any)?.name || "", linkedUserId, linkedFriendName: pi.linkedFriendName || pi.onlineEmail || "" });
     }
+
+    const payload: any = packet.payload && typeof packet.payload === "object" ? packet.payload : {};
+    const players = Array.isArray((packet as any)?.summary?.players) ? (packet as any).summary.players : [];
+    const linkedPlayers = players.map((pl: any) => {
+      const localProfileId = String(pl?.id || pl?.profileId || "").trim();
+      const link = localProfileId ? byProfileId.get(localProfileId) : null;
+      return link ? { ...pl, localProfileId, linkedUserId: link.linkedUserId, linkedFriendName: link.linkedFriendName } : pl;
+    });
+
+    return {
+      ...packet,
+      summary: { ...(packet as any).summary, players: linkedPlayers },
+      payload: {
+        ...payload,
+        __shareMeta: {
+          ...(payload as any).__shareMeta,
+          profileFriendLinks: Array.from(byProfileId.values()),
+          sourceMatchId: (entry as any)?.id || (entry as any)?.matchId || packet.matchId,
+        },
+      },
+    } as MatchSharePacketV1;
+  }
+
+  async function openFriendShare(entry: SavedEntry) {
+    setFriendShareEntry(entry);
+    setFriendShareMessage("");
+    setFriendShareLoading(true);
+    try {
+      const friends = await listFriends();
+      setFriendShareFriends(Array.isArray(friends) ? friends : []);
+    } catch (error: any) {
+      setFriendShareFriends([]);
+      window.alert("Impossible de charger la liste d'amis NAS : " + (error?.message || error));
+    } finally {
+      setFriendShareLoading(false);
+    }
+  }
+
+  async function sendFriendShare(target: OnlineFriendUser) {
+    if (!friendShareEntry) return;
+    const targetUserId = String((target as any)?.userId || (target as any)?.id || "").trim();
+    if (!targetUserId) return window.alert("Ami invalide : identifiant manquant.");
+    setFriendShareSending(targetUserId);
+    try {
+      const packet = enrichPacketWithProfileFriendLinks(friendShareEntry, buildMatchSharePacket(friendShareEntry));
+      const res = await sendMatchToFriendUserId(targetUserId, packet, friendShareMessage);
+      if ((res as any)?.ok) {
+        setFriendShareEntry(null);
+        setFriendShareMessage("");
+        window.alert("Partie envoyée ✅ (en attente d'acceptation côté ami)");
+      } else {
+        window.alert("Erreur envoi : " + ((res as any)?.message || (res as any)?.error || "NAS"));
+      }
+    } catch (error: any) {
+      window.alert("Erreur envoi : " + (error?.message || String(error)));
+    } finally {
+      setFriendShareSending(null);
+    }
+  }
+
+  async function handleSendToFriend(entry: SavedEntry) {
+    await openFriendShare(entry);
   }
 
 
@@ -2576,7 +2641,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                       <Icon.Share />
                     </div>
 
-                    <div style={S.iconBtn} onClick={() => handleSendToFriend(e)} title="Envoyer directement à un ami (email)">
+                    <div style={S.iconBtn} onClick={() => handleSendToFriend(e)} title="Envoyer directement à un ami">
                       <Icon.Send />
                     </div>
 
@@ -2595,6 +2660,121 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 	          )
         )}
       </div>
+
+      {friendShareEntry ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.72)",
+            display: "grid",
+            placeItems: "center",
+            padding: 14,
+          }}
+          onClick={() => !friendShareSending && setFriendShareEntry(null)}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              maxHeight: "82vh",
+              overflow: "auto",
+              borderRadius: 20,
+              border: `1px solid ${theme.primary}88`,
+              background: "linear-gradient(180deg, rgba(16,20,24,0.98), rgba(5,8,10,0.98))",
+              boxShadow: `0 0 28px ${theme.primary}44`,
+              padding: 14,
+              color: theme.text,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ color: theme.primary, fontWeight: 950, letterSpacing: 0.4 }}>Envoyer à un ami</div>
+                <div style={{ fontSize: 12, opacity: 0.72 }}>Partage interne NAS avec acceptation côté ami.</div>
+              </div>
+              <button
+                type="button"
+                disabled={!!friendShareSending}
+                onClick={() => setFriendShareEntry(null)}
+                style={{ ...S.toolIconBtn(false, false), width: 38, height: 38 }}
+                aria-label="Fermer"
+              >
+                <Icon.X />
+              </button>
+            </div>
+
+            <textarea
+              value={friendShareMessage}
+              onChange={(e) => setFriendShareMessage((e.target as HTMLTextAreaElement).value)}
+              placeholder="Message optionnel…"
+              maxLength={500}
+              style={{
+                width: "100%",
+                minHeight: 70,
+                resize: "vertical",
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft || "rgba(255,255,255,.16)"}`,
+                background: "rgba(255,255,255,0.06)",
+                color: theme.text,
+                padding: 10,
+                outline: "none",
+                marginBottom: 10,
+                boxSizing: "border-box",
+              }}
+            />
+
+            {friendShareLoading ? (
+              <div style={{ opacity: 0.75, padding: 12, textAlign: "center" }}>Chargement des amis…</div>
+            ) : friendShareFriends.length === 0 ? (
+              <div style={{ opacity: 0.75, padding: 12, textAlign: "center" }}>
+                Aucun ami NAS disponible. Ajoute d'abord un ami dans ONLINE / AMIS.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {friendShareFriends.map((f: any) => {
+                  const id = String(f?.userId || f?.id || "");
+                  const name = f?.displayName || f?.nickname || f?.name || "Ami";
+                  const avatar = f?.avatarUrl || null;
+                  const sending = friendShareSending === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      disabled={!!friendShareSending}
+                      onClick={() => sendFriendShare(f)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        width: "100%",
+                        border: `1px solid ${theme.primary}55`,
+                        borderRadius: 16,
+                        padding: "10px 12px",
+                        background: sending ? `${theme.primary}22` : "rgba(255,255,255,0.055)",
+                        color: theme.text,
+                        cursor: friendShareSending ? "wait" : "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ width: 38, height: 38, borderRadius: "50%", overflow: "hidden", border: `1px solid ${theme.primary}66`, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
+                        {avatar ? <img src={avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: theme.primary, fontWeight: 900 }}>{String(name).slice(0,2).toUpperCase()}</span>}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 900, color: theme.primary }}>{name}</div>
+                        <div style={{ fontSize: 11, opacity: 0.7 }}>{f?.status === "online" ? "En ligne" : "Ami NAS"}</div>
+                      </div>
+                      <span style={{ fontWeight: 900 }}>{sending ? "Envoi…" : "Envoyer"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

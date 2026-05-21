@@ -1596,14 +1596,18 @@ return {
 	            name: String(p?.name ?? ""),
 	            win: state?.winnerId ? String(p?.id ?? p?.profileId) === String(state.winnerId) : false,
 	            score: Number(p?.score ?? 0) || 0,
-	            darts: {
-	              thrown: hitsArr.length,
-	              hits: hitsArr.length,
-	              misses: 0,
-	            },
-	            special: {
-	              marksTotal: Number(marksTotal) || 0,
-	            },
+            hits: hitsArr,
+            hitCount: hitsArr.filter((h: any) => h && String(h).toUpperCase() !== "MISS").length,
+            marks: marksObj ?? {},
+            marksTotal: Number(marksTotal) || 0,
+            darts: {
+              thrown: hitsArr.length,
+              hits: hitsArr.filter((h: any) => h && String(h).toUpperCase() !== "MISS").length,
+              misses: hitsArr.filter((h: any) => !h || String(h).toUpperCase() === "MISS").length,
+            },
+            special: {
+              marksTotal: Number(marksTotal) || 0,
+            },
 	          };
 	        }),
 	        global: {
