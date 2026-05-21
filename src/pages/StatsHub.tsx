@@ -6075,21 +6075,53 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       r?.payload?.players,
       r?.payload?.summary?.players,
       r?.payload?.summary?.perPlayer,
+      r?.payload?.summary?.rankings,
+      r?.payload?.summary?.scores,
       r?.summary?.players,
       r?.summary?.perPlayer,
       r?.summary?.rankings,
+      r?.summary?.scores,
+      r?.payload?.playerStats,
+      r?.summary?.playerStats,
+      r?.payload?.state?.statsByPlayer,
+      r?.payload?.state?.statsByPlayerById,
       r?.players,
     ];
     for (const src of pools) {
-      const arr = Array.isArray(src) ? src : src && typeof src === "object" ? Object.values(src) : [];
+      const arr = Array.isArray(src)
+        ? src
+        : src && typeof src === "object"
+        ? Object.entries(src).map(([key, value]: any) => (value && typeof value === "object" ? { id: key, profileId: key, ...value } : { id: key, profileId: key, value }))
+        : [];
       const hit = (arr as any[]).find((pl: any) => {
         const ids = statHubPlayerIds(pl).map(normId);
-        const nm = statHubNormName(pl?.name ?? pl?.displayName ?? pl?.nickname ?? pl?.surname);
+        const nm = statHubNormName(pl?.name ?? pl?.playerName ?? pl?.displayName ?? pl?.nickname ?? pl?.surname);
         return ids.some((id) => statHubIdMatches(id, pid)) || (!!selectedPlayer?.name && nm === statHubNormName(selectedPlayer.name));
       });
       if (hit) return hit;
     }
     return null;
+  };
+
+  const findPlayerIn = (src: any): any | null => {
+    const arr = Array.isArray(src)
+      ? src
+      : src && typeof src === "object"
+      ? Object.entries(src).map(([key, value]: any) => (value && typeof value === "object" ? { id: key, profileId: key, ...value } : { id: key, profileId: key, value }))
+      : [];
+    return (arr as any[]).find((pl: any) => {
+      const ids = statHubPlayerIds(pl).map(normId);
+      const nm = statHubNormName(pl?.name ?? pl?.playerName ?? pl?.displayName ?? pl?.nickname ?? pl?.surname);
+      return ids.some((id) => statHubIdMatches(id, pid)) || (!!selectedPlayer?.name && nm === statHubNormName(selectedPlayer.name));
+    }) || null;
+  };
+
+  const pickNum = (...values: any[]) => {
+    for (const v of values) {
+      const num = Number(v);
+      if (Number.isFinite(num) && num !== 0) return num;
+    }
+    return 0;
   };
   const byMode: Record<string, ModeDashboardCard & { samples: number[]; favMap: Record<string, number> }> = {} as any;
   for (const r of rows) {
@@ -6129,19 +6161,63 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     } as any);
     const pl: any = findP(r) || {};
     const stats: any = pl?.special || pl?.stats || pl;
-    const rawDarts = pl?.darts && typeof pl.darts === "object" ? pl.darts : {};
-    const darts = n(rawDarts?.thrown) || n(rawDarts?.total) || n(pl?.dartsThrown) || n(stats?.darts) || n(stats?.dartsThrown) || n(stats?.throws) || n(stats?.totalThrows);
-    const hits = n(rawDarts?.hits) || n(pl?.hitCount) || n(stats?.hits) || n(stats?.validHits) || n(stats?.totalHits) || n(stats?.hitsTotal);
-    const miss = n(rawDarts?.misses) || n(stats?.misses) || n(stats?.miss) || (darts > 0 ? Math.max(0, darts - hits) : 0);
-    const marksTotal =
+    const modeStatsPlayer: any = findPlayerIn(r?.payload?.stats?.players) || {};
+    const payloadPlayer: any = findPlayerIn(r?.payload?.players) || {};
+    const summaryScorePlayer: any = findPlayerIn(r?.summary?.scores) || findPlayerIn(r?.payload?.summary?.scores) || {};
+    const summaryRankingPlayer: any = findPlayerIn(r?.summary?.rankings) || findPlayerIn(r?.payload?.summary?.rankings) || {};
+    const golfPlayerStats: any = findPlayerIn(r?.summary?.playerStats) || findPlayerIn(r?.payload?.playerStats) || findPlayerIn(r?.payload?.state?.statsByPlayerById) || {};
+    const rawDarts = pl?.darts && typeof pl.darts === "object" ? pl.darts : (modeStatsPlayer?.darts && typeof modeStatsPlayer.darts === "object" ? modeStatsPlayer.darts : {});
+    let darts = n(rawDarts?.thrown) || n(rawDarts?.total) || n(pl?.dartsThrown) || n(modeStatsPlayer?.dartsThrown) || n(stats?.darts) || n(stats?.dartsThrown) || n(stats?.throws) || n(stats?.totalThrows);
+    let hits = n(rawDarts?.hits) || n(pl?.hitCount) || n(modeStatsPlayer?.hitCount) || n(stats?.hits) || n(stats?.validHits) || n(stats?.totalHits) || n(stats?.hitsTotal);
+    let miss = n(rawDarts?.misses) || n(stats?.misses) || n(stats?.miss) || (darts > 0 ? Math.max(0, darts - hits) : 0);
+    let marksTotal =
       n(stats?.marksTotal) ||
       n(stats?.totalMarks) ||
       n(pl?.marksTotal) ||
       n(pl?.totalMarks) ||
+      n(modeStatsPlayer?.special?.marksTotal) ||
+      n(modeStatsPlayer?.marksTotal) ||
+      n(payloadPlayer?.marksTotal) ||
       sumNumericValues(stats?.marks) ||
-      sumNumericValues(pl?.marks);
-    const score = n(pl?.score) || n(stats?.score) || n(stats?.points) || n(stats?.totalScore) || n(stats?.scored) || n(stats?.totalPoints);
-    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || (mode === "cricket" ? Math.max(score, marksTotal) : score);
+      sumNumericValues(pl?.marks) ||
+      sumNumericValues(payloadPlayer?.marks);
+    let score = pickNum(
+      pl?.score,
+      stats?.score,
+      stats?.points,
+      stats?.totalScore,
+      stats?.scored,
+      stats?.totalPoints,
+      modeStatsPlayer?.score,
+      modeStatsPlayer?.points,
+      modeStatsPlayer?.total,
+      summaryScorePlayer?.score,
+      summaryScorePlayer?.points,
+      summaryRankingPlayer?.total,
+      golfPlayerStats?.total
+    );
+
+    if (mode === "shanghai") {
+      score = pickNum(score, summaryScorePlayer?.score, modeStatsPlayer?.score, payloadPlayer?.score);
+      darts = pickNum(darts, modeStatsPlayer?.darts?.thrown, payloadPlayer?.darts, payloadPlayer?.hits?.length);
+      hits = pickNum(hits, modeStatsPlayer?.darts?.hits, payloadPlayer?.hitCount);
+      miss = pickNum(miss, modeStatsPlayer?.darts?.misses, darts > 0 ? Math.max(0, darts - hits) : 0);
+    }
+
+    if (mode === "cricket") {
+      marksTotal = pickNum(marksTotal, modeStatsPlayer?.special?.marksTotal, payloadPlayer?.marksTotal, sumNumericValues(payloadPlayer?.marks), score);
+      score = pickNum(score, payloadPlayer?.score, modeStatsPlayer?.score, marksTotal);
+      darts = pickNum(darts, payloadPlayer?.darts, payloadPlayer?.hits?.length, modeStatsPlayer?.darts?.thrown);
+      hits = pickNum(hits, payloadPlayer?.hitCount, modeStatsPlayer?.darts?.hits, marksTotal);
+      miss = pickNum(miss, modeStatsPlayer?.darts?.misses, darts > 0 ? Math.max(0, darts - hits) : 0);
+    }
+
+    if (mode === "golf") {
+      score = pickNum(score, summaryRankingPlayer?.total, golfPlayerStats?.total, modeStatsPlayer?.score);
+      darts = pickNum(darts, summaryRankingPlayer?.darts, golfPlayerStats?.darts, modeStatsPlayer?.darts?.thrown);
+    }
+
+    const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || n(modeStatsPlayer?.best) || (mode === "cricket" ? Math.max(score, marksTotal) : score);
     a.matches += 1;
     if (isWinningPlayer(r, pl)) a.wins += 1;
     a.darts += darts;
@@ -6161,14 +6237,14 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       if (!hits && marksTotal > 0) a.hits += marksTotal;
     }
     if (mode === "shanghai") {
-      const shanghaiDone = Boolean(stats?.shanghai || stats?.isShanghai || pl?.shanghai || pl?.isShanghai);
+      const shanghaiDone = Boolean(stats?.shanghai || stats?.isShanghai || pl?.shanghai || pl?.isShanghai || modeStatsPlayer?.shanghai || modeStatsPlayer?.isShanghai);
       if (shanghaiDone) a.shanghais = Number(a.shanghais || 0) + 1;
     }
     if (mode === "golf") {
       a.holes = Number(a.holes || 0) + (n(r?.payload?.stats?.global?.holes) || n(r?.payload?.global?.holes) || n(r?.summary?.holes) || n(r?.game?.holes));
-      a.p1 = Number(a.p1 || 0) + n(stats?.p1);
-      a.p2 = Number(a.p2 || 0) + n(stats?.p2);
-      a.p3 = Number(a.p3 || 0) + n(stats?.p3);
+      a.p1 = Number(a.p1 || 0) + (n(stats?.p1) || n(summaryRankingPlayer?.p1) || n(modeStatsPlayer?.special?.p1) || n(golfPlayerStats?.hit1));
+      a.p2 = Number(a.p2 || 0) + (n(stats?.p2) || n(summaryRankingPlayer?.p2) || n(modeStatsPlayer?.special?.p2) || n(golfPlayerStats?.hit2));
+      a.p3 = Number(a.p3 || 0) + (n(stats?.p3) || n(summaryRankingPlayer?.p3) || n(modeStatsPlayer?.special?.p3) || n(golfPlayerStats?.hit3));
     }
     a.kills += n(stats?.kills) || n(stats?.kill) || n(stats?.eliminations);
     a.damage += n(stats?.damage) || n(stats?.damageDone) || n(stats?.totalDamage) || n(stats?.hitsDamage);
