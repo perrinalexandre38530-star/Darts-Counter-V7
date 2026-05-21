@@ -6189,26 +6189,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       }
       if (typeof src !== "object") return;
 
-      // Forme map par cible : { "20": { S, D, T, MISS, points }, ... }
-      // Très utilisée par Shanghai/Cricket. Important : on conserve la clé cible
-      // pour alimenter le numéro favori, au lieu de perdre l'info avec Object.values().
-      const looksLikeTargetMap = !Array.isArray(src) && Object.values(src).some((v: any) =>
-        v && typeof v === "object" && (v.S != null || v.D != null || v.T != null || v.MISS != null)
-      );
-      if (looksLikeTargetMap) {
-        Object.entries(src).forEach(([target, row]: any) => {
-          if (!row || typeof row !== "object") return;
-          const ss = n(row.S); const dd = n(row.D); const tt = n(row.T); const mm = n(row.MISS);
-          const totalHitsOnTarget = ss + dd + tt;
-          out.s += ss; out.d += dd; out.t += tt; out.miss += mm;
-          out.darts += ss + dd + tt + mm;
-          out.score += n(row.points);
-          if (totalHitsOnTarget > 0) addFav(target, totalHitsOnTarget);
-        });
-        return;
-      }
-
-      // Forme agrégée : { S, D, T, MISS, points }
+      // Forme Shanghai : hitsById[pid][target] = { S, D, T, MISS, points }
       if (src.S != null || src.D != null || src.T != null || src.MISS != null) {
         const ss = n(src.S); const dd = n(src.D); const tt = n(src.T); const mm = n(src.MISS);
         out.s += ss; out.d += dd; out.t += tt; out.miss += mm; out.darts += ss + dd + tt + mm; out.score += n(src.points);
@@ -6333,7 +6314,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
         modeStatsPlayer?.special,
         payloadPlayer,
         payloadPlayer?.hits,
-        shByTarget || null
+        shByTarget ? Object.values(shByTarget) : null
       );
       score = pickNum(score, shCounts.score, summaryScorePlayer?.score, modeStatsPlayer?.score, payloadPlayer?.score);
       darts = pickNum(darts, shCounts.darts, modeStatsPlayer?.darts?.thrown, payloadPlayer?.darts, payloadPlayer?.hits?.length);
@@ -6497,28 +6478,6 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       }
     }
 
-    if (a.key === "cricket" && cricketStats) {
-      // Source de secours officielle Cricket : certaines anciennes cartes History
-      // contiennent bien le match/winner, mais pas les flèches/marks dans payload.players.
-      // Dans ce cas, on reprend l'agrégat Cricket profil déjà reconstruit par le module dédié.
-      const cs: any = cricketStats as any;
-      const csMatches = Number(cs.matchesTotal ?? cs.matches ?? 0) || 0;
-      if (csMatches > 0) {
-        a.matches = Math.max(Number(a.matches || 0), csMatches);
-        a.wins = Math.max(Number(a.wins || 0), Number(cs.winsTotal ?? cs.wins ?? 0) || 0);
-        a.extra = Math.max(Number(a.extra || 0), Number(cs.totalMarks ?? cs.marks ?? 0) || 0);
-        a.points = Math.max(Number(a.points || 0), Number(cs.totalPointsFor ?? cs.totalPoints ?? 0) || 0);
-        a.darts = Math.max(Number(a.darts || 0), Number(cs.totalDarts ?? cs.darts ?? 0) || 0);
-        const csHitRate = Number(cs.globalHitRate ?? 0) || 0;
-        if (!a.hits && csHitRate > 0 && Number(cs.totalDarts || 0) > 0) {
-          a.hits = Math.round(csHitRate * Number(cs.totalDarts || 0));
-          a.miss = Math.max(0, Number(cs.totalDarts || 0) - Number(a.hits || 0));
-        }
-        a.best = Math.max(Number(a.best || 0), Number(cs.bestPointsInMatch ?? cs.bestPoints ?? 0) || 0);
-        a.bestRound = Math.max(Number(a.bestRound || 0), Number(cs.bestVisitMarks ?? cs.bestMarks ?? 0) || 0);
-      }
-    }
-
     // Sécurité : un taux de win ne peut jamais dépasser 100%, même si un
     // ancien résumé duplique winnerId/winnerIds.
     a.wins = Math.max(0, Math.min(Number(a.wins || 0), Number(a.matches || 0)));
@@ -6526,11 +6485,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const accuracy = (a.hits + a.miss) ? Math.round((a.hits / (a.hits + a.miss)) * 1000) / 10 : 0;
     const avg3 = a.samples.length ? Math.round((a.samples.reduce((x: number, y: any) => x + Number(y?.avg3D ?? y ?? 0), 0) / a.samples.length) * 10) / 10 : 0;
     const ringTotal = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0) + Number(a.missHits || 0);
-    const ringLabel = (count: number, total = ringTotal) => {
-      const safeCount = Math.max(0, Math.round(Number(count || 0)));
-      const safeTotal = Math.max(0, Math.round(Number(total || 0)));
-      return safeTotal > 0 ? `${fmtStatValue((safeCount / safeTotal) * 100, "%")} (${fmtStatValue(safeCount)})` : "—";
-    };
+    const ringLabel = (count: number, total = ringTotal) => total > 0 ? `${fmtStatValue((count / total) * 100, "%")} (${fmtStatValue(count)})` : "—";
     const scorePerHole = Number(a.holes || 0) > 0 ? Number(a.points || 0) / Number(a.holes || 1) : 0;
     const ticker: ModeTickerStat[] = a.key === "killer"
       ? [
@@ -6566,8 +6521,8 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
           { label: "Marks", value: fmtStatValue(a.extra || a.hits), tone: "gold" },
           { label: "Marks/match", value: fmtStatValue(a.matches ? (a.extra || a.hits) / a.matches : 0), tone: "gold" },
-          { label: "MPR", value: fmtStatValue(cricketStats ? Number((cricketStats as any).globalMpr || 0) : (a.darts ? ((a.extra || a.hits) / a.darts) * 3 : 0)), tone: "green" },
-          { label: "Hit rate", value: cricketStats ? fmtStatValue(Number((cricketStats as any).globalHitRate || 0) * 100, "%") : ((a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—"), tone: "green" },
+          { label: "MPR", value: fmtStatValue(a.darts ? ((a.extra || a.hits) / a.darts) * 3 : 0), tone: "green" },
+          { label: "Hit rate", value: (a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
           { label: "S / D / T", value: `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}`, tone: "blue" },
           { label: "Bull + DBull", value: fmtStatValue((a.bullHits || 0) + (a.dbullHits || 0)), tone: "blue" },
           { label: "Best marks", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
@@ -6620,7 +6575,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     if (byWins !== 0) return byWins;
     return String(a.label || "").localeCompare(String(b.label || ""));
   });
-}, [records, selectedPlayer?.id, selectedPlayer?.name, storeProfiles, cricketStats]);
+}, [records, selectedPlayer?.id, selectedPlayer?.name, storeProfiles]);
 
 const dashboardToShowWithModes = React.useMemo(() => {
   if (!dashboardToShow) return dashboardToShow;
