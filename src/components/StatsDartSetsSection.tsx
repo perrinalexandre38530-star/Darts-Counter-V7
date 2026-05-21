@@ -1505,6 +1505,7 @@ type CompareMetricKey = "avg3" | "first9" | "checkoutPct" | "p100" | "p140" | "p
 type CompareItem = {
   id: string;
   name: string;
+  imageUrl: string | null;
   row: any;
   recent: MiniMatch[];
   color: string;
@@ -1559,6 +1560,7 @@ function buildCompareItems(rows: any[], mySets: DartSet[], recentBySet: Record<s
       return {
         id,
         name: resolveSetName(id, mySets, t),
+        imageUrl: normalizeAssetUrl(resolveSetImage(id, mySets)),
         row,
         recent,
         color: compareColor(index, accent),
@@ -2026,7 +2028,7 @@ function DartSetsComparator(props: {
           </div>
         </div>
 
-        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(74px, 1fr))", gap: 8 }}>
           {items.map((it) => {
             const off = !!hiddenIds?.[it.id];
             return (
@@ -2034,50 +2036,40 @@ function DartSetsComparator(props: {
                 type="button"
                 key={it.id}
                 onClick={() => onToggle(it.id)}
+                title={it.name}
                 style={{
-                  width: "100%",
                   minWidth: 0,
+                  position: "relative",
                   display: "grid",
-                  gridTemplateColumns: "18px 1fr 42px",
-                  alignItems: "center",
-                  gap: 8,
-                  borderRadius: 13,
+                  placeItems: "center",
+                  gap: 4,
+                  borderRadius: 14,
                   border: `1px solid ${off ? "rgba(255,255,255,.10)" : it.color + "88"}`,
-                  background: off ? "rgba(255,255,255,.035)" : `radial-gradient(circle at 0% 0%, ${it.color}16, transparent 68%), rgba(0,0,0,.24)`,
-                  padding: "8px 9px",
+                  background: off ? "rgba(255,255,255,.035)" : `radial-gradient(circle at 50% 0%, ${it.color}18, transparent 70%), rgba(0,0,0,.24)`,
+                  padding: "7px 6px 6px",
                   cursor: "pointer",
-                  opacity: off ? 0.55 : 1,
+                  opacity: off ? 0.48 : 1,
                   boxShadow: off ? "none" : `0 0 14px ${it.color}24`,
                 }}
               >
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: it.color, boxShadow: `0 0 10px ${it.color}` }} />
                 <span
                   style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 950,
-                    textAlign: "left",
-                  }}
-                >
-                  {it.name}
-                </span>
-                <span
-                  style={{
-                    justifySelf: "end",
+                    position: "absolute",
+                    top: 5,
+                    right: 6,
                     borderRadius: 999,
                     border: `1px solid ${off ? "rgba(255,255,255,.14)" : it.color + "88"}`,
                     color: off ? "rgba(255,255,255,.45)" : it.color,
-                    padding: "3px 8px",
-                    fontSize: 11,
+                    padding: "1px 5px",
+                    fontSize: 9,
                     fontWeight: 950,
+                    lineHeight: 1.1,
+                    background: "rgba(0,0,0,.38)",
                   }}
                 >
                   {off ? "👁̶" : "👁"}
                 </span>
+                <DartSetAvatarLabel item={it} size={42} nameMaxWidth={70} />
               </button>
             );
           })}
@@ -2102,16 +2094,18 @@ function DartSetsComparator(props: {
           <InsightRow
             color={bestAvg?.color || accent}
             icon="🏆"
+            item={bestAvg}
             title="Meilleur set actuel"
-            value={bestAvg?.name || "—"}
+            value={bestAvg ? fmtCompareValue("avg3", bestAvg.values.avg3) : "—"}
             subtitle={bestCheckout && bestCheckout.id === bestAvg?.id ? "Meilleure moyenne / meilleur checkout" : "Meilleure moyenne AVG/3D"}
           />
           <InsightRow
             color={regular?.it?.color || "#FF4FD8"}
             icon="✦"
+            item={regular?.it || null}
             title="Set le plus régulier"
-            value={regular?.it?.name || "—"}
-            subtitle={regular ? `Écart-type AVG/3D ${fmt1(regular.score)}` : "Pas assez de matchs pour mesurer la régularité"}
+            value={regular ? `σ ${fmt1(regular.score)}` : "—"}
+            subtitle={regular ? "Écart-type AVG/3D le plus faible" : "Pas assez de matchs pour mesurer la régularité"}
           />
         </div>
         <div style={{ marginTop: 9, fontSize: 10.8, lineHeight: 1.35, color: "rgba(255,255,255,.52)", fontWeight: 800 }}>
@@ -2129,15 +2123,15 @@ function CompareSummaryStrip(props: { items: CompareItem[]; accent: string }) {
   const lowestBust = bestItemFor(items, "bustPerMatch");
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-      <MiniCompareKpi accent={best?.color || accent} label="Meilleure AVG" value={best ? fmtCompareValue("avg3", best.values.avg3) : "—"} sub={best?.name || "—"} />
-      <MiniCompareKpi accent={bestCo?.color || "#24F0D2"} label="Meilleur CO" value={bestCo ? fmtCompareValue("checkoutPct", bestCo.values.checkoutPct) : "—"} sub={bestCo?.name || "—"} />
-      <MiniCompareKpi accent={lowestBust?.color || "#7FE2A9"} label="Moins de bust" value={lowestBust ? fmtCompareValue("bustPerMatch", lowestBust.values.bustPerMatch) : "—"} sub={lowestBust?.name || "—"} />
+      <MiniCompareKpi accent={best?.color || accent} label="Meilleure AVG" value={best ? fmtCompareValue("avg3", best.values.avg3) : "—"} item={best} />
+      <MiniCompareKpi accent={bestCo?.color || "#24F0D2"} label="Meilleur CO" value={bestCo ? fmtCompareValue("checkoutPct", bestCo.values.checkoutPct) : "—"} item={bestCo} />
+      <MiniCompareKpi accent={lowestBust?.color || "#7FE2A9"} label="Moins de bust" value={lowestBust ? fmtCompareValue("bustPerMatch", lowestBust.values.bustPerMatch) : "—"} item={lowestBust} />
     </div>
   );
 }
 
-function MiniCompareKpi(props: { accent: string; label: string; value: string; sub: string }) {
-  const { accent, label, value, sub } = props;
+function MiniCompareKpi(props: { accent: string; label: string; value: string; item?: CompareItem | null }) {
+  const { accent, label, value, item } = props;
   return (
     <div
       style={{
@@ -2145,14 +2139,17 @@ function MiniCompareKpi(props: { accent: string; label: string; value: string; s
         borderRadius: 14,
         border: `1px solid ${accent}55`,
         background: `radial-gradient(circle at 50% 0%, ${accent}18, transparent 68%), rgba(0,0,0,.28)`,
-        padding: "8px 7px",
+        padding: "7px 6px",
         textAlign: "center",
         boxShadow: `0 0 14px ${accent}22`,
       }}
     >
-      <div style={{ color: "rgba(255,255,255,.70)", fontSize: 9.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.25 }}>{label}</div>
-      <div style={{ marginTop: 3, color: accent, fontSize: 14.5, fontWeight: 950, textShadow: `0 0 12px ${accent}80` }}>{value}</div>
-      <div style={{ marginTop: 2, color: "rgba(255,255,255,.62)", fontSize: 10.3, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+      <div style={{ color: "rgba(255,255,255,.70)", fontSize: 9.2, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.25 }}>{label}</div>
+      <div style={{ marginTop: 5, display: "grid", placeItems: "center" }}>
+        {item ? <DartSetMiniAvatar item={item} size={32} /> : <span style={{ color: accent, fontSize: 18, fontWeight: 950 }}>—</span>}
+      </div>
+      <div style={{ marginTop: 4, color: accent, fontSize: 13.5, fontWeight: 950, textShadow: `0 0 12px ${accent}80` }}>{value}</div>
+      {item ? <div style={{ marginTop: 2, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div> : null}
     </div>
   );
 }
@@ -2165,7 +2162,7 @@ function CompareRadarCard(props: { items: CompareItem[]; accent: string }) {
       <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 8 }}>
         <RadarCompareSvg items={items} />
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "6px 10px" }}>
-          {items.map((it) => <CompareLegend key={it.id} color={it.color} label={it.name} />)}
+          {items.map((it) => <CompareAvatarLegend key={it.id} item={it} />)}
         </div>
       </div>
     </div>
@@ -2303,7 +2300,7 @@ function LineCompareSvg(props: { items: CompareItem[]; metric: CompareMetricKey 
         })}
       </svg>
       <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "6px 10px", marginTop: 4 }}>
-        {items.map((it) => <CompareLegend key={it.id} color={it.color} label={it.name} />)}
+        {items.map((it) => <CompareAvatarLegend key={it.id} item={it} />)}
       </div>
     </div>
   );
@@ -2315,18 +2312,20 @@ function CompareStatsTable(props: { items: CompareItem[]; accent: string }) {
     { key: "matches", label: "Matchs joués" },
     ...COMPARE_METRICS,
   ] as any[];
-  const minW = Math.max(360, 132 + items.length * 92);
+  const labelCol = 112;
+  const itemCol = 58;
+  const minW = Math.max(300, labelCol + items.length * itemCol);
   return (
     <div style={compareCardStyle(accent)}>
       <BlockTitle title="Moyennes détaillées" />
       <div style={{ marginTop: 8, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
         <div style={{ minWidth: minW }}>
-          <div style={{ display: "grid", gridTemplateColumns: `132px repeat(${items.length}, minmax(82px, 1fr))`, borderBottom: "1px solid rgba(255,255,255,.10)", paddingBottom: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `${labelCol}px repeat(${items.length}, minmax(${itemCol}px, 1fr))`, borderBottom: "1px solid rgba(255,255,255,.10)", paddingBottom: 6, alignItems: "end" }}>
             <div />
             {items.map((it) => (
-              <div key={it.id} style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, color: "rgba(255,255,255,.78)", fontSize: 10.8, fontWeight: 950 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 999, background: it.color, boxShadow: `0 0 8px ${it.color}`, flex: "0 0 auto" }} />
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
+              <div key={it.id} title={it.name} style={{ minWidth: 0, display: "grid", placeItems: "center", gap: 2 }}>
+                <DartSetMiniAvatar item={it} size={34} />
+                <div style={{ maxWidth: itemCol - 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 850, lineHeight: 1.05 }}>{it.name}</div>
               </div>
             ))}
           </div>
@@ -2341,13 +2340,13 @@ function CompareStatsTable(props: { items: CompareItem[]; accent: string }) {
               ? Math.min(...(nonZeroValues.length ? nonZeroValues : finiteValues.length ? finiteValues : [0]))
               : Math.max(...finiteValues.concat([0]));
             return (
-              <div key={r.key} style={{ display: "grid", gridTemplateColumns: `132px repeat(${items.length}, minmax(82px, 1fr))`, borderBottom: "1px solid rgba(255,255,255,.065)", minHeight: 29, alignItems: "center" }}>
-                <div style={{ color: "rgba(255,255,255,.72)", fontSize: 11.2, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
+              <div key={r.key} style={{ display: "grid", gridTemplateColumns: `${labelCol}px repeat(${items.length}, minmax(${itemCol}px, 1fr))`, borderBottom: "1px solid rgba(255,255,255,.065)", minHeight: 28, alignItems: "center" }}>
+                <div style={{ color: "rgba(255,255,255,.72)", fontSize: 10.7, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
                 {items.map((it, i) => {
                   const val = values[i];
                   const isBest = Number.isFinite(val) && Math.abs(val - bestVal) < 0.0001;
                   return (
-                    <div key={it.id} style={{ textAlign: "center", color: isBest ? it.color : "rgba(255,255,255,.76)", fontSize: 12, fontWeight: isBest ? 950 : 850, textShadow: isBest ? `0 0 10px ${it.color}80` : "none" }}>
+                    <div key={it.id} style={{ textAlign: "center", color: isBest ? it.color : "rgba(255,255,255,.76)", fontSize: 11.4, fontWeight: isBest ? 950 : 850, textShadow: isBest ? `0 0 10px ${it.color}80` : "none" }}>
                       {fmtCompareValue(metricKey as any, val)}
                     </div>
                   );
@@ -2361,13 +2360,13 @@ function CompareStatsTable(props: { items: CompareItem[]; accent: string }) {
   );
 }
 
-function InsightRow(props: { color: string; icon: string; title: string; value: string; subtitle: string }) {
-  const { color, icon, title, value, subtitle } = props;
+function InsightRow(props: { color: string; icon: string; item?: CompareItem | null; title: string; value: string; subtitle: string }) {
+  const { color, icon, item, title, value, subtitle } = props;
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "52px 1fr 18px",
+        gridTemplateColumns: "62px 1fr 18px",
         alignItems: "center",
         gap: 10,
         borderRadius: 16,
@@ -2376,14 +2375,67 @@ function InsightRow(props: { color: string; icon: string; title: string; value: 
         padding: 10,
       }}
     >
-      <div style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${color}88`, display: "grid", placeItems: "center", color, fontSize: 23, boxShadow: `0 0 18px ${color}32` }}>{icon}</div>
+      <div style={{ minWidth: 0, display: "grid", placeItems: "center", gap: 2 }}>
+        {item ? <DartSetMiniAvatar item={item} size={46} /> : <div style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${color}88`, display: "grid", placeItems: "center", color, fontSize: 23, boxShadow: `0 0 18px ${color}32` }}>{icon}</div>}
+        <div style={{ maxWidth: 60, color: "rgba(255,255,255,.58)", fontSize: 8.2, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item?.name || "—"}</div>
+      </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ color: "rgba(255,255,255,.66)", fontSize: 11, fontWeight: 850 }}>{title}</div>
-        <div style={{ marginTop: 2, color, fontSize: 17, fontWeight: 950, lineHeight: 1.1, textShadow: `0 0 12px ${color}88`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+        <div style={{ marginTop: 2, color, fontSize: 16.5, fontWeight: 950, lineHeight: 1.1, textShadow: `0 0 12px ${color}88`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
         <div style={{ marginTop: 3, color: "rgba(255,255,255,.72)", fontSize: 10.6, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
       </div>
       <div style={{ color: "rgba(255,255,255,.55)", fontSize: 22, fontWeight: 700 }}>›</div>
     </div>
+  );
+}
+
+function DartSetMiniAvatar(props: { item: CompareItem; size?: number }) {
+  const { item, size = 34 } = props;
+  return (
+    <span
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 14,
+        border: `1px solid ${item.color}88`,
+        background: `radial-gradient(circle at 50% 0%, ${item.color}22, transparent 70%), rgba(0,0,0,.35)`,
+        boxShadow: `0 0 14px ${item.color}30`,
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+        position: "relative",
+        flex: "0 0 auto",
+      }}
+    >
+      {item.imageUrl ? (
+        <img src={item.imageUrl} alt={item.name} style={{ width: "86%", height: "86%", objectFit: "contain", filter: `drop-shadow(0 0 6px ${item.color}55)` }} />
+      ) : (
+        <span style={{ color: item.color, fontSize: Math.max(14, size * 0.42), fontWeight: 950, lineHeight: 1 }}>✦</span>
+      )}
+      <span style={{ position: "absolute", left: 4, bottom: 4, width: 6, height: 6, borderRadius: 999, background: item.color, boxShadow: `0 0 8px ${item.color}` }} />
+    </span>
+  );
+}
+
+function DartSetAvatarLabel(props: { item: CompareItem; size?: number; nameMaxWidth?: number }) {
+  const { item, size = 38, nameMaxWidth = 78 } = props;
+  return (
+    <span style={{ minWidth: 0, display: "grid", placeItems: "center", gap: 3 }}>
+      <DartSetMiniAvatar item={item} size={size} />
+      <span style={{ maxWidth: nameMaxWidth, color: "rgba(255,255,255,.70)", fontSize: 8.6, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.05 }}>
+        {item.name}
+      </span>
+    </span>
+  );
+}
+
+function CompareAvatarLegend(props: { item: CompareItem }) {
+  const { item } = props;
+  return (
+    <span title={item.name} style={{ display: "inline-grid", placeItems: "center", gap: 2, minWidth: 44, color: "rgba(255,255,255,.72)" }}>
+      <DartSetMiniAvatar item={item} size={28} />
+      <span style={{ maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 8.2, fontWeight: 850, lineHeight: 1.05 }}>{item.name}</span>
+    </span>
   );
 }
 
