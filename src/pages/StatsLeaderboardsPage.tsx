@@ -58,16 +58,83 @@ type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "TOUT";
 
 type MetricKey =
   | "wins"
+  | "losses"
   | "winRate"
   | "matches"
+  | "legsWin"
+  | "setsWin"
+  | "legWinRate"
+  | "setWinRate"
   | "avg3"
+  | "avg1"
+  | "bestAvg3"
   | "bestVisit"
   | "bestCheckout"
-  // ✅ NEW (killer option A)
+  | "checkouts"
+  | "checkoutHits"
+  | "checkoutRate"
+  | "dartsCo"
+  | "darts"
+  | "scoreTotal"
+  | "hits"
+  | "missPct"
+  | "simplePct"
+  | "doublePct"
+  | "triplePct"
+  | "bullPct"
+  | "dbullPct"
+  | "bullTotal"
+  | "first9Avg"
+  | "bestFirst9"
+  | "top9Score"
+  | "first9_100"
+  | "first9_120"
+  | "first9_140"
+  | "v50"
+  | "v60"
+  | "v80"
+  | "v100"
+  | "v120"
+  | "v140"
+  | "v180"
+  | "tons"
+  | "busts"
+  | "favNumber"
+  // ✅ Cricket / jeux par marques
+  | "points"
+  | "pointsPerMatch"
+  | "marks"
+  | "marksPerMatch"
+  | "mpr"
+  | "hitRate"
+  | "bullHits"
+  | "closedSegments"
+  | "damage"
+  | "singleHits"
+  | "doubleHits"
+  | "tripleHits"
+  | "singlePct"
+  | "doubleHitPct"
+  | "tripleHitPct"
+  | "maxVisit"
+  // ✅ Killer
   | "kills"
+  | "killsPerMatch"
+  | "damagePerMatch"
+  | "autoHits"
+  | "autoKills"
+  | "resurrections"
+  | "avgSurvival"
   | "favNumberHits"
   | "favSegmentHits"
   | "totalHits"
+  // ✅ Golf
+  | "scorePerHole"
+  | "holes"
+  | "birdiePct"
+  | "eaglePct"
+  | "bogeyPct"
+  | "tripleBogeyPct"
   // ✅ NEW (territories)
   | "captures"
   | "avgDom"
@@ -91,8 +158,70 @@ type Row = {
   capPerRound: number;
 
   avg3: number;
+  avg1?: number;
+  bestAvg3?: number;
   bestVisit: number;
   bestCheckout: number;
+  legsWin?: number;
+  setsWin?: number;
+  legWinRate?: number;
+  setWinRate?: number;
+  checkouts?: number;
+  checkoutHits?: number;
+  checkoutRate?: number;
+  dartsCo?: number;
+  darts?: number;
+  scoreTotal?: number;
+  hits?: number;
+  missPct?: number;
+  simplePct?: number;
+  doublePct?: number;
+  triplePct?: number;
+  bullPct?: number;
+  dbullPct?: number;
+  bullTotal?: number;
+  bestFirst9?: number;
+  first9Avg?: number;
+  top9Score?: number;
+  first9_100?: number;
+  first9_120?: number;
+  first9_140?: number;
+  v50?: number;
+  v60?: number;
+  v80?: number;
+  v100?: number;
+  v120?: number;
+  v140?: number;
+  v180?: number;
+  tons?: number;
+  busts?: number;
+  points?: number;
+  pointsPerMatch?: number;
+  marks?: number;
+  marksPerMatch?: number;
+  mpr?: number;
+  hitRate?: number;
+  bullHits?: number;
+  closedSegments?: number;
+  damage?: number;
+  singleHits?: number;
+  doubleHits?: number;
+  tripleHits?: number;
+  singlePct?: number;
+  doubleHitPct?: number;
+  tripleHitPct?: number;
+  killsPerMatch?: number;
+  damagePerMatch?: number;
+  autoHits?: number;
+  autoKills?: number;
+  resurrections?: number;
+  avgSurvival?: number;
+  scorePerHole?: number;
+  holes?: number;
+  birdiePct?: number;
+  eaglePct?: number;
+  bogeyPct?: number;
+  tripleBogeyPct?: number;
 
   // ✅ NEW
   kills: number;
@@ -119,24 +248,47 @@ const MODE_DEFS: {
   {
     id: "x01_multi",
     label: "X01 MULTI",
-    metrics: ["avg3", "wins", "winRate", "matches", "bestVisit", "bestCheckout"],
+    metrics: [
+      "avg3", "avg1", "bestAvg3", "bestVisit", "bestCheckout", "bestFirst9",
+      "wins", "winRate", "matches", "legsWin", "setsWin", "legWinRate", "setWinRate",
+      "checkouts", "checkoutHits", "checkoutRate", "dartsCo",
+      "darts", "scoreTotal", "hits", "missPct", "simplePct", "doublePct", "triplePct", "bullTotal", "bullPct", "dbullPct",
+      "v60", "v100", "v140", "v180", "tons", "busts", "favNumber"
+    ],
   },
-  { id: "cricket", label: "CRICKET", metrics: ["winRate", "wins", "matches"] },
+  {
+    id: "cricket",
+    label: "CRICKET",
+    metrics: [
+      "winRate", "wins", "matches", "points", "pointsPerMatch", "marks", "marksPerMatch",
+      "mpr", "hitRate", "bullHits", "closedSegments", "damage", "bestVisit", "singleHits", "doubleHits", "tripleHits", "favNumber"
+    ],
+  },
   {
     id: "killer",
     label: "KILLER",
     metrics: [
-      "kills",
-      "wins",
-      "winRate",
-      "matches",
-      "favSegmentHits",
-      "favNumberHits",
-      "totalHits",
+      "kills", "killsPerMatch", "damage", "damagePerMatch", "autoHits", "autoKills", "resurrections",
+      "avgSurvival", "wins", "winRate", "matches", "favSegmentHits", "favNumberHits", "totalHits"
     ],
   },
-  { id: "shanghai", label: "SHANGHAI", metrics: ["wins", "winRate", "matches"] },
-  { id: "golf", label: "GOLF", metrics: ["wins", "winRate", "matches", "bestVisit"] },
+  {
+    id: "shanghai",
+    label: "SHANGHAI",
+    metrics: [
+      "points", "pointsPerMatch", "bestVisit", "hitRate", "singleHits", "doubleHits", "tripleHits",
+      "darts", "wins", "winRate", "matches", "favNumber"
+    ],
+  },
+  {
+    id: "golf",
+    label: "GOLF",
+    metrics: [
+      "wins", "winRate", "matches", "scoreTotal", "scorePerHole", "holes", "bestVisit",
+      "missPct", "singlePct", "doubleHitPct", "tripleHitPct", "bullPct", "dbullPct",
+      "birdiePct", "eaglePct", "bogeyPct", "tripleBogeyPct"
+    ],
+  },
   { id: "batard", label: "BÂTARD", metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"] },
   { id: "battle_royale", label: "BATTLE ROYALE", metrics: ["wins", "winRate", "matches"] },
   { id: "five_lives", label: "FIVE LIVES", metrics: ["wins", "winRate", "matches"] },
@@ -472,6 +624,29 @@ function computeX01LeaderboardRowsFromDashboardAgg(
     const avg3 = matches > 0 ? (Number(agg?.sumAvg3D || 0) / matches) : 0;
     const winRate = matches > 0 ? (wins / matches) * 100 : 0;
 
+    const singleHits = Number(agg?.hitsSingle || 0) || 0;
+    const doubleHits = Number(agg?.hitsDouble || 0) || 0;
+    const tripleHits = Number(agg?.hitsTriple || 0) || 0;
+    const bullHits = Number(agg?.hitsBull || 0) || 0;
+    const dbullHits = Number(agg?.hitsDBull || 0) || 0;
+    const miss = Number(agg?.miss || 0) || 0;
+    const darts = Number(agg?.darts || 0) || 0;
+    const hits = singleHits + doubleHits + tripleHits + bullHits + dbullHits;
+    const attempts = hits + miss;
+    const scoreTotal = Math.round((avg3 / 3) * darts);
+    const bestFirst9 = Number(agg?.best9Score || agg?.bestFirst9 || 0) || 0;
+    const visitBuckets = agg?.visitBuckets || {};
+    const byNumber = Array.isArray(agg?.byNumber) ? agg.byNumber : [];
+    let favNumber = 0;
+    let favNumberHits = 0;
+    byNumber.forEach((cnt: any, idx: number) => {
+      const n = Number(cnt || 0);
+      if (idx >= 1 && idx <= 20 && n > favNumberHits) {
+        favNumber = idx;
+        favNumberHits = n;
+      }
+    });
+
     rows.push({
       id: c.id,
       name: c.name || "—",
@@ -488,20 +663,54 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       capPerRound: 0,
 
       avg3,
+      avg1: avg3 / 3,
+      bestAvg3: Number(agg?.bestAvg3D || agg?.bestAvg3 || 0) || 0,
       bestVisit: Number(agg?.bestVisit || 0) || 0,
       bestCheckout: Number(agg?.bestCheckout || 0) || 0,
+      legsWin: Number(agg?.legsWin || 0) || 0,
+      setsWin: Number(agg?.setsWin || 0) || 0,
+      legWinRate: matches > 0 ? ((Number(agg?.legsWin || 0) || 0) / matches) * 100 : 0,
+      setWinRate: matches > 0 ? ((Number(agg?.setsWin || 0) || 0) / matches) * 100 : 0,
+      darts,
+      scoreTotal,
+      hits,
+      singleHits,
+      doubleHits,
+      tripleHits,
+      bullHits,
+      bullTotal: bullHits + dbullHits,
+      missPct: attempts > 0 ? (miss / attempts) * 100 : 0,
+      simplePct: attempts > 0 ? (singleHits / attempts) * 100 : 0,
+      doublePct: attempts > 0 ? (doubleHits / attempts) * 100 : 0,
+      triplePct: attempts > 0 ? (tripleHits / attempts) * 100 : 0,
+      bullPct: attempts > 0 ? (bullHits / attempts) * 100 : 0,
+      dbullPct: attempts > 0 ? (dbullHits / attempts) * 100 : 0,
+      checkouts: Number(agg?.co || agg?.checkouts || 0) || 0,
+      checkoutHits: Number(agg?.coHits || agg?.checkoutHits || 0) || 0,
+      checkoutRate: Number(agg?.checkoutRate || agg?.coRate || 0) || 0,
+      dartsCo: Number(agg?.dartsCo || agg?.checkoutDarts || 0) || 0,
+      bestFirst9,
+      first9Avg: Number(agg?.avgFirst9 || agg?.first9Avg || 0) || 0,
+      top9Score: bestFirst9,
+      first9_100: Number(agg?.first9_100 || 0) || 0,
+      first9_120: Number(agg?.first9_120 || 0) || 0,
+      first9_140: Number(agg?.first9_140 || 0) || 0,
+      v50: Number(visitBuckets["50+"] || 0) || 0,
+      v60: Number(visitBuckets["60+"] || 0) || 0,
+      v80: Number(visitBuckets["80+"] || 0) || 0,
+      v100: Number(visitBuckets["100+"] || 0) || 0,
+      v120: Number(visitBuckets["120+"] || 0) || 0,
+      v140: Number(visitBuckets["140+"] || 0) || 0,
+      v180: Number(visitBuckets["180"] || visitBuckets["180+"] || 0) || 0,
+      tons: Number(visitBuckets["100+"] || 0) || 0,
+      busts: Number(agg?.bust || 0) || 0,
 
       kills: 0,
-      favNumber: 0,
-      favNumberHits: 0,
-      favSegment: "",
-      favSegmentHits: 0,
-      totalHits:
-        (Number(agg?.hitsSingle || 0) || 0) +
-        (Number(agg?.hitsDouble || 0) || 0) +
-        (Number(agg?.hitsTriple || 0) || 0) +
-        (Number(agg?.hitsBull || 0) || 0) +
-        (Number(agg?.hitsDBull || 0) || 0),
+      favNumber,
+      favNumberHits,
+      favSegment: favNumber ? String(favNumber) : "",
+      favSegmentHits: favNumberHits,
+      totalHits: hits,
 
       batardPoints: 0,
       batardDarts: 0,
@@ -797,6 +1006,64 @@ function computeFavsFromHitsMap(hitsBySegment: any) {
   return { favSegment, favSegmentHits, favNumber, favNumberHits, totalHits };
 }
 
+
+function pct(n: number, d: number): number {
+  return d > 0 ? (n / d) * 100 : 0;
+}
+
+function addNumToAgg(agg: any, key: string, ...vals: any[]) {
+  const v = numOr0(...vals);
+  if (v) agg[key] = (Number(agg[key] || 0) || 0) + v;
+}
+
+function maxNumToAgg(agg: any, key: string, ...vals: any[]) {
+  const v = numOr0(...vals);
+  if (v) agg[key] = Math.max(Number(agg[key] || 0) || 0, v);
+}
+
+function enrichGenericAggFromDetail(agg: any, det: any, mode?: string) {
+  if (!det) return;
+
+  addNumToAgg(agg, "points", det.points, det.score, det.totalPoints, det.totalScore, det.pts);
+  addNumToAgg(agg, "marks", det.totalMarks, det.marks, det.mark, det.total_marks);
+  addNumToAgg(agg, "bullHits", det.bullHits, det.bulls, det.bull, det.bullTouches);
+  addNumToAgg(agg, "closedSegments", det.closedSegments, det.segmentsClosed, det.closed, det.segments_fermes);
+  addNumToAgg(agg, "damage", det.damage, det.damages, det.dmg);
+  addNumToAgg(agg, "autoHits", det.autoHits, det.autoHit, det.auto_hits);
+  addNumToAgg(agg, "autoKills", det.autoKills, det.autoKill, det.auto_kills);
+  addNumToAgg(agg, "resurrections", det.resurrections, det.resurrection, det.revives);
+  addNumToAgg(agg, "survival", det.survival, det.survivalTurns, det.turnsAlive, det.avgSurvival);
+  addNumToAgg(agg, "darts", det.darts, det.dartsThrown, det.totalDarts);
+  addNumToAgg(agg, "holes", det.holes, det.holesPlayed, det.trousJoues);
+  addNumToAgg(agg, "birdies", det.birdies, det.birdie);
+  addNumToAgg(agg, "eagles", det.eagles, det.eagle);
+  addNumToAgg(agg, "bogeys", det.bogeys, det.bogey);
+  addNumToAgg(agg, "tripleBogeys", det.tripleBogeys, det.tripleBogey);
+  addNumToAgg(agg, "miss", det.miss, det.misses, det.missed);
+  addNumToAgg(agg, "singleHits", det.singleHits, det.singles, det.S, det.s);
+  addNumToAgg(agg, "doubleHits", det.doubleHits, det.doubles, det.D, det.d);
+  addNumToAgg(agg, "tripleHits", det.tripleHits, det.triples, det.T, det.t);
+  addNumToAgg(agg, "dbullHits", det.dbullHits, det.dBull, det.dbull, det.doubleBull);
+  maxNumToAgg(agg, "maxVisit", det.maxVisit, det.bestVisit, det.best, det.bestScore);
+
+  const hitRate = numOr0(det.hitRate, det.hit_rate, det.hitPct, det.hitPercent);
+  if (hitRate) { agg.hitRateSum = (agg.hitRateSum || 0) + hitRate; agg.hitRateCount = (agg.hitRateCount || 0) + 1; }
+
+  const mpr = numOr0(det.mpr, det.marksPerRound, det.marks_per_round);
+  if (mpr) { agg.mprSum = (agg.mprSum || 0) + mpr; agg.mprCount = (agg.mprCount || 0) + 1; }
+
+  const hbs = det.hitsBySegment || det.hits_by_segment || det.bySegment || det.bysegment || null;
+  if (hbs && typeof hbs === "object") {
+    for (const [seg, c0] of Object.entries(hbs)) {
+      const c = numOr0(c0);
+      if (c <= 0) continue;
+      const s = safeStr(seg).toUpperCase();
+      agg.hitsBySegmentAgg[s] = (agg.hitsBySegmentAgg[s] || 0) + c;
+      agg.totalHits += c;
+    }
+  }
+}
+
 type Agg = {
   wins: number;
   matches: number;
@@ -1064,6 +1331,8 @@ function computeRowsFromHistory(
         if (vhCandidate) agg.batardValidHits += vhCandidate;
         if (advCandidate) agg.batardAdvances += advCandidate;
 
+        enrichGenericAggFromDetail(agg, det, mode);
+
         if (mode === "killer") {
           // kills: prefer summary.players
           if (summaryPlayersArr.length) {
@@ -1165,6 +1434,8 @@ function computeRowsFromHistory(
       agg.batardValidHits += numOr0(pl.validHits);
       agg.batardAdvances += numOr0(pl.advances);
 
+      enrichGenericAggFromDetail(agg, pl, mode);
+
       if (mode === "killer") {
         const k = numOr0(pl.kills, pl.killCount, pl.k);
         if (k > 0) agg.kills += k;
@@ -1214,11 +1485,46 @@ function computeRowsFromHistory(
       bestCheckout: agg.bestCheckout || 0,
 
       kills: agg.kills || 0,
+      killsPerMatch: matches > 0 ? (agg.kills || 0) / matches : 0,
       favNumber: fav.favNumber || 0,
       favNumberHits: fav.favNumberHits || 0,
       favSegment: fav.favSegment || "",
       favSegmentHits: fav.favSegmentHits || 0,
       totalHits: fav.totalHits || agg.totalHits || 0,
+
+      points: agg.points || agg.batardPoints || 0,
+      pointsPerMatch: matches > 0 ? (agg.points || agg.batardPoints || 0) / matches : 0,
+      marks: agg.marks || 0,
+      marksPerMatch: matches > 0 ? (agg.marks || 0) / matches : 0,
+      mpr: agg.mprCount > 0 ? agg.mprSum / agg.mprCount : (agg.darts > 0 ? ((agg.marks || 0) / agg.darts) * 3 : 0),
+      hitRate: agg.hitRateCount > 0 ? agg.hitRateSum / agg.hitRateCount : pct((agg.totalHits || 0), (agg.totalHits || 0) + (agg.miss || 0)),
+      bullHits: agg.bullHits || 0,
+      closedSegments: agg.closedSegments || 0,
+      damage: agg.damage || 0,
+      damagePerMatch: matches > 0 ? (agg.damage || 0) / matches : 0,
+      autoHits: agg.autoHits || 0,
+      autoKills: agg.autoKills || 0,
+      resurrections: agg.resurrections || 0,
+      avgSurvival: matches > 0 ? (agg.survival || 0) / matches : 0,
+      darts: agg.darts || agg.batardDarts || 0,
+      scoreTotal: agg.points || agg.batardPoints || 0,
+      hits: agg.totalHits || 0,
+      singleHits: agg.singleHits || 0,
+      doubleHits: agg.doubleHits || 0,
+      tripleHits: agg.tripleHits || 0,
+      bullTotal: (agg.bullHits || 0) + (agg.dbullHits || 0),
+      missPct: pct((agg.miss || 0), (agg.totalHits || 0) + (agg.miss || 0)),
+      singlePct: pct((agg.singleHits || 0), (agg.singleHits || 0) + (agg.doubleHits || 0) + (agg.tripleHits || 0) + (agg.miss || 0)),
+      doubleHitPct: pct((agg.doubleHits || 0), (agg.singleHits || 0) + (agg.doubleHits || 0) + (agg.tripleHits || 0) + (agg.miss || 0)),
+      tripleHitPct: pct((agg.tripleHits || 0), (agg.singleHits || 0) + (agg.doubleHits || 0) + (agg.tripleHits || 0) + (agg.miss || 0)),
+      bullPct: pct((agg.bullHits || 0), (agg.totalHits || 0) + (agg.miss || 0)),
+      dbullPct: pct((agg.dbullHits || 0), (agg.totalHits || 0) + (agg.miss || 0)),
+      holes: agg.holes || 0,
+      scorePerHole: (agg.holes || 0) > 0 ? (agg.points || 0) / agg.holes : 0,
+      birdiePct: pct((agg.birdies || 0), (agg.holes || 0)),
+      eaglePct: pct((agg.eagles || 0), (agg.holes || 0)),
+      bogeyPct: pct((agg.bogeys || 0), (agg.holes || 0)),
+      tripleBogeyPct: pct((agg.tripleBogeys || 0), (agg.holes || 0)),
     };
   });
 
@@ -1334,16 +1640,135 @@ function metricLabel(m: MetricKey, sport?: string) {
   switch (m) {
     case "wins":
       return "Victoires";
+    case "losses":
+      return "Défaites";
     case "winRate":
       return "% Win";
     case "matches":
       return "Matchs joués";
+    case "legsWin":
+      return "Legs gagnés";
+    case "setsWin":
+      return "Sets gagnés";
+    case "legWinRate":
+      return "% Legs";
+    case "setWinRate":
+      return "% Sets";
     case "avg3":
       return sport === "molkky" || sport === "dicegame" || sport === "babyfoot" || sport === "pingpong" ? "Moy. score" : "Moy. 3 darts";
+    case "avg1":
+      return "Moy. 1 dart";
+    case "bestAvg3":
+      return "Best moy. 3D";
     case "bestVisit":
       return sport === "molkky" || sport === "babyfoot" || sport === "pingpong" ? "Meilleur score" : "Best visit";
     case "bestCheckout":
       return sport === "molkky" || sport === "babyfoot" || sport === "pingpong" ? "Meilleur score" : "Best CO";
+    case "bestFirst9":
+      return "Best First9";
+    case "first9Avg":
+      return "Avg First9";
+    case "top9Score":
+      return "Top 9 darts";
+    case "checkouts":
+      return "CO";
+    case "checkoutHits":
+      return "CO réussis";
+    case "checkoutRate":
+      return "CO %";
+    case "dartsCo":
+      return "Darts CO";
+    case "darts":
+      return "Darts";
+    case "scoreTotal":
+      return "Score total";
+    case "hits":
+      return "Hits";
+    case "missPct":
+      return "% Miss";
+    case "simplePct":
+    case "singlePct":
+      return "% Simple";
+    case "doublePct":
+    case "doubleHitPct":
+      return "% Double";
+    case "triplePct":
+    case "tripleHitPct":
+      return "% Triple";
+    case "bullPct":
+      return "% Bull";
+    case "dbullPct":
+      return "% DBull";
+    case "bullTotal":
+      return "Bull + DBull";
+    case "v50":
+      return "50+";
+    case "v60":
+      return "60+";
+    case "v80":
+      return "80+";
+    case "v100":
+      return "100+";
+    case "v120":
+      return "120+";
+    case "v140":
+      return "140+";
+    case "v180":
+      return "180";
+    case "tons":
+      return "Tons 100+";
+    case "busts":
+      return "Busts";
+    case "favNumber":
+      return "Numéro favori";
+    case "points":
+      return "Points";
+    case "pointsPerMatch":
+      return "Pts / match";
+    case "marks":
+      return "Total Marks";
+    case "marksPerMatch":
+      return "Marks / match";
+    case "mpr":
+      return "MPR";
+    case "hitRate":
+      return "Hit rate";
+    case "bullHits":
+      return "Bull touchés";
+    case "closedSegments":
+      return "Segments fermés";
+    case "damage":
+      return "Damage";
+    case "singleHits":
+      return "Simple";
+    case "doubleHits":
+      return "Double";
+    case "tripleHits":
+      return "Triple";
+    case "killsPerMatch":
+      return "Kills / match";
+    case "damagePerMatch":
+      return "Damage / match";
+    case "autoHits":
+      return "Auto hits";
+    case "autoKills":
+      return "Auto kills";
+    case "resurrections":
+      return "Résurrections";
+    case "avgSurvival":
+      return "Survie moy.";
+    case "scorePerHole":
+      return "Score / trou";
+    case "holes":
+      return "Trous joués";
+    case "birdiePct":
+      return "% Birdie";
+    case "eaglePct":
+      return "% Eagle";
+    case "bogeyPct":
+      return "% Bogey";
+    case "tripleBogeyPct":
+      return "% Triple bogey";
     case "kills":
       return "Kills";
     case "favNumberHits":
@@ -1625,46 +2050,10 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
     const botsMap = loadBotsMap();
 
     const valueAny = (r: any): number => {
-      switch (metric) {
-        case "wins":
-          return numOr0(r?.wins);
-        case "winRate":
-          return numOr0(r?.winRate);
-        case "matches":
-          return numOr0(r?.matches, r?.played);
-        case "avg3":
-          return numOr0(r?.avg3);
-        case "bestVisit":
-          return numOr0(r?.bestVisit);
-        case "bestCheckout":
-          return numOr0(r?.bestCheckout);
-        case "kills":
-          return numOr0(r?.kills);
-        case "favSegmentHits":
-          return numOr0(r?.favSegmentHits);
-        case "favNumberHits":
-          return numOr0(r?.favNumberHits);
-        case "totalHits":
-          return numOr0(r?.totalHits);
-        case "captures":
-          return numOr0(r?.captures);
-        case "avgDom":
-          return numOr0(r?.avgDom);
-        case "avgRounds":
-          return numOr0(r?.avgRounds);
-        case "capPerRound":
-          return numOr0(r?.capPerRound);
-        case "failsPerMatch":
-          return numOr0(r?.failsPerMatch);
-        case "validHitsPerDart":
-          return numOr0(r?.validHitsPerDart);
-        case "advances":
-          return numOr0(r?.advances);
-        case "ptsPerTurn":
-          return numOr0(r?.ptsPerTurn);
-        default:
-          return 0;
-      }
+      if (metric === "matches") return numOr0(r?.matches, r?.played);
+      if (metric === "favNumberHits") return numOr0(r?.favNumberHits);
+      if (metric === "favSegmentHits") return numOr0(r?.favSegmentHits);
+      return numOr0(r?.[metric]);
     };
 
     const sortRows = (list: any[]) => [...(list || [])].sort((a, b) => valueAny(b) - valueAny(a));
@@ -2112,9 +2501,24 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
 
               const rMatches = numOr0(row.matches, row.played);
 
+              const pctMetrics = new Set([
+                "winRate", "legWinRate", "setWinRate", "checkoutRate", "missPct", "simplePct", "doublePct",
+                "triplePct", "bullPct", "dbullPct", "hitRate", "singlePct", "doubleHitPct", "tripleHitPct",
+                "birdiePct", "eaglePct", "bogeyPct", "tripleBogeyPct"
+              ]);
+              const oneDecimalMetrics = new Set([
+                "avg3", "avg1", "bestAvg3", "first9Avg", "pointsPerMatch", "marksPerMatch",
+                "mpr", "killsPerMatch", "damagePerMatch", "avgSurvival", "scorePerHole"
+              ]);
+              const metricRaw = metric === "matches" ? rMatches : numOr0(row?.[metric]);
+
               switch (metric) {
                 case "wins":
                   metricValue = `${numOr0(row.wins)}`;
+                  metricSub = `${rMatches} matchs`;
+                  break;
+                case "losses":
+                  metricValue = `${numOr0(row.losses)}`;
                   metricSub = `${rMatches} matchs`;
                   break;
                 case "winRate":
@@ -2129,18 +2533,9 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
                   metricValue = row.avg3 ? Number(row.avg3).toFixed(1) : "0.0";
                   metricSub = `${numOr0(row.matches)} matchs`;
                   break;
-                case "bestVisit":
-                  metricValue = `${numOr0(row.bestVisit)}`;
-                  metricSub = `${numOr0(row.matches)} matchs`;
-                  break;
-                case "bestCheckout":
-                  metricValue = `${numOr0(row.bestCheckout)}`;
-                  metricSub = `${numOr0(row.matches)} matchs`;
-                  break;
-
-                case "kills":
-                  metricValue = `${numOr0(row.kills)}`;
-                  metricSub = `${rMatches} matchs`;
+                case "favNumber":
+                  metricValue = row.favNumber ? `${row.favNumber}` : "—";
+                  metricSub = row.favNumberHits ? `${row.favNumberHits} hit(s)` : `${numOr0(row.totalHits)} hit(s)`;
                   break;
                 case "favNumberHits":
                   metricValue = row.favNumber ? `#${row.favNumber}` : "—";
@@ -2150,14 +2545,16 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
                   metricValue = row.favSegment ? `${row.favSegment}` : "—";
                   metricSub = row.favSegmentHits ? `${row.favSegmentHits} hit(s)` : `${numOr0(row.totalHits)} hit(s)`;
                   break;
-                case "totalHits":
-                  metricValue = `${numOr0(row.totalHits)}`;
-                  metricSub = row.favSegment ? `fav: ${row.favSegment}` : null;
-                  break;
-
                 default:
-                  metricValue = "0";
+                  if (pctMetrics.has(metric)) {
+                    metricValue = `${metricRaw.toFixed(1)}%`;
+                  } else if (oneDecimalMetrics.has(metric)) {
+                    metricValue = `${metricRaw.toFixed(1)}`;
+                  } else {
+                    metricValue = `${Math.round(metricRaw)}`;
+                  }
                   metricSub = `${rMatches} matchs`;
+                  break;
               }
 
               const label = row.name || "—";
