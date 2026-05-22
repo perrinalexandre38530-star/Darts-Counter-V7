@@ -33,7 +33,15 @@ import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagM
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
 import OnlineProfileForm from "../components/OnlineProfileForm";
-import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
+import {
+  listFriends,
+  listProfileFriendLinks,
+  requestProfileFriendLink,
+  respondProfileFriendLink,
+  deleteProfileFriendLink,
+  type OnlineFriendUser,
+  type ProfileFriendLink,
+} from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
 import { loadBots, saveBots } from "../lib/bots";
@@ -821,6 +829,8 @@ export default function Profiles({
   const [onlineProfileFriends, setOnlineProfileFriends] = React.useState<FriendLike[]>([]);
   const [onlineProfileFriendsLoading, setOnlineProfileFriendsLoading] = React.useState(false);
   const [onlineProfileFriendsError, setOnlineProfileFriendsError] = React.useState<string | null>(null);
+  const [profileFriendLinks, setProfileFriendLinks] = React.useState<ProfileFriendLink[]>([]);
+  const [profileFriendLinksLoading, setProfileFriendLinksLoading] = React.useState(false);
 
   const friends: FriendLike[] = React.useMemo(() => {
     const map = new Map<string, FriendLike>();
@@ -909,16 +919,66 @@ export default function Profiles({
     }
   }, []);
 
+  const refreshProfileFriendLinks = React.useCallback(async () => {
+    if (auth.status !== "signed_in") {
+      setProfileFriendLinks([]);
+      return;
+    }
+    setProfileFriendLinksLoading(true);
+    try {
+      const links = await listProfileFriendLinks();
+      setProfileFriendLinks(Array.isArray(links) ? links : []);
+    } catch (error) {
+      console.warn("[Profiles] listProfileFriendLinks error", error);
+      setProfileFriendLinks([]);
+    } finally {
+      setProfileFriendLinksLoading(false);
+    }
+  }, [auth.status]);
+
   React.useEffect(() => {
     if (view !== "friends") return;
     refreshProfileOnlineFriends();
   }, [view, refreshProfileOnlineFriends]);
 
+  React.useEffect(() => {
+    if (view !== "locals" && view !== "friends") return;
+    refreshProfileFriendLinks();
+  }, [view, refreshProfileFriendLinks]);
 
-  const linkLocalProfileToFriend = React.useCallback((profileId: string, friend: FriendLike | null) => {
+
+  const linkLocalProfileToFriend = React.useCallback(async (profileId: string, friend: FriendLike | null) => {
+    const currentProfile = (Array.isArray((store as any)?.profiles) ? (store as any).profiles : []).find((p: any) => String(p?.id || "") === String(profileId || ""));
+    const previousInfo = currentProfile?.privateInfo || currentProfile?.private_info || {};
+    const previousLinkId = String(previousInfo?.profileFriendLinkId || previousInfo?.linkedFriendRequestId || "").trim();
     const friendUserId = friend ? String((friend as any)?.userId || (friend as any)?.id || "").trim() : "";
     const friendName = friend ? String((friend as any)?.displayName || (friend as any)?.nickname || (friend as any)?.name || "").trim() : "";
     const friendAvatarUrl = friend ? String((friend as any)?.avatarUrl || "").trim() : "";
+
+    let serverLink: any = null;
+    if (friend && friendUserId) {
+      try {
+        serverLink = await requestProfileFriendLink({
+          targetUserId: friendUserId,
+          localProfileId: String(profileId || ""),
+          localProfileName: String(currentProfile?.name || currentProfile?.displayName || "Profil local"),
+          localProfileAvatarUrl: String((currentProfile as any)?.avatarUrl || (currentProfile as any)?.avatar || "") || null,
+          statsMeta: {
+            requestedAt: new Date().toISOString(),
+            source: "profiles-local-card",
+          },
+        });
+      } catch (error: any) {
+        setToast({ type: "error", message: error?.message || "Impossible d’envoyer la demande d’association" });
+        return;
+      }
+    } else if (previousLinkId) {
+      try { await deleteProfileFriendLink(previousLinkId); } catch (error) { console.warn("[Profiles] deleteProfileFriendLink ignored", error); }
+    }
+
+    const linkStatus = friend && friendUserId ? String(serverLink?.status || "pending") : "";
+    const linkId = friend && friendUserId ? String(serverLink?.id || previousLinkId || "") : "";
+
     const nextProfiles = (Array.isArray((store as any)?.profiles) ? (store as any).profiles : []).map((p: any) => {
       if (String(p?.id || "") !== String(profileId || "")) return p;
       const prevInfo = p?.privateInfo || p?.private_info || {};
@@ -928,11 +988,17 @@ export default function Profiles({
         nextInfo.linkedUserId = friendUserId;
         nextInfo.linkedFriendName = friendName;
         nextInfo.linkedFriendAvatarUrl = friendAvatarUrl || null;
+        nextInfo.profileFriendLinkId = linkId || undefined;
+        nextInfo.profileFriendLinkStatus = linkStatus;
+        nextInfo.profileFriendLinkUpdatedAt = new Date().toISOString();
       } else {
         delete nextInfo.linkedFriendUserId;
         delete nextInfo.linkedUserId;
         delete nextInfo.linkedFriendName;
         delete nextInfo.linkedFriendAvatarUrl;
+        delete nextInfo.profileFriendLinkId;
+        delete nextInfo.profileFriendLinkStatus;
+        delete nextInfo.profileFriendLinkUpdatedAt;
       }
       return {
         ...p,
@@ -945,10 +1011,20 @@ export default function Profiles({
     });
     update((prev: any) => ({ ...(prev || {}), profiles: nextProfiles }));
     writeProfilesCache(nextProfiles as any);
-    scheduleProfilesPersist(friend ? "profiles_link_friend" : "profiles_unlink_friend", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 2500 });
-    setToast({ type: "success", message: friend ? "Profil local associé à l'ami NAS" : "Association supprimée" });
-  }, [store, update, scheduleProfilesPersist]);
+    scheduleProfilesPersist(friend ? "profiles_request_friend_link" : "profiles_unlink_friend", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 2500 });
+    await refreshProfileFriendLinks();
+    setToast({ type: "success", message: friend ? "Demande envoyée à l’ami : attente de validation" : "Association supprimée" });
+  }, [store, update, scheduleProfilesPersist, refreshProfileFriendLinks]);
 
+  const respondToProfileFriendLink = React.useCallback(async (linkId: string, status: "accepted" | "refused") => {
+    try {
+      await respondProfileFriendLink(linkId, status);
+      await refreshProfileFriendLinks();
+      setToast({ type: "success", message: status === "accepted" ? "Association acceptée" : "Association refusée" });
+    } catch (error: any) {
+      setToast({ type: "error", message: error?.message || "Impossible de répondre à la demande" });
+    }
+  }, [refreshProfileFriendLinks]);
 
   // 🔥 Shimmer du nom "NINJA" (copie du Home)
   const primary = theme.primary ?? "#F6C256";
@@ -2310,6 +2386,9 @@ React.useEffect(() => {
                   onDelete={delProfile}
                   onOpenAvatarCreator={openAvatarCreator}
                   onlineFriends={friends}
+                  profileFriendLinks={profileFriendLinks}
+                  profileFriendLinksLoading={profileFriendLinksLoading}
+                  onRespondProfileFriendLink={respondToProfileFriendLink}
                   onLinkFriend={linkLocalProfileToFriend}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
@@ -4736,6 +4815,9 @@ function LocalProfilesRefonte({
   onDelete,
   onOpenAvatarCreator,
   onlineFriends = [],
+  profileFriendLinks = [],
+  profileFriendLinksLoading = false,
+  onRespondProfileFriendLink,
   onLinkFriend,
   onboardingMode = false,
   autoFocusCreate = false,
@@ -4754,7 +4836,10 @@ function LocalProfilesRefonte({
   onDelete: (id: string) => void;
   onOpenAvatarCreator?: () => void;
   onlineFriends?: FriendLike[];
-  onLinkFriend?: (profileId: string, friend: FriendLike | null) => void;
+  profileFriendLinks?: ProfileFriendLink[];
+  profileFriendLinksLoading?: boolean;
+  onRespondProfileFriendLink?: (linkId: string, status: "accepted" | "refused") => void;
+  onLinkFriend?: (profileId: string, friend: FriendLike | null) => void | Promise<void>;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
   deferHeavy?: boolean;
@@ -4838,6 +4923,21 @@ function LocalProfilesRefonte({
   const linkedFriendUserId = String((current as any)?.linkedFriendUserId || (current as any)?.linkedUserId || (current as any)?.privateInfo?.linkedFriendUserId || (current as any)?.privateInfo?.linkedUserId || "").trim();
   const linkedFriend = linkedFriendUserId ? (onlineFriends || []).find((f: any) => String(f?.userId || f?.id || "") === linkedFriendUserId) : null;
   const linkedFriendName = String((linkedFriend as any)?.displayName || (linkedFriend as any)?.nickname || (current as any)?.privateInfo?.linkedFriendName || (current as any)?.linkedFriendName || "").trim();
+  const currentProfileLink = React.useMemo(() => {
+    if (!current) return null;
+    const pid = String((current as any)?.id || "");
+    const storedLinkId = String((current as any)?.privateInfo?.profileFriendLinkId || "").trim();
+    return (profileFriendLinks || []).find((link: any) => {
+      const sameProfile = String(link?.localProfileId || "") === pid;
+      const sameLink = storedLinkId && String(link?.id || "") === storedLinkId;
+      const sameFriend = linkedFriendUserId && String(link?.targetUser?.userId || link?.targetUser?.id || "") === linkedFriendUserId;
+      return link?.direction === "outgoing" && (sameLink || (sameProfile && sameFriend));
+    }) || null;
+  }, [current, profileFriendLinks, linkedFriendUserId]);
+  const linkStatus = String((currentProfileLink as any)?.status || (current as any)?.privateInfo?.profileFriendLinkStatus || (linkedFriendUserId ? "pending" : "")).toLowerCase();
+  const linkStatusLabel = linkStatus === "accepted" ? "Validé par l’ami" : linkStatus === "refused" ? "Refusé" : linkStatus === "pending" ? "En attente d’acceptation" : "Non lié";
+  const linkStatsShared = linkStatus === "accepted";
+  const incomingProfileLinks = React.useMemo(() => (profileFriendLinks || []).filter((link: any) => link?.direction === "incoming" && String(link?.status || "") === "pending"), [profileFriendLinks]);
 
 
 
@@ -4981,6 +5081,38 @@ function LocalProfilesRefonte({
           await onAvatar(current.id, file);
         }}
       />
+
+      {incomingProfileLinks.length > 0 ? (
+        <div
+          style={{
+            borderRadius: 16,
+            border: `1px solid ${primary}88`,
+            background: `${primary}14`,
+            padding: 10,
+            boxShadow: `0 0 18px ${primary}22`,
+          }}
+        >
+          <div style={{ color: primary, fontWeight: 950, fontSize: 13, marginBottom: 6 }}>Demandes d’association reçues</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {incomingProfileLinks.map((link: any) => (
+              <div key={link.id} style={{ border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: 8, background: "rgba(0,0,0,.25)" }}>
+                <div style={{ fontWeight: 900, fontSize: 12 }}>
+                  {link?.requesterUser?.displayName || link?.requesterUser?.nickname || "Un ami"} veut lier le profil local
+                </div>
+                <div className="subtitle" style={{ fontSize: 11, marginTop: 2 }}>
+                  Profil : <b>{link?.localProfileName || "Profil local"}</b> · Stats partagées après acceptation uniquement
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <button type="button" className="btn sm" style={{ ...pillBtnBase, maxWidth: 110 }} onClick={() => onRespondProfileFriendLink?.(String(link.id), "accepted")}>Accepter</button>
+                  <button type="button" className="btn sm" style={{ ...pillBtnDanger, maxWidth: 110 }} onClick={() => onRespondProfileFriendLink?.(String(link.id), "refused")}>Refuser</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : profileFriendLinksLoading ? (
+        <div className="subtitle" style={{ fontSize: 11, textAlign: "center" }}>Vérification des demandes d’association…</div>
+      ) : null}
 
       {/* ------- Création PROFIL LOCAL ------- */}
       <AddLocalProfile onCreate={onCreate} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
@@ -5370,12 +5502,18 @@ function LocalProfilesRefonte({
                   <div style={{ minWidth: 0 }}>
                     <div style={{ color: primary, fontWeight: 950, fontSize: 12 }}>Compte ami associé</div>
                     <div className="subtitle" style={{ fontSize: 11 }}>
-                      {linkedFriendUserId ? `Lié à ${linkedFriendName || "un ami NAS"}` : "Associe ce profil à un ami pour fusionner/identifier les stats partagées."}
+                      {linkedFriendUserId ? `Lié à ${linkedFriendName || "un ami NAS"} · ${linkStatusLabel}` : "Associe ce profil à un ami pour fusionner/identifier les stats partagées."}
                     </div>
+                    {linkedFriendUserId ? (
+                      <div style={{ marginTop: 5, fontSize: 10, fontWeight: 900, color: linkStatsShared ? "#38ff8a" : primary }}>
+                        Stats partagées : {linkStatsShared ? "OUI" : "NON — attente validation"}
+                        {(currentProfileLink as any)?.updatedAt ? ` · MAJ ${new Date(String((currentProfileLink as any).updatedAt)).toLocaleString()}` : ""}
+                      </div>
+                    ) : null}
                   </div>
                   {linkedFriendUserId && onLinkFriend ? (
                     <button type="button" className="btn sm" style={{ ...pillBtnDanger, maxWidth: 92 }} onClick={() => onLinkFriend(current.id, null)}>
-                      Dissocier
+                      {linkStatus === "pending" ? "Annuler" : "Dissocier"}
                     </button>
                   ) : null}
                 </div>

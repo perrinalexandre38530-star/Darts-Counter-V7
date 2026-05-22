@@ -162,3 +162,51 @@ export async function refuseSharedMatch(id: string) {
   return res?.item ?? res;
 }
 
+export type ProfileFriendLink = {
+  id: string;
+  status: "pending" | "accepted" | "refused" | "cancelled" | string;
+  localProfileId: string;
+  localProfileName?: string | null;
+  localProfileAvatarUrl?: string | null;
+  statsMeta?: any;
+  createdAt?: string;
+  updatedAt?: string;
+  acceptedAt?: string | null;
+  refusedAt?: string | null;
+  cancelledAt?: string | null;
+  direction?: "incoming" | "outgoing";
+  requesterUser?: OnlineFriendUser & { email?: string | null };
+  targetUser?: OnlineFriendUser & { email?: string | null };
+  statsShared?: boolean;
+};
+
+export async function listProfileFriendLinks(): Promise<ProfileFriendLink[]> {
+  const res = await apiGet("/online/profile-links");
+  return Array.isArray(res?.links) ? res.links : [];
+}
+
+export async function countPendingProfileFriendLinks(): Promise<number> {
+  const res = await apiGet("/online/profile-links/count");
+  return Number(res?.pending || 0);
+}
+
+export async function requestProfileFriendLink(input: {
+  targetUserId: string;
+  localProfileId: string;
+  localProfileName?: string;
+  localProfileAvatarUrl?: string | null;
+  statsMeta?: any;
+}) {
+  const res = await apiPost("/online/profile-links", input);
+  return res?.link ?? res;
+}
+
+export async function respondProfileFriendLink(id: string, status: "accepted" | "refused") {
+  const res = await apiPost(`/online/profile-links/${qs(id)}/respond`, { status });
+  return res?.link ?? res;
+}
+
+export async function deleteProfileFriendLink(id: string) {
+  const res = await apiDelete(`/online/profile-links/${qs(id)}`);
+  return res?.link ?? res;
+}
