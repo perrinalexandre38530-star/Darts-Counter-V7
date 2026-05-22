@@ -90,14 +90,8 @@ type Props = {
 };
 
 // ---------- Utils ----------
-const n = (v: any) => {
-  if (typeof v === "number" && isFinite(v)) return v;
-  if (typeof v === "string" && v.trim() !== "") {
-    const parsed = Number(v.replace("%", "").replace(",", "."));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-};
+const n = (v: any) =>
+  typeof v === "number" && isFinite(v) ? v : 0;
 const f2 = (v: any) =>
   typeof v === "number" && isFinite(v)
     ? (Math.round(v * 100) / 100).toFixed(2)
@@ -199,15 +193,14 @@ function powerBucketsFromNew(leg: LegStats, pid: string) {
 function impactsFromNew(leg: LegStats, pid: string) {
   const st: any = leg.perPlayer?.[pid] ?? {};
   const r = st.rates || {};
-  const hits = st.hits && typeof st.hits === "object" ? st.hits : {};
   const darts = n(st.darts ?? st.dartsThrown);
-  const singles = n(st.singles ?? st.hitsS ?? hits.S ?? hits.s ?? hits.single ?? hits.singles ?? r.singleHits ?? r.sHits ?? 0);
-  const misses = n(st.misses ?? st.miss ?? st.hitsMiss ?? hits.M ?? hits.m ?? hits.miss ?? hits.MISS ?? r.missHits ?? 0);
+  const singles = n(st.singles ?? st.hitsS ?? r.singleHits ?? r.sHits ?? 0);
+  const misses = n(st.misses ?? st.miss ?? st.hitsMiss ?? r.missHits ?? 0);
   const busts = n(st.busts ?? st.bust ?? r.bustHits ?? 0);
-  const doubles = n(st.doubles ?? st.hitsD ?? hits.D ?? hits.d ?? hits.double ?? hits.doubles ?? r.dblHits ?? r.doubleHits ?? 0);
-  const triples = n(st.triples ?? st.hitsT ?? hits.T ?? hits.t ?? hits.triple ?? hits.triples ?? r.triHits ?? r.tripleHits ?? 0);
-  const ob = n(st.ob ?? st.bull ?? st.bulls ?? hits.BULL ?? hits.bull ?? hits.OB ?? hits.ob ?? r.bullHits ?? 0);
-  const ib = n(st.ib ?? st.dBull ?? st.dbull ?? st.dbulls ?? hits.DBULL ?? hits.dbull ?? hits.IB ?? hits.ib ?? st.bullsEye ?? r.dbullHits ?? r.bullEyeHits ?? 0);
+  const doubles = n(st.doubles ?? st.hitsD ?? r.dblHits ?? r.doubleHits ?? 0);
+  const triples = n(st.triples ?? st.hitsT ?? r.triHits ?? r.tripleHits ?? 0);
+  const ob = n(st.ob ?? st.bull ?? st.bulls ?? r.bullHits ?? 0);
+  const ib = n(st.ib ?? st.dBull ?? st.dbull ?? st.dbulls ?? st.bullsEye ?? r.dbullHits ?? r.bullEyeHits ?? 0);
   const bulls = ob + ib;
   return {
     singles,
@@ -283,15 +276,9 @@ function checkoutFromNew(leg: LegStats, pid: string) {
   const hi = n(
     co.highestCO ??
       co.best ??
-      co.bestCheckout ??
-      co.checkoutBest ??
       st.highestCO ??
       st.bestCO ??
-      st.bestCo ??
       st.coBest ??
-      st.checkoutBest ??
-      st.bestCheckoutScore ??
-      st.bestCheckout ??
       0
   );
 
@@ -629,7 +616,6 @@ function rowsFromVisitHistory(
     h100: 0,
     h140: 0,
     h180: 0,
-    singles: 0,
     doubles: 0,
     triples: 0,
     ob: 0,
@@ -722,14 +708,10 @@ function mergeOverlayRows(baseRows: any[] = [], visitRows: any[] = []) {
   const nz = (v: any) => Number.isFinite(Number(v)) && Number(v) > 0;
   const pickNum = (visit: any, base: any) => nz(visit) ? Number(visit) : nz(base) ? Number(base) : Number(visit ?? base ?? 0) || 0;
   const pickText = (visit: any, base: any) => {
-    const isGood = (value: any) => {
-      const s = String(value ?? "").trim();
-      if (!s || s === "0%" || s === "0.0%" || s === "0") return false;
-      if (/nan|infinity/i.test(s)) return false;
-      return true;
-    };
-    if (isGood(visit)) return visit;
-    if (isGood(base)) return base;
+    const sv = String(visit ?? "");
+    const sb = String(base ?? "");
+    if (sv && sv !== "0%" && sv !== "0.0%" && sv !== "0") return visit;
+    if (sb) return base;
     return visit ?? base;
   };
 

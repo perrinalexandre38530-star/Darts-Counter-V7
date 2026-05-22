@@ -1114,9 +1114,7 @@ function normalizeX01Summary(
       name: p.name || row.name || "—",
       avg3,
       bestVisit: n(row.bestVisit, rawSummary.bestVisit),
-      bestCheckout: sanitizeCO(
-        row.bestCheckout ?? row.bestCheckoutScore ?? rawSummary.bestCheckout
-      ),
+      bestCheckout: readBestCOFromRow(rawSummary, row, rawSummary.bestCheckout),
       darts,
       buckets: row.buckets || undefined,
       updatedAt: rawSummary.updatedAt || Date.now(),
@@ -1133,9 +1131,7 @@ function normalizeX01Summary(
       profileId: p.id,
       dartsThrown: darts,
       pointsScored: points,
-      bestCheckoutScore: sanitizeCO(
-        row.bestCheckout ?? row.bestCheckoutScore ?? rawSummary.bestCheckout
-      ),
+      bestCheckoutScore: readBestCOFromRow(rawSummary, row, rawSummary.bestCheckout),
       best9Score: n(row.best9Score, rawSummary.best9Score),
       hitsSingle: n(row.singles, row.hitsSingle),
       hitsDouble: n(row.doubles, row.hitsDouble),
@@ -1182,9 +1178,7 @@ function buildSummaryFromLeg(rec: any) {
         s.pointsScored,
         (n(s.avg3) / 3) * (darts || visits * 3)
       );
-      const bestCO = sanitizeCO(
-        s.bestCheckoutScore ?? s.highestCheckout ?? s.bestCheckout
-      );
+      const bestCO = readBestCOFromRow(rec, s);
       players[p.id] = {
         id: p.id,
         name: p.name || "—",
@@ -1239,7 +1233,8 @@ function buildSummaryFromLeg(rec: any) {
         `payload.bestVisit.${id}`,
         `bestVisit.${id}`,
       ]),
-      bestCheckout: sanitizeCO(
+      bestCheckout: sanitizeCOForRecord(
+        rec,
         pick(rec, [
           `payload.bestCheckout.${id}`,
           `bestCheckout.${id}`,
@@ -1400,6 +1395,51 @@ function getX01StartScore(rec: any): number {
   const match = title.match(/x01\s*[-–—:]?\s*(\d{3,4})/i) || title.match(/(?:start|score|départ|depart)\D*(\d{3,4})/i);
   const parsed = match ? Number(match[1]) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 501;
+}
+
+
+function hasCheckoutEvidence(row: any): boolean {
+  if (!row || typeof row !== "object") return false;
+  return (
+    n(row.checkoutHits ?? row.coHits ?? row.COHits ?? row.checkoutsMade ?? row.coSuccess, 0) > 0 ||
+    row.checkout === true ||
+    row.isCheckout === true ||
+    row.finish === true ||
+    row.isFinish === true ||
+    n(row.remaining ?? row.scoreRemaining ?? row.finalScore ?? row.scoreAfter, NaN) === 0
+  );
+}
+
+function sanitizeCOForRecord(rec: any, value: any, sourceRow?: any): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  const r = Math.round(num);
+
+  // Sortie simple : un checkout à 1 est valide.
+  // On l'accepte uniquement s'il est explicitement confirmé par le record/row,
+  // pour éviter de transformer un vieux champ bruité en Best CO global.
+  if (r === 1 && (getX01OutMode(rec) === "simple" || hasCheckoutEvidence(sourceRow))) return 1;
+
+  return sanitizeCO(r);
+}
+
+function readBestCOFromRow(rec: any, row: any, fallback?: any): number {
+  if (!row || typeof row !== "object") return sanitizeCOForRecord(rec, fallback, row);
+  const candidates = [
+    row.bestCO,
+    row.bestCo,
+    row.coBest,
+    row.checkoutBest,
+    row.bestCheckoutScore,
+    row.highestCheckout,
+    row.bestCheckout,
+    fallback,
+  ];
+  for (const c of candidates) {
+    const co = sanitizeCOForRecord(rec, c, row);
+    if (co > 0) return co;
+  }
+  return 0;
 }
 
 function emptyMetrics(p: { id: string; name?: string }): PlayerMetrics {
@@ -1855,7 +1895,7 @@ function buildPerPlayerMetrics(
       m.avg3 = n(s.avg3);
       m.avg1 = m.avg3 / 3;
       m.bestVisit = n(s.bestVisit);
-      m.bestCO = sanitizeCO(s.bestCheckout);
+      m.bestCO = readBestCOFromRow(rec, s);
       m.darts = n(s.darts);
       m.visits = s._sumVisits ? n(s._sumVisits) : m.darts ? Math.ceil(m.darts / 3) : 0;
       m.points = n(s._sumPoints, (m.avg3 / 3) * m.darts);
@@ -1986,9 +2026,7 @@ function buildPerPlayerMetrics(
     if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
     if (!m.bestVisit) m.bestVisit = n(r.bestVisit, 0);
     if (!m.bestCO)
-      m.bestCO = sanitizeCO(
-        r.bestCheckoutScore ?? r.highestCheckout ?? r.bestCheckout
-      );
+      m.bestCO = readBestCOFromRow(rec, r);
 
     // ---- HITS bruts : compat X01 V3 / training ----
     // Compat historique X01 : detailedByPlayer peut stocker les hits sous
@@ -2214,12 +2252,14 @@ function buildPerPlayerMetrics(
       m.bestVisit || n(pickFromAny([`bestVisit.${pid}`], legacyRoots), 0);
     m.bestCO =
       m.bestCO ||
-      sanitizeCO(
+      sanitizeCOForRecord(
+        rec,
         pickFromAny([
           `bestCheckout.${pid}`,
           `highestCheckout.${pid}`,
           `bestCO.${pid}`,
-        ], legacyRoots)
+        ], legacyRoots),
+        { checkoutHits: m.coHits, coHits: m.coHits, remaining: m.remaining }
       );
 
     const dblC = n(
@@ -2320,7 +2360,7 @@ function buildPerPlayerMetrics(
       }
 
       if (n(dv.bestVisit, 0) > 0) m.bestVisit = n(dv.bestVisit, 0);
-      if (sanitizeCO(dv.bestCO) > 0) m.bestCO = sanitizeCO(dv.bestCO);
+      if (sanitizeCOForRecord(rec, dv.bestCO, dv) > 0) m.bestCO = sanitizeCOForRecord(rec, dv.bestCO, dv);
 
       const hitTotal = n(dv.singles, 0) + n(dv.doubles, 0) + n(dv.triples, 0) + n(dv.bulls, 0) + n(dv.dbulls, 0) + n(dv.misses, 0);
       if (hitTotal > 0) {
@@ -2510,7 +2550,7 @@ function buildPerPlayerMetrics(
     // un checkout réussi, même si la carte historique n'a pas stocké coHits/coAtt.
     // C'était le dernier cas où le résumé live était bon mais la fiche historique
     // affichait CO hits/att/%/Darts CO à 0.
-    if (sanitizeCO(m.bestCO) > 0) {
+    if (n(m.bestCO, 0) > 0) {
       if (m.coHits <= 0) m.coHits = 1;
       if (m.coAtt <= 0) m.coAtt = 1;
 
@@ -2519,7 +2559,7 @@ function buildPerPlayerMetrics(
           .filter((vv) => String(vv.playerId) === String(pid))
           .slice()
           .reverse()
-          .find((vv) => !!vv.finish || n(vv.score, 0) === sanitizeCO(m.bestCO));
+          .find((vv) => !!vv.finish || n(vv.score, 0) === n(m.bestCO, 0));
         const fd = Array.isArray(finishVisit?.darts) ? finishVisit!.darts.length : 0;
         if (fd > 0) {
           m.checkoutDartsTotal = fd;
@@ -5019,7 +5059,7 @@ function pct(x?: number) {
   const v = Number(x);
   return Number.isFinite(v)
     ? `${Math.round(Math.max(0, Math.min(100, v)))}%`
-    : "—";
+    : "0%";
 }
 
 function pick(obj: any, paths: string[], def?: any) {
