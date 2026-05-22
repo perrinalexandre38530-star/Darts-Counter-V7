@@ -3,7 +3,7 @@
 // Agrégateur complet des stats pour la Home v2
 // - Local X01 (History)
 // - X01 Multi (History)
-// - Online (Supabase)
+// - Online: uniquement matchs online déjà enregistrés dans History
 // - Cricket (statsBridge)
 // - Training X01 (lib/TrainingX01Store)
 // - Tour de l’Horloge (TODO: TrainingStore)
@@ -12,7 +12,6 @@
 
 import { useEffect, useState } from "react";
 import { History } from "../lib/history";
-import { supabase } from "../lib/supabase";
 import { TrainingX01Store } from "../lib/TrainingX01Store";
 import { getCricketProfileStats } from "../lib/statsBridge";
 
@@ -46,18 +45,29 @@ export function useHomeStats(activeProfileId: string | null) {
         // ---------------------------------
         // LOCAL X01 (legs / matchs classiques)
         // ---------------------------------
-        const localMatches = await History.list({
-          profileId: activeProfileId,
-          game: "x01",
-        });
+        const historyRowsRaw: any[] =
+          ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
+        const historyRows = await Promise.all(
+          (Array.isArray(historyRowsRaw) ? historyRowsRaw : []).map(async (row: any) => {
+            try {
+              const id = String(row?.matchId ?? row?.id ?? "").trim();
+              return id && typeof (History as any).get === "function" ? ((await (History as any).get(id)) || row) : row;
+            } catch {
+              return row;
+            }
+          })
+        );
+
+        const rowGame = (m: any) => String(m?.game ?? m?.kind ?? m?.mode ?? m?.payload?.game ?? m?.payload?.kind ?? m?.payload?.mode ?? "").toLowerCase();
+        const rowPlayers = (m: any) => m?.players ?? m?.summary?.players ?? m?.summary?.perPlayer ?? m?.payload?.players ?? m?.payload?.summary?.players ?? [];
+        const hasProfile = (m: any) => Array.isArray(rowPlayers(m)) && rowPlayers(m).some((p: any) => String(p?.profileId ?? p?.playerId ?? p?.id ?? "") === String(activeProfileId));
+
+        const localMatches = historyRows.filter((m: any) => rowGame(m).includes("x01") && hasProfile(m));
 
         // ---------------------------------
         // X01 MULTI (tous joueurs, mode multi)
         // ---------------------------------
-        const localMulti = await History.list({
-          game: "x01_multi",
-          includePlayers: true,
-        });
+        const localMulti = historyRows.filter((m: any) => rowGame(m).includes("x01") && rowPlayers(m).length > 1);
 
         // ---------------------------------
         // TRAINING X01 (store localStorage existant)
@@ -80,25 +90,14 @@ export function useHomeStats(activeProfileId: string | null) {
         const cricket = await getCricketProfileStats(activeProfileId);
 
         // ---------------------------------
-        // ONLINE (via Supabase)
-        // NOTE : à adapter si ton schéma diffère
+        // ONLINE
+        // Source unique stats: uniquement les parties online déjà sauvegardées dans History.
+        // Pas de lecture Supabase directe ici, sinon Home diverge de l'Historique.
         // ---------------------------------
-        let onlineMatches: any[] = [];
-        try {
-          const { data, error } = await supabase
-            .from("online_matches")
-            .select("*")
-            .eq("profileId", activeProfileId);
-
-          if (!error && Array.isArray(data)) {
-            onlineMatches = data;
-          } else if (error) {
-            // on log mais on ne casse pas la Home
-            console.warn("[useHomeStats] supabase online_matches error:", error);
-          }
-        } catch (e) {
-          console.warn("[useHomeStats] supabase call failed:", e);
-        }
+        const onlineMatches: any[] = historyRows.filter((m: any) => {
+          const src = String(m?.source ?? m?.origin ?? m?.payload?.source ?? m?.payload?.origin ?? "").toLowerCase();
+          return src.includes("online") && hasProfile(m);
+        });
 
         // ---------------------------------
         // RECORDS (fusion global local + online + training)

@@ -4,7 +4,7 @@
 
 import React from "react";
 import { History } from "../lib/history";
-import { getOrRebuildStatsIndex, loadStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
+import { getOrRebuildStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 
 /* -------------------- Types -------------------- */
 type Row = {
@@ -30,10 +30,10 @@ export default function StatsPage() {
 
   const load = React.useCallback(async () => {
     try {
-      const list = (await History.list()) as Row[];
+      const list = ((await (History as any).listFinished?.()) ?? (await History.list())) as Row[];
       setRows(list);
 
-      const idx: StatsIndex = (await loadStatsIndex()) || (await getOrRebuildStatsIndex({ includeNonFinished: false }));
+      const idx: StatsIndex = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
       const visibleIds = Array.from(
         new Set(list.flatMap((r) => (Array.isArray(r.players) ? r.players.map((p) => p.id) : [])))
       ).slice(0, 128);

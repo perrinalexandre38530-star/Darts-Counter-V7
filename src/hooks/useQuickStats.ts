@@ -4,7 +4,7 @@
 // Plus de dépendance au store principal pour les mini-stats.
 // ============================================
 import { useEffect, useMemo, useState } from "react";
-import { loadStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
+import { getOrRebuildStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 
 export type QuickStats = {
   avg3: number;
@@ -22,7 +22,7 @@ export function useQuickStats(playerId: string | null): QuickStats | null {
     let alive = true;
     const read = async () => {
       try {
-        const idx = await loadStatsIndex();
+        const idx = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
         if (!alive) return;
         setSnap(idx || null);
       } catch {
@@ -52,7 +52,7 @@ export function useQuickStats(playerId: string | null): QuickStats | null {
   useEffect(() => {
     (async () => {
       try {
-        const idx = await loadStatsIndex();
+        const idx = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
         setSnap(idx || null);
       } catch {
         setSnap(null);

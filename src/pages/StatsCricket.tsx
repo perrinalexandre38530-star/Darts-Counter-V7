@@ -249,27 +249,17 @@ export default function StatsCricket({ profiles, activeProfileId }: Props) {
     async function loadCricketStats() {
       setLoading(true);
       try {
-        // 0) Bootstrap du stats_index central une seule fois si absent.
-        // Cela stabilise les autres écrans stats sans forcer de rebuild massif ici.
-        await getOrRebuildStatsIndex({ includeNonFinished: false }).catch(() => null);
+        // Source unique stats : parties terminées présentes dans l'Historique.
+        await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true }).catch(() => null);
 
-        // 1) Liste: History.list() (robuste)
         let rows: any[] = [];
         try {
-          rows = (await (History as any).list?.()) || [];
+          rows = ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
         } catch {
           rows = [];
         }
 
-        // fallback store.history si jamais (rare)
-        if (!Array.isArray(rows) || !rows.length) {
-          try {
-            const anyStore = (window as any).__appStore?.store;
-            if (anyStore?.history && Array.isArray(anyStore.history)) rows = anyStore.history;
-          } catch {}
-        }
-
-        // 2) Filtrer cricket + finished
+        // Filtrer cricket + finished (double sécurité si listFinished indisponible).
         const cricketRows = (rows || []).filter((m: any) => isFinished(m) && isCricketMatch(m));
 
         // 3) Charger match complet (History.get) + decode payload si string

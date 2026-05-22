@@ -824,7 +824,16 @@ export async function rebuildStatsFromHistory(options?: {
   };
 
   const rows: any[] = Array.isArray(list) ? list : [];
-  for (const rec of rows) {
+  for (const lightRec of rows) {
+    let rec: any = lightRec;
+    try {
+      const id = String(lightRec?.matchId ?? lightRec?.id ?? "").trim();
+      if (id && typeof (History as any)?.get === "function") {
+        rec = ((await (History as any).get(id)) as any) || lightRec;
+      }
+    } catch {
+      rec = lightRec;
+    }
     const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
     const rawPayload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
     const payload = normalizeMatchForStats(rec, rawPayload);

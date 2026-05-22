@@ -61,7 +61,7 @@ import {
   type CricketLegStats,
   type CricketProfileStats,
 } from "./cricketStats";
-import { loadStatsIndex, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
+import { getOrRebuildStatsIndex, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
 
 /* ============================================================
    Types publics
@@ -208,7 +208,7 @@ function statsIndexEntryToQuickStats(entry: any): QuickStatsEntry {
 
 async function hydrateQuickStatsBagFromIndex(force = false): Promise<Record<string, QuickStatsEntry>> {
   if (__quickStatsBag && !force) return __quickStatsBag;
-  const idx: CachedStatsIndex | null = await loadStatsIndex().catch(() => null);
+  const idx: CachedStatsIndex | null = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true }).catch(() => null);
   const bag: Record<string, QuickStatsEntry> = {};
   for (const [pid, entry] of Object.entries(idx?.byPlayer || {})) {
     bag[pid] = statsIndexEntryToQuickStats(entry);
@@ -2185,9 +2185,15 @@ export const StatsBridge = {
   async getX01MultiLegsSetsForProfile(profileId: string): Promise<X01MultiLegsSets> {
     if (!profileId) return createEmptyMultiLegsSets();
     try {
-      const rows = await History.list();
-      const matches = (rows as SavedMatch[]).filter((m) => safeLower((m as any).kind) === "x01");
-      return computeX01MultiLegsSetsForProfileFromMatches(profileId, matches);
+      const rows = ((await (History as any).listFinished?.()) ?? (await History.list())) as SavedMatch[];
+      const fullRows = await Promise.all((Array.isArray(rows) ? rows : []).map(async (m: any) => {
+        try {
+          const id = String(m?.matchId ?? m?.id ?? "").trim();
+          return id ? ((await (History as any).get?.(id)) || m) : m;
+        } catch { return m; }
+      }));
+      const matches = fullRows.filter((m) => safeLower((m as any).kind) === "x01");
+      return computeX01MultiLegsSetsForProfileFromMatches(profileId, matches as SavedMatch[]);
     } catch {
       return createEmptyMultiLegsSets();
     }

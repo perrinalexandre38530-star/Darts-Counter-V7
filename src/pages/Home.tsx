@@ -562,13 +562,22 @@ async function buildStatsForProfile(
       (async () => {
         try {
           const anyHistory: any = History as any;
-          if (anyHistory.list) {
-            return await anyHistory.list({
-              includePlayers: true,
-            });
-          }
+          const rows =
+            typeof anyHistory.listFinished === "function"
+              ? await anyHistory.listFinished()
+              : typeof anyHistory.list === "function"
+              ? await anyHistory.list()
+              : [];
+          return await Promise.all((Array.isArray(rows) ? rows : []).map(async (row: any) => {
+            try {
+              const id = String(row?.matchId ?? row?.id ?? "").trim();
+              return id && typeof anyHistory.get === "function" ? ((await anyHistory.get(id)) || row) : row;
+            } catch {
+              return row;
+            }
+          }));
         } catch (e) {
-          console.warn("[Home] History.list all games failed", e);
+          console.warn("[Home] History.listFinished all games failed", e);
         }
         return [] as any[];
       })(),
@@ -1032,15 +1041,15 @@ async function buildStatsForProfile(
       const mp = Number(centralX01Agg.matchesPlayed || 0);
       const mw = Number(centralX01Agg.matchesWon || 0);
       const wr = mp > 0 ? mw / mp : 0;
-      s.sessionsGlobal = Math.max(Number(s.sessionsGlobal || 0), mp);
-      s.x01MultiSessions = Math.max(Number(s.x01MultiSessions || 0), mp);
-      s.winrateGlobal = wr || s.winrateGlobal;
-      s.x01MultiWinrate = wr || s.x01MultiWinrate;
-      s.avg3DGlobal = Number(centralX01Agg.avg3 || 0) || s.avg3DGlobal;
-      s.x01MultiAvg3D = Number(centralX01Agg.avg3 || 0) || s.x01MultiAvg3D;
-      s.recordBestVisitX01 = Math.max(Number(s.recordBestVisitX01 || 0), Number(centralX01Agg.bestVisit || 0));
+      s.sessionsGlobal = mp;
+      s.x01MultiSessions = mp;
+      s.winrateGlobal = wr;
+      s.x01MultiWinrate = wr;
+      s.avg3DGlobal = Number(centralX01Agg.avg3 || 0) || 0;
+      s.x01MultiAvg3D = Number(centralX01Agg.avg3 || 0) || 0;
+      s.recordBestVisitX01 = Number(centralX01Agg.bestVisit || 0) || 0;
       s.x01MultiBestVisit = s.recordBestVisitX01;
-      s.recordBestCOX01 = Math.max(Number(s.recordBestCOX01 || 0), Number(centralX01Agg.bestCheckout || 0));
+      s.recordBestCOX01 = Number(centralX01Agg.bestCheckout || 0) || 0;
       s.x01MultiBestCO = s.recordBestCOX01;
     }
 
