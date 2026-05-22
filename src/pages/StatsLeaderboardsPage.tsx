@@ -669,8 +669,10 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       bestCheckout: Number(agg?.bestCheckout || 0) || 0,
       legsWin: Number(agg?.legsWin || 0) || 0,
       setsWin: Number(agg?.setsWin || 0) || 0,
-      legWinRate: matches > 0 ? ((Number(agg?.legsWin || 0) || 0) / matches) * 100 : 0,
-      setWinRate: matches > 0 ? ((Number(agg?.setsWin || 0) || 0) / matches) * 100 : 0,
+      legsPlayed: Number(agg?.legsPlayed || 0) || 0,
+      setsPlayed: Number(agg?.setsPlayed || 0) || 0,
+      legWinRate: (Number(agg?.legsPlayed || 0) || 0) > 0 ? ((Number(agg?.legsWin || 0) || 0) / (Number(agg?.legsPlayed || 0) || 1)) * 100 : 0,
+      setWinRate: (Number(agg?.setsPlayed || 0) || 0) > 0 ? ((Number(agg?.setsWin || 0) || 0) / (Number(agg?.setsPlayed || 0) || 1)) * 100 : 0,
       darts,
       scoreTotal,
       hits,
@@ -687,10 +689,10 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       dbullPct: attempts > 0 ? (dbullHits / attempts) * 100 : 0,
       checkouts: Number(agg?.co || agg?.checkouts || 0) || 0,
       checkoutHits: Number(agg?.coHits || agg?.checkoutHits || 0) || 0,
-      checkoutRate: Number(agg?.checkoutRate || agg?.coRate || 0) || 0,
+      checkoutRate: (Number(agg?.co || agg?.checkouts || 0) || 0) > 0 ? ((Number(agg?.coHits || agg?.checkoutHits || 0) || 0) / (Number(agg?.co || agg?.checkouts || 0) || 1)) * 100 : (Number(agg?.checkoutRate || agg?.coRate || 0) || 0),
       dartsCo: Number(agg?.dartsCo || agg?.checkoutDarts || 0) || 0,
       bestFirst9,
-      first9Avg: Number(agg?.avgFirst9 || agg?.first9Avg || 0) || 0,
+      first9Avg: (Number(agg?.first9Count || 0) || 0) > 0 ? (Number(agg?.first9Sum || 0) / Number(agg?.first9Count || 1)) : (Number(agg?.avgFirst9 || agg?.first9Avg || 0) || 0),
       top9Score: bestFirst9,
       first9_100: Number(agg?.first9_100 || 0) || 0,
       first9_120: Number(agg?.first9_120 || 0) || 0,
@@ -1655,11 +1657,11 @@ function metricLabel(m: MetricKey, sport?: string) {
     case "setWinRate":
       return "% Sets";
     case "avg3":
-      return sport === "molkky" || sport === "dicegame" || sport === "babyfoot" || sport === "pingpong" ? "Moy. score" : "Moy. 3 darts";
+      return sport === "molkky" || sport === "dicegame" || sport === "babyfoot" || sport === "pingpong" ? "Moy. score" : "Avg3D";
     case "avg1":
-      return "Moy. 1 dart";
+      return "Avg1D";
     case "bestAvg3":
-      return "Best moy. 3D";
+      return "Best Avg3D";
     case "bestVisit":
       return sport === "molkky" || sport === "babyfoot" || sport === "pingpong" ? "Meilleur score" : "Best visit";
     case "bestCheckout":
@@ -2528,6 +2530,26 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
                 case "matches":
                   metricValue = `${rMatches}`;
                   metricSub = `${numOr0(row.wins)} win`;
+                  break;
+                case "legsWin":
+                  metricValue = `${numOr0(row.legsWin)}`;
+                  metricSub = `${numOr0(row.legsWin)}/${numOr0(row.legsPlayed) || numOr0(row.matches)} legs`;
+                  break;
+                case "setsWin":
+                  metricValue = `${numOr0(row.setsWin)}`;
+                  metricSub = `${numOr0(row.setsWin)}/${numOr0(row.setsPlayed) || numOr0(row.matches)} sets`;
+                  break;
+                case "checkouts":
+                  metricValue = `${numOr0(row.checkouts)}`;
+                  metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} réussis`;
+                  break;
+                case "checkoutHits":
+                  metricValue = `${numOr0(row.checkoutHits)}`;
+                  metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
+                  break;
+                case "dartsCo":
+                  metricValue = `${numOr0(row.dartsCo)}`;
+                  metricSub = `${numOr0(row.checkoutHits)} CO réussis`;
                   break;
                 case "avg3":
                   metricValue = row.avg3 ? Number(row.avg3).toFixed(1) : "0.0";
