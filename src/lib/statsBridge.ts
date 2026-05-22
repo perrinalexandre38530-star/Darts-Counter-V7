@@ -922,6 +922,85 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
     25: { segment: 25, marks: 0, closes: 0, pointsScored: 0 },
   }) as any;
 
+  const readCompactCricketLeg = (): CricketLegStats | null => {
+    const compact =
+      payloadObj?.compact ??
+      payloadObj?.payload?.compact ??
+      decoded?.compact ??
+      decoded?.payload?.compact ??
+      raw?.compact ??
+      null;
+    if (!compact || !Array.isArray(compact?.ps)) return null;
+
+    const ids = Array.isArray(compact?.p) ? compact.p.map((x: any) => String(x ?? "")) : [];
+    const idx = ids.findIndex((id: string) => id === pid || id.replace(/^online:/, "") === pid.replace(/^online:/, ""));
+    if (idx < 0) return null;
+
+    const row = compact.ps.find((x: any) => Number(x?.i) === idx) || compact.ps[idx];
+    if (!row) return null;
+
+    const nrow = row?.n || {};
+    const hrow = row?.h || {};
+    const get = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = nrow?.[k] ?? hrow?.[k];
+        const num = Number(v);
+        if (Number.isFinite(num)) return num;
+      }
+      return 0;
+    };
+
+    const perSegment = makeEmptySegments();
+    ([15, 16, 17, 18, 19, 20, 25] as const).forEach((seg) => {
+      const marks = get(`mk_${seg}`);
+      const points = get(`leg_persegment_${seg}_`);
+      perSegment[seg].marks = marks;
+      perSegment[seg].closes = marks >= 3 ? 1 : 0;
+      perSegment[seg].pointsScored = points;
+    });
+
+    const dartsThrown = get("leg_darts", "legstats_darts", "dt");
+    const visits = get("leg_visits", "legstats_visits") || Math.max(1, Math.ceil(dartsThrown / 3));
+    const totalMarks = get("leg_totalmarks", "legstats_totalmark", "mk");
+    const hitRate = get("leg_hitrate", "legstats_hitrate");
+    const scoringRate = get("leg_scoringrate", "legstats_scoringra") || hitRate;
+    const won = Boolean(row?.c?.won) || Number(compact?.w) === idx || String(raw?.winnerId ?? payloadObj?.winnerId ?? decoded?.winnerId ?? "") === pid;
+
+    const startedAt = get("leg_startedat", "legstats_startedat") || m.createdAt || nowTs();
+    const endedAt = get("leg_endedat", "legstats_endedat") || m.updatedAt || startedAt;
+
+    return {
+      matchId: String(m.id || raw?.matchId || raw?.id || compact?.id || "") || undefined,
+      legId: `${String(m.id || raw?.matchId || raw?.id || compact?.id || "cricket")}:${pid}:compact`,
+      playerId: pid,
+      mode: row?.c?.mode === "teams" ? "teams" : "solo",
+      scoringVariant: row?.c?.cutthroat ? "cut-throat" : "points",
+      variantId: decoded?.variantId ?? payloadObj?.variantId ?? raw?.variantId ?? undefined,
+      cutThroat: Boolean(row?.c?.cutthroat),
+      darts: dartsThrown,
+      visits,
+      totalMarks,
+      totalPoints: get("leg_totalpoints", "legstats_totalpoin", "sc"),
+      totalInflictedPoints: get("leg_totalinflicted", "legstats_totalinfl"),
+      mpr: get("leg_mpr", "legstats_mpr") || (visits > 0 ? totalMarks / visits : 0),
+      hitRate,
+      scoringRate,
+      won,
+      winningDartIndex: won ? get("leg_winningdartind", "legstats_winningda") : -1,
+      winningVisitIndex: won ? get("leg_winningvisitin", "legstats_winningvi") : -1,
+      opponentTotalPoints: get("leg_opponenttotalp", "legstats_opponentt"),
+      opponentLabel: undefined,
+      perSegment,
+      bestVisitMarks: get("leg_bestvisitmarks", "legstats_bestvisit") || Math.min(9, totalMarks),
+      avgMarksWhenScoring: get("leg_avgmarkswhensc", "legstats_avgmarksw"),
+      closeOrder: Object.keys(perSegment).map((k) => Number(k)).filter((k) => perSegment[k].closes) as any,
+      startedAt,
+      endedAt,
+      durationMs: get("leg_durationms", "legstats_durationm") || Math.max(0, endedAt - startedAt),
+    } as CricketLegStats;
+  };
+
+
   const buildSyntheticLeg = (player: any, index: number, fallbackStats?: any): CricketLegStats | null => {
     const leg: any = player?.legStats ?? player?.legsStats ?? player?.cricketLegStats ?? null;
     if (leg && typeof leg === "object" && !Array.isArray(leg)) return leg as CricketLegStats;
@@ -1024,6 +1103,12 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
     decoded?.payload?.payload?.stats?.players,
     raw?.summary?.stats?.players,
   );
+
+  const compactLeg = readCompactCricketLeg();
+  if (compactLeg) {
+    out.push(compactLeg);
+    return out;
+  }
 
   if (!playersArr.length && !statsPlayers.length) return out;
 

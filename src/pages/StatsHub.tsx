@@ -6243,6 +6243,77 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     });
   };
 
+
+  // Cricket compact.v1 fallback:
+  // anciens exports Cricket stockent les vraies stats dans payload.compact.ps[]
+  // au lieu de payload.players[]. Sans cette lecture, la carte résumé reste vide.
+  const readCompactCricketPlayer = (r: any, targetPid: string) => {
+    const compact =
+      r?.payload?.compact ??
+      r?.payload?.payload?.compact ??
+      r?.compact ??
+      r?.summary?.compact ??
+      null;
+    if (!compact || !Array.isArray(compact?.ps)) return null;
+
+    const ids = Array.isArray(compact?.p) ? compact.p.map((x: any) => normId(x)) : [];
+    let idx = ids.findIndex((id: string) => statHubIdMatches(id, targetPid));
+    if (idx < 0) {
+      const targetName = statHubNormName(selectedPlayer?.name);
+      const pn = compact?.pn && typeof compact.pn === "object" ? compact.pn : {};
+      idx = Object.entries(pn).findIndex(([k, v]) => {
+        const name = statHubNormName(v);
+        return !!targetName && name === targetName;
+      });
+    }
+    if (idx < 0) return null;
+
+    const row = compact.ps.find((x: any) => Number(x?.i) === idx) || compact.ps[idx];
+    if (!row) return null;
+
+    const nrow = row?.n || {};
+    const hrow = row?.h || {};
+    const cfg = row?.c || {};
+    const get = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = nrow?.[k] ?? hrow?.[k];
+        const num = Number(v);
+        if (Number.isFinite(num)) return num;
+      }
+      return 0;
+    };
+
+    const segs = [15, 16, 17, 18, 19, 20, 25];
+    const marksBySegment: Record<string, number> = {};
+    for (const seg of segs) marksBySegment[String(seg)] = get(`mk_${seg}`);
+    const totalMarks = get("mk", "leg_totalmarks", "legstats_totalmark");
+    const totalPoints = get("sc", "leg_totalpoints", "legstats_totalpoin");
+    const darts = get("leg_darts", "legstats_darts", "dt");
+    const visits = get("leg_visits", "legstats_visits");
+    const hitRate = get("leg_hitrate", "legstats_hitrate");
+    const mpr = get("leg_mpr", "legstats_mpr");
+    const bestVisitMarks = get("leg_bestvisitmarks", "legstats_bestvisit");
+
+    const favMap: Record<string, number> = {};
+    Object.entries(marksBySegment).forEach(([k, v]) => {
+      if (Number(v) > 0) favMap[k] = Number(v);
+    });
+
+    return {
+      idx,
+      totalMarks,
+      totalPoints,
+      darts,
+      visits,
+      hitRate,
+      mpr,
+      bestVisitMarks,
+      marksBySegment,
+      favMap,
+      won: Boolean(cfg?.won) || Number(compact?.w) === idx || statHubIdMatches(normId(r?.winnerId ?? r?.payload?.winnerId), targetPid),
+    };
+  };
+
   const byMode: Record<string, ModeDashboardCard & { samples: number[]; favMap: Record<string, number> }> = {} as any;
   for (const r of rows) {
     if (!pid || !recordHasPlayer(r as any, pid, selectedPlayer?.name)) continue;
@@ -6350,19 +6421,48 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     }
 
     if (mode === "cricket") {
+      const compactCricket = readCompactCricketPlayer(r as any, pid);
       const crCounts = readRingCounts(modeStatsPlayer, modeStatsPlayer?.special, payloadPlayer, payloadPlayer?.hits, pl?.hits, stats);
-      marksTotal = pickNum(marksTotal, modeStatsPlayer?.special?.marksTotal, payloadPlayer?.marksTotal, sumNumericValues(payloadPlayer?.marks), sumNumericValues(pl?.marks), crCounts.s + crCounts.d * 2 + crCounts.t * 3 + crCounts.bull + crCounts.dbull * 2, score);
-      score = pickNum(score, payloadPlayer?.score, modeStatsPlayer?.score, marksTotal);
-      darts = pickNum(darts, crCounts.darts, payloadPlayer?.darts, payloadPlayer?.hits?.length, modeStatsPlayer?.darts?.thrown);
-      hits = pickNum(hits, crCounts.s + crCounts.d + crCounts.t + crCounts.bull + crCounts.dbull, payloadPlayer?.hitCount, modeStatsPlayer?.darts?.hits, marksTotal);
+
+      marksTotal = pickNum(
+        marksTotal,
+        compactCricket?.totalMarks,
+        modeStatsPlayer?.special?.marksTotal,
+        payloadPlayer?.marksTotal,
+        sumNumericValues(payloadPlayer?.marks),
+        sumNumericValues(pl?.marks),
+        crCounts.s + crCounts.d * 2 + crCounts.t * 3 + crCounts.bull + crCounts.dbull * 2,
+        score
+      );
+      score = pickNum(score, compactCricket?.totalPoints, payloadPlayer?.score, modeStatsPlayer?.score, marksTotal);
+      darts = pickNum(darts, compactCricket?.darts, crCounts.darts, payloadPlayer?.darts, payloadPlayer?.hits?.length, modeStatsPlayer?.darts?.thrown);
+      const compactHitRate = Number(compactCricket?.hitRate || 0);
+      hits = pickNum(
+        hits,
+        compactHitRate > 0 && darts > 0 ? Math.round(compactHitRate * darts) : 0,
+        crCounts.s + crCounts.d + crCounts.t + crCounts.bull + crCounts.dbull,
+        payloadPlayer?.hitCount,
+        modeStatsPlayer?.darts?.hits,
+        marksTotal
+      );
       miss = pickNum(miss, crCounts.miss, modeStatsPlayer?.darts?.misses, darts > 0 ? Math.max(0, darts - hits) : 0);
+
       a.simpleHits = Number(a.simpleHits || 0) + crCounts.s;
       a.doubleHits = Number(a.doubleHits || 0) + crCounts.d;
       a.tripleHits = Number(a.tripleHits || 0) + crCounts.t;
       a.bullHits = Number(a.bullHits || 0) + crCounts.bull;
       a.dbullHits = Number(a.dbullHits || 0) + crCounts.dbull;
       a.missHits = Number(a.missHits || 0) + crCounts.miss;
-      a.bestRound = Math.max(Number(a.bestRound || 0), crCounts.bestRound, marksTotal > 0 ? Math.min(9, marksTotal) : 0);
+
+      // Compact Cricket ne conserve pas toujours le détail S/D/T, mais conserve
+      // les marks par numéro. On les utilise pour numéro favori + best marks.
+      if (compactCricket?.marksBySegment) mergeFavMap(a.favMap, compactCricket.marksBySegment);
+      a.bestRound = Math.max(
+        Number(a.bestRound || 0),
+        Number(compactCricket?.bestVisitMarks || 0),
+        crCounts.bestRound,
+        marksTotal > 0 ? Math.min(9, marksTotal) : 0
+      );
       mergeFavMap(a.favMap, crCounts.favMap);
     }
 
@@ -6566,8 +6666,8 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
           { label: "Marks", value: fmtStatValue(a.extra || a.hits), tone: "gold" },
           { label: "Marks/match", value: fmtStatValue(a.matches ? (a.extra || a.hits) / a.matches : 0), tone: "gold" },
-          { label: "MPR", value: fmtStatValue(cricketStats ? Number((cricketStats as any).globalMpr || 0) : (a.darts ? ((a.extra || a.hits) / a.darts) * 3 : 0)), tone: "green" },
-          { label: "Hit rate", value: cricketStats ? fmtStatValue(Number((cricketStats as any).globalHitRate || 0) * 100, "%") : ((a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—"), tone: "green" },
+          { label: "MPR", value: fmtStatValue(cricketStats && Number((cricketStats as any).globalMpr || 0) > 0 ? Number((cricketStats as any).globalMpr || 0) : (a.darts ? ((a.extra || a.hits) / Math.max(1, Math.ceil(a.darts / 3))) : 0)), tone: "green" },
+          { label: "Hit rate", value: cricketStats && Number((cricketStats as any).globalHitRate || 0) > 0 ? fmtStatValue(Number((cricketStats as any).globalHitRate || 0) * 100, "%") : ((a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—"), tone: "green" },
           { label: "S / D / T", value: `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}`, tone: "blue" },
           { label: "Bull + DBull", value: fmtStatValue((a.bullHits || 0) + (a.dbullHits || 0)), tone: "blue" },
           { label: "Best marks", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
