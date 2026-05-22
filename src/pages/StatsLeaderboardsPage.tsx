@@ -26,6 +26,7 @@ import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territorie
 import { computeKillerAgg } from "../lib/statsKillerAgg";
 import { isOnlineRecord, idLooseMatch, normText, isX01Record, sampleFromRec, collectPlayers } from "../lib/x01StatsSource";
 import { isOnlineStatsExcluded } from "../lib/onlineStatsExclusions";
+import { computeX01MultiAgg, isX01Match as isX01HistoryMatch } from "../lib/x01MultiAgg";
 
 type Props = {
   store: Store;
@@ -298,6 +299,220 @@ function inPeriod(rec: any, period: PeriodKey): boolean {
   const span = periodToMs(period);
   if (!span) return true;
   return Date.now() - dt <= span;
+}
+
+
+function x01LeaderboardPlayers(rec: any): any[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const arr =
+    (Array.isArray(summary?.players) && summary.players) ||
+    (Array.isArray(rec?.players) && rec.players) ||
+    (Array.isArray(payload?.players) && payload.players) ||
+    (Array.isArray(payload?.config?.players) && payload.config.players) ||
+    (Array.isArray(nested?.players) && nested.players) ||
+    (Array.isArray(nested?.config?.players) && nested.config.players) ||
+    [];
+  return Array.isArray(arr) ? arr : [];
+}
+
+function x01PlayerMatchesCandidate(player: any, candidateId: string, candidateName?: string): boolean {
+  const ids = [
+    player?.id,
+    player?.profileId,
+    player?.playerId,
+    player?.pid,
+    player?.uid,
+  ].map((v) => String(v || "").trim()).filter(Boolean);
+
+  if (candidateId && ids.some((id) => idLooseMatch(id, candidateId) || idLooseMatch(candidateId, id))) return true;
+
+  const cn = normText(candidateName || "");
+  const pn = normText(pickName(player) || "");
+  return !!cn && !!pn && cn === pn;
+}
+
+function x01ReadMapValueLoose(map: any, ids: string[]): number {
+  if (!map || typeof map !== "object") return 0;
+  for (const id of ids) {
+    if (!id) continue;
+    if (map[id] != null && Number.isFinite(Number(map[id]))) return Number(map[id]);
+    const hit = Object.keys(map).find((k) => idLooseMatch(k, id) || idLooseMatch(id, k));
+    if (hit && Number.isFinite(Number(map[hit]))) return Number(map[hit]);
+  }
+  return 0;
+}
+
+function x01DidCandidateWinRecord(rec: any, candidateId: string, candidateName?: string): boolean {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const players = x01LeaderboardPlayers(rec);
+  const me = players.find((p: any) => x01PlayerMatchesCandidate(p, candidateId, candidateName));
+  const ids = [
+    candidateId,
+    me?.id,
+    me?.profileId,
+    me?.playerId,
+    me?.pid,
+    me?.uid,
+  ].map((v) => String(v || "").trim()).filter(Boolean);
+
+  const winnerId = String(
+    rec?.winnerId ??
+    summary?.winnerId ??
+    payload?.winnerId ??
+    payload?.summary?.winnerId ??
+    nested?.winnerId ??
+    nested?.summary?.winnerId ??
+    ""
+  ).trim();
+
+  if (winnerId && ids.some((id) => idLooseMatch(winnerId, id) || idLooseMatch(id, winnerId))) return true;
+
+  const winnerName = normText(
+    rec?.winnerName ??
+    summary?.winnerName ??
+    payload?.winnerName ??
+    payload?.summary?.winnerName ??
+    ""
+  );
+  if (winnerName && normText(candidateName || pickName(me) || "") === winnerName) return true;
+
+  if (me) {
+    if (me.isWinner === true || me.winner === true || me.win === true) return true;
+    const result = String(me.result ?? me.outcome ?? "").toLowerCase();
+    if (result.startsWith("win") || result === "victory" || result === "victoire") return true;
+  }
+
+  const detailed = summary?.detailedByPlayer || summary?.detailedbyplayer || payload?.summary?.detailedByPlayer || null;
+  if (detailed && typeof detailed === "object") {
+    const key = Object.keys(detailed).find((k) => ids.some((id) => idLooseMatch(k, id) || idLooseMatch(id, k)));
+    const d = key ? detailed[key] : null;
+    if (d?.isWinner === true || d?.winner === true || d?.win === true) return true;
+    const result = String(d?.result ?? d?.outcome ?? "").toLowerCase();
+    if (result.startsWith("win") || result === "victory" || result === "victoire") return true;
+  }
+
+  // Dernier fallback robuste : si le résumé donne les sets/legs gagnés par joueur et aucun winnerId explicite.
+  // On ne considère PAS rank=1 seul comme une victoire, car c'est la source du bug 19/19.
+  const sets = x01ReadMapValueLoose(summary?.setsWonByPlayer || summary?.setsWinByPlayer || summary?.setsByPlayer || payload?.summary?.setsWonByPlayer, ids);
+  const legs = x01ReadMapValueLoose(summary?.legsWonByPlayer || summary?.legsWinByPlayer || summary?.legsByPlayer || payload?.summary?.legsWonByPlayer, ids);
+  const targetSets = Number(summary?.targetSets ?? summary?.setsToWin ?? payload?.config?.setsToWin ?? payload?.config?.sets ?? 0) || 0;
+  const targetLegs = Number(summary?.targetLegs ?? summary?.legsToWin ?? payload?.config?.legsToWin ?? payload?.config?.legs ?? 0) || 0;
+  if (targetSets > 0 && sets >= targetSets) return true;
+  if (!targetSets && targetLegs > 0 && legs >= targetLegs) return true;
+
+  return false;
+}
+
+function computeX01LeaderboardRowsFromDashboardAgg(
+  history: any[],
+  profiles: Profile[],
+  scope: Scope,
+  period: PeriodKey,
+  opts?: { includeBots?: boolean }
+): Row[] {
+  const includeBots = opts?.includeBots !== false;
+  const botsMap0 = includeBots ? loadBotsMap() : {};
+  const candidates = new Map<string, { id: string; name: string; avatarDataUrl?: string | null }>();
+
+  for (const p of profiles || []) {
+    if (!p?.id) continue;
+    candidates.set(String(p.id), {
+      id: String(p.id),
+      name: String((p as any).name || (p as any).displayName || ""),
+      avatarDataUrl: (p as any).avatarDataUrl ?? (p as any).avatar ?? null,
+    });
+  }
+
+  const x01Records = (history || []).filter((rec: any) => {
+    if (!rec || !inPeriod(rec, period)) return false;
+    const recIsOnline = isOnlineRecord(rec);
+    if (recIsOnline && isOnlineStatsExcluded(rec)) return false;
+    if (scope === "online" && !recIsOnline) return false;
+    if (scope === "local" && recIsOnline) return false;
+    try { return isX01HistoryMatch(rec as any); } catch { return isRecordMatchingMode(rec, "x01_multi", scope); }
+  });
+
+  for (const rec of x01Records) {
+    for (const pl of x01LeaderboardPlayers(rec)) {
+      const rawId = String(pickId(pl) || "").trim();
+      const name = pickName(pl);
+      let canonicalId = rawId;
+      for (const p of profiles || []) {
+        if (rawId && idLooseMatch((p as any).id, rawId)) canonicalId = String((p as any).id);
+        else if (name && normText((p as any).name || (p as any).displayName || "") === normText(name)) canonicalId = String((p as any).id);
+      }
+      if (!canonicalId) canonicalId = name ? `name:${normText(name)}` : "";
+      if (!canonicalId) continue;
+      if (!includeBots && String(canonicalId).startsWith("bot")) continue;
+      if (!candidates.has(canonicalId)) {
+        candidates.set(canonicalId, {
+          id: canonicalId,
+          name: name || (includeBots ? botsMap0?.[canonicalId]?.name : "") || "—",
+          avatarDataUrl: pickAvatar(pl) || (includeBots ? botsMap0?.[canonicalId]?.avatarDataUrl : null) || null,
+        });
+      }
+    }
+  }
+
+  const rows: Row[] = [];
+  for (const c of candidates.values()) {
+    const agg: any = computeX01MultiAgg(x01Records as any[], c.id, c.name);
+    const matches = Number(agg?.sessions || 0) || 0;
+    if (matches <= 0) continue;
+
+    let wins = 0;
+    for (const rec of x01Records) {
+      if (x01DidCandidateWinRecord(rec, c.id, c.name)) wins += 1;
+    }
+
+    const avg3 = matches > 0 ? (Number(agg?.sumAvg3D || 0) / matches) : 0;
+    const winRate = matches > 0 ? (wins / matches) * 100 : 0;
+
+    rows.push({
+      id: c.id,
+      name: c.name || "—",
+      avatarDataUrl: c.avatarDataUrl ?? null,
+
+      wins,
+      losses: Math.max(0, matches - wins),
+      matches,
+      winRate,
+
+      captures: 0,
+      avgDom: 0,
+      avgRounds: 0,
+      capPerRound: 0,
+
+      avg3,
+      bestVisit: Number(agg?.bestVisit || 0) || 0,
+      bestCheckout: Number(agg?.bestCheckout || 0) || 0,
+
+      kills: 0,
+      favNumber: 0,
+      favNumberHits: 0,
+      favSegment: "",
+      favSegmentHits: 0,
+      totalHits:
+        (Number(agg?.hitsSingle || 0) || 0) +
+        (Number(agg?.hitsDouble || 0) || 0) +
+        (Number(agg?.hitsTriple || 0) || 0) +
+        (Number(agg?.hitsBull || 0) || 0) +
+        (Number(agg?.hitsDBull || 0) || 0),
+
+      batardPoints: 0,
+      batardDarts: 0,
+      batardTurns: 0,
+      batardFails: 0,
+      batardValidHits: 0,
+      batardAdvances: 0,
+    } as Row);
+  }
+
+  return rows;
 }
 
 function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): boolean {
@@ -619,6 +834,10 @@ function computeRowsFromHistory(
 ): Row[] {
   const includeBots = opts?.includeBots !== false;
   const botsMap0 = includeBots ? loadBotsMap() : {};
+
+  if (mode === "x01_multi") {
+    return computeX01LeaderboardRowsFromDashboardAgg(history, profiles, scope, period, { includeBots });
+  }
 
   const aggByPlayer: Record<string, Agg> = {};
   const infoByPlayer: Record<string, ExtraInfo> = {};
