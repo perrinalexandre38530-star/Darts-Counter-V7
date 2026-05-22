@@ -519,44 +519,43 @@ export function aggregateX01Samples(samples: X01PlayerSample[]): X01Agg {
 }
 
 export async function loadAllHistoryRecords(): Promise<any[]> {
+  // SOURCE UNIQUE DE VÉRITÉ STATS :
+  // on ne lit que les parties réellement présentes dans l'Historique terminé.
+  // Ne pas réinjecter store.history / caches / dc_online_matches_v1 ici, sinon Home,
+  // Stats X01 Multi et Classements peuvent diverger.
   const byId = new Map<string, any>();
   const push = (rec: any, idx = 0) => {
     if (!rec || typeof rec !== "object") return;
-    const id = String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? deepFirst(rec, ["matchId", "id"]) ?? `rec-${idx}`).trim();
+    const id = String(
+      rec?.matchId ??
+        rec?.id ??
+        rec?.payload?.matchId ??
+        rec?.payload?.id ??
+        deepFirst(rec, ["matchId", "id"]) ??
+        `rec-${idx}`
+    ).trim();
     if (!id) return;
     byId.set(id, { ...(byId.get(id) || {}), ...rec });
   };
 
   try {
-    const rows = typeof (History as any)?.listFinished === "function"
-      ? await (History as any).listFinished()
-      : typeof (History as any)?.list === "function"
-      ? await (History as any).list()
-      : [];
+    const api: any = History as any;
+    const rows =
+      typeof api?.listFinished === "function"
+        ? await api.listFinished()
+        : typeof api?.list === "function"
+        ? await api.list()
+        : [];
     for (let i = 0; i < (Array.isArray(rows) ? rows : []).length; i++) {
       const row: any = rows[i];
       const id = String(row?.matchId ?? row?.id ?? "").trim();
       let full = row;
       try {
-        if (id && typeof (History as any)?.get === "function") {
-          full = (await (History as any).get(id)) || row;
+        if (id && typeof api?.get === "function") {
+          full = (await api.get(id)) || row;
         }
       } catch {}
       push(full, i);
-    }
-  } catch {}
-
-  try {
-    const store = loadStore();
-    const hist = Array.isArray((store as any)?.history) ? (store as any).history : [];
-    hist.forEach(push);
-  } catch {}
-
-  try {
-    if (typeof window !== "undefined") {
-      const raw = window.localStorage.getItem("dc_online_matches_v1");
-      const arr = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(arr)) arr.forEach((r, i) => push({ ...r, online: true, source: r?.source || "online" }, 100000 + i));
     }
   } catch {}
 

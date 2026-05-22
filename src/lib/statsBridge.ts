@@ -46,7 +46,7 @@ function __ms_get(obj:any,...paths:string[]){
 //   - getCricketProfileStats (alias legacy) / getX01MultiLegsSetsForProfile
 //
 // Notes :
-// - Index basé sur History.list() (IDB). On normalise TOUT ce qu'on peut :
+// - Index basé sur History.listFinished() (IDB) + History.get(id). On normalise TOUT ce qu'on peut :
 //   * payload string (base64+gzip / json / LZString global)
 //   * summary / payload.summary / liveStatsByPlayer / players arrays
 // - "source" (local/online/training/all) : filtrage best-effort selon les champs présents.
@@ -642,13 +642,26 @@ export async function buildStatsIndex(force = false): Promise<StatsIndex> {
   if (!force && _cachePromise) return _cachePromise;
 
   _cachePromise = (async () => {
-    const raw = (await History.list()) as SavedMatch[];
+    // SOURCE UNIQUE DE VÉRITÉ STATS :
+    // uniquement les parties terminées présentes dans l'Historique.
+    // On hydrate chaque ligne avec History.get(id) quand possible pour récupérer
+    // les payloads complets utilisés par les écrans détaillés.
+    const api: any = History as any;
+    const raw =
+      typeof api?.listFinished === "function"
+        ? ((await api.listFinished()) as SavedMatch[])
+        : ((await api.list()) as SavedMatch[]);
     const arr = Array.isArray(raw) ? raw : [];
 
     const norm: NormalizedMatch[] = [];
     for (const r of arr) {
       try {
-        const n = await normalizeRow(r);
+        const id = String((r as any)?.matchId ?? (r as any)?.id ?? "").trim();
+        let full: any = r;
+        try {
+          if (id && typeof api?.get === "function") full = (await api.get(id)) || r;
+        } catch {}
+        const n = await normalizeRow(full);
         if (n && n.id) norm.push(n);
       } catch {
         // ignore

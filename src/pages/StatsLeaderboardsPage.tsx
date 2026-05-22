@@ -2,7 +2,7 @@
 // =============================================================
 // src/pages/StatsLeaderboardsPage.tsx
 // Page CLASSEMENTS globale (tous profils)
-// - Agrège store.history + IDB History
+// - Agrège uniquement IDB History terminé (source unique : Historique)
 // - Robust: supporte multiples formats de summary (V1/V2/V3)
 // - Avatars: récup depuis profiles OU history.players OU summary
 // - + BotsMap: récup avatars/noms depuis localStorage dc_bots_v1
@@ -1310,9 +1310,7 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
   const [batardWinMode, setBatardWinMode] = React.useState<string>("all");
   const [batardFailPolicy, setBatardFailPolicy] = React.useState<string>("all");
   const [batardScoreOnlyValid, setBatardScoreOnlyValid] = React.useState<string>("all"); // all|true|false
-  const [historySource, setHistorySource] = React.useState<any[]>(
-    (((store as any)?.history as any[]) || []) as any[]
-  );
+  const [historySource, setHistorySource] = React.useState<any[]>([]);
 
 
   const batardFilterOptions = React.useMemo(() => {
@@ -1339,31 +1337,41 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
   }, [historySource]);
 
   React.useEffect(() => {
-    setHistorySource((((store as any)?.history as any[]) || []) as any[]);
-  }, [store]);
-
-  React.useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const api: any = History as any;
-        let list: any[] = [];
-        if (typeof api.getAll === "function") list = await api.getAll();
-        else if (typeof api.list === "function") list = await api.list();
-        else if (typeof api.getAllSorted === "function") list = await api.getAllSorted();
+        const rows =
+          typeof api.listFinished === "function"
+            ? await api.listFinished()
+            : typeof api.list === "function"
+            ? await api.list()
+            : [];
 
-        if (alive && Array.isArray(list) && list.length) {
-          if (import.meta.env.DEV) console.log("[Leaderboards] IDB history size =", list.length);
-          setHistorySource(list);
+        const hydrated: any[] = [];
+        for (let i = 0; i < (Array.isArray(rows) ? rows : []).length; i++) {
+          const row: any = rows[i];
+          const id = String(row?.matchId ?? row?.id ?? "").trim();
+          let full = row;
+          try {
+            if (id && typeof api.get === "function") full = (await api.get(id)) || row;
+          } catch {}
+          hydrated.push(full);
+        }
+
+        if (alive) {
+          if (import.meta.env.DEV) console.log("[Leaderboards] finished history size =", hydrated.length);
+          setHistorySource(hydrated);
         }
       } catch (err) {
-        if (import.meta.env.DEV) console.log("[Leaderboards] History IDB load error", err);
+        if (import.meta.env.DEV) console.log("[Leaderboards] History finished load error", err);
+        if (alive) setHistorySource([]);
       }
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [store?.history]);
 
   const currentModeDef = modeDefs.find((m) => m.id === mode);
   const metricList = currentModeDef?.metrics ?? [];
