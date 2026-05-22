@@ -5019,7 +5019,7 @@ function pct(x?: number) {
   const v = Number(x);
   return Number.isFinite(v)
     ? `${Math.round(Math.max(0, Math.min(100, v)))}%`
-    : "0%";
+    : "—";
 }
 
 function pick(obj: any, paths: string[], def?: any) {
