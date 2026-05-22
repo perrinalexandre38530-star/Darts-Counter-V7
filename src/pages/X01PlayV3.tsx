@@ -7573,6 +7573,13 @@ function saveX01V3MatchToHistory({
     legsPerSet: (config as any)?.legsPerSet ?? 1,
   });
 
+  // ✅ ONLINE/X01 safety: when the saved replay contains a single completed leg,
+  // store it as a simple match even if the live online config had legsPerSet/setsToWin > 1.
+  // This prevents broken online saves from becoming "leg 2 playing" with setsWon = 0.
+  const replayLegCountForSave = Array.isArray(replayLegs) ? replayLegs.length : 0;
+  const effectiveSavedLegsPerSet = replayLegCountForSave <= 1 ? 1 : Math.max(1, Number((config as any)?.legsPerSet ?? 1) || 1);
+  const effectiveSavedSetsToWin = replayLegCountForSave <= 1 ? 1 : Math.max(1, Number((config as any)?.setsToWin ?? 1) || 1);
+
   // Source de vérité des scores finaux : le replay/visitHistory, pas state.scores.
   // Après un checkout, le moteur peut déjà avoir préparé la manche suivante et remettre
   // state.scores à startScore. En sauvegarde/historique, cela réattribue ensuite les
@@ -7814,6 +7821,23 @@ function saveX01V3MatchToHistory({
     if (scoreNow === 0 && !winnerId) {
       winnerId = pid;
     }
+  }
+
+
+  // ✅ Les buckets et checkout doivent être finalisés après le recalcul depuis les volées.
+  // Le push perPlayer arrive plus haut pour garder la structure existante, puis on remet ici
+  // les valeurs définitives, sinon les pages Stats/History peuvent afficher 0 partout.
+  for (const row of perPlayer as any[]) {
+    const pid = String(row?.playerId || "");
+    if (!pid) continue;
+    row.h60 = legacyH60[pid] || 0;
+    row.h100 = legacyH100[pid] || 0;
+    row.h140 = legacyH140[pid] || 0;
+    row.h180 = legacyH180[pid] || 0;
+    row.checkoutHits = legacyCheckoutHits[pid] || 0;
+    row.checkoutAttempts = legacyCheckoutAttempts[pid] || 0;
+    row.dartsCheckout = replayMetricsByPlayer[pid]?.checkoutDarts ?? row.dartsCheckout ?? 0;
+    row.avgCheckoutDarts = replayMetricsByPlayer[pid]?.checkoutDarts ?? row.avgCheckoutDarts ?? 0;
   }
 
   // -------------------------
@@ -8086,8 +8110,8 @@ function saveX01V3MatchToHistory({
       ...engineGame,
       mode: "x01",
       startScore: config.startScore,
-      legsPerSet: config.legsPerSet ?? null,
-      setsToWin: config.setsToWin ?? null,
+      legsPerSet: effectiveSavedLegsPerSet,
+      setsToWin: effectiveSavedSetsToWin,
     },
 
     rankings,
