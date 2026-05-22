@@ -23,6 +23,7 @@ import {
   getCricketProfileStats,
 } from "../lib/statsBridge";
 import { History } from "../lib/history";
+import { computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
 
 type Props = {
   store: Store;
@@ -553,7 +554,8 @@ function computeKillerAggFromMatches(
 ============================================================ */
 
 async function buildStatsForProfile(
-  profileId: string
+  profileId: string,
+  profileName?: string
 ): Promise<ActiveProfileStats> {
   try {
     const [base, multiRaw, cricket] = await Promise.all([
@@ -590,7 +592,16 @@ async function buildStatsForProfile(
       })(),
     ]);
 
-    const multiMatches: any[] = Array.isArray(multiRaw) ? multiRaw : [];
+    const allHistoryMatches: any[] = Array.isArray(multiRaw) ? multiRaw : [];
+    // ✅ HOME doit suivre le même périmètre que le dashboard StatsHub :
+    // pour les métriques X01, on ne garde QUE les parties X01 terminées présentes dans l'historique.
+    // Avant, Home additionnait tous les modes dans "x01 multi" => 41 sessions / 42.24 / best visit faux.
+    const multiMatches: any[] = allHistoryMatches.filter((m: any) => {
+      try { return isX01Match(m as any); } catch { return false; }
+    });
+    const x01AggForHome: any = (() => {
+      try { return computeX01MultiAgg(multiMatches as any[], profileId, profileName); } catch { return null; }
+    })();
 
     /* ---------------------- GLOBAL (base brut) ---------------------- */
 
@@ -907,10 +918,17 @@ async function buildStatsForProfile(
       if (multiMinDarts === Infinity && minDartsRecordBase > 0) multiMinDarts = minDartsRecordBase;
     }
 
-    const globalSessions = hasMulti ? multiSessions : gamesBase;
+    // ✅ Alignement Dashboard / Centre Stats :
+    // - sessions / moyenne / winrate X01 viennent de StatsBridge (index historique), pas du recalcul Home local.
+    // - le recalcul local sert seulement de secours si StatsBridge est vide.
+    const globalSessions = gamesBase > 0 ? gamesBase : multiSessions;
 
     const globalAvg3 =
-      multiTotalAvg3Count > 0 ? multiTotalAvg3 / multiTotalAvg3Count : avg3Base;
+      avg3Base > 0
+        ? avg3Base
+        : multiTotalAvg3Count > 0
+        ? multiTotalAvg3 / multiTotalAvg3Count
+        : 0;
 
     const globalWinRate =
       winRate01Base > 0
@@ -950,8 +968,16 @@ async function buildStatsForProfile(
       favoriteNumberLabel = sorted[0][0] || null;
     }
 
-    const recordBestVisitX01 = Math.max(multiBestVisit, bestVisitBase);
-    const recordBestCOX01 = Math.max(multiBestCheckout, bestCheckoutBase);
+    const recordBestVisitX01 = Math.max(
+      Number(x01AggForHome?.bestVisit ?? 0) || 0,
+      multiBestVisit,
+      bestVisitBase
+    );
+    const recordBestCOX01 = Math.max(
+      Number(x01AggForHome?.bestCheckout ?? 0) || 0,
+      multiBestCheckout,
+      bestCheckoutBase
+    );
 
     const recordMinDartsGlobal = multiMinDarts !== Infinity ? multiMinDarts : 0;
     const recordMinDarts501 = recordMinDartsGlobal || minDartsRecordBase || 0;
@@ -974,7 +1000,7 @@ async function buildStatsForProfile(
     const clockTotalTimeSec = cAgg.totalTimeSec;
     const clockBestStreak = cAgg.bestStreak;
 
-    const killerAgg = computeKillerAggFromMatches(multiMatches, profileId);
+    const killerAgg = computeKillerAggFromMatches(allHistoryMatches, profileId);
 
     const s: ActiveProfileStats = {
       ratingGlobal,
@@ -2246,7 +2272,7 @@ export default function Home({ store, go, activeSport }: Props) {
         if (!cancelled) setStats(emptyActiveProfileStats());
         return;
       }
-      const s = await buildStatsForProfile(activeProfile.id).catch(() => emptyActiveProfileStats());
+      const s = await buildStatsForProfile(activeProfile.id, activeProfile.name).catch(() => emptyActiveProfileStats());
       if (!cancelled) setStats(s);
     };
 
