@@ -6172,10 +6172,10 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
               walk(h);
               continue;
             }
-            const ringRaw = String(h.ring ?? h.multLabel ?? h.type ?? h.kind ?? h.mult ?? "").toUpperCase();
-            const segRaw = h.segment ?? h.value ?? h.v ?? h.target ?? h.number;
+            const ringRaw = String(h.ring ?? h.r ?? h.multLabel ?? h.type ?? h.kind ?? h.mult ?? "").toUpperCase();
+            const segRaw = h.segment ?? h.s ?? h.value ?? h.target ?? h.number;
             const segNum = Number(segRaw);
-            const multNum = Number(h.mult ?? h.multiplier ?? 0);
+            const multNum = Number(h.mult ?? h.multiplier ?? h.multiplicateur ?? 0);
             const isMiss = ringRaw.includes("MISS") || String(segRaw).toUpperCase() === "MISS" || segNum === 0;
             out.darts += 1;
             if (isMiss) { out.miss += 1; continue; }
@@ -6446,7 +6446,38 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
 
     if (mode === "cricket") {
       const compactCricket = readCompactCricketPlayer(r as any, pid);
+      const compactCricketEvents = (() => {
+        const detail =
+          (r as any)?.payload?.compact?.d ??
+          (r as any)?.payload?.payload?.compact?.d ??
+          (r as any)?.compact?.d ??
+          (r as any)?.summary?.compact?.d ??
+          null;
+        const compact =
+          (r as any)?.payload?.compact ??
+          (r as any)?.payload?.payload?.compact ??
+          (r as any)?.compact ??
+          (r as any)?.summary?.compact ??
+          null;
+        const ids = Array.isArray(compact?.p) ? compact.p.map((x: any) => normId(x)) : [];
+        let idx = ids.findIndex((id: string) => statHubIdMatches(id, pid));
+        if (idx < 0) return [];
+        const ev = Array.isArray(detail?.ce) ? detail.ce : [];
+        return ev
+          .filter((e: any) => Number(e?.p) === idx)
+          .map((e: any) => ({
+            segment: e?.s,
+            ring: e?.r,
+            mult: e?.r === "T" ? 3 : e?.r === "D" || e?.r === "DB" ? 2 : 1,
+            marks: e?.m,
+            scoredPoints: e?.pts,
+            inflictedPoints: e?.inf,
+            visitIndex: e?.v,
+            dartIndex: e?.d,
+          }));
+      })();
       const crCounts = readRingCounts(
+        compactCricketEvents,
         modeStatsPlayer,
         modeStatsPlayer?.special,
         (modeStatsPlayer as any)?.special?.hitSummary,

@@ -357,6 +357,44 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
     const legs = payload.legs ?? payload.sets ?? payload.legResults;
     if (legs) out.l = stripHeavy(legs);
   }
+
+  // Cricket: conserver le journal fléchette par fléchette.
+  // C'est la seule source fiable pour reconstruire plus tard S/D/T, MISS,
+  // Bull/DBull, best visit, hit-rate, damage cut-throat, etc.
+  // Ancien bug: payload.cricketEvents existait dans CricketPlay mais le compacteur
+  // ne le recopiait pas dans compact.d, donc l'export/snapshot ne gardait que des
+  // agrégats impossibles à détailler.
+  if (mode === "cricket") {
+    const ev =
+      payload.cricketEvents ??
+      payload.cricketDartLog ??
+      payload.dartLog ??
+      payload.events ??
+      payload.stats?.cricketEvents ??
+      payload.stats?.dartLog;
+    if (Array.isArray(ev) && ev.length) {
+      out.ce = ev.slice(-2500).map((e: any) => {
+        if (!e || typeof e !== "object") return e;
+        const pid = e.playerId ?? e.profileId ?? e.id ?? e.pid;
+        return {
+          ...(pid != null ? { p: indexOf(pid) } : {}),
+          ...(e.visitIndex != null ? { v: toNum(e.visitIndex) ?? e.visitIndex } : {}),
+          ...(e.dartIndex != null ? { d: toNum(e.dartIndex) ?? e.dartIndex } : {}),
+          ...(e.segment != null ? { s: e.segment } : {}),
+          ...(e.ring != null ? { r: e.ring } : {}),
+          ...(e.marks != null ? { m: toNum(e.marks) ?? e.marks } : {}),
+          ...(e.rawScore != null ? { rs: toNum(e.rawScore) ?? e.rawScore } : {}),
+          ...(e.scoredPoints != null ? { pts: toNum(e.scoredPoints) ?? e.scoredPoints } : {}),
+          ...(e.inflictedPoints != null ? { inf: toNum(e.inflictedPoints) ?? e.inflictedPoints } : {}),
+          ...(e.beforeMarksOnSegment != null ? { bm: toNum(e.beforeMarksOnSegment) ?? e.beforeMarksOnSegment } : {}),
+          ...(e.afterMarksOnSegment != null ? { am: toNum(e.afterMarksOnSegment) ?? e.afterMarksOnSegment } : {}),
+          ...(e.closedSegmentNow != null ? { cl: !!e.closedSegmentNow } : {}),
+          ...(e.winningThrow != null ? { w: !!e.winningThrow } : {}),
+          ...(e.timestamp != null ? { t: toNum(e.timestamp) ?? e.timestamp } : {}),
+        };
+      });
+    }
+  }
   return Object.keys(out).length ? out : undefined;
 }
 

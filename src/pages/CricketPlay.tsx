@@ -864,6 +864,8 @@ React.useEffect(() => {
           const winningThrow = !before.winnerId && !!next.winnerId;
 
           cricketRecorder.logDart({
+            matchId: matchIdRef.current,
+            setId: (before as any)?.setId,
             legId: legIdRef.current,
             playerId: pid,
             visitIndex,
@@ -1715,7 +1717,12 @@ return {
       roundNumber: (state as any).roundNumber,
       forcedFinished: !!(state as any).forcedFinished,
       players: playersPayload,
-      cricketEvents: cricketRecorder.eventsRef.current.slice(-500),
+      // Journal complet fléchette par fléchette.
+      // IMPORTANT: ne pas tronquer ici. Le compacteur sait réduire proprement si besoin,
+      // mais la sauvegarde complète doit garder assez d'information pour reconstruire
+      // les futures stats Cricket (S/D/T, MISS, Bull/DBull, best visit, etc.).
+      cricketEvents: cricketRecorder.eventsRef.current.slice(),
+      cricketDartLog: cricketRecorder.eventsRef.current.slice(),
     },
   };
 }
