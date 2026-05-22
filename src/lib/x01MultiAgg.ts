@@ -227,6 +227,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     sumAvg3D: 0,
     bestVisit: 0,
     bestCheckout: 0,
+    bestAvg3D: 0,
     best9Score: 0,
     legsWin: 0,
     setsWin: 0,
@@ -313,7 +314,10 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
 
     const anyRec: any = rec as any;
     const payload: any = anyRec?.payload ?? null;
-    const summary: any = anyRec?.summary ?? payload?.summary ?? null;
+    // Important: les exports ONLINE ont souvent un root summary minimal et
+    // le vrai bloc stats complet dans payload.summary. On privilégie donc
+    // payload.summary, sinon les classements online retombent à 0.
+    const summary: any = payload?.summary ?? anyRec?.summary ?? null;
     const pickMapValue = (...maps: any[]) => {
       for (const map of maps) {
         const val = x01FindMapValue(map, matchedIds);
@@ -323,29 +327,38 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     };
     const rankings = Array.isArray(summary?.rankings) ? summary.rankings : Array.isArray(payload?.summary?.rankings) ? payload.summary.rankings : [];
     const rankHit = rankings.find((rr: any) => x01PlayerIds(rr).some((id) => matchedIds.some((a) => x01IdMatches(id, a))) || (pname && x01NormName(rr?.name) === pname));
-    const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, payload?.summary?.legsWonByPlayer) || x01ReadNum(rankHit?.legsWon, rankHit?.lw);
-    const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, payload?.summary?.setsWonByPlayer) || x01ReadNum(rankHit?.setsWon, rankHit?.sw);
+    const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, summary?.legsWon, summary?.legsScore, payload?.summary?.legsWonByPlayer) || x01ReadNum(rankHit?.legsWon, rankHit?.lw);
+    const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, summary?.setsWon, summary?.setsScore, payload?.summary?.setsWonByPlayer) || x01ReadNum(rankHit?.setsWon, rankHit?.sw);
     out.legsWin += legsFromSummary;
     out.setsWin += setsFromSummary;
     const winnerId = String(anyRec?.winnerId ?? summary?.winnerId ?? payload?.winnerId ?? payload?.summary?.winnerId ?? "");
     if (legsFromSummary <= 0 && matchedIds.some((id) => x01IdMatches(winnerId, id))) out.legsWin += 1;
 
     const detailed = x01FindMapValue(summary?.detailedByPlayer, matchedIds) || x01FindMapValue(summary?.detailedbyplayer, matchedIds) || null;
+    const perPlayerArr = Array.isArray(summary?.perPlayer) ? summary.perPlayer : [];
+    const perPlayerHit = perPlayerArr.find((pp: any) => x01PlayerIds(pp).some((id) => matchedIds.some((a) => x01IdMatches(id, a))));
+    const summaryPlayersHit = x01FindMapValue(summary?.players, matchedIds);
+    const statSource: any = (perPlayerHit && typeof perPlayerHit === "object" ? perPlayerHit : null) || (summaryPlayersHit && typeof summaryPlayersHit === "object" ? summaryPlayersHit : null) || (detailed && typeof detailed === "object" ? detailed : null);
     if (visits.length) {
-      const detailedForAttempts = detailed && typeof detailed === "object" ? detailed : null;
-      const attemptsFromDetail = x01ReadNum(detailedForAttempts?.checkoutAttempts, detailedForAttempts?.checkoutattempts, detailedForAttempts?.co, detailedForAttempts?.checkouts);
-      out.checkoutAttempts += attemptsFromDetail || (bestCO > 0 ? 1 : 0);
-      out.darts += darts;
-      const avg3 = darts > 0 ? (scored / darts) * 3 : 0;
+      const attemptsFromStats = x01ReadNum(statSource?.checkoutAttempts, statSource?.checkoutattempts, statSource?.co, statSource?.checkouts);
+      const hitsFromStats = x01ReadNum(statSource?.checkoutHits, statSource?.checkoutSuccess, statSource?.checkoutsuccess, statSource?.coHits, statSource?.cohits);
+      const dartsCoFromStats = x01ReadNum(statSource?.dartsCo, statSource?.dartsCheckout, statSource?.checkoutDarts, statSource?.checkoutdarts);
+      out.checkoutAttempts += attemptsFromStats || (bestCO > 0 ? 1 : 0);
+      out.checkoutHits += hitsFromStats || (bestCO > 0 ? 1 : 0);
+      out.dartsCo += dartsCoFromStats || (bestCO > 0 ? Math.max(1, visits.find((v:any)=>v.finish)?.segments?.length || 1) : 0);
+      out.darts += Math.max(darts, x01ReadNum(statSource?.darts, statSource?.dt, statSource?.dartsThrown));
+      const avg3 = x01ReadNum(statSource?.avg3, statSource?.avg3D, statSource?.avg3d) || (darts > 0 ? (scored / darts) * 3 : 0);
       out.sumAvg3D += avg3;
-      out.bestVisit = Math.max(out.bestVisit, bestVisit);
-      out.bestCheckout = Math.max(out.bestCheckout, bestCO);
+      out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
+      out.bestVisit = Math.max(out.bestVisit, bestVisit, x01ReadNum(statSource?.bestVisit, statSource?.bv));
+      out.bestCheckout = Math.max(out.bestCheckout, bestCO, x01ReadNum(statSource?.bestCheckout, statSource?.bc));
       out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
     } else if (detailed && typeof detailed === "object") {
       const d = x01ReadNum(detailed.darts, detailed.dt, detailed.dartsThrown);
       const avg3 = x01ReadNum(detailed.avg3, detailed.avg3D, detailed.avg3d);
       out.darts += d;
       out.sumAvg3D += avg3;
+      out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
       out.bestVisit = Math.max(out.bestVisit, x01ReadNum(detailed.bestVisit, detailed.bv));
       out.bestCheckout = Math.max(out.bestCheckout, x01ReadNum(detailed.bestCheckout, detailed.bc));
       out.hitsSingle += x01ReadNum(detailed.hits?.S, detailed.hits?.s, detailed.hitsSingle, detailed.hitssingle);

@@ -664,7 +664,7 @@ function computeX01LeaderboardRowsFromDashboardAgg(
 
       avg3,
       avg1: avg3 / 3,
-      bestAvg3: Number(agg?.bestAvg3D || agg?.bestAvg3 || 0) || 0,
+      bestAvg3: Number(agg?.bestAvg3D || agg?.bestAvg3 || agg?.bestAvg || 0) || 0,
       bestVisit: Number(agg?.bestVisit || 0) || 0,
       bestCheckout: Number(agg?.bestCheckout || 0) || 0,
       legsWin: Number(agg?.legsWin || 0) || 0,
@@ -1673,7 +1673,7 @@ function metricLabel(m: MetricKey, sport?: string) {
     case "top9Score":
       return "Top 9 darts";
     case "checkouts":
-      return "CO";
+      return "CO Tentatives";
     case "checkoutHits":
       return "CO réussis";
     case "checkoutRate":
