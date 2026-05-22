@@ -14,7 +14,6 @@ import {
   getBasicProfileStatsAsync,
   getCricketProfileStats,
 } from "../lib/statsBridge";
-import { loadX01SamplesForProfile, aggregateX01Samples } from "../lib/x01StatsSource";
 
 /* ============================================================
    Exposé : stats vides + hook
@@ -243,25 +242,9 @@ async function buildStatsForProfile(
   profileId: string
 ): Promise<ActiveProfileStats> {
   try {
+    // SOURCE UNIQUE : StatsBridge lit le même index historique que le centre Stats.
+    // Ne pas écraser avec loadX01SamplesForProfile, qui comptait un périmètre X01 différent.
     let base: any = await getBasicProfileStatsAsync(profileId);
-    try {
-      const centralAgg = aggregateX01Samples(
-        await loadX01SamplesForProfile({ id: profileId, profileId }, { scope: "all" })
-      );
-      if (centralAgg.matchesPlayed > 0 || centralAgg.darts > 0) {
-        base = {
-          games: centralAgg.matchesPlayed,
-          wins: centralAgg.matchesWon,
-          winRate: centralAgg.matchesPlayed ? (centralAgg.matchesWon / centralAgg.matchesPlayed) * 100 : 0,
-          darts: centralAgg.darts,
-          avg3: centralAgg.avg3,
-          bestVisit: centralAgg.bestVisit,
-          bestCheckout: centralAgg.bestCheckout,
-        };
-      }
-    } catch (e) {
-      console.warn("[useActiveProfileStats] central X01 stats failed", e);
-    }
 
     // Cricket
     let cricket: any = null;

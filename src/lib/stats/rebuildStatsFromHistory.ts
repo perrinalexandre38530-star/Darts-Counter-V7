@@ -790,10 +790,9 @@ export async function getOrRebuildStatsIndex(options?: {
   persist?: boolean;
   force?: boolean;
 }): Promise<StatsIndex> {
-  if (!options?.force && !isStatsIndexDirty()) {
-    const cached = await loadStatsIndex();
-    if (cached) return cached;
-  }
+  // SOURCE UNIQUE + anti-cache fantôme : les écrans stats doivent refléter l'historique
+  // réellement présent maintenant, pas un ancien dc_stats_index conservé en IDB/localStorage.
+  // Le rebuild est déclenché à l'ouverture des écrans stats/Home, pas en tâche de fond.
   return rebuildStatsFromHistory(options);
 }
 

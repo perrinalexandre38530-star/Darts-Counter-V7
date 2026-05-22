@@ -76,8 +76,20 @@ export default function StatsX01MultiTab({ store }: Props) {
           activeProfile.id
         );
 
-        // B) History X01
-        const rows = await History.list();
+        // B) History X01 — même source que les stats globales : parties terminées hydratées.
+        const api: any = History as any;
+        const lightRows =
+          typeof api.listFinished === "function"
+            ? await api.listFinished()
+            : await api.list();
+        const rows = await Promise.all((Array.isArray(lightRows) ? lightRows : []).map(async (row: any) => {
+          try {
+            const id = String(row?.matchId ?? row?.id ?? "").trim();
+            return id && typeof api.get === "function" ? ((await api.get(id)) || row) : row;
+          } catch {
+            return row;
+          }
+        }));
         const metaStats = computeX01MultiMeta(
           rows as any[],
           activeProfile

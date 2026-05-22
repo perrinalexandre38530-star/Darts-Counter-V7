@@ -54,7 +54,6 @@ function __ms_get(obj:any,...paths:string[]){
 // ============================================
 
 import { History } from "./history";
-import { loadX01SamplesForProfile, aggregateX01Samples } from "./x01StatsSource";
 import type { SavedMatch } from "./history";
 import {
   aggregateCricketProfileStats,
@@ -2145,26 +2144,10 @@ export const StatsBridge = {
   },
 
   async getBasicProfileStatsAsync(profileId: string): Promise<BasicProfileStats> {
-    // Source prioritaire : agrégateur X01 central, commun Home / Profils / Stats / Online.
-    try {
-      const samples = await loadX01SamplesForProfile({ id: profileId, profileId }, { scope: "all" });
-      const agg = aggregateX01Samples(samples);
-      if (agg.matchesPlayed > 0 || agg.darts > 0) {
-        return {
-          games: agg.matchesPlayed,
-          wins: agg.matchesWon,
-          winRate: agg.matchesPlayed ? (agg.matchesWon / agg.matchesPlayed) * 100 : 0,
-          darts: agg.darts,
-          avg3: agg.avg3,
-          bestVisit: agg.bestVisit,
-          bestCheckout: agg.bestCheckout,
-          coTotal: agg.coSuccess,
-        };
-      }
-    } catch (e) {
-      console.warn("[StatsBridge] central X01 stats fallback failed", e);
-    }
-
+    // SOURCE UNIQUE : même agrégateur que Stats / Résumés essentiels / Classements.
+    // Important : ne PAS repasser par loadX01SamplesForProfile ici, car cet ancien
+    // extracteur ne couvre pas exactement le même périmètre et provoquait Home=20/100%
+    // pendant que le centre Stats affichait X01=22/50%.
     const x01 = await getX01ProfileStats(profileId, "all", "all");
     return {
       games: x01.games,
