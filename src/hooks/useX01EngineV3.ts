@@ -1271,27 +1271,33 @@ export function useX01EngineV3({
 
   const rebuildFromDarts = React.useCallback(
     (allDarts: X01DartInputV3[]) => {
-      // on convertit X01DartInputV3 -> {v,m}
+      // UNDO fiable : on reconstruit l'état complet depuis l'historique UI
+      // puis on synchronise IMMÉDIATEMENT les refs moteur. Sans ça, le rendu
+      // React peut afficher le bon état, mais le prochain dart repart encore
+      // de l'ancien stateRef => scores/joueur actif incohérents après ANNULER.
       const dartsVM = allDarts.map((d) => ({
         v: d.segment,
         m: d.multiplier,
       }));
 
-      // on synchronise aussi l'historique interne
       dartsHistoryRef.current = dartsVM.slice();
 
       const { newState, newLiveStats } = rebuildMatchFromHistory(
         config,
         dartsVM,
-        { matchId: state.matchId }
+        { matchId: stateRef.current.matchId }
       );
+
+      stateRef.current = newState;
+      liveStatsByPlayerRef.current = newLiveStats;
 
       setState(newState);
       setLiveStatsByPlayer(newLiveStats);
       setLiveLegStatsByPlayer(computeLegStats(newLiveStats as any));
-      liveStatsByPlayerRef.current = newLiveStats;
+
+      return { state: newState, liveStatsByPlayer: newLiveStats };
     },
-    [config, state.matchId]
+    [config]
   );
 
   // -----------------------------------------------------------
