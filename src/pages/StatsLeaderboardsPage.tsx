@@ -669,10 +669,8 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       bestCheckout: Number(agg?.bestCheckout || 0) || 0,
       legsWin: Number(agg?.legsWin || 0) || 0,
       setsWin: Number(agg?.setsWin || 0) || 0,
-      legsPlayed: Number(agg?.legsPlayed || 0) || 0,
-      setsPlayed: Number(agg?.setsPlayed || 0) || 0,
-      legWinRate: (Number(agg?.legsPlayed || 0) || 0) > 0 ? ((Number(agg?.legsWin || 0) || 0) / (Number(agg?.legsPlayed || 0) || 1)) * 100 : 0,
-      setWinRate: (Number(agg?.setsPlayed || 0) || 0) > 0 ? ((Number(agg?.setsWin || 0) || 0) / (Number(agg?.setsPlayed || 0) || 1)) * 100 : 0,
+      legWinRate: matches > 0 ? ((Number(agg?.legsWin || 0) || 0) / matches) * 100 : 0,
+      setWinRate: matches > 0 ? ((Number(agg?.setsWin || 0) || 0) / matches) * 100 : 0,
       darts,
       scoreTotal,
       hits,
@@ -687,12 +685,14 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       triplePct: attempts > 0 ? (tripleHits / attempts) * 100 : 0,
       bullPct: attempts > 0 ? (bullHits / attempts) * 100 : 0,
       dbullPct: attempts > 0 ? (dbullHits / attempts) * 100 : 0,
-      checkouts: Number(agg?.co || agg?.checkouts || 0) || 0,
-      checkoutHits: Number(agg?.coHits || agg?.checkoutHits || 0) || 0,
-      checkoutRate: (Number(agg?.co || agg?.checkouts || 0) || 0) > 0 ? ((Number(agg?.coHits || agg?.checkoutHits || 0) || 0) / (Number(agg?.co || agg?.checkouts || 0) || 1)) * 100 : (Number(agg?.checkoutRate || agg?.coRate || 0) || 0),
+      checkouts: Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0,
+      checkoutHits: Math.min(Number(agg?.checkoutHits || agg?.coHits || 0) || 0, Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || Number(agg?.checkoutHits || agg?.coHits || 0) || 0),
+      checkoutRate: (Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0) > 0
+        ? (Math.min(Number(agg?.checkoutHits || agg?.coHits || 0) || 0, Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0) / (Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 1)) * 100
+        : 0,
       dartsCo: Number(agg?.dartsCo || agg?.checkoutDarts || 0) || 0,
       bestFirst9,
-      first9Avg: (Number(agg?.first9Count || 0) || 0) > 0 ? (Number(agg?.first9Sum || 0) / Number(agg?.first9Count || 1)) : (Number(agg?.avgFirst9 || agg?.first9Avg || 0) || 0),
+      first9Avg: Number(agg?.avgFirst9 || agg?.first9Avg || 0) || 0,
       top9Score: bestFirst9,
       first9_100: Number(agg?.first9_100 || 0) || 0,
       first9_120: Number(agg?.first9_120 || 0) || 0,
@@ -2533,11 +2533,11 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
                   break;
                 case "legsWin":
                   metricValue = `${numOr0(row.legsWin)}`;
-                  metricSub = `${numOr0(row.legsWin)}/${numOr0(row.legsPlayed) || numOr0(row.matches)} legs`;
+                  metricSub = `${numOr0(row.legsWin)}/${rMatches} legs`;
                   break;
                 case "setsWin":
                   metricValue = `${numOr0(row.setsWin)}`;
-                  metricSub = `${numOr0(row.setsWin)}/${numOr0(row.setsPlayed) || numOr0(row.matches)} sets`;
+                  metricSub = `${numOr0(row.setsWin)}/${rMatches} sets`;
                   break;
                 case "checkouts":
                   metricValue = `${numOr0(row.checkouts)}`;
@@ -2545,6 +2545,10 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
                   break;
                 case "checkoutHits":
                   metricValue = `${numOr0(row.checkoutHits)}`;
+                  metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
+                  break;
+                case "checkoutRate":
+                  metricValue = `${Math.min(100, Math.max(0, numOr0(row.checkoutRate))).toFixed(1)}%`;
                   metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
                   break;
                 case "dartsCo":

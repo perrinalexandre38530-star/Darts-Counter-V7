@@ -72,7 +72,40 @@ function extractRawDarts(rec: any): any[] {
 
 function extractVisits(rec: SavedMatch, pid: string, order: string[] = []) {
   const payload: any = (rec as any).payload ?? null;
-  const summary: any = (rec as any)?.summary ?? payload?.summary ?? null;
+  const nested: any = payload?.payload ?? null;
+  const summary: any = (rec as any)?.summary ?? payload?.summary ?? nested?.summary ?? null;
+
+  const findLiveForPid = () => {
+    const candidates = [
+      payload?.resume?.state?.liveStatsByPlayer,
+      payload?.summary?.liveStatsByPlayer,
+      payload?.payload?.d?.s?.livestatsbyplayer,
+      payload?.payload?.d?.s?.liveStatsByPlayer,
+      nested?.resume?.state?.liveStatsByPlayer,
+      nested?.summary?.liveStatsByPlayer,
+      (rec as any)?.resume?.state?.liveStatsByPlayer,
+      (rec as any)?.summary?.liveStatsByPlayer,
+    ];
+    for (const map of candidates) {
+      const v = x01FindMapValue(map, [String(pid || '')]);
+      if (v && typeof v === 'object') return v;
+    }
+    return null;
+  };
+
+  const live = findLiveForPid();
+  const liveDarts = live && (Array.isArray(live.dartsDetail) ? live.dartsDetail : Array.isArray(live.dartsdetail) ? live.dartsdetail : []);
+  if (live && Array.isArray(liveDarts) && liveDarts.length) {
+    const scores = Array.isArray(live.scorePerVisit) ? live.scorePerVisit : Array.isArray(live.scorepervisit) ? live.scorepervisit : [];
+    const visits: any[] = [];
+    for (let i = 0; i < liveDarts.length; i += 3) {
+      const chunk = liveDarts.slice(i, i + 3).map(parseDart);
+      const score = Number(scores[Math.floor(i / 3)] ?? chunk.reduce((sum: number, d: any) => sum + dartScore(d), 0)) || 0;
+      const finish = Number(live.bestCheckout ?? live.bc ?? 0) > 0 && Math.floor(i / 3) === Math.max(0, scores.length - 1);
+      visits.push({ bust: false, finish, score, segments: chunk });
+    }
+    return visits;
+  }
   const explicit =
     payload?.visitHistory ?? payload?.visitsHistory ?? payload?.__legStats?.visits ??
     summary?.visitHistory ?? summary?.visitsHistory ?? summary?.__legStats?.visits ?? summary?.legacy?.visitHistory ??
@@ -195,19 +228,8 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     bestVisit: 0,
     bestCheckout: 0,
     best9Score: 0,
-    bestAvg3D: 0,
-    first9Sum: 0,
-    first9Count: 0,
-    first9_100: 0,
-    first9_120: 0,
-    first9_140: 0,
-    co: 0,
-    coHits: 0,
-    dartsCo: 0,
     legsWin: 0,
-    legsPlayed: 0,
     setsWin: 0,
-    setsPlayed: 0,
     hitsSingle: 0,
     hitsDouble: 0,
     hitsTriple: 0,
@@ -217,6 +239,12 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     bust: 0,
     byNumber: Array(21).fill(0),
     visitBuckets: { "50+": 0, "60+": 0, "80+": 0, "100+": 0, "120+": 0, "140+": 0, "180": 0 } as Record<string, number>,
+    checkoutAttempts: 0,
+    checkoutHits: 0,
+    dartsCo: 0,
+    first9_100: 0,
+    first9_120: 0,
+    first9_140: 0,
     progression: [] as { avg3D: number; ts: number }[],
   };
 
@@ -238,10 +266,6 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     const visits = extractVisits(rec, canonicalMatchedId, order);
 
     out.sessions++;
-    const recStartCo = out.co;
-    const recStartCoHits = out.coHits;
-    const recStartDartsCo = out.dartsCo;
-    const recStartBuckets = { ...out.visitBuckets };
     let darts = 0;
     let scored = 0;
     let bestVisit = 0;
@@ -255,18 +279,13 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
         bestVisit = Math.max(bestVisit, v.score);
         // Seuils cumulés demandés pour la répartition des vraies volées X01.
         if (v.score >= 50) out.visitBuckets["50+"] += 1;
-        if (v.score >= 60 && v.score < 100) out.visitBuckets["60+"] += 1;
+        if (v.score >= 60) out.visitBuckets["60+"] += 1;
         if (v.score >= 80) out.visitBuckets["80+"] += 1;
         if (v.score >= 100) out.visitBuckets["100+"] += 1;
         if (v.score >= 120) out.visitBuckets["120+"] += 1;
         if (v.score >= 140) out.visitBuckets["140+"] += 1;
-        if (v.score === 180) out.visitBuckets["180"] += 1;
-        if (v.finish) {
-          bestCO = Math.max(bestCO, v.score);
-          out.co += 1;
-          out.coHits += 1;
-          out.dartsCo += Math.max(1, v.segments.length || 0);
-        }
+        if (v.score >= 180) out.visitBuckets["180"] += 1;
+        if (v.finish) { bestCO = Math.max(bestCO, v.score); out.checkoutHits += 1; out.dartsCo += Math.max(1, v.segments.length); }
       } else {
         out.bust += 1;
       }
@@ -285,13 +304,11 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     }
 
     if (flatScores.length >= 9) {
-      const first9 = flatScores.slice(0, 9).reduce((a, b) => a + (b || 0), 0);
-      out.first9Sum += first9;
-      out.first9Count += 1;
+      const first9 = flatScores.slice(0, 9).reduce((a, b) => a + (Number(b) || 0), 0);
+      out.best9Score = Math.max(out.best9Score, first9);
       if (first9 >= 100) out.first9_100 += 1;
       if (first9 >= 120) out.first9_120 += 1;
       if (first9 >= 140) out.first9_140 += 1;
-      out.best9Score = Math.max(out.best9Score, first9);
     }
 
     const anyRec: any = rec as any;
@@ -308,23 +325,19 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     const rankHit = rankings.find((rr: any) => x01PlayerIds(rr).some((id) => matchedIds.some((a) => x01IdMatches(id, a))) || (pname && x01NormName(rr?.name) === pname));
     const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, payload?.summary?.legsWonByPlayer) || x01ReadNum(rankHit?.legsWon, rankHit?.lw);
     const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, payload?.summary?.setsWonByPlayer) || x01ReadNum(rankHit?.setsWon, rankHit?.sw);
-    const allLegWins = [summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, payload?.summary?.legsWonByPlayer].find((m: any) => m && typeof m === "object") || null;
-    const allSetWins = [summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, payload?.summary?.setsWonByPlayer].find((m: any) => m && typeof m === "object") || null;
-    const legsPlayedFromSummary = x01ReadNum(rankHit?.legsPlayed, rankHit?.lp, summary?.legsPlayed, summary?.totalLegs, payload?.summary?.legsPlayed, payload?.summary?.totalLegs) || (allLegWins ? Object.values(allLegWins).reduce((a: number, b: any) => a + x01ReadNum(b), 0) : 0);
-    const setsPlayedFromSummary = x01ReadNum(rankHit?.setsPlayed, rankHit?.sp, summary?.setsPlayed, summary?.totalSets, payload?.summary?.setsPlayed, payload?.summary?.totalSets) || (allSetWins ? Object.values(allSetWins).reduce((a: number, b: any) => a + x01ReadNum(b), 0) : 0);
     out.legsWin += legsFromSummary;
     out.setsWin += setsFromSummary;
-    out.legsPlayed += Math.max(legsPlayedFromSummary, legsFromSummary, visits.length ? 1 : 0);
-    out.setsPlayed += Math.max(setsPlayedFromSummary, setsFromSummary, setsFromSummary > 0 ? 1 : 0);
     const winnerId = String(anyRec?.winnerId ?? summary?.winnerId ?? payload?.winnerId ?? payload?.summary?.winnerId ?? "");
     if (legsFromSummary <= 0 && matchedIds.some((id) => x01IdMatches(winnerId, id))) out.legsWin += 1;
 
     const detailed = x01FindMapValue(summary?.detailedByPlayer, matchedIds) || x01FindMapValue(summary?.detailedbyplayer, matchedIds) || null;
     if (visits.length) {
+      const detailedForAttempts = detailed && typeof detailed === "object" ? detailed : null;
+      const attemptsFromDetail = x01ReadNum(detailedForAttempts?.checkoutAttempts, detailedForAttempts?.checkoutattempts, detailedForAttempts?.co, detailedForAttempts?.checkouts);
+      out.checkoutAttempts += attemptsFromDetail || (bestCO > 0 ? 1 : 0);
       out.darts += darts;
       const avg3 = darts > 0 ? (scored / darts) * 3 : 0;
       out.sumAvg3D += avg3;
-      out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
       out.bestVisit = Math.max(out.bestVisit, bestVisit);
       out.bestCheckout = Math.max(out.bestCheckout, bestCO);
       out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
@@ -346,13 +359,34 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
       for (const score of spv) {
         const sc = Number(score || 0);
         if (sc >= 50) out.visitBuckets["50+"] += 1;
-        if (sc >= 60 && sc < 100) out.visitBuckets["60+"] += 1;
+        if (sc >= 60) out.visitBuckets["60+"] += 1;
         if (sc >= 80) out.visitBuckets["80+"] += 1;
         if (sc >= 100) out.visitBuckets["100+"] += 1;
         if (sc >= 120) out.visitBuckets["120+"] += 1;
         if (sc >= 140) out.visitBuckets["140+"] += 1;
-        if (sc === 180) out.visitBuckets["180"] += 1;
+        if (sc >= 180) out.visitBuckets["180"] += 1;
       }
+      const coAttempts = x01ReadNum(detailed.checkoutAttempts, detailed.checkoutattempts, detailed.co, detailed.checkouts);
+      const coHits = x01ReadNum(detailed.checkoutHits, detailed.checkoutSuccess, detailed.checkoutsuccess, detailed.coHits, detailed.cohits) || (x01ReadNum(detailed.bestCheckout, detailed.bc) > 0 ? 1 : 0);
+      out.checkoutAttempts += coAttempts || (coHits > 0 ? 1 : 0);
+      out.checkoutHits += coHits;
+      out.dartsCo += x01ReadNum(detailed.dartsCo, detailed.checkoutDarts, detailed.checkoutdarts) || (coHits > 0 ? 1 : 0);
+
+      const dd = Array.isArray(detailed.dartsDetail) ? detailed.dartsDetail : Array.isArray(detailed.dartsdetail) ? detailed.dartsdetail : [];
+      if (dd.length >= 9) {
+        const first9 = dd.slice(0, 9).map(parseDart).reduce((sum: number, d: any) => sum + dartScore(d), 0);
+        out.best9Score = Math.max(out.best9Score, first9);
+        if (first9 >= 100) out.first9_100 += 1;
+        if (first9 >= 120) out.first9_120 += 1;
+        if (first9 >= 140) out.first9_140 += 1;
+      } else if (spv.length >= 3) {
+        const first9 = spv.slice(0, 3).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0);
+        out.best9Score = Math.max(out.best9Score, first9);
+        if (first9 >= 100) out.first9_100 += 1;
+        if (first9 >= 120) out.first9_120 += 1;
+        if (first9 >= 140) out.first9_140 += 1;
+      }
+
       const hbs = detailed.hitsBySegment || detailed.hitsbysegment || detailed.bySegment || detailed.bysegment || {};
       if (hbs && typeof hbs === "object") {
         Object.entries(hbs).forEach(([seg, val]: any) => {
@@ -360,43 +394,8 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
           if (k >= 1 && k <= 20) out.byNumber[k] += x01ReadNum(val?.S, val?.s) + x01ReadNum(val?.D, val?.d) + x01ReadNum(val?.T, val?.t);
         });
       }
-      out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
-      out.bestCheckout = Math.max(out.bestCheckout, x01ReadNum(detailed.bestCheckout, detailed.bc, detailed.highestCO, detailed.bestCO));
-      const detailedCoHits = x01ReadNum(detailed.coHits, detailed.checkoutHits, detailed.coSuccess, detailed.hitsCheckout, detailed.hitsCO);
-      const detailedCoAtt = x01ReadNum(detailed.co, detailed.coAtt, detailed.coAttempts, detailed.checkoutAttempts, detailed.checkoutCount, detailedCoHits);
-      const detailedDartsCo = x01ReadNum(detailed.dartsCo, detailed.checkoutDarts, detailed.coDartsTotal, detailed.checkoutDartsTotal);
-      out.co += detailedCoAtt;
-      out.coHits += detailedCoHits || (x01ReadNum(detailed.bestCheckout, detailed.bc, detailed.highestCO, detailed.bestCO) > 0 ? 1 : 0);
-      out.dartsCo += detailedDartsCo;
-      const f9 = x01ReadNum(detailed.best9Score, detailed.bestFirst9, detailed.first9, detailed.first9Avg, detailed.avgFirst9);
-      if (f9 > 0) {
-        out.best9Score = Math.max(out.best9Score, f9);
-        out.first9Sum += f9;
-        out.first9Count += 1;
-      }
       out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
     }
-
-    // Fallbacks legacy / résumé historique : beaucoup de vieilles sauvegardes X01
-    // portent les stats sous forme de maps par joueur, pas dans les visits replay.
-    const mapCoHits = pickMapValue(summary?.checkoutHits, summary?.coHits, summary?.coSuccess, payload?.summary?.checkoutHits, payload?.summary?.coHits);
-    const mapCoAtt = pickMapValue(summary?.checkoutAttempts, summary?.coAttempts, summary?.coAtt, payload?.summary?.checkoutAttempts, payload?.summary?.coAttempts);
-    const mapDartsCo = pickMapValue(summary?.checkoutDartsTotal, summary?.coDartsTotal, summary?.dartsCo, payload?.summary?.checkoutDartsTotal, payload?.summary?.coDartsTotal);
-    const mapH60 = pickMapValue(summary?.h60, summary?.t60, summary?.hit60, payload?.summary?.h60, payload?.summary?.t60);
-    const mapH100 = pickMapValue(summary?.h100, summary?.t100, summary?.hit100, payload?.summary?.h100, payload?.summary?.t100);
-    const mapH140 = pickMapValue(summary?.h140, summary?.t140, summary?.hit140, payload?.summary?.h140, payload?.summary?.t140);
-    const mapH180 = pickMapValue(summary?.h180, summary?.t180, summary?.hit180, payload?.summary?.h180, payload?.summary?.t180);
-    const recCo = out.co - recStartCo;
-    const recCoHits = out.coHits - recStartCoHits;
-    const recDartsCo = out.dartsCo - recStartDartsCo;
-    if (mapCoAtt > recCo) out.co += mapCoAtt - recCo;
-    if (mapCoHits > recCoHits) out.coHits += mapCoHits - recCoHits;
-    if (mapDartsCo > recDartsCo) out.dartsCo += mapDartsCo - recDartsCo;
-    if (mapH60 > (out.visitBuckets["60+"] - recStartBuckets["60+"])) out.visitBuckets["60+"] += mapH60 - (out.visitBuckets["60+"] - recStartBuckets["60+"]);
-    if (mapH100 > (out.visitBuckets["100+"] - recStartBuckets["100+"])) out.visitBuckets["100+"] += mapH100 - (out.visitBuckets["100+"] - recStartBuckets["100+"]);
-    if (mapH140 > (out.visitBuckets["140+"] - recStartBuckets["140+"])) out.visitBuckets["140+"] += mapH140 - (out.visitBuckets["140+"] - recStartBuckets["140+"]);
-    if (mapH180 > (out.visitBuckets["180"] - recStartBuckets["180"])) out.visitBuckets["180"] += mapH180 - (out.visitBuckets["180"] - recStartBuckets["180"]);
-    if (out.bestCheckout <= 0 && (out.coHits - recStartCoHits) > 0) out.bestCheckout = Math.max(out.bestCheckout, x01ReadNum(summary?.bestCheckout, summary?.highestCO, payload?.summary?.bestCheckout));
   }
 
   out.progression.sort((a, b) => a.ts - b.ts);
