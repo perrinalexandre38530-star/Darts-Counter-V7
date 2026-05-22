@@ -1145,6 +1145,7 @@ const {
   status,
   throwDart,
   undoLastDart, // 🔥 UNDO illimité du moteur V3
+  rebuildFromDarts, // 🔁 UNDO fiable depuis l'historique UI complet
   startNextLeg,
 } = useX01EngineV3({ config: effectiveRuntimeConfig as any });
 
@@ -1751,15 +1752,11 @@ const currentReplayLegMeta = React.useCallback(() => {
 // 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
 // - Sync currentThrow + lastVisitsByPlayer (utilisé par PlayersListOnly)
 // ============================================================
-const forceSyncFromEngine = React.useCallback((sourceState?: any) => {
-  // sourceState est volontairement optionnel : après ANNULER, le moteur renvoie
-  // immédiatement le nouvel état reconstruit. Sans ça, on relisait parfois le
-  // state React précédent et l'UI recréait une volée/joueur fantôme.
+const syncUiFromEngineState = React.useCallback((engineState: any) => {
   currentThrowFromEngineRef.current = true;
 
-  const st: any = sourceState || state;
-  const sourceActivePlayerId = String((st as any)?.activePlayer || activePlayerId || "");
-  const v: any = (st as any)?.visit;
+  const pid = String(engineState?.activePlayer || "");
+  const v: any = engineState?.visit;
 
   const raw: UIDart[] =
     v?.darts && Array.isArray(v.darts) && v.darts.length
@@ -1767,25 +1764,27 @@ const forceSyncFromEngine = React.useCallback((sourceState?: any) => {
           v: d.segment,
           mult: d.multiplier as 1 | 2 | 3,
         }))
+      : v?.dartsThrown && Array.isArray(v.dartsThrown) && v.dartsThrown.length
+      ? v.dartsThrown.map((d: any) => ({
+          v: d.value,
+          mult: d.mult as 1 | 2 | 3,
+        }))
       : [];
 
   setCurrentThrow(raw);
 
-  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
-  // ⚠️ IMPORTANT: ne JAMAIS écraser la dernière volée avec "[]".
-  // Le moteur remet souvent state.visit à vide au changement de joueur.
-  // Si on écrase ici, la dernière volée disparaît pour tous les joueurs.
-  if (sourceActivePlayerId && raw.length > 0) {
-    setLastVisitsByPlayer((m) => ({ ...m, [sourceActivePlayerId]: raw }));
-    setLastVisitIsBustByPlayer((m) => ({ ...m, [sourceActivePlayerId]: false }));
+  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow.
+  // On ne nettoie jamais une dernière volée avec [] : un changement de joueur
+  // crée souvent une visite vide côté moteur.
+  if (pid && raw.length > 0) {
+    setLastVisitsByPlayer((m) => ({ ...m, [pid]: raw }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [pid]: false }));
   }
+}, []);
 
-  // Le flag ne doit pas rester bloqué à true, sinon le prochain vrai changement
-  // de joueur n'efface plus la saisie locale et ANNULER peut repartir d'un état sale.
-  window.setTimeout(() => {
-    currentThrowFromEngineRef.current = false;
-  }, 0);
-}, [state, activePlayerId]);
+const forceSyncFromEngine = React.useCallback(() => {
+  syncUiFromEngineState(state as any);
+}, [state, syncUiFromEngineState]);
 
 // =====================================================
 // ✅ BOT TURN — DOIT ÊTRE DÉCLARÉ AVANT TOUT useEffect QUI L’UTILISE
@@ -2872,46 +2871,55 @@ const handleCancel = () => {
   setBustBanner(false);
   setIsBust(false);
 
-  // 1) Local edit: pop one dart from the current visit
-  if (currentThrow.length > 0) {
+  // 1) Local edit: on ne modifie que la saisie EN COURS, jamais une volée
+  // recopiée depuis le moteur après un changement de joueur / UNDO.
+  // Sinon ANNULER efface l'affichage local mais laisse la vraie fléchette
+  // dans le moteur, ce qui provoque les scores incohérents.
+  if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
     setCurrentThrow((prev) => prev.slice(0, -1));
-    currentThrowFromEngineRef.current = false;
     setMultiplier(1);
     return;
   }
 
-// 2) Engine undo: revert the last committed dart from history
-botUndoGuardRef.current = true;
-try {
-  // Le moteur retire bien la dernière fléchette, mais l'UI/historique local
-  // utilise aussi replayDartsRef. Sans ce pop, une fléchette fantôme peut
-  // être resauvée après un ANNULER qui revient au joueur précédent.
-  if (Array.isArray(replayDartsRef.current) && replayDartsRef.current.length > 0) {
-    replayDartsRef.current = replayDartsRef.current.slice(0, -1);
+  // 2) UNDO canonique: replayDartsRef est l'historique complet UI/autosave.
+  // On enlève exactement la dernière fléchette validée, puis on reconstruit
+  // tout le moteur depuis cet historique. C'est volontairement plus sûr que
+  // undoLastDart() seul, car l'historique moteur peut avoir été réinitialisé
+  // lors d'un changement de leg/set alors que l'utilisateur veut juste annuler
+  // le dernier hit réel, quel que soit le joueur ou la manche.
+  botUndoGuardRef.current = true;
+  try {
+    const before = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
+
+    if (before.length > 0 && typeof rebuildFromDarts === "function") {
+      const nextReplay = before.slice(0, -1);
+      replayDartsRef.current = nextReplay;
+
+      const rebuilt: any = rebuildFromDarts(nextReplay as any);
+      if (rebuilt?.state) {
+        syncUiFromEngineState(rebuilt.state);
+      } else {
+        window.setTimeout(() => forceSyncFromEngine(), 0);
+      }
+    } else {
+      const undoResult: any = undoLastDart();
+      if (undoResult?.state) {
+        syncUiFromEngineState(undoResult.state);
+      } else {
+        currentThrowFromEngineRef.current = false;
+        setCurrentThrow([]);
+      }
+    }
+
+    window.setTimeout(() => {
+      persistAutosave();
+    }, 0);
+  } finally {
+    window.setTimeout(() => {
+      botUndoGuardRef.current = false;
+      publishOnlineReplayState("undo").catch(() => {});
+    }, 0);
   }
-
-  const undoResult: any = undoLastDart();
-  const nextState = undoResult?.state || undoResult?.newState || null;
-
-  // ✅ RESYNC UI après UNDO sur le nouvel état moteur réel.
-  // Ne pas appeler forceSyncFromEngine() sans argument ici : le state React
-  // peut encore être l'ancien pendant ce tick, ce qui causait les gros bugs
-  // au retour sur le joueur précédent et en sets/legs.
-  if (nextState) {
-    forceSyncFromEngine(nextState);
-  } else {
-    forceSyncFromEngine();
-  }
-
-  window.setTimeout(() => {
-    persistAutosave();
-  }, 0);
-} finally {
-  window.setTimeout(() => {
-    botUndoGuardRef.current = false;
-    publishOnlineReplayState("undo").catch(() => {});
-  }, 0);
-}
 };
 
 const validateThrow = async () => {
@@ -7405,11 +7413,49 @@ function normalizeOutModeForCheckoutReplay(input: any): X01OutModeV3 {
 }
 
 function isCheckoutFinishableReplay(score: number, outMode: any): boolean {
-  if (!Number.isFinite(score) || score <= 1 || score > 170) return false;
+  const target = Number(score);
+  if (!Number.isFinite(target) || target <= 0 || target > 180) return false;
+
+  const normalizedOutMode = normalizeOutModeForCheckoutReplay(outMode);
+
+  const scoredDarts: Array<{ score: number; multiplier: number; segment: number }> = [];
+  for (let segment = 1; segment <= 20; segment += 1) {
+    scoredDarts.push({ score: segment, multiplier: 1, segment });
+    scoredDarts.push({ score: segment * 2, multiplier: 2, segment });
+    scoredDarts.push({ score: segment * 3, multiplier: 3, segment });
+  }
+  scoredDarts.push({ score: 25, multiplier: 1, segment: 25 });
+  scoredDarts.push({ score: 50, multiplier: 2, segment: 25 });
+
+  const canBeLastDart = (dart: { score: number; multiplier: number; segment: number }) => {
+    if (normalizedOutMode === "simple") return true;
+    if (normalizedOutMode === "master") {
+      return dart.multiplier === 2 || dart.multiplier === 3;
+    }
+    return dart.multiplier === 2;
+  };
+
+  // Une tentative de CO existe dès que le score peut être fini en 1, 2 ou 3 fléchettes
+  // avec le mode de sortie configuré. Contrairement à l'ancien seuil fixe 170,
+  // cela couvre aussi les finishes possibles à 171-180 en sortie simple/master.
+  for (const last of scoredDarts) {
+    if (!canBeLastDart(last)) continue;
+    if (last.score === target) return true;
+
+    for (const first of scoredDarts) {
+      if (first.score + last.score === target) return true;
+      for (const second of scoredDarts) {
+        if (first.score + second.score + last.score === target) return true;
+      }
+    }
+  }
+
+  // Fallback legacy : conserve la compatibilité avec l'adapter existant si celui-ci
+  // connaît des contraintes supplémentaires non modélisées ci-dessus.
   return !!extAdaptCheckoutSuggestion({
-    score,
+    score: target,
     dartsLeft: 3,
-    outMode: normalizeOutModeForCheckoutReplay(outMode),
+    outMode: normalizedOutMode,
   });
 }
 
@@ -7878,6 +7924,55 @@ function saveX01V3MatchToHistory({
       setsWonTotal: setsWon,
       setsPlayedTotal: setsPlayed,
     };
+  }
+
+  // Source de vérité complémentaire : replayLegs / legDetails.
+  // Les anciens états pouvaient ne stocker que match gagné/perdu (1-0), alors que
+  // le vrai score de match doit être le nombre de SETS remportés (2-0 / 2-1).
+  const replayLegRowsForScore = Array.isArray(replayLegs) ? replayLegs : [];
+  if (replayLegRowsForScore.length > 0) {
+    const replayLegsByPlayer: Record<string, number> = {};
+    const replaySetsByPlayer: Record<string, number> = {};
+    const setGroups: Record<string, Record<string, number>> = {};
+    for (const p of players as any[]) {
+      const pid = String(p?.id || "");
+      if (!pid) continue;
+      replayLegsByPlayer[pid] = 0;
+      replaySetsByPlayer[pid] = 0;
+    }
+    const legsPerSetForReplay = Math.max(1, Number((config as any)?.legsPerSet ?? 1) || 1);
+    for (let i = 0; i < replayLegRowsForScore.length; i += 1) {
+      const leg: any = replayLegRowsForScore[i];
+      const winnerId = String(leg?.winnerId ?? leg?.winner ?? "");
+      if (!winnerId) continue;
+      const pid = (players as any[]).find((p: any) => String(p?.id) === winnerId)?.id || winnerId;
+      replayLegsByPlayer[pid] = (replayLegsByPlayer[pid] || 0) + 1;
+      const legNo = Math.max(1, Number(leg?.matchLegNo ?? leg?.legNo ?? leg?.legIndex ?? i + 1) || i + 1);
+      const setNo = Math.max(1, Number(leg?.setNo ?? leg?.setIndex ?? Math.floor((legNo - 1) / legsPerSetForReplay) + 1) || 1);
+      const key = String(setNo);
+      if (!setGroups[key]) setGroups[key] = {};
+      setGroups[key][pid] = (setGroups[key][pid] || 0) + 1;
+    }
+    for (const group of Object.values(setGroups)) {
+      const entries = Object.entries(group).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) continue;
+      const [setWinnerId] = entries[0];
+      replaySetsByPlayer[setWinnerId] = (replaySetsByPlayer[setWinnerId] || 0) + 1;
+    }
+    const replayLegTotal = Object.values(replayLegsByPlayer).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    const replaySetTotal = Object.values(replaySetsByPlayer).reduce((sum, v) => sum + (Number(v) || 0), 0);
+    if (replayLegTotal > 0) {
+      for (const [pid, val] of Object.entries(replayLegsByPlayer)) {
+        legsByPlayer[pid] = Number(val) || 0;
+        legsPlayedByPlayer[pid] = replayLegTotal;
+      }
+    }
+    if (replaySetTotal > 0) {
+      for (const [pid, val] of Object.entries(replaySetsByPlayer)) {
+        setsByPlayer[pid] = Number(val) || 0;
+        setsPlayedByPlayer[pid] = replaySetTotal;
+      }
+    }
   }
 
   // Score final DUEL (ex : 2–1)
