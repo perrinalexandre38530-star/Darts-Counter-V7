@@ -1912,7 +1912,9 @@ function OverlayVisitsList({
         const name = player?.name || "—";
         const before = Number(v.scoreBefore ?? 0) || 0;
         const after = Number(v.scoreAfter ?? 0) || 0;
-        const total = v.bust ? 0 : before && after >= 0 ? Math.max(0, before - after) : (v.darts || []).reduce((sum, d) => sum + overlayDartValue(d), 0);
+        const isBust = Boolean((v as any).bust || (v as any).isBust);
+        const isFinish = Boolean((v as any).finish || (v as any).isFinish || (v as any).checkout || (v as any).isCheckout || (!isBust && before > 0 && after === 0));
+        const total = isBust ? 0 : before && after >= 0 ? Math.max(0, before - after) : (v.darts || []).reduce((sum, d) => sum + overlayDartValue(d), 0);
         return (
           <div
             key={`${v.idx || i}-${v.playerId}`}
@@ -1931,14 +1933,14 @@ function OverlayVisitsList({
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 5 }}>
                 <span style={{ fontWeight: 900, color: "#f4f4f6" }}>{name}</span>
-                {v.finish && !v.bust ? <span style={overlayVisitTag("finish")}>FINISH</span> : null}
-                {v.bust ? <span style={overlayVisitTag("bust")}>BUST</span> : null}
+                {isFinish && !isBust ? <span style={overlayVisitTag("finish")}>FINISH</span> : null}
+                {isBust ? <span style={overlayVisitTag("bust")}>BUST</span> : null}
               </div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 {(v.darts || []).map((d, di) => (
                   <span key={di} style={overlayDartBadge(overlayDartToString(d))}>{overlayDartToString(d)}</span>
                 ))}
-                <span style={overlayTotalBadge}>{v.bust ? "BUST" : `+${total}`}</span>
+                <span style={overlayTotalBadge}>{isBust ? "BUST" : `+${total}`}</span>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", minWidth: 86 }}>

@@ -2993,22 +2993,24 @@ function HistoryX01VisitsBlock({ visits, playersById }: { visits: HistoryVisitRo
       <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
         {visits.map((v) => {
           const p = playersById[v.playerId];
-          const total = v.bust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
+          const isBust = Boolean((v as any).bust || (v as any).isBust);
+          const isFinish = Boolean((v as any).finish || (v as any).isFinish || (v as any).checkout || (v as any).isCheckout || (!isBust && Number(v.scoreBefore) > 0 && Number(v.scoreAfter) === 0));
+          const total = isBust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
           return (
             <div key={`${v.idx}-${v.playerId}`} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.18)" }}>
               <div style={{ color: "var(--dc-accent, #ffcf57)", fontSize: 11, fontWeight: 900 }}>#{v.idx}</div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
                   <span style={{ fontWeight: 900, color: "rgba(255,255,255,.92)", fontSize: 11 }}>{p?.name || "—"}</span>
-                  {v.finish && !v.bust ? <span style={historyVisitTag("finish")}>FINISH</span> : null}
-                  {v.bust ? <span style={historyVisitTag("bust")}>BUST</span> : null}
+                  {isFinish && !isBust ? <span style={historyVisitTag("finish")}>FINISH</span> : null}
+                  {isBust ? <span style={historyVisitTag("bust")}>BUST</span> : null}
                 </div>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                   {v.darts.map((d, i) => {
                     const label = historyDartLabel(d);
                     return <span key={i} style={historyDartBadge(label)}>{label}</span>;
                   })}
-                  <span style={{ ...historyDartBadge("TOTAL"), color: "var(--dc-accent, #ffcf57)", borderColor: "rgba(255,207,87,.22)" }}>{v.bust ? "BUST" : `+${total}`}</span>
+                  <span style={{ ...historyDartBadge("TOTAL"), color: "var(--dc-accent, #ffcf57)", borderColor: "rgba(255,207,87,.22)" }}>{isBust ? "BUST" : `+${total}`}</span>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", minWidth: 86 }}>
