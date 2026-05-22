@@ -183,6 +183,94 @@ function normalizeHistoryRow<T extends Record<string, any>>(rec: T): T {
 }
 
 // ============================================
+// ✅ PATCH HISTORIQUE X01 — nettoyage des doublons "en cours"
+// Cas réel : à la fin d'une partie X01, un autosave tardif peut laisser
+// une carte in_progress avec un autre id que le record finished.
+// On ne supprime que le candidat le plus proche temporellement, mêmes joueurs,
+// même jeu, pour ne pas toucher aux autres parties en cours.
+// ============================================
+function _histNum(v: any): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function _histPlayersKey(rec: any): string {
+  try {
+    const raw =
+      Array.isArray(rec?.players) ? rec.players :
+      Array.isArray(rec?.payload?.players) ? rec.payload.players :
+      Array.isArray(rec?.payload?.config?.players) ? rec.payload.config.players :
+      Array.isArray(rec?.summary?.players) ? rec.summary.players :
+      [];
+    const ids = raw
+      .map((p: any) => String(p?.id ?? p?.playerId ?? p?.profileId ?? p?.name ?? "").trim())
+      .filter(Boolean)
+      .sort();
+    return ids.join("|");
+  } catch {
+    return "";
+  }
+}
+
+function _histMode(rec: any): string {
+  try {
+    return String(
+      rec?.kind ??
+      rec?.game?.mode ??
+      rec?.payload?.game?.mode ??
+      rec?.payload?.mode ??
+      rec?.summary?.game?.mode ??
+      ""
+    ).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function _histStartScore(rec: any): number {
+  return _histNum(
+    rec?.game?.startScore ??
+    rec?.payload?.startScore ??
+    rec?.payload?.config?.startScore ??
+    rec?.summary?.game?.startScore ??
+    rec?.summary?.startScore
+  );
+}
+
+function _histTime(rec: any): number {
+  return _histNum(rec?.createdAt ?? rec?.updatedAt ?? rec?.summary?.finishedAt ?? rec?.payload?.createdAt ?? rec?.payload?.updatedAt);
+}
+
+function _isLikelyStaleX01InProgress(finished: any, candidate: any): boolean {
+  try {
+    if (!finished || !candidate) return false;
+    if (String(candidate?.id ?? candidate?.matchId ?? "") === String(finished?.id ?? finished?.matchId ?? "")) return false;
+    if (inferHistoryStatus(candidate) !== "in_progress") return false;
+    if (inferHistoryStatus(finished) !== "finished") return false;
+
+    const fMode = _histMode(finished);
+    const cMode = _histMode(candidate);
+    if (fMode && cMode && fMode !== cMode && !(fMode.includes("x01") && cMode.includes("x01"))) return false;
+
+    const fp = _histPlayersKey(finished);
+    const cp = _histPlayersKey(candidate);
+    if (!fp || !cp || fp !== cp) return false;
+
+    const fs = _histStartScore(finished);
+    const cs = _histStartScore(candidate);
+    if (fs && cs && fs !== cs) return false;
+
+    const ft = _histTime(finished);
+    const ct = _histTime(candidate);
+    if (ft && ct && Math.abs(ft - ct) > 15 * 60 * 1000) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================
 // 🔒 PATCH AVATAR HELPERS
 // - supprime les avatars base64 dans history/payload
 // - évite crash React / Android / historique énorme
@@ -1513,9 +1601,31 @@ export async function list(): Promise<SavedMatch[]> {
       }
     }
 
-    return Array.from(byMatch.values()).filter(isHistoryRowUsable).map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+    const normalized = Array.from(byMatch.values())
+      .filter(isHistoryRowUsable)
+      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+
+    // ✅ Masque les anciennes cartes "En cours" devenues fantômes après sauvegarde finale.
+    // Cela corrige aussi les historiques déjà pollués avant ce patch.
+    const finishedRows = normalized.filter((r: any) => inferHistoryStatus(r) === "finished");
+    const staleIds = new Set<string>();
+    for (const candidate of normalized as any[]) {
+      if (inferHistoryStatus(candidate) !== "in_progress") continue;
+      const hit = finishedRows.find((f: any) => _isLikelyStaleX01InProgress(f, candidate));
+      if (hit) staleIds.add(String((candidate as any)?.id || (candidate as any)?.matchId || ""));
+    }
+
+    return staleIds.size
+      ? normalized.filter((r: any) => !staleIds.has(String(r?.id || r?.matchId || ""))) as SavedMatch[]
+      : normalized;
   } catch {
-    return readLegacyRowsSafe();
+    const rows = readLegacyRowsSafe();
+    const normalized = rows.map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+    const finishedRows = normalized.filter((r: any) => inferHistoryStatus(r) === "finished");
+    return normalized.filter((candidate: any) => {
+      if (inferHistoryStatus(candidate) !== "in_progress") return true;
+      return !finishedRows.some((f: any) => _isLikelyStaleX01InProgress(f, candidate));
+    }) as SavedMatch[];
   }
 }
 
@@ -2267,6 +2377,48 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         }
       });
 
+      // ✅ Si on écrit une version "finished", supprimer l'autosave in_progress fantôme
+      // correspondant à la même partie mais stocké sous un autre id.
+      try {
+        if (String((safe as any)?.status || "").toLowerCase() === "finished") {
+          const staleKeys: string[] = await new Promise<string[]>((resolve) => {
+            const found: Array<{ id: string; dist: number }> = [];
+            try {
+              const req = headers.openCursor();
+              req.onsuccess = () => {
+                const cur = req.result as IDBCursorWithValue | null;
+                if (!cur) {
+                  found.sort((a, b) => a.dist - b.dist);
+                  resolve(found.length ? [found[0].id] : []);
+                  return;
+                }
+                const row: any = cur.value || {};
+                if (_isLikelyStaleX01InProgress(safe, row)) {
+                  const id = String(row?.id || row?.matchId || cur.primaryKey || "");
+                  if (id) {
+                    found.push({
+                      id,
+                      dist: Math.abs(_histTime(safe) - _histTime(row)),
+                    });
+                  }
+                }
+                cur.continue();
+              };
+              req.onerror = () => resolve([]);
+            } catch {
+              resolve([]);
+            }
+          });
+
+          for (const key of staleKeys) {
+            try { headers.delete(key); } catch {}
+            try { details.delete(key); } catch {}
+            try { _resumeIndexRemove(String(key)); } catch {}
+            try { _applyRemoveToCache(String(key)); } catch {}
+          }
+        }
+      } catch {}
+
       const headerReq = headers.put({
         ...toHeaderRecord(safe),
         players: stripAvatarDataFromPlayers(safe.players) || [],
@@ -2387,6 +2539,28 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         payload: stripAvatarDataFromPayload(payloadLiteFinal),
       };
       if (idx >= 0) rows.splice(idx, 1);
+      // ✅ Même nettoyage en fallback localStorage : retire au plus un autosave in_progress fantôme.
+      try {
+        if (String((trimmed as any)?.status || "").toLowerCase() === "finished") {
+          let bestIdx = -1;
+          let bestDist = Number.POSITIVE_INFINITY;
+          for (let i = 0; i < rows.length; i += 1) {
+            const row: any = rows[i];
+            if (!_isLikelyStaleX01InProgress(trimmed, row)) continue;
+            const dist = Math.abs(_histTime(trimmed) - _histTime(row));
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx >= 0) {
+            const stale = rows[bestIdx] as any;
+            rows.splice(bestIdx, 1);
+            try { _resumeIndexRemove(String(stale?.id || stale?.matchId || "")); } catch {}
+            try { _applyRemoveToCache(String(stale?.id || stale?.matchId || "")); } catch {}
+          }
+        }
+      } catch {}
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
       localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(rows));
