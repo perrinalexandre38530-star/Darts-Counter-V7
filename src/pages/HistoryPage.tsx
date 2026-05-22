@@ -710,8 +710,45 @@ function cleanName(raw: any): string | undefined {
   if (typeof raw !== "string") return undefined;
   const name = raw.trim();
   if (!name) return undefined;
+  // Ne jamais afficher les ids techniques comme pseudo dans les cartes historiques.
+  if (/^usr_[a-f0-9_\-]{12,}$/i.test(name)) return undefined;
+  if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(name)) return undefined;
   if (name.length > 24 && name.includes("-")) return undefined;
   return name;
+}
+
+function looseHistoryIdMatch(a: any, b: any): boolean {
+  const aa = String(a ?? "").trim();
+  const bb = String(b ?? "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+function historyPlayerNameById(e: SavedEntry, id: any): string | undefined {
+  const anyE: any = e;
+  const pools = [
+    anyE.players,
+    anyE.summary?.players,
+    anyE.payload?.players,
+    anyE.payload?.summary?.players,
+    anyE.resume?.config?.players,
+    anyE.payload?.resume?.config?.players,
+    anyE.decoded?.players,
+    anyE.decoded?.config?.players,
+  ];
+  for (const arr of pools) {
+    if (!Array.isArray(arr)) continue;
+    const hit = arr.find((p: any) =>
+      looseHistoryIdMatch(p?.id, id) ||
+      looseHistoryIdMatch(p?.playerId, id) ||
+      looseHistoryIdMatch(p?.profileId, id) ||
+      looseHistoryIdMatch(p?.userId, id)
+    );
+    const name = cleanName(hit?.name || hit?.displayName || hit?.nickname || hit?.label);
+    if (name) return name;
+  }
+  return undefined;
 }
 function cleanScore(raw: any): string | undefined {
   if (typeof raw === "number") return String(raw);
@@ -767,7 +804,7 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
 
   const parts = values
     .map(({ r, sets, legs }) => {
-      const name = cleanName(r.name || r.playerName || r.label || r.id || r.playerId) || undefined;
+      const name = cleanName(r.name || r.playerName || r.label) || historyPlayerNameById(e, r.id || r.playerId || r.profileId || r.pid) || undefined;
       const generic = cleanScore(r.score ?? r.points ?? r.total);
       if (!name) return null;
       // Matchs multi en sets : le score principal doit être les SETS gagnés (2-0 / 2-1), pas le dernier leg.
@@ -798,7 +835,7 @@ function summarizeScore(e: SavedEntry): string {
   if (Array.isArray(rankings)) {
     const parts = rankings
       .map((r: any) => {
-        const name = cleanName(r.name || r.playerName || r.label || r.id || r.playerId) || undefined;
+        const name = cleanName(r.name || r.playerName || r.label) || historyPlayerNameById(e, r.id || r.playerId || r.profileId || r.pid) || undefined;
         const score =
           cleanScore(r.score ?? r.legsWon ?? r.legs ?? r.setsWon ?? r.sets ?? r.points ?? r.total) ||
           (typeof r.avg3 === "number" ? r.avg3.toFixed(1) : undefined);
@@ -816,7 +853,7 @@ function summarizeScore(e: SavedEntry): string {
   if (detailed && typeof detailed === "object") {
     const parts = Object.entries(detailed)
       .map(([rawName, val]: [string, any]) => {
-        const name = cleanName(rawName);
+        const name = cleanName(rawName) || historyPlayerNameById(e, rawName);
         const legs = cleanScore(val.legsWon ?? val.legs);
         const avg = typeof val.avg3 === "number" ? val.avg3.toFixed(1) : undefined;
 

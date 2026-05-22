@@ -224,6 +224,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
   const out = {
     sessions: 0,
     darts: 0,
+    scoreTotal: 0,
     sumAvg3D: 0,
     bestVisit: 0,
     bestCheckout: 0,
@@ -339,15 +340,34 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     const perPlayerHit = perPlayerArr.find((pp: any) => x01PlayerIds(pp).some((id) => matchedIds.some((a) => x01IdMatches(id, a))));
     const summaryPlayersHit = x01FindMapValue(summary?.players, matchedIds);
     const statSource: any = (perPlayerHit && typeof perPlayerHit === "object" ? perPlayerHit : null) || (summaryPlayersHit && typeof summaryPlayersHit === "object" ? summaryPlayersHit : null) || (detailed && typeof detailed === "object" ? detailed : null);
+    const liveStatsHit =
+      x01FindMapValue(payload?.resume?.state?.liveStatsByPlayer, matchedIds) ||
+      x01FindMapValue(payload?.payload?.d?.s?.livestatsbyplayer, matchedIds) ||
+      x01FindMapValue(payload?.payload?.d?.s?.liveStatsByPlayer, matchedIds) ||
+      x01FindMapValue(summary?.liveStatsByPlayer, matchedIds) ||
+      null;
     if (visits.length) {
-      const attemptsFromStats = x01ReadNum(statSource?.checkoutAttempts, statSource?.checkoutattempts, statSource?.co, statSource?.checkouts);
-      const hitsFromStats = x01ReadNum(statSource?.checkoutHits, statSource?.checkoutSuccess, statSource?.checkoutsuccess, statSource?.coHits, statSource?.cohits);
-      const dartsCoFromStats = x01ReadNum(statSource?.dartsCo, statSource?.dartsCheckout, statSource?.checkoutDarts, statSource?.checkoutdarts);
+      const attemptsFromStats = x01ReadNum(statSource?.checkoutAttempts, statSource?.checkoutattempts, statSource?.co, statSource?.checkouts, liveStatsHit?.checkoutAttempts, liveStatsHit?.checkoutattempts);
+      const hitsFromStats = x01ReadNum(statSource?.checkoutHits, statSource?.checkoutSuccess, statSource?.checkoutsuccess, statSource?.coHits, statSource?.cohits, liveStatsHit?.checkoutHits, liveStatsHit?.checkouthits, liveStatsHit?.coHits);
+      const dartsCoFromStats = x01ReadNum(statSource?.dartsCo, statSource?.dartsCheckout, statSource?.checkoutDarts, statSource?.checkoutdarts, liveStatsHit?.dartsCo, liveStatsHit?.dartsCheckout, liveStatsHit?.checkoutDarts, liveStatsHit?.checkoutdarts);
       out.checkoutAttempts += attemptsFromStats || (bestCO > 0 ? 1 : 0);
       out.checkoutHits += hitsFromStats || (bestCO > 0 ? 1 : 0);
       out.dartsCo += dartsCoFromStats || (bestCO > 0 ? Math.max(1, visits.find((v:any)=>v.finish)?.segments?.length || 1) : 0);
+      const startScore = x01ReadNum(
+        (rec as any)?.game?.startScore,
+        (rec as any)?.summary?.game?.startScore,
+        payload?.summary?.game?.startScore,
+        payload?.game?.startScore,
+        payload?.resume?.config?.startScore,
+        payload?.config?.startScore,
+        301
+      ) || 301;
+      const sourcePoints = x01ReadNum(statSource?.totalScore, statSource?.totalscore, statSource?._sumPoints, statSource?.points);
+      // Ne jamais laisser une sauvegarde online corrompue compter plus que le score de départ par leg terminé.
+      // Exemple vu: liveStats.totalScore=329 sur un X01 301 à cause d'un début de leg suivant conservé dans resume.state.
+      out.scoreTotal += Math.min(Math.max(sourcePoints || scored || 0, 0), startScore);
       out.darts += Math.max(darts, x01ReadNum(statSource?.darts, statSource?.dt, statSource?.dartsThrown));
-      const avg3 = x01ReadNum(statSource?.avg3, statSource?.avg3D, statSource?.avg3d) || (darts > 0 ? (scored / darts) * 3 : 0);
+      const avg3 = x01ReadNum(statSource?.avg3, statSource?.avg3D, statSource?.avg3d) || (darts > 0 ? (Math.min(scored, startScore) / darts) * 3 : 0);
       out.sumAvg3D += avg3;
       out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
       out.bestVisit = Math.max(out.bestVisit, bestVisit, x01ReadNum(statSource?.bestVisit, statSource?.bv));
@@ -356,6 +376,17 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     } else if (detailed && typeof detailed === "object") {
       const d = x01ReadNum(detailed.darts, detailed.dt, detailed.dartsThrown);
       const avg3 = x01ReadNum(detailed.avg3, detailed.avg3D, detailed.avg3d);
+      const startScore = x01ReadNum(
+        (rec as any)?.game?.startScore,
+        (rec as any)?.summary?.game?.startScore,
+        payload?.summary?.game?.startScore,
+        payload?.game?.startScore,
+        payload?.resume?.config?.startScore,
+        payload?.config?.startScore,
+        301
+      ) || 301;
+      const sourcePoints = x01ReadNum(detailed.totalScore, detailed.totalscore, detailed._sumPoints, detailed.points);
+      out.scoreTotal += Math.min(Math.max(sourcePoints || (d > 0 && avg3 > 0 ? (avg3 / 3) * d : 0) || 0, 0), startScore);
       out.darts += d;
       out.sumAvg3D += avg3;
       out.bestAvg3D = Math.max(out.bestAvg3D, avg3);

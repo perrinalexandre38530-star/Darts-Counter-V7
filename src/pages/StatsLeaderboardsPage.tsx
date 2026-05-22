@@ -633,7 +633,7 @@ function computeX01LeaderboardRowsFromDashboardAgg(
     const darts = Number(agg?.darts || 0) || 0;
     const hits = singleHits + doubleHits + tripleHits + bullHits + dbullHits;
     const attempts = hits + miss;
-    const scoreTotal = Math.round((avg3 / 3) * darts);
+    const scoreTotal = Math.round(Number(agg?.scoreTotal || 0) || ((avg3 / 3) * darts));
     const bestFirst9 = Number(agg?.best9Score || agg?.bestFirst9 || 0) || 0;
     const visitBuckets = agg?.visitBuckets || {};
     const byNumber = Array.isArray(agg?.byNumber) ? agg.byNumber : [];
