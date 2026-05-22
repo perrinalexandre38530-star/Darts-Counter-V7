@@ -5886,6 +5886,8 @@ type ModeDashboardCard = {
   missHits?: number;
   bestHole?: number;
   bestRound?: number;
+  closedSegments?: number;
+  bullRate?: number;
   shanghais?: number;
   kills: number;
   damage: number;
@@ -6189,6 +6191,17 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       }
       if (typeof src !== "object") return;
 
+      // Forme résumé Cricket/Golf : { S,D,T,BULL,DBULL,MISS,darts,score,byNumber }
+      if (src.S != null || src.D != null || src.T != null || src.BULL != null || src.DBULL != null || src.MISS != null) {
+        const ss = n(src.S); const dd = n(src.D); const tt = n(src.T); const bb = n(src.BULL); const dbb = n(src.DBULL); const mm = n(src.MISS);
+        out.s += ss; out.d += dd; out.t += tt; out.bull += bb; out.dbull += dbb; out.miss += mm;
+        out.darts += n(src.darts) || (ss + dd + tt + bb + dbb + mm);
+        out.score += n(src.score ?? src.points ?? src.totalScore);
+        out.bestRound = Math.max(out.bestRound, n(src.bestVisitMarks ?? src.bestRound ?? src.bestVisit));
+        if (src.byNumber && typeof src.byNumber === "object") Object.entries(src.byNumber).forEach(([k, v]) => addFav(k, n(v)));
+        return;
+      }
+
       // Forme map par cible : { "20": { S, D, T, MISS, points }, ... }
       // Très utilisée par Shanghai/Cricket. Important : on conserve la clé cible
       // pour alimenter le numéro favori, au lieu de perdre l'info avec Object.values().
@@ -6293,21 +6306,30 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const hitRate = get("leg_hitrate", "legstats_hitrate");
     const mpr = get("leg_mpr", "legstats_mpr");
     const bestVisitMarks = get("leg_bestvisitmarks", "legstats_bestvisit");
+    const totalInflicted = get("leg_totalinflicted", "legstats_totalinfl");
 
     const favMap: Record<string, number> = {};
     Object.entries(marksBySegment).forEach(([k, v]) => {
       if (Number(v) > 0) favMap[k] = Number(v);
     });
 
+    const closedSegments = segs.reduce((acc, seg) => {
+      const direct = get(`leg_persegment_${seg}_closes`, `leg_persegment_${seg}_close`, `cl_${seg}`);
+      if (direct > 0) return acc + 1;
+      return acc + (Number(marksBySegment[String(seg)] || 0) >= 3 ? 1 : 0);
+    }, 0);
+
     return {
       idx,
       totalMarks,
       totalPoints,
+      totalInflicted,
       darts,
       visits,
       hitRate,
       mpr,
       bestVisitMarks,
+      closedSegments,
       marksBySegment,
       favMap,
       won: Boolean(cfg?.won) || Number(compact?.w) === idx || statHubIdMatches(normId(r?.winnerId ?? r?.payload?.winnerId), targetPid),
@@ -6344,6 +6366,8 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       missHits: 0,
       bestHole: 0,
       bestRound: 0,
+      closedSegments: 0,
+      bullRate: 0,
       shanghais: 0,
       kills: 0,
       damage: 0,
@@ -6422,25 +6446,40 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
 
     if (mode === "cricket") {
       const compactCricket = readCompactCricketPlayer(r as any, pid);
-      const crCounts = readRingCounts(modeStatsPlayer, modeStatsPlayer?.special, payloadPlayer, payloadPlayer?.hits, pl?.hits, stats);
+      const crCounts = readRingCounts(
+        modeStatsPlayer,
+        modeStatsPlayer?.special,
+        (modeStatsPlayer as any)?.special?.hitSummary,
+        (modeStatsPlayer as any)?.hitSummary,
+        payloadPlayer,
+        payloadPlayer?.hitSummary,
+        payloadPlayer?.hits,
+        pl?.hitSummary,
+        pl?.hits,
+        stats,
+        stats?.hitSummary
+      );
 
       marksTotal = pickNum(
         marksTotal,
         compactCricket?.totalMarks,
         modeStatsPlayer?.special?.marksTotal,
+        (modeStatsPlayer as any)?.special?.cricketStats?.totalMarks,
         payloadPlayer?.marksTotal,
+        payloadPlayer?.cricketStats?.totalMarks,
         sumNumericValues(payloadPlayer?.marks),
         sumNumericValues(pl?.marks),
         crCounts.s + crCounts.d * 2 + crCounts.t * 3 + crCounts.bull + crCounts.dbull * 2,
         score
       );
-      score = pickNum(score, compactCricket?.totalPoints, payloadPlayer?.score, modeStatsPlayer?.score, marksTotal);
-      darts = pickNum(darts, compactCricket?.darts, crCounts.darts, payloadPlayer?.darts, payloadPlayer?.hits?.length, modeStatsPlayer?.darts?.thrown);
+      score = pickNum(score, compactCricket?.totalPoints, payloadPlayer?.cricketStats?.totalPoints, payloadPlayer?.score, modeStatsPlayer?.score, marksTotal);
+      darts = pickNum(darts, compactCricket?.darts, payloadPlayer?.cricketStats?.darts, crCounts.darts, payloadPlayer?.darts, payloadPlayer?.hits?.length, modeStatsPlayer?.darts?.thrown);
       const compactHitRate = Number(compactCricket?.hitRate || 0);
       hits = pickNum(
         hits,
         compactHitRate > 0 && darts > 0 ? Math.round(compactHitRate * darts) : 0,
         crCounts.s + crCounts.d + crCounts.t + crCounts.bull + crCounts.dbull,
+        payloadPlayer?.cricketStats?.hitCount,
         payloadPlayer?.hitCount,
         modeStatsPlayer?.darts?.hits,
         marksTotal
@@ -6455,8 +6494,15 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.missHits = Number(a.missHits || 0) + crCounts.miss;
 
       // Compact Cricket ne conserve pas toujours le détail S/D/T, mais conserve
-      // les marks par numéro. On les utilise pour numéro favori + best marks.
+      // les marks par numéro. On les utilise pour numéro favori + best visit.
       if (compactCricket?.marksBySegment) mergeFavMap(a.favMap, compactCricket.marksBySegment);
+      if (compactCricket?.marksBySegment) {
+        const bullMarks = Number(compactCricket.marksBySegment["25"] || 0);
+        // Ancien compact: impossible de distinguer SBull/DBull, on expose au moins le volume Bull utile.
+        if (bullMarks > 0 && !Number(a.bullHits || 0) && !Number(a.dbullHits || 0)) a.bullHits = Number(a.bullHits || 0) + bullMarks;
+      }
+      a.captures = Number(a.captures || 0) + Number(compactCricket?.closedSegments || payloadPlayer?.cricketStats?.closedSegments || 0);
+      a.damage = Number(a.damage || 0) + Number(compactCricket?.totalInflicted || payloadPlayer?.cricketStats?.cutThroatDamage || 0);
       a.bestRound = Math.max(
         Number(a.bestRound || 0),
         Number(compactCricket?.bestVisitMarks || 0),
@@ -6661,18 +6707,31 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
       : a.key === "cricket"
-      ? [
-          { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
-          { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
-          { label: "Marks", value: fmtStatValue(a.extra || a.hits), tone: "gold" },
-          { label: "Marks/match", value: fmtStatValue(a.matches ? (a.extra || a.hits) / a.matches : 0), tone: "gold" },
-          { label: "MPR", value: fmtStatValue(cricketStats && Number((cricketStats as any).globalMpr || 0) > 0 ? Number((cricketStats as any).globalMpr || 0) : (a.darts ? ((a.extra || a.hits) / Math.max(1, Math.ceil(a.darts / 3))) : 0)), tone: "green" },
-          { label: "Hit rate", value: cricketStats && Number((cricketStats as any).globalHitRate || 0) > 0 ? fmtStatValue(Number((cricketStats as any).globalHitRate || 0) * 100, "%") : ((a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—"), tone: "green" },
-          { label: "S / D / T", value: `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}`, tone: "blue" },
-          { label: "Bull + DBull", value: fmtStatValue((a.bullHits || 0) + (a.dbullHits || 0)), tone: "blue" },
-          { label: "Best marks", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
-          { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
-        ]
+      ? (() => {
+          const totalMarks = Number(a.extra || a.hits || 0);
+          const mprValue = cricketStats && Number((cricketStats as any).globalMpr || 0) > 0
+            ? Number((cricketStats as any).globalMpr || 0)
+            : (a.darts ? totalMarks / Math.max(1, Math.ceil(a.darts / 3)) : 0);
+          const hitRateValue = cricketStats && Number((cricketStats as any).globalHitRate || 0) > 0
+            ? fmtStatValue(Number((cricketStats as any).globalHitRate || 0) * 100, "%")
+            : ((a.darts || a.hits) ? fmtStatValue(accuracy, "%") : "—");
+          const ringSaved = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0) + Number(a.missHits || 0);
+          return [
+            { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+            { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+            { label: "Points", value: fmtStatValue(a.points), tone: "gold" },
+            { label: "Points/match", value: fmtStatValue(a.matches ? a.points / a.matches : 0), tone: "gold" },
+            { label: "Total marks", value: fmtStatValue(totalMarks), tone: "gold" },
+            { label: "Marks/volée", value: fmtStatValue(mprValue), tone: "green" },
+            { label: "Hit rate", value: hitRateValue, tone: "green" },
+            { label: "S / D / T", value: ringSaved ? `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}` : "non enregistré", tone: "blue" },
+            { label: "Bull utile", value: fmtStatValue((a.bullHits || 0) + (a.dbullHits || 0)), tone: "blue" },
+            { label: "Segments fermés", value: fmtStatValue(a.captures || 0), tone: "green" },
+            { label: "Damage", value: fmtStatValue(a.damage || 0), tone: "red" },
+            { label: "Best visit", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
+            { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
+          ];
+        })()
       : a.key === "shanghai"
       ? [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
@@ -7540,7 +7599,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 10 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 13 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>

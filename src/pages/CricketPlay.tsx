@@ -1509,6 +1509,72 @@ function extractHitsForPlayerFromState(st: any, playerId: string): string[] {
   return [];
 }
 
+function summarizeCricketHitStrings(hits: string[]) {
+  const out: any = {
+    S: 0,
+    D: 0,
+    T: 0,
+    BULL: 0,
+    DBULL: 0,
+    MISS: 0,
+    darts: 0,
+    marks: 0,
+    bestVisitMarks: 0,
+    byNumber: {} as Record<string, number>,
+    byRing: {} as Record<string, number>,
+  };
+
+  let currentVisitMarks = 0;
+  hits.forEach((raw, idx) => {
+    const h = String(raw || '').trim().toUpperCase();
+    out.darts += 1;
+    let marks = 0;
+    let numberKey = '';
+    let ringKey = '';
+
+    if (!h || h === '0' || h === 'M' || h === 'MISS') {
+      out.MISS += 1;
+      ringKey = 'MISS';
+    } else if (h === 'DBULL' || h === 'DB' || h === 'D25') {
+      out.DBULL += 1;
+      marks = 2;
+      numberKey = '25';
+      ringKey = 'DBULL';
+    } else if (h === 'BULL' || h === 'SBULL' || h === 'SB' || h === 'S25') {
+      out.BULL += 1;
+      marks = 1;
+      numberKey = '25';
+      ringKey = 'BULL';
+    } else {
+      const m = h.match(/^([SDT])\s*(\d{1,2})$/);
+      if (m) {
+        const ring = m[1];
+        const seg = m[2];
+        numberKey = seg;
+        ringKey = ring;
+        if (ring === 'S') { out.S += 1; marks = 1; }
+        else if (ring === 'D') { out.D += 1; marks = 2; }
+        else if (ring === 'T') { out.T += 1; marks = 3; }
+      } else {
+        out.MISS += 1;
+        ringKey = 'MISS';
+      }
+    }
+
+    if (numberKey) out.byNumber[numberKey] = (out.byNumber[numberKey] || 0) + marks;
+    if (ringKey) out.byRing[ringKey] = (out.byRing[ringKey] || 0) + 1;
+    out.marks += marks;
+    currentVisitMarks += marks;
+
+    if ((idx + 1) % 3 === 0 || idx === hits.length - 1) {
+      out.bestVisitMarks = Math.max(out.bestVisitMarks, currentVisitMarks);
+      currentVisitMarks = 0;
+    }
+  });
+
+  return out;
+}
+
 // --------------------------------------------------
 // BUILD HISTORY RECORD
 // --------------------------------------------------
@@ -1540,9 +1606,13 @@ const playersPayload = state.players.map((p: any) => {
       (prof as any)?.dartSetId ?? (prof as any)?.favoriteDartSetId ?? dartSetId ?? null;
 
     const legStats = computeLegStatsForPlayer(p);
+    const hitSummary = summarizeCricketHitStrings(Array.isArray(hits) ? hits : []);
     const marksObj = p.marks && typeof p.marks === "object" ? p.marks : null;
-    const marksTotal = marksObj
+    const marksTotal = Number(legStats?.totalMarks ?? 0) || Number(hitSummary?.marks ?? 0) || (marksObj
       ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0)
+      : 0);
+    const closedSegments = marksObj
+      ? Object.values(marksObj).filter((v: any) => Number(v || 0) >= 3).length
       : 0;
 
     return {
@@ -1553,8 +1623,22 @@ const playersPayload = state.players.map((p: any) => {
       marks: p.marks,
       marksTotal,
       hits,
+      hitSummary,
+      cricketStats: {
+        totalMarks: marksTotal,
+        totalPoints: Number(p.score ?? legStats?.totalPoints ?? 0) || 0,
+        darts: Array.isArray(hits) ? hits.length : Number(legStats?.darts ?? 0) || 0,
+        hitCount: Array.isArray(hits) ? hits.filter((h: any) => String(h || '').toUpperCase() !== "MISS").length : 0,
+        mpr: Number(legStats?.mpr ?? 0) || 0,
+        hitRate: Number(legStats?.hitRate ?? 0) || 0,
+        bestVisitMarks: Math.max(Number(legStats?.bestVisitMarks ?? 0) || 0, Number(hitSummary?.bestVisitMarks ?? 0) || 0),
+        closedSegments,
+        byNumber: hitSummary.byNumber,
+        byRing: hitSummary.byRing,
+        cutThroatDamage: Number(legStats?.totalInflictedPoints ?? 0) || 0,
+      },
       darts: Array.isArray(hits) ? hits.length : 0,
-      hitCount: Array.isArray(hits) ? hits.filter((h: any) => h && h.ring !== "MISS" && h.segment !== "MISS").length : 0,
+      hitCount: Array.isArray(hits) ? hits.filter((h: any) => h && String(h).toUpperCase() !== "MISS").length : 0,
       legStats,
       dartSetId: pDartSetId,
     };
@@ -1597,6 +1681,8 @@ return {
 	            win: state?.winnerId ? String(p?.id ?? p?.profileId) === String(state.winnerId) : false,
 	            score: Number(p?.score ?? 0) || 0,
             hits: hitsArr,
+            hitSummary: (p as any)?.hitSummary ?? summarizeCricketHitStrings(hitsArr),
+            cricketStats: (p as any)?.cricketStats ?? null,
             hitCount: hitsArr.filter((h: any) => h && String(h).toUpperCase() !== "MISS").length,
             marks: marksObj ?? {},
             marksTotal: Number(marksTotal) || 0,
@@ -1607,6 +1693,8 @@ return {
             },
             special: {
               marksTotal: Number(marksTotal) || 0,
+              cricketStats: (p as any)?.cricketStats ?? null,
+              hitSummary: (p as any)?.hitSummary ?? summarizeCricketHitStrings(hitsArr),
             },
 	          };
 	        }),
@@ -1627,6 +1715,7 @@ return {
       roundNumber: (state as any).roundNumber,
       forcedFinished: !!(state as any).forcedFinished,
       players: playersPayload,
+      cricketEvents: cricketRecorder.eventsRef.current.slice(-500),
     },
   };
 }
