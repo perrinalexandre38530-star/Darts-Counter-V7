@@ -33,8 +33,15 @@ const teamPlayers = (t: any): string[] => {
    => utilisé pour le comportement "Continuer" en X01V3
 ------------------------------------------------------- */
 export function isMultiContinueMode(config: X01ConfigV3): boolean {
-  // MULTI FF = plusieurs joueurs indépendants (pas de teams)
-  return config.gameMode === "multi" && !config.teams;
+  // MULTI FFA ne doit continuer APRES le 1er checkout que si l'option
+  // explicite de configuration est active.
+  // Avant, gameMode === "multi" suffisait : du coup "Terminer la partie"
+  // continuait quand même et les joueurs déjà à 0 pouvaient revenir dans le tour.
+  return (
+    config.gameMode === "multi" &&
+    !config.teams &&
+    (config as any).multiFinishMode === "continue_ranking"
+  );
 }
 
 /* -------------------------------------------------------

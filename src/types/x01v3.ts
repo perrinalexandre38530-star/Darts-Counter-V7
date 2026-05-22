@@ -47,6 +47,9 @@ export interface X01ConfigV3 {
 
   gameMode: X01GameMode;
 
+  // MULTI / FFA : comportement quand le premier joueur termine
+  multiFinishMode?: "stop_on_first" | "continue_ranking";
+
   // multi / solo
   players: X01PlayerV3[];
   // teams

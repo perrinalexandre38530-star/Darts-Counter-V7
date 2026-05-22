@@ -496,6 +496,64 @@ score: visit.currentScore,
     live[pid] = stPlayer;
     (m as any).liveStatsByPlayer = live;
 
+    // ======================================================
+    // MULTI FFA "continuer le classement" pendant un REBUILD
+    // Même règle que le live : uniquement si multiFinishMode === "continue_ranking".
+    // Sinon, stop_on_first doit tomber dans le flux classique leg/set/match_end.
+    // ======================================================
+    const isMultiFFARebuild =
+      isMultiContinueMode(config) && (config.players?.length ?? 0) > 2;
+
+    if (isMultiFFARebuild) {
+      let finishOrder: X01PlayerId[] =
+        ((m as any).finishOrder as X01PlayerId[]) || [];
+      if (!Array.isArray(finishOrder)) finishOrder = [];
+
+      if (isCheckout && !finishOrder.includes(pid)) {
+        finishOrder.push(pid);
+      }
+
+      (m as any).finishOrder = finishOrder;
+
+      const totalPlayers = config.players.length;
+      const finishedCount = finishOrder.length;
+      const shouldContinueLeg =
+        !isCheckout || finishedCount <= totalPlayers - 2;
+
+      if (shouldContinueLeg) {
+        const order = m.throwOrder;
+        const currentIndex = order.indexOf(pid);
+        let nextId: X01PlayerId = pid;
+
+        for (let i = 0; i < order.length; i++) {
+          const idx = (currentIndex + 1 + i) % order.length;
+          const candidateId = order[idx] as X01PlayerId;
+          const candidateFinished = finishOrder.includes(candidateId);
+          const candidateScore = m.scores[candidateId] ?? 0;
+
+          if (!candidateFinished && candidateScore > 0) {
+            nextId = candidateId;
+            break;
+          }
+        }
+
+        m.activePlayer = nextId;
+        startNewVisitV3(m);
+        if (m.visit) {
+          m.visit.checkoutSuggestion = (() => {
+            const raw = extAdaptCheckoutSuggestion({
+              score: m.visit.currentScore,
+              dartsLeft: m.visit.dartsLeft,
+              outMode: config.outMode,
+            });
+            return filterCheckoutSuggestions(raw, config.outMode);
+          })();
+        }
+        m.status = "playing";
+        continue;
+      }
+    }
+
     // ---------- Fin de leg / set / match ----------
     const legWinner = checkLegWinV3(config, m);
     if (legWinner) {
@@ -1277,10 +1335,8 @@ export function useX01EngineV3({
   // -----------------------------------------------------------
 
   const undoLastDart = React.useCallback(() => {
-    // ✅ UNDO = supprimer exactement la dernière fléchette réelle du moteur,
-    // puis reconstruire toute la manche courante depuis l'historique interne.
-    // IMPORTANT: on retourne le nouvel état immédiatement pour que l'UI ne se
-    // resynchronise jamais sur un state React périmé (cas changement joueur / sets-legs).
+    // UNDO = retirer exactement la dernière fléchette commitée, puis reconstruire
+    // tout l'état moteur depuis l'historique restant.
     if (dartsHistoryRef.current.length === 0) return null;
 
     dartsHistoryRef.current.pop();
@@ -1299,6 +1355,8 @@ export function useX01EngineV3({
     setLiveLegStatsByPlayer(computeLegStats(newLiveStats as any));
     setState(newState);
 
+    // Important pour l'UI : X01PlayV3 peut se resynchroniser immédiatement
+    // sur CE nouvel état au lieu d'attendre un rendu React avec un state stale.
     return { state: newState, liveStatsByPlayer: newLiveStats };
   }, [config]);
 
