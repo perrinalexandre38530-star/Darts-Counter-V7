@@ -5,7 +5,7 @@
 // - permettre purge des caches si demandé
 // - éviter les vieux modules cassés après déploiement
 
-const SW_VERSION = "dc-sw-2026-05-10-online-v9-1";
+const SW_VERSION = "dc-sw-2026-05-23-message-center-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -62,5 +62,25 @@ self.addEventListener("notificationclick", (event) => {
       } catch {}
     }
     if (self.clients.openWindow) return self.clients.openWindow(url);
+  })());
+});
+
+
+self.addEventListener("push", (event) => {
+  event.waitUntil((async () => {
+    let data = {};
+    try { data = event.data ? event.data.json() : {}; } catch {
+      try { data = { body: event.data ? event.data.text() : "" }; } catch {}
+    }
+    const title = data.title || "Multisports Scoring";
+    const options = {
+      body: data.body || "Nouveau message reçu.",
+      tag: data.tag || "multisports-message-center",
+      renotify: true,
+      icon: data.icon || "/app-192.png",
+      badge: data.badge || "/app-192.png",
+      data: { url: data.url || "/#/messages" },
+    };
+    await self.registration.showNotification(title, options);
   })());
 });

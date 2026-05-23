@@ -126,11 +126,14 @@ export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUn
 }
 
 async function ensureMessageServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  if (typeof window === "undefined" || typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  if (!window.isSecureContext && !/^localhost$|^127\./.test(window.location.hostname)) return null;
   try {
-    const existing = await navigator.serviceWorker.getRegistration();
-    if (existing) return existing;
-    return await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const existing = await navigator.serviceWorker.getRegistration("/");
+    const reg = existing || await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    try { await navigator.serviceWorker.ready; } catch {}
+    try { reg.update?.(); } catch {}
+    return reg;
   } catch {
     return null;
   }
@@ -138,11 +141,14 @@ async function ensureMessageServiceWorkerRegistration(): Promise<ServiceWorkerRe
 
 export async function requestMessageNotificationsPermission(): Promise<NotificationPermission | "unsupported"> {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  if (!window.isSecureContext && !/^localhost$|^127\./.test(window.location.hostname)) return "unsupported";
   await ensureMessageServiceWorkerRegistration();
   if (Notification.permission === "granted") return "granted";
   if (Notification.permission === "denied") return "denied";
   try {
-    return await Notification.requestPermission();
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") await ensureMessageServiceWorkerRegistration();
+    return permission;
   } catch {
     return Notification.permission;
   }
@@ -175,8 +181,21 @@ export async function showMessageCenterNotification(title: string, body: string)
   } catch {}
 }
 
+
+async function updateAppBadge(count: number) {
+  if (typeof navigator === "undefined") return;
+  try {
+    const n = Math.max(0, Math.floor(Number(count || 0)));
+    const nav: any = navigator as any;
+    if (n > 0 && typeof nav.setAppBadge === "function") await nav.setAppBadge(n);
+    else if (n <= 0 && typeof nav.clearAppBadge === "function") await nav.clearAppBadge();
+  } catch {}
+}
+
 export async function pollMessageCenterAndNotify(opts: { notify?: boolean; updateDocumentTitle?: boolean } = {}) {
   const summary = await fetchMessageCenterUnreadSummary();
+  await updateAppBadge(summary.total);
+  try { window.dispatchEvent(new CustomEvent("dc-message-center-count", { detail: summary })); } catch {}
   const seen = getSeenKeys();
   const lastTotal = Number(storageGet(LAST_TOTAL_LS) || "0") || 0;
   const firstRun = storageGet(LAST_TOTAL_LS) == null;

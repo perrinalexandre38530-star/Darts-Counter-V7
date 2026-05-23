@@ -12,6 +12,7 @@ import {
   respondProfileFriendLink,
   sendPrivateMessage,
   markPrivateMessageRead,
+  markPrivateThreadRead,
   deletePrivateMessage,
   type FriendRequest,
   type PrivateMessageItem,
@@ -19,7 +20,7 @@ import {
   type ProfileFriendLink,
   type SharedMatchItem,
 } from "../lib/friendsApi";
-import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission } from "../lib/messageCenterNotify";
+import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission, showMessageCenterNotification } from "../lib/messageCenterNotify";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
 
@@ -181,6 +182,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
     return Notification.permission;
   });
+  const chatEndRef = React.useRef<HTMLDivElement | null>(null);
 
   const salonInvites = React.useMemo(() => {
     const raw = Array.isArray(store?.onlineInvites) ? store.onlineInvites : [];
@@ -274,21 +276,31 @@ export default function MessagesPage({ store, update, go }: Props) {
   }, [messageThreads, selectedThreadUserId]);
 
   React.useEffect(() => {
-    if (active !== "messages") return;
-    const unreadIncoming = displayedMessages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt && m?.id);
+    if (active !== "messages" || !selectedThread?.id) return;
+    const unreadIncoming = selectedThread.messages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt && m?.id);
     if (!unreadIncoming.length) return;
     let cancelled = false;
-    Promise.all(unreadIncoming.map((m: any) => markPrivateMessageRead(String(m.id)).catch(() => null)))
+
+    markPrivateThreadRead(String(selectedThread.id))
+      .catch(() => Promise.all(unreadIncoming.map((m: any) => markPrivateMessageRead(String(m.id)).catch(() => null))))
       .then(() => {
         if (cancelled) return;
         const now = new Date().toISOString();
         const ids = new Set(unreadIncoming.map((m: any) => String(m.id)));
         setPrivateMessages((prev) => prev.map((m: any) => (ids.has(String(m?.id || "")) ? { ...m, readAt: now } : m)));
         markMessageCenterRefreshNeeded();
+        try {
+          window.dispatchEvent(new CustomEvent("dc-message-center-count", { detail: { total: Math.max(0, totalPending - ids.size) } }));
+        } catch {}
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [active, selectedThreadUserId, displayedMessages]);
+  }, [active, selectedThread?.id, selectedThread?.messages, totalPending]);
+
+  React.useEffect(() => {
+    if (active !== "messages") return;
+    try { chatEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); } catch {}
+  }, [active, selectedThread?.id, displayedMessages.length]);
 
   async function runAction(label: string, fn: () => Promise<any>) {
     setError(null);
@@ -323,15 +335,24 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   async function handleDeletePrivateMessage(id: string) {
     if (!id) return;
-    await runAction("Message supprimé de cette conversation ✅", async () => {
+    setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(id)));
+    markMessageCenterRefreshNeeded();
+    try {
       await deletePrivateMessage(id);
-    });
+      setInfo("Message supprimé de cette conversation ✅");
+    } catch (e: any) {
+      setError(e?.message || String(e));
+      await loadAll();
+    }
   }
 
   async function activatePhoneNotifications() {
     const permission = await requestMessageNotificationsPermission();
     setNotifPermission(permission);
-    if (permission === "granted") setInfo("Notifications téléphone activées ✅");
+    if (permission === "granted") {
+      setInfo("Notifications téléphone activées ✅");
+      await showMessageCenterNotification("Multisports Scoring", "Notifications activées pour la messagerie.");
+    }
     else if (permission === "denied") setError("Notifications bloquées par le téléphone/navigateur. Autorise-les dans les paramètres du site ou de l’application.");
     else if (permission === "unsupported") setError("Notifications non supportées par ce navigateur.");
   }
@@ -532,6 +553,7 @@ export default function MessagesPage({ store, update, go }: Props) {
               ) : (
                 <EmptyCard icon="💬" title="Aucun message privé" text="Choisis un ami puis envoie ton premier message." />
               )}
+              <div ref={chatEndRef} />
             </div>
 
             <div style={{ padding: 12, borderTop: `1px solid ${STROKE}`, display: "grid", gap: 8 }}>

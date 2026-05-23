@@ -235,8 +235,14 @@ export async function sendPrivateMessage(toUserId: string, text: string) {
 }
 
 export async function markPrivateMessageRead(id: string) {
+  // Backend accepte PUT + POST : on garde PUT pour compat avec le frontend existant.
   const res = await apiPut(`/online/private-messages/${qs(id)}/read`, {});
   return res?.message ?? res;
+}
+
+export async function markPrivateThreadRead(friendUserId: string) {
+  const res = await apiPost(`/online/private-messages/thread/${qs(friendUserId)}/read`, {});
+  return res?.messages ?? res?.items ?? res;
 }
 
 export async function deletePrivateMessage(id: string) {
