@@ -442,6 +442,8 @@ function rebuildMatchFromHistory(
       multiplier: d.m,
     } as X01DartInputV3;
 
+    ensureMultiActivePlayerIsPlayable(config, m);
+
     const result = applyDartToCurrentPlayerV3(config, m, input);
     const visit = m.visit!;
     const pid = m.activePlayer;
@@ -521,24 +523,12 @@ score: visit.currentScore,
         !isCheckout || finishedCount <= totalPlayers - 2;
 
       if (shouldContinueLeg) {
-        const order = m.throwOrder;
-        const currentIndex = order.indexOf(pid);
-        let nextId: X01PlayerId = pid;
-
-        for (let i = 0; i < order.length; i++) {
-          const idx = (currentIndex + 1 + i) % order.length;
-          const candidateId = order[idx] as X01PlayerId;
-          const candidateFinished = finishOrder.includes(candidateId);
-          const candidateScore = m.scores[candidateId] ?? 0;
-
-          if (!candidateFinished && candidateScore > 0) {
-            nextId = candidateId;
-            break;
-          }
+        const nextId = getNextPlayableMultiPlayer(config, m, pid);
+        if (nextId) {
+          m.activePlayer = nextId;
         }
-
-        m.activePlayer = nextId;
         startNewVisitV3(m);
+        ensureMultiActivePlayerIsPlayable(config, m);
         if (m.visit) {
           m.visit.checkoutSuggestion = (() => {
             const raw = extAdaptCheckoutSuggestion({
@@ -660,6 +650,93 @@ score: m.visit.currentScore,
 // -------------------------------------------------------------
 // Helper : passer à la manche / au set suivant
 // -------------------------------------------------------------
+
+
+// -------------------------------------------------------------
+// MULTI FFA "continuer" : trouver le prochain joueur réellement jouable
+// -------------------------------------------------------------
+function getNextPlayableMultiPlayer(
+  config: X01ConfigV3,
+  state: X01MatchStateV3,
+  fromPid?: X01PlayerId
+): X01PlayerId | null {
+  if (!isMultiContinueMode(config) || (config.players?.length ?? 0) <= 2) {
+    return null;
+  }
+
+  const rawOrder: X01PlayerId[] = Array.isArray(state.throwOrder)
+    ? ([...state.throwOrder] as X01PlayerId[])
+    : [];
+
+  for (const p of config.players ?? []) {
+    const pid = p.id as X01PlayerId;
+    if (!rawOrder.includes(pid)) rawOrder.push(pid);
+  }
+
+  if (!rawOrder.length) return null;
+
+  const finishOrder: X01PlayerId[] = Array.isArray((state as any).finishOrder)
+    ? ([...(state as any).finishOrder] as X01PlayerId[])
+    : [];
+
+  const startIdx = fromPid ? rawOrder.indexOf(fromPid) : rawOrder.indexOf(state.activePlayer);
+  const baseIdx = startIdx >= 0 ? startIdx : -1;
+
+  for (let i = 1; i <= rawOrder.length; i++) {
+    const candidateId = rawOrder[(baseIdx + i + rawOrder.length) % rawOrder.length] as X01PlayerId;
+    const candidateScore = state.scores?.[candidateId] ?? 0;
+    const candidateFinished = finishOrder.includes(candidateId) || candidateScore <= 0;
+
+    if (!candidateFinished && candidateScore > 0) {
+      return candidateId;
+    }
+  }
+
+  return null;
+}
+
+function refreshVisitCheckoutSuggestion(
+  config: X01ConfigV3,
+  state: X01MatchStateV3
+) {
+  if (!state.visit) return;
+  state.visit.checkoutSuggestion = (() => {
+    const raw = extAdaptCheckoutSuggestion({
+      score: state.visit!.currentScore,
+      dartsLeft: state.visit!.dartsLeft,
+      outMode: config.outMode,
+    });
+    return filterCheckoutSuggestions(raw, config.outMode);
+  })();
+}
+
+function ensureMultiActivePlayerIsPlayable(
+  config: X01ConfigV3,
+  state: X01MatchStateV3
+): boolean {
+  if (!isMultiContinueMode(config) || (config.players?.length ?? 0) <= 2) {
+    return false;
+  }
+
+  const finishOrder: X01PlayerId[] = Array.isArray((state as any).finishOrder)
+    ? ((state as any).finishOrder as X01PlayerId[])
+    : [];
+
+  const active = state.activePlayer as X01PlayerId;
+  const activeScore = state.scores?.[active] ?? 0;
+  const activeAlreadyFinished = finishOrder.includes(active) || activeScore <= 0;
+
+  if (!activeAlreadyFinished) return false;
+
+  const nextPlayable = getNextPlayableMultiPlayer(config, state, active);
+  if (!nextPlayable || nextPlayable === active) return false;
+
+  state.activePlayer = nextPlayable;
+  startNewVisitV3(state);
+  refreshVisitCheckoutSuggestion(config, state);
+  state.status = "playing";
+  return true;
+}
 
 function goToNextLeg(
   prev: X01MatchStateV3,
@@ -805,6 +882,11 @@ function applyDartWithFlow(
 
   if (!m.visit) startNewVisitV3(m);
 
+  // Sécurité MULTI FFA : si un joueur déjà fini revient actif
+  // (cas observé après rotation/bust/rebuild), on le saute AVANT
+  // d'accepter une nouvelle fléchette.
+  ensureMultiActivePlayerIsPlayable(config, m);
+
   const result = applyDartToCurrentPlayerV3(config, m, input);
   const visit = m.visit!;
   const pid = m.activePlayer;
@@ -869,10 +951,16 @@ score: visit.currentScore,
     setScoresForPlayerOrTeam(config, m, pid, visit.startingScore);
 
     // 2) joueur suivant (FIN DE TOUR HARD)
-    m.activePlayer = getNextPlayerV3(m);
+    if (isMultiContinueMode(config) && (config.players?.length ?? 0) > 2) {
+      const nextPlayable = getNextPlayableMultiPlayer(config, m, pid);
+      m.activePlayer = nextPlayable ?? getNextPlayerV3(m);
+    } else {
+      m.activePlayer = getNextPlayerV3(m);
+    }
 
     // 3) nouvelle visite propre (évite toute incohérence visit.currentScore vs state.scores)
     startNewVisitV3(m);
+    ensureMultiActivePlayerIsPlayable(config, m);
     if (m.visit) {
       m.visit.checkoutSuggestion = (() => {
   const raw = extAdaptCheckoutSuggestion({
@@ -918,29 +1006,14 @@ score: m.visit.currentScore,
       !isCheckout || finishedCount <= totalPlayers - 2;
 
     if (shouldContinueLeg) {
-      const order = m.throwOrder;
-      const currentIndex = order.indexOf(pid);
-      let nextId: X01PlayerId = pid;
+      const nextId = getNextPlayableMultiPlayer(config, m, pid);
 
-      for (let i = 0; i < order.length; i++) {
-        const idx = (currentIndex + 1 + i) % order.length;
-        const candidateId = order[idx] as X01PlayerId;
-
-        const candidateFinished = finishOrder.includes(candidateId);
-        const candidateScore = m.scores[candidateId] ?? 0;
-
-        // On joue uniquement les joueurs :
-        // - qui n'ont pas fini
-        // - qui ont encore des points (> 0)
-        if (!candidateFinished && candidateScore > 0) {
-          nextId = candidateId;
-          break;
-        }
+      if (nextId) {
+        m.activePlayer = nextId;
       }
 
-      m.activePlayer = nextId;
-
       startNewVisitV3(m);
+      ensureMultiActivePlayerIsPlayable(config, m);
       if (m.visit) {
         m.visit.checkoutSuggestion = (() => {
   const raw = extAdaptCheckoutSuggestion({
