@@ -5426,11 +5426,13 @@ const computedDashboard = React.useMemo(() => {
         records as any
       ) as any;
     }
-    return applyX01AggToDashboard(buildDashboardFromNormalized(
-      String(selectedPlayer.id),
-      String(selectedPlayer.name || "Joueur"),
-      nmEffective
-    ));
+    const pid = String(selectedPlayer.id);
+    const pname = String(selectedPlayer.name || "Joueur");
+    return applyX01AggToDashboard(
+      buildDashboardFromNormalized(pid, pname, nmEffective),
+      pid,
+      pname
+    );
   } catch {
     return null;
   }

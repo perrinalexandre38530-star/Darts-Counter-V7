@@ -253,8 +253,10 @@ async function getStatsHubAlignedProfileMiniStats(
     // best visit et best CO depuis les payloads complets quand l'index normalisé est trop léger.
     try {
       const lightRows = ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
+      // Ne pas filtrer sur les lignes légères : selon les versions, `kind/game/mode`
+      // peut être absent du résumé, alors que le payload complet est bien une partie X01.
+      // On hydrate d'abord, puis computeX01MultiAgg filtre lui-même les vrais matchs X01.
       const ids = Array.from(new Set((Array.isArray(lightRows) ? lightRows : [])
-        .filter((r: any) => String(r?.kind ?? r?.mode ?? r?.game ?? r?.payload?.kind ?? "").toLowerCase().includes("x01"))
         .map((r: any) => String(r?.matchId ?? r?.id ?? "").trim())
         .filter(Boolean)));
       const fullRows = await Promise.all(ids.slice(0, 600).map((id) => (History as any).get(id).catch(() => null)));

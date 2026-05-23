@@ -603,6 +603,17 @@ async function buildStatsForProfile(
       try { return computeX01MultiAgg(multiMatches as any[], profileId, profileName); } catch { return null; }
     })();
 
+    const x01AggSessions = Number(x01AggForHome?.sessions || 0) || 0;
+    const x01AggDarts = Number(x01AggForHome?.darts || 0) || 0;
+    const x01AggScoreTotal = Number(x01AggForHome?.scoreTotal || 0) || 0;
+    const x01AggAvg3D =
+      x01AggDarts > 0 && x01AggScoreTotal > 0
+        ? (x01AggScoreTotal / x01AggDarts) * 3
+        : x01AggSessions > 0 && Number(x01AggForHome?.sumAvg3D || 0) > 0
+          ? Number(x01AggForHome.sumAvg3D) / x01AggSessions
+          : 0;
+    const x01AggBestAvg3D = Number(x01AggForHome?.bestAvg3D || 0) || 0;
+
     /* ---------------------- GLOBAL (base brut) ---------------------- */
 
     const gamesBase = Number((base as any)?.games ?? 0);
@@ -921,10 +932,12 @@ async function buildStatsForProfile(
     // ✅ Alignement Dashboard / Centre Stats :
     // - sessions / moyenne / winrate X01 viennent de StatsBridge (index historique), pas du recalcul Home local.
     // - le recalcul local sert seulement de secours si StatsBridge est vide.
-    const globalSessions = gamesBase > 0 ? gamesBase : multiSessions;
+    const globalSessions = x01AggSessions > 0 ? x01AggSessions : gamesBase > 0 ? gamesBase : multiSessions;
 
     const globalAvg3 =
-      avg3Base > 0
+      x01AggAvg3D > 0
+        ? x01AggAvg3D
+        : avg3Base > 0
         ? avg3Base
         : multiTotalAvg3Count > 0
         ? multiTotalAvg3 / multiTotalAvg3Count
@@ -982,7 +995,7 @@ async function buildStatsForProfile(
     const recordMinDartsGlobal = multiMinDarts !== Infinity ? multiMinDarts : 0;
     const recordMinDarts501 = recordMinDartsGlobal || minDartsRecordBase || 0;
 
-    const recordBestAvg3DX01 = Math.max(x01MultiAvg3D, avg3Base);
+    const recordBestAvg3DX01 = Math.max(x01AggBestAvg3D, x01MultiAvg3D, avg3Base);
 
     const tAgg = loadTrainingAggForProfile(profileId);
     const trainingAvg3D = tAgg.sessions > 0 ? tAgg.sumAvg3D / tAgg.sessions : 0;
