@@ -282,10 +282,12 @@ async function getStatsHubAlignedProfileMiniStats(
           out = {
             ...out,
             games: sessions,
-            avg3: Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0
-              ? (Number(agg.scoreTotal) / Number(agg.darts)) * 3
-              : Number(agg?.sumAvg3D || 0) > 0
-                ? Number(agg.sumAvg3D) / sessions
+            // Même source que Centre de statistiques / X01 Multi : moyenne par session.
+            // scoreTotal/darts reste seulement un fallback car scoreTotal peut être capé par leg.
+            avg3: Number(agg?.sumAvg3D || 0) > 0
+              ? Number(agg.sumAvg3D) / sessions
+              : Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0
+                ? (Number(agg.scoreTotal) / Number(agg.darts)) * 3
                 : out.avg3,
             bestVisit: Number(agg?.bestVisit || out.bestVisit) || out.bestVisit,
             bestCheckout: Number(agg?.bestCheckout || out.bestCheckout) || out.bestCheckout,

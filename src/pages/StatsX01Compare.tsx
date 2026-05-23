@@ -429,7 +429,7 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
   return {
     count: samples.length,
-    avg3: dartsForAvg > 0 ? (totalScoreForAvg / dartsForAvg) * 3 : countAvg3 ? sumAvg3 / countAvg3 : null,
+    avg3: countAvg3 ? sumAvg3 / countAvg3 : (dartsForAvg > 0 ? (totalScoreForAvg / dartsForAvg) * 3 : null),
     bestVisit,
     bestCheckout,
     best9Score,
@@ -536,9 +536,9 @@ function buildSparkData(filtered: FilteredBuckets): SparkPoint[] {
     return {
       key,
       label,
-      local: lp ? (lp.darts > 0 && lp.score > 0 ? (lp.score / lp.darts) * 3 : lp.sum / lp.count) : undefined,
-      online: op ? (op.darts > 0 && op.score > 0 ? (op.score / op.darts) * 3 : op.sum / op.count) : undefined,
-      training: tp ? (tp.darts > 0 && tp.score > 0 ? (tp.score / tp.darts) * 3 : tp.sum / tp.count) : undefined,
+      local: lp ? (lp.count > 0 ? lp.sum / lp.count : (lp.darts > 0 && lp.score > 0 ? (lp.score / lp.darts) * 3 : undefined)) : undefined,
+      online: op ? (op.count > 0 ? op.sum / op.count : (op.darts > 0 && op.score > 0 ? (op.score / op.darts) * 3 : undefined)) : undefined,
+      training: tp ? (tp.count > 0 ? tp.sum / tp.count : (tp.darts > 0 && tp.score > 0 ? (tp.score / tp.darts) * 3 : undefined)) : undefined,
     };
   });
 }
@@ -859,7 +859,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             bestCheckout: s.bestCheckout ?? undefined,
             best9Score: s.best9Score ?? undefined,
             dartsThrown: s.darts || undefined,
-            totalScore: s.darts && s.avg3D ? (Number(s.avg3D) / 3) * Number(s.darts) : undefined,
+            totalScore: undefined,
             legsWon: undefined,
             legsLost: undefined,
             matchesPlayed: 0,
