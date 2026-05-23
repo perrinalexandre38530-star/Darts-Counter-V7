@@ -12,6 +12,7 @@ import {
   respondProfileFriendLink,
   sendPrivateMessage,
   markPrivateMessageRead,
+  deletePrivateMessage,
   type FriendRequest,
   type PrivateMessageItem,
   type OnlineFriendUser,
@@ -164,7 +165,7 @@ function SectionTitle({ title, subtitle, badge }: { title: string; subtitle?: st
 }
 
 export default function MessagesPage({ store, update, go }: Props) {
-  const [active, setActive] = React.useState<MsgTab>("requests");
+  const [active, setActive] = React.useState<MsgTab>("messages");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
@@ -175,6 +176,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [privateMessages, setPrivateMessages] = React.useState<PrivateMessageItem[]>([]);
   const [messageToUserId, setMessageToUserId] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
+  const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
   const [notifPermission, setNotifPermission] = React.useState<NotificationPermission | "unsupported">(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
     return Notification.permission;
@@ -196,8 +198,37 @@ export default function MessagesPage({ store, update, go }: Props) {
   const incomingProfileLinks = profileLinks.filter((l) => l.direction !== "outgoing");
   const outgoingProfileLinks = profileLinks.filter((l) => l.direction === "outgoing");
 
+  const unreadPrivateMessages = privateMessages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt).length;
+
+  function privateMessagePeerId(m: any): string {
+    const user = m?.direction === "outgoing" ? m?.toUser : m?.fromUser;
+    return String(user?.userId || user?.id || m?.toUserId || m?.fromUserId || "").trim();
+  }
+
+  const messageThreads = React.useMemo(() => {
+    const map = new Map<string, { user: any; messages: PrivateMessageItem[]; unread: number; lastAt: number }>();
+    for (const m of privateMessages as any[]) {
+      const incoming = m?.direction !== "outgoing";
+      const user = incoming ? m?.fromUser : m?.toUser;
+      const id = String(user?.userId || user?.id || (incoming ? m?.fromUserId : m?.toUserId) || "").trim();
+      if (!id) continue;
+      const prev = map.get(id) || { user, messages: [], unread: 0, lastAt: 0 };
+      prev.user = prev.user || user;
+      prev.messages.push(m);
+      if (incoming && !m?.readAt) prev.unread += 1;
+      prev.lastAt = Math.max(prev.lastAt, Date.parse(String(m?.createdAt || "")) || 0);
+      map.set(id, prev);
+    }
+    return Array.from(map.entries())
+      .map(([id, value]) => ({ id, ...value, messages: value.messages.sort((a: any, b: any) => (Date.parse(String(a?.createdAt || "")) || 0) - (Date.parse(String(b?.createdAt || "")) || 0)) }))
+      .sort((a, b) => b.lastAt - a.lastAt);
+  }, [privateMessages]);
+
+  const selectedThread = messageThreads.find((t) => t.id === selectedThreadUserId) || messageThreads[0] || null;
+  const displayedMessages = selectedThread ? selectedThread.messages : privateMessages;
+
   const counters = {
-    messages: privateMessages.length,
+    messages: unreadPrivateMessages,
     requests: incomingFriendRequests.length + outgoingFriendRequests.length,
     shares: incomingShares.filter((s) => String(s.status || "pending") === "pending").length,
     links: profileLinks.filter((l) => String(l.status || "pending") === "pending").length,
@@ -205,7 +236,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     system: systemNotifications.length,
   };
 
-  const totalPending = counters.requests + counters.shares + counters.links + counters.invites + counters.system;
+  const totalPending = counters.messages + counters.requests + counters.shares + counters.links + counters.invites + counters.system;
 
   const loadAll = React.useCallback(async () => {
     setLoading(true);
@@ -235,21 +266,29 @@ export default function MessagesPage({ store, update, go }: Props) {
     loadAll().catch(() => {});
   }, [loadAll]);
 
+
+  React.useEffect(() => {
+    if (!selectedThreadUserId && messageThreads.length) {
+      setSelectedThreadUserId(messageThreads[0].id);
+    }
+  }, [messageThreads, selectedThreadUserId]);
+
   React.useEffect(() => {
     if (active !== "messages") return;
-    const unreadIncoming = privateMessages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt && m?.id);
+    const unreadIncoming = displayedMessages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt && m?.id);
     if (!unreadIncoming.length) return;
     let cancelled = false;
     Promise.all(unreadIncoming.map((m: any) => markPrivateMessageRead(String(m.id)).catch(() => null)))
       .then(() => {
         if (cancelled) return;
         const now = new Date().toISOString();
-        setPrivateMessages((prev) => prev.map((m: any) => (m?.direction !== "outgoing" && !m?.readAt ? { ...m, readAt: now } : m)));
+        const ids = new Set(unreadIncoming.map((m: any) => String(m.id)));
+        setPrivateMessages((prev) => prev.map((m: any) => (ids.has(String(m?.id || "")) ? { ...m, readAt: now } : m)));
         markMessageCenterRefreshNeeded();
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [active, privateMessages]);
+  }, [active, selectedThreadUserId, displayedMessages]);
 
   async function runAction(label: string, fn: () => Promise<any>) {
     setError(null);
@@ -277,7 +316,15 @@ export default function MessagesPage({ store, update, go }: Props) {
     }
     await runAction("Message envoyé ✅", async () => {
       await sendPrivateMessage(toUserId, text);
+      setSelectedThreadUserId(toUserId);
       setMessageText("");
+    });
+  }
+
+  async function handleDeletePrivateMessage(id: string) {
+    if (!id) return;
+    await runAction("Message supprimé de cette conversation ✅", async () => {
+      await deletePrivateMessage(id);
     });
   }
 
@@ -376,13 +423,125 @@ export default function MessagesPage({ store, update, go }: Props) {
 
       {active === "messages" ? (
         <>
-          <SectionTitle title="Messages privés entre amis" subtitle="Envoi direct NAS entre comptes amis." badge={privateMessages.length} />
-          <div style={cardStyle({ marginBottom: 10, borderColor: `${BLUE}55` })}>
-            <div style={{ fontWeight: 1000, marginBottom: 8, color: BLUE }}>Nouveau message</div>
-            <div style={{ display: "grid", gap: 8 }}>
+          <SectionTitle
+            title="Chat privé"
+            subtitle="Conversation type Messenger : une discussion par ami, messages lus automatiquement quand tu ouvres le fil."
+            badge={unreadPrivateMessages}
+          />
+
+          {messageThreads.length ? (
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none" as any }}>
+              {messageThreads.map((thread) => {
+                const selected = selectedThread?.id === thread.id;
+                const last = thread.messages[thread.messages.length - 1] as any;
+                return (
+                  <button
+                    key={thread.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedThreadUserId(thread.id);
+                      setMessageToUserId(thread.id);
+                    }}
+                    style={{
+                      flex: "0 0 auto",
+                      minWidth: 132,
+                      maxWidth: 168,
+                      border: `1px solid ${selected ? BLUE : STROKE}`,
+                      borderRadius: 18,
+                      padding: "10px 11px",
+                      background: selected ? "rgba(121,200,255,.15)" : "rgba(255,255,255,.045)",
+                      color: "#fff",
+                      textAlign: "left",
+                      boxShadow: selected ? "0 0 18px rgba(121,200,255,.20)" : "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(thread.user)}</div>
+                      {thread.unread > 0 ? <Pill tone={GREEN}>{thread.unread}</Pill> : null}
+                    </div>
+                    <div style={{ marginTop: 5, fontSize: 11, color: "rgba(255,255,255,.58)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {last?.text || "—"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <div style={cardStyle({ marginBottom: 10, borderColor: `${BLUE}55`, padding: 0, overflow: "hidden" })}>
+            <div style={{ padding: "12px 14px", borderBottom: `1px solid ${STROKE}`, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 1000, color: BLUE }}>{selectedThread ? asUserName(selectedThread.user) : "Nouvelle conversation"}</div>
+                <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.58)", marginTop: 2 }}>
+                  {selectedThread ? `${selectedThread.messages.length} message(s)` : "Choisis un ami et envoie ton premier message."}
+                </div>
+              </div>
+              <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
+            </div>
+
+            <div
+              style={{
+                minHeight: 220,
+                maxHeight: 430,
+                overflowY: "auto",
+                padding: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 9,
+                background: "radial-gradient(420px 220px at 50% 0%, rgba(121,200,255,.08), transparent 65%)",
+              }}
+            >
+              {displayedMessages.length ? (
+                displayedMessages.map((m: any, idx: number) => {
+                  const incoming = m.direction !== "outgoing";
+                  return (
+                    <div
+                      key={m?.id || idx}
+                      style={{
+                        alignSelf: incoming ? "flex-start" : "flex-end",
+                        maxWidth: "86%",
+                        border: `1px solid ${incoming ? "rgba(255,255,255,.14)" : `${GREEN}55`}`,
+                        borderRadius: incoming ? "18px 18px 18px 6px" : "18px 18px 6px 18px",
+                        padding: "9px 10px",
+                        background: incoming ? "rgba(255,255,255,.055)" : "linear-gradient(180deg, rgba(125,255,178,.18), rgba(0,0,0,.20))",
+                        boxShadow: incoming && !m.readAt ? "0 0 18px rgba(125,255,178,.13)" : "none",
+                      }}
+                    >
+                      <div style={{ color: "#fff", fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.32 }}>{m?.text || "—"}</div>
+                      <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                        <span style={{ color: "rgba(255,255,255,.46)", fontSize: 10.5, fontWeight: 800 }}>{asDate(m?.createdAt)}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePrivateMessage(String(m?.id || ""))}
+                          style={{
+                            border: "0",
+                            background: "transparent",
+                            color: "rgba(255,255,255,.50)",
+                            fontWeight: 1000,
+                            cursor: "pointer",
+                            fontSize: 12,
+                          }}
+                          title="Supprimer ce message de mon affichage"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <EmptyCard icon="💬" title="Aucun message privé" text="Choisis un ami puis envoie ton premier message." />
+              )}
+            </div>
+
+            <div style={{ padding: 12, borderTop: `1px solid ${STROKE}`, display: "grid", gap: 8 }}>
               <select
-                value={messageToUserId}
-                onChange={(e) => setMessageToUserId((e.target as HTMLSelectElement).value)}
+                value={messageToUserId || selectedThread?.id || ""}
+                onChange={(e) => {
+                  const next = (e.target as HTMLSelectElement).value;
+                  setMessageToUserId(next);
+                  if (next) setSelectedThreadUserId(next);
+                }}
                 style={{
                   width: "100%",
                   borderRadius: 12,
@@ -400,48 +559,28 @@ export default function MessagesPage({ store, update, go }: Props) {
                   return <option key={id} value={id}>{asUserName(f)}</option>;
                 })}
               </select>
-              <textarea
-                value={messageText}
-                onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
-                placeholder="Écris ton message…"
-                rows={3}
-                style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  padding: "10px 11px",
-                  border: `1px solid ${STROKE}`,
-                  background: "rgba(0,0,0,.35)",
-                  color: "#fff",
-                  fontWeight: 700,
-                  outline: "none",
-                  resize: "vertical",
-                }}
-              />
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end" }}>
+                <textarea
+                  value={messageText}
+                  onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
+                  placeholder="Écris ton message…"
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    borderRadius: 14,
+                    padding: "10px 11px",
+                    border: `1px solid ${STROKE}`,
+                    background: "rgba(0,0,0,.35)",
+                    color: "#fff",
+                    fontWeight: 700,
+                    outline: "none",
+                    resize: "vertical",
+                  }}
+                />
                 <ActionButton label="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage} />
               </div>
             </div>
           </div>
-
-          {privateMessages.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {privateMessages.map((m: any, idx: number) => {
-                const incoming = m.direction !== "outgoing";
-                const user = incoming ? m.fromUser : m.toUser;
-                return (
-                  <div key={m?.id || idx} style={cardStyle({ borderColor: incoming && !m.readAt ? `${GREEN}66` : STROKE })}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 1000 }}>{incoming ? `De ${asUserName(user)}` : `À ${asUserName(user)}`}</div>
-                      <Pill tone={incoming && !m.readAt ? GREEN : BLUE}>{asDate(m?.createdAt)}</Pill>
-                    </div>
-                    <div style={{ marginTop: 7, color: "rgba(255,255,255,.78)", fontSize: 13, whiteSpace: "pre-wrap" }}>{m?.text || "—"}</div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyCard icon="💬" title="Aucun message privé" text="Envoie un premier message à un ami depuis cette page." />
-          )}
         </>
       ) : null}
 

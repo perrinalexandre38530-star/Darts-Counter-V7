@@ -43,6 +43,7 @@ import {
   requestProfileFriendLink,
   respondProfileFriendLink,
   deleteProfileFriendLink,
+  updateProfileFriendLinkStats,
   type OnlineFriendUser,
   type ProfileFriendLink,
 } from "../lib/friendsApi";
@@ -222,6 +223,59 @@ function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
   };
 }
 
+const LINKED_PROFILE_STATS_OVERRIDE_KEY = "dc_linked_profile_stats_overrides_v1";
+
+function readLinkedProfileStatsOverride(playerId: string | undefined | null): ProfileMiniStats | null {
+  try {
+    const key = String(playerId || "").trim();
+    if (!key || typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(LINKED_PROFILE_STATS_OVERRIDE_KEY);
+    if (!raw) return null;
+    const all = JSON.parse(raw);
+    const row = all?.[key];
+    const stats = row?.miniStats || row?.stats || row;
+    const normalized = normalizeProfileMiniStats(stats);
+    const quality = normalized.games + normalized.darts + normalized.avg3 + normalized.bestVisit + normalized.bestCheckout;
+    return quality > 0 ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLinkedProfileStatsOverride(playerId: string | undefined | null, input: any) {
+  try {
+    const key = String(playerId || "").trim();
+    if (!key || typeof localStorage === "undefined") return false;
+    const miniStats = normalizeProfileMiniStats(input?.miniStats || input?.stats || input);
+    const quality = miniStats.games + miniStats.darts + miniStats.avg3 + miniStats.bestVisit + miniStats.bestCheckout;
+    if (quality <= 0) return false;
+    const raw = localStorage.getItem(LINKED_PROFILE_STATS_OVERRIDE_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    const signature = JSON.stringify(miniStats);
+    if (JSON.stringify(all?.[key]?.miniStats || {}) === signature) return false;
+    all[key] = { miniStats, updatedAt: new Date().toISOString(), source: "profile_friend_link" };
+    localStorage.setItem(LINKED_PROFILE_STATS_OVERRIDE_KEY, JSON.stringify(all));
+    profileMiniStatsCache.delete(key);
+    try { window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: { reason: "profile-friend-link-stats" } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-linked-profile-stats-updated", { detail: { playerId: key, miniStats } })); } catch {}
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function buildProfileLinkStatsMeta(profile: any, miniStats: ProfileMiniStats) {
+  return {
+    source: "profiles-local-card",
+    syncedAt: new Date().toISOString(),
+    localProfileId: String(profile?.id || ""),
+    localProfileName: String(profile?.name || profile?.displayName || "Profil local"),
+    localProfileAvatarUrl: String(profile?.avatarUrl || profile?.avatar || profile?.avatarDataUrl || "") || null,
+    miniStats,
+    stats: miniStats,
+  };
+}
+
 
 async function getStatsHubAlignedProfileMiniStats(
   playerId: string,
@@ -230,6 +284,9 @@ async function getStatsHubAlignedProfileMiniStats(
   // Source de vérité volontairement alignée sur le Dashboard global du Centre de statistiques.
   // Avant, la page Profils lisait surtout le mini-cache statsBridge ; ce cache pouvait rester
   // différent du dashboard après import/suppression/rebuild, d'où Moy/3D, Best CO et Win% incohérents.
+  const override = readLinkedProfileStatsOverride(playerId);
+  if (override) return override;
+
   const fallback = normalizeProfileMiniStats(await getBasicProfileStatsAsync(playerId));
 
   try {
@@ -310,6 +367,12 @@ function readProfileMiniStatsSync(playerId: string | undefined | null): ProfileM
   const key = String(playerId);
   const cached = profileMiniStatsCache.get(key);
   if (cached) return cached;
+
+  const linkedOverride = readLinkedProfileStatsOverride(key);
+  if (linkedOverride) {
+    profileMiniStatsCache.set(key, linkedOverride);
+    return linkedOverride;
+  }
 
   try {
     const syncStats = normalizeProfileMiniStats(getBasicProfileStats(key));
@@ -921,6 +984,7 @@ export default function Profiles({
   const [onlineProfileFriendsError, setOnlineProfileFriendsError] = React.useState<string | null>(null);
   const [profileFriendLinks, setProfileFriendLinks] = React.useState<ProfileFriendLink[]>([]);
   const [profileFriendLinksLoading, setProfileFriendLinksLoading] = React.useState(false);
+  const profileFriendStatsSyncRef = React.useRef<Record<string, string>>({});
 
   const friends: FriendLike[] = React.useMemo(() => {
     const map = new Map<string, FriendLike>();
@@ -1024,6 +1088,48 @@ export default function Profiles({
       // Objectif : l’écran Profils affiche immédiatement "Validé", et les exports/partages
       // embarquent uniquement les liens validés pour fusionner proprement stats + avatars.
       const localProfiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+
+      // Réception côté compte ami : quand une association est acceptée, le compte ami
+      // récupère les mini-stats publiées par le profil local distant et les expose comme
+      // mini-stats de son propre profil NAS (Home + Mon profil + Bottom cards).
+      const authUserId = String((auth as any)?.user?.id || "").trim();
+      if (authUserId) {
+        let wroteIncomingOverride = false;
+        for (const link of safeLinks as any[]) {
+          const isIncomingAccepted = link?.direction === "incoming" && String(link?.status || "").toLowerCase() === "accepted";
+          const meta = link?.statsMeta || {};
+          const miniStats = meta?.miniStats || meta?.stats || null;
+          if (isIncomingAccepted && miniStats) {
+            wroteIncomingOverride = writeLinkedProfileStatsOverride(authUserId, miniStats) || wroteIncomingOverride;
+          }
+        }
+        if (wroteIncomingOverride) {
+          profileMiniStatsCache.delete(authUserId);
+        }
+      }
+
+      // Émission côté propriétaire du profil local : une fois le lien accepté, on pousse
+      // régulièrement les stats consolidées du profil local dans stats_meta.
+      // Le compte ami les lit ensuite sans devoir importer tout l'historique local.
+      for (const link of safeLinks as any[]) {
+        const isOutgoingAccepted = link?.direction === "outgoing" && String(link?.status || "").toLowerCase() === "accepted";
+        const profileId = String(link?.localProfileId || "").trim();
+        if (!isOutgoingAccepted || !profileId) continue;
+        const localProfile = localProfiles.find((p: any) => String(p?.id || "") === profileId);
+        if (!localProfile) continue;
+        try {
+          const miniStats = await getStatsHubAlignedProfileMiniStats(profileId, localProfile?.name);
+          const meta = buildProfileLinkStatsMeta(localProfile, miniStats);
+          const signature = JSON.stringify({ id: link?.id, miniStats });
+          if (profileFriendStatsSyncRef.current[String(link?.id || profileId)] !== signature) {
+            profileFriendStatsSyncRef.current[String(link?.id || profileId)] = signature;
+            updateProfileFriendLinkStats(String(link?.id || ""), meta).catch((err) => console.warn("[Profiles] updateProfileFriendLinkStats ignored", err));
+          }
+        } catch (err) {
+          console.warn("[Profiles] profile link stats sync ignored", err);
+        }
+      }
+
       if (localProfiles.length) {
         let changed = false;
         const nextProfiles = localProfiles.map((p: any) => {
@@ -1117,6 +1223,7 @@ export default function Profiles({
     let serverLink: any = null;
     if (friend && friendUserId) {
       try {
+        const miniStats = await getStatsHubAlignedProfileMiniStats(String(profileId || ""), currentProfile?.name);
         serverLink = await requestProfileFriendLink({
           targetUserId: friendUserId,
           localProfileId: String(profileId || ""),
@@ -1124,7 +1231,7 @@ export default function Profiles({
           localProfileAvatarUrl: String((currentProfile as any)?.avatarUrl || (currentProfile as any)?.avatar || "") || null,
           statsMeta: {
             requestedAt: new Date().toISOString(),
-            source: "profiles-local-card",
+            ...buildProfileLinkStatsMeta(currentProfile, miniStats),
           },
         });
       } catch (error: any) {

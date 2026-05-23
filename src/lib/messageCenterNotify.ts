@@ -125,8 +125,20 @@ export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUn
   };
 }
 
+async function ensureMessageServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  try {
+    const existing = await navigator.serviceWorker.getRegistration();
+    if (existing) return existing;
+    return await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  } catch {
+    return null;
+  }
+}
+
 export async function requestMessageNotificationsPermission(): Promise<NotificationPermission | "unsupported"> {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  await ensureMessageServiceWorkerRegistration();
   if (Notification.permission === "granted") return "granted";
   if (Notification.permission === "denied") return "denied";
   try {
@@ -148,7 +160,7 @@ export async function showMessageCenterNotification(title: string, body: string)
     icon: "/app-512.png",
   };
   try {
-    const reg = await navigator.serviceWorker?.getRegistration?.();
+    const reg = await ensureMessageServiceWorkerRegistration();
     if (reg?.showNotification) {
       await reg.showNotification(title, options);
       return;
@@ -194,4 +206,12 @@ export async function pollMessageCenterAndNotify(opts: { notify?: boolean; updat
 
 export function markMessageCenterRefreshNeeded() {
   try { window.dispatchEvent(new CustomEvent("dc-message-center-refresh")); } catch {}
+}
+
+
+export function markCurrentMessageSummaryAsSeen(summary?: MessageCenterUnreadSummary) {
+  const seen = getSeenKeys();
+  if (summary?.newestKey) seen.add(summary.newestKey);
+  setSeenKeys(seen);
+  storageSet(LAST_TOTAL_LS, String(summary?.total || 0));
 }

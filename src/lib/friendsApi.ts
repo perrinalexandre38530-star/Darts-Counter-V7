@@ -238,3 +238,8 @@ export async function markPrivateMessageRead(id: string) {
   const res = await apiPut(`/online/private-messages/${qs(id)}/read`, {});
   return res?.message ?? res;
 }
+
+export async function deletePrivateMessage(id: string) {
+  const res = await apiDelete(`/online/private-messages/${qs(id)}`);
+  return res?.message ?? res;
+}
