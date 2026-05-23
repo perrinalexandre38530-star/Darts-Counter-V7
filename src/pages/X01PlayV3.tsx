@@ -7549,6 +7549,139 @@ function deriveX01MetricsFromReplayVisits(visits: any[], playerOrder: string[] =
   return out;
 }
 
+
+function isX01MultiContinueConfigForSave(config: any, players: any[]): boolean {
+  return (
+    String(config?.gameMode || config?.matchMode || "") === "multi" &&
+    String(config?.multiFinishMode || "") === "continue_ranking" &&
+    Array.isArray(players) &&
+    players.length > 2 &&
+    !Array.isArray(config?.teams)
+  );
+}
+
+function buildX01MultiContinueRankingsForSave(
+  config: any,
+  players: any[],
+  state: any,
+  finalScores: Record<string, number>,
+  existingRankings: any[] = []
+) {
+  const byId = new Map<string, any>();
+  for (const p of players || []) {
+    const pid = String(p?.id || "");
+    if (pid) byId.set(pid, p);
+  }
+
+  const finishOrderRaw: string[] = Array.isArray(state?.finishOrder)
+    ? state.finishOrder.map(String)
+    : Array.isArray(state?.summary?.finishOrder)
+    ? state.summary.finishOrder.map(String)
+    : [];
+
+  const orderedIds: string[] = [];
+  for (const raw of finishOrderRaw) {
+    const pid = String(raw || "");
+    if (!pid || !byId.has(pid) || orderedIds.includes(pid)) continue;
+    orderedIds.push(pid);
+  }
+
+  // Fallback défensif : si l'ancien moteur a déjà créé un ranking explicite,
+  // on le respecte uniquement s'il porte un vrai ordre de classement.
+  if (!orderedIds.length && Array.isArray(existingRankings)) {
+    const orderedRows = existingRankings
+      .map((r: any, i: number) => ({
+        id: String(r?.id ?? r?.playerId ?? r?.profileId ?? r?.pid ?? ""),
+        rank: Number(r?.finalRank ?? r?.rank ?? r?.position ?? r?.place ?? i + 1),
+      }))
+      .filter((r: any) => r.id && byId.has(r.id));
+    if (orderedRows.length) {
+      orderedRows
+        .sort((a: any, b: any) => a.rank - b.rank)
+        .forEach((r: any) => {
+          if (!orderedIds.includes(r.id)) orderedIds.push(r.id);
+        });
+    }
+  }
+
+  const missing = (players || [])
+    .map((p: any) => String(p?.id || ""))
+    .filter((pid: string) => pid && !orderedIds.includes(pid))
+    .sort((a: string, b: string) => {
+      const sa = Number(finalScores?.[a]);
+      const sb = Number(finalScores?.[b]);
+      if (Number.isFinite(sa) && Number.isFinite(sb) && sa !== sb) return sa - sb;
+      return 0;
+    });
+
+  orderedIds.push(...missing);
+
+  return orderedIds.map((pid, idx) => {
+    const p = byId.get(pid);
+    const remainingRaw = Number(finalScores?.[pid]);
+    const remaining = Number.isFinite(remainingRaw)
+      ? Math.max(0, remainingRaw)
+      : Math.max(0, Number(config?.startScore ?? 501) || 501);
+    return {
+      id: pid,
+      playerId: pid,
+      name: String(p?.name || pid),
+      rank: idx + 1,
+      position: idx + 1,
+      finalRank: idx + 1,
+      legsWon: idx === 0 ? 1 : 0,
+      setsWon: idx === 0 ? 1 : 0,
+      score: remaining,
+      remaining,
+      finalScore: remaining,
+      scoreRemaining: remaining,
+    };
+  });
+}
+
+function buildFinalStateForX01HistorySave(args: {
+  config: any;
+  state: any;
+  summary: any;
+  finalScores: Record<string, number>;
+  rankings: any[];
+  winnerId: string | null;
+  winnerName: string | null;
+  finishOrder: string[];
+  matchId: string;
+}) {
+  const { config, state, summary, finalScores, rankings, winnerId, winnerName, finishOrder, matchId } = args;
+  return {
+    matchId,
+    currentSet: Number(state?.currentSet ?? 1) || 1,
+    currentLeg: Number(state?.currentLeg ?? 1) || 1,
+    throwOrder: Array.isArray(state?.throwOrder) ? state.throwOrder : (config?.players || []).map((p: any) => p?.id).filter(Boolean),
+    activePlayer: winnerId ?? state?.activePlayer ?? null,
+    scores: finalScores,
+    finalScores,
+    remainingScores: finalScores,
+    legsWon: Object.fromEntries((config?.players || []).map((p: any) => [String(p?.id || ""), String(p?.id || "") === String(winnerId || "") ? 1 : 0]).filter(([id]: any) => !!id)),
+    setsWon: Object.fromEntries((config?.players || []).map((p: any) => [String(p?.id || ""), String(p?.id || "") === String(winnerId || "") ? 1 : 0]).filter(([id]: any) => !!id)),
+    status: "match_end",
+    finishOrder,
+    lastLegWinnerId: winnerId,
+    lastWinnerId: winnerId,
+    lastWinningPlayerId: winnerId,
+    winnerId,
+    summary: {
+      ...(summary || {}),
+      rankings,
+      winnerId,
+      winnerName,
+      finalScores,
+      remainingScores: finalScores,
+      scores: finalScores,
+      finishOrder,
+      finished: true,
+    },
+  };
+}
+
 function saveX01V3MatchToHistory({
   config,
   state,
@@ -7847,13 +7980,32 @@ function saveX01V3MatchToHistory({
   // - winnerName éventuel
   // -------------------------
   const engineSummary: any = (state as any).summary || {};
-  const rankings = Array.isArray(engineSummary.rankings)
+  let rankings: any[] = Array.isArray(engineSummary.rankings)
     ? engineSummary.rankings
     : [];
+
+  const isMultiContinueSave = isX01MultiContinueConfigForSave(config as any, players as any[]);
+  const finishOrderFromState: string[] = Array.isArray((state as any)?.finishOrder)
+    ? ((state as any).finishOrder as any[]).map(String).filter(Boolean)
+    : Array.isArray(engineSummary.finishOrder)
+    ? (engineSummary.finishOrder as any[]).map(String).filter(Boolean)
+    : [];
+
+  if (isMultiContinueSave && finishOrderFromState.length) {
+    rankings = buildX01MultiContinueRankingsForSave(
+      config as any,
+      players as any[],
+      state as any,
+      finalRemainingFromReplay,
+      rankings
+    );
+    winnerId = rankings[0]?.id ?? winnerId;
+  }
 
   const engineGame = engineSummary.game || {};
 
   const winnerName =
+    (rankings[0]?.id && rankings[0]?.id === winnerId ? rankings[0]?.name : null) ||
     engineSummary.winnerName ||
     (players.find((p: any) => p.id === winnerId)?.name ?? null);
 
@@ -8097,6 +8249,14 @@ function saveX01V3MatchToHistory({
     };
   }
 
+  const finalScoresForHistory: Record<string, number> = { ...legacyRemaining };
+  const finishOrderForHistory = isMultiContinueSave
+    ? rankings
+        .filter((r: any) => Number(r?.remaining ?? r?.finalScore ?? r?.score) === 0)
+        .map((r: any) => String(r?.id ?? r?.playerId ?? r?.profileId ?? ""))
+        .filter(Boolean)
+    : finishOrderFromState;
+
   const summary = {
     ...engineSummary,
 
@@ -8115,7 +8275,14 @@ function saveX01V3MatchToHistory({
     },
 
     rankings,
+    winnerId,
     winnerName,
+    finalScores: finalScoresForHistory,
+    remainingScores: finalScoresForHistory,
+    scores: finalScoresForHistory,
+    finishOrder: finishOrderForHistory,
+    multiFinishMode: (config as any)?.multiFinishMode ?? undefined,
+    finished: true,
 
     updatedAt: createdAt,
 
@@ -8218,6 +8385,18 @@ function saveX01V3MatchToHistory({
   if (isSolo) gameMode = "x01_solo";
   else if (hasTeams) gameMode = "x01_teams";
 
+  const finalStateForPayload = buildFinalStateForX01HistorySave({
+    config: lightConfig as any,
+    state: state as any,
+    summary,
+    finalScores: finalScoresForHistory,
+    rankings,
+    winnerId,
+    winnerName,
+    finishOrder: finishOrderForHistory,
+    matchId,
+  });
+
   const payload = {
     mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
     variant: "x01_v3",
@@ -8235,6 +8414,12 @@ function saveX01V3MatchToHistory({
     remaining: legacyRemaining,
     scores: legacyRemaining,
     summary,
+    state: finalStateForPayload,
+    finalScores: finalScoresForHistory,
+    remaining: finalScoresForHistory,
+    remainingScores: finalScoresForHistory,
+    scores: finalScoresForHistory,
+    finishOrder: finishOrderForHistory,
 
     // ✅ V3 FIX : replay complet compact sans avatars.
     // Sans ce champ, l'historique ne peut pas reprendre la partie et les stats détaillées tombent à 0.
@@ -8284,10 +8469,24 @@ function saveX01V3MatchToHistory({
       dartPresetId: p.dartPresetId ?? null,
     })),
     winnerId,
-    finalScores: legacyRemaining,
-    remaining: legacyRemaining,
+    finalScores: finalScoresForHistory,
+    remaining: finalScoresForHistory,
+    remainingScores: finalScoresForHistory,
+    scores: finalScoresForHistory,
+    finishOrder: finishOrderForHistory,
     summary,
     payload,
+    resume: {
+      config: lightConfig,
+      state: finalStateForPayload,
+      darts: Array.isArray(replayDarts) ? replayDarts : [],
+      visitHistory: replayVisits,
+      visitsHistory: replayVisits,
+      __legStats: { visits: replayVisits, legs: replayLegs },
+      legs: replayLegs,
+      legDetails: replayLegs,
+      legSummaries: replayLegs,
+    },
     // CRITIQUE HISTORIQUE : garder les volées au niveau header aussi.
     // Comme ça "Voir stats" peut recalculer 60+/100+/140+/180 même si le payload
     // détaillé n'est pas encore rechargé ou si IndexedDB renvoie une carte légère.

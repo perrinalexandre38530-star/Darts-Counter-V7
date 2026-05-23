@@ -468,22 +468,25 @@ export default function X01End({ go, params }: Props) {
       remaining[id] = computeX01RemainingScore(m, rec, winnerId) ?? 0;
     }
 
-    const order = [...ids].sort((a, b) => {
-      const az = remaining[a] === 0,
-        bz = remaining[b] === 0;
-      if (az && !bz) return -1;
-      if (!az && bz) return 1;
+    const explicitOrder = readExplicitX01RankingOrder(rec, ids);
+    const order = explicitOrder.length
+      ? explicitOrder
+      : [...ids].sort((a, b) => {
+          const az = remaining[a] === 0,
+            bz = remaining[b] === 0;
+          if (az && !bz) return -1;
+          if (!az && bz) return 1;
 
-      // En X01, le classement de fin de manche doit suivre le score restant
-      // croissant : 0, 35, 45, 91, 106...
-      // L'ancien fallback triait les perdants à la moyenne, ce qui inversait
-      // Ninja/Chevroute ou Jess/Jems selon les stats.
-      const ar = Number.isFinite(Number(remaining[a])) ? Number(remaining[a]) : Number.POSITIVE_INFINITY;
-      const br = Number.isFinite(Number(remaining[b])) ? Number(remaining[b]) : Number.POSITIVE_INFINITY;
-      if (ar !== br) return ar - br;
+          // En X01, le classement de fin de manche doit suivre le score restant
+          // croissant : 0, 35, 45, 91, 106...
+          // L'ancien fallback triait les perdants à la moyenne, ce qui inversait
+          // Ninja/Chevroute ou Jess/Jems selon les stats.
+          const ar = Number.isFinite(Number(remaining[a])) ? Number(remaining[a]) : Number.POSITIVE_INFINITY;
+          const br = Number.isFinite(Number(remaining[b])) ? Number(remaining[b]) : Number.POSITIVE_INFINITY;
+          if (ar !== br) return ar - br;
 
-      return (avg3[b] ?? 0) - (avg3[a] ?? 0);
-    });
+          return (avg3[b] ?? 0) - (avg3[a] ?? 0);
+        });
 
     setOverlayResult({
       legNo: 1,
@@ -1525,6 +1528,51 @@ function getPlayerRowFromObjectOrArray(src: any, pid: string): any {
   }
   if (typeof src === "object") return src[pid] || src[String(pid)] || null;
   return null;
+}
+
+
+function readExplicitX01RankingOrder(rec: any, playerIds: string[]): string[] {
+  const ids = (Array.isArray(playerIds) ? playerIds : []).map(String).filter(Boolean);
+  if (!ids.length) return [];
+  const valid = new Set(ids);
+  const roots = [
+    rec?.summary,
+    rec?.payload?.summary,
+    rec?.payload?.state?.summary,
+    rec?.payload?.state,
+    rec?.resume?.state?.summary,
+    rec?.payload?.resume?.state?.summary,
+    rec?.resume?.summary,
+  ];
+
+  for (const root of roots) {
+    if (!root || typeof root !== "object") continue;
+    const list = root?.rankings || root?.ranking || root?.playersRanking || root?.standings;
+    if (!Array.isArray(list) || !list.length) continue;
+
+    const rows = list
+      .map((row: any, index: number) => ({
+        id: String(row?.id ?? row?.playerId ?? row?.profileId ?? row?.pid ?? ""),
+        rank: Number(row?.finalRank ?? row?.rank ?? row?.position ?? row?.place ?? index + 1),
+        index,
+      }))
+      .filter((row: any) => row.id && valid.has(row.id));
+
+    if (!rows.length) continue;
+
+    rows.sort((a: any, b: any) => {
+      if (Number.isFinite(a.rank) && Number.isFinite(b.rank) && a.rank !== b.rank) return a.rank - b.rank;
+      return a.index - b.index;
+    });
+
+    const ordered = rows.map((row: any) => row.id).filter((id: string, index: number, arr: string[]) => arr.indexOf(id) === index);
+    for (const id of ids) {
+      if (!ordered.includes(id)) ordered.push(id);
+    }
+    return ordered;
+  }
+
+  return [];
 }
 
 function getRankingRowForPlayer(rec: any, summary: any, payloadSummary: any, pid: string): any {

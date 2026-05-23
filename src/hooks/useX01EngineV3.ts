@@ -542,6 +542,13 @@ score: visit.currentScore,
         m.status = "playing";
         continue;
       }
+
+      // L'avant-dernier joueur vient de finir : on termine immédiatement le match
+      // avec le classement FFA réel, sans passer par checkLegWinV3 qui prendrait
+      // le premier score à 0 dans l'ordre des joueurs au lieu de l'ordre d'arrivée.
+      if (finalizeMultiContinueMatch(config, m)) {
+        break;
+      }
     }
 
     // ---------- Fin de leg / set / match ----------
@@ -735,6 +742,152 @@ function ensureMultiActivePlayerIsPlayable(
   startNewVisitV3(state);
   refreshVisitCheckoutSuggestion(config, state);
   state.status = "playing";
+  return true;
+}
+
+
+function buildMultiContinueFinalScores(
+  config: X01ConfigV3,
+  state: X01MatchStateV3
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  const startScore = Number((config as any).startScore ?? 501) || 501;
+  for (const p of config.players || []) {
+    const pid = String((p as any)?.id || "");
+    if (!pid) continue;
+    const raw = Number((state.scores as any)?.[pid]);
+    out[pid] = Number.isFinite(raw) ? Math.max(0, raw) : startScore;
+  }
+  return out;
+}
+
+function buildMultiContinueRankings(
+  config: X01ConfigV3,
+  state: X01MatchStateV3
+): Array<{
+  id: X01PlayerId;
+  name: string;
+  rank: number;
+  position: number;
+  finalRank: number;
+  legsWon: number;
+  setsWon: number;
+  score: number;
+  remaining: number;
+  finalScore: number;
+  scoreRemaining: number;
+}> {
+  const finalScores = buildMultiContinueFinalScores(config, state);
+  const validIds = new Set((config.players || []).map((p: any) => String(p?.id || "")).filter(Boolean));
+  const finishOrderRaw: X01PlayerId[] = Array.isArray((state as any).finishOrder)
+    ? ((state as any).finishOrder as X01PlayerId[])
+    : [];
+
+  const orderedIds: X01PlayerId[] = [];
+  for (const raw of finishOrderRaw) {
+    const pid = String(raw || "") as X01PlayerId;
+    if (!pid || !validIds.has(pid) || orderedIds.includes(pid)) continue;
+    orderedIds.push(pid);
+  }
+
+  const remainingIds = (config.players || [])
+    .map((p: any) => String(p?.id || "") as X01PlayerId)
+    .filter((pid) => pid && !orderedIds.includes(pid))
+    .sort((a, b) => {
+      const sa = Number(finalScores[a]);
+      const sb = Number(finalScores[b]);
+      if (Number.isFinite(sa) && Number.isFinite(sb) && sa !== sb) return sa - sb;
+      return 0;
+    });
+
+  orderedIds.push(...remainingIds);
+
+  return orderedIds.map((pid, idx) => {
+    const player = (config.players || []).find((p: any) => String(p?.id || "") === String(pid));
+    const remaining = Math.max(0, Number(finalScores[pid] ?? 0) || 0);
+    return {
+      id: pid,
+      name: String((player as any)?.name || pid),
+      rank: idx + 1,
+      position: idx + 1,
+      finalRank: idx + 1,
+      // En mode FFA continuer, le classement est l'ordre d'arrivée.
+      // On garde 1 leg / 1 set seulement au premier pour compat score match.
+      legsWon: idx === 0 ? 1 : 0,
+      setsWon: idx === 0 ? 1 : 0,
+      // IMPORTANT: score = score restant final, pas score de classement.
+      score: remaining,
+      remaining,
+      finalScore: remaining,
+      scoreRemaining: remaining,
+    };
+  });
+}
+
+function finalizeMultiContinueMatch(
+  config: X01ConfigV3,
+  state: X01MatchStateV3
+): boolean {
+  if (!isMultiContinueMode(config) || (config.players?.length ?? 0) <= 2) return false;
+
+  const finishOrder: X01PlayerId[] = Array.isArray((state as any).finishOrder)
+    ? ([...(state as any).finishOrder] as X01PlayerId[])
+    : [];
+  if (!finishOrder.length) return false;
+
+  const rankings = buildMultiContinueRankings(config, state);
+  const winnerId = rankings[0]?.id ?? finishOrder[0] ?? null;
+  const winnerName = rankings[0]?.name ?? null;
+  const finalScores = buildMultiContinueFinalScores(config, state);
+
+  const aggregated = buildAggregatedStats(
+    (state as any).liveStatsByPlayer as Record<X01PlayerId, X01StatsLiveV3>
+  );
+  const bestCheckoutByPlayer: Record<string, number> = {};
+  for (const pId of Object.keys(aggregated)) {
+    const bc = aggregated[pId as X01PlayerId]?.bestCheckout || 0;
+    if (bc > 0) bestCheckoutByPlayer[pId] = bc;
+  }
+
+  state.legsWon = state.legsWon || ({} as any);
+  state.setsWon = state.setsWon || ({} as any);
+  if (winnerId) {
+    for (const p of config.players || []) {
+      const pid = String((p as any)?.id || "") as X01PlayerId;
+      if (!pid) continue;
+      state.legsWon[pid] = pid === winnerId ? 1 : 0;
+      state.setsWon[pid] = pid === winnerId ? 1 : 0;
+    }
+  }
+
+  const summaryAny: any = (state as any).summary || {};
+  (state as any).summary = {
+    ...summaryAny,
+    detailedByPlayer: Object.keys(aggregated).length ? aggregated : summaryAny.detailedByPlayer,
+    bestCheckoutByPlayer: Object.keys(bestCheckoutByPlayer).length ? bestCheckoutByPlayer : summaryAny.bestCheckoutByPlayer,
+    game: {
+      ...(summaryAny.game || {}),
+      mode: "x01",
+      startScore: config.startScore,
+      legsPerSet: config.legsPerSet ?? null,
+      setsToWin: config.setsToWin ?? null,
+      multiFinishMode: (config as any).multiFinishMode ?? null,
+    },
+    rankings,
+    winnerId,
+    winnerName,
+    finalScores,
+    remainingScores: finalScores,
+    scores: finalScores,
+    finishOrder: [...finishOrder],
+    finished: true,
+  };
+
+  (state as any).lastLegWinnerId = winnerId;
+  (state as any).lastWinnerId = winnerId;
+  (state as any).lastWinningPlayerId = winnerId;
+  (state as any).winnerId = winnerId;
+  state.status = "match_end";
   return true;
 }
 
@@ -1032,10 +1185,12 @@ score: m.visit.currentScore,
     // Cas 2 : on vient de faire finir l'AVANT-DERNIER joueur :
     // - isCheckout === true
     // - finishedCount === totalPlayers - 1
-    // => on LAISSE le dernier avec ses points restants
-    //    (il n'est PAS ajouté à finishOrder)
-    //    et on laisse le flow normal déclarer la fin (leg/match)
-    // => on NE choisit PAS de nextPlayer ici, on laisse la suite gérer
+    // => le dernier garde ses points restants et on termine le match maintenant.
+    // CRITIQUE : ne pas passer par checkLegWinV3, car plusieurs joueurs sont à 0
+    // et checkLegWinV3 choisirait le premier 0 dans l'ordre interne, pas l'ordre d'arrivée.
+    if (finalizeMultiContinueMatch(config, m)) {
+      return { state: m, liveStats: liveMap };
+    }
   }
 
   // ---------- Fin de leg / set / match ----------
