@@ -43,6 +43,7 @@ type X01Sample = {
   bestCheckout?: number;
   best9Score?: number;
   dartsThrown?: number;
+  totalScore?: number;
   legsWon?: number;
   legsLost?: number;
   matchesPlayed?: number;
@@ -339,6 +340,8 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
   let sumAvg3 = 0;
   let countAvg3 = 0;
+  let totalScoreForAvg = 0;
+  let dartsForAvg = 0;
   let bestVisit: number | null = null;
   let bestCheckout: number | null = null;
   let best9Score: number | null = null;
@@ -373,6 +376,12 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
     if (typeof s.avg3 === "number") {
       sumAvg3 += s.avg3;
       countAvg3++;
+    }
+    const sampleDarts = Number(s.dartsThrown || 0);
+    const sampleScore = Number((s as any).totalScore || 0);
+    if (sampleDarts > 0 && sampleScore > 0) {
+      dartsForAvg += sampleDarts;
+      totalScoreForAvg += sampleScore;
     }
     if (typeof s.bestVisit === "number") {
       bestVisit =
@@ -420,7 +429,7 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
   return {
     count: samples.length,
-    avg3: countAvg3 ? sumAvg3 / countAvg3 : null,
+    avg3: dartsForAvg > 0 ? (totalScoreForAvg / dartsForAvg) * 3 : countAvg3 ? sumAvg3 / countAvg3 : null,
     bestVisit,
     bestCheckout,
     best9Score,
@@ -482,20 +491,26 @@ type SparkPoint = {
 };
 
 function buildSparkData(filtered: FilteredBuckets): SparkPoint[] {
-  const dayMapLocal: Record<string, { sum: number; count: number }> = {};
-  const dayMapOnline: Record<string, { sum: number; count: number }> = {};
-  const dayMapTraining: Record<string, { sum: number; count: number }> = {};
+  const dayMapLocal: Record<string, { sum: number; count: number; score: number; darts: number }> = {};
+  const dayMapOnline: Record<string, { sum: number; count: number; score: number; darts: number }> = {};
+  const dayMapTraining: Record<string, { sum: number; count: number; score: number; darts: number }> = {};
 
   const pushSample = (
     s: X01Sample,
-    map: Record<string, { sum: number; count: number }>
+    map: Record<string, { sum: number; count: number; score: number; darts: number }>
   ) => {
     if (typeof s.avg3 !== "number") return;
     const d = new Date(s.createdAt);
     const key = d.toISOString().slice(0, 10);
-    if (!map[key]) map[key] = { sum: 0, count: 0 };
+    if (!map[key]) map[key] = { sum: 0, count: 0, score: 0, darts: 0 };
     map[key].sum += s.avg3;
     map[key].count += 1;
+    const sd = Number(s.dartsThrown || 0);
+    const ss = Number((s as any).totalScore || 0);
+    if (sd > 0 && ss > 0) {
+      map[key].darts += sd;
+      map[key].score += ss;
+    }
   };
 
   filtered.local.forEach((s) => pushSample(s, dayMapLocal));
@@ -521,9 +536,9 @@ function buildSparkData(filtered: FilteredBuckets): SparkPoint[] {
     return {
       key,
       label,
-      local: lp ? lp.sum / lp.count : undefined,
-      online: op ? op.sum / op.count : undefined,
-      training: tp ? tp.sum / tp.count : undefined,
+      local: lp ? (lp.darts > 0 && lp.score > 0 ? (lp.score / lp.darts) * 3 : lp.sum / lp.count) : undefined,
+      online: op ? (op.darts > 0 && op.score > 0 ? (op.score / op.darts) * 3 : op.sum / op.count) : undefined,
+      training: tp ? (tp.darts > 0 && tp.score > 0 ? (tp.score / tp.darts) * 3 : tp.sum / tp.count) : undefined,
     };
   });
 }
@@ -802,6 +817,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             bestCheckout: hs.bestCheckout || undefined,
             best9Score: hs.best9Score || undefined,
             dartsThrown: hs.darts || undefined,
+            totalScore: (hs as any).totalScore || undefined,
             legsWon: hs.legsWon || undefined,
             legsLost: undefined,
             matchesPlayed: hs.matchesPlayed || 1,
@@ -843,6 +859,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             bestCheckout: s.bestCheckout ?? undefined,
             best9Score: s.best9Score ?? undefined,
             dartsThrown: s.darts || undefined,
+            totalScore: s.darts && s.avg3D ? (Number(s.avg3D) / 3) * Number(s.darts) : undefined,
             legsWon: undefined,
             legsLost: undefined,
             matchesPlayed: 0,

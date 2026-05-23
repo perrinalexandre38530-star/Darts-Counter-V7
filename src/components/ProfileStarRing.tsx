@@ -99,7 +99,7 @@ export default function ProfileStarRing({
 
   // 1★ / 10 pts
   const fullUnder100 = Math.min(10, Math.floor(Math.min(score, 100) / 10));
-  const hasHalf = score < 100 && score >= 15 && score % 10 === 5;
+  const hasHalf = score < 100 && score >= 5 && score % 10 >= 5;
 
   // +1★ violette toutes les 20 au-dessus de 100
   const extraViolets = score > 100 ? Math.floor((Math.min(score, 180) - 100) / 20) : 0;

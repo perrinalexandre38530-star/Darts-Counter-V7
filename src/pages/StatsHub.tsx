@@ -5327,7 +5327,11 @@ const [liveDashboard, setLiveDashboard] =
         const sessions = agg?.sessions ?? 0;
         if (sessions > 0) {
           dash.sessions = sessions;
-          if (agg?.sumAvg3D) dash.avg3Overall = agg.sumAvg3D / sessions;
+          if (Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0) {
+            dash.avg3Overall = (Number(agg.scoreTotal) / Number(agg.darts)) * 3;
+          } else if (agg?.sumAvg3D) {
+            dash.avg3Overall = agg.sumAvg3D / sessions;
+          }
           dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
           dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
           dash.totalDarts = agg?.darts ?? dash.totalDarts;
@@ -6640,7 +6644,9 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
             if (idx > 0 && val > favC) { favN = idx; favC = val; }
           });
           if (favN > 0) { favNumber = String(favN); favHits = favC; }
-          if (Number(agg.sumAvg3D || 0) > 0) {
+          if (Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0) {
+            a.samples = [{ avg3D: (Number(agg.scoreTotal) / Number(agg.darts)) * 3 }];
+          } else if (Number(agg.sumAvg3D || 0) > 0) {
             a.samples = [{ avg3D: Number(agg.sumAvg3D || 0) / Math.max(1, Number(agg.sessions || 1)) }];
           }
         }

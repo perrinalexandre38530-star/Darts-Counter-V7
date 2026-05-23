@@ -280,7 +280,11 @@ async function getStatsHubAlignedProfileMiniStats(
           out = {
             ...out,
             games: sessions,
-            avg3: Number(agg?.sumAvg3D || 0) > 0 ? Number(agg.sumAvg3D) / sessions : out.avg3,
+            avg3: Number(agg?.darts || 0) > 0 && Number(agg?.scoreTotal || 0) > 0
+              ? (Number(agg.scoreTotal) / Number(agg.darts)) * 3
+              : Number(agg?.sumAvg3D || 0) > 0
+                ? Number(agg.sumAvg3D) / sessions
+                : out.avg3,
             bestVisit: Number(agg?.bestVisit || out.bestVisit) || out.bestVisit,
             bestCheckout: Number(agg?.bestCheckout || out.bestCheckout) || out.bestCheckout,
             darts: Number(agg?.darts || out.darts) || out.darts,
