@@ -16,6 +16,7 @@ import { History } from "../lib/history";
 import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
 import { getX01ProfileStats } from "../lib/statsBridge";
+import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 
 import {
   ResponsiveContainer,
@@ -512,6 +513,83 @@ function bridgeX01ToAggregatedStats(bridge: any, fallback: AggregatedStats): Agg
   };
 }
 
+function applyX01MultiAggToAggregatedStats(x01Agg: any, fallback: AggregatedStats): AggregatedStats {
+  const sessions = Number(x01Agg?.sessions || 0) || 0;
+  if (!sessions) return fallback;
+
+  const sumAvg3D = Number(x01Agg?.sumAvg3D || 0) || 0;
+  const darts = Number(x01Agg?.darts || 0) || 0;
+  const scoreTotal = Number(x01Agg?.scoreTotal || 0) || 0;
+
+  return {
+    ...fallback,
+    count: sessions,
+    matchesPlayed: sessions,
+    avg3: sumAvg3D > 0
+      ? sumAvg3D / sessions
+      : darts > 0 && scoreTotal > 0
+        ? (scoreTotal / darts) * 3
+        : fallback.avg3,
+    bestVisit: Number(x01Agg?.bestVisit || 0) || fallback.bestVisit,
+    bestCheckout: Number(x01Agg?.bestCheckout || 0) || fallback.bestCheckout,
+    best9Score: Number(x01Agg?.best9Score || 0) || fallback.best9Score,
+    darts: darts || fallback.darts,
+    legsWon: Number(x01Agg?.legsWin || 0) || fallback.legsWon,
+    singleHits: Number(x01Agg?.hitsSingle || 0) || fallback.singleHits,
+    doubleHits: Number(x01Agg?.hitsDouble || 0) || fallback.doubleHits,
+    tripleHits: Number(x01Agg?.hitsTriple || 0) || fallback.tripleHits,
+    bull25: Number(x01Agg?.hitsBull || 0) || fallback.bull25,
+    bull50: Number(x01Agg?.hitsDBull || 0) || fallback.bull50,
+    miss: Number(x01Agg?.miss || 0) || fallback.miss,
+    bust: Number(x01Agg?.bust || 0) || fallback.bust,
+    hitsTotal:
+      (Number(x01Agg?.hitsSingle || 0) || 0) +
+      (Number(x01Agg?.hitsDouble || 0) || 0) +
+      (Number(x01Agg?.hitsTriple || 0) || 0) +
+      (Number(x01Agg?.hitsBull || 0) || 0) +
+      (Number(x01Agg?.hitsDBull || 0) || 0) || fallback.hitsTotal,
+    hits50: undefined as any,
+    hits60: Number(x01Agg?.visitBuckets?.["60+"] || 0) || fallback.hits60,
+    hits80: Number(x01Agg?.visitBuckets?.["80+"] || 0) || fallback.hits80,
+    hits100: Number(x01Agg?.visitBuckets?.["100+"] || 0) || fallback.hits100,
+    hits120: Number(x01Agg?.visitBuckets?.["120+"] || 0) || fallback.hits120,
+    hits140: Number(x01Agg?.visitBuckets?.["140+"] || 0) || fallback.hits140,
+    hits180: Number(x01Agg?.visitBuckets?.["180"] || 0) || fallback.hits180,
+    coAttempts: Number(x01Agg?.checkoutAttempts || 0) || fallback.coAttempts,
+    coSuccess: Number(x01Agg?.checkoutHits || 0) || fallback.coSuccess,
+  };
+}
+
+async function loadFullFinishedHistoryRowsForX01Compare(): Promise<any[]> {
+  try {
+    const api: any = History as any;
+    const lightRows =
+      (typeof api?.listFinished === "function" ? await api.listFinished() : null) ??
+      (typeof api?.list === "function" ? await api.list() : []);
+    const ids = Array.from(new Set((Array.isArray(lightRows) ? lightRows : [])
+      .map((r: any) => String(r?.matchId ?? r?.id ?? "").trim())
+      .filter(Boolean)));
+    const fullRows = await Promise.all(ids.slice(0, 600).map((id) => api.get(id).catch(() => null)));
+    return fullRows.filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function findX01CandidateIdByName(rows: any[], playerName?: string | null): string | null {
+  const target = String(playerName || "").toLowerCase().trim();
+  if (!target) return null;
+  for (const r of rows || []) {
+    const session = r?.payload?.session || r?.payload || r;
+    const players = session?.players || session?.session?.players || r?.players || r?.summary?.players || [];
+    const found = (Array.isArray(players) ? players : []).find((pl: any) =>
+      String(pl?.name ?? pl?.public_name ?? pl?.displayName ?? "").toLowerCase().trim() === target
+    );
+    if (found?.id || found?.playerId || found?.profileId) return String(found.id || found.playerId || found.profileId);
+  }
+  return null;
+}
+
 
 // ----------------- Formatters -----------------
 
@@ -836,6 +914,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   const [period, setPeriod] = useState<PeriodKey>("ALL");
   const [samples, setSamples] = useState<X01Sample[] | null>(null);
   const [localBridgeStats, setLocalBridgeStats] = useState<any | null>(null);
+  const [localX01MultiAgg, setLocalX01MultiAgg] = useState<any | null>(null);
 
   const profiles: Profile[] = store.profiles || [];
   const activeFromStore =
@@ -966,10 +1045,36 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
       try {
         const range = periodToBridgeRange(period);
         const stats = await getX01ProfileStats(String(targetProfile.id), range, "local");
-        if (!cancelled) setLocalBridgeStats(stats || null);
+
+        // Même consolidation que Dashboard global / Profils / X01 Multi :
+        // le bridge central peut encore renvoyer une AVG pondérée ou des records anciens
+        // sur certaines sauvegardes. Pour X01Compare LOCAL, les valeurs affichées doivent
+        // reprendre computeX01MultiAgg : sessions 24, AVG3 39.3, best visit 114, best CO 81.
+        let x01Agg: any = null;
+        if (range === "all") {
+          const rows = await loadFullFinishedHistoryRowsForX01Compare();
+          if (rows.length) {
+            x01Agg = computeX01MultiAgg(rows as any, String(targetProfile.id), targetProfile.name);
+            if ((Number(x01Agg?.sessions || 0) || 0) === 0) {
+              const candidateId = findX01CandidateIdByName(rows, targetProfile.name);
+              if (candidateId) {
+                const alt = computeX01MultiAgg(rows as any, candidateId, targetProfile.name);
+                if ((Number(alt?.sessions || 0) || 0) > 0) x01Agg = alt;
+              }
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setLocalBridgeStats(stats || null);
+          setLocalX01MultiAgg(x01Agg || null);
+        }
       } catch (err) {
         console.warn("[StatsX01Compare] local bridge stats failed", err);
-        if (!cancelled) setLocalBridgeStats(null);
+        if (!cancelled) {
+          setLocalBridgeStats(null);
+          setLocalX01MultiAgg(null);
+        }
       }
     }
 
@@ -1009,8 +1114,11 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
 
   const aggLocalRaw = useMemo(() => aggregateSamples(filtered.local), [filtered.local]);
   const aggLocal = useMemo(
-    () => bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw),
-    [localBridgeStats, aggLocalRaw]
+    () => applyX01MultiAggToAggregatedStats(
+      localX01MultiAgg,
+      bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw)
+    ),
+    [localX01MultiAgg, localBridgeStats, aggLocalRaw]
   );
   const aggOnline = useMemo(() => aggregateSamples(filtered.online), [filtered.online]);
   const aggTraining = useMemo(
