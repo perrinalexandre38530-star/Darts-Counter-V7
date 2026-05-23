@@ -98,6 +98,75 @@ function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   };
 }
 
+
+function MessageCenterTabIcon({ name, size = 21 }: { name: MsgTab; size?: number }) {
+  const p = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  } as const;
+
+  switch (name) {
+    case "messages":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M4 5.5h16v10.5H8l-4 3.5V5.5Z" />
+          <path {...p} d="M8 9h8" />
+          <path {...p} d="M8 12.5h5.5" />
+        </svg>
+      );
+    case "links":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M10 13.5a4 4 0 0 0 5.7.1l2.4-2.4a4 4 0 0 0-5.7-5.7l-1.1 1.1" />
+          <path {...p} d="M14 10.5a4 4 0 0 0-5.7-.1l-2.4 2.4a4 4 0 0 0 5.7 5.7l1.1-1.1" />
+        </svg>
+      );
+    case "shares":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M8 5h8v3a4 4 0 0 1-8 0V5Z" />
+          <path {...p} d="M6 5H4v2a4 4 0 0 0 4 4" />
+          <path {...p} d="M18 5h2v2a4 4 0 0 1-4 4" />
+          <path {...p} d="M12 12v3" />
+          <path {...p} d="M9 20h6" />
+          <path {...p} d="M10 15h4" />
+        </svg>
+      );
+    case "requests":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <circle {...p} cx="9" cy="8" r="3" />
+          <path {...p} d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+          <circle {...p} cx="17" cy="9" r="2.5" />
+          <path {...p} d="M14.5 19.5a4.5 4.5 0 0 1 6-4.2" />
+        </svg>
+      );
+    case "invites":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <rect {...p} x="4" y="7" width="16" height="10" rx="4" />
+          <path {...p} d="M8 12h4" />
+          <path {...p} d="M10 10v4" />
+          <circle cx="16.5" cy="11" r="1" fill="currentColor" />
+          <circle cx="18.5" cy="13" r="1" fill="currentColor" />
+        </svg>
+      );
+    case "system":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path {...p} d="M10 21h4" />
+          <path {...p} d="M12 3V2" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 function Pill({ children, tone = GOLD }: { children: React.ReactNode; tone?: string }) {
   return (
     <span
@@ -389,13 +458,13 @@ export default function MessagesPage({ store, update, go }: Props) {
     if (typeof go === "function") go("online", { initialOnlineTab: "requests" });
   }
 
-  const tabs: Array<{ id: MsgTab; label: string; icon: string; badge: number }> = [
-    { id: "messages", label: "Messages", icon: "💬", badge: counters.messages },
-    { id: "links", label: "Profils liés", icon: "🔗", badge: counters.links },
-    { id: "shares", label: "Parties", icon: "🏆", badge: counters.shares },
-    { id: "requests", label: "Amis", icon: "👥", badge: counters.requests },
-    { id: "invites", label: "Salons", icon: "🎮", badge: counters.invites },
-    { id: "system", label: "Système", icon: "📣", badge: counters.system },
+  const tabs: Array<{ id: MsgTab; label: string; badge: number; tone: string }> = [
+    { id: "messages", label: "Messages", badge: counters.messages, tone: GOLD },
+    { id: "links", label: "Profils liés", badge: counters.links, tone: BLUE },
+    { id: "shares", label: "Parties", badge: counters.shares, tone: GOLD },
+    { id: "requests", label: "Amis", badge: counters.requests, tone: "#c78bff" },
+    { id: "invites", label: "Salons", badge: counters.invites, tone: GREEN },
+    { id: "system", label: "Système", badge: counters.system, tone: RED },
   ];
 
   return (
@@ -422,33 +491,80 @@ export default function MessagesPage({ store, update, go }: Props) {
           <Pill tone={totalPending > 0 ? GOLD : GREEN}>{totalPending} à traiter</Pill>
         </div>
 
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingTop: 14, paddingBottom: 2, scrollbarWidth: "none" as any }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+            gap: 8,
+            paddingTop: 14,
+            paddingBottom: 2,
+            width: "100%",
+          }}
+        >
           {tabs.map((t) => {
             const isActive = active === t.id;
+            const tone = isActive ? t.tone : "rgba(255,255,255,.72)";
             return (
               <button
                 key={t.id}
+                title={t.label}
+                aria-label={t.label}
                 onClick={() => setActive(t.id)}
                 style={{
-                  flex: "0 0 auto",
-                  border: `1px solid ${isActive ? GOLD : STROKE}`,
+                  position: "relative",
+                  minWidth: 0,
+                  height: 47,
+                  border: `1px solid ${isActive ? `${t.tone}cc` : STROKE}`,
                   borderRadius: 16,
-                  padding: "9px 11px",
-                  color: isActive ? "#111" : "#fff",
-                  background: isActive ? GOLD : "rgba(255,255,255,.045)",
+                  padding: 0,
+                  color: tone,
+                  background: isActive
+                    ? `radial-gradient(110% 120% at 50% 0%, ${t.tone}35, rgba(255,255,255,.055) 58%, rgba(0,0,0,.30))`
+                    : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
                   fontWeight: 1000,
-                  fontSize: 12,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  boxShadow: isActive ? "0 0 18px rgba(255,213,106,.22)" : "none",
+                  display: "grid",
+                  placeItems: "center",
+                  boxShadow: isActive ? `0 -5px 18px ${t.tone}44, 0 0 18px ${t.tone}25` : "inset 0 1px 0 rgba(255,255,255,.06)",
+                  overflow: "visible",
+                  cursor: "pointer",
                 }}
               >
-                <span>{t.icon}</span>
-                <span>{t.label}</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: "17%",
+                    right: "17%",
+                    height: 3,
+                    borderRadius: "0 0 999px 999px",
+                    background: isActive ? t.tone : "transparent",
+                    boxShadow: isActive ? `0 0 14px ${t.tone}` : "none",
+                  }}
+                />
+                <MessageCenterTabIcon name={t.id} size={22} />
                 {t.badge > 0 ? (
-                  <span style={{ minWidth: 19, height: 19, borderRadius: 999, background: isActive ? "#111" : GOLD, color: isActive ? GOLD : "#111", display: "grid", placeItems: "center", fontSize: 11 }}>
-                    {t.badge}
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -7,
+                      right: -5,
+                      minWidth: 18,
+                      height: 18,
+                      padding: "0 5px",
+                      borderRadius: 999,
+                      background: t.tone,
+                      color: "#111",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 10.5,
+                      lineHeight: 1,
+                      fontWeight: 1000,
+                      border: "1px solid rgba(0,0,0,.45)",
+                      boxShadow: `0 0 14px ${t.tone}88`,
+                    }}
+                  >
+                    {t.badge > 99 ? "99+" : t.badge}
                   </span>
                 ) : null}
               </button>
