@@ -11,12 +11,14 @@ import {
   respondFriendRequest,
   respondProfileFriendLink,
   sendPrivateMessage,
+  markPrivateMessageRead,
   type FriendRequest,
   type PrivateMessageItem,
   type OnlineFriendUser,
   type ProfileFriendLink,
   type SharedMatchItem,
 } from "../lib/friendsApi";
+import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission } from "../lib/messageCenterNotify";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
 
@@ -173,6 +175,10 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [privateMessages, setPrivateMessages] = React.useState<PrivateMessageItem[]>([]);
   const [messageToUserId, setMessageToUserId] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
+  const [notifPermission, setNotifPermission] = React.useState<NotificationPermission | "unsupported">(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+    return Notification.permission;
+  });
 
   const salonInvites = React.useMemo(() => {
     const raw = Array.isArray(store?.onlineInvites) ? store.onlineInvites : [];
@@ -217,6 +223,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       setSharedMatches(Array.isArray(nextShares) ? nextShares : []);
       setProfileLinks(Array.isArray(nextLinks) ? nextLinks : []);
       setPrivateMessages(Array.isArray(nextMessages) ? nextMessages : []);
+      markMessageCenterRefreshNeeded();
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -228,6 +235,22 @@ export default function MessagesPage({ store, update, go }: Props) {
     loadAll().catch(() => {});
   }, [loadAll]);
 
+  React.useEffect(() => {
+    if (active !== "messages") return;
+    const unreadIncoming = privateMessages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt && m?.id);
+    if (!unreadIncoming.length) return;
+    let cancelled = false;
+    Promise.all(unreadIncoming.map((m: any) => markPrivateMessageRead(String(m.id)).catch(() => null)))
+      .then(() => {
+        if (cancelled) return;
+        const now = new Date().toISOString();
+        setPrivateMessages((prev) => prev.map((m: any) => (m?.direction !== "outgoing" && !m?.readAt ? { ...m, readAt: now } : m)));
+        markMessageCenterRefreshNeeded();
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [active, privateMessages]);
+
   async function runAction(label: string, fn: () => Promise<any>) {
     setError(null);
     setInfo(null);
@@ -235,6 +258,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       await fn();
       setInfo(label);
       await loadAll();
+      markMessageCenterRefreshNeeded();
     } catch (e: any) {
       setError(e?.message || String(e));
     }
@@ -255,6 +279,14 @@ export default function MessagesPage({ store, update, go }: Props) {
       await sendPrivateMessage(toUserId, text);
       setMessageText("");
     });
+  }
+
+  async function activatePhoneNotifications() {
+    const permission = await requestMessageNotificationsPermission();
+    setNotifPermission(permission);
+    if (permission === "granted") setInfo("Notifications téléphone activées ✅");
+    else if (permission === "denied") setError("Notifications bloquées par le téléphone/navigateur. Autorise-les dans les paramètres du site ou de l’application.");
+    else if (permission === "unsupported") setError("Notifications non supportées par ce navigateur.");
   }
 
   function openOnline() {
@@ -327,6 +359,15 @@ export default function MessagesPage({ store, update, go }: Props) {
             );
           })}
         </div>
+
+        {notifPermission === "default" ? (
+          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", border: "1px solid rgba(255,213,106,.24)", background: "rgba(255,213,106,.07)", borderRadius: 14, padding: "9px 10px" }}>
+            <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.72)", lineHeight: 1.25 }}>
+              Active les notifications pour recevoir les nouveaux messages dans la barre du téléphone.
+            </div>
+            <ActionButton label="Activer" tone={GOLD} onClick={activatePhoneNotifications} />
+          </div>
+        ) : null}
       </div>
 
       {loading ? <div style={cardStyle({ marginBottom: 10 })}>Chargement de la messagerie…</div> : null}

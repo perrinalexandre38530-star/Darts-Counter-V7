@@ -1,6 +1,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
+import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type MessageCenterUnreadSummary } from "../lib/messageCenterNotify";
 
 /**
  * BottomNav
@@ -225,6 +226,41 @@ export default function BottomNav({
   const textSoft = theme.textSoft ?? "#9ca3af";
   const textMain = theme.textMain ?? "#f9fafb";
   const accent = (theme as any)?.navAccent ?? theme.primary ?? textMain;
+  const [messageSummary, setMessageSummary] = React.useState<MessageCenterUnreadSummary | null>(null);
+  const messageBadge = Math.max(0, Number(messageSummary?.total || 0));
+
+  React.useEffect(() => {
+    let alive = true;
+    let timer: number | undefined;
+
+    const run = async (notify = true) => {
+      try {
+        const summary = await pollMessageCenterAndNotify({ notify, updateDocumentTitle: true });
+        if (alive) setMessageSummary(summary);
+      } catch {
+        if (alive) setMessageSummary(null);
+      }
+    };
+
+    run(false);
+    timer = window.setInterval(() => run(true), 15000);
+    const onFocus = () => run(false);
+    const onManual = () => run(false);
+    const onCount = (event: any) => {
+      if (alive && event?.detail) setMessageSummary(event.detail as MessageCenterUnreadSummary);
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("dc-message-center-refresh", onManual as any);
+    window.addEventListener("dc-message-center-count", onCount as any);
+
+    return () => {
+      alive = false;
+      if (timer) window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("dc-message-center-refresh", onManual as any);
+      window.removeEventListener("dc-message-center-count", onCount as any);
+    };
+  }, []);
 
   const tabs: NavItem[] = [
     { k: "home", label: "Accueil", icon: <Icon name="home" /> },
@@ -304,8 +340,36 @@ export default function BottomNav({
                   : "none",
                 background: active ? "rgba(0,0,0,0.22)" : "transparent",
                 transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+                position: "relative",
               }}
             >
+              {t.k === "messages" && messageBadge > 0 ? (
+                <span
+                  aria-label={`${messageBadge} notification${messageBadge > 1 ? "s" : ""} à lire`}
+                  style={{
+                    position: "absolute",
+                    top: -7,
+                    right: 4,
+                    minWidth: 18,
+                    height: 18,
+                    padding: "0 5px",
+                    borderRadius: 999,
+                    display: "grid",
+                    placeItems: "center",
+                    background: "linear-gradient(135deg, #ff3bbd, #ffd44d)",
+                    color: "#12040f",
+                    fontSize: 10.5,
+                    fontWeight: 1000,
+                    lineHeight: 1,
+                    border: "1px solid rgba(255,255,255,.65)",
+                    boxShadow: "0 0 12px rgba(255,59,189,.75), 0 0 18px rgba(255,212,77,.45)",
+                    zIndex: 3,
+                    pointerEvents: "none",
+                  }}
+                >
+                  {messageBadge > 99 ? "99+" : messageBadge}
+                </span>
+              ) : null}
               <span
                 className="tab-icon"
                 style={{

@@ -46,3 +46,21 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(fetch(event.request));
 });
+
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const url = new URL("/#/messages", self.location.origin).toString();
+    const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of list) {
+      try {
+        if ("focus" in client) {
+          if ("navigate" in client) await client.navigate(url);
+          return client.focus();
+        }
+      } catch {}
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(url);
+  })());
+});
