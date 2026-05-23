@@ -105,6 +105,15 @@ type AggregatedStats = {
 
   coAttempts: number;
   coSuccess: number;
+
+  matchDuo: number;
+  winDuo: number;
+  matchMulti: number;
+  winMulti: number;
+  podiumMulti: number;
+  finishMulti: number;
+  matchTeam: number;
+  winTeam: number;
 };
 
 type Props = {
@@ -337,6 +346,15 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
       coAttempts: 0,
       coSuccess: 0,
+
+      matchDuo: 0,
+      winDuo: 0,
+      matchMulti: 0,
+      winMulti: 0,
+      podiumMulti: 0,
+      finishMulti: 0,
+      matchTeam: 0,
+      winTeam: 0,
     };
   }
 
@@ -373,6 +391,15 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
   let coAttempts = 0;
   let coSuccess = 0;
+
+  let matchDuo = 0;
+  let winDuo = 0;
+  let matchMulti = 0;
+  let winMulti = 0;
+  let podiumMulti = 0;
+  let finishMulti = 0;
+  let matchTeam = 0;
+  let winTeam = 0;
 
   for (const s of samples) {
     if (typeof s.avg3 === "number") {
@@ -425,6 +452,15 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
     if (typeof s.coAttempts === "number") coAttempts += s.coAttempts;
     if (typeof s.coSuccess === "number") coSuccess += s.coSuccess;
+
+    if (typeof (s as any).matchDuo === "number") matchDuo += (s as any).matchDuo;
+    if (typeof (s as any).winDuo === "number") winDuo += (s as any).winDuo;
+    if (typeof (s as any).matchMulti === "number") matchMulti += (s as any).matchMulti;
+    if (typeof (s as any).winMulti === "number") winMulti += (s as any).winMulti;
+    if (typeof (s as any).podiumMulti === "number") podiumMulti += (s as any).podiumMulti;
+    if (typeof (s as any).finishMulti === "number") finishMulti += (s as any).finishMulti;
+    if (typeof (s as any).matchTeam === "number") matchTeam += (s as any).matchTeam;
+    if (typeof (s as any).winTeam === "number") winTeam += (s as any).winTeam;
   }
 
   const legsPlayed = legsWon + legsLost;
@@ -461,6 +497,15 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
 
     coAttempts,
     coSuccess,
+
+    matchDuo,
+    winDuo,
+    matchMulti,
+    winMulti,
+    podiumMulti,
+    finishMulti,
+    matchTeam,
+    winTeam,
   };
 }
 
@@ -588,6 +633,180 @@ function findX01CandidateIdByName(rows: any[], playerName?: string | null): stri
     if (found?.id || found?.playerId || found?.profileId) return String(found.id || found.playerId || found.profileId);
   }
   return null;
+}
+
+
+type X01CompareMatchBreakdown = Pick<AggregatedStats,
+  "matchDuo" | "winDuo" | "matchMulti" | "winMulti" | "podiumMulti" | "finishMulti" | "matchTeam" | "winTeam"
+>;
+
+const emptyX01CompareMatchBreakdown = (): X01CompareMatchBreakdown => ({
+  matchDuo: 0,
+  winDuo: 0,
+  matchMulti: 0,
+  winMulti: 0,
+  podiumMulti: 0,
+  finishMulti: 0,
+  matchTeam: 0,
+  winTeam: 0,
+});
+
+function normX01CompareText(v: any): string {
+  return String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function sameX01CompareId(a: any, b: any): boolean {
+  const aa = String(a ?? "").replace(/^online:/, "").trim();
+  const bb = String(b ?? "").replace(/^online:/, "").trim();
+  if (!aa || !bb) return false;
+  return aa === bb || (aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa)));
+}
+
+function collectX01CompareRecordValues(rec: any): string[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const cfg = rec?.config ?? payload?.config ?? nested?.config ?? null;
+  return [
+    rec?.kind, rec?.mode, rec?.variant, rec?.game, rec?.source, rec?.scope, rec?.origin,
+    payload?.kind, payload?.mode, payload?.variant, payload?.game, payload?.gameMode, payload?.source, payload?.scope, payload?.origin,
+    nested?.kind, nested?.mode, nested?.variant, nested?.game, nested?.gameMode,
+    summary?.kind, summary?.mode, summary?.variant, summary?.game?.mode,
+    cfg?.kind, cfg?.mode, cfg?.variant, cfg?.gameMode,
+  ].map(normX01CompareText).filter(Boolean);
+}
+
+function isX01CompareRecord(rec: any): boolean {
+  return collectX01CompareRecordValues(rec).some((v) => v === "x01" || v === "x01v3" || v.includes("x01"));
+}
+
+function isX01CompareOnlineRecord(rec: any): boolean {
+  return collectX01CompareRecordValues(rec).some((v) => v.includes("online") || v.includes("remote"));
+}
+
+function getX01CompareTimestamp(rec: any): number {
+  return Number(
+    rec?.createdAt ?? rec?.created_at ?? rec?.date ?? rec?.ts ??
+    rec?.payload?.createdAt ?? rec?.payload?.date ?? rec?.payload?.ts ??
+    rec?.summary?.createdAt ?? rec?.summary?.date ?? 0
+  ) || 0;
+}
+
+function getX01ComparePlayers(rec: any): any[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const cfg = rec?.config ?? payload?.config ?? nested?.config ?? null;
+  const candidates = [
+    rec?.players, rec?.summary?.players, summary?.players, summary?.rankings,
+    payload?.players, payload?.config?.players, payload?.summary?.players, payload?.summary?.rankings,
+    nested?.players, nested?.config?.players, nested?.summary?.players, nested?.summary?.rankings,
+    cfg?.players,
+  ];
+  for (const c of candidates) if (Array.isArray(c) && c.length) return c;
+  return [];
+}
+
+function getX01ComparePlayerIds(pl: any): string[] {
+  return [pl?.id, pl?.playerId, pl?.profileId, pl?.selectedPlayerId, pl?.sourceId, pl?.sourcePlayerId, pl?.userId, pl?.uid]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).replace(/^online:/, "").trim())
+    .filter(Boolean);
+}
+
+function getX01ComparePlayerName(pl: any): string {
+  return normX01CompareText(pl?.name ?? pl?.playerName ?? pl?.public_name ?? pl?.displayName ?? pl?.nickname ?? "");
+}
+
+function x01ComparePlayerMatches(pl: any, profileId: string, playerName?: string | null): boolean {
+  const ids = getX01ComparePlayerIds(pl);
+  if (ids.some((id) => sameX01CompareId(id, profileId))) return true;
+  const pn = normX01CompareText(playerName);
+  return !!pn && getX01ComparePlayerName(pl) === pn;
+}
+
+function getX01CompareWinnerIds(rec: any): string[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const vals = [
+    rec?.winnerId, rec?.winner, rec?.winnerProfileId, rec?.winnerPlayerId,
+    payload?.winnerId, payload?.winner, payload?.winnerProfileId, payload?.winnerPlayerId,
+    nested?.winnerId, nested?.winner, nested?.winnerProfileId, nested?.winnerPlayerId,
+    summary?.winnerId, summary?.winner, summary?.winnerProfileId, summary?.winnerPlayerId,
+  ];
+  return vals.filter((v) => v !== undefined && v !== null).map((v) => String(v).replace(/^online:/, "").trim()).filter(Boolean);
+}
+
+function x01CompareIsPlayerWinner(rec: any, player: any): boolean {
+  const explicit = [player?.isWin, player?.win, player?.winner, player?.isWinner].find((v) => v !== undefined);
+  if (explicit !== undefined) return !!explicit;
+  const rank = Number(player?.rank ?? player?.position ?? player?.place ?? 0) || 0;
+  if (rank === 1) return true;
+  const wins = getX01CompareWinnerIds(rec);
+  if (!wins.length) return false;
+  const ids = getX01ComparePlayerIds(player);
+  return wins.some((w) => ids.some((id) => sameX01CompareId(w, id)));
+}
+
+function x01CompareIsTeamMatch(rec: any, players: any[], player: any): boolean {
+  const vals = collectX01CompareRecordValues(rec);
+  if (vals.some((v) => v.includes("team") || v.includes("equipe") || v.includes("teams"))) return true;
+  return players.some((p) => p?.teamId || p?.team || p?.teamName) || !!(player?.teamId || player?.team || player?.teamName);
+}
+
+function computeX01CompareMatchBreakdown(rows: any[], profileId: string, playerName?: string | null, scope: "local" | "online" = "local", range?: { from?: number; to?: number; archivesOnly?: boolean }): X01CompareMatchBreakdown {
+  const out = emptyX01CompareMatchBreakdown();
+  const seen = new Set<string>();
+  for (const rec of rows || []) {
+    if (!isX01CompareRecord(rec)) continue;
+    const online = isX01CompareOnlineRecord(rec);
+    if (scope === "online" ? !online : online) continue;
+    const ts = getX01CompareTimestamp(rec);
+    if (range?.archivesOnly) {
+      if (typeof range.to === "number" && ts && ts >= range.to) continue;
+    } else {
+      if (typeof range?.from === "number" && ts && ts < range.from) continue;
+      if (typeof range?.to === "number" && ts && ts > range.to) continue;
+    }
+
+    const id = String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? `${ts}-${JSON.stringify(getX01CompareWinnerIds(rec))}`).trim();
+    if (id && seen.has(id)) continue;
+
+    const players = getX01ComparePlayers(rec);
+    if (!players.length) continue;
+    const player = players.find((pl) => x01ComparePlayerMatches(pl, profileId, playerName));
+    if (!player) continue;
+    if (id) seen.add(id);
+
+    const isTeam = x01CompareIsTeamMatch(rec, players, player);
+    const kind = isTeam ? "team" : players.length <= 2 ? "duo" : "multi";
+    const isWin = x01CompareIsPlayerWinner(rec, player);
+    const rank = Number(player?.rank ?? player?.position ?? player?.place ?? 0) || 0;
+
+    if (kind === "duo") {
+      out.matchDuo += 1;
+      if (isWin) out.winDuo += 1;
+    } else if (kind === "multi") {
+      out.matchMulti += 1;
+      if (isWin) out.winMulti += 1;
+      if (rank > 0 && rank <= 3) out.podiumMulti += 1;
+      if ((rank > 0 && rank < players.length) || isWin) out.finishMulti += 1;
+    } else {
+      out.matchTeam += 1;
+      if (isWin) out.winTeam += 1;
+    }
+  }
+  return out;
+}
+
+function mergeX01CompareMatchBreakdown(stats: AggregatedStats, match: X01CompareMatchBreakdown): AggregatedStats {
+  return { ...stats, ...match };
 }
 
 
@@ -841,67 +1060,67 @@ const ROWS: RowDef[] = [
     kind: "int",
     get: (s) => s.count,
   },
-  { section: "MATCHES", label: "Matchs DUO", kind: "int", get: () => 0 },
+  { section: "MATCHES", label: "Matchs DUO", kind: "int", get: (s) => s.matchDuo },
   {
     section: "MATCHES",
     label: "Victoires DUO",
     kind: "int",
-    get: () => 0,
+    get: (s) => s.winDuo,
   },
   {
     section: "MATCHES",
     label: "Win % DUO",
     kind: "pct",
-    get: () => 0,
+    get: (s) => s.matchDuo ? (s.winDuo / s.matchDuo) * 100 : 0,
   },
   {
     section: "MATCHES",
     label: "Matchs MULTI",
     kind: "int",
-    get: () => 0,
+    get: (s) => s.matchMulti,
   },
   {
     section: "MATCHES",
     label: "Victoires MULTI",
     kind: "int",
-    get: () => 0,
+    get: (s) => s.winMulti,
   },
   {
     section: "MATCHES",
     label: "Podiums MULTI (Top3)",
     kind: "int",
-    get: () => 0,
+    get: (s) => s.podiumMulti,
   },
   {
     section: "MATCHES",
     label: "Win % MULTI",
     kind: "pct",
-    get: () => 0,
+    get: (s) => s.matchMulti ? (s.winMulti / s.matchMulti) * 100 : 0,
   },
   {
     section: "MATCHES",
     label: "FINISH MULTI",
     kind: "int",
-    get: () => 0,
+    get: (s) => s.finishMulti,
   },
   {
     section: "MATCHES",
     label: "FINISH % MULTI",
     kind: "pct",
-    get: () => 0,
+    get: (s) => s.matchMulti ? (s.finishMulti / s.matchMulti) * 100 : 0,
   },
-  { section: "MATCHES", label: "Matchs TEAM", kind: "int", get: () => 0 },
+  { section: "MATCHES", label: "Matchs TEAM", kind: "int", get: (s) => s.matchTeam },
   {
     section: "MATCHES",
     label: "Victoires TEAM",
     kind: "int",
-    get: () => 0,
+    get: (s) => s.winTeam,
   },
   {
     section: "MATCHES",
     label: "Win % TEAM",
     kind: "pct",
-    get: () => 0,
+    get: (s) => s.matchTeam ? (s.winTeam / s.matchTeam) * 100 : 0,
   },
 ];
 
@@ -915,6 +1134,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   const [samples, setSamples] = useState<X01Sample[] | null>(null);
   const [localBridgeStats, setLocalBridgeStats] = useState<any | null>(null);
   const [localX01MultiAgg, setLocalX01MultiAgg] = useState<any | null>(null);
+  const [matchBreakdown, setMatchBreakdown] = useState<{ local: X01CompareMatchBreakdown; online: X01CompareMatchBreakdown }>(() => ({
+    local: emptyX01CompareMatchBreakdown(),
+    online: emptyX01CompareMatchBreakdown(),
+  }));
 
   const profiles: Profile[] = store.profiles || [];
   const activeFromStore =
@@ -1051,29 +1274,36 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         // sur certaines sauvegardes. Pour X01Compare LOCAL, les valeurs affichées doivent
         // reprendre computeX01MultiAgg : sessions 24, AVG3 39.3, best visit 114, best CO 81.
         let x01Agg: any = null;
-        if (range === "all") {
-          const rows = await loadFullFinishedHistoryRowsForX01Compare();
-          if (rows.length) {
-            x01Agg = computeX01MultiAgg(rows as any, String(targetProfile.id), targetProfile.name);
-            if ((Number(x01Agg?.sessions || 0) || 0) === 0) {
-              const candidateId = findX01CandidateIdByName(rows, targetProfile.name);
-              if (candidateId) {
-                const alt = computeX01MultiAgg(rows as any, candidateId, targetProfile.name);
-                if ((Number(alt?.sessions || 0) || 0) > 0) x01Agg = alt;
-              }
-            }
+        const rows = await loadFullFinishedHistoryRowsForX01Compare();
+        const candidateId = rows.length ? findX01CandidateIdByName(rows, targetProfile.name) : null;
+        const effectiveId = String(targetProfile.id || candidateId || "");
+        if (range === "all" && rows.length) {
+          x01Agg = computeX01MultiAgg(rows as any, String(targetProfile.id), targetProfile.name);
+          if ((Number(x01Agg?.sessions || 0) || 0) === 0 && candidateId) {
+            const alt = computeX01MultiAgg(rows as any, candidateId, targetProfile.name);
+            if ((Number(alt?.sessions || 0) || 0) > 0) x01Agg = alt;
           }
         }
+
+        const byPeriod = getPeriodRange(period);
+        const localMatches = rows.length
+          ? computeX01CompareMatchBreakdown(rows, effectiveId, targetProfile.name, "local", byPeriod)
+          : emptyX01CompareMatchBreakdown();
+        const onlineMatches = rows.length
+          ? computeX01CompareMatchBreakdown(rows, effectiveId, targetProfile.name, "online", byPeriod)
+          : emptyX01CompareMatchBreakdown();
 
         if (!cancelled) {
           setLocalBridgeStats(stats || null);
           setLocalX01MultiAgg(x01Agg || null);
+          setMatchBreakdown({ local: localMatches, online: onlineMatches });
         }
       } catch (err) {
         console.warn("[StatsX01Compare] local bridge stats failed", err);
         if (!cancelled) {
           setLocalBridgeStats(null);
           setLocalX01MultiAgg(null);
+          setMatchBreakdown({ local: emptyX01CompareMatchBreakdown(), online: emptyX01CompareMatchBreakdown() });
         }
       }
     }
@@ -1114,13 +1344,19 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
 
   const aggLocalRaw = useMemo(() => aggregateSamples(filtered.local), [filtered.local]);
   const aggLocal = useMemo(
-    () => applyX01MultiAggToAggregatedStats(
-      localX01MultiAgg,
-      bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw)
+    () => mergeX01CompareMatchBreakdown(
+      applyX01MultiAggToAggregatedStats(
+        localX01MultiAgg,
+        bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw)
+      ),
+      matchBreakdown.local
     ),
-    [localX01MultiAgg, localBridgeStats, aggLocalRaw]
+    [localX01MultiAgg, localBridgeStats, aggLocalRaw, matchBreakdown.local]
   );
-  const aggOnline = useMemo(() => aggregateSamples(filtered.online), [filtered.online]);
+  const aggOnline = useMemo(
+    () => mergeX01CompareMatchBreakdown(aggregateSamples(filtered.online), matchBreakdown.online),
+    [filtered.online, matchBreakdown.online]
+  );
   const aggTraining = useMemo(
     () => aggregateSamples(filtered.training),
     [filtered.training]
