@@ -184,6 +184,29 @@ export default function MessagesPage({ store, update, go }: Props) {
   });
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
 
+  function broadcastMessageBadge(total: number) {
+    const nextTotal = Math.max(0, Math.floor(Number(total || 0)));
+    try {
+      window.dispatchEvent(new CustomEvent("dc-message-center-count", {
+        detail: {
+          unreadMessages: Math.max(0, nextTotal),
+          friendRequests: counters?.requests || 0,
+          profileLinks: counters?.links || 0,
+          sharedMatches: counters?.shares || 0,
+          system: counters?.system || 0,
+          invites: counters?.invites || 0,
+          total: nextTotal,
+          newestLabel: "",
+          newestKey: "",
+        },
+      }));
+    } catch {}
+    try {
+      const clean = document.title.replace(/^\(\d+\)\s+/, "");
+      document.title = nextTotal > 0 ? `(${nextTotal}) ${clean}` : clean;
+    } catch {}
+  }
+
   const salonInvites = React.useMemo(() => {
     const raw = Array.isArray(store?.onlineInvites) ? store.onlineInvites : [];
     return raw;
@@ -290,7 +313,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         setPrivateMessages((prev) => prev.map((m: any) => (ids.has(String(m?.id || "")) ? { ...m, readAt: now } : m)));
         markMessageCenterRefreshNeeded();
         try {
-          window.dispatchEvent(new CustomEvent("dc-message-center-count", { detail: { total: Math.max(0, totalPending - ids.size) } }));
+          broadcastMessageBadge(Math.max(0, totalPending - ids.size));
         } catch {}
       })
       .catch(() => {});
@@ -335,7 +358,12 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   async function handleDeletePrivateMessage(id: string) {
     if (!id) return;
-    setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(id)));
+    setPrivateMessages((prev) => {
+      const removed = (prev as any[]).find((m: any) => String(m?.id || "") === String(id));
+      const next = prev.filter((m: any) => String(m?.id || "") !== String(id));
+      if (removed?.direction !== "outgoing" && !removed?.readAt) broadcastMessageBadge(Math.max(0, totalPending - 1));
+      return next;
+    });
     markMessageCenterRefreshNeeded();
     try {
       await deletePrivateMessage(id);
@@ -445,8 +473,8 @@ export default function MessagesPage({ store, update, go }: Props) {
       {active === "messages" ? (
         <>
           <SectionTitle
-            title="Chat privé"
-            subtitle="Conversation type Messenger : une discussion par ami, messages lus automatiquement quand tu ouvres le fil."
+            title="Chat privé façon Messenger"
+            subtitle="Un fil par ami, bulles gauche/droite, lecture automatique dès ouverture du fil et suppression locale message par message."
             badge={unreadPrivateMessages}
           />
 
@@ -462,6 +490,16 @@ export default function MessagesPage({ store, update, go }: Props) {
                     onClick={() => {
                       setSelectedThreadUserId(thread.id);
                       setMessageToUserId(thread.id);
+                      if (thread.unread > 0) {
+                        const now = new Date().toISOString();
+                        setPrivateMessages((prev) => prev.map((m: any) => {
+                          const peerId = privateMessagePeerId(m);
+                          return peerId === thread.id && m?.direction !== "outgoing" && !m?.readAt ? { ...m, readAt: now } : m;
+                        }));
+                        broadcastMessageBadge(Math.max(0, totalPending - thread.unread));
+                        markPrivateThreadRead(String(thread.id)).catch(() => {});
+                        markMessageCenterRefreshNeeded();
+                      }
                     }}
                     style={{
                       flex: "0 0 auto",
@@ -492,7 +530,7 @@ export default function MessagesPage({ store, update, go }: Props) {
           <div style={cardStyle({ marginBottom: 10, borderColor: `${BLUE}55`, padding: 0, overflow: "hidden" })}>
             <div style={{ padding: "12px 14px", borderBottom: `1px solid ${STROKE}`, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
               <div>
-                <div style={{ fontWeight: 1000, color: BLUE }}>{selectedThread ? asUserName(selectedThread.user) : "Nouvelle conversation"}</div>
+                <div style={{ fontWeight: 1000, color: BLUE }}>{selectedThread ? `💬 ${asUserName(selectedThread.user)}` : "💬 Choisis une conversation"}</div>
                 <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.58)", marginTop: 2 }}>
                   {selectedThread ? `${selectedThread.messages.length} message(s)` : "Choisis un ami et envoie ton premier message."}
                 </div>
@@ -544,7 +582,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                           }}
                           title="Supprimer ce message de mon affichage"
                         >
-                          🗑️
+                          🗑️ Supprimer
                         </button>
                       </div>
                     </div>

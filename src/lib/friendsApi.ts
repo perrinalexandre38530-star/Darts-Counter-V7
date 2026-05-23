@@ -211,6 +211,11 @@ export async function deleteProfileFriendLink(id: string) {
   return res?.link ?? res;
 }
 
+export async function updateProfileFriendLinkStats(id: string, statsMeta: any) {
+  const res = await apiPut(`/online/profile-links/${qs(id)}/stats`, { statsMeta });
+  return res?.link ?? res;
+}
+
 
 export type PrivateMessageItem = {
   id: string;

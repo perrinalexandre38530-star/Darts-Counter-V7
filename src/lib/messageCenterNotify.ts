@@ -8,7 +8,7 @@ import {
   type ProfileFriendLink,
   type SharedMatchItem,
 } from "./friendsApi";
-import { readNasAccessToken } from "./apiClient";
+import { apiGet, readNasAccessToken } from "./apiClient";
 
 export type MessageCenterUnreadSummary = {
   unreadMessages: number;
@@ -73,6 +73,33 @@ export function canUseMessageCenterPolling() {
 export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUnreadSummary> {
   if (!canUseMessageCenterPolling()) {
     return { unreadMessages: 0, friendRequests: 0, profileLinks: 0, sharedMatches: 0, system: 0, invites: 0, total: 0, newestLabel: "", newestKey: "" };
+  }
+
+  // Source de vérité NAS si disponible : évite les badges qui restent bloqués
+  // après lecture/suppression locale d'un message.
+  try {
+    const serverSummary = await apiGet("/online/messages/summary");
+    const counters = serverSummary?.counters || {};
+    const unreadMessages = Number(counters.privateMessages ?? counters.messages ?? 0) || 0;
+    const friendRequests = Number(counters.friendRequests || 0) || 0;
+    const profileLinks = Number(counters.profileLinks || 0) || 0;
+    const sharedMatches = Number(counters.sharedMatches || 0) || 0;
+    const system = Number(counters.system || 0) || 0;
+    const invites = Number(counters.invites || 0) || 0;
+    const total = Math.max(0, unreadMessages + friendRequests + profileLinks + sharedMatches + system + invites);
+    return {
+      unreadMessages,
+      friendRequests,
+      profileLinks,
+      sharedMatches,
+      system,
+      invites,
+      total,
+      newestLabel: total > 0 ? `${total} élément(s) à traiter` : "",
+      newestKey: total > 0 ? `summary:${total}` : "",
+    };
+  } catch {
+    // Fallback ancien : garde la compat si le backend NAS n'a pas encore été redémarré.
   }
 
   const [messages, requests, links, shares] = await Promise.all([
@@ -171,6 +198,10 @@ export async function showMessageCenterNotification(title: string, body: string)
       await reg.showNotification(title, options);
       return;
     }
+    try {
+      reg?.active?.postMessage({ type: "SHOW_NOTIFICATION", title, body, url: "/#/messages" });
+      return;
+    } catch {}
   } catch {}
   try {
     const n = new Notification(title, options);

@@ -184,7 +184,7 @@ import StatsOnline from "./pages/StatsOnline";
 import Profiles from "./pages/Profiles";
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
-const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
+import MessagesPage from "./pages/MessagesPage";
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
