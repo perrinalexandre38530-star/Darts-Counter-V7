@@ -667,6 +667,113 @@ function sameX01CompareId(a: any, b: any): boolean {
   return aa === bb || (aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa)));
 }
 
+function deepX01CompareObjects(root: any, maxDepth = 7): any[] {
+  const out: any[] = [];
+  const seen = new WeakSet<object>();
+  const walk = (x: any, depth: number) => {
+    if (!x || typeof x !== "object" || depth > maxDepth) return;
+    if (seen.has(x)) return;
+    seen.add(x);
+    if (!Array.isArray(x)) out.push(x);
+    if (Array.isArray(x)) {
+      for (const it of x) walk(it, depth + 1);
+      return;
+    }
+    for (const v of Object.values(x)) {
+      if (v && typeof v === "object") walk(v, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+function x01CompareRowMatches(row: any, profileId: string, playerName?: string | null): boolean {
+  const ids = [
+    row?.id, row?.playerId, row?.profileId, row?.selectedPlayerId, row?.pid, row?.uid,
+    row?.sourceId, row?.sourcePlayerId, row?.userId,
+  ].filter((v) => v !== undefined && v !== null).map((v) => String(v));
+  if (ids.some((id) => sameX01CompareId(id, profileId) || id === profileId)) return true;
+  const n1 = normX01CompareText(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname ?? "");
+  const n2 = normX01CompareText(playerName ?? "");
+  return !!n1 && !!n2 && n1 === n2;
+}
+
+function collectX01CompareRankingRows(rec: any): any[] {
+  const rows: any[] = [];
+  const arrayKeys = new Set([
+    "rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking",
+    "results", "perPlayer", "players",
+  ]);
+  const mapKeys = new Set([
+    "detailedByPlayer", "statsByPlayer", "liveStatsByPlayer", "finalStatsByPlayer",
+    "resultsByPlayer", "rankingByPlayer", "standingsByPlayer",
+  ]);
+
+  for (const root of deepX01CompareObjects(rec, 7)) {
+    for (const [key, value] of Object.entries(root)) {
+      if (arrayKeys.has(String(key)) && Array.isArray(value)) {
+        for (const row of value as any[]) {
+          if (row && typeof row === "object") rows.push(row);
+        }
+      }
+      if (mapKeys.has(String(key)) && value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [id, row] of Object.entries(value as any)) {
+          if (row && typeof row === "object") rows.push({ id, playerId: id, selectedPlayerId: id, ...(row as any) });
+        }
+      }
+    }
+  }
+
+  const richness = (row: any): number => {
+    if (!row || typeof row !== "object") return 0;
+    let score = 0;
+    for (const k of [
+      "rank", "finalRank", "place", "position", "standing",
+      "remaining", "remainingScore", "scoreLeft", "left", "rest", "finalScore", "endScore", "pointsLeft",
+      "isWin", "win", "winner", "isWinner", "finished", "hasFinished", "didFinish",
+      "setsWon", "legsWon", "score", "total",
+    ]) {
+      const v = row[k];
+      if (v !== undefined && v !== null && String(v) !== "") score += 3;
+    }
+    score += Object.values(row).filter((v: any) => Number.isFinite(Number(v))).length;
+    return score;
+  };
+
+  const keyFor = (row: any) => String(
+    row?.id ?? row?.playerId ?? row?.profileId ?? row?.selectedPlayerId ?? row?.pid ?? row?.uid ??
+    row?.name ?? row?.playerName ?? JSON.stringify(row)
+  );
+
+  const best = new Map<string, any>();
+  for (const row of rows) {
+    const k = keyFor(row);
+    const prev = best.get(k);
+    if (!prev || richness(row) > richness(prev)) best.set(k, row);
+  }
+  return Array.from(best.values());
+}
+
+function getX01CompareExplicitRank(row: any): number {
+  const raw = row?.rank ?? row?.finalRank ?? row?.position ?? row?.place ?? row?.standing;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function getX01CompareRemaining(row: any): number | null {
+  const vals = [
+    row?.remaining, row?.remainingScore, row?.scoreLeft, row?.left, row?.rest,
+    row?.finalScore, row?.endScore, row?.pointsLeft,
+  ];
+  for (const v of vals) {
+    if (v === undefined || v === null || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+
 function collectX01CompareRecordValues(rec: any): string[] {
   const payload = rec?.payload ?? null;
   const nested = payload?.payload ?? null;
@@ -723,28 +830,60 @@ function getX01ComparePlayers(rec: any): any[] {
   return [];
 }
 
-function getX01ComparePlayerRank(player: any, players: any[]): number {
-  const direct = Number(player?.rank ?? player?.position ?? player?.place ?? player?.finalRank ?? player?.finalPosition ?? 0) || 0;
+function getX01ComparePlayerRank(rec: any, player: any, players: any[], profileId: string, playerName?: string | null, isWin = false): number {
+  const direct = getX01CompareExplicitRank(player);
   if (direct > 0) return direct;
-  const idx = players.indexOf(player);
-  return idx >= 0 ? idx + 1 : 0;
+
+  const rankingRows = collectX01CompareRankingRows(rec);
+  const richRow = rankingRows.find((row) => x01CompareRowMatches(row, profileId, playerName));
+  const rowRank = getX01CompareExplicitRank(richRow);
+  if (rowRank > 0) return rowRank;
+
+  if (isWin) return 1;
+
+  // Fallback uniquement si on dispose de scores restants exploitables.
+  // On ne déduit JAMAIS le rang depuis l'ordre du tableau players/config :
+  // l'historique remet souvent le profil courant en premier, ce qui créait
+  // de faux podiums pour tous les matchs multi.
+  const rows = rankingRows.length ? rankingRows : players;
+  const scored = rows
+    .map((row: any) => ({
+      row,
+      remaining: getX01CompareRemaining(row),
+      win: x01CompareIsPlayerWinner(rec, row),
+    }))
+    .filter((r: any) => r.remaining !== null || r.win);
+
+  if (scored.length >= 2) {
+    const sorted = scored.sort((a: any, b: any) => {
+      const aw = a.win ? 0 : 1;
+      const bw = b.win ? 0 : 1;
+      if (aw !== bw) return aw - bw;
+      const ar = a.remaining === null ? 999999 : a.remaining;
+      const br = b.remaining === null ? 999999 : b.remaining;
+      return ar - br;
+    });
+    const idx = sorted.findIndex((r: any) => x01CompareRowMatches(r.row, profileId, playerName));
+    if (idx >= 0) return idx + 1;
+  }
+
+  return 0;
 }
 
-function x01ComparePlayerFinished(player: any, isWin: boolean): boolean {
+function x01ComparePlayerFinished(player: any, isWin: boolean, rank = 0, playersCount = 0): boolean {
   const explicit = [
     player?.finished, player?.isFinished, player?.hasFinished, player?.checkout, player?.checkedOut,
     player?.finish, player?.didFinish, player?.completed, player?.isOut, player?.out,
   ].find((v) => v !== undefined && v !== null);
   if (explicit !== undefined) return !!explicit;
 
-  const zeroFields = [
-    player?.remaining, player?.remainingScore, player?.scoreLeft, player?.left, player?.rest,
-    player?.currentScore, player?.score, player?.finalScore, player?.endScore, player?.pointsLeft,
-  ];
-  if (zeroFields.some((v) => v !== undefined && v !== null && Number(v) === 0)) return true;
+  const remaining = getX01CompareRemaining(player);
+  if (remaining === 0) return true;
 
-  // Quand le match s'arrête au premier checkout, seule la victoire garantit un finish.
-  // En mode « continuer la partie », les autres joueurs finis portent normalement un score restant à 0.
+  // Règle X01 Multi validée : si la partie a continué après le premier checkout,
+  // tous les joueurs sauf le dernier ont fini à 0. Donc finish = rang < nombre de joueurs.
+  if (playersCount >= 3 && rank > 0) return rank < playersCount;
+
   return !!isWin;
 }
 
@@ -823,8 +962,8 @@ function computeX01CompareMatchBreakdown(rows: any[], profileId: string, playerN
     const isTeam = x01CompareIsTeamMatch(rec, players, player);
     const kind = isTeam ? "team" : players.length <= 2 ? "duo" : "multi";
     const isWin = x01CompareIsPlayerWinner(rec, player);
-    const rank = getX01ComparePlayerRank(player, players);
-    const didFinish = x01ComparePlayerFinished(player, isWin);
+    const rank = getX01ComparePlayerRank(rec, player, players, profileId, playerName, isWin);
+    const didFinish = x01ComparePlayerFinished(player, isWin, rank, players.length);
 
     if (kind === "duo") {
       out.matchDuo += 1;
@@ -1394,13 +1533,26 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     ),
     [localX01MultiAgg, localBridgeStats, aggLocalRaw, matchBreakdown.local]
   );
-  const aggOnline = useMemo(
-    () => mergeX01CompareMatchBreakdown(
-      bridgeX01ToAggregatedStats(onlineBridgeStats, aggregateSamples(filtered.online)),
-      matchBreakdown.online
-    ),
-    [onlineBridgeStats, filtered.online, matchBreakdown.online]
-  );
+  const aggOnline = useMemo(() => {
+    const base = bridgeX01ToAggregatedStats(onlineBridgeStats, aggregateSamples(filtered.online));
+    const raw = matchBreakdown.online || emptyX01CompareMatchBreakdown();
+
+    // Les matchs online historiques ne contiennent pas toujours les tableaux
+    // de joueurs complets dans History. Dans ce cas, la source fiable reste
+    // le bridge / samples : X01 Online = duel, donc on remplit DUO depuis
+    // matchesPlayed / matchesWon au lieu de laisser la section MATCHS à zéro.
+    const hasAnyBreakdown =
+      raw.matchDuo || raw.matchMulti || raw.matchTeam || raw.winDuo || raw.winMulti || raw.winTeam;
+    const onlineFallback = hasAnyBreakdown
+      ? raw
+      : {
+          ...raw,
+          matchDuo: Number(base.matchesPlayed || base.count || 0) || 0,
+          winDuo: Number(base.matchesWon || 0) || 0,
+        };
+
+    return mergeX01CompareMatchBreakdown(base, onlineFallback);
+  }, [onlineBridgeStats, filtered.online, matchBreakdown.online]);
   const aggTraining = useMemo(
     () => aggregateSamples(filtered.training),
     [filtered.training]
