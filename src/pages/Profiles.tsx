@@ -19,6 +19,10 @@ import {
   getBasicProfileStatsAsync,
   type BasicProfileStats,
 } from "../lib/statsBridge";
+import { History } from "../lib/history";
+import { loadNormalizedHistory } from "../lib/statsNormalized";
+import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
+import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -218,6 +222,81 @@ function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
   };
 }
 
+
+async function getStatsHubAlignedProfileMiniStats(
+  playerId: string,
+  playerName?: string | null
+): Promise<ProfileMiniStats> {
+  // Source de vérité volontairement alignée sur le Dashboard global du Centre de statistiques.
+  // Avant, la page Profils lisait surtout le mini-cache statsBridge ; ce cache pouvait rester
+  // différent du dashboard après import/suppression/rebuild, d'où Moy/3D, Best CO et Win% incohérents.
+  const fallback = normalizeProfileMiniStats(await getBasicProfileStatsAsync(playerId));
+
+  try {
+    const pname = String(playerName || "Joueur");
+    const normalized = await loadNormalizedHistory();
+    const dash: any = buildDashboardFromNormalized(playerId, pname, normalized || []);
+
+    let out: ProfileMiniStats = {
+      avg3: Number(dash?.avg3Overall ?? dash?.avg3 ?? fallback.avg3) || fallback.avg3,
+      bestVisit: Number(dash?.bestVisit ?? fallback.bestVisit) || fallback.bestVisit,
+      bestCheckout: Number(dash?.bestCheckout ?? fallback.bestCheckout) || fallback.bestCheckout,
+      wins: Number(dash?.wins ?? fallback.wins) || fallback.wins,
+      games: Number(dash?.sessions ?? dash?.matches ?? fallback.games) || fallback.games,
+      winRate: Number.isFinite(Number(dash?.winRatePct ?? dash?.winRate))
+        ? Math.max(0, Math.min(100, Number(dash?.winRatePct ?? dash?.winRate)))
+        : fallback.winRate,
+      darts: Number(dash?.totalDarts ?? fallback.darts) || fallback.darts,
+    };
+
+    // Même surcouche X01 multi que StatsHub : elle récupère les vraies sessions, moyennes,
+    // best visit et best CO depuis les payloads complets quand l'index normalisé est trop léger.
+    try {
+      const lightRows = ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
+      const ids = Array.from(new Set((Array.isArray(lightRows) ? lightRows : [])
+        .filter((r: any) => String(r?.kind ?? r?.mode ?? r?.game ?? r?.payload?.kind ?? "").toLowerCase().includes("x01"))
+        .map((r: any) => String(r?.matchId ?? r?.id ?? "").trim())
+        .filter(Boolean)));
+      const fullRows = await Promise.all(ids.slice(0, 600).map((id) => (History as any).get(id).catch(() => null)));
+      const rows = fullRows.filter(Boolean) as any[];
+      if (rows.length) {
+        let agg: any = computeX01MultiAgg(rows as any, playerId, pname);
+        if ((agg?.sessions ?? 0) === 0 && pname) {
+          const target = pname.toLowerCase().trim();
+          let candidateId: string | null = null;
+          for (const r of rows) {
+            const session = r?.payload?.session || r?.payload || r;
+            const players = session?.players || session?.session?.players || [];
+            const found = (players || []).find((pl: any) => String(pl?.name ?? pl?.public_name ?? "").toLowerCase().trim() === target);
+            if (found?.id) { candidateId = String(found.id); break; }
+          }
+          if (candidateId) {
+            const alt = computeX01MultiAgg(rows as any, candidateId, pname);
+            if ((alt?.sessions ?? 0) > 0) agg = alt;
+          }
+        }
+        const sessions = Number(agg?.sessions || 0);
+        if (sessions > 0) {
+          out = {
+            ...out,
+            games: sessions,
+            avg3: Number(agg?.sumAvg3D || 0) > 0 ? Number(agg.sumAvg3D) / sessions : out.avg3,
+            bestVisit: Number(agg?.bestVisit || out.bestVisit) || out.bestVisit,
+            bestCheckout: Number(agg?.bestCheckout || out.bestCheckout) || out.bestCheckout,
+            darts: Number(agg?.darts || out.darts) || out.darts,
+          };
+        }
+      }
+    } catch {
+      // Le dashboard normalisé reste la source ; cette étape est seulement une consolidation X01.
+    }
+
+    return normalizeProfileMiniStats(out);
+  } catch {
+    return fallback;
+  }
+}
+
 function readProfileMiniStatsSync(playerId: string | undefined | null): ProfileMiniStats {
   if (!playerId) return EMPTY_PROFILE_MINI_STATS;
   const key = String(playerId);
@@ -233,7 +312,7 @@ function readProfileMiniStatsSync(playerId: string | undefined | null): ProfileM
   }
 }
 
-function useBasicStats(playerId: string | undefined | null, enabled: boolean = true) {
+function useBasicStats(playerId: string | undefined | null, enabled: boolean = true, playerName?: string | null) {
   const key = playerId ? String(playerId) : "";
   const [stats, setStats] = React.useState<ProfileMiniStats>(() =>
     enabled && key ? readProfileMiniStatsSync(key) : EMPTY_PROFILE_MINI_STATS
@@ -252,7 +331,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
       if (!cancelled) setStats(syncStats);
 
       try {
-        const asyncStats = normalizeProfileMiniStats(await getBasicProfileStatsAsync(key));
+        const asyncStats = await getStatsHubAlignedProfileMiniStats(key, playerName);
         profileMiniStatsCache.set(key, asyncStats);
         if (!cancelled) setStats(asyncStats);
       } catch (err) {
@@ -262,7 +341,10 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
 
     void refresh();
 
-    const onStatsUpdated = () => void refresh();
+    const onStatsUpdated = () => {
+      profileMiniStatsCache.delete(key);
+      void refresh();
+    };
     window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     window.addEventListener("dc-history-updated", onStatsUpdated as EventListener);
     window.addEventListener("storage", onStatsUpdated as EventListener);
@@ -273,7 +355,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
       window.removeEventListener("dc-history-updated", onStatsUpdated as EventListener);
       window.removeEventListener("storage", onStatsUpdated as EventListener);
     };
-  }, [key, enabled]);
+  }, [key, enabled, playerName]);
 
   return stats;
 }
@@ -3543,7 +3625,7 @@ function ActiveProfileBlock({
 
         {active?.id && (
           <div style={{ marginTop: 8 }}>
-            <GoldMiniStats profileId={active.id} />
+            <GoldMiniStats profileId={active.id} profileName={active.name} />
           </div>
         )}
 
@@ -4942,7 +5024,7 @@ function LocalProfilesRefonte({
 
 
   // stats du profil courant
-  const bs = useBasicStats(!deferHeavy && current?.id ? current?.id : null, !deferHeavy && !!current?.id);
+  const bs = useBasicStats(!deferHeavy && current?.id ? current?.id : null, !deferHeavy && !!current?.id, current?.name);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -6351,8 +6433,8 @@ function EditInline({
 
 /* ------ Gold mini-stats (lecture SYNC cache) ------ */
 
-function GoldMiniStats({ profileId }: { profileId: string }) {
-  const bs = useBasicStats(profileId);
+function GoldMiniStats({ profileId, profileName }: { profileId: string; profileName?: string }) {
+  const bs = useBasicStats(profileId, true, profileName);
   const { theme } = useTheme();
 
   const { sport } = useSport();
