@@ -15,6 +15,7 @@ import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
+import { getX01ProfileStats } from "../lib/statsBridge";
 
 import {
   ResponsiveContainer,
@@ -462,6 +463,56 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
   };
 }
 
+
+function periodToBridgeRange(key: PeriodKey): "today" | "week" | "month" | "year" | "all" | "archives" {
+  switch (key) {
+    case "D":
+      return "today";
+    case "W":
+      return "week";
+    case "M":
+      return "month";
+    case "Y":
+      return "year";
+    case "ARV":
+      return "archives";
+    case "ALL":
+    default:
+      return "all";
+  }
+}
+
+function bridgeX01ToAggregatedStats(bridge: any, fallback: AggregatedStats): AggregatedStats {
+  if (!bridge) return fallback;
+
+  const games = Number(bridge.games || 0);
+  const wins = Number(bridge.wins || 0);
+  const darts = Number(bridge.darts || 0);
+  const avg3 = Number(bridge.avg3 || 0);
+
+  return {
+    ...fallback,
+    count: games || fallback.count,
+    matchesPlayed: games || fallback.matchesPlayed,
+    matchesWon: wins || fallback.matchesWon,
+    darts: darts || fallback.darts,
+    avg3: avg3 || fallback.avg3,
+    bestVisit: Number(bridge.bestVisit || 0) || fallback.bestVisit,
+    bestCheckout: Number(bridge.bestCheckout || bridge.bestFinish || 0) || fallback.bestCheckout,
+    hits60: Number(bridge.h60 || 0) || fallback.hits60,
+    hits100: Number(bridge.h100 || 0) || fallback.hits100,
+    hits140: Number(bridge.h140 || 0) || fallback.hits140,
+    hits180: Number(bridge.h180 || 0) || fallback.hits180,
+    miss: Number(bridge.miss || 0) || fallback.miss,
+    doubleHits: Number(bridge.doubles || 0) || fallback.doubleHits,
+    tripleHits: Number(bridge.triples || 0) || fallback.tripleHits,
+    bull25: Number(bridge.bulls || 0) || fallback.bull25,
+    bull50: Number(bridge.dbull || 0) || fallback.bull50,
+    bust: Number(bridge.bust || 0) || fallback.bust,
+  };
+}
+
+
 // ----------------- Formatters -----------------
 
 function fmtNum(v: number | null | undefined, decimals = 1): string {
@@ -784,6 +835,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
 
   const [period, setPeriod] = useState<PeriodKey>("ALL");
   const [samples, setSamples] = useState<X01Sample[] | null>(null);
+  const [localBridgeStats, setLocalBridgeStats] = useState<any | null>(null);
 
   const profiles: Profile[] = store.profiles || [];
   const activeFromStore =
@@ -901,6 +953,33 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     };
   }, [targetProfile?.id]);
 
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLocalBridgeStats() {
+      if (!targetProfile?.id) {
+        setLocalBridgeStats(null);
+        return;
+      }
+
+      try {
+        const range = periodToBridgeRange(period);
+        const stats = await getX01ProfileStats(String(targetProfile.id), range, "local");
+        if (!cancelled) setLocalBridgeStats(stats || null);
+      } catch (err) {
+        console.warn("[StatsX01Compare] local bridge stats failed", err);
+        if (!cancelled) setLocalBridgeStats(null);
+      }
+    }
+
+    loadLocalBridgeStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetProfile?.id, period]);
+
   const { from, to, archivesOnly } = useMemo(
     () => getPeriodRange(period),
     [period]
@@ -928,7 +1007,11 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     };
   }, [samples, from, to, archivesOnly]);
 
-  const aggLocal = useMemo(() => aggregateSamples(filtered.local), [filtered.local]);
+  const aggLocalRaw = useMemo(() => aggregateSamples(filtered.local), [filtered.local]);
+  const aggLocal = useMemo(
+    () => bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw),
+    [localBridgeStats, aggLocalRaw]
+  );
   const aggOnline = useMemo(() => aggregateSamples(filtered.online), [filtered.online]);
   const aggTraining = useMemo(
     () => aggregateSamples(filtered.training),
