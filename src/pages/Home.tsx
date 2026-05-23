@@ -606,11 +606,16 @@ async function buildStatsForProfile(
     const x01AggSessions = Number(x01AggForHome?.sessions || 0) || 0;
     const x01AggDarts = Number(x01AggForHome?.darts || 0) || 0;
     const x01AggScoreTotal = Number(x01AggForHome?.scoreTotal || 0) || 0;
+    // Même règle que Centre de statistiques / Dashboard / Profils :
+    // la moyenne affichée est la moyenne des moyennes de sessions X01.
+    // Ne pas prioriser scoreTotal/darts ici : scoreTotal est volontairement capé
+    // dans l'agrégateur pour éviter les exports corrompus, ce qui sous-estime
+    // les matchs multi legs/sets sur la Home.
     const x01AggAvg3D =
-      x01AggDarts > 0 && x01AggScoreTotal > 0
-        ? (x01AggScoreTotal / x01AggDarts) * 3
-        : x01AggSessions > 0 && Number(x01AggForHome?.sumAvg3D || 0) > 0
-          ? Number(x01AggForHome.sumAvg3D) / x01AggSessions
+      x01AggSessions > 0 && Number(x01AggForHome?.sumAvg3D || 0) > 0
+        ? Number(x01AggForHome.sumAvg3D) / x01AggSessions
+        : x01AggDarts > 0 && x01AggScoreTotal > 0
+          ? (x01AggScoreTotal / x01AggDarts) * 3
           : 0;
     const x01AggBestAvg3D = Number(x01AggForHome?.bestAvg3D || 0) || 0;
 

@@ -782,7 +782,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   const { theme } = useTheme();
   useLang();
 
-  const [period, setPeriod] = useState<PeriodKey>("M");
+  const [period, setPeriod] = useState<PeriodKey>("ALL");
   const [samples, setSamples] = useState<X01Sample[] | null>(null);
 
   const profiles: Profile[] = store.profiles || [];
