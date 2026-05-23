@@ -1234,9 +1234,10 @@ type Props = {
   store: Store;
   update: (mut: (s: Store) => Store) => void;
   go: (tab: any, params?: any) => void;
+  initialOnlineTab?: OnlineMainTab;
 };
 
-export default function FriendsPage({ store, update, go }: Props) {
+export default function FriendsPage({ store, update, go, initialOnlineTab }: Props) {
   const sportCtx = useSport() as any;
   const activeSportId = String(sportCtx?.sport || "darts").toLowerCase();
   const onlineModesForSport = React.useMemo(() => {
@@ -2238,7 +2239,7 @@ const doLogout = React.useCallback(async () => {
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
 
 
-  const [activeOnlineTab, setActiveOnlineTab] = React.useState<OnlineMainTab>(() => (activeSportId === "babyfoot" ? "play" : "hub"));
+  const [activeOnlineTab, setActiveOnlineTab] = React.useState<OnlineMainTab>(() => (activeSportId === "babyfoot" ? "play" : initialOnlineTab || "hub"));
 
   const unreadSharesCount = React.useMemo(
     () => incomingShares.filter((it) => !it.readAt).length,
@@ -2302,8 +2303,12 @@ const doLogout = React.useCallback(async () => {
   React.useEffect(() => {
     if (activeSportId === "babyfoot") {
       setActiveOnlineTab("play");
+      return;
     }
-  }, [activeSportId]);
+    if (initialOnlineTab) {
+      setActiveOnlineTab(initialOnlineTab);
+    }
+  }, [activeSportId, initialOnlineTab]);
 
   const showHubTab = activeOnlineTab === "hub";
   const showFriendsTab = activeOnlineTab === "friends";

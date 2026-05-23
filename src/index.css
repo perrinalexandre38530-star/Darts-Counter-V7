@@ -95,17 +95,27 @@ h1.title-xl{
 /* ====== Bottom Nav — style “pills” capturé ====== */
 .bottom-nav{
   position:fixed; left:0; right:0; bottom:0; z-index:60;
-  display:flex; gap:10px; justify-content:space-between;
+  display:flex; gap:10px; justify-content:flex-start;
   padding:10px 12px calc(12px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg, rgba(8,8,10,.55), rgba(8,8,10,.9));
   border-top:1px solid var(--stroke);
   backdrop-filter: blur(14px);
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  scroll-snap-type:x proximity;
+  scrollbar-width:none;
 }
-.bn-safe{ position:absolute; inset-inline:0; bottom:0; height:env(safe-area-inset-bottom); }
+.bottom-nav::-webkit-scrollbar{ display:none; }
+.bottom-nav::after{
+  content:"";
+  flex:0 0 max(10px, env(safe-area-inset-right));
+}
+.bn-safe{ position:absolute; inset-inline:0; bottom:0; height:env(safe-area-inset-bottom); pointer-events:none; }
 
 .tab.pill{
-  flex:1; min-width:0; background:transparent; border:none; padding:0;
-  color:#d6d6dd; cursor:pointer;
+  flex:0 0 74px; min-width:74px; background:transparent; border:none; padding:0;
+  color:#d6d6dd; cursor:pointer; scroll-snap-align:center;
 }
 .pill .pill-inner{
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -139,8 +149,9 @@ h1.title-xl{
 
 /* très petit écran : masquer labels */
 @media (max-width:360px){
-  .pill .tab-label{ display:none; }
-  .pill .pill-inner{ padding:12px 10px; }
+  .tab.pill{ flex-basis:68px; min-width:68px; }
+  .pill .tab-label{ font-size:10.5px; }
+  .pill .pill-inner{ padding:10px 8px; }
 }
 
 /* ====== Keypad ====== */

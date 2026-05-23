@@ -1789,15 +1789,28 @@ export default function HistoryPage({
       const id = String((p as any)?.id || "").trim();
       if (!id) continue;
       const pi = (p as any)?.privateInfo || (p as any)?.private_info || {};
+      const linkStatus = String(pi.profileFriendLinkStatus || (p as any)?.profileFriendLinkStatus || "").toLowerCase();
+      const statsShared = Boolean(pi.profileFriendStatsShared || linkStatus === "accepted");
       const linkedUserId = String(
-        (p as any)?.linkedFriendUserId ||
-        (p as any)?.linkedUserId ||
-        pi.linkedFriendUserId ||
-        pi.linkedUserId ||
-        pi.onlineUserId ||
-        ""
+        statsShared ? (
+          (p as any)?.linkedFriendUserId ||
+          (p as any)?.linkedUserId ||
+          pi.linkedFriendUserId ||
+          pi.linkedUserId ||
+          pi.onlineUserId ||
+          ""
+        ) : ""
       ).trim();
-      if (linkedUserId) byProfileId.set(id, { profileId: id, profileName: (p as any)?.name || "", linkedUserId, linkedFriendName: pi.linkedFriendName || pi.onlineEmail || "" });
+      if (linkedUserId) {
+        byProfileId.set(id, {
+          profileId: id,
+          profileName: (p as any)?.name || "",
+          linkedUserId,
+          linkedFriendName: pi.linkedFriendName || pi.onlineEmail || "",
+          linkedFriendAvatarUrl: pi.linkedFriendAvatarUrl || (p as any)?.linkedFriendAvatarUrl || "",
+          profileFriendLinkId: pi.profileFriendLinkId || "",
+        });
+      }
     }
 
     const payload: any = packet.payload && typeof packet.payload === "object" ? packet.payload : {};
@@ -1805,7 +1818,7 @@ export default function HistoryPage({
     const linkedPlayers = players.map((pl: any) => {
       const localProfileId = String(pl?.id || pl?.profileId || "").trim();
       const link = localProfileId ? byProfileId.get(localProfileId) : null;
-      return link ? { ...pl, localProfileId, linkedUserId: link.linkedUserId, linkedFriendName: link.linkedFriendName } : pl;
+      return link ? { ...pl, localProfileId, linkedUserId: link.linkedUserId, linkedFriendName: link.linkedFriendName, linkedFriendAvatarUrl: link.linkedFriendAvatarUrl, profileFriendLinkId: link.profileFriendLinkId } : pl;
     });
 
     return {

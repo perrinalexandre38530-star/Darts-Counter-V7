@@ -23,6 +23,7 @@ type TabKey =
   | "profiles"
   | "friends"
   | "online"
+  | "messages"
   | "stats"
   | "statsHub"
   | "settings"
@@ -126,6 +127,16 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
+
+    case "messages":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 5.5h16v10.5H8l-4 3.5V5.5Z" />
+          <path {...p} d="M8 9h8" />
+          <path {...p} d="M8 12.5h5.5" />
+        </svg>
+      );
+
     case "stats":
     case "statsHub":
       return (
@@ -217,11 +228,18 @@ export default function BottomNav({
 
   const tabs: NavItem[] = [
     { k: "home", label: "Accueil", icon: <Icon name="home" /> },
-    { k: "profiles", label: "Profils", icon: <Icon name="profiles" /> },
-    { k: "games", label: "Local", icon: <Icon name="games" /> },
-    { k: "tournaments", label: sportLc === "babyfoot" ? "Compétition" : "Tournois", icon: <Icon name="tournaments" /> },
 
-    ...(hideOnline ? [] : [{ k: "online", label: "Online", icon: <Icon name="friends" /> }]),
+    ...(hideOnline ? [] : [
+      { k: "messages", label: "Messages", icon: <Icon name="messages" /> },
+    ]),
+
+    { k: "profiles", label: "Profils", icon: <Icon name="profiles" /> },
+    { k: "games", label: "Jeux", icon: <Icon name="games" /> },
+    { k: "tournaments", label: "Compétitions", icon: <Icon name="tournaments" /> },
+
+    ...(hideOnline ? [] : [
+      { k: "online", label: "Online", icon: <Icon name="friends" /> },
+    ]),
 
     { k: "stats", label: "Stats", icon: <Icon name="stats" /> },
     { k: "settings", label: "Réglages", icon: <Icon name="settings" /> },
@@ -261,7 +279,8 @@ export default function BottomNav({
         const activeTournaments = t.k === "tournaments" && isTournamentRoute;
         const activeScreens = t.k === "cast_host" && (value === "viewer_host" || value === "cast_room");
         const activeOnline = t.k === "online" && (value === "online" || value === "friends");
-        const active = value === t.k || activeStats || activeTournaments || activeScreens || activeOnline;
+        const activeMessages = t.k === "messages" && value === "messages";
+        const active = value === t.k || activeStats || activeTournaments || activeScreens || activeOnline || activeMessages;
 
         const halo = active ? accent : "transparent";
 

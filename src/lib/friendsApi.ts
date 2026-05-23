@@ -210,3 +210,31 @@ export async function deleteProfileFriendLink(id: string) {
   const res = await apiDelete(`/online/profile-links/${qs(id)}`);
   return res?.link ?? res;
 }
+
+
+export type PrivateMessageItem = {
+  id: string;
+  threadId?: string;
+  text: string;
+  status?: "sent" | "read" | string;
+  createdAt?: string;
+  readAt?: string | null;
+  direction?: "incoming" | "outgoing";
+  fromUser?: OnlineFriendUser & { email?: string | null };
+  toUser?: OnlineFriendUser & { email?: string | null };
+};
+
+export async function listPrivateMessages(): Promise<PrivateMessageItem[]> {
+  const res = await apiGet("/online/private-messages");
+  return Array.isArray(res?.messages) ? res.messages : [];
+}
+
+export async function sendPrivateMessage(toUserId: string, text: string) {
+  const res = await apiPost("/online/private-messages", { toUserId, text });
+  return res?.message ?? res;
+}
+
+export async function markPrivateMessageRead(id: string) {
+  const res = await apiPut(`/online/private-messages/${qs(id)}/read`, {});
+  return res?.message ?? res;
+}

@@ -1017,14 +1017,83 @@ export default function Profiles({
     setProfileFriendLinksLoading(true);
     try {
       const links = await listProfileFriendLinks();
-      setProfileFriendLinks(Array.isArray(links) ? links : []);
+      const safeLinks = Array.isArray(links) ? links : [];
+      setProfileFriendLinks(safeLinks);
+
+      // Synchronise le statut accepté/refusé dans les profils locaux.
+      // Objectif : l’écran Profils affiche immédiatement "Validé", et les exports/partages
+      // embarquent uniquement les liens validés pour fusionner proprement stats + avatars.
+      const localProfiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+      if (localProfiles.length) {
+        let changed = false;
+        const nextProfiles = localProfiles.map((p: any) => {
+          const pid = String(p?.id || "").trim();
+          if (!pid) return p;
+          const pi = p?.privateInfo || p?.private_info || {};
+          const storedLinkId = String(pi?.profileFriendLinkId || "").trim();
+          const storedFriendId = String(pi?.linkedFriendUserId || pi?.linkedUserId || p?.linkedFriendUserId || p?.linkedUserId || "").trim();
+
+          const link: any = safeLinks.find((row: any) => {
+            if (row?.direction !== "outgoing") return false;
+            const sameLink = storedLinkId && String(row?.id || "") === storedLinkId;
+            const sameProfile = String(row?.localProfileId || "") === pid;
+            const targetId = String(row?.targetUser?.userId || row?.targetUser?.id || row?.friendUserId || "").trim();
+            const sameFriend = storedFriendId && targetId === storedFriendId;
+            return sameLink || (sameProfile && (!storedFriendId || sameFriend));
+          });
+          if (!link) return p;
+
+          const status = String(link?.status || "pending").toLowerCase();
+          const target = link?.targetUser || link?.friend || {};
+          const friendUserId = String(target?.userId || target?.id || link?.friendUserId || storedFriendId || "").trim();
+          const friendName = String(target?.displayName || target?.nickname || link?.friendDisplayName || pi?.linkedFriendName || "").trim();
+          const friendAvatarUrl = String(target?.avatarUrl || link?.friendAvatarUrl || pi?.linkedFriendAvatarUrl || "").trim();
+
+          const nextInfo = {
+            ...pi,
+            linkedFriendUserId: friendUserId || pi?.linkedFriendUserId,
+            linkedUserId: friendUserId || pi?.linkedUserId,
+            linkedFriendName: friendName || pi?.linkedFriendName,
+            linkedFriendAvatarUrl: friendAvatarUrl || pi?.linkedFriendAvatarUrl || null,
+            profileFriendLinkId: String(link?.id || storedLinkId || ""),
+            profileFriendLinkStatus: status,
+            profileFriendLinkUpdatedAt: String(link?.updatedAt || new Date().toISOString()),
+            profileFriendStatsShared: status === "accepted",
+          };
+
+          const prevStatus = String(pi?.profileFriendLinkStatus || "").toLowerCase();
+          if (
+            prevStatus !== status ||
+            String(pi?.linkedFriendUserId || pi?.linkedUserId || "") !== String(nextInfo.linkedFriendUserId || nextInfo.linkedUserId || "") ||
+            String(pi?.linkedFriendAvatarUrl || "") !== String(nextInfo.linkedFriendAvatarUrl || "")
+          ) {
+            changed = true;
+            return {
+              ...p,
+              linkedFriendUserId: nextInfo.linkedFriendUserId,
+              linkedUserId: nextInfo.linkedUserId,
+              linkedFriendName: nextInfo.linkedFriendName,
+              linkedFriendAvatarUrl: nextInfo.linkedFriendAvatarUrl,
+              privateInfo: nextInfo,
+              updatedAt: Date.now(),
+            };
+          }
+          return p;
+        });
+
+        if (changed) {
+          update((prev: any) => ({ ...(prev || {}), profiles: nextProfiles }));
+          writeProfilesCache(nextProfiles as any);
+          scheduleProfilesPersist("profiles_friend_link_status_sync", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 2500 });
+        }
+      }
     } catch (error) {
       console.warn("[Profiles] listProfileFriendLinks error", error);
       setProfileFriendLinks([]);
     } finally {
       setProfileFriendLinksLoading(false);
     }
-  }, [auth.status]);
+  }, [auth.status, store, update, scheduleProfilesPersist]);
 
   React.useEffect(() => {
     if (view !== "friends") return;

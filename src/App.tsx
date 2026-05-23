@@ -184,6 +184,7 @@ import StatsOnline from "./pages/StatsOnline";
 import Profiles from "./pages/Profiles";
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
+const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
@@ -809,6 +810,7 @@ type Tab =
   | "profiles_bots"
   | "friends"
   | "online"
+  | "messages"
   | "spectator"
   | "settings"
   | "stats"
@@ -1997,6 +1999,11 @@ useEffect(() => {
         setTab("online");
         return;
       }
+      if (h.startsWith("#/messages")) {
+        setRouteParams(null);
+        setTab("messages");
+        return;
+      }
       if (h.startsWith("#/spectator")) {
         setRouteParams(null);
         setTab("spectator");
@@ -2109,6 +2116,7 @@ useEffect(() => {
       else if (next === "auth_v7_login") window.location.hash = "#/auth/login";
       else if (next === "auth_v7_signup") window.location.hash = "#/auth/signup";
       else if (next === "online") window.location.hash = "#/online";
+      else if (next === "messages") window.location.hash = "#/messages";
       else if (next === "spectator") window.location.hash = "#/spectator";
       else if (next === "cast_host") {
         const screenTab = String(params?.screenTab || "").toLowerCase();
@@ -2124,6 +2132,7 @@ useEffect(() => {
         if (
           h.startsWith("#/auth/") ||
           h.startsWith("#/online") ||
+          h.startsWith("#/messages") ||
           h.startsWith("#/spectator") ||
           h.startsWith("#/cast") ||
           h.startsWith("#/viewer")
@@ -3805,6 +3814,10 @@ case "babyfoot_team_edit":
 
       case "online":
         page = <FriendsPage store={store} update={update} go={go} />;
+        break;
+
+      case "messages":
+        page = <MessagesPage store={store} update={update} go={go} params={routeParams} />;
         break;
 
       case "spectator":
