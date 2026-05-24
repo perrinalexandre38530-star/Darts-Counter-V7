@@ -197,6 +197,28 @@ function userAvg3d(user?: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function userIdOf(user?: any): string {
+  return String(user?.userId || user?.id || user?.user_id || "").trim();
+}
+
+function userLevelStars(user?: any): number {
+  const raw = user?.profileStars ?? user?.profileStarRating ?? user?.stars ?? user?.levelStars ?? user?.level ?? user?.stats?.level ?? 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.max(1, Math.min(5, Math.round(n)));
+}
+
+function userStatNumber(user: any, keys: string[], fallback = 0): number {
+  const bags = [user, user?.stats, user?.profileStats, user?.statsMeta, user?.metadata].filter(Boolean);
+  for (const bag of bags) {
+    for (const key of keys) {
+      const n = Number(bag?.[key]);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return fallback;
+}
+
 function FriendRequestUserCard({
   user,
   tone,
@@ -278,7 +300,7 @@ function ChatActionIcon({ name, size = 18 }: { name: "reply" | "edit" | "copy" |
 }
 
 
-function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "video" | "clip" | "camera" | "mic" | "smile" | "send" | "more"; size?: number }) {
+function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "video" | "clip" | "camera" | "mic" | "smile" | "stats" | "send" | "more"; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
   if (name === "back") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M15 18 9 12l6-6"/><path {...p} d="M10 12h10"/></svg>;
   if (name === "phone") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.45 2.1L8 9.7a16 16 0 0 0 6.3 6.3l1.3-1.25a2 2 0 0 1 2.1-.45c.8.3 1.7.5 2.6.6A2 2 0 0 1 22 16.9Z"/></svg>;
@@ -287,6 +309,7 @@ function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "vide
   if (name === "camera") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M14.5 4 16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1.5-2h5Z"/><circle {...p} cx="12" cy="13" r="3"/></svg>;
   if (name === "mic") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="9" y="2" width="6" height="12" rx="3"/><path {...p} d="M5 10a7 7 0 0 0 14 0"/><path {...p} d="M12 17v5"/></svg>;
   if (name === "smile") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="9"/><path {...p} d="M8 14s1.5 2 4 2 4-2 4-2"/><path {...p} d="M9 9h.01M15 9h.01"/></svg>;
+  if (name === "stats") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 19V5"/><path {...p} d="M4 19h16"/><rect {...p} x="7" y="11" width="3" height="5" rx="1"/><rect {...p} x="12" y="7" width="3" height="9" rx="1"/><rect {...p} x="17" y="9" width="3" height="7" rx="1"/></svg>;
   if (name === "send") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M22 2 11 13"/><path {...p} d="m22 2-7 20-4-9-9-4 20-7Z"/></svg>;
   return <MessageMenuIcon size={size} />;
 }
@@ -767,10 +790,36 @@ export default function MessagesPage({ store, update, go }: Props) {
       .sort((a, b) => b.lastAt - a.lastAt);
   }, [privateMessages]);
 
-  const selectedThreadBase = messageThreads.find((t) => t.id === selectedThreadUserId) || messageThreads[0] || null;
-  const selectedFriend = selectedThreadBase ? friends.find((f: any) => String(f?.userId || f?.id || "") === String(selectedThreadBase.id)) : null;
-  const selectedThread = selectedThreadBase ? { ...selectedThreadBase, user: { ...(selectedThreadBase.user || {}), ...(selectedFriend || {}) } } : null;
-  const displayedMessages = selectedThread ? selectedThread.messages : privateMessages;
+  const allMessengerContacts = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const friend of friends as any[]) {
+      const id = userIdOf(friend);
+      if (id) map.set(id, { ...(friend || {}), id, userId: id, fromFriendList: true });
+    }
+    for (const thread of messageThreads as any[]) {
+      const id = String(thread.id || "").trim();
+      if (!id) continue;
+      map.set(id, { ...(thread.user || {}), ...(map.get(id) || {}), id, userId: id, thread });
+    }
+    return Array.from(map.values()).sort((a: any, b: any) => {
+      const ta = Number(a?.thread?.lastAt || 0);
+      const tb = Number(b?.thread?.lastAt || 0);
+      if (tb !== ta) return tb - ta;
+      const sa = presenceState(a?.status || a?.presenceStatus).key === "online" ? 1 : 0;
+      const sb = presenceState(b?.status || b?.presenceStatus).key === "online" ? 1 : 0;
+      if (sb !== sa) return sb - sa;
+      return asUserName(a).localeCompare(asUserName(b), "fr");
+    });
+  }, [friends, messageThreads]);
+
+  const selectedThreadBase = messageThreads.find((t) => t.id === selectedThreadUserId) || null;
+  const selectedFriend = selectedThreadUserId ? friends.find((f: any) => userIdOf(f) === String(selectedThreadUserId)) : null;
+  const selectedThread = selectedThreadBase
+    ? { ...selectedThreadBase, user: { ...(selectedThreadBase.user || {}), ...(selectedFriend || {}) } }
+    : selectedFriend
+      ? { id: userIdOf(selectedFriend), user: selectedFriend, messages: [] as PrivateMessageItem[], unread: 0, lastAt: 0 }
+      : null;
+  const displayedMessages = selectedThread ? selectedThread.messages : [];
 
   const counters = {
     messages: unreadPrivateMessages,
@@ -1045,6 +1094,19 @@ export default function MessagesPage({ store, update, go }: Props) {
     setOpenMessageMenuId("");
   }
 
+  function openStatsComparator() {
+    setEmojiOpen(false);
+    setConversationOptionsOpen(false);
+    setOpenMessageMenuId("");
+    setConversationPanel({
+      type: "stats",
+      title: "Comparateur de stats",
+      text: selectedThread?.user
+        ? `Comparaison rapide entre ton profil et ${asUserName(selectedThread.user)}.`
+        : "Choisis un ami pour comparer les statistiques de la discussion.",
+    });
+  }
+
   async function toggleRecording() {
     if (isRecording) {
       try { recorderRef.current?.stop(); } catch {}
@@ -1222,7 +1284,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                 <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => { setInfo("Conversation marquée comme lue ✅"); setConversationOptionsOpen(false); }).catch((e: any) => setError(e?.message || String(e)))} />
                 <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); loadAll(); }} />
                 <ActionButton label="Notifications" tone={GOLD} onClick={() => { setConversationOptionsOpen(false); activatePhoneNotifications(); }} />
-                <ActionButton label="Invitations Online" tone={BLUE} onClick={openOnline} />
+                <ActionButton label="Invitations Online" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); setChatFullscreen(false); setActive("invites"); }} />
               </div>
             </div>
           ) : null}
@@ -1254,12 +1316,27 @@ export default function MessagesPage({ store, update, go }: Props) {
                 </div>
               </div>
             ) : null}
-            {conversationPanel.type === "options" ? (
+            {conversationPanel.type === "stats" ? (
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {[
+                  ["AVG X01", userStatNumber(store?.activeProfile || store?.profile || {}, ["avg3d", "avg3", "average3"], 0), userStatNumber(selectedThread?.user || {}, ["avg3d", "avg3", "average3"], 0)],
+                  ["CO %", userStatNumber(store?.activeProfile || store?.profile || {}, ["checkoutRate", "coPercent", "checkoutPercent"], 0), userStatNumber(selectedThread?.user || {}, ["checkoutRate", "coPercent", "checkoutPercent"], 0)],
+                  ["Cricket MPR", userStatNumber(store?.activeProfile || store?.profile || {}, ["mpr", "cricketMpr"], 0), userStatNumber(selectedThread?.user || {}, ["mpr", "cricketMpr"], 0)],
+                  ["Victoires", userStatNumber(store?.activeProfile || store?.profile || {}, ["wins", "victories", "totalWins"], 0), userStatNumber(selectedThread?.user || {}, ["wins", "victories", "totalWins"], 0)],
+                ].map(([label, me, other]: any) => (
+                  <div key={label} style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr .8fr", gap: 8, alignItems: "center", border: `1px solid ${STROKE}`, borderRadius: 12, padding: "7px 9px", background: "rgba(255,255,255,.035)" }}>
+                    <span style={{ color: "rgba(255,255,255,.62)", fontSize: 11, fontWeight: 900 }}>{label}</span>
+                    <span style={{ color: BLUE, fontSize: 12, fontWeight: 1000, textAlign: "center" }}>Toi<br />{Number(me || 0).toFixed(label.includes("%") ? 0 : 1)}</span>
+                    <span style={{ color: GREEN, fontSize: 12, fontWeight: 1000, textAlign: "center" }}>{asUserName(selectedThread?.user || {})}<br />{Number(other || 0).toFixed(label.includes("%") ? 0 : 1)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : conversationPanel.type === "options" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7, marginTop: 10 }}>
                 <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => setInfo("Conversation marquée comme lue ✅")).catch((e: any) => setError(e?.message || String(e)))} />
                 <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
                 <ActionButton label="Notifications" tone={GOLD} onClick={activatePhoneNotifications} />
-                <ActionButton label="Invitations Online" tone={BLUE} onClick={openOnline} />
+                <ActionButton label="Invitations Online" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); setChatFullscreen(false); setActive("invites"); }} />
               </div>
             ) : (
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -1455,6 +1532,7 @@ export default function MessagesPage({ store, update, go }: Props) {
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
               <RoundMessengerButton title="Emoji" tone={BLUE} onClick={() => { setEmojiOpen((v) => !v); setConversationPanel(null); }}><MessengerToolIcon name="smile" /></RoundMessengerButton>
+              <RoundMessengerButton title="Comparer les stats" tone={GOLD} onClick={openStatsComparator}><MessengerToolIcon name="stats" /></RoundMessengerButton>
               <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => attachInputRef.current?.click()}><MessengerToolIcon name="clip" /></RoundMessengerButton>
               <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => photoInputRef.current?.click()}><MessengerToolIcon name="camera" /></RoundMessengerButton>
               <RoundMessengerButton title={isRecording ? "Stopper et envoyer le vocal" : "Message vocal"} tone={isRecording ? RED : GREEN} onClick={toggleRecording}><MessengerToolIcon name="mic" /></RoundMessengerButton>
@@ -1690,56 +1768,102 @@ export default function MessagesPage({ store, update, go }: Props) {
 
           {chatMode === "messenger" ? (
             <>
-          {messageThreads.length ? (
-            <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "2px 0 12px", scrollbarWidth: "none" as any }}>
-              {messageThreads.map((thread) => {
-                const selected = selectedThread?.id === thread.id;
-                const friend = friends.find((f: any) => String(f?.userId || f?.id || "") === String(thread.id));
-                const user = { ...(thread.user || {}), ...(friend || {}) };
-                return (
-                  <button
-                    key={thread.id}
-                    type="button"
-                    onClick={() => openMessengerThread(thread.id, thread.unread)}
-                    style={{
-                      position: "relative",
-                      flex: "0 0 86px",
-                      width: 86,
-                      minHeight: 98,
-                      border: `1px solid ${selected ? BLUE : "rgba(255,255,255,.10)"}`,
-                      borderRadius: 24,
-                      padding: "10px 7px 8px",
-                      background: selected
-                        ? "radial-gradient(110% 120% at 50% 0%, rgba(121,200,255,.20), rgba(255,255,255,.04) 58%, rgba(0,0,0,.36))"
-                        : "linear-gradient(180deg, rgba(255,255,255,.040), rgba(255,255,255,.018))",
-                      color: "#fff",
-                      display: "grid",
-                      justifyItems: "center",
-                      gap: 7,
-                      boxShadow: selected ? "0 0 22px rgba(121,200,255,.25), inset 0 1px 0 rgba(255,255,255,.08)" : "inset 0 1px 0 rgba(255,255,255,.055)",
-                      cursor: "pointer",
-                    }}
-                    title={`${asUserName(user)} • ${presenceState(user?.status || user?.presenceStatus).label}`}
-                  >
-                    <AvatarBubble user={user} size={54} selected={selected} />
-                    <div style={{ width: "100%", fontWeight: 1000, fontSize: 12.5, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(user)}</div>
-                    {thread.unread > 0 ? (
-                      <span style={{ position: "absolute", top: 4, right: 5, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: GREEN, color: "#07120b", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 1000, boxShadow: `0 0 14px ${GREEN}88` }}>
-                        {thread.unread > 99 ? "99+" : thread.unread}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+              {allMessengerContacts.length ? (
+                <>
+                  <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "2px 0 12px", scrollbarWidth: "none" as any }}>
+                    {allMessengerContacts.slice(0, 24).map((user: any) => {
+                      const id = userIdOf(user);
+                      const thread = messageThreads.find((t: any) => String(t.id) === id);
+                      const selected = selectedThreadUserId === id;
+                      return (
+                        <button
+                          key={`avatar-${id}`}
+                          type="button"
+                          onClick={() => openMessengerThread(id, thread?.unread || 0)}
+                          style={{
+                            position: "relative",
+                            flex: "0 0 86px",
+                            width: 86,
+                            minHeight: 98,
+                            border: `1px solid ${selected ? BLUE : "rgba(255,255,255,.10)"}`,
+                            borderRadius: 24,
+                            padding: "10px 7px 8px",
+                            background: selected
+                              ? "radial-gradient(110% 120% at 50% 0%, rgba(121,200,255,.20), rgba(255,255,255,.04) 58%, rgba(0,0,0,.36))"
+                              : "linear-gradient(180deg, rgba(255,255,255,.040), rgba(255,255,255,.018))",
+                            color: "#fff",
+                            display: "grid",
+                            justifyItems: "center",
+                            gap: 7,
+                            boxShadow: selected ? "0 0 22px rgba(121,200,255,.25), inset 0 1px 0 rgba(255,255,255,.08)" : "inset 0 1px 0 rgba(255,255,255,.055)",
+                            cursor: "pointer",
+                          }}
+                          title={`${asUserName(user)} • ${presenceState(user?.status || user?.presenceStatus).label}`}
+                        >
+                          <AvatarBubble user={user} size={54} selected={selected} />
+                          <div style={{ width: "100%", fontWeight: 1000, fontSize: 12.5, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(user)}</div>
+                          {(thread?.unread || 0) > 0 ? (
+                            <span style={{ position: "absolute", top: 4, right: 5, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: GREEN, color: "#07120b", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 1000, boxShadow: `0 0 14px ${GREEN}88` }}>
+                              {thread.unread > 99 ? "99+" : thread.unread}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-          <div style={cardStyle({ marginBottom: 10, borderColor: `${BLUE}33`, padding: 12 })}>
-            <div style={{ color: "#fff", fontWeight: 1000, fontSize: 13 }}>Sélectionne un avatar pour ouvrir la conversation.</div>
-            <div style={{ color: "rgba(255,255,255,.58)", fontSize: 11.5, marginTop: 4 }}>
-              La discussion s’ouvre maintenant sur une vraie page plein écran avec header T’Chat Messenger, BackDot, appels, visio, pièces jointes, photo et vocal.
-            </div>
-          </div>
+                  <div style={{ display: "grid", gap: 9, marginBottom: 12 }}>
+                    {allMessengerContacts.map((user: any) => {
+                      const id = userIdOf(user);
+                      const thread = messageThreads.find((t: any) => String(t.id) === id);
+                      const st = presenceState(user?.status || user?.presenceStatus);
+                      const flag = countryFlagEmoji(user?.countryCode || user?.country_code);
+                      const level = userLevelStars(user);
+                      const email = userEmail(user);
+                      return (
+                        <button
+                          key={`friend-row-${id}`}
+                          type="button"
+                          onClick={() => openMessengerThread(id, thread?.unread || 0)}
+                          style={{
+                            border: `1px solid ${thread?.unread ? GREEN : STROKE}`,
+                            borderRadius: 18,
+                            padding: "10px 11px",
+                            background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018))",
+                            color: "#fff",
+                            display: "grid",
+                            gridTemplateColumns: "auto 1fr auto",
+                            alignItems: "center",
+                            gap: 11,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ position: "relative", width: 58, height: 66, display: "grid", placeItems: "end center" }}>
+                            {level > 0 ? <div style={{ position: "absolute", top: -3, left: 0, right: 0, textAlign: "center", color: GOLD, fontSize: 10, fontWeight: 1000, letterSpacing: -1 }}>{"★".repeat(level)}</div> : null}
+                            <AvatarBubble user={user} size={50} selected={false} />
+                            {flag ? <span style={{ position: "absolute", left: -4, bottom: 4, width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(0,0,0,.72)", border: `1px solid ${STROKE}`, fontSize: 13 }}>{flag}</span> : null}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontWeight: 1000, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(user)}</span>
+                              <span style={{ width: 8, height: 8, borderRadius: 999, background: st.color, boxShadow: `0 0 10px ${st.color}` }} />
+                            </div>
+                            <div style={{ color: "rgba(255,255,255,.52)", fontSize: 10.5, fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email || st.label}</div>
+                            {thread?.messages?.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(thread.messages[thread.messages.length - 1]?.text || "")}</div> : null}
+                          </div>
+                          <div style={{ display: "grid", justifyItems: "end", gap: 5 }}>
+                            <span style={{ color: st.color, fontSize: 10, fontWeight: 1000 }}>{st.label}</span>
+                            {(thread?.unread || 0) > 0 ? <Pill tone={GREEN}>{thread.unread}</Pill> : <span style={{ color: BLUE, fontSize: 18 }}>›</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <EmptyCard icon="👥" title="Aucun ami disponible" text="Ajoute ou accepte des amis pour démarrer une discussion privée." />
+              )}
             </>
           ) : chatMode === "group" ? (
             <div style={cardStyle({ borderColor: "rgba(199,139,255,.30)" })}>
