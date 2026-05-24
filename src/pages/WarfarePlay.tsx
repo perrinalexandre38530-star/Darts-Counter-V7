@@ -7,6 +7,7 @@
 // ============================================
 
 import React from "react";
+import { parseBotLevelValue } from "../lib/bots";
 import { useViewport } from "../hooks/useViewport";
 import type { Dart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -48,12 +49,8 @@ function zoneAllowed(mult: 1 | 2 | 3, rule: WarfareZoneRule) {
 
 
 function normalizeBotSkill(raw?: string | null) {
-  const v = String(raw || "").trim().toLowerCase();
-  if (v.includes("legend")) return 0.8;
-  if (v.includes("pro")) return 0.68;
-  if (v.includes("strong") || v.includes("fort") || v.includes("hard")) return 0.58;
-  if (v.includes("medium") || v.includes("standard") || v.includes("normal")) return 0.44;
-  return 0.3;
+  const lvl = parseBotLevelValue(raw, 2);
+  return Math.max(0.3, Math.min(0.8, 0.2 + lvl * 0.12));
 }
 
 function makeWarfareBotVolley(opts: { activeRule: WarfareZoneRule; enemyTargets: number[]; selfTargets: number[]; friendlyFire: boolean; skill: number }): Dart[] {

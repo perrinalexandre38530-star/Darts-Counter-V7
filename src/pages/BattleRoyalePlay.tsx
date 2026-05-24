@@ -13,6 +13,7 @@
 // ============================================
 
 import React from "react";
+import { parseBotLevelValue } from "../lib/bots";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
@@ -106,12 +107,8 @@ function pointsOnTarget(target: number, d: UIDart) {
 
 
 function normalizeBotSkill(raw?: string | null) {
-  const v = String(raw || "").trim().toLowerCase();
-  if (v.includes("legend")) return 0.76;
-  if (v.includes("pro")) return 0.66;
-  if (v.includes("strong") || v.includes("fort") || v.includes("hard")) return 0.56;
-  if (v.includes("medium") || v.includes("standard") || v.includes("normal")) return 0.42;
-  return 0.28;
+  const lvl = parseBotLevelValue(raw, 2);
+  return Math.max(0.28, Math.min(0.76, 0.18 + lvl * 0.116));
 }
 
 function makeBattleRoyaleBotVolley(target: number, skill: number, dartsPerTurn: number): UIDart[] {

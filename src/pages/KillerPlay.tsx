@@ -28,6 +28,7 @@
 // ============================================
 
 import React from "react";
+import { parseBotLevelValue } from "../lib/bots";
 import { useViewport } from "../hooks/useViewport";
 import type { Store, MatchRecord, Dart as UIDart } from "../lib/types";
 import { History } from "../lib/history";
@@ -392,26 +393,7 @@ function firstFreeNumber(players: any[], excludeIndex: number) {
 // BOT helpers
 // -----------------------------
 function resolveBotSkill(botLevelRaw?: string | null): number {
-  const v = String(botLevelRaw || "").toLowerCase().trim();
-  if (!v) return 2;
-
-  const digits = v.replace(/[^0-9]/g, "");
-  if (digits) {
-    const n = parseInt(digits, 10);
-    if (Number.isFinite(n)) return Math.max(1, Math.min(5, n));
-  }
-
-  if (v.includes("legend") || v.includes("légende")) return 5;
-  if (v.includes("prodige")) return 4;
-  if (v.includes("pro")) return 4;
-  if (v.includes("fort") || v.includes("hard") || v.includes("difficile"))
-    return 3;
-  if (v.includes("standard") || v.includes("normal") || v.includes("moyen"))
-    return 2;
-  if (v.includes("easy") || v.includes("facile") || v.includes("débutant"))
-    return 1;
-
-  return 2;
+  return Math.max(1, Math.min(5, parseBotLevelValue(botLevelRaw, 2)));
 }
 
 function rand01() {

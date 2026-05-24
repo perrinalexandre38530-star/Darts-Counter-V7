@@ -11,6 +11,7 @@
 // =============================================================
 
 import * as React from "react";
+import { parseBotLevelValue } from "../lib/bots";
 
 // -----------------------------
 // Types
@@ -157,28 +158,7 @@ function normalizeNumber(num: number) {
 }
 
 function resolveBotLevel(botLevelRaw?: string | null): number {
-  const v = (botLevelRaw || "").toLowerCase().trim();
-  if (!v) return 1;
-
-  const fraction = v.match(/([1-5](?:[\.,]5)?)\s*\/\s*5/);
-  if (fraction) {
-    const n = Number(fraction[1].replace(",", "."));
-    if (Number.isFinite(n)) return Math.max(1, Math.min(5, n));
-  }
-
-  const decimal = v.match(/\b([1-5](?:[\.,]5)?)\b/);
-  if (decimal) {
-    const n = Number(decimal[1].replace(",", "."));
-    if (Number.isFinite(n)) return Math.max(1, Math.min(5, n));
-  }
-
-  if (v.includes("legend") || v.includes("légende") || v.includes("prodige")) return 5;
-  if (v.includes("pro")) return 4;
-  if (v.includes("fort") || v.includes("hard") || v.includes("difficile")) return 3;
-  if (v.includes("standard") || v.includes("normal") || v.includes("medium") || v.includes("moyen")) return 2;
-  if (v.includes("easy") || v.includes("facile") || v.includes("beginner") || v.includes("débutant")) return 1;
-
-  return 1;
+  return Math.max(1, Math.min(5, parseBotLevelValue(botLevelRaw, 1)));
 }
 
 function pickBotMult(level: number): Mult {

@@ -15,6 +15,7 @@
 // ============================================
 
 import React from "react";
+import { parseBotLevelValue } from "../lib/bots";
 import { History } from "../lib/history";
 import BackDot from "../components/BackDot";
 import { useViewport } from "../hooks/useViewport";
@@ -301,12 +302,8 @@ function pct(n: number) {
 
 
 function normalizeBotSkill(raw?: string | null) {
-  const v = String(raw || "").trim().toLowerCase();
-  if (v.includes("legend")) return 0.78;
-  if (v.includes("pro")) return 0.68;
-  if (v.includes("strong") || v.includes("fort") || v.includes("hard")) return 0.58;
-  if (v.includes("medium") || v.includes("standard") || v.includes("normal")) return 0.44;
-  return 0.3;
+  const lvl = parseBotLevelValue(raw, 2);
+  return Math.max(0.3, Math.min(0.78, 0.18 + lvl * 0.12));
 }
 
 function makeShanghaiBotVolley(target: number, skill: number): UIDart[] {

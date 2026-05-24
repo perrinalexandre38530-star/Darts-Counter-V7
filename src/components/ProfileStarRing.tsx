@@ -8,15 +8,24 @@
 // ============================================
 
 import React from "react";
+import { botLevelToStarAvg3d } from "../lib/bots";
 
 type Props = {
-  anchorSize: number;     // diamètre du médaillon
+  anchorSize?: number;    // diamètre du médaillon
+  size?: number;          // alias historique de anchorSize
   avg3d?: number;         // moyenne 0..180
+  score?: number;         // alias historique
+  profile?: any;          // compat : certains écrans passent directement le profil/BOT
+  botLevel?: any;         // compat directe
   starSize?: number;      // taille d’une étoile (px)
   gapPx?: number;         // distance depuis le bord du médaillon (px)
   stepDeg?: number;       // écart angulaire entre étoiles (°)
   rotationDeg?: number;   // rotation globale (°)
   animateGlow?: boolean;  // légère pulsation
+  glow?: boolean;         // alias historique
+  color?: string;         // ignoré volontairement : couleurs internes du ring
+  theme?: any;            // compat anciens appels
+  active?: boolean;       // compat anciens appels
 };
 
 type StarEntry = { color: string; half?: boolean };
@@ -88,14 +97,28 @@ function Star({
 /* --- Composant principal --- */
 export default function ProfileStarRing({
   anchorSize,
-  avg3d = 0,
+  size,
+  avg3d,
+  score: scoreProp,
+  profile,
+  botLevel,
   starSize = 14,
   gapPx = -3,     // collé par défaut
   stepDeg = 10,   // resserré
   rotationDeg = 0,
   animateGlow = false,
+  glow,
 }: Props) {
-  const score = Math.max(0, Math.min(180, Math.round(avg3d)));
+  const resolvedAnchorSize = Number(anchorSize ?? size ?? 64) || 64;
+  const profileBotLevel = profile?.botLevel ?? profile?.level ?? botLevel;
+  const rawScore = Number.isFinite(Number(avg3d)) && Number(avg3d) > 0
+    ? Number(avg3d)
+    : Number.isFinite(Number(scoreProp)) && Number(scoreProp) > 0
+      ? Number(scoreProp)
+      : profileBotLevel != null
+        ? botLevelToStarAvg3d(profileBotLevel, 1)
+        : 0;
+  const score = Math.max(0, Math.min(180, Math.round(rawScore)));
 
   // 1★ / 10 pts
   const fullUnder100 = Math.min(10, Math.floor(Math.min(score, 100) / 10));
@@ -133,7 +156,7 @@ export default function ProfileStarRing({
   if (count === 0) return null;
 
   // Rayon centre→étoile
-  const r = anchorSize / 2 + gapPx + starSize / 2;
+  const r = resolvedAnchorSize / 2 + gapPx + starSize / 2;
   const halfSpread = (count - 1) * (stepDeg / 2);
 
   function pol2cart(angleDeg: number) {
@@ -167,7 +190,7 @@ export default function ProfileStarRing({
                 size={starSize}
                 color={e.color}
                 half={e.half}
-                animate={animateGlow}
+                animate={animateGlow || !!glow}
               />
             </div>
           );

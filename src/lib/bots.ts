@@ -351,14 +351,63 @@ function resolveStoredBotAvatar(bot: any): string | null {
   return scanAvatarGalleryForBot(bot?.id);
 }
 
+
+export function parseBotLevelValue(input: any, fallback = 1): number {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return Math.max(1, Math.min(5, Math.round(input * 2) / 2));
+  }
+
+  const raw = String(input ?? "").trim();
+  const v = raw.toLowerCase();
+  if (!v) return fallback;
+
+  // Formats explicites : "4.5/5", "4,5 / 5", "niveau 3.5", etc.
+  const fraction = v.match(/(\d+(?:[.,]\d+)?)\s*\/\s*5/);
+  if (fraction) {
+    const n = Number(String(fraction[1]).replace(",", "."));
+    if (Number.isFinite(n)) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
+  }
+
+  const decimal = v.match(/(?:niveau|level|lvl|botlevel|stars?|étoiles?)?\s*(\d+(?:[.,]\d+)?)/);
+  if (decimal) {
+    const n = Number(String(decimal[1]).replace(",", "."));
+    if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
+  }
+
+  if (v.includes("legend") || v.includes("légende") || v.includes("legende")) return 5;
+  if (v.includes("prodige")) return 4.5;
+  if (v.includes("pro")) return 4;
+  if (v.includes("fort") || v.includes("strong") || v.includes("hard") || v.includes("difficile")) return 3;
+  if (v.includes("standard") || v.includes("regular") || v.includes("medium") || v.includes("normal") || v.includes("moyen")) return 2;
+  if (v.includes("easy") || v.includes("facile") || v.includes("beginner") || v.includes("débutant") || v.includes("debutant") || v.includes("rookie")) return 1;
+
+  return fallback;
+}
+
+export function botLevelToStarAvg3d(input: any, fallback = 1): number {
+  // ProfileStarRing affiche 1 étoile / 10 pts.
+  // Donc un niveau /5 doit être converti sur 10 étoiles :
+  // 3/5 => 60 => 6 étoiles, 3.5/5 => 70 => 7 étoiles, 4.5/5 => 90 => 9 étoiles, 5/5 => 100 => 10 étoiles.
+  return Math.round(parseBotLevelValue(input, fallback) * 20);
+}
+
+export function normalizeBotLevelLabel(input: any): BotLevel {
+  const n = parseBotLevelValue(input, 1);
+  if (n >= 4.75) return "legend";
+  if (n >= 4) return "pro";
+  if (n >= 3) return "strong";
+  if (n >= 2) return "medium";
+  return "easy";
+}
+
 export function normalizeBotLevel(input: any): BotLevel {
   const v = String(input || "").trim().toLowerCase();
   if (v === "easy" || v === "medium" || v === "strong" || v === "pro" || v === "legend") return v;
   if (v === "hard" || v === "fort") return "strong";
   if (v === "debutant" || v === "débutant") return "easy";
-  if (v === "standard" || v === "regular") return "medium";
+  if (v === "standard" || v === "regular" || v === "normal") return "medium";
   if (v === "legende" || v === "légende") return "legend";
-  return "easy";
+  return normalizeBotLevelLabel(input);
 }
 
 export function normalizeBotRecord(input: any): BotRecord {

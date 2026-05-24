@@ -18,7 +18,7 @@
 // ============================================
 
 import React from "react";
-import { loadBotPlayers } from "../lib/bots";
+import { loadBotPlayers, parseBotLevelValue } from "../lib/bots";
 import {
   createCricketMatch,
   applyCricketHit,
@@ -335,11 +335,11 @@ function clampRoundNumber(state: any): number {
 }
 
 function normalizeBotLevel(lvl: any): string {
-  const s = String(lvl || "").toLowerCase();
-  if (s.includes("légende") || s.includes("legend")) return "legend";
-  if (s.includes("prodige")) return "prodigy";
-  if (s.includes("fort") || s.includes("strong")) return "strong";
-  if (s.includes("pro")) return "pro";
+  const n = parseBotLevelValue(lvl, 2);
+  if (n >= 4.75) return "legend";
+  if (n >= 4.5) return "prodigy";
+  if (n >= 4) return "pro";
+  if (n >= 3) return "strong";
   return "normal";
 }
 

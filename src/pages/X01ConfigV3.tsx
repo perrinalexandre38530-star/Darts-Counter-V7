@@ -25,7 +25,7 @@ import {
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
-import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
+import { loadBots as loadStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
@@ -2496,36 +2496,7 @@ function extTestBtn(accent: string): React.CSSProperties {
 /* --------- Helpers niveau BOT (1 à 5 étoiles) --------- */
 
 function resolveBotLevel(botLevelRaw?: string | null): { level: number } {
-  const v = (botLevelRaw || "").toLowerCase().trim();
-  if (!v) return { level: 1 };
-
-  // ✅ Audit niveaux BOT PRO :
-  // Les valeurs "4.5/5" / "3.5/5" étaient lues comme "455" / "355",
-  // donc rejetées puis retombaient à 1 étoile.
-  // On parse d'abord les formats x/5 et les décimales, puis les libellés historiques.
-  const fraction = v.match(/([1-5](?:[\.,]5)?)\s*\/\s*5/);
-  if (fraction) {
-    const n = Number(fraction[1].replace(",", "."));
-    if (Number.isFinite(n)) return { level: Math.max(1, Math.min(5, n)) };
-  }
-
-  const decimal = v.match(/\b([1-5](?:[\.,]5)?)\b/);
-  if (decimal) {
-    const n = Number(decimal[1].replace(",", "."));
-    if (Number.isFinite(n)) return { level: Math.max(1, Math.min(5, n)) };
-  }
-
-  if (v.includes("legend") || v.includes("légende") || v.includes("prodige")) return { level: 5 };
-  if (v.includes("pro")) return { level: 4 };
-
-  if (v.includes("fort") || v.includes("strong") || v.includes("hard") || v.includes("difficile"))
-    return { level: 3 };
-  if (v.includes("standard") || v.includes("normal") || v.includes("medium") || v.includes("moyen"))
-    return { level: 2 };
-  if (v.includes("easy") || v.includes("facile") || v.includes("beginner") || v.includes("débutant") || v.includes("rookie"))
-    return { level: 1 };
-
-  return { level: 1 };
+  return { level: parseBotLevelValue(botLevelRaw, 1) };
 }
 
 /* Médaillon BOT – doré pour les PRO IA, bleu pour les bots classiques */
@@ -2548,8 +2519,8 @@ function BotMedallion({
   const STAR = 18 * SCALE;
   const WRAP = MEDALLION + STAR;
 
-  const lvl = Math.max(1, Math.min(5, level));
-  const fakeAvg3d = Math.round(lvl * 20 + (lvl >= 4 ? 5 : 0));
+  const lvl = Math.max(1, Math.min(5, Number(level) || 1));
+  const fakeAvg3d = botLevelToStarAvg3d(lvl, 1);
 
   return (
     <div style={{ position: "relative", width: WRAP, height: WRAP, flex: "0 0 auto", overflow: "visible" }}>
