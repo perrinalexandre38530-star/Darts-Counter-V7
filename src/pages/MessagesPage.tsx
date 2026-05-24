@@ -526,6 +526,11 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [privateMessages, setPrivateMessages] = React.useState<PrivateMessageItem[]>([]);
   const [messageToUserId, setMessageToUserId] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
+  const [replyToMessage, setReplyToMessage] = React.useState<PrivateMessageItem | null>(null);
+  const [editingMessageId, setEditingMessageId] = React.useState("");
+  const [emojiOpen, setEmojiOpen] = React.useState(false);
+  const [conversationPanel, setConversationPanel] = React.useState<{ type: string; title: string; text: string } | null>(null);
+  const [isRecording, setIsRecording] = React.useState(false);
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
   const [chatFullscreen, setChatFullscreen] = React.useState(false);
   const [openMessageMenuId, setOpenMessageMenuId] = React.useState("");
@@ -535,6 +540,12 @@ export default function MessagesPage({ store, update, go }: Props) {
     return Notification.permission;
   });
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
+  const attachInputRef = React.useRef<HTMLInputElement | null>(null);
+  const photoInputRef = React.useRef<HTMLInputElement | null>(null);
+  const recorderRef = React.useRef<MediaRecorder | null>(null);
+  const recorderChunksRef = React.useRef<Blob[]>([]);
+  const recorderStartedAtRef = React.useRef<number>(0);
+  const callStreamRef = React.useRef<MediaStream | null>(null);
 
   React.useEffect(() => {
     if (!openMessageMenuId) return;
@@ -546,6 +557,13 @@ export default function MessagesPage({ store, update, go }: Props) {
       window.removeEventListener("scroll", close, true);
     };
   }, [openMessageMenuId]);
+
+  React.useEffect(() => {
+    return () => {
+      try { recorderRef.current?.stream?.getTracks?.().forEach((track) => track.stop()); } catch {}
+      try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
+    };
+  }, []);
 
   function broadcastMessageBadge(total: number) {
     const nextTotal = Math.max(0, Math.floor(Number(total || 0)));
@@ -718,10 +736,23 @@ export default function MessagesPage({ store, update, go }: Props) {
       setError("Écris un message avant d’envoyer.");
       return;
     }
+
+    if (editingMessageId) {
+      setPrivateMessages((prev) => prev.map((m: any) => String(m?.id || "") === String(editingMessageId) ? { ...m, text, editedAt: new Date().toISOString() } : m));
+      setInfo("Message modifié localement ✅");
+      setEditingMessageId("");
+      setMessageText("");
+      setOpenMessageMenuId("");
+      return;
+    }
+
+    const replyPrefix = replyToMessage ? `↩ ${String(replyToMessage.text || "").slice(0, 90)}\n` : "";
     await runAction("Message envoyé ✅", async () => {
-      await sendPrivateMessage(toUserId, text);
+      await sendPrivateMessage(toUserId, `${replyPrefix}${text}`);
       setSelectedThreadUserId(toUserId);
       setMessageText("");
+      setReplyToMessage(null);
+      setEmojiOpen(false);
     });
   }
 
@@ -743,6 +774,157 @@ export default function MessagesPage({ store, update, go }: Props) {
     }
   }
 
+
+  function clearConversationTools() {
+    setEmojiOpen(false);
+    setConversationPanel(null);
+    setOpenMessageMenuId("");
+  }
+
+  function insertMessageText(fragment: string) {
+    setMessageText((prev) => `${prev || ""}${fragment}`);
+  }
+
+  function handleReplyMessage(message: PrivateMessageItem) {
+    setReplyToMessage(message);
+    setEditingMessageId("");
+    setMessageText("");
+    setOpenMessageMenuId("");
+    setInfo("Réponse activée : écris ton message puis envoie.");
+  }
+
+  function handleEditMessage(message: PrivateMessageItem) {
+    if ((message as any)?.direction !== "outgoing") {
+      setInfo("Tu ne peux éditer que tes propres messages.");
+      setOpenMessageMenuId("");
+      return;
+    }
+    setEditingMessageId(String((message as any)?.id || ""));
+    setReplyToMessage(null);
+    setMessageText(String((message as any)?.text || ""));
+    setOpenMessageMenuId("");
+    setInfo("Édition activée : modifie le texte puis envoie.");
+  }
+
+  async function handleCopyMessage(message: PrivateMessageItem) {
+    try {
+      await navigator.clipboard?.writeText(String((message as any)?.text || ""));
+      setInfo("Message copié ✅");
+    } catch {
+      setError("Copie impossible sur ce navigateur.");
+    }
+    setOpenMessageMenuId("");
+  }
+
+  async function handleShareMessage(message: PrivateMessageItem) {
+    const text = String((message as any)?.text || "");
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Message Multisports", text });
+        setInfo("Message partagé ✅");
+      } else {
+        await navigator.clipboard?.writeText(text);
+        setInfo("Partage non disponible : message copié ✅");
+      }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") setError(e?.message || "Partage impossible.");
+    }
+    setOpenMessageMenuId("");
+  }
+
+  async function sendSystemChatText(text: string) {
+    const toUserId = String(messageToUserId || selectedThread?.id || "").trim();
+    if (!toUserId) {
+      setError("Choisis un ami destinataire.");
+      return;
+    }
+    await runAction("Élément envoyé ✅", async () => {
+      await sendPrivateMessage(toUserId, text);
+      setSelectedThreadUserId(toUserId);
+    });
+  }
+
+  async function handleSelectedFile(file: File | null, kind: "file" | "photo") {
+    if (!file) return;
+    const sizeKb = Math.max(1, Math.round(file.size / 1024));
+    const label = kind === "photo" ? "📷 Photo" : "📎 Pièce jointe";
+    await sendSystemChatText(`${label} : ${file.name} (${sizeKb} Ko)`);
+  }
+
+  async function openCallPanel(type: "audio" | "video") {
+    clearConversationTools();
+    try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
+    callStreamRef.current = null;
+    try {
+      const media = await navigator.mediaDevices?.getUserMedia?.(type === "video" ? { audio: true, video: true } : { audio: true });
+      callStreamRef.current = media || null;
+      setConversationPanel({
+        type,
+        title: type === "video" ? "Visio prête" : "Appel audio prêt",
+        text: type === "video"
+          ? "Caméra et micro autorisés. Le flux WebRTC peut maintenant être branché sur le salon."
+          : "Micro autorisé. Le flux audio peut maintenant être branché sur le salon.",
+      });
+    } catch (e: any) {
+      setConversationPanel({
+        type,
+        title: type === "video" ? "Visio" : "Appel audio",
+        text: e?.message ? `Autorisation refusée ou indisponible : ${e.message}` : "Autorisation refusée ou indisponible.",
+      });
+    }
+  }
+
+  function closeCallPanel() {
+    try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
+    callStreamRef.current = null;
+    setConversationPanel(null);
+  }
+
+  function openConversationOptions() {
+    setConversationPanel({
+      type: "options",
+      title: "Options conversation",
+      text: "Actions rapides : marquer lu, rafraîchir, notifications téléphone, ouvrir Online.",
+    });
+    setEmojiOpen(false);
+    setOpenMessageMenuId("");
+  }
+
+  async function toggleRecording() {
+    if (isRecording) {
+      try { recorderRef.current?.stop(); } catch {}
+      return;
+    }
+    clearConversationTools();
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Enregistrement vocal non supporté par ce navigateur.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorderChunksRef.current = [];
+      recorderStartedAtRef.current = Date.now();
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) recorderChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        const duration = Math.max(1, Math.round((Date.now() - recorderStartedAtRef.current) / 1000));
+        try { stream.getTracks().forEach((track) => track.stop()); } catch {}
+        setIsRecording(false);
+        recorderRef.current = null;
+        await sendSystemChatText(`🎙️ Message vocal (${duration}s)`);
+      };
+      recorder.start();
+      setIsRecording(true);
+      setInfo("Enregistrement vocal en cours… clique encore sur le micro pour envoyer.");
+    } catch (e: any) {
+      setIsRecording(false);
+      setError(e?.message || "Micro indisponible.");
+    }
+  }
+
   function openMessengerThread(threadId: string, unread = 0) {
     const id = String(threadId || "").trim();
     if (!id) return;
@@ -750,6 +932,10 @@ export default function MessagesPage({ store, update, go }: Props) {
     setMessageToUserId(id);
     setChatFullscreen(true);
     setOpenMessageMenuId("");
+    setEmojiOpen(false);
+    setConversationPanel(null);
+    setReplyToMessage(null);
+    setEditingMessageId("");
     if (unread > 0) {
       const now = new Date().toISOString();
       setPrivateMessages((prev) => prev.map((m: any) => {
@@ -852,14 +1038,39 @@ export default function MessagesPage({ store, update, go }: Props) {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flex: "0 0 auto" }}>
-            <RoundMessengerButton title="Appel audio" tone={GREEN} onClick={() => setInfo("Appel audio : option prête à câbler.")}><MessengerToolIcon name="phone" /></RoundMessengerButton>
-            <RoundMessengerButton title="Visio" tone={BLUE} onClick={() => setInfo("Visio : option prête à câbler.")}><MessengerToolIcon name="video" /></RoundMessengerButton>
-            <RoundMessengerButton title="Options conversation" tone={GOLD} onClick={() => setInfo("Options conversation : option prête à câbler.")}><MessengerToolIcon name="more" /></RoundMessengerButton>
+            <RoundMessengerButton title="Appel audio" tone={GREEN} onClick={() => openCallPanel("audio")}><MessengerToolIcon name="phone" /></RoundMessengerButton>
+            <RoundMessengerButton title="Visio" tone={BLUE} onClick={() => openCallPanel("video")}><MessengerToolIcon name="video" /></RoundMessengerButton>
+            <RoundMessengerButton title="Options conversation" tone={GOLD} onClick={openConversationOptions}><MessengerToolIcon name="more" /></RoundMessengerButton>
           </div>
         </div>
 
         {info ? <div style={{ flex: "0 0 auto", margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(125,255,178,.35)", color: GREEN }) }}>{info}</div> : null}
         {error ? <div style={{ flex: "0 0 auto", margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(255,100,100,.45)", color: RED }) }}>Erreur : {error}</div> : null}
+
+        {conversationPanel ? (
+          <div style={{ flex: "0 0 auto", margin: "8px 12px 0", ...cardStyle({ borderRadius: 16, padding: 10, borderColor: `${conversationPanel.type === "video" ? BLUE : conversationPanel.type === "audio" ? GREEN : GOLD}66` }) }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+              <div>
+                <div style={{ color: conversationPanel.type === "video" ? BLUE : conversationPanel.type === "audio" ? GREEN : GOLD, fontWeight: 1000, fontSize: 14 }}>{conversationPanel.title}</div>
+                <div style={{ color: "rgba(255,255,255,.68)", fontSize: 11.5, marginTop: 3, lineHeight: 1.35 }}>{conversationPanel.text}</div>
+              </div>
+              <button type="button" onClick={closeCallPanel} style={{ border: `1px solid ${STROKE}`, background: "rgba(255,255,255,.04)", color: "#fff", borderRadius: 999, width: 28, height: 28, cursor: "pointer", fontWeight: 1000 }}>×</button>
+            </div>
+            {conversationPanel.type === "options" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7, marginTop: 10 }}>
+                <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => setInfo("Conversation marquée comme lue ✅")).catch((e: any) => setError(e?.message || String(e)))} />
+                <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
+                <ActionButton label="Notifications" tone={GOLD} onClick={activatePhoneNotifications} />
+                <ActionButton label="Online" tone={BLUE} onClick={openOnline} />
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <ActionButton label="Raccrocher" tone={RED} onClick={closeCallPanel} />
+                <ActionButton label="Ouvrir Online" tone={BLUE} onClick={openOnline} />
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -966,13 +1177,10 @@ export default function MessagesPage({ store, update, go }: Props) {
                           key={name}
                           type="button"
                           onClick={() => {
-                            if (name === "copy") {
-                              navigator.clipboard?.writeText(String(m?.text || "")).catch(() => {});
-                              setInfo("Message copié ✅");
-                            } else {
-                              setInfo(`${label} : option prête à câbler.`);
-                            }
-                            setOpenMessageMenuId("");
+                            if (name === "reply") handleReplyMessage(m);
+                            else if (name === "edit") handleEditMessage(m);
+                            else if (name === "copy") handleCopyMessage(m);
+                            else if (name === "share") handleShareMessage(m);
                           }}
                           style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}
                         >
@@ -1006,8 +1214,28 @@ export default function MessagesPage({ store, update, go }: Props) {
             background: "linear-gradient(180deg, rgba(255,255,255,.025), rgba(0,0,0,.30))",
           }}
         >
+          {replyToMessage || editingMessageId ? (
+            <div style={{ marginBottom: 8, border: `1px solid ${editingMessageId ? GOLD : BLUE}55`, borderRadius: 14, padding: "7px 9px", background: "rgba(255,255,255,.045)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: editingMessageId ? GOLD : BLUE, fontWeight: 950, fontSize: 11 }}>{editingMessageId ? "Édition du message" : "Réponse au message"}</div>
+                <div style={{ color: "rgba(255,255,255,.64)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {editingMessageId ? "Modifie puis clique sur Envoyer." : String(replyToMessage?.text || "").slice(0, 120)}
+                </div>
+              </div>
+              <button type="button" onClick={() => { setReplyToMessage(null); setEditingMessageId(""); setMessageText(""); }} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", fontSize: 18, fontWeight: 1000 }}>×</button>
+            </div>
+          ) : null}
+          {emojiOpen ? (
+            <div style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 6, border: `1px solid ${BLUE}44`, borderRadius: 14, padding: 8, background: "rgba(0,0,0,.34)" }}>
+              {["😀","😂","😍","🔥","🎯","🏆","👍","👏","😅","😎","❤️","🍻"].map((emoji) => (
+                <button key={emoji} type="button" onClick={() => insertMessageText(emoji)} style={{ width: 30, height: 30, borderRadius: 10, border: `1px solid ${STROKE}`, background: "rgba(255,255,255,.055)", cursor: "pointer", fontSize: 16 }}>{emoji}</button>
+              ))}
+            </div>
+          ) : null}
+          <input ref={attachInputRef} type="file" style={{ display: "none" }} onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0] || null; handleSelectedFile(file, "file"); (e.target as HTMLInputElement).value = ""; }} />
+          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0] || null; handleSelectedFile(file, "photo"); (e.target as HTMLInputElement).value = ""; }} />
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto auto", gap: 8, alignItems: "end" }}>
-            <RoundMessengerButton title="Emoji" tone={BLUE}><MessengerToolIcon name="smile" /></RoundMessengerButton>
+            <RoundMessengerButton title="Emoji" tone={BLUE} onClick={() => { setEmojiOpen((v) => !v); setConversationPanel(null); }}><MessengerToolIcon name="smile" /></RoundMessengerButton>
             <textarea
               value={messageText}
               onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
@@ -1027,9 +1255,9 @@ export default function MessagesPage({ store, update, go }: Props) {
                 resize: "none",
               }}
             />
-            <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => setInfo("Pièce jointe : option prête à câbler.")}><MessengerToolIcon name="clip" /></RoundMessengerButton>
-            <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => setInfo("Photo : option prête à câbler.")}><MessengerToolIcon name="camera" /></RoundMessengerButton>
-            <RoundMessengerButton title="Message vocal" tone={GREEN} onClick={() => setInfo("Message vocal : option prête à câbler.")}><MessengerToolIcon name="mic" /></RoundMessengerButton>
+            <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => attachInputRef.current?.click()}><MessengerToolIcon name="clip" /></RoundMessengerButton>
+            <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => photoInputRef.current?.click()}><MessengerToolIcon name="camera" /></RoundMessengerButton>
+            <RoundMessengerButton title={isRecording ? "Stopper et envoyer le vocal" : "Message vocal"} tone={isRecording ? RED : GREEN} onClick={toggleRecording}><MessengerToolIcon name="mic" /></RoundMessengerButton>
             <ActionButton label="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage} />
           </div>
         </div>
