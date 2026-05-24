@@ -26,6 +26,16 @@ export interface DartSet {
   thumbImageAssetId?: string | null;
   photoAssetId?: string | null;
 
+  // ✅ NAS BACKUP FIX: source temporaire uploadable pour les photos importées.
+  // Ces champs sont supprimés du snapshot après upload média NAS.
+  photoDataUrl?: string;
+  imageDataUrl?: string;
+  mainImageDataUrl?: string;
+  dartSetImageDataUrl?: string;
+  photoThumbDataUrl?: string;
+  thumbDataUrl?: string;
+  thumbImageDataUrl?: string;
+
   // ✅ Visuel (optionnel, compat)
   kind?: "plain" | "preset" | "photo";
   presetId?: string;
@@ -222,6 +232,15 @@ export function createDartSet(input: {
   kind?: "plain" | "preset" | "photo";
   presetId?: string | null;
 
+  // ✅ NAS BACKUP FIX: photo importée conservée jusqu'au push média NAS
+  photoDataUrl?: string | null;
+  imageDataUrl?: string | null;
+  mainImageDataUrl?: string | null;
+  dartSetImageDataUrl?: string | null;
+  photoThumbDataUrl?: string | null;
+  thumbDataUrl?: string | null;
+  thumbImageDataUrl?: string | null;
+
   // 👇 NOUVEAU : on laisse optionnel pour compat des appels existants
   scope?: "private" | "public";
 } ): DartSet | undefined {
@@ -241,6 +260,15 @@ export function createDartSet(input: {
     mainImageUrl: input.mainImageUrl,
     thumbImageUrl: input.thumbImageUrl,
     bgColor: input.bgColor,
+
+    // ✅ NAS BACKUP FIX: garder la source photo importée jusqu'au push NAS.
+    photoDataUrl: input.photoDataUrl || undefined,
+    imageDataUrl: input.imageDataUrl || undefined,
+    mainImageDataUrl: input.mainImageDataUrl || undefined,
+    dartSetImageDataUrl: input.dartSetImageDataUrl || undefined,
+    photoThumbDataUrl: input.photoThumbDataUrl || undefined,
+    thumbDataUrl: input.thumbDataUrl || undefined,
+    thumbImageDataUrl: input.thumbImageDataUrl || undefined,
 
     // ✅ BONUS: persist visuel
     kind: input.kind,

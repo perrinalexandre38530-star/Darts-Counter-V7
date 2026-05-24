@@ -244,6 +244,12 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
         updateDartSet(dartSet.id, {
           mainImageUrl: compressed,
           thumbImageUrl: compressed,
+          // ✅ NAS BACKUP FIX: garder une copie source uploadable.
+          // mainImageUrl/thumbImageUrl peuvent être remplacés plus tard par /media/:id,
+          // mais photoDataUrl permet au push NAS d'uploader la photo importée.
+          photoDataUrl: compressed,
+          mainImageDataUrl: compressed,
+          photoThumbDataUrl: compressed,
           kind: "photo",
           presetId: undefined,
         } as any)
@@ -262,6 +268,9 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
         ...dartSet,
         mainImageUrl: compressed,
         thumbImageUrl: compressed,
+        photoDataUrl: compressed,
+        mainImageDataUrl: compressed,
+        photoThumbDataUrl: compressed,
         // @ts-expect-error champs libres nouvelle archi
         kind: "photo",
         presetId: undefined,
@@ -622,6 +631,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
         notes: notes || undefined,
         mainImageUrl,
         thumbImageUrl,
+        // ✅ NAS BACKUP FIX: la source base64 reste disponible jusqu'au push média NAS.
+        // exportCloudSnapshot la supprimera après upload, mais mediaSync doit d'abord la lire.
+        photoDataUrl: kind === "photo" ? form.photoDataUrl : undefined,
+        mainImageDataUrl: kind === "photo" ? form.photoDataUrl : undefined,
+        photoThumbDataUrl: kind === "photo" ? form.photoDataUrl : undefined,
         bgColor: form.bgColor || DEFAULT_BG,
         scope,
         kind,

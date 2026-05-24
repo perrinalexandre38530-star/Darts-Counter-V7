@@ -348,53 +348,98 @@ async function uploadBotAvatar(bot: any) {
   }
 }
 
+function stripDartSetInlineImages(ds: any) {
+  const out: any = { ...(ds || {}) };
+  const keys = [
+    "photoDataUrl",
+    "imageDataUrl",
+    "mainImageDataUrl",
+    "dartSetImageDataUrl",
+    "photoThumbDataUrl",
+    "thumbDataUrl",
+    "thumbImageDataUrl",
+  ];
+  for (const key of keys) {
+    if (typeof out[key] === "string" && out[key].startsWith("data:image/")) {
+      delete out[key];
+      bumpMediaSyncSummary("base64FieldsRemoved");
+    }
+  }
+  return out;
+}
+
 async function uploadDartSetMedia(ds: any) {
   bumpMediaSyncSummary("dartSetsScanned");
   let changed = false;
   let next = { ...(ds || {}) };
 
+  const existingMainAssetId = asString(next.mainImageAssetId || next.photoAssetId || next.imageAssetId || next.dartSetImageAssetId);
+  const existingMainUrl = asString(next.mainImageUrl || next.photoUrl || next.imageUrl);
+  const existingThumbAssetId = asString(next.thumbImageAssetId || next.photoThumbAssetId);
+  const existingThumbUrl = asString(next.thumbImageUrl || next.photoThumbUrl);
+
   const mainImage = next?.photoDataUrl || next?.imageDataUrl || next?.mainImageDataUrl || next?.dartSetImageDataUrl || next?.mainImageUrl || next?.photoUrl || next?.imageUrl;
   if (isDataImageUrl(mainImage)) {
     try {
+      const localHash = await sha256DataUrl(String(mainImage));
       const uploaded: any = await onlineApi.uploadMediaAsset({
         dataUrl: mainImage,
         kind: "dartset_photo",
         ownerId: String(ds?.id || ""),
         variant: "main",
+        sha256: localHash || undefined,
       } as any);
       if ((uploaded as any)?.deduped) bumpMediaSyncSummary("mediaAlreadyPresent");
       else bumpMediaSyncSummary("mediaUploaded");
-      const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
-      next.mainImageAssetId = uploaded?.assetId || uploaded?.id || next.mainImageAssetId || null;
-      next.photoAssetId = uploaded?.assetId || uploaded?.id || next.photoAssetId || null;
-      next.imageAssetId = uploaded?.assetId || uploaded?.id || next.imageAssetId || null;
+      const publicUrl = normalizeUploadedPublicUrl(uploaded);
+      const assetId = normalizeUploadedAssetId(uploaded, existingMainAssetId);
+      next.mainImageAssetId = assetId || next.mainImageAssetId || null;
+      next.photoAssetId = assetId || next.photoAssetId || null;
+      next.imageAssetId = assetId || next.imageAssetId || null;
+      next.dartSetImageAssetId = assetId || next.dartSetImageAssetId || null;
+      next.dartSetImageSha256 = asString(uploaded?.sha256 || localHash || next.dartSetImageSha256) || null;
       if (publicUrl) {
         next.mainImageUrl = publicUrl;
         next.photoUrl = publicUrl;
         next.imageUrl = publicUrl;
       }
+      next.kind = "photo";
       changed = true;
     } catch (err) {
       bumpMediaSyncSummary("uploadErrors");
       console.error("[mediaSync] uploadDartSetMedia main failed", err);
       throw err;
     }
+  } else if (existingMainAssetId || existingMainUrl) {
+    if (existingMainUrl && !isDataImageUrl(existingMainUrl)) {
+      next.mainImageUrl = existingMainUrl;
+      next.photoUrl = existingMainUrl;
+      next.imageUrl = existingMainUrl;
+    }
+    if (existingMainAssetId) {
+      next.mainImageAssetId = existingMainAssetId;
+      next.photoAssetId = next.photoAssetId || existingMainAssetId;
+      next.imageAssetId = next.imageAssetId || existingMainAssetId;
+    }
   }
 
   const thumbImage = next?.photoThumbDataUrl || next?.thumbDataUrl || next?.thumbImageDataUrl || next?.thumbImageUrl || next?.photoThumbUrl;
   if (isDataImageUrl(thumbImage)) {
     try {
+      const localHash = await sha256DataUrl(String(thumbImage));
       const uploaded: any = await onlineApi.uploadMediaAsset({
         dataUrl: thumbImage,
         kind: "dartset_photo",
         ownerId: String(ds?.id || ""),
         variant: "thumb",
+        sha256: localHash || undefined,
       } as any);
       if ((uploaded as any)?.deduped) bumpMediaSyncSummary("mediaAlreadyPresent");
       else bumpMediaSyncSummary("mediaUploaded");
-      const publicUrl = asString(uploaded?.publicUrl || uploaded?.path);
-      next.thumbImageAssetId = uploaded?.assetId || uploaded?.id || next.thumbImageAssetId || null;
-      next.photoThumbAssetId = uploaded?.assetId || uploaded?.id || next.photoThumbAssetId || null;
+      const publicUrl = normalizeUploadedPublicUrl(uploaded);
+      const assetId = normalizeUploadedAssetId(uploaded, existingThumbAssetId || next.mainImageAssetId || next.photoAssetId);
+      next.thumbImageAssetId = assetId || next.thumbImageAssetId || null;
+      next.photoThumbAssetId = assetId || next.photoThumbAssetId || null;
       if (publicUrl) {
         next.thumbImageUrl = publicUrl;
         next.photoThumbUrl = publicUrl;
@@ -405,9 +450,24 @@ async function uploadDartSetMedia(ds: any) {
       console.error("[mediaSync] uploadDartSetMedia thumb failed", err);
       throw err;
     }
+  } else if (existingThumbAssetId || existingThumbUrl) {
+    if (existingThumbUrl && !isDataImageUrl(existingThumbUrl)) {
+      next.thumbImageUrl = existingThumbUrl;
+      next.photoThumbUrl = existingThumbUrl;
+    }
+    if (existingThumbAssetId) {
+      next.thumbImageAssetId = existingThumbAssetId;
+      next.photoThumbAssetId = next.photoThumbAssetId || existingThumbAssetId;
+    }
   }
 
-  return changed ? next : ds;
+  // Après upload, la sauvegarde NAS doit contenir des assetId/URLs, pas du base64.
+  // Ça évite les snapshots énormes et garantit la restauration sur un autre appareil.
+  if (changed || existingMainAssetId || existingMainUrl || existingThumbAssetId || existingThumbUrl) {
+    return stripDartSetInlineImages(next);
+  }
+
+  return ds;
 }
 
 async function mapSequential<T>(list: T[], fn: (item: T) => Promise<T>): Promise<T[]> {

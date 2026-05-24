@@ -1533,6 +1533,17 @@ function pickFirst<T>(...vals: Array<T | undefined | null>): T | undefined {
 
 function writeDartSetsToLocalStorage(dartSets: any) {
   try {
+    // ✅ NAS RESTORE FIX: passer par le store officiel des DartSets.
+    // Il sait relire/écrire le format compressé et garde la même clé que l'UI.
+    if (Array.isArray(dartSets)) {
+      replaceAllDartSets(dartSets as any);
+      return;
+    }
+  } catch (e) {
+    console.warn("[dartsets] replaceAllDartSets failed, fallback localStorage", e);
+  }
+
+  try {
     const s = safeJsonStringify(dartSets ?? {});
     for (const k of LS_DARTSETS_KEYS) localStorage.setItem(k, s);
   } catch (e) {
