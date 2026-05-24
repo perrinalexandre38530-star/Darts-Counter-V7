@@ -44,6 +44,23 @@ const DartImage: React.FC<{
   );
 };
 
+function sortDartSetsForDisplay(list: DartSet[]): DartSet[] {
+  return (Array.isArray(list) ? list : [])
+    .slice()
+    .sort((a: any, b: any) => {
+      const favA = a?.isFavorite ? 1 : 0;
+      const favB = b?.isFavorite ? 1 : 0;
+      if (favA !== favB) return favB - favA;
+      const usageA = Number(a?.usageCount || 0);
+      const usageB = Number(b?.usageCount || 0);
+      if (usageA !== usageB) return usageB - usageA;
+      return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+}
+
 const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
   const { palette } = useTheme();
   const { lang } = useLang();
@@ -59,7 +76,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
       return;
     }
     const all = getDartSetsForProfile(profileId);
-    setSets(all);
+    setSets(sortDartSetsForDisplay(all));
     const fav = getFavoriteDartSetForProfile(profileId) || null;
     setFavorite(fav);
   }, [profileId]);

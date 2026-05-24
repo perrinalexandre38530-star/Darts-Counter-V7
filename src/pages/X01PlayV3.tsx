@@ -46,6 +46,7 @@ import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } fro
 import { onlineApi } from "../lib/onlineApi";
 import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages, subscribeMessages as subscribeOnlineChatMessages } from "../lib/chatApi";
 import { getCountryFlagSrc } from "../lib/geoAssets";
+import { getDartSetById } from "../lib/dartSetsStore";
 import OnlineCameraPanel, { type OnlineCameraSignal } from "../online/client/OnlineCameraPanel";
 import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
 
@@ -91,6 +92,7 @@ type HeaderBlockProps = {
   onChatClick?: () => void;
   unreadChatCount?: number;
   countryFlagSrc?: string | null;
+  dartSetThumbSrc?: string | null;
   onlineCameraPanel?: React.ReactNode;
   onlineCameraActive?: boolean;
 };
@@ -114,6 +116,36 @@ import {
 const NAV_HEIGHT = 64;
 const CONTENT_MAX = 520;
 const AUTOSAVE_KEY = "x01v3:autosave";
+
+function getDartSetMedallionSrcById(dartSetId: any): string | null {
+  const id = String(dartSetId || "").trim();
+  if (!id) return null;
+  try {
+    const set: any = getDartSetById(id);
+    if (!set) return null;
+    const candidates = [
+      set.thumbImageUrl,
+      set.mainImageUrl,
+      set.photoThumbDataUrl,
+      set.thumbDataUrl,
+      set.thumbImageDataUrl,
+      set.photoDataUrl,
+      set.imageDataUrl,
+      set.mainImageDataUrl,
+      set.dartSetImageDataUrl,
+      set.thumb,
+      set.imageUrl,
+      set.image,
+      set.previewImageUrl,
+      set.preview,
+    ];
+    for (const raw of candidates) {
+      const v = typeof raw === "string" ? raw.trim() : "";
+      if (v) return v;
+    }
+  } catch {}
+  return null;
+}
 
 const miniCard: React.CSSProperties = {
   width: "clamp(150px, 22vw, 190px)",
@@ -1151,6 +1183,10 @@ const {
 
 const safePlayersForOnline = React.useMemo(() => (Array.isArray(players) ? players : []), [players]);
 const activePlayer = safePlayersForOnline.find((p: any) => String(p?.id) === String(activePlayerId)) || null;
+const activePlayerDartSetThumb = React.useMemo(
+  () => getDartSetMedallionSrcById((activePlayer as any)?.dartSetId),
+  [(activePlayer as any)?.dartSetId]
+);
 
 // ONLINE strict : X01PlayV3 est parfois lancé avec online/lobbyCode dans config sans props explicites.
 // On centralise donc l'état online ici pour éviter que les deux appareils puissent saisir en même temps.
@@ -1975,6 +2011,7 @@ const teamsView = React.useMemo(() => {
           id: p.id,
           name: p.name,
           avatar: profileById[p.id]?.avatarDataUrl ?? null,
+          dartSetThumb: getDartSetMedallionSrcById((p as any)?.dartSetId),
           isActive: p.id === activePlayerId,
         }));
 
@@ -4307,6 +4344,7 @@ if (isLandscapeTablet) {
               setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
               checkoutText={checkoutText}
+              dartSetThumbSrc={activePlayerDartSetThumb}
               onlineCameraPanel={x01OnlineCameraPanel}
               onlineCameraActive={x01OnlineCameraActive}
             showThrowCounter={showThrowCounter}
@@ -4754,6 +4792,7 @@ if (isLandscapeTablet) {
                 onChatClick={effectiveOnline ? () => setOnlineChatOpen(true) : undefined}
                 unreadChatCount={onlineChatUnread}
                 countryFlagSrc={activePlayerCountryFlagSrc}
+                dartSetThumbSrc={activePlayerDartSetThumb}
                 onlineCameraPanel={x01OnlineCameraPanel}
                 onlineCameraActive={x01OnlineCameraActive}
               showThrowCounter={showThrowCounter}
@@ -5197,6 +5236,7 @@ function HeaderBlock(props: HeaderBlockProps) {
     onChatClick,
     unreadChatCount = 0,
     countryFlagSrc,
+    dartSetThumbSrc,
     showThrowCounter = false,
     onlineCameraPanel = null,
     onlineCameraActive = false,
@@ -5336,6 +5376,29 @@ function HeaderBlock(props: HeaderBlockProps) {
                 ?
               </div>
             )}
+            {dartSetThumbSrc ? (
+              <span
+                aria-label="Set de fléchettes du joueur"
+                style={{
+                  position: "absolute",
+                  left: -8,
+                  bottom: -3,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  border: "2px solid rgba(255,207,87,.88)",
+                  background: "rgba(0,0,0,.72)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 0 16px rgba(255,207,87,.38), 0 10px 20px rgba(0,0,0,.45)",
+                  overflow: "hidden",
+                  zIndex: 6,
+                }}
+              >
+                <img src={dartSetThumbSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </span>
+            ) : null}
             {onChatClick ? (
               <button
                 type="button"
@@ -5344,7 +5407,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                 style={{
                   position: "absolute",
                   left: -8,
-                  bottom: -3,
+                  bottom: dartSetThumbSrc ? 34 : -3,
                   width: 34,
                   height: 34,
                   borderRadius: 999,
@@ -5707,7 +5770,7 @@ function TeamHeaderBlock(props: {
   teamColor?: string;
   teamId: string;
   teamName: string;
-  teamPlayers: Array<{ id: string; name: string; avatar: string | null; isActive: boolean }>;
+  teamPlayers: Array<{ id: string; name: string; avatar: string | null; dartSetThumb?: string | null; isActive: boolean }>;
   activePlayerId: string;
   teamScore: number;
   currentThrow: UIDart[];
@@ -5906,6 +5969,29 @@ function TeamHeaderBlock(props: {
                       ?
                     </div>
                   )}
+                  {p.dartSetThumb ? (
+                    <span
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        left: -5,
+                        bottom: -4,
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        border: "2px solid rgba(255,207,87,.88)",
+                        background: "rgba(0,0,0,.72)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        boxShadow: "0 0 14px rgba(255,207,87,.45), 0 8px 16px rgba(0,0,0,.45)",
+                        zIndex: 80,
+                      }}
+                    >
+                      <img src={p.dartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </span>
+                  ) : null}
                 </div>
               );
             })}

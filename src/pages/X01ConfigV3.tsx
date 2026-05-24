@@ -204,6 +204,50 @@ type PlayerDartBadgeProps = {
   onChange: (id: string | null) => void;
 };
 
+function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
+  return (Array.isArray(list) ? list : [])
+    .slice()
+    .sort((a: any, b: any) => {
+      const favA = a?.isFavorite ? 1 : 0;
+      const favB = b?.isFavorite ? 1 : 0;
+      if (favA !== favB) return favB - favA;
+
+      const usageA = Number(a?.usageCount || 0);
+      const usageB = Number(b?.usageCount || 0);
+      if (usageA !== usageB) return usageB - usageA;
+
+      return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+}
+
+function getDartSetThumbSrc(set: any): string | null {
+  if (!set) return null;
+  const candidates = [
+    set.thumbImageUrl,
+    set.mainImageUrl,
+    set.photoThumbDataUrl,
+    set.thumbDataUrl,
+    set.thumbImageDataUrl,
+    set.photoDataUrl,
+    set.imageDataUrl,
+    set.mainImageDataUrl,
+    set.dartSetImageDataUrl,
+    set.thumb,
+    set.imageUrl,
+    set.image,
+    set.previewImageUrl,
+    set.preview,
+  ];
+  for (const raw of candidates) {
+    const v = typeof raw === "string" ? raw.trim() : "";
+    if (v) return v;
+  }
+  return null;
+}
+
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   profileId,
   dartSetId,
@@ -223,48 +267,24 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       return;
     }
     const all = getDartSetsForProfile(profileId) || [];
-    setSets(all);
+    setSets(sortDartSetsForProfilePicker(all));
     setFavorite(getFavoriteDartSetForProfile(profileId) || null);
   }, [profileId]);
 
   const hasProfile = !!profileId;
   const noneLabel = lang === "fr" ? "Aucune" : "None";
-  const labelBase =
-    lang === "fr"
-      ? "Fléchettes"
-      : lang === "es"
-      ? "Dardos"
-      : lang === "de"
-      ? "Darts"
-      : "Darts";
+  const labelBase = lang === "fr" ? "Set de fléchettes" : "Dart set";
 
-  // Favori en tête (UI), mais PAS de sélection implicite
-  const orderedSets: DartSet[] = React.useMemo(() => {
-    const favId = favorite?.id || null;
-    const list = (sets || []).slice();
-    if (!favId) return list;
-    const fav = list.find((s) => s.id === favId) || null;
-    const rest = list.filter((s) => s.id !== favId);
-    return fav ? [fav, ...rest] : list;
-  }, [sets, favorite]);
+  // Ordre demandé : favoris d'abord, puis nombre d'utilisation, puis alphabetique.
+  // Pas de sélection implicite : "Aucune" reste le premier choix de la boucle.
+  const orderedSets: DartSet[] = React.useMemo(() => sortDartSetsForProfilePicker(sets || []), [sets]);
 
   const items = React.useMemo(
     () => [{ id: null as any, name: noneLabel, set: null as any }, ...orderedSets.map((s) => ({ id: s.id, name: s.name || "Set", set: s }))],
     [orderedSets, noneLabel]
   );
 
-  const getThumb = (s: any): string | null => {
-    if (!s) return null;
-    return (
-      s.thumbImageUrl ||
-      s.thumb ||
-      s.imageUrl ||
-      s.image ||
-      s.previewImageUrl ||
-      s.preview ||
-      null
-    );
-  };
+  const getThumb = getDartSetThumbSrc;
 
   const currentIdx = Math.max(0, items.findIndex((it) => it.id === (dartSetId ?? null)));
   const current = items[currentIdx] || items[0];
@@ -342,9 +362,6 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       )}
 
       <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
-        <div style={{ fontSize: 8, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", opacity: 0.75, lineHeight: 1 }}>
-          {labelBase}
-        </div>
         <div
           style={{
             fontSize: 10,
@@ -352,7 +369,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            maxWidth: 68,
+            maxWidth: 72,
             lineHeight: 1.05,
           }}
         >
@@ -996,6 +1013,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               >
                 {humanProfiles.map((p) => {
                   const active = selectedIds.includes(p.id);
+                  const selectedDartSetId = playerDartSets[p.id] ?? null;
+                  const selectedDartSet = selectedDartSetId
+                    ? (getDartSetsForProfile(p.id) || []).find((set: any) => String(set?.id) === String(selectedDartSetId))
+                    : null;
+                  const selectedDartSetThumb = getDartSetThumbSrc(selectedDartSet);
 
                   const teamId =
                     matchMode === "teams" ? (teamAssignments[p.id] as TeamId | null) ?? null : null;
@@ -1025,7 +1047,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                           width: 78,
                           height: 78,
                           borderRadius: "50%",
-                          overflow: "hidden",
+                          overflow: "visible",
                           boxShadow: active ? `0 0 28px ${haloColor}aa` : "0 0 14px rgba(0,0,0,0.65)",
                           background: active
                             ? `radial-gradient(circle at 30% 20%, #fff8d0, ${haloColor})`
@@ -1048,6 +1070,31 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                         >
                           <ProfileAvatar profile={p} size={78} />
                         </div>
+
+                        {selectedDartSetThumb ? (
+                          <span
+                            aria-hidden
+                            style={{
+                              position: "absolute",
+                              right: -5,
+                              bottom: -4,
+                              width: 30,
+                              height: 30,
+                              borderRadius: "50%",
+                              border: `2px solid ${primary}AA`,
+                              background: "rgba(0,0,0,.72)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              overflow: "hidden",
+                              boxShadow: `0 0 14px ${primary}66, 0 8px 16px rgba(0,0,0,.55)`,
+                              zIndex: 8,
+                              pointerEvents: "none",
+                            }}
+                          >
+                            <img src={selectedDartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          </span>
+                        ) : null}
                       </div>
 
                       <div

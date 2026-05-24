@@ -319,22 +319,14 @@ export function deleteDartSet(id: DartSetId): boolean {
 export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
   const all = loadAll();
   let changed = false;
+  const now = Date.now();
 
+  // ✅ Favoris multiples : on ne retire plus le favori des autres sets.
+  // Si le set est déjà favori, un nouveau clic le retire.
   const updated = all.map((s) => {
-    // ⚠️ On ne touche qu'aux sets appartenant à ce profil,
-    // même s'il voit des sets "public" d'autres profils.
-    if (s.profileId !== profileId) return s;
-
-    if (s.id === dartSetId) {
-      changed = true;
-      return { ...s, isFavorite: true, updatedAt: Date.now() };
-    }
-    if (s.isFavorite) {
-      changed = true;
-      return { ...s, isFavorite: false, updatedAt: Date.now() };
-    }
-
-    return s;
+    if (s.profileId !== profileId || s.id !== dartSetId) return s;
+    changed = true;
+    return { ...s, isFavorite: !s.isFavorite, updatedAt: now };
   });
 
   if (changed) return saveAll(updated);
@@ -362,19 +354,36 @@ export function bumpDartSetUsage(dartSetId: DartSetId) {
 export function getFavoriteDartSetForProfile(profileId: string): DartSet | undefined {
   const visible = getDartSetsForProfile(profileId);
 
-  // 1) Favori parmi les sets appartenant au profil
-  const favoriteOwn = visible.find((s) => s.profileId === profileId && s.isFavorite);
+  const byPriority = (a: DartSet, b: DartSet) => {
+    const favA = a.isFavorite ? 1 : 0;
+    const favB = b.isFavorite ? 1 : 0;
+    if (favA !== favB) return favB - favA;
+
+    const usageA = Number(a.usageCount || 0);
+    const usageB = Number(b.usageCount || 0);
+    if (usageA !== usageB) return usageB - usageA;
+
+    return String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+  };
+
+  // 1) Premier favori prioritaire du profil : favoris multiples OK.
+  const favoriteOwn = visible
+    .filter((s) => s.profileId === profileId && s.isFavorite)
+    .sort(byPriority)[0];
   if (favoriteOwn) return favoriteOwn;
 
-  // 2) Sinon : premier set créé appartenant au profil
+  // 2) Sinon : set du profil le plus utilisé, puis alphabetique.
   const ownSorted = visible
     .filter((s) => s.profileId === profileId)
-    .sort((a, b) => a.createdAt - b.createdAt);
+    .sort(byPriority);
 
   if (ownSorted.length > 0) return ownSorted[0];
 
   // 3) Ultime fallback : n'importe quel set visible (ex : que des publics)
-  return visible[0];
+  return visible.slice().sort(byPriority)[0];
 }
 
 
