@@ -1002,29 +1002,35 @@ function computeX01CompareMatchBreakdownFromSamples(samples: X01Sample[]): X01Co
     const rankRaw = Number((s as any).rank || 0) || 0;
     const rank = rankRaw > 0 ? rankRaw : 0;
     const isTeam = !!(s as any).isTeam;
-    const won = Number(s.matchesWon || 0) > 0 || rank === 1;
 
     if (isTeam) {
+      const wonTeam = rank === 1 || Number(s.matchesWon || 0) > 0;
       out.matchTeam += 1;
-      if (won) out.winTeam += 1;
+      if (wonTeam) out.winTeam += 1;
       continue;
     }
 
     if (playerCount >= 3) {
       out.matchMulti += 1;
-      if (won) out.winMulti += 1;
-      if (rank > 0 && rank <= 3) out.podiumMulti += 1;
-      // Règle validée X01 Multi : quand on continue après le premier checkout,
-      // tous les joueurs sauf le dernier sont considérés finish à 0.
-      // Donc finish = rang connu strictement inférieur au nombre de joueurs.
-      if (rank > 0 && rank < playerCount) out.finishMulti += 1;
-      else if (won) out.finishMulti += 1;
+
+      // IMPORTANT :
+      // En X01 MULTI, matchesWon dans les vieux samples n'est pas fiable :
+      // il peut valoir 1 pour chaque ligne joueur et transformait donc
+      // 9 matchs multi en 9 victoires / 9 podiums.
+      // La source fiable pour les classements est le rang réel :
+      // - victoire multi = rang 1
+      // - podium multi = rang 1 + rang 2 + rang 3
+      // - finish multi = joueur terminé avant le dernier => rang < nb joueurs
+      if (rank === 1) out.winMulti += 1;
+      if (rank >= 1 && rank <= 3) out.podiumMulti += 1;
+      if (rank >= 1 && rank < playerCount) out.finishMulti += 1;
       continue;
     }
 
     // Les samples ONLINE anciens n'ont pas toujours playerCount renseigné : X01 online = duel.
+    const wonDuo = rank === 1 || Number(s.matchesWon || 0) > 0;
     out.matchDuo += 1;
-    if (won) out.winDuo += 1;
+    if (wonDuo) out.winDuo += 1;
   }
 
   return out;
