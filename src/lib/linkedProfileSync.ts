@@ -7,7 +7,7 @@
 // l'affichage local peut utiliser les stats, l'avatar et l'historique du compte ami
 // sans écraser les données locales.
 // =============================================================
-import { apiPost } from "./apiClient";
+import { apiGet, apiPost } from "./apiClient";
 import type { Profile } from "./types";
 
 export type LinkedProfileSnapshot = {
@@ -106,6 +106,57 @@ function pickAvatar(p: any): string | null {
     p?.photoURL ||
     null
   );
+}
+
+
+function getRuntimeActiveLocalProfileId(): string {
+  try {
+    const st: any = (window as any)?.__appStore?.store || {};
+    return s(st?.activeProfileId || st?.active_profile_id || "");
+  } catch {
+    return "";
+  }
+}
+
+function findBestLocalProfileForIncomingLink(localById: Map<string, any>, localProfiles: any[], link: any, friendUser: any): any {
+  const directIds = uniq([
+    link?.targetLocalProfileId,
+    link?.targetProfileId,
+    friendUser?.profileId,
+    friendUser?.profile_id,
+    friendUser?.userId,
+    friendUser?.id,
+  ].map(s));
+  for (const id of directIds) {
+    const p = localById.get(id);
+    if (p) return p;
+  }
+
+  const wantedNames = uniq([
+    link?.friendDisplayName,
+    link?.targetUser?.displayName,
+    link?.targetUser?.nickname,
+    friendUser?.displayName,
+    friendUser?.nickname,
+    link?.localProfileName,
+  ].map(low));
+  const byName = arr(localProfiles).find((p: any) => wantedNames.includes(low(pickName(p))));
+  if (byName) return byName;
+
+  const activeId = getRuntimeActiveLocalProfileId();
+  if (activeId && localById.get(activeId)) return localById.get(activeId);
+
+  return arr(localProfiles)[0] || null;
+}
+
+function normalizeIncomingStatsMeta(link: any, friendProfile: any): any {
+  const meta = firstObj(link?.statsMeta, link?.stats_meta, link?.metadata?.statsMeta, link?.metadata?.stats_meta) || {};
+  const mini = firstObj(meta?.miniStats, meta?.mini, meta?.stats, meta) || {};
+  return {
+    ...meta,
+    miniStats: mini,
+    stats: firstObj(meta?.stats, mini, friendProfile?.stats) || {},
+  };
 }
 
 function findFriendProfile(payload: any, friendUser: any, link: any): any {
@@ -233,14 +284,25 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
   for (const snap of arr(snapshots)) {
     const link = snap?.link || {};
     if (String(link?.status || "").toLowerCase() !== "accepted") continue;
-    const localId = s(link?.localProfileId || link?.local_profile_id);
-    const local = localById.get(localId) || { id: localId, name: link?.localProfileName || "Profil lié" };
+    const direction = String(link?.direction || "").toLowerCase();
+    const friendUser = snap?.friendUser || link?.targetUser || link?.friendUser || {};
+    const friendProfile = snap?.friendProfile || findFriendProfile(snap?.payload, friendUser, link) || {};
+    const isIncoming = direction === "incoming" || Boolean(link?.incoming === true);
+
+    const rawLocalId = s(link?.localProfileId || link?.local_profile_id);
+    const incomingLocal = isIncoming ? findBestLocalProfileForIncomingLink(localById, localProfiles, link, friendUser) : null;
+    const localId = isIncoming
+      ? s(incomingLocal?.id || incomingLocal?.profileId || incomingLocal?.playerId || getRuntimeActiveLocalProfileId() || rawLocalId)
+      : rawLocalId;
+    const local = (localId && localById.get(localId)) || incomingLocal || { id: localId, name: link?.localProfileName || "Profil lié" };
     if (!localId) continue;
 
-    const friendUser = snap?.friendUser || link?.targetUser || {};
-    const friendProfile = snap?.friendProfile || findFriendProfile(snap?.payload, friendUser, link) || {};
-    const name = pickName(friendProfile) || pickName(friendUser) || pickName(local) || localId;
-    const avatar = pickAvatar(friendProfile) || pickAvatar(friendUser) || link?.friendAvatarUrl || pickAvatar(local);
+    const statsMeta = normalizeIncomingStatsMeta(link, friendProfile);
+    const sourceName = isIncoming
+      ? (link?.localProfileName || pickName(friendProfile) || pickName(friendUser) || pickName(local))
+      : (pickName(friendProfile) || pickName(friendUser) || pickName(local));
+    const name = sourceName || localId;
+    const avatar = link?.localProfileAvatarUrl || link?.local_profile_avatar_url || pickAvatar(friendProfile) || pickAvatar(friendUser) || link?.friendAvatarUrl || pickAvatar(local);
 
     const projected = {
       ...local,
@@ -256,9 +318,11 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
       avatar: avatar || null,
       linkedFriendUserId: friendUser?.id || friendUser?.userId || link?.friendUserId || null,
       linkedProfileSync: true,
+      linkedProfileDirection: isIncoming ? "incoming" : "outgoing",
+      linkedSourceLocalProfileId: rawLocalId || null,
       linkedProfileUpdatedAt: snap?.updatedAt || link?.updatedAt || null,
-      stats: friendProfile?.stats || link?.statsMeta?.stats || local?.stats || {},
-      statsMeta: link?.statsMeta || {},
+      stats: statsMeta?.stats || statsMeta?.miniStats || friendProfile?.stats || local?.stats || {},
+      statsMeta,
     };
 
     profiles.push(projected);
@@ -276,12 +340,31 @@ export async function loadLinkedProfileProjection(localProfiles: any[] = []): Pr
   if (cacheValue && cacheKey === nextKey && now - cacheAt < CACHE_TTL_MS) return cacheValue;
 
   try {
-    const res = await apiPost("/online/profile-links/linked-snapshots", { localProfileIds: ids });
-    const snapshots: LinkedProfileSnapshot[] = Array.isArray(res?.snapshots) ? res.snapshots : [];
+    let snapshots: LinkedProfileSnapshot[] = [];
+    try {
+      const res = await apiPost("/online/profile-links/linked-snapshots", { localProfileIds: ids });
+      snapshots = Array.isArray(res?.snapshots) ? res.snapshots : [];
+    } catch {
+      const res = await apiGet("/online/profile-links");
+      const links = Array.isArray(res?.links) ? res.links : [];
+      snapshots = links
+        .filter((link: any) => String(link?.status || "").toLowerCase() === "accepted")
+        .map((link: any) => ({
+          link,
+          friendUser: link?.direction === "incoming" ? (link?.requesterUser || link?.ownerUser || {}) : (link?.targetUser || {}),
+          friendProfile: link?.friendProfile || null,
+          payload: null,
+          updatedAt: link?.updatedAt || link?.acceptedAt || link?.createdAt || null,
+        }));
+    }
     const projected = projectLinkedSnapshots(localProfiles, snapshots);
     cacheKey = nextKey;
     cacheAt = now;
     cacheValue = projected;
+    try {
+      localStorage.setItem("dc_linked_profile_projection_v1", JSON.stringify({ at: Date.now(), projection: projected }));
+      window.dispatchEvent(new CustomEvent("dc-linked-profile-projection-updated", { detail: projected }));
+    } catch {}
     return projected;
   } catch (error) {
     return { profiles: [], history: [], normalizedHint: [], byLocalProfileId: {}, snapshots: [] };

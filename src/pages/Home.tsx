@@ -25,6 +25,7 @@ import {
 import { History } from "../lib/history";
 import { computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
+import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 
 type Props = {
   store: Store;
@@ -2377,6 +2378,7 @@ export default function Home({ store, go, activeSport }: Props) {
         if (!cancelled) setStats(emptyActiveProfileStats());
         return;
       }
+      try { await loadLinkedProfileProjection([activeProfile as any]); } catch {}
       const baseStats = await buildStatsForProfile(activeProfile.id, activeProfile.name).catch(() => emptyActiveProfileStats());
       const linkedMiniStats = await loadIncomingLinkedMiniStatsForHome((auth as any)?.userId || (auth as any)?.user?.id || activeProfile.id);
       const s = linkedMiniStats ? applyLinkedMiniStatsToHomeStats(baseStats, linkedMiniStats) : baseStats;

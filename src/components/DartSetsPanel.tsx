@@ -944,60 +944,141 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
         gap: 10,
       }}
     >
-      {/* Header néon */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ position: "relative", paddingLeft: 2 }}>
-          <div
-            style={{
-              position: "absolute",
-              inset: -6,
-              borderRadius: 999,
-              background: "radial-gradient(circle at 0% 0%, rgba(245,195,91,.35), transparent 60%)",
-              opacity: 0.9,
-              pointerEvents: "none",
-            }}
-          />
-          <div
-            style={{
-              position: "relative",
-              fontSize: 13,
-              letterSpacing: 2,
-              textTransform: "uppercase",
-              color: "#fff",
-              textShadow: "0 0 6px rgba(245,195,91,.8), 0 0 14px rgba(245,195,91,.5)",
-            }}
-          >
-            {title}
-          </div>
-          <div style={{ position: "relative", marginTop: 2, fontSize: 10, color: "rgba(255,255,255,.55)" }}>
-            {subtitle}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setEditingId(null);
-            setEditForm(null);
-            setForm(createEmptyForm(primary, String(profile?.id || "")));
-            setIsCreating((x) => !x);
-          }}
+      {/* Titre + actions type bottomNav */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "stretch" }}>
+        <div
           style={{
-            position: "relative",
-            fontSize: 11,
-            padding: "6px 12px",
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,.16)",
-            background: "linear-gradient(135deg, rgba(12,8,0,1), rgba(80,50,10,1))",
-            color: "#fff",
-            fontWeight: 700,
+            textAlign: "center",
+            fontSize: 18,
+            lineHeight: "22px",
+            fontWeight: 950,
+            letterSpacing: 1.2,
             textTransform: "uppercase",
-            letterSpacing: 1.6,
-            boxShadow: "0 0 10px rgba(245,195,91,.6), 0 0 24px rgba(245,195,91,.35)",
+            color: primary,
+            textShadow: `0 0 8px ${primary}, 0 0 18px ${primary}99`,
           }}
         >
-          {labelCreate}
-        </button>
+          {title}
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+            gap: 7,
+            padding: "7px 8px",
+            borderRadius: 18,
+            background: "linear-gradient(180deg, rgba(9,12,24,.92), rgba(5,7,15,.98))",
+            border: "1px solid rgba(255,255,255,.08)",
+            boxShadow: "inset 0 0 14px rgba(255,255,255,.035), 0 0 18px rgba(0,0,0,.55)",
+          }}
+        >
+          {[
+            {
+              key: "create",
+              label: labelCreate,
+              icon: "＋",
+              tone: primary,
+              active: isCreating,
+              disabled: false,
+              onClick: () => {
+                setEditingId(null);
+                setEditForm(null);
+                setForm(createEmptyForm(primary, String(profile?.id || "")));
+                setIsCreating((x) => !x);
+              },
+            },
+            {
+              key: "scan",
+              label: labelScanner,
+              icon: "⌗",
+              tone: "#7fe2a9",
+              active: !!scannerTarget,
+              disabled: !activeSet,
+              onClick: () => activeSet && setScannerTarget(activeSet),
+            },
+            {
+              key: "edit",
+              label: labelEdit,
+              icon: "✎",
+              tone: "#7fc4ff",
+              active: !!editingId,
+              disabled: !activeSet,
+              onClick: () => handleStartEdit(activeSet),
+            },
+            {
+              key: "fav",
+              label: labelFav,
+              icon: "★",
+              tone: "#f5c35b",
+              active: !!activeSet?.isFavorite,
+              disabled: !activeSet,
+              onClick: () => handleSetFavorite(activeSet),
+            },
+            {
+              key: "delete",
+              label: labelDelete,
+              icon: "🗑",
+              tone: "#ff7878",
+              active: false,
+              disabled: !activeSet,
+              onClick: () => handleDelete(activeSet),
+            },
+          ].map((btn) => (
+            <button
+              key={btn.key}
+              type="button"
+              onClick={btn.onClick}
+              disabled={btn.disabled}
+              style={{
+                minWidth: 0,
+                height: 54,
+                borderRadius: 16,
+                border: btn.active
+                  ? `1px solid ${btn.tone}`
+                  : "1px solid rgba(255,255,255,.09)",
+                background: btn.active
+                  ? `radial-gradient(circle at 50% 0%, ${btn.tone}55, rgba(8,10,20,.96) 64%)`
+                  : "linear-gradient(180deg, rgba(16,20,35,.86), rgba(7,9,18,.96))",
+                color: btn.disabled ? "rgba(150,150,170,.55)" : "#fff",
+                opacity: btn.disabled ? 0.42 : 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                boxShadow: btn.active ? `0 0 14px ${btn.tone}66` : "none",
+                cursor: btn.disabled ? "default" : "pointer",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: btn.key === "delete" ? 17 : 20,
+                  lineHeight: "20px",
+                  color: btn.disabled ? "rgba(150,150,170,.55)" : btn.tone,
+                  textShadow: btn.disabled ? "none" : `0 0 9px ${btn.tone}`,
+                }}
+              >
+                {btn.icon}
+              </span>
+              <span
+                style={{
+                  fontSize: 8.5,
+                  lineHeight: "10px",
+                  fontWeight: 850,
+                  letterSpacing: 0.55,
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: "100%",
+                }}
+              >
+                {btn.label}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Bloc flottant : création */}
@@ -1518,278 +1599,275 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
         </form>
       )}
 
-      {/* Carrousel */}
+      {/* Carrousel premium */}
       {hasSets ? (
-        <>
-          <div
+        <div
+          style={{
+            marginTop: 2,
+            padding: "10px 8px 12px",
+            borderRadius: 18,
+            background: "linear-gradient(180deg, rgba(8,10,22,.98), rgba(4,6,14,.99))",
+            border: "1px solid rgba(255,255,255,.07)",
+            position: "relative",
+            overflow: "hidden",
+            boxShadow: "inset 0 0 22px rgba(255,255,255,.025), 0 0 20px rgba(0,0,0,.65)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={goPrev}
             style={{
-              marginTop: 4,
-              padding: 8,
-              borderRadius: 14,
-              background: "linear-gradient(135deg, rgba(8,8,18,.98), rgba(12,16,30,.98))",
-              border: "1px solid rgba(255,255,255,.06)",
-              position: "relative",
-              overflow: "hidden",
+              position: "absolute",
+              left: 7,
+              top: 98,
+              transform: "translateY(-50%)",
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.35)",
+              background: "rgba(0,0,0,.58)",
+              color: "#fff",
+              fontSize: 15,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 10,
+              boxShadow: "0 0 14px rgba(0,0,0,.8)",
             }}
           >
-            <button
-              type="button"
-              onClick={goPrev}
-              style={{
-                position: "absolute",
-                left: 4,
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,.4)",
-                background: "rgba(0,0,0,.6)",
-                color: "#fff",
-                fontSize: 14,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 10,
-              }}
-            >
-              ◀
-            </button>
+            ◀
+          </button>
 
-            <button
-              type="button"
-              onClick={goNext}
-              style={{
-                position: "absolute",
-                right: 4,
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,.4)",
-                background: "rgba(0,0,0,.6)",
-                color: "#fff",
-                fontSize: 14,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 10,
-              }}
-            >
-              ▶
-            </button>
+          <button
+            type="button"
+            onClick={goNext}
+            style={{
+              position: "absolute",
+              right: 7,
+              top: 98,
+              transform: "translateY(-50%)",
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.35)",
+              background: "rgba(0,0,0,.58)",
+              color: "#fff",
+              fontSize: 15,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 10,
+              boxShadow: "0 0 14px rgba(0,0,0,.8)",
+            }}
+          >
+            ▶
+          </button>
 
-            {activeSet && (
-              <div style={{ marginInline: 30, display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: 10, alignItems: "center" }}>
+          {activeSet && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 9 }}>
+              <div
+                style={{
+                  position: "relative",
+                  width: "min(100%, 250px)",
+                  aspectRatio: "1.35 / 1",
+                  borderRadius: 24,
+                  background: activeSet.bgColor || DEFAULT_BG,
+                  border: `1px solid ${primary}55`,
+                  boxShadow: `0 0 18px ${primary}22, inset 0 0 22px rgba(255,255,255,.05)`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {activeSet.thumbImageUrl || activeSet.mainImageUrl ? (
+                  <DartImage
+                    url={activeSet.mainImageUrl || activeSet.thumbImageUrl!}
+                    width="100%"
+                    height="100%"
+                    angleDeg={0}
+                    fit={(activeSet as any)?.kind === "photo" ? "cover" : "contain"}
+                    bg={activeSet.bgColor || DEFAULT_BG}
+                    radius={24}
+                  />
+                ) : (
+                  <span style={{ fontSize: 56 }}>🎯</span>
+                )}
+
+                {activeSet.scope === "private" && activeOwner ? (
                   <div
+                    title={ownerLabel(activeOwner)}
                     style={{
-                      width: 80,
-                      height: 70,
-                      borderRadius: 14,
-                      background: activeSet.bgColor || DEFAULT_BG,
-                      border: "1px solid rgba(255,255,255,.2)",
+                      position: "absolute",
+                      right: 8,
+                      bottom: 8,
+                      width: 38,
+                      height: 38,
+                      borderRadius: 999,
+                      padding: 2,
+                      background: "rgba(2,4,10,.78)",
+                      border: `1px solid ${primary}bb`,
+                      boxShadow: `0 0 12px ${primary}88`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      overflow: "hidden",
                     }}
                   >
-                    {activeSet.thumbImageUrl || activeSet.mainImageUrl ? (
-                      <DartImage
-                        url={activeSet.thumbImageUrl || activeSet.mainImageUrl!}
-                        width={80}
-                        height={70}
-                        angleDeg={0}
-                        fit={(activeSet as any)?.kind === "photo" ? "cover" : "contain"} // ✅ PHOTO => cover
-                        bg={activeSet.bgColor || DEFAULT_BG}
-                        radius={14}
-                      />
-                    ) : (
-                      <span style={{ fontSize: 24 }}>🎯</span>
-                    )}
+                    <AvatarLite
+                      src={(activeOwner as any).avatarDataUrl || (activeOwner as any).avatarUrl || (activeOwner as any).avatar || null}
+                      size={32}
+                      label={ownerLabel(activeOwner).slice(0, 1)}
+                    />
                   </div>
+                ) : null}
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, overflow: "hidden" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: "#fff",
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {activeSet.name}
-                      </div>
-                      {activeSet.isFavorite && (
-                        <span
-                          style={{
-                            fontSize: 16,
-                            textShadow: "0 0 4px rgba(245,195,91,.9), 0 0 10px rgba(245,195,91,.7)",
-                            color: "rgba(245,195,91,1)",
-                          }}
-                        >
-                          ★
-                        </span>
-                      )}
-                    </div>
-
-                    {activeSet.brand && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "rgba(255,255,255,.75)",
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {activeSet.brand}
-                      </div>
-                    )}
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        fontSize: 11,
-                        color: "rgba(255,255,255,.8)",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {typeof activeSet.weightGrams === "number" && (
-                        <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,.25)", fontSize: 10 }}>
-                          {activeSet.weightGrams} g
-                        </span>
-                      )}
-
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          border: activeSet.scope === "public" ? "1px solid rgba(127,230,165,.8)" : "1px solid rgba(255,255,255,.25)",
-                          background: activeSet.scope === "public" ? "rgba(127,230,165,.18)" : "rgba(255,255,255,.06)",
-                          color: activeSet.scope === "public" ? "rgba(180,255,210,.98)" : "rgba(220,220,255,.9)",
-                          letterSpacing: 1,
-                          fontSize: 10,
-                        }}
-                      >
-                        <span style={{ textTransform: "uppercase" }}>
-                          {activeSet.scope === "public"
-                            ? lang === "fr"
-                              ? "Public"
-                              : lang === "es"
-                              ? "Público"
-                              : lang === "de"
-                              ? "Öffentlich"
-                              : "Public"
-                            : lang === "fr"
-                            ? "Privé"
-                            : lang === "es"
-                            ? "Privado"
-                            : lang === "de"
-                            ? "Privat"
-                            : "Private"}
-                        </span>
-                        {activeSet.scope === "private" && activeOwner ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <AvatarLite
-                              src={(activeOwner as any).avatarDataUrl || (activeOwner as any).avatarUrl || (activeOwner as any).avatar || null}
-                              size={18}
-                              label={ownerLabel(activeOwner).slice(0, 1)}
-                            />
-                            <span style={{ fontSize: 10, opacity: 0.95 }}>{ownerLabel(activeOwner)}</span>
-                          </span>
-                        ) : null}
-                      </span>
-                    </div>
+                {activeSet.isFavorite && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 9,
+                      top: 8,
+                      color: "#f5c35b",
+                      fontSize: 22,
+                      lineHeight: "22px",
+                      textShadow: "0 0 7px rgba(245,195,91,.95), 0 0 16px rgba(245,195,91,.7)",
+                    }}
+                  >
+                    ★
                   </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  width: "100%",
+                  maxWidth: 320,
+                  textAlign: "center",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <div
+                  style={{
+                    maxWidth: "100%",
+                    fontSize: 18,
+                    lineHeight: "22px",
+                    fontWeight: 950,
+                    color: "#fff",
+                    whiteSpace: "nowrap",
+                    textOverflow: "ellipsis",
+                    overflow: "hidden",
+                    textShadow: "0 0 10px rgba(255,255,255,.18)",
+                  }}
+                >
+                  {activeSet.name}
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 4 }}>
-                  {sets.map((s, idx) => (
+                <div
+                  style={{
+                    width: "100%",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 6,
+                  }}
+                >
+                  {[
+                    {
+                      label: lang === "fr" ? "Marque" : "Brand",
+                      value: activeSet.brand || "—",
+                    },
+                    {
+                      label: lang === "fr" ? "Poids" : "Weight",
+                      value: typeof activeSet.weightGrams === "number" ? `${activeSet.weightGrams} g` : "—",
+                    },
+                    {
+                      label: lang === "fr" ? "Accès" : "Scope",
+                      value:
+                        activeSet.scope === "public"
+                          ? lang === "fr"
+                            ? "Public"
+                            : "Public"
+                          : lang === "fr"
+                          ? "Privé"
+                          : "Private",
+                    },
+                  ].map((item) => (
                     <div
-                      key={s.id}
+                      key={item.label}
                       style={{
-                        width: idx === activeIndex ? 10 : 6,
-                        height: 6,
-                        borderRadius: 999,
-                        background: idx === activeIndex ? "rgba(245,195,91,.9)" : "rgba(255,255,255,.25)",
-                        transition: "all .18s",
+                        minWidth: 0,
+                        padding: "6px 5px",
+                        borderRadius: 12,
+                        background: "rgba(255,255,255,.045)",
+                        border: "1px solid rgba(255,255,255,.08)",
                       }}
-                    />
+                    >
+                      <div
+                        style={{
+                          fontSize: 8,
+                          lineHeight: "10px",
+                          letterSpacing: 0.8,
+                          textTransform: "uppercase",
+                          color: "rgba(255,255,255,.45)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 2,
+                          fontSize: 11,
+                          lineHeight: "14px",
+                          fontWeight: 800,
+                          color: "#fff",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.value}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
-            )}
-          </div>
 
-          <div
-            style={{
-              marginTop: 8,
-              padding: 8,
-              borderRadius: 12,
-              background: "rgba(8,8,18,.95)",
-              border: "1px solid rgba(255,255,255,.05)",
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 6,
-            }}
-          >
-            {[
-              { key: "scan", label: labelScanner, onClick: () => activeSet && setScannerTarget(activeSet), disabled: !activeSet },
-              { key: "edit", label: labelEdit, onClick: () => handleStartEdit(activeSet), disabled: !activeSet },
-              { key: "delete", label: labelDelete, onClick: () => handleDelete(activeSet), disabled: !activeSet },
-              { key: "fav", label: labelFav, onClick: () => handleSetFavorite(activeSet), disabled: !activeSet },
-            ].map((btn) => (
-              <button
-                key={btn.key}
-                type="button"
-                onClick={btn.onClick}
-                disabled={btn.disabled}
-                style={{
-                  padding: "6px 4px",
-                  borderRadius: 999,
-                  border:
-                    btn.key === "scan"
-                      ? "1px solid rgba(127,226,169,.8)"
-                      : btn.key === "delete"
-                      ? "1px solid rgba(255,120,120,.8)"
-                      : btn.key === "fav"
-                      ? "1px solid rgba(245,195,91,.9)"
-                      : "1px solid rgba(127,196,255,.8)",
-                  background: btn.disabled
-                    ? "rgba(40,40,50,.7)"
-                    : btn.key === "scan"
-                    ? "radial-gradient(circle at 0% 0%, rgba(127,226,169,.4), rgba(8,28,18,.95))"
-                    : btn.key === "delete"
-                    ? "radial-gradient(circle at 0% 0%, rgba(255,120,120,.4), rgba(40,8,8,.95))"
-                    : btn.key === "fav"
-                    ? "radial-gradient(circle at 0% 0%, rgba(245,195,91,.45), rgba(40,28,8,.95))"
-                    : "radial-gradient(circle at 0% 0%, rgba(127,196,255,.45), rgba(8,20,40,.95))",
-                  color: btn.disabled ? "rgba(140,140,160,.8)" : "#fff",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.1,
-                  opacity: btn.disabled ? 0.5 : 1,
-                }}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
-        </>
+              <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 1, maxWidth: "100%", flexWrap: "wrap" }}>
+                {sets.map((s, idx) => (
+                  <div
+                    key={s.id}
+                    style={{
+                      width: idx === activeIndex ? 12 : 6,
+                      height: 6,
+                      borderRadius: 999,
+                      background: idx === activeIndex ? primary : "rgba(255,255,255,.25)",
+                      boxShadow: idx === activeIndex ? `0 0 8px ${primary}` : "none",
+                      transition: "all .18s",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
-        <div style={{ marginTop: 4, fontSize: 11, color: "rgba(255,255,255,.45)" }}>
+        <div
+          style={{
+            marginTop: 4,
+            padding: 14,
+            borderRadius: 16,
+            textAlign: "center",
+            fontSize: 12,
+            color: "rgba(255,255,255,.58)",
+            background: "rgba(8,8,18,.75)",
+            border: "1px solid rgba(255,255,255,.06)",
+          }}
+        >
           {lang === "fr"
             ? "Tu n'as pas encore enregistré de jeu de fléchettes. Crée ton premier set pour commencer à comparer tes stats."
             : lang === "es"

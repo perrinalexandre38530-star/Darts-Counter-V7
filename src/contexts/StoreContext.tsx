@@ -80,11 +80,27 @@ export function useStore() {
 export function useCurrentProfile<TProfile = any>(): TProfile | null {
   const { store } = useStore();
 
+  const [linkedTick, setLinkedTick] = React.useState(0);
+  React.useEffect(() => {
+    const onLinked = () => setLinkedTick((x) => x + 1);
+    window.addEventListener("dc-linked-profile-projection-updated", onLinked as any);
+    return () => window.removeEventListener("dc-linked-profile-projection-updated", onLinked as any);
+  }, []);
+
   return React.useMemo(() => {
     const s: any = store ?? (window as any)?.__appStore?.store ?? null;
     if (!s) return null;
     const activeId = s.activeProfileId;
     const list = Array.isArray(s.profiles) ? s.profiles : [];
-    return (list.find((p: any) => p?.id === activeId) ?? null) as TProfile | null;
-  }, [store]);
+    const base = list.find((p: any) => p?.id === activeId) ?? null;
+    if (!base) return null;
+    try {
+      const raw = localStorage.getItem("dc_linked_profile_projection_v1") || "";
+      const parsed = raw ? JSON.parse(raw) : null;
+      const linkedProfiles = Array.isArray(parsed?.projection?.profiles) ? parsed.projection.profiles : [];
+      const linked = linkedProfiles.find((p: any) => String(p?.id ?? p?.profileId ?? p?.playerId ?? "") === String(activeId));
+      if (linked) return { ...base, ...linked } as TProfile;
+    } catch {}
+    return base as TProfile | null;
+  }, [store, linkedTick]);
 }

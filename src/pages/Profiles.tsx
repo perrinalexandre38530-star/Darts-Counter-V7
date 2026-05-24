@@ -2540,12 +2540,46 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            <div style={{ marginBottom: 10, display: "flex", alignItems: "center" }}>
+            <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
               <BackDot
                 size={36}
                 title={t("profiles.menu.back", "Retour au menu Profils")}
                 onClick={() => openView("menu")}
               />
+              {view === "dartsets" && (
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: 48,
+                    borderRadius: 16,
+                    border: `1px solid ${primary}88`,
+                    background:
+                      "linear-gradient(90deg, rgba(4,6,14,.96), rgba(18,22,36,.92), rgba(4,6,14,.96))",
+                    boxShadow: `0 0 18px ${primary}44, inset 0 0 18px rgba(255,255,255,.035)`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    padding: "0 12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: primary,
+                      fontSize: 15,
+                      lineHeight: "18px",
+                      fontWeight: 950,
+                      letterSpacing: 1.4,
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                      textShadow: `0 0 8px ${primary}, 0 0 18px ${primary}99`,
+                    }}
+                  >
+                    SETS DE FLÉCHETTES
+                  </div>
+                </div>
+              )}
             </div>
 
             {view === "me" && (
@@ -2706,7 +2740,7 @@ React.useEffect(() => {
             )}
 
             {view === "dartsets" && (
-              <Card title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}>
+              <Card>
                 <div style={{ display: "grid", gap: 10 }}>
                   {dartsetsHeavyReady && selectedDartsetsProfile ? (
                     <DartSetsPanel
