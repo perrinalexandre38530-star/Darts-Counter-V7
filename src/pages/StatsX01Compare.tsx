@@ -969,7 +969,20 @@ function computeX01CompareMatchBreakdown(rows: any[], profileId: string, playerN
     const isTeam = x01CompareIsTeamMatch(rec, players, player);
     const kind = isTeam ? "team" : players.length <= 2 ? "duo" : "multi";
     const isWin = x01CompareIsPlayerWinner(rec, player);
-    const rank = getX01ComparePlayerRank(rec, player, players, profileId, playerName, isWin);
+
+    // AUDIT 2026-05 — X01 MULTI : ne jamais déduire un podium/victoire depuis
+    // matchesWon / winnerId quand on a un vrai tableau de classement. Les anciennes
+    // sauvegardes peuvent marquer le profil comme winner sur chaque ligne joueur,
+    // ce qui transformait 2+4+0 podiums réels en 9 podiums dans X01Compare.
+    // Pour MULTI, la source de vérité est strictement le rang réel.
+    const rank = getX01ComparePlayerRank(
+      rec,
+      player,
+      players,
+      profileId,
+      playerName,
+      kind === "multi" ? false : isWin
+    );
     const didFinish = x01ComparePlayerFinished(player, isWin, rank, players.length);
 
     if (kind === "duo") {
@@ -977,8 +990,8 @@ function computeX01CompareMatchBreakdown(rows: any[], profileId: string, playerN
       if (isWin) out.winDuo += 1;
     } else if (kind === "multi") {
       out.matchMulti += 1;
-      if (isWin) out.winMulti += 1;
-      if (rank > 0 && rank <= 3) out.podiumMulti += 1;
+      if (rank === 1) out.winMulti += 1;
+      if (rank >= 1 && rank <= 3) out.podiumMulti += 1;
       if (didFinish) out.finishMulti += 1;
     } else {
       out.matchTeam += 1;
@@ -1600,7 +1613,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         localX01MultiAgg,
         bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw)
       ),
-      hasX01CompareMatchBreakdownValues(localSampleMatchBreakdown) ? localSampleMatchBreakdown : matchBreakdown.local
+      // La section MATCHS doit suivre la même source que le tableau détaillé X01 Multi
+      // (lignes hydratées History), pas les samples profil seuls qui ne contiennent pas
+      // toujours le classement complet de tous les joueurs.
+      hasX01CompareMatchBreakdownValues(matchBreakdown.local) ? matchBreakdown.local : localSampleMatchBreakdown
     ),
     [localX01MultiAgg, localBridgeStats, aggLocalRaw, localSampleMatchBreakdown, matchBreakdown.local]
   );
