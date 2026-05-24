@@ -1,5 +1,6 @@
 // src/pages/DepartementsConfig.tsx
 import React from "react";
+import { loadBotPlayers } from "../lib/bots";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -84,8 +85,6 @@ EXACT : le score doit être exactement égal.
 D'autres règles peuvent autoriser une marge.`;
 
 // Alphabetical order (carousel)
-const LS_BOTS_KEY = "dc_bots_v1";
-
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
   eager: true,
   import: "default",
@@ -132,18 +131,12 @@ const PRO_BOTS: BotLite[] = [
 
 function readUserBotsFromLS(): BotLite[] {
   try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as any[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((b) => ({
-        id: String(b.id),
-        name: b.name || "BOT",
-        avatarDataUrl: b.avatarDataUrl ?? null,
-        botLevel: b.botLevel ?? b.levelLabel ?? b.levelName ?? b.performanceLevel ?? b.difficulty ?? "",
-      }))
-      .filter((b) => !!b.id);
+    return loadBotPlayers().map((b: any) => ({
+      id: String(b.id),
+      name: b?.name || "BOT",
+      avatarDataUrl: b?.avatarDataUrl ?? null,
+      botLevel: b?.botLevel ?? b?.level ?? "",
+    })).filter((b: any) => !!b.id);
   } catch {
     return [];
   }

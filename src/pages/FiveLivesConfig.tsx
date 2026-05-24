@@ -12,6 +12,7 @@
 // =============================================================
 
 import React from "react";
+import { loadBotPlayers } from "../lib/bots";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -70,8 +71,6 @@ type BotLite = {
   botLevel?: string;
 };
 
-const LS_BOTS_KEY = "dc_bots_v1";
-
 const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_mvg", name: "Green Machine", botLevel: "Légende", avatarDataUrl: avatarGreenMachine as any },
   { id: "bot_pro_wright", name: "Snake King", botLevel: "Pro", avatarDataUrl: avatarSnakeKing as any },
@@ -119,18 +118,12 @@ function shuffleArray<T>(arr: T[]) {
 
 function loadUserBots(): BotLite[] {
   try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw);
-    if (!Array.isArray(list)) return [];
-    return list
-      .map((b: any) => ({
-        id: String(b?.id ?? ""),
-        name: String(b?.name ?? "Bot"),
-        avatarDataUrl: b?.avatarDataUrl ?? null,
-        botLevel: b?.botLevel ?? "Bot",
-      }))
-      .filter((b: any) => b.id && b.name);
+    return loadBotPlayers().map((b: any) => ({
+      id: String(b.id),
+      name: b?.name || "BOT",
+      avatarDataUrl: b?.avatarDataUrl ?? null,
+      botLevel: b?.botLevel ?? b?.level ?? "",
+    })).filter((b: any) => !!b.id);
   } catch {
     return [];
   }

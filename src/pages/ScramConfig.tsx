@@ -8,6 +8,7 @@
 // =============================================================
 
 import React from "react";
+import { loadBotPlayers } from "../lib/bots";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -38,8 +39,6 @@ export type ScramConfigPayload = {
 };
 
 const LS_CFG_KEY = "dc_modecfg_scram";
-const LS_BOTS_KEY = "dc_bots_v1";
-
 type BotLite = { id: string; name: string; avatarDataUrl: string | null; botLevel?: string };
 
 const PRO_BOTS: BotLite[] = [
@@ -51,18 +50,12 @@ const PRO_BOTS: BotLite[] = [
 
 function readUserBotsFromLS(): BotLite[] {
   try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as any[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((b) => ({
-        id: String(b.id),
-        name: b.name || "BOT",
-        avatarDataUrl: b.avatarDataUrl ?? null,
-        botLevel: b.botLevel ?? b.levelLabel ?? b.levelName ?? b.performanceLevel ?? b.difficulty ?? "",
-      }))
-      .filter((b) => !!b.id);
+    return loadBotPlayers().map((b: any) => ({
+      id: String(b.id),
+      name: b?.name || "BOT",
+      avatarDataUrl: b?.avatarDataUrl ?? null,
+      botLevel: b?.botLevel ?? b?.level ?? "",
+    })).filter((b: any) => !!b.id);
   } catch {
     return [];
   }

@@ -9,6 +9,7 @@
 // ============================================
 
 import React from "react";
+import { loadBotPlayers } from "../lib/bots";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -61,23 +62,16 @@ type TeamBlockProps = {
   removeFrom: (teamKey: keyof WarfareTeams, id: string) => void;
 };
 
-const LS_BOTS_KEY = "dc_bots_v1";
 const MAX_PER_TEAM = 6;
 
 function safeBots(): PlayerLite[] {
   try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((b: any) => b?.id)
-      .map((b: any) => ({
-        id: String(b.id),
-        name: String(b?.name || "BOT"),
-        avatarDataUrl: b?.avatarDataUrl || b?.avatar || null,
-        isBot: true,
-      }));
+    return loadBotPlayers().map((b: any) => ({
+      id: String(b.id),
+      name: String(b?.name || "BOT"),
+      avatarDataUrl: b?.avatarDataUrl || null,
+      isBot: true,
+    }));
   } catch {
     return [];
   }

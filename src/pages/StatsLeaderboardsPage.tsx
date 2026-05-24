@@ -393,15 +393,13 @@ function cleanAvatar(v: any): string | null {
 // ✅ bots storage
 function loadBotsMap(): Record<string, { avatarDataUrl?: string | null; name?: string }> {
   try {
-    const raw = localStorage.getItem("dc_bots_v1");
-    if (!raw) return {};
-    const bots = JSON.parse(raw);
-    const map: Record<string, any> = {};
-    for (const b of bots || []) {
-      if (!b?.id) continue;
-      map[String(b.id)] = { avatarDataUrl: b.avatarDataUrl ?? null, name: b.name };
+    const out: Record<string, { avatarDataUrl?: string | null; name?: string }> = {};
+    for (const b of loadBotPlayers() as any[]) {
+      const id = String(b?.id || "");
+      if (!id) continue;
+      out[id] = { avatarDataUrl: b?.avatarDataUrl ?? null, name: b?.name || "BOT" };
     }
-    return map;
+    return out;
   } catch {
     return {};
   }
