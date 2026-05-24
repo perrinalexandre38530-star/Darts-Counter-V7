@@ -27,7 +27,6 @@ import {
   getDartSetsForProfile,
   createDartSet,
   deleteDartSet,
-  setFavoriteDartSet,
   updateDartSet,
 } from "../lib/dartSetsStore";
 
@@ -469,6 +468,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   const [activeIndex, setActiveIndex] = React.useState(0);
   const lastSyncedSigRef = React.useRef("");
   const syncTimerRef = React.useRef<number | null>(null);
+  const activeSetIdRef = React.useRef<string | null>(null);
+  const keepActiveDartSetIdRef = React.useRef<string | null>(null);
 
   const ownersById = React.useMemo(() => {
     const map = new Map<string, any>();
@@ -561,8 +562,16 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
         ? await Promise.resolve(getAllDartSets() as any)
         : await Promise.resolve(getDartSetsForProfile(profile.id) as any);
       const sorted = sortSets((all || []) as DartSet[]);
+      const requestedActiveId = keepActiveDartSetIdRef.current || activeSetIdRef.current;
+      keepActiveDartSetIdRef.current = null;
       setSets(sorted);
-      setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
+      setActiveIndex((idx) => {
+        if (requestedActiveId) {
+          const nextIndex = sorted.findIndex((s) => String(s.id) === String(requestedActiveId));
+          if (nextIndex >= 0) return nextIndex;
+        }
+        return sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1);
+      });
 
     } catch (err) {
       console.warn("[DartSetsPanel] load error", err);
@@ -589,6 +598,10 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   const hasSets = sets.length > 0;
   const activeSet: DartSet | null =
     hasSets && activeIndex >= 0 && activeIndex < sets.length ? sets[activeIndex] : null;
+
+  React.useEffect(() => {
+    activeSetIdRef.current = activeSet?.id ? String(activeSet.id) : null;
+  }, [activeSet?.id]);
   const activeOwner = React.useMemo(() => {
     if (!activeSet || String(activeSet.scope || "private") !== "private") return null;
     const ownerId = String((activeSet as any)?.profileId || "");
@@ -831,14 +844,15 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   const handleToggleFavorite = (set: DartSet | null) => {
     if (!profile?.id || !set) return;
 
-    // Bascule ON/OFF :
-    // - si le set visible est déjà favori, on retire simplement son statut favori ;
-    // - sinon, on le définit comme favori unique du profil via le store existant.
-    const ok = set.isFavorite
-      ? updateDartSet(set.id, { isFavorite: false } as any)
-      : setFavoriteDartSet(String(set.profileId || profile.id), set.id);
+    // Bascule ON/OFF non exclusive :
+    // un clic ajoute le set visible aux favoris, un second clic le retire.
+    // Important : on garde ce même set affiché après le tri, même s'il remonte
+    // au début de la liste des favoris.
+    keepActiveDartSetIdRef.current = String(set.id);
+    const ok = updateDartSet(set.id, { isFavorite: !set.isFavorite } as any);
 
     if (!ok) {
+      keepActiveDartSetIdRef.current = null;
       alert(lang === "fr" ? "Impossible de modifier le favori." : "Unable to update favorite.");
       reloadSets();
       return;
