@@ -53,7 +53,9 @@ function readUserBotsFromLS(): BotLite[] {
     return loadBotPlayers().map((b: any) => ({
       id: String(b.id),
       name: b?.name || "BOT",
-      avatarDataUrl: b?.avatarDataUrl ?? null,
+      avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? b?.avatar ?? null,
+      avatarUrl: b?.avatarUrl ?? b?.avatar ?? null,
+      avatar: b?.avatar ?? b?.avatarUrl ?? b?.avatarDataUrl ?? null,
       botLevel: b?.botLevel ?? b?.level ?? "",
     })).filter((b: any) => !!b.id);
   } catch {
@@ -65,7 +67,9 @@ function botToFakeProfile(b: BotLite) {
   return {
     id: b.id,
     name: b.name,
-    avatarDataUrl: b.avatarDataUrl,
+    avatarDataUrl: (b as any).avatarDataUrl ?? (b as any).avatarUrl ?? (b as any).avatar ?? null,
+    avatarUrl: (b as any).avatarUrl ?? (b as any).avatar ?? null,
+    avatar: (b as any).avatar ?? (b as any).avatarUrl ?? (b as any).avatarDataUrl ?? null,
     isBot: true,
     botLevel: b.botLevel || "",
   } as any;

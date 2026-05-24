@@ -173,7 +173,9 @@ function toBotLite(input: any): BotLite {
   return {
     id: String(input?.id || ""),
     name: input?.name || "BOT",
-    avatarDataUrl: input?.avatarDataUrl ?? null,
+    avatarDataUrl: input?.avatarDataUrl ?? input?.avatarUrl ?? input?.avatar ?? null,
+    avatarUrl: input?.avatarUrl ?? input?.avatar ?? null,
+    avatar: input?.avatar ?? input?.avatarUrl ?? input?.avatarDataUrl ?? null,
     botLevel:
       input?.botLevel ??
       input?.levelLabel ??
@@ -642,7 +644,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           id: b.id,
           name: b.name || "BOT",
           // components/ProfileAvatar gère avatarDataUrl
-          avatarDataUrl: b.avatarDataUrl ?? null,
+          avatarDataUrl: (b as any).avatarDataUrl ?? (b as any).avatarUrl ?? (b as any).avatar ?? null,
+          avatarUrl: (b as any).avatarUrl ?? (b as any).avatar ?? null,
+          avatar: (b as any).avatar ?? (b as any).avatarUrl ?? (b as any).avatarDataUrl ?? null,
           isBot: true,
           botLevel: b.botLevel || "",
         });

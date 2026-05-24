@@ -7,6 +7,7 @@ import { getNasApiUrl } from "./serverConfig";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
+const LS_BOT_AVATAR_ITEM_PREFIX = "dc_bot_avatar_v1:";
 const BOTS_STORAGE_VERSION = 2;
 const BOTS_CHANGED_EVENT = "dc:bots-changed";
 
@@ -205,14 +206,62 @@ function trySaveAvatarsPayload(candidates: Array<{ id: string; compressed: strin
   });
 }
 
+function saveAvatarItemFallback(botId: string, compressed: string): boolean {
+  const id = String(botId || "").trim();
+  if (!id || !compressed) return false;
+  return safeLocalStorageSetJson(`${LS_BOT_AVATAR_ITEM_PREFIX}${id}`, {
+    v: BOTS_STORAGE_VERSION,
+    id,
+    compressed,
+  }, {
+    compressAboveChars: 2000,
+    imageMaxChars: 220000,
+    sanitizeImages: false,
+  });
+}
+
+function readAvatarItemFallback(botId: string): string | null {
+  if (typeof window === "undefined") return null;
+  const id = String(botId || "").trim();
+  if (!id) return null;
+  const parsed = safeLocalStorageGetJson<any>(`${LS_BOT_AVATAR_ITEM_PREFIX}${id}`, null as any);
+  if (!parsed || typeof parsed !== "object") return null;
+  if (typeof parsed.dataUrl === "string") return sanitizeAvatarDataUrl(parsed.dataUrl);
+  if (typeof parsed.avatarDataUrl === "string") return sanitizeAvatarDataUrl(parsed.avatarDataUrl);
+  if (typeof parsed.compressed === "string") {
+    const out = decompressAvatar(parsed.compressed);
+    return sanitizeAvatarDataUrl(out);
+  }
+  return null;
+}
+
+function cleanupRemovedAvatarItems(validIds: Set<string>) {
+  if (typeof window === "undefined") return;
+  try {
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i) || "";
+      if (!key.startsWith(LS_BOT_AVATAR_ITEM_PREFIX)) continue;
+      const id = key.slice(LS_BOT_AVATAR_ITEM_PREFIX.length);
+      if (!validIds.has(id)) window.localStorage.removeItem(key);
+    }
+  } catch {}
+}
+
 function saveAvatarsWithPruning(list: BotRecord[]) {
   const candidates = buildAvatarCandidates(list)
     .sort((a, b) => b.compressedBytes - a.compressedBytes);
+
+  const validIds = new Set((list || []).map((b: any) => String(b?.id || "")).filter(Boolean));
+  cleanupRemovedAvatarItems(validIds);
 
   if (!candidates.length) {
     safeRemoveItem(LS_BOTS_AVATARS_KEY);
     return;
   }
+
+  // Sauvegarde de secours par BOT : si le payload global est trop gros,
+  // les menus configs peuvent quand même relire chaque avatar individuellement.
+  for (const c of candidates) saveAvatarItemFallback(c.id, c.compressed);
 
   const working = [...candidates];
   while (working.length > 0) {
@@ -220,14 +269,14 @@ function saveAvatarsWithPruning(list: BotRecord[]) {
     if (ok) {
       const dropped = candidates.length - working.length;
       if (dropped > 0) {
-        console.warn(`[bots] ${dropped} avatar(s) dropped to stay under storage quota`);
+        console.warn(`[bots] ${dropped} avatar(s) dropped from global avatar map; individual fallback kept when possible`);
       }
       return;
     }
     working.shift();
   }
 
-  console.warn("[bots] avatar storage disabled: quota still exceeded after pruning");
+  console.warn("[bots] global avatar map disabled: quota still exceeded; using individual avatar fallbacks when available");
   safeRemoveItem(LS_BOTS_AVATARS_KEY);
 }
 
@@ -410,6 +459,7 @@ export function loadBots(): BotRecord[] {
       avatarsMap[bot.id] ??
       avatarsMap[`bot:${bot.id}`] ??
       avatarsMap[`bot_${bot.id}`] ??
+      readAvatarItemFallback(bot.id) ??
       null;
     const resolvedAvatar = mappedAvatar || resolveStoredBotAvatar(bot);
     return {

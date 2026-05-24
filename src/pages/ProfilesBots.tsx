@@ -8,7 +8,7 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { loadStoredBots, saveStoredBots, subscribeBotsChange, type StoredBot, type StoredBotLevel } from "../lib/bots";
-import { fileToSafeAvatarDataUrl } from "../lib/avatarSafe";
+import { fileToAvatarVariants } from "../lib/avatarSafe";
 import AvatarChoiceModal from "../components/AvatarChoiceModal";
 
 export type Bot = StoredBot;
@@ -180,7 +180,10 @@ export default function ProfilesBots({ store, go }: Props) {
 
   async function handleSetBotAvatar(botId: string, file: File) {
     const now = new Date().toISOString();
-    const avatarDataUrl = await fileToSafeAvatarDataUrl(file);
+    // BOT selectors need a reliably persisted lightweight image.
+    // 160px WebP is enough for config carousels and avoids localStorage quota pruning.
+    const variants = await fileToAvatarVariants(file);
+    const avatarDataUrl = variants.thumbDataUrl;
     const next = bots.map((b) =>
       b.id === botId
         ? { ...b, avatarDataUrl, avatarUrl: undefined, updatedAt: now }

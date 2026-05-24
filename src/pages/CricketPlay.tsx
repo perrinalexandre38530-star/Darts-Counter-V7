@@ -651,7 +651,9 @@ React.useEffect(() => {
     const mapped: BotLite[] = loadBotPlayers().map((b: any) => ({
       id: String(b.id),
       name: b.name || "BOT",
-      avatarDataUrl: b.avatarDataUrl ?? null,
+      avatarDataUrl: b.avatarDataUrl ?? b.avatarUrl ?? b.avatar ?? null,
+      avatarUrl: b.avatarUrl ?? b.avatar ?? null,
+      avatar: b.avatar ?? b.avatarUrl ?? b.avatarDataUrl ?? null,
       botLevel: b.botLevel ?? b.level ?? "",
     }));
     setBotsFromLS(mapped);
