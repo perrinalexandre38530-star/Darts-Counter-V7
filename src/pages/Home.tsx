@@ -24,6 +24,7 @@ import {
 } from "../lib/statsBridge";
 import { History } from "../lib/history";
 import { computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
+import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 
 type Props = {
   store: Store;
@@ -175,6 +176,92 @@ function emptyActiveProfileStats(): ActiveProfileStats {
     clockTotalTimeSec: 0,
     clockBestStreak: 0,
   };
+
+}
+
+function normalizeLinkedMiniStats(input: any) {
+  const src = input?.miniStats || input?.stats || input || {};
+  const games = Number(src?.games ?? src?.sessions ?? src?.matches ?? 0) || 0;
+  const wins = Number(src?.wins ?? 0) || 0;
+  const rawWinRate = Number(src?.winRate ?? src?.winRatePct ?? src?.winrate ?? NaN);
+  const winRate = Number.isFinite(rawWinRate)
+    ? Math.max(0, Math.min(100, rawWinRate > 1 ? rawWinRate : rawWinRate * 100))
+    : games > 0
+      ? Math.max(0, Math.min(100, (wins / games) * 100))
+      : 0;
+
+  return {
+    avg3: Number(src?.avg3 ?? src?.avg3D ?? src?.avg_3d ?? 0) || 0,
+    bestVisit: Number(src?.bestVisit ?? src?.best_visit ?? 0) || 0,
+    bestCheckout: Number(src?.bestCheckout ?? src?.bestCO ?? src?.bestCo ?? src?.best_checkout ?? 0) || 0,
+    wins,
+    games,
+    winRate,
+    darts: Number(src?.darts ?? src?.totalDarts ?? 0) || 0,
+  };
+}
+
+function hasUsefulLinkedMiniStats(mini: any): boolean {
+  if (!mini) return false;
+  return (
+    Number(mini.games || 0) +
+    Number(mini.darts || 0) +
+    Number(mini.avg3 || 0) +
+    Number(mini.bestVisit || 0) +
+    Number(mini.bestCheckout || 0)
+  ) > 0;
+}
+
+function applyLinkedMiniStatsToHomeStats(base: ActiveProfileStats, miniInput: any): ActiveProfileStats {
+  const mini = normalizeLinkedMiniStats(miniInput);
+  if (!hasUsefulLinkedMiniStats(mini)) return base;
+  const winRate01 = Math.max(0, Math.min(1, Number(mini.winRate || 0) / 100));
+  const avg3 = Number(mini.avg3 || 0);
+  const sessions = Number(mini.games || 0);
+  const bestVisit = Number(mini.bestVisit || 0);
+  const bestCO = Number(mini.bestCheckout || 0);
+  return {
+    ...base,
+    ratingGlobal: sessions > 0 ? Math.max(0.5, Math.min(1.5, 1 + (winRate01 - 0.5))) : base.ratingGlobal,
+    winrateGlobal: winRate01,
+    avg3DGlobal: avg3,
+    sessionsGlobal: sessions,
+    recordBestVisitX01: Math.max(bestVisit, Number(base.recordBestVisitX01 || 0)),
+    recordBestCOX01: Math.max(bestCO, Number(base.recordBestCOX01 || 0)),
+    recordBestAvg3DX01: Math.max(avg3, Number(base.recordBestAvg3DX01 || 0)),
+    x01MultiAvg3D: avg3,
+    x01MultiSessions: sessions,
+    x01MultiWinrate: winRate01,
+    x01MultiBestVisit: Math.max(bestVisit, Number(base.x01MultiBestVisit || 0)),
+    x01MultiBestCO: Math.max(bestCO, Number(base.x01MultiBestCO || 0)),
+  };
+}
+
+async function loadIncomingLinkedMiniStatsForHome(currentUserId?: string | null): Promise<any | null> {
+  try {
+    if (!currentUserId) return null;
+    const links = await listProfileFriendLinks();
+    const acceptedIncoming = (Array.isArray(links) ? links : []).filter((link: ProfileFriendLink) => {
+      const status = String((link as any)?.status || "").toLowerCase();
+      const direction = String((link as any)?.direction || "").toLowerCase();
+      const targetId = String((link as any)?.targetUser?.userId || (link as any)?.targetUser?.id || (link as any)?.friendUserId || "").trim();
+      return status === "accepted" && (direction === "incoming" || targetId === String(currentUserId));
+    });
+    let best: any = null;
+    let bestScore = -1;
+    for (const link of acceptedIncoming as any[]) {
+      const meta = link?.statsMeta || link?.stats_meta || {};
+      const mini = normalizeLinkedMiniStats(meta?.miniStats || meta?.stats || meta);
+      const score = Number(mini.games || 0) * 1000000 + Number(mini.darts || 0) + Number(mini.avg3 || 0) + Number(mini.bestVisit || 0) + Number(mini.bestCheckout || 0);
+      if (hasUsefulLinkedMiniStats(mini) && score > bestScore) {
+        bestScore = score;
+        best = mini;
+      }
+    }
+    return best;
+  } catch {
+    return null;
+  }
 }
 
 /* ============================================================
@@ -2290,7 +2377,9 @@ export default function Home({ store, go, activeSport }: Props) {
         if (!cancelled) setStats(emptyActiveProfileStats());
         return;
       }
-      const s = await buildStatsForProfile(activeProfile.id, activeProfile.name).catch(() => emptyActiveProfileStats());
+      const baseStats = await buildStatsForProfile(activeProfile.id, activeProfile.name).catch(() => emptyActiveProfileStats());
+      const linkedMiniStats = await loadIncomingLinkedMiniStatsForHome((auth as any)?.userId || (auth as any)?.user?.id || activeProfile.id);
+      const s = linkedMiniStats ? applyLinkedMiniStatsToHomeStats(baseStats, linkedMiniStats) : baseStats;
       if (!cancelled) setStats(s);
     };
 
@@ -2305,7 +2394,7 @@ export default function Home({ store, go, activeSport }: Props) {
       cancelled = true;
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     };
-  }, [activeProfile?.id]);
+  }, [activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
 
     // ------------------------------------------------------------
   // Ticker items (✅ on force Killer en 1er + on utilise CETTE liste partout)
