@@ -27,6 +27,7 @@ import {
   getCricketProfileStats,
   getX01MultiLegsSetsForProfile,
   getBatardProfileStats,
+  clearStatsIndexCache,
   type X01MultiLegsSets,
   type BatardProfileStats,
 } from "../lib/statsBridge";
@@ -4819,6 +4820,7 @@ React.useEffect(() => {
       const localOnly = (Array.isArray(storeProfiles) ? storeProfiles : []).filter((p: any) => !p?.isBot);
       const projection = await loadLinkedProfileProjection(localOnly);
       if (!mounted) return;
+      try { clearStatsIndexCache(); } catch {}
       setLinkedProfileProjection(projection);
     } catch {
       if (!mounted) return;
@@ -5940,7 +5942,7 @@ React.useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [selectedPlayer?.id]);
+}, [selectedPlayer?.id, linkedProfileProjection?.history?.length]);
 
 
 type ModeTickerStat = { label: string; value: string; tone?: "gold" | "red" | "green" | "blue" };
@@ -7815,7 +7817,7 @@ return (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Killer…" />}>
                   <StatsKiller
-                    profiles={storeProfiles as any}
+                    profiles={effectiveStoreProfiles as any}
                     memHistory={records as any}
                     playerId={
                       mode === "active"
@@ -8402,7 +8404,7 @@ return (
                 <React.Suspense fallback={<LazyFallback label="Chargement Classements…" />}>
                   <StatsLeaderboardsTab
                     records={(isMolkkySport ? records.filter((r: any) => isMolkkyRecord(r)) : records) as any}
-                    profiles={storeProfiles as any}
+                    profiles={effectiveStoreProfiles as any}
                     sportOverride={effectiveSport}
                   />
                 </React.Suspense>

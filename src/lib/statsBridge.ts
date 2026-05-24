@@ -590,6 +590,28 @@ function applyFilters(rows: NormalizedMatch[], range: RangeKey, source: SourceKe
   });
 }
 
+function readLinkedProfileHistoryRowsForStatsBridge(): SavedMatch[] {
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage?.getItem("dc_linked_profile_projection_v1") || "";
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const rows = parsed?.projection?.history;
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .filter((r: any) => r && typeof r === "object")
+      .map((r: any, idx: number) => ({
+        ...r,
+        id: String(r.id || r.matchId || r.resumeId || `linked-stats-${idx}`),
+        matchId: String(r.matchId || r.id || r.resumeId || `linked-stats-${idx}`),
+        __linkedRemote: true,
+        linkedRemote: true,
+      })) as SavedMatch[];
+  } catch {
+    return [];
+  }
+}
+
 async function normalizeRow(r: SavedMatch): Promise<NormalizedMatch | null> {
   if (!r) return null;
 
@@ -650,7 +672,13 @@ export async function buildStatsIndex(force = false): Promise<StatsIndex> {
       typeof api?.listFinished === "function"
         ? ((await api.listFinished()) as SavedMatch[])
         : ((await api.list()) as SavedMatch[]);
-    const arr = Array.isArray(raw) ? raw : [];
+    const localArr = Array.isArray(raw) ? raw : [];
+    const linkedArr = readLinkedProfileHistoryRowsForStatsBridge();
+
+    // Source stats réelle = historique local + historique virtuel issu de l'association profil local ↔ compte ami.
+    // Sans ça, seules les cartes Home/Profil voyaient les mini-stats projetées, mais les pages détaillées
+    // Cricket/Killer/Leaderboards/X01 rebuildaient depuis History.listFinished() uniquement.
+    const arr = [...localArr, ...linkedArr];
 
     const norm: NormalizedMatch[] = [];
     for (const r of arr) {
