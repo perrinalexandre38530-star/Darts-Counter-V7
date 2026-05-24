@@ -17,6 +17,7 @@ import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
 import { getX01ProfileStats } from "../lib/statsBridge";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
+import { loadX01MultiSessions } from "../stats/X01MultiStatsTabFull";
 
 import {
   ResponsiveContainer,
@@ -1053,6 +1054,97 @@ function hasX01CompareMatchBreakdownValues(v: X01CompareMatchBreakdown | null | 
   return !!v && !!(v.matchDuo || v.winDuo || v.matchMulti || v.winMulti || v.podiumMulti || v.finishMulti || v.matchTeam || v.winTeam);
 }
 
+function x01CompareSameIdForMultiTab(a: any, b: any): boolean {
+  const aa = String(a ?? "").replace(/^online:/, "").trim();
+  const bb = String(b ?? "").replace(/^online:/, "").trim();
+  return !!aa && !!bb && (aa === bb || (aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa))));
+}
+
+function x01CompareInPeriodForMultiTab(s: any, range?: { from?: number; to?: number; archivesOnly?: boolean }): boolean {
+  const ts = Number(s?.date ?? s?.createdAt ?? 0) || 0;
+  if (!range) return true;
+  if (range.archivesOnly) {
+    return !(typeof range.to === "number" && ts && ts >= range.to);
+  }
+  if (typeof range.from === "number" && ts && ts < range.from) return false;
+  if (typeof range.to === "number" && ts && ts > range.to) return false;
+  return true;
+}
+
+function computeX01CompareMatchBreakdownFromMultiTabSessions(
+  sessions: any[],
+  profileId: string,
+  range?: { from?: number; to?: number; archivesOnly?: boolean }
+): X01CompareMatchBreakdown {
+  const out = emptyX01CompareMatchBreakdown();
+  const filtered = (sessions || []).filter((s) => x01CompareInPeriodForMultiTab(s, range));
+  const byMatch = new Map<string, any[]>();
+
+  for (const s of filtered) {
+    const mid = String(s?.matchId || s?.id || `${s?.date || ""}-${s?.selectedPlayerId || ""}`);
+    if (!mid) continue;
+    const arr = byMatch.get(mid) || [];
+    arr.push(s);
+    byMatch.set(mid, arr);
+  }
+
+  for (const [, arr] of byMatch) {
+    const playerLine = arr.find((s) =>
+      x01CompareSameIdForMultiTab(s?.selectedPlayerId, profileId) ||
+      x01CompareSameIdForMultiTab(s?.profileId, profileId) ||
+      x01CompareSameIdForMultiTab(s?.playerId, profileId)
+    );
+    if (!playerLine) continue;
+
+    const isTeam = playerLine.isTeam === true || arr.some((s) => s?.isTeam === true);
+    const numPlayers = arr.length;
+    const isDuo = !isTeam && numPlayers === 2;
+    const isMulti = !isTeam && numPlayers >= 3;
+    const isWin = !!playerLine.isWin;
+
+    if (isDuo) {
+      out.matchDuo += 1;
+      if (isWin) out.winDuo += 1;
+      continue;
+    }
+
+    if (isMulti) {
+      out.matchMulti += 1;
+      if (isWin) out.winMulti += 1;
+
+      let rank = Number(playerLine.rank || 0) || 0;
+      if (isWin) rank = 1;
+      if (!isWin && rank === 1) rank = 0;
+
+      if (!rank || rank < 1) {
+        const sorted = [...arr].sort((a, b) => {
+          const aw = a?.isWin ? 0 : 1;
+          const bw = b?.isWin ? 0 : 1;
+          if (aw !== bw) return aw - bw;
+          const ar = Number((a as any).remaining ?? (a as any).finalScore ?? 999999);
+          const br = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
+          if (ar !== br) return ar - br;
+          return String(a?.selectedPlayerId || "").localeCompare(String(b?.selectedPlayerId || ""));
+        });
+        const idx = sorted.findIndex((x) => x01CompareSameIdForMultiTab(x?.selectedPlayerId, playerLine?.selectedPlayerId));
+        if (idx >= 0) rank = idx + 1;
+      }
+
+      if (!isWin && rank === 1) rank = 2;
+      if (rank === 1 || rank === 2 || rank === 3) out.podiumMulti += 1;
+      if (rank > 0 && rank < numPlayers) out.finishMulti += 1;
+      continue;
+    }
+
+    if (isTeam) {
+      out.matchTeam += 1;
+      if (isWin) out.winTeam += 1;
+    }
+  }
+
+  return out;
+}
+
 function mergeX01CompareMatchBreakdown(stats: AggregatedStats, match: X01CompareMatchBreakdown): AggregatedStats {
   return { ...stats, ...match };
 }
@@ -1551,11 +1643,22 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
           ? computeX01CompareMatchBreakdown(rows, effectiveId, targetProfile.name, "online", byPeriod)
           : emptyX01CompareMatchBreakdown();
 
+        let x01MultiTabMatches = emptyX01CompareMatchBreakdown();
+        try {
+          const tabSessions = await loadX01MultiSessions(String(targetProfile.id));
+          x01MultiTabMatches = computeX01CompareMatchBreakdownFromMultiTabSessions(tabSessions as any[], String(targetProfile.id), byPeriod);
+        } catch (e) {
+          console.warn("[StatsX01Compare] X01Multi tab match breakdown failed", e);
+        }
+
         if (!cancelled) {
           setLocalBridgeStats(stats || null);
           setOnlineBridgeStats(onlineStats || null);
           setLocalX01MultiAgg(x01Agg || null);
-          setMatchBreakdown({ local: localMatches, online: onlineMatches });
+          setMatchBreakdown({
+            local: hasX01CompareMatchBreakdownValues(x01MultiTabMatches) ? x01MultiTabMatches : localMatches,
+            online: onlineMatches,
+          });
         }
       } catch (err) {
         console.warn("[StatsX01Compare] local bridge stats failed", err);

@@ -1326,7 +1326,7 @@ function buildSessionFromSummary(
  * - Si profileId fourni : ne garder que ce profil
  *   (match.players[].profileId === profileId OU player.id === profileId)
  */
-async function loadX01MultiSessions(
+export async function loadX01MultiSessions(
   profileId?: string | null
 ): Promise<X01MultiSession[]> {
   let list: any[] = [];
