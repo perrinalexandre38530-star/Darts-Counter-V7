@@ -34,7 +34,7 @@ import DartSetsPanel from "../components/DartSetsPanel";
 import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
-import { loadLinkedProfileProjection, mergeLinkedProfiles } from "../lib/linkedProfileSync";
+import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -1112,22 +1112,65 @@ export default function Profiles({
       // embarquent uniquement les liens validés pour fusionner proprement stats + avatars.
       const localProfiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
 
-      // Réception côté compte ami : quand une association est acceptée, le compte ami
-      // récupère les mini-stats publiées par le profil local distant et les expose comme
-      // mini-stats de son propre profil NAS (Home + Mon profil + Bottom cards).
+      // Réception côté compte ami : quand une association est acceptée, on ne lit plus
+      // uniquement stats_meta du lien. On recharge aussi /linked-snapshots, qui extrait
+      // les stats + l'historique du profil local distant depuis le snapshot NAS du propriétaire.
       const authUserId = String((auth as any)?.user?.id || "").trim();
       if (authUserId) {
         let wroteIncomingOverride = false;
-        for (const link of safeLinks as any[]) {
-          const isIncomingAccepted = link?.direction === "incoming" && String(link?.status || "").toLowerCase() === "accepted";
-          const meta = link?.statsMeta || {};
-          const miniStats = meta?.miniStats || meta?.stats || null;
-          if (isIncomingAccepted && miniStats) {
-            wroteIncomingOverride = writeLinkedProfileStatsOverride(authUserId, miniStats) || wroteIncomingOverride;
+
+        try { invalidateLinkedProfileProjectionCache(); } catch {}
+        let linkedProjection: any = null;
+        try {
+          linkedProjection = await loadLinkedProfileProjection(localProfiles as any[]);
+        } catch {
+          linkedProjection = null;
+        }
+
+        const incomingSnapshots = Array.isArray(linkedProjection?.snapshots) ? linkedProjection.snapshots : [];
+        for (const snap of incomingSnapshots as any[]) {
+          const link = snap?.link || {};
+          const isIncomingAccepted = (
+            (link?.direction === "incoming" || snap?.direction === "incoming-linked-account") &&
+            String(link?.status || "").toLowerCase() === "accepted"
+          );
+          if (!isIncomingAccepted) continue;
+
+          const remoteStats =
+            snap?.filtered?.stats ||
+            snap?.localProfileStats ||
+            snap?.linkedLocalProfile?.stats ||
+            snap?.statsMeta ||
+            link?.statsMeta ||
+            null;
+
+          if (remoteStats) {
+            // 1) fusion sur le compte utilisateur online associé
+            wroteIncomingOverride = writeLinkedProfileStatsOverride(authUserId, remoteStats) || wroteIncomingOverride;
+
+            // 2) fusion aussi sur le profil local actif du compte associé quand il existe
+            const activeLocalId = String((store as any)?.activeProfileId || (store as any)?.active_profile_id || "").trim();
+            if (activeLocalId) {
+              wroteIncomingOverride = writeLinkedProfileStatsOverride(activeLocalId, remoteStats) || wroteIncomingOverride;
+            }
           }
         }
+
+        // Fallback compat : si l'API snapshots ne donne rien, on garde l'ancien statsMeta du lien.
+        if (!wroteIncomingOverride) {
+          for (const link of safeLinks as any[]) {
+            const isIncomingAccepted = link?.direction === "incoming" && String(link?.status || "").toLowerCase() === "accepted";
+            const meta = link?.statsMeta || {};
+            const miniStats = meta?.miniStats || meta?.stats || null;
+            if (isIncomingAccepted && miniStats) {
+              wroteIncomingOverride = writeLinkedProfileStatsOverride(authUserId, miniStats) || wroteIncomingOverride;
+            }
+          }
+        }
+
         if (wroteIncomingOverride) {
           profileMiniStatsCache.delete(authUserId);
+          try { window.dispatchEvent(new CustomEvent("dc-profile-links-updated", { detail: { reason: "incoming-linked-stats-fusion" } })); } catch {}
         }
       }
 

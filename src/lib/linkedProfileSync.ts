@@ -31,6 +31,12 @@ let cacheKey = "";
 let cacheAt = 0;
 let cacheValue: LinkedProfileProjection | null = null;
 
+export function invalidateLinkedProfileProjectionCache() {
+  cacheKey = "";
+  cacheAt = 0;
+  cacheValue = null;
+}
+
 function s(v: any) { return String(v ?? "").trim(); }
 function low(v: any) { return s(v).toLowerCase(); }
 
@@ -82,13 +88,33 @@ function extractHistory(payload: any): any[] {
   const histDumpRows = payload?.history?.rows && typeof payload.history.rows === "object"
     ? Object.values(payload.history.rows)
     : [];
+  const storeHistRows = st?.history?.rows && typeof st.history.rows === "object"
+    ? Object.values(st.history.rows)
+    : [];
+  const byIdRows = (obj: any) => obj && typeof obj === "object" && !Array.isArray(obj) ? Object.values(obj) : [];
   return uniq([
     ...arr(st.history),
     ...arr(st.matches),
+    ...arr(st.savedMatches),
+    ...arr(st.matchHistory),
+    ...arr(st.finishedMatches),
+    ...arr(st.inProgressMatches),
+    ...byIdRows(st.historyById),
+    ...byIdRows(st.matchesById),
     ...arr(payload?.history),
     ...arr(payload?.matches),
+    ...arr(payload?.savedMatches),
+    ...arr(payload?.matchHistory),
     ...arr(payload?.data?.history),
+    ...arr(payload?.data?.matches),
+    ...arr(payload?.localProfileHistory),
+    ...arr(payload?.localProfileMatches),
+    ...arr(payload?.filtered?.history),
+    ...arr(payload?.filtered?.matches),
+    ...arr(payload?.linkedLocalProfile?.history),
+    ...arr(payload?.linkedLocalProfile?.matches),
     ...arr(histDumpRows),
+    ...arr(storeHistRows),
   ].filter((r: any) => r && typeof r === "object") as any[]);
 }
 
@@ -149,8 +175,17 @@ function findBestLocalProfileForIncomingLink(localById: Map<string, any>, localP
   return arr(localProfiles)[0] || null;
 }
 
-function normalizeIncomingStatsMeta(link: any, friendProfile: any): any {
-  const meta = firstObj(link?.statsMeta, link?.stats_meta, link?.metadata?.statsMeta, link?.metadata?.stats_meta) || {};
+function normalizeIncomingStatsMeta(link: any, friendProfile: any, snapshot?: any): any {
+  const meta = firstObj(
+    snapshot?.filtered?.stats,
+    snapshot?.localProfileStats,
+    snapshot?.linkedLocalProfile?.stats,
+    snapshot?.statsMeta,
+    link?.statsMeta,
+    link?.stats_meta,
+    link?.metadata?.statsMeta,
+    link?.metadata?.stats_meta
+  ) || {};
   const mini = firstObj(meta?.miniStats, meta?.mini, meta?.stats, meta) || {};
   return {
     ...meta,
@@ -250,11 +285,22 @@ function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any,
 function makeVirtualHistoryForLink(snapshot: LinkedProfileSnapshot, localProfile: any): any[] {
   const link = snapshot?.link || {};
   const friendUser = snapshot?.friendUser || link?.targetUser || {};
-  const friendProfile = snapshot?.friendProfile || findFriendProfile(snapshot?.payload, friendUser, link) || friendUser;
+  const serverLocalProfile = (snapshot as any)?.linkedLocalProfile || (snapshot as any)?.localProfile || (snapshot as any)?.filtered?.localProfile || null;
+  const friendProfile = serverLocalProfile || snapshot?.friendProfile || findFriendProfile(snapshot?.payload, friendUser, link) || friendUser;
   const localId = s(localProfile?.id || link?.localProfileId);
   if (!localId) return [];
 
-  return extractHistory(snapshot?.payload).map((row: any, idx: number) => {
+  const remoteRows = [
+    ...arr((snapshot as any)?.localProfileHistory),
+    ...arr((snapshot as any)?.localProfileMatches),
+    ...arr((snapshot as any)?.filtered?.history),
+    ...arr((snapshot as any)?.filtered?.matches),
+    ...arr((snapshot as any)?.linkedLocalProfile?.history),
+    ...arr((snapshot as any)?.linkedLocalProfile?.matches),
+  ];
+  const sourceRows = remoteRows.length ? remoteRows : extractHistory(snapshot?.payload);
+
+  return sourceRows.map((row: any, idx: number) => {
     const cloned = rewritePlayersInObject(row, { ...localProfile, id: localId }, friendProfile, friendUser);
     const id = s(cloned?.id || cloned?.matchId || cloned?.resumeId || idx);
     return {
@@ -284,10 +330,11 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
   for (const snap of arr(snapshots)) {
     const link = snap?.link || {};
     if (String(link?.status || "").toLowerCase() !== "accepted") continue;
-    const direction = String(link?.direction || "").toLowerCase();
+    const direction = String(link?.direction || (snap as any)?.direction || "").toLowerCase();
     const friendUser = snap?.friendUser || link?.targetUser || link?.friendUser || {};
-    const friendProfile = snap?.friendProfile || findFriendProfile(snap?.payload, friendUser, link) || {};
-    const isIncoming = direction === "incoming" || Boolean(link?.incoming === true);
+    const serverLocalProfile = (snap as any)?.linkedLocalProfile || (snap as any)?.localProfile || (snap as any)?.filtered?.localProfile || null;
+    const friendProfile = serverLocalProfile || snap?.friendProfile || findFriendProfile(snap?.payload, friendUser, link) || {};
+    const isIncoming = direction === "incoming" || direction === "incoming-linked-account" || Boolean(link?.incoming === true);
 
     const rawLocalId = s(link?.localProfileId || link?.local_profile_id);
     const incomingLocal = isIncoming ? findBestLocalProfileForIncomingLink(localById, localProfiles, link, friendUser) : null;
@@ -297,12 +344,12 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
     const local = (localId && localById.get(localId)) || incomingLocal || { id: localId, name: link?.localProfileName || "Profil lié" };
     if (!localId) continue;
 
-    const statsMeta = normalizeIncomingStatsMeta(link, friendProfile);
+    const statsMeta = normalizeIncomingStatsMeta(link, friendProfile, snap);
     const sourceName = isIncoming
       ? (link?.localProfileName || pickName(friendProfile) || pickName(friendUser) || pickName(local))
       : (pickName(friendProfile) || pickName(friendUser) || pickName(local));
     const name = sourceName || localId;
-    const avatar = link?.localProfileAvatarUrl || link?.local_profile_avatar_url || pickAvatar(friendProfile) || pickAvatar(friendUser) || link?.friendAvatarUrl || pickAvatar(local);
+    const avatar = link?.localProfileAvatarUrl || link?.local_profile_avatar_url || pickAvatar(serverLocalProfile) || pickAvatar(friendProfile) || pickAvatar(friendUser) || link?.friendAvatarUrl || pickAvatar(local);
 
     const projected = {
       ...local,
