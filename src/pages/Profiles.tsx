@@ -2527,7 +2527,14 @@ React.useEffect(() => {
 
       <div
         className="container"
-        style={{ maxWidth: 760, background: theme.bg, color: theme.text }}
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          boxSizing: "border-box",
+          background: theme.bg,
+          color: theme.text,
+          overflowX: "hidden",
+        }}
       >
         {view === "menu" ? (
   <ProfilesMenuView
@@ -2543,12 +2550,16 @@ React.useEffect(() => {
           <>
             <div
               style={{
+                width: "100%",
+                maxWidth: "100%",
+                boxSizing: "border-box",
                 marginBottom: 10,
                 position: "relative",
                 minHeight: view === "dartsets" ? 54 : 40,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: view === "dartsets" ? "center" : "flex-start",
+                overflow: view === "dartsets" ? "visible" : undefined,
               }}
             >
               <div
@@ -2570,8 +2581,8 @@ React.useEffect(() => {
               {view === "dartsets" && (
                 <div
                   style={{
-                    width: "min(100%, 560px)",
-                    height: 48,
+                    width: "min(100%, calc(100vw - 72px), 560px)",
+                    height: "clamp(40px, 11vw, 48px)",
                     borderRadius: 16,
                     border: `1px solid ${primary}88`,
                     background:
@@ -2758,7 +2769,7 @@ React.useEffect(() => {
 
             {view === "dartsets" && (
               <Card>
-                <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "grid", gap: 10, overflow: "hidden" }}>
                   {dartsetsHeavyReady && selectedDartsetsProfile ? (
                     <DartSetsPanel
                       profile={selectedDartsetsProfile as any}
@@ -3505,9 +3516,13 @@ function Card({
     <section
       className="card"
       style={{
-        padding: 16,
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        padding: "clamp(8px, 3vw, 16px)",
         marginBottom: 14,
         borderRadius: 18,
+        overflow: "hidden",
         background: theme.card,
         border: `1px solid ${theme.borderSoft}`,
         boxShadow: "0 18px 36px rgba(0,0,0,.35)",

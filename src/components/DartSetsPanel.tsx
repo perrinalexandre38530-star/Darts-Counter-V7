@@ -1018,14 +1018,18 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   return (
     <div
       style={{
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
         borderRadius: 16,
-        padding: 12,
+        padding: "clamp(8px, 2.6vw, 12px)",
         background: "linear-gradient(135deg, rgba(8,8,16,.96), rgba(8,12,24,.96))",
         boxShadow: "0 0 22px rgba(0,0,0,.7)",
         border: "1px solid rgba(255,255,255,.08)",
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        overflow: "hidden",
       }}
     >
       {/* Titre + actions type bottomNav */}
@@ -1047,14 +1051,14 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
         <div
           style={{
-            display: "flex",
-            gap: 9,
-            justifyContent: "flex-start",
-            overflowX: "auto",
-            overflowY: "hidden",
-            WebkitOverflowScrolling: "touch",
-            scrollbarWidth: "none",
-            padding: "4px 2px 6px",
+            width: "100%",
+            maxWidth: "100%",
+            boxSizing: "border-box",
+            display: "grid",
+            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+            gap: "clamp(5px, 1.6vw, 9px)",
+            overflow: "hidden",
+            padding: "4px 0 6px",
           }}
         >
           {[
@@ -1117,9 +1121,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               disabled={btn.disabled}
               title={btn.label}
               style={{
-                flex: "1 0 66px",
-                minWidth: 66,
-                maxWidth: 82,
+                width: "100%",
+                minWidth: 0,
+                maxWidth: "none",
                 color: btn.disabled
                   ? "rgba(150,150,170,.55)"
                   : btn.key === "delete"
@@ -1134,8 +1138,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               <span
                 className="pill-inner"
                 style={{
-                  minHeight: 58,
-                  padding: "8px 6px",
+                  minHeight: "clamp(48px, 12.5vw, 58px)",
+                  padding: "clamp(6px, 1.8vw, 8px) clamp(3px, 1.4vw, 6px)",
                   borderColor: btn.active ? btn.tone : "rgba(255,255,255,.14)",
                   boxShadow: btn.active
                     ? `0 0 0 1px ${btn.tone}55, 0 0 14px ${btn.tone}AA`
@@ -1164,13 +1168,13 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                       : "none",
                   }}
                 >
-                  <DartSetActionIcon name={btn.iconName} size={21} />
+                  <DartSetActionIcon name={btn.iconName} size={19} />
                 </span>
                 <span
                   className="tab-label"
                   style={{
-                    fontSize: 10,
-                    lineHeight: "11px",
+                    fontSize: "clamp(8px, 2.2vw, 10px)",
+                    lineHeight: "10px",
                     fontWeight: 750,
                     letterSpacing: 0.15,
                     color: btn.disabled
@@ -1712,8 +1716,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       {hasSets ? (
         <div
           style={{
+            width: "100%",
+            maxWidth: "100%",
+            boxSizing: "border-box",
             marginTop: 2,
-            padding: "10px 8px 12px",
+            padding: "clamp(8px, 2vw, 10px) clamp(4px, 1.5vw, 8px) 12px",
             borderRadius: 18,
             background: "linear-gradient(180deg, rgba(8,10,22,.98), rgba(4,6,14,.99))",
             border: "1px solid rgba(255,255,255,.07)",
@@ -1727,11 +1734,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             onClick={goPrev}
             style={{
               position: "absolute",
-              left: 7,
-              top: 138,
+              left: 4,
+              top: "38%",
               transform: "translateY(-50%)",
-              width: 30,
-              height: 30,
+              width: "clamp(26px, 7vw, 30px)",
+              height: "clamp(26px, 7vw, 30px)",
               borderRadius: 999,
               border: "1px solid rgba(255,255,255,.35)",
               background: "rgba(0,0,0,.58)",
@@ -1752,11 +1759,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             onClick={goNext}
             style={{
               position: "absolute",
-              right: 7,
-              top: 138,
+              right: 4,
+              top: "38%",
               transform: "translateY(-50%)",
-              width: 30,
-              height: 30,
+              width: "clamp(26px, 7vw, 30px)",
+              height: "clamp(26px, 7vw, 30px)",
               borderRadius: 999,
               border: "1px solid rgba(255,255,255,.35)",
               background: "rgba(0,0,0,.58)",
@@ -1777,7 +1784,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               <div
                 style={{
                   position: "relative",
-                  width: "min(100%, 250px)",
+                  width: "min(100%, clamp(190px, 62vw, 250px))",
+                  maxWidth: "calc(100vw - 110px)",
                   aspectRatio: "1 / 1",
                   borderRadius: 24,
                   background: activeSet.bgColor || DEFAULT_BG,
@@ -1850,7 +1858,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               <div
                 style={{
                   width: "100%",
-                  maxWidth: 320,
+                  maxWidth: "min(320px, calc(100vw - 74px))",
                   textAlign: "center",
                   display: "flex",
                   flexDirection: "column",
