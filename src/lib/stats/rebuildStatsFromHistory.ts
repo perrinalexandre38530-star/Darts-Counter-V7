@@ -761,7 +761,12 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
 
     const scoreA = Number(rich?.teamA?.score ?? rich?.teamA?.goals ?? 0) || 0;
     const scoreB = Number(rich?.teamB?.score ?? rich?.teamB?.goals ?? 0) || 0;
-    const winnerSide = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+    const explicitWinner = String(payload?.winnerTeam ?? payload?.summary?.winnerTeam ?? rec?.winnerTeam ?? "").toUpperCase();
+    const winnerSide = explicitWinner === "A" || explicitWinner === "B" ? explicitWinner : scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+    const playerStatsBlob =
+      (payload?.playerStats && typeof payload.playerStats === "object" ? payload.playerStats : null) ||
+      (payload?.summary?.playerStats && typeof payload.summary.playerStats === "object" ? payload.summary.playerStats : null) ||
+      null;
 
     const addSide = (ids: string[], side: "A" | "B") => {
       const mine: any = side === "A" ? rich.teamA : rich.teamB;
@@ -774,15 +779,15 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
           matches: 1,
           wins: isWinner ? 1 : 0,
           losses: winnerSide && !isWinner ? 1 : 0,
-          pointsScored: Number(mine?.goals ?? mine?.score ?? 0) || 0,
-          bestVisit: Number(mine?.longestRun ?? mine?.goals ?? mine?.score ?? 0) || 0,
+          pointsScored: Number((playerStatsBlob as any)?.[pid]?.goals ?? mine?.goals ?? mine?.score ?? 0) || 0,
+          bestVisit: Number(mine?.longestRun ?? (playerStatsBlob as any)?.[pid]?.goals ?? mine?.goals ?? mine?.score ?? 0) || 0,
           buckets: {
-            goals: Number(mine?.goals ?? 0) || 0,
-            conceded: Number(mine?.goalsConceded ?? opp?.goals ?? 0) || 0,
-            gamelle: Number(mine?.gamelle ?? 0) || 0,
-            peche: Number(mine?.peche ?? 0) || 0,
-            demi: Number(mine?.demi ?? 0) || 0,
-            pissette: Number(mine?.pissette ?? 0) || 0,
+            goals: Number((playerStatsBlob as any)?.[pid]?.goals ?? mine?.goals ?? 0) || 0,
+            conceded: Number((playerStatsBlob as any)?.[pid]?.goalsConceded ?? mine?.goalsConceded ?? opp?.goals ?? 0) || 0,
+            gamelle: Number((playerStatsBlob as any)?.[pid]?.gamelle ?? mine?.gamelle ?? 0) || 0,
+            peche: Number((playerStatsBlob as any)?.[pid]?.peche ?? mine?.peche ?? 0) || 0,
+            demi: Number((playerStatsBlob as any)?.[pid]?.demi ?? mine?.demi ?? 0) || 0,
+            pissette: Number((playerStatsBlob as any)?.[pid]?.pissette ?? mine?.pissette ?? 0) || 0,
           },
         }, ts);
 
@@ -792,29 +797,34 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
           pissetteValid: 0, pissetteRefused: 0, csc: 0, goalAv: 0, goalDef: 0, goalGb: 0,
           penalties: 0, cleanSheets: 0, longestRun: 0, goalDiff: 0,
         };
+        const ps: any = playerStatsBlob ? (playerStatsBlob as any)[pid] : null;
+        const hasIndividual = !!ps && typeof ps === "object";
+        const goalsForPlayer = hasIndividual ? Number(ps.goals ?? 0) || 0 : Number(mine?.goals ?? 0) || 0;
+        const concededForPlayer = hasIndividual ? Number(ps.goalsConceded ?? (opp?.goals ?? 0)) || 0 : Number(mine?.goalsConceded ?? opp?.goals ?? 0) || 0;
         cur.matches += 1;
         cur.wins += isWinner ? 1 : 0;
-        cur.goals += Number(mine?.goals ?? 0) || 0;
-        cur.conceded += Number(mine?.goalsConceded ?? opp?.goals ?? 0) || 0;
+        cur.goals += goalsForPlayer;
+        cur.conceded += concededForPlayer;
         cur.sets += Number(mine?.sets ?? 0) || 0;
         cur.legs += Number(mine?.legs ?? 0) || 0;
-        cur.gamelle += Number(mine?.gamelle ?? 0) || 0;
-        cur.peche += Number(mine?.peche ?? 0) || 0;
-        cur.pecheOff += Number(mine?.pecheOff ?? 0) || 0;
-        cur.pecheDef += Number(mine?.pecheDef ?? 0) || 0;
-        cur.demi += Number(mine?.demi ?? 0) || 0;
-        cur.demiBonus += Number(mine?.demiBonus ?? 0) || 0;
-        cur.pissette += Number(mine?.pissette ?? 0) || 0;
-        cur.pissetteValid += Number(mine?.pissetteValid ?? 0) || 0;
-        cur.pissetteRefused += Number(mine?.pissetteRefused ?? 0) || 0;
-        cur.csc += Number(mine?.csc ?? 0) || 0;
-        cur.goalAv += Number(mine?.goalAv ?? 0) || 0;
-        cur.goalDef += Number(mine?.goalDef ?? 0) || 0;
-        cur.goalGb += Number(mine?.goalGb ?? 0) || 0;
-        cur.penalties += Number(mine?.penalties ?? 0) || 0;
-        cur.cleanSheets += Number(mine?.goalsConceded ?? opp?.goals ?? 0) === 0 ? 1 : 0;
+        cur.gamelle += hasIndividual ? Number(ps.gamelle ?? 0) || 0 : Number(mine?.gamelle ?? 0) || 0;
+        cur.peche += hasIndividual ? Number(ps.peche ?? 0) || 0 : Number(mine?.peche ?? 0) || 0;
+        cur.pecheOff += hasIndividual ? Number(ps.pecheOff ?? 0) || 0 : Number(mine?.pecheOff ?? 0) || 0;
+        cur.pecheDef += hasIndividual ? Number(ps.pecheDef ?? 0) || 0 : Number(mine?.pecheDef ?? 0) || 0;
+        cur.demi += hasIndividual ? Number(ps.demi ?? 0) || 0 : Number(mine?.demi ?? 0) || 0;
+        cur.demiBonus += hasIndividual ? Number(ps.demiBonus ?? 0) || 0 : Number(mine?.demiBonus ?? 0) || 0;
+        cur.pissette += hasIndividual ? Number(ps.pissette ?? 0) || 0 : Number(mine?.pissette ?? 0) || 0;
+        cur.pissetteValid += hasIndividual ? Number(ps.pissetteValid ?? 0) || 0 : Number(mine?.pissetteValid ?? 0) || 0;
+        cur.pissetteRefused += hasIndividual ? Number(ps.pissetteRefused ?? 0) || 0 : Number(mine?.pissetteRefused ?? 0) || 0;
+        cur.csc += hasIndividual ? Number(ps.csc ?? ps.ownGoals ?? 0) || 0 : Number(mine?.csc ?? 0) || 0;
+        cur.goalAv += hasIndividual ? Number(ps.goalAv ?? 0) || 0 : Number(mine?.goalAv ?? 0) || 0;
+        cur.goalDef += hasIndividual ? Number(ps.goalDef ?? 0) || 0 : Number(mine?.goalDef ?? 0) || 0;
+        cur.goalGb += hasIndividual ? Number(ps.goalGb ?? 0) || 0 : Number(mine?.goalGb ?? 0) || 0;
+        cur.goalMil = (Number(cur.goalMil || 0) || 0) + (hasIndividual ? Number(ps.goalMil ?? 0) || 0 : 0);
+        cur.penalties += hasIndividual ? Number(ps.penaltyGoals ?? ps.penalties ?? 0) || 0 : Number(mine?.penalties ?? 0) || 0;
+        cur.cleanSheets += concededForPlayer === 0 ? 1 : 0;
         cur.longestRun = Math.max(Number(cur.longestRun || 0) || 0, Number(mine?.longestRun ?? 0) || 0);
-        cur.goalDiff += Number(mine?.goalDiff ?? ((mine?.goals || 0) - (opp?.goals || 0))) || 0;
+        cur.goalDiff += hasIndividual ? Number(ps.goalDiff ?? (goalsForPlayer - concededForPlayer)) || 0 : Number(mine?.goalDiff ?? ((mine?.goals || 0) - (opp?.goals || 0))) || 0;
         (idx.byPlayer[pid] as any).babyfoot = cur;
       }
     };

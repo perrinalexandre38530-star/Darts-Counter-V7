@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useStore } from "../../contexts/StoreContext";
 import { onlineApi } from "../../lib/onlineApi";
+import { History } from "../../lib/history";
+import { markNasSyncDirty } from "../../lib/manualNasSync";
+import { scheduleStatsIndexRefresh } from "../../lib/stats/rebuildStatsFromHistory";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -493,6 +496,110 @@ function IndividualStatsTabs({ rows }: { rows: Array<{ id: string; name: string;
   );
 }
 
+function buildBabyFootPlayerStatsForHistory(input: {
+  players: Array<{ id: string; name?: string; team?: BabyFootTeamId }>;
+  events: BabyFootEvent[];
+  teamAIds: string[];
+  teamBIds: string[];
+  winnerTeam: BabyFootTeamId | null;
+}) {
+  const byId: Record<string, any> = {};
+  const ensure = (id: any, fallback?: any) => {
+    const pid = String(id || "").trim();
+    if (!pid) return null;
+    if (!byId[pid]) {
+      const p = input.players.find((row) => String(row?.id || "") === pid) || null;
+      const team: BabyFootTeamId | null = input.teamAIds.includes(pid) ? "A" : input.teamBIds.includes(pid) ? "B" : (fallback?.team || null);
+      byId[pid] = {
+        id: pid,
+        playerId: pid,
+        profileId: pid,
+        name: p?.name || fallback?.name || pid,
+        team,
+        matches: 1,
+        wins: input.winnerTeam && team === input.winnerTeam ? 1 : 0,
+        losses: input.winnerTeam && team && team !== input.winnerTeam ? 1 : 0,
+        goals: 0,
+        goalsConceded: 0,
+        goalAv: 0,
+        goalDef: 0,
+        goalGb: 0,
+        goalMil: 0,
+        gamelle: 0,
+        peche: 0,
+        pecheOff: 0,
+        pecheDef: 0,
+        demi: 0,
+        demiBonus: 0,
+        pissette: 0,
+        pissetteValid: 0,
+        pissetteRefused: 0,
+        csc: 0,
+        ownGoals: 0,
+        penalties: 0,
+        penaltyGoals: 0,
+        penaltyMisses: 0,
+      };
+    }
+    return byId[pid];
+  };
+
+  for (const p of input.players || []) ensure(p?.id, p);
+
+  const bumpLine = (row: any, line: any, amount = 1) => {
+    const src = String(line || "AV").toUpperCase();
+    if (src === "DEF") row.goalDef += amount;
+    else if (src === "GB") row.goalGb += amount;
+    else if (src === "MIL") row.goalMil += amount;
+    else row.goalAv += amount;
+  };
+
+  for (const ev of input.events || []) {
+    const anyEv: any = ev as any;
+    if (anyEv?.t === "goal") {
+      const pts = Math.max(1, Number(anyEv.points || 1) || 1);
+      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
+      if (scorer) {
+        scorer.goals += pts;
+        if (anyEv.kind === "gamelle") scorer.gamelle += 1;
+        if (anyEv.kind === "peche") { scorer.peche += 1; scorer.pecheOff += 1; }
+        if (anyEv.kind === "pissette") { scorer.pissette += 1; scorer.pissetteValid += 1; }
+        bumpLine(scorer, anyEv.sourceLine, pts);
+      }
+      const own = ensure(anyEv.ownGoalById, { team: anyEv.ownGoalTeam });
+      if (own) { own.ownGoals += 1; own.csc += 1; }
+    } else if (anyEv?.t === "demi") {
+      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
+      if (scorer) scorer.demi += 1;
+    } else if (anyEv?.t === "special") {
+      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
+      if (!scorer) continue;
+      if (anyEv.kind === "gamelle") scorer.gamelle += 1;
+      if (anyEv.kind === "peche_off") { scorer.peche += 1; scorer.pecheOff += 1; }
+      if (anyEv.kind === "peche_def") { scorer.peche += 1; scorer.pecheDef += 1; }
+      if (anyEv.kind === "pissette") { scorer.pissette += 1; if (anyEv.counted) scorer.pissetteValid += 1; else scorer.pissetteRefused += 1; }
+      if (anyEv.kind === "csc") { scorer.csc += 1; scorer.ownGoals += 1; }
+      scorer.demiBonus += Math.max(0, Number(anyEv.demiBonusApplied || 0) || 0);
+    } else if (anyEv?.t === "pen_shot") {
+      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
+      if (scorer) {
+        scorer.penalties += 1;
+        if (anyEv.scored) scorer.penaltyGoals += 1;
+        else scorer.penaltyMisses += 1;
+      }
+    }
+  }
+
+  for (const row of Object.values(byId)) {
+    const oppIds = row.team === "A" ? input.teamBIds : row.team === "B" ? input.teamAIds : [];
+    const oppGoals = Object.values(byId).filter((r: any) => oppIds.includes(String((r as any).id))).reduce((sum: number, r: any) => sum + (Number(r.goals || 0) || 0), 0);
+    row.goalsConceded = oppGoals;
+    row.goalDiff = (Number(row.goals || 0) || 0) - oppGoals;
+  }
+
+  return byId;
+}
+
 export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const { theme } = useTheme();
   const { store } = useStore() as any;
@@ -504,6 +611,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const [cscAwardedTeam, setCscAwardedTeam] = useState<BabyFootTeamId | null>(null);
   const [activeTab, setActiveTab] = useState<PlayTab>("score");
   const leagueResultSavedRef = useRef(false);
+  const historySavedMatchRef = useRef<string | null>(null);
   const [leagueSaveChoice, setLeagueSaveChoice] = useState("");
   const [leagueSaveDone, setLeagueSaveDone] = useState<string | null>(null);
   const isOnlineBabyFoot = Boolean((params as any)?.online || (params as any)?.lobbyCode);
@@ -820,6 +928,50 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       onlineApi.endMatch({ lobbyCode: onlineLobbyCode, finalState: payload } as any).catch((error) =>
         console.warn("[BabyFootPlay] unable to close online babyfoot match", error)
       );
+    }
+
+    if (historySavedMatchRef.current !== state.matchId) {
+      historySavedMatchRef.current = state.matchId;
+      const playerStats = buildBabyFootPlayerStatsForHistory({
+        players: payload.players as any,
+        events: state.events || [],
+        teamAIds,
+        teamBIds,
+        winnerTeam: state.winner || (displayedScore.scoreA > displayedScore.scoreB ? "A" : displayedScore.scoreB > displayedScore.scoreA ? "B" : null),
+      });
+      const historyPayload = {
+        ...payload,
+        playerStats,
+        summary: {
+          ...(payload.summary || {}),
+          finished: true,
+          playerStats,
+        },
+      };
+      History.upsert({
+        id: state.matchId,
+        matchId: state.matchId,
+        kind: "babyfoot",
+        sport: "babyfoot",
+        status: "finished",
+        game: { mode: "babyfoot", babyfootMode: state.mode },
+        players: payload.players as any,
+        winnerId,
+        createdAt: Number(state.createdAt || Date.now()),
+        updatedAt: Number(state.finishedAt || Date.now()),
+        finishedAt: Number(state.finishedAt || Date.now()),
+        summary: historyPayload.summary,
+        payload: historyPayload,
+      } as any)
+        .then(() => {
+          try { markNasSyncDirty("babyfoot-match-finished"); } catch {}
+          try { scheduleStatsIndexRefresh({ reason: "babyfoot-match-finished" }); } catch {}
+          try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { sport: "babyfoot", id: state.matchId } })); } catch {}
+        })
+        .catch((error) => {
+          historySavedMatchRef.current = null;
+          console.warn("[BabyFootPlay] unable to persist babyfoot match in History", error);
+        });
     }
 
     onFinish?.(payload);
