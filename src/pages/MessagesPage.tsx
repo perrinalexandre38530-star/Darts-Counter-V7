@@ -278,7 +278,7 @@ function ChatActionIcon({ name, size = 18 }: { name: "reply" | "edit" | "copy" |
 }
 
 
-function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "video" | "clip" | "camera" | "mic" | "smile" | "more"; size?: number }) {
+function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "video" | "clip" | "camera" | "mic" | "smile" | "send" | "more"; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
   if (name === "back") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M15 18 9 12l6-6"/><path {...p} d="M10 12h10"/></svg>;
   if (name === "phone") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.45 2.1L8 9.7a16 16 0 0 0 6.3 6.3l1.3-1.25a2 2 0 0 1 2.1-.45c.8.3 1.7.5 2.6.6A2 2 0 0 1 22 16.9Z"/></svg>;
@@ -287,6 +287,7 @@ function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "vide
   if (name === "camera") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M14.5 4 16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1.5-2h5Z"/><circle {...p} cx="12" cy="13" r="3"/></svg>;
   if (name === "mic") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="9" y="2" width="6" height="12" rx="3"/><path {...p} d="M5 10a7 7 0 0 0 14 0"/><path {...p} d="M12 17v5"/></svg>;
   if (name === "smile") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="9"/><path {...p} d="M8 14s1.5 2 4 2 4-2 4-2"/><path {...p} d="M9 9h.01M15 9h.01"/></svg>;
+  if (name === "send") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M22 2 11 13"/><path {...p} d="m22 2-7 20-4-9-9-4 20-7Z"/></svg>;
   return <MessageMenuIcon size={size} />;
 }
 
@@ -656,6 +657,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const recorderChunksRef = React.useRef<Blob[]>([]);
   const recorderStartedAtRef = React.useRef<number>(0);
   const callStreamRef = React.useRef<MediaStream | null>(null);
+  const callVideoRef = React.useRef<HTMLVideoElement | null>(null);
 
   React.useEffect(() => {
     if (!openMessageMenuId) return;
@@ -686,6 +688,18 @@ export default function MessagesPage({ store, update, go }: Props) {
     }, 300);
     return () => window.clearInterval(timer);
   }, [isRecording]);
+
+  React.useEffect(() => {
+    const video = callVideoRef.current;
+    if (!video || conversationPanel?.type !== "video") return;
+    try {
+      video.srcObject = callStreamRef.current;
+      const playResult = video.play?.();
+      if (playResult && typeof (playResult as Promise<void>).catch === "function") {
+        (playResult as Promise<void>).catch(() => {});
+      }
+    } catch {}
+  }, [conversationPanel?.type]);
 
 
   function broadcastMessageBadge(total: number) {
@@ -1006,8 +1020,8 @@ export default function MessagesPage({ store, update, go }: Props) {
         type,
         title: type === "video" ? "Visio prête" : "Appel audio prêt",
         text: type === "video"
-          ? "Caméra et micro autorisés. Le flux WebRTC peut maintenant être branché sur le salon."
-          : "Micro autorisé. Le flux audio peut maintenant être branché sur le salon.",
+          ? "Caméra et micro ouverts sur cet appareil. Pour appeler l’autre téléphone en direct il faudra ajouter le vrai pont WebRTC/signaling NAS."
+          : "Micro ouvert sur cet appareil. Pour appeler l’autre téléphone en direct il faudra ajouter le vrai pont WebRTC/signaling NAS.",
       });
     } catch (e: any) {
       setConversationPanel({
@@ -1226,17 +1240,30 @@ export default function MessagesPage({ store, update, go }: Props) {
               </div>
               <button type="button" onClick={closeCallPanel} style={{ border: `1px solid ${STROKE}`, background: "rgba(255,255,255,.04)", color: "#fff", borderRadius: 999, width: 28, height: 28, cursor: "pointer", fontWeight: 1000 }}>×</button>
             </div>
+            {conversationPanel.type === "video" ? (
+              <div style={{ marginTop: 10, border: `1px solid ${BLUE}55`, borderRadius: 16, overflow: "hidden", background: "rgba(0,0,0,.45)", boxShadow: `0 0 22px ${BLUE}18` }}>
+                <video ref={callVideoRef} muted playsInline autoPlay style={{ width: "100%", maxHeight: 210, objectFit: "cover", display: "block", background: "#05070c" }} />
+              </div>
+            ) : conversationPanel.type === "audio" ? (
+              <div style={{ marginTop: 10, minHeight: 52, border: `1px solid ${GREEN}44`, borderRadius: 16, padding: "10px 12px", background: "rgba(125,255,178,.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 999, background: GREEN, boxShadow: `0 0 18px ${GREEN}` }} />
+                <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <span key={i} style={{ width: 4, height: 6 + ((i * 5 + Date.now()) % 20), borderRadius: 999, background: GREEN, opacity: 0.35 + (i % 4) * 0.12 }} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {conversationPanel.type === "options" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7, marginTop: 10 }}>
                 <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => setInfo("Conversation marquée comme lue ✅")).catch((e: any) => setError(e?.message || String(e)))} />
                 <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
                 <ActionButton label="Notifications" tone={GOLD} onClick={activatePhoneNotifications} />
-                <ActionButton label="Online" tone={BLUE} onClick={openOnline} />
+                <ActionButton label="Invitations Online" tone={BLUE} onClick={openOnline} />
               </div>
             ) : (
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <ActionButton label="Raccrocher" tone={RED} onClick={closeCallPanel} />
-                <ActionButton label="Ouvrir Online" tone={BLUE} onClick={openOnline} />
               </div>
             )}
           </div>
@@ -1425,33 +1452,39 @@ export default function MessagesPage({ store, update, go }: Props) {
           ) : null}
           <input ref={attachInputRef} type="file" style={{ display: "none" }} onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0] || null; handleSelectedFile(file, "file"); (e.target as HTMLInputElement).value = ""; }} />
           <input ref={photoInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0] || null; handleSelectedFile(file, "photo"); (e.target as HTMLInputElement).value = ""; }} />
-          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto auto", gap: 8, alignItems: "end" }}>
-            <RoundMessengerButton title="Emoji" tone={BLUE} onClick={() => { setEmojiOpen((v) => !v); setConversationPanel(null); }}><MessengerToolIcon name="smile" /></RoundMessengerButton>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+              <RoundMessengerButton title="Emoji" tone={BLUE} onClick={() => { setEmojiOpen((v) => !v); setConversationPanel(null); }}><MessengerToolIcon name="smile" /></RoundMessengerButton>
+              <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => attachInputRef.current?.click()}><MessengerToolIcon name="clip" /></RoundMessengerButton>
+              <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => photoInputRef.current?.click()}><MessengerToolIcon name="camera" /></RoundMessengerButton>
+              <RoundMessengerButton title={isRecording ? "Stopper et envoyer le vocal" : "Message vocal"} tone={isRecording ? RED : GREEN} onClick={toggleRecording}><MessengerToolIcon name="mic" /></RoundMessengerButton>
+              <RoundMessengerButton title="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage}><MessengerToolIcon name="send" /></RoundMessengerButton>
+            </div>
             {isRecording ? (
               <div
                 style={{
-                  minHeight: 38,
-                  borderRadius: 18,
-                  padding: "8px 11px",
+                  minHeight: 52,
+                  borderRadius: 22,
+                  padding: "10px 12px",
                   border: `1px solid ${GREEN}66`,
-                  background: "linear-gradient(180deg, rgba(125,255,178,.12), rgba(0,0,0,.34))",
+                  background: "linear-gradient(180deg, rgba(125,255,178,.13), rgba(0,0,0,.36))",
                   color: GREEN,
                   display: "flex",
                   alignItems: "center",
-                  gap: 9,
+                  gap: 10,
                   boxShadow: `0 0 18px ${GREEN}18`,
                   minWidth: 0,
                 }}
               >
-                <span style={{ width: 8, height: 8, borderRadius: 999, background: RED, boxShadow: `0 0 12px ${RED}`, flex: "0 0 auto" }} />
-                <span style={{ fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap" }}>{recordingSeconds || 1}s</span>
-                <div style={{ flex: "1 1 auto", height: 18, display: "flex", alignItems: "center", gap: 3, overflow: "hidden" }}>
-                  {Array.from({ length: 18 }).map((_, i) => (
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: RED, boxShadow: `0 0 12px ${RED}`, flex: "0 0 auto" }} />
+                <span style={{ fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap" }}>{recordingSeconds || 1}s</span>
+                <div style={{ flex: "1 1 auto", height: 24, display: "flex", alignItems: "center", gap: 3, overflow: "hidden" }}>
+                  {Array.from({ length: 32 }).map((_, i) => (
                     <span
                       key={i}
                       style={{
                         width: 4,
-                        height: 5 + ((i * 7 + recordingSeconds * 3) % 14),
+                        height: 5 + ((i * 7 + recordingSeconds * 3) % 18),
                         borderRadius: 999,
                         background: GREEN,
                         opacity: 0.35 + (((i + recordingSeconds) % 5) * 0.12),
@@ -1460,33 +1493,31 @@ export default function MessagesPage({ store, update, go }: Props) {
                     />
                   ))}
                 </div>
-                <span style={{ color: "rgba(255,255,255,.72)", fontSize: 10.5, fontWeight: 850, whiteSpace: "nowrap" }}>retape micro pour envoyer</span>
+                <span style={{ color: "rgba(255,255,255,.76)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" }}>retape micro pour envoyer</span>
               </div>
             ) : (
               <textarea
                 value={messageText}
                 onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
                 placeholder="Écrire un message…"
-                rows={1}
+                rows={2}
                 style={{
                   width: "100%",
-                  minHeight: 38,
-                  maxHeight: 92,
-                  borderRadius: 18,
-                  padding: "10px 11px",
+                  minHeight: 62,
+                  maxHeight: 132,
+                  borderRadius: 20,
+                  padding: "13px 14px",
                   border: `1px solid ${STROKE}`,
-                  background: "rgba(0,0,0,.35)",
+                  background: "rgba(0,0,0,.38)",
                   color: "#fff",
-                  fontWeight: 700,
+                  fontWeight: 750,
+                  fontSize: 14,
+                  lineHeight: 1.25,
                   outline: "none",
                   resize: "none",
                 }}
               />
             )}
-            <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => attachInputRef.current?.click()}><MessengerToolIcon name="clip" /></RoundMessengerButton>
-            <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => photoInputRef.current?.click()}><MessengerToolIcon name="camera" /></RoundMessengerButton>
-            <RoundMessengerButton title={isRecording ? "Stopper et envoyer le vocal" : "Message vocal"} tone={isRecording ? RED : GREEN} onClick={toggleRecording}><MessengerToolIcon name="mic" /></RoundMessengerButton>
-            <ActionButton label="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage} />
           </div>
         </div>
       </div>
