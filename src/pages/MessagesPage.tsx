@@ -23,6 +23,7 @@ import {
 import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission, showMessageCenterNotification } from "../lib/messageCenterNotify";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
+type ChatMode = "messenger" | "group" | "rooms" | "announces";
 
 type Props = {
   store?: any;
@@ -167,6 +168,142 @@ function MessageCenterTabIcon({ name, size = 21 }: { name: MsgTab; size?: number
   }
 }
 
+
+function ChatModeIcon({ name, size = 21 }: { name: ChatMode; size?: number }) {
+  const p = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  } as const;
+
+  switch (name) {
+    case "messenger":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M4 5.5h16v10.5H8l-4 3.5V5.5Z" />
+          <path {...p} d="M8 9h8" />
+          <path {...p} d="M8 12.5h5.5" />
+        </svg>
+      );
+    case "group":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <circle {...p} cx="9" cy="8" r="3" />
+          <circle {...p} cx="17" cy="9" r="2.5" />
+          <path {...p} d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+          <path {...p} d="M14.5 19.5a4.5 4.5 0 0 1 6-4.2" />
+          <path {...p} d="M16.5 4.5v3" />
+          <path {...p} d="M15 6h3" />
+        </svg>
+      );
+    case "rooms":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M5 7h14v9H8l-3 3V7Z" />
+          <path {...p} d="M8 10h8" />
+          <path {...p} d="M8 13h5" />
+          <path {...p} d="M17 4v3" />
+          <path {...p} d="M15.5 5.5h3" />
+        </svg>
+      );
+    case "announces":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M4 11v3a2 2 0 0 0 2 2h2l2 4h3l-2-4h2l7 3V6l-7 3H6a2 2 0 0 0-2 2Z" />
+          <path {...p} d="M20 9.5c1 .7 1 4.3 0 5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function NeonIconTab({
+  active,
+  label,
+  description,
+  badge = 0,
+  tone,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  description?: string;
+  badge?: number;
+  tone: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={description || label}
+      aria-label={label}
+      onClick={onClick}
+      style={{
+        position: "relative",
+        minWidth: 0,
+        height: 52,
+        border: `1px solid ${active ? `${tone}cc` : STROKE}`,
+        borderRadius: 16,
+        padding: 0,
+        color: active ? tone : "rgba(255,255,255,.72)",
+        background: active
+          ? `radial-gradient(110% 120% at 50% 0%, ${tone}35, rgba(255,255,255,.055) 58%, rgba(0,0,0,.30))`
+          : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+        fontWeight: 1000,
+        display: "grid",
+        placeItems: "center",
+        boxShadow: active ? `0 -5px 18px ${tone}44, 0 0 18px ${tone}25` : "inset 0 1px 0 rgba(255,255,255,.06)",
+        overflow: "visible",
+        cursor: "pointer",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: "17%",
+          right: "17%",
+          height: 3,
+          borderRadius: "0 0 999px 999px",
+          background: active ? tone : "transparent",
+          boxShadow: active ? `0 0 14px ${tone}` : "none",
+        }}
+      />
+      {children}
+      {badge > 0 ? (
+        <span
+          style={{
+            position: "absolute",
+            top: -7,
+            right: -5,
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            borderRadius: 999,
+            background: tone,
+            color: "#111",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 10.5,
+            lineHeight: 1,
+            fontWeight: 1000,
+            border: "1px solid rgba(0,0,0,.45)",
+            boxShadow: `0 0 14px ${tone}88`,
+          }}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function Pill({ children, tone = GOLD }: { children: React.ReactNode; tone?: string }) {
   return (
     <span
@@ -236,6 +373,8 @@ function SectionTitle({ title, subtitle, badge }: { title: string; subtitle?: st
 
 export default function MessagesPage({ store, update, go }: Props) {
   const [active, setActive] = React.useState<MsgTab>("messages");
+  const [chatMode, setChatMode] = React.useState<ChatMode>("messenger");
+  const [actionsOpen, setActionsOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
@@ -460,11 +599,27 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   const tabs: Array<{ id: MsgTab; label: string; badge: number; tone: string }> = [
     { id: "messages", label: "Messages", badge: counters.messages, tone: GOLD },
-    { id: "links", label: "Profils liés", badge: counters.links, tone: BLUE },
-    { id: "shares", label: "Parties", badge: counters.shares, tone: GOLD },
     { id: "requests", label: "Amis", badge: counters.requests, tone: "#c78bff" },
-    { id: "invites", label: "Salons", badge: counters.invites, tone: GREEN },
-    { id: "system", label: "Système", badge: counters.system, tone: RED },
+    { id: "links", label: "Associations profils", badge: counters.links, tone: BLUE },
+    { id: "invites", label: "Invitations jeu Online", badge: counters.invites, tone: GREEN },
+    { id: "shares", label: "Cartes parties reçues", badge: counters.shares, tone: GOLD },
+    { id: "system", label: "Notifs", badge: counters.system, tone: RED },
+  ];
+
+  const chatModes: Array<{ id: ChatMode; label: string; description: string; badge: number; tone: string }> = [
+    { id: "messenger", label: "Messenger", description: "Discuter avec un ami", badge: unreadPrivateMessages, tone: BLUE },
+    { id: "group", label: "Groupe", description: "Créer un groupe d'amis et discuter ensemble", badge: 0, tone: "#c78bff" },
+    { id: "rooms", label: "Salon de T'Chat", description: "Discuter dans des salons créés online", badge: salonInvites.length, tone: GREEN },
+    { id: "announces", label: "Annonces", description: "Les joueurs peuvent laisser des annonces visibles de tous", badge: 0, tone: GOLD },
+  ];
+
+  const actionItems = [
+    { label: "Messages", count: counters.messages, tone: GOLD, tab: "messages" as MsgTab, detail: "Messages privés non lus." },
+    { label: "Amis", count: counters.requests, tone: "#c78bff", tab: "requests" as MsgTab, detail: "Demandes d'amis en attente." },
+    { label: "Associations profils", count: counters.links, tone: BLUE, tab: "links" as MsgTab, detail: "Liens profil local ↔ compte ami à traiter." },
+    { label: "Invitations jeu Online", count: counters.invites, tone: GREEN, tab: "invites" as MsgTab, detail: "Invitations ou salons online." },
+    { label: "Cartes parties reçues", count: counters.shares, tone: GOLD, tab: "shares" as MsgTab, detail: "Partages de parties / stats historiques." },
+    { label: "Notifs", count: counters.system, tone: RED, tab: "system" as MsgTab, detail: "Notifications système." },
   ];
 
   return (
@@ -488,7 +643,29 @@ export default function MessagesPage({ store, update, go }: Props) {
               Centre unique pour les messages, demandes, partages, invitations online et notifications système.
             </div>
           </div>
-          <Pill tone={totalPending > 0 ? GOLD : GREEN}>{totalPending} à traiter</Pill>
+          <button
+            type="button"
+            onClick={() => setActionsOpen(true)}
+            title="Afficher les actions à traiter"
+            style={{
+              border: `1px solid ${(totalPending > 0 ? GOLD : GREEN)}88`,
+              background: `linear-gradient(180deg, ${(totalPending > 0 ? GOLD : GREEN)}1f, rgba(0,0,0,.20))`,
+              color: "#fff",
+              borderRadius: 16,
+              minWidth: 72,
+              padding: "7px 9px",
+              display: "grid",
+              gap: 2,
+              justifyItems: "center",
+              cursor: "pointer",
+              boxShadow: `0 0 16px ${(totalPending > 0 ? GOLD : GREEN)}22`,
+            }}
+          >
+            <span style={{ fontSize: 9.5, fontWeight: 950, color: "rgba(255,255,255,.68)", textTransform: "uppercase", letterSpacing: ".04em" }}>À traiter</span>
+            <span style={{ minWidth: 30, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${(totalPending > 0 ? GOLD : GREEN)}88`, color: totalPending > 0 ? GOLD : GREEN, background: `${(totalPending > 0 ? GOLD : GREEN)}16`, fontSize: 14, fontWeight: 1000 }}>
+              {totalPending}
+            </span>
+          </button>
         </div>
 
         <div
@@ -501,86 +678,86 @@ export default function MessagesPage({ store, update, go }: Props) {
             width: "100%",
           }}
         >
-          {tabs.map((t) => {
-            const isActive = active === t.id;
-            const tone = isActive ? t.tone : "rgba(255,255,255,.72)";
-            return (
-              <button
-                key={t.id}
-                title={t.label}
-                aria-label={t.label}
-                onClick={() => setActive(t.id)}
-                style={{
-                  position: "relative",
-                  minWidth: 0,
-                  height: 47,
-                  border: `1px solid ${isActive ? `${t.tone}cc` : STROKE}`,
-                  borderRadius: 16,
-                  padding: 0,
-                  color: tone,
-                  background: isActive
-                    ? `radial-gradient(110% 120% at 50% 0%, ${t.tone}35, rgba(255,255,255,.055) 58%, rgba(0,0,0,.30))`
-                    : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
-                  fontWeight: 1000,
-                  display: "grid",
-                  placeItems: "center",
-                  boxShadow: isActive ? `0 -5px 18px ${t.tone}44, 0 0 18px ${t.tone}25` : "inset 0 1px 0 rgba(255,255,255,.06)",
-                  overflow: "visible",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: "17%",
-                    right: "17%",
-                    height: 3,
-                    borderRadius: "0 0 999px 999px",
-                    background: isActive ? t.tone : "transparent",
-                    boxShadow: isActive ? `0 0 14px ${t.tone}` : "none",
-                  }}
-                />
-                <MessageCenterTabIcon name={t.id} size={22} />
-                {t.badge > 0 ? (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: -7,
-                      right: -5,
-                      minWidth: 18,
-                      height: 18,
-                      padding: "0 5px",
-                      borderRadius: 999,
-                      background: t.tone,
-                      color: "#111",
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 10.5,
-                      lineHeight: 1,
-                      fontWeight: 1000,
-                      border: "1px solid rgba(0,0,0,.45)",
-                      boxShadow: `0 0 14px ${t.tone}88`,
-                    }}
-                  >
-                    {t.badge > 99 ? "99+" : t.badge}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+          {tabs.map((t) => (
+            <NeonIconTab
+              key={t.id}
+              active={active === t.id}
+              label={t.label}
+              badge={t.badge}
+              tone={t.tone}
+              onClick={() => setActive(t.id)}
+            >
+              <MessageCenterTabIcon name={t.id} size={22} />
+            </NeonIconTab>
+          ))}
         </div>
-
-        {notifPermission === "default" ? (
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", border: "1px solid rgba(255,213,106,.24)", background: "rgba(255,213,106,.07)", borderRadius: 14, padding: "9px 10px" }}>
-            <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.72)", lineHeight: 1.25 }}>
-              Active les notifications pour recevoir les nouveaux messages dans la barre du téléphone.
-            </div>
-            <ActionButton label="Activer" tone={GOLD} onClick={activatePhoneNotifications} />
-          </div>
-        ) : null}
       </div>
+
+      {actionsOpen ? (
+        <div
+          role="dialog"
+          aria-label="Actions à traiter"
+          onClick={() => setActionsOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(0,0,0,.42)",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <aside
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(330px, 88vw)",
+              height: "100%",
+              padding: 16,
+              paddingTop: 24,
+              background: "linear-gradient(180deg, rgba(18,18,27,.98), rgba(5,5,10,.99))",
+              borderLeft: `1px solid ${GOLD}55`,
+              boxShadow: `-18px 0 42px rgba(0,0,0,.45), 0 0 24px ${GOLD}22`,
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <div>
+                <div style={{ color: GOLD, fontWeight: 1000, fontSize: 20 }}>À traiter</div>
+                <div style={{ color: "rgba(255,255,255,.58)", fontSize: 12 }}>{totalPending} action{totalPending > 1 ? "s" : ""} en attente</div>
+              </div>
+              <ActionButton label="Fermer" tone={GOLD} onClick={() => setActionsOpen(false)} />
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {actionItems.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    setActive(item.tab);
+                    setActionsOpen(false);
+                  }}
+                  style={{
+                    textAlign: "left",
+                    border: `1px solid ${item.count > 0 ? `${item.tone}88` : STROKE}`,
+                    borderRadius: 18,
+                    padding: 12,
+                    color: "#fff",
+                    background: item.count > 0 ? `${item.tone}12` : "rgba(255,255,255,.035)",
+                    boxShadow: item.count > 0 ? `0 0 18px ${item.tone}22` : "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontWeight: 1000 }}>{item.label}</div>
+                    <Pill tone={item.count > 0 ? item.tone : "rgba(255,255,255,.45)"}>{item.count}</Pill>
+                  </div>
+                  <div style={{ marginTop: 5, color: "rgba(255,255,255,.62)", fontSize: 12 }}>{item.detail}</div>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       {loading ? <div style={cardStyle({ marginBottom: 10 })}>Chargement de la messagerie…</div> : null}
       {error ? <div style={cardStyle({ marginBottom: 10, borderColor: "rgba(255,100,100,.45)", color: RED })}>Erreur : {error}</div> : null}
@@ -589,11 +766,28 @@ export default function MessagesPage({ store, update, go }: Props) {
       {active === "messages" ? (
         <>
           <SectionTitle
-            title="Chat privé façon Messenger"
-            subtitle="Un fil par ami, bulles gauche/droite, lecture automatique dès ouverture du fil et suppression locale message par message."
+            title="T'Chat Messenger"
             badge={unreadPrivateMessages}
           />
 
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+            {chatModes.map((mode) => (
+              <NeonIconTab
+                key={mode.id}
+                active={chatMode === mode.id}
+                label={mode.label}
+                description={`${mode.label} — ${mode.description}`}
+                badge={mode.badge}
+                tone={mode.tone}
+                onClick={() => setChatMode(mode.id)}
+              >
+                <ChatModeIcon name={mode.id} size={22} />
+              </NeonIconTab>
+            ))}
+          </div>
+
+          {chatMode === "messenger" ? (
+            <>
           {messageThreads.length ? (
             <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none" as any }}>
               {messageThreads.map((thread) => {
@@ -756,7 +950,23 @@ export default function MessagesPage({ store, update, go }: Props) {
                 <ActionButton label="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage} />
               </div>
             </div>
-          </div>
+          </div>            </>
+          ) : chatMode === "group" ? (
+            <div style={cardStyle({ borderColor: "rgba(199,139,255,.30)" })}>
+              <SectionTitle title="Groupe" subtitle="Créer un groupe d'amis et discuter ensemble." />
+              <EmptyCard icon="👥" title="Groupes d'amis" text="La page est prête : création de groupe, sélection des amis, fil commun et badges seront câblés ici." />
+            </div>
+          ) : chatMode === "rooms" ? (
+            <div style={cardStyle({ borderColor: "rgba(125,255,178,.30)" })}>
+              <SectionTitle title="Salon de T'Chat" subtitle="Discuter dans des salons créés online." />
+              <EmptyCard icon="💬" title="Salons de T'Chat" text="Les conversations des salons online seront centralisées ici avec accès rapide aux salons actifs." />
+            </div>
+          ) : (
+            <div style={cardStyle({ borderColor: "rgba(255,213,106,.30)" })}>
+              <SectionTitle title="Annonces" subtitle="Les joueurs peuvent laisser des annonces visibles de tous." />
+              <EmptyCard icon="📣" title="Annonces publiques" text="Mur d'annonces prévu pour organiser une partie, chercher des joueurs ou publier une info visible de tous." />
+            </div>
+          )}
         </>
       ) : null}
 
@@ -892,7 +1102,29 @@ export default function MessagesPage({ store, update, go }: Props) {
 
       {active === "system" ? (
         <>
-          <SectionTitle title="Notifications système" subtitle="Synchronisation, compte, NAS, sécurité et informations importantes." badge={systemNotifications.length} />
+          <SectionTitle title="Notifs" subtitle="Notifications téléphone, synchronisation, compte, NAS, sécurité et informations importantes." badge={systemNotifications.length} />
+          <div style={cardStyle({ marginBottom: 10, borderColor: notifPermission === "granted" ? "rgba(125,255,178,.38)" : "rgba(255,213,106,.30)" })}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 1000, color: "#fff" }}>Notifications téléphone</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,.64)", lineHeight: 1.35 }}>
+                  État : <b style={{ color: notifPermission === "granted" ? GREEN : notifPermission === "denied" ? RED : GOLD }}>
+                    {notifPermission === "granted" ? "ON" : notifPermission === "denied" ? "OFF / bloquées" : notifPermission === "unsupported" ? "Non supportées" : "OFF"}
+                  </b>
+                </div>
+              </div>
+              <ActionButton
+                label={notifPermission === "granted" ? "Tester" : "Activer"}
+                tone={notifPermission === "granted" ? GREEN : GOLD}
+                onClick={activatePhoneNotifications}
+              />
+            </div>
+            {notifPermission === "denied" ? (
+              <div style={{ marginTop: 8, color: RED, fontSize: 12 }}>
+                Les notifications sont bloquées côté téléphone/navigateur : autorise-les dans les paramètres du site ou de l’application installée.
+              </div>
+            ) : null}
+          </div>
           {systemNotifications.length ? (
             <div style={{ display: "grid", gap: 10 }}>
               {systemNotifications.map((n: any, idx: number) => (

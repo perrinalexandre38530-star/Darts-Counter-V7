@@ -187,7 +187,6 @@ export async function showMessageCenterNotification(title: string, body: string)
   const options: NotificationOptions = {
     body,
     tag: "multisports-message-center",
-    renotify: true,
     silent: false,
     badge: "/app-512.png",
     icon: "/app-512.png",
