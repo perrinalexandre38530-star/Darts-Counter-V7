@@ -2248,7 +2248,11 @@ useEffect(() => {
         lastScheduledStoreRef.current = normalized;
         setStore(normalized);
         await flushPendingStorePersist(String(reason || "replace-local-store"));
+        try {
+          if (Array.isArray((normalized as any).dartSets)) replaceAllDartSets((normalized as any).dartSets);
+        } catch {}
         try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+        try { window.dispatchEvent(new Event("dc-dartsets-updated")); } catch {}
         return true;
       };
     } catch {}

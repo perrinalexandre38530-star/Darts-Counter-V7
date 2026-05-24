@@ -417,7 +417,20 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   const syncAllDartSetsToAppStore = React.useCallback((reason: string = "dartsets_mutation") => {
     try {
       const all = getAllDartSets();
-      const sig = JSON.stringify((all || []).map((s: any) => [s?.id, s?.profileId, s?.updatedAt || 0, s?.lastUsedAt || 0, !!s?.isFavorite]));
+      const sig = JSON.stringify((all || []).map((s: any) => [
+        s?.id,
+        s?.profileId,
+        s?.updatedAt || 0,
+        s?.lastUsedAt || 0,
+        !!s?.isFavorite,
+        s?.kind || "",
+        s?.presetId || "",
+        s?.mainImageUrl || "",
+        s?.thumbImageUrl || "",
+        s?.mainImageAssetId || "",
+        s?.thumbImageAssetId || "",
+        s?.photoAssetId || "",
+      ]));
       if (lastSyncedSigRef.current === sig) return;
       lastSyncedSigRef.current = sig;
       if (syncTimerRef.current != null && typeof window !== "undefined") {
@@ -431,7 +444,20 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
           if (typeof u === "function") {
             u((s: any) => {
               const prev = Array.isArray((s || {}).dartSets) ? (s || {}).dartSets : [];
-              const prevSig = JSON.stringify(prev.map((x: any) => [x?.id, x?.profileId, x?.updatedAt || 0, x?.lastUsedAt || 0, !!x?.isFavorite]));
+              const prevSig = JSON.stringify(prev.map((x: any) => [
+                x?.id,
+                x?.profileId,
+                x?.updatedAt || 0,
+                x?.lastUsedAt || 0,
+                !!x?.isFavorite,
+                x?.kind || "",
+                x?.presetId || "",
+                x?.mainImageUrl || "",
+                x?.thumbImageUrl || "",
+                x?.mainImageAssetId || "",
+                x?.thumbImageAssetId || "",
+                x?.photoAssetId || "",
+              ]));
               if (prevSig === sig) return s;
               return { ...(s || {}), dartSets: all };
             });

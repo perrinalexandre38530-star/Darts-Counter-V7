@@ -3,6 +3,7 @@ async function getStorage() {
 }
 
 import * as mediaSync from "./mediaSync";
+import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 
 async function getOnlineApi() {
   const mod = await import("./onlineApi");
@@ -63,6 +64,57 @@ export function getNasSyncState() {
 export function pushNasSyncDirtyReason(reason: string) {
   try {
     window.dispatchEvent(new CustomEvent("dc:nas-sync-dirty", { detail: { reason: String(reason || "change") } }));
+  } catch {}
+}
+
+
+function dartSetImageQuality(ds: any): number {
+  if (!ds || typeof ds !== "object") return 0;
+  let score = 0;
+  const fields = [
+    ds.mainImageAssetId, ds.photoAssetId, ds.imageAssetId, ds.dartSetImageAssetId,
+    ds.thumbImageAssetId, ds.photoThumbAssetId,
+    ds.mainImageUrl, ds.thumbImageUrl, ds.photoUrl, ds.imageUrl, ds.photoThumbUrl,
+    ds.photoDataUrl, ds.imageDataUrl, ds.mainImageDataUrl, ds.dartSetImageDataUrl, ds.photoThumbDataUrl, ds.thumbDataUrl, ds.thumbImageDataUrl,
+  ];
+  for (const v of fields) {
+    if (typeof v !== "string" || !v.trim()) continue;
+    const raw = v.trim();
+    if (raw.startsWith("data:image/")) score += 1000 + Math.min(1000, Math.floor(raw.length / 1000));
+    else if (/\/media\//.test(raw) || /^https?:\/\//i.test(raw)) score += 700;
+    else score += 100;
+  }
+  if (ds.kind === "photo") score += 50;
+  return score;
+}
+
+function mergeRuntimeDartSetsIntoStore(store: any): any {
+  try {
+    const local = getAllDartSets();
+    if (!Array.isArray(local) || !local.length) return store;
+    const base = Array.isArray(store?.dartSets) ? store.dartSets : [];
+    const byId = new Map<string, any>();
+    for (const ds of base) {
+      const id = String(ds?.id || "").trim();
+      if (id) byId.set(id, ds);
+    }
+    for (const ds of local) {
+      const id = String((ds as any)?.id || "").trim();
+      if (!id) continue;
+      const prev = byId.get(id);
+      if (!prev || dartSetImageQuality(ds) >= dartSetImageQuality(prev)) byId.set(id, ds);
+    }
+    const merged = Array.from(byId.values());
+    if (!merged.length) return store;
+    return { ...(store || {}), dartSets: merged };
+  } catch {
+    return store;
+  }
+}
+
+async function persistDartSetsMirrorFromStore(store: any) {
+  try {
+    if (Array.isArray(store?.dartSets)) replaceAllDartSets(store.dartSets as any);
   } catch {}
 }
 
@@ -267,6 +319,15 @@ export async function pushNasAccountSnapshot() {
   const persistedStore: any = await loadStore().catch(() => null);
   const runtimeStore: any = getRuntimeStoreSnapshot();
   let currentStore: any = pickStoreWithMostProfiles(persistedStore, runtimeStore);
+  currentStore = mergeRuntimeDartSetsIntoStore(currentStore);
+
+  // ✅ DartSets NAS MEDIA FIX:
+  // La page Profils lit les dartsets depuis localStorage, alors que le push NAS
+  // part du store IDB/runtime. On recopie ici la version la plus riche
+  // (avec photo data:image ou assetId) dans le store avant upload média.
+  if (currentStore) {
+    await saveStore(currentStore as any).catch(() => {});
+  }
 
   // ✅ COUNT FIX NAS V1:
   // Si le runtime React contient plus de profils que l'IDB, on force l'IDB avant
@@ -302,9 +363,11 @@ export async function pushNasAccountSnapshot() {
       // Sécurité critique : on force aussi l'écriture IDB. Sinon exportCloudSnapshot()
       // peut relire l'ancien store sans assetId/avatarUrl selon le timing React.
       await saveStore(hydratedStore as any);
+      await persistDartSetsMirrorFromStore(hydratedStore);
       try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
     } else {
       await saveStore(hydratedStore as any);
+      await persistDartSetsMirrorFromStore(hydratedStore);
       try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
     }
   }
@@ -373,6 +436,7 @@ export async function pullNasAccountSnapshot() {
           await w.__replaceLocalStoreNow(nextStore, "nas-pull-apply-runtime");
         } else {
           await saveStore(nextStore as any);
+          await persistDartSetsMirrorFromStore(nextStore);
           try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
         }
       }
