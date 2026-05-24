@@ -22,6 +22,7 @@ import {
   type SharedMatchItem,
 } from "../lib/friendsApi";
 import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission, showMessageCenterNotification } from "../lib/messageCenterNotify";
+import ProfileStarRing from "../components/ProfileStarRing";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
 type ChatMode = "messenger" | "group" | "rooms" | "announces";
@@ -41,12 +42,14 @@ const RED = "#ff7b7b";
 const STROKE = "rgba(255,255,255,.13)";
 
 const EMOJI_BANK: Array<{ label: string; items: string[] }> = [
-  { label: "Récents", items: ["😀","😂","🤣","😍","🥰","😘","😎","😅","😜","🤪","🥳","😇","🙃","😉","😊","😋","🤩","😱"] },
-  { label: "Réactions", items: ["👍","👎","👏","🙌","🙏","🤝","💪","👌","✌️","🤟","👊","🤘","🫶","🤌","👀","💯","✅","❌"] },
-  { label: "Cœurs", items: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝"] },
-  { label: "Sport", items: ["🎯","🏆","🥇","🥈","🥉","🏅","⚽","🏀","🏈","🎾","🏓","🎱","🥊","🏁","🔥","⚡","🚀","💥"] },
-  { label: "Soirée", items: ["🍻","🍺","🥂","🍾","🍷","🍹","🍸","🥃","🍕","🍔","🌭","🥨","🎉","🎊","🕺","💃","🤘","🎸"] },
-  { label: "Objets", items: ["📷","🎙️","📎","📌","📍","🔔","🔕","📢","💬","📩","📱","💻","🔒","🔓","🧨","🧲","🛠️","⚙️"] },
+  { label: "Récents", items: ["😀","😃","😄","😁","😆","😂","🤣","😊","😇","🙂","🙃","😉","😍","🥰","😘","😜","🤪","😎","🥳","🤩","😱","😤","😭","😴"] },
+  { label: "Réactions", items: ["👍","👎","👏","🙌","🙏","🤝","💪","👌","✌️","🤟","👊","🤘","🫶","🤌","👀","💯","✅","❌","🔥","⚡","💥","✨","⭐","🚀"] },
+  { label: "Cœurs", items: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","💌","💋","🌹","🥹","🫠"] },
+  { label: "Visages", items: ["😅","😋","😛","😝","🤑","🤗","🤔","🤨","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😵‍💫","🤯","🥵","🥶"] },
+  { label: "Sport", items: ["🎯","🏆","🥇","🥈","🥉","🏅","⚽","🏀","🏈","🎾","🏓","🎱","🥊","🏁","🏋️","🤾","🚴","🏃","🥅","🎮","🕹️","🧢","👟","🥳"] },
+  { label: "Soirée", items: ["🍻","🍺","🥂","🍾","🍷","🍹","🍸","🥃","🍕","🍔","🌭","🥨","🍟","🌮","🎉","🎊","🕺","💃","🤘","🎸","🎧","🎤","🥁","🎵"] },
+  { label: "Objets", items: ["📷","🎙️","📎","📌","📍","🔔","🔕","📢","💬","📩","📱","💻","🔒","🔓","🧨","🧲","🛠️","⚙️","🎁","💡","🔋","🕹️","📡","🧭"] },
+  { label: "Symboles", items: ["✅","☑️","❎","⚠️","🚫","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🔱","♻️","🔁","🔄","⬆️","⬇️","➡️","⬅️","🔜","🆗","🆕"] },
 ];
 
 function isLikelyImageDataUrl(value: any): boolean {
@@ -177,6 +180,83 @@ function AvatarBubble({
     </div>
   );
 }
+
+function countryFlagEmoji(countryCode?: any): string {
+  const code = String(countryCode || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return "";
+  return code.replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
+}
+
+function userEmail(user?: any): string {
+  return String(user?.email || user?.mail || user?.emailNormalized || "").trim();
+}
+
+function userAvg3d(user?: any): number {
+  const raw = user?.avg3d ?? user?.avg3 ?? user?.stats?.avg3d ?? user?.stats?.avg3 ?? user?.profileStats?.avg3d ?? user?.profileStats?.avg3 ?? 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function FriendRequestUserCard({
+  user,
+  tone,
+  right,
+}: {
+  user?: any;
+  tone: string;
+  right?: React.ReactNode;
+}) {
+  const flag = countryFlagEmoji(user?.countryCode || user?.country_code);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "auto 1fr auto",
+        alignItems: "center",
+        gap: 12,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ position: "relative", width: 66, height: 70, display: "grid", placeItems: "end center" }}>
+        <div style={{ position: "absolute", top: -12, left: -6, width: 78, height: 38, pointerEvents: "none" }}>
+          <ProfileStarRing anchorSize={56} avg3d={userAvg3d(user)} starSize={8} gapPx={-1} stepDeg={13} animateGlow />
+        </div>
+        <AvatarBubble user={user} size={56} selected={false} showStatus />
+        {flag ? (
+          <span
+            title={String(user?.country || user?.countryCode || "")}
+            style={{
+              position: "absolute",
+              right: 1,
+              bottom: 4,
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              display: "grid",
+              placeItems: "center",
+              background: "rgba(7,8,12,.94)",
+              border: `1px solid ${tone}88`,
+              boxShadow: `0 0 12px ${tone}33`,
+              fontSize: 15,
+            }}
+          >
+            {flag}
+          </span>
+        ) : null}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: "#fff", fontSize: 15, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {asUserName(user)}
+        </div>
+        <div style={{ marginTop: 2, color: "rgba(255,255,255,.50)", fontSize: 10.8, fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {userEmail(user) || "Adresse mail non renseignée"}
+        </div>
+      </div>
+      <div style={{ flex: "0 0 auto" }}>{right}</div>
+    </div>
+  );
+}
+
 
 function MessageMenuIcon({ size = 18 }: { size?: number }) {
   return (
@@ -543,6 +623,8 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [active, setActive] = React.useState<MsgTab>("messages");
   const [chatMode, setChatMode] = React.useState<ChatMode>("messenger");
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [requestView, setRequestView] = React.useState<"received" | "sent">("received");
+  const [conversationOptionsOpen, setConversationOptionsOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
@@ -558,6 +640,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [emojiOpen, setEmojiOpen] = React.useState(false);
   const [conversationPanel, setConversationPanel] = React.useState<{ type: string; title: string; text: string } | null>(null);
   const [isRecording, setIsRecording] = React.useState(false);
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
   const [chatFullscreen, setChatFullscreen] = React.useState(false);
   const [openMessageMenuId, setOpenMessageMenuId] = React.useState("");
@@ -591,6 +674,19 @@ export default function MessagesPage({ store, update, go }: Props) {
       try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!isRecording) {
+      setRecordingSeconds(0);
+      return;
+    }
+    setRecordingSeconds(Math.max(1, Math.round((Date.now() - Number(recorderStartedAtRef.current || Date.now())) / 1000)));
+    const timer = window.setInterval(() => {
+      setRecordingSeconds(Math.max(1, Math.round((Date.now() - Number(recorderStartedAtRef.current || Date.now())) / 1000)));
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [isRecording]);
+
 
   function broadcastMessageBadge(total: number) {
     const nextTotal = Math.max(0, Math.floor(Number(total || 0)));
@@ -810,6 +906,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   function clearConversationTools() {
     setEmojiOpen(false);
     setConversationPanel(null);
+    setConversationOptionsOpen(false);
     setOpenMessageMenuId("");
   }
 
@@ -928,11 +1025,8 @@ export default function MessagesPage({ store, update, go }: Props) {
   }
 
   function openConversationOptions() {
-    setConversationPanel({
-      type: "options",
-      title: "Options conversation",
-      text: "Actions rapides : marquer lu, rafraîchir, notifications téléphone, ouvrir Online.",
-    });
+    setConversationOptionsOpen((v) => !v);
+    setConversationPanel(null);
     setEmojiOpen(false);
     setOpenMessageMenuId("");
   }
@@ -965,7 +1059,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       };
       recorder.start();
       setIsRecording(true);
-      setInfo("Enregistrement vocal en cours… clique encore sur le micro pour envoyer.");
+      setInfo(null);
     } catch (e: any) {
       setIsRecording(false);
       setError(e?.message || "Micro indisponible.");
@@ -981,6 +1075,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     setOpenMessageMenuId("");
     setEmojiOpen(false);
     setConversationPanel(null);
+    setConversationOptionsOpen(false);
     setReplyToMessage(null);
     setEditingMessageId("");
     if (unread > 0) {
@@ -1007,7 +1102,10 @@ export default function MessagesPage({ store, update, go }: Props) {
   }
 
   function openOnline() {
-    if (typeof go === "function") go("online", { initialOnlineTab: "requests" });
+    setConversationOptionsOpen(false);
+    setActive("invites");
+    setChatFullscreen(false);
+    setInfo("Rubrique Invitations Online ouverte sans charger la page Online.");
   }
 
   const tabs: Array<{ id: MsgTab; label: string; badge: number; tone: string }> = [
@@ -1089,6 +1187,31 @@ export default function MessagesPage({ store, update, go }: Props) {
             <RoundMessengerButton title="Visio" tone={BLUE} onClick={() => openCallPanel("video")}><MessengerToolIcon name="video" /></RoundMessengerButton>
             <RoundMessengerButton title="Options conversation" tone={GOLD} onClick={openConversationOptions}><MessengerToolIcon name="more" /></RoundMessengerButton>
           </div>
+          {conversationOptionsOpen ? (
+            <div
+              style={{
+                position: "absolute",
+                right: 12,
+                top: 60,
+                zIndex: 2147483647,
+                width: "min(248px, calc(100vw - 24px))",
+                border: `1px solid ${GOLD}66`,
+                borderRadius: 16,
+                padding: 8,
+                background: "linear-gradient(180deg, rgba(27,27,34,.98), rgba(9,10,15,.99))",
+                boxShadow: `0 18px 38px rgba(0,0,0,.62), 0 0 18px ${GOLD}25`,
+                backdropFilter: "blur(14px)",
+              }}
+            >
+              <div style={{ color: GOLD, fontWeight: 1000, fontSize: 12.5, margin: "2px 4px 7px" }}>Options conversation</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => { setInfo("Conversation marquée comme lue ✅"); setConversationOptionsOpen(false); }).catch((e: any) => setError(e?.message || String(e)))} />
+                <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); loadAll(); }} />
+                <ActionButton label="Notifications" tone={GOLD} onClick={() => { setConversationOptionsOpen(false); activatePhoneNotifications(); }} />
+                <ActionButton label="Invitations Online" tone={BLUE} onClick={openOnline} />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {info ? <div style={{ flex: "0 0 auto", margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(125,255,178,.35)", color: GREEN }) }}>{info}</div> : null}
@@ -1304,25 +1427,62 @@ export default function MessagesPage({ store, update, go }: Props) {
           <input ref={photoInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => { const file = (e.target as HTMLInputElement).files?.[0] || null; handleSelectedFile(file, "photo"); (e.target as HTMLInputElement).value = ""; }} />
           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto auto", gap: 8, alignItems: "end" }}>
             <RoundMessengerButton title="Emoji" tone={BLUE} onClick={() => { setEmojiOpen((v) => !v); setConversationPanel(null); }}><MessengerToolIcon name="smile" /></RoundMessengerButton>
-            <textarea
-              value={messageText}
-              onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
-              placeholder="Écrire un message…"
-              rows={1}
-              style={{
-                width: "100%",
-                minHeight: 38,
-                maxHeight: 92,
-                borderRadius: 18,
-                padding: "10px 11px",
-                border: `1px solid ${STROKE}`,
-                background: "rgba(0,0,0,.35)",
-                color: "#fff",
-                fontWeight: 700,
-                outline: "none",
-                resize: "none",
-              }}
-            />
+            {isRecording ? (
+              <div
+                style={{
+                  minHeight: 38,
+                  borderRadius: 18,
+                  padding: "8px 11px",
+                  border: `1px solid ${GREEN}66`,
+                  background: "linear-gradient(180deg, rgba(125,255,178,.12), rgba(0,0,0,.34))",
+                  color: GREEN,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  boxShadow: `0 0 18px ${GREEN}18`,
+                  minWidth: 0,
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: RED, boxShadow: `0 0 12px ${RED}`, flex: "0 0 auto" }} />
+                <span style={{ fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap" }}>{recordingSeconds || 1}s</span>
+                <div style={{ flex: "1 1 auto", height: 18, display: "flex", alignItems: "center", gap: 3, overflow: "hidden" }}>
+                  {Array.from({ length: 18 }).map((_, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        width: 4,
+                        height: 5 + ((i * 7 + recordingSeconds * 3) % 14),
+                        borderRadius: 999,
+                        background: GREEN,
+                        opacity: 0.35 + (((i + recordingSeconds) % 5) * 0.12),
+                        flex: "0 0 auto",
+                      }}
+                    />
+                  ))}
+                </div>
+                <span style={{ color: "rgba(255,255,255,.72)", fontSize: 10.5, fontWeight: 850, whiteSpace: "nowrap" }}>retape micro pour envoyer</span>
+              </div>
+            ) : (
+              <textarea
+                value={messageText}
+                onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
+                placeholder="Écrire un message…"
+                rows={1}
+                style={{
+                  width: "100%",
+                  minHeight: 38,
+                  maxHeight: 92,
+                  borderRadius: 18,
+                  padding: "10px 11px",
+                  border: `1px solid ${STROKE}`,
+                  background: "rgba(0,0,0,.35)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  outline: "none",
+                  resize: "none",
+                }}
+              />
+            )}
             <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => attachInputRef.current?.click()}><MessengerToolIcon name="clip" /></RoundMessengerButton>
             <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => photoInputRef.current?.click()}><MessengerToolIcon name="camera" /></RoundMessengerButton>
             <RoundMessengerButton title={isRecording ? "Stopper et envoyer le vocal" : "Message vocal"} tone={isRecording ? RED : GREEN} onClick={toggleRecording}><MessengerToolIcon name="mic" /></RoundMessengerButton>
@@ -1646,32 +1806,69 @@ export default function MessagesPage({ store, update, go }: Props) {
       {active === "requests" ? (
         <>
           <SectionTitle title="Demandes d’amis" subtitle="Demandes reçues et envoyées depuis le compte NAS." badge={counters.requests} />
-          {incomingFriendRequests.length || outgoingFriendRequests.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {[...incomingFriendRequests, ...outgoingFriendRequests].map((req) => {
-                const incoming = req.direction !== "outgoing";
-                const user = incoming ? req.fromUser : req.toUser;
-                return (
-                  <div key={req.id} style={cardStyle({ borderColor: `${GOLD}55` })}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div>
-                        <div style={{ fontWeight: 1000 }}>{incoming ? `${asUserName(user)} veut devenir ami` : `Demande envoyée à ${asUserName(user)}`}</div>
-                        {req.message ? <div style={{ marginTop: 5, color: "rgba(255,255,255,.70)", fontSize: 12 }}>“{req.message}”</div> : null}
-                      </div>
-                      <Pill tone={GOLD}>En attente</Pill>
-                    </div>
-                    {incoming ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+            <NeonIconTab
+              active={requestView === "received"}
+              label="Reçues"
+              badge={incomingFriendRequests.length}
+              tone={GREEN}
+              onClick={() => setRequestView("received")}
+            >
+              <MessageCenterTabIcon name="requests" size={22} />
+            </NeonIconTab>
+            <NeonIconTab
+              active={requestView === "sent"}
+              label="Envoyées"
+              badge={outgoingFriendRequests.length}
+              tone={GOLD}
+              onClick={() => setRequestView("sent")}
+            >
+              <ChatActionIcon name="share" size={21} />
+            </NeonIconTab>
+          </div>
+
+          {requestView === "received" ? (
+            incomingFriendRequests.length ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {incomingFriendRequests.map((req) => {
+                  const user = req.fromUser;
+                  return (
+                    <div key={req.id} style={cardStyle({ borderColor: `${GREEN}55`, padding: 12 })}>
+                      <FriendRequestUserCard
+                        user={user}
+                        tone={GREEN}
+                        right={<Pill tone={GREEN}>Reçue</Pill>}
+                      />
+                      {req.message ? <div style={{ marginTop: 9, color: "rgba(255,255,255,.70)", fontSize: 12 }}>“{req.message}”</div> : null}
                       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                         <ActionButton label="Accepter" tone={GREEN} onClick={() => runAction("Demande d’ami acceptée ✅", () => respondFriendRequest(req.id, "accepted"))} />
                         <ActionButton label="Refuser" tone={RED} onClick={() => runAction("Demande d’ami refusée", () => respondFriendRequest(req.id, "rejected"))} />
                       </div>
-                    ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyCard icon="👥" title="Aucune demande reçue" text={`Tu as ${friends.length} ami${friends.length > 1 ? "s" : ""}. Les nouvelles demandes reçues apparaîtront ici.`} />
+            )
+          ) : outgoingFriendRequests.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {outgoingFriendRequests.map((req) => {
+                const user = req.toUser;
+                return (
+                  <div key={req.id} style={cardStyle({ borderColor: `${GOLD}55`, padding: 12 })}>
+                    <FriendRequestUserCard
+                      user={user}
+                      tone={GOLD}
+                      right={<Pill tone={GOLD}>En attente</Pill>}
+                    />
+                    {req.message ? <div style={{ marginTop: 9, color: "rgba(255,255,255,.70)", fontSize: 12 }}>“{req.message}”</div> : null}
                   </div>
                 );
               })}
             </div>
           ) : (
-            <EmptyCard icon="👥" title="Aucune demande d’ami" text={`Tu as ${friends.length} ami${friends.length > 1 ? "s" : ""}. Les nouvelles demandes apparaîtront ici.`} />
+            <EmptyCard icon="📤" title="Aucune demande envoyée" text="Les invitations envoyées à d’autres joueurs apparaîtront ici." />
           )}
         </>
       ) : null}

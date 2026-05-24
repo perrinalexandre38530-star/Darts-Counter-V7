@@ -1465,7 +1465,7 @@ const sendOnlineChat = React.useCallback(async () => {
 // ONLINE : annonce automatiquement le joueur au trait dans le chat système.
 const onlineLastTurnSystemKeyRef = React.useRef("");
 React.useEffect(() => {
-  if (!effectiveOnline || !effectiveLobbyCode || status !== "running" || !activePlayer) return;
+  if (!effectiveOnline || !effectiveLobbyCode || !(status === "running" || status === "playing") || !activePlayer) return;
   const code = effectiveLobbyCode;
   const hostUserId = String((config as any)?.hostUserId || (config as any)?.onlineHostUserId || safePlayersForOnline.find((p: any) => p?.isHost)?.userId || safePlayersForOnline.find((p: any) => p?.isHost)?.id || "").trim();
   const shouldAnnounce = hostUserId ? String(onlineCurrentUserId || "") === hostUserId : String(onlineCurrentUserId || "") === String(onlineActivePlayerId || "");
@@ -1623,9 +1623,6 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
         __x01OnlineDartsCount: darts.length,
         __x01OnlineUpdatedAt: Date.now(),
         __x01OnlineUpdatedBy: onlineCurrentUserId || null,
-        __x01OnlineCameraStates: x01OnlineCameraStatesRef.current || {},
-        __x01OnlineCameraSignals: x01OnlineCameraSignalsRef.current || [],
-        __x01OnlineCameraUpdatedAt: Date.now(),
       },
     });
   } catch (error) {
@@ -1634,6 +1631,37 @@ const publishOnlineReplayState = React.useCallback(async (reason: string = "visi
     onlinePublishingRef.current = false;
   }
 }, [isOnlineMatch, onlineLobbyCode, status, effectiveRuntimeConfig, players, onlineCurrentUserId]);
+
+const rebuildOnlineLastVisitsFromDarts = React.useCallback((darts: X01DartInputV3[]) => {
+  const visitsByPlayer: Record<string, UIDart[]> = {};
+  let currentPid = "";
+  let currentVisit: UIDart[] = [];
+
+  const flush = () => {
+    if (currentPid && currentVisit.length) {
+      visitsByPlayer[currentPid] = currentVisit.slice(-3);
+    }
+  };
+
+  for (const dart of Array.isArray(darts) ? darts : []) {
+    const pid = String((dart as any)?.playerId || (dart as any)?.pid || (dart as any)?.profileId || "").trim();
+    const uiDart: UIDart = {
+      v: Number((dart as any)?.segment || 0) === 25 ? 25 : Number((dart as any)?.segment || 0),
+      mult: Number((dart as any)?.multiplier || 1) as any,
+    } as any;
+
+    if (!pid) continue;
+    if (pid !== currentPid || currentVisit.length >= 3) {
+      flush();
+      currentPid = pid;
+      currentVisit = [];
+    }
+    currentVisit.push(uiDart);
+  }
+
+  flush();
+  return visitsByPlayer;
+}, []);
 
 React.useEffect(() => {
   if (!isOnlineMatch || !onlineLobbyCode) return;
@@ -1683,43 +1711,42 @@ React.useEffect(() => {
 
       const applied = Math.max(0, onlineAppliedDartsCountRef.current || 0);
       if (remoteCount <= applied || remoteDarts.length <= applied) return;
-      const nextDarts = remoteDarts.slice(applied).map(normalizeOnlineReplayDart).filter(Boolean) as X01DartInputV3[];
-      if (!nextDarts.length) {
+
+      // ONLINE HARD-SYNC : on reconstruit l'état complet depuis le replay autoritaire.
+      // L'ancien mode appliquait seulement les nouvelles fléchettes une par une avec des timers.
+      // Si une update caméra arrivait entre deux validations, un client pouvait rater une rotation
+      // et rester verrouillé sur le mauvais joueur actif. Le rebuild complet remet scores + tour
+      // dans un état déterministe, sans attendre WebRTC ni React timers.
+      const normalizedRemoteDarts = remoteDarts
+        .map(normalizeOnlineReplayDart)
+        .filter(Boolean) as X01DartInputV3[];
+
+      if (!normalizedRemoteDarts.length && remoteDarts.length) {
         onlineAppliedDartsCountRef.current = remoteDarts.length;
         return;
       }
 
-      isReplayingRef.current = true;
-      currentThrowFromEngineRef.current = true;
-      nextDarts.forEach((dart, index) => {
+      try {
+        isReplayingRef.current = true;
+        currentThrowFromEngineRef.current = true;
+        const rebuilt = rebuildFromDarts(normalizedRemoteDarts);
+        replayDartsRef.current = normalizedRemoteDarts as any;
+        onlineAppliedDartsCountRef.current = remoteDarts.length;
+        setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => ({
+          ...prev,
+          ...rebuildOnlineLastVisitsFromDarts(normalizedRemoteDarts),
+        }));
+        if (rebuilt?.state) {
+          syncUiFromEngineState(rebuilt.state as any);
+        }
+      } catch (error) {
+        console.warn("[X01PlayV3][ONLINE] rebuild remote replay failed", error);
+      } finally {
         window.setTimeout(() => {
-          try {
-            throwDart(dart);
-            replayDartsRef.current = replayDartsRef.current.concat([dart] as any);
-            const pid = String((dart as any).playerId || (dart as any).pid || (dart as any).profileId || "");
-            if (pid) {
-              const uiDart: UIDart = {
-                v: Number((dart as any).segment || 0) === 25 ? 25 : Number((dart as any).segment || 0),
-                mult: Number((dart as any).multiplier || 1) as any,
-              } as any;
-              setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => {
-                const old = Array.isArray(prev?.[pid]) ? prev[pid] : [];
-                return { ...prev, [pid]: [...old, uiDart].slice(-3) };
-              });
-            }
-          } catch (error) {
-            console.warn("[X01PlayV3][ONLINE] apply remote dart failed", error);
-          } finally {
-            if (index === nextDarts.length - 1) {
-              onlineAppliedDartsCountRef.current = remoteDarts.length;
-              window.setTimeout(() => {
-                isReplayingRef.current = false;
-                forceSyncFromEngine();
-              }, 0);
-            }
-          }
-        }, index * 8);
-      });
+          isReplayingRef.current = false;
+          currentThrowFromEngineRef.current = false;
+        }, 0);
+      }
     } catch {
       // silence: la partie locale reste jouable même si un paquet distant est invalide
     }
@@ -1760,7 +1787,7 @@ React.useEffect(() => {
     document.removeEventListener("visibilitychange", onResume);
     if (typeof unsubscribe === "function") unsubscribe();
   };
-}, [isOnlineMatch, onlineLobbyCode, normalizeOnlineReplayDart, throwDart]);
+}, [isOnlineMatch, onlineLobbyCode, normalizeOnlineReplayDart, rebuildFromDarts, rebuildOnlineLastVisitsFromDarts, syncUiFromEngineState]);
 
 // Métadonnées de replay : indispensable pour distinguer les legs/sets dans
 // le résumé final et dans l'historique détaillé. Sans ça, un match en plusieurs
@@ -3595,40 +3622,11 @@ React.useEffect(() => {
     x01OnlineCameraSignalsRef.current = x01OnlineCameraSignals;
   }, [x01OnlineCameraSignals]);
 
-  const x01OnlineCameraPublishTimerRef = React.useRef<number | null>(null);
+  // Caméra ONLINE découplée du gameplay : ne jamais écrire les états caméra dans
+  // online_matches.state_json. Les anciennes écritures caméra pouvaient écraser un
+  // replay de score plus récent et laisser tous les keypads verrouillés sur le mauvais tour.
   const publishX01OnlineCameraStates = React.useCallback((nextStates: Record<string, OnlineCameraPlayerState>) => {
-    if (!effectiveOnline || !effectiveLobbyCode) return;
-    if (x01OnlineCameraPublishTimerRef.current) {
-      window.clearTimeout(x01OnlineCameraPublishTimerRef.current);
-    }
-    x01OnlineCameraPublishTimerRef.current = window.setTimeout(async () => {
-      try {
-        const row = await (onlineApi as any).fetchMatchByCode?.(effectiveLobbyCode);
-        const baseState =
-          (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
-          (row?.state && typeof row.state === "object" ? row.state : null) ||
-          {};
-        await (onlineApi as any).updateMatchState?.({
-          lobbyCode: effectiveLobbyCode,
-          status: row?.status === "ended" ? "ended" : "started",
-          state: {
-            ...baseState,
-            __x01OnlineCameraStates: nextStates,
-            __x01OnlineCameraSignals: x01OnlineCameraSignalsRef.current || [],
-            __x01OnlineCameraUpdatedAt: Date.now(),
-            __x01OnlineCameraUpdatedBy: onlineCurrentUserId || null,
-          },
-        });
-      } catch (error) {
-        console.warn("[X01PlayV3][ONLINE] publish camera state failed", error);
-      }
-    }, 180);
-  }, [effectiveOnline, effectiveLobbyCode, onlineCurrentUserId]);
-
-  React.useEffect(() => {
-    return () => {
-      if (x01OnlineCameraPublishTimerRef.current) window.clearTimeout(x01OnlineCameraPublishTimerRef.current);
-    };
+    x01OnlineCameraStatesRef.current = nextStates || {};
   }, []);
 
   const x01OnlineCameraPlayers = React.useMemo(() => {
@@ -3672,7 +3670,9 @@ React.useEffect(() => {
   }, [onlineCurrentUserId, activePlayerId, publishX01OnlineCameraStates]);
 
   const handleX01OnlineCameraSignalSend = React.useCallback((signal: OnlineCameraSignal) => {
-    if (!effectiveOnline || !effectiveLobbyCode || !signal?.id) return;
+    if (!effectiveOnline || !signal?.id) return;
+    // Local mirror only. Le transport réel passe par le WebSocket caméra dans OnlineCameraPanel.
+    // Surtout : aucun updateMatchState ici, sinon les paquets ICE/SDP peuvent écraser le replay gameplay.
     setX01OnlineCameraSignals((prev) => {
       const cutoff = Date.now() - 60000;
       const byId = new Map<string, OnlineCameraSignal>();
@@ -3685,42 +3685,9 @@ React.useEffect(() => {
         .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
         .slice(-240);
       x01OnlineCameraSignalsRef.current = next;
-
-      window.setTimeout(async () => {
-        try {
-          const row = await (onlineApi as any).fetchMatchByCode?.(effectiveLobbyCode);
-          const baseState =
-            (row?.state_json && typeof row.state_json === "object" ? row.state_json : null) ||
-            (row?.state && typeof row.state === "object" ? row.state : null) ||
-            {};
-          const existing = Array.isArray(baseState.__x01OnlineCameraSignals) ? baseState.__x01OnlineCameraSignals : [];
-          const merged = new Map<string, OnlineCameraSignal>();
-          [...existing, ...next].forEach((sig: any) => {
-            if (!sig?.id) return;
-            if (Number(sig.createdAt || 0) < cutoff) return;
-            merged.set(String(sig.id), sig as OnlineCameraSignal);
-          });
-          await (onlineApi as any).updateMatchState?.({
-            lobbyCode: effectiveLobbyCode,
-            status: row?.status === "ended" ? "ended" : "started",
-            state: {
-              ...baseState,
-              __x01OnlineCameraStates: x01OnlineCameraStatesRef.current || {},
-              __x01OnlineCameraSignals: Array.from(merged.values())
-                .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
-                .slice(-240),
-              __x01OnlineCameraUpdatedAt: Date.now(),
-              __x01OnlineCameraUpdatedBy: onlineCurrentUserId || null,
-            },
-          });
-        } catch (error) {
-          console.warn("[X01PlayV3][ONLINE] publish camera signal failed", error);
-        }
-      }, 0);
-
       return next;
     });
-  }, [effectiveOnline, effectiveLobbyCode, onlineCurrentUserId]);
+  }, [effectiveOnline]);
 
   // Caméra anti-triche : le navigateur qui peut saisir la volée du joueur actif
   // doit être identifié comme CE joueur actif pour répondre aux offres WebRTC.

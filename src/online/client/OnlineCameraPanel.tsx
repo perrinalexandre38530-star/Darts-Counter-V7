@@ -73,6 +73,20 @@ function normalizeIncomingSignal(raw: any): OnlineCameraSignal | null {
   return signal as OnlineCameraSignal;
 }
 
+function normalizeIncomingCameraState(raw: any): OnlineCameraPlayerState | null {
+  const data = raw?.kind === "command" ? raw?.data : raw?.data || raw;
+  const state = data?.type === "x01_camera_state" ? data.state : data?.cameraState || null;
+  if (!state || typeof state !== "object" || !state.playerId) return null;
+  return {
+    playerId: String(state.playerId),
+    cameraEnabled: !!state.cameraEnabled,
+    micEnabled: !!state.micEnabled,
+    hasVideo: !!state.hasVideo,
+    hasAudio: !!state.hasAudio,
+    updatedAt: Number(state.updatedAt || Date.now()),
+  } as OnlineCameraPlayerState;
+}
+
 function makeSignalId(from: string, to: string, type: string) {
   const rnd = Math.random().toString(36).slice(2, 9);
   return `cam_${Date.now().toString(36)}_${from}_${to}_${type}_${rnd}`;
@@ -168,12 +182,32 @@ export default function OnlineCameraPanel({
   const activeId = String(active?.id || activePlayerId || "");
   const self = String(selfId || "local");
   const selfIsActive = !!activeId && activeId === self;
-  const activeState = active ? cameraStates[String(active.id)] : null;
-  const activeCameraEnabled = !!activeState?.cameraEnabled || (selfIsActive && camera.cameraEnabled);
 
   const [remoteStreams, setRemoteStreams] = React.useState<Record<string, MediaStream>>({});
   const [webrtcStatus, setWebrtcStatus] = React.useState<"idle" | "connecting" | "live" | "waiting" | "error">("idle");
   const [webrtcError, setWebrtcError] = React.useState<string | null>(null);
+  const [liveCameraStates, setLiveCameraStates] = React.useState<Record<string, OnlineCameraPlayerState>>({});
+
+  const mergedCameraStates = React.useMemo(() => {
+    const now = Date.now();
+    const next: Record<string, OnlineCameraPlayerState> = { ...(cameraStates || {}) };
+    for (const [id, st] of Object.entries(liveCameraStates || {})) {
+      if (!st) continue;
+      if (Number(st.updatedAt || 0) && now - Number(st.updatedAt || 0) > 120000) continue;
+      next[id] = st;
+    }
+    next[self] = {
+      playerId: self as any,
+      cameraEnabled: camera.cameraEnabled,
+      micEnabled: camera.micEnabled,
+      hasVideo: camera.hasVideo,
+      hasAudio: camera.hasAudio,
+      updatedAt: Date.now(),
+    };
+    return next;
+  }, [cameraStates, liveCameraStates, self, camera.cameraEnabled, camera.micEnabled, camera.hasVideo, camera.hasAudio]);
+  const activeState = active ? mergedCameraStates[String(active.id)] : null;
+  const activeCameraEnabled = !!activeState?.cameraEnabled || (selfIsActive && camera.cameraEnabled);
 
   const peersRef = React.useRef<Record<string, PeerEntry>>({});
   const processedSignalsRef = React.useRef<Set<string>>(new Set());
@@ -216,11 +250,32 @@ export default function OnlineCameraPanel({
           queued.forEach((signal) => {
             try { ws.send(JSON.stringify({ kind: "command", data: { type: "x01_camera_signal", signal } })); } catch {}
           });
+          try {
+            ws.send(JSON.stringify({
+              kind: "command",
+              data: {
+                type: "x01_camera_state",
+                state: {
+                  playerId: self,
+                  cameraEnabled: cameraRef.current.cameraEnabled,
+                  micEnabled: cameraRef.current.micEnabled,
+                  hasVideo: cameraRef.current.hasVideo,
+                  hasAudio: cameraRef.current.hasAudio,
+                  updatedAt: Date.now(),
+                },
+              },
+            }));
+          } catch {}
         };
 
         ws.onmessage = (event) => {
           try {
             const raw = typeof event.data === "string" ? JSON.parse(event.data) : JSON.parse(new TextDecoder().decode(event.data as ArrayBuffer));
+            const cameraState = normalizeIncomingCameraState(raw);
+            if (cameraState) {
+              setLiveCameraStates((prev) => ({ ...prev, [String(cameraState.playerId)]: cameraState }));
+              return;
+            }
             const signal = normalizeIncomingSignal(raw);
             if (!signal) return;
             if (signal.to && String(signal.to) !== self) return;
@@ -274,6 +329,29 @@ export default function OnlineCameraPanel({
 
     onCameraSignalSend?.(signal);
   }, [onCameraSignalSend]);
+
+  const publishCameraStateOverWs = React.useCallback((state: OnlineCameraPlayerState) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify({ kind: "command", data: { type: "x01_camera_state", state } }));
+    } catch {
+      // L'état caméra est informatif : jamais bloquant pour le gameplay.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const state: OnlineCameraPlayerState = {
+      playerId: self as any,
+      cameraEnabled: camera.cameraEnabled,
+      micEnabled: camera.micEnabled,
+      hasVideo: camera.hasVideo,
+      hasAudio: camera.hasAudio,
+      updatedAt: Date.now(),
+    };
+    setLiveCameraStates((prev) => ({ ...prev, [self]: state }));
+    publishCameraStateOverWs(state);
+  }, [self, camera.cameraEnabled, camera.micEnabled, camera.hasVideo, camera.hasAudio, publishCameraStateOverWs]);
 
   const sendSignal = React.useCallback((to: string, type: OnlineCameraSignalType, payload?: any) => {
     if (!to || !self) return;
@@ -674,7 +752,7 @@ export default function OnlineCameraPanel({
       {!compact && players.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
           {players.map((p) => {
-            const st = String(p.id) === self ? { cameraEnabled: camera.cameraEnabled, micEnabled: camera.micEnabled } : cameraStates[String(p.id)];
+            const st = String(p.id) === self ? { cameraEnabled: camera.cameraEnabled, micEnabled: camera.micEnabled } : mergedCameraStates[String(p.id)];
             return <span key={p.id} style={badgeStyle(!!st?.cameraEnabled)}>{p.name || "Joueur"} · {st?.cameraEnabled ? "📷" : "—"}{st?.micEnabled ? " 🎙️" : ""}</span>;
           })}
         </div>
