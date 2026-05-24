@@ -33,6 +33,7 @@ import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
+import { loadLinkedProfileProjection, mergeLinkedProfiles } from "../lib/linkedProfileSync";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -837,7 +838,28 @@ export default function Profiles({
     selfStatus = "online",
   } = store;
 
-  const stableProfiles = useStableProfiles(profiles as any);
+  const stableProfilesBase = useStableProfiles(profiles as any);
+  const [linkedProfileProjection, setLinkedProfileProjection] = React.useState<any>(() => ({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] }));
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const projection = await loadLinkedProfileProjection(stableProfilesBase as any[]);
+        if (!mounted) return;
+        setLinkedProfileProjection(projection);
+      } catch {
+        if (!mounted) return;
+        setLinkedProfileProjection({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] });
+      }
+    })();
+    return () => { mounted = false; };
+  }, [stableProfilesBase.length]);
+
+  const stableProfiles = React.useMemo(
+    () => mergeLinkedProfiles(stableProfilesBase as any[], linkedProfileProjection?.profiles || []) as any[],
+    [stableProfilesBase, linkedProfileProjection?.profiles]
+  );
 
   const persistTimerRef = React.useRef<number | null>(null);
   const pendingPersistRef = React.useRef<{ reason: string; snapshot: any; cloud: boolean } | null>(null);

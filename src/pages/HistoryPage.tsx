@@ -21,6 +21,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useSport, type SportId } from "../contexts/SportContext";
 import { History, type SavedMatch } from "../lib/history";
+import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
@@ -913,7 +914,20 @@ async function pushHistoryDeletionToNas(ids?: string[]) {
 const HistoryAPI = {
   async list(store: Store): Promise<SavedEntry[]> {
     try {
-      const rows = safeArray<SavedEntry>(await History.list()).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
+      const rowsLocal = safeArray<SavedEntry>(await History.list()).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
+      let rows = rowsLocal;
+      try {
+        const anyStore: any = store as any;
+        const localProfiles = [
+          ...(Array.isArray(anyStore?.profiles) ? anyStore.profiles : []),
+          ...(Array.isArray(anyStore?.localProfiles) ? anyStore.localProfiles : []),
+        ];
+        const projection = await loadLinkedProfileProjection(localProfiles);
+        const linkedRows = safeArray<SavedEntry>(projection?.history).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
+        rows = [...rowsLocal, ...linkedRows];
+      } catch {
+        rows = rowsLocal;
+      }
 
       const enhanced: SavedEntry[] = [];
       for (const row of rows) {

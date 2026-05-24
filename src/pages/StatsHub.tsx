@@ -269,9 +269,11 @@ const StatsTerritoriesTab = React.lazy(() => import("./StatsTerritories"));
 
 import {
   loadNormalizedHistory,
+  normalizeMany,
   type NormalizedMatch,
 } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
+import { loadLinkedProfileProjection, mergeLinkedProfiles } from "../lib/linkedProfileSync";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { aggregatePlayers as aggregateMolkkyPlayers } from "../lib/molkkyStats";
 
@@ -4749,6 +4751,12 @@ const storeHistory = useStoreHistory();
 const apiHistory = useHistoryAPI();
 
 const [storeProfiles, setStoreProfiles] = React.useState<PlayerLite[]>([]);
+const [linkedProfileProjection, setLinkedProfileProjection] = React.useState<any>(() => ({
+  profiles: [],
+  history: [],
+  byLocalProfileId: {},
+  snapshots: [],
+}));
 
 React.useEffect(() => {
   let mounted = true;
@@ -4804,10 +4812,39 @@ React.useEffect(() => {
   };
 }, []);
 
+React.useEffect(() => {
+  let mounted = true;
+  const load = async () => {
+    try {
+      const localOnly = (Array.isArray(storeProfiles) ? storeProfiles : []).filter((p: any) => !p?.isBot);
+      const projection = await loadLinkedProfileProjection(localOnly);
+      if (!mounted) return;
+      setLinkedProfileProjection(projection);
+    } catch {
+      if (!mounted) return;
+      setLinkedProfileProjection({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] });
+    }
+  };
+  load();
+  const onUpd = () => load();
+  window.addEventListener("dc-profile-links-updated", onUpd as any);
+  window.addEventListener("dc-store-updated", onUpd as any);
+  return () => {
+    mounted = false;
+    window.removeEventListener("dc-profile-links-updated", onUpd as any);
+    window.removeEventListener("dc-store-updated", onUpd as any);
+  };
+}, [storeProfiles.length]);
+
+const effectiveStoreProfiles = React.useMemo(
+  () => mergeLinkedProfiles(storeProfiles as any[], linkedProfileProjection?.profiles || []) as any[],
+  [storeProfiles, linkedProfileProjection?.profiles]
+);
+
 // Mini-store pour le comparateur X01 (StatsX01Compare)
 const pseudoStoreForCompare = React.useMemo(
-  () => ({ profiles: storeProfiles }),
-  [storeProfiles]
+  () => ({ profiles: effectiveStoreProfiles }),
+  [effectiveStoreProfiles]
 );
 
 // Fusion en éliminant doublons (mem + api + store)
@@ -4815,6 +4852,7 @@ const combinedHistory = React.useMemo(() => {
   const api = toArr<SavedMatch>(apiHistory);
   const mem = toArr<SavedMatch>(memHistory);
   const store = toArr<SavedMatch>(storeHistory);
+  const linked = toArr<SavedMatch>(linkedProfileProjection?.history);
 
   // ✅ SOURCE DE VÉRITÉ : History/IndexedDB.
   // Quand une carte est supprimée de l'historique, elle disparaît de History.list().
@@ -4830,9 +4868,10 @@ const combinedHistory = React.useMemo(() => {
         ...store.filter((r: any) => authoritativeIds.has(String(r?.id ?? r?.matchId ?? r?.resumeId ?? ""))),
       ]
     : [...mem, ...store];
+  const sourceWithLinked = [...source, ...linked];
 
   const byId = new Map<string, SavedMatch>();
-  for (const r of source) {
+  for (const r of sourceWithLinked) {
     const id = String((r as any)?.id ?? (r as any)?.matchId ?? (r as any)?.resumeId ?? "");
     if (!id) continue;
 
@@ -4854,7 +4893,7 @@ const combinedHistory = React.useMemo(() => {
       ((b as any)?.updatedAt ?? (b as any)?.createdAt ?? 0) -
       ((a as any)?.updatedAt ?? (a as any)?.createdAt ?? 0)
   );
-}, [memHistory, apiHistory, storeHistory]);
+}, [memHistory, apiHistory, storeHistory, linkedProfileProjection?.history]);
 
 const scopedCombinedHistory = React.useMemo(() => {
   const arr = Array.isArray(combinedHistory) ? combinedHistory : [];
@@ -4866,11 +4905,11 @@ const scopedCombinedHistory = React.useMemo(() => {
 const records = React.useMemo(() => {
   try {
     const arr = Array.isArray(scopedCombinedHistory) ? scopedCombinedHistory : [];
-    return arr.map((r) => normalizeRecordPlayers(r, storeProfiles));
+    return arr.map((r) => normalizeRecordPlayers(r, effectiveStoreProfiles));
   } catch {
     return [];
   }
-}, [scopedCombinedHistory, storeProfiles]);
+}, [scopedCombinedHistory, effectiveStoreProfiles]);
 
 // ==========================
 // ✅ DEBUG + SOURCE UNIQUE pour toutes les stats
@@ -4883,7 +4922,7 @@ const normalizedMatchesClean = React.useMemo(() => {
     const players = Array.isArray(m?.players) ? m.players : [];
     const fixedPlayers = players.map((pp: any) => {
       const pid = String(pp?.id ?? pp?.playerId ?? pp?.profileId ?? "");
-      const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), storeProfiles);
+      const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), effectiveStoreProfiles);
       const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
       const name = pickPlayerName(sp) || pickPlayerName(pp) || "";
       const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(pp);
@@ -4914,7 +4953,7 @@ const normalizedMatchesClean = React.useMemo(() => {
       players: fixedPlayers,
     };
   });
-}, [normalizedMatches, storeProfiles]);
+}, [normalizedMatches, effectiveStoreProfiles]);
 
 // 2) Fallback best-effort : si normalizedMatches est vide, on fabrique une version "normalized" depuis records
 function recordToNormalizedFallback(r: any): any | null {
@@ -4959,10 +4998,41 @@ const diceRows = React.useMemo(() => {
   });
 }, [records?.length]);
 
+const linkedNormalizedMatches = React.useMemo(() => {
+  try {
+    const rows = Array.isArray(linkedProfileProjection?.history) ? linkedProfileProjection.history : [];
+    return normalizeMany(rows as any[]).map((m: any) => ({
+      ...m,
+      __linkedRemote: true,
+      players: Array.isArray(m?.players)
+        ? m.players.map((p: any) => {
+            const pid = String(p?.id ?? p?.playerId ?? p?.profileId ?? "");
+            const sp = findProfileByIdOrName(p?.profileId ?? p?.playerId ?? pid, pickPlayerName(p), effectiveStoreProfiles);
+            const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
+            const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(p);
+            return {
+              ...p,
+              id: resolvedId,
+              playerId: resolvedId,
+              profileId: resolvedId,
+              name: pickPlayerName(sp) || pickPlayerName(p),
+              displayName: pickPlayerName(sp) || pickPlayerName(p),
+              avatarDataUrl: avatar,
+              avatarUrl: (sp as any)?.avatarUrl ?? p?.avatarUrl ?? avatar ?? null,
+            };
+          })
+        : [],
+    }));
+  } catch {
+    return [];
+  }
+}, [linkedProfileProjection?.history, effectiveStoreProfiles]);
+
 const normalizedMatchesScoped = React.useMemo(() => {
   const arr = Array.isArray(normalizedMatchesClean) ? normalizedMatchesClean : [];
-  return arr.filter((m: any) => normalizedMatchMatchesEffectiveSport(m, effectiveSport));
-}, [normalizedMatchesClean, effectiveSport]);
+  const merged = [...arr, ...(Array.isArray(linkedNormalizedMatches) ? linkedNormalizedMatches : [])];
+  return merged.filter((m: any) => normalizedMatchMatchesEffectiveSport(m, effectiveSport));
+}, [normalizedMatchesClean, linkedNormalizedMatches, effectiveSport]);
 
 const nmFromRecordsFallback = React.useMemo(() => {
   const arr = Array.isArray(records) ? records : [];
@@ -4972,7 +5042,7 @@ const nmFromRecordsFallback = React.useMemo(() => {
       ...m,
       players: players.map((pp: any) => {
         const pid = String(pp?.id ?? pp?.playerId ?? pp?.profileId ?? "");
-        const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), storeProfiles);
+        const sp = findProfileByIdOrName(pp?.profileId ?? pp?.playerId ?? pid, pickPlayerName(pp), effectiveStoreProfiles);
         const resolvedId = String((sp as any)?.id ?? (sp as any)?.profileId ?? pid);
         const avatar = pickPlayerAvatar(sp) ?? pickPlayerAvatar(pp);
         return {
@@ -4990,7 +5060,7 @@ const nmFromRecordsFallback = React.useMemo(() => {
       }),
     };
   });
-}, [records?.length, storeProfiles]);
+}, [records?.length, effectiveStoreProfiles]);
 
 // 3) ✅ SOURCE UNIQUE utilisée PARTOUT dans StatsHub
 const nmEffective = React.useMemo(() => {
@@ -5010,7 +5080,7 @@ const allPlayers = React.useMemo(() => {
     for (const p of players) {
       const rawId = String((p as any)?.id ?? (p as any)?.playerId ?? "");
       if (!rawId) continue;
-      const local = findProfileByIdOrName((p as any)?.profileId ?? rawId, pickPlayerName(p), storeProfiles);
+      const local = findProfileByIdOrName((p as any)?.profileId ?? rawId, pickPlayerName(p), effectiveStoreProfiles);
       const displayId = String((local as any)?.id ?? rawId);
       const name = pickPlayerName(local) || pickPlayerName(p) || displayId;
       const avatar = pickPlayerAvatar(local) ?? pickPlayerAvatar(p);
@@ -5030,7 +5100,7 @@ const allPlayers = React.useMemo(() => {
   }
 
   // 2) Ajoute les profils locaux/bots du store pour le mode Profils locaux, même sans match
-  const sp = Array.isArray(storeProfiles) ? storeProfiles : [];
+  const sp = Array.isArray(effectiveStoreProfiles) ? effectiveStoreProfiles : [];
   for (const p of sp) {
     const pid = String((p as any)?.id ?? "");
     if (!pid || map.has(pid)) continue;
@@ -5053,7 +5123,7 @@ const allPlayers = React.useMemo(() => {
   }
 
   return Array.from(map.values());
-}, [nmEffective, storeProfiles, profile?.id]);
+}, [nmEffective, effectiveStoreProfiles, profile?.id]);
 
 // ---------- 4) Sélection joueur + option BOTS / mode actif vs locaux ----------
 
@@ -5293,11 +5363,15 @@ const [liveDashboard, setLiveDashboard] =
     (dash: any, pid: string, pname?: string) => {
       try {
         const hydrated = x01HydratedRows || [];
-        const rows = hydrated.length
-          ? hydrated
-          : (combinedHistory || []).filter((r: any) =>
-              String(r?.kind ?? r?.mode ?? r?.game ?? "").toLowerCase().includes("x01")
-            );
+        const x01CombinedRows = (combinedHistory || []).filter((r: any) =>
+          String(r?.kind ?? r?.mode ?? r?.game ?? "").toLowerCase().includes("x01")
+        );
+        const hydratedIds = new Set(hydrated.map((r: any) => String(r?.id ?? "")));
+        const linkedOrMissingRows = x01CombinedRows.filter((r: any) => {
+          const id = String(r?.id ?? "");
+          return !id || !hydratedIds.has(id) || Boolean(r?.__linkedRemote || r?.linkedRemote);
+        });
+        const rows = hydrated.length ? [...hydrated, ...linkedOrMissingRows] : x01CombinedRows;
 
         if (!rows.length) return dash;
 
