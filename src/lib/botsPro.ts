@@ -15,7 +15,11 @@ export type BotId =
   | "pro_ice_man"
   | "pro_the_legend"
   | "pro_smooth_thrower"
-  | "pro_power_arm";
+  | "pro_power_arm"
+  | "pro_jackpot"
+  | "pro_crafty"
+  | "pro_barney"
+  | "pro_dobey_custom";
 
 // Style de jeu (pour guider l'IA)
 export type BotPlayStyle =
@@ -29,7 +33,7 @@ export type ProBot = {
   id: BotId;
   displayName: string;       // Nom affiché (UI)
   avatarKey: string;         // Clé pour ton système d'avatars
-  botLevel: 1 | 2 | 3 | 4 | 5;
+  botLevel: 1 | 2 | 3 | 3.5 | 4 | 5;
   style: BotPlayStyle;
   targetAvg3: number;        // Objectif de moyenne (3 darts)
   checkoutSkill: "low" | "medium" | "high";
@@ -135,6 +139,42 @@ export const PRO_BOTS: ProBot[] = [
     style: "ultra_regular",
     targetAvg3: 95,
     checkoutSkill: "high",
+  },
+  {
+    id: "pro_jackpot",
+    displayName: "Jackpot",
+    avatarKey: "pro_jackpot",
+    botLevel: 4,
+    style: "power_scorer",
+    targetAvg3: 97,
+    checkoutSkill: "high",
+  },
+  {
+    id: "pro_crafty",
+    displayName: "Crafty",
+    avatarKey: "pro_crafty",
+    botLevel: 4,
+    style: "checkout_master",
+    targetAvg3: 96,
+    checkoutSkill: "high",
+  },
+  {
+    id: "pro_barney",
+    displayName: "Barney",
+    avatarKey: "pro_barney",
+    botLevel: 3.5,
+    style: "ultra_regular",
+    targetAvg3: 94,
+    checkoutSkill: "high",
+  },
+  {
+    id: "pro_dobey_custom",
+    displayName: "Dobey",
+    avatarKey: "pro_dobey_custom",
+    botLevel: 3,
+    style: "all_rounder",
+    targetAvg3: 91,
+    checkoutSkill: "medium",
   },
 ];
 

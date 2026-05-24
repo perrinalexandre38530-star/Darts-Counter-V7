@@ -15,6 +15,10 @@ import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
 import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
 import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
 import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
+import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
+import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
+import avatarBarney from "../assets/avatars/bots-pro/barney.png";
+import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
 
 export type ProBotAvatarKey =
   | "pro_mvg"
@@ -27,7 +31,11 @@ export type ProBotAvatarKey =
   | "pro_smith"
   | "pro_aspinall"
   | "pro_dobey"
-  | "pro_clayton";
+  | "pro_clayton"
+  | "pro_jackpot"
+  | "pro_crafty"
+  | "pro_barney"
+  | "pro_dobey_custom";
 
 /**
  * Map avatarKey -> image (import png)
@@ -45,6 +53,10 @@ export const PRO_BOT_AVATARS: Record<ProBotAvatarKey, any> = {
   pro_aspinall: avatarTheAsp,
   pro_dobey: avatarHollywood,
   pro_clayton: avatarTheFerret,
+  pro_jackpot: avatarJackpot,
+  pro_crafty: avatarCraftyCockney,
+  pro_barney: avatarBarney,
+  pro_dobey_custom: avatarDobeyPro,
 };
 
 export function getProBotAvatar(avatarKey: string | null | undefined): any | null {

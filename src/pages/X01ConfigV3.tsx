@@ -40,6 +40,10 @@ import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
 import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
 import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
 import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
+import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
+import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
+import avatarBarney from "../assets/avatars/bots-pro/barney.png";
+import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
 
 // UI-only: "multi" = plusieurs joueurs en mode classique (pas teams)
 type MatchModeV3 = "solo" | "multi" | "teams";
@@ -535,7 +539,11 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_aspinall", name: "The Asp", botLevel: "Fort", avatarDataUrl: avatarTheAsp },
   { id: "bot_pro_dobey", name: "Hollywood", botLevel: "Fort", avatarDataUrl: avatarHollywood },
   { id: "bot_pro_clayton", name: "The Ferret", botLevel: "Fort", avatarDataUrl: avatarTheFerret },
-];
+
+  { id: "bot_pro_jackpot", name: "Jackpot", botLevel: "4/5", avatarDataUrl: avatarJackpot as any },
+  { id: "bot_pro_crafty", name: "Crafty", botLevel: "4/5", avatarDataUrl: avatarCraftyCockney as any },
+  { id: "bot_pro_barney", name: "Barney", botLevel: "3.5/5", avatarDataUrl: avatarBarney as any },
+  { id: "bot_pro_dobey_custom", name: "Dobey", botLevel: "3/5", avatarDataUrl: avatarDobeyPro as any },];
 
 export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go }: Props) {
   const { theme } = useTheme() as any;

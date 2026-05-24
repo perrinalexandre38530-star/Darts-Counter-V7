@@ -6,6 +6,10 @@ import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerDepartements from "../assets/tickers/ticker-departements.png";
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
+import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
+import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
+import avatarBarney from "../assets/avatars/bots-pro/barney.png";
+import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
 import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
 import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
 import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
@@ -127,7 +131,11 @@ const PRO_BOTS: BotLite[] = [
   { id: "pro_snake_king", name: "Snake King", avatarDataUrl: avatarSnakeKing, botLevel: "hard" },
   { id: "pro_wonder_kid", name: "Wonder Kid", avatarDataUrl: avatarWonderKid, botLevel: "hard" },
   { id: "pro_ice_man", name: "Ice Man", avatarDataUrl: avatarIceMan, botLevel: "hard" },
-];
+
+  { id: "pro_jackpot", name: "Jackpot", botLevel: "4/5", avatarDataUrl: avatarJackpot },
+  { id: "pro_crafty", name: "Crafty", botLevel: "4/5", avatarDataUrl: avatarCraftyCockney },
+  { id: "pro_barney", name: "Barney", botLevel: "3.5/5", avatarDataUrl: avatarBarney },
+  { id: "pro_dobey_custom", name: "Dobey", botLevel: "3/5", avatarDataUrl: avatarDobeyPro },];
 
 function readUserBotsFromLS(): BotLite[] {
   try {
