@@ -66,6 +66,110 @@ function statusColor(status?: string) {
   return GOLD;
 }
 
+
+function presenceState(raw?: string | null): { key: "online" | "away" | "offline"; label: string; color: string } {
+  const s = String(raw || "offline").trim().toLowerCase();
+  if (["online", "ready", "connected", "active"].includes(s)) return { key: "online", label: "En ligne", color: "#62ff63" };
+  if (["away", "idle", "busy", "absent", "pending"].includes(s)) return { key: "away", label: "Absent", color: "#ffc44d" };
+  return { key: "offline", label: "Déconnecté", color: "#7b838d" };
+}
+
+function userAvatarUrl(user?: any): string {
+  return String(user?.avatarUrl || user?.avatar_url || user?.avatar || user?.photoUrl || user?.photoURL || "").trim();
+}
+
+function initialsOfName(name: string): string {
+  const clean = String(name || "Ami").trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const a = parts[0]?.[0] || "A";
+  const b = parts.length > 1 ? parts[parts.length - 1]?.[0] : "";
+  return `${a}${b}`.toUpperCase();
+}
+
+function AvatarBubble({
+  user,
+  size = 50,
+  selected = false,
+  showStatus = true,
+  statusOverride,
+}: {
+  user?: any;
+  size?: number;
+  selected?: boolean;
+  showStatus?: boolean;
+  statusOverride?: string;
+}) {
+  const name = asUserName(user);
+  const src = userAvatarUrl(user);
+  const st = presenceState(statusOverride || user?.status || user?.presenceStatus || user?.presence_status);
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        flex: "0 0 auto",
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        border: `2px solid ${selected ? BLUE : "rgba(255,255,255,.16)"}`,
+        background: "radial-gradient(circle at 35% 20%, rgba(255,255,255,.20), rgba(255,255,255,.045) 48%, rgba(0,0,0,.50))",
+        boxShadow: selected ? `0 0 18px ${BLUE}55` : "0 10px 22px rgba(0,0,0,.34)",
+        overflow: "visible",
+      }}
+      title={`${name} • ${st.label}`}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt={name}
+          loading="lazy"
+          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", display: "block" }}
+        />
+      ) : (
+        <span style={{ color: "#fff", fontWeight: 1000, fontSize: Math.max(12, Math.round(size * 0.32)), letterSpacing: -0.5 }}>
+          {initialsOfName(name)}
+        </span>
+      )}
+      {showStatus ? (
+        <span
+          aria-label={st.label}
+          style={{
+            position: "absolute",
+            right: Math.max(1, Math.round(size * 0.02)),
+            bottom: Math.max(1, Math.round(size * 0.02)),
+            width: Math.max(11, Math.round(size * 0.26)),
+            height: Math.max(11, Math.round(size * 0.26)),
+            borderRadius: 999,
+            background: st.color,
+            border: "2px solid rgba(8,9,14,.95)",
+            boxShadow: `0 0 12px ${st.color}99`,
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MessageMenuIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}>
+      <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+      <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ChatActionIcon({ name, size = 18 }: { name: "reply" | "edit" | "copy" | "share" | "delete"; size?: number }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  if (name === "reply") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M9 10 4 15l5 5"/><path {...p} d="M5 15h8a7 7 0 0 0 7-7V5"/></svg>;
+  if (name === "edit") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path {...p} d="m13.5 6.5 4 4"/></svg>;
+  if (name === "copy") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="8" y="8" width="11" height="11" rx="2"/><path {...p} d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>;
+  if (name === "share") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M18 8a3 3 0 1 0-2.8-4"/><path {...p} d="M6 15a3 3 0 1 0 2.8 4"/><path {...p} d="m8.8 14 6.4 3.7"/><path {...p} d="m15.2 6.3-6.4 3.7"/></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M3 6h18"/><path {...p} d="M8 6V4h8v2"/><path {...p} d="m19 6-1 14H6L5 6"/><path {...p} d="M10 11v5"/><path {...p} d="M14 11v5"/></svg>;
+}
+
 function titleOfSharedMatch(item: SharedMatchItem) {
   return String(
     item.title ||
@@ -386,6 +490,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [messageToUserId, setMessageToUserId] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
+  const [openMessageMenuId, setOpenMessageMenuId] = React.useState("");
   const [notifPermission, setNotifPermission] = React.useState<NotificationPermission | "unsupported">(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
     return Notification.permission;
@@ -457,7 +562,9 @@ export default function MessagesPage({ store, update, go }: Props) {
       .sort((a, b) => b.lastAt - a.lastAt);
   }, [privateMessages]);
 
-  const selectedThread = messageThreads.find((t) => t.id === selectedThreadUserId) || messageThreads[0] || null;
+  const selectedThreadBase = messageThreads.find((t) => t.id === selectedThreadUserId) || messageThreads[0] || null;
+  const selectedFriend = selectedThreadBase ? friends.find((f: any) => String(f?.userId || f?.id || "") === String(selectedThreadBase.id)) : null;
+  const selectedThread = selectedThreadBase ? { ...selectedThreadBase, user: { ...(selectedThreadBase.user || {}), ...(selectedFriend || {}) } } : null;
   const displayedMessages = selectedThread ? selectedThread.messages : privateMessages;
 
   const counters = {
@@ -532,6 +639,10 @@ export default function MessagesPage({ store, update, go }: Props) {
     if (active !== "messages") return;
     try { chatEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); } catch {}
   }, [active, selectedThread?.id, displayedMessages.length]);
+
+  React.useEffect(() => {
+    setOpenMessageMenuId("");
+  }, [selectedThread?.id]);
 
   async function runAction(label: string, fn: () => Promise<any>) {
     setError(null);
@@ -789,10 +900,11 @@ export default function MessagesPage({ store, update, go }: Props) {
           {chatMode === "messenger" ? (
             <>
           {messageThreads.length ? (
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none" as any }}>
+            <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "2px 0 12px", scrollbarWidth: "none" as any }}>
               {messageThreads.map((thread) => {
                 const selected = selectedThread?.id === thread.id;
-                const last = thread.messages[thread.messages.length - 1] as any;
+                const friend = friends.find((f: any) => String(f?.userId || f?.id || "") === String(thread.id));
+                const user = { ...(thread.user || {}), ...(friend || {}) };
                 return (
                   <button
                     key={thread.id}
@@ -812,25 +924,32 @@ export default function MessagesPage({ store, update, go }: Props) {
                       }
                     }}
                     style={{
-                      flex: "0 0 auto",
-                      minWidth: 132,
-                      maxWidth: 168,
-                      border: `1px solid ${selected ? BLUE : STROKE}`,
-                      borderRadius: 18,
-                      padding: "10px 11px",
-                      background: selected ? "rgba(121,200,255,.15)" : "rgba(255,255,255,.045)",
+                      position: "relative",
+                      flex: "0 0 86px",
+                      width: 86,
+                      minHeight: 98,
+                      border: `1px solid ${selected ? BLUE : "rgba(255,255,255,.10)"}`,
+                      borderRadius: 24,
+                      padding: "10px 7px 8px",
+                      background: selected
+                        ? "radial-gradient(110% 120% at 50% 0%, rgba(121,200,255,.20), rgba(255,255,255,.04) 58%, rgba(0,0,0,.36))"
+                        : "linear-gradient(180deg, rgba(255,255,255,.040), rgba(255,255,255,.018))",
                       color: "#fff",
-                      textAlign: "left",
-                      boxShadow: selected ? "0 0 18px rgba(121,200,255,.20)" : "none",
+                      display: "grid",
+                      justifyItems: "center",
+                      gap: 7,
+                      boxShadow: selected ? "0 0 22px rgba(121,200,255,.25), inset 0 1px 0 rgba(255,255,255,.08)" : "inset 0 1px 0 rgba(255,255,255,.055)",
+                      cursor: "pointer",
                     }}
+                    title={`${asUserName(user)} • ${presenceState(user?.status || user?.presenceStatus).label}`}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                      <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(thread.user)}</div>
-                      {thread.unread > 0 ? <Pill tone={GREEN}>{thread.unread}</Pill> : null}
-                    </div>
-                    <div style={{ marginTop: 5, fontSize: 11, color: "rgba(255,255,255,.58)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {last?.text || "—"}
-                    </div>
+                    <AvatarBubble user={user} size={54} selected={selected} />
+                    <div style={{ width: "100%", fontWeight: 1000, fontSize: 12.5, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(user)}</div>
+                    {thread.unread > 0 ? (
+                      <span style={{ position: "absolute", top: 4, right: 5, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: GREEN, color: "#07120b", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 1000, boxShadow: `0 0 14px ${GREEN}88` }}>
+                        {thread.unread > 99 ? "99+" : thread.unread}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -838,14 +957,21 @@ export default function MessagesPage({ store, update, go }: Props) {
           ) : null}
 
           <div style={cardStyle({ marginBottom: 10, borderColor: `${BLUE}55`, padding: 0, overflow: "hidden" })}>
-            <div style={{ padding: "12px 14px", borderBottom: `1px solid ${STROKE}`, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 1000, color: BLUE }}>{selectedThread ? `💬 ${asUserName(selectedThread.user)}` : "💬 Choisis une conversation"}</div>
-                <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.58)", marginTop: 2 }}>
-                  {selectedThread ? `${selectedThread.messages.length} message(s)` : "Choisis un ami et envoie ton premier message."}
+            <div style={{ padding: "11px 13px", borderBottom: `1px solid ${STROKE}`, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.015))" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                {selectedThread ? (
+                  <AvatarBubble user={selectedThread.user} size={42} selected={false} />
+                ) : (
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", border: `1px solid ${STROKE}`, display: "grid", placeItems: "center" }}>💬</div>
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedThread ? asUserName(selectedThread.user) : "Choisis une conversation"}</div>
+                  <div style={{ fontSize: 11.2, color: "rgba(255,255,255,.58)", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                    {selectedThread ? presenceState(selectedThread.user?.status || selectedThread.user?.presenceStatus).label : "Choisis un ami et envoie ton premier message."}
+                  </div>
                 </div>
               </div>
-              <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
+              <button type="button" onClick={() => loadAll()} title="Rafraîchir" style={{ border: `1px solid ${BLUE}66`, width: 36, height: 36, borderRadius: 14, background: `${BLUE}12`, color: BLUE, display: "grid", placeItems: "center", cursor: "pointer", fontWeight: 1000 }}>↻</button>
             </div>
 
             <div
@@ -863,38 +989,107 @@ export default function MessagesPage({ store, update, go }: Props) {
               {displayedMessages.length ? (
                 displayedMessages.map((m: any, idx: number) => {
                   const incoming = m.direction !== "outgoing";
+                  const msgId = String(m?.id || `local-${idx}`);
+                  const menuOpen = openMessageMenuId === msgId;
                   return (
                     <div
-                      key={m?.id || idx}
+                      key={msgId}
                       style={{
+                        position: "relative",
                         alignSelf: incoming ? "flex-start" : "flex-end",
-                        maxWidth: "86%",
-                        border: `1px solid ${incoming ? "rgba(255,255,255,.14)" : `${GREEN}55`}`,
-                        borderRadius: incoming ? "18px 18px 18px 6px" : "18px 18px 6px 18px",
-                        padding: "9px 10px",
-                        background: incoming ? "rgba(255,255,255,.055)" : "linear-gradient(180deg, rgba(125,255,178,.18), rgba(0,0,0,.20))",
-                        boxShadow: incoming && !m.readAt ? "0 0 18px rgba(125,255,178,.13)" : "none",
+                        maxWidth: "84%",
+                        display: "flex",
+                        flexDirection: incoming ? "row" : "row-reverse",
+                        alignItems: "flex-end",
+                        gap: 6,
                       }}
                     >
-                      <div style={{ color: "#fff", fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.32 }}>{m?.text || "—"}</div>
-                      <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                        <span style={{ color: "rgba(255,255,255,.46)", fontSize: 10.5, fontWeight: 800 }}>{asDate(m?.createdAt)}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePrivateMessage(String(m?.id || ""))}
-                          style={{
-                            border: "0",
-                            background: "transparent",
-                            color: "rgba(255,255,255,.50)",
-                            fontWeight: 1000,
-                            cursor: "pointer",
-                            fontSize: 12,
-                          }}
-                          title="Supprimer ce message de mon affichage"
-                        >
-                          🗑️ Supprimer
-                        </button>
+                      <div
+                        style={{
+                          minWidth: 86,
+                          border: `1px solid ${incoming ? "rgba(255,255,255,.13)" : `${GREEN}55`}`,
+                          borderRadius: incoming ? "15px 15px 15px 5px" : "15px 15px 5px 15px",
+                          padding: "7px 9px 6px",
+                          background: incoming ? "rgba(255,255,255,.052)" : "linear-gradient(180deg, rgba(125,255,178,.17), rgba(0,0,0,.20))",
+                          boxShadow: incoming && !m.readAt ? "0 0 16px rgba(125,255,178,.11)" : "none",
+                        }}
+                      >
+                        <div style={{ color: "#fff", fontSize: 12.7, whiteSpace: "pre-wrap", lineHeight: 1.24 }}>{m?.text || "—"}</div>
+                        <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
+                          <span style={{ color: "rgba(255,255,255,.48)", fontSize: 10, fontWeight: 800 }}>{asDate(m?.createdAt)}</span>
+                          {!incoming ? <span style={{ color: BLUE, fontSize: 11, fontWeight: 1000 }}>✓✓</span> : null}
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setOpenMessageMenuId(menuOpen ? "" : msgId)}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 999,
+                          border: `1px solid ${menuOpen ? BLUE : "rgba(255,255,255,.10)"}`,
+                          background: menuOpen ? `${BLUE}18` : "rgba(255,255,255,.035)",
+                          color: menuOpen ? BLUE : "rgba(255,255,255,.56)",
+                          display: "grid",
+                          placeItems: "center",
+                          cursor: "pointer",
+                          flex: "0 0 auto",
+                        }}
+                        title="Options du message"
+                        aria-label="Options du message"
+                      >
+                        <MessageMenuIcon size={16} />
+                      </button>
+                      {menuOpen ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            zIndex: 10,
+                            right: incoming ? "auto" : 30,
+                            left: incoming ? 30 : "auto",
+                            bottom: 28,
+                            minWidth: 176,
+                            border: `1px solid rgba(255,255,255,.16)`,
+                            borderRadius: 18,
+                            padding: 6,
+                            background: "linear-gradient(180deg, rgba(38,39,46,.98), rgba(21,22,28,.98))",
+                            boxShadow: "0 18px 40px rgba(0,0,0,.48)",
+                            backdropFilter: "blur(10px)",
+                          }}
+                        >
+                          {[
+                            ["reply", "Répondre"],
+                            ["edit", "Éditer"],
+                            ["copy", "Copier"],
+                            ["share", "Partager"],
+                          ].map(([name, label]) => (
+                            <button
+                              key={name}
+                              type="button"
+                              onClick={() => {
+                                if (name === "copy") {
+                                  navigator.clipboard?.writeText(String(m?.text || "")).catch(() => {});
+                                  setInfo("Message copié ✅");
+                                } else {
+                                  setInfo(`${label} : option prête à câbler.`);
+                                }
+                                setOpenMessageMenuId("");
+                              }}
+                              style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 12, fontWeight: 850, cursor: "pointer", textAlign: "left" }}
+                            >
+                              <ChatActionIcon name={name as any} /> <span>{label}</span>
+                            </button>
+                          ))}
+                          <div style={{ height: 1, background: "rgba(255,255,255,.10)", margin: "5px 4px" }} />
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMessageMenuId(""); handleDeletePrivateMessage(String(m?.id || "")); }}
+                            style={{ width: "100%", border: 0, background: "transparent", color: RED, display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 12, fontWeight: 950, cursor: "pointer", textAlign: "left" }}
+                          >
+                            <ChatActionIcon name="delete" /> <span>Supprimer</span>
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })
