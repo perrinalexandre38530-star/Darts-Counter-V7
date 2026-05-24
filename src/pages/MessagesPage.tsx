@@ -170,6 +170,43 @@ function ChatActionIcon({ name, size = 18 }: { name: "reply" | "edit" | "copy" |
   return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M3 6h18"/><path {...p} d="M8 6V4h8v2"/><path {...p} d="m19 6-1 14H6L5 6"/><path {...p} d="M10 11v5"/><path {...p} d="M14 11v5"/></svg>;
 }
 
+
+function MessengerToolIcon({ name, size = 19 }: { name: "back" | "phone" | "video" | "clip" | "camera" | "mic" | "smile" | "more"; size?: number }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  if (name === "back") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M15 18 9 12l6-6"/><path {...p} d="M10 12h10"/></svg>;
+  if (name === "phone") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.45 2.1L8 9.7a16 16 0 0 0 6.3 6.3l1.3-1.25a2 2 0 0 1 2.1-.45c.8.3 1.7.5 2.6.6A2 2 0 0 1 22 16.9Z"/></svg>;
+  if (name === "video") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="3" y="6" width="12" height="12" rx="2"/><path {...p} d="m15 10 6-3v10l-6-3"/></svg>;
+  if (name === "clip") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l8.5-8.5a4 4 0 0 1 5.7 5.7l-8.6 8.5a2 2 0 0 1-2.8-2.8l7.8-7.8"/></svg>;
+  if (name === "camera") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M14.5 4 16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l1.5-2h5Z"/><circle {...p} cx="12" cy="13" r="3"/></svg>;
+  if (name === "mic") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="9" y="2" width="6" height="12" rx="3"/><path {...p} d="M5 10a7 7 0 0 0 14 0"/><path {...p} d="M12 17v5"/></svg>;
+  if (name === "smile") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="9"/><path {...p} d="M8 14s1.5 2 4 2 4-2 4-2"/><path {...p} d="M9 9h.01M15 9h.01"/></svg>;
+  return <MessageMenuIcon size={size} />;
+}
+
+function RoundMessengerButton({ title, children, onClick, tone = BLUE }: { title: string; children: React.ReactNode; onClick?: () => void; tone?: string }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 999,
+        border: `1px solid ${tone}55`,
+        background: `linear-gradient(180deg, ${tone}16, rgba(255,255,255,.035))`,
+        color: "#fff",
+        display: "grid",
+        placeItems: "center",
+        cursor: "pointer",
+        boxShadow: `0 0 14px ${tone}18`,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function titleOfSharedMatch(item: SharedMatchItem) {
   return String(
     item.title ||
@@ -490,6 +527,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [messageToUserId, setMessageToUserId] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
+  const [chatFullscreen, setChatFullscreen] = React.useState(false);
   const [openMessageMenuId, setOpenMessageMenuId] = React.useState("");
   const [messageMenuPosition, setMessageMenuPosition] = React.useState<{ top: number; left: number; side: "left" | "right" }>({ top: 0, left: 0, side: "right" });
   const [notifPermission, setNotifPermission] = React.useState<NotificationPermission | "unsupported">(() => {
@@ -650,7 +688,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   React.useEffect(() => {
     if (active !== "messages") return;
     try { chatEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); } catch {}
-  }, [active, selectedThread?.id, displayedMessages.length]);
+  }, [active, selectedThread?.id, displayedMessages.length, chatFullscreen]);
 
   React.useEffect(() => {
     setOpenMessageMenuId("");
@@ -924,6 +962,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                     onClick={() => {
                       setSelectedThreadUserId(thread.id);
                       setMessageToUserId(thread.id);
+                      setChatFullscreen(true);
                       if (thread.unread > 0) {
                         const now = new Date().toISOString();
                         setPrivateMessages((prev) => prev.map((m: any) => {
@@ -968,7 +1007,41 @@ export default function MessagesPage({ store, update, go }: Props) {
             </div>
           ) : null}
 
-          <div style={cardStyle({ marginBottom: 10, borderColor: `${BLUE}55`, padding: 0, overflow: "hidden" })}>
+          <div style={cardStyle(chatFullscreen ? {
+            position: "fixed",
+            inset: 0,
+            zIndex: 99990,
+            margin: 0,
+            borderRadius: 0,
+            borderColor: `${BLUE}66`,
+            padding: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            background: "radial-gradient(900px 360px at 50% -10%, rgba(121,200,255,.14), transparent 58%), linear-gradient(180deg, rgba(13,15,24,.99), rgba(5,6,11,.99))",
+          } : { marginBottom: 10, borderColor: `${BLUE}55`, padding: 0, overflow: "hidden" })}>
+            {chatFullscreen ? (
+              <div style={{ padding: "12px 12px 10px", borderBottom: `1px solid ${STROKE}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "linear-gradient(180deg, rgba(255,255,255,.060), rgba(255,255,255,.018))", flex: "0 0 auto" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                  <RoundMessengerButton title="Retour messages" tone={BLUE} onClick={() => { setChatFullscreen(false); setOpenMessageMenuId(""); }}>
+                    <MessengerToolIcon name="back" />
+                  </RoundMessengerButton>
+                  {selectedThread ? <AvatarBubble user={selectedThread.user} size={38} selected={false} /> : null}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: GOLD, fontWeight: 1000, fontSize: 13, letterSpacing: .2 }}>T'Chat Messenger</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 1, minWidth: 0 }}>
+                      <span style={{ color: "#fff", fontWeight: 1000, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedThread ? asUserName(selectedThread.user) : "Conversation"}</span>
+                      {selectedThread ? <span style={{ width: 8, height: 8, borderRadius: 999, background: presenceState(selectedThread.user?.status || selectedThread.user?.presenceStatus).color, boxShadow: `0 0 10px ${presenceState(selectedThread.user?.status || selectedThread.user?.presenceStatus).color}` }} /> : null}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flex: "0 0 auto" }}>
+                  <RoundMessengerButton title="Appel audio" tone={GREEN}><MessengerToolIcon name="phone" /></RoundMessengerButton>
+                  <RoundMessengerButton title="Visio" tone={BLUE}><MessengerToolIcon name="video" /></RoundMessengerButton>
+                  <RoundMessengerButton title="Options" tone={GOLD}><MessengerToolIcon name="more" /></RoundMessengerButton>
+                </div>
+              </div>
+            ) : (
             <div style={{ padding: "11px 13px", borderBottom: `1px solid ${STROKE}`, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.015))" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                 {selectedThread ? (
@@ -985,11 +1058,13 @@ export default function MessagesPage({ store, update, go }: Props) {
               </div>
               <button type="button" onClick={() => loadAll()} title="Rafraîchir" style={{ border: `1px solid ${BLUE}66`, width: 36, height: 36, borderRadius: 14, background: `${BLUE}12`, color: BLUE, display: "grid", placeItems: "center", cursor: "pointer", fontWeight: 1000 }}>↻</button>
             </div>
+            )}
 
             <div
               style={{
-                minHeight: 220,
-                maxHeight: 430,
+                minHeight: chatFullscreen ? 0 : 220,
+                maxHeight: chatFullscreen ? "none" : 430,
+                flex: chatFullscreen ? "1 1 auto" : undefined,
                 overflowY: "auto",
                 padding: 12,
                 display: "flex",
@@ -1040,12 +1115,12 @@ export default function MessagesPage({ store, update, go }: Props) {
                             return;
                           }
                           const rect = event.currentTarget.getBoundingClientRect();
-                          const menuWidth = 138;
+                          const menuWidth = 124;
                           const safePad = 8;
                           const left = incoming
                             ? Math.min(window.innerWidth - menuWidth - safePad, rect.left + 18)
                             : Math.max(safePad, rect.right - menuWidth);
-                          const top = Math.min(window.innerHeight - 178, Math.max(safePad, rect.top + 20));
+                          const top = Math.min(window.innerHeight - 150, Math.max(safePad, rect.top + 20));
                           setMessageMenuPosition({ top, left, side: incoming ? "left" : "right" });
                           setOpenMessageMenuId(msgId);
                         }}
@@ -1073,10 +1148,10 @@ export default function MessagesPage({ store, update, go }: Props) {
                             zIndex: 999999,
                             top: messageMenuPosition.top,
                             left: messageMenuPosition.left,
-                            width: 138,
+                            width: 124,
                             border: `1px solid ${BLUE}66`,
-                            borderRadius: 14,
-                            padding: 4,
+                            borderRadius: 12,
+                            padding: 3,
                             background: "linear-gradient(180deg, rgba(30,31,38,.99), rgba(14,15,21,.99))",
                             boxShadow: `0 12px 28px rgba(0,0,0,.62), 0 0 16px ${BLUE}22`,
                             backdropFilter: "blur(12px)",
@@ -1100,7 +1175,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                                 }
                                 setOpenMessageMenuId("");
                               }}
-                              style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 9, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 11.5, lineHeight: 1.05 }}
+                              style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}
                             >
                               <ChatActionIcon name={name as any} /> <span>{label}</span>
                             </button>
@@ -1109,7 +1184,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                           <button
                             type="button"
                             onClick={() => { setOpenMessageMenuId(""); handleDeletePrivateMessage(String(m?.id || "")); }}
-                            style={{ width: "100%", border: 0, background: "transparent", color: RED, display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 9, fontWeight: 950, cursor: "pointer", textAlign: "left", fontSize: 11.5, lineHeight: 1.05 }}
+                            style={{ width: "100%", border: 0, background: "transparent", color: RED, display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 950, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}
                           >
                             <ChatActionIcon name="delete" /> <span>Supprimer</span>
                           </button>
@@ -1125,6 +1200,7 @@ export default function MessagesPage({ store, update, go }: Props) {
             </div>
 
             <div style={{ padding: 12, borderTop: `1px solid ${STROKE}`, display: "grid", gap: 8 }}>
+              {!chatFullscreen ? (
               <select
                 value={messageToUserId || selectedThread?.id || ""}
                 onChange={(e) => {
@@ -1149,12 +1225,14 @@ export default function MessagesPage({ store, update, go }: Props) {
                   return <option key={id} value={id}>{asUserName(f)}</option>;
                 })}
               </select>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end" }}>
+              ) : null}
+              <div style={{ display: "grid", gridTemplateColumns: chatFullscreen ? "auto 1fr auto auto auto auto" : "1fr auto", gap: 8, alignItems: "end" }}>
+                {chatFullscreen ? <RoundMessengerButton title="Emoji" tone={BLUE}><MessengerToolIcon name="smile" /></RoundMessengerButton> : null}
                 <textarea
                   value={messageText}
                   onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
-                  placeholder="Écris ton message…"
-                  rows={2}
+                  placeholder={chatFullscreen ? "Écrire un message…" : "Écris ton message…"}
+                  rows={chatFullscreen ? 1 : 2}
                   style={{
                     width: "100%",
                     borderRadius: 14,
@@ -1167,6 +1245,9 @@ export default function MessagesPage({ store, update, go }: Props) {
                     resize: "vertical",
                   }}
                 />
+                {chatFullscreen ? <RoundMessengerButton title="Pièce jointe" tone={BLUE}><MessengerToolIcon name="clip" /></RoundMessengerButton> : null}
+                {chatFullscreen ? <RoundMessengerButton title="Photo" tone={BLUE}><MessengerToolIcon name="camera" /></RoundMessengerButton> : null}
+                {chatFullscreen ? <RoundMessengerButton title="Message vocal" tone={GREEN}><MessengerToolIcon name="mic" /></RoundMessengerButton> : null}
                 <ActionButton label="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage} />
               </div>
             </div>
