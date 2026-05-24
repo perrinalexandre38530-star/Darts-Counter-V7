@@ -481,7 +481,7 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 let __nasEnsureInFlight: Promise<AuthSession> | null = null;
 let __nasLastGoodSession: AuthSession | null = null;
 let __nasLastRestoreAt = 0;
-const NAS_RESTORE_MIN_INTERVAL_MS = 20_000;
+const NAS_RESTORE_MIN_INTERVAL_MS = 60_000;
 
 let __nasWarnAt = 0;
 function warnNasOnce(label: string, extra?: any) {
@@ -501,7 +501,7 @@ function refreshNasSessionInBackground(reason: string) {
 
   __nasEnsureInFlight = (async () => {
     try {
-      const refreshed = await nasRestoreSession({ timeoutMs: 4500 });
+      const refreshed = await nasRestoreSession({ timeoutMs: 1800 });
       if (isValidNasSession(refreshed)) {
         __nasLastGoodSession = refreshed;
         saveAuthToLS(refreshed);
@@ -540,7 +540,7 @@ async function ensureNasSession(): Promise<AuthSession> {
 
   __nasEnsureInFlight = (async () => {
     __nasLastRestoreAt = nowTs;
-    const session = await nasRestoreSession({ timeoutMs: 4500 });
+    const session = await nasRestoreSession({ timeoutMs: 1800 });
     const token = String(session?.token || "").trim();
     const userId = String(session?.user?.id || session?.userId || "").trim();
 

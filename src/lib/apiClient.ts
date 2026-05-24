@@ -52,6 +52,17 @@ const localOverride = sanitizeApiUrl(
 
 // ✅ PRIORITÉ : domaine Cloudflare final > éventuel override local legacy
 const API_URL = envUrl || localOverride || "http://api.multisports-api.fr:3000";
+const API_TIMEOUT_MS = Math.max(1200, Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 3500) || 3500);
+
+function clearNasAuthBecauseUnauthorized() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem("dc_nas_access_token_v1");
+    window.localStorage.removeItem("dc_nas_refresh_token_v1");
+    window.localStorage.removeItem("dc_online_auth_supabase_v1");
+    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { status: "signed_out", reason: "401" } }));
+  } catch {}
+}
 
 async function parseJsonSafe(res: Response) {
   const text = await res.text();
@@ -75,12 +86,29 @@ function buildHeaders(init?: RequestInit): HeadersInit {
 
 async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const res = await fetch(`${API_URL}${normalizedPath}`, {
-    ...init,
-    headers: buildHeaders(init),
-  });
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? window.setTimeout(() => {
+    try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
+  }, API_TIMEOUT_MS) : null;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${normalizedPath}`, {
+      ...init,
+      signal: ctrl?.signal ?? init?.signal,
+      headers: buildHeaders(init),
+    });
+  } catch (error: any) {
+    const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
+    throw new Error(aborted
+      ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${API_TIMEOUT_MS}ms)`
+      : (error?.message || "Backend NAS inaccessible"));
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 
   if (!res.ok) {
+    if (res.status === 401) clearNasAuthBecauseUnauthorized();
     const errPayload = await parseJsonSafe(res).catch(() => null);
     const errMessage = String(
       errPayload?.message ||

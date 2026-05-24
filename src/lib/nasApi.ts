@@ -26,8 +26,8 @@ const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
 const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
 const NAS_AUTH_SESSION_KEY = "dc_online_auth_supabase_v1";
 
-const NAS_RESTORE_TIMEOUT_MS = 4500;
-const NAS_RESTORE_ERROR_BACKOFF_MS = 20000;
+const NAS_RESTORE_TIMEOUT_MS = 1800;
+const NAS_RESTORE_ERROR_BACKOFF_MS = 60000;
 let nasLastRestoreErrorAt = 0;
 let nasLastRestoreErrorKey = "";
 
