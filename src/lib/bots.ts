@@ -230,6 +230,76 @@ function saveAvatarsWithPruning(list: BotRecord[]) {
   safeRemoveItem(LS_BOTS_AVATARS_KEY);
 }
 
+
+function isUsablePersistentImageSrc(value: any): value is string {
+  const src = typeof value === "string" ? value.trim() : "";
+  if (!src) return false;
+  return (
+    src.startsWith("data:image/") ||
+    src.startsWith("/media/") ||
+    src.startsWith("/images/") ||
+    src.startsWith("http://") ||
+    src.startsWith("https://")
+  );
+}
+
+function scanAvatarGalleryForBot(botId: any): string | null {
+  if (typeof window === "undefined") return null;
+  const id = String(botId || "").trim();
+  if (!id) return null;
+
+  let best: { src: string; updatedAt: number } | null = null;
+
+  const inspectList = (items: any[]) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!item || typeof item !== "object") continue;
+      const ownerId = String((item as any).ownerId || (item as any).owner_id || "").trim();
+      const category = String((item as any).category || "").trim().toLowerCase();
+      if (ownerId !== id || (category && category !== "bot")) continue;
+      const src = String((item as any).src || (item as any).dataUrl || (item as any).avatarDataUrl || (item as any).avatar || "").trim();
+      if (!isUsablePersistentImageSrc(src)) continue;
+      const updatedAt = Number((item as any).updatedAt || (item as any).updated_at || (item as any).createdAt || 0) || 0;
+      if (!best || updatedAt >= best.updatedAt) best = { src, updatedAt };
+    }
+  };
+
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) || "";
+      if (!key.startsWith("dc_avatar_gallery_v1:")) continue;
+      try {
+        const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+        inspectList(parsed);
+      } catch {}
+    }
+  } catch {}
+
+  try {
+    const legacy = JSON.parse(window.localStorage.getItem("msc_avatar_ia_gallery_v1") || "[]");
+    inspectList(legacy);
+  } catch {}
+
+  return best?.src || null;
+}
+
+function resolveStoredBotAvatar(bot: any): string | null {
+  const direct = sanitizeAvatarDataUrl(bot?.avatarDataUrl ?? bot?.avatar ?? null);
+  if (direct) return direct;
+
+  const url = firstNonEmptyString(bot?.avatarUrl, bot?.photoUrl, bot?.avatarPath);
+  if (url && !url.startsWith("data:image/")) return url;
+
+  const media = botAssetIdToMediaUrl(
+    bot?.avatarThumbAssetId ||
+      bot?.avatarAssetId ||
+      bot?.avatarFullAssetId ||
+      bot?.avatarCastAssetId
+  );
+  if (media) return media;
+
+  return scanAvatarGalleryForBot(bot?.id);
+}
+
 export function normalizeBotLevel(input: any): BotLevel {
   const v = String(input || "").trim().toLowerCase();
   if (v === "easy" || v === "medium" || v === "strong" || v === "pro" || v === "legend") return v;
@@ -333,17 +403,20 @@ export function loadBots(): BotRecord[] {
   const metaBots = readBotsMeta();
   const avatarsMap = readAvatarsMap();
 
-  const merged = metaBots.map((bot) => ({
-    ...bot,
-    avatarDataUrl:
+  const merged = metaBots.map((bot) => {
+    const mappedAvatar =
       avatarsMap[bot.id] ??
-      sanitizeAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? null) ??
-      null,
-    avatarUrl:
-      typeof (bot as any)?.avatarUrl === "string" && !(bot as any).avatarUrl.startsWith("data:image/")
-        ? (bot as any).avatarUrl
-        : null,
-  }));
+      avatarsMap[`bot:${bot.id}`] ??
+      avatarsMap[`bot_${bot.id}`] ??
+      null;
+    const resolvedAvatar = mappedAvatar || resolveStoredBotAvatar(bot);
+    return {
+      ...bot,
+      avatarDataUrl: resolvedAvatar && resolvedAvatar.startsWith("data:image/") ? resolvedAvatar : null,
+      avatarUrl: resolvedAvatar && !resolvedAvatar.startsWith("data:image/") ? resolvedAvatar : null,
+      avatar: resolvedAvatar ?? null,
+    };
+  });
 
   if (merged.length > 0) return normalizeBotsList(merged);
 
@@ -433,18 +506,7 @@ export function botAssetIdToMediaUrl(assetId: any): string | null {
 }
 
 export function resolveBotAvatarSrc(input: any): string | null {
-  const direct = sanitizeAvatarDataUrl(input?.avatarDataUrl ?? input?.avatar ?? null);
-  if (direct) return direct;
-
-  const url = firstNonEmptyString(input?.avatarUrl, input?.photoUrl, input?.avatarPath);
-  if (url && !url.startsWith("data:image/")) return url;
-
-  return botAssetIdToMediaUrl(
-    input?.avatarThumbAssetId ||
-      input?.avatarAssetId ||
-      input?.avatarFullAssetId ||
-      input?.avatarCastAssetId
-  );
+  return resolveStoredBotAvatar(input);
 }
 
 export function toBotPlayerLite(input: any): BotPlayerLite {
