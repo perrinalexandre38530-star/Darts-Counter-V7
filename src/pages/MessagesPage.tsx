@@ -708,7 +708,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   }
 
   async function handleSendPrivateMessage() {
-    const toUserId = String(messageToUserId || "").trim();
+    const toUserId = String(messageToUserId || selectedThread?.id || "").trim();
     const text = String(messageText || "").trim();
     if (!toUserId) {
       setError("Choisis un ami destinataire.");
@@ -740,6 +740,25 @@ export default function MessagesPage({ store, update, go }: Props) {
     } catch (e: any) {
       setError(e?.message || String(e));
       await loadAll();
+    }
+  }
+
+  function openMessengerThread(threadId: string, unread = 0) {
+    const id = String(threadId || "").trim();
+    if (!id) return;
+    setSelectedThreadUserId(id);
+    setMessageToUserId(id);
+    setChatFullscreen(true);
+    setOpenMessageMenuId("");
+    if (unread > 0) {
+      const now = new Date().toISOString();
+      setPrivateMessages((prev) => prev.map((m: any) => {
+        const peerId = privateMessagePeerId(m);
+        return peerId === id && m?.direction !== "outgoing" && !m?.readAt ? { ...m, readAt: now } : m;
+      }));
+      broadcastMessageBadge(Math.max(0, totalPending - unread));
+      markPrivateThreadRead(id).catch(() => {});
+      markMessageCenterRefreshNeeded();
     }
   }
 
@@ -782,6 +801,241 @@ export default function MessagesPage({ store, update, go }: Props) {
     { label: "Cartes parties reçues", count: counters.shares, tone: GOLD, tab: "shares" as MsgTab, detail: "Partages de parties / stats historiques." },
     { label: "Notifs", count: counters.system, tone: RED, tab: "system" as MsgTab, detail: "Notifications système." },
   ];
+
+
+  if (active === "messages" && chatFullscreen && selectedThread) {
+    const st = presenceState(selectedThread.user?.status || selectedThread.user?.presenceStatus || selectedThread.user?.presence_status);
+    return (
+      <div
+        className="container"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 2147483000,
+          width: "100vw",
+          height: "100dvh",
+          padding: 0,
+          margin: 0,
+          color: "#f5f5f7",
+          background: "radial-gradient(820px 360px at 50% -10%, rgba(121,200,255,.16), transparent 60%), linear-gradient(180deg, #0b0d15 0%, #05060a 100%)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            flex: "0 0 auto",
+            padding: "12px 12px 10px",
+            minHeight: 66,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            borderBottom: `1px solid ${STROKE}`,
+            background: "linear-gradient(180deg, rgba(255,255,255,.070), rgba(255,255,255,.018))",
+            boxShadow: "0 12px 26px rgba(0,0,0,.22)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <RoundMessengerButton title="Retour au menu Messages" tone={BLUE} onClick={() => { setChatFullscreen(false); setOpenMessageMenuId(""); }}>
+              <MessengerToolIcon name="back" size={22} />
+            </RoundMessengerButton>
+            <AvatarBubble user={selectedThread.user} size={42} selected={false} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: GOLD, fontWeight: 1000, fontSize: 13, letterSpacing: ".02em" }}>T'Chat Messenger</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2, minWidth: 0 }}>
+                <span style={{ color: "#fff", fontWeight: 1000, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(selectedThread.user)}</span>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: st.color, boxShadow: `0 0 10px ${st.color}` }} />
+                <span style={{ color: "rgba(255,255,255,.58)", fontSize: 11, fontWeight: 800 }}>{st.label}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flex: "0 0 auto" }}>
+            <RoundMessengerButton title="Appel audio" tone={GREEN} onClick={() => setInfo("Appel audio : option prête à câbler.")}><MessengerToolIcon name="phone" /></RoundMessengerButton>
+            <RoundMessengerButton title="Visio" tone={BLUE} onClick={() => setInfo("Visio : option prête à câbler.")}><MessengerToolIcon name="video" /></RoundMessengerButton>
+            <RoundMessengerButton title="Options conversation" tone={GOLD} onClick={() => setInfo("Options conversation : option prête à câbler.")}><MessengerToolIcon name="more" /></RoundMessengerButton>
+          </div>
+        </div>
+
+        {info ? <div style={{ flex: "0 0 auto", margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(125,255,178,.35)", color: GREEN }) }}>{info}</div> : null}
+        {error ? <div style={{ flex: "0 0 auto", margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(255,100,100,.45)", color: RED }) }}>Erreur : {error}</div> : null}
+
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            padding: "14px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 9,
+          }}
+        >
+          {displayedMessages.length ? (
+            displayedMessages.map((m: any, idx: number) => {
+              const incoming = m.direction !== "outgoing";
+              const msgId = String(m?.id || `local-${idx}`);
+              const menuOpen = openMessageMenuId === msgId;
+              return (
+                <div
+                  key={msgId}
+                  style={{
+                    position: "relative",
+                    alignSelf: incoming ? "flex-start" : "flex-end",
+                    maxWidth: "82%",
+                    display: "flex",
+                    flexDirection: incoming ? "row" : "row-reverse",
+                    alignItems: "flex-end",
+                    gap: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      minWidth: 74,
+                      border: `1px solid ${incoming ? "rgba(255,255,255,.13)" : `${GREEN}55`}`,
+                      borderRadius: incoming ? "15px 15px 15px 5px" : "15px 15px 5px 15px",
+                      padding: "7px 9px 6px",
+                      background: incoming ? "rgba(255,255,255,.052)" : "linear-gradient(180deg, rgba(125,255,178,.17), rgba(0,0,0,.20))",
+                      boxShadow: incoming && !m.readAt ? "0 0 16px rgba(125,255,178,.11)" : "none",
+                    }}
+                  >
+                    <div style={{ color: "#fff", fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.24 }}>{m?.text || "—"}</div>
+                    <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
+                      <span style={{ color: "rgba(255,255,255,.48)", fontSize: 9.8, fontWeight: 800 }}>{asDate(m?.createdAt)}</span>
+                      {!incoming ? <span style={{ color: BLUE, fontSize: 11, fontWeight: 1000 }}>✓✓</span> : null}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      if (menuOpen) {
+                        setOpenMessageMenuId("");
+                        return;
+                      }
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const menuWidth = 126;
+                      const safePad = 8;
+                      const left = incoming
+                        ? Math.min(window.innerWidth - menuWidth - safePad, rect.left + 18)
+                        : Math.max(safePad, rect.right - menuWidth);
+                      const top = Math.min(window.innerHeight - 150, Math.max(safePad, rect.top + 20));
+                      setMessageMenuPosition({ top, left, side: incoming ? "left" : "right" });
+                      setOpenMessageMenuId(msgId);
+                    }}
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 999,
+                      border: `1px solid ${menuOpen ? BLUE : "rgba(255,255,255,.10)"}`,
+                      background: menuOpen ? `${BLUE}18` : "rgba(255,255,255,.035)",
+                      color: menuOpen ? BLUE : "rgba(255,255,255,.56)",
+                      display: "grid",
+                      placeItems: "center",
+                      cursor: "pointer",
+                      flex: "0 0 auto",
+                    }}
+                    title="Options du message"
+                    aria-label="Options du message"
+                  >
+                    <MessageMenuIcon size={15} />
+                  </button>
+                  {menuOpen ? (
+                    <div
+                      style={{
+                        position: "fixed",
+                        zIndex: 2147483647,
+                        top: messageMenuPosition.top,
+                        left: messageMenuPosition.left,
+                        width: 126,
+                        border: `1px solid ${BLUE}66`,
+                        borderRadius: 12,
+                        padding: 3,
+                        background: "linear-gradient(180deg, rgba(30,31,38,.99), rgba(14,15,21,.99))",
+                        boxShadow: `0 12px 28px rgba(0,0,0,.62), 0 0 16px ${BLUE}22`,
+                        backdropFilter: "blur(12px)",
+                      }}
+                    >
+                      {[
+                        ["reply", "Répondre"],
+                        ["edit", "Éditer"],
+                        ["copy", "Copier"],
+                        ["share", "Partager"],
+                      ].map(([name, label]) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            if (name === "copy") {
+                              navigator.clipboard?.writeText(String(m?.text || "")).catch(() => {});
+                              setInfo("Message copié ✅");
+                            } else {
+                              setInfo(`${label} : option prête à câbler.`);
+                            }
+                            setOpenMessageMenuId("");
+                          }}
+                          style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}
+                        >
+                          <ChatActionIcon name={name as any} size={15} /> <span>{label}</span>
+                        </button>
+                      ))}
+                      <div style={{ height: 1, background: "rgba(255,255,255,.10)", margin: "3px 4px" }} />
+                      <button
+                        type="button"
+                        onClick={() => { setOpenMessageMenuId(""); handleDeletePrivateMessage(String(m?.id || "")); }}
+                        style={{ width: "100%", border: 0, background: "transparent", color: RED, display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 950, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}
+                      >
+                        <ChatActionIcon name="delete" size={15} /> <span>Supprimer</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          ) : (
+            <EmptyCard icon="💬" title="Aucun message privé" text="Écris ton premier message dans cette conversation." />
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        <div
+          style={{
+            flex: "0 0 auto",
+            padding: "9px 10px 12px",
+            borderTop: `1px solid ${STROKE}`,
+            background: "linear-gradient(180deg, rgba(255,255,255,.025), rgba(0,0,0,.30))",
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto auto auto", gap: 8, alignItems: "end" }}>
+            <RoundMessengerButton title="Emoji" tone={BLUE}><MessengerToolIcon name="smile" /></RoundMessengerButton>
+            <textarea
+              value={messageText}
+              onChange={(e) => setMessageText((e.target as HTMLTextAreaElement).value)}
+              placeholder="Écrire un message…"
+              rows={1}
+              style={{
+                width: "100%",
+                minHeight: 38,
+                maxHeight: 92,
+                borderRadius: 18,
+                padding: "10px 11px",
+                border: `1px solid ${STROKE}`,
+                background: "rgba(0,0,0,.35)",
+                color: "#fff",
+                fontWeight: 700,
+                outline: "none",
+                resize: "none",
+              }}
+            />
+            <RoundMessengerButton title="Pièce jointe" tone={BLUE} onClick={() => setInfo("Pièce jointe : option prête à câbler.")}><MessengerToolIcon name="clip" /></RoundMessengerButton>
+            <RoundMessengerButton title="Photo" tone={BLUE} onClick={() => setInfo("Photo : option prête à câbler.")}><MessengerToolIcon name="camera" /></RoundMessengerButton>
+            <RoundMessengerButton title="Message vocal" tone={GREEN} onClick={() => setInfo("Message vocal : option prête à câbler.")}><MessengerToolIcon name="mic" /></RoundMessengerButton>
+            <ActionButton label="Envoyer" tone={GREEN} onClick={handleSendPrivateMessage} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 104, color: "#f5f5f7" }}>
@@ -959,21 +1213,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                   <button
                     key={thread.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedThreadUserId(thread.id);
-                      setMessageToUserId(thread.id);
-                      setChatFullscreen(true);
-                      if (thread.unread > 0) {
-                        const now = new Date().toISOString();
-                        setPrivateMessages((prev) => prev.map((m: any) => {
-                          const peerId = privateMessagePeerId(m);
-                          return peerId === thread.id && m?.direction !== "outgoing" && !m?.readAt ? { ...m, readAt: now } : m;
-                        }));
-                        broadcastMessageBadge(Math.max(0, totalPending - thread.unread));
-                        markPrivateThreadRead(String(thread.id)).catch(() => {});
-                        markMessageCenterRefreshNeeded();
-                      }
-                    }}
+                    onClick={() => openMessengerThread(thread.id, thread.unread)}
                     style={{
                       position: "relative",
                       flex: "0 0 86px",
