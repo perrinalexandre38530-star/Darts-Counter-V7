@@ -38,6 +38,13 @@ export type BotPlayerLite = {
   id: string;
   name: string;
   avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
+  avatarAssetId?: string | null;
+  avatarThumbAssetId?: string | null;
+  avatarFullAssetId?: string | null;
+  avatarCastAssetId?: string | null;
+  avatarUpdatedAt?: string | number | null;
   isBot: true;
   bot: true;
   type: "bot";
@@ -307,7 +314,14 @@ function readAvatarsMap(): Record<string, string | null> {
 
   const out: Record<string, string | null> = {};
   for (const [botId, packed] of Object.entries(parsed.items as Record<string, any>)) {
-    const avatar = typeof packed === "string" ? decompressAvatar(packed) : null;
+    let avatar: string | null = null;
+    if (typeof packed === "string") {
+      avatar = packed.startsWith("data:image/") ? sanitizeAvatarDataUrl(packed) : decompressAvatar(packed);
+    } else if (packed && typeof packed === "object") {
+      const raw = (packed as any).dataUrl ?? (packed as any).avatarDataUrl ?? (packed as any).avatar ?? null;
+      avatar = sanitizeAvatarDataUrl(raw);
+      if (!avatar && typeof (packed as any).compressed === "string") avatar = decompressAvatar((packed as any).compressed);
+    }
     if (avatar) out[botId] = avatar;
   }
   return out;
@@ -404,12 +418,49 @@ export function restoreBotsFromSnapshot(list: any[]): boolean {
   });
 }
 
+function firstNonEmptyString(...values: any[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+export function botAssetIdToMediaUrl(assetId: any): string | null {
+  const id = typeof assetId === "string" ? assetId.trim() : "";
+  if (!id) return null;
+  if (id.startsWith("/media/") || id.startsWith("http://") || id.startsWith("https://")) return id;
+  return `/media/${encodeURIComponent(id)}`;
+}
+
+export function resolveBotAvatarSrc(input: any): string | null {
+  const direct = sanitizeAvatarDataUrl(input?.avatarDataUrl ?? input?.avatar ?? null);
+  if (direct) return direct;
+
+  const url = firstNonEmptyString(input?.avatarUrl, input?.photoUrl, input?.avatarPath);
+  if (url && !url.startsWith("data:image/")) return url;
+
+  return botAssetIdToMediaUrl(
+    input?.avatarThumbAssetId ||
+      input?.avatarAssetId ||
+      input?.avatarFullAssetId ||
+      input?.avatarCastAssetId
+  );
+}
+
 export function toBotPlayerLite(input: any): BotPlayerLite {
   const bot = normalizeBotRecord(input);
+  const avatarSrc = resolveBotAvatarSrc(bot);
   return {
     id: bot.id,
     name: bot.name,
-    avatarDataUrl: bot.avatarDataUrl ?? null,
+    avatarDataUrl: avatarSrc ?? null,
+    avatarUrl: avatarSrc && !avatarSrc.startsWith("data:image/") ? avatarSrc : null,
+    avatar: avatarSrc ?? null,
+    avatarAssetId: bot.avatarAssetId ?? null,
+    avatarThumbAssetId: bot.avatarThumbAssetId ?? null,
+    avatarFullAssetId: bot.avatarFullAssetId ?? null,
+    avatarCastAssetId: bot.avatarCastAssetId ?? null,
+    avatarUpdatedAt: bot.avatarUpdatedAt ?? null,
     isBot: true,
     bot: true,
     type: "bot",

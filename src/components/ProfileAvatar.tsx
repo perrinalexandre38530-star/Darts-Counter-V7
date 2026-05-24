@@ -25,6 +25,7 @@ import {
 } from "../lib/dartSetsStore";
 import { loadStore } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
+import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
 
 type ProfileLike = {
   id?: string;
@@ -130,6 +131,25 @@ async function getProfileByIdFromStore(
   profileId: string
 ): Promise<ProfileLike | null> {
   try {
+    // ✅ Les configs passent souvent les bots comme objets "lite".
+    // Comme les bots ne sont pas dans store.profiles, on les résout ici depuis le store BOT central.
+    const bot = loadStoredBots().find((x: any) => String(x?.id || "") === String(profileId));
+    if (bot) {
+      const src = resolveBotAvatarSrc(bot);
+      return {
+        id: String(bot.id),
+        name: bot?.name,
+        avatarUrl: src && !String(src).startsWith("data:image/") ? src : null,
+        avatarDataUrl: src && String(src).startsWith("data:image/") ? src : null,
+        avatarPath: null,
+        avatar: src,
+        photoDataUrl: null,
+        photoUrl: null,
+        avatarUpdatedAt: (bot as any)?.avatarUpdatedAt ?? (bot as any)?.updatedAt ?? null,
+        stats: null,
+      };
+    }
+
     const store = await loadStore<any>();
     if (!store) return null;
 
@@ -163,7 +183,7 @@ function isLiteProfile(p: ProfileLike | null): boolean {
     (normalizeImport((p as any)?.avatar) || "") ||
     (normalizeImport((p as any)?.photoDataUrl) || "") ||
     (normalizeImport((p as any)?.photoUrl) || "");
-  return !hasAny;
+  return !hasAny || isBotLike(p);
 }
 
 export default function ProfileAvatar(props: Props) {
