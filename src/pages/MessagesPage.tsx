@@ -14,6 +14,7 @@ import {
   markPrivateMessageRead,
   markPrivateThreadRead,
   deletePrivateMessage,
+  editPrivateMessage,
   type FriendRequest,
   type PrivateMessageItem,
   type OnlineFriendUser,
@@ -38,6 +39,32 @@ const BLUE = "#79c8ff";
 const GREEN = "#7dffb2";
 const RED = "#ff7b7b";
 const STROKE = "rgba(255,255,255,.13)";
+
+const EMOJI_BANK: Array<{ label: string; items: string[] }> = [
+  { label: "Récents", items: ["😀","😂","🤣","😍","🥰","😘","😎","😅","😜","🤪","🥳","😇","🙃","😉","😊","😋","🤩","😱"] },
+  { label: "Réactions", items: ["👍","👎","👏","🙌","🙏","🤝","💪","👌","✌️","🤟","👊","🤘","🫶","🤌","👀","💯","✅","❌"] },
+  { label: "Cœurs", items: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝"] },
+  { label: "Sport", items: ["🎯","🏆","🥇","🥈","🥉","🏅","⚽","🏀","🏈","🎾","🏓","🎱","🥊","🏁","🔥","⚡","🚀","💥"] },
+  { label: "Soirée", items: ["🍻","🍺","🥂","🍾","🍷","🍹","🍸","🥃","🍕","🍔","🌭","🥨","🎉","🎊","🕺","💃","🤘","🎸"] },
+  { label: "Objets", items: ["📷","🎙️","📎","📌","📍","🔔","🔕","📢","💬","📩","📱","💻","🔒","🔓","🧨","🧲","🛠️","⚙️"] },
+];
+
+function isLikelyImageDataUrl(value: any): boolean {
+  return typeof value === "string" && /^data:image\//i.test(value);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Lecture fichier impossible"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function metadataOfMessage(message: any): any {
+  return message?.metadata && typeof message.metadata === "object" ? message.metadata : {};
+}
 
 function asUserName(user?: OnlineFriendUser | null): string {
   return String(user?.displayName || user?.nickname || user?.id || user?.userId || "Ami").trim();
@@ -738,11 +765,16 @@ export default function MessagesPage({ store, update, go }: Props) {
     }
 
     if (editingMessageId) {
-      setPrivateMessages((prev) => prev.map((m: any) => String(m?.id || "") === String(editingMessageId) ? { ...m, text, editedAt: new Date().toISOString() } : m));
-      setInfo("Message modifié localement ✅");
+      const id = String(editingMessageId);
+      const editedAt = new Date().toISOString();
+      setPrivateMessages((prev) => prev.map((m: any) => String(m?.id || "") === id ? { ...m, text, editedAt, metadata: { ...(m?.metadata || {}), editedAt } } : m));
       setEditingMessageId("");
       setMessageText("");
       setOpenMessageMenuId("");
+      await runAction("Message modifié ✅", async () => {
+        await editPrivateMessage(id, text);
+        await loadAll();
+      });
       return;
     }
 
@@ -832,15 +864,16 @@ export default function MessagesPage({ store, update, go }: Props) {
     setOpenMessageMenuId("");
   }
 
-  async function sendSystemChatText(text: string) {
+  async function sendSystemChatText(text: string, metadata?: any) {
     const toUserId = String(messageToUserId || selectedThread?.id || "").trim();
     if (!toUserId) {
       setError("Choisis un ami destinataire.");
       return;
     }
     await runAction("Élément envoyé ✅", async () => {
-      await sendPrivateMessage(toUserId, text);
+      await sendPrivateMessage(toUserId, text, metadata || {});
       setSelectedThreadUserId(toUserId);
+      await loadAll();
     });
   }
 
@@ -848,7 +881,21 @@ export default function MessagesPage({ store, update, go }: Props) {
     if (!file) return;
     const sizeKb = Math.max(1, Math.round(file.size / 1024));
     const label = kind === "photo" ? "📷 Photo" : "📎 Pièce jointe";
-    await sendSystemChatText(`${label} : ${file.name} (${sizeKb} Ko)`);
+    const metadata: any = {
+      kind,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      sizeBytes: file.size,
+      sizeKb,
+    };
+    if (kind === "photo" || String(file.type || "").startsWith("image/")) {
+      if (file.size <= 750 * 1024) {
+        try { metadata.dataUrl = await readFileAsDataUrl(file); } catch {}
+      } else {
+        metadata.previewSkipped = true;
+      }
+    }
+    await sendSystemChatText(`${label} : ${file.name} (${sizeKb} Ko)`, metadata);
   }
 
   async function openCallPanel(type: "audio" | "video") {
@@ -914,7 +961,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         try { stream.getTracks().forEach((track) => track.stop()); } catch {}
         setIsRecording(false);
         recorderRef.current = null;
-        await sendSystemChatText(`🎙️ Message vocal (${duration}s)`);
+        await sendSystemChatText(`🎙️ Message vocal (${duration}s)`, { kind: "voice", durationSeconds: duration });
       };
       recorder.start();
       setIsRecording(true);
@@ -1112,7 +1159,21 @@ export default function MessagesPage({ store, update, go }: Props) {
                     }}
                   >
                     <div style={{ color: "#fff", fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.24 }}>{m?.text || "—"}</div>
+                    {(() => {
+                      const meta = metadataOfMessage(m);
+                      if (isLikelyImageDataUrl(meta.dataUrl)) {
+                        return <img src={meta.dataUrl} alt={String(meta.fileName || "photo")} style={{ marginTop: 7, width: "min(190px, 100%)", maxHeight: 160, objectFit: "cover", borderRadius: 12, border: `1px solid ${BLUE}44`, display: "block" }} />;
+                      }
+                      if (meta.kind === "file" || meta.kind === "photo") {
+                        return <div style={{ marginTop: 7, border: `1px solid ${BLUE}44`, borderRadius: 12, padding: "7px 8px", color: "rgba(255,255,255,.78)", background: "rgba(0,0,0,.20)", fontSize: 11, fontWeight: 850 }}>📎 {String(meta.fileName || "Fichier")} {meta.sizeKb ? `• ${meta.sizeKb} Ko` : ""}</div>;
+                      }
+                      if (meta.kind === "voice") {
+                        return <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 7, color: GREEN, fontSize: 11.5, fontWeight: 950 }}><span>▰▰▰▱▱</span><span>{Number(meta.durationSeconds || 0)}s</span></div>;
+                      }
+                      return null;
+                    })()}
                     <div style={{ marginTop: 4, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 5 }}>
+                      {metadataOfMessage(m)?.editedAt || (m as any)?.editedAt ? <span style={{ color: GOLD, fontSize: 9.3, fontWeight: 900 }}>modifié</span> : null}
                       <span style={{ color: "rgba(255,255,255,.48)", fontSize: 9.8, fontWeight: 800 }}>{asDate(m?.createdAt)}</span>
                       {!incoming ? <span style={{ color: BLUE, fontSize: 11, fontWeight: 1000 }}>✓✓</span> : null}
                     </div>
@@ -1226,9 +1287,16 @@ export default function MessagesPage({ store, update, go }: Props) {
             </div>
           ) : null}
           {emojiOpen ? (
-            <div style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 6, border: `1px solid ${BLUE}44`, borderRadius: 14, padding: 8, background: "rgba(0,0,0,.34)" }}>
-              {["😀","😂","😍","🔥","🎯","🏆","👍","👏","😅","😎","❤️","🍻"].map((emoji) => (
-                <button key={emoji} type="button" onClick={() => insertMessageText(emoji)} style={{ width: 30, height: 30, borderRadius: 10, border: `1px solid ${STROKE}`, background: "rgba(255,255,255,.055)", cursor: "pointer", fontSize: 16 }}>{emoji}</button>
+            <div style={{ marginBottom: 8, border: `1px solid ${BLUE}44`, borderRadius: 16, padding: 8, background: "rgba(0,0,0,.42)", boxShadow: `0 0 18px ${BLUE}12`, maxHeight: 174, overflowY: "auto" }}>
+              {EMOJI_BANK.map((group) => (
+                <div key={group.label} style={{ marginBottom: 8 }}>
+                  <div style={{ color: "rgba(255,255,255,.55)", fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .5, margin: "0 0 5px 2px" }}>{group.label}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(9, minmax(0, 1fr))", gap: 5 }}>
+                    {group.items.map((emoji, index) => (
+                      <button key={`${group.label}-${emoji}-${index}`} type="button" onClick={() => insertMessageText(emoji)} style={{ height: 31, borderRadius: 10, border: `1px solid ${STROKE}`, background: "rgba(255,255,255,.055)", cursor: "pointer", fontSize: 17, display: "grid", placeItems: "center" }}>{emoji}</button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           ) : null}

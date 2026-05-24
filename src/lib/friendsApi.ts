@@ -227,6 +227,8 @@ export type PrivateMessageItem = {
   direction?: "incoming" | "outgoing";
   fromUser?: OnlineFriendUser & { email?: string | null };
   toUser?: OnlineFriendUser & { email?: string | null };
+  metadata?: any;
+  editedAt?: string | null;
 };
 
 export async function listPrivateMessages(): Promise<PrivateMessageItem[]> {
@@ -234,8 +236,13 @@ export async function listPrivateMessages(): Promise<PrivateMessageItem[]> {
   return Array.isArray(res?.messages) ? res.messages : [];
 }
 
-export async function sendPrivateMessage(toUserId: string, text: string) {
-  const res = await apiPost("/online/private-messages", { toUserId, text });
+export async function sendPrivateMessage(toUserId: string, text: string, metadata?: any) {
+  const res = await apiPost("/online/private-messages", { toUserId, text, metadata: metadata || {} });
+  return res?.message ?? res;
+}
+
+export async function editPrivateMessage(id: string, text: string) {
+  const res = await apiPut(`/online/private-messages/${qs(id)}`, { text });
   return res?.message ?? res;
 }
 
