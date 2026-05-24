@@ -18,6 +18,7 @@
 // ============================================
 
 import React from "react";
+import { loadBotPlayers } from "../lib/bots";
 import {
   createCricketMatch,
   applyCricketHit,
@@ -116,9 +117,6 @@ type BotLite = {
   avatarDataUrl?: string | null;
   botLevel?: string;
 };
-
-// Clé locale BOTS (même que Profils>Bots)
-const LS_BOTS_KEY = "dc_bots_v1";
 
 // BOTS IA "PRO" PRÉDÉFINIS (identique X01)
 const PRO_BOTS: BotLite[] = [
@@ -650,25 +648,12 @@ const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>([]);
 React.useEffect(() => {
   if (typeof window === "undefined") return;
   try {
-    const raw = window.localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as any[];
-
-    const mapped: BotLite[] = (parsed || []).map((b: any) => ({
+    const mapped: BotLite[] = loadBotPlayers().map((b: any) => ({
       id: String(b.id),
       name: b.name || "BOT",
       avatarDataUrl: b.avatarDataUrl ?? null,
-      botLevel:
-        b.botLevel ??
-        b.levelLabel ??
-        b.levelName ??
-        b.performanceLevel ??
-        b.performance ??
-        b.skill ??
-        b.difficulty ??
-        "",
+      botLevel: b.botLevel ?? b.level ?? "",
     }));
-
     setBotsFromLS(mapped);
   } catch (e) {
     console.warn("[CricketPlay] load bots LS failed:", e);

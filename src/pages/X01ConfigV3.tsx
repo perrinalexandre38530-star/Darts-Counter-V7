@@ -75,9 +75,6 @@ const TEAM_COLORS: Record<TeamId, string> = {
   green: "#6dff7c",
 };
 
-// Clé locale BOTS (même que Profils>Bots)
-const LS_BOTS_KEY = "dc_bots_v1";
-
 // ---------- Audio / voix ----------
 type VoiceOption = { id: string; label: string };
 

@@ -5,6 +5,7 @@
 // + Prise en compte de defaults (start / doubleOut) venant d'App.tsx
 // ============================================
 import React from "react";
+import { loadBotPlayers } from "../lib/bots";
 import type { Profile } from "../lib/types";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { getBasicProfileStats, type BasicProfileStats } from "../lib/statsBridge";
@@ -89,8 +90,6 @@ type Bot = {
   updatedAt: string;
 };
 
-const LS_BOTS_KEY = "dc_bots_v1";
-
 function asObjectArray(input: unknown): any[] {
   if (Array.isArray(input)) return input.filter((item) => item && typeof item === "object");
   if (!input || typeof input !== "object") return [];
@@ -136,18 +135,12 @@ function normalizeStringArray(input: unknown): string[] {
 
 function loadBots(): Bot[] {
   try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    return asObjectArray(JSON.parse(raw))
-      .map((item: any) => ({
-        id: String(item?.id || item?.botId || "").trim(),
-        name: String(item?.name || item?.displayName || item?.nickname || "Bot").trim(),
-        level: (item?.level || "medium") as BotLevel,
-        avatarSeed: String(item?.avatarSeed || item?.seed || item?.id || "bot"),
-        createdAt: String(item?.createdAt || new Date().toISOString()),
-        updatedAt: String(item?.updatedAt || item?.createdAt || new Date().toISOString()),
-      }))
-      .filter((bot: Bot) => Boolean(bot.id && bot.name));
+    return loadBotPlayers().map((b: any) => ({
+      id: String(b.id),
+      name: b?.name || "BOT",
+      avatarDataUrl: b?.avatarDataUrl ?? null,
+      botLevel: b?.botLevel ?? b?.level ?? "",
+    }));
   } catch {
     return [];
   }
