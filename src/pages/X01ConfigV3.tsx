@@ -258,126 +258,236 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   const primary = (theme?.primary || palette?.primary || "#f5c35b") as string;
 
   const [sets, setSets] = React.useState<DartSet[]>([]);
-  const [favorite, setFavorite] = React.useState<DartSet | null>(null);
+  const [open, setOpen] = React.useState(false);
 
-  React.useEffect(() => {
+  const reloadSets = React.useCallback(() => {
     if (!profileId) {
       setSets([]);
-      setFavorite(null);
       return;
     }
     const all = getDartSetsForProfile(profileId) || [];
     setSets(sortDartSetsForProfilePicker(all));
-    setFavorite(getFavoriteDartSetForProfile(profileId) || null);
   }, [profileId]);
 
+  React.useEffect(() => {
+    reloadSets();
+  }, [reloadSets]);
+
   const hasProfile = !!profileId;
-  const noneLabel = lang === "fr" ? "Aucune" : "None";
-  const labelBase = lang === "fr" ? "Set de fléchettes" : "Dart set";
+  const noneLabel = lang === "fr" ? "Aucun set" : "No set";
+  const chooseLabel = lang === "fr" ? "Choix SET" : "SET choice";
+  const titleLabel = lang === "fr" ? "Choisir un set" : "Choose dart set";
 
   // Ordre demandé : favoris d'abord, puis nombre d'utilisation, puis alphabetique.
-  // Pas de sélection implicite : "Aucune" reste le premier choix de la boucle.
   const orderedSets: DartSet[] = React.useMemo(() => sortDartSetsForProfilePicker(sets || []), [sets]);
-
-  const items = React.useMemo(
-    () => [{ id: null as any, name: noneLabel, set: null as any }, ...orderedSets.map((s) => ({ id: s.id, name: s.name || "Set", set: s }))],
-    [orderedSets, noneLabel]
+  const selectedSet = React.useMemo(
+    () => orderedSets.find((s: any) => String(s?.id) === String(dartSetId || "")) || null,
+    [orderedSets, dartSetId]
   );
 
-  const getThumb = getDartSetThumbSrc;
-
-  const currentIdx = Math.max(0, items.findIndex((it) => it.id === (dartSetId ?? null)));
-  const current = items[currentIdx] || items[0];
-  const thumb = getThumb(current.set);
-  const isFav = !!favorite && current?.id && current.id === favorite.id;
-
-  const handleClick = () => {
-    const next = items[(currentIdx + 1) % items.length];
-    onChange((next?.id as any) ?? null);
+  const selectSet = (id: string | null) => {
+    onChange(id);
+    setOpen(false);
   };
-
-  // If no sets at all, still show "Aucune" but keep small
-  const hasAny = (orderedSets || []).length > 0;
 
   if (!hasProfile) return null;
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      aria-label={labelBase}
-      title={lang === "fr" ? "Cliquer pour changer" : "Click to change"}
-      style={{
-        marginTop: 6,
-        alignSelf: "center",
-        padding: "6px 8px",
-        borderRadius: 999,
-        border: `1px solid rgba(255,255,255,.14)`,
-        background:
-          "radial-gradient(circle at 0% 0%, rgba(245,195,91,.22), rgba(8,8,20,.96))",
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        color: "#fff",
-        fontSize: 10,
-        width: 112,          // ✅ anti-overlap
-        maxWidth: 112,       // ✅ anti-overlap
-        overflow: "hidden",  // ✅ anti-overlap
-        cursor: "pointer",
-        boxShadow: `0 0 10px rgba(0,0,0,.55)`,
-      }}
-    >
-      {thumb ? (
-        <img
-          src={thumb}
-          alt=""
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: "50%",
-            objectFit: "cover",
-            boxShadow: "0 0 6px rgba(0,0,0,.9)",
-            border: `1px solid ${primary}55`,
-            flex: "0 0 auto",
-          }}
-        />
-      ) : (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          reloadSets();
+          setOpen(true);
+        }}
+        aria-label={chooseLabel}
+        title={titleLabel}
+        style={{
+          marginTop: 6,
+          alignSelf: "center",
+          padding: "7px 12px",
+          borderRadius: 999,
+          border: `1px solid ${selectedSet ? primary : "rgba(255,255,255,.14)"}`,
+          background: selectedSet
+            ? `radial-gradient(circle at 0% 0%, ${primary}44, rgba(8,8,20,.96))`
+            : "rgba(10,11,22,.92)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 7,
+          color: selectedSet ? "#fff" : "rgba(255,255,255,.86)",
+          fontSize: 10,
+          fontWeight: 900,
+          letterSpacing: 0.45,
+          textTransform: "uppercase",
+          minWidth: 98,
+          maxWidth: 108,
+          overflow: "hidden",
+          cursor: "pointer",
+          boxShadow: selectedSet ? `0 0 14px ${primary}55` : "0 0 10px rgba(0,0,0,.55)",
+        }}
+      >
+        <span style={{ fontSize: 13, lineHeight: 1 }}>{selectedSet ? "🎯" : "+"}</span>
+        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chooseLabel}</span>
+      </button>
+
+      {open ? (
         <div
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(false);
+          }}
           style={{
-            width: 26,
-            height: 26,
-            borderRadius: "50%",
-            background: current?.id ? (current?.set as any)?.bgColor || "#050509" : "rgba(255,255,255,0.08)",
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,.68)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 14,
-            boxShadow: "0 0 6px rgba(0,0,0,.9)",
-            border: `1px solid ${primary}55`,
-            flex: "0 0 auto",
+            padding: 14,
           }}
         >
-          {current?.id ? "🎯" : "⛔"}
-        </div>
-      )}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(92vw, 430px)",
+              maxHeight: "78vh",
+              overflow: "hidden",
+              borderRadius: 24,
+              border: `1px solid ${primary}66`,
+              background: "linear-gradient(180deg, rgba(16,18,32,.98), rgba(5,6,13,.98))",
+              boxShadow: `0 0 34px ${primary}44, 0 24px 70px rgba(0,0,0,.75)`,
+              padding: 14,
+              color: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+              <div style={{ color: primary, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", fontSize: 15 }}>
+                {titleLabel}
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(255,255,255,.16)",
+                  background: "rgba(255,255,255,.06)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            </div>
 
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 900,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: 72,
-            lineHeight: 1.05,
-          }}
-        >
-          {!hasAny ? noneLabel : isFav && current?.id ? "★ " : ""}
-          {!hasAny ? noneLabel : current?.name || noneLabel}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 10,
+                maxHeight: "calc(78vh - 86px)",
+                overflowY: "auto",
+                paddingRight: 2,
+              }}
+              className="dc-scroll-thin"
+            >
+              <button
+                type="button"
+                onClick={() => selectSet(null)}
+                style={{
+                  borderRadius: 18,
+                  border: !selectedSet ? `2px solid ${primary}` : "1px solid rgba(255,255,255,.12)",
+                  background: !selectedSet ? `radial-gradient(circle at 50% 0%, ${primary}30, rgba(12,13,23,.98))` : "rgba(255,255,255,.04)",
+                  color: "#fff",
+                  minHeight: 106,
+                  padding: 8,
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontSize: 28 }}>⛔</span>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>{noneLabel}</span>
+              </button>
+
+              {orderedSets.map((set: any) => {
+                const thumb = getDartSetThumbSrc(set);
+                const selected = String(set?.id) === String(dartSetId || "");
+                return (
+                  <button
+                    key={set.id}
+                    type="button"
+                    onClick={() => selectSet(set.id)}
+                    style={{
+                      position: "relative",
+                      borderRadius: 18,
+                      border: selected ? `2px solid ${primary}` : "1px solid rgba(255,255,255,.12)",
+                      background: selected ? `radial-gradient(circle at 50% 0%, ${primary}30, rgba(12,13,23,.98))` : "rgba(255,255,255,.04)",
+                      color: "#fff",
+                      padding: 8,
+                      cursor: "pointer",
+                      boxShadow: selected ? `0 0 18px ${primary}55` : "0 10px 22px rgba(0,0,0,.35)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 7,
+                      minWidth: 0,
+                    }}
+                  >
+                    {set?.isFavorite ? (
+                      <span style={{ position: "absolute", top: 6, left: 8, color: "#ffd76a", textShadow: "0 0 10px #ffd76a" }}>★</span>
+                    ) : null}
+                    <span
+                      style={{
+                        width: "100%",
+                        aspectRatio: "1 / 1",
+                        borderRadius: 15,
+                        overflow: "hidden",
+                        background: set?.bgColor || "rgba(255,255,255,.06)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {thumb ? (
+                        <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        <span style={{ fontSize: 26 }}>🎯</span>
+                      )}
+                    </span>
+                    <span
+                      style={{
+                        width: "100%",
+                        fontSize: 10,
+                        fontWeight: 900,
+                        lineHeight: 1.1,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {set?.name || "SET"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      </div>
-    </button>
+      ) : null}
+    </>
   );
 };
 
@@ -1055,6 +1165,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
+                          position: "relative",
                         }}
                       >
                         <div
@@ -1076,18 +1187,18 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                             aria-hidden
                             style={{
                               position: "absolute",
-                              right: -5,
-                              bottom: -4,
-                              width: 30,
-                              height: 30,
+                              right: -10,
+                              bottom: -8,
+                              width: 42,
+                              height: 42,
                               borderRadius: "50%",
-                              border: `2px solid ${primary}AA`,
+                              border: `2px solid ${primary}DD`,
                               background: "rgba(0,0,0,.72)",
                               display: "inline-flex",
                               alignItems: "center",
                               justifyContent: "center",
                               overflow: "hidden",
-                              boxShadow: `0 0 14px ${primary}66, 0 8px 16px rgba(0,0,0,.55)`,
+                              boxShadow: `0 0 18px ${primary}88, 0 8px 18px rgba(0,0,0,.65)`,
                               zIndex: 8,
                               pointerEvents: "none",
                             }}
