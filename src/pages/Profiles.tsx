@@ -31,6 +31,7 @@ import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
+import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles } from "../lib/linkedProfileSync";
@@ -2561,23 +2562,19 @@ React.useEffect(() => {
                     alignItems: "center",
                     justifyContent: "center",
                     overflow: "hidden",
-                    padding: "0 12px",
+                    padding: 0,
                   }}
                 >
-                  <div
+                  <img
+                    src={tickerDartsets}
+                    alt="Sets de fléchettes"
                     style={{
-                      color: primary,
-                      fontSize: 15,
-                      lineHeight: "18px",
-                      fontWeight: 950,
-                      letterSpacing: 1.4,
-                      textTransform: "uppercase",
-                      whiteSpace: "nowrap",
-                      textShadow: `0 0 8px ${primary}, 0 0 18px ${primary}99`,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
                     }}
-                  >
-                    SETS DE FLÉCHETTES
-                  </div>
+                  />
                 </div>
               )}
             </div>

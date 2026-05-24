@@ -389,6 +389,65 @@ const createEmptyForm = (primary: string, privateProfileId: string): FormState =
   photoDataUrl: null,
 });
 
+
+const DartSetActionIcon: React.FC<{ name: "create" | "scan" | "edit" | "fav" | "delete"; size?: number }> = ({ name, size = 22 }) => {
+  const p = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  } as const;
+
+  switch (name) {
+    case "create":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M12 5v14" />
+          <path {...p} d="M5 12h14" />
+        </svg>
+      );
+    case "scan":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M4 8V5a1 1 0 0 1 1-1h3" />
+          <path {...p} d="M16 4h3a1 1 0 0 1 1 1v3" />
+          <path {...p} d="M20 16v3a1 1 0 0 1-1 1h-3" />
+          <path {...p} d="M8 20H5a1 1 0 0 1-1-1v-3" />
+          <path {...p} d="M7 12h10" />
+          <path {...p} d="M9 8v8" />
+          <path {...p} d="M15 8v8" />
+        </svg>
+      );
+    case "edit":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M4 20h4" />
+          <path {...p} d="M6 18 17.5 6.5a2.1 2.1 0 0 1 3 3L9 21l-4 1 1-4Z" />
+          <path {...p} d="m15.5 8.5 3 3" />
+        </svg>
+      );
+    case "fav":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="m12 3.8 2.45 4.95 5.45.8-3.95 3.85.95 5.43L12 16.25l-4.9 2.58.95-5.43L4.1 9.55l5.45-.8L12 3.8Z" />
+        </svg>
+      );
+    case "delete":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M4 7h16" />
+          <path {...p} d="M9 7V4h6v3" />
+          <path {...p} d="M7 7l1 13h8l1-13" />
+          <path {...p} d="M10 11v5" />
+          <path {...p} d="M14 11v5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
+
 const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showAllOwners = false }) => {
   const { palette } = useTheme();
   const { lang } = useLang();
@@ -963,21 +1022,21 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-            gap: 7,
-            padding: "7px 8px",
-            borderRadius: 18,
-            background: "linear-gradient(180deg, rgba(9,12,24,.92), rgba(5,7,15,.98))",
-            border: "1px solid rgba(255,255,255,.08)",
-            boxShadow: "inset 0 0 14px rgba(255,255,255,.035), 0 0 18px rgba(0,0,0,.55)",
+            display: "flex",
+            gap: 9,
+            justifyContent: "flex-start",
+            overflowX: "auto",
+            overflowY: "hidden",
+            WebkitOverflowScrolling: "touch",
+            scrollbarWidth: "none",
+            padding: "4px 2px 6px",
           }}
         >
           {[
             {
               key: "create",
               label: labelCreate,
-              icon: "＋",
+              iconName: "create" as const,
               tone: primary,
               active: isCreating,
               disabled: false,
@@ -991,7 +1050,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             {
               key: "scan",
               label: labelScanner,
-              icon: "⌗",
+              iconName: "scan" as const,
               tone: "#7fe2a9",
               active: !!scannerTarget,
               disabled: !activeSet,
@@ -1000,7 +1059,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             {
               key: "edit",
               label: labelEdit,
-              icon: "✎",
+              iconName: "edit" as const,
               tone: "#7fc4ff",
               active: !!editingId,
               disabled: !activeSet,
@@ -1009,7 +1068,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             {
               key: "fav",
               label: labelFav,
-              icon: "★",
+              iconName: "fav" as const,
               tone: "#f5c35b",
               active: !!activeSet?.isFavorite,
               disabled: !activeSet,
@@ -1018,7 +1077,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             {
               key: "delete",
               label: labelDelete,
-              icon: "🗑",
+              iconName: "delete" as const,
               tone: "#ff7878",
               active: false,
               disabled: !activeSet,
@@ -1028,53 +1087,54 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             <button
               key={btn.key}
               type="button"
+              className={`tab pill ${btn.active ? "is-active" : ""}`}
               onClick={btn.onClick}
               disabled={btn.disabled}
+              title={btn.label}
               style={{
-                minWidth: 0,
-                height: 54,
-                borderRadius: 16,
-                border: btn.active
-                  ? `1px solid ${btn.tone}`
-                  : "1px solid rgba(255,255,255,.09)",
-                background: btn.active
-                  ? `radial-gradient(circle at 50% 0%, ${btn.tone}55, rgba(8,10,20,.96) 64%)`
-                  : "linear-gradient(180deg, rgba(16,20,35,.86), rgba(7,9,18,.96))",
-                color: btn.disabled ? "rgba(150,150,170,.55)" : "#fff",
+                flex: "1 0 66px",
+                minWidth: 66,
+                maxWidth: 82,
+                color: btn.disabled ? "rgba(150,150,170,.55)" : btn.active ? btn.tone : "rgba(230,230,238,.76)",
                 opacity: btn.disabled ? 0.42 : 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                boxShadow: btn.active ? `0 0 14px ${btn.tone}66` : "none",
                 cursor: btn.disabled ? "default" : "pointer",
               }}
             >
               <span
+                className="pill-inner"
                 style={{
-                  fontSize: btn.key === "delete" ? 17 : 20,
-                  lineHeight: "20px",
-                  color: btn.disabled ? "rgba(150,150,170,.55)" : btn.tone,
-                  textShadow: btn.disabled ? "none" : `0 0 9px ${btn.tone}`,
+                  minHeight: 58,
+                  padding: "8px 6px",
+                  borderColor: btn.active ? btn.tone : "rgba(255,255,255,.14)",
+                  boxShadow: btn.active
+                    ? `0 0 0 1px ${btn.tone}55, 0 0 14px ${btn.tone}AA`
+                    : "inset 0 -1px 0 rgba(255,255,255,.04), 0 2px 0 rgba(0,0,0,.2)",
+                  background: btn.active
+                    ? `linear-gradient(180deg, ${btn.tone}2A, ${btn.tone}16)`
+                    : "rgba(255,255,255,.04)",
                 }}
               >
-                {btn.icon}
-              </span>
-              <span
-                style={{
-                  fontSize: 8.5,
-                  lineHeight: "10px",
-                  fontWeight: 850,
-                  letterSpacing: 0.55,
-                  textTransform: "uppercase",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  maxWidth: "100%",
-                }}
-              >
-                {btn.label}
+                <span
+                  className="tab-icon"
+                  style={{
+                    color: btn.disabled ? "rgba(150,150,170,.55)" : "#fff",
+                    filter: btn.disabled ? "none" : btn.active ? `drop-shadow(0 0 7px ${btn.tone})` : "none",
+                  }}
+                >
+                  <DartSetActionIcon name={btn.iconName} size={21} />
+                </span>
+                <span
+                  className="tab-label"
+                  style={{
+                    fontSize: 10,
+                    lineHeight: "11px",
+                    fontWeight: 750,
+                    letterSpacing: 0.15,
+                    color: btn.disabled ? "rgba(150,150,170,.55)" : btn.active ? "#fff" : "rgba(220,220,230,.78)",
+                  }}
+                >
+                  {btn.label}
+                </span>
               </span>
             </button>
           ))}
@@ -1619,7 +1679,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             style={{
               position: "absolute",
               left: 7,
-              top: 98,
+              top: 138,
               transform: "translateY(-50%)",
               width: 30,
               height: 30,
@@ -1644,7 +1704,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             style={{
               position: "absolute",
               right: 7,
-              top: 98,
+              top: 138,
               transform: "translateY(-50%)",
               width: 30,
               height: 30,
@@ -1669,7 +1729,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 style={{
                   position: "relative",
                   width: "min(100%, 250px)",
-                  aspectRatio: "1.35 / 1",
+                  aspectRatio: "1 / 1",
                   borderRadius: 24,
                   background: activeSet.bgColor || DEFAULT_BG,
                   border: `1px solid ${primary}55`,
