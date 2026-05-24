@@ -71,6 +71,13 @@ type X01Sample = {
 
   coAttempts?: number;
   coSuccess?: number;
+
+  // Classement / type de match issus du bridge x01StatsSource.
+  // Utilisé pour aligner X01Compare sur X01 Multi Stats.
+  matchId?: string;
+  rank?: number | null;
+  playerCount?: number;
+  isTeam?: boolean;
 };
 
 type AggregatedStats = {
@@ -981,6 +988,52 @@ function computeX01CompareMatchBreakdown(rows: any[], profileId: string, playerN
   return out;
 }
 
+
+function computeX01CompareMatchBreakdownFromSamples(samples: X01Sample[]): X01CompareMatchBreakdown {
+  const out = emptyX01CompareMatchBreakdown();
+  const seen = new Set<string>();
+
+  for (const s of samples || []) {
+    const id = String((s as any).matchId || `${s.createdAt}-${s.mode}-${s.profileId}`).trim();
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+
+    const playerCount = Number((s as any).playerCount || 0) || 0;
+    const rankRaw = Number((s as any).rank || 0) || 0;
+    const rank = rankRaw > 0 ? rankRaw : 0;
+    const isTeam = !!(s as any).isTeam;
+    const won = Number(s.matchesWon || 0) > 0 || rank === 1;
+
+    if (isTeam) {
+      out.matchTeam += 1;
+      if (won) out.winTeam += 1;
+      continue;
+    }
+
+    if (playerCount >= 3) {
+      out.matchMulti += 1;
+      if (won) out.winMulti += 1;
+      if (rank > 0 && rank <= 3) out.podiumMulti += 1;
+      // Règle validée X01 Multi : quand on continue après le premier checkout,
+      // tous les joueurs sauf le dernier sont considérés finish à 0.
+      // Donc finish = rang connu strictement inférieur au nombre de joueurs.
+      if (rank > 0 && rank < playerCount) out.finishMulti += 1;
+      else if (won) out.finishMulti += 1;
+      continue;
+    }
+
+    // Les samples ONLINE anciens n'ont pas toujours playerCount renseigné : X01 online = duel.
+    out.matchDuo += 1;
+    if (won) out.winDuo += 1;
+  }
+
+  return out;
+}
+
+function hasX01CompareMatchBreakdownValues(v: X01CompareMatchBreakdown | null | undefined): boolean {
+  return !!v && !!(v.matchDuo || v.winDuo || v.matchMulti || v.winMulti || v.podiumMulti || v.finishMulti || v.matchTeam || v.winTeam);
+}
+
 function mergeX01CompareMatchBreakdown(stats: AggregatedStats, match: X01CompareMatchBreakdown): AggregatedStats {
   return { ...stats, ...match };
 }
@@ -1343,6 +1396,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             createdAt: hs.createdAt,
             mode: hs.scope === "online" ? "x01_online" : "x01_local",
             profileId: pid,
+            matchId: (hs as any).matchId || undefined,
+            rank: (hs as any).rank ?? null,
+            playerCount: Number((hs as any).playerCount || 0) || undefined,
+            isTeam: !!(hs as any).isTeam,
             avg3: hs.avg3 || undefined,
             bestVisit: hs.bestVisit || undefined,
             bestCheckout: hs.bestCheckout || undefined,
@@ -1385,6 +1442,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             createdAt: s.date,
             mode: "training_x01",
             profileId: pid,
+            matchId: s.id || undefined,
+            rank: null,
+            playerCount: 1,
+            isTeam: false,
             avg3: s.avg3D || undefined,
             bestVisit: s.bestVisit || undefined,
             bestCheckout: s.bestCheckout ?? undefined,
@@ -1523,19 +1584,30 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   }, [samples, from, to, archivesOnly]);
 
   const aggLocalRaw = useMemo(() => aggregateSamples(filtered.local), [filtered.local]);
+  const localSampleMatchBreakdown = useMemo(
+    () => computeX01CompareMatchBreakdownFromSamples(filtered.local),
+    [filtered.local]
+  );
   const aggLocal = useMemo(
     () => mergeX01CompareMatchBreakdown(
       applyX01MultiAggToAggregatedStats(
         localX01MultiAgg,
         bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw)
       ),
-      matchBreakdown.local
+      hasX01CompareMatchBreakdownValues(localSampleMatchBreakdown) ? localSampleMatchBreakdown : matchBreakdown.local
     ),
-    [localX01MultiAgg, localBridgeStats, aggLocalRaw, matchBreakdown.local]
+    [localX01MultiAgg, localBridgeStats, aggLocalRaw, localSampleMatchBreakdown, matchBreakdown.local]
   );
+  const onlineSampleMatchBreakdown = useMemo(
+    () => computeX01CompareMatchBreakdownFromSamples(filtered.online),
+    [filtered.online]
+  );
+
   const aggOnline = useMemo(() => {
     const base = bridgeX01ToAggregatedStats(onlineBridgeStats, aggregateSamples(filtered.online));
-    const raw = matchBreakdown.online || emptyX01CompareMatchBreakdown();
+    const raw = hasX01CompareMatchBreakdownValues(onlineSampleMatchBreakdown)
+      ? onlineSampleMatchBreakdown
+      : (matchBreakdown.online || emptyX01CompareMatchBreakdown());
 
     // Les matchs online historiques ne contiennent pas toujours les tableaux
     // de joueurs complets dans History. Dans ce cas, la source fiable reste
@@ -1552,7 +1624,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         };
 
     return mergeX01CompareMatchBreakdown(base, onlineFallback);
-  }, [onlineBridgeStats, filtered.online, matchBreakdown.online]);
+  }, [onlineBridgeStats, filtered.online, onlineSampleMatchBreakdown, matchBreakdown.online]);
   const aggTraining = useMemo(
     () => aggregateSamples(filtered.training),
     [filtered.training]
