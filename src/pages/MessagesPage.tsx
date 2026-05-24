@@ -491,11 +491,23 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [messageText, setMessageText] = React.useState("");
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
   const [openMessageMenuId, setOpenMessageMenuId] = React.useState("");
+  const [messageMenuPosition, setMessageMenuPosition] = React.useState<{ top: number; left: number; side: "left" | "right" }>({ top: 0, left: 0, side: "right" });
   const [notifPermission, setNotifPermission] = React.useState<NotificationPermission | "unsupported">(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
     return Notification.permission;
   });
   const chatEndRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!openMessageMenuId) return;
+    const close = () => setOpenMessageMenuId("");
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [openMessageMenuId]);
 
   function broadcastMessageBadge(total: number) {
     const nextTotal = Math.max(0, Math.floor(Number(total || 0)));
@@ -1022,7 +1034,21 @@ export default function MessagesPage({ store, update, go }: Props) {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setOpenMessageMenuId(menuOpen ? "" : msgId)}
+                        onClick={(event) => {
+                          if (menuOpen) {
+                            setOpenMessageMenuId("");
+                            return;
+                          }
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          const menuWidth = 138;
+                          const safePad = 8;
+                          const left = incoming
+                            ? Math.min(window.innerWidth - menuWidth - safePad, rect.left + 18)
+                            : Math.max(safePad, rect.right - menuWidth);
+                          const top = Math.min(window.innerHeight - 178, Math.max(safePad, rect.top + 20));
+                          setMessageMenuPosition({ top, left, side: incoming ? "left" : "right" });
+                          setOpenMessageMenuId(msgId);
+                        }}
                         style={{
                           width: 28,
                           height: 28,
@@ -1043,18 +1069,17 @@ export default function MessagesPage({ store, update, go }: Props) {
                       {menuOpen ? (
                         <div
                           style={{
-                            position: "absolute",
-                            zIndex: 10,
-                            right: incoming ? "auto" : 30,
-                            left: incoming ? 30 : "auto",
-                            bottom: 28,
-                            minWidth: 176,
-                            border: `1px solid rgba(255,255,255,.16)`,
-                            borderRadius: 18,
-                            padding: 6,
-                            background: "linear-gradient(180deg, rgba(38,39,46,.98), rgba(21,22,28,.98))",
-                            boxShadow: "0 18px 40px rgba(0,0,0,.48)",
-                            backdropFilter: "blur(10px)",
+                            position: "fixed",
+                            zIndex: 999999,
+                            top: messageMenuPosition.top,
+                            left: messageMenuPosition.left,
+                            width: 138,
+                            border: `1px solid ${BLUE}66`,
+                            borderRadius: 14,
+                            padding: 4,
+                            background: "linear-gradient(180deg, rgba(30,31,38,.99), rgba(14,15,21,.99))",
+                            boxShadow: `0 12px 28px rgba(0,0,0,.62), 0 0 16px ${BLUE}22`,
+                            backdropFilter: "blur(12px)",
                           }}
                         >
                           {[
@@ -1075,16 +1100,16 @@ export default function MessagesPage({ store, update, go }: Props) {
                                 }
                                 setOpenMessageMenuId("");
                               }}
-                              style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 12, fontWeight: 850, cursor: "pointer", textAlign: "left" }}
+                              style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 9, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 11.5, lineHeight: 1.05 }}
                             >
                               <ChatActionIcon name={name as any} /> <span>{label}</span>
                             </button>
                           ))}
-                          <div style={{ height: 1, background: "rgba(255,255,255,.10)", margin: "5px 4px" }} />
+                          <div style={{ height: 1, background: "rgba(255,255,255,.10)", margin: "3px 4px" }} />
                           <button
                             type="button"
                             onClick={() => { setOpenMessageMenuId(""); handleDeletePrivateMessage(String(m?.id || "")); }}
-                            style={{ width: "100%", border: 0, background: "transparent", color: RED, display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 12, fontWeight: 950, cursor: "pointer", textAlign: "left" }}
+                            style={{ width: "100%", border: 0, background: "transparent", color: RED, display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 9, fontWeight: 950, cursor: "pointer", textAlign: "left", fontSize: 11.5, lineHeight: 1.05 }}
                           >
                             <ChatActionIcon name="delete" /> <span>Supprimer</span>
                           </button>
