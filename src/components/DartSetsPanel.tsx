@@ -828,12 +828,23 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     }
   };
 
-  const handleSetFavorite = (set: DartSet | null) => {
+  const handleToggleFavorite = (set: DartSet | null) => {
     if (!profile?.id || !set) return;
-    setFavoriteDartSet(profile.id, set.id);
-    reloadSets();
 
-    // ✅ PATCH B
+    // Bascule ON/OFF :
+    // - si le set visible est déjà favori, on retire simplement son statut favori ;
+    // - sinon, on le définit comme favori unique du profil via le store existant.
+    const ok = set.isFavorite
+      ? updateDartSet(set.id, { isFavorite: false } as any)
+      : setFavoriteDartSet(String(set.profileId || profile.id), set.id);
+
+    if (!ok) {
+      alert(lang === "fr" ? "Impossible de modifier le favori." : "Unable to update favorite.");
+      reloadSets();
+      return;
+    }
+
+    reloadSets();
     syncAllDartSetsToAppStore();
   };
 
@@ -1069,10 +1080,10 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               key: "fav",
               label: labelFav,
               iconName: "fav" as const,
-              tone: "#f5c35b",
+              tone: primary,
               active: !!activeSet?.isFavorite,
               disabled: !activeSet,
-              onClick: () => handleSetFavorite(activeSet),
+              onClick: () => handleToggleFavorite(activeSet),
             },
             {
               key: "delete",
@@ -1095,7 +1106,13 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 flex: "1 0 66px",
                 minWidth: 66,
                 maxWidth: 82,
-                color: btn.disabled ? "rgba(150,150,170,.55)" : btn.active ? btn.tone : "rgba(230,230,238,.76)",
+                color: btn.disabled
+                  ? "rgba(150,150,170,.55)"
+                  : btn.key === "delete"
+                  ? "#ff7878"
+                  : btn.active
+                  ? btn.tone
+                  : "rgba(230,230,238,.76)",
                 opacity: btn.disabled ? 0.42 : 1,
                 cursor: btn.disabled ? "default" : "pointer",
               }}
@@ -1117,8 +1134,20 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 <span
                   className="tab-icon"
                   style={{
-                    color: btn.disabled ? "rgba(150,150,170,.55)" : "#fff",
-                    filter: btn.disabled ? "none" : btn.active ? `drop-shadow(0 0 7px ${btn.tone})` : "none",
+                    color: btn.disabled
+                      ? "rgba(150,150,170,.55)"
+                      : btn.key === "delete"
+                      ? "#ff7878"
+                      : btn.active
+                      ? btn.tone
+                      : "rgba(255,255,255,.92)",
+                    filter: btn.disabled
+                      ? "none"
+                      : btn.key === "delete"
+                      ? "drop-shadow(0 0 6px rgba(255,80,80,.65))"
+                      : btn.active
+                      ? `drop-shadow(0 0 7px ${btn.tone})`
+                      : "none",
                   }}
                 >
                   <DartSetActionIcon name={btn.iconName} size={21} />
@@ -1130,7 +1159,13 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                     lineHeight: "11px",
                     fontWeight: 750,
                     letterSpacing: 0.15,
-                    color: btn.disabled ? "rgba(150,150,170,.55)" : btn.active ? "#fff" : "rgba(220,220,230,.78)",
+                    color: btn.disabled
+                      ? "rgba(150,150,170,.55)"
+                      : btn.key === "delete"
+                      ? "#ff7878"
+                      : btn.active
+                      ? btn.tone
+                      : "rgba(220,220,230,.78)",
                   }}
                 >
                   {btn.label}

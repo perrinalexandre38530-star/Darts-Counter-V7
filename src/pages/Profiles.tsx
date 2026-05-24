@@ -2541,17 +2541,36 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-              <BackDot
-                size={36}
-                title={t("profiles.menu.back", "Retour au menu Profils")}
-                onClick={() => openView("menu")}
-              />
+            <div
+              style={{
+                marginBottom: 10,
+                position: "relative",
+                minHeight: view === "dartsets" ? 54 : 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: view === "dartsets" ? "center" : "flex-start",
+              }}
+            >
+              <div
+                style={{
+                  position: view === "dartsets" ? "absolute" : "relative",
+                  left: view === "dartsets" ? 0 : undefined,
+                  top: view === "dartsets" ? "50%" : undefined,
+                  transform: view === "dartsets" ? "translateY(-50%)" : undefined,
+                  zIndex: 3,
+                }}
+              >
+                <BackDot
+                  size={36}
+                  title={t("profiles.menu.back", "Retour au menu Profils")}
+                  onClick={() => openView("menu")}
+                />
+              </div>
+
               {view === "dartsets" && (
                 <div
                   style={{
-                    flex: 1,
-                    minWidth: 0,
+                    width: "min(100%, 560px)",
                     height: 48,
                     borderRadius: 16,
                     border: `1px solid ${primary}88`,
@@ -2563,11 +2582,12 @@ React.useEffect(() => {
                     justifyContent: "center",
                     overflow: "hidden",
                     padding: 0,
+                    marginInline: "auto",
                   }}
                 >
                   <img
                     src={tickerDartsets}
-                    alt="Sets de fléchettes"
+                    alt="Set of darts"
                     style={{
                       width: "100%",
                       height: "100%",
