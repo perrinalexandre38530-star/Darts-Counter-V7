@@ -8,6 +8,7 @@
 
 import { delKV, getKV, setKV } from "../storage";
 import { normalizeMatchForStats } from "../matchCompactCodec";
+import { computeBabyFootRichStats } from "../babyfootRichStats";
 
 // ----------------------------
 // Types génériques (safe)
@@ -25,6 +26,7 @@ export type GameKey =
   | "scram"
   | "capital"
   | "batard"
+  | "babyfoot"
   | "unknown";
 
 export type HistoryRec = {
@@ -147,6 +149,7 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       scram: { mode: "scram", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       capital: { mode: "capital", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       batard: { mode: "batard", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      babyfoot: { mode: "babyfoot", matches: 0, finished: 0, inProgress: 0, saved: 0 },
       unknown: { mode: "unknown", matches: 0, finished: 0, inProgress: 0, saved: 0 },
     },
     byPlayer: {},
@@ -163,6 +166,7 @@ function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
       scram: [],
       capital: [],
       batard: [],
+      babyfoot: [],
       unknown: [],
     },
     meta: {
@@ -278,10 +282,13 @@ function toTs(v: any): number | undefined {
 
 function normalizeGameKey(rec: any, payload: any): GameKey {
   const parts = [
-    rec?.game, rec?.mode, rec?.kind, rec?.variant, rec?.variantId, rec?.summary?.mode, rec?.summary?.variantId,
+    rec?.sport, rec?.game, rec?.mode, rec?.kind, rec?.variant, rec?.variantId, rec?.summary?.mode, rec?.summary?.variantId,
     payload?.game, payload?.mode, payload?.kind, payload?.variant, payload?.variantId, payload?.config?.mode, payload?.config?.variantId, payload?.summary?.mode, payload?.summary?.variantId,
   ];
   const g = parts.filter((v) => v !== undefined && v !== null).map((v) => String(v).toLowerCase()).join(" ");
+
+  if (g.includes("babyfoot") || g.includes("baby-foot") || g.includes("foosball")) return "babyfoot";
+  if (payload?.teamAProfileIds || payload?.teamBProfileIds || payload?.summary?.teamA || payload?.summary?.teamB) return "babyfoot";
 
   if (g.includes("x01") || g.includes("301") || g.includes("501")) return "x01";
 
@@ -729,6 +736,91 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       cur.max = Math.max(cur.max || 0, total);
       (idx.byPlayer[pid] as any).shanghai = cur;
     }
+  },
+
+
+  babyfoot: ({ rec, payload, ts, idx }) => {
+    const rich = computeBabyFootRichStats(payload || rec || {});
+    const teamAIds = Array.isArray(payload?.teamAProfileIds)
+      ? payload.teamAProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : Array.isArray(payload?.summary?.teamAProfileIds)
+      ? payload.summary.teamAProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : [];
+    const teamBIds = Array.isArray(payload?.teamBProfileIds)
+      ? payload.teamBProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : Array.isArray(payload?.summary?.teamBProfileIds)
+      ? payload.summary.teamBProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : [];
+
+    const players = Array.isArray(payload?.players) ? payload.players : Array.isArray(rec?.players) ? rec.players : [];
+    const nameById = new Map<string, string>();
+    for (const pl of players) {
+      const pid = String(pl?.id || pl?.playerId || pl?.profileId || pl?.uid || "");
+      if (pid) nameById.set(pid, String(pl?.name || pl?.displayName || ""));
+    }
+
+    const scoreA = Number(rich?.teamA?.score ?? rich?.teamA?.goals ?? 0) || 0;
+    const scoreB = Number(rich?.teamB?.score ?? rich?.teamB?.goals ?? 0) || 0;
+    const winnerSide = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+
+    const addSide = (ids: string[], side: "A" | "B") => {
+      const mine: any = side === "A" ? rich.teamA : rich.teamB;
+      const opp: any = side === "A" ? rich.teamB : rich.teamA;
+      for (const pid of ids) {
+        if (!pid) continue;
+        const isWinner = winnerSide === side;
+        bumpPlayer(idx, pid, {
+          name: nameById.get(pid),
+          matches: 1,
+          wins: isWinner ? 1 : 0,
+          losses: winnerSide && !isWinner ? 1 : 0,
+          pointsScored: Number(mine?.goals ?? mine?.score ?? 0) || 0,
+          bestVisit: Number(mine?.longestRun ?? mine?.goals ?? mine?.score ?? 0) || 0,
+          buckets: {
+            goals: Number(mine?.goals ?? 0) || 0,
+            conceded: Number(mine?.goalsConceded ?? opp?.goals ?? 0) || 0,
+            gamelle: Number(mine?.gamelle ?? 0) || 0,
+            peche: Number(mine?.peche ?? 0) || 0,
+            demi: Number(mine?.demi ?? 0) || 0,
+            pissette: Number(mine?.pissette ?? 0) || 0,
+          },
+        }, ts);
+
+        const cur: any = (idx.byPlayer[pid] as any).babyfoot || {
+          matches: 0, wins: 0, goals: 0, conceded: 0, sets: 0, legs: 0, gamelle: 0,
+          peche: 0, pecheOff: 0, pecheDef: 0, demi: 0, demiBonus: 0, pissette: 0,
+          pissetteValid: 0, pissetteRefused: 0, csc: 0, goalAv: 0, goalDef: 0, goalGb: 0,
+          penalties: 0, cleanSheets: 0, longestRun: 0, goalDiff: 0,
+        };
+        cur.matches += 1;
+        cur.wins += isWinner ? 1 : 0;
+        cur.goals += Number(mine?.goals ?? 0) || 0;
+        cur.conceded += Number(mine?.goalsConceded ?? opp?.goals ?? 0) || 0;
+        cur.sets += Number(mine?.sets ?? 0) || 0;
+        cur.legs += Number(mine?.legs ?? 0) || 0;
+        cur.gamelle += Number(mine?.gamelle ?? 0) || 0;
+        cur.peche += Number(mine?.peche ?? 0) || 0;
+        cur.pecheOff += Number(mine?.pecheOff ?? 0) || 0;
+        cur.pecheDef += Number(mine?.pecheDef ?? 0) || 0;
+        cur.demi += Number(mine?.demi ?? 0) || 0;
+        cur.demiBonus += Number(mine?.demiBonus ?? 0) || 0;
+        cur.pissette += Number(mine?.pissette ?? 0) || 0;
+        cur.pissetteValid += Number(mine?.pissetteValid ?? 0) || 0;
+        cur.pissetteRefused += Number(mine?.pissetteRefused ?? 0) || 0;
+        cur.csc += Number(mine?.csc ?? 0) || 0;
+        cur.goalAv += Number(mine?.goalAv ?? 0) || 0;
+        cur.goalDef += Number(mine?.goalDef ?? 0) || 0;
+        cur.goalGb += Number(mine?.goalGb ?? 0) || 0;
+        cur.penalties += Number(mine?.penalties ?? 0) || 0;
+        cur.cleanSheets += Number(mine?.goalsConceded ?? opp?.goals ?? 0) === 0 ? 1 : 0;
+        cur.longestRun = Math.max(Number(cur.longestRun || 0) || 0, Number(mine?.longestRun ?? 0) || 0);
+        cur.goalDiff += Number(mine?.goalDiff ?? ((mine?.goals || 0) - (opp?.goals || 0))) || 0;
+        (idx.byPlayer[pid] as any).babyfoot = cur;
+      }
+    };
+
+    addSide(teamAIds, "A");
+    addSide(teamBIds, "B");
   },
 
   territories: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),

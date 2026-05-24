@@ -21,6 +21,7 @@ import ProfileStarRing from "../../components/ProfileStarRing";
 import { GoldPill } from "../../components/StatsPlayerDashboard";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
+import { History } from "../../lib/history";
 import type { BabyFootCompareMode, BabyFootStatRow } from "../../lib/babyfootStatSections";
 
 // Effet shimmer à l'intérieur des lettres (même esprit que StatsHub Darts)
@@ -381,8 +382,41 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     padding: 12,
   };
 
+  const [historyRows, setHistoryRows] = React.useState<any[]>(() => Array.isArray((store as any)?.history) ? (store as any).history : []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function loadBabyFootHistory() {
+      const fallback = Array.isArray((store as any)?.history) ? (store as any).history : [];
+      try {
+        const lightRows = ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
+        const fullRows = await Promise.all((Array.isArray(lightRows) ? lightRows : []).map(async (row: any) => {
+          const id = String(row?.matchId ?? row?.id ?? "").trim();
+          if (!id || typeof (History as any).get !== "function") return row;
+          try {
+            return ((await (History as any).get(id)) as any) || row;
+          } catch {
+            return row;
+          }
+        }));
+        if (!cancelled) setHistoryRows(fullRows.length ? fullRows : fallback);
+      } catch {
+        if (!cancelled) setHistoryRows(fallback);
+      }
+    }
+    loadBabyFootHistory();
+    const refresh = () => loadBabyFootHistory();
+    window.addEventListener("dc-history-updated", refresh as any);
+    window.addEventListener("dc-stats-index-updated", refresh as any);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dc-history-updated", refresh as any);
+      window.removeEventListener("dc-stats-index-updated", refresh as any);
+    };
+  }, [store]);
+
   const filteredMatchHistory = React.useMemo(() => {
-    const allHistory = Array.isArray((store as any)?.history) ? (store as any).history : [];
+    const allHistory = Array.isArray(historyRows) ? historyRows : [];
     const cutoff = bfCutoff(period);
     const selectedId = selectedProfile?.id ? String(selectedProfile.id) : "";
 
@@ -398,7 +432,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
       const teamBIds = Array.isArray(payload?.teamBProfileIds) ? payload.teamBProfileIds.map(String) : [];
       return teamAIds.includes(selectedId) || teamBIds.includes(selectedId);
     });
-  }, [currentMode?.key, period, selectedProfile?.id, store, topTab]);
+  }, [currentMode?.key, historyRows, period, selectedProfile?.id, topTab]);
 
   const kpis = React.useMemo(() => {
     const base = {
@@ -664,7 +698,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <KpiTile label="Diff. buts" value={String(kpis.diff)} />
               <KpiTile label="Durée moyenne" value={kpis.avgDuration} />
             </div>
-            <SectionHint text="(Patch SAFE) — stats 1v1 branchées sur l'historique baby-foot ensuite." />
+            <SectionHint text="Stats calculées depuis l’historique baby-foot enregistré." />
           </div>
 
           <div style={softCard}>
@@ -725,7 +759,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <KpiTile label="Diff. buts" value={String(kpis.diff)} />
               <KpiTile label="Durée moyenne" value={kpis.avgDuration} />
             </div>
-            <SectionHint text="(Patch SAFE) — stats 2v2 : branchage équipe/composition ensuite." />
+            <SectionHint text="Stats équipe calculées depuis les compositions sauvegardées." />
           </div>
 
           <div style={softCard}>
@@ -816,7 +850,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             <KpiTile label="Durée moyenne" value={kpis.avgDuration} />
           </div>
 
-          <SectionHint text="(Patch SAFE) — l’agrégation multi-modes sera branchée ensuite." />
+          <SectionHint text="Agrégation multi-modes calculée depuis l’historique baby-foot." />
         </div>
 
         <div style={softCard}>
@@ -845,12 +879,12 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <div style={softCard}>
             <SectionTitle title="Résumé FUN" T={T} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <KpiTile label="Parties FUN" value="0" />
-              <KpiTile label="Points FUN" value="0" />
-              <KpiTile label="Meilleur run" value="—" />
-              <KpiTile label="Régularité" value="—" />
+              <KpiTile label="Parties" value={String(kpis.matches)} />
+              <KpiTile label="Buts" value={String(kpis.goals)} />
+              <KpiTile label="Meilleur run" value={String(kpis.streakBest)} />
+              <KpiTile label="Winrate" value={`${kpis.winrate}%`} />
             </div>
-            <SectionHint text="(Patch SAFE) — stats FUN à brancher sur l'historique baby-foot." />
+            <SectionHint text="Vue FUN alimentée par les matchs baby-foot correspondants quand ils existent." />
           </div>
 
           <div style={softCard}>
@@ -872,12 +906,12 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <div style={softCard}>
             <SectionTitle title="Training" T={T} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <KpiTile label="Sessions" value="0" />
-              <KpiTile label="Temps total" value="00:00" />
-              <KpiTile label="Objectifs" value="0" />
-              <KpiTile label="Progression" value="—" />
+              <KpiTile label="Sessions" value={String(kpis.matches)} />
+              <KpiTile label="Durée moyenne" value={kpis.avgDuration} />
+              <KpiTile label="Buts" value={String(kpis.goals)} />
+              <KpiTile label="Buts / min" value={kpis.avgGoalsPerMin} />
             </div>
-            <SectionHint text="(Patch SAFE) — stats Training à brancher sur sessions/records baby-foot." />
+            <SectionHint text="Vue Training alimentée par l’historique dès que les sessions sont sauvegardées." />
           </div>
 
           <div style={softCard}>
@@ -899,12 +933,12 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <div style={softCard}>
             <SectionTitle title="Défis" T={T} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <KpiTile label="Défis joués" value="0" />
-              <KpiTile label="Défis gagnés" value="0" />
-              <KpiTile label="Série (streak)" value="—" />
-              <KpiTile label="Difficulté" value="—" />
+              <KpiTile label="Défis joués" value={String(kpis.matches)} />
+              <KpiTile label="Défis gagnés" value={String(Math.round((kpis.matches * kpis.winrate) / 100))} />
+              <KpiTile label="Série (streak)" value={String(kpis.streakBest)} />
+              <KpiTile label="Buts" value={String(kpis.goals)} />
             </div>
-            <SectionHint text="(Patch SAFE) — stats Défis à brancher sur les modes 'Défis' baby-foot." />
+            <SectionHint text="Vue Défis alimentée par l’historique baby-foot filtré." />
           </div>
 
           <div style={softCard}>
