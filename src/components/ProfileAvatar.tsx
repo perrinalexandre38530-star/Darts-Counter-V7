@@ -116,6 +116,8 @@ function normalizeSrc(raw: any): string | null {
     return s.replace(/ /g, "%20");
 
   if (s.startsWith("/assets/")) return s.replace(/ /g, "%20");
+  if (s.startsWith("/images/")) return s.replace(/ /g, "%20");
+  if (s.startsWith("/media/")) return s.replace(/ /g, "%20");
 
   if (s.startsWith("./") || s.startsWith("../")) return s.replace(/ /g, "%20");
   if (/\.(png|jpg|jpeg|webp|gif|svg)(\?.*)?$/i.test(s))

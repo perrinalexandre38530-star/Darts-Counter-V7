@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
+import { getNasApiUrl } from "./serverConfig";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -256,8 +257,9 @@ function scanAvatarGalleryForBot(botId: any): string | null {
       const ownerId = String((item as any).ownerId || (item as any).owner_id || "").trim();
       const category = String((item as any).category || "").trim().toLowerCase();
       if (ownerId !== id || (category && category !== "bot")) continue;
-      const src = String((item as any).src || (item as any).dataUrl || (item as any).avatarDataUrl || (item as any).avatar || "").trim();
-      if (!isUsablePersistentImageSrc(src)) continue;
+      const rawSrc = String((item as any).src || (item as any).dataUrl || (item as any).avatarDataUrl || (item as any).avatar || "").trim();
+      if (!isUsablePersistentImageSrc(rawSrc)) continue;
+      const src = normalizeRuntimeMediaSrc(rawSrc) || rawSrc;
       const updatedAt = Number((item as any).updatedAt || (item as any).updated_at || (item as any).createdAt || 0) || 0;
       if (!best || updatedAt >= best.updatedAt) best = { src, updatedAt };
     }
@@ -287,7 +289,7 @@ function resolveStoredBotAvatar(bot: any): string | null {
   if (direct) return direct;
 
   const url = firstNonEmptyString(bot?.avatarUrl, bot?.photoUrl, bot?.avatarPath);
-  if (url && !url.startsWith("data:image/")) return url;
+  if (url && !url.startsWith("data:image/")) return normalizeRuntimeMediaSrc(url) || url;
 
   const media = botAssetIdToMediaUrl(
     bot?.avatarThumbAssetId ||
@@ -498,11 +500,43 @@ function firstNonEmptyString(...values: any[]): string | null {
   return null;
 }
 
+function getRuntimeNasApiBase(): string {
+  try {
+    return String(getNasApiUrl() || "").trim().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
+
+function normalizeRuntimeMediaSrc(src: any): string | null {
+  const value = typeof src === "string" ? src.trim() : "";
+  if (!value) return null;
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/") || value.startsWith("blob:")) return value;
+
+  // IMPORTANT CONFIG BOTS:
+  // Les avatars créés côté NAS peuvent être stockés sous forme "/media/<assetId>".
+  // Sur Cloudflare Pages, "/media/..." pointe vers le frontend et casse l'image.
+  // On le rebase donc explicitement vers l'API NAS.
+  if (value.startsWith("/media/")) {
+    const base = getRuntimeNasApiBase();
+    return base ? `${base}${value}` : value;
+  }
+
+  if (value.startsWith("/images/") || value.startsWith("/assets/")) return value;
+  if (/\.(png|jpg|jpeg|webp|gif|svg)(\?.*)?$/i.test(value)) return value;
+  return null;
+}
+
 export function botAssetIdToMediaUrl(assetId: any): string | null {
   const id = typeof assetId === "string" ? assetId.trim() : "";
   if (!id) return null;
-  if (id.startsWith("/media/") || id.startsWith("http://") || id.startsWith("https://")) return id;
-  return `/media/${encodeURIComponent(id)}`;
+
+  const alreadySrc = normalizeRuntimeMediaSrc(id);
+  if (alreadySrc) return alreadySrc;
+
+  const base = getRuntimeNasApiBase();
+  const path = `/media/${encodeURIComponent(id)}`;
+  return base ? `${base}${path}` : path;
 }
 
 export function resolveBotAvatarSrc(input: any): string | null {
@@ -568,3 +602,28 @@ export const loadStoredBots = loadBots;
 export const saveStoredBots = saveBots;
 export const restoreStoredBots = restoreBotsFromSnapshot;
 export const loadBotsAsPlayers = loadBotPlayers;
+
+
+// Diagnostic volontairement léger : utilisable dans DevTools avec
+// window.__auditBotAvatars?.() après chargement du bundle.
+export function auditStoredBotAvatarSources() {
+  const bots = loadBots();
+  return bots.map((bot: any) => {
+    const src = resolveBotAvatarSrc(bot);
+    return {
+      id: bot?.id,
+      name: bot?.name,
+      hasAvatarDataUrl: typeof bot?.avatarDataUrl === "string" && bot.avatarDataUrl.startsWith("data:image/"),
+      avatarUrl: bot?.avatarUrl || null,
+      avatarAssetId: bot?.avatarAssetId || bot?.avatarThumbAssetId || bot?.avatarFullAssetId || bot?.avatarCastAssetId || null,
+      resolvedAvatarSrc: src,
+      resolvedKind: src?.startsWith("data:image/") ? "data-url" : src?.includes("/media/") ? "nas-media" : src ? "url" : "missing",
+    };
+  });
+}
+
+try {
+  if (typeof window !== "undefined") {
+    (window as any).__auditBotAvatars = auditStoredBotAvatarSources;
+  }
+} catch {}
