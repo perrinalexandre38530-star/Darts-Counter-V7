@@ -26,6 +26,9 @@ import ProfileStarRing from "../components/ProfileStarRing";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
 type ChatMode = "messenger" | "group" | "rooms" | "announces";
+type LocalChatGroup = { id: string; name: string; memberIds: string[]; createdAt: string; lastMessage?: string };
+type LocalChatRoom = { id: string; title: string; topic: string; createdAt: string; ttlMinutes: number; members: number };
+type LocalAnnouncement = { id: string; title: string; text: string; createdAt: string; author?: string; status: "published" | "blocked"; reason?: string };
 
 type Props = {
   store?: any;
@@ -576,6 +579,51 @@ function NeonIconTab({
   );
 }
 
+
+function LabeledChoiceButton({
+  active,
+  label,
+  badge = 0,
+  tone,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  badge?: number;
+  tone: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        position: "relative",
+        minWidth: 0,
+        minHeight: 52,
+        border: `1px solid ${active ? `${tone}cc` : STROKE}`,
+        borderRadius: 16,
+        padding: "8px 10px",
+        color: active ? tone : "rgba(255,255,255,.82)",
+        background: active ? `radial-gradient(110% 120% at 50% 0%, ${tone}30, rgba(255,255,255,.055) 62%, rgba(0,0,0,.30))` : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+        fontWeight: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        boxShadow: active ? `0 -5px 18px ${tone}38, 0 0 18px ${tone}20` : "inset 0 1px 0 rgba(255,255,255,.06)",
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ display: "grid", placeItems: "center" }}>{children}</span>
+      <span style={{ fontSize: 13, lineHeight: 1 }}>{label}</span>
+      {badge > 0 ? <span style={{ position: "absolute", top: -7, right: -5, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: tone, color: "#111", display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 1000, boxShadow: `0 0 14px ${tone}88` }}>{badge > 99 ? "99+" : badge}</span> : null}
+    </button>
+  );
+}
+
 function Pill({ children, tone = GOLD }: { children: React.ReactNode; tone?: string }) {
   return (
     <span
@@ -631,6 +679,31 @@ function EmptyCard({ icon, title, text }: { icon: string; title: string; text: s
   );
 }
 
+
+function loadLocalJson<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveLocalJson(key: string, value: any) {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+function guardAnnouncement(title: string, text: string): { ok: boolean; reason?: string } {
+  const raw = `${title} ${text}`.toLowerCase();
+  const forbidden = ["insulte", "haine", "violence", "arnaque", "crypto", "casino", "drogue", "sexe", "porn", "raciste", "menace"];
+  const hit = forbidden.find((w) => raw.includes(w));
+  if (hit) return { ok: false, reason: `Annonce bloquée par garde-fou local : mot sensible détecté (${hit}).` };
+  if (raw.trim().length < 8) return { ok: false, reason: "Annonce trop courte." };
+  return { ok: true };
+}
+
 function SectionTitle({ title, subtitle, badge }: { title: string; subtitle?: string; badge?: number }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, margin: "12px 0 10px" }}>
@@ -648,6 +721,17 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [chatMode, setChatMode] = React.useState<ChatMode>("messenger");
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const [requestView, setRequestView] = React.useState<"received" | "sent">("received");
+  const [linkView, setLinkView] = React.useState<"received" | "sent">("received");
+  const [friendSearch, setFriendSearch] = React.useState("");
+  const [newGroupName, setNewGroupName] = React.useState("");
+  const [selectedGroupIds, setSelectedGroupIds] = React.useState<string[]>([]);
+  const [groups, setGroups] = React.useState<LocalChatGroup[]>(() => loadLocalJson<LocalChatGroup[]>("ms_message_groups_v1", []));
+  const [newRoomTitle, setNewRoomTitle] = React.useState("");
+  const [newRoomTopic, setNewRoomTopic] = React.useState("");
+  const [rooms, setRooms] = React.useState<LocalChatRoom[]>(() => loadLocalJson<LocalChatRoom[]>("ms_message_rooms_v1", []));
+  const [announcementTitle, setAnnouncementTitle] = React.useState("");
+  const [announcementText, setAnnouncementText] = React.useState("");
+  const [announcements, setAnnouncements] = React.useState<LocalAnnouncement[]>(() => loadLocalJson<LocalAnnouncement[]>("ms_message_announcements_v1", []));
   const [conversationOptionsOpen, setConversationOptionsOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -699,6 +783,10 @@ export default function MessagesPage({ store, update, go }: Props) {
       try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
     };
   }, []);
+
+  React.useEffect(() => saveLocalJson("ms_message_groups_v1", groups), [groups]);
+  React.useEffect(() => saveLocalJson("ms_message_rooms_v1", rooms), [rooms]);
+  React.useEffect(() => saveLocalJson("ms_message_announcements_v1", announcements), [announcements]);
 
   React.useEffect(() => {
     if (!isRecording) {
@@ -811,6 +899,49 @@ export default function MessagesPage({ store, update, go }: Props) {
       return asUserName(a).localeCompare(asUserName(b), "fr");
     });
   }, [friends, messageThreads]);
+
+  const normalizedFriendSearch = friendSearch.trim().toLowerCase();
+  const matchesFriendSearch = React.useCallback((user: any) => {
+    if (!normalizedFriendSearch) return true;
+    return `${asUserName(user)} ${userEmail(user)}`.toLowerCase().includes(normalizedFriendSearch);
+  }, [normalizedFriendSearch]);
+  const filteredIncomingFriendRequests = incomingFriendRequests.filter((r) => matchesFriendSearch(r.fromUser));
+  const filteredOutgoingFriendRequests = outgoingFriendRequests.filter((r) => matchesFriendSearch(r.toUser));
+  const linkedAccepted = profileLinks.filter((l) => String(l.status || "pending").toLowerCase() === "accepted");
+
+  function toggleGroupMember(id: string) {
+    setSelectedGroupIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+
+  function createGroup() {
+    const name = newGroupName.trim() || `Groupe ${groups.length + 1}`;
+    if (selectedGroupIds.length < 2) { setError("Sélectionne au moins 2 amis pour créer un groupe."); return; }
+    const group: LocalChatGroup = { id: `grp_${Date.now()}`, name, memberIds: selectedGroupIds, createdAt: new Date().toISOString(), lastMessage: "Groupe créé" };
+    setGroups((prev) => [group, ...prev]);
+    setNewGroupName("");
+    setSelectedGroupIds([]);
+    setInfo("Groupe créé ✅");
+  }
+
+  function createRoom() {
+    const title = newRoomTitle.trim();
+    if (!title) { setError("Nom du salon requis."); return; }
+    const room: LocalChatRoom = { id: `room_${Date.now()}`, title, topic: newRoomTopic.trim() || "Discussion libre", createdAt: new Date().toISOString(), ttlMinutes: 10, members: 1 };
+    setRooms((prev) => [room, ...prev]);
+    setNewRoomTitle("");
+    setNewRoomTopic("");
+    setInfo("Salon créé — messages éphémères 10 min ✅");
+  }
+
+  function publishAnnouncement() {
+    const title = announcementTitle.trim();
+    const text = announcementText.trim();
+    const guard = guardAnnouncement(title, text);
+    const item: LocalAnnouncement = { id: `ann_${Date.now()}`, title: title || "Annonce", text: text || "—", createdAt: new Date().toISOString(), author: store?.profile?.displayName || store?.activeProfile?.name || "Moi", status: guard.ok ? "published" : "blocked", reason: guard.reason };
+    setAnnouncements((prev) => [item, ...prev].slice(0, 50));
+    if (guard.ok) { setAnnouncementTitle(""); setAnnouncementText(""); setInfo("Annonce publiée ✅"); }
+    else setError(guard.reason || "Annonce bloquée.");
+  }
 
   const selectedThreadBase = messageThreads.find((t) => t.id === selectedThreadUserId) || null;
   const selectedFriend = selectedThreadUserId ? friends.find((f: any) => userIdOf(f) === String(selectedThreadUserId)) : null;
@@ -1282,9 +1413,7 @@ export default function MessagesPage({ store, update, go }: Props) {
               <div style={{ color: GOLD, fontWeight: 1000, fontSize: 12.5, margin: "2px 4px 7px" }}>Options conversation</div>
               <div style={{ display: "grid", gap: 6 }}>
                 <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => { setInfo("Conversation marquée comme lue ✅"); setConversationOptionsOpen(false); }).catch((e: any) => setError(e?.message || String(e)))} />
-                <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); loadAll(); }} />
                 <ActionButton label="Notifications" tone={GOLD} onClick={() => { setConversationOptionsOpen(false); activatePhoneNotifications(); }} />
-                <ActionButton label="Invitations Online" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); setChatFullscreen(false); setActive("invites"); }} />
               </div>
             </div>
           ) : null}
@@ -1334,9 +1463,7 @@ export default function MessagesPage({ store, update, go }: Props) {
             ) : conversationPanel.type === "options" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7, marginTop: 10 }}>
                 <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => setInfo("Conversation marquée comme lue ✅")).catch((e: any) => setError(e?.message || String(e)))} />
-                <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
                 <ActionButton label="Notifications" tone={GOLD} onClick={activatePhoneNotifications} />
-                <ActionButton label="Invitations Online" tone={BLUE} onClick={() => { setConversationOptionsOpen(false); setChatFullscreen(false); setActive("invites"); }} />
               </div>
             ) : (
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -1811,55 +1938,6 @@ export default function MessagesPage({ store, update, go }: Props) {
                       );
                     })}
                   </div>
-
-                  <div style={{ display: "grid", gap: 9, marginBottom: 12 }}>
-                    {allMessengerContacts.map((user: any) => {
-                      const id = userIdOf(user);
-                      const thread = messageThreads.find((t: any) => String(t.id) === id);
-                      const st = presenceState(user?.status || user?.presenceStatus);
-                      const flag = countryFlagEmoji(user?.countryCode || user?.country_code);
-                      const level = userLevelStars(user);
-                      const email = userEmail(user);
-                      return (
-                        <button
-                          key={`friend-row-${id}`}
-                          type="button"
-                          onClick={() => openMessengerThread(id, thread?.unread || 0)}
-                          style={{
-                            border: `1px solid ${thread?.unread ? GREEN : STROKE}`,
-                            borderRadius: 18,
-                            padding: "10px 11px",
-                            background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018))",
-                            color: "#fff",
-                            display: "grid",
-                            gridTemplateColumns: "auto 1fr auto",
-                            alignItems: "center",
-                            gap: 11,
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          <div style={{ position: "relative", width: 58, height: 66, display: "grid", placeItems: "end center" }}>
-                            {level > 0 ? <div style={{ position: "absolute", top: -3, left: 0, right: 0, textAlign: "center", color: GOLD, fontSize: 10, fontWeight: 1000, letterSpacing: -1 }}>{"★".repeat(level)}</div> : null}
-                            <AvatarBubble user={user} size={50} selected={false} />
-                            {flag ? <span style={{ position: "absolute", left: -4, bottom: 4, width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(0,0,0,.72)", border: `1px solid ${STROKE}`, fontSize: 13 }}>{flag}</span> : null}
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ fontWeight: 1000, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asUserName(user)}</span>
-                              <span style={{ width: 8, height: 8, borderRadius: 999, background: st.color, boxShadow: `0 0 10px ${st.color}` }} />
-                            </div>
-                            <div style={{ color: "rgba(255,255,255,.52)", fontSize: 10.5, fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email || st.label}</div>
-                            {thread?.messages?.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(thread.messages[thread.messages.length - 1]?.text || "")}</div> : null}
-                          </div>
-                          <div style={{ display: "grid", justifyItems: "end", gap: 5 }}>
-                            <span style={{ color: st.color, fontSize: 10, fontWeight: 1000 }}>{st.label}</span>
-                            {(thread?.unread || 0) > 0 ? <Pill tone={GREEN}>{thread.unread}</Pill> : <span style={{ color: BLUE, fontSize: 18 }}>›</span>}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
                 </>
               ) : (
                 <EmptyCard icon="👥" title="Aucun ami disponible" text="Ajoute ou accepte des amis pour démarrer une discussion privée." />
@@ -1867,18 +1945,57 @@ export default function MessagesPage({ store, update, go }: Props) {
             </>
           ) : chatMode === "group" ? (
             <div style={cardStyle({ borderColor: "rgba(199,139,255,.30)" })}>
-              <SectionTitle title="Groupe" subtitle="Créer un groupe d'amis et discuter ensemble." />
-              <EmptyCard icon="👥" title="Groupes d'amis" text="La page est prête : création de groupe, sélection des amis, fil commun et badges seront câblés ici." />
+              <SectionTitle title="Groupes Messenger" subtitle="Créer un groupe de discussion avec plusieurs amis." badge={groups.length} />
+              <div style={{ display: "grid", gap: 9 }}>
+                <input value={newGroupName} onChange={(e) => setNewGroupName((e.target as HTMLInputElement).value)} placeholder="Nom du groupe…" style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
+                <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "4px 0 8px" }}>
+                  {allMessengerContacts.map((user: any) => {
+                    const id = userIdOf(user); const selected = selectedGroupIds.includes(id);
+                    return <button key={`grp-user-${id}`} type="button" onClick={() => toggleGroupMember(id)} style={{ position: "relative", flex: "0 0 74px", border: `1px solid ${selected ? "#c78bff" : STROKE}`, borderRadius: 18, padding: 8, background: selected ? "rgba(199,139,255,.18)" : "rgba(255,255,255,.035)", color: "#fff", display: "grid", justifyItems: "center", gap: 6 }}>
+                      <AvatarBubble user={user} size={46} selected={selected} />
+                      <span style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 1000 }}>{asUserName(user)}</span>
+                    </button>;
+                  })}
+                </div>
+                <ActionButton label={`Créer le groupe (${selectedGroupIds.length})`} tone="#c78bff" onClick={createGroup} />
+              </div>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                {groups.length ? groups.map((g) => <div key={g.id} style={cardStyle({ padding: 11, borderColor: "rgba(199,139,255,.28)" })}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{g.name}</b><Pill tone="#c78bff">{g.memberIds.length} amis</Pill></div>
+                  <div style={{ marginTop: 8, display: "flex", gap: 6 }}>{g.memberIds.slice(0, 8).map((id) => <AvatarBubble key={id} user={allMessengerContacts.find((u:any)=>userIdOf(u)===id)} size={30} />)}</div>
+                </div>) : <EmptyCard icon="👥" title="Aucun groupe" text="Sélectionne au moins 2 amis pour créer un groupe Messenger." />}
+              </div>
             </div>
           ) : chatMode === "rooms" ? (
             <div style={cardStyle({ borderColor: "rgba(125,255,178,.30)" })}>
-              <SectionTitle title="Salon de T'Chat" subtitle="Discuter dans des salons créés online." />
-              <EmptyCard icon="💬" title="Salons de T'Chat" text="Les conversations des salons online seront centralisées ici avec accès rapide aux salons actifs." />
+              <SectionTitle title="Salons communautaires" subtitle="Salons publics à thème, messages éphémères supprimés automatiquement après 10 minutes." badge={rooms.length} />
+              <div style={{ display: "grid", gap: 8 }}>
+                <input value={newRoomTitle} onChange={(e) => setNewRoomTitle((e.target as HTMLInputElement).value)} placeholder="Nom du salon…" style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
+                <input value={newRoomTopic} onChange={(e) => setNewRoomTopic((e.target as HTMLInputElement).value)} placeholder="Thème : darts, baby-foot, tournoi, recherche joueurs…" style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
+                <ActionButton label="Créer un salon éphémère" tone={GREEN} onClick={createRoom} />
+              </div>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                {rooms.length ? rooms.map((r) => <div key={r.id} style={cardStyle({ padding: 11, borderColor: "rgba(125,255,178,.28)" })}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{r.title}</b><Pill tone={GREEN}>{r.ttlMinutes} min</Pill></div>
+                  <div style={{ color: "rgba(255,255,255,.62)", fontSize: 12, marginTop: 4 }}>{r.topic}</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}><ActionButton label="Rejoindre" tone={GREEN} onClick={() => setInfo(`Salon ${r.title} rejoint ✅`)} /><ActionButton label="Quitter" tone={RED} onClick={() => setInfo(`Salon ${r.title} quitté`)} /></div>
+                </div>) : <EmptyCard icon="💬" title="Aucun salon actif" text="Crée un salon public ; les messages y seront traités comme éphémères côté UI." />}
+              </div>
             </div>
           ) : (
             <div style={cardStyle({ borderColor: "rgba(255,213,106,.30)" })}>
-              <SectionTitle title="Annonces" subtitle="Les joueurs peuvent laisser des annonces visibles de tous." />
-              <EmptyCard icon="📣" title="Annonces publiques" text="Mur d'annonces prévu pour organiser une partie, chercher des joueurs ou publier une info visible de tous." />
+              <SectionTitle title="Petites annonces" subtitle="Publier une annonce liée à l’application avec garde-fou local anti-contenu interdit." badge={announcements.filter(a => a.status === "published").length} />
+              <div style={{ display: "grid", gap: 8 }}>
+                <input value={announcementTitle} onChange={(e) => setAnnouncementTitle((e.target as HTMLInputElement).value)} placeholder="Titre de l’annonce…" style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
+                <textarea value={announcementText} onChange={(e) => setAnnouncementText((e.target as HTMLTextAreaElement).value)} placeholder="Ex : cherche joueurs ce soir, vends cible, tournoi baby-foot…" rows={3} style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 800, outline: "none", resize: "vertical" }} />
+                <ActionButton label="Publier l’annonce" tone={GOLD} onClick={publishAnnouncement} />
+              </div>
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                {announcements.length ? announcements.map((a) => <div key={a.id} style={cardStyle({ padding: 11, borderColor: a.status === "blocked" ? `${RED}55` : `${GOLD}44` })}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{a.title}</b><Pill tone={a.status === "blocked" ? RED : GOLD}>{a.status === "blocked" ? "Bloquée" : "Publiée"}</Pill></div>
+                  <div style={{ color: "rgba(255,255,255,.70)", fontSize: 12, marginTop: 6 }}>{a.status === "blocked" ? a.reason : a.text}</div>
+                </div>) : <EmptyCard icon="📣" title="Aucune annonce" text="Publie une petite annonce liée à l’application ou à tes parties." />}
+              </div>
             </div>
           )}
         </>
@@ -1886,41 +2003,44 @@ export default function MessagesPage({ store, update, go }: Props) {
 
             {active === "links" ? (
         <>
-          <SectionTitle title="Demandes d’association profil local ↔ compte ami" subtitle="Le lien ne devient valide pour les stats qu’après acceptation par le compte ami." badge={counters.links} />
-          {incomingProfileLinks.length || outgoingProfileLinks.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {[...incomingProfileLinks, ...outgoingProfileLinks].map((link) => {
-                const incoming = link.direction !== "outgoing";
-                const user = incoming ? link.requesterUser : link.targetUser;
-                const tone = statusColor(link.status);
-                return (
-                  <div key={link.id} style={cardStyle({ borderColor: `${tone}55` })}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                      <div>
-                        <div style={{ fontWeight: 1000, fontSize: 15 }}>{incoming ? `${asUserName(user)} veut associer un profil` : `Demande envoyée à ${asUserName(user)}`}</div>
-                        <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12, marginTop: 4 }}>
-                          Profil local : <b style={{ color: "#fff" }}>{link.localProfileName || link.localProfileId}</b>
-                        </div>
-                      </div>
-                      <Pill tone={tone}>{statusLabel(link.status)}</Pill>
-                    </div>
-                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Pill tone={link.statsShared ? GREEN : GOLD}>Stats partagées : {link.statsShared ? "OUI" : "NON"}</Pill>
-                      <Pill tone={BLUE}>Créé : {asDate(link.createdAt)}</Pill>
-                    </div>
-                    {incoming && String(link.status || "pending") === "pending" ? (
-                      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                        <ActionButton label="Accepter" tone={GREEN} onClick={() => runAction("Association acceptée ✅", () => respondProfileFriendLink(link.id, "accepted"))} />
-                        <ActionButton label="Refuser" tone={RED} onClick={() => runAction("Association refusée", () => respondProfileFriendLink(link.id, "refused"))} />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+          <SectionTitle title="Association profils locaux / compte ami" subtitle="Demandes reçues/envoyées et récapitulatif des profils liés." badge={counters.links} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+            <LabeledChoiceButton active={linkView === "received"} label="Reçues" badge={incomingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GREEN} onClick={() => setLinkView("received")}><MessageCenterTabIcon name="links" size={22} /></LabeledChoiceButton>
+            <LabeledChoiceButton active={linkView === "sent"} label="Envoyées" badge={outgoingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GOLD} onClick={() => setLinkView("sent")}><ChatActionIcon name="share" size={21} /></LabeledChoiceButton>
+          </div>
+          {linkedAccepted.length ? (
+            <div style={cardStyle({ marginBottom: 12, borderColor: "rgba(121,200,255,.34)" })}>
+              <div style={{ color: BLUE, fontWeight: 1000, marginBottom: 8 }}>Profils liés validés</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {linkedAccepted.map((link) => {
+                  const user = link.direction === "outgoing" ? link.targetUser : link.requesterUser;
+                  return <div key={`linked-${link.id}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", border: `1px solid ${STROKE}`, borderRadius: 14, padding: 9, background: "rgba(255,255,255,.03)" }}>
+                    <div><b>{link.localProfileName || link.localProfileId}</b><div style={{ fontSize: 11, color: "rgba(255,255,255,.58)" }}>lié à {asUserName(user)}</div></div>
+                    <Pill tone={GREEN}>Stats OUI</Pill>
+                  </div>;
+                })}
+              </div>
             </div>
-          ) : (
-            <EmptyCard icon="🔗" title="Aucune demande d’association" text="Quand un profil local sera lié à un compte ami, la demande apparaîtra ici avec Accepter / Refuser." />
-          )}
+          ) : null}
+          {(() => {
+            const list = linkView === "received" ? incomingProfileLinks : outgoingProfileLinks;
+            return list.length ? <div style={{ display: "grid", gap: 10 }}>{list.map((link) => {
+              const incoming = link.direction !== "outgoing";
+              const user = incoming ? link.requesterUser : link.targetUser;
+              const tone = statusColor(link.status);
+              return <div key={link.id} style={cardStyle({ borderColor: `${tone}55` })}>
+                <FriendRequestUserCard user={user} tone={tone} right={<Pill tone={tone}>{statusLabel(link.status)}</Pill>} />
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Pill tone={BLUE}>Profil : {link.localProfileName || link.localProfileId}</Pill>
+                  <Pill tone={link.statsShared ? GREEN : GOLD}>Stats : {link.statsShared ? "OUI" : "NON"}</Pill>
+                </div>
+                {incoming && String(link.status || "pending") === "pending" ? <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  <ActionButton label="Accepter" tone={GREEN} onClick={() => runAction("Association acceptée ✅", () => respondProfileFriendLink(link.id, "accepted"))} />
+                  <ActionButton label="Refuser" tone={RED} onClick={() => runAction("Association refusée", () => respondProfileFriendLink(link.id, "refused"))} />
+                </div> : null}
+              </div>;
+            })}</div> : <EmptyCard icon="🔗" title={`Aucune demande ${linkView === "received" ? "reçue" : "envoyée"}`} text="Les associations profil local ↔ compte ami apparaîtront ici." />;
+          })()}
         </>
       ) : null}
 
@@ -1962,7 +2082,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         <>
           <SectionTitle title="Demandes d’amis" subtitle="Demandes reçues et envoyées depuis le compte NAS." badge={counters.requests} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
-            <NeonIconTab
+            <LabeledChoiceButton
               active={requestView === "received"}
               label="Reçues"
               badge={incomingFriendRequests.length}
@@ -1970,8 +2090,8 @@ export default function MessagesPage({ store, update, go }: Props) {
               onClick={() => setRequestView("received")}
             >
               <MessageCenterTabIcon name="requests" size={22} />
-            </NeonIconTab>
-            <NeonIconTab
+            </LabeledChoiceButton>
+            <LabeledChoiceButton
               active={requestView === "sent"}
               label="Envoyées"
               badge={outgoingFriendRequests.length}
@@ -1979,13 +2099,14 @@ export default function MessagesPage({ store, update, go }: Props) {
               onClick={() => setRequestView("sent")}
             >
               <ChatActionIcon name="share" size={21} />
-            </NeonIconTab>
+            </LabeledChoiceButton>
           </div>
+          <input value={friendSearch} onChange={(e) => setFriendSearch((e.target as HTMLInputElement).value)} placeholder="Rechercher un ami par pseudo ou mail…" style={{ width: "100%", marginBottom: 12, border: `1px solid ${STROKE}`, borderRadius: 15, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
 
           {requestView === "received" ? (
-            incomingFriendRequests.length ? (
+            filteredIncomingFriendRequests.length ? (
               <div style={{ display: "grid", gap: 10 }}>
-                {incomingFriendRequests.map((req) => {
+                {filteredIncomingFriendRequests.map((req) => {
                   const user = req.fromUser;
                   return (
                     <div key={req.id} style={cardStyle({ borderColor: `${GREEN}55`, padding: 12 })}>
@@ -2006,9 +2127,9 @@ export default function MessagesPage({ store, update, go }: Props) {
             ) : (
               <EmptyCard icon="👥" title="Aucune demande reçue" text={`Tu as ${friends.length} ami${friends.length > 1 ? "s" : ""}. Les nouvelles demandes reçues apparaîtront ici.`} />
             )
-          ) : outgoingFriendRequests.length ? (
+          ) : filteredOutgoingFriendRequests.length ? (
             <div style={{ display: "grid", gap: 10 }}>
-              {outgoingFriendRequests.map((req) => {
+              {filteredOutgoingFriendRequests.map((req) => {
                 const user = req.toUser;
                 return (
                   <div key={req.id} style={cardStyle({ borderColor: `${GOLD}55`, padding: 12 })}>
@@ -2094,10 +2215,6 @@ export default function MessagesPage({ store, update, go }: Props) {
         </>
       ) : null}
 
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-        <ActionButton label="Rafraîchir" tone={BLUE} onClick={() => loadAll()} />
-        <ActionButton label="Ouvrir Online" tone={GOLD} onClick={openOnline} />
-      </div>
     </div>
   );
 }
