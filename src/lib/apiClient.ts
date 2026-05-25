@@ -54,9 +54,9 @@ const localOverride = sanitizeApiUrl(
 const API_URL = envUrl || localOverride || "http://api.multisports-api.fr:3000";
 // Le NAS/Cloudflare peut dépasser 3,5 s au réveil ou pendant une écriture snapshot/stats.
 // Ancien défaut: 3500 ms => les synchros profil lié étaient annulées côté navigateur
-// avant même que le backend ait fini de répondre.
-const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 15000) || 15000;
-const API_TIMEOUT_MS = Math.max(10000, rawApiTimeoutMs);
+// avant même que le backend ait fini de répondre. On laisse maintenant 60 s, surtout pour NAS + Cloudflare au réveil.
+const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 60000) || 60000;
+const API_TIMEOUT_MS = Math.max(60000, rawApiTimeoutMs);
 
 function clearNasAuthBecauseUnauthorized() {
   if (typeof window === "undefined") return;

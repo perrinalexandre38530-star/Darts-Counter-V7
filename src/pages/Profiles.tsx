@@ -1275,39 +1275,98 @@ export default function Profiles({
       return;
     }
 
+    const pid = String(profileId || "").trim();
+    if (!pid) {
+      setToast({ type: "error", message: "Profil local introuvable pour la synchronisation" });
+      return;
+    }
+
+    const localProfiles = Array.isArray((store as any)?.profiles) ? ((store as any).profiles as any[]) : [];
+    const localProfile = localProfiles.find((p: any) => String(p?.id || p?.profileId || p?.playerId || "") === pid) || null;
+    if (!localProfile) {
+      setToast({ type: "error", message: "Profil local introuvable dans le store" });
+      return;
+    }
+
+    const acceptedLink: any = (profileFriendLinks || []).find((link: any) => {
+      return link?.direction === "outgoing"
+        && String(link?.status || "").toLowerCase() === "accepted"
+        && String(link?.localProfileId || "") === pid;
+    });
+
+    if (!acceptedLink?.id) {
+      setToast({ type: "error", message: "Association validée introuvable localement. Recharge la page puis réessaie." });
+      return;
+    }
+
     setToast({ type: "success", message: "Synchronisation des stats associées en cours…" });
+
+    let statsWriteOk = false;
+    let snapshotPushOk = false;
+    let lastError: any = null;
+
     try {
       try { invalidateLinkedProfileProjectionCache(); } catch {}
 
-      // 1) Met à jour les liens acceptés : stats_meta côté propriétaire + overrides côté compte ami.
-      await refreshProfileFriendLinks();
+      // 1) On calcule uniquement les stats du profil local demandé.
+      // IMPORTANT : on ne relance plus refreshProfileFriendLinks() ici.
+      // Cette fonction faisait un GET /online/profile-links avant/après la synchro et pouvait bloquer
+      // tout le flux sur NAS lent, alors que le lien est déjà connu dans profileFriendLinks.
+      const miniStats = await getStatsHubAlignedProfileMiniStats(pid, localProfile?.name || localProfile?.displayName);
+      const meta = {
+        syncedAt: new Date().toISOString(),
+        manual: true,
+        ...buildProfileLinkStatsMeta(localProfile, miniStats),
+      };
 
-      // 2) Publie immédiatement le snapshot NAS du compte courant.
-      // C’est indispensable côté propriétaire du profil local : sinon le compte associé ne peut lire
-      // que l’ancien snapshot et les pages Stats restent vides/hors Home.
-      const nas = await import("../lib/manualNasSync");
-      if (typeof nas.pushNasAccountSnapshot === "function") {
-        await nas.pushNasAccountSnapshot();
-      } else {
-        if (typeof nas.markNasSyncDirty === "function") nas.markNasSyncDirty("manual_linked_profile_stats_sync");
-        if (typeof nas.pushNasSyncDirtyReason === "function") nas.pushNasSyncDirtyReason("manual_linked_profile_stats_sync");
+      // 2) Mise à jour courte du lien accepté côté NAS.
+      // Si Cloudflare/NAS répond trop lentement, on continue quand même le push snapshot :
+      // le serveur peut terminer l'UPDATE après l'abort client, et le snapshot reste la source complète.
+      try {
+        await updateProfileFriendLinkStats(String(acceptedLink.id || ""), meta);
+        statsWriteOk = true;
+      } catch (error) {
+        lastError = error;
+        console.warn("[Profiles] linked stats_meta update failed, continuing with NAS snapshot push", error);
       }
 
-      // 3) Recharge la projection liée après publication pour forcer les écrans stats à relire la source correcte.
-      try { invalidateLinkedProfileProjectionCache(); } catch {}
-      await refreshProfileFriendLinks();
+      // 3) Push immédiat du snapshot du compte propriétaire du profil local.
       try {
-        window.dispatchEvent(new CustomEvent("dc-linked-profile-stats-updated", { detail: { reason: "manual-linked-profile-sync", profileId: profileId || null } }));
-        window.dispatchEvent(new CustomEvent("dc-profile-links-updated", { detail: { reason: "manual-linked-profile-sync", profileId: profileId || null } }));
+        const nas = await import("../lib/manualNasSync");
+        if (typeof nas.pushNasAccountSnapshot === "function") {
+          await nas.pushNasAccountSnapshot();
+          snapshotPushOk = true;
+        } else {
+          if (typeof nas.markNasSyncDirty === "function") nas.markNasSyncDirty("manual_linked_profile_stats_sync");
+          if (typeof nas.pushNasSyncDirtyReason === "function") nas.pushNasSyncDirtyReason("manual_linked_profile_stats_sync");
+          snapshotPushOk = true;
+        }
+      } catch (error) {
+        lastError = error;
+        console.warn("[Profiles] linked stats NAS snapshot push failed", error);
+      }
+
+      try { invalidateLinkedProfileProjectionCache(); } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent("dc-linked-profile-stats-updated", { detail: { reason: "manual-linked-profile-sync", profileId: pid, statsWriteOk, snapshotPushOk } }));
+        window.dispatchEvent(new CustomEvent("dc-profile-links-updated", { detail: { reason: "manual-linked-profile-sync", profileId: pid, statsWriteOk, snapshotPushOk } }));
         window.dispatchEvent(new Event("dc-store-updated"));
       } catch {}
 
-      setToast({ type: "success", message: "Stats associées synchronisées" });
+      if (statsWriteOk && snapshotPushOk) {
+        setToast({ type: "success", message: "Stats associées synchronisées" });
+      } else if (snapshotPushOk) {
+        setToast({ type: "success", message: "Snapshot NAS envoyé. Stats du lien en attente côté serveur." });
+      } else if (statsWriteOk) {
+        setToast({ type: "success", message: "Stats du lien enregistrées. Snapshot NAS à relancer." });
+      } else {
+        throw lastError || new Error("Synchronisation impossible : NAS indisponible");
+      }
     } catch (error: any) {
       console.warn("[Profiles] manual linked profile stats sync failed", error);
       setToast({ type: "error", message: error?.message || "Erreur synchronisation stats associées" });
     }
-  }, [auth.status, refreshProfileFriendLinks]);
+  }, [auth.status, store, profileFriendLinks]);
 
 
   React.useEffect(() => {
