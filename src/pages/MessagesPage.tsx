@@ -1033,15 +1033,23 @@ export default function MessagesPage({ store, update, go }: Props) {
   const displayedMessages = selectedThread ? selectedThread.messages : [];
 
   const counters = {
+    // À TRAITER = uniquement ce qui arrive chez le compte actif.
+    // Les éléments envoyés ne doivent plus gonfler le badge global ni la pastille BottomNav.
     messages: unreadPrivateMessages,
-    requests: incomingFriendRequests.length + outgoingFriendRequests.length,
+    requests: incomingFriendRequests.length,
     shares: incomingShares.filter((s) => String(s.status || "pending") === "pending").length,
-    links: profileLinks.filter((l) => String(l.status || "pending") === "pending").length,
+    links: incomingProfileLinks.filter((l) => String(l.status || "pending") === "pending").length,
     invites: salonInvites.length,
     system: systemNotifications.length,
   };
 
   const totalPending = counters.messages + counters.requests + counters.shares + counters.links + counters.invites + counters.system;
+
+  React.useEffect(() => {
+    // Synchronise immédiatement le compteur de cette page avec la BottomNav.
+    // Comme ça, À TRAITER et le badge Messages en bas affichent toujours la même valeur.
+    broadcastMessageBadge(totalPending);
+  }, [totalPending]);
 
   const loadAll = React.useCallback(async () => {
     setLoading(true);
@@ -1079,7 +1087,9 @@ export default function MessagesPage({ store, update, go }: Props) {
   }, [messageThreads, selectedThreadUserId]);
 
   React.useEffect(() => {
-    if (active !== "messages" || !selectedThread?.id) return;
+    // Ne marque pas les messages comme lus tant qu'on est sur la racine T'Chat.
+    // Le badge doit rester visible sur l'icône Messenger ET sur l'avatar de l'ami.
+    if (active !== "messages" || !chatFullscreen || !selectedThread?.id) return;
     const unreadIncoming = selectedThread.messages.filter((m: any) => m?.direction !== "outgoing" && !m?.readAt && m?.id);
     if (!unreadIncoming.length) return;
     let cancelled = false;
@@ -1098,7 +1108,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [active, selectedThread?.id, selectedThread?.messages, totalPending]);
+  }, [active, chatFullscreen, selectedThread?.id, selectedThread?.messages, totalPending]);
 
   React.useEffect(() => {
     if (active !== "messages") return;
@@ -1430,8 +1440,8 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   const actionItems = [
     { label: "Messages", count: counters.messages, tone: GOLD, tab: "messages" as MsgTab, detail: "Messages privés non lus." },
-    { label: "Amis", count: counters.requests, tone: "#c78bff", tab: "requests" as MsgTab, detail: "Demandes d'amis en attente." },
-    { label: "Associations profils", count: counters.links, tone: BLUE, tab: "links" as MsgTab, detail: "Liens profil local ↔ compte ami à traiter." },
+    { label: "Amis", count: counters.requests, tone: "#c78bff", tab: "requests" as MsgTab, detail: "Demandes d'amis reçues en attente." },
+    { label: "Associations profils", count: counters.links, tone: BLUE, tab: "links" as MsgTab, detail: "Demandes d'association reçues à traiter." },
     { label: "Invitations jeu Online", count: counters.invites, tone: GREEN, tab: "invites" as MsgTab, detail: "Invitations ou salons online." },
     { label: "Cartes parties reçues", count: counters.shares, tone: GOLD, tab: "shares" as MsgTab, detail: "Partages de parties / stats historiques." },
     { label: "Notifs", count: counters.system, tone: RED, tab: "system" as MsgTab, detail: "Notifications système." },
@@ -2145,16 +2155,38 @@ export default function MessagesPage({ store, update, go }: Props) {
             const list = dedupedProfileLinks.filter((l) => baseIds.has(l.id));
             return list.length ? <div style={{ display: "grid", gap: 10 }}>{list.map((link) => {
               const incoming = link.direction !== "outgoing";
-              const user = incoming ? link.requesterUser : link.targetUser;
               const tone = statusColor(link.status);
+              const requester = link.requesterUser;
+              const receiver = link.targetUser;
+              const localProfile = {
+                id: link.localProfileId,
+                userId: link.localProfileId,
+                displayName: link.localProfileName || link.localProfileId || "Profil local",
+                nickname: link.localProfileName || link.localProfileId || "Profil local",
+                avatarUrl: link.localProfileAvatarUrl || link.statsMeta?.localProfileAvatarUrl || link.statsMeta?.avatarUrl || link.statsMeta?.avatar || "",
+                status: "offline",
+              };
               return <div key={link.id} style={cardStyle({ borderColor: `${tone}55` })}>
-                <div style={{ display: "grid", gridTemplateColumns: "auto 28px auto 1fr auto", gap: 8, alignItems: "center" }}>
-                  <AvatarBubble user={incoming ? link.requesterUser : link.targetUser} size={48} />
-                  <div style={{ color: tone, fontWeight: 1000, textAlign: "center" }}>→</div>
-                  <AvatarBubble user={incoming ? link.targetUser : link.requesterUser} size={48} />
-                  <div style={{ minWidth: 0 }}>
-                    <b style={{ color: "#fff" }}>{incoming ? "Demande reçue" : "Demande envoyée"}</b>
-                    <div style={{ color: "rgba(255,255,255,.60)", fontSize: 11, marginTop: 2 }}>Profil local : {link.localProfileName || link.localProfileId}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}>
+                  <div style={{ display: "grid", justifyItems: "center", gap: 5, minWidth: 58 }}>
+                    <AvatarBubble user={requester} size={50} />
+                    <div style={{ maxWidth: 70, color: "#fff", fontSize: 10, fontWeight: 1000, lineHeight: 1.05, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>Demandeur</div>
+                  </div>
+                  <div style={{ border: `1px solid ${tone}44`, borderRadius: 18, padding: 9, background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.20))", minWidth: 0 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 22px auto", gap: 8, alignItems: "center", justifyContent: "start" }}>
+                      <div style={{ display: "grid", justifyItems: "center", gap: 4 }}>
+                        <AvatarBubble user={localProfile} size={42} showStatus={false} />
+                        <span style={{ maxWidth: 88, color: BLUE, fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Profil local</span>
+                      </div>
+                      <div style={{ color: tone, fontWeight: 1000, textAlign: "center" }}>→</div>
+                      <div style={{ display: "grid", justifyItems: "center", gap: 4 }}>
+                        <AvatarBubble user={receiver} size={42} />
+                        <span style={{ maxWidth: 88, color: GREEN, fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Compte ami</span>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 7, color: "rgba(255,255,255,.72)", fontSize: 11, fontWeight: 850, lineHeight: 1.25 }}>
+                      <b style={{ color: "#fff" }}>{incoming ? "Demande reçue" : "Demande envoyée"}</b> · {asUserName(requester)} demande à associer <b style={{ color: BLUE }}>{link.localProfileName || link.localProfileId}</b> au compte <b style={{ color: GREEN }}>{asUserName(receiver)}</b>.
+                    </div>
                   </div>
                   <Pill tone={tone}>{statusLabel(link.status)}</Pill>
                 </div>
