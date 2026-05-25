@@ -10,6 +10,7 @@ import {
   refuseSharedMatch,
   respondFriendRequest,
   respondProfileFriendLink,
+  deleteProfileFriendLink,
   sendPrivateMessage,
   markPrivateMessageRead,
   markPrivateThreadRead,
@@ -26,8 +27,8 @@ import ProfileStarRing from "../components/ProfileStarRing";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
 type ChatMode = "messenger" | "group" | "rooms" | "announces";
-type LocalChatGroup = { id: string; name: string; memberIds: string[]; createdAt: string; lastMessage?: string };
-type LocalChatRoom = { id: string; title: string; topic: string; createdAt: string; ttlMinutes: number; members: number };
+type LocalChatGroup = { id: string; name: string; memberIds: string[]; createdAt: string; lastMessage?: string; messages?: Array<{ id: string; text: string; author: string; createdAt: string }> };
+type LocalChatRoom = { id: string; title: string; topic: string; createdAt: string; ttlMinutes: number; members: number; messages?: Array<{ id: string; text: string; author: string; createdAt: string; expiresAt: string }> };
 type LocalAnnouncement = { id: string; title: string; text: string; createdAt: string; author?: string; status: "published" | "blocked"; reason?: string };
 
 type Props = {
@@ -696,11 +697,20 @@ function saveLocalJson(key: string, value: any) {
 }
 
 function guardAnnouncement(title: string, text: string): { ok: boolean; reason?: string } {
-  const raw = `${title} ${text}`.toLowerCase();
-  const forbidden = ["insulte", "haine", "violence", "arnaque", "crypto", "casino", "drogue", "sexe", "porn", "raciste", "menace"];
+  return guardCommunityContent(`${title} ${text}`, "Annonce");
+}
+
+function guardCommunityContent(text: string, kind = "Message"): { ok: boolean; reason?: string } {
+  const raw = String(text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const forbidden = [
+    "sexe", "sexuel", "porn", "porno", "nude", "nu ", "nue", "demoiselle", "jeune fille",
+    "pute", "salope", "encule", "encu", "fdp", "connard", "conasse", "batard",
+    "raciste", "haine", "menace", "violence", "drogue", "cannabis", "cocaine",
+    "arnaque", "casino", "crypto", "telegram", "snap", "whatsapp",
+  ];
   const hit = forbidden.find((w) => raw.includes(w));
-  if (hit) return { ok: false, reason: `Annonce bloquée par garde-fou local : mot sensible détecté (${hit}).` };
-  if (raw.trim().length < 8) return { ok: false, reason: "Annonce trop courte." };
+  if (hit) return { ok: false, reason: `${kind} bloqué par IA Admin : contenu interdit détecté.` };
+  if (raw.trim().length < 2) return { ok: false, reason: `${kind} trop court.` };
   return { ok: true };
 }
 
@@ -751,6 +761,11 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
   const [chatFullscreen, setChatFullscreen] = React.useState(false);
+  const [selectedGroupId, setSelectedGroupId] = React.useState("");
+  const [selectedRoomId, setSelectedRoomId] = React.useState("");
+  const [communityText, setCommunityText] = React.useState("");
+  const [renamingGroupId, setRenamingGroupId] = React.useState("");
+  const [renameGroupValue, setRenameGroupValue] = React.useState("");
   const [openMessageMenuId, setOpenMessageMenuId] = React.useState("");
   const [messageMenuPosition, setMessageMenuPosition] = React.useState<{ top: number; left: number; side: "left" | "right" }>({ top: 0, left: 0, side: "right" });
   const [notifPermission, setNotifPermission] = React.useState<NotificationPermission | "unsupported">(() => {
@@ -940,7 +955,72 @@ export default function MessagesPage({ store, update, go }: Props) {
     const item: LocalAnnouncement = { id: `ann_${Date.now()}`, title: title || "Annonce", text: text || "—", createdAt: new Date().toISOString(), author: store?.profile?.displayName || store?.activeProfile?.name || "Moi", status: guard.ok ? "published" : "blocked", reason: guard.reason };
     setAnnouncements((prev) => [item, ...prev].slice(0, 50));
     if (guard.ok) { setAnnouncementTitle(""); setAnnouncementText(""); setInfo("Annonce publiée ✅"); }
-    else setError(guard.reason || "Annonce bloquée.");
+    else setError(guard.reason || "Annonce bloquée par IA Admin.");
+  }
+
+  function deleteAnnouncement(id: string) {
+    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+    setInfo("Annonce supprimée ✅");
+  }
+
+  function openGroupChat(groupId: string) {
+    setSelectedGroupId(groupId);
+    setSelectedRoomId("");
+    setSelectedThreadUserId("");
+    setCommunityText("");
+    setChatFullscreen(true);
+    setInfo(null);
+    setError(null);
+  }
+
+  function openRoomChat(roomId: string) {
+    setSelectedRoomId(roomId);
+    setSelectedGroupId("");
+    setSelectedThreadUserId("");
+    setCommunityText("");
+    setChatFullscreen(true);
+    setInfo(null);
+    setError(null);
+  }
+
+  function sendGroupMessage() {
+    const text = communityText.trim();
+    const guard = guardCommunityContent(text, "Message de groupe");
+    if (!guard.ok) { setError(guard.reason || "Message bloqué par IA Admin."); return; }
+    setGroups((prev) => prev.map((g) => g.id === selectedGroupId ? { ...g, lastMessage: text, messages: [...(g.messages || []), { id: `gmsg_${Date.now()}`, text, author: "Moi", createdAt: new Date().toISOString() }] } : g));
+    setCommunityText("");
+    setInfo(null);
+    setError(null);
+  }
+
+  function sendRoomMessage() {
+    const text = communityText.trim();
+    const guard = guardCommunityContent(text, "Message de salon");
+    if (!guard.ok) { setError(guard.reason || "Message bloqué par IA Admin."); return; }
+    const now = Date.now();
+    setRooms((prev) => prev.map((r) => {
+      if (r.id !== selectedRoomId) return r;
+      const ttl = Math.max(5, Math.min(10, Number(r.ttlMinutes || 10)));
+      const alive = (r.messages || []).filter((m) => Date.parse(m.expiresAt || "") > now);
+      return { ...r, messages: [...alive, { id: `rmsg_${now}`, text, author: "Moi", createdAt: new Date(now).toISOString(), expiresAt: new Date(now + ttl * 60_000).toISOString() }] };
+    }));
+    setCommunityText("");
+    setInfo(null);
+    setError(null);
+  }
+
+  function startRenameGroup(group: LocalChatGroup) {
+    setRenamingGroupId(group.id);
+    setRenameGroupValue(group.name || "");
+  }
+
+  function saveRenameGroup() {
+    const nextName = renameGroupValue.trim();
+    if (!renamingGroupId || !nextName) return;
+    setGroups((prev) => prev.map((g) => g.id === renamingGroupId ? { ...g, name: nextName } : g));
+    setRenamingGroupId("");
+    setRenameGroupValue("");
+    setInfo("Groupe renommé ✅");
   }
 
   const selectedThreadBase = messageThreads.find((t) => t.id === selectedThreadUserId) || null;
@@ -1285,6 +1365,10 @@ export default function MessagesPage({ store, update, go }: Props) {
     setConversationOptionsOpen(false);
     setReplyToMessage(null);
     setEditingMessageId("");
+    setSelectedGroupId("");
+    setSelectedRoomId("");
+    setInfo(null);
+    setError(null);
     if (unread > 0) {
       const now = new Date().toISOString();
       setPrivateMessages((prev) => prev.map((m: any) => {
@@ -1331,6 +1415,19 @@ export default function MessagesPage({ store, update, go }: Props) {
     { id: "announces", label: "Annonces", description: "Les joueurs peuvent laisser des annonces visibles de tous", badge: 0, tone: GOLD },
   ];
 
+  const dedupedProfileLinks = React.useMemo(() => {
+    const map = new Map<string, ProfileFriendLink>();
+    for (const link of profileLinks || []) {
+      const key = `${link.direction || ""}:${link.localProfileId || ""}:${userIdOf(link.direction === "outgoing" ? link.targetUser : link.requesterUser) || link.id}`;
+      const prev = map.get(key);
+      if (!prev || Date.parse(String(link.updatedAt || link.createdAt || "")) > Date.parse(String(prev.updatedAt || prev.createdAt || ""))) map.set(key, link);
+    }
+    return Array.from(map.values());
+  }, [profileLinks]);
+
+  const selectedGroup = selectedGroupId ? groups.find((g) => g.id === selectedGroupId) || null : null;
+  const selectedRoom = selectedRoomId ? rooms.find((r) => r.id === selectedRoomId) || null : null;
+
   const actionItems = [
     { label: "Messages", count: counters.messages, tone: GOLD, tab: "messages" as MsgTab, detail: "Messages privés non lus." },
     { label: "Amis", count: counters.requests, tone: "#c78bff", tab: "requests" as MsgTab, detail: "Demandes d'amis en attente." },
@@ -1340,6 +1437,35 @@ export default function MessagesPage({ store, update, go }: Props) {
     { label: "Notifs", count: counters.system, tone: RED, tab: "system" as MsgTab, detail: "Notifications système." },
   ];
 
+
+  if (active === "messages" && chatFullscreen && (selectedGroup || selectedRoom)) {
+    const isRoom = !!selectedRoom;
+    const title = selectedGroup?.name || selectedRoom?.title || "Discussion";
+    const subtitle = isRoom ? `Salon public • messages ${selectedRoom?.ttlMinutes || 10} min` : `${selectedGroup?.memberIds?.length || 0} amis`;
+    const roomMessages = selectedRoom ? (selectedRoom.messages || []).filter((m) => Date.parse(m.expiresAt || "") > Date.now()) : [];
+    const groupMessages = selectedGroup ? (selectedGroup.messages || []) : [];
+    const items = isRoom ? roomMessages : groupMessages;
+    return (
+      <div className="container" style={{ position: "fixed", inset: 0, zIndex: 2147483000, width: "100vw", height: "100dvh", padding: 0, margin: 0, color: "#f5f5f7", background: "radial-gradient(820px 360px at 50% -10%, rgba(199,139,255,.16), transparent 60%), linear-gradient(180deg, #0b0d15 0%, #05060a 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flex: "0 0 auto", padding: "12px", minHeight: 64, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${STROKE}`, background: "linear-gradient(180deg, rgba(255,255,255,.070), rgba(255,255,255,.018))" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <RoundMessengerButton title="Retour" tone={isRoom ? GREEN : "#c78bff"} onClick={() => { setChatFullscreen(false); setSelectedGroupId(""); setSelectedRoomId(""); setInfo(null); setError(null); }}><MessengerToolIcon name="back" size={22} /></RoundMessengerButton>
+            <div style={{ width: 42, height: 42, borderRadius: 16, display: "grid", placeItems: "center", border: `1px solid ${isRoom ? GREEN : "#c78bff"}66`, background: "rgba(255,255,255,.06)", fontSize: 22 }}>{isRoom ? "💬" : "👥"}</div>
+            <div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontWeight: 1000, fontSize: 13 }}>T'Chat Messenger</div><div style={{ color: "#fff", fontWeight: 1000, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 11, fontWeight: 800 }}>{subtitle}</div></div>
+          </div>
+          {selectedGroup ? <RoundMessengerButton title="Renommer le groupe" tone={GOLD} onClick={() => startRenameGroup(selectedGroup)}><ChatActionIcon name="edit" /></RoundMessengerButton> : null}
+        </div>
+        {renamingGroupId === selectedGroup?.id ? <div style={{ margin: "10px 12px 0", ...cardStyle({ borderRadius: 16, padding: 10, borderColor: "rgba(255,213,106,.45)" }) }}><input value={renameGroupValue} onChange={(e) => setRenameGroupValue((e.target as HTMLInputElement).value)} placeholder="Nouveau nom du groupe" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} /><div style={{ display: "flex", gap: 8, marginTop: 8 }}><ActionButton label="Enregistrer" tone={GOLD} onClick={saveRenameGroup} /><ActionButton label="Annuler" tone={RED} onClick={() => setRenamingGroupId("")} /></div></div> : null}
+        {info ? <div style={{ margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(125,255,178,.35)", color: GREEN }) }}>{info}</div> : null}
+        {error ? <div style={{ margin: "8px 12px 0", ...cardStyle({ borderRadius: 14, padding: "8px 10px", borderColor: "rgba(255,100,100,.45)", color: RED }) }}>Erreur : {error}</div> : null}
+        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "14px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
+          {isRoom ? <div style={{ ...cardStyle({ borderRadius: 14, padding: 10, borderColor: "rgba(125,255,178,.35)", color: GREEN }) }}>🛡️ IA Admin active : messages insultants, sexuels, haineux ou hors charte bloqués. Suppression automatique après {selectedRoom?.ttlMinutes || 10} minutes.</div> : <div style={{ ...cardStyle({ borderRadius: 14, padding: 10, borderColor: "rgba(199,139,255,.35)" }) }}>Groupe privé avec {selectedGroup?.memberIds?.length || 0} amis. Clique sur le crayon pour renommer.</div>}
+          {items.length ? items.map((m) => <div key={m.id} style={{ alignSelf: "flex-end", maxWidth: "82%", border: `1px solid ${isRoom ? GREEN : "#c78bff"}55`, borderRadius: "15px 15px 5px 15px", padding: "8px 10px", background: "linear-gradient(180deg, rgba(125,255,178,.13), rgba(0,0,0,.20))" }}><div style={{ color: "#fff", fontSize: 12.5, whiteSpace: "pre-wrap" }}>{m.text}</div><div style={{ color: "rgba(255,255,255,.48)", fontSize: 10, fontWeight: 800, textAlign: "right", marginTop: 4 }}>{asDate(m.createdAt)}{(m as any).expiresAt ? ` • expire ${asDate((m as any).expiresAt)}` : ""}</div></div>) : <EmptyCard icon={isRoom ? "💬" : "👥"} title="Aucun message" text="Écris le premier message de cette discussion." />}
+        </div>
+        <div style={{ flex: "0 0 auto", padding: "10px 12px 14px", borderTop: `1px solid ${STROKE}`, background: "rgba(5,6,10,.94)" }}><textarea value={communityText} onChange={(e) => setCommunityText((e.target as HTMLTextAreaElement).value)} rows={2} placeholder={isRoom ? "Message éphémère du salon…" : "Message du groupe…"} style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${STROKE}`, borderRadius: 16, padding: "12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none", resize: "none" }} /><div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><ActionButton label="Envoyer" tone={isRoom ? GREEN : "#c78bff"} onClick={isRoom ? sendRoomMessage : sendGroupMessage} /></div></div>
+      </div>
+    );
+  }
 
   if (active === "messages" && chatFullscreen && selectedThread) {
     const st = presenceState(selectedThread.user?.status || selectedThread.user?.presenceStatus || selectedThread.user?.presence_status);
@@ -1960,10 +2086,12 @@ export default function MessagesPage({ store, update, go }: Props) {
                 <ActionButton label={`Créer le groupe (${selectedGroupIds.length})`} tone="#c78bff" onClick={createGroup} />
               </div>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                {groups.length ? groups.map((g) => <div key={g.id} style={cardStyle({ padding: 11, borderColor: "rgba(199,139,255,.28)" })}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{g.name}</b><Pill tone="#c78bff">{g.memberIds.length} amis</Pill></div>
+                {groups.length ? groups.map((g) => <button key={g.id} type="button" onClick={() => openGroupChat(g.id)} style={{ ...cardStyle({ padding: 11, borderColor: "rgba(199,139,255,.28)" }), width: "100%", textAlign: "left", cursor: "pointer" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b>{g.name}</b><div style={{ display: "flex", gap: 6, alignItems: "center" }}><Pill tone="#c78bff">{g.memberIds.length} amis</Pill><button type="button" onClick={(e) => { e.stopPropagation(); startRenameGroup(g); }} style={{ border: `1px solid ${GOLD}66`, background: "rgba(255,213,106,.12)", color: GOLD, borderRadius: 10, padding: "5px 8px", fontWeight: 1000 }}>Renommer</button></div></div>
+                  {renamingGroupId === g.id ? <div onClick={(e) => e.stopPropagation()} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginTop: 8 }}><input value={renameGroupValue} onChange={(e) => setRenameGroupValue((e.target as HTMLInputElement).value)} placeholder="Nom du groupe" style={{ border: `1px solid ${STROKE}`, borderRadius: 12, padding: "8px 10px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850 }} /><button type="button" onClick={saveRenameGroup} style={{ border: `1px solid ${GREEN}66`, background: "rgba(125,255,178,.12)", color: GREEN, borderRadius: 12, padding: "8px 10px", fontWeight: 1000 }}>OK</button></div> : null}
                   <div style={{ marginTop: 8, display: "flex", gap: 6 }}>{g.memberIds.slice(0, 8).map((id) => <AvatarBubble key={id} user={allMessengerContacts.find((u:any)=>userIdOf(u)===id)} size={30} />)}</div>
-                </div>) : <EmptyCard icon="👥" title="Aucun groupe" text="Sélectionne au moins 2 amis pour créer un groupe Messenger." />}
+                  <div style={{ color: "rgba(255,255,255,.54)", fontSize: 11, marginTop: 7 }}>Clique pour ouvrir la discussion du groupe.</div>
+                </button>) : <EmptyCard icon="👥" title="Aucun groupe" text="Sélectionne au moins 2 amis pour créer un groupe Messenger." />}
               </div>
             </div>
           ) : chatMode === "rooms" ? (
@@ -1978,13 +2106,13 @@ export default function MessagesPage({ store, update, go }: Props) {
                 {rooms.length ? rooms.map((r) => <div key={r.id} style={cardStyle({ padding: 11, borderColor: "rgba(125,255,178,.28)" })}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{r.title}</b><Pill tone={GREEN}>{r.ttlMinutes} min</Pill></div>
                   <div style={{ color: "rgba(255,255,255,.62)", fontSize: 12, marginTop: 4 }}>{r.topic}</div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}><ActionButton label="Rejoindre" tone={GREEN} onClick={() => setInfo(`Salon ${r.title} rejoint ✅`)} /><ActionButton label="Quitter" tone={RED} onClick={() => setInfo(`Salon ${r.title} quitté`)} /></div>
+                  <div style={{ color: GREEN, fontSize: 11, fontWeight: 850, marginTop: 7 }}>🛡️ IA Admin + messages éphémères</div><div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}><ActionButton label="Rejoindre" tone={GREEN} onClick={() => openRoomChat(r.id)} /><ActionButton label="Quitter" tone={RED} onClick={() => setInfo(`Salon ${r.title} quitté`)} /><ActionButton label="Supprimer" tone={RED} onClick={() => setRooms((prev) => prev.filter((x) => x.id !== r.id))} /></div>
                 </div>) : <EmptyCard icon="💬" title="Aucun salon actif" text="Crée un salon public ; les messages y seront traités comme éphémères côté UI." />}
               </div>
             </div>
           ) : (
             <div style={cardStyle({ borderColor: "rgba(255,213,106,.30)" })}>
-              <SectionTitle title="Petites annonces" subtitle="Publier une annonce liée à l’application avec garde-fou local anti-contenu interdit." badge={announcements.filter(a => a.status === "published").length} />
+              <SectionTitle title="Petites annonces" subtitle="Publier une annonce liée à l’application — IA Admin bloque contenu sexuel, insultes, haine, arnaques et hors charte." badge={announcements.filter(a => a.status === "published").length} />
               <div style={{ display: "grid", gap: 8 }}>
                 <input value={announcementTitle} onChange={(e) => setAnnouncementTitle((e.target as HTMLInputElement).value)} placeholder="Titre de l’annonce…" style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
                 <textarea value={announcementText} onChange={(e) => setAnnouncementText((e.target as HTMLTextAreaElement).value)} placeholder="Ex : cherche joueurs ce soir, vends cible, tournoi baby-foot…" rows={3} style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 800, outline: "none", resize: "vertical" }} />
@@ -1992,7 +2120,7 @@ export default function MessagesPage({ store, update, go }: Props) {
               </div>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
                 {announcements.length ? announcements.map((a) => <div key={a.id} style={cardStyle({ padding: 11, borderColor: a.status === "blocked" ? `${RED}55` : `${GOLD}44` })}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><b>{a.title}</b><Pill tone={a.status === "blocked" ? RED : GOLD}>{a.status === "blocked" ? "Bloquée" : "Publiée"}</Pill></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><b>{a.title}</b><div style={{ display: "flex", gap: 6, alignItems: "center" }}><Pill tone={a.status === "blocked" ? RED : GOLD}>{a.status === "blocked" ? "Bloquée IA" : "Publiée"}</Pill><button type="button" onClick={() => deleteAnnouncement(a.id)} style={{ border: `1px solid ${RED}66`, background: "rgba(255,123,123,.10)", color: RED, borderRadius: 10, padding: "5px 8px", fontWeight: 1000 }}>Supprimer</button></div></div>
                   <div style={{ color: "rgba(255,255,255,.70)", fontSize: 12, marginTop: 6 }}>{a.status === "blocked" ? a.reason : a.text}</div>
                 </div>) : <EmptyCard icon="📣" title="Aucune annonce" text="Publie une petite annonce liée à l’application ou à tes parties." />}
               </div>
@@ -2008,36 +2136,39 @@ export default function MessagesPage({ store, update, go }: Props) {
             <LabeledChoiceButton active={linkView === "received"} label="Reçues" badge={incomingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GREEN} onClick={() => setLinkView("received")}><MessageCenterTabIcon name="links" size={22} /></LabeledChoiceButton>
             <LabeledChoiceButton active={linkView === "sent"} label="Envoyées" badge={outgoingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GOLD} onClick={() => setLinkView("sent")}><ChatActionIcon name="share" size={21} /></LabeledChoiceButton>
           </div>
-          {linkedAccepted.length ? (
-            <div style={cardStyle({ marginBottom: 12, borderColor: "rgba(121,200,255,.34)" })}>
-              <div style={{ color: BLUE, fontWeight: 1000, marginBottom: 8 }}>Profils liés validés</div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {linkedAccepted.map((link) => {
-                  const user = link.direction === "outgoing" ? link.targetUser : link.requesterUser;
-                  return <div key={`linked-${link.id}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", border: `1px solid ${STROKE}`, borderRadius: 14, padding: 9, background: "rgba(255,255,255,.03)" }}>
-                    <div><b>{link.localProfileName || link.localProfileId}</b><div style={{ fontSize: 11, color: "rgba(255,255,255,.58)" }}>lié à {asUserName(user)}</div></div>
-                    <Pill tone={GREEN}>Stats OUI</Pill>
-                  </div>;
-                })}
-              </div>
-            </div>
-          ) : null}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <ActionButton label="Actualiser / synchroniser" tone={BLUE} onClick={() => runAction("Associations actualisées ✅", async () => { await loadAll(); })} />
+          </div>
           {(() => {
-            const list = linkView === "received" ? incomingProfileLinks : outgoingProfileLinks;
+            const baseList = linkView === "received" ? incomingProfileLinks : outgoingProfileLinks;
+            const baseIds = new Set(baseList.map((l) => l.id));
+            const list = dedupedProfileLinks.filter((l) => baseIds.has(l.id));
             return list.length ? <div style={{ display: "grid", gap: 10 }}>{list.map((link) => {
               const incoming = link.direction !== "outgoing";
               const user = incoming ? link.requesterUser : link.targetUser;
               const tone = statusColor(link.status);
               return <div key={link.id} style={cardStyle({ borderColor: `${tone}55` })}>
-                <FriendRequestUserCard user={user} tone={tone} right={<Pill tone={tone}>{statusLabel(link.status)}</Pill>} />
+                <div style={{ display: "grid", gridTemplateColumns: "auto 28px auto 1fr auto", gap: 8, alignItems: "center" }}>
+                  <AvatarBubble user={incoming ? link.requesterUser : link.targetUser} size={48} />
+                  <div style={{ color: tone, fontWeight: 1000, textAlign: "center" }}>→</div>
+                  <AvatarBubble user={incoming ? link.targetUser : link.requesterUser} size={48} />
+                  <div style={{ minWidth: 0 }}>
+                    <b style={{ color: "#fff" }}>{incoming ? "Demande reçue" : "Demande envoyée"}</b>
+                    <div style={{ color: "rgba(255,255,255,.60)", fontSize: 11, marginTop: 2 }}>Profil local : {link.localProfileName || link.localProfileId}</div>
+                  </div>
+                  <Pill tone={tone}>{statusLabel(link.status)}</Pill>
+                </div>
                 <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Pill tone={BLUE}>Profil : {link.localProfileName || link.localProfileId}</Pill>
                   <Pill tone={link.statsShared ? GREEN : GOLD}>Stats : {link.statsShared ? "OUI" : "NON"}</Pill>
                 </div>
-                {incoming && String(link.status || "pending") === "pending" ? <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                  <ActionButton label="Accepter" tone={GREEN} onClick={() => runAction("Association acceptée ✅", () => respondProfileFriendLink(link.id, "accepted"))} />
-                  <ActionButton label="Refuser" tone={RED} onClick={() => runAction("Association refusée", () => respondProfileFriendLink(link.id, "refused"))} />
-                </div> : null}
+                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  {incoming && String(link.status || "pending") === "pending" ? <>
+                    <ActionButton label="Accepter" tone={GREEN} onClick={() => runAction("Association acceptée ✅", () => respondProfileFriendLink(link.id, "accepted"))} />
+                    <ActionButton label="Refuser" tone={RED} onClick={() => runAction("Association refusée", () => respondProfileFriendLink(link.id, "refused"))} />
+                  </> : null}
+                  <ActionButton label="Supprimer" tone={RED} onClick={() => runAction("Association supprimée ✅", () => deleteProfileFriendLink(link.id))} />
+                </div>
               </div>;
             })}</div> : <EmptyCard icon="🔗" title={`Aucune demande ${linkView === "received" ? "reçue" : "envoyée"}`} text="Les associations profil local ↔ compte ami apparaîtront ici." />;
           })()}
