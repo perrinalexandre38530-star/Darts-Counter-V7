@@ -5440,6 +5440,16 @@ function LocalProfilesRefonte({
   const linkStatus = String((currentProfileLink as any)?.status || (current as any)?.privateInfo?.profileFriendLinkStatus || (linkedFriendUserId ? "pending" : "")).toLowerCase();
   const linkStatusLabel = linkStatus === "accepted" ? "Validé par l’ami" : linkStatus === "refused" ? "Refusé" : linkStatus === "pending" ? "En attente d’acceptation" : "Non lié";
   const linkStatsShared = linkStatus === "accepted";
+  const linkedFriendAvatarUrl = String(
+    (linkedFriend as any)?.avatarUrl ||
+    (linkedFriend as any)?.avatar ||
+    (currentProfileLink as any)?.targetUser?.avatarUrl ||
+    (currentProfileLink as any)?.targetUser?.avatar ||
+    (currentProfileLink as any)?.friendAvatarUrl ||
+    (current as any)?.privateInfo?.linkedFriendAvatarUrl ||
+    (current as any)?.linkedFriendAvatarUrl ||
+    ""
+  ).trim();
   const incomingProfileLinks = React.useMemo(() => (profileFriendLinks || []).filter((link: any) => link?.direction === "incoming" && String(link?.status || "") === "pending"), [profileFriendLinks]);
 
 
@@ -5877,16 +5887,18 @@ function LocalProfilesRefonte({
                     />
                   </div>
 
-                  {/* ✅ PATCH 5 — src propre + cache-bust via helper */}
+                  {/* Association acceptée : on affiche l’avatar du compte ami lié, sans écraser l’avatar local stocké. */}
                   <AvatarLite
                     size={AVATAR}
                     src={buildAvatarSrc({
-                      avatarUrl: (renderedCurrent as any)?.avatarUrl || null,
-                      avatarDataUrl: (renderedCurrent as any)?.avatarDataUrl || null,
-                      avatarFullDataUrl: (renderedCurrent as any)?.avatarUrl ? null : ((getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null),
-                      avatarUpdatedAt: (renderedCurrent as any)?.avatarUpdatedAt ?? null,
+                      avatarUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl || null,
+                      avatarDataUrl: linkedFriendAvatarUrl ? null : ((renderedCurrent as any)?.avatarDataUrl || null),
+                      avatarFullDataUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl ? null : ((getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null),
+                      avatarUpdatedAt: linkedFriendAvatarUrl
+                        ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || Date.now())
+                        : ((renderedCurrent as any)?.avatarUpdatedAt ?? null),
                     })}
-                    label={renderedCurrent.name?.[0]?.toUpperCase() || "?"}
+                    label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
                   />
                 </div>
               </div>
