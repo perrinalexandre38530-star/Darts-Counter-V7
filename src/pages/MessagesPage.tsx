@@ -775,6 +775,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [newGroupName, setNewGroupName] = React.useState("");
   const [newGroupAvatarUrl, setNewGroupAvatarUrl] = React.useState("");
   const [newGroupCoverUrl, setNewGroupCoverUrl] = React.useState("");
+  const [groupFriendPickerOpen, setGroupFriendPickerOpen] = React.useState(false);
   const [groupAddMemberOpen, setGroupAddMemberOpen] = React.useState(false);
   const [groupEmojiOpen, setGroupEmojiOpen] = React.useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = React.useState<string[]>([]);
@@ -1633,7 +1634,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     const items = isRoom ? roomMessages : groupMessages;
     return (
       <div className="container" style={{ position: "fixed", inset: 0, zIndex: 2147483000, width: "100vw", height: "100dvh", padding: 0, margin: 0, color: "#f5f5f7", background: "radial-gradient(820px 360px at 50% -10%, rgba(199,139,255,.16), transparent 60%), linear-gradient(180deg, #0b0d15 0%, #05060a 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ flex: "0 0 auto", padding: "12px", minHeight: 64, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${STROKE}`, background: "linear-gradient(180deg, rgba(255,255,255,.070), rgba(255,255,255,.018))" }}>
+        <div style={{ flex: "0 0 auto", padding: "12px", minHeight: 64, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${STROKE}`, background: selectedGroup?.coverUrl ? `linear-gradient(90deg, rgba(5,6,10,.34), rgba(5,6,10,.90)), center/cover url(${selectedGroup.coverUrl})` : "linear-gradient(180deg, rgba(255,255,255,.070), rgba(255,255,255,.018))" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <RoundMessengerButton title="Retour" tone={isRoom ? GREEN : "#c78bff"} onClick={() => { setChatFullscreen(false); setSelectedGroupId(""); setSelectedRoomId(""); setInfo(null); setError(null); }}><MessengerToolIcon name="back" size={22} /></RoundMessengerButton>
             <div style={{ width: 42, height: 42, borderRadius: 16, display: "grid", placeItems: "center", border: `1px solid ${isRoom ? GREEN : "#c78bff"}66`, background: selectedGroup?.avatarUrl ? `center/cover url(${selectedGroup.avatarUrl})` : "rgba(255,255,255,.06)", fontSize: 22, overflow: "hidden" }}>{selectedGroup?.avatarUrl ? null : (isRoom ? "💬" : "👥")}</div>
@@ -2282,24 +2283,32 @@ export default function MessagesPage({ store, update, go }: Props) {
           ) : chatMode === "group" ? (
             <div style={cardStyle({ borderColor: "rgba(199,139,255,.30)" })}>
               <SectionTitle title="Groupes Messenger" subtitle="Créer un groupe de discussion avec plusieurs amis." badge={groups.length} />
-              <div style={{ display: "grid", gap: 9 }}>
-                <input value={newGroupName} onChange={(e) => setNewGroupName((e.target as HTMLInputElement).value)} placeholder="Nom du groupe…" style={{ border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.35)", color: "#fff", fontWeight: 850, outline: "none" }} />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button type="button" onClick={() => groupAvatarInputRef.current?.click?.()} style={{ border: `1px solid ${BLUE}55`, borderRadius: 14, padding: "10px 12px", background: newGroupAvatarUrl ? `linear-gradient(90deg, rgba(0,0,0,.20), rgba(0,0,0,.45)), center/cover url(${newGroupAvatarUrl})` : "rgba(121,200,255,.08)", color: "#fff", fontWeight: 1000 }}>📷 Avatar</button>
-                  <button type="button" onClick={() => groupCoverInputRef.current?.click?.()} style={{ border: `1px solid ${GOLD}55`, borderRadius: 14, padding: "10px 12px", background: newGroupCoverUrl ? `linear-gradient(90deg, rgba(0,0,0,.20), rgba(0,0,0,.45)), center/cover url(${newGroupCoverUrl})` : "rgba(255,213,106,.08)", color: "#fff", fontWeight: 1000 }}>▰ Couverture</button>
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ position: "relative", minHeight: 154, border: `1px solid rgba(199,139,255,.34)`, borderRadius: 24, padding: 12, overflow: "hidden", background: newGroupCoverUrl ? `linear-gradient(90deg, rgba(5,6,10,.25), rgba(5,6,10,.88)), center/cover url(${newGroupCoverUrl})` : "radial-gradient(160px 90px at 86% 0%, rgba(199,139,255,.22), transparent 70%), linear-gradient(180deg, rgba(255,255,255,.060), rgba(255,255,255,.020))", boxShadow: "inset 0 1px 0 rgba(255,255,255,.07), 0 18px 32px rgba(0,0,0,.30)" }}>
+                  <button type="button" title="Importer la couverture" onClick={() => groupCoverInputRef.current?.click?.()} style={{ position: "absolute", top: 10, right: 10, width: 38, height: 38, borderRadius: 999, border: `1px solid ${GOLD}88`, background: "rgba(0,0,0,.45)", color: GOLD, display: "grid", placeItems: "center", boxShadow: `0 0 18px ${GOLD}22`, cursor: "pointer" }}><MessengerToolIcon name="camera" size={18} /></button>
+                  <div style={{ display: "grid", gridTemplateColumns: "76px 1fr 44px", gap: 11, alignItems: "center", minHeight: 96 }}>
+                    <button type="button" title="Importer l’avatar du groupe" onClick={() => groupAvatarInputRef.current?.click?.()} style={{ width: 72, height: 72, borderRadius: 999, border: `1px solid ${BLUE}AA`, background: newGroupAvatarUrl ? `center/cover url(${newGroupAvatarUrl})` : "radial-gradient(circle at 50% 28%, rgba(121,200,255,.20), rgba(0,0,0,.34))", color: BLUE, display: "grid", placeItems: "center", boxShadow: `0 0 24px ${BLUE}28, inset 0 1px 0 rgba(255,255,255,.10)`, cursor: "pointer", overflow: "hidden" }}>{newGroupAvatarUrl ? null : <MessengerToolIcon name="camera" size={26} />}</button>
+                    <div style={{ minWidth: 0, display: "grid", gap: 8 }}>
+                      <div style={{ color: GOLD, fontWeight: 1000, fontSize: 12, textTransform: "uppercase", letterSpacing: .5 }}>Nouveau groupe</div>
+                      <input value={newGroupName} onChange={(e) => setNewGroupName((e.target as HTMLInputElement).value)} placeholder="Nom du groupe…" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${STROKE}`, borderRadius: 14, padding: "11px 12px", background: "rgba(0,0,0,.48)", color: "#fff", fontWeight: 900, outline: "none" }} />
+                      <div style={{ color: "rgba(255,255,255,.62)", fontSize: 11, fontWeight: 800 }}>{selectedGroupIds.length} ami(s) sélectionné(s)</div>
+                    </div>
+                    <button type="button" title="Ajouter des amis" onClick={() => setGroupFriendPickerOpen((v) => !v)} style={{ width: 42, height: 42, borderRadius: 16, border: `1px solid #c78bff88`, background: selectedGroupIds.length ? "rgba(199,139,255,.22)" : "rgba(199,139,255,.10)", color: "#fff", fontSize: 24, lineHeight: 1, fontWeight: 1000, display: "grid", placeItems: "center", boxShadow: "0 0 18px rgba(199,139,255,.24)", cursor: "pointer" }}>+</button>
+                  </div>
+                  {selectedGroupIds.length ? <div style={{ display: "flex", gap: 6, paddingLeft: 86, marginTop: -4, overflowX: "auto" }}>{selectedGroupIds.map((id) => <AvatarBubble key={`sel-grp-${id}`} user={allMessengerContacts.find((u:any) => userIdOf(u) === id)} size={28} selected />)}</div> : null}
                 </div>
                 <input ref={groupAvatarInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => readGroupMediaFile("avatar", (e.target as HTMLInputElement).files?.[0])} />
                 <input ref={groupCoverInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => readGroupMediaFile("cover", (e.target as HTMLInputElement).files?.[0])} />
-                <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "4px 0 8px" }}>
+                {groupFriendPickerOpen ? <div style={{ border: `1px solid rgba(199,139,255,.30)`, borderRadius: 18, padding: 9, background: "rgba(0,0,0,.28)", display: "flex", gap: 10, overflowX: "auto" }}>
                   {allMessengerContacts.map((user: any) => {
                     const id = userIdOf(user); const selected = selectedGroupIds.includes(id);
-                    return <button key={`grp-user-${id}`} type="button" onClick={() => toggleGroupMember(id)} style={{ position: "relative", flex: "0 0 74px", border: `1px solid ${selected ? "#c78bff" : STROKE}`, borderRadius: 18, padding: 8, background: selected ? "rgba(199,139,255,.18)" : "rgba(255,255,255,.035)", color: "#fff", display: "grid", justifyItems: "center", gap: 6 }}>
+                    return <button key={`grp-user-${id}`} type="button" onClick={() => toggleGroupMember(id)} style={{ position: "relative", flex: "0 0 74px", border: `1px solid ${selected ? "#c78bff" : STROKE}`, borderRadius: 18, padding: 8, background: selected ? "rgba(199,139,255,.18)" : "rgba(255,255,255,.035)", color: "#fff", display: "grid", justifyItems: "center", gap: 6, cursor: "pointer" }}>
                       <AvatarBubble user={user} size={46} selected={selected} />
                       <span style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 1000 }}>{asUserName(user)}</span>
                     </button>;
                   })}
-                </div>
-                <ActionButton label={`Créer le groupe (${selectedGroupIds.length})`} tone="#c78bff" onClick={createGroup} />
+                </div> : null}
+                <ActionButton label={`Créer le groupe (${selectedGroupIds.length})`} tone="#c78bff" onClick={createGroup} disabled={selectedGroupIds.length < 2} />
               </div>
               <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
                 {groups.length ? groups.map((g) => {
