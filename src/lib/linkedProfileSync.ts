@@ -9,6 +9,8 @@
 // =============================================================
 import { apiGet, apiPost } from "./apiClient";
 import { History } from "./history";
+import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
+import { unpackJsonFromStorage } from "./imageStorageCodec";
 import type { Profile } from "./types";
 
 export type LinkedProfileSnapshot = {
@@ -133,6 +135,43 @@ function pickAvatar(p: any): string | null {
     p?.photoURL ||
     null
   );
+}
+
+function pickLinkedAccountAvatar(link: any): string | null {
+  return (
+    pickAvatar(link?.targetUser) ||
+    pickAvatar(link?.friend) ||
+    link?.friendAvatarUrl ||
+    link?.friend_avatar_url ||
+    link?.metadata?.friendAvatarUrl ||
+    link?.metadata?.linkedFriendAvatarUrl ||
+    null
+  );
+}
+
+function pickLinkedAccountName(link: any): string {
+  return s(
+    link?.targetUser?.displayName ||
+    link?.targetUser?.nickname ||
+    link?.friend?.displayName ||
+    link?.friend?.nickname ||
+    link?.friendDisplayName ||
+    link?.friend_display_name ||
+    link?.metadata?.linkedFriendName ||
+    ""
+  );
+}
+
+function pickLocalDisplayAvatar(localProfile: any, link: any, friendProfile: any, friendUser: any): string | null {
+  // Pour la FUSION entrante, le profil affiché/recalculé doit être le compte local
+  // receveur. On garde donc son avatar, pas celui du profil local distant.
+  return pickAvatar(localProfile) || pickLinkedAccountAvatar(link) || pickAvatar(friendUser) || pickAvatar(friendProfile) || null;
+}
+
+function pickOutgoingDisplayAvatar(link: any, localProfile: any, friendProfile: any, friendUser: any): string | null {
+  // Pour le propriétaire du profil local associé, on veut afficher l'avatar du
+  // COMPTE AMI associé sur la carte du profil local. C'était inversé avant.
+  return pickLinkedAccountAvatar(link) || pickAvatar(friendUser) || link?.friendAvatarUrl || pickAvatar(friendProfile) || pickAvatar(localProfile) || null;
 }
 
 
@@ -301,8 +340,8 @@ function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any,
 
   const localId = s(localProfile?.id || localProfile?.profileId || localProfile?.playerId || localProfile?.userId);
   if (!localId) return obj;
-  const localName = pickName(friendProfile) || pickName(localProfile) || pickName(friendUser) || localId;
-  const localAvatar = pickAvatar(friendProfile) || pickAvatar(friendUser) || pickAvatar(localProfile) || null;
+  const localName = pickName(localProfile) || pickName(friendProfile) || pickName(friendUser) || localId;
+  const localAvatar = pickAvatar(localProfile) || pickAvatar(friendProfile) || pickAvatar(friendUser) || null;
   const remoteIds = collectRemoteIdentityValues(friendProfile, friendUser).filter((id) => id && id !== localId);
 
   const maybeRewritePlayer = (p: any) => {
@@ -354,7 +393,8 @@ function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any,
   for (const key of [
     "avg3ByPlayer", "avgByPlayer", "scoreByPlayer", "pointsByPlayer", "dartsByPlayer",
     "visitsByPlayer", "detailedByPlayer", "statsByPlayer", "byPlayer", "playersById",
-    "legsByPlayer", "setsByPlayer", "checkoutByPlayer", "coByPlayer", "rankByPlayer"
+    "legsByPlayer", "setsByPlayer", "checkoutByPlayer", "coByPlayer", "rankByPlayer",
+    "dartSetIdsByPlayer", "dartsetIdsByPlayer", "dartPresetIdsByPlayer", "dartSetsByPlayer"
   ]) {
     if (clone[key] && typeof clone[key] === "object" && !Array.isArray(clone[key])) {
       clone[key] = rewriteMapKeys(clone[key], remoteIds, localId);
@@ -443,7 +483,9 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
       ? (link?.localProfileName || pickName(friendProfile) || pickName(friendUser) || pickName(local))
       : (pickName(friendProfile) || pickName(friendUser) || pickName(local));
     const name = sourceName || localId;
-    const avatar = link?.localProfileAvatarUrl || link?.local_profile_avatar_url || pickAvatar(serverLocalProfile) || pickAvatar(friendProfile) || pickAvatar(friendUser) || link?.friendAvatarUrl || pickAvatar(local);
+    const avatar = isIncoming
+      ? pickLocalDisplayAvatar(local, link, friendProfile, friendUser)
+      : pickOutgoingDisplayAvatar(link, local, friendProfile, friendUser);
 
     const projected = {
       ...local,
@@ -474,6 +516,195 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
   return { profiles, history, normalizedHint: [], byLocalProfileId, snapshots };
 }
 
+const DARTSETS_LS_KEYS = ["dc_dart_sets_v1", "dc-dartsets-v1", "dc-dartSets-v1", "dc_lite_dartsets_v1", "dc-lite-dartsets-v1"];
+
+function parseMaybeDartSetList(value: any): any[] {
+  if (Array.isArray(value)) return value.filter((x) => x && typeof x === "object");
+  if (!value) return [];
+  if (typeof value === "string") {
+    try {
+      const unpacked = unpackJsonFromStorage<any>(value, null);
+      if (Array.isArray(unpacked)) return unpacked.filter((x: any) => x && typeof x === "object");
+      if (unpacked && typeof unpacked === "object") return Object.values(unpacked).filter((x: any) => x && typeof x === "object");
+    } catch {}
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.filter((x: any) => x && typeof x === "object");
+    } catch {}
+  }
+  if (typeof value === "object") return Object.values(value).filter((x: any) => x && typeof x === "object");
+  return [];
+}
+
+function extractDartSetsFromSnapshotPayload(payload: any): any[] {
+  const st = extractStoreLike(payload);
+  const out: any[] = [];
+  const pushMany = (v: any) => { out.push(...parseMaybeDartSetList(v)); };
+
+  pushMany(st?.dartSets);
+  pushMany(st?.dartsets);
+  pushMany(payload?.dartSets);
+  pushMany(payload?.dartsets);
+  pushMany(payload?.data?.dartSets);
+  pushMany(payload?.data?.dartsets);
+  pushMany(payload?.payload?.dartSets);
+  pushMany(payload?.payload?.dartsets);
+
+  const localStorageDump = payload?.localStorage && typeof payload.localStorage === "object" ? payload.localStorage : null;
+  if (localStorageDump) {
+    for (const key of DARTSETS_LS_KEYS) pushMany(localStorageDump[key]);
+  }
+
+  const byId = new Map<string, any>();
+  for (const ds of out) {
+    const id = s(ds?.id || ds?.dartSetId || ds?.presetId || ds?.name);
+    if (!id) continue;
+    const old = byId.get(id) || {};
+    byId.set(id, { ...old, ...ds, id: s(ds?.id || id) });
+  }
+  return Array.from(byId.values());
+}
+
+function collectDartSetIdsFromRows(rows: any[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (value: any, depth = 0) => {
+    if (!value || depth > 8) return;
+    if (Array.isArray(value)) {
+      value.forEach((x) => visit(x, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") return;
+    for (const key of ["dartSetId", "dartsetId", "dartPresetId", "presetId", "activeDartSetId"]) {
+      const v = value?.[key];
+      if (v != null && s(v)) ids.add(s(v));
+    }
+    const maps = [value?.dartSetIdsByPlayer, value?.dartsetIdsByPlayer, value?.dartPresetIdsByPlayer, value?.dartSetsByPlayer, value?.meta?.dartSetIdsByPlayer, value?.payload?.meta?.dartSetIdsByPlayer];
+    for (const map of maps) {
+      if (map && typeof map === "object") {
+        for (const v of Object.values(map)) if (v != null && s(v)) ids.add(s(v));
+      }
+    }
+    for (const child of Object.values(value)) {
+      if (child && typeof child === "object") visit(child, depth + 1);
+    }
+  };
+  visit(rows, 0);
+  return ids;
+}
+
+function pickDartSetImageLike(ds: any): string {
+  return s(
+    ds?.mainImageUrl ||
+    ds?.thumbImageUrl ||
+    ds?.photoDataUrl ||
+    ds?.imageDataUrl ||
+    ds?.mainImageDataUrl ||
+    ds?.dartSetImageDataUrl ||
+    ds?.photoThumbDataUrl ||
+    ds?.thumbDataUrl ||
+    ds?.thumbImageDataUrl ||
+    ds?.photoUrl ||
+    ds?.imageUrl ||
+    ""
+  );
+}
+
+async function materializeLinkedDartSetsForProjection(projection: LinkedProfileProjection): Promise<number> {
+  try {
+    const snapshots = Array.isArray(projection?.snapshots) ? projection.snapshots : [];
+    if (!snapshots.length) return 0;
+
+    const current = Array.isArray(getAllDartSets()) ? getAllDartSets() as any[] : [];
+    const next = current.slice();
+    let written = 0;
+
+    const upsert = (set: any) => {
+      if (!set?.id) return;
+      const idx = next.findIndex((x: any) => String(x?.id) === String(set.id) && String(x?.profileId) === String(set.profileId));
+      if (idx >= 0) {
+        const prev = next[idx] || {};
+        // Ne pas écraser une image existante par du vide : sinon on recrée les points d'interrogation.
+        next[idx] = {
+          ...prev,
+          ...set,
+          mainImageUrl: set.mainImageUrl || prev.mainImageUrl || "",
+          thumbImageUrl: set.thumbImageUrl || prev.thumbImageUrl,
+          photoDataUrl: set.photoDataUrl || prev.photoDataUrl,
+          imageDataUrl: set.imageDataUrl || prev.imageDataUrl,
+          updatedAt: Math.max(Number(prev.updatedAt || 0), Number(set.updatedAt || Date.now())),
+        };
+      } else {
+        next.push(set);
+      }
+      written += 1;
+    };
+
+    for (const snap of snapshots) {
+      const link = snap?.link || {};
+      const direction = String(link?.direction || (snap as any)?.direction || "").toLowerCase();
+      const isIncoming = direction === "incoming" || direction === "incoming-linked-account" || Boolean(link?.incoming === true);
+      // Les images de sets doivent être matérialisées surtout sur le compte ami receveur.
+      // On le fait aussi en sortant, sans danger, pour que les deux côtés voient les vignettes.
+      const linkedProjectionEntry = Object.values(projection?.byLocalProfileId || {}).find((entry: any) => {
+        return entry?.snapshot === snap || String(entry?.link?.id || "") === String(link?.id || "");
+      }) as any;
+      const localProfile = isIncoming
+        ? (linkedProjectionEntry?.profile || projection?.byLocalProfileId?.[s((snap as any)?.linkedLocalProfile?.id || link?.friendUserId)]?.profile)
+        : projection?.byLocalProfileId?.[s(link?.localProfileId || link?.local_profile_id)]?.profile;
+      const targetLocalId = s(localProfile?.id || link?.targetLocalProfileId || link?.friendUserId || link?.localProfileId || link?.local_profile_id);
+      if (!targetLocalId) continue;
+
+      const remoteLocalProfileId = s(link?.localProfileId || link?.local_profile_id || (snap as any)?.linkedLocalProfile?.localProfileId);
+      const remoteSets = extractDartSetsFromSnapshotPayload(snap?.payload);
+      const rows = [
+        ...arr((snap as any)?.localProfileHistory),
+        ...arr((snap as any)?.localProfileMatches),
+        ...arr((snap as any)?.filtered?.history),
+        ...arr((snap as any)?.filtered?.matches),
+        ...arr((snap as any)?.linkedLocalProfile?.history),
+        ...arr((snap as any)?.linkedLocalProfile?.matches),
+      ];
+      const referencedIds = collectDartSetIdsFromRows(rows);
+
+      for (const rawSet of remoteSets) {
+        const setId = s(rawSet?.id || rawSet?.dartSetId || rawSet?.presetId);
+        if (!setId) continue;
+        const setProfileId = s(rawSet?.profileId || rawSet?.profile_id || rawSet?.ownerProfileId || rawSet?.localProfileId);
+        const belongsToLinkedProfile = !remoteLocalProfileId || !setProfileId || setProfileId === remoteLocalProfileId;
+        const usedByLinkedHistory = referencedIds.size === 0 || referencedIds.has(setId);
+        if (!belongsToLinkedProfile && !usedByLinkedHistory) continue;
+
+        const image = pickDartSetImageLike(rawSet);
+        const normalized = {
+          ...rawSet,
+          id: setId,
+          profileId: targetLocalId,
+          scope: rawSet?.scope === "public" ? "public" : "private",
+          name: s(rawSet?.name || rawSet?.label || rawSet?.title || "Set lié"),
+          mainImageUrl: s(rawSet?.mainImageUrl || rawSet?.imageUrl || rawSet?.photoUrl || image || ""),
+          thumbImageUrl: s(rawSet?.thumbImageUrl || rawSet?.photoThumbUrl || rawSet?.thumbUrl || rawSet?.thumbDataUrl || image || "") || undefined,
+          linkedRemoteDartSet: true,
+          linkedSourceProfileId: remoteLocalProfileId || null,
+          linkedSourceDartSetId: setId,
+          linkedOwnerUserId: (snap as any)?.ownerUserId || link?.requesterUser?.id || null,
+          updatedAt: Number(rawSet?.updatedAt || Date.now()),
+          createdAt: Number(rawSet?.createdAt || rawSet?.updatedAt || Date.now()),
+        };
+        upsert(normalized);
+      }
+    }
+
+    if (written > 0) {
+      replaceAllDartSets(next as any);
+      try { window.dispatchEvent(new Event("dc-dartsets-updated")); } catch {}
+    }
+    return written;
+  } catch (error) {
+    console.warn("[linkedProfileSync] materialize linked dartsets failed", error);
+    return 0;
+  }
+}
+
 const materializedLinkedHistorySignatures = new Map<string, string>();
 
 function isIncomingLinkedHistoryRow(row: any): boolean {
@@ -483,15 +714,18 @@ function isIncomingLinkedHistoryRow(row: any): boolean {
 export async function materializeLinkedProfileProjection(projection: LinkedProfileProjection): Promise<number> {
   try {
     const rows = Array.isArray(projection?.history) ? projection.history.filter(isIncomingLinkedHistoryRow) : [];
-    if (!rows.length) return 0;
     let written = 0;
+    const dartSetsWritten = await materializeLinkedDartSetsForProjection(projection);
+    if (!rows.length) return dartSetsWritten;
     for (const row of rows) {
       const id = s(row?.id || row?.matchId || row?.resumeId);
       if (!id) continue;
       const signature = JSON.stringify({
+        v: 2,
         updatedAt: row?.updatedAt || row?.createdAt || row?.date || null,
-        players: Array.isArray(row?.players) ? row.players.map((p: any) => [p?.id, p?.playerId, p?.profileId, p?.name]) : [],
+        players: Array.isArray(row?.players) ? row.players.map((p: any) => [p?.id, p?.playerId, p?.profileId, p?.name, p?.avatarUrl || p?.avatar]) : [],
         winnerId: row?.winnerId || row?.summary?.winnerId || row?.payload?.winnerId || null,
+        dartSetIdsByPlayer: row?.dartSetIdsByPlayer || row?.meta?.dartSetIdsByPlayer || row?.payload?.meta?.dartSetIdsByPlayer || null,
       });
       if (materializedLinkedHistorySignatures.get(id) === signature) continue;
       materializedLinkedHistorySignatures.set(id, signature);
@@ -510,7 +744,7 @@ export async function materializeLinkedProfileProjection(projection: LinkedProfi
       try { window.dispatchEvent(new Event("dc-stats-index-updated")); } catch {}
       try { window.dispatchEvent(new CustomEvent("dc-linked-history-materialized", { detail: { written } })); } catch {}
     }
-    return written;
+    return written + dartSetsWritten;
   } catch {
     return 0;
   }

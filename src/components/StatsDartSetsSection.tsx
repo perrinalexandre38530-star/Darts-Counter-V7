@@ -1649,6 +1649,26 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
   const [compareMetric, setCompareMetric] = React.useState<CompareMetricKey>("avg3");
 
   React.useEffect(() => {
+    if (!activeProfileId) return;
+    const refreshSets = () => {
+      try {
+        setMySets(getDartSetsForProfile(activeProfileId) || []);
+      } catch {
+        setMySets([]);
+      }
+    };
+    refreshSets();
+    try { window.addEventListener("dc-dartsets-updated", refreshSets); } catch {}
+    try { window.addEventListener("dc-linked-history-materialized", refreshSets as any); } catch {}
+    try { window.addEventListener("dc-linked-profile-projection-updated", refreshSets as any); } catch {}
+    return () => {
+      try { window.removeEventListener("dc-dartsets-updated", refreshSets); } catch {}
+      try { window.removeEventListener("dc-linked-history-materialized", refreshSets as any); } catch {}
+      try { window.removeEventListener("dc-linked-profile-projection-updated", refreshSets as any); } catch {}
+    };
+  }, [activeProfileId]);
+
+  React.useEffect(() => {
     let mounted = true;
 
     async function run() {

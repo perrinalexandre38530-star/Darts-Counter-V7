@@ -780,6 +780,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const recorderStartedAtRef = React.useRef<number>(0);
   const callStreamRef = React.useRef<MediaStream | null>(null);
   const callVideoRef = React.useRef<HTMLVideoElement | null>(null);
+  const sendingPrivateRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!openMessageMenuId) return;
@@ -1132,7 +1133,25 @@ export default function MessagesPage({ store, update, go }: Props) {
     }
   }
 
+  function appendOptimisticOutgoingMessage(toUserId: string, text: string, metadata?: any) {
+    const now = new Date().toISOString();
+    const user = selectedThread?.user || friends.find((f: any) => userIdOf(f) === toUserId) || { id: toUserId, userId: toUserId, displayName: "Ami" };
+    const optimistic: any = {
+      id: `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      direction: "outgoing",
+      toUserId,
+      toUser: user,
+      text,
+      metadata: metadata || {},
+      createdAt: now,
+      optimistic: true,
+    };
+    setPrivateMessages((prev) => [...prev, optimistic as any]);
+    return optimistic.id;
+  }
+
   async function handleSendPrivateMessage() {
+    if (sendingPrivateRef.current) return;
     const toUserId = String(messageToUserId || selectedThread?.id || "").trim();
     const text = String(messageText || "").trim();
     if (!toUserId) {
@@ -1158,14 +1177,28 @@ export default function MessagesPage({ store, update, go }: Props) {
       return;
     }
 
-    const replyPrefix = replyToMessage ? `↩ ${String(replyToMessage.text || "").slice(0, 90)}\n` : "";
-    await runAction("Message envoyé ✅", async () => {
-      await sendPrivateMessage(toUserId, `${replyPrefix}${text}`);
-      setSelectedThreadUserId(toUserId);
-      setMessageText("");
-      setReplyToMessage(null);
-      setEmojiOpen(false);
-    });
+    const replyPrefix = replyToMessage ? `↩ ${String(replyToMessage.text || "").slice(0, 90)}
+` : "";
+    const finalText = `${replyPrefix}${text}`;
+    const optimisticId = appendOptimisticOutgoingMessage(toUserId, finalText);
+    sendingPrivateRef.current = true;
+    setSelectedThreadUserId(toUserId);
+    setMessageToUserId(toUserId);
+    setMessageText("");
+    setReplyToMessage(null);
+    setEmojiOpen(false);
+    setInfo("Message envoyé ✅");
+    setError(null);
+    try {
+      await sendPrivateMessage(toUserId, finalText);
+      await loadAll();
+      markMessageCenterRefreshNeeded();
+    } catch (e: any) {
+      setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
+      setError(e?.message || String(e));
+    } finally {
+      sendingPrivateRef.current = false;
+    }
   }
 
   async function handleDeletePrivateMessage(id: string) {
@@ -1251,11 +1284,19 @@ export default function MessagesPage({ store, update, go }: Props) {
       setError("Choisis un ami destinataire.");
       return;
     }
-    await runAction("Élément envoyé ✅", async () => {
+    const optimisticId = appendOptimisticOutgoingMessage(toUserId, text, metadata || {});
+    setSelectedThreadUserId(toUserId);
+    setMessageToUserId(toUserId);
+    setInfo("Élément envoyé ✅");
+    setError(null);
+    try {
       await sendPrivateMessage(toUserId, text, metadata || {});
-      setSelectedThreadUserId(toUserId);
       await loadAll();
-    });
+      markMessageCenterRefreshNeeded();
+    } catch (e: any) {
+      setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
+      setError(e?.message || String(e));
+    }
   }
 
   async function handleSelectedFile(file: File | null, kind: "file" | "photo") {
