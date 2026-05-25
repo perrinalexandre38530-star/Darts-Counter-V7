@@ -2188,7 +2188,31 @@ export default function MessagesPage({ store, update, go }: Props) {
             <LabeledChoiceButton active={linkView === "sent"} label="Envoyées" badge={outgoingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GOLD} onClick={() => setLinkView("sent")}><ChatActionIcon name="share" size={21} /></LabeledChoiceButton>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <ActionButton label="Actualiser / synchroniser" tone={BLUE} onClick={() => runAction("Associations actualisées ✅", async () => { await loadAll(); })} />
+            <button
+              type="button"
+              title="Actualiser / synchroniser"
+              aria-label="Actualiser / synchroniser"
+              onClick={() => runAction("Associations actualisées ✅", async () => { await loadAll(); })}
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 16,
+                border: `1px solid ${BLUE}88`,
+                background: `radial-gradient(110% 120% at 50% 0%, ${BLUE}30, rgba(255,255,255,.055) 62%, rgba(0,0,0,.30))`,
+                color: BLUE,
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                boxShadow: `0 -5px 18px ${BLUE}38, 0 0 18px ${BLUE}20`,
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 12a9 9 0 0 1-15.3 6.4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M3 12A9 9 0 0 1 18.3 5.6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M18 2v4h4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6 22v-4H2" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
           </div>
           {(() => {
             const baseList = linkView === "received" ? incomingProfileLinks : outgoingProfileLinks;
@@ -2207,41 +2231,137 @@ export default function MessagesPage({ store, update, go }: Props) {
                 avatarUrl: link.localProfileAvatarUrl || link.statsMeta?.localProfileAvatarUrl || link.statsMeta?.avatarUrl || link.statsMeta?.avatar || "",
                 status: "offline",
               };
-              return <div key={link.id} style={cardStyle({ borderColor: `${tone}55` })}>
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}>
+              return <div key={link.id} style={cardStyle({ borderColor: `${tone}55`, padding: 10 })}>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 9, alignItems: "center" }}>
                   <div style={{ display: "grid", justifyItems: "center", gap: 5, minWidth: 58 }}>
-                    <AvatarBubble user={requester} size={50} />
-                    <div style={{ maxWidth: 70, color: "#fff", fontSize: 10, fontWeight: 1000, lineHeight: 1.05, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>Demandeur</div>
+                    <AvatarBubble user={requester} size={48} />
+                    <div
+                      title={asUserName(requester)}
+                      style={{
+                        maxWidth: 76,
+                        border: `1px solid ${BLUE}77`,
+                        color: BLUE,
+                        borderRadius: 999,
+                        padding: "4px 7px",
+                        background: `${BLUE}14`,
+                        fontSize: 9.5,
+                        fontWeight: 1000,
+                        lineHeight: 1,
+                        textAlign: "center",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {asUserName(requester)}
+                    </div>
                   </div>
-                  <div style={{ border: `1px solid ${tone}44`, borderRadius: 18, padding: 9, background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.20))", minWidth: 0 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto 22px auto", gap: 8, alignItems: "center", justifyContent: "start" }}>
-                      <div style={{ display: "grid", justifyItems: "center", gap: 4 }}>
-                        <AvatarBubble user={localProfile} size={42} showStatus={false} />
-                        <span style={{ maxWidth: 88, color: BLUE, fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Profil local</span>
+
+                  <div style={{ border: `1px solid ${tone}44`, borderRadius: 17, padding: 8, background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.20))", minWidth: 0 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 20px auto", gap: 7, alignItems: "center", justifyContent: "start" }}>
+                      <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
+                        <AvatarBubble user={localProfile} size={40} showStatus={false} />
+                        <span title={link.localProfileName || link.localProfileId} style={{ maxWidth: 86, color: BLUE, fontSize: 9.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Profil local</span>
                       </div>
-                      <div style={{ color: tone, fontWeight: 1000, textAlign: "center" }}>→</div>
-                      <div style={{ display: "grid", justifyItems: "center", gap: 4 }}>
-                        <AvatarBubble user={receiver} size={42} />
-                        <span style={{ maxWidth: 88, color: GREEN, fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Compte ami</span>
+                      <div style={{ color: tone, fontWeight: 1000, textAlign: "center", fontSize: 16 }}>→</div>
+                      <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
+                        <AvatarBubble user={receiver} size={40} />
+                        <span title={asUserName(receiver)} style={{ maxWidth: 86, color: GREEN, fontSize: 9.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Compte ami</span>
                       </div>
                     </div>
-                    <div style={{ marginTop: 7, color: "rgba(255,255,255,.72)", fontSize: 11, fontWeight: 850, lineHeight: 1.25 }}>
-                      <b style={{ color: "#fff" }}>{incoming ? "Demande reçue" : "Demande envoyée"}</b> · {asUserName(requester)} demande à associer <b style={{ color: BLUE }}>{link.localProfileName || link.localProfileId}</b> au compte <b style={{ color: GREEN }}>{asUserName(receiver)}</b>.
+                    <div
+                      style={{
+                        marginTop: 6,
+                        color: "rgba(255,255,255,.78)",
+                        fontSize: 10.5,
+                        fontWeight: 900,
+                        lineHeight: 1.22,
+                        overflow: "hidden",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      <b style={{ color: BLUE }}>{link.localProfileName || link.localProfileId}</b> associé à <b style={{ color: GREEN }}>{asUserName(receiver)}</b>
                     </div>
                   </div>
-                  <Pill tone={tone}>{statusLabel(link.status)}</Pill>
+
+                  <div style={{ display: "grid", gap: 6, alignContent: "center", justifyItems: "center" }}>
+                    <button
+                      type="button"
+                      title={statusLabel(link.status)}
+                      onClick={() => {
+                        if (incoming && String(link.status || "pending") === "pending") {
+                          runAction("Association acceptée ✅", () => respondProfileFriendLink(link.id, "accepted"));
+                        }
+                      }}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 13,
+                        border: `1px solid ${tone}88`,
+                        background: `${tone}18`,
+                        color: tone,
+                        display: "grid",
+                        placeItems: "center",
+                        cursor: incoming && String(link.status || "pending") === "pending" ? "pointer" : "default",
+                        boxShadow: `0 0 14px ${tone}22`,
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                        {String(link.status || "pending").toLowerCase() === "accepted" ? (
+                          <path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                        ) : (
+                          <><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2.2" /><path d="M12 7v5l3 2" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></>
+                        )}
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
+                      title={link.statsShared ? "Stats liées" : "Stats non liées"}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 13,
+                        border: `1px solid ${(link.statsShared ? GREEN : RED)}88`,
+                        background: `${(link.statsShared ? GREEN : RED)}18`,
+                        color: link.statsShared ? GREEN : RED,
+                        display: "grid",
+                        placeItems: "center",
+                        boxShadow: `0 0 14px ${(link.statsShared ? GREEN : RED)}22`,
+                      }}
+                    >
+                      <MessengerToolIcon name="stats" size={18} />
+                    </button>
+
+                    <button
+                      type="button"
+                      title="Supprimer l’association"
+                      onClick={() => runAction("Association supprimée ✅", () => deleteProfileFriendLink(link.id))}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 13,
+                        border: `1px solid ${RED}88`,
+                        background: `${RED}18`,
+                        color: RED,
+                        display: "grid",
+                        placeItems: "center",
+                        cursor: "pointer",
+                        boxShadow: `0 0 14px ${RED}22`,
+                      }}
+                    >
+                      <ChatActionIcon name="delete" size={17} />
+                    </button>
+                  </div>
                 </div>
-                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Pill tone={BLUE}>Profil : {link.localProfileName || link.localProfileId}</Pill>
-                  <Pill tone={link.statsShared ? GREEN : GOLD}>Stats : {link.statsShared ? "OUI" : "NON"}</Pill>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                  {incoming && String(link.status || "pending") === "pending" ? <>
-                    <ActionButton label="Accepter" tone={GREEN} onClick={() => runAction("Association acceptée ✅", () => respondProfileFriendLink(link.id, "accepted"))} />
+
+                {incoming && String(link.status || "pending") === "pending" ? (
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <ActionButton label="Refuser" tone={RED} onClick={() => runAction("Association refusée", () => respondProfileFriendLink(link.id, "refused"))} />
-                  </> : null}
-                  <ActionButton label="Supprimer" tone={RED} onClick={() => runAction("Association supprimée ✅", () => deleteProfileFriendLink(link.id))} />
-                </div>
+                  </div>
+                ) : null}
               </div>;
             })}</div> : <EmptyCard icon="🔗" title={`Aucune demande ${linkView === "received" ? "reçue" : "envoyée"}`} text="Les associations profil local ↔ compte ami apparaîtront ici." />;
           })()}
