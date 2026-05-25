@@ -696,6 +696,32 @@ function saveLocalJson(key: string, value: any) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+type MessageCenterCacheData = {
+  ts: number;
+  friends: OnlineFriendUser[];
+  friendRequests: FriendRequest[];
+  sharedMatches: SharedMatchItem[];
+  profileLinks: ProfileFriendLink[];
+  privateMessages: PrivateMessageItem[];
+};
+
+const MESSAGE_CENTER_CACHE_KEY = "ms_message_center_cache_v2";
+const MESSAGE_CENTER_CACHE_TTL_MS = 45_000;
+let messageCenterMemoryCache: MessageCenterCacheData | null = null;
+
+function loadMessageCenterCache(): MessageCenterCacheData | null {
+  if (messageCenterMemoryCache) return messageCenterMemoryCache;
+  const cached = loadLocalJson<MessageCenterCacheData | null>(MESSAGE_CENTER_CACHE_KEY, null);
+  if (!cached || typeof cached.ts !== "number") return null;
+  messageCenterMemoryCache = cached;
+  return cached;
+}
+
+function saveMessageCenterCache(data: MessageCenterCacheData) {
+  messageCenterMemoryCache = data;
+  saveLocalJson(MESSAGE_CENTER_CACHE_KEY, data);
+}
+
 function guardAnnouncement(title: string, text: string): { ok: boolean; reason?: string } {
   return guardCommunityContent(`${title} ${text}`, "Annonce");
 }
@@ -727,11 +753,13 @@ function SectionTitle({ title, subtitle, badge }: { title: string; subtitle?: st
 }
 
 export default function MessagesPage({ store, update, go }: Props) {
+  const cachedAtBoot = React.useMemo(() => loadMessageCenterCache(), []);
   const [active, setActive] = React.useState<MsgTab>("messages");
   const [chatMode, setChatMode] = React.useState<ChatMode>("messenger");
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const [requestView, setRequestView] = React.useState<"received" | "sent">("received");
   const [linkView, setLinkView] = React.useState<"received" | "sent">("received");
+  const [shareView, setShareView] = React.useState<"received" | "sent">("received");
   const [friendSearch, setFriendSearch] = React.useState("");
   const [newGroupName, setNewGroupName] = React.useState("");
   const [selectedGroupIds, setSelectedGroupIds] = React.useState<string[]>([]);
@@ -746,11 +774,11 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
-  const [friends, setFriends] = React.useState<OnlineFriendUser[]>([]);
-  const [friendRequests, setFriendRequests] = React.useState<FriendRequest[]>([]);
-  const [sharedMatches, setSharedMatches] = React.useState<SharedMatchItem[]>([]);
-  const [profileLinks, setProfileLinks] = React.useState<ProfileFriendLink[]>([]);
-  const [privateMessages, setPrivateMessages] = React.useState<PrivateMessageItem[]>([]);
+  const [friends, setFriends] = React.useState<OnlineFriendUser[]>(() => cachedAtBoot?.friends || []);
+  const [friendRequests, setFriendRequests] = React.useState<FriendRequest[]>(() => cachedAtBoot?.friendRequests || []);
+  const [sharedMatches, setSharedMatches] = React.useState<SharedMatchItem[]>(() => cachedAtBoot?.sharedMatches || []);
+  const [profileLinks, setProfileLinks] = React.useState<ProfileFriendLink[]>(() => cachedAtBoot?.profileLinks || []);
+  const [privateMessages, setPrivateMessages] = React.useState<PrivateMessageItem[]>(() => cachedAtBoot?.privateMessages || []);
   const [messageToUserId, setMessageToUserId] = React.useState("");
   const [messageText, setMessageText] = React.useState("");
   const [replyToMessage, setReplyToMessage] = React.useState<PrivateMessageItem | null>(null);
@@ -865,6 +893,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const incomingFriendRequests = friendRequests.filter((r) => r.direction !== "outgoing" && String(r.status || "pending") === "pending");
   const outgoingFriendRequests = friendRequests.filter((r) => r.direction === "outgoing" && String(r.status || "pending") === "pending");
   const incomingShares = sharedMatches.filter((s) => s.direction !== "outgoing");
+  const outgoingShares = sharedMatches.filter((s) => s.direction === "outgoing");
   const incomingProfileLinks = profileLinks.filter((l) => l.direction !== "outgoing");
   const outgoingProfileLinks = profileLinks.filter((l) => l.direction === "outgoing");
 
@@ -1052,32 +1081,59 @@ export default function MessagesPage({ store, update, go }: Props) {
     broadcastMessageBadge(totalPending);
   }, [totalPending]);
 
-  const loadAll = React.useCallback(async () => {
-    setLoading(true);
+  const hasVisibleMessageData = friends.length > 0 || friendRequests.length > 0 || sharedMatches.length > 0 || profileLinks.length > 0 || privateMessages.length > 0;
+
+  const loadAll = React.useCallback(async (force = false) => {
+    const cached = loadMessageCenterCache();
+    const cacheFresh = !!cached && Date.now() - cached.ts < MESSAGE_CENTER_CACHE_TTL_MS;
+
+    if (cached && !hasVisibleMessageData) {
+      setFriends(Array.isArray(cached.friends) ? cached.friends : []);
+      setFriendRequests(Array.isArray(cached.friendRequests) ? cached.friendRequests : []);
+      setSharedMatches(Array.isArray(cached.sharedMatches) ? cached.sharedMatches : []);
+      setProfileLinks(Array.isArray(cached.profileLinks) ? cached.profileLinks : []);
+      setPrivateMessages(Array.isArray(cached.privateMessages) ? cached.privateMessages : []);
+    }
+
+    if (!force && cacheFresh) {
+      setLoading(false);
+      return;
+    }
+
+    if (!cached && !hasVisibleMessageData) setLoading(true);
     setError(null);
     try {
       const [nextFriends, nextRequests, nextShares, nextLinks, nextMessages] = await Promise.all([
-        listFriends().catch(() => []),
-        listFriendRequests().catch(() => []),
-        listSharedMatches().catch(() => []),
-        listProfileFriendLinks().catch(() => []),
-        listPrivateMessages().catch(() => []),
+        listFriends().catch(() => cached?.friends || []),
+        listFriendRequests().catch(() => cached?.friendRequests || []),
+        listSharedMatches().catch(() => cached?.sharedMatches || []),
+        listProfileFriendLinks().catch(() => cached?.profileLinks || []),
+        listPrivateMessages().catch(() => cached?.privateMessages || []),
       ]);
-      setFriends(Array.isArray(nextFriends) ? nextFriends : []);
-      setFriendRequests(Array.isArray(nextRequests) ? nextRequests : []);
-      setSharedMatches(Array.isArray(nextShares) ? nextShares : []);
-      setProfileLinks(Array.isArray(nextLinks) ? nextLinks : []);
-      setPrivateMessages(Array.isArray(nextMessages) ? nextMessages : []);
+      const nextCache: MessageCenterCacheData = {
+        ts: Date.now(),
+        friends: Array.isArray(nextFriends) ? nextFriends : [],
+        friendRequests: Array.isArray(nextRequests) ? nextRequests : [],
+        sharedMatches: Array.isArray(nextShares) ? nextShares : [],
+        profileLinks: Array.isArray(nextLinks) ? nextLinks : [],
+        privateMessages: Array.isArray(nextMessages) ? nextMessages : [],
+      };
+      saveMessageCenterCache(nextCache);
+      setFriends(nextCache.friends);
+      setFriendRequests(nextCache.friendRequests);
+      setSharedMatches(nextCache.sharedMatches);
+      setProfileLinks(nextCache.profileLinks);
+      setPrivateMessages(nextCache.privateMessages);
       markMessageCenterRefreshNeeded();
     } catch (e: any) {
-      setError(e?.message || String(e));
+      if (!cached) setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hasVisibleMessageData]);
 
   React.useEffect(() => {
-    loadAll().catch(() => {});
+    loadAll(false).catch(() => {});
   }, [loadAll]);
 
 
@@ -1126,7 +1182,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     try {
       await fn();
       setInfo(label);
-      await loadAll();
+      await loadAll(true);
       markMessageCenterRefreshNeeded();
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -1172,7 +1228,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       setOpenMessageMenuId("");
       await runAction("Message modifié ✅", async () => {
         await editPrivateMessage(id, text);
-        await loadAll();
+        await loadAll(true);
       });
       return;
     }
@@ -1191,7 +1247,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     setError(null);
     try {
       await sendPrivateMessage(toUserId, finalText);
-      await loadAll();
+      await loadAll(true);
       markMessageCenterRefreshNeeded();
     } catch (e: any) {
       setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
@@ -1215,7 +1271,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       setInfo("Message supprimé de cette conversation ✅");
     } catch (e: any) {
       setError(e?.message || String(e));
-      await loadAll();
+      await loadAll(true);
     }
   }
 
@@ -1291,7 +1347,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     setError(null);
     try {
       await sendPrivateMessage(toUserId, text, metadata || {});
-      await loadAll();
+      await loadAll(true);
       markMessageCenterRefreshNeeded();
     } catch (e: any) {
       setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
@@ -1452,10 +1508,10 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   const tabs: Array<{ id: MsgTab; label: string; badge: number; tone: string }> = [
     { id: "messages", label: "Messages", badge: counters.messages, tone: GOLD },
+    { id: "invites", label: "Invitations salon Online", badge: counters.invites, tone: GREEN },
     { id: "requests", label: "Amis", badge: counters.requests, tone: "#c78bff" },
     { id: "links", label: "Associations profils", badge: counters.links, tone: BLUE },
-    { id: "invites", label: "Invitations jeu Online", badge: counters.invites, tone: GREEN },
-    { id: "shares", label: "Cartes parties reçues", badge: counters.shares, tone: GOLD },
+    { id: "shares", label: "Parties partagées", badge: counters.shares, tone: GOLD },
     { id: "system", label: "Notifs", badge: counters.system, tone: RED },
   ];
 
@@ -2043,7 +2099,7 @@ export default function MessagesPage({ store, update, go }: Props) {
         </div>
       ) : null}
 
-      {loading ? <div style={cardStyle({ marginBottom: 10 })}>Chargement de la messagerie…</div> : null}
+      {loading && !hasVisibleMessageData ? <div style={cardStyle({ marginBottom: 10 })}>Chargement de la messagerie…</div> : null}
       {error ? <div style={cardStyle({ marginBottom: 10, borderColor: "rgba(255,100,100,.45)", color: RED })}>Erreur : {error}</div> : null}
       {info ? <div style={cardStyle({ marginBottom: 10, borderColor: "rgba(125,255,178,.35)", color: GREEN })}>{info}</div> : null}
 
@@ -2183,16 +2239,14 @@ export default function MessagesPage({ store, update, go }: Props) {
             {active === "links" ? (
         <>
           <SectionTitle title="Association profils locaux / compte ami" subtitle="Demandes reçues/envoyées et récapitulatif des profils liés." badge={counters.links} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 10, alignItems: "stretch" }}>
             <LabeledChoiceButton active={linkView === "received"} label="Reçues" badge={incomingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GREEN} onClick={() => setLinkView("received")}><MessageCenterTabIcon name="links" size={22} /></LabeledChoiceButton>
             <LabeledChoiceButton active={linkView === "sent"} label="Envoyées" badge={outgoingProfileLinks.filter(l => String(l.status || "pending") === "pending").length} tone={GOLD} onClick={() => setLinkView("sent")}><ChatActionIcon name="share" size={21} /></LabeledChoiceButton>
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <button
               type="button"
               title="Actualiser / synchroniser"
               aria-label="Actualiser / synchroniser"
-              onClick={() => runAction("Associations actualisées ✅", async () => { await loadAll(); })}
+              onClick={() => runAction("Associations actualisées ✅", async () => { await loadAll(true); })}
               style={{
                 width: 46,
                 height: 46,
@@ -2266,7 +2320,7 @@ export default function MessagesPage({ store, update, go }: Props) {
                       <div style={{ color: tone, fontWeight: 1000, textAlign: "center", fontSize: 16 }}>→</div>
                       <div style={{ display: "grid", justifyItems: "center", gap: 3 }}>
                         <AvatarBubble user={receiver} size={40} />
-                        <span title={asUserName(receiver)} style={{ maxWidth: 86, color: GREEN, fontSize: 9.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Compte ami</span>
+                        <span title={asUserName(receiver)} style={{ maxWidth: 86, color: GREEN, fontSize: 9.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asUserName(receiver)}</span>
                       </div>
                     </div>
                     <div
@@ -2370,35 +2424,63 @@ export default function MessagesPage({ store, update, go }: Props) {
 
       {active === "shares" ? (
         <>
-          <SectionTitle title="Parties partagées reçues" subtitle="Les matchs reçus peuvent être acceptés, importés ou refusés." badge={incomingShares.length} />
-          {incomingShares.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {incomingShares.map((item) => {
-                const tone = statusColor(item.status);
-                const pending = String(item.status || "pending") === "pending";
-                return (
-                  <div key={item.id} style={cardStyle({ borderColor: `${tone}55` })}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 1000, fontSize: 15 }}>{titleOfSharedMatch(item)}</div>
-                        <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12, marginTop: 4 }}>De : <b style={{ color: "#fff" }}>{asUserName(item.ownerUser)}</b></div>
-                        <div style={{ color: "rgba(255,255,255,.62)", fontSize: 12, marginTop: 4 }}>{playersLine(item.payload)}</div>
+          <SectionTitle title="Parties partagées" subtitle="Parties reçues ou envoyées entre amis." badge={counters.shares} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+            <LabeledChoiceButton
+              active={shareView === "received"}
+              label="Reçues"
+              badge={incomingShares.filter((s) => String(s.status || "pending") === "pending").length}
+              tone={GREEN}
+              onClick={() => setShareView("received")}
+            >
+              <MessageCenterTabIcon name="shares" size={22} />
+            </LabeledChoiceButton>
+            <LabeledChoiceButton
+              active={shareView === "sent"}
+              label="Envoyées"
+              badge={outgoingShares.filter((s) => String(s.status || "pending") === "pending").length}
+              tone={GOLD}
+              onClick={() => setShareView("sent")}
+            >
+              <ChatActionIcon name="share" size={21} />
+            </LabeledChoiceButton>
+          </div>
+          {(() => {
+            const list = shareView === "received" ? incomingShares : outgoingShares;
+            return list.length ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {list.map((item) => {
+                  const tone = statusColor(item.status);
+                  const pending = String(item.status || "pending") === "pending";
+                  const peer = shareView === "received" ? item.ownerUser : (item as any).targetUser || (item as any).toUser;
+                  return (
+                    <div key={item.id} style={cardStyle({ borderColor: `${tone}55` })}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 1000, fontSize: 15 }}>{titleOfSharedMatch(item)}</div>
+                          <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12, marginTop: 4 }}>
+                            {shareView === "received" ? "De" : "À"} : <b style={{ color: "#fff" }}>{asUserName(peer)}</b>
+                          </div>
+                          <div style={{ color: "rgba(255,255,255,.62)", fontSize: 12, marginTop: 4 }}>{playersLine(item.payload)}</div>
+                        </div>
+                        <Pill tone={tone}>{statusLabel(item.status)}</Pill>
                       </div>
-                      <Pill tone={tone}>{statusLabel(item.status)}</Pill>
+                      {item.message ? <div style={{ marginTop: 9, color: "rgba(255,255,255,.78)", fontSize: 13 }}>“{item.message}”</div> : null}
+                      {shareView === "received" ? (
+                        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                          <ActionButton label="Accepter" tone={GREEN} disabled={!pending} onClick={() => runAction("Partie acceptée ✅", () => acceptSharedMatch(item.id))} />
+                          <ActionButton label="Importer" tone={GOLD} disabled={String(item.status || "") === "imported"} onClick={() => runAction("Partie marquée importée ✅", () => importSharedMatch(item.id))} />
+                          <ActionButton label="Refuser" tone={RED} disabled={!pending} onClick={() => runAction("Partie refusée", () => refuseSharedMatch(item.id))} />
+                        </div>
+                      ) : null}
                     </div>
-                    {item.message ? <div style={{ marginTop: 9, color: "rgba(255,255,255,.78)", fontSize: 13 }}>“{item.message}”</div> : null}
-                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                      <ActionButton label="Accepter" tone={GREEN} disabled={!pending} onClick={() => runAction("Partie acceptée ✅", () => acceptSharedMatch(item.id))} />
-                      <ActionButton label="Importer" tone={GOLD} disabled={String(item.status || "") === "imported"} onClick={() => runAction("Partie marquée importée ✅", () => importSharedMatch(item.id))} />
-                      <ActionButton label="Refuser" tone={RED} disabled={!pending} onClick={() => runAction("Partie refusée", () => refuseSharedMatch(item.id))} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyCard icon="🏆" title="Aucune partie reçue" text="Les parties envoyées directement par tes amis apparaîtront ici." />
-          )}
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyCard icon="🏆" title={shareView === "received" ? "Aucune partie reçue" : "Aucune partie envoyée"} text={shareView === "received" ? "Les parties envoyées directement par tes amis apparaîtront ici." : "Les parties que tu partages avec tes amis apparaîtront ici."} />
+            );
+          })()}
         </>
       ) : null}
 
