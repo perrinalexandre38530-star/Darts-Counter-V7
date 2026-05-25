@@ -7140,8 +7140,8 @@ return (
           </div>
         </div>
 
-        {/* SYNCHRONISATION NAS MASQUÉE DANS LE CENTRE STATS — disponible dans Réglages */}
-        {false ? <div style={{
+        {/* SYNCHRONISATION NAS — visible pour publier/récupérer les stats liées */}
+        <div style={{
           ...card,
           padding: 14,
           border: `1px solid ${T.accent30}`,
@@ -7246,7 +7246,7 @@ return (
               {nasStatus}
             </div>
           ) : null}
-        </div> : null}
+        </div>
 
         {/* CONTENU PRINCIPAL */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

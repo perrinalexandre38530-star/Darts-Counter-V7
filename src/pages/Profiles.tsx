@@ -1189,7 +1189,10 @@ export default function Profiles({
           const signature = JSON.stringify({ id: link?.id, miniStats });
           if (profileFriendStatsSyncRef.current[String(link?.id || profileId)] !== signature) {
             profileFriendStatsSyncRef.current[String(link?.id || profileId)] = signature;
-            updateProfileFriendLinkStats(String(link?.id || ""), meta).catch((err) => console.warn("[Profiles] updateProfileFriendLinkStats ignored", err));
+            // CRITIQUE : en manuel on attend vraiment l’écriture serveur.
+            // Avant, cette promesse était lancée en fire-and-forget : le push NAS pouvait partir
+            // avant que stats_meta soit mis à jour, donc le compte ami voyait encore les anciennes stats.
+            await updateProfileFriendLinkStats(String(link?.id || ""), meta);
           }
         } catch (err) {
           console.warn("[Profiles] profile link stats sync ignored", err);
@@ -1266,6 +1269,46 @@ export default function Profiles({
       setProfileFriendLinksLoading(false);
     }
   }, [auth.status, store, update, scheduleProfilesPersist]);
+  const handleManualLinkedProfileStatsSync = React.useCallback(async (profileId?: string) => {
+    if (auth.status !== "signed_in") {
+      setToast({ type: "error", message: "Connexion requise pour synchroniser les stats liées" });
+      return;
+    }
+
+    setToast({ type: "success", message: "Synchronisation des stats associées en cours…" });
+    try {
+      try { invalidateLinkedProfileProjectionCache(); } catch {}
+
+      // 1) Met à jour les liens acceptés : stats_meta côté propriétaire + overrides côté compte ami.
+      await refreshProfileFriendLinks();
+
+      // 2) Publie immédiatement le snapshot NAS du compte courant.
+      // C’est indispensable côté propriétaire du profil local : sinon le compte associé ne peut lire
+      // que l’ancien snapshot et les pages Stats restent vides/hors Home.
+      const nas = await import("../lib/manualNasSync");
+      if (typeof nas.pushNasAccountSnapshot === "function") {
+        await nas.pushNasAccountSnapshot();
+      } else {
+        if (typeof nas.markNasSyncDirty === "function") nas.markNasSyncDirty("manual_linked_profile_stats_sync");
+        if (typeof nas.pushNasSyncDirtyReason === "function") nas.pushNasSyncDirtyReason("manual_linked_profile_stats_sync");
+      }
+
+      // 3) Recharge la projection liée après publication pour forcer les écrans stats à relire la source correcte.
+      try { invalidateLinkedProfileProjectionCache(); } catch {}
+      await refreshProfileFriendLinks();
+      try {
+        window.dispatchEvent(new CustomEvent("dc-linked-profile-stats-updated", { detail: { reason: "manual-linked-profile-sync", profileId: profileId || null } }));
+        window.dispatchEvent(new CustomEvent("dc-profile-links-updated", { detail: { reason: "manual-linked-profile-sync", profileId: profileId || null } }));
+        window.dispatchEvent(new Event("dc-store-updated"));
+      } catch {}
+
+      setToast({ type: "success", message: "Stats associées synchronisées" });
+    } catch (error: any) {
+      console.warn("[Profiles] manual linked profile stats sync failed", error);
+      setToast({ type: "error", message: error?.message || "Erreur synchronisation stats associées" });
+    }
+  }, [auth.status, refreshProfileFriendLinks]);
+
 
   React.useEffect(() => {
     if (view !== "friends") return;
@@ -2783,6 +2826,7 @@ React.useEffect(() => {
                   profileFriendLinksLoading={profileFriendLinksLoading}
                   onRespondProfileFriendLink={respondToProfileFriendLink}
                   onLinkFriend={linkLocalProfileToFriend}
+                  onSyncLinkedStats={handleManualLinkedProfileStatsSync}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
                   deferHeavy={!localsHeavyReady}
@@ -5216,6 +5260,7 @@ function LocalProfilesRefonte({
   profileFriendLinksLoading = false,
   onRespondProfileFriendLink,
   onLinkFriend,
+  onSyncLinkedStats,
   onboardingMode = false,
   autoFocusCreate = false,
   deferHeavy = false,
@@ -5237,6 +5282,7 @@ function LocalProfilesRefonte({
   profileFriendLinksLoading?: boolean;
   onRespondProfileFriendLink?: (linkId: string, status: "accepted" | "refused") => void;
   onLinkFriend?: (profileId: string, friend: FriendLike | null) => void | Promise<void>;
+  onSyncLinkedStats?: (profileId?: string) => void | Promise<void>;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
   deferHeavy?: boolean;
@@ -5284,6 +5330,7 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [linkedStatsSyncBusy, setLinkedStatsSyncBusy] = React.useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -5940,6 +5987,35 @@ function LocalProfilesRefonte({
                       return <option key={id} value={id}>{name}</option>;
                     })}
                   </select>
+                ) : null}
+
+                {linkedFriendUserId && linkStatsShared && onSyncLinkedStats ? (
+                  <button
+                    type="button"
+                    className="btn sm"
+                    disabled={linkedStatsSyncBusy}
+                    onClick={async () => {
+                      if (!current?.id) return;
+                      setLinkedStatsSyncBusy(true);
+                      try {
+                        await onSyncLinkedStats(current.id);
+                      } finally {
+                        setLinkedStatsSyncBusy(false);
+                      }
+                    }}
+                    style={{
+                      ...pillBtnBase,
+                      width: "100%",
+                      maxWidth: "100%",
+                      marginTop: 8,
+                      padding: "9px 10px",
+                      fontSize: 11,
+                      opacity: linkedStatsSyncBusy ? 0.72 : 1,
+                    }}
+                    title="Envoie immédiatement les stats de ce profil local vers le NAS et force la relecture côté compte associé."
+                  >
+                    {linkedStatsSyncBusy ? "SYNCHRO STATS…" : "SYNCHRONISER LES STATS ASSOCIÉES"}
+                  </button>
                 ) : null}
               </div>
 
