@@ -8,6 +8,7 @@
 // sans écraser les données locales.
 // =============================================================
 import { apiGet, apiPost } from "./apiClient";
+import { History } from "./history";
 import type { Profile } from "./types";
 
 export type LinkedProfileSnapshot = {
@@ -144,33 +145,64 @@ function getRuntimeActiveLocalProfileId(): string {
   }
 }
 
+function profileHasOnlineUserId(profile: any, userId: any): boolean {
+  const uid = s(userId);
+  if (!uid || !profile || typeof profile !== "object") return false;
+  const pi = profile.privateInfo || profile.private_info || {};
+  return [
+    profile.userId,
+    profile.user_id,
+    profile.onlineUserId,
+    profile.linkedUserId,
+    pi.onlineUserId,
+    pi.online_user_id,
+    pi.userId,
+  ].some((v) => s(v) === uid);
+}
+
 function findBestLocalProfileForIncomingLink(localById: Map<string, any>, localProfiles: any[], link: any, friendUser: any): any {
+  // Pour une association entrante, le profil à alimenter est le COMPTE connecté
+  // qui reçoit les stats : link.friendUserId / link.targetUser.id.
+  // L'ancienne logique testait d'abord friendUser.id ; or dans /linked-snapshots
+  // friendUser représente souvent le propriétaire distant du profil local, donc
+  // les stats étaient rattachées au mauvais profil ou à aucun profil exploitable.
+  const targetUser = link?.targetUser || link?.friend || link?.linkedAccountProfile || {};
   const directIds = uniq([
     link?.targetLocalProfileId,
     link?.targetProfileId,
-    friendUser?.profileId,
-    friendUser?.profile_id,
-    friendUser?.userId,
-    friendUser?.id,
+    link?.friendUserId,
+    link?.friend_user_id,
+    targetUser?.profileId,
+    targetUser?.profile_id,
+    targetUser?.userId,
+    targetUser?.id,
   ].map(s));
+
   for (const id of directIds) {
     const p = localById.get(id);
     if (p) return p;
   }
 
-  const wantedNames = uniq([
-    link?.friendDisplayName,
-    link?.targetUser?.displayName,
-    link?.targetUser?.nickname,
-    friendUser?.displayName,
-    friendUser?.nickname,
-    link?.localProfileName,
-  ].map(low));
-  const byName = arr(localProfiles).find((p: any) => wantedNames.includes(low(pickName(p))));
-  if (byName) return byName;
+  for (const uid of directIds) {
+    const p = arr(localProfiles).find((profile: any) => profileHasOnlineUserId(profile, uid));
+    if (p) return p;
+  }
 
   const activeId = getRuntimeActiveLocalProfileId();
   if (activeId && localById.get(activeId)) return localById.get(activeId);
+
+  const wantedNames = uniq([
+    targetUser?.displayName,
+    targetUser?.nickname,
+    link?.friendDisplayName,
+    link?.targetUser?.displayName,
+    link?.targetUser?.nickname,
+    link?.localProfileName,
+    friendUser?.displayName,
+    friendUser?.nickname,
+  ].map(low));
+  const byName = arr(localProfiles).find((p: any) => wantedNames.includes(low(pickName(p))));
+  if (byName) return byName;
 
   return arr(localProfiles)[0] || null;
 }
@@ -235,14 +267,43 @@ function playerMatchesFriend(p: any, friendProfile: any, friendUser: any): boole
   return names.includes(low(pickName(p)));
 }
 
-function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any, friendUser: any): any {
+function collectRemoteIdentityValues(friendProfile: any, friendUser: any): string[] {
+  const values: any[] = [
+    friendProfile?.id,
+    friendProfile?.profileId,
+    friendProfile?.playerId,
+    friendProfile?.localProfileId,
+    friendProfile?.userId,
+    friendProfile?.user_id,
+    friendUser?.id,
+    friendUser?.userId,
+    friendUser?.profileId,
+    friendUser?.profile_id,
+  ];
+  return uniq(values.map(s));
+}
+
+function rewriteMapKeys(obj: any, remoteIds: string[], localId: string): any {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+  let changed = false;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const nk = remoteIds.includes(String(k)) ? localId : k;
+    if (nk !== k) changed = true;
+    out[nk] = v;
+  }
+  return changed ? out : obj;
+}
+
+function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any, friendUser: any, depth = 0): any {
   if (!obj || typeof obj !== "object") return obj;
-  const localId = s(localProfile?.id || localProfile?.profileId || localProfile?.playerId);
+  if (depth > 12) return obj;
+
+  const localId = s(localProfile?.id || localProfile?.profileId || localProfile?.playerId || localProfile?.userId);
   if (!localId) return obj;
   const localName = pickName(friendProfile) || pickName(localProfile) || pickName(friendUser) || localId;
   const localAvatar = pickAvatar(friendProfile) || pickAvatar(friendUser) || pickAvatar(localProfile) || null;
-
-  const clone = Array.isArray(obj) ? obj.map((v) => rewritePlayersInObject(v, localProfile, friendProfile, friendUser)) : { ...obj };
+  const remoteIds = collectRemoteIdentityValues(friendProfile, friendUser).filter((id) => id && id !== localId);
 
   const maybeRewritePlayer = (p: any) => {
     if (!p || typeof p !== "object") return p;
@@ -252,8 +313,9 @@ function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any,
       id: localId,
       playerId: localId,
       profileId: localId,
-      userId: localProfile?.userId ?? p?.userId,
+      userId: localProfile?.userId ?? localId,
       linkedRemoteUserId: friendUser?.id || friendUser?.userId || null,
+      linkedRemoteProfileId: friendProfile?.id || friendProfile?.profileId || friendProfile?.playerId || null,
       name: localName,
       displayName: localName,
       nickname: localName,
@@ -263,27 +325,56 @@ function rewritePlayersInObject(obj: any, localProfile: any, friendProfile: any,
     };
   };
 
-  const playerArrayKeys = ["players", "participants", "teams"];
-  for (const key of playerArrayKeys) {
-    if (Array.isArray(clone[key])) clone[key] = clone[key].map(maybeRewritePlayer);
+  if (Array.isArray(obj)) {
+    return obj.map((v) => rewritePlayersInObject(v, localProfile, friendProfile, friendUser, depth + 1));
   }
 
-  // Champs fréquents X01 / stats / summary
-  for (const key of ["visits", "turns", "throws", "darts", "rounds", "legs", "sets"]) {
-    if (Array.isArray(clone[key])) clone[key] = clone[key].map((v: any) => rewritePlayersInObject(v, localProfile, friendProfile, friendUser));
-  }
-  for (const key of ["payload", "summary", "result", "stats", "session", "game", "x01"]) {
-    if (clone[key] && typeof clone[key] === "object") clone[key] = rewritePlayersInObject(clone[key], localProfile, friendProfile, friendUser);
-  }
+  let clone: any = { ...obj };
 
   if (playerMatchesFriend(clone, friendProfile, friendUser)) {
-    Object.assign(clone, maybeRewritePlayer(clone));
+    clone = maybeRewritePlayer(clone);
   }
+
+  // Réécriture des champs scalaires fréquents qui pilotent les stats/wins/turns.
+  for (const key of [
+    "winnerId", "winnerPlayerId", "winnerProfileId", "playerIdWinner", "winPlayerId",
+    "loserId", "activePlayerId", "currentPlayerId", "startingPlayerId", "throwerId",
+    "p", "pid", "uid", "profileId", "playerId", "selectedPlayerId"
+  ]) {
+    if (remoteIds.includes(String(clone[key]))) clone[key] = localId;
+  }
+
+  // Ne pas réécrire l'id d'un match arbitraire. On le fait seulement si l'objet
+  // ressemble vraiment à une ligne joueur.
+  if (playerMatchesFriend(obj, friendProfile, friendUser) && remoteIds.includes(String(clone.id))) {
+    clone.id = localId;
+  }
+
+  // Réécriture des maps indexées par playerId/profileId : avg3ByPlayer, detailedByPlayer, etc.
+  for (const key of [
+    "avg3ByPlayer", "avgByPlayer", "scoreByPlayer", "pointsByPlayer", "dartsByPlayer",
+    "visitsByPlayer", "detailedByPlayer", "statsByPlayer", "byPlayer", "playersById",
+    "legsByPlayer", "setsByPlayer", "checkoutByPlayer", "coByPlayer", "rankByPlayer"
+  ]) {
+    if (clone[key] && typeof clone[key] === "object" && !Array.isArray(clone[key])) {
+      clone[key] = rewriteMapKeys(clone[key], remoteIds, localId);
+    }
+  }
+
+  // Parcours récursif générique : les historiques X01 stockent les joueurs à plusieurs niveaux
+  // selon les versions (payload, payload.payload, summary, result, legs, sets, turns, darts...).
+  for (const [key, value] of Object.entries(clone)) {
+    if (!value || typeof value !== "object") continue;
+    clone[key] = rewritePlayersInObject(value, localProfile, friendProfile, friendUser, depth + 1);
+  }
+
   return clone;
 }
 
 function makeVirtualHistoryForLink(snapshot: LinkedProfileSnapshot, localProfile: any): any[] {
   const link = snapshot?.link || {};
+  const direction = String(link?.direction || (snapshot as any)?.direction || "").toLowerCase();
+  const isIncoming = direction === "incoming" || direction === "incoming-linked-account" || Boolean(link?.incoming === true);
   const friendUser = snapshot?.friendUser || link?.targetUser || {};
   const serverLocalProfile = (snapshot as any)?.linkedLocalProfile || (snapshot as any)?.localProfile || (snapshot as any)?.filtered?.localProfile || null;
   const friendProfile = serverLocalProfile || snapshot?.friendProfile || findFriendProfile(snapshot?.payload, friendUser, link) || friendUser;
@@ -309,8 +400,11 @@ function makeVirtualHistoryForLink(snapshot: LinkedProfileSnapshot, localProfile
       originalId: id,
       linkedRemote: true,
       linkedRemoteUserId: friendUser?.id || friendUser?.userId || null,
+      linkedRemoteProfileId: friendProfile?.id || friendProfile?.profileId || friendProfile?.playerId || null,
       linkedLocalProfileId: localId,
+      linkedSourceLocalProfileId: link?.localProfileId || link?.local_profile_id || null,
       linkedProfileName: pickName(friendProfile) || pickName(localProfile),
+      linkedProfileDirection: isIncoming ? "incoming" : "outgoing",
       __linkedRemote: true,
     };
   });
@@ -380,6 +474,48 @@ export function projectLinkedSnapshots(localProfiles: any[], snapshots: LinkedPr
   return { profiles, history, normalizedHint: [], byLocalProfileId, snapshots };
 }
 
+const materializedLinkedHistorySignatures = new Map<string, string>();
+
+function isIncomingLinkedHistoryRow(row: any): boolean {
+  return Boolean(row?.__linkedRemote || row?.linkedRemote) && String(row?.linkedProfileDirection || "").toLowerCase() === "incoming";
+}
+
+export async function materializeLinkedProfileProjection(projection: LinkedProfileProjection): Promise<number> {
+  try {
+    const rows = Array.isArray(projection?.history) ? projection.history.filter(isIncomingLinkedHistoryRow) : [];
+    if (!rows.length) return 0;
+    let written = 0;
+    for (const row of rows) {
+      const id = s(row?.id || row?.matchId || row?.resumeId);
+      if (!id) continue;
+      const signature = JSON.stringify({
+        updatedAt: row?.updatedAt || row?.createdAt || row?.date || null,
+        players: Array.isArray(row?.players) ? row.players.map((p: any) => [p?.id, p?.playerId, p?.profileId, p?.name]) : [],
+        winnerId: row?.winnerId || row?.summary?.winnerId || row?.payload?.winnerId || null,
+      });
+      if (materializedLinkedHistorySignatures.get(id) === signature) continue;
+      materializedLinkedHistorySignatures.set(id, signature);
+      await History.upsert({
+        ...(row as any),
+        id,
+        matchId: id,
+        status: String(row?.status || "finished").toLowerCase().includes("progress") ? "finished" : (row?.status || "finished"),
+        linkedRemote: true,
+        __linkedRemote: true,
+      } as any).catch(() => undefined);
+      written += 1;
+    }
+    if (written > 0 && typeof window !== "undefined") {
+      try { window.dispatchEvent(new Event("dc-history-updated")); } catch {}
+      try { window.dispatchEvent(new Event("dc-stats-index-updated")); } catch {}
+      try { window.dispatchEvent(new CustomEvent("dc-linked-history-materialized", { detail: { written } })); } catch {}
+    }
+    return written;
+  } catch {
+    return 0;
+  }
+}
+
 export async function loadLinkedProfileProjection(localProfiles: any[] = []): Promise<LinkedProfileProjection> {
   const ids = arr(localProfiles).map((p: any) => s(p?.id || p?.profileId || p?.playerId)).filter(Boolean).sort();
   const nextKey = ids.join("|");
@@ -412,6 +548,10 @@ export async function loadLinkedProfileProjection(localProfiles: any[] = []): Pr
       localStorage.setItem("dc_linked_profile_projection_v1", JSON.stringify({ at: Date.now(), projection: projected }));
       window.dispatchEvent(new CustomEvent("dc-linked-profile-projection-updated", { detail: projected }));
     } catch {}
+    // Matérialise les parties distantes entrantes dans History/IndexedDB avec les ids du compte local.
+    // C'est la partie manquante de la fusion : les pages détaillées (X01 multi, historique, comparateurs)
+    // lisent History, pas seulement la projection mémoire/Home.
+    void materializeLinkedProfileProjection(projected);
     return projected;
   } catch (error) {
     return { profiles: [], history: [], normalizedHint: [], byLocalProfileId: {}, snapshots: [] };

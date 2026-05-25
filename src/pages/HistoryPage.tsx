@@ -924,7 +924,18 @@ const HistoryAPI = {
         ];
         const projection = await loadLinkedProfileProjection(localProfiles);
         const linkedRows = safeArray<SavedEntry>(projection?.history).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
-        rows = [...rowsLocal, ...linkedRows];
+        const byId = new Map<string, SavedEntry>();
+        for (const row of [...rowsLocal, ...linkedRows]) {
+          const key = String((row as any)?.id || (row as any)?.matchId || (row as any)?.resumeId || "");
+          if (!key) continue;
+          const prev = byId.get(key);
+          if (!prev) byId.set(key, row);
+          else {
+            const score = (x: any) => (x?.payload ? 4 : 0) + (x?.summary ? 2 : 0) + (Array.isArray(x?.players) ? x.players.length : 0);
+            if (score(row) >= score(prev)) byId.set(key, row);
+          }
+        }
+        rows = Array.from(byId.values());
       } catch {
         rows = rowsLocal;
       }
