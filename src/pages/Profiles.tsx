@@ -3993,12 +3993,27 @@ function ActiveProfileBlock({
           </button>
         )}
 
-        <AvatarLite
-          key={`${active?.id || "profile"}-${avatarRefreshKey}-${(active as any)?.avatarUpdatedAt || ""}`}
-          size={AVATAR}
-          src={avatarSrc}
-          label={displayName?.[0]?.toUpperCase() || "?"}
-        />
+        {/* Avatar centré dans le médaillon : les étoiles sont calculées sur MEDALLION,
+            donc l'image doit partager exactement le même centre. */}
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: AVATAR,
+            height: AVATAR,
+            transform: "translate(-50%, -50%)",
+            borderRadius: "50%",
+            overflow: "visible",
+          }}
+        >
+          <AvatarLite
+            key={`${active?.id || "profile"}-${avatarRefreshKey}-${(active as any)?.avatarUpdatedAt || ""}`}
+            size={AVATAR}
+            src={avatarSrc}
+            label={displayName?.[0]?.toUpperCase() || "?"}
+          />
+        </div>
       </div>
 
       {/* TEXTE + ACTIONS */}
@@ -5887,19 +5902,33 @@ function LocalProfilesRefonte({
                     />
                   </div>
 
-                  {/* Association acceptée : on affiche l’avatar du compte ami lié, sans écraser l’avatar local stocké. */}
-                  <AvatarLite
-                    size={AVATAR}
-                    src={buildAvatarSrc({
-                      avatarUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl || null,
-                      avatarDataUrl: linkedFriendAvatarUrl ? null : ((renderedCurrent as any)?.avatarDataUrl || null),
-                      avatarFullDataUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl ? null : ((getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null),
-                      avatarUpdatedAt: linkedFriendAvatarUrl
-                        ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || Date.now())
-                        : ((renderedCurrent as any)?.avatarUpdatedAt ?? null),
-                    })}
-                    label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
-                  />
+                  {/* Association acceptée : on affiche l’avatar du compte ami lié, sans écraser l’avatar local stocké.
+                      Avatar centré comme dans le Centre de statistiques : le ring et l'image partagent le même axe. */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: "50%",
+                      width: AVATAR,
+                      height: AVATAR,
+                      transform: "translate(-50%, -50%)",
+                      borderRadius: "50%",
+                      overflow: "visible",
+                    }}
+                  >
+                    <AvatarLite
+                      size={AVATAR}
+                      src={buildAvatarSrc({
+                        avatarUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl || null,
+                        avatarDataUrl: linkedFriendAvatarUrl ? null : ((renderedCurrent as any)?.avatarDataUrl || null),
+                        avatarFullDataUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl ? null : ((getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null),
+                        avatarUpdatedAt: linkedFriendAvatarUrl
+                          ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || Date.now())
+                          : ((renderedCurrent as any)?.avatarUpdatedAt ?? null),
+                      })}
+                      label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
+                    />
+                  </div>
                 </div>
               </div>
 
