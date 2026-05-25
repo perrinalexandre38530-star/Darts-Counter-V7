@@ -659,18 +659,20 @@ function ActiveProfileCard({
 
           {slide && (
             <div key={slide.id} style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 4 }}>
                 <div
                   style={{
+                    width: "100%",
                     fontSize: 14,
-                    fontWeight: 800,
-                    letterSpacing: 0.8,
+                    fontWeight: 900,
+                    letterSpacing: 1.2,
                     color: primary,
-                    textTransform: "none",
+                    textAlign: "center",
+                    textTransform: "uppercase",
                     animation: "apcTitlePulse 3.2s ease-in-out infinite",
                   }}
                 >
-                  {slide.title}
+                  {String(slide.title || "").toLocaleUpperCase("fr-FR")}
                 </div>
               </div>
 
