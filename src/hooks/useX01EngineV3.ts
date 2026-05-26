@@ -412,15 +412,104 @@ function buildAggregatedStats(
 // REBUILD MATCH COMPLET DEPUIS L'HISTORIQUE DES DARTS (pour UI)
 // ===========================================================
 
+type X01ReplayHistoryDart = {
+  v: number;
+  m: number;
+  p?: X01PlayerId | string | null;
+};
+
+function normalizeReplayThrowOrder(
+  config: X01ConfigV3,
+  darts: X01ReplayHistoryDart[],
+  preferredOrder?: X01PlayerId[]
+): X01PlayerId[] {
+  const validIds = new Set((config.players || []).map((p: any) => String(p.id)));
+  const firstReplayOrder: X01PlayerId[] = [];
+
+  const pushUnique = (target: X01PlayerId[], id: any) => {
+    const pid = String(id || "").trim();
+    if (!pid || !validIds.has(pid) || target.includes(pid as X01PlayerId)) return;
+    target.push(pid as X01PlayerId);
+  };
+
+  (darts || []).forEach((d: any) => pushUnique(firstReplayOrder, d?.p));
+
+  const preferred = (preferredOrder || []).filter((id: any) => validIds.has(String(id))) as X01PlayerId[];
+  const preferredMatchesReplay =
+    firstReplayOrder.length > 0 &&
+    firstReplayOrder.every((pid, idx) => String(preferred[idx] || "") === String(pid));
+
+  const out: X01PlayerId[] = [];
+  const push = (id: any) => pushUnique(out, id);
+
+  // Si l'ordre moteur courant concorde avec les premières volées du replay,
+  // on le garde : c'est le meilleur cas pour ANNULER en live.
+  // Sinon, on fait confiance à l'ordre réellement observé dans les fléchettes
+  // rejouées : c'est le meilleur cas après reprise/import/autosave.
+  if (preferredMatchesReplay || !firstReplayOrder.length) {
+    preferred.forEach(push);
+    firstReplayOrder.forEach(push);
+  } else {
+    firstReplayOrder.forEach(push);
+    preferred.forEach(push);
+  }
+
+  // Dernier filet de sécurité : ordre initial généré par la config.
+  try {
+    generateThrowOrderV3(config, null, 1).forEach(push);
+  } catch {}
+
+  (config.players || []).forEach((p: any) => push(p?.id));
+  return out;
+}
+
+function refreshRebuildVisitCheckoutSuggestion(
+  config: X01ConfigV3,
+  state: X01MatchStateV3
+) {
+  if (!state.visit) return;
+  state.visit.checkoutSuggestion = (() => {
+    const raw = extAdaptCheckoutSuggestion({
+      score: state.visit!.currentScore,
+      dartsLeft: state.visit!.dartsLeft,
+      outMode: config.outMode,
+    });
+    return filterCheckoutSuggestions(raw, config.outMode);
+  })();
+}
+
+function forceReplayActivePlayer(
+  config: X01ConfigV3,
+  state: X01MatchStateV3,
+  pid: X01PlayerId | string | null | undefined
+) {
+  const nextPid = String(pid || "").trim() as X01PlayerId;
+  if (!nextPid) return;
+  if (!config.players?.some((p: any) => String(p?.id) === String(nextPid))) return;
+  if (String(state.activePlayer || "") === String(nextPid) && state.visit) return;
+
+  state.activePlayer = nextPid;
+  startNewVisitV3(state);
+  refreshRebuildVisitCheckoutSuggestion(config, state);
+}
+
 function rebuildMatchFromHistory(
   config: X01ConfigV3,
-  darts: Array<{ v: number; m: number }>,
-  opts?: { matchId?: string }
+  darts: X01ReplayHistoryDart[],
+  opts?: { matchId?: string; throwOrder?: X01PlayerId[] }
 ): {
   newState: X01MatchStateV3;
   newLiveStats: Record<X01PlayerId, X01StatsLiveV3>;
 } {
   let m = createInitialMatchState(config);
+
+  const replayThrowOrder = normalizeReplayThrowOrder(config, darts, opts?.throwOrder);
+  if (replayThrowOrder.length) {
+    m.throwOrder = replayThrowOrder as any;
+    m.activePlayer = replayThrowOrder[0] as any;
+    startNewVisitV3(m);
+    refreshRebuildVisitCheckoutSuggestion(config, m);
+  }
 
   // on conserve le même matchId pour l'historique
   if (opts?.matchId) {
@@ -437,9 +526,17 @@ function rebuildMatchFromHistory(
 
     if (!m.visit) startNewVisitV3(m);
 
+    const explicitPlayerId = String((d as any).p || "").trim() as X01PlayerId;
+    if (explicitPlayerId) {
+      forceReplayActivePlayer(config, m, explicitPlayerId);
+    }
+
     const input: X01DartInputV3 = {
       segment: d.v,
       multiplier: d.m,
+      playerId: explicitPlayerId || undefined,
+      pid: explicitPlayerId || undefined,
+      profileId: explicitPlayerId || undefined,
     } as X01DartInputV3;
 
     ensureMultiActivePlayerIsPlayable(config, m);
@@ -1405,8 +1502,11 @@ export function useX01EngineV3({
     liveStatsByPlayerRef.current = liveStatsByPlayer;
   }, [liveStatsByPlayer]);
 
-  // Historique interne de tous les darts saisis (pour rebuildFromDarts)
-  const dartsHistoryRef = React.useRef<Array<{ v: number; m: number }>>([]);
+  // Historique interne de tous les darts saisis (pour rebuildFromDarts).
+  // IMPORTANT : on conserve aussi le playerId. Sinon un rebuild après ANNULER
+  // réapplique les fléchettes selon un ordre généré et peut attribuer les anciennes
+  // volées au mauvais joueur quand le départ était random/alterné.
+  const dartsHistoryRef = React.useRef<X01ReplayHistoryDart[]>([]);
 
   // ===========================================================
   // ✅ AVG3 / mini-stats par LEG uniquement (delta snapshot)
@@ -1503,17 +1603,22 @@ export function useX01EngineV3({
       // puis on synchronise IMMÉDIATEMENT les refs moteur. Sans ça, le rendu
       // React peut afficher le bon état, mais le prochain dart repart encore
       // de l'ancien stateRef => scores/joueur actif incohérents après ANNULER.
-      const dartsVM = allDarts.map((d) => ({
-        v: d.segment,
-        m: d.multiplier,
+      const dartsVM: X01ReplayHistoryDart[] = allDarts.map((d: any) => ({
+        v: Number(d.segment ?? d.v ?? 0),
+        m: Number(d.multiplier ?? d.mult ?? d.m ?? 1),
+        p: (d.playerId ?? d.pid ?? d.profileId ?? d.p ?? null) as any,
       }));
+
+      const previousThrowOrder = Array.isArray(stateRef.current?.throwOrder)
+        ? ([...(stateRef.current.throwOrder as any)] as X01PlayerId[])
+        : undefined;
 
       dartsHistoryRef.current = dartsVM.slice();
 
       const { newState, newLiveStats } = rebuildMatchFromHistory(
         config,
         dartsVM,
-        { matchId: stateRef.current.matchId }
+        { matchId: stateRef.current.matchId, throwOrder: previousThrowOrder }
       );
 
       stateRef.current = newState;
@@ -1538,10 +1643,19 @@ export function useX01EngineV3({
       const prevState = stateRef.current;
       const prevLive = liveStatsByPlayerRef.current;
 
-      // Historique brut {v,m}
+      // Historique brut {v,m,p}. Le playerId est indispensable pour que
+      // ANNULER/rebuild n'intervertisse jamais les volées entre joueurs.
+      const historyPlayerId = String(
+        (input as any)?.playerId ||
+          (input as any)?.pid ||
+          (input as any)?.profileId ||
+          prevState?.activePlayer ||
+          ""
+      ).trim();
       dartsHistoryRef.current.push({
         v: input.segment,
         m: input.multiplier,
+        p: historyPlayerId || null,
       });
 
       // Calcule UNE seule fois (évite double-exec StrictMode)
@@ -1575,10 +1689,14 @@ export function useX01EngineV3({
 
     dartsHistoryRef.current.pop();
 
+    const previousThrowOrder = Array.isArray(stateRef.current?.throwOrder)
+      ? ([...(stateRef.current.throwOrder as any)] as X01PlayerId[])
+      : undefined;
+
     const { newState, newLiveStats } = rebuildMatchFromHistory(
       config,
       dartsHistoryRef.current.slice(),
-      { matchId: stateRef.current.matchId }
+      { matchId: stateRef.current.matchId, throwOrder: previousThrowOrder }
     );
 
     // Sync refs + React state (évite état "fantôme" au prochain tir)
