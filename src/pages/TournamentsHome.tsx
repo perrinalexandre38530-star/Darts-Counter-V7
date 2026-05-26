@@ -13,8 +13,11 @@ import type { Store } from "../lib/types";
 import {
   listTournamentsLocal,
   listMatchesForTournamentLocal,
+  upsertTournamentLocal,
+  upsertMatchesForTournamentLocal,
   TOURNAMENTS_UPDATED_EVENT,
 } from "../lib/tournaments/storeLocal";
+import { listOnlineCompetitions } from "../lib/tournaments/onlineStore";
 
 type Props = {
   store: Store;
@@ -429,22 +432,38 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const forceMode = String((params as any)?.forceMode || (params as any)?.sport || "").toLowerCase();
   const isPetanque = forceMode === "petanque";
   const isBabyFoot = forceMode === "babyfoot";
+  const isOnline = String(source || "local").toLowerCase() === "online";
+  const sportLabel = isPetanque ? "PÉTANQUE" : isBabyFoot ? "BABY-FOOT" : forceMode ? forceMode.toUpperCase() : "MULTISPORTS";
 
   const reload = React.useCallback(() => {
     setLoading(true);
+    const normalizeSport = (t: any) => String(t?.sport || t?.game?.sport || t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase();
+    const applyScope = (arr: any[]) => {
+      const list = Array.isArray(arr) ? arr : [];
+      if (!forceMode) return list;
+      return list.filter((t: any) => normalizeSport(t) === forceMode || String(t?.game?.mode || "").toLowerCase() === forceMode);
+    };
+
+    if (isOnline) {
+      void listOnlineCompetitions({ sport: forceMode || undefined, limit: 200 })
+        .then((onlineItems) => setItems(applyScope(onlineItems || [])))
+        .catch((e) => {
+          console.error("[TournamentsHome] online load failed:", e);
+          setItems([]);
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
+
     try {
       const list = listTournamentsLocal() || [];
-      const arr = Array.isArray(list) ? list : [];
-      const filteredByMode = isPetanque
-        ? arr.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() === "petanque")
-        : arr.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() !== "petanque");
-      setItems(filteredByMode);
+      setItems(applyScope(Array.isArray(list) ? list : []));
     } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [isPetanque]);
+  }, [forceMode, isOnline]);
 
   React.useEffect(() => {
     reload();
@@ -476,13 +495,16 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
     if (Array.isArray(legacy) && legacy.length && (!items || items.length === 0)) {
       // legacy non filtré : on applique le filtre par mode
-      const filteredByMode = isPetanque
-        ? legacy.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() === "petanque")
-        : legacy.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() !== "petanque");
+      const filteredByMode = forceMode
+        ? legacy.filter((t: any) => {
+            const m = String(t?.sport || t?.game?.sport || t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase();
+            return m === forceMode || String(t?.game?.mode || "").toLowerCase() === forceMode;
+          })
+        : legacy;
       setItems(filteredByMode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, isPetanque]);
+  }, [store, forceMode]);
 
   const tournaments = React.useMemo(() => items || [], [items]);
 
@@ -517,7 +539,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       <Card tone="gold">
         <div style={{ fontWeight: 950, fontSize: 20, letterSpacing: 0.5 }}>
-          {isPetanque ? "TOURNOIS PÉTANQUE" : isBabyFoot ? "TOURNOIS BABY-FOOT" : "TOURNOIS"}
+          {isOnline ? `ONLINE · LIGUES / CHAMPIONNATS / TOURNOIS ${sportLabel}` : `LIGUES / CHAMPIONNATS / TOURNOIS ${sportLabel}`}
         </div>
         <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 4, lineHeight: 1.35 }}>
           {isPetanque
@@ -555,7 +577,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           {/* ✅ IMPORTANT: propagation forceMode vers TournamentCreate */}
           <button
             type="button"
-            onClick={() => go("tournament_create", { forceMode: forceMode || undefined })}
+            onClick={() => go("tournament_create", { forceMode: forceMode || undefined, source: isOnline ? "online" : "local", competitionKind: "tournament" })}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -572,8 +594,13 @@ export default function TournamentsHome({ store, go, source = "local", params }:
               whiteSpace: "nowrap",
             }}
           >
-            CREER TOURNOI
+            {isOnline ? "CREER COMPÉTITION ONLINE" : "CREER LIGUE / CHAMPIONNAT"}
           </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+          <button type="button" onClick={() => go("tournaments", { forceMode: forceMode || undefined, source: "local" })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
+          <button type="button" onClick={() => go("tournaments", { forceMode: forceMode || undefined, source: "online" })} style={pillStyle(isOnline, "#4fb4ff")}>ONLINE</button>
         </div>
 
         <TickerRow go={go} setFilter={setFilter} isPetanque={isPetanque}
@@ -627,7 +654,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
             <div style={{ opacity: 0.85, fontSize: 12.5, marginTop: 6, lineHeight: 1.35 }}>
               Crée ton premier tournoi : poules, matchs et progression seront rangés automatiquement.
               <br />
-              Utilise le bouton <b>CREER TOURNOI</b> en haut.
+              Utilise le bouton <b>{isOnline ? "CREER COMPÉTITION ONLINE" : "CREER LIGUE / CHAMPIONNAT"}</b> en haut.
             </div>
           </Card>
         ) : (
@@ -650,7 +677,19 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                   <div
                     key={id || name + String(updatedAt)}
                     onClick={() => {
-                      if (id) go("tournament_view", { id, forceMode: forceMode || undefined });
+                      if (!id) return;
+                      if (isOnline) {
+                        try {
+                          const payload = (t as any)?.__onlineRow?.payload || {};
+                          const remoteTournament = payload?.tournament || t;
+                          const remoteMatches = Array.isArray(payload?.matches) ? payload.matches : [];
+                          upsertTournamentLocal({ ...(remoteTournament || t), id, source: "online", onlineCompetitionId: id });
+                          upsertMatchesForTournamentLocal(id, remoteMatches);
+                        } catch (e) {
+                          console.error("[TournamentsHome] online hydrate failed:", e);
+                        }
+                      }
+                      go("tournament_view", { id, forceMode: forceMode || undefined, source: isOnline ? "online" : "local" });
                     }}
                     style={{
                       borderRadius: 18,
@@ -706,7 +745,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
       {source === "online" ? (
         <div style={{ marginTop: 12, opacity: 0.7, fontSize: 11.5 }}>
-          (Online) Rejoindre via code arrivera ici plus tard.
+          ONLINE actif : les compétitions sont persistées côté NAS et réhydratées en local à l’ouverture pour conserver la vue/bracket existante.
         </div>
       ) : null}
     </div>

@@ -9,7 +9,7 @@
 
 export type TournamentSource = "local" | "online";
 
-export type TournamentMode = "x01" | "cricket" | "killer" | "clock" | string;
+export type TournamentMode = "x01" | "cricket" | "killer" | "clock" | "shanghai" | "babyfoot" | "petanque" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis" | string;
 
 export type TournamentStatus = "draft" | "running" | "finished";
 
@@ -66,6 +66,9 @@ export type TournamentStage = {
 export type Tournament = {
   id: string;
   source: TournamentSource;
+  sport?: string;
+  kind?: "league" | "championship" | "tournament" | "cup" | string;
+  onlineCompetitionId?: string | null;
   name: string;
   status: TournamentStatus;
 

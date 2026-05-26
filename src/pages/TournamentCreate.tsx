@@ -26,6 +26,7 @@ import type { Store } from "../lib/types";
 import type { Tournament } from "../lib/tournaments/types";
 import { createTournamentDraft, buildInitialMatches } from "../lib/tournaments/engine";
 import { upsertTournamentLocal, upsertMatchesForTournamentLocal } from "../lib/tournaments/storeLocal";
+import { saveOnlineCompetition } from "../lib/tournaments/onlineStore";
 
 // ✅ Avatar + StarRing (comme X01Config)
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -54,7 +55,7 @@ type Props = {
   params?: any; // ✅ IMPORTANT: route params (ex: { forceMode: "petanque" })
 };
 
-type Mode = "x01" | "cricket" | "killer" | "shanghai" | "petanque" | "babyfoot";
+type Mode = "x01" | "cricket" | "killer" | "shanghai" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "football" | "rugby" | "basket" | "badminton" | "tennis";
 type TourFormat = "single_ko" | "double_ko" | "round_robin" | "groups_ko";
 type BestOf = 1 | 3 | 5 | 7;
 
@@ -67,6 +68,14 @@ const MODE_LABEL: Record<Mode, string> = {
   shanghai: "Shanghai",
   petanque: "Pétanque",
   babyfoot: "Baby-foot",
+  pingpong: "Ping-Pong",
+  molkky: "Mölkky",
+  dicegame: "Dés",
+  football: "Football",
+  rugby: "Rugby",
+  basket: "Basket",
+  badminton: "Badminton",
+  tennis: "Tennis",
 };
 
 // ✅ Thème unique (doré)
@@ -789,28 +798,25 @@ function TextInput({ value, onChange, placeholder, width = "100%" }: any) {
 export default function TournamentCreate({ store, go, params }: Props) {
   const primary = THEME;
 
-  // ✅ FORCE MODE (PÉTANQUE)
-  const forceMode = String(params?.forceMode ?? "").toLowerCase();
+  // ✅ FORCE MODE multi-sport (local + online)
+  const forceMode = String(params?.forceMode ?? params?.sport ?? "").toLowerCase();
+  const source = String(params?.source || "local").toLowerCase() === "online" ? "online" : "local";
+  const competitionKind = String(params?.kind || params?.competitionKind || "tournament").toLowerCase();
   const isPetanque = forceMode === "petanque";
   const isBabyFoot = forceMode === "babyfoot";
+  const forcedMode = (["x01", "cricket", "killer", "shanghai", "petanque", "babyfoot", "pingpong", "molkky", "dicegame", "football", "rugby", "basket", "badminton", "tennis"] as Mode[]).includes(forceMode as Mode) ? (forceMode as Mode) : null;
 
   const [name, setName] = React.useState("Mon tournoi");
 
-  // ✅ IMPORTANT: si forceMode=petanque => mode verrouillé
-  const [mode, setMode] = React.useState<Mode | null>(isPetanque ? "petanque" : isBabyFoot ? "babyfoot" : null);
+  // ✅ IMPORTANT: si forceMode est fourni => mode verrouillé sur ce sport/mode
+  const [mode, setMode] = React.useState<Mode | null>(forcedMode || null);
   const [sheetMode, setSheetMode] = React.useState(false);
 
   React.useEffect(() => {
-    if (!isPetanque) return;
-    setMode("petanque");
+    if (!forcedMode) return;
+    setMode(forcedMode);
     setSheetMode(false);
-  }, [isPetanque]);
-
-  React.useEffect(() => {
-    if (!isBabyFoot) return;
-    setMode("babyfoot");
-    setSheetMode(false);
-  }, [isBabyFoot]);
+  }, [forcedMode]);
 
   // ✅ PÉTANQUE : composition (Simple/Doublette/Triplette/Quadrette)
   const [petanqueTeamSize, setPetanqueTeamSize] = React.useState<PetanqueTeamSize>(2);
@@ -1620,7 +1626,9 @@ async function createTournament() {
 
     const tour: Tournament = createTournamentDraft({
       name: name.trim(),
-      source: "local",
+      source: source as any,
+      sport: forceMode || mode || "darts",
+      kind: competitionKind,
       ownerProfileId: (store as any)?.activeProfileId ?? null,
 
       // ✅ ENGINE voit des "players" = équipes
@@ -1666,11 +1674,24 @@ async function createTournament() {
     try {
       upsertTournamentLocal(tour as any);
       upsertMatchesForTournamentLocal(tour.id, matches as any);
+      if (source === "online") {
+        void saveOnlineCompetition({
+          name: tour.name,
+          sport: "petanque",
+          mode: "petanque",
+          kind: competitionKind,
+          status: tour.status,
+          tournament: tour,
+          matches: matches as any,
+          participants: (tour as any).players || [],
+          settings: (tour as any).game?.rules || {},
+        }).catch((err) => console.error("[TournamentCreate] online save failed:", err));
+      }
     } catch (e) {
       console.error("[TournamentCreate] persist failed:", e);
     }
 
-    go("tournament_view", { id: tour.id, forceMode });
+    go("tournament_view", { id: tour.id, forceMode, source, competitionKind });
     return;
   }
 
@@ -1792,7 +1813,9 @@ async function createTournament() {
 
   const tour: Tournament = createTournamentDraft({
     name: name.trim(),
-    source: "local",
+    source: source as any,
+    sport: forceMode || mode || "darts",
+    kind: competitionKind,
     ownerProfileId: (store as any)?.activeProfileId ?? null,
 
     players: finalPlayers.map((p: any) => ({
@@ -1822,6 +1845,8 @@ async function createTournament() {
       autoFillBots: !!autoFillBots,
       maxPlayers: capEnabled ? cap : 0,
       forceMode,
+      source,
+      competitionKind,
       isPetanque,
       petanqueTeamSize: isPetanque ? petanqueTeamSize : undefined,
     },
@@ -1832,11 +1857,24 @@ async function createTournament() {
   try {
     upsertTournamentLocal(tour as any);
     upsertMatchesForTournamentLocal(tour.id, matches as any);
+    if (source === "online") {
+      void saveOnlineCompetition({
+        name: tour.name,
+        sport: forceMode || String(mode || "darts"),
+        mode: String(mode || forceMode || "x01"),
+        kind: competitionKind,
+        status: tour.status,
+        tournament: tour,
+        matches: matches as any,
+        participants: (tour as any).players || [],
+        settings: (tour as any).game?.rules || {},
+      }).catch((err) => console.error("[TournamentCreate] online save failed:", err));
+    }
   } catch (e) {
     console.error("[TournamentCreate] persist failed:", e);
   }
 
-  go("tournament_view", { id: tour.id, forceMode });
+  go("tournament_view", { id: tour.id, forceMode, source, competitionKind });
 }
 
   const computedGroups = React.useMemo(() => {
@@ -1896,7 +1934,7 @@ const petanqueTeamsUI = React.useMemo(() => {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <button
           type="button"
-          onClick={() => go("tournaments", { forceMode })}
+          onClick={() => go("tournaments", { forceMode, source })}
           style={{
             borderRadius: 999,
             padding: "7px 12px",
@@ -1982,7 +2020,7 @@ const petanqueTeamsUI = React.useMemo(() => {
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(["babyfoot", "x01", "cricket", "killer", "shanghai"] as Mode[]).map((m) => (
+                {(["babyfoot", "x01", "cricket", "killer", "shanghai", "pingpong", "molkky", "dicegame", "football", "rugby", "basket", "badminton", "tennis"] as Mode[]).map((m) => (
                   <NeonPill key={m} active={mode === m} label={MODE_LABEL[m]} onClick={() => setMode(m)} primary={primary} />
                 ))}
               </div>
@@ -2739,7 +2777,7 @@ const petanqueTeamsUI = React.useMemo(() => {
       <Sheet open={sheetMode && !isPetanque} title="Choisir un mode" onClose={() => setSheetMode(false)} primary={primary}>
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gap: 8 }}>
-            {(["babyfoot", "x01", "cricket", "killer", "shanghai"] as Mode[]).map((m) => (
+            {(["babyfoot", "x01", "cricket", "killer", "shanghai", "pingpong", "molkky", "dicegame", "football", "rugby", "basket", "badminton", "tennis"] as Mode[]).map((m) => (
               <button
                 key={m}
                 type="button"

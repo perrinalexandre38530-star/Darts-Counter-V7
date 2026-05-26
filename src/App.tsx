@@ -3927,24 +3927,16 @@ case "babyfoot_team_edit":
         break;
 
         case "tournaments": {
-          const sportLc = String(activeSport || "").toLowerCase();
-          const isPetanque = sportLc === "petanque";
-          const isBabyFoot = sportLc === "babyfoot";
+          const sportLc = String((routeParams as any)?.forceMode || activeSport || "darts").toLowerCase();
+          const source = String((routeParams as any)?.source || "local").toLowerCase() === "online" ? "online" : "local";
 
-          const openBabyFootTournamentModule =
-            isBabyFoot &&
-            ((routeParams as any)?.openTournamentModule === true ||
-              (routeParams as any)?.openTournamentModule === "true");
-
-          page = isBabyFoot && !openBabyFootTournamentModule ? (
-            <BabyFootCompetitionHome go={go} />
-          ) : (
+          page = (
             <TournamentsHome
               store={store}
               go={go}
               update={update}
-              source="local"
-              params={isPetanque ? { forceMode: "petanque" } : isBabyFoot ? { forceMode: "babyfoot" } : undefined}
+              source={source as any}
+              params={{ ...(routeParams as any), forceMode: sportLc }}
             />
           );
           break;
