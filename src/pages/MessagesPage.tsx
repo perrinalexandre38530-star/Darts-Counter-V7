@@ -2464,15 +2464,17 @@ export default function MessagesPage({ store, update, go }: Props) {
                 <video ref={callVideoRef} muted playsInline autoPlay style={{ position: "absolute", right: 18, bottom: 76, width: 92, height: 70, objectFit: "cover", borderRadius: 12, border: `1px solid ${BLUE}77`, background: "#05070c" }} />
               </div>
             ) : conversationPanel.type === "audio" ? (
-              <audio ref={remoteAudioRef} autoPlay playsInline />
-              <div style={{ marginTop: 10, minHeight: 52, border: `1px solid ${GREEN}44`, borderRadius: 16, padding: "10px 12px", background: "rgba(125,255,178,.08)", display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ width: 12, height: 12, borderRadius: 999, background: GREEN, boxShadow: `0 0 18px ${GREEN}` }} />
-                <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <span key={i} style={{ width: 4, height: 6 + ((i * 5 + Date.now()) % 20), borderRadius: 999, background: GREEN, opacity: 0.35 + (i % 4) * 0.12 }} />
-                  ))}
+              <>
+                <audio ref={remoteAudioRef} autoPlay playsInline />
+                <div style={{ marginTop: 10, minHeight: 52, border: `1px solid ${GREEN}44`, borderRadius: 16, padding: "10px 12px", background: "rgba(125,255,178,.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 999, background: GREEN, boxShadow: `0 0 18px ${GREEN}` }} />
+                  <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <span key={i} style={{ width: 4, height: 6 + ((i * 5 + Date.now()) % 20), borderRadius: 999, background: GREEN, opacity: 0.35 + (i % 4) * 0.12 }} />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </>
             ) : null}
             {conversationPanel.type === "mediaPreview" ? (
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>

@@ -8,7 +8,42 @@
 // ============================================
 
 import React from "react";
-import { botLevelToStarAvg3d } from "../lib/bots";
+
+
+function profileStarRingParseBotLevelValue(input: any, fallback = 1): number {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return Math.max(1, Math.min(5, Math.round(input * 2) / 2));
+  }
+
+  const raw = String(input ?? "").trim();
+  const value = raw.toLowerCase();
+  if (!value) return fallback;
+
+  const fraction = value.match(/(\d+(?:[.,]\d+)?)\s*\/\s*5/);
+  if (fraction) {
+    const n = Number(String(fraction[1]).replace(",", "."));
+    if (Number.isFinite(n)) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
+  }
+
+  const decimal = value.match(/(?:niveau|level|lvl|botlevel|stars?|étoiles?)?\s*(\d+(?:[.,]\d+)?)/);
+  if (decimal) {
+    const n = Number(String(decimal[1]).replace(",", "."));
+    if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
+  }
+
+  if (value.includes("legend") || value.includes("légende") || value.includes("legende")) return 5;
+  if (value.includes("prodige")) return 4.5;
+  if (value.includes("pro")) return 4;
+  if (value.includes("fort") || value.includes("strong") || value.includes("hard") || value.includes("difficile")) return 3;
+  if (value.includes("standard") || value.includes("regular") || value.includes("medium") || value.includes("normal") || value.includes("moyen")) return 2;
+  if (value.includes("easy") || value.includes("facile") || value.includes("beginner") || value.includes("débutant") || value.includes("debutant") || value.includes("rookie")) return 1;
+
+  return fallback;
+}
+
+function profileStarRingBotLevelToAvg3d(input: any, fallback = 1): number {
+  return Math.round(profileStarRingParseBotLevelValue(input, fallback) * 20);
+}
 
 type Props = {
   anchorSize?: number;    // diamètre du médaillon
@@ -116,7 +151,7 @@ export default function ProfileStarRing({
     : Number.isFinite(Number(scoreProp)) && Number(scoreProp) > 0
       ? Number(scoreProp)
       : profileBotLevel != null
-        ? botLevelToStarAvg3d(profileBotLevel, 1)
+        ? profileStarRingBotLevelToAvg3d(profileBotLevel, 1)
         : 0;
   const score = Math.max(0, Math.min(180, Math.round(rawScore)));
 

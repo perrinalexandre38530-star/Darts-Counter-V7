@@ -25,7 +25,7 @@ import {
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
-import { loadBots as loadStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
+import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
@@ -172,6 +172,42 @@ function buildDefaultSelectedIds(humans: Profile[], activeProfileId: string | nu
   if (ordered.length >= 2) return [ordered[0].id, ordered[1].id];
   if (ordered.length === 1) return [ordered[0].id];
   return [];
+}
+
+
+function parseX01BotLevelValue(input: any, fallback = 1): number {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return Math.max(1, Math.min(5, Math.round(input * 2) / 2));
+  }
+
+  const raw = String(input ?? "").trim();
+  const value = raw.toLowerCase();
+  if (!value) return fallback;
+
+  const fraction = value.match(/(\d+(?:[.,]\d+)?)\s*\/\s*5/);
+  if (fraction) {
+    const n = Number(String(fraction[1]).replace(",", "."));
+    if (Number.isFinite(n)) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
+  }
+
+  const decimal = value.match(/(?:niveau|level|lvl|botlevel|stars?|étoiles?)?\s*(\d+(?:[.,]\d+)?)/);
+  if (decimal) {
+    const n = Number(String(decimal[1]).replace(",", "."));
+    if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.max(1, Math.min(5, Math.round(n * 2) / 2));
+  }
+
+  if (value.includes("legend") || value.includes("légende") || value.includes("legende")) return 5;
+  if (value.includes("prodige")) return 4.5;
+  if (value.includes("pro")) return 4;
+  if (value.includes("fort") || value.includes("strong") || value.includes("hard") || value.includes("difficile")) return 3;
+  if (value.includes("standard") || value.includes("regular") || value.includes("medium") || value.includes("normal") || value.includes("moyen")) return 2;
+  if (value.includes("easy") || value.includes("facile") || value.includes("beginner") || value.includes("débutant") || value.includes("debutant") || value.includes("rookie")) return 1;
+
+  return fallback;
+}
+
+function x01BotLevelToStarAvg3d(input: any, fallback = 1): number {
+  return Math.round(parseX01BotLevelValue(input, fallback) * 20);
 }
 
 function toBotLite(input: any): BotLite {
@@ -2496,7 +2532,7 @@ function extTestBtn(accent: string): React.CSSProperties {
 /* --------- Helpers niveau BOT (1 à 5 étoiles) --------- */
 
 function resolveBotLevel(botLevelRaw?: string | null): { level: number } {
-  return { level: parseBotLevelValue(botLevelRaw, 1) };
+  return { level: parseX01BotLevelValue(botLevelRaw, 1) };
 }
 
 /* Médaillon BOT – doré pour les PRO IA, bleu pour les bots classiques */
@@ -2520,7 +2556,7 @@ function BotMedallion({
   const WRAP = MEDALLION + STAR;
 
   const lvl = Math.max(1, Math.min(5, Number(level) || 1));
-  const fakeAvg3d = botLevelToStarAvg3d(lvl, 1);
+  const fakeAvg3d = x01BotLevelToStarAvg3d(lvl, 1);
 
   return (
     <div style={{ position: "relative", width: WRAP, height: WRAP, flex: "0 0 auto", overflow: "visible" }}>
