@@ -54,6 +54,9 @@ const BLUE = "#79c8ff";
 const GREEN = "#7dffb2";
 const RED = "#ff7b7b";
 const STROKE = "rgba(255,255,255,.13)";
+const MESSAGE_TTL_HOURS = 24;
+const MESSAGE_TTL_MS = MESSAGE_TTL_HOURS * 60 * 60 * 1000;
+
 
 const EMOJI_BANK: Array<{ label: string; items: string[] }> = [
   { label: "Récents", items: ["😀","😃","😄","😁","😆","😂","🤣","😊","😇","🙂","🙃","😉","😍","🥰","😘","😜","🤪","😎","🥳","🤩","😱","😤","😭","😴"] },
@@ -77,6 +80,94 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error || new Error("Lecture fichier impossible"));
     reader.readAsDataURL(file);
   });
+}
+
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Lecture audio impossible"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlMimeType(dataUrl?: any): string {
+  const m = String(dataUrl || "").match(/^data:([^;,]+)[;,]/i);
+  return m?.[1] || "";
+}
+
+function isImageMetadata(meta: any): boolean {
+  const mime = String(meta?.mimeType || dataUrlMimeType(meta?.dataUrl) || "").toLowerCase();
+  return mime.startsWith("image/") || isLikelyImageDataUrl(meta?.dataUrl);
+}
+
+function isAudioMetadata(meta: any): boolean {
+  const mime = String(meta?.mimeType || dataUrlMimeType(meta?.audioDataUrl || meta?.dataUrl) || "").toLowerCase();
+  return mime.startsWith("audio/") || meta?.kind === "voice";
+}
+
+function messageTextForDisplay(message: any): string {
+  const meta = metadataOfMessage(message);
+  if (["photo", "file", "voice", "callInvite"].includes(String(meta.kind || ""))) return "";
+  return String(message?.text || "");
+}
+
+function mediaLabel(meta: any): string {
+  if (meta?.kind === "photo") return "Photo";
+  if (meta?.kind === "voice") return "Message vocal";
+  if (meta?.kind === "callInvite") return meta?.callType === "video" ? "Appel visio" : "Appel audio";
+  if (isImageMetadata(meta)) return "Image";
+  if (isAudioMetadata(meta)) return "Audio";
+  return "Document";
+}
+
+function formatFileSize(bytes?: any): string {
+  const n = Number(bytes || 0);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} Ko`;
+  return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+async function imageFileToPreviewDataUrl(file: File): Promise<string> {
+  const mime = String(file.type || "").toLowerCase();
+  if (!mime.startsWith("image/")) return readFileAsDataUrl(file);
+  if (typeof document === "undefined" || typeof Image === "undefined") return readFileAsDataUrl(file);
+  const rawUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const node = new Image();
+      node.onload = () => resolve(node);
+      node.onerror = () => reject(new Error("Aperçu image impossible"));
+      node.src = rawUrl;
+    });
+    const maxSide = 1280;
+    const scale = Math.min(1, maxSide / Math.max(img.width || maxSide, img.height || maxSide));
+    const width = Math.max(1, Math.round((img.width || maxSide) * scale));
+    const height = Math.max(1, Math.round((img.height || maxSide) * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return readFileAsDataUrl(file);
+    ctx.drawImage(img, 0, 0, width, height);
+    const outputMime = mime === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputMime, 0.82));
+    if (!blob) return readFileAsDataUrl(file);
+    return blobToDataUrl(blob);
+  } finally {
+    URL.revokeObjectURL(rawUrl);
+  }
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  if (!dataUrl) return;
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename || "message-piece-jointe";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function metadataOfMessage(message: any): any {
@@ -816,7 +907,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [replyToMessage, setReplyToMessage] = React.useState<PrivateMessageItem | null>(null);
   const [editingMessageId, setEditingMessageId] = React.useState("");
   const [emojiOpen, setEmojiOpen] = React.useState(false);
-  const [conversationPanel, setConversationPanel] = React.useState<{ type: string; title: string; text: string } | null>(null);
+  const [conversationPanel, setConversationPanel] = React.useState<{ type: string; title: string; text: string; metadata?: any; mediaUrl?: string } | null>(null);
   const [isRecording, setIsRecording] = React.useState(false);
   const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const [selectedThreadUserId, setSelectedThreadUserId] = React.useState("");
@@ -1156,7 +1247,14 @@ export default function MessagesPage({ store, update, go }: Props) {
     : selectedFriend
       ? { id: userIdOf(selectedFriend), user: selectedFriend, messages: [] as PrivateMessageItem[], unread: 0, lastAt: 0 }
       : null;
-  const displayedMessages = selectedThread ? selectedThread.messages : [];
+  const displayedMessages = React.useMemo(() => {
+    const base = selectedThread ? (selectedThread.messages || []) : [];
+    const minTs = Date.now() - MESSAGE_TTL_MS;
+    return base.filter((m: any) => {
+      const ts = Date.parse(String(m?.createdAt || ""));
+      return !Number.isFinite(ts) || ts >= minTs;
+    });
+  }, [selectedThread?.id, selectedThread?.messages]);
 
   const counters = {
     // À TRAITER = uniquement ce qui arrive chez le compte actif.
@@ -1342,8 +1440,12 @@ export default function MessagesPage({ store, update, go }: Props) {
     setInfo("Message envoyé ✅");
     setError(null);
     try {
-      await sendPrivateMessage(toUserId, finalText);
-      await loadAll(true);
+      const ttlMeta = { expiresAt: new Date(Date.now() + MESSAGE_TTL_MS).toISOString(), ttlHours: MESSAGE_TTL_HOURS };
+      setPrivateMessages((prev) => prev.map((m: any) => String(m?.id || "") === String(optimisticId) ? { ...m, metadata: { ...(m?.metadata || {}), ...ttlMeta } } : m));
+      const saved: any = await sendPrivateMessage(toUserId, finalText, ttlMeta);
+      if (saved?.id) {
+        setPrivateMessages((prev) => prev.map((m: any) => String(m?.id || "") === String(optimisticId) ? { ...saved, metadata: saved.metadata || ttlMeta } : m));
+      }
       markMessageCenterRefreshNeeded();
     } catch (e: any) {
       setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
@@ -1436,43 +1538,54 @@ export default function MessagesPage({ store, update, go }: Props) {
       setError("Choisis un ami destinataire.");
       return;
     }
-    const optimisticId = appendOptimisticOutgoingMessage(toUserId, text, metadata || {});
+    const ttlMeta = { ...(metadata || {}), expiresAt: metadata?.expiresAt || new Date(Date.now() + MESSAGE_TTL_MS).toISOString(), ttlHours: MESSAGE_TTL_HOURS };
+    const optimisticId = appendOptimisticOutgoingMessage(toUserId, text, ttlMeta);
     setSelectedThreadUserId(toUserId);
     setMessageToUserId(toUserId);
     setInfo("Élément envoyé ✅");
     setError(null);
-    try {
-      await sendPrivateMessage(toUserId, text, metadata || {});
-      await loadAll(true);
-      markMessageCenterRefreshNeeded();
-    } catch (e: any) {
-      setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
-      setError(e?.message || String(e));
-    }
+    sendPrivateMessage(toUserId, text, ttlMeta)
+      .then((saved: any) => {
+        if (saved?.id) {
+          setPrivateMessages((prev) => prev.map((m: any) => String(m?.id || "") === String(optimisticId) ? { ...saved, metadata: saved.metadata || ttlMeta } : m));
+        }
+        markMessageCenterRefreshNeeded();
+      })
+      .catch((e: any) => {
+        setPrivateMessages((prev) => prev.filter((m: any) => String(m?.id || "") !== String(optimisticId)));
+        setError(e?.message || String(e));
+      });
   }
 
   async function handleSelectedFile(file: File | null, kind: "file" | "photo") {
     if (!file) return;
     const sizeKb = Math.max(1, Math.round(file.size / 1024));
-    const label = kind === "photo" ? "📷 Photo" : "📎 Pièce jointe";
+    const isImage = kind === "photo" || String(file.type || "").startsWith("image/");
+    const label = isImage ? "📷 Photo" : "📎 Pièce jointe";
     const metadata: any = {
-      kind,
+      kind: isImage ? "photo" : "file",
       fileName: file.name,
       mimeType: file.type || "application/octet-stream",
       sizeBytes: file.size,
       sizeKb,
+      expiresAt: new Date(Date.now() + MESSAGE_TTL_MS).toISOString(),
+      ttlHours: MESSAGE_TTL_HOURS,
     };
-    if (kind === "photo" || String(file.type || "").startsWith("image/")) {
-      if (file.size <= 750 * 1024) {
-        try { metadata.dataUrl = await readFileAsDataUrl(file); } catch {}
+    try {
+      if (isImage) {
+        metadata.dataUrl = await imageFileToPreviewDataUrl(file);
+      } else if (file.size <= 5 * 1024 * 1024) {
+        metadata.dataUrl = await readFileAsDataUrl(file);
       } else {
         metadata.previewSkipped = true;
       }
+    } catch {
+      metadata.previewSkipped = true;
     }
-    await sendSystemChatText(`${label} : ${file.name} (${sizeKb} Ko)`, metadata);
+    await sendSystemChatText(label, metadata);
   }
 
-  async function openCallPanel(type: "audio" | "video") {
+  async function openLocalCallPanel(type: "audio" | "video", title?: string, text?: string) {
     clearConversationTools();
     try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
     callStreamRef.current = null;
@@ -1481,10 +1594,8 @@ export default function MessagesPage({ store, update, go }: Props) {
       callStreamRef.current = media || null;
       setConversationPanel({
         type,
-        title: type === "video" ? "Visio prête" : "Appel audio prêt",
-        text: type === "video"
-          ? "Caméra et micro ouverts sur cet appareil. Pour appeler l’autre téléphone en direct il faudra ajouter le vrai pont WebRTC/signaling NAS."
-          : "Micro ouvert sur cet appareil. Pour appeler l’autre téléphone en direct il faudra ajouter le vrai pont WebRTC/signaling NAS.",
+        title: title || (type === "video" ? "Visio en cours" : "Appel audio en cours"),
+        text: text || (type === "video" ? "Demande de visio envoyée. La connexion directe attend le signaling NAS/WebRTC." : "Demande d’appel envoyée. La connexion directe attend le signaling NAS/WebRTC."),
       });
     } catch (e: any) {
       setConversationPanel({
@@ -1493,6 +1604,26 @@ export default function MessagesPage({ store, update, go }: Props) {
         text: e?.message ? `Autorisation refusée ou indisponible : ${e.message}` : "Autorisation refusée ou indisponible.",
       });
     }
+  }
+
+  async function openCallPanel(type: "audio" | "video") {
+    const toUserId = String(messageToUserId || selectedThread?.id || "").trim();
+    if (!toUserId) {
+      setError("Choisis un ami à appeler.");
+      return;
+    }
+    await sendSystemChatText(type === "video" ? "📹 Demande de visio" : "📞 Demande d’appel audio", {
+      kind: "callInvite",
+      callType: type,
+      status: "ringing",
+      expiresAt: new Date(Date.now() + 2 * 60_000).toISOString(),
+      ttlHours: MESSAGE_TTL_HOURS,
+    });
+    await openLocalCallPanel(type, type === "video" ? "Visio lancée" : "Appel audio lancé", "Invitation envoyée à l’autre appareil. Le vrai décrochage direct nécessitera le pont WebRTC/signaling NAS.");
+  }
+
+  async function acceptIncomingCall(type: "audio" | "video") {
+    await openLocalCallPanel(type, type === "video" ? "Visio acceptée" : "Appel audio accepté", "Micro/caméra ouverts sur cet appareil. Le pont WebRTC/signaling NAS reliera ensuite les deux appareils.");
   }
 
   function closeCallPanel() {
@@ -1542,10 +1673,16 @@ export default function MessagesPage({ store, update, go }: Props) {
       };
       recorder.onstop = async () => {
         const duration = Math.max(1, Math.round((Date.now() - recorderStartedAtRef.current) / 1000));
+        const blob = new Blob(recorderChunksRef.current, { type: recorder.mimeType || "audio/webm" });
         try { stream.getTracks().forEach((track) => track.stop()); } catch {}
         setIsRecording(false);
         recorderRef.current = null;
-        await sendSystemChatText(`🎙️ Message vocal (${duration}s)`, { kind: "voice", durationSeconds: duration });
+        try {
+          const audioDataUrl = await blobToDataUrl(blob);
+          await sendSystemChatText(`🎙️ Message vocal (${duration}s)`, { kind: "voice", durationSeconds: duration, mimeType: blob.type || "audio/webm", audioDataUrl, sizeBytes: blob.size });
+        } catch {
+          await sendSystemChatText(`🎙️ Message vocal (${duration}s)`, { kind: "voice", durationSeconds: duration, mimeType: blob.type || "audio/webm", sizeBytes: blob.size, previewSkipped: true });
+        }
       };
       recorder.start();
       setIsRecording(true);
@@ -1554,6 +1691,44 @@ export default function MessagesPage({ store, update, go }: Props) {
       setIsRecording(false);
       setError(e?.message || "Micro indisponible.");
     }
+  }
+
+
+  function openMediaPreview(meta: any) {
+    const url = String(meta?.dataUrl || meta?.audioDataUrl || "");
+    setEmojiOpen(false);
+    setConversationOptionsOpen(false);
+    setOpenMessageMenuId("");
+    setConversationPanel({
+      type: "mediaPreview",
+      title: mediaLabel(meta),
+      text: `Aperçu disponible. Les messages et fichiers de messagerie sont conservés ${MESSAGE_TTL_HOURS}h puis supprimés du serveur.`,
+      metadata: meta,
+      mediaUrl: url,
+    });
+  }
+
+  function openMediaDetails(meta: any) {
+    setEmojiOpen(false);
+    setConversationOptionsOpen(false);
+    setOpenMessageMenuId("");
+    setConversationPanel({
+      type: "mediaDetails",
+      title: "Détails",
+      text: `${String(meta?.fileName || mediaLabel(meta))}\n${formatFileSize(meta?.sizeBytes)}\n${String(meta?.mimeType || dataUrlMimeType(meta?.dataUrl || meta?.audioDataUrl) || "type inconnu")}\nConservation : ${MESSAGE_TTL_HOURS}h`,
+      metadata: meta,
+      mediaUrl: String(meta?.dataUrl || meta?.audioDataUrl || ""),
+    });
+  }
+
+  function downloadMessageMedia(meta: any) {
+    const url = String(meta?.dataUrl || meta?.audioDataUrl || "");
+    if (!url) {
+      setError("Téléchargement indisponible : le fichier n’est pas présent dans le message.");
+      return;
+    }
+    downloadDataUrl(url, String(meta?.fileName || (meta?.kind === "voice" ? "message-vocal.webm" : "piece-jointe")));
+    setInfo("Téléchargement lancé ✅");
   }
 
   function openMessengerThread(threadId: string, unread = 0) {
@@ -1797,6 +1972,23 @@ export default function MessagesPage({ store, update, go }: Props) {
                 </div>
               </div>
             ) : null}
+            {conversationPanel.type === "mediaPreview" ? (
+              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                {isImageMetadata(conversationPanel.metadata) && conversationPanel.mediaUrl ? (
+                  <img src={conversationPanel.mediaUrl} alt={String(conversationPanel.metadata?.fileName || "aperçu")} style={{ width: "100%", maxHeight: "55vh", objectFit: "contain", borderRadius: 16, border: `1px solid ${BLUE}44`, background: "rgba(0,0,0,.35)" }} />
+                ) : isAudioMetadata(conversationPanel.metadata) && conversationPanel.mediaUrl ? (
+                  <audio controls src={conversationPanel.mediaUrl} style={{ width: "100%" }} />
+                ) : (
+                  <div style={{ border: `1px solid ${BLUE}44`, borderRadius: 14, padding: 12, color: "rgba(255,255,255,.74)", fontWeight: 850 }}>Aucun aperçu lisible pour ce fichier.</div>
+                )}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <ActionButton label="Télécharger" tone={BLUE} onClick={() => downloadMessageMedia(conversationPanel.metadata)} />
+                  <ActionButton label="Détails" tone={GOLD} onClick={() => openMediaDetails(conversationPanel.metadata)} />
+                </div>
+              </div>
+            ) : conversationPanel.type === "mediaDetails" ? (
+              <div style={{ marginTop: 10, whiteSpace: "pre-wrap", border: `1px solid ${STROKE}`, borderRadius: 14, padding: 10, background: "rgba(255,255,255,.035)", color: "rgba(255,255,255,.78)", fontSize: 12, fontWeight: 850, lineHeight: 1.45 }}>{conversationPanel.text}</div>
+            ) : null}
             {conversationPanel.type === "stats" ? (
               <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                 {[
@@ -1824,6 +2016,10 @@ export default function MessagesPage({ store, update, go }: Props) {
             )}
           </div>
         ) : null}
+
+        <div style={{ flex: "0 0 auto", margin: "7px 12px 0", border: `1px solid rgba(125,255,178,.22)`, borderRadius: 14, padding: "7px 10px", color: "rgba(255,255,255,.62)", background: "rgba(0,0,0,.20)", fontSize: 10.5, fontWeight: 800 }}>
+          🕒 Messages, photos, pièces jointes et vocaux conservés {MESSAGE_TTL_HOURS}h puis supprimés du serveur.
+        </div>
 
         <div
           style={{
@@ -1864,17 +2060,40 @@ export default function MessagesPage({ store, update, go }: Props) {
                       boxShadow: incoming && !m.readAt ? "0 0 16px rgba(125,255,178,.11)" : "none",
                     }}
                   >
-                    <div style={{ color: "#fff", fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.24 }}>{m?.text || "—"}</div>
+                    {(() => {
+                      const txt = messageTextForDisplay(m);
+                      return txt ? <div style={{ color: "#fff", fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.24 }}>{txt}</div> : null;
+                    })()}
                     {(() => {
                       const meta = metadataOfMessage(m);
-                      if (isLikelyImageDataUrl(meta.dataUrl)) {
-                        return <img src={meta.dataUrl} alt={String(meta.fileName || "photo")} style={{ marginTop: 7, width: "min(190px, 100%)", maxHeight: 160, objectFit: "cover", borderRadius: 12, border: `1px solid ${BLUE}44`, display: "block" }} />;
+                      if (meta.kind === "callInvite") {
+                        const callType = meta.callType === "video" ? "video" : "audio";
+                        return <div style={{ display: "grid", gap: 7, minWidth: 190 }}>
+                          <div style={{ color: callType === "video" ? BLUE : GREEN, fontWeight: 1000, fontSize: 13 }}>{callType === "video" ? "📹 Appel visio" : "📞 Appel audio"}</div>
+                          <div style={{ color: "rgba(255,255,255,.62)", fontSize: 11, fontWeight: 800 }}>Invitation d’appel • expire rapidement</div>
+                          {incoming ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                            <ActionButton label="Répondre" tone={callType === "video" ? BLUE : GREEN} onClick={() => acceptIncomingCall(callType as any)} />
+                            <ActionButton label="Refuser" tone={RED} onClick={() => setInfo("Appel refusé")} />
+                          </div> : <div style={{ color: "rgba(255,255,255,.55)", fontSize: 11, fontWeight: 850 }}>Demande envoyée</div>}
+                        </div>;
                       }
-                      if (meta.kind === "file" || meta.kind === "photo") {
-                        return <div style={{ marginTop: 7, border: `1px solid ${BLUE}44`, borderRadius: 12, padding: "7px 8px", color: "rgba(255,255,255,.78)", background: "rgba(0,0,0,.20)", fontSize: 11, fontWeight: 850 }}>📎 {String(meta.fileName || "Fichier")} {meta.sizeKb ? `• ${meta.sizeKb} Ko` : ""}</div>;
+                      const mediaUrl = String(meta.dataUrl || meta.audioDataUrl || "");
+                      if (isImageMetadata(meta) && mediaUrl) {
+                        return <button type="button" onClick={() => openMediaPreview(meta)} style={{ marginTop: 0, border: 0, padding: 0, background: "transparent", cursor: "pointer", display: "block" }}>
+                          <img src={mediaUrl} alt="Photo" style={{ width: "min(260px, 100%)", maxHeight: 230, objectFit: "cover", borderRadius: 14, border: `1px solid ${BLUE}44`, display: "block", background: "rgba(0,0,0,.25)" }} />
+                        </button>;
                       }
                       if (meta.kind === "voice") {
-                        return <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 7, color: GREEN, fontSize: 11.5, fontWeight: 950 }}><span>▰▰▰▱▱</span><span>{Number(meta.durationSeconds || 0)}s</span></div>;
+                        return <div style={{ display: "grid", gap: 7, minWidth: 190 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, color: GREEN, fontSize: 12, fontWeight: 1000 }}><span>🎙️</span><span>Message vocal</span><span>{Number(meta.durationSeconds || 0)}s</span></div>
+                          {mediaUrl ? <audio controls src={mediaUrl} style={{ width: "100%", height: 34 }} /> : <div style={{ color: RED, fontSize: 11, fontWeight: 850 }}>Lecture indisponible : audio non stocké dans le message.</div>}
+                        </div>;
+                      }
+                      if (meta.kind === "file" || meta.kind === "photo") {
+                        return <button type="button" onClick={() => openMediaPreview(meta)} style={{ marginTop: 0, width: "min(220px, 100%)", border: `1px solid ${BLUE}44`, borderRadius: 14, padding: "10px 11px", color: "rgba(255,255,255,.84)", background: "rgba(0,0,0,.20)", fontSize: 12, fontWeight: 950, cursor: "pointer", textAlign: "left" }}>
+                          <span style={{ display: "block", color: BLUE, fontWeight: 1000 }}>{meta.kind === "photo" ? "📷 Photo" : "📎 Document"}</span>
+                          <span style={{ display: "block", marginTop: 3, color: "rgba(255,255,255,.54)", fontSize: 10.5 }}>Toucher pour ouvrir</span>
+                        </button>;
                       }
                       return null;
                     })()}
@@ -1954,6 +2173,15 @@ export default function MessagesPage({ store, update, go }: Props) {
                           <ChatActionIcon name={name as any} size={15} /> <span>{label}</span>
                         </button>
                       ))}
+                      {(() => {
+                        const meta = metadataOfMessage(m);
+                        const hasMedia = meta?.kind === "file" || meta?.kind === "photo" || meta?.kind === "voice";
+                        if (!hasMedia) return null;
+                        return <>
+                          <button type="button" onClick={() => { setOpenMessageMenuId(""); openMediaDetails(meta); }} style={{ width: "100%", border: 0, background: "transparent", color: "rgba(255,255,255,.88)", display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}><span style={{ width: 15, textAlign: "center" }}>ℹ️</span><span>Détails</span></button>
+                          <button type="button" onClick={() => { setOpenMessageMenuId(""); downloadMessageMedia(meta); }} style={{ width: "100%", border: 0, background: "transparent", color: BLUE, display: "flex", alignItems: "center", gap: 7, padding: "5px 6px", borderRadius: 8, fontWeight: 850, cursor: "pointer", textAlign: "left", fontSize: 10.5, lineHeight: 1.05 }}><span style={{ width: 15, textAlign: "center" }}>⬇</span><span>Télécharger</span></button>
+                        </>;
+                      })()}
                       <div style={{ height: 1, background: "rgba(255,255,255,.10)", margin: "3px 4px" }} />
                       <button
                         type="button"
