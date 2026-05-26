@@ -1666,6 +1666,8 @@ export function useX01EngineV3({
   // Exposition
   // -----------------------------------------------------------
 
+  const getCurrentEngineState = React.useCallback(() => stateRef.current, []);
+
   return {
     state,
     liveStatsByPlayer,
@@ -1676,6 +1678,7 @@ export function useX01EngineV3({
     throwDart,
     undoLastDart,     // 👉 à brancher sur la touche ANNULER du keypad
     rebuildFromDarts, // 👉 si tu veux reconstruire depuis un historique externe
+    getCurrentEngineState, // ✅ sync UI depuis la ref moteur fraîche (pas le state React stale)
     startNextLeg,
   };
 }

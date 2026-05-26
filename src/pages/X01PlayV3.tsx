@@ -1178,6 +1178,7 @@ const {
   throwDart,
   undoLastDart, // 🔥 UNDO illimité du moteur V3
   rebuildFromDarts, // 🔁 UNDO fiable depuis l'historique UI complet
+  getCurrentEngineState, // ✅ état moteur frais pour éviter les hits fantômes après changement de joueur
   startNextLeg,
 } = useX01EngineV3({ config: effectiveRuntimeConfig as any });
 
@@ -1846,9 +1847,13 @@ const currentReplayLegMeta = React.useCallback(() => {
 }, [state, config]);
 
 
-const forceSyncFromEngine = React.useCallback(() => {
-  syncUiFromEngineState(state as any);
-}, [state, syncUiFromEngineState]);
+const forceSyncFromEngine = React.useCallback((freshState?: any) => {
+  // Ne jamais resynchroniser depuis le `state` React possiblement stale juste
+  // après throwDart/rebuild : c'est ce qui réaffichait des hits fantômes au
+  // joueur suivant. On privilégie la ref moteur fraîche exposée par le hook.
+  const engineState = freshState || (typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null) || state;
+  syncUiFromEngineState(engineState as any);
+}, [state, syncUiFromEngineState, getCurrentEngineState]);
 
 // =====================================================
 // ✅ BOT TURN — DOIT ÊTRE DÉCLARÉ AVANT TOUT useEffect QUI L’UTILISE
@@ -2740,6 +2745,11 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 
   const currentThrowFromEngineRef = React.useRef(false);
 
+  // Quand ANNULER restaure la dernière volée validée en mode édition,
+  // le joueur actif revient au joueur précédent. Il ne faut surtout pas que
+  // l'effet `activePlayerId` vide immédiatement les 3 hits restaurés.
+  const suppressNextActivePlayerClearRef = React.useRef(false);
+
 
 // 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
 //    (UNDO global, rebuild, etc.)
@@ -2785,6 +2795,10 @@ React.useEffect(() => {
 // 🔄 CHANGEMENT DE JOUEUR ACTIF → on vide la volée locale
 //    (sauf en cas d'UNDO/rebuild où c'est le moteur qui pilote)
 React.useEffect(() => {
+  if (suppressNextActivePlayerClearRef.current) {
+    suppressNextActivePlayerClearRef.current = false;
+    return;
+  }
   if (currentThrowFromEngineRef.current) return;
   setCurrentThrow([]);
   setMultiplier(1);
@@ -2915,9 +2929,6 @@ const handleBackspace = () => {
 
 const handleCancel = () => {
   if (!onlineCanScore) return;
-  // Cancel = undo last input safely.
-  // - If there is a local currentThrow: remove the last dart
-  // - Otherwise: ask the engine to undo the last committed dart (any player/turn)
 
   bustPreviewPlayedRef.current = false;
   if (bustSoundTimeoutRef.current) {
@@ -2925,60 +2936,84 @@ const handleCancel = () => {
     bustSoundTimeoutRef.current = null;
   }
 
-  // Always clear bust state when cancelling
   setBustError("");
-  // ⚠️ Le lock bust est dérivé de lastVisitIsBustByPlayer.
-  // En Cancel/UNDO, on déverrouille pour le joueur courant.
-  setLastVisitIsBustByPlayer((prev) => ({
-    ...prev,
-    [activePlayerId]: false,
-  }));
   setBustBanner(false);
   setIsBust(false);
 
-  // 1) Local edit: on ne modifie que la saisie EN COURS, jamais une volée
-  // recopiée depuis le moteur après un changement de joueur / UNDO.
-  // Sinon ANNULER efface l'affichage local mais laisse la vraie fléchette
-  // dans le moteur, ce qui provoque les scores incohérents.
+  // 1) Si une volée est en cours d'édition locale, ANNULER retire seulement
+  // le dernier hit local. On ne touche pas au moteur tant que la volée n'est
+  // pas revalidée.
   if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
-    setCurrentThrow((prev) => prev.slice(0, -1));
+    const nextThrow = currentThrow.slice(0, -1);
+    setCurrentThrow(nextThrow);
     setMultiplier(1);
+    if (activePlayerId) {
+      setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => ({
+        ...prev,
+        [activePlayerId]: nextThrow,
+      }));
+      setLastVisitIsBustByPlayer((prev) => ({
+        ...prev,
+        [activePlayerId]: false,
+      }));
+    }
     return;
   }
 
-  // 2) UNDO canonique: replayDartsRef est l'historique complet UI/autosave.
-  // On enlève exactement la dernière fléchette validée, puis on reconstruit
-  // tout le moteur depuis cet historique. C'est volontairement plus sûr que
-  // undoLastDart() seul, car l'historique moteur peut avoir été réinitialisé
-  // lors d'un changement de leg/set alors que l'utilisateur veut juste annuler
-  // le dernier hit réel, quel que soit le joueur ou la manche.
+  // 2) Si on est déjà passé au joueur suivant, ANNULER ne doit pas supprimer
+  // directement une fléchette en aveugle. On restaure d'abord toute la dernière
+  // volée validée du joueur précédent en édition locale : les 3 hits réapparaissent,
+  // le score moteur est reconstruit AVANT cette volée, puis les prochains clics
+  // ANNULER retirent les hits un par un localement.
   botUndoGuardRef.current = true;
   try {
     const before = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
+    const restored = splitLastCommittedReplayVisit(before as any);
 
-    if (before.length > 0 && typeof rebuildFromDarts === "function") {
-      const nextReplay = before.slice(0, -1);
-      replayDartsRef.current = nextReplay;
+    if (restored && typeof rebuildFromDarts === "function") {
+      replayDartsRef.current = restored.nextReplay as any;
 
-      const rebuilt: any = rebuildFromDarts(nextReplay as any);
-      if (rebuilt?.state) {
-        syncUiFromEngineState(rebuilt.state);
-      } else {
-        window.setTimeout(() => forceSyncFromEngine(), 0);
+      const rebuilt: any = rebuildFromDarts(restored.nextReplay as any);
+      const rebuiltState = rebuilt?.state || (typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null);
+
+      // Le changement de joueur actif provoqué par rebuild ne doit pas vider
+      // la volée restaurée.
+      suppressNextActivePlayerClearRef.current = true;
+      currentThrowFromEngineRef.current = false;
+
+      setCurrentThrow(restored.uiDarts as UIDart[]);
+      setMultiplier(1);
+      if (restored.playerId) {
+        setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => ({
+          ...prev,
+          [restored.playerId]: restored.uiDarts as UIDart[],
+        }));
+        setLastVisitIsBustByPlayer((prev) => ({
+          ...prev,
+          [restored.playerId]: false,
+        }));
+      }
+
+      if (rebuiltState) {
+        // Ne pas recopier la visite moteur vide/parfois stale dans currentThrow :
+        // la source d'affichage voulue est la volée restaurée ci-dessus.
+        window.setTimeout(() => {
+          try { persistAutosave(); } catch {}
+        }, 0);
       }
     } else {
       const undoResult: any = undoLastDart();
-      if (undoResult?.state) {
-        syncUiFromEngineState(undoResult.state);
+      const freshState = undoResult?.state || (typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null);
+      if (freshState) {
+        syncUiFromEngineState(freshState);
       } else {
         currentThrowFromEngineRef.current = false;
         setCurrentThrow([]);
       }
+      window.setTimeout(() => {
+        persistAutosave();
+      }, 0);
     }
-
-    window.setTimeout(() => {
-      persistAutosave();
-    }, 0);
   } finally {
     window.setTimeout(() => {
       botUndoGuardRef.current = false;
@@ -2986,7 +3021,6 @@ const handleCancel = () => {
     }, 0);
   }
 };
-
 const validateThrow = async () => {
   if (isValidatingRef.current) return;
   if (effectiveOnline && !onlineCanScore) return;
@@ -6840,6 +6874,59 @@ function parseReplayDartParts(input: any): { segment: number; multiplier: 0 | 1 
   if (segment === 25 && multiplier > 2) multiplier = 2;
   if (![0, 1, 2, 3].includes(multiplier)) multiplier = segment > 0 ? 1 : 0;
   return { segment, multiplier: multiplier as 0 | 1 | 2 | 3 };
+}
+
+
+function replayDartPlayerId(d: any): string {
+  return String(d?.playerId ?? d?.pid ?? d?.profileId ?? d?.p ?? "");
+}
+
+function replayDartVisitKey(d: any): string {
+  const setNo = String(d?.setNo ?? d?.setIndex ?? d?.currentSet ?? "");
+  const legNo = String(d?.matchLegNo ?? d?.legNo ?? d?.legIndex ?? d?.currentLeg ?? d?.legInSet ?? "");
+  return `${setNo}|${legNo}`;
+}
+
+function replayDartToUiDart(d: any): UIDart {
+  const parsed = parseReplayDartParts(d);
+  const segment = Number(parsed.segment || 0);
+  const multiplier = segment <= 0 ? 1 : Number(parsed.multiplier || 1);
+  return { v: segment, mult: multiplier as any } as UIDart;
+}
+
+function splitLastCommittedReplayVisit(allDarts: X01DartInputV3[]): null | {
+  nextReplay: X01DartInputV3[];
+  visitDarts: X01DartInputV3[];
+  uiDarts: UIDart[];
+  playerId: string;
+} {
+  const replay = Array.isArray(allDarts) ? allDarts.slice() : [];
+  if (!replay.length) return null;
+
+  const last = replay[replay.length - 1] as any;
+  const playerId = replayDartPlayerId(last);
+  if (!playerId) return null;
+  const visitKey = replayDartVisitKey(last);
+
+  let start = replay.length - 1;
+  while (start > 0) {
+    const prev = replay[start - 1] as any;
+    if (replayDartPlayerId(prev) !== playerId) break;
+    if (replayDartVisitKey(prev) !== visitKey) break;
+    // Une volée X01 ne peut pas dépasser 3 fléchettes. Limite volontaire pour
+    // éviter d'absorber plusieurs volées anormales consécutives du même joueur.
+    if (replay.length - start >= 3) break;
+    start -= 1;
+  }
+
+  const visitDarts = replay.slice(start);
+  if (!visitDarts.length) return null;
+  return {
+    nextReplay: replay.slice(0, start),
+    visitDarts,
+    uiDarts: visitDarts.map((d: any) => replayDartToUiDart(d)),
+    playerId,
+  };
 }
 
 function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undefined, extra: any = {}) {
