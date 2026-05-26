@@ -1132,6 +1132,22 @@ function applyDartWithFlow(
 
   if (!m.visit) startNewVisitV3(m);
 
+  const explicitInputPlayerId = String(
+    (input as any)?.playerId ||
+      (input as any)?.pid ||
+      (input as any)?.profileId ||
+      (input as any)?.p ||
+      ""
+  ).trim() as X01PlayerId;
+
+  if (explicitInputPlayerId && String(m.activePlayer || "") !== String(explicitInputPlayerId)) {
+    // Le moteur doit respecter le playerId porté par la fléchette.
+    // C'est le garde-fou principal du bouton ANNULER : quand une volée
+    // précédente est restaurée en édition, la validation ne doit jamais
+    // partir sur l'ancien activePlayer React encore visible.
+    forceReplayActivePlayer(config, m, explicitInputPlayerId);
+  }
+
   // Sécurité MULTI FFA : si un joueur déjà fini revient actif
   // (cas observé après rotation/bust/rebuild), on le saute AVANT
   // d'accepter une nouvelle fléchette.
@@ -1598,7 +1614,7 @@ export function useX01EngineV3({
   // -----------------------------------------------------------
 
   const rebuildFromDarts = React.useCallback(
-    (allDarts: X01DartInputV3[]) => {
+    (allDarts: X01DartInputV3[], opts?: { activePlayerId?: X01PlayerId | string | null }) => {
       // UNDO fiable : on reconstruit l'état complet depuis l'historique UI
       // puis on synchronise IMMÉDIATEMENT les refs moteur. Sans ça, le rendu
       // React peut afficher le bon état, mais le prochain dart repart encore
@@ -1620,6 +1636,15 @@ export function useX01EngineV3({
         dartsVM,
         { matchId: stateRef.current.matchId, throwOrder: previousThrowOrder }
       );
+
+      const forcedActivePlayerId = String(opts?.activePlayerId || "").trim();
+      if (forcedActivePlayerId && newState.status === "playing") {
+        // UNDO édition de volée : après avoir retiré la volée du replay,
+        // le joueur actif DOIT redevenir le joueur de cette volée.
+        // Sinon l'UI peut afficher l'avatar d'un autre joueur et la validation
+        // réattribue la volée corrigée au mauvais profil.
+        forceReplayActivePlayer(config, newState, forcedActivePlayerId);
+      }
 
       stateRef.current = newState;
       liveStatsByPlayerRef.current = newLiveStats;

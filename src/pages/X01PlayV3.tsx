@@ -1184,6 +1184,30 @@ const {
 
 const safePlayersForOnline = React.useMemo(() => (Array.isArray(players) ? players : []), [players]);
 const activePlayer = safePlayersForOnline.find((p: any) => String(p?.id) === String(activePlayerId)) || null;
+
+// Ordre d'affichage du panneau JOUEURS = ordre réel de jeu.
+// On ne trie pas par score ici : le joueur qui commence doit rester en haut,
+// puis les suivants dans la rotation exacte de la partie.
+const playersInTurnOrder = React.useMemo(() => {
+  const list = Array.isArray(players) ? players : [];
+  const byId = new Map(list.map((p: any) => [String(p?.id || ""), p]));
+  const order = Array.isArray((state as any)?.throwOrder) ? (state as any).throwOrder.map(String) : [];
+  const out: any[] = [];
+  const seen = new Set<string>();
+  for (const id of order) {
+    const p = byId.get(String(id));
+    if (p && !seen.has(String(id))) {
+      out.push(p);
+      seen.add(String(id));
+    }
+  }
+  for (const p of list) {
+    const id = String(p?.id || "");
+    if (id && !seen.has(id)) out.push(p);
+  }
+  return out.length ? out : list;
+}, [players, (state as any)?.throwOrder]);
+
 const activePlayerDartSetThumb = React.useMemo(
   () => getDartSetMedallionSrcById((activePlayer as any)?.dartSetId),
   [(activePlayer as any)?.dartSetId]
@@ -2750,6 +2774,11 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
   // l'effet `activePlayerId` vide immédiatement les 3 hits restaurés.
   const suppressNextActivePlayerClearRef = React.useRef(false);
 
+  // Identité de la volée restaurée par ANNULER. Tant qu'elle n'est pas
+  // revalidée, tous les hits édités appartiennent à CE joueur, même si un
+  // rendu React intermédiaire affiche encore l'ancien activePlayer.
+  const undoEditingPlayerIdRef = React.useRef<string | null>(null);
+
 
 // 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
 //    (UNDO global, rebuild, etc.)
@@ -2945,16 +2974,17 @@ const handleCancel = () => {
   // pas revalidée.
   if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
     const nextThrow = currentThrow.slice(0, -1);
+    const editPid = undoEditingPlayerIdRef.current || activePlayerId;
     setCurrentThrow(nextThrow);
     setMultiplier(1);
-    if (activePlayerId) {
+    if (editPid) {
       setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => ({
         ...prev,
-        [activePlayerId]: nextThrow,
+        [editPid]: nextThrow,
       }));
       setLastVisitIsBustByPlayer((prev) => ({
         ...prev,
-        [activePlayerId]: false,
+        [editPid]: false,
       }));
     }
     return;
@@ -2972,8 +3002,9 @@ const handleCancel = () => {
 
     if (restored && typeof rebuildFromDarts === "function") {
       replayDartsRef.current = restored.nextReplay as any;
+      undoEditingPlayerIdRef.current = restored.playerId || null;
 
-      const rebuilt: any = rebuildFromDarts(restored.nextReplay as any);
+      const rebuilt: any = rebuildFromDarts(restored.nextReplay as any, { activePlayerId: restored.playerId } as any);
       const rebuiltState = rebuilt?.state || (typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null);
 
       // Le changement de joueur actif provoqué par rebuild ne doit pas vider
@@ -3002,6 +3033,7 @@ const handleCancel = () => {
         }, 0);
       }
     } else {
+      undoEditingPlayerIdRef.current = null;
       const undoResult: any = undoLastDart();
       const freshState = undoResult?.state || (typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null);
       if (freshState) {
@@ -3026,7 +3058,7 @@ const validateThrow = async () => {
   if (effectiveOnline && !onlineCanScore) return;
   if (effectiveOnline && onlineCurrentUserId && !onlineActiveIdentitySet.has(String(onlineCurrentUserId))) return;
   const toSend = Array.isArray(currentThrow) ? [...currentThrow] : [];
-  const pid = activePlayerId;
+  const pid = undoEditingPlayerIdRef.current || activePlayerId;
   if (!pid || toSend.length <= 0) return;
 
   isValidatingRef.current = true;
@@ -3038,8 +3070,10 @@ const validateThrow = async () => {
     bustSoundTimeoutRef.current = null;
   }
 
-  let visitPlayerName = activePlayer?.name || "Joueur";
-  let visitScoreBefore = scores[pid] ?? config.startScore;
+  const visitPlayer = safePlayersForOnline.find((p: any) => String(p?.id) === String(pid)) || activePlayer;
+  const freshEngineForVisit: any = typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null;
+  let visitPlayerName = visitPlayer?.name || activePlayer?.name || "Joueur";
+  let visitScoreBefore = Number(freshEngineForVisit?.scores?.[pid] ?? scores[pid] ?? config.startScore);
   let visitScore = toSend.reduce(
     (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
     0
@@ -3103,6 +3137,7 @@ const validateThrow = async () => {
   const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { ...currentReplayLegMeta(), source: "manual", ts: Date.now() }));
   replayDartsRef.current = replayDartsRef.current.concat(trackedInputs as any);
   debugReplayDarts("manual-visit", trackedInputs as any);
+  undoEditingPlayerIdRef.current = null;
   persistAutosave();
 
   inputs.forEach((input, index) => {
@@ -4805,7 +4840,7 @@ if (isLandscapeTablet) {
         playersRowLabel="JOUEURS"
         // ⚠️ Identité visuelle : le ticker X01 doit rester en fond du bandeau JOUEURS.
         playersBannerImage={tickerX01}
-        playersPanelTitle="Joueurs"
+        playersPanelTitle={<span style={{ color: themePrimary, textShadow: `0 0 10px ${themePrimary}AA, 0 0 22px ${themePrimary}77`, letterSpacing: 0.4, fontWeight: 950 }}>Joueurs</span>}
         playersRowRight={
           <span
             style={{
@@ -4847,7 +4882,7 @@ if (isLandscapeTablet) {
               <PlayersListOnly
                 cameraOpen={cameraOpen}
                 setCameraOpen={setCameraOpen}
-                players={players}
+                players={playersInTurnOrder}
                 profileById={profileById}
                 liveStatsByPlayer={liveStatsByPlayer}
                 start={config.startScore}
