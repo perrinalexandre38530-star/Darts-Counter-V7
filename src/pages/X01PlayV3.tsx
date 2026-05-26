@@ -93,6 +93,7 @@ type HeaderBlockProps = {
   unreadChatCount?: number;
   countryFlagSrc?: string | null;
   dartSetThumbSrc?: string | null;
+  dartSetBgColor?: string | null;
   onlineCameraPanel?: React.ReactNode;
   onlineCameraActive?: boolean;
 };
@@ -145,6 +146,34 @@ function getDartSetMedallionSrcById(dartSetId: any): string | null {
     }
   } catch {}
   return null;
+}
+
+function getDartSetMedallionBgById(dartSetId: any): string | null {
+  const id = String(dartSetId || "").trim();
+  if (!id) return null;
+  try {
+    const set: any = getDartSetById(id);
+    if (!set) return null;
+    const candidates = [
+      set.bgColor,
+      set.backgroundColor,
+      set.color,
+      set.thumbBgColor,
+      set.medallionBgColor,
+      set.overlayBgColor,
+    ];
+    for (const raw of candidates) {
+      const v = typeof raw === "string" ? raw.trim() : "";
+      if (v) return v;
+    }
+  } catch {}
+  return null;
+}
+
+function dartSetMedallionBackground(bgColor?: string | null): string {
+  const c = String(bgColor || "").trim();
+  if (!c) return "rgba(0,0,0,.72)";
+  return `linear-gradient(180deg, ${c}, ${c})`;
 }
 
 const miniCard: React.CSSProperties = {
@@ -243,6 +272,13 @@ function chipStyle(d?: UIDart, red = false): React.CSSProperties {
       background: "rgba(200,30,30,.18)",
       color: "#ff8a8a",
       border: "1px solid rgba(255,80,80,.35)",
+    };
+
+  if (d.v <= 0)
+    return {
+      background: "rgba(200,30,30,.18)",
+      color: "#ff8a8a",
+      border: "1px solid rgba(255,80,80,.45)",
     };
 
   if (d.v === 25 && d.mult === 2)
@@ -1213,6 +1249,11 @@ const activePlayerDartSetThumb = React.useMemo(
   [(activePlayer as any)?.dartSetId]
 );
 
+const activePlayerDartSetBg = React.useMemo(
+  () => getDartSetMedallionBgById((activePlayer as any)?.dartSetId),
+  [(activePlayer as any)?.dartSetId]
+);
+
 // ONLINE strict : X01PlayV3 est parfois lancé avec online/lobbyCode dans config sans props explicites.
 // On centralise donc l'état online ici pour éviter que les deux appareils puissent saisir en même temps.
 const effectiveOnline = effectiveOnlinePre;
@@ -2069,6 +2110,7 @@ const teamsView = React.useMemo(() => {
           name: p.name,
           avatar: profileById[p.id]?.avatarDataUrl ?? null,
           dartSetThumb: getDartSetMedallionSrcById((p as any)?.dartSetId),
+          dartSetBgColor: getDartSetMedallionBgById((p as any)?.dartSetId),
           isActive: p.id === activePlayerId,
         }));
 
@@ -3000,6 +3042,21 @@ const handleCancel = () => {
     const before = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
     const restored = splitLastCommittedReplayVisit(before as any);
 
+    if (restored) {
+      const undoMeta = currentReplayLegMeta();
+      const currentKey = currentReplayVisitKeyFromMeta(undoMeta);
+      const restoredKey = replayDartVisitKey((restored.visitDarts?.[0] as any) || null);
+      const matchUsesSeveralLegs =
+        Number((config as any)?.legsPerSet ?? 1) > 1 || Number((config as any)?.setsToWin ?? 1) > 1;
+      if (matchUsesSeveralLegs && isKnownReplayVisitKey(currentKey) && isKnownReplayVisitKey(restoredKey) && currentKey !== restoredKey) {
+        // Limite volontaire : on autorise la correction de la leg courante,
+        // mais jamais le retour dans une leg précédente, sinon les scores de
+        // sets/legs peuvent être reconstruits dans un état incohérent.
+        setBustError("Annulation bloquée : impossible de revenir dans une leg précédente.");
+        return;
+      }
+    }
+
     if (restored && typeof rebuildFromDarts === "function") {
       replayDartsRef.current = restored.nextReplay as any;
       undoEditingPlayerIdRef.current = restored.playerId || null;
@@ -3033,6 +3090,17 @@ const handleCancel = () => {
         }, 0);
       }
     } else {
+      const matchUsesSeveralLegs =
+        Number((config as any)?.legsPerSet ?? 1) > 1 || Number((config as any)?.setsToWin ?? 1) > 1;
+      const lastReplayDart: any = before.length ? before[before.length - 1] : null;
+      if (matchUsesSeveralLegs && lastReplayDart) {
+        const currentKey = currentReplayVisitKeyFromMeta(currentReplayLegMeta());
+        const lastKey = replayDartVisitKey(lastReplayDart);
+        if (isKnownReplayVisitKey(currentKey) && isKnownReplayVisitKey(lastKey) && currentKey !== lastKey) {
+          setBustError("Annulation bloquée : impossible de revenir dans une leg précédente.");
+          return;
+        }
+      }
       undoEditingPlayerIdRef.current = null;
       const undoResult: any = undoLastDart();
       const freshState = undoResult?.state || (typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null);
@@ -3185,27 +3253,44 @@ const buildVisitLabelForConfirm = (darts: UIDart[]) => {
 const requestValidateThrow = () => {
   if (effectiveOnline && !onlineCanScore) return;
   const darts = Array.isArray(currentThrow) ? [...currentThrow] : [];
-  if (!darts.length || !activePlayerId) return;
+  const pid = undoEditingPlayerIdRef.current || activePlayerId;
+  if (!darts.length || !pid) return;
 
-  if (!effectiveOnline) {
+  const playerForVisit = safePlayersForOnline.find((p: any) => String(p?.id) === String(pid)) || activePlayer;
+  const scoreBefore = Number(scores?.[pid] ?? config.startScore ?? 501);
+  const visitScore = darts.reduce((sum, d) => sum + (Number((d as any).v) === 25 && Number((d as any).mult) === 2 ? 50 : Number((d as any).v || 0) * Number((d as any).mult || 1)), 0);
+  const remaining = scoreBefore - visitScore;
+  const bust = remaining < 0 || ((outMode === "double" || outMode === "master") && remaining === 1);
+  const last = darts[darts.length - 1] as any;
+  const lastMult = Number(last?.mult || 1);
+  const lastIsDouble = !!last && (lastMult === 2 || (Number(last?.v) === 25 && lastMult === 2));
+  const lastIsTriple = !!last && lastMult === 3;
+  const lastIsFinisher = outMode === "double" ? lastIsDouble : outMode === "master" ? (lastIsDouble || lastIsTriple) : true;
+  const isFinish = !bust && remaining === 0 && lastIsFinisher;
+
+  // En local, on ne confirme que les fins de leg/partie : ça laisse une chance
+  // de corriger une fausse victoire avec ANNULER avant que le moteur clôture la manche.
+  // En online, on garde la confirmation de toute volée pour éviter l'envoi accidentel.
+  if (!effectiveOnline && !isFinish) {
     validateThrow();
     return;
   }
 
-  const scoreBefore = Number(scores?.[activePlayerId] ?? config.startScore ?? 501);
-  const visitScore = darts.reduce((sum, d) => sum + (Number((d as any).v) === 25 && Number((d as any).mult) === 2 ? 50 : Number((d as any).v || 0) * Number((d as any).mult || 1)), 0);
-  const remaining = scoreBefore - visitScore;
-  const bust = remaining < 0 || ((outMode === "double" || outMode === "master") && remaining === 1);
-
   setPendingOnlineVisitConfirm({
-    playerId: activePlayerId,
-    playerName: activePlayer?.name || "Joueur",
+    playerId: pid,
+    playerName: playerForVisit?.name || activePlayer?.name || "Joueur",
     darts,
     dartsLabel: buildVisitLabelForConfirm(darts),
     scoreBefore,
     visitScore,
     remaining,
     bust,
+    isFinish,
+    localFinishConfirm: !effectiveOnline && isFinish,
+    title: isFinish ? "Confirmer la fin" : "Confirmer la volée",
+    helper: isFinish
+      ? "Vérifie la volée de victoire avant de clôturer la leg ou la partie."
+      : "Vérifie avant d'envoyer aux autres joueurs.",
   });
 };
 
@@ -4382,6 +4467,7 @@ if (isLandscapeTablet) {
               useSets={useSetsUi}
               checkoutText={checkoutText}
               dartSetThumbSrc={activePlayerDartSetThumb}
+              dartSetBgColor={activePlayerDartSetBg}
               onlineCameraPanel={x01OnlineCameraPanel}
               onlineCameraActive={x01OnlineCameraActive}
             showThrowCounter={showThrowCounter}
@@ -4830,6 +4916,7 @@ if (isLandscapeTablet) {
                 unreadChatCount={onlineChatUnread}
                 countryFlagSrc={activePlayerCountryFlagSrc}
                 dartSetThumbSrc={activePlayerDartSetThumb}
+                dartSetBgColor={activePlayerDartSetBg}
                 onlineCameraPanel={x01OnlineCameraPanel}
                 onlineCameraActive={x01OnlineCameraActive}
               showThrowCounter={showThrowCounter}
@@ -5116,10 +5203,10 @@ if (isLandscapeTablet) {
             }}
           >
             <div style={{ color: "#ffcf57", fontWeight: 950, fontSize: 18, marginBottom: 6 }}>
-              Confirmer la volée
+              {pendingOnlineVisitConfirm.title || "Confirmer la volée"}
             </div>
             <div style={{ opacity: .78, fontWeight: 800, fontSize: 13, marginBottom: 14 }}>
-              {pendingOnlineVisitConfirm.playerName} — vérifie avant d'envoyer aux autres joueurs.
+              {pendingOnlineVisitConfirm.playerName} — {pendingOnlineVisitConfirm.helper || "vérifie avant de valider."}
             </div>
             <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.06)", padding: 12, marginBottom: 12 }}>
               <div style={{ fontWeight: 950, fontSize: 22 }}>{pendingOnlineVisitConfirm.dartsLabel || "Volée"}</div>
@@ -5142,7 +5229,7 @@ if (isLandscapeTablet) {
                 onClick={confirmOnlineVisit}
                 style={{ height: 48, borderRadius: 16, border: 0, background: "linear-gradient(180deg,#ffd65c,#ffb51e)", color: "#111", fontWeight: 950, boxShadow: "0 0 22px rgba(255,190,40,.28)" }}
               >
-                Valider
+                {pendingOnlineVisitConfirm.isFinish ? "Valider la fin" : "Valider"}
               </button>
             </div>
           </div>
@@ -5274,6 +5361,7 @@ function HeaderBlock(props: HeaderBlockProps) {
     unreadChatCount = 0,
     countryFlagSrc,
     dartSetThumbSrc,
+    dartSetBgColor,
     showThrowCounter = false,
     onlineCameraPanel = null,
     onlineCameraActive = false,
@@ -5424,7 +5512,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                   height: 34,
                   borderRadius: 999,
                   border: "2px solid rgba(255,207,87,.88)",
-                  background: "rgba(0,0,0,.72)",
+                  background: dartSetMedallionBackground(dartSetBgColor),
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -5807,7 +5895,7 @@ function TeamHeaderBlock(props: {
   teamColor?: string;
   teamId: string;
   teamName: string;
-  teamPlayers: Array<{ id: string; name: string; avatar: string | null; dartSetThumb?: string | null; isActive: boolean }>;
+  teamPlayers: Array<{ id: string; name: string; avatar: string | null; dartSetThumb?: string | null; dartSetBgColor?: string | null; isActive: boolean }>;
   activePlayerId: string;
   teamScore: number;
   currentThrow: UIDart[];
@@ -6017,7 +6105,7 @@ function TeamHeaderBlock(props: {
                         height: 28,
                         borderRadius: 999,
                         border: "2px solid rgba(255,207,87,.88)",
-                        background: "rgba(0,0,0,.72)",
+                        background: dartSetMedallionBackground((p as any).dartSetBgColor),
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -6920,6 +7008,16 @@ function replayDartVisitKey(d: any): string {
   const setNo = String(d?.setNo ?? d?.setIndex ?? d?.currentSet ?? "");
   const legNo = String(d?.matchLegNo ?? d?.legNo ?? d?.legIndex ?? d?.currentLeg ?? d?.legInSet ?? "");
   return `${setNo}|${legNo}`;
+}
+
+function currentReplayVisitKeyFromMeta(meta: any): string {
+  const setNo = String(meta?.setNo ?? meta?.setIndex ?? meta?.currentSet ?? "");
+  const legNo = String(meta?.matchLegNo ?? meta?.legNo ?? meta?.legIndex ?? meta?.currentLeg ?? meta?.legInSet ?? "");
+  return `${setNo}|${legNo}`;
+}
+
+function isKnownReplayVisitKey(key: string): boolean {
+  return !!String(key || "").replace(/\|/g, "").trim();
 }
 
 function replayDartToUiDart(d: any): UIDart {
