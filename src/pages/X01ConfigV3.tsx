@@ -587,6 +587,15 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
 
+  // ⚠️ Garde ces constantes de thème tout en haut du composant.
+  // Les versions minifiées peuvent renommer `primary` en R1/B1/etc. ;
+  // si une JSX factory ou un handler les lit avant leur initialisation,
+  // la page plante en TDZ: "Cannot access 'R1' before initialization".
+  const primary = theme?.primary ?? "#f7c85c";
+  const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.16)";
+  const textMain = theme?.text ?? "#f5f5ff";
+  const cardBg = "rgba(10, 12, 24, 0.96)";
+
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -1046,12 +1055,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     }
   }
 
-  // ---- Style / thème ----
-  const primary = theme?.primary ?? "#f7c85c";
-  const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.16)";
-  const textMain = theme?.text ?? "#f5f5ff";
-  const cardBg = "rgba(10, 12, 24, 0.96)";
-
+  // ---- Render ----
   return (
     <div
       className="screen x01-config-v3-screen"

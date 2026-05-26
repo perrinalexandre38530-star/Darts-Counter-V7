@@ -1663,6 +1663,40 @@ const rebuildOnlineLastVisitsFromDarts = React.useCallback((darts: X01DartInputV
   return visitsByPlayer;
 }, []);
 
+// ============================================================
+// 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
+// - Sync currentThrow + lastVisitsByPlayer (utilisé par PlayersListOnly)
+// ============================================================
+const syncUiFromEngineState = React.useCallback((engineState: any) => {
+  currentThrowFromEngineRef.current = true;
+
+  const pid = String(engineState?.activePlayer || "");
+  const v: any = engineState?.visit;
+
+  const raw: UIDart[] =
+    v?.darts && Array.isArray(v.darts) && v.darts.length
+      ? v.darts.map((d: any) => ({
+          v: d.segment,
+          mult: d.multiplier as 1 | 2 | 3,
+        }))
+      : v?.dartsThrown && Array.isArray(v.dartsThrown) && v.dartsThrown.length
+      ? v.dartsThrown.map((d: any) => ({
+          v: d.value,
+          mult: d.mult as 1 | 2 | 3,
+        }))
+      : [];
+
+  setCurrentThrow(raw);
+
+  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow.
+  // On ne nettoie jamais une dernière volée avec [] : un changement de joueur
+  // crée souvent une visite vide côté moteur.
+  if (pid && raw.length > 0) {
+    setLastVisitsByPlayer((m) => ({ ...m, [pid]: raw }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [pid]: false }));
+  }
+}, []);
+
 React.useEffect(() => {
   if (!isOnlineMatch || !onlineLobbyCode) return;
   let cancelled = false;
@@ -1811,39 +1845,6 @@ const currentReplayLegMeta = React.useCallback(() => {
   };
 }, [state, config]);
 
-// ============================================================
-// 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
-// - Sync currentThrow + lastVisitsByPlayer (utilisé par PlayersListOnly)
-// ============================================================
-const syncUiFromEngineState = React.useCallback((engineState: any) => {
-  currentThrowFromEngineRef.current = true;
-
-  const pid = String(engineState?.activePlayer || "");
-  const v: any = engineState?.visit;
-
-  const raw: UIDart[] =
-    v?.darts && Array.isArray(v.darts) && v.darts.length
-      ? v.darts.map((d: any) => ({
-          v: d.segment,
-          mult: d.multiplier as 1 | 2 | 3,
-        }))
-      : v?.dartsThrown && Array.isArray(v.dartsThrown) && v.dartsThrown.length
-      ? v.dartsThrown.map((d: any) => ({
-          v: d.value,
-          mult: d.mult as 1 | 2 | 3,
-        }))
-      : [];
-
-  setCurrentThrow(raw);
-
-  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow.
-  // On ne nettoie jamais une dernière volée avec [] : un changement de joueur
-  // crée souvent une visite vide côté moteur.
-  if (pid && raw.length > 0) {
-    setLastVisitsByPlayer((m) => ({ ...m, [pid]: raw }));
-    setLastVisitIsBustByPlayer((m) => ({ ...m, [pid]: false }));
-  }
-}, []);
 
 const forceSyncFromEngine = React.useCallback(() => {
   syncUiFromEngineState(state as any);
