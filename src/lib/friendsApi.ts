@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut } from "./apiClient";
+import { apiDelete, apiGet, apiPost, apiPut, buildApiUrl, readNasAccessToken } from "./apiClient";
 
 export type OnlineFriendUser = {
   id: string;
@@ -260,4 +260,89 @@ export async function markPrivateThreadRead(friendUserId: string) {
 export async function deletePrivateMessage(id: string) {
   const res = await apiDelete(`/online/private-messages/${qs(id)}`);
   return res?.message ?? res;
+}
+
+
+export type MessengerCall = {
+  id: string;
+  callId?: string;
+  callType?: "audio" | "video" | string;
+  type?: "audio" | "video" | string;
+  status?: string;
+  callerUserId?: string;
+  calleeUserId?: string;
+  friendUserId?: string;
+  direction?: "incoming" | "outgoing" | string;
+  metadata?: any;
+  createdAt?: string;
+  updatedAt?: string;
+  acceptedAt?: string | null;
+  endedAt?: string | null;
+  expiresAt?: string | null;
+};
+
+export type MessengerCallSignal = {
+  id: string;
+  signalId?: string;
+  callId: string;
+  fromUserId?: string;
+  toUserId?: string;
+  signalType?: string;
+  type?: string;
+  payload?: any;
+  createdAt?: string;
+};
+
+export function buildPrivateMessagesStreamUrl(): string {
+  const token = readNasAccessToken();
+  return buildApiUrl("/online/private-messages/stream", token ? { token } : undefined);
+}
+
+export function buildMessengerCallStreamUrl(callId: string): string {
+  const token = readNasAccessToken();
+  return buildApiUrl(`/online/calls/${qs(callId)}/stream`, token ? { token } : undefined);
+}
+
+export async function startMessengerCall(toUserId: string, callType: "audio" | "video", metadata?: any) {
+  const res = await apiPost("/online/calls", { toUserId, calleeUserId: toUserId, callType, type: callType, metadata: metadata || {} });
+  return { call: res?.call as MessengerCall, message: res?.message as PrivateMessageItem };
+}
+
+export async function acceptMessengerCall(callId: string) {
+  const res = await apiPost(`/online/calls/${qs(callId)}/accept`, {});
+  return res?.call as MessengerCall;
+}
+
+export async function declineMessengerCall(callId: string) {
+  const res = await apiPost(`/online/calls/${qs(callId)}/decline`, {});
+  return res?.call as MessengerCall;
+}
+
+export async function endMessengerCall(callId: string) {
+  const res = await apiPost(`/online/calls/${qs(callId)}/end`, {});
+  return res?.call as MessengerCall;
+}
+
+export async function sendMessengerCallSignal(callId: string, signalType: string, payload: any) {
+  const res = await apiPost(`/online/calls/${qs(callId)}/signal`, { signalType, type: signalType, payload: payload || {} });
+  return res?.signal as MessengerCallSignal;
+}
+
+export async function listMessengerCallSignals(callId: string, after?: string): Promise<MessengerCallSignal[]> {
+  const query = after ? `?after=${encodeURIComponent(after)}` : "";
+  const res = await apiGet(`/online/calls/${qs(callId)}/signals${query}`);
+  return Array.isArray(res?.signals) ? res.signals : [];
+}
+
+export async function blockOnlineUser(userId: string, reason?: string) {
+  return apiPost(`/online/users/${qs(userId)}/block`, { reason: reason || "" });
+}
+
+export async function unblockOnlineUser(userId: string) {
+  return apiDelete(`/online/users/${qs(userId)}/block`);
+}
+
+export async function listBlockedUsers(): Promise<OnlineFriendUser[]> {
+  const res = await apiGet("/online/blocked-users");
+  return Array.isArray(res?.users) ? res.users : [];
 }

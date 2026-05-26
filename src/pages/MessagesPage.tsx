@@ -16,6 +16,14 @@ import {
   markPrivateThreadRead,
   deletePrivateMessage,
   editPrivateMessage,
+  buildPrivateMessagesStreamUrl,
+  startMessengerCall,
+  acceptMessengerCall,
+  declineMessengerCall,
+  endMessengerCall,
+  sendMessengerCallSignal,
+  listMessengerCallSignals,
+  blockOnlineUser,
   type FriendRequest,
   type PrivateMessageItem,
   type OnlineFriendUser,
@@ -933,9 +941,27 @@ export default function MessagesPage({ store, update, go }: Props) {
   const recorderStartedAtRef = React.useRef<number>(0);
   const callStreamRef = React.useRef<MediaStream | null>(null);
   const callVideoRef = React.useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = React.useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const peerRef = React.useRef<any>(null);
+  const activeCallRef = React.useRef<any>(null);
+  const callSignalsAfterRef = React.useRef<string>("");
+  const callSignalTimerRef = React.useRef<number | null>(null);
+  const processedSignalIdsRef = React.useRef<Set<string>>(new Set());
+  const selectedThreadUserIdRef = React.useRef("");
+  const chatFullscreenRef = React.useRef(false);
+  const activeRef = React.useRef<MsgTab>("messages");
+  const [activeCall, setActiveCall] = React.useState<any>(null);
+  const [incomingCallNotice, setIncomingCallNotice] = React.useState<any>(null);
+  const [remoteStreamTick, setRemoteStreamTick] = React.useState(0);
   const sendingPrivateRef = React.useRef(false);
 
   const currentAccountId = String(store?.user?.id || store?.account?.id || store?.auth?.user?.id || store?.activeUser?.id || store?.profile?.userId || store?.activeProfile?.userId || "me").trim() || "me";
+
+  React.useEffect(() => { selectedThreadUserIdRef.current = selectedThreadUserId; }, [selectedThreadUserId]);
+  React.useEffect(() => { chatFullscreenRef.current = chatFullscreen; }, [chatFullscreen]);
+  React.useEffect(() => { activeRef.current = active; }, [active]);
+  React.useEffect(() => { activeCallRef.current = activeCall; }, [activeCall]);
 
   React.useEffect(() => {
     if (!openMessageMenuId) return;
@@ -1400,6 +1426,219 @@ export default function MessagesPage({ store, update, go }: Props) {
     return optimistic.id;
   }
 
+
+
+  function upsertRealtimePrivateMessage(message: any) {
+    if (!message?.id) return;
+    setPrivateMessages((prev: any[]) => {
+      const id = String(message.id || "");
+      const existingIndex = prev.findIndex((m: any) => String(m?.id || "") === id);
+      if (existingIndex >= 0) {
+        const next = [...prev];
+        next[existingIndex] = { ...next[existingIndex], ...message, metadata: message.metadata || next[existingIndex]?.metadata || {} } as any;
+        return next as any;
+      }
+      // Remplace aussi un optimistic temporaire très proche si le serveur renvoie l'élément final.
+      const msgTo = String(message?.toUserId || message?.toUser?.id || message?.toUser?.userId || "");
+      const msgText = String(message?.text || message?.body || "");
+      const tmpIndex = prev.findIndex((m: any) => String(m?.id || "").startsWith("tmp_") && String(m?.toUserId || m?.toUser?.id || "") === msgTo && String(m?.text || "") === msgText);
+      if (tmpIndex >= 0) {
+        const next = [...prev];
+        next[tmpIndex] = { ...message, metadata: message.metadata || next[tmpIndex]?.metadata || {} } as any;
+        return next as any;
+      }
+      return [...prev, message as any] as any;
+    });
+
+    const meta = metadataOfMessage(message);
+    const incoming = message?.direction !== "outgoing";
+    if (incoming && meta?.kind === "callInvite") {
+      const fromId = String(message?.fromUserId || message?.fromUser?.id || message?.fromUser?.userId || "");
+      setIncomingCallNotice({ callId: meta.callId || "", callType: meta.callType === "video" ? "video" : "audio", fromUserId: fromId, message });
+      if (chatFullscreenRef.current && selectedThreadUserIdRef.current === fromId) {
+        setInfo(`${meta.callType === "video" ? "Visio" : "Appel audio"} entrant — réponds depuis la carte d'appel.`);
+      }
+      try { showMessageCenterNotification(meta.callType === "video" ? "Visio entrante" : "Appel audio entrant", `Appel de ${asUserName(message?.fromUser || {})}`); } catch {}
+    } else if (incoming && (!chatFullscreenRef.current || selectedThreadUserIdRef.current !== String(message?.fromUserId || message?.fromUser?.id || ""))) {
+      try { showMessageCenterNotification("Nouveau message", `${asUserName(message?.fromUser || {})} t'a envoyé un élément.`); } catch {}
+    }
+    markMessageCenterRefreshNeeded();
+  }
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || typeof EventSource === "undefined") return;
+    let es: EventSource | null = null;
+    let fallbackTimer: number | null = null;
+    let closed = false;
+    const connect = () => {
+      try {
+        const url = buildPrivateMessagesStreamUrl();
+        if (!url) return;
+        es = new EventSource(url);
+        es.addEventListener("message:created", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(String(event.data || "{}"));
+            if (data?.message) upsertRealtimePrivateMessage(data.message);
+          } catch {}
+        });
+        es.addEventListener("message:read", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(String(event.data || "{}"));
+            if (data?.message) upsertRealtimePrivateMessage(data.message);
+          } catch {}
+        });
+        es.addEventListener("messages:changed", () => { loadAll(true).catch(() => {}); });
+        es.addEventListener("call:incoming", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(String(event.data || "{}"));
+            if (data?.message) upsertRealtimePrivateMessage(data.message);
+            setIncomingCallNotice(data);
+            if (data?.callType) setInfo(`${data.callType === "video" ? "Visio" : "Appel audio"} entrant.`);
+          } catch {}
+        });
+        es.addEventListener("call:accepted", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(String(event.data || "{}"));
+            if (data?.call) setActiveCall(data.call);
+            setInfo("Appel accepté ✅");
+          } catch {}
+        });
+        es.addEventListener("call:declined", () => { setInfo("Appel refusé"); closeCallPanel(false); });
+        es.addEventListener("call:ended", () => { setInfo("Appel terminé"); closeCallPanel(false); });
+        es.onerror = () => {
+          if (closed) return;
+          if (!fallbackTimer) {
+            fallbackTimer = window.setInterval(() => loadAll(true).catch(() => {}), 4500);
+          }
+        };
+      } catch {
+        fallbackTimer = window.setInterval(() => loadAll(true).catch(() => {}), 4500);
+      }
+    };
+    connect();
+    return () => {
+      closed = true;
+      try { es?.close(); } catch {}
+      if (fallbackTimer) window.clearInterval(fallbackTimer);
+    };
+  }, [loadAll]);
+
+  React.useEffect(() => {
+    if (active !== "messages" || !chatFullscreen) return;
+    const timer = window.setInterval(() => loadAll(true).catch(() => {}), 12000);
+    return () => window.clearInterval(timer);
+  }, [active, chatFullscreen, selectedThreadUserId, loadAll]);
+
+  function attachCallMediaToNodes() {
+    try {
+      if (callVideoRef.current && callStreamRef.current && callVideoRef.current.srcObject !== callStreamRef.current) {
+        callVideoRef.current.srcObject = callStreamRef.current;
+      }
+    } catch {}
+    try {
+      if (remoteVideoRef.current && remoteStreamRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      }
+      if (remoteAudioRef.current && remoteStreamRef.current && remoteAudioRef.current.srcObject !== remoteStreamRef.current) {
+        remoteAudioRef.current.srcObject = remoteStreamRef.current;
+      }
+    } catch {}
+  }
+
+  React.useEffect(() => { attachCallMediaToNodes(); }, [conversationPanel?.type, remoteStreamTick, activeCall?.id]);
+
+  async function prepareLocalMediaForCall(type: "audio" | "video") {
+    try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
+    callStreamRef.current = null;
+    const media = await navigator.mediaDevices?.getUserMedia?.(type === "video" ? { audio: true, video: true } : { audio: true });
+    callStreamRef.current = media || null;
+    setTimeout(attachCallMediaToNodes, 30);
+    return media;
+  }
+
+  function cleanupPeerOnly() {
+    if (callSignalTimerRef.current) {
+      window.clearInterval(callSignalTimerRef.current);
+      callSignalTimerRef.current = null;
+    }
+    try { peerRef.current?.close?.(); } catch {}
+    peerRef.current = null;
+    processedSignalIdsRef.current = new Set();
+    callSignalsAfterRef.current = "";
+    remoteStreamRef.current = null;
+    setRemoteStreamTick((v) => v + 1);
+  }
+
+  async function handleIncomingCallSignal(signal: any) {
+    if (!signal?.id || processedSignalIdsRef.current.has(String(signal.id))) return;
+    processedSignalIdsRef.current.add(String(signal.id));
+    if (String(signal.fromUserId || "") === String(currentAccountId || "")) return;
+    const pc = peerRef.current;
+    if (!pc) return;
+    const type = String(signal.signalType || signal.type || "");
+    const payload = signal.payload || {};
+    try {
+      if (type === "offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await sendMessengerCallSignal(String(signal.callId || activeCallRef.current?.id || activeCallRef.current?.callId || ""), "answer", answer);
+      } else if (type === "answer") {
+        if (pc.signalingState !== "stable") await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      } else if (type === "candidate" && payload) {
+        await pc.addIceCandidate(new RTCIceCandidate(payload)).catch(() => {});
+      } else if (type === "bye") {
+        closeCallPanel(false);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Erreur signal WebRTC");
+    }
+  }
+
+  function startCallSignalPolling(callId: string) {
+    if (callSignalTimerRef.current) window.clearInterval(callSignalTimerRef.current);
+    callSignalTimerRef.current = window.setInterval(async () => {
+      try {
+        const signals = await listMessengerCallSignals(callId, callSignalsAfterRef.current || undefined);
+        for (const signal of signals || []) {
+          if (signal?.createdAt) callSignalsAfterRef.current = String(signal.createdAt);
+          await handleIncomingCallSignal(signal);
+        }
+      } catch {}
+    }, 900);
+  }
+
+  async function setupPeerConnection(call: any, type: "audio" | "video", role: "caller" | "callee") {
+    const callId = String(call?.id || call?.callId || "");
+    if (!callId) return;
+    cleanupPeerOnly();
+    const stream = callStreamRef.current || await prepareLocalMediaForCall(type);
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }] });
+    peerRef.current = pc;
+    remoteStreamRef.current = new MediaStream();
+    setRemoteStreamTick((v) => v + 1);
+    for (const track of stream?.getTracks?.() || []) pc.addTrack(track, stream);
+    pc.onicecandidate = (event: any) => {
+      if (event?.candidate) sendMessengerCallSignal(callId, "candidate", event.candidate).catch(() => {});
+    };
+    pc.ontrack = (event: any) => {
+      const remote = remoteStreamRef.current || new MediaStream();
+      const tracks = event?.streams?.[0]?.getTracks?.() || (event?.track ? [event.track] : []);
+      for (const track of tracks) {
+        if (!remote.getTracks().some((t) => t.id === track.id)) remote.addTrack(track);
+      }
+      remoteStreamRef.current = remote;
+      setRemoteStreamTick((v) => v + 1);
+      setTimeout(attachCallMediaToNodes, 30);
+    };
+    startCallSignalPolling(callId);
+    if (role === "caller") {
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: type === "video" });
+      await pc.setLocalDescription(offer);
+      await sendMessengerCallSignal(callId, "offer", offer);
+    }
+  }
+
   async function handleSendPrivateMessage() {
     if (sendingPrivateRef.current) return;
     const toUserId = String(messageToUserId || selectedThread?.id || "").trim();
@@ -1473,6 +1712,25 @@ export default function MessagesPage({ store, update, go }: Props) {
     }
   }
 
+
+
+
+  async function handleBlockSelectedUser() {
+    const id = String(selectedThread?.id || selectedThreadUserId || "").trim();
+    if (!id) return;
+    const name = asUserName(selectedThread?.user || {});
+    const ok = typeof window === "undefined" ? true : window.confirm(`Bloquer ${name} ? Il ne pourra plus t'envoyer de messages ni t'appeler.`);
+    if (!ok) return;
+    try {
+      await blockOnlineUser(id);
+      setInfo(`${name} bloqué ✅`);
+      setConversationOptionsOpen(false);
+      closeCallPanel(false);
+      await loadAll(true);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    }
+  }
 
   function clearConversationTools() {
     setEmojiOpen(false);
@@ -1595,7 +1853,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       setConversationPanel({
         type,
         title: title || (type === "video" ? "Visio en cours" : "Appel audio en cours"),
-        text: text || (type === "video" ? "Demande de visio envoyée. La connexion directe attend le signaling NAS/WebRTC." : "Demande d’appel envoyée. La connexion directe attend le signaling NAS/WebRTC."),
+        text: text || (type === "video" ? "Connexion visio NAS/WebRTC initialisée." : "Connexion audio NAS/WebRTC initialisée."),
       });
     } catch (e: any) {
       setConversationPanel({
@@ -1612,23 +1870,60 @@ export default function MessagesPage({ store, update, go }: Props) {
       setError("Choisis un ami à appeler.");
       return;
     }
-    await sendSystemChatText(type === "video" ? "📹 Demande de visio" : "📞 Demande d’appel audio", {
-      kind: "callInvite",
-      callType: type,
-      status: "ringing",
-      expiresAt: new Date(Date.now() + 2 * 60_000).toISOString(),
-      ttlHours: MESSAGE_TTL_HOURS,
-    });
-    await openLocalCallPanel(type, type === "video" ? "Visio lancée" : "Appel audio lancé", "Invitation envoyée à l’autre appareil. Le vrai décrochage direct nécessitera le pont WebRTC/signaling NAS.");
+    clearConversationTools();
+    setError(null);
+    try {
+      await prepareLocalMediaForCall(type);
+      const { call, message }: any = await startMessengerCall(toUserId, type, {
+        messageMetadata: { ttlHours: MESSAGE_TTL_HOURS },
+      });
+      if (message?.id) upsertRealtimePrivateMessage(message);
+      if (call?.id || call?.callId) {
+        setActiveCall(call);
+        await openLocalCallPanel(type, type === "video" ? "Visio lancée" : "Appel audio lancé", "Appel envoyé en direct. En attente que l’autre appareil décroche…");
+        await setupPeerConnection(call, type, "caller");
+      }
+      setInfo(type === "video" ? "Visio lancée ✅" : "Appel audio lancé ✅");
+    } catch (e: any) {
+      setError(e?.message || String(e));
+      closeCallPanel(false);
+    }
   }
 
-  async function acceptIncomingCall(type: "audio" | "video") {
-    await openLocalCallPanel(type, type === "video" ? "Visio acceptée" : "Appel audio accepté", "Micro/caméra ouverts sur cet appareil. Le pont WebRTC/signaling NAS reliera ensuite les deux appareils.");
+  async function acceptIncomingCall(type: "audio" | "video", callId?: string) {
+    const id = String(callId || incomingCallNotice?.callId || "").trim();
+    clearConversationTools();
+    try {
+      await prepareLocalMediaForCall(type);
+      let call: any = incomingCallNotice || { id, callId: id, callType: type };
+      if (id) call = await acceptMessengerCall(id);
+      setActiveCall(call);
+      await openLocalCallPanel(type, type === "video" ? "Visio acceptée" : "Appel audio accepté", "Appel accepté. Connexion directe en cours…");
+      await setupPeerConnection(call, type, "callee");
+      setInfo("Appel accepté ✅");
+    } catch (e: any) {
+      setError(e?.message || String(e));
+      closeCallPanel(false);
+    }
   }
 
-  function closeCallPanel() {
+  async function refuseIncomingCall(callId?: string) {
+    const id = String(callId || incomingCallNotice?.callId || "").trim();
+    try { if (id) await declineMessengerCall(id); } catch {}
+    setIncomingCallNotice(null);
+    setInfo("Appel refusé");
+  }
+
+  function closeCallPanel(notifyRemote = true) {
+    const callId = String(activeCallRef.current?.id || activeCallRef.current?.callId || "").trim();
+    if (notifyRemote && callId) {
+      sendMessengerCallSignal(callId, "bye", { reason: "hangup" }).catch(() => {});
+      endMessengerCall(callId).catch(() => {});
+    }
+    cleanupPeerOnly();
     try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
     callStreamRef.current = null;
+    setActiveCall(null);
     setConversationPanel(null);
   }
 
@@ -1941,6 +2236,7 @@ export default function MessagesPage({ store, update, go }: Props) {
               <div style={{ display: "grid", gap: 6 }}>
                 <ActionButton label="Marquer lu" tone={GREEN} onClick={() => selectedThread?.id && markPrivateThreadRead(String(selectedThread.id)).then(() => { setInfo("Conversation marquée comme lue ✅"); setConversationOptionsOpen(false); }).catch((e: any) => setError(e?.message || String(e)))} />
                 <ActionButton label="Notifications" tone={GOLD} onClick={() => { setConversationOptionsOpen(false); activatePhoneNotifications(); }} />
+                <ActionButton label="Bloquer" tone={RED} onClick={handleBlockSelectedUser} />
               </div>
             </div>
           ) : null}
@@ -1959,10 +2255,12 @@ export default function MessagesPage({ store, update, go }: Props) {
               <button type="button" onClick={closeCallPanel} style={{ border: `1px solid ${STROKE}`, background: "rgba(255,255,255,.04)", color: "#fff", borderRadius: 999, width: 28, height: 28, cursor: "pointer", fontWeight: 1000 }}>×</button>
             </div>
             {conversationPanel.type === "video" ? (
-              <div style={{ marginTop: 10, border: `1px solid ${BLUE}55`, borderRadius: 16, overflow: "hidden", background: "rgba(0,0,0,.45)", boxShadow: `0 0 22px ${BLUE}18` }}>
-                <video ref={callVideoRef} muted playsInline autoPlay style={{ width: "100%", maxHeight: 210, objectFit: "cover", display: "block", background: "#05070c" }} />
+              <div style={{ position: "relative", marginTop: 10, border: `1px solid ${BLUE}55`, borderRadius: 16, overflow: "hidden", background: "rgba(0,0,0,.45)", boxShadow: `0 0 22px ${BLUE}18` }}>
+                <video ref={remoteVideoRef} playsInline autoPlay style={{ width: "100%", maxHeight: 210, objectFit: "cover", display: "block", background: "#05070c" }} />
+                <video ref={callVideoRef} muted playsInline autoPlay style={{ position: "absolute", right: 18, bottom: 76, width: 92, height: 70, objectFit: "cover", borderRadius: 12, border: `1px solid ${BLUE}77`, background: "#05070c" }} />
               </div>
             ) : conversationPanel.type === "audio" ? (
+              <audio ref={remoteAudioRef} autoPlay playsInline />
               <div style={{ marginTop: 10, minHeight: 52, border: `1px solid ${GREEN}44`, borderRadius: 16, padding: "10px 12px", background: "rgba(125,255,178,.08)", display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ width: 12, height: 12, borderRadius: 999, background: GREEN, boxShadow: `0 0 18px ${GREEN}` }} />
                 <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
@@ -2072,8 +2370,8 @@ export default function MessagesPage({ store, update, go }: Props) {
                           <div style={{ color: callType === "video" ? BLUE : GREEN, fontWeight: 1000, fontSize: 13 }}>{callType === "video" ? "📹 Appel visio" : "📞 Appel audio"}</div>
                           <div style={{ color: "rgba(255,255,255,.62)", fontSize: 11, fontWeight: 800 }}>Invitation d’appel • expire rapidement</div>
                           {incoming ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                            <ActionButton label="Répondre" tone={callType === "video" ? BLUE : GREEN} onClick={() => acceptIncomingCall(callType as any)} />
-                            <ActionButton label="Refuser" tone={RED} onClick={() => setInfo("Appel refusé")} />
+                            <ActionButton label="Répondre" tone={callType === "video" ? BLUE : GREEN} onClick={() => acceptIncomingCall(callType as any, String(meta.callId || ""))} />
+                            <ActionButton label="Refuser" tone={RED} onClick={() => refuseIncomingCall(String(meta.callId || ""))} />
                           </div> : <div style={{ color: "rgba(255,255,255,.55)", fontSize: 11, fontWeight: 850 }}>Demande envoyée</div>}
                         </div>;
                       }
