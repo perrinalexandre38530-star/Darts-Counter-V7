@@ -308,6 +308,16 @@ export async function startMessengerCall(toUserId: string, callType: "audio" | "
   return { call: res?.call as MessengerCall, message: res?.message as PrivateMessageItem };
 }
 
+export async function listIncomingMessengerCalls(): Promise<MessengerCall[]> {
+  const res = await apiGet("/online/calls/incoming");
+  return Array.isArray(res?.calls) ? res.calls : [];
+}
+
+export async function listActiveMessengerCalls(): Promise<MessengerCall[]> {
+  const res = await apiGet("/online/calls/active");
+  return Array.isArray(res?.calls) ? res.calls : [];
+}
+
 export async function acceptMessengerCall(callId: string) {
   const res = await apiPost(`/online/calls/${qs(callId)}/accept`, {});
   return res?.call as MessengerCall;

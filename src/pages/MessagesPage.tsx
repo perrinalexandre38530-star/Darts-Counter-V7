@@ -23,6 +23,7 @@ import {
   endMessengerCall,
   sendMessengerCallSignal,
   listMessengerCallSignals,
+  listIncomingMessengerCalls,
   blockOnlineUser,
   type FriendRequest,
   type PrivateMessageItem,
@@ -955,6 +956,10 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [incomingCallNotice, setIncomingCallNotice] = React.useState<any>(null);
   const [remoteStreamTick, setRemoteStreamTick] = React.useState(0);
   const sendingPrivateRef = React.useRef(false);
+  const incomingCallPollBusyRef = React.useRef(false);
+  const notifiedIncomingCallIdsRef = React.useRef<Set<string>>(new Set());
+  const ringingAudioRef = React.useRef<{ ctx?: AudioContext; stop?: () => void } | null>(null);
+  const ringVibrateTimerRef = React.useRef<number | null>(null);
 
   const currentAccountId = String(store?.user?.id || store?.account?.id || store?.auth?.user?.id || store?.activeUser?.id || store?.profile?.userId || store?.activeProfile?.userId || "me").trim() || "me";
 
@@ -1426,6 +1431,123 @@ export default function MessagesPage({ store, update, go }: Props) {
     return optimistic.id;
   }
 
+  function mergeRealtimePrivateMessages(items: any[]) {
+    if (!Array.isArray(items) || !items.length) return;
+    setPrivateMessages((prev: any[]) => {
+      const map = new Map<string, any>();
+      for (const old of prev || []) {
+        const id = String(old?.id || "");
+        if (id) map.set(id, old);
+      }
+      for (const item of items) {
+        const id = String(item?.id || "");
+        if (!id) continue;
+        const old = map.get(id) || {};
+        map.set(id, { ...old, ...item, metadata: item?.metadata || old?.metadata || {} });
+      }
+      return Array.from(map.values()).sort((a: any, b: any) => (Date.parse(String(a?.createdAt || "")) || 0) - (Date.parse(String(b?.createdAt || "")) || 0)) as any;
+    });
+    markMessageCenterRefreshNeeded();
+  }
+
+  function friendSnapshotById(userId: string) {
+    const id = String(userId || "").trim();
+    if (!id) return null;
+    return (friends as any[]).find((f: any) => userIdOf(f) === id) || null;
+  }
+
+  function stopIncomingCallRinging() {
+    try { ringingAudioRef.current?.stop?.(); } catch {}
+    try { ringingAudioRef.current?.ctx?.close?.(); } catch {}
+    ringingAudioRef.current = null;
+    if (ringVibrateTimerRef.current) {
+      window.clearInterval(ringVibrateTimerRef.current);
+      ringVibrateTimerRef.current = null;
+    }
+    try { navigator.vibrate?.(0); } catch {}
+  }
+
+  function startIncomingCallRinging() {
+    if (ringingAudioRef.current) return;
+    try {
+      navigator.vibrate?.([700, 250, 700, 650]);
+      ringVibrateTimerRef.current = window.setInterval(() => {
+        try { navigator.vibrate?.([700, 250, 700, 650]); } catch {}
+      }, 2600);
+    } catch {}
+    try {
+      const AudioCtor = (window.AudioContext || (window as any).webkitAudioContext);
+      if (!AudioCtor) return;
+      const ctx = new AudioCtor();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001;
+      gain.connect(ctx.destination);
+      let stopped = false;
+      const beep = () => {
+        if (stopped) return;
+        try {
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.value = 880;
+          osc.connect(gain);
+          const now = ctx.currentTime;
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(0.11, now + 0.03);
+          gain.gain.linearRampToValueAtTime(0.0001, now + 0.42);
+          osc.start(now);
+          osc.stop(now + 0.46);
+        } catch {}
+        window.setTimeout(beep, 1100);
+      };
+      beep();
+      ringingAudioRef.current = { ctx, stop: () => { stopped = true; } };
+    } catch {}
+  }
+
+  function noticeIncomingCall(callLike: any, sourceMessage?: any) {
+    const call = callLike?.call || callLike || {};
+    const callId = String(call?.id || call?.callId || callLike?.callId || sourceMessage?.metadata?.callId || "").trim();
+    if (!callId) return;
+    const callType = String(call?.callType || call?.type || callLike?.callType || sourceMessage?.metadata?.callType || "audio") === "video" ? "video" : "audio";
+    const status = String(call?.status || callLike?.status || sourceMessage?.metadata?.status || "ringing").toLowerCase();
+    if (status && !["ringing", "pending", "calling"].includes(status)) return;
+    const expiresRaw = String(call?.expiresAt || callLike?.expiresAt || sourceMessage?.metadata?.expiresAt || "");
+    if (expiresRaw && Number.isFinite(Date.parse(expiresRaw)) && Date.parse(expiresRaw) < Date.now()) return;
+    const fromUserId = String(call?.callerUserId || callLike?.fromUserId || sourceMessage?.fromUserId || sourceMessage?.fromUser?.id || sourceMessage?.fromUser?.userId || "").trim();
+    if (fromUserId && fromUserId === String(currentAccountId || "")) return;
+    const friend = friendSnapshotById(fromUserId) || sourceMessage?.fromUser || call?.caller || {};
+    const syntheticMessage = sourceMessage || {
+      id: `incoming_call_${callId}`,
+      text: callType === "video" ? "📹 Demande de visio" : "📞 Demande d’appel audio",
+      body: callType === "video" ? "📹 Demande de visio" : "📞 Demande d’appel audio",
+      direction: "incoming",
+      fromUserId,
+      toUserId: currentAccountId,
+      fromUser: { ...(friend || {}), id: fromUserId, userId: fromUserId },
+      metadata: { kind: "callInvite", callId, callType, status: "ringing", bridge: "online-call-signaling-v1" },
+      createdAt: call?.createdAt || callLike?.createdAt || new Date().toISOString(),
+      readAt: null,
+    };
+    setPrivateMessages((prev: any[]) => {
+      const already = (prev || []).some((m: any) => String(metadataOfMessage(m)?.callId || "") === callId || String(m?.id || "") === String(syntheticMessage.id || ""));
+      if (already) return prev as any;
+      return [...prev, syntheticMessage as any] as any;
+    });
+    setIncomingCallNotice({ callId, callType, fromUserId, call, message: syntheticMessage, fromUser: friend });
+    startIncomingCallRinging();
+    if (!notifiedIncomingCallIdsRef.current.has(callId)) {
+      notifiedIncomingCallIdsRef.current.add(callId);
+      setInfo(`${callType === "video" ? "Visio" : "Appel audio"} entrant de ${asUserName(friend || sourceMessage?.fromUser || {})}`);
+      try { showMessageCenterNotification(callType === "video" ? "Visio entrante" : "Appel audio entrant", `Appel de ${asUserName(friend || sourceMessage?.fromUser || {})}`); } catch {}
+    }
+    if (fromUserId && !selectedThreadUserIdRef.current) {
+      setSelectedThreadUserId(fromUserId);
+      setMessageToUserId(fromUserId);
+    }
+    markMessageCenterRefreshNeeded();
+  }
+
 
 
   function upsertRealtimePrivateMessage(message: any) {
@@ -1453,12 +1575,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     const meta = metadataOfMessage(message);
     const incoming = message?.direction !== "outgoing";
     if (incoming && meta?.kind === "callInvite") {
-      const fromId = String(message?.fromUserId || message?.fromUser?.id || message?.fromUser?.userId || "");
-      setIncomingCallNotice({ callId: meta.callId || "", callType: meta.callType === "video" ? "video" : "audio", fromUserId: fromId, message });
-      if (chatFullscreenRef.current && selectedThreadUserIdRef.current === fromId) {
-        setInfo(`${meta.callType === "video" ? "Visio" : "Appel audio"} entrant — réponds depuis la carte d'appel.`);
-      }
-      try { showMessageCenterNotification(meta.callType === "video" ? "Visio entrante" : "Appel audio entrant", `Appel de ${asUserName(message?.fromUser || {})}`); } catch {}
+      noticeIncomingCall({ callId: meta.callId, callType: meta.callType, fromUserId: message?.fromUserId || message?.fromUser?.id || message?.fromUser?.userId }, message);
     } else if (incoming && (!chatFullscreenRef.current || selectedThreadUserIdRef.current !== String(message?.fromUserId || message?.fromUser?.id || ""))) {
       try { showMessageCenterNotification("Nouveau message", `${asUserName(message?.fromUser || {})} t'a envoyé un élément.`); } catch {}
     }
@@ -1479,6 +1596,10 @@ export default function MessagesPage({ store, update, go }: Props) {
           try {
             const data = JSON.parse(String(event.data || "{}"));
             if (data?.message) upsertRealtimePrivateMessage(data.message);
+            const meta = data?.message ? metadataOfMessage(data.message) : null;
+            if (data?.message?.direction !== "outgoing" && meta?.kind === "callInvite") {
+              noticeIncomingCall({ callId: meta.callId, callType: meta.callType, fromUserId: data.message.fromUserId || data.message.fromUser?.id }, data.message);
+            }
           } catch {}
         });
         es.addEventListener("message:read", (event: MessageEvent) => {
@@ -1487,24 +1608,40 @@ export default function MessagesPage({ store, update, go }: Props) {
             if (data?.message) upsertRealtimePrivateMessage(data.message);
           } catch {}
         });
+        es.addEventListener("messages:snapshot", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(String(event.data || "{}"));
+            if (Array.isArray(data?.messages)) {
+              mergeRealtimePrivateMessages(data.messages);
+              for (const msg of data.messages) {
+                const meta = metadataOfMessage(msg);
+                if (msg?.direction !== "outgoing" && meta?.kind === "callInvite") {
+                  noticeIncomingCall({ callId: meta.callId, callType: meta.callType, fromUserId: msg.fromUserId || msg.fromUser?.id }, msg);
+                }
+              }
+            }
+          } catch {}
+        });
         es.addEventListener("messages:changed", () => { loadAll(true).catch(() => {}); });
         es.addEventListener("call:incoming", (event: MessageEvent) => {
           try {
             const data = JSON.parse(String(event.data || "{}"));
             if (data?.message) upsertRealtimePrivateMessage(data.message);
-            setIncomingCallNotice(data);
-            if (data?.callType) setInfo(`${data.callType === "video" ? "Visio" : "Appel audio"} entrant.`);
+            const call = data?.call || data || {};
+            const isIncoming = String(call?.direction || data?.direction || "incoming") !== "outgoing";
+            if (isIncoming) noticeIncomingCall(call, data?.message);
           } catch {}
         });
         es.addEventListener("call:accepted", (event: MessageEvent) => {
           try {
             const data = JSON.parse(String(event.data || "{}"));
+            stopIncomingCallRinging();
             if (data?.call) setActiveCall(data.call);
             setInfo("Appel accepté ✅");
           } catch {}
         });
-        es.addEventListener("call:declined", () => { setInfo("Appel refusé"); closeCallPanel(false); });
-        es.addEventListener("call:ended", () => { setInfo("Appel terminé"); closeCallPanel(false); });
+        es.addEventListener("call:declined", () => { stopIncomingCallRinging(); setInfo("Appel refusé"); closeCallPanel(false); });
+        es.addEventListener("call:ended", () => { stopIncomingCallRinging(); setInfo("Appel terminé"); closeCallPanel(false); });
         es.onerror = () => {
           if (closed) return;
           if (!fallbackTimer) {
@@ -1524,10 +1661,46 @@ export default function MessagesPage({ store, update, go }: Props) {
   }, [loadAll]);
 
   React.useEffect(() => {
+    if (active !== "messages") return;
+    let stopped = false;
+    const pollIncomingCallsAndMessages = async () => {
+      if (stopped || incomingCallPollBusyRef.current) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      incomingCallPollBusyRef.current = true;
+      try {
+        const [messages, calls] = await Promise.all([
+          listPrivateMessages().catch(() => []),
+          listIncomingMessengerCalls().catch(() => []),
+        ]);
+        if (Array.isArray(messages) && messages.length) {
+          mergeRealtimePrivateMessages(messages as any[]);
+          for (const msg of messages as any[]) {
+            const meta = metadataOfMessage(msg);
+            if (msg?.direction !== "outgoing" && meta?.kind === "callInvite") {
+              noticeIncomingCall({ callId: meta.callId, callType: meta.callType, fromUserId: msg.fromUserId || msg.fromUser?.id }, msg);
+            }
+          }
+        }
+        for (const call of (calls || []) as any[]) {
+          const status = String(call?.status || "").toLowerCase();
+          if (["ringing", "pending", "calling"].includes(status)) noticeIncomingCall(call);
+        }
+      } finally {
+        incomingCallPollBusyRef.current = false;
+      }
+    };
+    pollIncomingCallsAndMessages().catch(() => {});
+    const timer = window.setInterval(() => pollIncomingCallsAndMessages().catch(() => {}), incomingCallNotice ? 850 : chatFullscreen ? 1200 : 3000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [active, chatFullscreen, selectedThreadUserId, friends, currentAccountId, incomingCallNotice?.callId]);
+
+  React.useEffect(() => {
     if (active !== "messages" || !chatFullscreen) return;
     const timer = window.setInterval(() => loadAll(true).catch(() => {}), 12000);
     return () => window.clearInterval(timer);
   }, [active, chatFullscreen, selectedThreadUserId, loadAll]);
+
+  React.useEffect(() => () => stopIncomingCallRinging(), []);
 
   function attachCallMediaToNodes() {
     try {
@@ -1845,23 +2018,12 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   async function openLocalCallPanel(type: "audio" | "video", title?: string, text?: string) {
     clearConversationTools();
-    try { callStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch {}
-    callStreamRef.current = null;
-    try {
-      const media = await navigator.mediaDevices?.getUserMedia?.(type === "video" ? { audio: true, video: true } : { audio: true });
-      callStreamRef.current = media || null;
-      setConversationPanel({
-        type,
-        title: title || (type === "video" ? "Visio en cours" : "Appel audio en cours"),
-        text: text || (type === "video" ? "Connexion visio NAS/WebRTC initialisée." : "Connexion audio NAS/WebRTC initialisée."),
-      });
-    } catch (e: any) {
-      setConversationPanel({
-        type,
-        title: type === "video" ? "Visio" : "Appel audio",
-        text: e?.message ? `Autorisation refusée ou indisponible : ${e.message}` : "Autorisation refusée ou indisponible.",
-      });
-    }
+    setConversationPanel({
+      type,
+      title: title || (type === "video" ? "Visio en cours" : "Appel audio en cours"),
+      text: text || (type === "video" ? "Connexion visio NAS/WebRTC initialisée." : "Connexion audio NAS/WebRTC initialisée."),
+    });
+    setTimeout(attachCallMediaToNodes, 30);
   }
 
   async function openCallPanel(type: "audio" | "video") {
@@ -1873,17 +2035,25 @@ export default function MessagesPage({ store, update, go }: Props) {
     clearConversationTools();
     setError(null);
     try {
-      await prepareLocalMediaForCall(type);
+      // Important : on crée d'abord l'appel côté NAS pour déclencher tout de suite la sonnerie chez l'interlocuteur.
       const { call, message }: any = await startMessengerCall(toUserId, type, {
         messageMetadata: { ttlHours: MESSAGE_TTL_HOURS },
       });
       if (message?.id) upsertRealtimePrivateMessage(message);
       if (call?.id || call?.callId) {
         setActiveCall(call);
-        await openLocalCallPanel(type, type === "video" ? "Visio lancée" : "Appel audio lancé", "Appel envoyé en direct. En attente que l’autre appareil décroche…");
-        await setupPeerConnection(call, type, "caller");
+        await openLocalCallPanel(type, type === "video" ? "Appel visio en cours…" : "Appel audio en cours…", "Sonnerie envoyée à l’autre appareil. En attente de réponse…");
+        try {
+          await prepareLocalMediaForCall(type);
+          await setupPeerConnection(call, type, "caller");
+        } catch (mediaError: any) {
+          setError(mediaError?.message || "Micro/caméra indisponible pour l'appel.");
+          try { await endMessengerCall(String(call?.id || call?.callId || "")); } catch {}
+          closeCallPanel(false);
+          return;
+        }
       }
-      setInfo(type === "video" ? "Visio lancée ✅" : "Appel audio lancé ✅");
+      setInfo(type === "video" ? "Appel visio lancé ✅" : "Appel audio lancé ✅");
     } catch (e: any) {
       setError(e?.message || String(e));
       closeCallPanel(false);
@@ -1892,11 +2062,13 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   async function acceptIncomingCall(type: "audio" | "video", callId?: string) {
     const id = String(callId || incomingCallNotice?.callId || "").trim();
+    stopIncomingCallRinging();
     clearConversationTools();
     try {
       await prepareLocalMediaForCall(type);
       let call: any = incomingCallNotice || { id, callId: id, callType: type };
       if (id) call = await acceptMessengerCall(id);
+      setIncomingCallNotice(null);
       setActiveCall(call);
       await openLocalCallPanel(type, type === "video" ? "Visio acceptée" : "Appel audio accepté", "Appel accepté. Connexion directe en cours…");
       await setupPeerConnection(call, type, "callee");
@@ -1909,12 +2081,14 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   async function refuseIncomingCall(callId?: string) {
     const id = String(callId || incomingCallNotice?.callId || "").trim();
+    stopIncomingCallRinging();
     try { if (id) await declineMessengerCall(id); } catch {}
     setIncomingCallNotice(null);
     setInfo("Appel refusé");
   }
 
   function closeCallPanel(notifyRemote = true) {
+    stopIncomingCallRinging();
     const callId = String(activeCallRef.current?.id || activeCallRef.current?.callId || "").trim();
     if (notifyRemote && callId) {
       sendMessengerCallSignal(callId, "bye", { reason: "hangup" }).catch(() => {});
@@ -2110,6 +2284,34 @@ export default function MessagesPage({ store, update, go }: Props) {
     { label: "Notifs", count: counters.system, tone: RED, tab: "system" as MsgTab, detail: "Notifications système." },
   ];
 
+  function renderIncomingCallOverlay() {
+    if (!incomingCallNotice || activeCall) return null;
+    const callType = String(incomingCallNotice.callType || incomingCallNotice.call?.callType || incomingCallNotice.call?.type || "audio") === "video" ? "video" : "audio";
+    const fromId = String(incomingCallNotice.fromUserId || incomingCallNotice.call?.callerUserId || incomingCallNotice.message?.fromUserId || "");
+    const fromUser = friendSnapshotById(fromId) || incomingCallNotice.fromUser || incomingCallNotice.message?.fromUser || incomingCallNotice.call?.caller || {};
+    const callId = String(incomingCallNotice.callId || incomingCallNotice.call?.id || incomingCallNotice.call?.callId || incomingCallNotice.message?.metadata?.callId || "");
+    const tone = callType === "video" ? BLUE : GREEN;
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "radial-gradient(circle at 50% 20%, rgba(125,255,178,.20), transparent 34%), linear-gradient(180deg, rgba(5,7,12,.96), rgba(0,0,0,.985))", color: "#fff", display: "grid", placeItems: "center", padding: 18 }}>
+        <div style={{ width: "min(390px, 100%)", border: `1px solid ${tone}77`, borderRadius: 30, padding: 22, background: "linear-gradient(180deg, rgba(22,24,34,.96), rgba(7,8,13,.98))", boxShadow: `0 0 36px ${tone}30, 0 26px 80px rgba(0,0,0,.72)`, textAlign: "center" }}>
+          <div style={{ color: tone, fontSize: 13, fontWeight: 1000, letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 12 }}>{callType === "video" ? "Appel visio entrant" : "Appel audio entrant"}</div>
+          <div style={{ position: "relative", width: 132, height: 132, margin: "0 auto 14px", display: "grid", placeItems: "center" }}>
+            <div style={{ position: "absolute", inset: 0, borderRadius: 999, border: `1px solid ${tone}40`, boxShadow: `0 0 30px ${tone}20` }} />
+            <div style={{ position: "absolute", inset: 12, borderRadius: 999, border: `1px solid ${tone}55` }} />
+            <AvatarBubble user={fromUser} size={92} />
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 1000, lineHeight: 1.05, marginBottom: 6 }}>{asUserName(fromUser || {})}</div>
+          <div style={{ color: "rgba(255,255,255,.68)", fontSize: 13, fontWeight: 850, marginBottom: 18 }}>{callType === "video" ? "t’appelle en visio" : "t’appelle maintenant"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <button type="button" onClick={() => refuseIncomingCall(callId)} style={{ border: `1px solid ${RED}88`, background: `linear-gradient(180deg, ${RED}24, rgba(0,0,0,.28))`, color: "#fff", borderRadius: 22, padding: "14px 10px", fontWeight: 1000, fontSize: 15, boxShadow: `0 0 22px ${RED}24` }}>✕ Refuser</button>
+            <button type="button" onClick={() => acceptIncomingCall(callType as any, callId)} style={{ border: `1px solid ${tone}99`, background: `linear-gradient(180deg, ${tone}2e, rgba(0,0,0,.20))`, color: "#fff", borderRadius: 22, padding: "14px 10px", fontWeight: 1000, fontSize: 15, boxShadow: `0 0 26px ${tone}30` }}>{callType === "video" ? "📹 Répondre" : "📞 Répondre"}</button>
+          </div>
+          <button type="button" onClick={() => { stopIncomingCallRinging(); setIncomingCallNotice(null); }} style={{ marginTop: 14, border: "none", background: "transparent", color: "rgba(255,255,255,.58)", fontWeight: 850, fontSize: 12 }}>Masquer sans refuser</button>
+        </div>
+      </div>
+    );
+  }
+
 
   if (active === "messages" && chatFullscreen && (selectedGroup || selectedRoom)) {
     const isRoom = !!selectedRoom;
@@ -2120,6 +2322,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     const items = isRoom ? roomMessages : groupMessages;
     return (
       <div className="container" style={{ position: "fixed", inset: 0, zIndex: 2147483000, width: "100vw", height: "100dvh", padding: 0, margin: 0, color: "#f5f5f7", background: "radial-gradient(820px 360px at 50% -10%, rgba(199,139,255,.16), transparent 60%), linear-gradient(180deg, #0b0d15 0%, #05060a 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {renderIncomingCallOverlay()}
         <div style={{ flex: "0 0 auto", padding: "12px", minHeight: 64, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${STROKE}`, background: selectedGroup?.coverUrl ? `linear-gradient(90deg, rgba(5,6,10,.34), rgba(5,6,10,.90)), center/cover url(${selectedGroup.coverUrl})` : "linear-gradient(180deg, rgba(255,255,255,.070), rgba(255,255,255,.018))" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <RoundMessengerButton title="Retour" tone={isRoom ? GREEN : "#c78bff"} onClick={() => { setChatFullscreen(false); setSelectedGroupId(""); setSelectedRoomId(""); setInfo(null); setError(null); }}><MessengerToolIcon name="back" size={22} /></RoundMessengerButton>
@@ -2183,6 +2386,7 @@ export default function MessagesPage({ store, update, go }: Props) {
           overflow: "hidden",
         }}
       >
+        {renderIncomingCallOverlay()}
         <div
           style={{
             flex: "0 0 auto",
@@ -2609,6 +2813,7 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 104, color: "#f5f5f7" }}>
+      {renderIncomingCallOverlay()}
       <div
         style={{
           ...cardStyle({
