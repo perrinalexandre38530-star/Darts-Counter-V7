@@ -895,6 +895,51 @@ function GuidedHeroCard({
   info,
 }: any) {
   const isGuided = configMode === "guided";
+  const modeButton = (active: boolean, label: string, value: "guided" | "full") => (
+    <button
+      type="button"
+      onClick={() => onConfigModeChange?.(value)}
+      style={{
+        borderRadius: 999,
+        border: active ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.12)",
+        background: active
+          ? `linear-gradient(180deg, ${primary}28, rgba(0,0,0,.28))`
+          : "rgba(255,255,255,.045)",
+        color: active ? primary : "rgba(255,255,255,.76)",
+        padding: "8px 10px",
+        fontSize: 12,
+        fontWeight: 1000,
+        cursor: "pointer",
+        boxShadow: active ? `0 0 18px ${primary}24` : "none",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  const chip = (label: string, strong = false) => (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 24,
+        padding: strong ? "5px 13px" : "5px 11px",
+        borderRadius: 999,
+        border: strong ? `1px solid ${primary}77` : "1px solid rgba(255,255,255,.12)",
+        color: strong ? primary : "rgba(255,255,255,.82)",
+        background: strong ? "rgba(0,0,0,.35)" : "rgba(255,255,255,.045)",
+        fontSize: strong ? 11 : 10.5,
+        fontWeight: strong ? 1000 : 950,
+        letterSpacing: strong ? .45 : .35,
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
+
   return (
     <div
       style={{
@@ -915,7 +960,7 @@ function GuidedHeroCard({
         style={{
           position: "absolute",
           right: -32,
-          top: "52%",
+          top: "54%",
           width: 192,
           height: 192,
           objectFit: "contain",
@@ -927,23 +972,14 @@ function GuidedHeroCard({
         }}
       />
       <div style={{ position: "relative", zIndex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ display: "inline-flex", padding: "4px 12px", borderRadius: 999, border: `1px solid ${primary}77`, color: primary, background: "rgba(0,0,0,.35)", fontSize: 11, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>
-            {kindLabel}
-          </span>
-          <span style={{ display: "inline-flex", padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.78)", background: "rgba(255,255,255,.045)", fontSize: 10.5, fontWeight: 950, letterSpacing: .35, textTransform: "uppercase" }}>
-            {sportLabel}
-          </span>
-          <span style={{ display: "inline-flex", padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.78)", background: "rgba(255,255,255,.045)", fontSize: 10.5, fontWeight: 950, letterSpacing: .35, textTransform: "uppercase" }}>
-            {sourceLabel}
-          </span>
-          <span style={{ marginLeft: "auto", display: "inline-flex" }}>
-            <InfoDot title="Configuration compétition" size={34} color={primary} glow={`${primary}77`} content={info} />
-          </span>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center" }}>
+          {modeButton(isGuided, "Guidée", "guided")}
+          {modeButton(!isGuided, "Complète", "full")}
+          <InfoDot title="Configuration compétition" size={34} color={primary} glow={`${primary}77`} content={info} />
         </div>
 
-        <div style={{ minHeight: 86, display: "grid", alignContent: "center", justifyItems: "center", textAlign: "center", padding: "10px 92px 8px 6px" }}>
-          <div style={{ color: primary, fontSize: 13, lineHeight: 1, letterSpacing: 1.6, fontWeight: 1000, textTransform: "uppercase", textShadow: `0 0 14px ${primary}44` }}>
+        <div style={{ minHeight: 92, display: "grid", alignContent: "center", justifyItems: "center", textAlign: "center", padding: "14px 8px 10px" }}>
+          <div style={{ color: primary, fontSize: 13, lineHeight: 1, letterSpacing: 1.8, fontWeight: 1000, textTransform: "uppercase", textShadow: `0 0 14px ${primary}44` }}>
             CRÉATION
           </div>
           <div style={{ marginTop: 6, color: "#fff", fontSize: "clamp(22px, 6.5vw, 34px)", lineHeight: .96, fontWeight: 1000, textTransform: "uppercase", textShadow: "0 3px 18px rgba(0,0,0,.62)", maxWidth: 430 }}>
@@ -951,41 +987,10 @@ function GuidedHeroCard({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
-          <button
-            type="button"
-            onClick={() => onConfigModeChange?.("guided")}
-            style={{
-              borderRadius: 999,
-              border: isGuided ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.12)",
-              background: isGuided ? `linear-gradient(180deg, ${primary}28, rgba(0,0,0,.28))` : "rgba(255,255,255,.045)",
-              color: isGuided ? primary : "rgba(255,255,255,.76)",
-              padding: "8px 10px",
-              fontSize: 12,
-              fontWeight: 1000,
-              cursor: "pointer",
-              boxShadow: isGuided ? `0 0 18px ${primary}24` : "none",
-            }}
-          >
-            Guidée
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfigModeChange?.("full")}
-            style={{
-              borderRadius: 999,
-              border: !isGuided ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.12)",
-              background: !isGuided ? `linear-gradient(180deg, ${primary}28, rgba(0,0,0,.28))` : "rgba(255,255,255,.045)",
-              color: !isGuided ? primary : "rgba(255,255,255,.76)",
-              padding: "8px 10px",
-              fontSize: 12,
-              fontWeight: 1000,
-              cursor: "pointer",
-              boxShadow: !isGuided ? `0 0 18px ${primary}24` : "none",
-            }}
-          >
-            Complète
-          </button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, flexWrap: "wrap", padding: "0 8px" }}>
+          {chip(kindLabel, true)}
+          {chip(sportLabel)}
+          {chip(sourceLabel)}
         </div>
       </div>
     </div>
@@ -2283,7 +2288,7 @@ const petanqueTeamsUI = React.useMemo(() => {
   const titleLine2 = String(name || "").trim() && String(name || "").trim() !== defaultCompetitionName
     ? String(name || "").trim().toUpperCase()
     : defaultTitleLine2.toUpperCase();
-  const heroKindLabel = isLeague ? "LIGUE / CHAMPIONNAT" : "TOURNOI";
+  const heroKindLabel = isLeague ? "LIGUE" : "TOURNOI";
   const heroSourceLabel = source === "online" ? "ONLINE" : "LOCAL";
   const heroInfoContent = (
     <div style={{ display: "grid", gap: 10, lineHeight: 1.4 }}>
