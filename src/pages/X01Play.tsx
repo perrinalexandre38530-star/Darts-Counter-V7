@@ -17,7 +17,6 @@ import type {
 import { useX01EngineV3 } from "../hooks/useX01EngineV3";
 import type { Dart as UIDart } from "../lib/types";
 
-import Keypad from "../components/Keypad";
 import ScoreInputHub from "../components/ScoreInputHub";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
 import BackDot from "../components/BackDot";
@@ -2712,69 +2711,10 @@ try {
                       </div>
                     ) : null}
 
-                    {voiceScoreEnabled && scoringSource !== "external" && voiceScore.phase !== "OFF" && !isBotTurn ? (
-                      <div
-                        style={{
-                          marginBottom: 8,
-                          padding: "8px 10px",
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(0,0,0,0.25)",
-                          boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                          <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
-                            {voiceScore.phase.startsWith("LISTEN")
-                              ? t("x01v3.voiceScore.listening", "Micro : écoute...")
-                              : voiceScore.phase === "RECAP_CONFIRM"
-                              ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
-                              : t("x01v3.voiceScore.active", "Commande vocale")}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => voiceScore.stop()}
-                            style={{
-                              borderRadius: 12,
-                              padding: "6px 10px",
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              background: "rgba(255,255,255,0.06)",
-                              color: "#fff",
-                              fontWeight: 900,
-                              cursor: "pointer",
-                              flex: "0 0 auto",
-                            }}
-                          >
-                            {t("common.stop", "Stop")}
-                          </button>
-                        </div>
-                        {voiceScore.lastHeard ? (
-                          <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                            {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
-                          </div>
-                        ) : null}
-                        {voiceScore.dartsLabel ? (
-                          <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                            {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-
                     <div
                       style={{
-                        pointerEvents:
-                          voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                            ? "none"
-                            : "auto",
-                        opacity:
-                          voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                            ? 0.55
-                            : 1,
-                        filter:
-                          voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                            ? "grayscale(.15)"
-                            : "none",
+                        // La commande vocale est désormais pilotée par le bouton MICRO intégré au keypad.
+                        // On ne coupe plus les pointer-events du keypad, sinon le STOP/MICRO devient inutilisable.
                         height: "100%",
                       }}
                     >
@@ -3066,85 +3006,37 @@ try {
               </div>
             ) : null}
 
-          {voiceScoreEnabled && scoringSource !== "external" && voiceScore.phase !== "OFF" && !isBotTurn && (
-            <div
-              style={{
-                marginBottom: 8,
-                padding: "8px 10px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.25)",
-                boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
-                  {voiceScore.phase.startsWith("LISTEN")
-                    ? t("x01v3.voiceScore.listening", "Micro : écoute...")
-                    : voiceScore.phase === "RECAP_CONFIRM"
-                    ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
-                    : t("x01v3.voiceScore.active", "Commande vocale")}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => voiceScore.stop()}
-                  style={{
-                    borderRadius: 12,
-                    padding: "6px 10px",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "#fff",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  {t("common.stop", "Stop")}
-                </button>
-              </div>
-              {voiceScore.lastHeard ? (
-                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                  {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
-                </div>
-              ) : null}
-              {voiceScore.dartsLabel ? (
-                <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                  {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
-                </div>
-              ) : null}
-            </div>
-          )}
-
-          <div
-            style={{
-              pointerEvents:
-                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                  ? "none"
-                  : "auto",
-              opacity:
-                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                  ? 0.55
-                  : 1,
-              filter:
-                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                  ? "grayscale(.15)"
-                  : "none",
+          <ScoreInputHub
+            currentThrow={currentThrow}
+            multiplier={multiplier}
+            onSimple={handleSimple}
+            onDouble={handleDouble}
+            onTriple={handleTriple}
+            onBackspace={handleBackspace}
+            onCancel={handleCancel}
+            onNumber={handleNumber}
+            onBull={handleBull}
+            onValidate={validateThrow}
+            onDirectDart={handleDirectDart}
+            onSetVisitDarts={handleSetVisitDarts}
+            preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
+            voiceControl={{
+              enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn),
+              supported: voiceScore.supported,
+              phase: voiceScore.phase,
+              lastHeard: voiceScore.lastHeard,
+              dartsLabel: voiceScore.dartsLabel,
+              dartsTotal: voiceScore.dartsTotal,
+              permissionHint: voiceScore.permissionHint,
+              onStart: () => voiceScore.beginTurn(),
+              onStop: () => voiceScore.stop(),
+              onReset: () => voiceScore.resetTurn(),
             }}
-          >
-            <Keypad
-              currentThrow={currentThrow}
-              multiplier={multiplier}
-              onSimple={handleSimple}
-              onDouble={handleDouble}
-              onTriple={handleTriple}
-              onBackspace={handleBackspace}
-              onCancel={handleCancel}
-              onNumber={handleNumber}
-              onBull={handleBull}
-              onValidate={validateThrow}
-              hidePreview
-            />
-          </div>
+            hidePreview
+            showPlaceholders={false}
+            disabled={isBustLocked}
+            switcherMode="hidden"
+          />
           </div>
         )}
       </div>

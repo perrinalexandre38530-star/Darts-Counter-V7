@@ -4650,90 +4650,8 @@ if (isLandscapeTablet) {
                     </div>
                   ) : null}
 
-                  {voiceScoreEnabled &&
-                  scoringSource !== "external" &&
-                  voiceScore.phase !== "OFF" &&
-                  !isBotTurn ? (
-                    <div
-                      style={{
-                        marginBottom: 8,
-                        padding: "8px 10px",
-                        borderRadius: 14,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(0,0,0,0.25)",
-                        boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
-                          {voiceScore.phase.startsWith("LISTEN")
-                            ? t("x01v3.voiceScore.listening", "Micro : écoute...")
-                            : voiceScore.phase === "RECAP_CONFIRM"
-                            ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
-                            : t("x01v3.voiceScore.active", "Commande vocale")}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => voiceScore.stop()}
-                          style={{
-                            borderRadius: 12,
-                            padding: "6px 10px",
-                            border: "1px solid rgba(255,255,255,0.12)",
-                            background: "rgba(255,255,255,0.06)",
-                            color: "#fff",
-                            fontWeight: 900,
-                            cursor: "pointer",
-                            flex: "0 0 auto",
-                          }}
-                        >
-                          {t("common.stop", "Stop")}
-                        </button>
-                      </div>
-
-                      {voiceScore.lastHeard ? (
-                        <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                          {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
-                        </div>
-                      ) : null}
-
-                      {voiceScore.dartsLabel ? (
-                        <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                          {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
                   <div
-                    style={{
-                      pointerEvents:
-                        voiceScoreEnabled &&
-                        scoringSource !== "external" &&
-                        (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                          ? "none"
-                          : "auto",
-                      opacity:
-                        voiceScoreEnabled &&
-                        scoringSource !== "external" &&
-                        (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                          ? 0.55
-                          : 1,
-                      filter:
-                        voiceScoreEnabled &&
-                        scoringSource !== "external" &&
-                        (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                          ? "grayscale(.15)"
-                          : "none",
-                      height: "100%",
-                    }}
+                    style={{ height: "100%" }}
                   >
                     {onlineTurnLocked ? (onlineStandbyChat || null) : (
                     <ScoreInputHub
@@ -5127,72 +5045,11 @@ if (isLandscapeTablet) {
               </div>
             ) : null}
 
-          {voiceScoreEnabled && scoringSource !== "external" && voiceScore.phase !== "OFF" && !isBotTurn && (
-            <div
-              style={{
-                marginBottom: 8,
-                padding: "8px 10px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.25)",
-                boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
-                  {voiceScore.phase.startsWith("LISTEN")
-                    ? t("x01v3.voiceScore.listening", "Micro : écoute...")
-                    : voiceScore.phase === "RECAP_CONFIRM"
-                    ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
-                    : t("x01v3.voiceScore.active", "Commande vocale")}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => voiceScore.stop()}
-                  style={{
-                    borderRadius: 12,
-                    padding: "6px 10px",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "#fff",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  {t("common.stop", "Stop")}
-                </button>
-              </div>
-              {voiceScore.lastHeard ? (
-                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                  {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
-                </div>
-              ) : null}
-              {voiceScore.dartsLabel ? (
-                <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                  {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
-                </div>
-              ) : null}
-            </div>
-          )}
-
           <div
             style={{
               flex: 1,
               minHeight: 0,
               overflow: "hidden",
-              pointerEvents:
-                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                  ? "none"
-                  : "auto",
-              opacity:
-                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                  ? 0.55
-                  : 1,
-              filter:
-                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                  ? "grayscale(.15)"
-                  : "none",
             }}
           >
             {onlineTurnLocked ? (onlineStandbyChat || null) : (

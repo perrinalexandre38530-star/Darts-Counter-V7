@@ -5,9 +5,20 @@
 // ✅ FIX: le "+0pts" (aperçu total) est masqué quand hidePreview=true (Shanghai)
 // ✅ NEW: hideTotal + centerSlot (pour KILLER: masquer total volée / afficher logo au centre)
 // ✅ SAFE-AREA: padding bas pour éviter le keypad coupé en bas sur mobile
+// ✅ PRESETS/VOICE: action compacte intégrée dans la rangée du haut, à côté d'ANNULER
 // ============================================
 import React from "react";
 import type { Dart as UIDart } from "../lib/types";
+
+type KeypadAuxAction = {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  title?: string;
+  ariaLabel?: string;
+};
 
 type Props = {
   /** Volée en cours (0..3 flèches) */
@@ -33,6 +44,12 @@ type Props = {
 
   /** Remplace le centre (ex: logo Killer). Prioritaire sur hideTotal */
   centerSlot?: React.ReactNode;
+
+  /** Action compacte à droite d'ANNULER : PRESET ou MICRO selon la méthode choisie */
+  auxAction?: KeypadAuxAction | null;
+
+  /** Petit retour d'état intégré dans le keypad, sans bande séparée au-dessus */
+  noticeSlot?: React.ReactNode;
 
   /** Ajoute un padding bas safe-area (par défaut: true) */
   safeBottomPad?: boolean;
@@ -60,19 +77,20 @@ const wrapCard: React.CSSProperties = {
     "linear-gradient(180deg, rgba(22,22,23,.85), rgba(12,12,14,.95))",
   border: "1px solid rgba(255,255,255,.08)",
   borderRadius: 18,
-  padding: 14,
+  padding: 12,
   boxShadow: "0 10px 30px rgba(0,0,0,.35)",
   userSelect: "none",
 };
 
 const btnBase: React.CSSProperties = {
-  height: 52,
+  height: "clamp(44px, 8.5vw, 52px)",
   borderRadius: 16,
   border: "1px solid rgba(255,255,255,.08)",
   background: "rgba(255,255,255,.04)",
   color: "#fff",
   fontWeight: 800,
   cursor: "pointer",
+  minWidth: 0,
 };
 
 const btnDouble: React.CSSProperties = {
@@ -118,13 +136,55 @@ const totalPill: React.CSSProperties = {
   background: "rgba(255,187,51,.12)",
   border: "1px solid rgba(255,187,51,.4)",
   borderRadius: 12,
-  padding: "8px 14px",
+  padding: "8px 12px",
   color: "#ffc63a",
   fontWeight: 900,
-  minWidth: 54,
+  minWidth: 50,
   textAlign: "center",
-  fontSize: 22,
+  fontSize: 21,
 };
+
+const splitActionBase: React.CSSProperties = {
+  ...btnBase,
+  height: "clamp(44px, 8.5vw, 52px)",
+  width: "100%",
+  display: "grid",
+  placeItems: "center",
+  padding: "0",
+  lineHeight: 1,
+};
+
+function ActionIcon({ children }: { children: React.ReactNode }) {
+  return <span style={{ display: "grid", placeItems: "center", color: "currentColor" }}>{children}</span>;
+}
+
+export function UndoMiniIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M19 12H6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M11 7 6 12l5 5" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function LightningMiniIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M13 2 4 14h7l-1 8 10-13h-7l0-7Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function MicroMiniIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M12 18v3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M8.5 21h7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export default function Keypad({
   currentThrow: _currentThrow,
@@ -140,6 +200,8 @@ export default function Keypad({
   hidePreview = false,
   hideTotal = false,
   centerSlot = null,
+  auxAction = null,
+  noticeSlot = null,
   safeBottomPad = true,
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
@@ -156,10 +218,10 @@ export default function Keypad({
       style={{
         ...wrapCard,
         width: "100%",
-        maxWidth: '100%',
+        maxWidth: "100%",
         margin: "0 auto",
         paddingBottom: safeBottomPad
-          ? "calc(14px + var(--safe-bottom))"
+          ? "calc(12px + var(--safe-bottom))"
           : wrapCard.padding,
       }}
     >
@@ -167,10 +229,10 @@ export default function Keypad({
       {!hidePreview && (
         <div
           style={{
-            marginBottom: 12,
+            marginBottom: 10,
             display: "flex",
             justifyContent: "center",
-            gap: 12,
+            gap: 10,
             flexWrap: "nowrap",
             width: "100%",
           }}
@@ -181,13 +243,13 @@ export default function Keypad({
         </div>
       )}
 
-      {/* DOUBLE / TRIPLE / ANNULER */}
+      {/* DOUBLE / TRIPLE / ANNULER + action compacte PRESET ou MICRO */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 12,
-          marginBottom: 12,
+          gap: 10,
+          marginBottom: noticeSlot ? 8 : 10,
         }}
       >
         <button
@@ -218,30 +280,76 @@ export default function Keypad({
           TRIPLE
         </button>
 
-        <button
-          type="button"
-          style={btnCancel}
-          onClick={onCancel}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onBackspace?.();
-          }}
-          title="Annuler (clic droit : supprimer la dernière entrée locale)"
-          aria-label="Annuler"
-        >
-          ANNULER
-        </button>
+        {auxAction ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minWidth: 0 }}>
+            <button
+              type="button"
+              style={{
+                ...splitActionBase,
+                background: "linear-gradient(180deg, rgba(255,198,58,.96), rgba(255,175,0,.90))",
+                color: "#1a1a1a",
+                border: "1px solid rgba(255,180,0,.34)",
+                boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+              }}
+              onClick={onCancel}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onBackspace?.();
+              }}
+              title="Annuler (clic droit : supprimer la dernière entrée locale)"
+              aria-label="Annuler"
+            >
+              <ActionIcon><UndoMiniIcon /></ActionIcon>
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...splitActionBase,
+                background: auxAction.active
+                  ? "linear-gradient(180deg, rgba(180,255,30,.24), rgba(0,0,0,.38))"
+                  : "rgba(255,255,255,.055)",
+                color: auxAction.active ? "#d8ff66" : "rgba(255,255,255,.92)",
+                border: auxAction.active ? "1px solid rgba(180,255,30,.55)" : "1px solid rgba(255,255,255,.12)",
+                boxShadow: auxAction.active ? "0 0 22px rgba(180,255,30,.22)" : "none",
+                opacity: auxAction.disabled ? 0.45 : 1,
+              }}
+              onClick={auxAction.onClick}
+              disabled={auxAction.disabled}
+              title={auxAction.title || auxAction.label}
+              aria-label={auxAction.ariaLabel || auxAction.label}
+            >
+              <ActionIcon>{auxAction.icon}</ActionIcon>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            style={btnCancel}
+            onClick={onCancel}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onBackspace?.();
+            }}
+            title="Annuler (clic droit : supprimer la dernière entrée locale)"
+            aria-label="Annuler"
+          >
+            ANNULER
+          </button>
+        )}
       </div>
 
+      {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
+
       {/* Grille chiffres (pas de conteneur scrollable => ne peut pas “disparaître”) */}
-      <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "grid", gap: 8 }}>
         {rows.map((row, idx) => (
           <div
             key={idx}
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 10,
+              gap: 8,
             }}
           >
             {row.map((n) => (
@@ -263,27 +371,25 @@ export default function Keypad({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "auto 1fr auto",
+          gridTemplateColumns: "minmax(88px, .8fr) minmax(50px, .42fr) minmax(118px, 1fr)",
           alignItems: "center",
-          gap: 12,
-          marginTop: 14,
+          gap: 10,
+          marginTop: 10,
         }}
       >
-        <div style={{ display: "flex" }}>
-          <button
-            type="button"
-            style={{ ...btnBull, minWidth: 96 }}
-            onClick={onBull}
-          >
-            BULL
-          </button>
-        </div>
+        <button
+          type="button"
+          style={{ ...btnBull, width: "100%" }}
+          onClick={onBull}
+        >
+          BULL
+        </button>
 
         <div
           style={{
             display: "flex",
             justifyContent: "center",
-            minHeight: 44,
+            minHeight: 40,
             alignItems: "center",
             pointerEvents: "none",
           }}
@@ -297,15 +403,13 @@ export default function Keypad({
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            style={{ ...btnGold, width: 140 }}
-            onClick={onValidate}
-          >
-            VALIDER
-          </button>
-        </div>
+        <button
+          type="button"
+          style={{ ...btnGold, width: "100%" }}
+          onClick={onValidate}
+        >
+          VALIDER
+        </button>
       </div>
     </div>
   );

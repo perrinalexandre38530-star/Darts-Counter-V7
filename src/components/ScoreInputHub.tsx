@@ -2,13 +2,13 @@
 // src/components/ScoreInputHub.tsx
 // Hub de saisie unifié
 // - Keypad et Cible restent les deux moteurs directs historiques.
-// - PRESETS n'est plus affiché en gros bloc permanent : bouton + feuille flottante.
-// - VOICE affiche une vraie commande micro au-dessus du keypad.
+// - PRESETS n'est plus affiché en gros bloc permanent : bouton intégré au keypad + feuille flottante.
+// - VOICE est piloté par un bouton MICRO intégré au keypad.
 // - AUTO / IA retirés volontairement des méthodes produit.
 // ============================================
 
 import React from "react";
-import Keypad from "./Keypad";
+import Keypad, { LightningMiniIcon, MicroMiniIcon } from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
 import type { Dart as UIDart } from "../lib/types";
@@ -134,17 +134,6 @@ function normalizePresetDarts(darts: UIDart[]): UIDart[] {
     });
 }
 
-const miniActionButton: React.CSSProperties = {
-  width: "100%",
-  minHeight: 48,
-  borderRadius: 16,
-  border: "1px solid rgba(180,255,30,.34)",
-  background: "linear-gradient(180deg, rgba(180,255,30,.18), rgba(0,0,0,.34))",
-  color: "#d8ff66",
-  fontWeight: 1000,
-  letterSpacing: 0.8,
-  boxShadow: "0 10px 24px rgba(180,255,30,.10), inset 0 0 0 1px rgba(255,255,255,.04)",
-};
 
 export default function ScoreInputHub({
   currentThrow,
@@ -166,7 +155,7 @@ export default function ScoreInputHub({
   hideTotal,
   centerSlot,
   disabled = false,
-  showPlaceholders = true,
+  showPlaceholders: _showPlaceholders = true,
   switcherMode = "hidden",
   hideSwitcher = true,
   hideTabs = false,
@@ -195,6 +184,12 @@ export default function ScoreInputHub({
   const showSwitcher = !hideSwitcher && !hideTabs && switcherMode !== "hidden";
   const safeCurrentThrow = Array.isArray(currentThrow) ? currentThrow : [];
   const currentTotal = throwTotal(safeCurrentThrow);
+
+  const voicePhase = String(voiceControl?.phase || "OFF");
+  const voiceListening = voicePhase.startsWith("LISTEN") || voicePhase === "RECAP_CONFIRM";
+  const voiceSupported = voiceControl?.supported !== false;
+  const voiceCanStart = !disabled && !!voiceControl?.enabled && voiceSupported && !!voiceControl?.onStart;
+  const voiceCanStop = !disabled && voiceListening && !!voiceControl?.onStop;
 
   const fitOuterRef = React.useRef<HTMLDivElement | null>(null);
   const fitInnerRef = React.useRef<HTMLDivElement | null>(null);
@@ -260,6 +255,49 @@ export default function ScoreInputHub({
     [disabled, onDirectDart, onSetVisitDarts]
   );
 
+  const keypadAuxAction = React.useMemo(() => {
+    if (method === "presets" && allowPresets) {
+      return {
+        label: "PRESET",
+        icon: <LightningMiniIcon />,
+        onClick: () => setPresetOpen(true),
+        disabled,
+        active: presetOpen,
+        title: "Ouvrir les presets de volée",
+        ariaLabel: "Ouvrir les presets",
+      };
+    }
+
+    if (method === "voice") {
+      return {
+        label: voiceListening ? "STOP" : "MICRO",
+        icon: <MicroMiniIcon />,
+        onClick: () => {
+          if (voiceListening) voiceControl?.onStop?.();
+          else voiceControl?.onStart?.();
+        },
+        disabled: voiceListening ? !voiceCanStop : !voiceCanStart,
+        active: voiceListening,
+        title: voiceListening ? "Arrêter la saisie vocale" : "Démarrer la saisie vocale",
+        ariaLabel: voiceListening ? "Arrêter la saisie vocale" : "Démarrer la saisie vocale",
+      };
+    }
+
+    return null;
+  }, [allowPresets, disabled, method, presetOpen, voiceCanStart, voiceCanStop, voiceControl, voiceListening]);
+
+  const voiceNotice = method === "voice" ? (
+    <VoiceInlineNotice
+      supported={voiceSupported}
+      listening={voiceListening}
+      phase={voicePhase}
+      lastHeard={voiceControl?.lastHeard}
+      dartsLabel={voiceControl?.dartsLabel}
+      dartsTotal={voiceControl?.dartsTotal}
+      permissionHint={voiceControl?.permissionHint}
+    />
+  ) : null;
+
   const renderKeypad = () => (
     <Keypad
       currentThrow={safeCurrentThrow}
@@ -275,6 +313,8 @@ export default function ScoreInputHub({
       hidePreview={hidePreview}
       hideTotal={hideTotal}
       centerSlot={centerSlot}
+      auxAction={keypadAuxAction}
+      noticeSlot={voiceNotice}
     />
   );
 
@@ -332,18 +372,6 @@ export default function ScoreInputHub({
                 : undefined
             }
           >
-            {method === "presets" && allowPresets ? (
-              <PresetLauncher
-                disabled={disabled}
-                currentTotal={currentTotal}
-                onOpen={() => setPresetOpen(true)}
-              />
-            ) : null}
-
-            {method === "voice" ? (
-              <VoicePanel control={voiceControl} disabled={disabled} showPlaceholders={showPlaceholders} />
-            ) : null}
-
             {renderKeypad()}
           </div>
         </div>
@@ -496,15 +524,65 @@ function DartboardInput({
   );
 }
 
-function PresetLauncher({ disabled, currentTotal, onOpen }: { disabled: boolean; currentTotal: number; onOpen: () => void }) {
+
+function VoiceInlineNotice({
+  supported,
+  listening,
+  phase,
+  lastHeard,
+  dartsLabel,
+  dartsTotal,
+  permissionHint,
+}: {
+  supported: boolean;
+  listening: boolean;
+  phase: string;
+  lastHeard?: string;
+  dartsLabel?: string;
+  dartsTotal?: number;
+  permissionHint?: string | null;
+}) {
+  const tone = !supported || permissionHint ? "warn" : listening ? "live" : "idle";
+  const title = !supported
+    ? "Micro indisponible"
+    : permissionHint
+    ? `Micro : ${permissionHint}`
+    : phase === "RECAP_CONFIRM"
+    ? "Confirme : oui / non"
+    : listening
+    ? "Micro en écoute"
+    : "Appuie sur MICRO puis dicte la volée";
+
   return (
-    <div style={{ marginBottom: 10 }}>
-      <button type="button" disabled={disabled} onClick={onOpen} style={{ ...miniActionButton, opacity: disabled ? 0.45 : 1 }}>
-        ⚡ PRESETS — VOLÉES RAPIDES
-      </button>
-      <div style={{ marginTop: 6, textAlign: "center", color: "rgba(255,255,255,.62)", fontSize: 11.5, fontWeight: 800 }}>
-        Ouvre les raccourcis, remplit la volée, puis valide manuellement. Total actuel : <b>{currentTotal}</b>
-      </div>
+    <div
+      style={{
+        borderRadius: 14,
+        border:
+          tone === "warn"
+            ? "1px solid rgba(255,204,102,.38)"
+            : tone === "live"
+            ? "1px solid rgba(180,255,30,.36)"
+            : "1px solid rgba(255,255,255,.09)",
+        background:
+          tone === "warn"
+            ? "rgba(255,174,0,.08)"
+            : tone === "live"
+            ? "rgba(180,255,30,.10)"
+            : "rgba(255,255,255,.045)",
+        color: tone === "warn" ? "#ffcc66" : tone === "live" ? "#d8ff66" : "rgba(255,255,255,.68)",
+        padding: "7px 9px",
+        fontSize: 11.5,
+        fontWeight: 900,
+        lineHeight: 1.25,
+      }}
+    >
+      <div>{title}</div>
+      {lastHeard ? <div style={{ marginTop: 3, color: "rgba(255,255,255,.74)" }}>Entendu : <b>{lastHeard}</b></div> : null}
+      {dartsLabel ? (
+        <div style={{ marginTop: 2, color: "rgba(255,255,255,.82)" }}>
+          Saisie : <b>{dartsLabel}</b> — Total <b>{dartsTotal ?? 0}</b>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -551,7 +629,7 @@ function PresetSheet({
           <div>
             <div style={{ color: "#b9ff2a", fontWeight: 1000, letterSpacing: 1, fontSize: 15 }}>PRESETS</div>
             <div style={{ color: "rgba(255,255,255,.62)", fontWeight: 800, fontSize: 12 }}>
-              Choisis une volée. Elle s’affiche, puis tu appuies sur VALIDER.
+              Choisis une volée : elle remplit le keypad, puis tu valides.
             </div>
           </div>
           <button
@@ -579,103 +657,6 @@ function PresetSheet({
           autoValidate={false}
         />
       </div>
-    </div>
-  );
-}
-
-function VoicePanel({ control, disabled, showPlaceholders }: { control?: VoiceControl; disabled: boolean; showPlaceholders: boolean }) {
-  const phase = String(control?.phase || "OFF");
-  const listening = phase.startsWith("LISTEN") || phase === "RECAP_CONFIRM";
-  const supported = control?.supported !== false;
-  const canStart = !disabled && !!control?.enabled && supported && !!control?.onStart;
-  const label = phase === "RECAP_CONFIRM" ? "CONFIRME : OUI / NON" : listening ? "ÉCOUTE EN COURS" : "ENREGISTRER LA VOLÉE";
-
-  return (
-    <div
-      style={{
-        marginBottom: 10,
-        padding: 12,
-        borderRadius: 18,
-        border: listening ? "1px solid rgba(180,255,30,.40)" : "1px solid rgba(255,255,255,.10)",
-        background: listening
-          ? "linear-gradient(180deg, rgba(180,255,30,.14), rgba(0,0,0,.38))"
-          : "linear-gradient(180deg, rgba(16,18,26,.94), rgba(8,9,13,.96))",
-        boxShadow: listening ? "0 0 32px rgba(180,255,30,.14), 0 12px 30px rgba(0,0,0,.42)" : "0 12px 30px rgba(0,0,0,.42)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <button
-          type="button"
-          disabled={!canStart || listening}
-          onClick={() => control?.onStart?.()}
-          style={{
-            width: 54,
-            height: 54,
-            borderRadius: 999,
-            border: listening ? "1px solid rgba(180,255,30,.72)" : "1px solid rgba(255,255,255,.14)",
-            background: listening ? "rgba(180,255,30,.20)" : "rgba(255,255,255,.08)",
-            color: listening ? "#d8ff66" : "#fff",
-            fontSize: 24,
-            boxShadow: listening ? "0 0 24px rgba(180,255,30,.28)" : "none",
-            opacity: !canStart && !listening ? 0.45 : 1,
-          }}
-          aria-label="Démarrer la saisie vocale"
-        >
-          🎙️
-        </button>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ color: listening ? "#d8ff66" : "#fff", fontWeight: 1000, letterSpacing: 0.4, fontSize: 14 }}>{label}</div>
-          <div style={{ color: "rgba(255,255,255,.66)", fontWeight: 800, fontSize: 12, marginTop: 3 }}>
-            Dicte : “triple vingt, simple cinq, miss”. L’app récapitule puis demande confirmation.
-          </div>
-        </div>
-
-        {listening ? (
-          <button
-            type="button"
-            onClick={() => control?.onStop?.()}
-            style={{
-              borderRadius: 12,
-              padding: "8px 10px",
-              border: "1px solid rgba(255,255,255,.14)",
-              background: "rgba(255,255,255,.08)",
-              color: "#fff",
-              fontWeight: 950,
-            }}
-          >
-            STOP
-          </button>
-        ) : null}
-      </div>
-
-      {!supported ? (
-        <div style={{ marginTop: 8, color: "#ffcc66", fontWeight: 800, fontSize: 12 }}>
-          Reconnaissance vocale non disponible sur ce navigateur. Utilise Chrome/Android ou repasse au keypad.
-        </div>
-      ) : null}
-
-      {control?.permissionHint ? (
-        <div style={{ marginTop: 8, color: "#ffcc66", fontWeight: 800, fontSize: 12 }}>
-          Micro : {control.permissionHint}. Vérifie l’autorisation micro du navigateur.
-        </div>
-      ) : null}
-
-      {control?.lastHeard ? (
-        <div style={{ marginTop: 8, color: "rgba(255,255,255,.76)", fontWeight: 800, fontSize: 12 }}>
-          Entendu : <b>{control.lastHeard}</b>
-        </div>
-      ) : null}
-
-      {control?.dartsLabel ? (
-        <div style={{ marginTop: 4, color: "rgba(255,255,255,.76)", fontWeight: 800, fontSize: 12 }}>
-          Saisie : <b>{control.dartsLabel}</b> — Total <b>{control.dartsTotal ?? 0}</b>
-        </div>
-      ) : showPlaceholders ? (
-        <div style={{ marginTop: 8, color: "rgba(255,255,255,.50)", fontWeight: 800, fontSize: 11.5 }}>
-          Le keypad reste disponible juste dessous pour corriger ou saisir manuellement.
-        </div>
-      ) : null}
     </div>
   );
 }
