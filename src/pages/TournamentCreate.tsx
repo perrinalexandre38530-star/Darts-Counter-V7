@@ -2160,6 +2160,109 @@ const petanqueTeamsUI = React.useMemo(() => {
     }
   }
 
+  function SourceIconChoice({ active, kind, onClick, accent = primary }: any) {
+    const isOnline = kind === "online";
+    const label = isOnline ? "ONLINE" : "LOCAL";
+    const iconColor = active ? accent : "rgba(255,255,255,.86)";
+    const p = {
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2.15,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+    } as const;
+
+    const icon = isOnline ? (
+      <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+        <circle {...p} cx="12" cy="12" r="8" />
+        <path {...p} d="M12 4c2.2 2.7 2.2 13.3 0 16" />
+        <path {...p} d="M12 4c-2.2 2.7-2.2 13.3 0 16" />
+        <path {...p} d="M4 12h16" />
+        <path {...p} d="M6.2 7.5h11.6" />
+        <path {...p} d="M6.2 16.5h11.6" />
+      </svg>
+    ) : (
+      <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+        <path {...p} d="M3.5 11.5 12 4.5l8.5 7" />
+        <path {...p} d="M5.5 10.5V20h13v-9.5" />
+        <path {...p} d="M9.5 20v-5h5v5" />
+      </svg>
+    );
+
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          position: "relative",
+          minHeight: 108,
+          borderRadius: 20,
+          border: active ? `1px solid ${accent}CC` : "1px solid rgba(255,255,255,.10)",
+          background: active
+            ? `radial-gradient(110% 120% at 50% 0%, ${accent}26, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
+            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+          color: iconColor,
+          boxShadow: active ? `0 0 24px ${accent}24, 0 18px 42px rgba(0,0,0,.48)` : "0 12px 28px rgba(0,0,0,.34)",
+          cursor: "pointer",
+          display: "grid",
+          placeItems: "center",
+          gap: 7,
+          padding: "14px 10px 12px",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <div
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 18,
+            display: "grid",
+            placeItems: "center",
+            border: active ? `1px solid ${accent}AA` : "1px solid rgba(255,255,255,.14)",
+            background: active ? "rgba(0,0,0,.34)" : "rgba(0,0,0,.22)",
+            color: iconColor,
+            boxShadow: active ? `0 0 18px ${accent}50, inset 0 0 18px ${accent}14` : "inset 0 0 14px rgba(255,255,255,.035)",
+          }}
+        >
+          {icon}
+        </div>
+        <div
+          style={{
+            color: active ? accent : "rgba(255,255,255,.86)",
+            fontSize: 13,
+            lineHeight: 1,
+            fontWeight: 1000,
+            letterSpacing: .65,
+            textTransform: "uppercase",
+            textShadow: active ? `0 0 12px ${accent}44` : "none",
+          }}
+        >
+          {label}
+        </div>
+        {active ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 10,
+              right: 10,
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              display: "grid",
+              placeItems: "center",
+              background: accent,
+              color: "#181008",
+              fontWeight: 1000,
+              boxShadow: `0 0 16px ${accent}55`,
+            }}
+          >
+            ✓
+          </div>
+        ) : null}
+      </button>
+    );
+  }
+
   function GuidedChoiceCard({ active, title, text, onClick, accent = primary, disabled = false }: any) {
     return (
       <button
@@ -2364,15 +2467,14 @@ const petanqueTeamsUI = React.useMemo(() => {
         </div>
 
         {step === 0 ? (
-          <Section title="1. Type de compétition" subtitle="Choisis où sera créée la compétition, puis donne-lui un nom." accent={primary} watermark={kindWatermark}>
-            <div style={{ display: "grid", gap: 10 }}>
+          <Section title="1. Type de compétition" subtitle={isLeague ? "Choisir un nom de ligue" : "Choisir un nom de tournoi"} accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 14 }}>
               <div>
-                <RowTitle label="Nom" />
                 <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder={isLeague ? "Nom de la ligue" : "Nom du tournoi"} />
               </div>
-              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-                <GuidedChoiceCard active={source === "local"} title="Local" text="Sur cet appareil" onClick={() => setSource("local")} />
-                <GuidedChoiceCard active={source === "online"} title="Online" text="NAS + amis" accent="#4fb4ff" onClick={() => setSource("online")} />
+              <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+                <SourceIconChoice active={source === "local"} kind="local" onClick={() => setSource("local")} />
+                <SourceIconChoice active={source === "online"} kind="online" accent="#4fb4ff" onClick={() => setSource("online")} />
               </div>
             </div>
             <GuidedFooter />
