@@ -894,6 +894,7 @@ function GuidedHeroCard({
   configMode,
   onConfigModeChange,
   info,
+  competitionLogo,
 }: any) {
   const isGuided = configMode === "guided";
   const modeButton = (active: boolean, label: string, value: "guided" | "full") => (
@@ -979,11 +980,67 @@ function GuidedHeroCard({
           <InfoDot title="Configuration compétition" size={34} color={primary} glow={`${primary}77`} content={info} />
         </div>
 
-        <div style={{ minHeight: 92, display: "grid", alignContent: "center", justifyItems: "center", textAlign: "center", padding: "14px 8px 10px" }}>
+        <div
+          style={{
+            position: "relative",
+            minHeight: 92,
+            display: "grid",
+            alignContent: "center",
+            justifyItems: "center",
+            textAlign: "center",
+            padding: "14px 8px 10px",
+          }}
+        >
+          {competitionLogo ? (
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-35%)",
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                padding: 3,
+                border: `1px solid ${primary}88`,
+                background: "rgba(0,0,0,.42)",
+                boxShadow: `0 0 18px ${primary}42`,
+                display: "grid",
+                placeItems: "center",
+                pointerEvents: "none",
+              }}
+            >
+              <img
+                src={competitionLogo}
+                alt=""
+                draggable={false}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: 999,
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            </span>
+          ) : null}
+
           <div style={{ color: primary, fontSize: 13, lineHeight: 1, letterSpacing: 1.8, fontWeight: 1000, textTransform: "uppercase", textShadow: `0 0 14px ${primary}44` }}>
             CRÉATION
           </div>
-          <div style={{ marginTop: 6, color: "#fff", fontSize: "clamp(22px, 6.5vw, 34px)", lineHeight: .96, fontWeight: 1000, textTransform: "uppercase", textShadow: "0 3px 18px rgba(0,0,0,.62)", maxWidth: 430 }}>
+          <div
+            style={{
+              marginTop: 6,
+              color: "#fff",
+              fontSize: "clamp(22px, 6.5vw, 34px)",
+              lineHeight: .96,
+              fontWeight: 1000,
+              textTransform: "uppercase",
+              textShadow: "0 3px 18px rgba(0,0,0,.62)",
+              maxWidth: 430,
+            }}
+          >
             {titleLine2}
           </div>
         </div>
@@ -2292,7 +2349,99 @@ const petanqueTeamsUI = React.useMemo(() => {
   }
 
 
-  function IdentityImageCard({ label, helper, value, onChange, variant = "avatar", accent = primary, onOpenGallery }: any) {
+  
+function ParticipantIconChoice({ active, kind, onClick, accent = primary }: any) {
+    const isTeam = kind === "teams";
+    const label = isTeam ? "ÉQUIPE" : "SOLO";
+    const iconColor = active ? accent : "rgba(255,255,255,.86)";
+    const p = {
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 2.15,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+    } as const;
+
+    const icon = isTeam ? (
+      <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+        <circle {...p} cx="8" cy="8" r="3" />
+        <circle {...p} cx="16" cy="8" r="3" />
+        <path {...p} d="M3.8 19c.8-3.3 2.2-5 4.2-5s3.4 1.7 4.2 5" />
+        <path {...p} d="M11.8 19c.8-3.3 2.2-5 4.2-5s3.4 1.7 4.2 5" />
+      </svg>
+    ) : (
+      <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+        <circle {...p} cx="12" cy="8" r="4" />
+        <path {...p} d="M4.8 20c1.55-4 3.95-6 7.2-6s5.65 2 7.2 6" />
+      </svg>
+    );
+
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          position: "relative",
+          minHeight: 108,
+          borderRadius: 20,
+          border: active ? `1px solid ${accent}CC` : "1px solid rgba(255,255,255,.10)",
+          background: active
+            ? `radial-gradient(110% 120% at 50% 0%, ${accent}26, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
+            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+          color: iconColor,
+          boxShadow: active ? `0 0 24px ${accent}24, 0 18px 42px rgba(0,0,0,.48)` : "0 12px 28px rgba(0,0,0,.34)",
+          cursor: "pointer",
+          display: "grid",
+          placeItems: "center",
+          gap: 7,
+          padding: "14px 10px 12px",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <div
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 18,
+            display: "grid",
+            placeItems: "center",
+            border: active ? `1px solid ${accent}AA` : "1px solid rgba(255,255,255,.14)",
+            background: active ? `radial-gradient(circle at 30% 0%, ${accent}33, rgba(0,0,0,.34))` : "rgba(0,0,0,.25)",
+            boxShadow: active ? `0 0 18px ${accent}44` : "inset 0 0 18px rgba(0,0,0,.35)",
+            color: iconColor,
+          }}
+        >
+          {icon}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: active ? accent : "rgba(255,255,255,.86)" }}>
+          {label}
+        </div>
+        {active ? (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 9,
+              right: 9,
+              width: 26,
+              height: 26,
+              borderRadius: 999,
+              background: accent,
+              color: "#191007",
+              display: "grid",
+              placeItems: "center",
+              fontWeight: 1000,
+              boxShadow: `0 0 14px ${accent}66`,
+            }}
+          >
+            ✓
+          </div>
+        ) : null}
+      </button>
+    );
+  }
+
+function IdentityImageCard({ label, value, onChange, variant = "avatar", accent = primary, onOpenGallery }: any) {
     const inputRef = React.useRef<HTMLInputElement | null>(null);
     const isCover = variant === "cover";
 
@@ -2304,29 +2453,45 @@ const petanqueTeamsUI = React.useMemo(() => {
       reader.readAsDataURL(file);
     }
 
+    const choose = () => {
+      if (onOpenGallery) onOpenGallery();
+      else inputRef.current?.click();
+    };
+
     const fallbackIcon = isCover ? (
-      <svg width={34} height={34} viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 6.5h16v11H4z" fill="none" stroke="currentColor" strokeWidth="2" />
-        <path d="M7 15l3.2-3.2 2.2 2.2 1.5-1.5L18 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="16.2" cy="9.2" r="1.2" fill="currentColor" />
+      <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3.5 7h17v10H3.5z" fill="none" stroke="currentColor" strokeWidth="2" rx="2" />
+        <path d="M7 14.5l3-3 2.2 2.2 1.5-1.5 3.3 3.3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="16.4" cy="9.4" r="1.15" fill="currentColor" />
       </svg>
     ) : (
-      <svg width={34} height={34} viewBox="0 0 24 24" aria-hidden="true">
+      <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
-        <path d="M4.5 20c1.6-4 4.1-6 7.5-6s5.9 2 7.5 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M4.8 20c1.55-4 3.95-6 7.2-6s5.65 2 7.2 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       </svg>
     );
 
     return (
-      <div
+      <button
+        type="button"
+        onClick={choose}
         style={{
           position: "relative",
           overflow: "hidden",
-          borderRadius: 20,
-          border: value ? `1px solid ${accent}AA` : "1px solid rgba(255,255,255,.11)",
-          background: `radial-gradient(120% 135% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`,
-          boxShadow: value ? `0 0 24px ${accent}22, 0 18px 42px rgba(0,0,0,.46)` : "0 12px 28px rgba(0,0,0,.34)",
-          padding: 12,
+          minHeight: isCover ? 132 : 146,
+          borderRadius: 22,
+          border: value ? `1px solid ${accent}BB` : "1px solid rgba(255,255,255,.11)",
+          background: value
+            ? `radial-gradient(120% 135% at 50% 0%, ${accent}20, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
+            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+          color: value ? accent : "rgba(255,255,255,.86)",
+          boxShadow: value ? `0 0 24px ${accent}24, 0 18px 42px rgba(0,0,0,.48)` : "0 12px 28px rgba(0,0,0,.34)",
+          cursor: "pointer",
+          display: "grid",
+          placeItems: "center",
+          gap: 9,
+          padding: "14px 10px 12px",
+          WebkitTapHighlightColor: "transparent",
         }}
       >
         <input
@@ -2334,6 +2499,7 @@ const petanqueTeamsUI = React.useMemo(() => {
           type="file"
           accept="image/*"
           style={{ display: "none" }}
+          onClick={(e: any) => e.stopPropagation()}
           onChange={(e: any) => {
             pickFile(e?.target?.files?.[0]);
             try { e.currentTarget.value = ""; } catch {}
@@ -2341,104 +2507,89 @@ const petanqueTeamsUI = React.useMemo(() => {
         />
 
         <div
-          role="button"
-          tabIndex={0}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e: any) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              inputRef.current?.click();
-            }
-          }}
           style={{
-            height: isCover ? 92 : 104,
-            borderRadius: isCover ? 18 : 24,
-            border: `1px dashed ${value ? accent + "88" : "rgba(255,255,255,.18)"}`,
-            background: value ? `center / cover no-repeat url(${value})` : "rgba(0,0,0,.24)",
+            width: isCover ? "100%" : 76,
+            maxWidth: isCover ? "100%" : 76,
+            height: isCover ? 46 : 76,
+            aspectRatio: isCover ? "4 / 1" : "1 / 1",
+            borderRadius: isCover ? 14 : 999,
+            padding: isCover ? 3 : 4,
+            border: value ? `1px solid ${accent}88` : `1px solid ${accent}55`,
+            background: "rgba(0,0,0,.34)",
+            boxShadow: value ? `0 0 20px ${accent}33` : `inset 0 0 18px rgba(0,0,0,.32), 0 0 14px ${accent}18`,
             display: "grid",
             placeItems: "center",
-            color: accent,
-            cursor: "pointer",
-            WebkitTapHighlightColor: "transparent",
-            boxShadow: value ? `inset 0 0 0 1px rgba(0,0,0,.34), inset 0 -36px 45px rgba(0,0,0,.38)` : "inset 0 0 18px rgba(0,0,0,.28)",
+            overflow: "hidden",
           }}
         >
-          {!value ? (
-            <div style={{ display: "grid", justifyItems: "center", gap: 7 }}>
-              <div style={{ width: 54, height: 54, borderRadius: isCover ? 18 : 999, border: `1px solid ${accent}66`, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", boxShadow: `0 0 18px ${accent}22` }}>
-                {fallbackIcon}
-              </div>
-              <div style={{ color: "rgba(255,255,255,.74)", fontSize: 11, fontWeight: 900 }}>
-                Toucher pour choisir
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 12.5, fontWeight: 1000, color: value ? accent : "rgba(255,255,255,.92)" }}>{label}</div>
-            <div style={{ marginTop: 2, fontSize: 11, opacity: .68, lineHeight: 1.25 }}>{helper}</div>
-          </div>
-          <div style={{ display: "flex", gap: 7, flex: "0 0 auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {onOpenGallery ? (
-              <button
-                type="button"
-                onClick={onOpenGallery}
-                style={{
-                  borderRadius: 999,
-                  border: `1px solid ${accent}66`,
-                  background: `linear-gradient(180deg, ${accent}18, rgba(0,0,0,.28))`,
-                  color: accent,
-                  padding: "7px 10px",
-                  fontSize: 11,
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                }}
-              >
-                Galerie
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
+          {value ? (
+            <img
+              src={value}
+              alt=""
+              draggable={false}
               style={{
-                borderRadius: 999,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: isCover ? 11 : 999,
+                display: "block",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: isCover ? 46 : 48,
+                height: isCover ? 30 : 48,
+                borderRadius: isCover ? 12 : 999,
                 border: `1px solid ${accent}66`,
+                display: "grid",
+                placeItems: "center",
                 background: "rgba(0,0,0,.28)",
                 color: accent,
-                padding: "7px 10px",
-                fontSize: 11,
-                fontWeight: 1000,
-                cursor: "pointer",
               }}
             >
-              {value ? "Changer" : "Choisir"}
-            </button>
-            {value ? (
-              <button
-                type="button"
-                onClick={() => onChange?.(null)}
-                style={{
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,.13)",
-                  background: "rgba(255,255,255,.05)",
-                  color: "rgba(255,255,255,.78)",
-                  padding: "7px 10px",
-                  fontSize: 11,
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                }}
-              >
-                Retirer
-              </button>
-            ) : null}
-          </div>
+              {fallbackIcon}
+            </div>
+          )}
         </div>
-      </div>
+
+        <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: value ? accent : "rgba(255,255,255,.86)" }}>
+          {label}
+        </div>
+
+        {value ? (
+          <span
+            role="button"
+            aria-label="Retirer"
+            title="Retirer"
+            onClick={(e: any) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange?.(null);
+            }}
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(0,0,0,.48)",
+              color: "rgba(255,255,255,.86)",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 15,
+              fontWeight: 1000,
+              boxShadow: "0 6px 16px rgba(0,0,0,.32)",
+            }}
+          >
+            ×
+          </span>
+        ) : null}
+      </button>
     );
   }
-
 
   function CompetitionLogoPickerModal({ selected, onPick, onClose, accent = primary }: any) {
     const pageSize = 25;
@@ -2785,6 +2936,7 @@ const petanqueTeamsUI = React.useMemo(() => {
           configMode={configMode}
           onConfigModeChange={setConfigMode}
           info={heroInfoContent}
+          competitionLogo={competitionAvatar}
         />
 
         <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" as any }}>
@@ -2831,11 +2983,10 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 1 ? (
-          <Section title="2. Identité visuelle" subtitle={isLeague ? "Choisir un logo et une couverture de ligue." : "Choisir un logo et une couverture de tournoi."} accent={primary} watermark={kindWatermark}>
-            <div style={{ display: "grid", gap: 12 }}>
+          <Section title="2. Identité visuelle" subtitle="" accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
               <IdentityImageCard
-                label={isLeague ? "Logo de ligue" : "Logo de tournoi"}
-                helper="Affiché sur les cartes, classements et écrans liés."
+                label="LOGO"
                 value={competitionAvatar}
                 onChange={setCompetitionAvatar}
                 variant="avatar"
@@ -2843,8 +2994,7 @@ const petanqueTeamsUI = React.useMemo(() => {
                 onOpenGallery={() => setShowCompetitionLogoPicker(true)}
               />
               <IdentityImageCard
-                label={isLeague ? "Couverture de ligue" : "Couverture de tournoi"}
-                helper="Bannière optionnelle pour habiller la compétition."
+                label="COUVERTURE"
                 value={competitionCover}
                 onChange={setCompetitionCover}
                 variant="cover"
@@ -2856,10 +3006,10 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 2 ? (
-          <Section title="3. Solo ou équipe" subtitle="Cette étape prépare la sélection des participants." accent={primary} watermark={kindWatermark}>
-            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-              <GuidedChoiceCard active={participantKind === "solo"} title="Solo" text="Joueurs individuels" onClick={() => setParticipantChoice("solo")} />
-              <GuidedChoiceCard active={participantKind === "teams"} title="Équipe" text={isPetanque ? "Équipes complètes" : "Mode équipe"} onClick={() => setParticipantChoice("teams")} />
+          <Section title="3. Solo ou équipe" subtitle="" accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+              <ParticipantIconChoice active={participantKind === "solo"} kind="solo" onClick={() => setParticipantChoice("solo")} />
+              <ParticipantIconChoice active={participantKind === "teams"} kind="teams" onClick={() => setParticipantChoice("teams")} />
             </div>
 
             {isPetanque ? (
@@ -3109,6 +3259,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         configMode={configMode}
         onConfigModeChange={setConfigMode}
         info={heroInfoContent}
+        competitionLogo={competitionAvatar}
       />
 
       {/* Infos */}
@@ -3179,6 +3330,27 @@ const petanqueTeamsUI = React.useMemo(() => {
               </div>
             </>
           )}
+        </div>
+      </Section>
+
+      {/* ✅ IDENTITÉ VISUELLE */}
+      <Section title="Identité visuelle" subtitle="" accent={primary} watermark={kindWatermark}>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+          <IdentityImageCard
+            label="LOGO"
+            value={competitionAvatar}
+            onChange={setCompetitionAvatar}
+            variant="avatar"
+            accent={primary}
+            onOpenGallery={() => setShowCompetitionLogoPicker(true)}
+          />
+          <IdentityImageCard
+            label="COUVERTURE"
+            value={competitionCover}
+            onChange={setCompetitionCover}
+            variant="cover"
+            accent={primary}
+          />
         </div>
       </Section>
 
@@ -3978,6 +4150,18 @@ const petanqueTeamsUI = React.useMemo(() => {
           </div>
         </div>
       </Sheet>
+
+      {showCompetitionLogoPicker ? (
+        <CompetitionLogoPickerModal
+          selected={competitionAvatar}
+          accent={primary}
+          onClose={() => setShowCompetitionLogoPicker(false)}
+          onPick={(url: string | null) => {
+            setCompetitionAvatar(url || null);
+            if (url) setShowCompetitionLogoPicker(false);
+          }}
+        />
+      ) : null}
 
       {/* ✅ Modal info centré */}
       <CenterInfoModal open={infoOpen} title={infoContent.title} primary={primary} onClose={() => setInfoOpen(false)}>

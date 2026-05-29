@@ -192,7 +192,7 @@ const StatsHub = React.lazy(() => import("./pages/StatsHub"));
 
 const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
-const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
+import SyncCenter from "./pages/SyncCenter";
 const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
 const TournamentsList = React.lazy(() => import("./pages/TournamentsList"));
 
@@ -2663,14 +2663,23 @@ useEffect(() => {
   React.useEffect(() => {
     if (loading || showSplash) return;
     let timer: number | null = null;
+    const preloadPage = (loader: () => Promise<unknown>) => {
+      // IMPORTANT: un preload Vite ne doit jamais faire crasher l’app.
+      // Si Cloudflare/Chrome garde un index ancien qui pointe vers un chunk supprimé,
+      // le preload peut rejeter avec "Failed to fetch dynamically imported module".
+      // On log seulement: la récupération globale de main.tsx gère le reload/purge.
+      loader().catch((err) => {
+        try { console.warn("[preload] lazy chunk ignored:", err); } catch {}
+      });
+    };
     const preload = () => {
-      void import("./pages/Profiles");
-      void import("./pages/ProfilesBots");
-      void import("./pages/Settings");
-      void import("./pages/StatsShell");
-      void import("./pages/StatsHub");
-      void import("./pages/SyncCenter");
-      void import("./pages/TournamentsHome");
+      preloadPage(() => import("./pages/Profiles"));
+      preloadPage(() => import("./pages/ProfilesBots"));
+      preloadPage(() => import("./pages/Settings"));
+      preloadPage(() => import("./pages/StatsShell"));
+      preloadPage(() => import("./pages/StatsHub"));
+      // SyncCenter est volontairement en import statique: c’est une page de démarrage/synchro critique.
+      preloadPage(() => import("./pages/TournamentsHome"));
     };
     const ric: any = (window as any).requestIdleCallback;
     if (typeof ric === "function") {
