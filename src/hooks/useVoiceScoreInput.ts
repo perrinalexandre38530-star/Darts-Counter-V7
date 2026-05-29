@@ -1,12 +1,13 @@
 // ============================================
 // src/hooks/useVoiceScoreInput.ts
-// MVP Voice score input via Web Speech API
-// - 3 fléchettes + recap + confirmation oui/non
-// - Fallback manuel si API/permission non dispo
+// Voice score input via Web Speech API
+// - bouton MICRO explicite
+// - dictée d'une volée complète ou de 3 fléchettes séparées
+// - récapitulatif + confirmation oui/non
 // ============================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { parseVoiceDart, VoiceDart, formatDartLabel, sumDarts } from "../lib/voice/voiceScore";
+import { parseVoiceVisit, VoiceDart, formatDartLabel, sumDarts } from "../lib/voice/voiceScore";
 
 type Phase =
   | "OFF"
@@ -47,7 +48,38 @@ declare global {
 }
 
 function getSpeechRecognitionCtor(): any | null {
+  if (typeof window === "undefined") return null;
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function detectSpeechSupport() {
+  return !!getSpeechRecognitionCtor();
+}
+
+function normalizeConfirmText(raw: string) {
+  return String(raw || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function requestMicrophoneOnce(): Promise<string | null> {
+  if (typeof navigator === "undefined") return null;
+  const mediaDevices = navigator.mediaDevices;
+  if (!mediaDevices?.getUserMedia) return null;
+
+  try {
+    const stream = await mediaDevices.getUserMedia({ audio: true });
+    try {
+      stream.getTracks?.().forEach((track) => track.stop());
+    } catch {}
+    return null;
+  } catch (err: any) {
+    return err?.name || err?.message || "micro_denied";
+  }
 }
 
 export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
@@ -62,7 +94,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
   } = args;
 
   const [phase, setPhase] = useState<Phase>("OFF");
-  const [supported, setSupported] = useState<boolean>(false);
+  const [supported, setSupported] = useState<boolean>(() => detectSpeechSupport());
   const [permissionHint, setPermissionHint] = useState<string | null>(null);
 
   const [darts, setDarts] = useState<VoiceDart[]>([]);
@@ -72,12 +104,13 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
   const recRef = useRef<any | null>(null);
   const listeningRef = useRef(false);
   const hardStopTimer = useRef<number | null>(null);
+  const startingRef = useRef(false);
 
   const dartsLabel = useMemo(() => darts.map(formatDartLabel).join(", "), [darts]);
   const dartsTotal = useMemo(() => sumDarts(darts), [darts]);
 
   useEffect(() => {
-    setSupported(typeof window !== "undefined" && !!getSpeechRecognitionCtor());
+    setSupported(detectSpeechSupport());
   }, []);
 
   const stopTimers = useCallback(() => {
@@ -90,63 +123,77 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
   const hardStop = useCallback(() => {
     stopTimers();
     listeningRef.current = false;
+    startingRef.current = false;
     try {
       recRef.current?.stop?.();
     } catch {}
+    recRef.current = null;
   }, [stopTimers]);
 
   const startRecognition = useCallback(
     (mode: "DART" | "CONFIRM") => {
       const Ctor = getSpeechRecognitionCtor();
+      setSupported(!!Ctor);
       if (!Ctor) return false;
 
       try {
+        try {
+          recRef.current?.abort?.();
+        } catch {}
+
         const rec = new Ctor();
         recRef.current = rec;
 
         rec.lang = lang || "fr-FR";
         rec.interimResults = false;
-        rec.maxAlternatives = 1;
+        rec.maxAlternatives = 3;
         rec.continuous = false;
 
         listeningRef.current = true;
+        setPermissionHint(null);
 
         rec.onresult = (event: any) => {
-          const text = event?.results?.[0]?.[0]?.transcript || "";
-          const norm = String(text).trim();
-          setLastHeard(norm);
+          const result = event?.results?.[0];
+          const alternatives = Array.from(result || []) as Array<{ transcript?: string }>;
+          const text = alternatives.map((a) => a?.transcript || "").filter(Boolean).join(" | ") || result?.[0]?.transcript || "";
+          const heard = String(text).trim();
+          setLastHeard(heard);
 
           if (mode === "CONFIRM") {
-            const t = norm.toLowerCase();
+            const t = normalizeConfirmText(heard);
             const yes =
-              t.includes("oui") ||
-              t.includes("confirme") ||
-              t.includes("confirmer") ||
-              t.includes("confirm") ||
-              t.includes("yes");
+              /\b(oui|ok|okay|valide|valider|confirme|confirmer|confirm|yes|yeah)\b/.test(t);
             const no =
-              t.includes("non") ||
-              t.includes("annule") ||
-              t.includes("corrige") ||
-              t.includes("modifier") ||
-              t.includes("no");
+              /\b(non|annule|annuler|corrige|corriger|modifier|no|stop)\b/.test(t);
 
             if (yes && !no) setConfirm("YES");
             else if (no && !yes) setConfirm("NO");
-            else setConfirm(null);
+            else {
+              setConfirm(null);
+              setPermissionHint("confirmation_incomprise");
+            }
 
             listeningRef.current = false;
             return;
           }
 
-          const dart = parseVoiceDart(norm);
-          if (dart) setDarts((prev) => [...prev, dart].slice(0, 3));
+          // Le joueur peut dicter toute la volée d'un coup :
+          // "triple vingt, simple cinq, miss".
+          // Si un seul hit est reconnu, le hook écoute automatiquement D2 puis D3.
+          const parsed = parseVoiceVisit(heard);
+          if (parsed.length) {
+            setDarts((prev) => [...prev, ...parsed].slice(0, 3));
+            setPermissionHint(null);
+          } else {
+            setPermissionHint("volée_incomprise");
+          }
           listeningRef.current = false;
         };
 
         rec.onerror = (e: any) => {
           listeningRef.current = false;
-          setPermissionHint(e?.error ? String(e.error) : "speech_error");
+          const error = e?.error ? String(e.error) : "speech_error";
+          setPermissionHint(error);
           setPhase("ERROR");
         };
 
@@ -160,11 +207,14 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
         stopTimers();
         hardStopTimer.current = window.setTimeout(() => {
           hardStop();
-        }, mode === "CONFIRM" ? 4500 : 6500);
+          setPermissionHint((prev) => prev || (mode === "CONFIRM" ? "confirmation_timeout" : "écoute_timeout"));
+        }, mode === "CONFIRM" ? 6500 : 9000);
 
         return true;
-      } catch {
-        setPermissionHint("init_failed");
+      } catch (e: any) {
+        const message = e?.name || e?.message || "init_failed";
+        setPermissionHint(message);
+        setPhase("ERROR");
         return false;
       }
     },
@@ -177,17 +227,35 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     setLastHeard("");
     setConfirm(null);
     setPermissionHint(null);
+    setPhase("OFF");
   }, [hardStop]);
 
   const beginTurn = useCallback(async () => {
-    if (!enabled) return;
-    if (!supported) {
+    if (!enabled || startingRef.current) return;
+    startingRef.current = true;
+
+    const isSupportedNow = detectSpeechSupport();
+    setSupported(isSupportedNow);
+    if (!isSupportedNow) {
+      startingRef.current = false;
       setPhase("MANUAL_FALLBACK");
+      setPermissionHint("speech_recognition_not_supported");
       onNeedManual?.();
       return;
     }
 
     resetTurn();
+
+    // Important : cette demande est déclenchée par le clic MICRO.
+    // Elle ouvre enfin la permission micro navigateur, au lieu d'un démarrage auto bloqué.
+    const micError = await requestMicrophoneOnce();
+    if (micError) {
+      startingRef.current = false;
+      setPermissionHint(micError);
+      setPhase("ERROR");
+      onNeedManual?.();
+      return;
+    }
 
     if (announcePlayer) {
       const name = playerName ? `À toi, ${playerName}.` : "À toi.";
@@ -196,31 +264,35 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
       } catch {}
     }
 
+    setLastHeard("");
     setPhase("LISTEN_D1");
     const ok = startRecognition("DART");
+    startingRef.current = false;
     if (!ok) {
       setPhase("MANUAL_FALLBACK");
       onNeedManual?.();
     }
-  }, [announcePlayer, enabled, onNeedManual, playerName, resetTurn, speak, startRecognition, supported]);
+  }, [announcePlayer, enabled, onNeedManual, playerName, resetTurn, speak, startRecognition]);
 
-  // Avancer automatiquement après chaque dart reconnu (ou timeout)
+  // Avancer automatiquement après chaque dart reconnu, ou passer au récap si une volée complète a été dictée.
   useEffect(() => {
     if (!enabled) return;
+
+    if (darts.length >= 3 && (phase === "LISTEN_D1" || phase === "LISTEN_D2" || phase === "LISTEN_D3")) {
+      hardStop();
+      setPhase("RECAP_CONFIRM");
+      return;
+    }
 
     if (darts.length === 1 && phase === "LISTEN_D1" && !listeningRef.current) {
       setPhase("LISTEN_D2");
       startRecognition("DART");
+      return;
     }
 
     if (darts.length === 2 && phase === "LISTEN_D2" && !listeningRef.current) {
       setPhase("LISTEN_D3");
       startRecognition("DART");
-    }
-
-    if (darts.length === 3 && phase === "LISTEN_D3") {
-      hardStop();
-      setPhase("RECAP_CONFIRM");
     }
   }, [darts.length, enabled, phase, startRecognition, hardStop]);
 
@@ -229,12 +301,14 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     if (!enabled) return;
     if (phase !== "RECAP_CONFIRM") return;
 
+    let cancelled = false;
     (async () => {
       const recap = `J'ai compris : ${dartsLabel}. Total ${dartsTotal}. Confirmer ?`;
       try {
         await speak?.(recap);
       } catch {}
 
+      if (cancelled) return;
       setConfirm(null);
       const ok = startRecognition("CONFIRM");
       if (!ok) {
@@ -242,6 +316,10 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
         onNeedManual?.();
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [dartsLabel, dartsTotal, enabled, onNeedManual, phase, speak, startRecognition]);
 
   // Décision oui/non
@@ -249,8 +327,10 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     if (!enabled) return;
     if (phase !== "RECAP_CONFIRM") return;
     if (confirm === "YES") {
-      onCommit(darts);
+      onCommit(darts.slice(0, 3));
       setPhase("OFF");
+      setDarts([]);
+      setConfirm(null);
     }
     if (confirm === "NO") {
       setPhase("MANUAL_FALLBACK");

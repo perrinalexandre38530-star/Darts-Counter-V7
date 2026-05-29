@@ -1946,7 +1946,8 @@ const isBotTurn = React.useMemo(() => {
   // 🎤 Voice scoring (MVP) — dictée 3 fléchettes + confirmation
   // - Ignore automatiquement si scoringSource=external ou BOT
   // =====================================================
-  const voiceScoreEnabled = !!(config as any)?.voiceScoreInputEnabled;
+  const configuredScoreInputMethod = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod);
+  const voiceScoreEnabled = configuredScoreInputMethod === "voice" || !!(config as any)?.voiceScoreInputEnabled;
 
   const speakVoiceScore = React.useCallback(
     (text: string) => {
@@ -2042,12 +2043,11 @@ const isBotTurn = React.useMemo(() => {
   });
 
   React.useEffect(() => {
+    // Le micro doit être déclenché par un vrai clic utilisateur.
+    // Un démarrage automatique au changement de joueur est bloqué par Chrome/Android
+    // et empêche l'affichage correct de la demande d'autorisation micro.
     if (!voiceScoreEnabled) return;
-    if (scoringSource === "external") return;
-    if (status !== "running") return;
-    if (!activePlayerId) return;
-    if (isBotTurn) return;
-    voiceScore.beginTurn();
+    voiceScore.resetTurn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePlayerId]);
 
@@ -8601,9 +8601,6 @@ function saveX01V3MatchToHistory({
     resumeId: matchId,
     config: lightConfig,
     players: lightPlayers,
-    finalScores: legacyRemaining,
-    remaining: legacyRemaining,
-    scores: legacyRemaining,
     summary,
     state: finalStateForPayload,
     finalScores: finalScoresForHistory,
