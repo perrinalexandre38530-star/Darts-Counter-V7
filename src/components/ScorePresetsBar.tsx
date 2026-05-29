@@ -19,6 +19,8 @@ type Props = {
   disabled?: boolean;
   /** Ajoute les fléchettes du preset via onPushDart (appelé N fois) */
   onPushDart: (d: UIDart) => void;
+  /** Remplace directement la volée complète (préféré : évite les rafales de setState). */
+  onApplyPreset?: (darts: UIDart[]) => void;
   /** Permet au parent de valider automatiquement après 3 darts si souhaité */
   onAutoValidate?: () => void;
   /** Nombre de darts déjà saisies (0..3) */
@@ -44,6 +46,7 @@ const PRESETS: Preset[] = [
 export default function ScorePresetsBar({
   disabled = false,
   onPushDart,
+  onApplyPreset,
   onAutoValidate,
   currentCount,
   autoValidate = false,
@@ -51,23 +54,29 @@ export default function ScorePresetsBar({
   function applyPreset(p: Preset) {
     if (disabled) return;
 
-    // Important : on espace très légèrement les injections.
-    // Les pages X01 appliquent chaque hit via leur moteur local + React state ;
-    // enchaîner 3 onPushDart synchrones écraserait parfois les hits précédents
-    // car le parent n'a pas encore re-render.
+    const dartsToUse = p.darts.slice(0, 3);
+
+    // Nouvelle voie préférée : remplacer la volée en une seule opération.
+    // Cela évite le bug mobile où les hits apparaissaient puis disparaissaient
+    // à cause de 3 injections + validation automatique trop rapprochées.
+    if (onApplyPreset) {
+      onApplyPreset(dartsToUse);
+      return;
+    }
+
     let count = currentCount;
-    const dartsToPush = p.darts.filter(() => {
+    const dartsToPush = dartsToUse.filter(() => {
       if (count >= 3) return false;
       count += 1;
       return true;
     });
 
     dartsToPush.forEach((d, idx) => {
-      window.setTimeout(() => onPushDart(d), idx * 70);
+      window.setTimeout(() => onPushDart(d), idx * 130);
     });
 
     if (autoValidate && count >= 3) {
-      window.setTimeout(() => onAutoValidate?.(), dartsToPush.length * 70 + 120);
+      window.setTimeout(() => onAutoValidate?.(), dartsToPush.length * 130 + 180);
     }
   }
 

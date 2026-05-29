@@ -32,6 +32,7 @@ import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
+import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
 
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import type { LegStats } from "../lib/stats";
@@ -2985,6 +2986,37 @@ const handleDirectDart = (d: UIDart) => {
   pushDart(d.v, d.mult as any);
 };
 
+const handleSetVisitDarts = (darts: UIDart[]) => {
+  if (isBustLocked || !onlineCanScore) return;
+  if (!activePlayerId) return;
+  const nextThrow = (Array.isArray(darts) ? darts : [])
+    .slice(0, 3)
+    .map((d: any) => {
+      const v = Number(d?.v ?? 0);
+      const rawMult = Number(d?.mult ?? 1);
+      const mult = v === 25 ? (rawMult === 2 ? 2 : 1) : rawMult === 3 ? 3 : rawMult === 2 ? 2 : 1;
+      return { v: Number.isFinite(v) ? v : 0, mult } as UIDart;
+    });
+  if (!nextThrow.length) return;
+
+  ensureAudioUnlockedNow();
+  currentThrowFromEngineRef.current = false;
+  setCurrentThrow(nextThrow);
+  setMultiplier(1);
+
+  try {
+    const scoreBefore = currentScore;
+    const visitScore = nextThrow.reduce((s, d: any) => s + (d.v === 25 && d.mult === 2 ? 50 : Number(d.v || 0) * Number(d.mult || 0)), 0);
+    const remainingAfter = scoreBefore - visitScore;
+    const willBustNow = remainingAfter < 0 || ((outMode === "double" || outMode === "master") && remainingAfter === 1);
+    setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: nextThrow }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: !!willBustNow }));
+    if (!willBustNow) bustPreviewPlayedRef.current = false;
+  } catch {
+    // ignore
+  }
+};
+
 const handleBackspace = () => {
   if (isBustLocked || !onlineCanScore) return;
   currentThrowFromEngineRef.current = false;
@@ -4716,6 +4748,20 @@ if (isLandscapeTablet) {
                       onBull={onlineCanScore ? handleBull : (() => {})}
                       onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
                       onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
+                      onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+                      preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
+                      voiceControl={{
+                        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore),
+                        supported: voiceScore.supported,
+                        phase: voiceScore.phase,
+                        lastHeard: voiceScore.lastHeard,
+                        dartsLabel: voiceScore.dartsLabel,
+                        dartsTotal: voiceScore.dartsTotal,
+                        permissionHint: voiceScore.permissionHint,
+                        onStart: () => voiceScore.beginTurn(),
+                        onStop: () => voiceScore.stop(),
+                        onReset: () => voiceScore.resetTurn(),
+                      }}
                       hidePreview
                       showPlaceholders={false}
                       disabled={isBustLocked || !onlineCanScore}
@@ -5162,6 +5208,20 @@ if (isLandscapeTablet) {
               onBull={onlineCanScore ? handleBull : (() => {})}
               onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
               onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
+              onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+              preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
+              voiceControl={{
+                enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore),
+                supported: voiceScore.supported,
+                phase: voiceScore.phase,
+                lastHeard: voiceScore.lastHeard,
+                dartsLabel: voiceScore.dartsLabel,
+                dartsTotal: voiceScore.dartsTotal,
+                permissionHint: voiceScore.permissionHint,
+                onStart: () => voiceScore.beginTurn(),
+                onStop: () => voiceScore.stop(),
+                onReset: () => voiceScore.resetTurn(),
+              }}
               hidePreview
               showPlaceholders={false}
               disabled={isBustLocked || !onlineCanScore}

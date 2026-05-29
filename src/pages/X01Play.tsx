@@ -27,6 +27,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
+import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
 
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import type { LegStats } from "../lib/stats";
@@ -1683,14 +1684,16 @@ React.useEffect(() => {
   setMultiplier(1);
 }, [activePlayerId]);
 
-function pushDart(value: number) {
+function pushDart(value: number, multOverride?: 1 | 2 | 3) {
   ensureAudioUnlockedNow();
   currentThrowFromEngineRef.current = false;
 
   if (!activePlayerId) return;
   if (currentThrow.length >= 3) return;
 
-  const dart: UIDart = { v: value, mult: multiplier } as UIDart;
+  const forcedMult = multOverride ?? multiplier;
+  const safeMult: 1 | 2 | 3 = value === 25 ? ((forcedMult === 2 ? 2 : 1) as any) : (forcedMult as any);
+  const dart: UIDart = { v: value, mult: safeMult } as UIDart;
 
   // 1) hit
   playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
@@ -1782,6 +1785,42 @@ const handleNumber = (value: number) => {
 const handleBull = () => {
   if (isBustLocked) return;
   pushDart(25);
+};
+
+const handleDirectDart = (d: UIDart) => {
+  if (isBustLocked) return;
+  pushDart(d.v, d.mult as any);
+};
+
+const handleSetVisitDarts = (darts: UIDart[]) => {
+  if (isBustLocked) return;
+  if (!activePlayerId) return;
+  const nextThrow = (Array.isArray(darts) ? darts : [])
+    .slice(0, 3)
+    .map((d: any) => {
+      const v = Number(d?.v ?? 0);
+      const rawMult = Number(d?.mult ?? 1);
+      const mult = v === 25 ? (rawMult === 2 ? 2 : 1) : rawMult === 3 ? 3 : rawMult === 2 ? 2 : 1;
+      return { v: Number.isFinite(v) ? v : 0, mult } as UIDart;
+    });
+  if (!nextThrow.length) return;
+
+  ensureAudioUnlockedNow();
+  currentThrowFromEngineRef.current = false;
+  setCurrentThrow(nextThrow);
+  setMultiplier(1);
+
+  try {
+    const scoreBefore = currentScore;
+    const visitScore = nextThrow.reduce((s, d: any) => s + (d.v === 25 && d.mult === 2 ? 50 : Number(d.v || 0) * Number(d.mult || 0)), 0);
+    const remainingAfter = scoreBefore - visitScore;
+    const willBustNow = remainingAfter < 0 || ((outMode === "double" || outMode === "master") && remainingAfter === 1);
+    setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: nextThrow }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: !!willBustNow }));
+    if (!willBustNow) bustPreviewPlayedRef.current = false;
+  } catch {
+    // ignore
+  }
 };
 
 const handleBackspace = () => {
@@ -2751,6 +2790,20 @@ try {
                         onBull={handleBull}
                         onValidate={validateThrow}
                         onDirectDart={handleDirectDart}
+                        onSetVisitDarts={handleSetVisitDarts}
+                        preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
+                        voiceControl={{
+                          enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn),
+                          supported: voiceScore.supported,
+                          phase: voiceScore.phase,
+                          lastHeard: voiceScore.lastHeard,
+                          dartsLabel: voiceScore.dartsLabel,
+                          dartsTotal: voiceScore.dartsTotal,
+                          permissionHint: voiceScore.permissionHint,
+                          onStart: () => voiceScore.beginTurn(),
+                          onStop: () => voiceScore.stop(),
+                          onReset: () => voiceScore.resetTurn(),
+                        }}
                         hidePreview
                         showPlaceholders={false}
                         disabled={isBustLocked}

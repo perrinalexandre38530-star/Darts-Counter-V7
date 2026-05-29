@@ -1,18 +1,31 @@
 // ============================================
 // src/components/ScoreInputHub.tsx
-// Hub de saisie unifié (gros patch)
-// - Permet de basculer entre plusieurs méthodes: Keypad, Cible cliquable, Presets, Voice
-// - Les pages "Play" restent source de vérité (currentThrow, validate, undo, etc.)
-// - Compatible drop-in avec l'API du Keypad existant + options.
+// Hub de saisie unifié
+// - Keypad et Cible restent les deux moteurs directs historiques.
+// - PRESETS n'est plus affiché en gros bloc permanent : bouton + feuille flottante.
+// - VOICE affiche une vraie commande micro au-dessus du keypad.
+// - AUTO / IA retirés volontairement des méthodes produit.
 // ============================================
 
 import React from "react";
-import RulesModal from "./RulesModal";
 import Keypad from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
 import type { Dart as UIDart } from "../lib/types";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
+
+type VoiceControl = {
+  enabled?: boolean;
+  supported?: boolean;
+  phase?: string;
+  lastHeard?: string;
+  dartsLabel?: string;
+  dartsTotal?: number;
+  permissionHint?: string | null;
+  onStart?: () => void;
+  onStop?: () => void;
+  onReset?: () => void;
+};
 
 type Props = {
   /** Volée en cours (0..3 flèches) */
@@ -30,10 +43,18 @@ type Props = {
   onBull: () => void;
   onValidate: () => void;
 
-  /** ✅ NEW: injection directe d'une fléchette (pour presets / voice / source externe) */
+  /** Injection directe d'une fléchette (cible / fallback presets) */
   onDirectDart?: (d: UIDart) => void;
+  /** Remplace proprement la volée affichée (utilisé par PRESETS pour éviter le clignotement/auto-validation). */
+  onSetVisitDarts?: (darts: UIDart[]) => void;
 
-  /** Autoriser l'onglet Presets (par défaut: auto si onDirectDart est fourni) */
+  /** Méthode choisie par l'écran de config. Prioritaire sur le localStorage. */
+  preferredMethod?: ScoreInputMethod | string | null;
+
+  /** Pilotage visuel de la commande vocale. Le hook reste dans la page Play. */
+  voiceControl?: VoiceControl;
+
+  /** Autoriser PRESETS (par défaut: auto si onDirectDart ou onSetVisitDarts est fourni) */
   enablePresets?: boolean;
 
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
@@ -45,27 +66,22 @@ type Props = {
 
   /** Désactive toutes les saisies */
   disabled?: boolean;
-  /** Autorise les cartes d’aide pour les méthodes assistées (ex: voice). */
+  /** Autorise les cartes d’aide pour les méthodes assistées. */
   showPlaceholders?: boolean;
   /** Ancien prop déjà utilisé par certaines pages : masque le sélecteur de méthode. */
   hideSwitcher?: boolean;
+  hideTabs?: boolean;
+  compact?: boolean;
+  onMiss?: () => void;
 
-  /**
-   * Affichage du sélecteur de méthode en match.
-   * - "drawer" (défaut) : une petite flèche ouvre/ferme un bandeau (discret)
-   * - "inline" : bandeau toujours visible
-   * - "hidden" : aucun sélecteur (méthode figée par la config)
-   */
+  /** Affichage du sélecteur de méthode en match. */
   switcherMode?: "drawer" | "inline" | "hidden";
 
   /** Figer la hauteur (utile en paysage tablette) */
   lockContentHeight?: boolean;
-  /**
-   * Adapter automatiquement le contenu à la hauteur disponible (sans scroll)
-   * en appliquant un scale (utile en paysage tablette pour ne rien couper).
-   */
+  /** Adapter automatiquement le contenu à la hauteur disponible. */
   fitToParent?: boolean;
-  /** Afficher le sélecteur en overlay (n\'impacte pas la mise en page) */
+  /** Afficher le sélecteur en overlay (compat ancienne API). */
   switcherOverlay?: boolean;
 };
 
@@ -84,9 +100,8 @@ function safeReadMethod(): ScoreInputMethod {
     if (method !== raw) localStorage.setItem(SCORE_INPUT_LS_KEY, method);
     return method;
   } catch {
-    // ignore
+    return "keypad";
   }
-  return "keypad";
 }
 
 function safeWriteMethod(m: ScoreInputMethod) {
@@ -96,6 +111,40 @@ function safeWriteMethod(m: ScoreInputMethod) {
     // ignore
   }
 }
+
+function throwTotal(throwDarts: UIDart[]) {
+  return (throwDarts || []).reduce((acc, d: any) => {
+    if (!d) return acc;
+    const v = Number(d.v || 0);
+    const m = Number(d.mult ?? 1);
+    if (v === 0 || m === 0) return acc;
+    if (v === 25) return acc + (m === 2 ? 50 : 25);
+    return acc + v * m;
+  }, 0);
+}
+
+function normalizePresetDarts(darts: UIDart[]): UIDart[] {
+  return (Array.isArray(darts) ? darts : [])
+    .slice(0, 3)
+    .map((d: any) => {
+      const v = Number(d?.v ?? 0);
+      const rawMult = Number(d?.mult ?? 1);
+      const mult = v === 25 ? (rawMult === 2 ? 2 : 1) : rawMult === 3 ? 3 : rawMult === 2 ? 2 : 1;
+      return { v: Number.isFinite(v) ? v : 0, mult: mult as 1 | 2 | 3 } as UIDart;
+    });
+}
+
+const miniActionButton: React.CSSProperties = {
+  width: "100%",
+  minHeight: 48,
+  borderRadius: 16,
+  border: "1px solid rgba(180,255,30,.34)",
+  background: "linear-gradient(180deg, rgba(180,255,30,.18), rgba(0,0,0,.34))",
+  color: "#d8ff66",
+  fontWeight: 1000,
+  letterSpacing: 0.8,
+  boxShadow: "0 10px 24px rgba(180,255,30,.10), inset 0 0 0 1px rgba(255,255,255,.04)",
+};
 
 export default function ScoreInputHub({
   currentThrow,
@@ -109,24 +158,246 @@ export default function ScoreInputHub({
   onBull,
   onValidate,
   onDirectDart,
+  onSetVisitDarts,
+  preferredMethod,
+  voiceControl,
   enablePresets = true,
   hidePreview,
   hideTotal,
   centerSlot,
   disabled = false,
   showPlaceholders = true,
-  // ✅ IMPORTANT : par défaut, on masque les onglets (KEYPAD / CIBLE / PRESETS / VOICE…)
-  // La méthode de saisie doit être décidée via les menus de configuration (props),
-  // pas via un switch visible pendant la partie.
   switcherMode = "hidden",
   hideSwitcher = true,
-    lockContentHeight = false,
+  hideTabs = false,
+  compact: _compact = false,
+  onMiss: _onMiss,
+  lockContentHeight = false,
   fitToParent = false,
-  switcherOverlay = false,
+  switcherOverlay: _switcherOverlay = false,
 }: Props) {
-  const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
+  const devEnabled = safeReadDevModeEnabled();
+  const configuredMethod = preferredMethod ? sanitizeScoreInputMethod(preferredMethod) : null;
+  const [method, setMethod] = React.useState<ScoreInputMethod>(() => configuredMethod || safeReadMethod());
+  const [presetOpen, setPresetOpen] = React.useState(false);
 
-  // ✅ FIX demandé : même rendu visuel que le total du KEYPAD (couleur + glow + typo/taille)
+  React.useEffect(() => {
+    if (!preferredMethod) return;
+    const next = sanitizeScoreInputMethod(preferredMethod);
+    setMethod((prev) => (prev === next ? prev : next));
+  }, [preferredMethod]);
+
+  React.useEffect(() => {
+    safeWriteMethod(method);
+  }, [method]);
+
+  const allowPresets = enablePresets && (!!onSetVisitDarts || !!onDirectDart);
+  const showSwitcher = !hideSwitcher && !hideTabs && switcherMode !== "hidden";
+  const safeCurrentThrow = Array.isArray(currentThrow) ? currentThrow : [];
+  const currentTotal = throwTotal(safeCurrentThrow);
+
+  const fitOuterRef = React.useRef<HTMLDivElement | null>(null);
+  const fitInnerRef = React.useRef<HTMLDivElement | null>(null);
+  const [fitScale, setFitScale] = React.useState(1);
+
+  React.useLayoutEffect(() => {
+    if (!fitToParent) {
+      if (fitScale !== 1) setFitScale(1);
+      return;
+    }
+    const compute = () => {
+      const outer = fitOuterRef.current;
+      const inner = fitInnerRef.current;
+      if (!outer || !inner) return;
+      const ob = outer.getBoundingClientRect();
+      const oh = ob.height;
+      const ow = ob.width;
+      const ih = Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
+      const iw = Math.max(inner.scrollWidth, inner.getBoundingClientRect().width);
+      if (!oh || !ow || !ih || !iw) return;
+      const next = Math.max(0.52, Math.min(1, Math.round(Math.min(oh / ih, ow / iw) * 1000) / 1000));
+      if (Math.abs(next - fitScale) > 0.01) setFitScale(next);
+    };
+    const raf = requestAnimationFrame(compute);
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver(compute);
+      if (fitOuterRef.current) ro.observe(fitOuterRef.current);
+      if (fitInnerRef.current) ro.observe(fitInnerRef.current);
+    } catch {}
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
+      ro?.disconnect?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitToParent, method, safeCurrentThrow.length, multiplier]);
+
+  const contentBoxStyle: React.CSSProperties = {
+    ...(lockContentHeight ? { minHeight: 0 } : null),
+    ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
+  };
+
+  const applyPresetVisit = React.useCallback(
+    (rawDarts: UIDart[]) => {
+      if (disabled) return;
+      const darts = normalizePresetDarts(rawDarts);
+      if (!darts.length) return;
+
+      // Correction du bug constaté : on ne pousse plus 3 hits + auto-validate en rafale.
+      // On remplace la volée affichée, puis l'utilisateur valide lui-même.
+      if (onSetVisitDarts) {
+        onSetVisitDarts(darts);
+      } else if (onDirectDart) {
+        // Fallback pour les autres modes : injection espacée, sans validation automatique.
+        darts.forEach((d, idx) => window.setTimeout(() => onDirectDart(d), idx * 130));
+      }
+      setPresetOpen(false);
+    },
+    [disabled, onDirectDart, onSetVisitDarts]
+  );
+
+  const renderKeypad = () => (
+    <Keypad
+      currentThrow={safeCurrentThrow}
+      multiplier={multiplier}
+      onSimple={onSimple}
+      onDouble={onDouble}
+      onTriple={onTriple}
+      onBackspace={onBackspace}
+      onCancel={onCancel}
+      onNumber={onNumber}
+      onBull={onBull}
+      onValidate={onValidate}
+      hidePreview={hidePreview}
+      hideTotal={hideTotal}
+      centerSlot={centerSlot}
+    />
+  );
+
+  return (
+    <div style={{ position: "relative" }}>
+      {showSwitcher ? (
+        <div style={{ marginBottom: 8 }}>
+          <MethodBar
+            method={method}
+            setMethod={setMethod}
+            allowPresets={allowPresets}
+            disabled={disabled}
+            devEnabled={devEnabled}
+          />
+        </div>
+      ) : null}
+
+      {method === "dartboard" ? (
+        <DartboardInput
+          disabled={disabled}
+          multiplier={multiplier}
+          currentThrow={safeCurrentThrow}
+          currentTotal={currentTotal}
+          onDirectDart={onDirectDart}
+          onBull={onBull}
+          onSimple={onSimple}
+          onDouble={onDouble}
+          onTriple={onTriple}
+          onNumber={onNumber}
+          onCancel={onCancel}
+          onValidate={onValidate}
+          fitToParent={fitToParent}
+          contentBoxStyle={contentBoxStyle}
+          fitOuterRef={fitOuterRef}
+          fitInnerRef={fitInnerRef}
+          fitScale={fitScale}
+        />
+      ) : (
+        <div
+          ref={fitToParent ? fitOuterRef : null}
+          style={{
+            ...contentBoxStyle,
+            ...(fitToParent ? { flex: 1, minHeight: 0, overflow: "hidden" } : null),
+          }}
+        >
+          <div
+            ref={fitToParent ? fitInnerRef : null}
+            style={
+              fitToParent
+                ? {
+                    transform: `scale(${fitScale})`,
+                    transformOrigin: "top left",
+                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+                  }
+                : undefined
+            }
+          >
+            {method === "presets" && allowPresets ? (
+              <PresetLauncher
+                disabled={disabled}
+                currentTotal={currentTotal}
+                onOpen={() => setPresetOpen(true)}
+              />
+            ) : null}
+
+            {method === "voice" ? (
+              <VoicePanel control={voiceControl} disabled={disabled} showPlaceholders={showPlaceholders} />
+            ) : null}
+
+            {renderKeypad()}
+          </div>
+        </div>
+      )}
+
+      {presetOpen && allowPresets ? (
+        <PresetSheet
+          disabled={disabled}
+          currentCount={safeCurrentThrow.length}
+          onClose={() => setPresetOpen(false)}
+          onApplyPreset={applyPresetVisit}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DartboardInput({
+  disabled,
+  multiplier,
+  currentThrow,
+  currentTotal,
+  onDirectDart,
+  onBull,
+  onSimple,
+  onDouble,
+  onTriple,
+  onNumber,
+  onCancel,
+  onValidate,
+  fitToParent,
+  contentBoxStyle,
+  fitOuterRef,
+  fitInnerRef,
+  fitScale,
+}: {
+  disabled: boolean;
+  multiplier: 1 | 2 | 3;
+  currentThrow: UIDart[];
+  currentTotal: number;
+  onDirectDart?: (d: UIDart) => void;
+  onBull: () => void;
+  onSimple: () => void;
+  onDouble: () => void;
+  onTriple: () => void;
+  onNumber: (n: number) => void;
+  onCancel: () => void;
+  onValidate: () => void;
+  fitToParent: boolean;
+  contentBoxStyle: React.CSSProperties;
+  fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
+  fitInnerRef: React.MutableRefObject<HTMLDivElement | null>;
+  fitScale: number;
+}) {
   const totalPillStyle: React.CSSProperties = {
     minWidth: 56,
     height: 36,
@@ -137,15 +408,13 @@ export default function ScoreInputHub({
     borderRadius: 999,
     background: "rgba(0,0,0,0.62)",
     border: "1px solid rgba(255,214,102,0.42)",
-    boxShadow:
-      "0 0 0 1px rgba(0,0,0,0.40) inset, 0 10px 22px rgba(255,168,0,0.10), 0 0 16px rgba(255,214,102,0.12)",
+    boxShadow: "0 0 0 1px rgba(0,0,0,0.40) inset, 0 10px 22px rgba(255,168,0,0.10), 0 0 16px rgba(255,214,102,0.12)",
     color: "#ffd666",
     fontWeight: 1000,
     fontSize: 18,
     letterSpacing: 0.2,
     lineHeight: 1,
   };
-
   const btnGoldSmall: React.CSSProperties = {
     height: 36,
     padding: "0 14px",
@@ -156,7 +425,6 @@ export default function ScoreInputHub({
     border: "1px solid rgba(255,214,102,0.35)",
     boxShadow: "0 10px 22px rgba(255,168,0,0.14)",
   };
-
   const btnDarkSmall: React.CSSProperties = {
     height: 36,
     padding: "0 14px",
@@ -167,293 +435,245 @@ export default function ScoreInputHub({
     border: "1px solid rgba(255,214,102,0.22)",
   };
 
-  const devEnabled = safeReadDevModeEnabled();
-  const [openMode, setOpenMode] = React.useState(false);
-  const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
-
-  // Quand le switcher est masqué, la méthode choisie en configuration reste appliquée.
-  // On ne force plus KEYPAD : PRESETS / VOICE doivent pouvoir devenir les défauts réels.
-
-  React.useEffect(() => {
-    safeWriteMethod(method);
-  }, [method]);
-
-  // PRESETS est désormais une méthode produit réelle : disponible dès que l’injection directe existe.
-  const allowPresets = !!onDirectDart && enablePresets;
-
-  // ⚠️ UX: en gameplay on évite les menus repliables (ça fait perdre de la hauteur).
-  // On traite "drawer" comme "inline" (toujours visible) et on garde "hidden" pour figer.
-
-  // ✅ Unifier la hauteur visuelle du bloc de saisie :
-  // on mesure la hauteur du rendu KEYPAD, puis on applique un minHeight identique aux autres méthodes.
-  const contentMeasureRef = React.useRef<HTMLDivElement | null>(null);
-  const [baseContentHeight, setBaseContentHeight] = React.useState<number>(0);
-
-  // Auto-fit: scale le contenu pour qu'il tienne dans la hauteur disponible
-  // (principalement pour l'affichage paysage tablette).
-  const fitOuterRef = React.useRef<HTMLDivElement | null>(null);
-  const fitInnerRef = React.useRef<HTMLDivElement | null>(null);
-  const [fitScale, setFitScale] = React.useState<number>(1);
-
-  const setMeasureAndFitInnerRef = React.useCallback((el: HTMLDivElement | null) => {
-    fitInnerRef.current = el;
-    contentMeasureRef.current = el;
-  }, []);
-
-  React.useLayoutEffect(() => {
-    // On prend la hauteur "référence" quand le Keypad est visible.
-    if (method !== "keypad") return;
-    const el = contentMeasureRef.current;
-    if (!el) return;
-
-    const h = el.getBoundingClientRect().height;
-    if (h && Math.abs(h - baseContentHeight) > 2) setBaseContentHeight(Math.round(h));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [method, currentThrow?.length, multiplier]);
-
-  React.useLayoutEffect(() => {
-    if (!fitToParent) {
-      if (fitScale !== 1) setFitScale(1);
-      return;
-    }
-
-    const compute = () => {
-      const outer = fitOuterRef.current;
-      const inner = fitInnerRef.current;
-      if (!outer || !inner) return;
-
-      const ob = outer.getBoundingClientRect();
-      const ib = inner.getBoundingClientRect();
-
-      const oh = ob.height;
-      const ow = ob.width;
-
-      // scrollHeight/scrollWidth pour prendre en compte le contenu non contraint
-      const ih = Math.max(inner.scrollHeight, ib.height);
-      const iw = Math.max(inner.scrollWidth, ib.width);
-
-      if (!oh || !ow || !ih || !iw) return;
-
-      const sH = oh / ih;
-      const sW = ow / iw;
-      const s = Math.min(1, sH, sW);
-      // Descend plus bas sur petits écrans pour éviter le scroll.
-      const rounded = Math.max(0.52, Math.round(s * 1000) / 1000);
-      if (Math.abs(rounded - fitScale) > 0.01) setFitScale(rounded);
-    };
-
-    const raf = requestAnimationFrame(compute);
-
-    // ResizeObserver = recalcul quand la hauteur dispo change (rotation, safe areas, etc.)
-    let ro: ResizeObserver | null = null;
-    try {
-      ro = new ResizeObserver(() => compute());
-      if (fitOuterRef.current) ro.observe(fitOuterRef.current);
-      if (fitInnerRef.current) ro.observe(fitInnerRef.current);
-    } catch {
-      // ignore
-    }
-
-    const onResize = () => compute();
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
-      if (ro) ro.disconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitToParent, method, currentThrow?.length, multiplier]);
-
-  const contentBoxStyle: React.CSSProperties = {
-    ...(lockContentHeight && baseContentHeight > 0 ? { minHeight: baseContentHeight } : null),
-    ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
-  };
-
   return (
-    <div style={{ position: "relative" }}>
-      {!hideSwitcher && switcherMode !== "hidden" && (
-        <div style={{ marginBottom: 8 }}>
-          <MethodBar
-            method={method}
-            setMethod={setMethod}
-            allowPresets={allowPresets}
-            showPlaceholders={showPlaceholders}
+    <div
+      ref={fitToParent ? fitOuterRef : null}
+      style={{
+        paddingBottom: 6,
+        ...contentBoxStyle,
+        ...(fitToParent ? { flex: 1, minHeight: 0, overflow: "hidden" } : {}),
+      }}
+    >
+      <div
+        ref={fitToParent ? fitInnerRef : null}
+        style={
+          fitToParent
+            ? {
+                transform: `scale(${fitScale})`,
+                transformOrigin: "top left",
+                width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+              }
+            : undefined
+        }
+      >
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+          <DartboardClickable
+            size={230}
+            multiplier={multiplier}
             disabled={disabled}
-            devEnabled={devEnabled}
+            onHit={(seg, mul) => {
+              if (disabled) return;
+              if (seg === 25) {
+                if (onDirectDart) onDirectDart({ v: 25, mult: mul === 2 ? 2 : 1 } as UIDart);
+                else onBull();
+                return;
+              }
+              if (onDirectDart) {
+                onDirectDart({ v: seg, mult: mul as 1 | 2 | 3 });
+                return;
+              }
+              if (mul === 3) onTriple();
+              else if (mul === 2) onDouble();
+              else onSimple();
+              onNumber(seg);
+            }}
           />
         </div>
-      )}
 
-      {/* CIBLE */}
-      {method === "dartboard" ? (
-        <div
-          ref={fitToParent ? fitOuterRef : null}
-          style={{
-            paddingBottom: 6,
-            ...contentBoxStyle,
-            ...(fitToParent
-              ? {
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: "hidden",
-                }
-              : {}),
-          }}
-        >
-          <div
-            ref={fitToParent ? setMeasureAndFitInnerRef : contentMeasureRef}
-            style={
-              fitToParent
-                ? {
-                    transform: `scale(${fitScale})`,
-                    transformOrigin: "top left",
-                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
-                  }
-                : undefined
-            }
-          >
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-            <DartboardClickable
-              size={230}
-              multiplier={multiplier}
-              disabled={disabled}
-              onHit={(seg, mul) => {
-                if (disabled) return;
-
-                // Bull / DBull
-                if (seg === 25) {
-                  if (onDirectDart) onDirectDart({ v: 25, mult: mul });
-                  else onBull(); // fallback: bull simple (DBull non géré par l'API keypad actuelle)
-                  return;
-                }
-
-                // Injection directe (recommandé)
-                if (onDirectDart) {
-                  onDirectDart({ v: seg, mult: mul });
-                  return;
-                }
-
-                // Fallback best-effort via toggles + onNumber (moins fiable, mais évite le "rien")
-                if (mul === 3) onTriple();
-                else if (mul === 2) onDouble();
-                else onSimple();
-                onNumber(seg);
-              }}
-            />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "0 6px" }}>
+          <div style={totalPillStyle}>{currentTotal}</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" style={btnDarkSmall} disabled={disabled || currentThrow.length === 0} onClick={onCancel}>
+              ANNULER
+            </button>
+            <button type="button" style={btnGoldSmall} disabled={disabled || currentThrow.length === 0} onClick={onValidate}>
+              VALIDER
+            </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              padding: "0 6px",
-            }}
-          >
-            <div style={totalPillStyle}>{throwTotal}</div>
+function PresetLauncher({ disabled, currentTotal, onOpen }: { disabled: boolean; currentTotal: number; onOpen: () => void }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <button type="button" disabled={disabled} onClick={onOpen} style={{ ...miniActionButton, opacity: disabled ? 0.45 : 1 }}>
+        ⚡ PRESETS — VOLÉES RAPIDES
+      </button>
+      <div style={{ marginTop: 6, textAlign: "center", color: "rgba(255,255,255,.62)", fontSize: 11.5, fontWeight: 800 }}>
+        Ouvre les raccourcis, remplit la volée, puis valide manuellement. Total actuel : <b>{currentTotal}</b>
+      </div>
+    </div>
+  );
+}
 
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                type="button"
-                style={btnDarkSmall}
-                disabled={disabled || (currentThrow || []).length === 0}
-                onClick={onCancel}
-                aria-label="Annuler la volée"
-              >
-                ANNULER
-              </button>
-
-              <button
-                type="button"
-                style={btnGoldSmall}
-                disabled={disabled || (currentThrow || []).length === 0}
-                onClick={onValidate}
-                aria-label="Valider la volée"
-              >
-                VALIDER
-              </button>
+function PresetSheet({
+  disabled,
+  currentCount,
+  onClose,
+  onApplyPreset,
+}: {
+  disabled: boolean;
+  currentCount: number;
+  onClose: () => void;
+  onApplyPreset: (darts: UIDart[]) => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 120,
+        background: "rgba(0,0,0,.72)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: "16px 12px calc(16px + var(--safe-bottom))",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(560px, 100%)",
+          borderRadius: 24,
+          border: "1px solid rgba(180,255,30,.26)",
+          background: "linear-gradient(180deg, rgba(18,22,30,.98), rgba(5,7,10,.98))",
+          boxShadow: "0 24px 70px rgba(0,0,0,.75), 0 0 38px rgba(180,255,30,.12)",
+          padding: 14,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+          <div>
+            <div style={{ color: "#b9ff2a", fontWeight: 1000, letterSpacing: 1, fontSize: 15 }}>PRESETS</div>
+            <div style={{ color: "rgba(255,255,255,.62)", fontWeight: 800, fontSize: 12 }}>
+              Choisis une volée. Elle s’affiche, puis tu appuies sur VALIDER.
             </div>
           </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* PRESETS */}
-      {method === "presets" && allowPresets ? (
-        <div style={{ paddingBottom: 2, ...contentBoxStyle }}>
-          <ScorePresetsBar
-            disabled={disabled}
-            currentCount={(currentThrow || []).length}
-            onPushDart={(d) => onDirectDart?.(d)}
-            autoValidate
-            onAutoValidate={onValidate}
-          />
-          <div
+          <button
+            type="button"
+            onClick={onClose}
             style={{
-              textAlign: "center",
-              fontSize: 11.5,
-              opacity: 0.72,
-              marginBottom: 8,
-              fontWeight: 800,
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.16)",
+              background: "rgba(255,255,255,.08)",
+              color: "#fff",
+              fontWeight: 1000,
             }}
           >
-            Presets = raccourcis (ils remplissent la volée et valident à 3 flèches).
+            ×
+          </button>
+        </div>
+
+        <ScorePresetsBar
+          disabled={disabled}
+          currentCount={currentCount}
+          onPushDart={() => {}}
+          onApplyPreset={onApplyPreset}
+          autoValidate={false}
+        />
+      </div>
+    </div>
+  );
+}
+
+function VoicePanel({ control, disabled, showPlaceholders }: { control?: VoiceControl; disabled: boolean; showPlaceholders: boolean }) {
+  const phase = String(control?.phase || "OFF");
+  const listening = phase.startsWith("LISTEN") || phase === "RECAP_CONFIRM";
+  const supported = control?.supported !== false;
+  const canStart = !disabled && !!control?.enabled && supported && !!control?.onStart;
+  const label = phase === "RECAP_CONFIRM" ? "CONFIRME : OUI / NON" : listening ? "ÉCOUTE EN COURS" : "ENREGISTRER LA VOLÉE";
+
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        padding: 12,
+        borderRadius: 18,
+        border: listening ? "1px solid rgba(180,255,30,.40)" : "1px solid rgba(255,255,255,.10)",
+        background: listening
+          ? "linear-gradient(180deg, rgba(180,255,30,.14), rgba(0,0,0,.38))"
+          : "linear-gradient(180deg, rgba(16,18,26,.94), rgba(8,9,13,.96))",
+        boxShadow: listening ? "0 0 32px rgba(180,255,30,.14), 0 12px 30px rgba(0,0,0,.42)" : "0 12px 30px rgba(0,0,0,.42)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          type="button"
+          disabled={!canStart || listening}
+          onClick={() => control?.onStart?.()}
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 999,
+            border: listening ? "1px solid rgba(180,255,30,.72)" : "1px solid rgba(255,255,255,.14)",
+            background: listening ? "rgba(180,255,30,.20)" : "rgba(255,255,255,.08)",
+            color: listening ? "#d8ff66" : "#fff",
+            fontSize: 24,
+            boxShadow: listening ? "0 0 24px rgba(180,255,30,.28)" : "none",
+            opacity: !canStart && !listening ? 0.45 : 1,
+          }}
+          aria-label="Démarrer la saisie vocale"
+        >
+          🎙️
+        </button>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: listening ? "#d8ff66" : "#fff", fontWeight: 1000, letterSpacing: 0.4, fontSize: 14 }}>{label}</div>
+          <div style={{ color: "rgba(255,255,255,.66)", fontWeight: 800, fontSize: 12, marginTop: 3 }}>
+            Dicte : “triple vingt, simple cinq, miss”. L’app récapitule puis demande confirmation.
           </div>
+        </div>
+
+        {listening ? (
+          <button
+            type="button"
+            onClick={() => control?.onStop?.()}
+            style={{
+              borderRadius: 12,
+              padding: "8px 10px",
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(255,255,255,.08)",
+              color: "#fff",
+              fontWeight: 950,
+            }}
+          >
+            STOP
+          </button>
+        ) : null}
+      </div>
+
+      {!supported ? (
+        <div style={{ marginTop: 8, color: "#ffcc66", fontWeight: 800, fontSize: 12 }}>
+          Reconnaissance vocale non disponible sur ce navigateur. Utilise Chrome/Android ou repasse au keypad.
         </div>
       ) : null}
 
-      {/* Méthode principale (Keypad + placeholders) */}
-      {method === "keypad" || method === "presets" || method === "voice" ? (
-        <div
-          ref={fitToParent ? fitOuterRef : null}
-          style={{
-            ...contentBoxStyle,
-            ...(fitToParent
-              ? {
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: "hidden",
-                }
-              : null),
-          }}
-        >
-          <div
-            ref={fitToParent ? setMeasureAndFitInnerRef : method === "keypad" ? contentMeasureRef : undefined}
-            style={
-              fitToParent
-                ? {
-                    transform: `scale(${fitScale})`,
-                    transformOrigin: "top left",
-                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
-                  }
-                : undefined
-            }
-          >
-          {method === "voice" && showPlaceholders ? (
-            <PlaceholderCard method={method} />
-          ) : null}
+      {control?.permissionHint ? (
+        <div style={{ marginTop: 8, color: "#ffcc66", fontWeight: 800, fontSize: 12 }}>
+          Micro : {control.permissionHint}. Vérifie l’autorisation micro du navigateur.
+        </div>
+      ) : null}
 
-          <Keypad
-            currentThrow={currentThrow}
-            multiplier={multiplier}
-            onSimple={onSimple}
-            onDouble={onDouble}
-            onTriple={onTriple}
-            onBackspace={onBackspace}
-            onCancel={onCancel}
-            onNumber={onNumber}
-            onBull={onBull}
-            onValidate={onValidate}
-            hidePreview={hidePreview}
-            hideTotal={hideTotal}
-            centerSlot={centerSlot}
-          />
-          </div>
+      {control?.lastHeard ? (
+        <div style={{ marginTop: 8, color: "rgba(255,255,255,.76)", fontWeight: 800, fontSize: 12 }}>
+          Entendu : <b>{control.lastHeard}</b>
+        </div>
+      ) : null}
+
+      {control?.dartsLabel ? (
+        <div style={{ marginTop: 4, color: "rgba(255,255,255,.76)", fontWeight: 800, fontSize: 12 }}>
+          Saisie : <b>{control.dartsLabel}</b> — Total <b>{control.dartsTotal ?? 0}</b>
+        </div>
+      ) : showPlaceholders ? (
+        <div style={{ marginTop: 8, color: "rgba(255,255,255,.50)", fontWeight: 800, fontSize: 11.5 }}>
+          Le keypad reste disponible juste dessous pour corriger ou saisir manuellement.
         </div>
       ) : null}
     </div>
@@ -464,29 +684,23 @@ function MethodBar({
   method,
   setMethod,
   allowPresets,
-  showPlaceholders,
   disabled,
   devEnabled,
 }: {
   method: ScoreInputMethod;
   setMethod: (m: ScoreInputMethod) => void;
   allowPresets: boolean;
-  showPlaceholders: boolean;
   disabled: boolean;
   devEnabled: boolean;
 }) {
   const btn = (key: ScoreInputMethod, label: string, enabled: boolean) => {
     const active = method === key;
     const canClick = !disabled && (enabled || devEnabled);
-    const visuallyDisabled = !enabled;
-
     return (
       <button
         key={key}
-        onClick={() => {
-          if (!canClick) return;
-          setMethod(key);
-        }}
+        type="button"
+        onClick={() => canClick && setMethod(key)}
         disabled={!canClick}
         style={{
           display: "inline-flex",
@@ -495,95 +709,36 @@ function MethodBar({
           padding: "8px 10px",
           borderRadius: 999,
           border: "1px solid rgba(255,255,255,0.16)",
-          background: active ? "rgba(0,255,190,0.16)" : "rgba(255,255,255,0.06)",
+          background: active ? "rgba(180,255,30,0.16)" : "rgba(255,255,255,0.06)",
           color: "rgba(255,255,255,0.92)",
-          opacity: visuallyDisabled ? (devEnabled ? 0.55 : 0.38) : 1,
+          opacity: enabled ? 1 : devEnabled ? 0.55 : 0.38,
           cursor: canClick ? "pointer" : "not-allowed",
           userSelect: "none",
           whiteSpace: "nowrap",
-          fontWeight: 700,
+          fontWeight: 900,
           letterSpacing: 0.2,
         }}
-        title={
-          visuallyDisabled
-            ? devEnabled
-              ? "Feature en cours (dev mode : accessible)"
-              : "Feature en cours (non disponible)"
-            : undefined
-        }
       >
         <span
           style={{
             width: 8,
             height: 8,
             borderRadius: 999,
-            background: active ? "rgba(0,255,190,0.95)" : "rgba(255,255,255,0.25)",
-            boxShadow: active ? "0 0 10px rgba(0,255,190,0.55)" : "none",
+            background: active ? "rgba(180,255,30,0.95)" : "rgba(255,255,255,0.25)",
+            boxShadow: active ? "0 0 10px rgba(180,255,30,0.55)" : "none",
           }}
         />
         <span style={{ fontSize: 12 }}>{label}</span>
-        {visuallyDisabled && devEnabled && (
-          <span
-            style={{
-              fontSize: 10,
-              padding: "2px 6px",
-              borderRadius: 999,
-              background: "rgba(255,255,255,0.10)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              color: "rgba(255,255,255,0.72)",
-            }}
-          >
-            DEV
-          </span>
-        )}
       </button>
     );
   };
 
-  // Méthodes produit disponibles : KEYPAD / CIBLE / PRESETS / VOICE.
-  // AUTO et IA ont été retirés pour éviter les fonctions fantômes.
-  const enableKeypad = true;
-  const enableDartboard = true;
-  const enablePresets = allowPresets;
-  const enableVoice = true;
-
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 10,
-        overflowX: "auto",
-        padding: "6px 2px 2px",
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
-      {btn("keypad", "KEYPAD", enableKeypad)}
-      {btn("dartboard", "CIBLE", enableDartboard)}
-      {btn("presets", "PRESETS", enablePresets)}
-      {btn("voice", "VOICE", enableVoice)}
-    </div>
-  );
-}
-
-function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
-  const title = method === "voice" ? "Reconnaissance vocale" : "Méthode de saisie";
-  const subtitle =
-    method === "voice"
-      ? "Commande vocale active depuis la configuration. Le keypad reste disponible en fallback/correction."
-      : "Méthode disponible.";
-  return (
-    <div
-      style={{
-        marginBottom: 10,
-        padding: 12,
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,.10)",
-        background: "linear-gradient(180deg, rgba(10,10,12,.92), rgba(6,6,8,.96))",
-        boxShadow: "0 10px 24px rgba(0,0,0,.45)",
-      }}
-    >
-      <div style={{ fontWeight: 1000, letterSpacing: 0.2, color: "#e9d7ff" }}>{title}</div>
-      <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>{subtitle}</div>
+    <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "6px 2px 2px", WebkitOverflowScrolling: "touch" }}>
+      {btn("keypad", "KEYPAD", true)}
+      {btn("dartboard", "CIBLE", true)}
+      {btn("presets", "PRESETS", allowPresets)}
+      {btn("voice", "VOICE", true)}
     </div>
   );
 }
