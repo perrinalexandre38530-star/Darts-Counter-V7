@@ -32,6 +32,7 @@ import { saveOnlineCompetition } from "../lib/tournaments/onlineStore";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 import { loadBots as loadStoredBots } from "../lib/bots";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
@@ -856,7 +857,7 @@ function TextInput({ value, onChange, placeholder, width = "100%" }: any) {
   );
 }
 
-function GuidedVisualHeader({ onBack, onFull, accent = THEME }: any) {
+function GuidedVisualHeader({ onBack, accent = THEME }: any) {
   return (
     <div style={{ position: "relative", marginBottom: 14 }}>
       <img
@@ -878,39 +879,29 @@ function GuidedVisualHeader({ onBack, onFull, accent = THEME }: any) {
       <div style={{ position: "absolute", left: 10, top: 10, zIndex: 4 }}>
         <BackDot onClick={onBack} size={40} title="Retour" color={accent} glow={`${accent}88`} />
       </div>
-      <button
-        type="button"
-        onClick={onFull}
-        style={{
-          position: "absolute",
-          right: 12,
-          bottom: 10,
-          zIndex: 4,
-          borderRadius: 999,
-          padding: "8px 14px",
-          border: `1px solid ${accent}66`,
-          background: "rgba(0,0,0,.42)",
-          color: accent,
-          fontWeight: 950,
-          cursor: "pointer",
-          backdropFilter: "blur(4px)",
-          boxShadow: `0 0 16px ${accent}20`,
-        }}
-      >
-        Configuration complète
-      </button>
     </div>
   );
 }
 
-function GuidedHeroCard({ title, sportLabel, sourceLabel, primary = THEME, kindLabel, watermark }: any) {
+function GuidedHeroCard({
+  titleLine2,
+  sportLabel,
+  sourceLabel,
+  primary = THEME,
+  kindLabel,
+  watermark,
+  configMode,
+  onConfigModeChange,
+  info,
+}: any) {
+  const isGuided = configMode === "guided";
   return (
     <div
       style={{
         position: "relative",
         overflow: "hidden",
         borderRadius: 24,
-        padding: 18,
+        padding: 16,
         border: `1px solid ${primary}44`,
         background: `radial-gradient(130% 125% at 0% 0%, ${primary}20, transparent 56%), linear-gradient(180deg, rgba(20,20,26,.985), rgba(6,6,9,.995))`,
         boxShadow: `0 24px 60px rgba(0,0,0,.68), 0 0 24px ${primary}14`,
@@ -923,10 +914,10 @@ function GuidedHeroCard({ title, sportLabel, sourceLabel, primary = THEME, kindL
         draggable={false}
         style={{
           position: "absolute",
-          right: -28,
-          top: "50%",
-          width: 190,
-          height: 190,
+          right: -32,
+          top: "52%",
+          width: 192,
+          height: 192,
           objectFit: "contain",
           opacity: 0.22,
           transform: "translateY(-50%) rotate(-8deg)",
@@ -937,21 +928,64 @@ function GuidedHeroCard({ title, sportLabel, sourceLabel, primary = THEME, kindL
       />
       <div style={{ position: "relative", zIndex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ display: "inline-flex", padding: "4px 12px", borderRadius: 999, border: `1px solid ${primary}77`, color: primary, background: "rgba(0,0,0,.35)", fontSize: 11.5, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>
-            Configuration guidée
+          <span style={{ display: "inline-flex", padding: "4px 12px", borderRadius: 999, border: `1px solid ${primary}77`, color: primary, background: "rgba(0,0,0,.35)", fontSize: 11, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>
+            {kindLabel}
           </span>
-          <span style={{ fontSize: 11.5, fontWeight: 900, letterSpacing: .45, color: "rgba(255,255,255,.76)", textTransform: "uppercase" }}>
-            {sportLabel} · {sourceLabel}
+          <span style={{ display: "inline-flex", padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.78)", background: "rgba(255,255,255,.045)", fontSize: 10.5, fontWeight: 950, letterSpacing: .35, textTransform: "uppercase" }}>
+            {sportLabel}
+          </span>
+          <span style={{ display: "inline-flex", padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.78)", background: "rgba(255,255,255,.045)", fontSize: 10.5, fontWeight: 950, letterSpacing: .35, textTransform: "uppercase" }}>
+            {sourceLabel}
+          </span>
+          <span style={{ marginLeft: "auto", display: "inline-flex" }}>
+            <InfoDot title="Configuration compétition" size={34} color={primary} glow={`${primary}77`} content={info} />
           </span>
         </div>
-        <div style={{ marginTop: 12, fontSize: 30, lineHeight: 1.02, fontWeight: 1000, maxWidth: 470 }}>
-          {title}
+
+        <div style={{ minHeight: 86, display: "grid", alignContent: "center", justifyItems: "center", textAlign: "center", padding: "10px 92px 8px 6px" }}>
+          <div style={{ color: primary, fontSize: 13, lineHeight: 1, letterSpacing: 1.6, fontWeight: 1000, textTransform: "uppercase", textShadow: `0 0 14px ${primary}44` }}>
+            CRÉATION
+          </div>
+          <div style={{ marginTop: 6, color: "#fff", fontSize: "clamp(22px, 6.5vw, 34px)", lineHeight: .96, fontWeight: 1000, textTransform: "uppercase", textShadow: "0 3px 18px rgba(0,0,0,.62)", maxWidth: 430 }}>
+            {titleLine2}
+          </div>
         </div>
-        <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.38, opacity: .84, maxWidth: 520 }}>
-          Avance étape par étape. Les choix alimentent exactement le même moteur que la configuration complète, mais dans une lecture beaucoup plus simple.
-        </div>
-        <div style={{ marginTop: 14, display: "inline-flex", padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", fontSize: 12, fontWeight: 900, color: "rgba(255,255,255,.88)" }}>
-          {kindLabel}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
+          <button
+            type="button"
+            onClick={() => onConfigModeChange?.("guided")}
+            style={{
+              borderRadius: 999,
+              border: isGuided ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.12)",
+              background: isGuided ? `linear-gradient(180deg, ${primary}28, rgba(0,0,0,.28))` : "rgba(255,255,255,.045)",
+              color: isGuided ? primary : "rgba(255,255,255,.76)",
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 1000,
+              cursor: "pointer",
+              boxShadow: isGuided ? `0 0 18px ${primary}24` : "none",
+            }}
+          >
+            Guidée
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfigModeChange?.("full")}
+            style={{
+              borderRadius: 999,
+              border: !isGuided ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.12)",
+              background: !isGuided ? `linear-gradient(180deg, ${primary}28, rgba(0,0,0,.28))` : "rgba(255,255,255,.045)",
+              color: !isGuided ? primary : "rgba(255,255,255,.76)",
+              padding: "8px 10px",
+              fontSize: 12,
+              fontWeight: 1000,
+              cursor: "pointer",
+              boxShadow: !isGuided ? `0 0 18px ${primary}24` : "none",
+            }}
+          >
+            Complète
+          </button>
         </div>
       </div>
     </div>
@@ -2244,9 +2278,29 @@ const petanqueTeamsUI = React.useMemo(() => {
     return { title: "Info", body: <>—</> };
   })();
 
+  const defaultCompetitionName = isLeague ? `Ligue ${sportLabel}` : `Tournoi ${sportLabel}`;
+  const defaultTitleLine2 = isLeague ? `Ligue de ${sportLabel}` : `Tournoi de ${sportLabel}`;
+  const titleLine2 = String(name || "").trim() && String(name || "").trim() !== defaultCompetitionName
+    ? String(name || "").trim().toUpperCase()
+    : defaultTitleLine2.toUpperCase();
+  const heroKindLabel = isLeague ? "LIGUE / CHAMPIONNAT" : "TOURNOI";
+  const heroSourceLabel = source === "online" ? "ONLINE" : "LOCAL";
+  const heroInfoContent = (
+    <div style={{ display: "grid", gap: 10, lineHeight: 1.4 }}>
+      <p style={{ margin: 0 }}>
+        La configuration guidée découpe la création en étapes simples : type, solo/équipe, participants, format, règles puis récapitulatif.
+      </p>
+      <p style={{ margin: 0 }}>
+        La configuration complète affiche tous les réglages sur une seule page pour les utilisateurs qui veulent tout ajuster directement.
+      </p>
+      <p style={{ margin: 0 }}>
+        Le sport actif reste verrouillé sur <b>{sportLabel}</b>, donc les options proposées restent cohérentes avec le choix fait dans Jeux.
+      </p>
+    </div>
+  );
+
   if (configMode === "guided") {
     const step = guidedStepSafe;
-    const title = isLeague ? `Créer une ligue ${sportLabel}` : `Créer un tournoi ${sportLabel}`;
 
     return (
       <div
@@ -2262,16 +2316,18 @@ const petanqueTeamsUI = React.useMemo(() => {
         <GuidedVisualHeader
           accent={primary}
           onBack={() => go("tournaments", { forceMode, source })}
-          onFull={() => setConfigMode("full")}
         />
 
         <GuidedHeroCard
-          title={title}
+          titleLine2={titleLine2}
           sportLabel={sportLabel.toUpperCase()}
-          sourceLabel={source === "online" ? "ONLINE" : "LOCAL"}
+          sourceLabel={heroSourceLabel}
           primary={primary}
-          kindLabel={isLeague ? "Ligue / championnat" : "Tournoi"}
+          kindLabel={heroKindLabel}
           watermark={kindWatermark}
+          configMode={configMode}
+          onConfigModeChange={setConfigMode}
+          info={heroInfoContent}
         />
 
         <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" as any }}>
@@ -2544,33 +2600,22 @@ const petanqueTeamsUI = React.useMemo(() => {
         minHeight: "100vh",
       }}
     >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <button
-          type="button"
-          onClick={() => go("tournaments", { forceMode, source })}
-          style={{
-            borderRadius: 999,
-            padding: "7px 12px",
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(255,255,255,0.05)",
-            color: "rgba(255,255,255,0.92)",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          ← Retour
-        </button>
+      <GuidedVisualHeader
+        accent={primary}
+        onBack={() => go("tournaments", { forceMode, source })}
+      />
 
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 16, fontWeight: 950, letterSpacing: 0.2 }}>
-            {isLeague ? `Créer une ligue / championnat ${sportLabel}` : `Créer un tournoi ${sportLabel}`}
-          </div>
-          <div style={{ fontSize: 11.5, opacity: 0.75 }}>
-            {loadingAvg ? "Calcul niveaux…" : isLeague ? "Configure la ligue locale puis crée." : "Configure le tournoi local puis crée."}
-          </div>
-        </div>
-      </div>
+      <GuidedHeroCard
+        titleLine2={titleLine2}
+        sportLabel={sportLabel.toUpperCase()}
+        sourceLabel={heroSourceLabel}
+        primary={primary}
+        kindLabel={heroKindLabel}
+        watermark={kindWatermark}
+        configMode={configMode}
+        onConfigModeChange={setConfigMode}
+        info={heroInfoContent}
+      />
 
       {/* Infos */}
       <Section title={isLeague ? "Infos de la ligue" : "Infos du tournoi"} subtitle={`Sport actif : ${sportLabel}. Les autres sports sont volontairement masqués.`} accent={primary}>

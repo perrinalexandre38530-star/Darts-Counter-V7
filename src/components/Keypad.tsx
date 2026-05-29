@@ -51,6 +51,9 @@ type Props = {
   /** Petit retour d'état intégré dans le keypad, sans bande séparée au-dessus */
   noticeSlot?: React.ReactNode;
 
+  /** Met le bouton VALIDER en surbrillance quand une volée vocale est prête. */
+  validateAttention?: boolean;
+
   /** Ajoute un padding bas safe-area (par défaut: true) */
   safeBottomPad?: boolean;
 };
@@ -202,6 +205,7 @@ export default function Keypad({
   centerSlot = null,
   auxAction = null,
   noticeSlot = null,
+  validateAttention = false,
   safeBottomPad = true,
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
@@ -405,8 +409,22 @@ export default function Keypad({
 
         <button
           type="button"
-          style={{ ...btnGold, width: "100%" }}
+          style={{
+            ...btnGold,
+            width: "100%",
+            ...(validateAttention
+              ? {
+                  color: "#050505",
+                  background: "linear-gradient(180deg, #ffffff, #ffd666)",
+                  border: "1px solid rgba(255,255,255,.92)",
+                  boxShadow: "0 0 24px rgba(255,255,255,.56), 0 10px 22px rgba(255,170,0,.28)",
+                  animation: "dcVoiceGlow .9s ease-in-out infinite",
+                }
+              : null),
+          }}
           onClick={onValidate}
+          title={validateAttention ? "Volée vocale prête : clique pour valider" : "Valider la volée"}
+          aria-label={validateAttention ? "Valider la volée vocale" : "Valider la volée"}
         >
           VALIDER
         </button>

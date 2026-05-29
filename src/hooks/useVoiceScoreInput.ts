@@ -3,7 +3,7 @@
 // Saisie vocale X01 hit-par-hit.
 // - 1 clic MICRO = écoute d'un hit attendu
 // - le hit reconnu est injecté comme le keypad
-// - après 3 hits : validation vocale OUI / VALIDE / VALIDER
+// - après 3 hits : l’utilisateur valide avec le bouton VALIDER du keypad
 // ============================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,7 +45,7 @@ type UseVoiceScoreInputArgs = {
   /** Appelé dès qu'un hit est compris : la page l'injecte comme un hit keypad. */
   onDart?: (dart: VoiceDart, index: number) => void;
 
-  /** Appelé après OUI/VALIDE quand 3 hits sont saisis. */
+  /** Ancien callback conservé pour compat, non utilisé dans le flux bouton VALIDER. */
   onConfirmVisit?: (darts: VoiceDart[]) => void;
 
   /** Fallback historique : commit direct de la volée après confirmation. */
@@ -271,8 +271,9 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
 
             if (next.length >= 3) {
               setPhase("WAIT_CONFIRM");
+              setPermissionHint("volée_prête_valider");
               try {
-                speak?.(`Volée complète : ${next.map(formatDartLabel).join(", ")}. Dis oui ou valide pour confirmer.`);
+                speak?.(`Volée complète : ${next.map(formatDartLabel).join(", ")}. Clique sur valider.`);
               } catch {}
             } else {
               setPhase(waitPhaseForIndex(next.length));
@@ -402,15 +403,12 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     setLastHeard("");
 
     if (wantsConfirm) {
-      setPhase("LISTEN_CONFIRM");
-      setActivity("confirming");
-      const ok = startRecognition("CONFIRM");
+      // La validation finale ne se fait plus au micro : les 3 hits sont déjà
+      // dans le keypad, donc on laisse l'utilisateur appuyer sur VALIDER.
+      setPhase("WAIT_CONFIRM");
+      setActivity("parsed");
+      setPermissionHint("volée_prête_valider");
       startingRef.current = false;
-      if (!ok) {
-        setPhase("WAIT_CONFIRM");
-        setActivity("error");
-        onNeedManual?.();
-      }
       return;
     }
 

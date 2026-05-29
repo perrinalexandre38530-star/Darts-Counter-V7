@@ -191,9 +191,16 @@ export default function ScoreInputHub({
   const voicePhase = String(voiceControl?.phase || "OFF");
   const voiceActivity = String(voiceControl?.activity || "idle");
   const voiceRequesting = voicePhase === "REQUESTING_MIC" || voiceActivity === "requesting";
-  const voiceListening = voicePhase.startsWith("LISTEN") || voiceRequesting || voiceActivity === "recording" || voiceActivity === "speech" || voiceActivity === "confirming";
+  const voiceAwaitingManualValidate =
+    method === "voice" && !!voiceControl?.awaitingConfirm && safeCurrentThrow.length > 0;
+  const voiceListening =
+    !voiceAwaitingManualValidate &&
+    (voicePhase.startsWith("LISTEN") ||
+      voiceRequesting ||
+      voiceActivity === "recording" ||
+      voiceActivity === "speech");
   const voiceSupported = voiceControl?.supported !== false;
-  const voiceCanStart = !disabled && !!voiceControl?.onStart;
+  const voiceCanStart = !disabled && !voiceAwaitingManualValidate && !!voiceControl?.onStart;
   const voiceCanStop = !disabled && voiceListening && !!voiceControl?.onStop;
 
   const fitOuterRef = React.useRef<HTMLDivElement | null>(null);
@@ -278,18 +285,49 @@ export default function ScoreInputHub({
         label: voiceListening ? "STOP" : "MICRO",
         icon: <MicroMiniIcon />,
         onClick: () => {
+          if (voiceAwaitingManualValidate) return;
           if (voiceListening) voiceControl?.onStop?.();
           else voiceControl?.onStart?.();
         },
-        disabled: voiceListening ? !voiceCanStop : !voiceCanStart,
+        disabled: voiceAwaitingManualValidate || (voiceListening ? !voiceCanStop : !voiceCanStart),
         active: voiceListening,
-        title: voiceListening ? "Arrêter la saisie vocale" : "Démarrer la saisie vocale",
-        ariaLabel: voiceListening ? "Arrêter la saisie vocale" : "Démarrer la saisie vocale",
+        title: voiceAwaitingManualValidate
+          ? "Volée complète : clique sur VALIDER"
+          : voiceListening
+          ? "Arrêter la saisie vocale"
+          : "Démarrer la saisie vocale",
+        ariaLabel: voiceAwaitingManualValidate
+          ? "Volée complète, valider avec le bouton Valider"
+          : voiceListening
+          ? "Arrêter la saisie vocale"
+          : "Démarrer la saisie vocale",
       };
     }
 
     return null;
-  }, [allowPresets, disabled, method, presetOpen, voiceCanStart, voiceCanStop, voiceControl, voiceListening]);
+  }, [
+    allowPresets,
+    disabled,
+    method,
+    presetOpen,
+    voiceAwaitingManualValidate,
+    voiceCanStart,
+    voiceCanStop,
+    voiceControl,
+    voiceListening,
+  ]);
+
+  const handleValidateFromKeypad = React.useCallback(() => {
+    if (disabled) return;
+    onValidate();
+
+    // En mode vocal hit-par-hit, les 3 hits sont déjà injectés dans currentThrow.
+    // La validation doit donc rester le bouton VALIDER du keypad, puis on nettoie
+    // l’état vocal pour ne pas exiger un second clic micro.
+    if (method === "voice" && voiceControl?.awaitingConfirm) {
+      window.setTimeout(() => voiceControl?.onReset?.(), 0);
+    }
+  }, [disabled, method, onValidate, voiceControl]);
 
   const voiceNotice = method === "voice" ? (
     <VoiceInlineNotice
@@ -318,12 +356,13 @@ export default function ScoreInputHub({
       onCancel={onCancel}
       onNumber={onNumber}
       onBull={onBull}
-      onValidate={onValidate}
+      onValidate={handleValidateFromKeypad}
       hidePreview={hidePreview}
       hideTotal={hideTotal}
       centerSlot={centerSlot}
       auxAction={keypadAuxAction}
       noticeSlot={voiceNotice}
+      validateAttention={voiceAwaitingManualValidate}
     />
   );
 
@@ -576,18 +615,19 @@ function VoiceInlineNotice({
       ? "Écoute terminée : recommence"
       : rawHint === "volée_incomprise"
       ? "Volée incomprise : recommence"
+      : rawHint === "volée_prête_valider"
+      ? "Volée prête : clique sur VALIDER"
       : rawHint === "confirmation_incomprise"
-      ? "Confirmation incomprise : dis oui ou non"
+      ? "Confirmation inutile : clique sur VALIDER"
       : rawHint === "confirmation_timeout"
-      ? "Confirmation expirée : recommence"
+      ? "Validation vocale désactivée : clique sur VALIDER"
       : rawHint || "";
 
   const isRequesting = phase === "REQUESTING_MIC" || activity === "requesting";
   const isRecording = phase.startsWith("LISTEN_D") || activity === "recording" || activity === "speech";
-  const isConfirmListening = phase === "LISTEN_CONFIRM" || activity === "confirming";
   const isWaitingHit = phase.startsWith("WAIT_D");
   const isWaitingConfirm = awaitingConfirm || phase === "WAIT_CONFIRM";
-  const isLive = listening || isRequesting || isRecording || isConfirmListening;
+  const isLive = listening || isRequesting || isRecording;
   const hasError = !!rawHint && rawHint !== "autorisation_micro";
   const hitNo = Math.max(1, Math.min(3, Number(expectedIndex ?? 0) + 1));
 
@@ -600,10 +640,8 @@ function VoiceInlineNotice({
     ? hintLabel
     : isRequesting
     ? "Autorisation micro…"
-    : isConfirmListening
-    ? "MICRO ACTIF — dis OUI / VALIDE / VALIDER"
     : isWaitingConfirm
-    ? `VALIDER ? ${dartsLabel ? `${dartsLabel} — ${dartsTotal ?? 0} pts` : "Volée complète"}`
+    ? `VOLÉE PRÊTE — clique sur VALIDER${dartsLabel ? ` · ${dartsLabel} · ${dartsTotal ?? 0} pts` : ""}`
     : activity === "speech"
     ? "Voix détectée — continue"
     : isRecording
@@ -668,7 +706,7 @@ function VoiceInlineNotice({
             Entendu : <b>{lastHeard}</b>
           </div>
         ) : null}
-        {dartsLabel && !isConfirming ? (
+        {dartsLabel ? (
           <div style={{ marginTop: 2, color: "rgba(255,255,255,.82)", minHeight: 15 }}>
             Volée reconnue : <b>{dartsLabel}</b> — Total <b>{dartsTotal ?? 0}</b>
           </div>
