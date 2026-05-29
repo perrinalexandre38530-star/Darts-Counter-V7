@@ -22,6 +22,7 @@ type VoiceControl = {
   dartsLabel?: string;
   dartsTotal?: number;
   permissionHint?: string | null;
+  activity?: string;
   onStart?: () => void;
   onStop?: () => void;
   onReset?: () => void;
@@ -186,8 +187,9 @@ export default function ScoreInputHub({
   const currentTotal = throwTotal(safeCurrentThrow);
 
   const voicePhase = String(voiceControl?.phase || "OFF");
-  const voiceRequesting = voicePhase === "REQUESTING_MIC";
-  const voiceListening = voicePhase.startsWith("LISTEN") || voicePhase === "RECAP_CONFIRM" || voiceRequesting;
+  const voiceActivity = String(voiceControl?.activity || "idle");
+  const voiceRequesting = voicePhase === "REQUESTING_MIC" || voiceActivity === "requesting";
+  const voiceListening = voicePhase.startsWith("LISTEN") || voicePhase === "RECAP_CONFIRM" || voiceRequesting || voiceActivity === "recording" || voiceActivity === "speech" || voiceActivity === "confirming";
   const voiceSupported = voiceControl?.supported !== false;
   const voiceCanStart = !disabled && !!voiceControl?.onStart;
   const voiceCanStop = !disabled && voiceListening && !!voiceControl?.onStop;
@@ -297,6 +299,7 @@ export default function ScoreInputHub({
       dartsLabel={voiceControl?.dartsLabel}
       dartsTotal={voiceControl?.dartsTotal}
       permissionHint={voiceControl?.permissionHint}
+      activity={voiceActivity}
     />
   ) : null;
 
@@ -532,6 +535,7 @@ function VoiceInlineNotice({
   supported,
   listening,
   phase,
+  activity,
   lastHeard,
   dartsLabel,
   dartsTotal,
@@ -541,6 +545,7 @@ function VoiceInlineNotice({
   supported: boolean;
   listening: boolean;
   phase: string;
+  activity?: string;
   lastHeard?: string;
   dartsLabel?: string;
   dartsTotal?: number;
@@ -562,22 +567,38 @@ function VoiceInlineNotice({
       ? "Écoute terminée : recommence"
       : rawHint === "volée_incomprise"
       ? "Volée incomprise : recommence"
+      : rawHint === "confirmation_incomprise"
+      ? "Confirmation incomprise : dis oui ou non"
+      : rawHint === "confirmation_timeout"
+      ? "Confirmation expirée : recommence"
       : rawHint || "";
 
-  const tone = !enabled || !supported || rawHint ? "warn" : listening ? "live" : "idle";
+  const isRequesting = phase === "REQUESTING_MIC" || activity === "requesting";
+  const isRecording = phase.startsWith("LISTEN") || activity === "recording" || activity === "speech";
+  const isConfirming = phase === "RECAP_CONFIRM" || activity === "confirming";
+  const isLive = listening || isRequesting || isRecording || isConfirming;
+  const hasError = !!rawHint && rawHint !== "autorisation_micro";
+
+  const tone = !enabled || !supported || hasError ? "warn" : isLive ? "live" : "idle";
   const title = !enabled
-    ? "Commande vocale indisponible pour ce tour"
+    ? "Commande vocale inactive pour ce tour"
     : !supported
-    ? "Micro indisponible"
-    : hintLabel
+    ? "Reconnaissance vocale non supportée par ce navigateur"
+    : hasError && hintLabel
     ? hintLabel
-    : phase === "REQUESTING_MIC"
+    : isRequesting
     ? "Autorisation micro…"
-    : phase === "RECAP_CONFIRM"
-    ? "Confirme : oui / non"
-    : listening
-    ? "🎙️ Parle maintenant : dicte tes 3 fléchettes"
+    : isConfirming
+    ? dartsLabel
+      ? `Volée reconnue : ${dartsLabel} — ${dartsTotal ?? 0} pts. Dis OUI ou NON.`
+      : "Confirme : oui / non"
+    : activity === "speech"
+    ? "Voix détectée — continue"
+    : isRecording
+    ? "MICRO ACTIF — dicte tes 3 fléchettes"
     : "Appuie sur MICRO puis dicte la volée";
+
+  const liveDotColor = tone === "warn" ? "#ffcc66" : tone === "live" ? "#b4ff1e" : "rgba(255,255,255,.42)";
 
   return (
     <div
@@ -587,27 +608,68 @@ function VoiceInlineNotice({
           tone === "warn"
             ? "1px solid rgba(255,204,102,.38)"
             : tone === "live"
-            ? "1px solid rgba(180,255,30,.36)"
+            ? "1px solid rgba(180,255,30,.46)"
             : "1px solid rgba(255,255,255,.09)",
         background:
           tone === "warn"
             ? "rgba(255,174,0,.08)"
             : tone === "live"
-            ? "rgba(180,255,30,.10)"
+            ? "rgba(180,255,30,.11)"
             : "rgba(255,255,255,.045)",
         color: tone === "warn" ? "#ffcc66" : tone === "live" ? "#d8ff66" : "rgba(255,255,255,.68)",
-        padding: "7px 9px",
+        padding: "0 10px",
+        minHeight: 34,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
         fontSize: 11.5,
         fontWeight: 900,
-        lineHeight: 1.25,
+        lineHeight: 1.16,
+        boxShadow: tone === "live" ? "0 0 18px rgba(180,255,30,.14)" : "none",
       }}
     >
-      <div>{title}</div>
-      {lastHeard ? <div style={{ marginTop: 3, color: "rgba(255,255,255,.74)" }}>Entendu : <b>{lastHeard}</b></div> : null}
-      {dartsLabel ? (
-        <div style={{ marginTop: 2, color: "rgba(255,255,255,.82)" }}>
-          Saisie : <b>{dartsLabel}</b> — Total <b>{dartsTotal ?? 0}</b>
+      <span
+        aria-hidden="true"
+        style={{
+          width: tone === "idle" ? 7 : 8,
+          height: tone === "idle" ? 7 : 8,
+          borderRadius: 999,
+          flex: "0 0 auto",
+          background: liveDotColor,
+          boxShadow: tone === "live" ? "0 0 14px rgba(180,255,30,.75)" : "none",
+        }}
+      />
+      <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", minHeight: 17 }}>
+          <span>{isLive && tone === "live" ? "🎙️ " : ""}{title}</span>
         </div>
+        {lastHeard ? (
+          <div style={{ marginTop: 2, color: "rgba(255,255,255,.74)", minHeight: 15 }}>
+            Entendu : <b>{lastHeard}</b>
+          </div>
+        ) : null}
+        {dartsLabel && !isConfirming ? (
+          <div style={{ marginTop: 2, color: "rgba(255,255,255,.82)", minHeight: 15 }}>
+            Volée reconnue : <b>{dartsLabel}</b> — Total <b>{dartsTotal ?? 0}</b>
+          </div>
+        ) : null}
+      </div>
+      {isLive && tone === "live" ? (
+        <span
+          style={{
+            flex: "0 0 auto",
+            borderRadius: 999,
+            padding: "3px 7px",
+            border: "1px solid rgba(180,255,30,.42)",
+            background: "rgba(0,0,0,.24)",
+            color: "#d8ff66",
+            fontSize: 10,
+            fontWeight: 1000,
+            letterSpacing: 0.8,
+          }}
+        >
+          REC
+        </span>
       ) : null}
     </div>
   );

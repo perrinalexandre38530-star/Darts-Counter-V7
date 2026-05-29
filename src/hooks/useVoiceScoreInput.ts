@@ -20,6 +20,15 @@ type Phase =
   | "ERROR";
 
 type ConfirmResult = "YES" | "NO" | null;
+type VoiceActivity =
+  | "idle"
+  | "requesting"
+  | "recording"
+  | "speech"
+  | "heard"
+  | "parsed"
+  | "confirming"
+  | "error";
 
 type UseVoiceScoreInputArgs = {
   enabled: boolean;
@@ -97,6 +106,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
   const [phase, setPhase] = useState<Phase>("OFF");
   const [supported, setSupported] = useState<boolean>(() => detectSpeechSupport());
   const [permissionHint, setPermissionHint] = useState<string | null>(null);
+  const [activity, setActivity] = useState<VoiceActivity>("idle");
 
   const [darts, setDarts] = useState<VoiceDart[]>([]);
   const [lastHeard, setLastHeard] = useState<string>("");
@@ -125,6 +135,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     stopTimers();
     listeningRef.current = false;
     startingRef.current = false;
+    setActivity((prev) => (prev === "speech" || prev === "recording" || prev === "requesting" ? "idle" : prev));
     try {
       recRef.current?.stop?.();
     } catch {}
@@ -152,6 +163,25 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
 
         listeningRef.current = true;
         setPermissionHint(null);
+        setActivity(mode === "CONFIRM" ? "confirming" : "recording");
+
+        rec.onstart = () => {
+          listeningRef.current = true;
+          setActivity(mode === "CONFIRM" ? "confirming" : "recording");
+          setPermissionHint(null);
+        };
+
+        rec.onaudiostart = () => {
+          setActivity(mode === "CONFIRM" ? "confirming" : "recording");
+        };
+
+        rec.onsoundstart = () => {
+          setActivity("speech");
+        };
+
+        rec.onspeechstart = () => {
+          setActivity("speech");
+        };
 
         rec.onresult = (event: any) => {
           const result = event?.results?.[0];
@@ -159,6 +189,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
           const text = alternatives.map((a) => a?.transcript || "").filter(Boolean).join(" | ") || result?.[0]?.transcript || "";
           const heard = String(text).trim();
           setLastHeard(heard);
+          setActivity("heard");
 
           if (mode === "CONFIRM") {
             const t = normalizeConfirmText(heard);
@@ -167,8 +198,14 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
             const no =
               /\b(non|annule|annuler|corrige|corriger|modifier|no|stop)\b/.test(t);
 
-            if (yes && !no) setConfirm("YES");
-            else if (no && !yes) setConfirm("NO");
+            if (yes && !no) {
+              setActivity("parsed");
+              setConfirm("YES");
+            }
+            else if (no && !yes) {
+              setActivity("parsed");
+              setConfirm("NO");
+            }
             else {
               setConfirm(null);
               setPermissionHint("confirmation_incomprise");
@@ -185,6 +222,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
           if (parsed.length) {
             setDarts((prev) => [...prev, ...parsed].slice(0, 3));
             setPermissionHint(null);
+            setActivity("parsed");
           } else {
             setPermissionHint("volée_incomprise");
           }
@@ -195,6 +233,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
           listeningRef.current = false;
           const error = e?.error ? String(e.error) : "speech_error";
           setPermissionHint(error);
+          setActivity("error");
           setPhase("ERROR");
         };
 
@@ -209,12 +248,14 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
         hardStopTimer.current = window.setTimeout(() => {
           hardStop();
           setPermissionHint((prev) => prev || (mode === "CONFIRM" ? "confirmation_timeout" : "écoute_timeout"));
+          setActivity("error");
         }, mode === "CONFIRM" ? 6500 : 9000);
 
         return true;
       } catch (e: any) {
         const message = e?.name || e?.message || "init_failed";
         setPermissionHint(message);
+        setActivity("error");
         setPhase("ERROR");
         return false;
       }
@@ -228,6 +269,8 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     setLastHeard("");
     setConfirm(null);
     setPermissionHint(null);
+    setActivity("idle");
+    setActivity("idle");
     setPhase("OFF");
   }, [hardStop]);
 
@@ -238,6 +281,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
       // IMPORTANT UX: le clic MICRO ne doit jamais donner l'impression de ne rien faire.
       // Si la page/play state n'autorise pas la voix, on affiche une raison visible dans le keypad.
       setPhase("ERROR");
+      setActivity("error");
       setPermissionHint("commande_vocale_inactive");
       onNeedManual?.();
       return;
@@ -245,6 +289,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
 
     startingRef.current = true;
     setPhase("REQUESTING_MIC");
+    setActivity("requesting");
     setPermissionHint("autorisation_micro");
 
     const isSupportedNow = detectSpeechSupport();
@@ -252,6 +297,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     if (!isSupportedNow) {
       startingRef.current = false;
       setPhase("MANUAL_FALLBACK");
+      setActivity("error");
       setPermissionHint("speech_recognition_not_supported");
       onNeedManual?.();
       return;
@@ -259,6 +305,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
 
     resetTurn();
     setPhase("REQUESTING_MIC");
+    setActivity("requesting");
     setPermissionHint("autorisation_micro");
 
     // Important : cette demande est déclenchée par le clic MICRO.
@@ -267,6 +314,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     if (micError) {
       startingRef.current = false;
       setPermissionHint(micError);
+      setActivity("error");
       setPhase("ERROR");
       onNeedManual?.();
       return;
@@ -280,11 +328,13 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     }
 
     setLastHeard("");
+    setActivity("recording");
     setPhase("LISTEN_D1");
     const ok = startRecognition("DART");
     startingRef.current = false;
     if (!ok) {
       setPhase("MANUAL_FALLBACK");
+      setActivity("error");
       onNeedManual?.();
     }
   }, [announcePlayer, enabled, onNeedManual, playerName, resetTurn, speak, startRecognition]);
@@ -295,17 +345,20 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
 
     if (darts.length >= 3 && (phase === "LISTEN_D1" || phase === "LISTEN_D2" || phase === "LISTEN_D3")) {
       hardStop();
+      setActivity("confirming");
       setPhase("RECAP_CONFIRM");
       return;
     }
 
     if (darts.length === 1 && phase === "LISTEN_D1" && !listeningRef.current) {
+      setActivity("recording");
       setPhase("LISTEN_D2");
       startRecognition("DART");
       return;
     }
 
     if (darts.length === 2 && phase === "LISTEN_D2" && !listeningRef.current) {
+      setActivity("recording");
       setPhase("LISTEN_D3");
       startRecognition("DART");
     }
@@ -328,6 +381,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
       const ok = startRecognition("CONFIRM");
       if (!ok) {
         setPhase("MANUAL_FALLBACK");
+        setActivity("error");
         onNeedManual?.();
       }
     })();
@@ -344,23 +398,27 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     if (confirm === "YES") {
       onCommit(darts.slice(0, 3));
       setPhase("OFF");
+      setActivity("idle");
       setDarts([]);
       setConfirm(null);
     }
     if (confirm === "NO") {
       setPhase("MANUAL_FALLBACK");
+      setActivity("idle");
       onNeedManual?.();
     }
   }, [confirm, darts, enabled, onCommit, onNeedManual, phase]);
 
   const stop = useCallback(() => {
     hardStop();
+    setActivity("idle");
     setPhase("OFF");
   }, [hardStop]);
 
   return {
     supported,
     phase,
+    activity,
     permissionHint,
     darts,
     lastHeard,

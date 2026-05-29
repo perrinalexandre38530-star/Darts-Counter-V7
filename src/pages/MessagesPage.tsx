@@ -71,6 +71,10 @@ const STROKE = "rgba(255,255,255,.13)";
 const MESSAGE_TTL_HOURS = 24;
 const MESSAGE_TTL_MS = MESSAGE_TTL_HOURS * 60 * 60 * 1000;
 
+// Ref de secours au scope module : évite tout crash ReferenceError si une callback WebRTC
+// asynchrone se déclenche hors du cycle React ou depuis une ancienne closure.
+const remoteStreamRef: { current: MediaStream | null } = { current: null };
+
 
 const EMOJI_BANK: Array<{ label: string; items: string[] }> = [
   { label: "Récents", items: ["😀","😃","😄","😁","😆","😂","🤣","😊","😇","🙂","🙃","😉","😍","🥰","😘","😜","🤪","😎","🥳","🤩","😱","😤","😭","😴"] },
@@ -972,7 +976,6 @@ export default function MessagesPage({ store, update, go }: Props) {
   const recorderChunksRef = React.useRef<Blob[]>([]);
   const recorderStartedAtRef = React.useRef<number>(0);
   const callStreamRef = React.useRef<MediaStream | null>(null);
-  const remoteStreamRef = React.useRef<MediaStream | null>(null);
   const callVideoRef = React.useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = React.useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = React.useRef<HTMLAudioElement | null>(null);
