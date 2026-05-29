@@ -217,6 +217,45 @@ export async function updateProfileFriendLinkStats(id: string, statsMeta: any) {
 }
 
 
+export type MessengerGroup = {
+  id: string;
+  name: string;
+  memberIds: string[];
+  members?: OnlineFriendUser[];
+  ownerId?: string;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastMessage?: string | null;
+  messages?: any[];
+};
+
+export async function listMessengerGroups(): Promise<MessengerGroup[]> {
+  const res = await apiGet("/online/messenger-groups");
+  return Array.isArray(res?.groups) ? res.groups : [];
+}
+
+export async function createMessengerGroup(input: {
+  name: string;
+  memberIds: string[];
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
+}) {
+  const res = await apiPost("/online/messenger-groups", input);
+  return res?.group as MessengerGroup;
+}
+
+export async function updateMessengerGroup(id: string, input: Partial<Pick<MessengerGroup, "name" | "memberIds" | "avatarUrl" | "coverUrl">>) {
+  const res = await apiPut(`/online/messenger-groups/${qs(id)}`, input);
+  return res?.group as MessengerGroup;
+}
+
+export async function deleteMessengerGroup(id: string) {
+  return apiDelete(`/online/messenger-groups/${qs(id)}`);
+}
+
+
 export type PrivateMessageItem = {
   id: string;
   threadId?: string;

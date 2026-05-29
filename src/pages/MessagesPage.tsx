@@ -24,12 +24,17 @@ import {
   sendMessengerCallSignal,
   listMessengerCallSignals,
   listIncomingMessengerCalls,
+  listMessengerGroups,
+  createMessengerGroup,
+  updateMessengerGroup,
+  deleteMessengerGroup,
   blockOnlineUser,
   type FriendRequest,
   type PrivateMessageItem,
   type OnlineFriendUser,
   type ProfileFriendLink,
   type SharedMatchItem,
+  type MessengerGroup,
 } from "../lib/friendsApi";
 import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission, showMessageCenterNotification } from "../lib/messageCenterNotify";
 import ProfileStarRing from "../components/ProfileStarRing";
@@ -830,6 +835,7 @@ type MessageCenterCacheData = {
   sharedMatches: SharedMatchItem[];
   profileLinks: ProfileFriendLink[];
   privateMessages: PrivateMessageItem[];
+  groups?: LocalChatGroup[];
 };
 
 const MESSAGE_CENTER_CACHE_KEY = "ms_message_center_cache_v2";
@@ -847,6 +853,31 @@ function loadMessageCenterCache(): MessageCenterCacheData | null {
 function saveMessageCenterCache(data: MessageCenterCacheData) {
   messageCenterMemoryCache = data;
   saveLocalJson(MESSAGE_CENTER_CACHE_KEY, data);
+}
+
+function mergeGroupsById(primary: LocalChatGroup[], fallback: LocalChatGroup[]) {
+  const map = new Map<string, LocalChatGroup>();
+  for (const group of fallback || []) {
+    if (group?.id) map.set(String(group.id), group);
+  }
+  for (const group of primary || []) {
+    if (group?.id) map.set(String(group.id), { ...(map.get(String(group.id)) || {}), ...group });
+  }
+  return Array.from(map.values()).sort((a, b) => (Date.parse(String(b.createdAt || "")) || 0) - (Date.parse(String(a.createdAt || "")) || 0));
+}
+
+function normalizeMessengerGroup(group: any): LocalChatGroup {
+  return {
+    id: String(group?.id || group?.groupId || `grp_${Date.now()}`),
+    name: String(group?.name || group?.title || "Groupe Messenger"),
+    memberIds: Array.isArray(group?.memberIds) ? group.memberIds.map((x: any) => String(x)).filter(Boolean) : [],
+    createdAt: String(group?.createdAt || group?.created_at || new Date().toISOString()),
+    ownerId: String(group?.ownerId || group?.owner_user_id || ""),
+    avatarUrl: group?.avatarUrl || group?.avatar_url || "",
+    coverUrl: group?.coverUrl || group?.cover_url || "",
+    lastMessage: group?.lastMessage || group?.last_message || "",
+    messages: Array.isArray(group?.messages) ? group.messages : [],
+  };
 }
 
 function guardAnnouncement(title: string, text: string): { ok: boolean; reason?: string } {
@@ -895,7 +926,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const [groupAddMemberOpen, setGroupAddMemberOpen] = React.useState(false);
   const [groupEmojiOpen, setGroupEmojiOpen] = React.useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = React.useState<string[]>([]);
-  const [groups, setGroups] = React.useState<LocalChatGroup[]>(() => loadLocalJson<LocalChatGroup[]>("ms_message_groups_v1", []));
+  const [groups, setGroups] = React.useState<LocalChatGroup[]>(() => mergeGroupsById(cachedAtBoot?.groups || [], loadLocalJson<LocalChatGroup[]>("ms_message_groups_v1", [])));
   const [newRoomTitle, setNewRoomTitle] = React.useState("");
   const [newRoomTopic, setNewRoomTopic] = React.useState("");
   const [rooms, setRooms] = React.useState<LocalChatRoom[]>(() => loadLocalJson<LocalChatRoom[]>("ms_message_rooms_v1", []));
@@ -1121,11 +1152,12 @@ export default function MessagesPage({ store, update, go }: Props) {
     setSelectedGroupIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   }
 
-  function createGroup() {
+  async function createGroup() {
     const name = newGroupName.trim() || `Groupe ${groups.length + 1}`;
     if (selectedGroupIds.length < 2) { setError("Sélectionne au moins 2 amis pour créer un groupe."); return; }
+    const tempId = `grp_tmp_${Date.now()}`;
     const group: LocalChatGroup = {
-      id: `grp_${Date.now()}`,
+      id: tempId,
       name,
       memberIds: selectedGroupIds,
       createdAt: new Date().toISOString(),
@@ -1140,6 +1172,15 @@ export default function MessagesPage({ store, update, go }: Props) {
     setNewGroupCoverUrl("");
     setSelectedGroupIds([]);
     setInfo("Groupe créé ✅");
+    try {
+      const saved = await createMessengerGroup({ name, memberIds: group.memberIds, avatarUrl: group.avatarUrl || "", coverUrl: group.coverUrl || "" });
+      const normalized = normalizeMessengerGroup(saved);
+      setGroups((prev) => prev.map((g) => g.id === tempId ? { ...g, ...normalized } : g));
+      const cached = loadMessageCenterCache();
+      if (cached) saveMessageCenterCache({ ...cached, groups: mergeGroupsById([normalized], (cached.groups || []).filter((g) => g.id !== tempId)) });
+    } catch (e: any) {
+      setError(`Groupe créé localement, mais non sauvegardé NAS : ${e?.message || String(e)}`);
+    }
   }
 
   function createRoom() {
@@ -1218,13 +1259,15 @@ export default function MessagesPage({ store, update, go }: Props) {
     setRenameGroupValue(group.name || "");
   }
 
-  function saveRenameGroup() {
+  async function saveRenameGroup() {
     const nextName = renameGroupValue.trim();
     if (!renamingGroupId || !nextName) return;
-    setGroups((prev) => prev.map((g) => g.id === renamingGroupId ? { ...g, name: nextName } : g));
+    const groupId = renamingGroupId;
+    setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, name: nextName } : g));
     setRenamingGroupId("");
     setRenameGroupValue("");
     setInfo("Groupe renommé ✅");
+    try { await updateMessengerGroup(groupId, { name: nextName }); } catch {}
   }
 
   async function readGroupMediaFile(kind: "avatar" | "cover", file?: File | null, groupId?: string) {
@@ -1234,6 +1277,7 @@ export default function MessagesPage({ store, update, go }: Props) {
       if (groupId) {
         setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, [kind === "avatar" ? "avatarUrl" : "coverUrl"]: dataUrl } : g));
         setInfo(kind === "avatar" ? "Avatar du groupe mis à jour ✅" : "Couverture du groupe mise à jour ✅");
+        updateMessengerGroup(groupId, kind === "avatar" ? { avatarUrl: dataUrl } : { coverUrl: dataUrl }).catch(() => {});
       } else if (kind === "avatar") {
         setNewGroupAvatarUrl(dataUrl);
       } else {
@@ -1246,22 +1290,21 @@ export default function MessagesPage({ store, update, go }: Props) {
 
   function addMemberToSelectedGroup(memberId: string) {
     if (!selectedGroupId || !memberId) return;
-    setGroups((prev) => prev.map((g) => g.id === selectedGroupId ? { ...g, memberIds: Array.from(new Set([...(g.memberIds || []), memberId])) } : g));
+    const nextGroup = groups.find((g) => g.id === selectedGroupId);
+    const nextMemberIds = Array.from(new Set([...(nextGroup?.memberIds || []), memberId]));
+    setGroups((prev) => prev.map((g) => g.id === selectedGroupId ? { ...g, memberIds: nextMemberIds } : g));
+    updateMessengerGroup(selectedGroupId, { memberIds: nextMemberIds }).catch(() => {});
     setInfo("Membre ajouté au groupe ✅");
   }
 
-  function removeGroup(groupId: string) {
+  async function removeGroup(groupId: string) {
     const group = groups.find((g) => g.id === groupId);
     if (!group) return;
-    if ((group.ownerId || currentAccountId) === currentAccountId) {
-      setGroups((prev) => prev.filter((g) => g.id !== groupId));
-      if (selectedGroupId === groupId) { setSelectedGroupId(""); setChatFullscreen(false); }
-      setInfo("Groupe supprimé ✅");
-    } else {
-      setGroups((prev) => prev.filter((g) => g.id !== groupId));
-      if (selectedGroupId === groupId) { setSelectedGroupId(""); setChatFullscreen(false); }
-      setInfo("Groupe quitté ✅");
-    }
+    const isOwner = (group.ownerId || currentAccountId) === currentAccountId;
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+    if (selectedGroupId === groupId) { setSelectedGroupId(""); setChatFullscreen(false); }
+    setInfo(isOwner ? "Groupe supprimé ✅" : "Groupe quitté ✅");
+    try { await deleteMessengerGroup(groupId); } catch {}
   }
 
   function sendGroupAttachment(kind: "photo" | "file" | "voice" | "stats") {
@@ -1306,7 +1349,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     broadcastMessageBadge(totalPending);
   }, [totalPending]);
 
-  const hasVisibleMessageData = friends.length > 0 || friendRequests.length > 0 || sharedMatches.length > 0 || profileLinks.length > 0 || privateMessages.length > 0;
+  const hasVisibleMessageData = friends.length > 0 || friendRequests.length > 0 || sharedMatches.length > 0 || profileLinks.length > 0 || privateMessages.length > 0 || groups.length > 0;
 
   const loadAll = React.useCallback(async (force = false) => {
     const cached = loadMessageCenterCache();
@@ -1318,9 +1361,21 @@ export default function MessagesPage({ store, update, go }: Props) {
       setSharedMatches(Array.isArray(cached.sharedMatches) ? cached.sharedMatches : []);
       setProfileLinks(Array.isArray(cached.profileLinks) ? cached.profileLinks : []);
       setPrivateMessages(Array.isArray(cached.privateMessages) ? cached.privateMessages : []);
+      if (Array.isArray(cached.groups) && cached.groups.length) setGroups((prev) => mergeGroupsById(cached.groups || [], prev || []));
     }
 
-    if (!force && cacheFresh) {
+    const cachedHasUsefulData = !!cached && (
+      (cached.friends?.length || 0) > 0 ||
+      (cached.privateMessages?.length || 0) > 0 ||
+      (cached.friendRequests?.length || 0) > 0 ||
+      (cached.sharedMatches?.length || 0) > 0 ||
+      (cached.profileLinks?.length || 0) > 0 ||
+      ((cached.groups || []).length) > 0
+    );
+
+    // Si le cache est vide, on ne le considère jamais comme fiable : sinon l'écran peut rester
+    // bloqué sur « Aucun ami / Aucun groupe » jusqu'à expiration du cache.
+    if (!force && cacheFresh && cachedHasUsefulData) {
       setLoading(false);
       return;
     }
@@ -1328,12 +1383,32 @@ export default function MessagesPage({ store, update, go }: Props) {
     if (!cached && !hasVisibleMessageData) setLoading(true);
     setError(null);
     try {
-      const [nextFriends, nextRequests, nextShares, nextLinks, nextMessages] = await Promise.all([
-        listFriends().catch(() => cached?.friends || []),
-        listFriendRequests().catch(() => cached?.friendRequests || []),
-        listSharedMatches().catch(() => cached?.sharedMatches || []),
-        listProfileFriendLinks().catch(() => cached?.profileLinks || []),
-        listPrivateMessages().catch(() => cached?.privateMessages || []),
+      const friendsPromise = listFriends()
+        .then((items) => { const safe = Array.isArray(items) ? items : []; setFriends(safe); return safe; })
+        .catch(() => cached?.friends || []);
+      const requestsPromise = listFriendRequests()
+        .then((items) => { const safe = Array.isArray(items) ? items : []; setFriendRequests(safe); return safe; })
+        .catch(() => cached?.friendRequests || []);
+      const sharesPromise = listSharedMatches()
+        .then((items) => { const safe = Array.isArray(items) ? items : []; setSharedMatches(safe); return safe; })
+        .catch(() => cached?.sharedMatches || []);
+      const linksPromise = listProfileFriendLinks()
+        .then((items) => { const safe = Array.isArray(items) ? items : []; setProfileLinks(safe); return safe; })
+        .catch(() => cached?.profileLinks || []);
+      const messagesPromise = listPrivateMessages()
+        .then((items) => { const safe = Array.isArray(items) ? items : []; setPrivateMessages(safe); return safe; })
+        .catch(() => cached?.privateMessages || []);
+      const groupsPromise = listMessengerGroups()
+        .then((items) => {
+          const safe = mergeGroupsById((Array.isArray(items) ? items : []).map(normalizeMessengerGroup), loadLocalJson<LocalChatGroup[]>("ms_message_groups_v1", []));
+          setGroups(safe);
+          return safe;
+        })
+        .catch(() => cached?.groups || loadLocalJson<LocalChatGroup[]>("ms_message_groups_v1", []));
+
+      // Les amis/groupes sont appliqués dès que leur requête finit, sans attendre les messages/pièces jointes.
+      const [nextFriends, nextRequests, nextShares, nextLinks, nextMessages, normalizedGroups] = await Promise.all([
+        friendsPromise, requestsPromise, sharesPromise, linksPromise, messagesPromise, groupsPromise,
       ]);
       const nextCache: MessageCenterCacheData = {
         ts: Date.now(),
@@ -1342,13 +1417,9 @@ export default function MessagesPage({ store, update, go }: Props) {
         sharedMatches: Array.isArray(nextShares) ? nextShares : [],
         profileLinks: Array.isArray(nextLinks) ? nextLinks : [],
         privateMessages: Array.isArray(nextMessages) ? nextMessages : [],
+        groups: Array.isArray(normalizedGroups) ? normalizedGroups : [],
       };
       saveMessageCenterCache(nextCache);
-      setFriends(nextCache.friends);
-      setFriendRequests(nextCache.friendRequests);
-      setSharedMatches(nextCache.sharedMatches);
-      setProfileLinks(nextCache.profileLinks);
-      setPrivateMessages(nextCache.privateMessages);
       markMessageCenterRefreshNeeded();
     } catch (e: any) {
       if (!cached) setError(e?.message || String(e));
@@ -1360,6 +1431,15 @@ export default function MessagesPage({ store, update, go }: Props) {
   React.useEffect(() => {
     loadAll(false).catch(() => {});
   }, [loadAll]);
+
+  React.useEffect(() => {
+    // Affichage Messenger : on force une vraie synchro rapide quand l'écran Messages s'ouvre.
+    // Ça évite qu'un cache vide ou un timeout NAS masque les amis/groupes pendant plusieurs minutes.
+    if (active !== "messages") return;
+    const t1 = window.setTimeout(() => loadAll(true).catch(() => {}), 250);
+    const t2 = window.setTimeout(() => loadAll(true).catch(() => {}), 1800);
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2); };
+  }, [active, loadAll]);
 
 
   React.useEffect(() => {
@@ -2467,12 +2547,12 @@ export default function MessagesPage({ store, update, go }: Props) {
               <>
                 <audio ref={remoteAudioRef} autoPlay playsInline />
                 <div style={{ marginTop: 10, minHeight: 52, border: `1px solid ${GREEN}44`, borderRadius: 16, padding: "10px 12px", background: "rgba(125,255,178,.08)", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: GREEN, boxShadow: `0 0 18px ${GREEN}` }} />
-                  <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
-                    {Array.from({ length: 24 }).map((_, i) => (
-                      <span key={i} style={{ width: 4, height: 6 + ((i * 5 + Date.now()) % 20), borderRadius: 999, background: GREEN, opacity: 0.35 + (i % 4) * 0.12 }} />
-                    ))}
-                  </div>
+                <span style={{ width: 12, height: 12, borderRadius: 999, background: GREEN, boxShadow: `0 0 18px ${GREEN}` }} />
+                <div style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <span key={i} style={{ width: 4, height: 6 + ((i * 5 + Date.now()) % 20), borderRadius: 999, background: GREEN, opacity: 0.35 + (i % 4) * 0.12 }} />
+                  ))}
+                </div>
                 </div>
               </>
             ) : null}
