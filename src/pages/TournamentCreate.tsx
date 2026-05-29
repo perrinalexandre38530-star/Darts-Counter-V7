@@ -996,11 +996,11 @@ function GuidedHeroCard({
               aria-hidden="true"
               style={{
                 position: "absolute",
-                left: 12,
+                left: 10,
                 top: "50%",
                 transform: "translateY(-35%)",
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 borderRadius: 999,
                 padding: 3,
                 border: `1px solid ${primary}88`,
@@ -2448,8 +2448,20 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
     function pickFile(file?: File | null) {
       if (!file) return;
       if (!String(file.type || "").startsWith("image/")) return;
+
+      // Aperçu immédiat : évite que le mini-ticker reste vide pendant la lecture du fichier.
+      try {
+        const previewUrl = URL.createObjectURL(file);
+        onChange?.(previewUrl);
+      } catch {}
+
+      // Sauvegarde durable dans la compétition : DataURL remplacera l'aperçu blob dès que prêt.
       const reader = new FileReader();
-      reader.onload = () => onChange?.(String(reader.result || ""));
+      reader.onload = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        if (result) onChange?.(result);
+      };
+      reader.onerror = () => console.warn("[TournamentCreate] cover/logo import failed");
       reader.readAsDataURL(file);
     }
 
@@ -2492,6 +2504,11 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           gap: 9,
           padding: "14px 10px 12px",
           WebkitTapHighlightColor: "transparent",
+          ...(isCover && value ? {
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.16), rgba(0,0,0,.64)), url("${String(value).replace(/"/g, '\"')}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          } : {}),
         }}
       >
         <input
@@ -2509,14 +2526,14 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         <div
           style={{
             width: isCover ? "100%" : 76,
-            maxWidth: isCover ? "100%" : 76,
-            height: isCover ? 46 : 76,
+            maxWidth: isCover ? 172 : 76,
+            height: isCover ? 54 : 76,
             aspectRatio: isCover ? "4 / 1" : "1 / 1",
             borderRadius: isCover ? 14 : 999,
             padding: isCover ? 3 : 4,
-            border: value ? `1px solid ${accent}88` : `1px solid ${accent}55`,
-            background: "rgba(0,0,0,.34)",
-            boxShadow: value ? `0 0 20px ${accent}33` : `inset 0 0 18px rgba(0,0,0,.32), 0 0 14px ${accent}18`,
+            border: value ? `1px solid ${accent}AA` : `1px solid ${accent}55`,
+            background: value ? "rgba(0,0,0,.18)" : "rgba(0,0,0,.34)",
+            boxShadow: value ? `0 0 22px ${accent}44` : `inset 0 0 18px rgba(0,0,0,.32), 0 0 14px ${accent}18`,
             display: "grid",
             placeItems: "center",
             overflow: "hidden",
@@ -2530,9 +2547,10 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               style={{
                 width: "100%",
                 height: "100%",
-                objectFit: "cover",
+                objectFit: isCover ? "contain" : "cover",
                 borderRadius: isCover ? 11 : 999,
                 display: "block",
+                background: "rgba(0,0,0,.35)",
               }}
             />
           ) : (
