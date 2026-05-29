@@ -1971,6 +1971,19 @@ const isBotTurn = React.useMemo(() => {
     [lang]
   );
 
+  const voiceDirectDartRef = React.useRef<((dart: UIDart) => void) | null>(null);
+  const voiceValidateVisitRef = React.useRef<(() => void) | null>(null);
+
+  function voiceDartToUIDart(d: any): UIDart {
+    if (d?.kind === "BULL") return ({ v: 25, mult: 1 } as any);
+    if (d?.kind === "DBULL") return ({ v: 25, mult: 2 } as any);
+    if (d?.kind === "MISS") return ({ v: 20, mult: 0 } as any);
+    const kind = d?.kind as "S" | "D" | "T";
+    const base = Number(d?.base || 0);
+    const mult = kind === "T" ? 3 : kind === "D" ? 2 : 1;
+    return ({ v: base, mult } as any);
+  }
+
   const voiceScore = useVoiceScoreInput({
     enabled:
       voiceScoreEnabled &&
@@ -1982,6 +1995,23 @@ const isBotTurn = React.useMemo(() => {
     speak: speakVoiceScore,
     announcePlayer: false, // X01PlayV3 annonce déjà le tour
     playerName: activePlayer?.name || "",
+    onDart: (dart) => {
+      try {
+        if (!voiceMatchIsLive) return;
+        if (scoringSource === "external") return;
+        if (isBotTurn) return;
+        voiceDirectDartRef.current?.(voiceDartToUIDart(dart));
+      } catch (e) {
+        console.warn("[X01PlayV3] voice hit injection failed", e);
+      }
+    },
+    onConfirmVisit: () => {
+      try {
+        voiceValidateVisitRef.current?.();
+      } catch (e) {
+        console.warn("[X01PlayV3] voice validation failed", e);
+      }
+    },
     onCommit: (vdarts) => {
       try {
         if (!vdarts?.length) return;
@@ -2751,6 +2781,12 @@ const [bustError, setBustError] = React.useState<string | null>(null);
   const [isBust, setIsBust] = React.useState<boolean>(false);
 
 const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
+const voiceExpectedHitIndex = Math.max(0, Math.min(2, Number(voiceScore.expectedIndex ?? currentThrow.length ?? 0)));
+const voiceHitPromptActive =
+  voiceScoreEnabled &&
+  configuredScoreInputMethod === "voice" &&
+  !!voiceScore.phase &&
+  (String(voiceScore.phase).startsWith("WAIT_D") || String(voiceScore.phase).startsWith("LISTEN_D"));
 
 React.useEffect(() => {
   if (!effectiveOnline || !onlineTurnLocked) return;
@@ -3326,6 +3362,9 @@ const requestValidateThrow = () => {
       : "Vérifie avant d'envoyer aux autres joueurs.",
   });
 };
+
+voiceDirectDartRef.current = handleDirectDart;
+voiceValidateVisitRef.current = requestValidateThrow;
 
 const confirmOnlineVisit = () => {
   if (effectiveOnline && !onlineCanScore) {
@@ -4674,6 +4713,8 @@ if (isLandscapeTablet) {
                         supported: voiceScore.supported,
                         phase: voiceScore.phase,
                         activity: voiceScore.activity,
+                        expectedIndex: voiceScore.expectedIndex,
+                        awaitingConfirm: voiceScore.awaitingConfirm,
                         lastHeard: voiceScore.lastHeard,
                         dartsLabel: voiceScore.dartsLabel,
                         dartsTotal: voiceScore.dartsTotal,
@@ -5074,6 +5115,8 @@ if (isLandscapeTablet) {
                 supported: voiceScore.supported,
                 phase: voiceScore.phase,
                 activity: voiceScore.activity,
+                expectedIndex: voiceScore.expectedIndex,
+                awaitingConfirm: voiceScore.awaitingConfirm,
                 lastHeard: voiceScore.lastHeard,
                 dartsLabel: voiceScore.dartsLabel,
                 dartsTotal: voiceScore.dartsTotal,
@@ -5571,6 +5614,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                         currentThrow.slice(0, i + 1).reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
                       0;
                     const st = chipStyle(d, wouldBust);
+                    const voiceBlink = voiceHitPromptActive && i === voiceExpectedHitIndex && !d;
                     return (
                       <span
                         key={i}
@@ -5582,11 +5626,13 @@ function HeaderBlock(props: HeaderBlockProps) {
                           height: 25,
                           padding: "0 7px",
                           borderRadius: 9,
-                          border: st.border as string,
-                          background: st.background as string,
-                          color: st.color as string,
+                          border: voiceBlink ? "1px solid rgba(255,255,255,.96)" : (st.border as string),
+                          background: voiceBlink ? "rgba(255,255,255,.20)" : (st.background as string),
+                          color: voiceBlink ? "#fff" : (st.color as string),
                           fontWeight: 900,
                           fontSize: 12,
+                          boxShadow: voiceBlink ? "0 0 22px rgba(255,255,255,.58)" : undefined,
+                          animation: voiceBlink ? "dcVoiceBlink .85s ease-in-out infinite" : undefined,
                         }}
                       >
                         {fmt(d)}
@@ -5694,6 +5740,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                 0;
 
               const st = chipStyle(d, wouldBust);
+              const voiceBlink = voiceHitPromptActive && i === voiceExpectedHitIndex && !d;
 
               return (
                 <span
@@ -5706,11 +5753,13 @@ function HeaderBlock(props: HeaderBlockProps) {
                     height: 28,
                     padding: "0 10px",
                     borderRadius: 10,
-                    border: st.border as string,
-                    background: st.background as string,
-                    color: st.color as string,
+                    border: voiceBlink ? "1px solid rgba(255,255,255,.96)" : (st.border as string),
+                    background: voiceBlink ? "rgba(255,255,255,.20)" : (st.background as string),
+                    color: voiceBlink ? "#fff" : (st.color as string),
                     fontWeight: 800,
                     fontSize: 13,
+                    boxShadow: voiceBlink ? "0 0 22px rgba(255,255,255,.58)" : undefined,
+                    animation: voiceBlink ? "dcVoiceBlink .85s ease-in-out infinite" : undefined,
                   }}
                 >
                   {fmt(d)}

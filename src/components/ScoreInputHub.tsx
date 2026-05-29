@@ -23,6 +23,8 @@ type VoiceControl = {
   dartsTotal?: number;
   permissionHint?: string | null;
   activity?: string;
+  expectedIndex?: number;
+  awaitingConfirm?: boolean;
   onStart?: () => void;
   onStop?: () => void;
   onReset?: () => void;
@@ -189,7 +191,7 @@ export default function ScoreInputHub({
   const voicePhase = String(voiceControl?.phase || "OFF");
   const voiceActivity = String(voiceControl?.activity || "idle");
   const voiceRequesting = voicePhase === "REQUESTING_MIC" || voiceActivity === "requesting";
-  const voiceListening = voicePhase.startsWith("LISTEN") || voicePhase === "RECAP_CONFIRM" || voiceRequesting || voiceActivity === "recording" || voiceActivity === "speech" || voiceActivity === "confirming";
+  const voiceListening = voicePhase.startsWith("LISTEN") || voiceRequesting || voiceActivity === "recording" || voiceActivity === "speech" || voiceActivity === "confirming";
   const voiceSupported = voiceControl?.supported !== false;
   const voiceCanStart = !disabled && !!voiceControl?.onStart;
   const voiceCanStop = !disabled && voiceListening && !!voiceControl?.onStop;
@@ -300,6 +302,8 @@ export default function ScoreInputHub({
       dartsTotal={voiceControl?.dartsTotal}
       permissionHint={voiceControl?.permissionHint}
       activity={voiceActivity}
+      expectedIndex={voiceControl?.expectedIndex}
+      awaitingConfirm={!!voiceControl?.awaitingConfirm}
     />
   ) : null;
 
@@ -325,6 +329,7 @@ export default function ScoreInputHub({
 
   return (
     <div style={{ position: "relative" }}>
+      <style>{`@keyframes dcVoiceBlink{0%,100%{opacity:1;filter:brightness(1.1)}50%{opacity:.42;filter:brightness(1.85)}} @keyframes dcVoiceGlow{0%,100%{box-shadow:0 0 12px rgba(255,255,255,.26)}50%{box-shadow:0 0 26px rgba(255,255,255,.82)}}`}</style>
       {showSwitcher ? (
         <div style={{ marginBottom: 8 }}>
           <MethodBar
@@ -540,6 +545,8 @@ function VoiceInlineNotice({
   dartsLabel,
   dartsTotal,
   permissionHint,
+  expectedIndex,
+  awaitingConfirm,
 }: {
   enabled: boolean;
   supported: boolean;
@@ -550,6 +557,8 @@ function VoiceInlineNotice({
   dartsLabel?: string;
   dartsTotal?: number;
   permissionHint?: string | null;
+  expectedIndex?: number;
+  awaitingConfirm?: boolean;
 }) {
   const rawHint = String(permissionHint || "");
   const hintLabel =
@@ -574,12 +583,15 @@ function VoiceInlineNotice({
       : rawHint || "";
 
   const isRequesting = phase === "REQUESTING_MIC" || activity === "requesting";
-  const isRecording = phase.startsWith("LISTEN") || activity === "recording" || activity === "speech";
-  const isConfirming = phase === "RECAP_CONFIRM" || activity === "confirming";
-  const isLive = listening || isRequesting || isRecording || isConfirming;
+  const isRecording = phase.startsWith("LISTEN_D") || activity === "recording" || activity === "speech";
+  const isConfirmListening = phase === "LISTEN_CONFIRM" || activity === "confirming";
+  const isWaitingHit = phase.startsWith("WAIT_D");
+  const isWaitingConfirm = awaitingConfirm || phase === "WAIT_CONFIRM";
+  const isLive = listening || isRequesting || isRecording || isConfirmListening;
   const hasError = !!rawHint && rawHint !== "autorisation_micro";
+  const hitNo = Math.max(1, Math.min(3, Number(expectedIndex ?? 0) + 1));
 
-  const tone = !enabled || !supported || hasError ? "warn" : isLive ? "live" : "idle";
+  const tone = !enabled || !supported || hasError ? "warn" : isLive ? "live" : isWaitingConfirm ? "confirm" : isWaitingHit ? "wait" : "idle";
   const title = !enabled
     ? "Commande vocale inactive pour ce tour"
     : !supported
@@ -588,17 +600,19 @@ function VoiceInlineNotice({
     ? hintLabel
     : isRequesting
     ? "Autorisation micro…"
-    : isConfirming
-    ? dartsLabel
-      ? `Volée reconnue : ${dartsLabel} — ${dartsTotal ?? 0} pts. Dis OUI ou NON.`
-      : "Confirme : oui / non"
+    : isConfirmListening
+    ? "MICRO ACTIF — dis OUI / VALIDE / VALIDER"
+    : isWaitingConfirm
+    ? `VALIDER ? ${dartsLabel ? `${dartsLabel} — ${dartsTotal ?? 0} pts` : "Volée complète"}`
     : activity === "speech"
     ? "Voix détectée — continue"
     : isRecording
-    ? "MICRO ACTIF — dicte tes 3 fléchettes"
-    : "Appuie sur MICRO puis dicte la volée";
+    ? `MICRO ACTIF — annonce le HIT ${hitNo}`
+    : isWaitingHit
+    ? `HIT ${hitNo} attendu — appuie sur MICRO puis annonce le hit`
+    : "Appuie sur MICRO puis annonce le hit";
 
-  const liveDotColor = tone === "warn" ? "#ffcc66" : tone === "live" ? "#b4ff1e" : "rgba(255,255,255,.42)";
+  const liveDotColor = tone === "warn" ? "#ffcc66" : tone === "live" ? "#b4ff1e" : tone === "confirm" ? "#ffffff" : "rgba(255,255,255,.42)";
 
   return (
     <div
@@ -609,14 +623,18 @@ function VoiceInlineNotice({
             ? "1px solid rgba(255,204,102,.38)"
             : tone === "live"
             ? "1px solid rgba(180,255,30,.46)"
+            : tone === "confirm"
+            ? "1px solid rgba(255,255,255,.92)"
             : "1px solid rgba(255,255,255,.09)",
         background:
           tone === "warn"
             ? "rgba(255,174,0,.08)"
             : tone === "live"
             ? "rgba(180,255,30,.11)"
+            : tone === "confirm"
+            ? "rgba(255,255,255,.14)"
             : "rgba(255,255,255,.045)",
-        color: tone === "warn" ? "#ffcc66" : tone === "live" ? "#d8ff66" : "rgba(255,255,255,.68)",
+        color: tone === "warn" ? "#ffcc66" : tone === "live" ? "#d8ff66" : tone === "confirm" ? "#ffffff" : "rgba(255,255,255,.68)",
         padding: "0 10px",
         minHeight: 34,
         display: "flex",
@@ -625,7 +643,8 @@ function VoiceInlineNotice({
         fontSize: 11.5,
         fontWeight: 900,
         lineHeight: 1.16,
-        boxShadow: tone === "live" ? "0 0 18px rgba(180,255,30,.14)" : "none",
+        boxShadow: tone === "live" ? "0 0 18px rgba(180,255,30,.14)" : tone === "confirm" ? "0 0 22px rgba(255,255,255,.28)" : "none",
+        animation: tone === "confirm" ? "dcVoiceGlow 1s ease-in-out infinite" : undefined,
       }}
     >
       <span
@@ -636,7 +655,8 @@ function VoiceInlineNotice({
           borderRadius: 999,
           flex: "0 0 auto",
           background: liveDotColor,
-          boxShadow: tone === "live" ? "0 0 14px rgba(180,255,30,.75)" : "none",
+          boxShadow: tone === "live" ? "0 0 14px rgba(180,255,30,.75)" : tone === "confirm" ? "0 0 14px rgba(255,255,255,.85)" : "none",
+          animation: tone === "live" || tone === "confirm" ? "dcVoiceBlink .9s ease-in-out infinite" : undefined,
         }}
       />
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -654,7 +674,7 @@ function VoiceInlineNotice({
           </div>
         ) : null}
       </div>
-      {isLive && tone === "live" ? (
+      {(isLive && tone === "live") || tone === "confirm" ? (
         <span
           style={{
             flex: "0 0 auto",
@@ -668,7 +688,7 @@ function VoiceInlineNotice({
             letterSpacing: 0.8,
           }}
         >
-          REC
+          {tone === "confirm" ? "VALIDER" : "REC"}
         </span>
       ) : null}
     </div>

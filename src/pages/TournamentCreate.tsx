@@ -31,7 +31,11 @@ import { saveOnlineCompetition } from "../lib/tournaments/onlineStore";
 // ✅ Avatar + StarRing (comme X01Config)
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BackDot from "../components/BackDot";
 import { loadBots as loadStoredBots } from "../lib/bots";
+import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
+import leagueWatermark from "../assets/ui/competition_league_watermark.png";
+import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
 
 // ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
@@ -442,25 +446,50 @@ function pickBotsToFill(fromCatalog: any[], need: number, avgTarget: number) {
    UI atoms (THEME neon-ish)
 ------------------------------ */
 
-function Section({ title, subtitle, children, accent = THEME }: any) {
+function Section({ title, subtitle, children, accent = THEME, watermark }: any) {
   return (
     <div
       style={{
-        borderRadius: 18,
-        padding: 14,
-        marginTop: 12,
-        background: `radial-gradient(120% 160% at 0% 0%, ${accent}22, transparent 55%), linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))`,
-        border: "1px solid rgba(255,255,255,0.10)",
-        boxShadow: "0 14px 30px rgba(0,0,0,0.55)",
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 22,
+        padding: 16,
+        marginTop: 14,
+        background: `radial-gradient(135% 140% at 0% 0%, ${accent}24, transparent 54%), linear-gradient(180deg, rgba(22,22,28,0.985), rgba(7,7,11,0.995))`,
+        border: `1px solid ${accent}33`,
+        boxShadow: `0 18px 42px rgba(0,0,0,0.58), 0 0 20px ${accent}14`,
       }}
     >
-      <div style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 950, letterSpacing: 0.3, color: accent, textShadow: `0 0 10px ${accent}40` }}>
-          {title}
+      {watermark ? (
+        <img
+          src={watermark}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          style={{
+            position: "absolute",
+            right: -28,
+            top: "50%",
+            width: 152,
+            height: 152,
+            objectFit: "contain",
+            opacity: 0.13,
+            transform: "translateY(-50%) rotate(-8deg)",
+            pointerEvents: "none",
+            filter: `drop-shadow(0 0 18px ${accent}22)`,
+            userSelect: "none",
+          }}
+        />
+      ) : null}
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{ display: "grid", gap: 4, marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 1000, letterSpacing: 0.3, color: accent, textShadow: `0 0 12px ${accent}35` }}>
+            {title}
+          </div>
+          {subtitle ? <div style={{ fontSize: 12, opacity: 0.82, lineHeight: 1.38, maxWidth: 520 }}>{subtitle}</div> : null}
         </div>
-        {subtitle ? <div style={{ fontSize: 11.5, opacity: 0.78, lineHeight: 1.35 }}>{subtitle}</div> : null}
+        {children}
       </div>
-      {children}
     </div>
   );
 }
@@ -827,12 +856,113 @@ function TextInput({ value, onChange, placeholder, width = "100%" }: any) {
   );
 }
 
+function GuidedVisualHeader({ onBack, onFull, accent = THEME }: any) {
+  return (
+    <div style={{ position: "relative", marginBottom: 14 }}>
+      <img
+        src={tickerCompetitions}
+        alt="Compétitions"
+        draggable={false}
+        style={{
+          display: "block",
+          width: "100%",
+          maxWidth: "100%",
+          height: "auto",
+          maxHeight: 104,
+          objectFit: "contain",
+          borderRadius: 18,
+          boxShadow: "0 16px 40px rgba(0,0,0,.62), 0 0 24px rgba(183,255,0,.12)",
+          userSelect: "none",
+        }}
+      />
+      <div style={{ position: "absolute", left: 10, top: 10, zIndex: 4 }}>
+        <BackDot onClick={onBack} size={40} title="Retour" color={accent} glow={`${accent}88`} />
+      </div>
+      <button
+        type="button"
+        onClick={onFull}
+        style={{
+          position: "absolute",
+          right: 12,
+          bottom: 10,
+          zIndex: 4,
+          borderRadius: 999,
+          padding: "8px 14px",
+          border: `1px solid ${accent}66`,
+          background: "rgba(0,0,0,.42)",
+          color: accent,
+          fontWeight: 950,
+          cursor: "pointer",
+          backdropFilter: "blur(4px)",
+          boxShadow: `0 0 16px ${accent}20`,
+        }}
+      >
+        Configuration complète
+      </button>
+    </div>
+  );
+}
+
+function GuidedHeroCard({ title, sportLabel, sourceLabel, primary = THEME, kindLabel, watermark }: any) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 24,
+        padding: 18,
+        border: `1px solid ${primary}44`,
+        background: `radial-gradient(130% 125% at 0% 0%, ${primary}20, transparent 56%), linear-gradient(180deg, rgba(20,20,26,.985), rgba(6,6,9,.995))`,
+        boxShadow: `0 24px 60px rgba(0,0,0,.68), 0 0 24px ${primary}14`,
+      }}
+    >
+      <img
+        src={watermark}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        style={{
+          position: "absolute",
+          right: -28,
+          top: "50%",
+          width: 190,
+          height: 190,
+          objectFit: "contain",
+          opacity: 0.22,
+          transform: "translateY(-50%) rotate(-8deg)",
+          pointerEvents: "none",
+          filter: `drop-shadow(0 0 20px ${primary}24)`,
+          userSelect: "none",
+        }}
+      />
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", padding: "4px 12px", borderRadius: 999, border: `1px solid ${primary}77`, color: primary, background: "rgba(0,0,0,.35)", fontSize: 11.5, fontWeight: 1000, letterSpacing: .45, textTransform: "uppercase" }}>
+            Configuration guidée
+          </span>
+          <span style={{ fontSize: 11.5, fontWeight: 900, letterSpacing: .45, color: "rgba(255,255,255,.76)", textTransform: "uppercase" }}>
+            {sportLabel} · {sourceLabel}
+          </span>
+        </div>
+        <div style={{ marginTop: 12, fontSize: 30, lineHeight: 1.02, fontWeight: 1000, maxWidth: 470 }}>
+          {title}
+        </div>
+        <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.38, opacity: .84, maxWidth: 520 }}>
+          Avance étape par étape. Les choix alimentent exactement le même moteur que la configuration complète, mais dans une lecture beaucoup plus simple.
+        </div>
+        <div style={{ marginTop: 14, display: "inline-flex", padding: "6px 12px", borderRadius: 999, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", fontSize: 12, fontWeight: 900, color: "rgba(255,255,255,.88)" }}>
+          {kindLabel}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* -----------------------------
    Page
 ------------------------------ */
 
 export default function TournamentCreate({ store, go, params }: Props) {
-  const primary = THEME;
 
   // ✅ FORCE SPORT multi-sport (local + online) : vient de GameSelect / BottomNav.
   const forceMode = normalizeCompetitionSport(params?.forceMode ?? params?.sport ?? "darts");
@@ -843,6 +973,9 @@ export default function TournamentCreate({ store, go, params }: Props) {
   }, [initialSource]);
   const competitionKind = String(params?.kind || params?.competitionKind || "tournament").toLowerCase();
   const isLeague = competitionKind === "league" || competitionKind === "championship" || competitionKind === "championnat";
+  const primary = isLeague ? "#f7c85c" : "#ff7fe2";
+  const primaryAura = isLeague ? "rgba(247,200,92,0.13)" : "rgba(255,127,226,0.14)";
+  const kindWatermark = isLeague ? leagueWatermark : tournamentWatermark;
   const isPetanque = forceMode === "petanque";
   const isBabyFoot = forceMode === "babyfoot";
   const [configMode, setConfigMode] = React.useState<"guided" | "full">(String(params?.configMode || "guided") === "full" ? "full" : "guided");
@@ -2029,12 +2162,13 @@ const petanqueTeamsUI = React.useMemo(() => {
             onClick={() => goGuidedStep(-1)}
             style={{
               borderRadius: 999,
-              border: "1px solid rgba(255,255,255,.14)",
+              border: "1px solid rgba(255,255,255,.12)",
               padding: "12px 10px",
-              background: "rgba(255,255,255,.055)",
+              background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
               color: "#fff",
               fontWeight: 950,
               cursor: "pointer",
+              boxShadow: "0 14px 28px rgba(0,0,0,.28)",
             }}
           >
             ← Retour
@@ -2053,7 +2187,7 @@ const petanqueTeamsUI = React.useMemo(() => {
               color: canCreate ? "#181008" : "rgba(255,255,255,.50)",
               fontWeight: 1000,
               cursor: canCreate ? "pointer" : "not-allowed",
-              boxShadow: canCreate ? `0 0 22px ${primary}44` : "none",
+              boxShadow: canCreate ? `0 18px 34px rgba(0,0,0,.34), 0 0 22px ${primary}44` : "none",
             }}
           >
             {isLeague ? "Créer la ligue" : "Créer le tournoi"}
@@ -2070,7 +2204,7 @@ const petanqueTeamsUI = React.useMemo(() => {
               color: "#181008",
               fontWeight: 1000,
               cursor: "pointer",
-              boxShadow: `0 0 22px ${primary}33`,
+              boxShadow: `0 18px 34px rgba(0,0,0,.34), 0 0 22px ${primary}33`,
             }}
           >
             Continuer →
@@ -2121,88 +2255,55 @@ const petanqueTeamsUI = React.useMemo(() => {
           padding: 16,
           paddingBottom: 96,
           color: "#f5f5f7",
-          background: `radial-gradient(circle at top, rgba(247,200,92,0.12) 0, rgba(10,10,14,0) 40%), radial-gradient(circle at 40% 0%, rgba(40,40,56,0.65), rgba(5,5,8,1) 55%, rgba(0,0,0,1) 100%)`,
+          background: `radial-gradient(circle at top, ${primaryAura} 0, rgba(10,10,14,0) 40%), radial-gradient(circle at 40% 0%, rgba(40,40,56,0.65), rgba(5,5,8,1) 55%, rgba(0,0,0,1) 100%)`,
           minHeight: "100vh",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => go("tournaments", { forceMode, source })}
-            style={{
-              borderRadius: 999,
-              padding: "7px 12px",
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.05)",
-              color: "rgba(255,255,255,0.92)",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            ← Retour
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfigMode("full")}
-            style={{
-              borderRadius: 999,
-              padding: "7px 12px",
-              border: `1px solid ${primary}66`,
-              background: "rgba(255,255,255,0.05)",
-              color: primary,
-              fontWeight: 950,
-              cursor: "pointer",
-            }}
-          >
-            Configuration complète
-          </button>
-        </div>
+        <GuidedVisualHeader
+          accent={primary}
+          onBack={() => go("tournaments", { forceMode, source })}
+          onFull={() => setConfigMode("full")}
+        />
 
-        <div
-          style={{
-            marginTop: 12,
-            borderRadius: 22,
-            padding: 16,
-            border: `1px solid ${primary}44`,
-            background: "linear-gradient(180deg, rgba(18,18,24,.98), rgba(5,5,8,.99))",
-            boxShadow: "0 22px 60px rgba(0,0,0,.65)",
-          }}
-        >
-          <div style={{ fontSize: 11.5, color: primary, fontWeight: 950, letterSpacing: .5, textTransform: "uppercase" }}>
-            Configuration guidée · {sportLabel} · {source === "online" ? "Online" : "Local"}
-          </div>
-          <h1 style={{ margin: "7px 0 0", fontSize: "clamp(26px, 6vw, 38px)", lineHeight: .98, fontWeight: 1000 }}>{title}</h1>
-          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.35, opacity: .78 }}>
-            Avance étape par étape. Les choix alimentent le même moteur que la configuration complète.
-          </div>
+        <GuidedHeroCard
+          title={title}
+          sportLabel={sportLabel.toUpperCase()}
+          sourceLabel={source === "online" ? "ONLINE" : "LOCAL"}
+          primary={primary}
+          kindLabel={isLeague ? "Ligue / championnat" : "Tournoi"}
+          watermark={kindWatermark}
+        />
 
-          <div style={{ marginTop: 14, display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
-            {guidedSteps.map((s, idx) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setGuidedStep(idx)}
-                style={{
-                  flex: "0 0 auto",
-                  borderRadius: 999,
-                  padding: "7px 10px",
-                  border: idx === step ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.10)",
-                  background: idx === step ? `linear-gradient(180deg, ${primary}22, rgba(0,0,0,.20))` : "rgba(255,255,255,.04)",
-                  color: idx === step ? primary : "rgba(255,255,255,.72)",
-                  fontSize: 11.5,
-                  fontWeight: 950,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {idx + 1}. {s}
-              </button>
-            ))}
-          </div>
+        <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" as any }}>
+          {guidedSteps.map((s, idx) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setGuidedStep(idx)}
+              style={{
+                flex: "0 0 auto",
+                minWidth: 92,
+                borderRadius: 999,
+                padding: "9px 12px",
+                border: idx === step ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.10)",
+                background: idx === step
+                  ? `radial-gradient(120% 140% at 0% 0%, ${primary}24, transparent 56%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(10,10,14,.99))`
+                  : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+                color: idx === step ? primary : "rgba(255,255,255,.74)",
+                fontSize: 11.5,
+                fontWeight: 1000,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: idx === step ? `0 0 18px ${primary}20` : "0 10px 22px rgba(0,0,0,.18)",
+              }}
+            >
+              {idx + 1}. {s}
+            </button>
+          ))}
         </div>
 
         {step === 0 ? (
-          <Section title="1. Type de compétition" subtitle="Choisis où sera créée la compétition, puis donne-lui un nom." accent={primary}>
+          <Section title="1. Type de compétition" subtitle="Choisis où sera créée la compétition, puis donne-lui un nom." accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <RowTitle label="Nom" />
@@ -2218,7 +2319,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 1 ? (
-          <Section title="2. Solo ou équipe" subtitle="Cette étape prépare la sélection des participants." accent={primary}>
+          <Section title="2. Solo ou équipe" subtitle="Cette étape prépare la sélection des participants." accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
               <GuidedChoiceCard active={participantKind === "solo"} title="Solo" text="Joueurs individuels" onClick={() => setParticipantChoice("solo")} />
               <GuidedChoiceCard active={participantKind === "teams"} title="Équipe" text={isPetanque ? "Équipes complètes" : "Mode équipe"} onClick={() => setParticipantChoice("teams")} />
@@ -2240,7 +2341,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 2 ? (
-          <Section title="3. Participants" subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary}>
+          <Section title="3. Participants" subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12.5, opacity: .82 }}>
                 <b style={{ color: primary }}>{isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</b> {isPetanque && petanqueEntry === "teams" ? "équipe(s)" : "participant(s)"}
@@ -2305,7 +2406,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 3 ? (
-          <Section title="4. Format" subtitle={isLeague ? "Une ligue utilise un classement de type championnat." : "Choisis la structure du tournoi."} accent={primary}>
+          <Section title="4. Format" subtitle={isLeague ? "Une ligue utilise un classement de type championnat." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10 }}>
               {isLeague ? (
                 <LineOption label="Championnat / classement" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
@@ -2323,7 +2424,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 4 ? (
-          <Section title="5. Règles" subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary}>
+          <Section title="5. Règles" subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 14 }}>
               {!lockedSportMode ? (
                 <div>
@@ -2398,7 +2499,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 5 ? (
-          <Section title="6. Récapitulatif" subtitle="Vérifie puis crée la compétition." accent={primary}>
+          <Section title="6. Récapitulatif" subtitle="Vérifie puis crée la compétition." accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 9, fontSize: 13, lineHeight: 1.35 }}>
               <div><b style={{ color: primary }}>Nom :</b> {name || "—"}</div>
               <div><b style={{ color: primary }}>Type :</b> {guidedKindLabel}</div>
@@ -2439,7 +2540,7 @@ const petanqueTeamsUI = React.useMemo(() => {
         padding: 16,
         paddingBottom: 96,
         color: "#f5f5f7",
-        background: `radial-gradient(circle at top, rgba(247,200,92,0.12) 0, rgba(10,10,14,0) 40%), radial-gradient(circle at 40% 0%, rgba(40,40,56,0.65), rgba(5,5,8,1) 55%, rgba(0,0,0,1) 100%)`,
+        background: `radial-gradient(circle at top, ${primaryAura} 0, rgba(10,10,14,0) 40%), radial-gradient(circle at 40% 0%, rgba(40,40,56,0.65), rgba(5,5,8,1) 55%, rgba(0,0,0,1) 100%)`,
         minHeight: "100vh",
       }}
     >
