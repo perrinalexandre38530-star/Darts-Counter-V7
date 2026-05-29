@@ -1,18 +1,17 @@
 // ============================================
 // src/lib/scoreInput/types.ts
-// Unification des méthodes de saisie (Keypad / Cible / Presets / Voice / AI…)
-// Objectif: toutes les UI de saisie produisent le même payload.
+// Unification des méthodes de saisie X01.
+// Méthodes conservées côté produit : Keypad / Cible / Presets / Voice.
+// AUTO et IA ont été supprimés volontairement : valeurs héritées => keypad.
 // ============================================
 
 export type ScoreInputMethod =
   | "keypad"
   | "dartboard"
   | "presets"
-  | "voice"
-  | "auto"
-  | "ai";
+  | "voice";
 
-export type ScoreInputSource = ScoreInputMethod | "external";
+export type ScoreInputSource = ScoreInputMethod | "external" | "external-video";
 
 export type UIDartInput = {
   /** 0 = MISS, 1..20 = segments, 25 = BULL/DBULL (mult=2 => 50) */
@@ -24,10 +23,18 @@ export type UIDartInput = {
 export type ScoreVisitPayload = {
   darts: UIDartInput[]; // 0..3
   source: ScoreInputSource;
-  /** Optionnel: confiance (vision / IA) */
+  /** Optionnel: confiance (vision / bridge externe) */
   confidence?: number; // 0..1
-  /** Optionnel: meta (texte voice, etc.) */
+  /** Optionnel: meta (texte voice, provider externe, etc.) */
   meta?: Record<string, any>;
 };
 
 export const SCORE_INPUT_LS_KEY = "dc-score-input-method";
+
+export function sanitizeScoreInputMethod(value: unknown): ScoreInputMethod {
+  if (value === "keypad" || value === "dartboard" || value === "presets" || value === "voice") {
+    return value;
+  }
+  // Compat anciennes configs : auto / ai / camera-ai / tout inconnu => keypad.
+  return "keypad";
+}

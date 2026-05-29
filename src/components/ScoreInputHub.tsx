@@ -1,7 +1,7 @@
 // ============================================
 // src/components/ScoreInputHub.tsx
 // Hub de saisie unifié (gros patch)
-// - Permet de basculer entre plusieurs méthodes: Keypad, Cible cliquable, Presets
+// - Permet de basculer entre plusieurs méthodes: Keypad, Cible cliquable, Presets, Voice
 // - Les pages "Play" restent source de vérité (currentThrow, validate, undo, etc.)
 // - Compatible drop-in avec l'API du Keypad existant + options.
 // ============================================
@@ -12,7 +12,7 @@ import Keypad from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
 import type { Dart as UIDart } from "../lib/types";
-import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
 
 type Props = {
   /** Volée en cours (0..3 flèches) */
@@ -30,7 +30,7 @@ type Props = {
   onBull: () => void;
   onValidate: () => void;
 
-  /** ✅ NEW: injection directe d'une fléchette (pour presets / IA / voice) */
+  /** ✅ NEW: injection directe d'une fléchette (pour presets / voice / source externe) */
   onDirectDart?: (d: UIDart) => void;
 
   /** Autoriser l'onglet Presets (par défaut: auto si onDirectDart est fourni) */
@@ -45,8 +45,10 @@ type Props = {
 
   /** Désactive toutes les saisies */
   disabled?: boolean;
-  /** Autorise l'UI voice/auto/ai (placeholders) */
+  /** Autorise les cartes d’aide pour les méthodes assistées (ex: voice). */
   showPlaceholders?: boolean;
+  /** Ancien prop déjà utilisé par certaines pages : masque le sélecteur de méthode. */
+  hideSwitcher?: boolean;
 
   /**
    * Affichage du sélecteur de méthode en match.
@@ -77,17 +79,10 @@ function safeReadDevModeEnabled(): boolean {
 
 function safeReadMethod(): ScoreInputMethod {
   try {
-    const v = (localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad") as ScoreInputMethod;
-    if (
-      v === "keypad" ||
-      v === "dartboard" ||
-      v === "presets" ||
-      v === "voice" ||
-      v === "auto" ||
-      v === "ai"
-    ) {
-      return v;
-    }
+    const raw = localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad";
+    const method = sanitizeScoreInputMethod(raw);
+    if (method !== raw) localStorage.setItem(SCORE_INPUT_LS_KEY, method);
+    return method;
   } catch {
     // ignore
   }
@@ -176,27 +171,15 @@ export default function ScoreInputHub({
   const [openMode, setOpenMode] = React.useState(false);
   const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
 
-  // ✅ Quand le switcher est masqué, on force la saisie au KEYPAD
-  // (et on n'affiche aucune UI de changement de mode).
-  React.useEffect(() => {
-    if (switcherMode !== "hidden") return;
-    if (method !== "keypad") setMethod("keypad");
-  }, [switcherMode, method]);
-
-  // En prod: seules KEYPAD + CIBLE sont officiellement utilisables.
-  // Les autres restent sélectionnables uniquement si le mode développeur est activé.
-  React.useEffect(() => {
-    if (devEnabled) return;
-    if (method === "keypad" || method === "dartboard") return;
-    setMethod("keypad");
-  }, [devEnabled, method]);
+  // Quand le switcher est masqué, la méthode choisie en configuration reste appliquée.
+  // On ne force plus KEYPAD : PRESETS / VOICE doivent pouvoir devenir les défauts réels.
 
   React.useEffect(() => {
     safeWriteMethod(method);
   }, [method]);
 
-  // Presets / Voice / Auto / IA : visibles mais grisés (sauf mode dev)
-  const allowPresets = devEnabled && !!onDirectDart && enablePresets;
+  // PRESETS est désormais une méthode produit réelle : disponible dès que l’injection directe existe.
+  const allowPresets = !!onDirectDart && enablePresets;
 
   // ⚠️ UX: en gameplay on évite les menus repliables (ça fait perdre de la hauteur).
   // On traite "drawer" comme "inline" (toujours visible) et on garde "hidden" pour figer.
@@ -425,7 +408,7 @@ export default function ScoreInputHub({
       ) : null}
 
       {/* Méthode principale (Keypad + placeholders) */}
-      {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
+      {method === "keypad" || method === "presets" || method === "voice" ? (
         <div
           ref={fitToParent ? fitOuterRef : null}
           style={{
@@ -451,7 +434,7 @@ export default function ScoreInputHub({
                 : undefined
             }
           >
-          {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
+          {method === "voice" && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
 
@@ -557,14 +540,12 @@ function MethodBar({
     );
   };
 
-  // Règle produit : seuls KEYPAD et CIBLE sont utilisables (pour l'instant).
-  // Le reste est grisé, mais déverrouillable en mode développeur.
+  // Méthodes produit disponibles : KEYPAD / CIBLE / PRESETS / VOICE.
+  // AUTO et IA ont été retirés pour éviter les fonctions fantômes.
   const enableKeypad = true;
   const enableDartboard = true;
-  const enablePresets = false;
-  const enableVoice = false;
-  const enableAuto = false;
-  const enableAI = false;
+  const enablePresets = allowPresets;
+  const enableVoice = true;
 
   return (
     <div
@@ -578,32 +559,18 @@ function MethodBar({
     >
       {btn("keypad", "KEYPAD", enableKeypad)}
       {btn("dartboard", "CIBLE", enableDartboard)}
-
-      {showPlaceholders && (
-        <>
-          {btn("presets", "PRESETS", enablePresets && allowPresets)}
-          {btn("voice", "VOICE", enableVoice)}
-          {btn("auto", "AUTO", enableAuto)}
-          {btn("ai", "CAMERA/IA", enableAI)}
-        </>
-      )}
+      {btn("presets", "PRESETS", enablePresets)}
+      {btn("voice", "VOICE", enableVoice)}
     </div>
   );
 }
 
 function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
-  const title =
-    method === "voice"
-      ? "Reconnaissance vocale"
-      : method === "auto"
-      ? "Auto-scoring"
-      : "IA / Dartsmind-like";
+  const title = method === "voice" ? "Reconnaissance vocale" : "Méthode de saisie";
   const subtitle =
     method === "voice"
-      ? "Branchement en cours — le keypad reste disponible en fallback."
-      : method === "auto"
-      ? "Module léger — à valider et calibrer (fallback keypad)."
-      : "Module avancé — à intégrer via onDirectDart (fallback keypad).";
+      ? "Commande vocale active depuis la configuration. Le keypad reste disponible en fallback/correction."
+      : "Méthode disponible.";
   return (
     <div
       style={{

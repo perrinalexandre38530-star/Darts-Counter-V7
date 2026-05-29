@@ -24,7 +24,7 @@ import {
   type DartSet,
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
-import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
 import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
 
@@ -748,14 +748,32 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- NEW : SAISIE VOCALE DES SCORES (MVP) ----
   const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState<boolean>(false);
 
-  // ---- NEW : METHODE DE SAISIE (Keypad / Cible / Presets / Voice / Auto / IA) ----
+  // ---- METHODE DE SAISIE (Keypad / Cible / Presets / Voice) ----
   const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
     try {
-      const v = (localStorage.getItem(SCORE_INPUT_LS_KEY) || 'keypad') as ScoreInputMethod;
-      if (v === 'keypad' || v === 'dartboard' || v === 'presets' || v === 'voice' || v === 'auto' || v === 'ai') return v;
+      const raw = localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad";
+      const method = sanitizeScoreInputMethod(raw);
+      if (method !== raw) localStorage.setItem(SCORE_INPUT_LS_KEY, method);
+      return method;
     } catch {}
-    return 'keypad';
+    return "keypad";
   });
+
+  const selectScoreInputMethod = React.useCallback((method: ScoreInputMethod) => {
+    setScoreInputMethod(method);
+    try {
+      localStorage.setItem(SCORE_INPUT_LS_KEY, method);
+    } catch {}
+
+    if (method === "voice") {
+      setVoiceScoreEnabled(true);
+      setExternalScoringEnabled(false);
+      return;
+    }
+
+    // Une méthode manuelle ou preset coupe la commande vocale pour éviter deux moteurs actifs.
+    setVoiceScoreEnabled(false);
+  }, []);
 
   const [externalInfoOpen, setExternalInfoOpen] = React.useState<boolean>(false);
   const [externalInfoStep, setExternalInfoStep] = React.useState<1 | 2 | 3>(1);
@@ -1047,7 +1065,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
     try {
       try {
-        localStorage.setItem(SCORE_INPUT_LS_KEY, scoreInputMethod);
+        localStorage.setItem(SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod(scoreInputMethod));
       } catch {}
       onStart(baseCfg as X01ConfigV3);
     } catch (e) {
@@ -1809,7 +1827,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
               {t(
                 "x01v3.inputMethod.desc",
-                "Choisis l’interface par défaut (tu pourras basculer en match via le hub)."
+                "Choisis l’interface par défaut : keypad, cible, presets ou voix."
               )}
             </div>
 
@@ -1817,7 +1835,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <PillButton
                 label={t("x01v3.inputMethod.keypad", "KEYPAD")}
                 active={scoreInputMethod === "keypad"}
-                onClick={() => setScoreInputMethod("keypad")}
+                onClick={() => selectScoreInputMethod("keypad")}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -1825,7 +1843,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <PillButton
                 label={t("x01v3.inputMethod.dartboard", "CIBLE")}
                 active={scoreInputMethod === "dartboard"}
-                onClick={() => setScoreInputMethod("dartboard")}
+                onClick={() => selectScoreInputMethod("dartboard")}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -1833,34 +1851,15 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <PillButton
                 label={t("x01v3.inputMethod.presets", "PRESETS")}
                 active={scoreInputMethod === "presets"}
-                onClick={() => setScoreInputMethod("presets")}
+                onClick={() => selectScoreInputMethod("presets")}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
               />
-            </div>
-
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
               <PillButton
                 label={t("x01v3.inputMethod.voice", "VOICE")}
                 active={scoreInputMethod === "voice"}
-                onClick={() => setScoreInputMethod("voice")}
-                primary={primary}
-                primarySoft={primarySoft}
-                compact
-              />
-              <PillButton
-                label={t("x01v3.inputMethod.auto", "AUTO")}
-                active={scoreInputMethod === "auto"}
-                onClick={() => setScoreInputMethod("auto")}
-                primary={primary}
-                primarySoft={primarySoft}
-                compact
-              />
-              <PillButton
-                label={t("x01v3.inputMethod.ai", "IA")}
-                active={scoreInputMethod === "ai"}
-                onClick={() => setScoreInputMethod("ai")}
+                onClick={() => selectScoreInputMethod("voice")}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -1871,16 +1870,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               {scoreInputMethod === "dartboard"
                 ? t("x01v3.inputMethod.hintDartboard", "CIBLE : touche la cible pour saisir directement S/D/T.")
                 : scoreInputMethod === "presets"
-                ? t("x01v3.inputMethod.hintPresets", "PRESETS : raccourcis 1 tap (ex: 180) qui remplissent la volée.")
+                ? t("x01v3.inputMethod.hintPresets", "PRESETS : raccourcis 1 tap avec détail des fléchettes pour préserver les stats.")
                 : scoreInputMethod === "voice"
-                ? t("x01v3.inputMethod.hintVoice", "VOICE : nécessite d’activer la commande vocale ci-dessous.")
-                : scoreInputMethod === "auto"
-                ? t("x01v3.inputMethod.hintAuto", "AUTO : module d’auto-scoring léger (si disponible).")
-                : scoreInputMethod === "ai"
-                ? t("x01v3.inputMethod.hintAi", "IA : dartsmind-like / vision (si disponible).")
+                ? t("x01v3.inputMethod.hintVoice", "VOICE : commande vocale activée, récapitulatif puis confirmation oui/non.")
                 : t("x01v3.inputMethod.hintKeypad", "KEYPAD : saisie manuelle classique.")}
             </div>
           </div>
+
 
           {/* ✅ COMMANDE VOCALE (SAISIE SCORES) */}
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1909,7 +1905,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <PillButton
                 label={t("common.off", "OFF")}
                 active={voiceScoreEnabled === false}
-                onClick={() => setVoiceScoreEnabled(false)}
+                onClick={() => {
+                  setVoiceScoreEnabled(false);
+                  if (scoreInputMethod === "voice") selectScoreInputMethod("keypad");
+                }}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -1917,7 +1916,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <PillButton
                 label={t("common.on", "ON")}
                 active={voiceScoreEnabled === true}
-                onClick={() => setVoiceScoreEnabled(true)}
+                onClick={() => {
+                  setVoiceScoreEnabled(true);
+                  setExternalScoringEnabled(false);
+                  selectScoreInputMethod("voice");
+                }}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -1981,7 +1984,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
               {t(
                 "x01v3.external.desc",
-                "Active si tu veux que le match soit piloté par une source externe (caméra / bridge / automatisation)."
+                "Active si tu veux que le match soit piloté par une source externe vidéo / caméra / bridge, façon Dartsmind."
               )}
             </div>
 
@@ -1997,7 +2000,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <PillButton
                 label={t("common.on", "ON")}
                 active={externalScoringEnabled === true}
-                onClick={() => setExternalScoringEnabled(true)}
+                onClick={() => {
+                  setExternalScoringEnabled(true);
+                  setVoiceScoreEnabled(false);
+                  if (scoreInputMethod === "voice") selectScoreInputMethod("keypad");
+                }}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -2006,7 +2013,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
               {externalScoringEnabled
-                ? t("x01v3.external.onHint", "ON : X01PlayV3 écoute des events externes et applique les tirs au moteur.")
+                ? t("x01v3.external.onHint", "ON : le match écoute les volées externes vidéo/bridge et les applique au même moteur de score.")
                 : t("x01v3.external.offHint", "OFF : mode normal au keypad.")}
             </div>
           </div>
