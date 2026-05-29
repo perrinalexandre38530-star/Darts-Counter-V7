@@ -78,6 +78,42 @@ const MODE_LABEL: Record<Mode, string> = {
   tennis: "Tennis",
 };
 
+
+const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "killer", "shanghai"];
+const SPORT_CREATE_MODES: Record<string, Mode[]> = {
+  darts: DARTS_CREATE_MODES,
+  petanque: ["petanque"],
+  babyfoot: ["babyfoot"],
+  pingpong: ["pingpong"],
+  molkky: ["molkky"],
+  dicegame: ["dicegame"],
+  football: ["football"],
+  rugby: ["rugby"],
+  basket: ["basket"],
+  badminton: ["badminton"],
+  tennis: ["tennis"],
+};
+
+function normalizeCompetitionSport(value: any): string {
+  const raw = String(value || "darts").toLowerCase().trim();
+  if (!raw || raw === "darts" || raw === "x01" || raw === "cricket" || raw === "killer" || raw === "shanghai") return "darts";
+  if (raw === "baby-foot" || raw === "baby_foot" || raw === "foosball") return "babyfoot";
+  if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
+  if (raw === "dice" || raw === "dice_game") return "dicegame";
+  return raw;
+}
+
+function competitionSportLabel(sport: string): string {
+  const s = normalizeCompetitionSport(sport);
+  if (s === "darts") return "Fléchettes";
+  if (s === "babyfoot") return "Baby-foot";
+  if (s === "petanque") return "Pétanque";
+  if (s === "pingpong") return "Ping-Pong";
+  if (s === "molkky") return "Mölkky";
+  if (s === "dicegame") return "Dés";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // ✅ Thème unique (doré)
 const THEME = "#f7c85c";
 
@@ -798,25 +834,29 @@ function TextInput({ value, onChange, placeholder, width = "100%" }: any) {
 export default function TournamentCreate({ store, go, params }: Props) {
   const primary = THEME;
 
-  // ✅ FORCE MODE multi-sport (local + online)
-  const forceMode = String(params?.forceMode ?? params?.sport ?? "").toLowerCase();
+  // ✅ FORCE SPORT multi-sport (local + online) : vient de GameSelect / BottomNav.
+  const forceMode = normalizeCompetitionSport(params?.forceMode ?? params?.sport ?? "darts");
   const source = String(params?.source || "local").toLowerCase() === "online" ? "online" : "local";
   const competitionKind = String(params?.kind || params?.competitionKind || "tournament").toLowerCase();
+  const isLeague = competitionKind === "league" || competitionKind === "championship" || competitionKind === "championnat";
   const isPetanque = forceMode === "petanque";
   const isBabyFoot = forceMode === "babyfoot";
-  const forcedMode = (["x01", "cricket", "killer", "shanghai", "petanque", "babyfoot", "pingpong", "molkky", "dicegame", "football", "rugby", "basket", "badminton", "tennis"] as Mode[]).includes(forceMode as Mode) ? (forceMode as Mode) : null;
+  const availableModes = SPORT_CREATE_MODES[forceMode] || DARTS_CREATE_MODES;
+  const lockedSportMode = availableModes.length === 1 ? availableModes[0] : null;
+  const sportLabel = competitionSportLabel(forceMode);
 
-  const [name, setName] = React.useState("Mon tournoi");
+  const [name, setName] = React.useState(isLeague ? `Ligue ${sportLabel}` : `Tournoi ${sportLabel}`);
 
-  // ✅ IMPORTANT: si forceMode est fourni => mode verrouillé sur ce sport/mode
-  const [mode, setMode] = React.useState<Mode | null>(forcedMode || null);
+  // ✅ IMPORTANT: le choix est verrouillé au SPORT actif. Darts peut choisir X01/Cricket/Killer/Shanghai, jamais Baby-foot.
+  const [mode, setMode] = React.useState<Mode | null>(lockedSportMode || availableModes[0] || "x01");
   const [sheetMode, setSheetMode] = React.useState(false);
 
   React.useEffect(() => {
-    if (!forcedMode) return;
-    setMode(forcedMode);
-    setSheetMode(false);
-  }, [forcedMode]);
+    const allowed = SPORT_CREATE_MODES[forceMode] || DARTS_CREATE_MODES;
+    const next = allowed.length === 1 ? allowed[0] : (allowed.includes(mode as Mode) ? mode : allowed[0]);
+    setMode(next || "x01");
+    if (allowed.length === 1) setSheetMode(false);
+  }, [forceMode]);
 
   // ✅ PÉTANQUE : composition (Simple/Doublette/Triplette/Quadrette)
   const [petanqueTeamSize, setPetanqueTeamSize] = React.useState<PetanqueTeamSize>(2);
@@ -1213,9 +1253,13 @@ const petanqueTeamsReady = React.useMemo(() => {
   return true;
 }, [isPetanque, isPetanqueTeams, isPetanqueProfiles, teamsInput, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
-  // ---- Format tournoi
-  const [format, setFormat] = React.useState<TourFormat>("single_ko");
+  // ---- Format tournoi / ligue
+  const [format, setFormat] = React.useState<TourFormat>(isLeague ? "round_robin" : "single_ko");
   const [bestOf, setBestOf] = React.useState<BestOf>(3);
+
+  React.useEffect(() => {
+    if (isLeague) setFormat("round_robin");
+  }, [isLeague]);
 
   // ✅ NEW : RR / Poules
   const [rrRounds, setRrRounds] = React.useState(1); // 1..5
@@ -1950,20 +1994,20 @@ const petanqueTeamsUI = React.useMemo(() => {
 
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 16, fontWeight: 950, letterSpacing: 0.2 }}>
-            {isPetanque ? "Créer un tournoi Pétanque" : "Créer un tournoi"}
+            {isLeague ? `Créer une ligue / championnat ${sportLabel}` : `Créer un tournoi ${sportLabel}`}
           </div>
           <div style={{ fontSize: 11.5, opacity: 0.75 }}>
-            {loadingAvg ? "Calcul niveaux…" : "Configure le tournoi puis crée."}
+            {loadingAvg ? "Calcul niveaux…" : isLeague ? "Configure la ligue locale puis crée." : "Configure le tournoi local puis crée."}
           </div>
         </div>
       </div>
 
       {/* Infos */}
-      <Section title="Infos du tournoi" subtitle="Nom + choix du mode." accent={primary}>
+      <Section title={isLeague ? "Infos de la ligue" : "Infos du tournoi"} subtitle={`Sport actif : ${sportLabel}. Les autres sports sont volontairement masqués.`} accent={primary}>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontSize: 11.5, opacity: 0.82, marginBottom: 6 }}>Nom</div>
-            <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder="Nom du tournoi" />
+            <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder={isLeague ? "Nom de la ligue" : "Nom du tournoi"} />
           </div>
 
           {/* ✅ NEW : Max joueurs */}
@@ -1976,8 +2020,8 @@ const petanqueTeamsUI = React.useMemo(() => {
             <InfoIconButton onClick={() => openInfo("maxPlayers")} />
           </div>
 
-          {/* ✅ MODE */}
-          {isPetanque ? (
+          {/* ✅ MODE : filtré par sport actif */}
+          {lockedSportMode ? (
             <div
               style={{
                 borderRadius: 14,
@@ -1987,8 +2031,8 @@ const petanqueTeamsUI = React.useMemo(() => {
               }}
             >
               <div style={{ fontSize: 11.5, opacity: 0.82 }}>Mode</div>
-              <div style={{ fontSize: 13, fontWeight: 950, color: primary, marginTop: 4 }}>PÉTANQUE (verrouillé)</div>
-              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>Ce tournoi a été ouvert depuis l’entrée Pétanque (forceMode=petanque).</div>
+              <div style={{ fontSize: 13, fontWeight: 950, color: primary, marginTop: 4 }}>{MODE_LABEL[lockedSportMode]} (verrouillé)</div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>Ce choix vient du sport actif : {sportLabel}. Impossible de créer une compétition d’un autre sport ici.</div>
             </div>
           ) : (
             <>
@@ -2020,7 +2064,7 @@ const petanqueTeamsUI = React.useMemo(() => {
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(["babyfoot", "x01", "cricket", "killer", "shanghai", "pingpong", "molkky", "dicegame", "football", "rugby", "basket", "badminton", "tennis"] as Mode[]).map((m) => (
+                {availableModes.map((m) => (
                   <NeonPill key={m} active={mode === m} label={MODE_LABEL[m]} onClick={() => setMode(m)} primary={primary} />
                 ))}
               </div>
@@ -2777,7 +2821,7 @@ const petanqueTeamsUI = React.useMemo(() => {
       <Sheet open={sheetMode && !isPetanque} title="Choisir un mode" onClose={() => setSheetMode(false)} primary={primary}>
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gap: 8 }}>
-            {(["babyfoot", "x01", "cricket", "killer", "shanghai", "pingpong", "molkky", "dicegame", "football", "rugby", "basket", "badminton", "tennis"] as Mode[]).map((m) => (
+            {availableModes.map((m) => (
               <button
                 key={m}
                 type="button"

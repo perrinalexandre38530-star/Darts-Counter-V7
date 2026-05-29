@@ -110,6 +110,30 @@ function fmtDate(ts?: number) {
   }
 }
 
+
+const DARTS_TOURNAMENT_MODES = new Set(["darts", "x01", "cricket", "killer", "shanghai", "golf", "clock", "scram", "warfare", "battle_royale", "territories", "capital", "batard", "five_lives"]);
+
+function normalizeCompetitionSport(value: any): string {
+  const raw = String(value?.sport || value?.game?.sport || value?.competitionSport || value?.sportId || value?.game?.mode || value?.mode || value?.gameMode || "").toLowerCase().trim();
+  if (!raw) return "darts";
+  if (DARTS_TOURNAMENT_MODES.has(raw)) return "darts";
+  if (raw === "baby-foot" || raw === "baby_foot" || raw === "foosball") return "babyfoot";
+  if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
+  if (raw === "dice" || raw === "dice_game") return "dicegame";
+  return raw;
+}
+
+function competitionSportLabel(sport: string): string {
+  const s = normalizeCompetitionSport({ sport });
+  if (s === "darts") return "FLÉCHETTES";
+  if (s === "babyfoot") return "BABY-FOOT";
+  if (s === "petanque") return "PÉTANQUE";
+  if (s === "pingpong") return "PING-PONG";
+  if (s === "molkky") return "MÖLKKY";
+  if (s === "dicegame") return "DÉS";
+  return s.toUpperCase();
+}
+
 function isPlayableReal(m: any) {
   const st = String(m?.status || "");
   if (st !== "pending") return false;
@@ -265,19 +289,15 @@ function TickerCard({
 function TickerRow({
   go,
   setFilter,
-  isPetanque,
-  isBabyFoot,
+  sport,
 }: {
   go: (tab: any, params?: any) => void;
   setFilter: (k: FilterKey) => void;
-  isPetanque: boolean;
-  isBabyFoot: boolean;
+  sport: string;
 }) {
+  const scopedSport = normalizeCompetitionSport({ sport: sport || "darts" });
   const rawTours = listTournamentsLocal() || [];
-  const tours = (Array.isArray(rawTours) ? rawTours : []).filter((t: any) => {
-    const m = String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase();
-    return isPetanque ? m === "petanque" : m !== "petanque";
-  });
+  const tours = (Array.isArray(rawTours) ? rawTours : []).filter((t: any) => normalizeCompetitionSport(t) === scopedSport);
 
   const draft = tours.filter((t: any) => String(t?.status || "").toLowerCase().includes("draft"));
 
@@ -298,7 +318,7 @@ function TickerRow({
 
   const canAuto = !!resumeCounts && (resumeCounts.playable ?? 0) > 0;
 
-  const baseCreateParams = isPetanque ? { forceMode: "petanque" } : isBabyFoot ? { forceMode: "babyfoot" } : {};
+  const baseCreateParams = { forceMode: scopedSport };
 
   const items = [
     {
@@ -428,20 +448,17 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const [items, setItems] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // ✅ SCOPE via route params
-  const forceMode = String((params as any)?.forceMode || (params as any)?.sport || "").toLowerCase();
+  // ✅ SCOPE strict via GameSelect / SportContext : une compétition ne propose que le sport actif.
+  const forceMode = normalizeCompetitionSport({ sport: (params as any)?.forceMode || (params as any)?.sport || "darts" });
   const isPetanque = forceMode === "petanque";
-  const isBabyFoot = forceMode === "babyfoot";
   const isOnline = String(source || "local").toLowerCase() === "online";
-  const sportLabel = isPetanque ? "PÉTANQUE" : isBabyFoot ? "BABY-FOOT" : forceMode ? forceMode.toUpperCase() : "MULTISPORTS";
+  const sportLabel = competitionSportLabel(forceMode);
 
   const reload = React.useCallback(() => {
     setLoading(true);
-    const normalizeSport = (t: any) => String(t?.sport || t?.game?.sport || t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase();
     const applyScope = (arr: any[]) => {
       const list = Array.isArray(arr) ? arr : [];
-      if (!forceMode) return list;
-      return list.filter((t: any) => normalizeSport(t) === forceMode || String(t?.game?.mode || "").toLowerCase() === forceMode);
+      return list.filter((t: any) => normalizeCompetitionSport(t) === forceMode);
     };
 
     if (isOnline) {
@@ -495,13 +512,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
     if (Array.isArray(legacy) && legacy.length && (!items || items.length === 0)) {
       // legacy non filtré : on applique le filtre par mode
-      const filteredByMode = forceMode
-        ? legacy.filter((t: any) => {
-            const m = String(t?.sport || t?.game?.sport || t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase();
-            return m === forceMode || String(t?.game?.mode || "").toLowerCase() === forceMode;
-          })
-        : legacy;
-      setItems(filteredByMode);
+      setItems(legacy.filter((t: any) => normalizeCompetitionSport(t) === forceMode));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, forceMode]);
@@ -547,64 +558,59 @@ export default function TournamentsHome({ store, go, source = "local", params }:
             : "Crée des tournois en local (poules, élimination…), et reprends-les facilement avec une vue claire."}
         </div>
 
-        <div
-          style={{
-            marginTop: 12,
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,.10)",
-            background: "rgba(0,0,0,.25)",
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ fontSize: 12.5, opacity: 0.9 }}>
-            {loading ? (
-              <>Chargement…</>
-            ) : tournaments?.length ? (
-              <>
-                <b>{tournaments.length}</b> tournoi{tournaments.length > 1 ? "s" : ""} enregistré
-                {tournaments.length > 1 ? "s" : ""}.
-              </>
-            ) : (
-              <>
-                Aucun tournoi pour <b>l’instant</b>
-              </>
-            )}
-          </div>
-
-          {/* ✅ IMPORTANT: propagation forceMode vers TournamentCreate */}
-          <button
-            type="button"
-            onClick={() => go("tournament_create", { forceMode: forceMode || undefined, source: isOnline ? "online" : "local", competitionKind: "tournament" })}
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "12px 14px",
-              border: "none",
-              fontWeight: 950,
-              letterSpacing: 1,
-              fontSize: 13,
-              textTransform: "uppercase",
-              background: "linear-gradient(90deg, #ff4fd8, #ffd56a)",
-              color: "#1b1508",
-              boxShadow: "0 16px 30px rgba(0,0,0,.55)",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {isOnline ? "CREER COMPÉTITION ONLINE" : "CREER LIGUE / CHAMPIONNAT"}
-          </button>
+        <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 10 }}>
+          {loading ? (
+            <>Chargement…</>
+          ) : tournaments?.length ? (
+            <>
+              <b>{tournaments.length}</b> compétition{tournaments.length > 1 ? "s" : ""} locale{tournaments.length > 1 ? "s" : ""} pour <b>{sportLabel}</b>.
+            </>
+          ) : (
+            <>Aucune compétition locale pour <b>{sportLabel}</b>.</>
+          )}
         </div>
+
+        {!isOnline ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
+            <TickerCard
+              tag="TOURNOI"
+              title={`Créer un tournoi ${sportLabel}`}
+              sub="Bracket, poules + KO, élimination simple/double selon le sport actif."
+              tone="pink"
+              cta="Créer tournoi"
+              kpi="LOCAL"
+              onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: "tournament", preset: "tournament" })}
+            />
+            <TickerCard
+              tag="LIGUE"
+              title={`Créer une ligue / championnat ${sportLabel}`}
+              sub="Classement, matchs aller/retour et logique championnat sur le sport actif."
+              tone="gold"
+              cta="Créer ligue"
+              kpi="LOCAL"
+              onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: "league", preset: "league", format: "round_robin" })}
+            />
+          </div>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            <TickerCard
+              tag="ONLINE"
+              title={`Créer une compétition online ${sportLabel}`}
+              sub="Ce flux reste séparé : on bascule vers la création ONLINE depuis le menu Online."
+              tone="blue"
+              cta="Aller au ONLINE"
+              kpi="NAS"
+              onClick={() => go("online", { section: "competitions", forceMode })}
+            />
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-          <button type="button" onClick={() => go("tournaments", { forceMode: forceMode || undefined, source: "local" })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
-          <button type="button" onClick={() => go("tournaments", { forceMode: forceMode || undefined, source: "online" })} style={pillStyle(isOnline, "#4fb4ff")}>ONLINE</button>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local" })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
+          <button type="button" onClick={() => go("online", { section: "competitions", forceMode })} style={pillStyle(isOnline, "#4fb4ff")}>CRÉER ONLINE</button>
         </div>
 
-        <TickerRow go={go} setFilter={setFilter} isPetanque={isPetanque}
-        isBabyFoot={isBabyFoot} />
+        <TickerRow go={go} setFilter={setFilter} sport={forceMode} />
       </Card>
 
       {/* FILTER BAR */}
@@ -650,11 +656,9 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
         {!hasAny ? (
           <Card tone="blue">
-            <div style={{ fontWeight: 950, fontSize: 16, color: "#4fb4ff" }}>Aucun tournoi</div>
+            <div style={{ fontWeight: 950, fontSize: 16, color: "#4fb4ff" }}>Aucune compétition {sportLabel}</div>
             <div style={{ opacity: 0.85, fontSize: 12.5, marginTop: 6, lineHeight: 1.35 }}>
-              Crée ton premier tournoi : poules, matchs et progression seront rangés automatiquement.
-              <br />
-              Utilise le bouton <b>{isOnline ? "CREER COMPÉTITION ONLINE" : "CREER LIGUE / CHAMPIONNAT"}</b> en haut.
+              Crée d’abord un <b>Tournoi</b> ou une <b>Ligue / Championnat</b>. Les propositions restent verrouillées sur le sport choisi dans GameSelect.
             </div>
           </Card>
         ) : (
