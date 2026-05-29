@@ -186,9 +186,10 @@ export default function ScoreInputHub({
   const currentTotal = throwTotal(safeCurrentThrow);
 
   const voicePhase = String(voiceControl?.phase || "OFF");
-  const voiceListening = voicePhase.startsWith("LISTEN") || voicePhase === "RECAP_CONFIRM";
+  const voiceRequesting = voicePhase === "REQUESTING_MIC";
+  const voiceListening = voicePhase.startsWith("LISTEN") || voicePhase === "RECAP_CONFIRM" || voiceRequesting;
   const voiceSupported = voiceControl?.supported !== false;
-  const voiceCanStart = !disabled && !!voiceControl?.enabled && voiceSupported && !!voiceControl?.onStart;
+  const voiceCanStart = !disabled && !!voiceControl?.onStart;
   const voiceCanStop = !disabled && voiceListening && !!voiceControl?.onStop;
 
   const fitOuterRef = React.useRef<HTMLDivElement | null>(null);
@@ -288,6 +289,7 @@ export default function ScoreInputHub({
 
   const voiceNotice = method === "voice" ? (
     <VoiceInlineNotice
+      enabled={!!voiceControl?.enabled}
       supported={voiceSupported}
       listening={voiceListening}
       phase={voicePhase}
@@ -526,6 +528,7 @@ function DartboardInput({
 
 
 function VoiceInlineNotice({
+  enabled,
   supported,
   listening,
   phase,
@@ -534,6 +537,7 @@ function VoiceInlineNotice({
   dartsTotal,
   permissionHint,
 }: {
+  enabled: boolean;
   supported: boolean;
   listening: boolean;
   phase: string;
@@ -542,15 +546,37 @@ function VoiceInlineNotice({
   dartsTotal?: number;
   permissionHint?: string | null;
 }) {
-  const tone = !supported || permissionHint ? "warn" : listening ? "live" : "idle";
-  const title = !supported
+  const rawHint = String(permissionHint || "");
+  const hintLabel =
+    rawHint === "autorisation_micro"
+      ? "Autorisation micro…"
+      : rawHint === "commande_vocale_inactive"
+      ? "Commande vocale inactive pour ce tour"
+      : rawHint === "speech_recognition_not_supported"
+      ? "Reconnaissance vocale non supportée par ce navigateur"
+      : rawHint === "not-allowed" || rawHint === "NotAllowedError"
+      ? "Micro refusé par le navigateur"
+      : rawHint === "no-speech"
+      ? "Aucune voix détectée"
+      : rawHint === "écoute_timeout" || rawHint === "ecoute_timeout"
+      ? "Écoute terminée : recommence"
+      : rawHint === "volée_incomprise"
+      ? "Volée incomprise : recommence"
+      : rawHint || "";
+
+  const tone = !enabled || !supported || rawHint ? "warn" : listening ? "live" : "idle";
+  const title = !enabled
+    ? "Commande vocale indisponible pour ce tour"
+    : !supported
     ? "Micro indisponible"
-    : permissionHint
-    ? `Micro : ${permissionHint}`
+    : hintLabel
+    ? hintLabel
+    : phase === "REQUESTING_MIC"
+    ? "Autorisation micro…"
     : phase === "RECAP_CONFIRM"
     ? "Confirme : oui / non"
     : listening
-    ? "Micro en écoute"
+    ? "🎙️ Parle maintenant : dicte tes 3 fléchettes"
     : "Appuie sur MICRO puis dicte la volée";
 
   return (

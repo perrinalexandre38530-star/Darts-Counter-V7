@@ -1948,6 +1948,7 @@ const isBotTurn = React.useMemo(() => {
   // =====================================================
   const configuredScoreInputMethod = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod);
   const voiceScoreEnabled = configuredScoreInputMethod === "voice" || !!(config as any)?.voiceScoreInputEnabled;
+  const voiceMatchIsLive = status === "running" || status === "playing";
 
   const speakVoiceScore = React.useCallback(
     (text: string) => {
@@ -1976,7 +1977,7 @@ const isBotTurn = React.useMemo(() => {
       scoringSource !== "external" &&
       !isBotTurn &&
       onlineCanScore &&
-      status === "running",
+      voiceMatchIsLive,
     lang: (lang || "fr").startsWith("fr") ? "fr-FR" : "en-US",
     speak: speakVoiceScore,
     announcePlayer: false, // X01PlayV3 annonce déjà le tour
@@ -1984,7 +1985,7 @@ const isBotTurn = React.useMemo(() => {
     onCommit: (vdarts) => {
       try {
         if (!vdarts?.length) return;
-        if (status !== "running") return;
+        if (!voiceMatchIsLive) return;
         if (scoringSource === "external") return;
         if (isBotTurn) return;
 
@@ -4669,7 +4670,7 @@ if (isLandscapeTablet) {
                       onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
                       preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
                       voiceControl={{
-                        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore),
+                        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && voiceMatchIsLive),
                         supported: voiceScore.supported,
                         phase: voiceScore.phase,
                         lastHeard: voiceScore.lastHeard,
@@ -5068,7 +5069,7 @@ if (isLandscapeTablet) {
               onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
               preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
               voiceControl={{
-                enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore),
+                enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && voiceMatchIsLive),
                 supported: voiceScore.supported,
                 phase: voiceScore.phase,
                 lastHeard: voiceScore.lastHeard,

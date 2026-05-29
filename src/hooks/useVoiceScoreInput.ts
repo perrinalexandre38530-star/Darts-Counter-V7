@@ -11,6 +11,7 @@ import { parseVoiceVisit, VoiceDart, formatDartLabel, sumDarts } from "../lib/vo
 
 type Phase =
   | "OFF"
+  | "REQUESTING_MIC"
   | "LISTEN_D1"
   | "LISTEN_D2"
   | "LISTEN_D3"
@@ -231,8 +232,20 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
   }, [hardStop]);
 
   const beginTurn = useCallback(async () => {
-    if (!enabled || startingRef.current) return;
+    if (startingRef.current) return;
+
+    if (!enabled) {
+      // IMPORTANT UX: le clic MICRO ne doit jamais donner l'impression de ne rien faire.
+      // Si la page/play state n'autorise pas la voix, on affiche une raison visible dans le keypad.
+      setPhase("ERROR");
+      setPermissionHint("commande_vocale_inactive");
+      onNeedManual?.();
+      return;
+    }
+
     startingRef.current = true;
+    setPhase("REQUESTING_MIC");
+    setPermissionHint("autorisation_micro");
 
     const isSupportedNow = detectSpeechSupport();
     setSupported(isSupportedNow);
@@ -245,6 +258,8 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     }
 
     resetTurn();
+    setPhase("REQUESTING_MIC");
+    setPermissionHint("autorisation_micro");
 
     // Important : cette demande est déclenchée par le clic MICRO.
     // Elle ouvre enfin la permission micro navigateur, au lieu d'un démarrage auto bloqué.
