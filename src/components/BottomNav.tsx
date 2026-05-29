@@ -19,6 +19,7 @@ type TabKey =
   | "games"
   | "tournaments"
   | "tournament_create"
+  | "tournament_list"
   | "tournament_view"
   | "tournament_match_play"
   | "profiles"
@@ -44,6 +45,7 @@ type NavItem = {
     TabKey,
     | "statsHub"
     | "tournament_create"
+    | "tournament_list"
     | "tournament_view"
     | "tournament_match_play"
     | "petanque_home"
@@ -89,6 +91,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
 
     case "tournaments":
     case "tournament_create":
+    case "tournament_list":
     case "tournament_view":
     case "tournament_match_play":
       return (
@@ -295,6 +298,7 @@ export default function BottomNav({
   const isTournamentRoute =
     value === "tournaments" ||
     value === "tournament_create" ||
+    value === "tournament_list" ||
     value === "tournament_view" ||
     value === "tournament_match_play" ||
     value === "babyfoot_league" ||

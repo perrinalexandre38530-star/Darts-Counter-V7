@@ -194,6 +194,7 @@ const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
 const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
 const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
+const TournamentsList = React.lazy(() => import("./pages/TournamentsList"));
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -802,6 +803,7 @@ type Tab =
   | "petanque.play"
   | "tournaments"
   | "tournament_create"
+  | "tournament_list"
   | "tournament_compose_teams"
   | "tournament_view"
   | "tournament_match_play"
@@ -3928,10 +3930,23 @@ case "babyfoot_team_edit":
 
         case "tournaments": {
           const sportLc = String((routeParams as any)?.forceMode || activeSport || "darts").toLowerCase();
-          const source = String((routeParams as any)?.source || "local").toLowerCase() === "online" ? "online" : "local";
-
           page = (
             <TournamentsHome
+              store={store}
+              go={go}
+              update={update}
+              source="local"
+              params={{ ...(routeParams as any), forceMode: sportLc, source: "local" }}
+            />
+          );
+          break;
+        }
+
+        case "tournament_list": {
+          const sportLc = String((routeParams as any)?.forceMode || activeSport || "darts").toLowerCase();
+          const source = String((routeParams as any)?.source || "local").toLowerCase() === "online" ? "online" : "local";
+          page = (
+            <TournamentsList
               store={store}
               go={go}
               update={update}

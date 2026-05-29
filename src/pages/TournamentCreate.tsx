@@ -2656,7 +2656,7 @@ const petanqueTeamsUI = React.useMemo(() => {
       ) : null}
 
       {/* ✅ Format tournoi */}
-      <Section title="Format du tournoi" subtitle={isPetanque ? "Formats Pétanque (réalistes)." : "Chaque option a son (i) comme TYPE."} accent={primary}>
+      <Section title={isLeague ? "Format de la ligue / championnat" : "Format du tournoi"} subtitle={isPetanque ? "Formats Pétanque (réalistes)." : "Chaque option a son (i) comme TYPE."} accent={primary}>
         <RowTitle label="Type" />
 
         {isPetanque ? (
@@ -2806,7 +2806,7 @@ const petanqueTeamsUI = React.useMemo(() => {
 
       {/* CTA */}
       <div style={{ marginTop: 14 }}>
-        <NeonPrimary label="Créer le tournoi" onClick={createTournament} disabled={!canCreate} primary={primary} />
+        <NeonPrimary label={isLeague ? "Créer la ligue" : "Créer le tournoi"} onClick={createTournament} disabled={!canCreate} primary={primary} />
         {!canCreate ? (
           <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.72 }}>
             ⚠️{" "}
