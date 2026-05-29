@@ -2,7 +2,7 @@
 // src/lib/voice/voiceScore.ts
 // Parse FR/EN voice input for X01 scoring.
 // Supports:
-// - one dart: "triple vingt", "T20", "double 16", "bull", "double bull", "miss"
+// - one dart: "triple vingt", "triplevant" (speech glued), "T20", "double 16", "bull", "double bull", "miss"
 // - full visit: "triple vingt, simple cinq, miss"
 // ============================================
 
@@ -28,7 +28,7 @@ function normalize(raw: string) {
 }
 
 const NUMBER_WORDS: Array<[RegExp, string]> = [
-  [/\bvingt\b/g, "20"],
+  [/\bvingts?\b/g, "20"],
   [/\bdix\s*neuf\b/g, "19"],
   [/\bdix\s*huit\b/g, "18"],
   [/\bdix\s*sept\b/g, "17"],
@@ -71,10 +71,113 @@ const NUMBER_WORDS: Array<[RegExp, string]> = [
   [/\bone\b/g, "1"],
 ];
 
+// Aliases compacts : le Web Speech API renvoie parfois "triple vingt" en un seul token,
+// par exemple "triplevant", "triplevent", "triplevingt".
+const NUMBER_ALIASES: Record<string, number> = {
+  "0": 0,
+  zero: 0,
+  zeros: 0,
+  "1": 1,
+  un: 1,
+  une: 1,
+  one: 1,
+  "2": 2,
+  deux: 2,
+  two: 2,
+  "3": 3,
+  trois: 3,
+  three: 3,
+  "4": 4,
+  quatre: 4,
+  four: 4,
+  "5": 5,
+  cinq: 5,
+  five: 5,
+  "6": 6,
+  six: 6,
+  "7": 7,
+  sept: 7,
+  seven: 7,
+  "8": 8,
+  huit: 8,
+  eight: 8,
+  "9": 9,
+  neuf: 9,
+  nine: 9,
+  "10": 10,
+  dix: 10,
+  ten: 10,
+  "11": 11,
+  onze: 11,
+  eleven: 11,
+  "12": 12,
+  douze: 12,
+  twelve: 12,
+  "13": 13,
+  treize: 13,
+  thirteen: 13,
+  "14": 14,
+  quatorze: 14,
+  fourteen: 14,
+  "15": 15,
+  quinze: 15,
+  fifteen: 15,
+  "16": 16,
+  seize: 16,
+  sixteen: 16,
+  "17": 17,
+  dixsept: 17,
+  disept: 17,
+  seventeen: 17,
+  "18": 18,
+  dixhuit: 18,
+  dizhuit: 18,
+  eighteen: 18,
+  "19": 19,
+  dixneuf: 19,
+  dizneuf: 19,
+  nineteen: 19,
+  "20": 20,
+  vingt: 20,
+  vingts: 20,
+  vint: 20,
+  vin: 20,
+  ving: 20,
+  vent: 20,
+  vant: 20,
+  vain: 20,
+  twenty: 20,
+};
+
+const MULTIPLIER_ALIASES: Array<[RegExp, "S" | "D" | "T"]> = [
+  [/^(triple|triples|tripl|treble|t)(.+)$/i, "T"],
+  [/^(double|doubles|doubl|d)(.+)$/i, "D"],
+  [/^(simple|simples|single|s)(.+)$/i, "S"],
+];
+
 function wordsToNumbers(text: string) {
   let out = text;
   for (const [pattern, value] of NUMBER_WORDS) out = out.replace(pattern, value);
   return out.replace(/\s+/g, " ").trim();
+}
+
+function compactText(text: string) {
+  return normalize(text).replace(/\s+/g, "");
+}
+
+function parseNumberCompact(raw: string): number | null {
+  const key = compactText(raw);
+  if (!key) return null;
+  const direct = NUMBER_ALIASES[key];
+  if (typeof direct === "number") return direct;
+
+  const digit = key.match(/^\d{1,2}$/);
+  if (digit) {
+    const n = Number(digit[0]);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  return null;
 }
 
 function makeSegment(kind: "S" | "D" | "T", rawBase: number): VoiceDart | null {
@@ -85,30 +188,50 @@ function makeSegment(kind: "S" | "D" | "T", rawBase: number): VoiceDart | null {
   return { kind: "S", base, value: base, label: `S${base}` };
 }
 
-function tokenToDart(token: string): VoiceDart | null {
-  const compact = token.toLowerCase().replace(/\s+/g, "");
-  if (/^(miss|rate|ratee|manque|0|zero)$/.test(compact)) return { kind: "MISS", value: 0, label: "MISS" };
-  if (/^(dbull|doublebull|doublebulle|doubleboule|doubleboul)$/.test(compact)) return { kind: "DBULL", value: 50, label: "DBULL" };
-  if (/^(bull|bulle|boule|boul)$/.test(compact)) return { kind: "BULL", value: 25, label: "BULL" };
+function compactTokenToDart(compact: string): VoiceDart | null {
+  if (/^(miss|rate|ratee|manque|manquee|loupe|loupee|0|zero|zeros)$/.test(compact)) {
+    return { kind: "MISS", value: 0, label: "MISS" };
+  }
 
-  const shorthand = compact.match(/^([sdt])([0-9]{1,2})$/);
+  if (/^(dbull|doublebull|doublebulle|doubleboule|doubleboul)$/.test(compact)) {
+    return { kind: "DBULL", value: 50, label: "DBULL" };
+  }
+
+  if (/^(bull|bulle|boule|boul)$/.test(compact)) {
+    return { kind: "BULL", value: 25, label: "BULL" };
+  }
+
+  const shorthand = compact.match(/^([sdt])([0-9]{1,2})$/i);
   if (shorthand) {
-    const kind = shorthand[1] === "t" ? "T" : shorthand[1] === "d" ? "D" : "S";
+    const kind = shorthand[1].toLowerCase() === "t" ? "T" : shorthand[1].toLowerCase() === "d" ? "D" : "S";
     return makeSegment(kind, Number(shorthand[2]));
   }
 
-  const plain = compact.match(/^[0-9]{1,2}$/);
-  if (plain) {
-    const n = Number(plain[0]);
-    if (n === 0) return { kind: "MISS", value: 0, label: "MISS" };
-    return makeSegment("S", n);
+  for (const [pattern, kind] of MULTIPLIER_ALIASES) {
+    const m = compact.match(pattern);
+    if (!m) continue;
+    const base = parseNumberCompact(m[2]);
+    if (base == null) continue;
+    return makeSegment(kind, base);
+  }
+
+  const plain = parseNumberCompact(compact);
+  if (plain != null) {
+    if (plain === 0) return { kind: "MISS", value: 0, label: "MISS" };
+    return makeSegment("S", plain);
   }
 
   return null;
 }
 
+function tokenToDart(token: string): VoiceDart | null {
+  const compact = compactText(token);
+  return compactTokenToDart(compact);
+}
+
 export function parseVoiceVisit(rawText: string): VoiceDart[] {
-  const base = wordsToNumbers(normalize(rawText));
+  const normalized = normalize(rawText);
+  const base = wordsToNumbers(normalized);
   if (!base) return [];
 
   const tokens = base.split(/\s+/).filter(Boolean);
@@ -147,9 +270,10 @@ export function parseVoiceVisit(rawText: string): VoiceDart[] {
       continue;
     }
 
-    // Useful for browser transcripts such as "t 20", "d 16", "doublebull".
+    // Useful for browser transcripts such as "t 20", "d 16", "doublebull"
+    // and glued French transcripts such as "triplevant".
     const joinedDart = tokenToDart(joined);
-    if (joinedDart && token.length <= 6 && next.length <= 6) {
+    if (joinedDart && token.length <= 10 && next.length <= 10) {
       push(joinedDart);
       if (/^(double|d|triple|treble|t|simple|single|s)$/.test(token) || joined.startsWith("doublebull")) i += 1;
       continue;
