@@ -106,6 +106,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
     sport: activeSport,
     source: "local",
     competitionKind,
+    configMode: "guided",
   });
 
   return (
@@ -132,11 +133,8 @@ export default function TournamentsHome({ store, go, params }: Props) {
         >
           COMPÉTITIONS
         </h1>
-        <p style={{ margin: "12px 0 0", color: "#b7ff00", fontSize: 14.5, lineHeight: 1.25, fontWeight: 650 }}>
-          Crée une compétition locale pour le sport actif : <b>{label}</b>.
-        </p>
-        <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,.72)", fontSize: 13.5, lineHeight: 1.25 }}>
-          Le choix du sport vient de Jeux / GameSelect : ici tu ne verras pas de tournoi baby-foot si tu es en fléchettes, ni l’inverse.
+        <p style={{ margin: "12px 0 0", color: "#b7ff00", fontSize: 14.5, lineHeight: 1.25, fontWeight: 800 }}>
+          Sport actif : <b>{label}</b>
         </p>
       </div>
 
@@ -144,14 +142,14 @@ export default function TournamentsHome({ store, go, params }: Props) {
         <CompetitionCard
           tag="LIGUE / CHAMPIONNAT"
           title={`Créer une ligue ${label}`}
-          text="Classement, journées, matchs aller/retour et suivi championnat en local."
+          text="Classement + journées"
           tone="gold"
           onClick={() => go("tournament_create", createParams("league"))}
         />
         <CompetitionCard
           tag="TOURNOI"
           title={`Créer un tournoi ${label}`}
-          text="Bracket, poules + KO, élimination simple/double selon le sport actif."
+          text="Poules, bracket, élimination"
           tone="pink"
           onClick={() => go("tournament_create", createParams("tournament"))}
         />

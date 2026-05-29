@@ -972,6 +972,7 @@ export default function MessagesPage({ store, update, go }: Props) {
   const recorderChunksRef = React.useRef<Blob[]>([]);
   const recorderStartedAtRef = React.useRef<number>(0);
   const callStreamRef = React.useRef<MediaStream | null>(null);
+  const remoteStreamRef = React.useRef<MediaStream | null>(null);
   const callVideoRef = React.useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = React.useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = React.useRef<HTMLAudioElement | null>(null);

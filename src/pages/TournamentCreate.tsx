@@ -836,11 +836,17 @@ export default function TournamentCreate({ store, go, params }: Props) {
 
   // ✅ FORCE SPORT multi-sport (local + online) : vient de GameSelect / BottomNav.
   const forceMode = normalizeCompetitionSport(params?.forceMode ?? params?.sport ?? "darts");
-  const source = String(params?.source || "local").toLowerCase() === "online" ? "online" : "local";
+  const initialSource = String(params?.source || "local").toLowerCase() === "online" ? "online" : "local";
+  const [source, setSource] = React.useState<"local" | "online">(initialSource as "local" | "online");
+  React.useEffect(() => {
+    setSource(initialSource as "local" | "online");
+  }, [initialSource]);
   const competitionKind = String(params?.kind || params?.competitionKind || "tournament").toLowerCase();
   const isLeague = competitionKind === "league" || competitionKind === "championship" || competitionKind === "championnat";
   const isPetanque = forceMode === "petanque";
   const isBabyFoot = forceMode === "babyfoot";
+  const [configMode, setConfigMode] = React.useState<"guided" | "full">(String(params?.configMode || "guided") === "full" ? "full" : "guided");
+  const [guidedStep, setGuidedStep] = React.useState(0);
   const availableModes = SPORT_CREATE_MODES[forceMode] || DARTS_CREATE_MODES;
   const lockedSportMode = availableModes.length === 1 ? availableModes[0] : null;
   const sportLabel = competitionSportLabel(forceMode);
@@ -865,6 +871,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
   // - "profiles": sélection de profils humains puis regroupement en équipes
   // - "teams": création directe d'équipes (sans profils) pour gros tournois
   const [petanqueEntry, setPetanqueEntry] = React.useState<"profiles" | "teams">("profiles");
+  const [participantKind, setParticipantKind] = React.useState<"solo" | "teams">("solo");
 
   // ✅ PÉTANQUE — mode "teams" (sans profils)
   const [teamsSearch, setTeamsSearch] = React.useState<string>("");
@@ -1015,6 +1022,14 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles.length]);
 
+  // ✅ Sélection lisible par le rendu guidé + la configuration complète.
+  // Ne pas laisser cette variable uniquement dans createTournament(), sinon le wizard
+  // crashe au rendu avec "selectedProfiles is not defined".
+  const selectedProfiles = React.useMemo(
+    () => profiles.filter((p: any) => playerIds.includes(String(p.id))),
+    [profiles, playerIds]
+  );
+
   
 const togglePlayer = (id: string) => {
   // ✅ PÉTANQUE : si assignMode ON => clic assigne à l’équipe active (avec swap si besoin)
@@ -1107,6 +1122,16 @@ const togglePlayer = (id: string) => {
     },
     [makeTeamId, normalizeTeamPlayers]
   );
+
+  const addTeamInput = React.useCallback(() => {
+    setTeamsInput((prev) => {
+      const arr = [...(prev || [])];
+      const idx = arr.length;
+      arr.push({ id: makeTeamId(idx), name: `Équipe ${idx + 1}`, players: normalizeTeamPlayers([]) });
+      return arr;
+    });
+    setTeamsExpandedIdx((prev) => (prev == null ? 0 : prev));
+  }, [makeTeamId, normalizeTeamPlayers]);
 
   const parseTeamsImportText = React.useCallback(
     (text: string) => {
@@ -1703,6 +1728,7 @@ async function createTournament() {
         autoFillBots: false,
         maxPlayers: capEnabled ? cap : 0,
         forceMode,
+        participantKind,
         isPetanque: true,
         petanqueTeamSize: petanqueTeamSize,
         petanqueTeams: entrants.map((t: any) => ({
@@ -1891,6 +1917,7 @@ async function createTournament() {
       forceMode,
       source,
       competitionKind,
+      participantKind,
       isPetanque,
       petanqueTeamSize: isPetanque ? petanqueTeamSize : undefined,
     },
@@ -1940,6 +1967,126 @@ const petanqueTeamsUI = React.useMemo(() => {
 }, [isPetanque, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
 
+  const guidedSteps = ["Type", "Solo / équipe", "Participants", "Format", "Règles", "Récap"];
+  const guidedKindLabel = isLeague ? "ligue / championnat" : "tournoi";
+  const guidedStepSafe = Math.max(0, Math.min(guidedSteps.length - 1, Number(guidedStep) || 0));
+
+  function goGuidedStep(delta: number) {
+    setGuidedStep((prev) => Math.max(0, Math.min(guidedSteps.length - 1, Number(prev || 0) + delta)));
+  }
+
+  function setParticipantChoice(next: "solo" | "teams") {
+    setParticipantKind(next);
+    if (isPetanque) {
+      if (next === "solo") {
+        setPetanqueEntry("profiles");
+        setPetanqueTeamSize(1);
+      } else {
+        setPetanqueEntry("teams");
+        setPetanqueTeamSize((cur) => (Number(cur) > 1 ? cur : 2));
+      }
+    }
+  }
+
+  function GuidedChoiceCard({ active, title, text, onClick, accent = primary, disabled = false }: any) {
+    return (
+      <button
+        type="button"
+        disabled={!!disabled}
+        onClick={onClick}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          borderRadius: 18,
+          padding: 14,
+          border: active ? `1px solid ${accent}CC` : "1px solid rgba(255,255,255,.10)",
+          background: active
+            ? `radial-gradient(120% 130% at 0% 0%, ${accent}24, transparent 56%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(9,9,12,.99))`
+            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+          color: "#fff",
+          boxShadow: active ? `0 0 22px ${accent}22, 0 18px 42px rgba(0,0,0,.50)` : "0 12px 28px rgba(0,0,0,.35)",
+          opacity: disabled ? 0.45 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 1000, color: active ? accent : "rgba(255,255,255,.94)" }}>{title}</div>
+          <div style={{ width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", background: active ? accent : "rgba(255,255,255,.08)", color: active ? "#151008" : "rgba(255,255,255,.76)", fontWeight: 1000 }}>
+            {active ? "✓" : "›"}
+          </div>
+        </div>
+        {text ? <div style={{ marginTop: 7, fontSize: 12.5, lineHeight: 1.35, opacity: 0.78, fontWeight: 650 }}>{text}</div> : null}
+      </button>
+    );
+  }
+
+  function GuidedFooter({ final = false }: any) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: guidedStepSafe <= 0 ? "1fr" : "1fr 1fr", gap: 10, marginTop: 14 }}>
+        {guidedStepSafe > 0 ? (
+          <button
+            type="button"
+            onClick={() => goGuidedStep(-1)}
+            style={{
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.14)",
+              padding: "12px 10px",
+              background: "rgba(255,255,255,.055)",
+              color: "#fff",
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+          >
+            ← Retour
+          </button>
+        ) : null}
+        {final ? (
+          <button
+            type="button"
+            disabled={!canCreate}
+            onClick={createTournament}
+            style={{
+              borderRadius: 999,
+              border: "none",
+              padding: "12px 10px",
+              background: canCreate ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(255,255,255,.10)",
+              color: canCreate ? "#181008" : "rgba(255,255,255,.50)",
+              fontWeight: 1000,
+              cursor: canCreate ? "pointer" : "not-allowed",
+              boxShadow: canCreate ? `0 0 22px ${primary}44` : "none",
+            }}
+          >
+            {isLeague ? "Créer la ligue" : "Créer le tournoi"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => goGuidedStep(1)}
+            style={{
+              borderRadius: 999,
+              border: "none",
+              padding: "12px 10px",
+              background: `linear-gradient(90deg, ${primary}, #ffe9a3)`,
+              color: "#181008",
+              fontWeight: 1000,
+              cursor: "pointer",
+              boxShadow: `0 0 22px ${primary}33`,
+            }}
+          >
+            Continuer →
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const selectedNames = React.useMemo(() => {
+    if (isPetanque && petanqueEntry === "teams") {
+      return (teamsInput || []).map((t: any) => String(t?.name || "").trim()).filter(Boolean).slice(0, 6);
+    }
+    return selectedProfiles.map((p: any) => String(p?.name || "").trim()).filter(Boolean).slice(0, 6);
+  }, [isPetanque, petanqueEntry, teamsInput, selectedProfiles]);
+
   const infoContent = (() => {
     const k = String(infoKey || "");
     if (k === "players") return { title: "Joueurs", body: <>{OTHER_INFO.players}</> };
@@ -1962,6 +2109,328 @@ const petanqueTeamsUI = React.useMemo(() => {
 
     return { title: "Info", body: <>—</> };
   })();
+
+  if (configMode === "guided") {
+    const step = guidedStepSafe;
+    const title = isLeague ? `Créer une ligue ${sportLabel}` : `Créer un tournoi ${sportLabel}`;
+
+    return (
+      <div
+        className="container"
+        style={{
+          padding: 16,
+          paddingBottom: 96,
+          color: "#f5f5f7",
+          background: `radial-gradient(circle at top, rgba(247,200,92,0.12) 0, rgba(10,10,14,0) 40%), radial-gradient(circle at 40% 0%, rgba(40,40,56,0.65), rgba(5,5,8,1) 55%, rgba(0,0,0,1) 100%)`,
+          minHeight: "100vh",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => go("tournaments", { forceMode, source })}
+            style={{
+              borderRadius: 999,
+              padding: "7px 12px",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.05)",
+              color: "rgba(255,255,255,0.92)",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            ← Retour
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfigMode("full")}
+            style={{
+              borderRadius: 999,
+              padding: "7px 12px",
+              border: `1px solid ${primary}66`,
+              background: "rgba(255,255,255,0.05)",
+              color: primary,
+              fontWeight: 950,
+              cursor: "pointer",
+            }}
+          >
+            Configuration complète
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            borderRadius: 22,
+            padding: 16,
+            border: `1px solid ${primary}44`,
+            background: "linear-gradient(180deg, rgba(18,18,24,.98), rgba(5,5,8,.99))",
+            boxShadow: "0 22px 60px rgba(0,0,0,.65)",
+          }}
+        >
+          <div style={{ fontSize: 11.5, color: primary, fontWeight: 950, letterSpacing: .5, textTransform: "uppercase" }}>
+            Configuration guidée · {sportLabel} · {source === "online" ? "Online" : "Local"}
+          </div>
+          <h1 style={{ margin: "7px 0 0", fontSize: "clamp(26px, 6vw, 38px)", lineHeight: .98, fontWeight: 1000 }}>{title}</h1>
+          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.35, opacity: .78 }}>
+            Avance étape par étape. Les choix alimentent le même moteur que la configuration complète.
+          </div>
+
+          <div style={{ marginTop: 14, display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
+            {guidedSteps.map((s, idx) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setGuidedStep(idx)}
+                style={{
+                  flex: "0 0 auto",
+                  borderRadius: 999,
+                  padding: "7px 10px",
+                  border: idx === step ? `1px solid ${primary}AA` : "1px solid rgba(255,255,255,.10)",
+                  background: idx === step ? `linear-gradient(180deg, ${primary}22, rgba(0,0,0,.20))` : "rgba(255,255,255,.04)",
+                  color: idx === step ? primary : "rgba(255,255,255,.72)",
+                  fontSize: 11.5,
+                  fontWeight: 950,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {idx + 1}. {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {step === 0 ? (
+          <Section title="1. Type de compétition" subtitle="Choisis où sera créée la compétition, puis donne-lui un nom." accent={primary}>
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <RowTitle label="Nom" />
+                <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder={isLeague ? "Nom de la ligue" : "Nom du tournoi"} />
+              </div>
+              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
+                <GuidedChoiceCard active={source === "local"} title="Local" text="Sur cet appareil" onClick={() => setSource("local")} />
+                <GuidedChoiceCard active={source === "online"} title="Online" text="NAS + amis" accent="#4fb4ff" onClick={() => setSource("online")} />
+              </div>
+            </div>
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {step === 1 ? (
+          <Section title="2. Solo ou équipe" subtitle="Cette étape prépare la sélection des participants." accent={primary}>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
+              <GuidedChoiceCard active={participantKind === "solo"} title="Solo" text="Joueurs individuels" onClick={() => setParticipantChoice("solo")} />
+              <GuidedChoiceCard active={participantKind === "teams"} title="Équipe" text={isPetanque ? "Équipes complètes" : "Mode équipe"} onClick={() => setParticipantChoice("teams")} />
+            </div>
+
+            {isPetanque ? (
+              <div style={{ marginTop: 12 }}>
+                <RowTitle label="Taille d’équipe pétanque" />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <NeonPill active={petanqueTeamSize === 1} label="Simple" onClick={() => setPetanqueTeamSize(1)} primary={primary} />
+                  <NeonPill active={petanqueTeamSize === 2} label="Doublette" onClick={() => setPetanqueTeamSize(2)} primary={primary} />
+                  <NeonPill active={petanqueTeamSize === 3} label="Triplette" onClick={() => setPetanqueTeamSize(3)} primary={primary} />
+                  <NeonPill active={petanqueTeamSize === 4} label="Quadrette" onClick={() => setPetanqueTeamSize(4)} primary={primary} />
+                </div>
+              </div>
+            ) : null}
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {step === 2 ? (
+          <Section title="3. Participants" subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12.5, opacity: .82 }}>
+                <b style={{ color: primary }}>{isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</b> {isPetanque && petanqueEntry === "teams" ? "équipe(s)" : "participant(s)"}
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {isPetanque ? (
+                  <>
+                    <NeonPill active={petanqueEntry === "profiles"} label="Par profils" onClick={() => setPetanqueEntry("profiles")} small primary={primary} />
+                    <NeonPill active={petanqueEntry === "teams"} label="Par équipes" onClick={() => setPetanqueEntry("teams")} small primary={primary} />
+                  </>
+                ) : null}
+                {(!isPetanque || petanqueEntry === "profiles") ? (
+                  <>
+                    <NeonGhost label="Tout sélectionner" onClick={() => setPlayerIds(profiles.map((p: any) => String(p.id)))} />
+                    <NeonGhost label="Vider" onClick={() => setPlayerIds([])} />
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            {(!isPetanque || petanqueEntry === "profiles") ? (
+              <div style={{ marginTop: 12, display: "flex", gap: 14, overflowX: "auto", overflowY: "visible", paddingTop: 10, paddingBottom: 10, WebkitOverflowScrolling: "touch" }} className="dc-scroll-thin">
+                {profiles.map((p: any) => {
+                  const avg = Number(avgMap?.[p.id] ?? 0) || 0;
+                  const active = playerIds.includes(p.id);
+                  return <PlayerCarouselTile key={p.id} active={active} name={p.name} avatarUrl={p.avatar} avg3D={avg} onClick={() => togglePlayer(p.id)} primary={primary} />;
+                })}
+              </div>
+            ) : null}
+
+            {isPetanque && petanqueEntry === "teams" ? (
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <NeonGhost label="Générer 8" onClick={() => generateTeams(8)} />
+                  <NeonGhost label="Générer 16" onClick={() => generateTeams(16)} />
+                  <NeonGhost label="+ Équipe" onClick={() => addTeamInput()} />
+                </div>
+                {(teamsInput || []).slice(0, 8).map((t: any, idx: number) => (
+                  <div key={String(t.id || idx)} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.24)", display: "grid", gap: 8 }}>
+                    <TextInput value={String(t?.name || "")} onChange={(e: any) => setTeamsInput((prev) => { const next = [...(prev || [])]; const cur = next[idx] || { id: makeTeamId(idx), name: "", players: normalizeTeamPlayers([]) }; next[idx] = { ...cur, name: e.target.value }; return next; })} placeholder={`Équipe ${idx + 1}`} />
+                    <div style={{ fontSize: 11.5, opacity: .7 }}>{(t?.players || []).filter(Boolean).length}/{petanqueTeamSize} joueurs renseignés</div>
+                  </div>
+                ))}
+                {(teamsInput || []).length > 8 ? <div style={{ fontSize: 11.5, opacity: .72 }}>+ {(teamsInput || []).length - 8} autres équipes dans la configuration complète.</div> : null}
+              </div>
+            ) : null}
+
+            {!isPetanque ? (
+              <div style={{ marginTop: 12 }}>
+                <RowTitle label="Bots IA optionnels" />
+                <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+                  {botsCatalog.slice(0, 24).map((b: any) => {
+                    const id = String(b.id);
+                    const active = botIds.includes(id);
+                    return <PlayerCarouselTile key={id} active={active} name={b.name} avatarUrl={b.avatar} avg3D={b.avg3D} isBot onClick={() => setBotIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])} primary={primary} />;
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {step === 3 ? (
+          <Section title="4. Format" subtitle={isLeague ? "Une ligue utilise un classement de type championnat." : "Choisis la structure du tournoi."} accent={primary}>
+            <div style={{ display: "grid", gap: 10 }}>
+              {isLeague ? (
+                <LineOption label="Championnat / classement" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
+              ) : (
+                <>
+                  <LineOption label="Élimination directe" active={format === "single_ko"} onClick={() => setFormat("single_ko")} onInfo={() => openInfo("type_single")} primary={primary} />
+                  {!isPetanque ? <LineOption label="Élimination double" active={format === "double_ko"} onClick={() => setFormat("double_ko")} onInfo={() => openInfo("type_double")} primary={primary} /> : null}
+                  <LineOption label="Championnat" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
+                  <LineOption label="Poules + KO" active={format === "groups_ko"} onClick={() => setFormat("groups_ko")} onInfo={() => openInfo("type_groups")} primary={primary} />
+                </>
+              )}
+            </div>
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {step === 4 ? (
+          <Section title="5. Règles" subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary}>
+            <div style={{ display: "grid", gap: 14 }}>
+              {!lockedSportMode ? (
+                <div>
+                  <RowTitle label="Mode fléchettes" />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {availableModes.map((m) => <NeonPill key={m} active={mode === m} label={MODE_LABEL[m]} onClick={() => setMode(m)} primary={primary} />)}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, opacity: .8 }}>Mode verrouillé : <b style={{ color: primary }}>{MODE_LABEL[lockedSportMode]}</b></div>
+              )}
+
+              {mode === "x01" ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <RowTitle label="X01" />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {([301, 501, 701, 901] as any[]).map((n) => <NeonPill key={n} active={x01Start === n} label={String(n)} onClick={() => setX01Start(n)} primary={primary} />)}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={x01In === "simple"} label="Simple IN" onClick={() => setX01In("simple")} primary={primary} />
+                    <NeonPill active={x01In === "double"} label="Double IN" onClick={() => setX01In("double")} primary={primary} />
+                    <NeonPill active={x01In === "master"} label="Master IN" onClick={() => setX01In("master")} primary={primary} />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={x01Out === "simple"} label="Simple OUT" onClick={() => setX01Out("simple")} primary={primary} />
+                    <NeonPill active={x01Out === "double"} label="Double OUT" onClick={() => setX01Out("double")} primary={primary} />
+                    <NeonPill active={x01Out === "master"} label="Master OUT" onClick={() => setX01Out("master")} primary={primary} />
+                  </div>
+                </div>
+              ) : null}
+
+              {!isPetanque ? (
+                <div>
+                  <RowTitle label="Best-of" />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {([1, 3, 5, 7] as BestOf[]).map((v) => <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />)}
+                  </div>
+                </div>
+              ) : null}
+
+              {(format === "round_robin" || format === "groups_ko") ? (
+                <div>
+                  <RowTitle label="Tours" />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[1, 2, 3, 4, 5].map((n) => <NeonPill key={n} active={rrRounds === n} label={`${n} tour${n > 1 ? "s" : ""}`} onClick={() => setRrRounds(n)} primary={primary} />)}
+                  </div>
+                </div>
+              ) : null}
+
+              {format === "groups_ko" ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <RowTitle label="Poules" />
+                  <TextInput value={playersPerGroup} onChange={(e: any) => setPlayersPerGroup(e.target.value)} placeholder="Joueurs par poule" />
+                  <div style={{ fontSize: 11.5, opacity: .72 }}>Poules auto : <b style={{ color: primary }}>{computedGroups}</b></div>
+                </div>
+              ) : null}
+
+              {format !== "round_robin" ? (
+                <div>
+                  <RowTitle label="Bracket" />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={bracketAuto} label="Auto" onClick={() => setBracketAuto(true)} primary={primary} />
+                    <NeonPill active={!bracketAuto} label="Manuel" onClick={() => setBracketAuto(false)} primary={primary} />
+                  </div>
+                  {!bracketAuto ? <div style={{ marginTop: 8 }}><TextInput value={bracketTarget} onChange={(e: any) => setBracketTarget(e.target.value)} placeholder="Taille bracket" /></div> : null}
+                  <div style={{ marginTop: 6, fontSize: 11.5, opacity: .72 }}>Aperçu : <b style={{ color: primary }}>{desiredSizePreview || "—"}</b></div>
+                </div>
+              ) : null}
+            </div>
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {step === 5 ? (
+          <Section title="6. Récapitulatif" subtitle="Vérifie puis crée la compétition." accent={primary}>
+            <div style={{ display: "grid", gap: 9, fontSize: 13, lineHeight: 1.35 }}>
+              <div><b style={{ color: primary }}>Nom :</b> {name || "—"}</div>
+              <div><b style={{ color: primary }}>Type :</b> {guidedKindLabel}</div>
+              <div><b style={{ color: primary }}>Sport :</b> {sportLabel}</div>
+              <div><b style={{ color: primary }}>Source :</b> {source === "online" ? "Online" : "Local"}</div>
+              <div><b style={{ color: primary }}>Participants :</b> {isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
+              <div><b style={{ color: primary }}>Format :</b> {TYPE_INFO[format] ? format : "—"}</div>
+              {selectedNames.length ? <div style={{ opacity: .78 }}>Aperçu : {selectedNames.join(", ")}{selectedNames.length >= 6 ? "…" : ""}</div> : null}
+            </div>
+            {!canCreate ? (
+              <div style={{ marginTop: 10, fontSize: 12, opacity: .75 }}>
+                ⚠️ {isPetanque ? `Nom + au moins ${petanqueMinPlayers} joueurs / équipes valides.` : "Nom + au moins 2 participants."}
+              </div>
+            ) : null}
+            <GuidedFooter final />
+          </Section>
+        ) : null}
+
+        <Sheet open={sheetMode && !isPetanque} title="Choisir un mode" onClose={() => setSheetMode(false)} primary={primary}>
+          <div style={{ display: "grid", gap: 10 }}>
+            {availableModes.map((m) => (
+              <GuidedChoiceCard key={m} active={mode === m} title={MODE_LABEL[m]} onClick={() => { setMode(m); setSheetMode(false); }} />
+            ))}
+          </div>
+        </Sheet>
+
+        <CenterInfoModal open={infoOpen} title={infoContent.title} primary={primary} onClose={() => setInfoOpen(false)}>
+          {infoContent.body}
+        </CenterInfoModal>
+      </div>
+    );
+  }
 
   return (
     <div
