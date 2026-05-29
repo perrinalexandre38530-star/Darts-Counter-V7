@@ -37,6 +37,7 @@ import { loadBots as loadStoredBots } from "../lib/bots";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
 import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
+import { BABYFOOT_LEAGUE_BADGES } from "../lib/leagueBadgeAssets";
 
 // ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
@@ -1024,6 +1025,9 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const sportLabel = competitionSportLabel(forceMode);
 
   const [name, setName] = React.useState(isLeague ? `Ligue ${sportLabel}` : `Tournoi ${sportLabel}`);
+  const [competitionAvatar, setCompetitionAvatar] = React.useState<string | null>(null);
+  const [competitionCover, setCompetitionCover] = React.useState<string | null>(null);
+  const [showCompetitionLogoPicker, setShowCompetitionLogoPicker] = React.useState(false);
 
   // ✅ IMPORTANT: le choix est verrouillé au SPORT actif. Darts peut choisir X01/Cricket/Killer/Shanghai, jamais Baby-foot.
   const [mode, setMode] = React.useState<Mode | null>(lockedSportMode || availableModes[0] || "x01");
@@ -1911,6 +1915,18 @@ async function createTournament() {
       },
     } as any);
 
+    (tour as any).identity = {
+      logoDataUrl: competitionAvatar || null,
+      logoUrl: competitionAvatar || null,
+      avatarDataUrl: competitionAvatar || null,
+      coverDataUrl: competitionCover || null,
+      bannerDataUrl: competitionCover || null,
+    };
+    (tour as any).logoDataUrl = competitionAvatar || null;
+    (tour as any).avatarDataUrl = competitionAvatar || null;
+    (tour as any).coverDataUrl = competitionCover || null;
+    (tour as any).bannerDataUrl = competitionCover || null;
+
     const matches = buildInitialMatches(tour);
 
     try {
@@ -1926,7 +1942,7 @@ async function createTournament() {
           tournament: tour,
           matches: matches as any,
           participants: (tour as any).players || [],
-          settings: (tour as any).game?.rules || {},
+          settings: { ...((tour as any).game?.rules || {}), identity: (tour as any).identity || null },
         }).catch((err) => console.error("[TournamentCreate] online save failed:", err));
       }
     } catch (e) {
@@ -2095,6 +2111,18 @@ async function createTournament() {
     },
   } as any);
 
+  (tour as any).identity = {
+    logoDataUrl: competitionAvatar || null,
+    logoUrl: competitionAvatar || null,
+    avatarDataUrl: competitionAvatar || null,
+    coverDataUrl: competitionCover || null,
+    bannerDataUrl: competitionCover || null,
+  };
+  (tour as any).logoDataUrl = competitionAvatar || null;
+  (tour as any).avatarDataUrl = competitionAvatar || null;
+  (tour as any).coverDataUrl = competitionCover || null;
+  (tour as any).bannerDataUrl = competitionCover || null;
+
   const matches = buildInitialMatches(tour);
 
   try {
@@ -2110,7 +2138,7 @@ async function createTournament() {
         tournament: tour,
         matches: matches as any,
         participants: (tour as any).players || [],
-        settings: (tour as any).game?.rules || {},
+        settings: { ...((tour as any).game?.rules || {}), identity: (tour as any).identity || null },
       }).catch((err) => console.error("[TournamentCreate] online save failed:", err));
     }
   } catch (e) {
@@ -2139,7 +2167,7 @@ const petanqueTeamsUI = React.useMemo(() => {
 }, [isPetanque, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
 
-  const guidedSteps = ["Type", "Solo / équipe", "Participants", "Format", "Règles", "Récap"];
+  const guidedSteps = ["Type", "Identité", "Solo / équipe", "Participants", "Format", "Règles", "Récap"];
   const guidedKindLabel = isLeague ? "ligue / championnat" : "tournoi";
   const guidedStepSafe = Math.max(0, Math.min(guidedSteps.length - 1, Number(guidedStep) || 0));
 
@@ -2260,6 +2288,327 @@ const petanqueTeamsUI = React.useMemo(() => {
           </div>
         ) : null}
       </button>
+    );
+  }
+
+
+  function IdentityImageCard({ label, helper, value, onChange, variant = "avatar", accent = primary, onOpenGallery }: any) {
+    const inputRef = React.useRef<HTMLInputElement | null>(null);
+    const isCover = variant === "cover";
+
+    function pickFile(file?: File | null) {
+      if (!file) return;
+      if (!String(file.type || "").startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = () => onChange?.(String(reader.result || ""));
+      reader.readAsDataURL(file);
+    }
+
+    const fallbackIcon = isCover ? (
+      <svg width={34} height={34} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 6.5h16v11H4z" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M7 15l3.2-3.2 2.2 2.2 1.5-1.5L18 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="16.2" cy="9.2" r="1.2" fill="currentColor" />
+      </svg>
+    ) : (
+      <svg width={34} height={34} viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M4.5 20c1.6-4 4.1-6 7.5-6s5.9 2 7.5 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+
+    return (
+      <div
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          borderRadius: 20,
+          border: value ? `1px solid ${accent}AA` : "1px solid rgba(255,255,255,.11)",
+          background: `radial-gradient(120% 135% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`,
+          boxShadow: value ? `0 0 24px ${accent}22, 0 18px 42px rgba(0,0,0,.46)` : "0 12px 28px rgba(0,0,0,.34)",
+          padding: 12,
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e: any) => {
+            pickFile(e?.target?.files?.[0]);
+            try { e.currentTarget.value = ""; } catch {}
+          }}
+        />
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => inputRef.current?.click()}
+          onKeyDown={(e: any) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          style={{
+            height: isCover ? 92 : 104,
+            borderRadius: isCover ? 18 : 24,
+            border: `1px dashed ${value ? accent + "88" : "rgba(255,255,255,.18)"}`,
+            background: value ? `center / cover no-repeat url(${value})` : "rgba(0,0,0,.24)",
+            display: "grid",
+            placeItems: "center",
+            color: accent,
+            cursor: "pointer",
+            WebkitTapHighlightColor: "transparent",
+            boxShadow: value ? `inset 0 0 0 1px rgba(0,0,0,.34), inset 0 -36px 45px rgba(0,0,0,.38)` : "inset 0 0 18px rgba(0,0,0,.28)",
+          }}
+        >
+          {!value ? (
+            <div style={{ display: "grid", justifyItems: "center", gap: 7 }}>
+              <div style={{ width: 54, height: 54, borderRadius: isCover ? 18 : 999, border: `1px solid ${accent}66`, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", boxShadow: `0 0 18px ${accent}22` }}>
+                {fallbackIcon}
+              </div>
+              <div style={{ color: "rgba(255,255,255,.74)", fontSize: 11, fontWeight: 900 }}>
+                Toucher pour choisir
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 1000, color: value ? accent : "rgba(255,255,255,.92)" }}>{label}</div>
+            <div style={{ marginTop: 2, fontSize: 11, opacity: .68, lineHeight: 1.25 }}>{helper}</div>
+          </div>
+          <div style={{ display: "flex", gap: 7, flex: "0 0 auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {onOpenGallery ? (
+              <button
+                type="button"
+                onClick={onOpenGallery}
+                style={{
+                  borderRadius: 999,
+                  border: `1px solid ${accent}66`,
+                  background: `linear-gradient(180deg, ${accent}18, rgba(0,0,0,.28))`,
+                  color: accent,
+                  padding: "7px 10px",
+                  fontSize: 11,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                Galerie
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              style={{
+                borderRadius: 999,
+                border: `1px solid ${accent}66`,
+                background: "rgba(0,0,0,.28)",
+                color: accent,
+                padding: "7px 10px",
+                fontSize: 11,
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+            >
+              {value ? "Changer" : "Choisir"}
+            </button>
+            {value ? (
+              <button
+                type="button"
+                onClick={() => onChange?.(null)}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,.13)",
+                  background: "rgba(255,255,255,.05)",
+                  color: "rgba(255,255,255,.78)",
+                  padding: "7px 10px",
+                  fontSize: 11,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                Retirer
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  function CompetitionLogoPickerModal({ selected, onPick, onClose, accent = primary }: any) {
+    const pageSize = 25;
+    const totalPages = Math.max(1, Math.ceil(BABYFOOT_LEAGUE_BADGES.length / pageSize));
+    const selectedIndex = selected ? BABYFOOT_LEAGUE_BADGES.findIndex((url) => url === selected) : -1;
+    const [page, setPage] = React.useState(() => selectedIndex >= 0 ? Math.floor(selectedIndex / pageSize) : 0);
+    const start = page * pageSize;
+    const badges = BABYFOOT_LEAGUE_BADGES.slice(start, start + pageSize);
+    const canPrev = page > 0;
+    const canNext = page < totalPages - 1;
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          padding: 14,
+          background: "rgba(0,0,0,.72)",
+          display: "grid",
+          placeItems: "center",
+        }}
+        onMouseDown={onClose}
+      >
+        <div
+          style={{
+            width: "min(560px, 100%)",
+            maxHeight: "86vh",
+            overflow: "hidden",
+            borderRadius: 22,
+            border: `1px solid ${accent}44`,
+            background: `radial-gradient(130% 135% at 0% 0%, ${accent}20, transparent 56%), linear-gradient(180deg, rgba(18,18,24,.98), rgba(6,6,9,.995))`,
+            boxShadow: "0 24px 80px rgba(0,0,0,.78)",
+            padding: 12,
+            color: "#fff",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: accent, fontSize: 14, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45 }}>
+                Choisir un logo prédéfini
+              </div>
+              <div style={{ marginTop: 3, fontSize: 11.5, opacity: .72 }}>
+                Banque baby-foot étendue à toutes les compétitions · Page {page + 1}/{totalPages}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.06)",
+                color: "#fff",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+              title="Fermer"
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "34px 1fr 34px", gap: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              disabled={!canPrev}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              style={{
+                width: 34,
+                height: 42,
+                borderRadius: 14,
+                border: `1px solid ${accent}44`,
+                background: "rgba(255,255,255,.05)",
+                color: accent,
+                fontSize: 24,
+                fontWeight: 1000,
+                opacity: canPrev ? 1 : .35,
+                cursor: canPrev ? "pointer" : "default",
+              }}
+            >
+              ‹
+            </button>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, maxHeight: "62vh", overflowY: "auto", padding: 2 }}>
+              {badges.map((url, idx) => {
+                const active = selected === url;
+                const n = start + idx + 1;
+                return (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => onPick(url)}
+                    title={`Logo ${n}`}
+                    style={{
+                      aspectRatio: "1 / 1",
+                      borderRadius: 999,
+                      border: `2px solid ${active ? accent : "rgba(255,255,255,.16)"}`,
+                      background: active ? `${accent}20` : "rgba(255,255,255,.04)",
+                      boxShadow: active ? `0 0 20px ${accent}88` : "0 10px 20px rgba(0,0,0,.25)",
+                      padding: 3,
+                      cursor: "pointer",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <img src={url} alt={`Logo ${n}`} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 999, display: "block" }} />
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              disabled={!canNext}
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              style={{
+                width: 34,
+                height: 42,
+                borderRadius: 14,
+                border: `1px solid ${accent}44`,
+                background: "rgba(255,255,255,.05)",
+                color: accent,
+                fontSize: 24,
+                fontWeight: 1000,
+                opacity: canNext ? 1 : .35,
+                cursor: canNext ? "pointer" : "default",
+              }}
+            >
+              ›
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => {
+                onPick(null);
+                onClose();
+              }}
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.05)",
+                color: "rgba(255,255,255,.86)",
+                padding: "10px 12px",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+            >
+              RETIRER
+            </button>
+            <button
+              type="button"
+              onClick={() => onClose()}
+              style={{
+                borderRadius: 999,
+                border: "none",
+                background: `linear-gradient(90deg, ${accent}, #ffe9a3)`,
+                color: "#1b1208",
+                padding: "10px 12px",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+            >
+              VALIDER
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -2482,7 +2831,32 @@ const petanqueTeamsUI = React.useMemo(() => {
         ) : null}
 
         {step === 1 ? (
-          <Section title="2. Solo ou équipe" subtitle="Cette étape prépare la sélection des participants." accent={primary} watermark={kindWatermark}>
+          <Section title="2. Identité visuelle" subtitle={isLeague ? "Choisir un logo et une couverture de ligue." : "Choisir un logo et une couverture de tournoi."} accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <IdentityImageCard
+                label={isLeague ? "Logo de ligue" : "Logo de tournoi"}
+                helper="Affiché sur les cartes, classements et écrans liés."
+                value={competitionAvatar}
+                onChange={setCompetitionAvatar}
+                variant="avatar"
+                accent={primary}
+                onOpenGallery={() => setShowCompetitionLogoPicker(true)}
+              />
+              <IdentityImageCard
+                label={isLeague ? "Couverture de ligue" : "Couverture de tournoi"}
+                helper="Bannière optionnelle pour habiller la compétition."
+                value={competitionCover}
+                onChange={setCompetitionCover}
+                variant="cover"
+                accent={primary}
+              />
+            </div>
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {step === 2 ? (
+          <Section title="3. Solo ou équipe" subtitle="Cette étape prépare la sélection des participants." accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
               <GuidedChoiceCard active={participantKind === "solo"} title="Solo" text="Joueurs individuels" onClick={() => setParticipantChoice("solo")} />
               <GuidedChoiceCard active={participantKind === "teams"} title="Équipe" text={isPetanque ? "Équipes complètes" : "Mode équipe"} onClick={() => setParticipantChoice("teams")} />
@@ -2503,8 +2877,8 @@ const petanqueTeamsUI = React.useMemo(() => {
           </Section>
         ) : null}
 
-        {step === 2 ? (
-          <Section title="3. Participants" subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
+        {step === 3 ? (
+          <Section title="4. Participants" subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12.5, opacity: .82 }}>
                 <b style={{ color: primary }}>{isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</b> {isPetanque && petanqueEntry === "teams" ? "équipe(s)" : "participant(s)"}
@@ -2568,8 +2942,8 @@ const petanqueTeamsUI = React.useMemo(() => {
           </Section>
         ) : null}
 
-        {step === 3 ? (
-          <Section title="4. Format" subtitle={isLeague ? "Une ligue utilise un classement de type championnat." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
+        {step === 4 ? (
+          <Section title="5. Format" subtitle={isLeague ? "Une ligue utilise un classement de type championnat." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10 }}>
               {isLeague ? (
                 <LineOption label="Championnat / classement" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
@@ -2586,8 +2960,8 @@ const petanqueTeamsUI = React.useMemo(() => {
           </Section>
         ) : null}
 
-        {step === 4 ? (
-          <Section title="5. Règles" subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary} watermark={kindWatermark}>
+        {step === 5 ? (
+          <Section title="6. Règles" subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 14 }}>
               {!lockedSportMode ? (
                 <div>
@@ -2661,8 +3035,8 @@ const petanqueTeamsUI = React.useMemo(() => {
           </Section>
         ) : null}
 
-        {step === 5 ? (
-          <Section title="6. Récapitulatif" subtitle="Vérifie puis crée la compétition." accent={primary} watermark={kindWatermark}>
+        {step === 6 ? (
+          <Section title="7. Récapitulatif" subtitle="Vérifie puis crée la compétition." accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 9, fontSize: 13, lineHeight: 1.35 }}>
               <div><b style={{ color: primary }}>Nom :</b> {name || "—"}</div>
               <div><b style={{ color: primary }}>Type :</b> {guidedKindLabel}</div>
@@ -2670,6 +3044,7 @@ const petanqueTeamsUI = React.useMemo(() => {
               <div><b style={{ color: primary }}>Source :</b> {source === "online" ? "Online" : "Local"}</div>
               <div><b style={{ color: primary }}>Participants :</b> {isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
               <div><b style={{ color: primary }}>Format :</b> {TYPE_INFO[format] ? format : "—"}</div>
+              <div><b style={{ color: primary }}>Identité :</b> {competitionAvatar ? "Logo OK" : "Sans logo"} · {competitionCover ? "Couverture OK" : "Sans couverture"}</div>
               {selectedNames.length ? <div style={{ opacity: .78 }}>Aperçu : {selectedNames.join(", ")}{selectedNames.length >= 6 ? "…" : ""}</div> : null}
             </div>
             {!canCreate ? (
@@ -2688,6 +3063,18 @@ const petanqueTeamsUI = React.useMemo(() => {
             ))}
           </div>
         </Sheet>
+
+        {showCompetitionLogoPicker ? (
+          <CompetitionLogoPickerModal
+            selected={competitionAvatar}
+            accent={primary}
+            onClose={() => setShowCompetitionLogoPicker(false)}
+            onPick={(url: string | null) => {
+              setCompetitionAvatar(url || null);
+              if (url) setShowCompetitionLogoPicker(false);
+            }}
+          />
+        ) : null}
 
         <CenterInfoModal open={infoOpen} title={infoContent.title} primary={primary} onClose={() => setInfoOpen(false)}>
           {infoContent.body}
