@@ -5,6 +5,8 @@ import InfoDot from "../components/InfoDot";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
 import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
+import resumeWatermark from "../assets/ui/competition_resume_watermark.png";
+import consultWatermark from "../assets/ui/competition_consult_watermark.png";
 
 // Page d'entrée COMPÉTITIONS : menu local épuré.
 // Le sport actif reste imposé par GameSelect, mais il n'est plus affiché en annotation.
@@ -103,6 +105,35 @@ function InfoContent({ kind, sportLabel }: { kind: "league" | "tournament"; spor
   );
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        margin: "4px 2px 0",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        color: "rgba(255,255,255,.82)",
+        fontSize: 12,
+        fontWeight: 1000,
+        letterSpacing: .8,
+        textTransform: "uppercase",
+      }}
+    >
+      <span
+        style={{
+          width: 22,
+          height: 3,
+          borderRadius: 999,
+          background: "linear-gradient(90deg, #c9ff00, rgba(201,255,0,0))",
+          boxShadow: "0 0 12px rgba(201,255,0,.55)",
+        }}
+      />
+      {children}
+    </div>
+  );
+}
+
 function CompetitionCard({
   tag,
   title,
@@ -113,12 +144,16 @@ function CompetitionCard({
 }: {
   tag: string;
   title: string;
-  tone: "gold" | "pink";
+  tone: "gold" | "pink" | "blue" | "green";
   watermark: string;
   onClick: () => void;
   info: React.ReactNode;
 }) {
-  const accent = tone === "gold" ? "#f7c85c" : "#ff7fe2";
+  const accent =
+    tone === "gold" ? "#f7c85c" :
+    tone === "blue" ? "#4fb4ff" :
+    tone === "green" ? "#7fe2a9" :
+    "#ff7fe2";
   return (
     <div
       role="button"
@@ -140,6 +175,10 @@ function CompetitionCard({
         background:
           tone === "gold"
             ? "radial-gradient(130% 120% at 0% 0%, rgba(247,200,92,.20), transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(9,9,12,.99))"
+            : tone === "blue"
+            ? "radial-gradient(130% 120% at 0% 0%, rgba(79,180,255,.18), transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(9,9,12,.99))"
+            : tone === "green"
+            ? "radial-gradient(130% 120% at 0% 0%, rgba(127,226,169,.18), transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(9,9,12,.99))"
             : "radial-gradient(130% 120% at 0% 0%, rgba(255,127,226,.18), transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(9,9,12,.99))",
         boxShadow: `0 18px 45px rgba(0,0,0,.55), 0 0 22px ${accent}22`,
         cursor: "pointer",
@@ -214,6 +253,17 @@ function CompetitionCard({
 export default function TournamentsHome({ store, go, params }: Props) {
   const activeSport = pickActiveSport(store, params);
   const label = sportLabel(activeSport);
+  type EntryMode = "menu" | "create" | "resume" | "consult";
+
+  function initialMode(): EntryMode {
+    const raw = String(params?.entry || params?.action || params?.view || "").toLowerCase();
+    if (raw === "create" || raw === "creer" || raw === "créer") return "create";
+    if (raw === "resume" || raw === "reprendre" || raw === "active") return "resume";
+    if (raw === "consult" || raw === "consulter" || raw === "history" || raw === "historique") return "consult";
+    return "menu";
+  }
+
+  const [entryMode, setEntryMode] = React.useState<EntryMode>(() => initialMode());
 
   const createParams = (competitionKind: "league" | "tournament") => ({
     forceMode: activeSport,
@@ -223,28 +273,170 @@ export default function TournamentsHome({ store, go, params }: Props) {
     configMode: "guided",
   });
 
+  const listParams = (competitionKind: "league" | "tournament", statusFilter: "active" | "done") => ({
+    forceMode: activeSport,
+    sport: activeSport,
+    source: "local",
+    competitionKind,
+    filterKind: competitionKind,
+    statusFilter,
+    filter: statusFilter,
+    view: statusFilter === "active" ? "resume" : "history",
+  });
+
+  const back = () => {
+    if (entryMode !== "menu") {
+      setEntryMode("menu");
+      return;
+    }
+    go("games");
+  };
+
   return (
     <div style={{ padding: 18, paddingBottom: 108, color: "white" }}>
-      <CompetitionHeader onBack={() => go("games")} />
+      <CompetitionHeader onBack={back} />
 
-      <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-        <CompetitionCard
-          tag="LIGUE / CHAMPIONNAT"
-          title={`Créer une ligue ${label}`}
-          tone="gold"
-          watermark={leagueWatermark}
-          info={<InfoContent kind="league" sportLabel={label} />}
-          onClick={() => go("tournament_create", createParams("league"))}
-        />
-        <CompetitionCard
-          tag="TOURNOI"
-          title={`Créer un tournoi ${label}`}
-          tone="pink"
-          watermark={tournamentWatermark}
-          info={<InfoContent kind="tournament" sportLabel={label} />}
-          onClick={() => go("tournament_create", createParams("tournament"))}
-        />
-      </div>
+      {entryMode === "menu" ? (
+        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
+          <CompetitionCard
+            tag="CRÉER"
+            title="Création d’une Compétition"
+            tone="gold"
+            watermark={leagueWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Crée une nouvelle ligue / championnat ou un nouveau tournoi pour le sport actif : <b>{label}</b>.
+                </p>
+              </div>
+            }
+            onClick={() => setEntryMode("create")}
+          />
+
+          <CompetitionCard
+            tag="REPRENDRE"
+            title="Reprendre une Compétition en cours"
+            tone="blue"
+            watermark={resumeWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Retrouve uniquement les ligues et tournois non terminés : brouillons, en cours, ou compétitions à continuer.
+                </p>
+              </div>
+            }
+            onClick={() => setEntryMode("resume")}
+          />
+
+          <CompetitionCard
+            tag="CONSULTER"
+            title="Consulter Historique des compétitions terminées"
+            tone="green"
+            watermark={consultWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Consulte uniquement les ligues et tournois terminés pour revoir l’historique, les classements et les résultats.
+                </p>
+              </div>
+            }
+            onClick={() => setEntryMode("consult")}
+          />
+        </div>
+      ) : null}
+
+      {entryMode === "create" ? (
+        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
+          <SectionLabel>Créer</SectionLabel>
+
+          <CompetitionCard
+            tag="LIGUE / CHAMPIONNAT"
+            title={`Créer une ligue ${label}`}
+            tone="gold"
+            watermark={leagueWatermark}
+            info={<InfoContent kind="league" sportLabel={label} />}
+            onClick={() => go("tournament_create", createParams("league"))}
+          />
+          <CompetitionCard
+            tag="TOURNOI"
+            title={`Créer un tournoi ${label}`}
+            tone="pink"
+            watermark={tournamentWatermark}
+            info={<InfoContent kind="tournament" sportLabel={label} />}
+            onClick={() => go("tournament_create", createParams("tournament"))}
+          />
+        </div>
+      ) : null}
+
+      {entryMode === "resume" ? (
+        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
+          <SectionLabel>Reprendre</SectionLabel>
+
+          <CompetitionCard
+            tag="LIGUES EN COURS"
+            title={`Reprendre une ligue ${label}`}
+            tone="gold"
+            watermark={leagueWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Affiche les ligues / championnats non terminés pour <b>{label}</b>.
+                </p>
+              </div>
+            }
+            onClick={() => go("tournaments", listParams("league", "active"))}
+          />
+          <CompetitionCard
+            tag="TOURNOIS EN COURS"
+            title={`Reprendre un tournoi ${label}`}
+            tone="pink"
+            watermark={tournamentWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Affiche les tournois non terminés pour <b>{label}</b>.
+                </p>
+              </div>
+            }
+            onClick={() => go("tournaments", listParams("tournament", "active"))}
+          />
+        </div>
+      ) : null}
+
+      {entryMode === "consult" ? (
+        <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
+          <SectionLabel>Consulter</SectionLabel>
+
+          <CompetitionCard
+            tag="HISTORIQUE LIGUES"
+            title={`Ligues terminées ${label}`}
+            tone="gold"
+            watermark={leagueWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Consulte les ligues / championnats terminés pour <b>{label}</b>.
+                </p>
+              </div>
+            }
+            onClick={() => go("tournaments", listParams("league", "done"))}
+          />
+          <CompetitionCard
+            tag="HISTORIQUE TOURNOIS"
+            title={`Tournois terminés ${label}`}
+            tone="pink"
+            watermark={tournamentWatermark}
+            info={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                <p style={{ margin: 0 }}>
+                  Consulte les tournois terminés pour <b>{label}</b>.
+                </p>
+              </div>
+            }
+            onClick={() => go("tournaments", listParams("tournament", "done"))}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -27,7 +27,7 @@ type Props = {
   params?: any; // ✅ NEW : reçoit routeParams (dont forceMode)
 };
 
-type FilterKey = "all" | "draft" | "running" | "done";
+type FilterKey = "all" | "active" | "draft" | "running" | "done";
 
 /** ✅ Pills style */
 function pillStyle(active: boolean, tint: string, disabled = false) {
@@ -132,6 +132,44 @@ function competitionSportLabel(sport: string): string {
   if (s === "molkky") return "MÖLKKY";
   if (s === "dicegame") return "DÉS";
   return s.toUpperCase();
+}
+
+function normalizeCompetitionKindValue(value: any): "all" | "league" | "tournament" {
+  const raw = String(value || "").toLowerCase().trim();
+  if (!raw) return "all";
+  if (raw === "league" || raw === "championship" || raw === "championnat" || raw === "ligue") return "league";
+  if (raw === "tournament" || raw === "tournoi" || raw === "cup" || raw === "bracket") return "tournament";
+  return "all";
+}
+
+function normalizeTournamentKind(t: any): "league" | "tournament" {
+  const raw = String(
+    t?.competitionKind ||
+      t?.kind ||
+      t?.type ||
+      t?.meta?.competitionKind ||
+      t?.meta?.kind ||
+      t?.meta?.type ||
+      ""
+  ).toLowerCase().trim();
+
+  if (raw === "league" || raw === "championship" || raw === "championnat" || raw === "ligue") return "league";
+  return "tournament";
+}
+
+function competitionKindLabel(kind: "all" | "league" | "tournament") {
+  if (kind === "league") return "LIGUES / CHAMPIONNATS";
+  if (kind === "tournament") return "TOURNOIS";
+  return "LIGUES / CHAMPIONNATS / TOURNOIS";
+}
+
+function normalizeStatusFilter(value: any): FilterKey {
+  const raw = String(value || "").toLowerCase().trim();
+  if (raw === "active" || raw === "resume" || raw === "reprendre" || raw === "non_done" || raw === "unfinished") return "active";
+  if (raw === "draft" || raw === "brouillon") return "draft";
+  if (raw === "running" || raw === "en_cours" || raw === "progress" || raw === "ongoing") return "running";
+  if (raw === "done" || raw === "finished" || raw === "termine" || raw === "terminé" || raw === "history" || raw === "historique") return "done";
+  return "all";
 }
 
 function isPlayableReal(m: any) {
@@ -443,7 +481,8 @@ function TickerRow({
 }
 
 export default function TournamentsHome({ store, go, source = "local", params }: Props) {
-  const [filter, setFilter] = React.useState<FilterKey>("all");
+  const routeStatusFilter = normalizeStatusFilter((params as any)?.statusFilter || (params as any)?.filter || (params as any)?.view);
+  const [filter, setFilter] = React.useState<FilterKey>(routeStatusFilter);
 
   const [items, setItems] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -453,6 +492,14 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const isPetanque = forceMode === "petanque";
   const isOnline = String(source || "local").toLowerCase() === "online";
   const sportLabel = competitionSportLabel(forceMode);
+  const kindFilter = normalizeCompetitionKindValue((params as any)?.filterKind || (params as any)?.competitionKind || (params as any)?.kind);
+  const kindHeaderLabel = competitionKindLabel(kindFilter);
+  const listContext = String((params as any)?.view || "").toLowerCase();
+  const showCreateShortcuts = listContext !== "resume" && listContext !== "history";
+
+  React.useEffect(() => {
+    setFilter(routeStatusFilter);
+  }, [routeStatusFilter, kindFilter, forceMode]);
 
   const reload = React.useCallback(() => {
     setLoading(true);
@@ -520,8 +567,8 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const tournaments = React.useMemo(() => items || [], [items]);
 
   const filtered = React.useMemo(() => {
-    const list = Array.isArray(tournaments) ? tournaments : [];
-    if (filter === "all") return list;
+    const base = Array.isArray(tournaments) ? tournaments : [];
+    const list = kindFilter === "all" ? base : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter);
 
     const norm = (t: any): FilterKey => {
       const st = String(t?.status || "").toLowerCase();
@@ -541,16 +588,22 @@ export default function TournamentsHome({ store, go, source = "local", params }:
       return "draft";
     };
 
+    if (filter === "all") return list;
+    if (filter === "active") return list.filter((t) => norm(t) !== "done");
     return list.filter((t) => norm(t) === filter);
-  }, [tournaments, filter]);
+  }, [tournaments, filter, kindFilter]);
 
   const hasAny = (filtered?.length || 0) > 0;
+  const scopedByKindCount = React.useMemo(() => {
+    const base = Array.isArray(tournaments) ? tournaments : [];
+    return kindFilter === "all" ? base.length : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter).length;
+  }, [tournaments, kindFilter]);
 
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       <Card tone="gold">
         <div style={{ fontWeight: 950, fontSize: 20, letterSpacing: 0.5 }}>
-          {isOnline ? `ONLINE · LIGUES / CHAMPIONNATS / TOURNOIS ${sportLabel}` : `LIGUES / CHAMPIONNATS / TOURNOIS ${sportLabel}`}
+          {isOnline ? `ONLINE · ${listContext === "resume" ? "À REPRENDRE · " : listContext === "history" ? "HISTORIQUE · " : ""}${kindHeaderLabel} ${sportLabel}` : `${listContext === "resume" ? "À REPRENDRE · " : listContext === "history" ? "HISTORIQUE · " : ""}${kindHeaderLabel} ${sportLabel}`}
         </div>
         <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 4, lineHeight: 1.35 }}>
           {isPetanque
@@ -561,16 +614,16 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 10 }}>
           {loading ? (
             <>Chargement…</>
-          ) : tournaments?.length ? (
+          ) : scopedByKindCount ? (
             <>
-              <b>{tournaments.length}</b> compétition{tournaments.length > 1 ? "s" : ""} locale{tournaments.length > 1 ? "s" : ""} pour <b>{sportLabel}</b>.
+              <b>{scopedByKindCount}</b> {kindFilter === "league" ? "ligue" : kindFilter === "tournament" ? "tournoi" : "compétition"}{scopedByKindCount > 1 ? "s" : ""} locale{scopedByKindCount > 1 ? "s" : ""} pour <b>{sportLabel}</b>.
             </>
           ) : (
-            <>Aucune compétition locale pour <b>{sportLabel}</b>.</>
+            <>Aucune {kindFilter === "league" ? "ligue" : kindFilter === "tournament" ? "tournoi" : "compétition"} locale pour <b>{sportLabel}</b>.</>
           )}
         </div>
 
-        {!isOnline ? (
+        {showCreateShortcuts && !isOnline ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
             <TickerCard
               tag="TOURNOI"
@@ -591,7 +644,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
               onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: "league", preset: "league", format: "round_robin" })}
             />
           </div>
-        ) : (
+        ) : showCreateShortcuts ? (
           <div style={{ marginTop: 12 }}>
             <TickerCard
               tag="ONLINE"
@@ -606,11 +659,17 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local" })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: kindFilter, competitionKind: kindFilter })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
           <button type="button" onClick={() => go("online", { section: "competitions", forceMode })} style={pillStyle(isOnline, "#4fb4ff")}>CRÉER ONLINE</button>
         </div>
 
-        <TickerRow go={go} setFilter={setFilter} sport={forceMode} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 10 }}>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local" })} style={pillStyle(kindFilter === "all", "#ffd56a")}>TOUT</button>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "league", competitionKind: "league", view: "existing" })} style={pillStyle(kindFilter === "league", "#ffd56a")}>LIGUES</button>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "tournament", competitionKind: "tournament", view: "existing" })} style={pillStyle(kindFilter === "tournament", "#ff7fe2")}>TOURNOIS</button>
+        </div>
+
+        {showCreateShortcuts ? <TickerRow go={go} setFilter={setFilter} sport={forceMode} /> : null}
       </Card>
 
       {/* FILTER BAR */}
@@ -633,6 +692,9 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         >
           <button onClick={() => setFilter("all")} style={pillStyle(filter === "all", "#ffd56a")}>
             Tous
+          </button>
+          <button onClick={() => setFilter("active")} style={pillStyle(filter === "active", "#4fb4ff")}>
+            À reprendre
           </button>
           <button onClick={() => setFilter("draft")} style={pillStyle(filter === "draft", "#b0b0b0")}>
             Brouillons
@@ -658,7 +720,11 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           <Card tone="blue">
             <div style={{ fontWeight: 950, fontSize: 16, color: "#4fb4ff" }}>Aucune compétition {sportLabel}</div>
             <div style={{ opacity: 0.85, fontSize: 12.5, marginTop: 6, lineHeight: 1.35 }}>
-              Crée d’abord un <b>Tournoi</b> ou une <b>Ligue / Championnat</b>. Les propositions restent verrouillées sur le sport choisi dans GameSelect.
+              {listContext === "resume"
+                ? "Aucune compétition non terminée à reprendre pour ce sport."
+                : listContext === "history"
+                ? "Aucune compétition terminée dans l’historique pour ce sport."
+                : "Crée d’abord un Tournoi ou une Ligue / Championnat. Les propositions restent verrouillées sur le sport choisi dans GameSelect."}
             </div>
           </Card>
         ) : (

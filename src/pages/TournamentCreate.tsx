@@ -85,7 +85,7 @@ const MODE_LABEL: Record<Mode, string> = {
 };
 
 
-const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "killer", "shanghai"];
+const DARTS_CREATE_MODES: Mode[] = ["x01", "cricket", "shanghai"];
 const SPORT_CREATE_MODES: Record<string, Mode[]> = {
   darts: DARTS_CREATE_MODES,
   petanque: ["petanque"],
@@ -982,7 +982,6 @@ function GuidedHeroCard({
 
         <div
           style={{
-            position: "relative",
             minHeight: 92,
             display: "grid",
             alignContent: "center",
@@ -991,57 +990,62 @@ function GuidedHeroCard({
             padding: "14px 8px 10px",
           }}
         >
-          {competitionLogo ? (
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: 10,
-                top: "50%",
-                transform: "translateY(-35%)",
-                width: 40,
-                height: 40,
-                borderRadius: 999,
-                padding: 3,
-                border: `1px solid ${primary}88`,
-                background: "rgba(0,0,0,.42)",
-                boxShadow: `0 0 18px ${primary}42`,
-                display: "grid",
-                placeItems: "center",
-                pointerEvents: "none",
-              }}
-            >
-              <img
-                src={competitionLogo}
-                alt=""
-                draggable={false}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: 999,
-                  objectFit: "cover",
-                  display: "block",
-                }}
-              />
-            </span>
-          ) : null}
-
           <div style={{ color: primary, fontSize: 13, lineHeight: 1, letterSpacing: 1.8, fontWeight: 1000, textTransform: "uppercase", textShadow: `0 0 14px ${primary}44` }}>
             CRÉATION
           </div>
           <div
             style={{
               marginTop: 6,
+              width: "100%",
+              display: "grid",
+              gridTemplateColumns: competitionLogo ? "44px minmax(0, max-content) 44px" : "minmax(0, max-content)",
+              alignItems: "center",
+              justifyContent: "center",
+              columnGap: competitionLogo ? 8 : 0,
               color: "#fff",
-              fontSize: "clamp(22px, 6.5vw, 34px)",
+              fontSize: "clamp(20px, 6vw, 32px)",
               lineHeight: .96,
               fontWeight: 1000,
               textTransform: "uppercase",
               textShadow: "0 3px 18px rgba(0,0,0,.62)",
-              maxWidth: 430,
+              minWidth: 0,
             }}
           >
-            {titleLine2}
+            {competitionLogo ? (
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  padding: 3,
+                  border: `1px solid ${primary}88`,
+                  background: "rgba(0,0,0,.42)",
+                  boxShadow: `0 0 18px ${primary}42`,
+                  display: "grid",
+                  placeItems: "center",
+                  pointerEvents: "none",
+                  justifySelf: "end",
+                }}
+              >
+                <img
+                  src={competitionLogo}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: 999,
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              </span>
+            ) : null}
+            <span style={{ minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere", textAlign: "center" }}>
+              {titleLine2}
+            </span>
+            {competitionLogo ? <span aria-hidden="true" style={{ width: 38, height: 38, justifySelf: "start" }} /> : null}
           </div>
         </div>
 
@@ -1112,6 +1116,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [teamsImportOpen, setTeamsImportOpen] = React.useState(false);
   const [teamsImportText, setTeamsImportText] = React.useState<string>("");
   const [teamsInput, setTeamsInput] = React.useState<{ id: string; name: string; players: string[] }[]>([]);
+  const [teamCreateOpen, setTeamCreateOpen] = React.useState(false);
+  const [teamCreateName, setTeamCreateName] = React.useState("");
 
 
 // ✅ PÉTANQUE — équipes (assignation manuelle)
@@ -1366,6 +1372,25 @@ const togglePlayer = (id: string) => {
     setTeamsExpandedIdx((prev) => (prev == null ? 0 : prev));
   }, [makeTeamId, normalizeTeamPlayers]);
 
+  const openTeamCreate = React.useCallback(() => {
+    const nextName = `Équipe ${(teamsInput || []).length + 1}`;
+    setTeamCreateName(nextName);
+    setTeamCreateOpen(true);
+  }, [teamsInput]);
+
+  const commitTeamCreate = React.useCallback(() => {
+    const clean = String(teamCreateName || "").trim() || `Équipe ${(teamsInput || []).length + 1}`;
+    setTeamsInput((prev) => {
+      const arr = [...(prev || [])];
+      const idx = arr.length;
+      arr.push({ id: makeTeamId(idx), name: clean, players: normalizeTeamPlayers([]) });
+      return arr;
+    });
+    setTeamsExpandedIdx((prev) => (prev == null ? 0 : prev));
+    setTeamCreateOpen(false);
+    setTeamCreateName("");
+  }, [teamCreateName, teamsInput, makeTeamId, normalizeTeamPlayers]);
+
   const parseTeamsImportText = React.useCallback(
     (text: string) => {
       const ts = Number(petanqueTeamSize) || 1;
@@ -1436,7 +1461,10 @@ const togglePlayer = (id: string) => {
   const petanqueMultipleOk = isPetanqueProfiles ? totalSelectedIds.length % petanqueTeamSize === 0 : true;
   const petanqueMinOk = isPetanqueProfiles ? totalSelectedIds.length >= petanqueMinPlayers : isPetanqueTeams ? teamsInput.length >= 2 : true;
 
-  const minPlayersOk = isPetanque ? petanqueMinOk : totalSelectedIds.length >= 2;
+  const teamModeReady = !isPetanque && participantKind === "teams"
+    ? (teamsInput || []).filter((t: any) => String(t?.name || "").trim()).length >= 2
+    : true;
+  const minPlayersOk = isPetanque ? petanqueMinOk : participantKind === "teams" ? teamModeReady : totalSelectedIds.length >= 2;
 
 
 // ✅ PÉTANQUE — nombre d’équipes + normalisation assignations
@@ -1551,9 +1579,20 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [x01Start, setX01Start] = React.useState<301 | 501 | 701 | 901>(defaultStart);
   const [x01In, setX01In] = React.useState<"simple" | "double" | "master">("simple");
   const [x01Out, setX01Out] = React.useState<"simple" | "double" | "master">(store?.settings?.doubleOut ? "double" : "simple");
+  const [leagueFormat, setLeagueFormat] = React.useState<"simple" | "return" | "free" | "multi">("simple");
+  const isLeagueMulti = isLeague && leagueFormat === "multi";
+  const [leagueMultiPoints, setLeagueMultiPoints] = React.useState("10,8,6,4,2,1");
+  const parsedLeagueMultiPoints = React.useMemo(() => {
+    const nums = String(leagueMultiPoints || "")
+      .split(/[;,\s]+/)
+      .map((x) => Number(String(x || "").trim()))
+      .filter((n) => Number.isFinite(n) && n >= 0)
+      .slice(0, 20);
+    return nums.length ? nums : [10, 8, 6, 4, 2, 1];
+  }, [leagueMultiPoints]);
 
   // ✅ create gate
-  const canCreate = !!name.trim() && !!mode && minPlayersOk && (!isPetanque || (petanqueMultipleOk && petanqueTeamsReady));
+  const canCreate = !!name.trim() && !!mode && (isLeagueMulti || minPlayersOk) && (!isPetanque || isLeagueMulti || (petanqueMultipleOk && petanqueTeamsReady));
 
   const TYPE_INFO: Record<TourFormat, string> = {
     single_ko: "Tableau KO : une défaite = élimination. Rapide et clair.",
@@ -1807,6 +1846,85 @@ async function createTournament() {
   const profileById = Object.fromEntries(selectedProfiles.map((p: any) => [String(p.id), p]));
 
   // --------------------------------------------
+  // ✅ LIGUE MULTI : classement alimenté plus tard par parties libres.
+  // Pas de participants imposés, pas de calendrier généré au démarrage.
+  // --------------------------------------------
+  if (isLeagueMulti) {
+    const rules = {
+      sport: forceMode || mode || "darts",
+      leagueFormat: "multi",
+      scoringMode: "rank_points",
+      rankPoints: parsedLeagueMultiPoints,
+      participantsMode: "dynamic",
+      freeMatches: true,
+      calendarMode: "none",
+      canAttachExternalMatches: true,
+    };
+
+    const tour: Tournament = createTournamentDraft({
+      name: name.trim(),
+      source: source as any,
+      sport: forceMode || mode || "darts",
+      kind: competitionKind,
+      ownerProfileId: (store as any)?.activeProfileId ?? null,
+      players: [],
+      game: { mode: mode || forceMode || "x01", rules },
+      stages: [],
+      viewKind: "round_robin",
+      repechage: { enabled: false },
+      meta: {
+        format: "league_multi",
+        leagueFormat: "multi",
+        scoringMode: "rank_points",
+        rankPoints: parsedLeagueMultiPoints,
+        participantsMode: "dynamic",
+        freeMatches: true,
+        calendarMode: "none",
+        forceMode,
+        source,
+        competitionKind,
+      },
+    } as any);
+
+    (tour as any).identity = {
+      logoDataUrl: competitionAvatar || null,
+      logoUrl: competitionAvatar || null,
+      avatarDataUrl: competitionAvatar || null,
+      coverDataUrl: competitionCover || null,
+      bannerDataUrl: competitionCover || null,
+    };
+    (tour as any).logoDataUrl = competitionAvatar || null;
+    (tour as any).avatarDataUrl = competitionAvatar || null;
+    (tour as any).coverDataUrl = competitionCover || null;
+    (tour as any).bannerDataUrl = competitionCover || null;
+
+    const matches: any[] = [];
+
+    try {
+      upsertTournamentLocal(tour as any);
+      upsertMatchesForTournamentLocal(tour.id, matches as any);
+      if (source === "online") {
+        void saveOnlineCompetition({
+          name: tour.name,
+          sport: forceMode || String(mode || "darts"),
+          mode: String(mode || forceMode || "x01"),
+          kind: competitionKind,
+          status: tour.status,
+          tournament: tour,
+          matches: matches as any,
+          participants: [],
+          settings: { ...rules, identity: (tour as any).identity || null },
+        }).catch((err) => console.error("[TournamentCreate] online save failed:", err));
+      }
+    } catch (e) {
+      console.error("[TournamentCreate] persist failed:", e);
+    }
+
+    go("tournament_view", { id: tour.id, forceMode, source, competitionKind });
+    return;
+  }
+
+  // --------------------------------------------
   // ✅ MODE PÉTANQUE : on transforme les joueurs en ÉQUIPES (entrants = équipes)
   // --------------------------------------------
   if (isPetanque) {
@@ -1913,6 +2031,7 @@ async function createTournament() {
       repechageEnabled: !!repechageEnabled,
       seedMode: "random",
       rrRounds: Math.max(1, Number(rrRounds) || 1),
+      leagueFormat,
       playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0, // = équipes par poule
       qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0), // = équipes qualifiées/poule
       bracketAuto: !!bracketAuto,
@@ -1950,6 +2069,7 @@ async function createTournament() {
 
       meta: {
         format: effectiveFormat,
+        leagueFormat,
         seedMode: "random",
         repechageEnabled: !!repechageEnabled,
         rrRounds: Math.max(1, Number(rrRounds) || 1),
@@ -2026,8 +2146,25 @@ async function createTournament() {
     };
   });
 
-  // ✅ hors pétanque: possibilité d’ajouter des bots sélectionnés
-  const selectedBots = botsCatalog
+  // ✅ hors pétanque : en mode ÉQUIPE, les entrants deviennent les équipes, pas les avatars joueurs.
+  if (participantKind === "teams") {
+    merged = (teamsInput || [])
+      .map((t: any, idx: number) => ({
+        id: String(t?.id || `team_${idx + 1}`),
+        name: String(t?.name || "").trim() || `Équipe ${idx + 1}`,
+        avatarDataUrl: t?.logoDataUrl || t?.avatarDataUrl || null,
+        source: "team",
+        isTeam: true,
+        isBot: false,
+        memberIds: Array.isArray(t?.playerIds) ? t.playerIds : [],
+        avg3D: 0,
+        stars: 0,
+      }))
+      .filter((t: any) => !!String(t?.name || "").trim());
+  }
+
+  // ✅ hors pétanque: possibilité d’ajouter des bots sélectionnés uniquement en SOLO.
+  const selectedBots = participantKind === "teams" ? [] : botsCatalog
     .filter((b: any) => botIds.includes(String(b.id)))
     .map((b: any, idx: number) => ({
       id: `bot_${String(b.id)}_${idx}_${Date.now()}`,
@@ -2038,7 +2175,7 @@ async function createTournament() {
       avg3D: Number(b.avg3D) || 0,
       stars: starsFromAvg3D(Number(b.avg3D) || 0),
     }));
-  merged = merged.concat(selectedBots);
+  merged = participantKind === "teams" ? merged : merged.concat(selectedBots);
 
   if (capEnabled && merged.length > cap) {
     merged = shuffle(merged).slice(0, cap);
@@ -2078,6 +2215,7 @@ async function createTournament() {
           repechageEnabled: !!repechageEnabled,
           seedMode: effectiveSeedMode,
           rrRounds: Math.max(1, Number(rrRounds) || 1),
+          leagueFormat,
           playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
           qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
           bracketAuto: !!bracketAuto,
@@ -2139,6 +2277,8 @@ async function createTournament() {
       avatarDataUrl: p.avatarDataUrl || null,
       source: p.source || "local",
       isBot: !!p.isBot,
+      isTeam: !!p.isTeam,
+      memberIds: Array.isArray(p.memberIds) ? p.memberIds : undefined,
     })),
 
     game: { mode, rules },
@@ -2149,6 +2289,7 @@ async function createTournament() {
 
     meta: {
       format,
+      leagueFormat,
       seedMode: effectiveSeedMode,
       repechageEnabled: !!repechageEnabled,
       rrRounds: Math.max(1, Number(rrRounds) || 1),
@@ -2163,6 +2304,7 @@ async function createTournament() {
       source,
       competitionKind,
       participantKind,
+      teams: participantKind === "teams" ? finalPlayers.map((t: any) => ({ id: t.id, name: t.name, memberIds: t.memberIds || [] })) : undefined,
       isPetanque,
       petanqueTeamSize: isPetanque ? petanqueTeamSize : undefined,
     },
@@ -2208,15 +2350,23 @@ async function createTournament() {
   const computedGroups = React.useMemo(() => {
   if (format !== "groups_ko") return 1;
   const ppg = clamp(Math.floor(numFromText(playersPerGroup)) || 4, 2, 9999);
-  const entrants = isPetanque ? Math.max(2, petanqueTeamsCountEffective) : Math.max(2, totalSelectedIds.length);
+  const entrants = isPetanque
+    ? Math.max(2, petanqueTeamsCountEffective)
+    : participantKind === "teams"
+      ? Math.max(2, (teamsInput || []).length)
+      : Math.max(2, totalSelectedIds.length);
   return Math.max(1, Math.ceil(entrants / ppg));
-}, [format, playersPerGroup, totalSelectedIds.length, isPetanque, petanqueTeamsCountEffective]);
+}, [format, playersPerGroup, totalSelectedIds.length, isPetanque, petanqueTeamsCountEffective, participantKind, teamsInput]);
 
   const desiredSizePreview = React.useMemo(() => {
-  const entrants = isPetanque ? Math.max(2, petanqueTeamsCountEffective) : Math.max(2, totalSelectedIds.length);
+  const entrants = isPetanque
+    ? Math.max(2, petanqueTeamsCountEffective)
+    : participantKind === "teams"
+      ? Math.max(2, (teamsInput || []).length)
+      : Math.max(2, totalSelectedIds.length);
   const d = computeDesiredSize(entrants);
   return d || 0;
-}, [totalSelectedIds.length, bracketAuto, bracketTarget, format, isPetanque, petanqueTeamsCountEffective]);
+}, [totalSelectedIds.length, bracketAuto, bracketTarget, format, isPetanque, petanqueTeamsCountEffective, participantKind, teamsInput]);
 
 const petanqueTeamsUI = React.useMemo(() => {
   if (!isPetanque) return [];
@@ -2224,9 +2374,36 @@ const petanqueTeamsUI = React.useMemo(() => {
 }, [isPetanque, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
 
-  const guidedSteps = ["Type", "Identité", "Solo / équipe", "Participants", "Format", "Règles", "Récap"];
+  const guidedStepKeys = React.useMemo(() => {
+    if (isLeague && leagueFormat === "multi") {
+      return ["type", "identity", "format", "multiRules", "recap"];
+    }
+    if (isLeague) {
+      return ["type", "identity", "format", "participantKind", "participants", "rules", "recap"];
+    }
+    return ["type", "identity", "participantKind", "participants", "format", "rules", "recap"];
+  }, [isLeague, leagueFormat]);
+
+  const guidedStepLabels: Record<string, string> = {
+    type: "Type",
+    identity: "Identité",
+    format: "Format",
+    participantKind: "Solo / équipe",
+    participants: "Participants",
+    rules: "Règles",
+    multiRules: "Barème",
+    recap: "Récap",
+  };
+
+  const guidedSteps = guidedStepKeys.map((k) => guidedStepLabels[k] || k);
   const guidedKindLabel = isLeague ? "ligue / championnat" : "tournoi";
   const guidedStepSafe = Math.max(0, Math.min(guidedSteps.length - 1, Number(guidedStep) || 0));
+  const currentGuidedKey = guidedStepKeys[guidedStepSafe] || "type";
+  const guidedStepTitle = (key: string, label: string) => `${Math.max(1, guidedStepKeys.indexOf(key) + 1)}. ${label}`;
+
+  React.useEffect(() => {
+    setGuidedStep((prev) => Math.max(0, Math.min(guidedStepKeys.length - 1, Number(prev || 0))));
+  }, [guidedStepKeys.length]);
 
   function goGuidedStep(delta: number) {
     setGuidedStep((prev) => Math.max(0, Math.min(guidedSteps.length - 1, Number(prev || 0) + delta)));
@@ -2242,6 +2419,21 @@ const petanqueTeamsUI = React.useMemo(() => {
         setPetanqueEntry("teams");
         setPetanqueTeamSize((cur) => (Number(cur) > 1 ? cur : 2));
       }
+      return;
+    }
+
+    // Tous les sports peuvent maintenant préparer une compétition par équipes.
+    // On ouvre une vraie sélection d'équipes au lieu de revenir sur les avatars joueurs.
+    if (next === "teams") {
+      setTeamsInput((prev) => {
+        const arr = Array.isArray(prev) ? prev.filter(Boolean) : [];
+        if (arr.length >= 2) return arr;
+        return [
+          { id: makeTeamId(0), name: "Équipe 1", players: [] },
+          { id: makeTeamId(1), name: "Équipe 2", players: [] },
+        ];
+      });
+      setBotIds([]);
     }
   }
 
@@ -2441,6 +2633,182 @@ function ParticipantIconChoice({ active, kind, onClick, accent = primary }: any)
     );
   }
 
+
+function TeamCarouselTile({ team, index, onRemove, primary = THEME }: any) {
+    const name = String(team?.name || `Équipe ${index + 1}`).trim() || `Équipe ${index + 1}`;
+    const initial = name.slice(0, 1).toUpperCase() || "É";
+    return (
+      <div
+        style={{
+          width: 104,
+          flex: "0 0 auto",
+          display: "grid",
+          justifyItems: "center",
+          gap: 8,
+          position: "relative",
+          scrollSnapAlign: "start",
+        }}
+        title={name}
+      >
+        <div
+          style={{
+            width: 76,
+            height: 76,
+            borderRadius: 999,
+            border: `1px solid ${primary}AA`,
+            background: `radial-gradient(circle at 35% 20%, ${primary}33, rgba(0,0,0,.42) 62%), rgba(0,0,0,.48)`,
+            boxShadow: `0 0 24px ${primary}30, inset 0 0 18px rgba(255,255,255,.04)`,
+            display: "grid",
+            placeItems: "center",
+            color: "#fff",
+            fontSize: 30,
+            fontWeight: 1000,
+            textShadow: `0 0 14px ${primary}55`,
+          }}
+        >
+          {initial}
+        </div>
+        <div style={{ width: 104, fontSize: 11.5, fontWeight: 950, opacity: .95, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {name}
+        </div>
+        <button
+          type="button"
+          onClick={(e: any) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove?.();
+          }}
+          style={{
+            position: "absolute",
+            top: -2,
+            right: 12,
+            width: 24,
+            height: 24,
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,.14)",
+            background: "rgba(0,0,0,.58)",
+            color: "rgba(255,255,255,.88)",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 15,
+            fontWeight: 1000,
+            cursor: "pointer",
+            boxShadow: "0 6px 16px rgba(0,0,0,.34)",
+          }}
+          title="Retirer l'équipe"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  function TeamAddTile({ onClick, primary = THEME }: any) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          width: 104,
+          flex: "0 0 auto",
+          border: "none",
+          background: "transparent",
+          color: primary,
+          cursor: "pointer",
+          padding: 0,
+          display: "grid",
+          justifyItems: "center",
+          gap: 8,
+          scrollSnapAlign: "start",
+        }}
+        title="Créer une équipe"
+      >
+        <div
+          style={{
+            width: 76,
+            height: 76,
+            borderRadius: 999,
+            border: `1px dashed ${primary}AA`,
+            background: `radial-gradient(circle at 35% 20%, ${primary}1F, rgba(0,0,0,.38) 62%), rgba(0,0,0,.42)`,
+            boxShadow: `0 0 22px ${primary}24`,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 34,
+            lineHeight: 1,
+            fontWeight: 1000,
+          }}
+        >
+          +
+        </div>
+        <div style={{ width: 104, fontSize: 11.5, fontWeight: 1000, textAlign: "center" }}>
+          Équipe
+        </div>
+      </button>
+    );
+  }
+
+  function TeamCreateModal({ open, value, onChange, onCreate, onClose, primary = THEME }: any) {
+    if (!open) return null;
+    return (
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,.72)", display: "grid", placeItems: "center", padding: 16 }}
+        onMouseDown={onClose}
+      >
+        <div
+          style={{
+            width: "min(420px, 100%)",
+            borderRadius: 24,
+            border: `1px solid ${primary}44`,
+            background: `radial-gradient(130% 135% at 0% 0%, ${primary}20, transparent 56%), linear-gradient(180deg, rgba(20,20,26,.99), rgba(6,6,9,.995))`,
+            boxShadow: "0 24px 80px rgba(0,0,0,.78)",
+            padding: 16,
+            color: "#fff",
+          }}
+          onMouseDown={(e: any) => e.stopPropagation()}
+        >
+          <div style={{ color: primary, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45 }}>
+            Créer une équipe
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <TextInput value={value} onChange={(e: any) => onChange?.(e.target.value)} placeholder="Nom de l’équipe" />
+          </div>
+          <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.05)",
+                color: "rgba(255,255,255,.86)",
+                padding: "11px 12px",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={onCreate}
+              style={{
+                borderRadius: 999,
+                border: "none",
+                background: `linear-gradient(90deg, ${primary}, #ffe9a3)`,
+                color: "#1b1208",
+                padding: "11px 12px",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+            >
+              Créer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 function IdentityImageCard({ label, value, onChange, variant = "avatar", accent = primary, onOpenGallery }: any) {
     const inputRef = React.useRef<HTMLInputElement | null>(null);
     const isCover = variant === "cover";
@@ -2449,19 +2817,12 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
       if (!file) return;
       if (!String(file.type || "").startsWith("image/")) return;
 
-      // Aperçu immédiat : évite que le mini-ticker reste vide pendant la lecture du fichier.
-      try {
-        const previewUrl = URL.createObjectURL(file);
-        onChange?.(previewUrl);
-      } catch {}
-
-      // Sauvegarde durable dans la compétition : DataURL remplacera l'aperçu blob dès que prêt.
       const reader = new FileReader();
       reader.onload = () => {
         const result = typeof reader.result === "string" ? reader.result : "";
         if (result) onChange?.(result);
       };
-      reader.onerror = () => console.warn("[TournamentCreate] cover/logo import failed");
+      reader.onerror = () => console.warn("[TournamentCreate] identity image import failed");
       reader.readAsDataURL(file);
     }
 
@@ -2484,16 +2845,25 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
     );
 
     return (
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={choose}
+        onKeyDown={(e: any) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            choose();
+          }
+        }}
         style={{
           position: "relative",
           overflow: "hidden",
-          minHeight: isCover ? 132 : 146,
+          minHeight: 146,
           borderRadius: 22,
           border: value ? `1px solid ${accent}BB` : "1px solid rgba(255,255,255,.11)",
-          background: value
+          background: value && isCover
+            ? `linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.66)), center / cover no-repeat url(${value}), radial-gradient(120% 135% at 50% 0%, ${accent}20, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
+            : value
             ? `radial-gradient(120% 135% at 50% 0%, ${accent}20, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
             : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
           color: value ? accent : "rgba(255,255,255,.86)",
@@ -2504,18 +2874,21 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           gap: 9,
           padding: "14px 10px 12px",
           WebkitTapHighlightColor: "transparent",
-          ...(isCover && value ? {
-            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.16), rgba(0,0,0,.64)), url("${String(value).replace(/"/g, '\"')}")`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          } : {}),
         }}
       >
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
-          style={{ display: "none" }}
+          style={onOpenGallery ? { display: "none" } : {
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            opacity: 0,
+            cursor: "pointer",
+            zIndex: 4,
+          }}
           onClick={(e: any) => e.stopPropagation()}
           onChange={(e: any) => {
             pickFile(e?.target?.files?.[0]);
@@ -2526,13 +2899,12 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         <div
           style={{
             width: isCover ? "100%" : 76,
-            maxWidth: isCover ? 172 : 76,
-            height: isCover ? 54 : 76,
-            aspectRatio: isCover ? "4 / 1" : "1 / 1",
+            maxWidth: isCover ? 190 : 76,
+            height: isCover ? 64 : 76,
             borderRadius: isCover ? 14 : 999,
             padding: isCover ? 3 : 4,
             border: value ? `1px solid ${accent}AA` : `1px solid ${accent}55`,
-            background: value ? "rgba(0,0,0,.18)" : "rgba(0,0,0,.34)",
+            background: "rgba(0,0,0,.34)",
             boxShadow: value ? `0 0 22px ${accent}44` : `inset 0 0 18px rgba(0,0,0,.32), 0 0 14px ${accent}18`,
             display: "grid",
             placeItems: "center",
@@ -2541,13 +2913,15 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         >
           {value ? (
             <img
+              key={String(value).slice(0, 96)}
               src={value}
               alt=""
               draggable={false}
               style={{
-                width: "100%",
-                height: "100%",
-                objectFit: isCover ? "contain" : "cover",
+                width: isCover ? "100%" : "100%",
+                height: isCover ? "auto" : "100%",
+                minHeight: isCover ? "100%" : undefined,
+                objectFit: isCover ? "cover" : "cover",
                 borderRadius: isCover ? 11 : 999,
                 display: "block",
                 background: "rgba(0,0,0,.35)",
@@ -2576,8 +2950,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         </div>
 
         {value ? (
-          <span
-            role="button"
+          <button
+            type="button"
             aria-label="Retirer"
             title="Retirer"
             onClick={(e: any) => {
@@ -2599,13 +2973,15 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               placeItems: "center",
               fontSize: 15,
               fontWeight: 1000,
+              cursor: "pointer",
               boxShadow: "0 6px 16px rgba(0,0,0,.32)",
+              zIndex: 6,
             }}
           >
             ×
-          </span>
+          </button>
         ) : null}
-      </button>
+      </div>
     );
   }
 
@@ -2819,7 +3195,13 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         {guidedStepSafe > 0 ? (
           <button
             type="button"
-            onClick={() => goGuidedStep(-1)}
+            onPointerDown={(e: any) => {
+              e.preventDefault();
+              goGuidedStep(-1);
+            }}
+            onClick={(e: any) => {
+              if (e.detail === 0) goGuidedStep(-1);
+            }}
             style={{
               borderRadius: 999,
               border: "1px solid rgba(255,255,255,.12)",
@@ -2828,6 +3210,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               color: "#fff",
               fontWeight: 950,
               cursor: "pointer",
+              touchAction: "manipulation",
+              userSelect: "none",
               boxShadow: "0 14px 28px rgba(0,0,0,.28)",
             }}
           >
@@ -2855,7 +3239,13 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         ) : (
           <button
             type="button"
-            onClick={() => goGuidedStep(1)}
+            onPointerDown={(e: any) => {
+              e.preventDefault();
+              goGuidedStep(1);
+            }}
+            onClick={(e: any) => {
+              if (e.detail === 0) goGuidedStep(1);
+            }}
             style={{
               borderRadius: 999,
               border: "none",
@@ -2864,6 +3254,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               color: "#181008",
               fontWeight: 1000,
               cursor: "pointer",
+              touchAction: "manipulation",
+              userSelect: "none",
               boxShadow: `0 18px 34px rgba(0,0,0,.34), 0 0 22px ${primary}33`,
             }}
           >
@@ -2875,11 +3267,11 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
   }
 
   const selectedNames = React.useMemo(() => {
-    if (isPetanque && petanqueEntry === "teams") {
+    if ((isPetanque && petanqueEntry === "teams") || (!isPetanque && participantKind === "teams")) {
       return (teamsInput || []).map((t: any) => String(t?.name || "").trim()).filter(Boolean).slice(0, 6);
     }
     return selectedProfiles.map((p: any) => String(p?.name || "").trim()).filter(Boolean).slice(0, 6);
-  }, [isPetanque, petanqueEntry, teamsInput, selectedProfiles]);
+  }, [isPetanque, petanqueEntry, participantKind, teamsInput, selectedProfiles]);
 
   const infoContent = (() => {
     const k = String(infoKey || "");
@@ -2985,8 +3377,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           ))}
         </div>
 
-        {step === 0 ? (
-          <Section title="1. Type de compétition" subtitle={isLeague ? "Choisir un nom de ligue" : "Choisir un nom de tournoi"} accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "type" ? (
+          <Section title={guidedStepTitle("type", "Type de compétition")} subtitle={isLeague ? "Choisir un nom de ligue" : "Choisir un nom de tournoi"} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 14 }}>
               <div>
                 <TextInput value={name} onChange={(e: any) => setName(e.target.value)} placeholder={isLeague ? "Nom de la ligue" : "Nom du tournoi"} />
@@ -3000,8 +3392,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
-        {step === 1 ? (
-          <Section title="2. Identité visuelle" subtitle="" accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "identity" ? (
+          <Section title={guidedStepTitle("identity", "Identité visuelle")} subtitle="" accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
               <IdentityImageCard
                 label="LOGO"
@@ -3023,8 +3415,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
-        {step === 2 ? (
-          <Section title="3. Solo ou équipe" subtitle="" accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "participantKind" ? (
+          <Section title={guidedStepTitle("participantKind", "Solo ou équipe")} subtitle="" accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
               <ParticipantIconChoice active={participantKind === "solo"} kind="solo" onClick={() => setParticipantChoice("solo")} />
               <ParticipantIconChoice active={participantKind === "teams"} kind="teams" onClick={() => setParticipantChoice("teams")} />
@@ -3045,11 +3437,11 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
-        {step === 3 ? (
-          <Section title="4. Participants" subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "participants" ? (
+          <Section title={guidedStepTitle("participants", "Participants")} subtitle={participantKind === "teams" ? "Sélectionne ou prépare les équipes / joueurs." : "Sélectionne les joueurs."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 12.5, opacity: .82 }}>
-                <b style={{ color: primary }}>{isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</b> {isPetanque && petanqueEntry === "teams" ? "équipe(s)" : "participant(s)"}
+                <b style={{ color: primary }}>{(isPetanque && petanqueEntry === "teams") || (!isPetanque && participantKind === "teams") ? (teamsInput || []).length : totalSelectedIds.length}</b> {(isPetanque && petanqueEntry === "teams") || (!isPetanque && participantKind === "teams") ? "équipe(s)" : "participant(s)"}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {isPetanque ? (
@@ -3058,7 +3450,11 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                     <NeonPill active={petanqueEntry === "teams"} label="Par équipes" onClick={() => setPetanqueEntry("teams")} small primary={primary} />
                   </>
                 ) : null}
-                {(!isPetanque || petanqueEntry === "profiles") ? (
+                {participantKind === "teams" && !isPetanque ? (
+                  <>
+                    <NeonGhost label="Vider" onClick={() => setTeamsInput([])} />
+                  </>
+                ) : (!isPetanque || petanqueEntry === "profiles") ? (
                   <>
                     <NeonGhost label="Tout sélectionner" onClick={() => setPlayerIds(profiles.map((p: any) => String(p.id)))} />
                     <NeonGhost label="Vider" onClick={() => setPlayerIds([])} />
@@ -3067,7 +3463,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               </div>
             </div>
 
-            {(!isPetanque || petanqueEntry === "profiles") ? (
+            {participantKind !== "teams" && (!isPetanque || petanqueEntry === "profiles") ? (
               <div style={{ marginTop: 12, display: "flex", gap: 14, overflowX: "auto", overflowY: "visible", paddingTop: 10, paddingBottom: 10, WebkitOverflowScrolling: "touch" }} className="dc-scroll-thin">
                 {profiles.map((p: any) => {
                   const avg = Number(avgMap?.[p.id] ?? 0) || 0;
@@ -3076,6 +3472,37 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 })}
               </div>
             ) : null}
+
+            {participantKind === "teams" && !isPetanque ? (
+              <div style={{ marginTop: 12 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 14,
+                    overflowX: "auto",
+                    overflowY: "visible",
+                    paddingTop: 10,
+                    paddingBottom: 10,
+                    WebkitOverflowScrolling: "touch",
+                    scrollSnapType: "x proximity",
+                  }}
+                  className="dc-scroll-thin"
+                >
+                  {(teamsInput || []).map((t: any, idx: number) => (
+                    <TeamCarouselTile
+                      key={String(t.id || idx)}
+                      team={t}
+                      index={idx}
+                      primary={primary}
+                      onRemove={() => setTeamsInput((prev) => (prev || []).filter((_: any, i: number) => i !== idx))}
+                    />
+                  ))}
+                  <TeamAddTile primary={primary} onClick={openTeamCreate} />
+                </div>
+                {(teamsInput || []).length < 2 ? <div style={{ fontSize: 12, opacity: .74 }}>Ajoute au moins 2 équipes.</div> : null}
+              </div>
+            ) : null}
+
 
             {isPetanque && petanqueEntry === "teams" ? (
               <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
@@ -3094,7 +3521,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               </div>
             ) : null}
 
-            {!isPetanque ? (
+            {!isPetanque && participantKind !== "teams" ? (
               <div style={{ marginTop: 12 }}>
                 <RowTitle label="Bots IA optionnels" />
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
@@ -3110,11 +3537,16 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
-        {step === 4 ? (
-          <Section title="5. Format" subtitle={isLeague ? "Une ligue utilise un classement de type championnat." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "format" ? (
+          <Section title={guidedStepTitle("format", "Format")} subtitle={isLeague ? "Choisis le rythme de la ligue." : "Choisis la structure du tournoi."} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 10 }}>
               {isLeague ? (
-                <LineOption label="Championnat / classement" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
+                <>
+                  <LineOption label="Championnat simple" active={leagueFormat === "simple"} onClick={() => { setLeagueFormat("simple"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("type_rr")} primary={primary} />
+                  <LineOption label="Aller / retour" active={leagueFormat === "return"} onClick={() => { setLeagueFormat("return"); setFormat("round_robin"); setRrRounds(2); }} onInfo={() => openInfo("type_rr")} primary={primary} />
+                  <LineOption label="Saison libre" active={leagueFormat === "free"} onClick={() => { setLeagueFormat("free"); setFormat("round_robin"); setRrRounds(4); }} onInfo={() => openInfo("type_rr")} primary={primary} />
+                  <LineOption label="Ligue MULTI" active={leagueFormat === "multi"} onClick={() => { setLeagueFormat("multi"); setFormat("round_robin"); setRrRounds(1); }} onInfo={() => openInfo("type_rr")} primary={primary} />
+                </>
               ) : (
                 <>
                   <LineOption label="Élimination directe" active={format === "single_ko"} onClick={() => setFormat("single_ko")} onInfo={() => openInfo("type_single")} primary={primary} />
@@ -3128,8 +3560,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
-        {step === 5 ? (
-          <Section title="6. Règles" subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "rules" ? (
+          <Section title={guidedStepTitle("rules", "Règles")} subtitle={`Réglages limités au sport actif : ${sportLabel}.`} accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 14 }}>
               {!lockedSportMode ? (
                 <div>
@@ -3203,21 +3635,60 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           </Section>
         ) : null}
 
-        {step === 6 ? (
-          <Section title="7. Récapitulatif" subtitle="Vérifie puis crée la compétition." accent={primary} watermark={kindWatermark}>
+        {currentGuidedKey === "multiRules" ? (
+          <Section title={guidedStepTitle("multiRules", "Barème MULTI")} subtitle="La ligue sera alimentée plus tard par des parties libres ajoutées au classement." accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <RowTitle label="Points par classement" />
+                <TextInput
+                  value={leagueMultiPoints}
+                  onChange={(e: any) => setLeagueMultiPoints(e.target.value)}
+                  placeholder="10,8,6,4,2,1"
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {parsedLeagueMultiPoints.slice(0, 8).map((pts, idx) => (
+                  <span
+                    key={`${idx}-${pts}`}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: 30,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: `1px solid ${primary}55`,
+                      background: "rgba(255,255,255,.05)",
+                      color: idx === 0 ? primary : "rgba(255,255,255,.86)",
+                      fontSize: 12,
+                      fontWeight: 1000,
+                    }}
+                  >
+                    {idx + 1}{idx === 0 ? "er" : "e"} · {pts} pts
+                  </span>
+                ))}
+              </div>
+            </div>
+            <GuidedFooter />
+          </Section>
+        ) : null}
+
+        {currentGuidedKey === "recap" ? (
+          <Section title={guidedStepTitle("recap", "Récapitulatif")} subtitle="Vérifie puis crée la compétition." accent={primary} watermark={kindWatermark}>
             <div style={{ display: "grid", gap: 9, fontSize: 13, lineHeight: 1.35 }}>
               <div><b style={{ color: primary }}>Nom :</b> {name || "—"}</div>
               <div><b style={{ color: primary }}>Type :</b> {guidedKindLabel}</div>
               <div><b style={{ color: primary }}>Sport :</b> {sportLabel}</div>
               <div><b style={{ color: primary }}>Source :</b> {source === "online" ? "Online" : "Local"}</div>
-              <div><b style={{ color: primary }}>Participants :</b> {isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
-              <div><b style={{ color: primary }}>Format :</b> {TYPE_INFO[format] ? format : "—"}</div>
+              <div><b style={{ color: primary }}>Participants :</b> {isLeagueMulti ? "Dynamiques, ajoutés par les parties" : participantKind === "teams" && !isPetanque ? (teamsInput || []).length : isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
+              <div><b style={{ color: primary }}>Format :</b> {isLeagueMulti ? "Ligue MULTI" : isLeague ? (leagueFormat === "return" ? "Aller / retour" : leagueFormat === "free" ? "Saison libre" : "Championnat simple") : (TYPE_INFO[format] ? format : "—")}</div>
+              {isLeagueMulti ? <div><b style={{ color: primary }}>Barème :</b> {parsedLeagueMultiPoints.map((p, idx) => `${idx + 1}${idx === 0 ? "er" : "e"}=${p}`).join(" · ")}</div> : null}
               <div><b style={{ color: primary }}>Identité :</b> {competitionAvatar ? "Logo OK" : "Sans logo"} · {competitionCover ? "Couverture OK" : "Sans couverture"}</div>
               {selectedNames.length ? <div style={{ opacity: .78 }}>Aperçu : {selectedNames.join(", ")}{selectedNames.length >= 6 ? "…" : ""}</div> : null}
             </div>
             {!canCreate ? (
               <div style={{ marginTop: 10, fontSize: 12, opacity: .75 }}>
-                ⚠️ {isPetanque ? `Nom + au moins ${petanqueMinPlayers} joueurs / équipes valides.` : "Nom + au moins 2 participants."}
+                ⚠️ {isLeagueMulti ? "Nom requis pour créer la ligue MULTI." : isPetanque ? `Nom + au moins ${petanqueMinPlayers} joueurs / équipes valides.` : "Nom + au moins 2 participants."}
               </div>
             ) : null}
             <GuidedFooter final />
@@ -3243,6 +3714,15 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             }}
           />
         ) : null}
+
+        <TeamCreateModal
+          open={teamCreateOpen}
+          value={teamCreateName}
+          onChange={setTeamCreateName}
+          onCreate={commitTeamCreate}
+          onClose={() => setTeamCreateOpen(false)}
+          primary={primary}
+        />
 
         <CenterInfoModal open={infoOpen} title={infoContent.title} primary={primary} onClose={() => setInfoOpen(false)}>
           {infoContent.body}
