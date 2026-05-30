@@ -37,7 +37,12 @@ import { loadBots as loadStoredBots } from "../lib/bots";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
 import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
+import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
+import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
+import botTeamChallengerLogo from "../assets/ui/competition_bot_team_challenger.webp";
+import botTeamMixLogo from "../assets/ui/competition_bot_team_mix.webp";
 import { BABYFOOT_LEAGUE_BADGES } from "../lib/leagueBadgeAssets";
+import { loadTeamsBySport, createTeam as createStoredTeam, upsertTeam as upsertStoredTeam } from "../lib/petanqueTeamsStore";
 
 // ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
@@ -66,6 +71,8 @@ type TourFormat = "single_ko" | "double_ko" | "round_robin" | "groups_ko";
 type BestOf = 1 | 3 | 5 | 7;
 
 type PetanqueTeamSize = 1 | 2 | 3 | 4;
+
+const BOT_TEAM_LOGOS = [botTeamEliteLogo, botTeamProLogo, botTeamChallengerLogo, botTeamMixLogo];
 
 const MODE_LABEL: Record<Mode, string> = {
   x01: "X01",
@@ -858,6 +865,12 @@ function TextInput({ value, onChange, placeholder, width = "100%" }: any) {
   );
 }
 
+function smartBack(go: Props["go"], fallbackTab: any, fallbackParams?: any) {
+  // Navigation interne uniquement : l'historique navigateur peut revenir sur un hash vide
+  // et afficher un écran noir dans cette PWA. On reste dans le routeur React.
+  go(fallbackTab, fallbackParams);
+}
+
 function GuidedVisualHeader({ onBack, accent = THEME }: any) {
   return (
     <div style={{ position: "relative", marginBottom: 14 }}>
@@ -1115,9 +1128,18 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [teamsExpandedIdx, setTeamsExpandedIdx] = React.useState<number | null>(null);
   const [teamsImportOpen, setTeamsImportOpen] = React.useState(false);
   const [teamsImportText, setTeamsImportText] = React.useState<string>("");
-  const [teamsInput, setTeamsInput] = React.useState<{ id: string; name: string; players: string[] }[]>([]);
+  const [teamsInput, setTeamsInput] = React.useState<{ id: string; name: string; players: string[]; logoDataUrl?: string | null; playerIds?: string[] }[]>([]);
+  const [storedTeams, setStoredTeams] = React.useState<any[]>([]);
   const [teamCreateOpen, setTeamCreateOpen] = React.useState(false);
   const [teamCreateName, setTeamCreateName] = React.useState("");
+  const [teamCreateLogo, setTeamCreateLogo] = React.useState<string | null>(null);
+  const [teamCreateRoster, setTeamCreateRoster] = React.useState<string[]>([]);
+  const [teamCreateQuery, setTeamCreateQuery] = React.useState("");
+  const [participantsDropdownOpen, setParticipantsDropdownOpen] = React.useState(false);
+  const [includeBotsInParticipantList, setIncludeBotsInParticipantList] = React.useState(false);
+  const [includeBotTeamsInTeamList, setIncludeBotTeamsInTeamList] = React.useState(false);
+  const guidedTabsRef = React.useRef<HTMLDivElement | null>(null);
+  const guidedTabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
 
 // ✅ PÉTANQUE — équipes (assignation manuelle)
@@ -1170,6 +1192,29 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
     };
   }, []);
 
+  const reloadStoredTeams = React.useCallback(() => {
+    try {
+      setStoredTeams(loadTeamsBySport(forceMode as any) || []);
+    } catch {
+      setStoredTeams([]);
+    }
+  }, [forceMode]);
+
+  React.useEffect(() => {
+    reloadStoredTeams();
+    const onVis = () => {
+      if (document.visibilityState === "visible") reloadStoredTeams();
+    };
+    window.addEventListener("focus", reloadStoredTeams);
+    window.addEventListener("storage", reloadStoredTeams);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", reloadStoredTeams);
+      window.removeEventListener("storage", reloadStoredTeams);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [reloadStoredTeams]);
+
   // ---- Players (LOCAL) : humains uniquement ici
   const profiles = React.useMemo(() => {
     const arr = (store as any)?.profiles || [];
@@ -1213,6 +1258,31 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
     }
     return out;
   }, [store, botsRefresh]);
+
+  const botTeamsCatalog = React.useMemo(() => {
+    const bots = Array.isArray(botsCatalog) ? botsCatalog : [];
+    if (!bots.length) return [];
+    const tiers = [
+      { key: "elite", name: "BOT Élite", start: 0 },
+      { key: "pro", name: "BOT Pro", start: 4 },
+      { key: "challenger", name: "BOT Challenger", start: 8 },
+      { key: "mix", name: "BOT Mixte", start: 2 },
+    ];
+    return tiers.map((tier, idx) => {
+      const roster = bots.slice(tier.start, tier.start + 4);
+      const fallback = roster.length ? roster : bots.slice(0, 4);
+      return {
+        id: `botteam_${forceMode}_${tier.key}`,
+        name: tier.name,
+        sport: forceMode,
+        isBotTeam: true,
+        logoDataUrl: BOT_TEAM_LOGOS[idx % BOT_TEAM_LOGOS.length] || null,
+        logoUrl: BOT_TEAM_LOGOS[idx % BOT_TEAM_LOGOS.length] || null,
+        playerIds: fallback.map((b: any) => String(b.id)),
+        players: fallback.map((b: any) => String(b.name || "BOT")),
+      };
+    }).filter((t: any) => (t.playerIds || []).length > 0);
+  }, [botsCatalog, forceMode]);
 
   // avg3D cache (humains)
   const [avgMap, setAvgMap] = React.useState<Record<string, number>>({});
@@ -1375,21 +1445,71 @@ const togglePlayer = (id: string) => {
   const openTeamCreate = React.useCallback(() => {
     const nextName = `Équipe ${(teamsInput || []).length + 1}`;
     setTeamCreateName(nextName);
+    setTeamCreateLogo(null);
+    setTeamCreateRoster([]);
+    setTeamCreateQuery("");
     setTeamCreateOpen(true);
   }, [teamsInput]);
 
   const commitTeamCreate = React.useCallback(() => {
     const clean = String(teamCreateName || "").trim() || `Équipe ${(teamsInput || []).length + 1}`;
+    const roster = Array.from(new Set((teamCreateRoster || []).map(String).filter(Boolean)));
+    let created: any = null;
+    try {
+      const base = createStoredTeam({ sport: forceMode as any, name: clean, logoDataUrl: teamCreateLogo || null });
+      created = upsertStoredTeam({
+        ...base,
+        sport: forceMode as any,
+        name: clean,
+        logoDataUrl: teamCreateLogo || base?.logoDataUrl || null,
+        playerIds: roster,
+      } as any);
+      reloadStoredTeams();
+    } catch {
+      created = { id: makeTeamId((teamsInput || []).length), name: clean, playerIds: roster, logoDataUrl: teamCreateLogo || null };
+    }
+
+    const picked = {
+      id: String(created?.id || makeTeamId((teamsInput || []).length)),
+      name: String(created?.name || clean),
+      players: Array.isArray(created?.playerIds) ? created.playerIds : roster,
+      playerIds: Array.isArray(created?.playerIds) ? created.playerIds : roster,
+      logoDataUrl: created?.logoDataUrl || teamCreateLogo || null,
+    };
+
     setTeamsInput((prev) => {
-      const arr = [...(prev || [])];
-      const idx = arr.length;
-      arr.push({ id: makeTeamId(idx), name: clean, players: normalizeTeamPlayers([]) });
+      const arr = [...(prev || [])].filter((t: any) => String(t?.id) !== String(picked.id));
+      arr.push(picked);
       return arr;
     });
     setTeamsExpandedIdx((prev) => (prev == null ? 0 : prev));
     setTeamCreateOpen(false);
     setTeamCreateName("");
-  }, [teamCreateName, teamsInput, makeTeamId, normalizeTeamPlayers]);
+    setTeamCreateLogo(null);
+    setTeamCreateRoster([]);
+    setTeamCreateQuery("");
+  }, [teamCreateName, teamCreateLogo, teamCreateRoster, teamsInput, makeTeamId, forceMode, reloadStoredTeams]);
+
+  const toggleStoredTeam = React.useCallback((team: any) => {
+    if (!team) return;
+    const id = String(team?.id || "");
+    if (!id) return;
+    setTeamsInput((prev) => {
+      const arr = Array.isArray(prev) ? prev : [];
+      const exists = arr.some((t: any) => String(t?.id || "") === id);
+      if (exists) return arr.filter((t: any) => String(t?.id || "") !== id);
+      return [
+        ...arr,
+        {
+          id,
+          name: String(team?.name || "Équipe"),
+          players: Array.isArray(team?.playerIds) ? team.playerIds : [],
+          playerIds: Array.isArray(team?.playerIds) ? team.playerIds : [],
+          logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null,
+        },
+      ];
+    });
+  }, []);
 
   const parseTeamsImportText = React.useCallback(
     (text: string) => {
@@ -1581,18 +1701,18 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [x01Out, setX01Out] = React.useState<"simple" | "double" | "master">(store?.settings?.doubleOut ? "double" : "simple");
   const [leagueFormat, setLeagueFormat] = React.useState<"simple" | "return" | "free" | "multi">("simple");
   const isLeagueMulti = isLeague && leagueFormat === "multi";
-  const [leagueMultiPoints, setLeagueMultiPoints] = React.useState("10,8,6,4,2,1");
+  const isLeagueFree = isLeague && leagueFormat === "free";
+  const isParticipantlessLeague = isLeagueMulti || isLeagueFree;
+  const [leagueMultiPaidPlaces, setLeagueMultiPaidPlaces] = React.useState(6);
+  const [leagueMultiFirstPoints, setLeagueMultiFirstPoints] = React.useState(10);
   const parsedLeagueMultiPoints = React.useMemo(() => {
-    const nums = String(leagueMultiPoints || "")
-      .split(/[;,\s]+/)
-      .map((x) => Number(String(x || "").trim()))
-      .filter((n) => Number.isFinite(n) && n >= 0)
-      .slice(0, 20);
-    return nums.length ? nums : [10, 8, 6, 4, 2, 1];
-  }, [leagueMultiPoints]);
+    const places = Math.max(1, Math.min(20, Math.floor(Number(leagueMultiPaidPlaces) || 6)));
+    const first = Math.max(1, Math.min(99, Math.floor(Number(leagueMultiFirstPoints) || 10)));
+    return Array.from({ length: places }, (_, idx) => Math.max(1, first - idx * 2));
+  }, [leagueMultiPaidPlaces, leagueMultiFirstPoints]);
 
   // ✅ create gate
-  const canCreate = !!name.trim() && !!mode && (isLeagueMulti || minPlayersOk) && (!isPetanque || isLeagueMulti || (petanqueMultipleOk && petanqueTeamsReady));
+  const canCreate = !!name.trim() && !!mode && (isParticipantlessLeague || minPlayersOk) && (!isPetanque || isParticipantlessLeague || (petanqueMultipleOk && petanqueTeamsReady));
 
   const TYPE_INFO: Record<TourFormat, string> = {
     single_ko: "Tableau KO : une défaite = élimination. Rapide et clair.",
@@ -1846,18 +1966,20 @@ async function createTournament() {
   const profileById = Object.fromEntries(selectedProfiles.map((p: any) => [String(p.id), p]));
 
   // --------------------------------------------
-  // ✅ LIGUE MULTI : classement alimenté plus tard par parties libres.
-  // Pas de participants imposés, pas de calendrier généré au démarrage.
+  // ✅ LIGUES SANS PARTICIPANTS AU DÉMARRAGE
+  // - Saison libre : matchs ajoutés au fil de l'eau, sans calendrier imposé.
+  // - Ligue MULTI : parties libres ajoutées ensuite avec barème par classement.
   // --------------------------------------------
-  if (isLeagueMulti) {
+  if (isParticipantlessLeague) {
     const rules = {
       sport: forceMode || mode || "darts",
-      leagueFormat: "multi",
-      scoringMode: "rank_points",
-      rankPoints: parsedLeagueMultiPoints,
+      leagueFormat: isLeagueMulti ? "multi" : "free",
+      scoringMode: isLeagueMulti ? "rank_points" : "match_points",
+      rankPoints: isLeagueMulti ? parsedLeagueMultiPoints : [],
+      paidPlaces: isLeagueMulti ? Math.max(1, Number(leagueMultiPaidPlaces) || parsedLeagueMultiPoints.length) : 0,
       participantsMode: "dynamic",
       freeMatches: true,
-      calendarMode: "none",
+      calendarMode: isLeagueMulti ? "none" : "free",
       canAttachExternalMatches: true,
     };
 
@@ -1873,13 +1995,13 @@ async function createTournament() {
       viewKind: "round_robin",
       repechage: { enabled: false },
       meta: {
-        format: "league_multi",
-        leagueFormat: "multi",
-        scoringMode: "rank_points",
-        rankPoints: parsedLeagueMultiPoints,
+        format: isLeagueMulti ? "league_multi" : "league_free",
+        leagueFormat: isLeagueMulti ? "multi" : "free",
+        scoringMode: isLeagueMulti ? "rank_points" : "match_points",
+        rankPoints: isLeagueMulti ? parsedLeagueMultiPoints : [],
         participantsMode: "dynamic",
         freeMatches: true,
-        calendarMode: "none",
+        calendarMode: isLeagueMulti ? "none" : "free",
         forceMode,
         source,
         competitionKind,
@@ -2378,6 +2500,9 @@ const petanqueTeamsUI = React.useMemo(() => {
     if (isLeague && leagueFormat === "multi") {
       return ["type", "identity", "format", "multiRules", "recap"];
     }
+    if (isLeague && leagueFormat === "free") {
+      return ["type", "identity", "format", "rules", "recap"];
+    }
     if (isLeague) {
       return ["type", "identity", "format", "participantKind", "participants", "rules", "recap"];
     }
@@ -2402,6 +2527,16 @@ const petanqueTeamsUI = React.useMemo(() => {
   const guidedStepTitle = (key: string, label: string) => `${Math.max(1, guidedStepKeys.indexOf(key) + 1)}. ${label}`;
 
   React.useEffect(() => {
+    const btn = guidedTabRefs.current[guidedStepSafe];
+    if (!btn) return;
+    try {
+      btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    } catch {
+      try { btn.scrollIntoView({ block: "nearest", inline: "center" } as any); } catch {}
+    }
+  }, [guidedStepSafe, guidedStepKeys.join("|")]);
+
+  React.useEffect(() => {
     setGuidedStep((prev) => Math.max(0, Math.min(guidedStepKeys.length - 1, Number(prev || 0))));
   }, [guidedStepKeys.length]);
 
@@ -2422,18 +2557,11 @@ const petanqueTeamsUI = React.useMemo(() => {
       return;
     }
 
-    // Tous les sports peuvent maintenant préparer une compétition par équipes.
-    // On ouvre une vraie sélection d'équipes au lieu de revenir sur les avatars joueurs.
+    // Tous les sports passent par un vrai sélecteur d'équipes du sport actif.
+    // On ne crée plus automatiquement "Équipe 1 / Équipe 2" : l'utilisateur choisit ou crée ses teams.
     if (next === "teams") {
-      setTeamsInput((prev) => {
-        const arr = Array.isArray(prev) ? prev.filter(Boolean) : [];
-        if (arr.length >= 2) return arr;
-        return [
-          { id: makeTeamId(0), name: "Équipe 1", players: [] },
-          { id: makeTeamId(1), name: "Équipe 2", players: [] },
-        ];
-      });
       setBotIds([]);
+      reloadStoredTeams();
     }
   }
 
@@ -2634,11 +2762,14 @@ function ParticipantIconChoice({ active, kind, onClick, accent = primary }: any)
   }
 
 
-function TeamCarouselTile({ team, index, onRemove, primary = THEME }: any) {
+function TeamCarouselTile({ team, index, onRemove, onClick, active = false, primary = THEME }: any) {
     const name = String(team?.name || `Équipe ${index + 1}`).trim() || `Équipe ${index + 1}`;
     const initial = name.slice(0, 1).toUpperCase() || "É";
+    const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
     return (
-      <div
+      <button
+        type="button"
+        onClick={onClick}
         style={{
           width: 104,
           flex: "0 0 auto",
@@ -2647,6 +2778,11 @@ function TeamCarouselTile({ team, index, onRemove, primary = THEME }: any) {
           gap: 8,
           position: "relative",
           scrollSnapAlign: "start",
+          border: "none",
+          background: "transparent",
+          color: "#fff",
+          padding: 0,
+          cursor: onClick ? "pointer" : "default",
         }}
         title={name}
       >
@@ -2655,51 +2791,86 @@ function TeamCarouselTile({ team, index, onRemove, primary = THEME }: any) {
             width: 76,
             height: 76,
             borderRadius: 999,
-            border: `1px solid ${primary}AA`,
+            border: active ? `2px solid ${primary}` : `1px solid ${primary}AA`,
             background: `radial-gradient(circle at 35% 20%, ${primary}33, rgba(0,0,0,.42) 62%), rgba(0,0,0,.48)`,
-            boxShadow: `0 0 24px ${primary}30, inset 0 0 18px rgba(255,255,255,.04)`,
+            boxShadow: active ? `0 0 28px ${primary}66, inset 0 0 18px rgba(255,255,255,.05)` : `0 0 24px ${primary}30, inset 0 0 18px rgba(255,255,255,.04)`,
             display: "grid",
             placeItems: "center",
             color: "#fff",
             fontSize: 30,
             fontWeight: 1000,
             textShadow: `0 0 14px ${primary}55`,
+            overflow: "hidden",
           }}
         >
-          {initial}
+          {logo ? (
+            <img
+              src={logo}
+              alt=""
+              draggable={false}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          ) : (
+            initial
+          )}
         </div>
-        <div style={{ width: 104, fontSize: 11.5, fontWeight: 950, opacity: .95, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ width: 104, fontSize: 11.5, fontWeight: 950, opacity: active ? 1 : .88, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {name}
         </div>
-        <button
-          type="button"
-          onClick={(e: any) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRemove?.();
-          }}
-          style={{
-            position: "absolute",
-            top: -2,
-            right: 12,
-            width: 24,
-            height: 24,
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,.14)",
-            background: "rgba(0,0,0,.58)",
-            color: "rgba(255,255,255,.88)",
-            display: "grid",
-            placeItems: "center",
-            fontSize: 15,
-            fontWeight: 1000,
-            cursor: "pointer",
-            boxShadow: "0 6px 16px rgba(0,0,0,.34)",
-          }}
-          title="Retirer l'équipe"
-        >
-          ×
-        </button>
-      </div>
+        {active ? (
+          <div
+            style={{
+              position: "absolute",
+              top: -2,
+              right: 12,
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              background: primary,
+              color: "#191007",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 14,
+              fontWeight: 1000,
+              boxShadow: `0 0 14px ${primary}66`,
+              pointerEvents: "none",
+            }}
+          >
+            ✓
+          </div>
+        ) : null}
+        {onRemove ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(e: any) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemove?.();
+            }}
+            style={{
+              position: "absolute",
+              top: -2,
+              right: 12,
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(0,0,0,.58)",
+              color: "rgba(255,255,255,.88)",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 15,
+              fontWeight: 1000,
+              cursor: "pointer",
+              boxShadow: "0 6px 16px rgba(0,0,0,.34)",
+            }}
+            title="Retirer l'équipe"
+          >
+            ×
+          </span>
+        ) : null}
+      </button>
     );
   }
 
@@ -2747,31 +2918,236 @@ function TeamCarouselTile({ team, index, onRemove, primary = THEME }: any) {
     );
   }
 
-  function TeamCreateModal({ open, value, onChange, onCreate, onClose, primary = THEME }: any) {
+  function TeamCreateModal({
+    open,
+    value,
+    onChange,
+    onCreate,
+    onClose,
+    primary = THEME,
+    profiles = [],
+    logo,
+    onLogoChange,
+    roster = [],
+    onRosterChange,
+    query = "",
+    onQueryChange,
+  }: any) {
+    const logoInputRef = React.useRef<HTMLInputElement | null>(null);
+    const logoPreviewImgRef = React.useRef<HTMLImageElement | null>(null);
+
     if (!open) return null;
+
+    const list = (Array.isArray(profiles) ? profiles : [])
+      .filter((p: any) => p?.id)
+      .map((p: any) => ({
+        id: String(p.id),
+        name: p?.name || p?.displayName || p?.pseudo || "Joueur",
+        avatar: p?.avatarUrl || p?.avatarDataUrl || p?.avatar || p?.photo || null,
+      }))
+      .filter((p: any) => {
+        const q = String(query || "").trim().toLowerCase();
+        if (!q) return true;
+        return String(p?.name || "").toLowerCase().includes(q);
+      });
+
+    const selected = new Set((Array.isArray(roster) ? roster : []).map(String));
+
+    function applyTeamLogoPreview(src: string) {
+      const clean = String(src || "");
+      if (!clean) return;
+      try {
+        if (logoPreviewImgRef.current) {
+          logoPreviewImgRef.current.src = clean;
+          logoPreviewImgRef.current.style.display = "block";
+        }
+      } catch {}
+      onLogoChange?.(clean);
+    }
+
+    function pickLogo(file?: File | null) {
+      if (!file) return;
+      const type = String((file as any).type || "").toLowerCase();
+      const filename = String((file as any).name || "").toLowerCase();
+      const ok = !type || type.startsWith("image/") || /\.(png|jpe?g|webp|gif|avif|svg|bmp|heic|heif)$/i.test(filename);
+      if (!ok) return;
+
+      // Aperçu immédiat, avant même que FileReader ait terminé.
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        if (objectUrl) applyTeamLogoPreview(objectUrl);
+      } catch {}
+
+      // Version persistante : remplace ensuite le blob temporaire.
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = typeof reader.result === "string" ? reader.result : "";
+        if (result) applyTeamLogoPreview(result);
+      };
+      reader.onerror = () => console.warn("[TournamentCreate] team logo import failed", { filename, type });
+      reader.readAsDataURL(file);
+    }
+
+    function handleLogoInput(e: any) {
+      const target = e?.currentTarget || e?.target;
+      const file = target?.files?.[0] || e?.target?.files?.[0] || null;
+      if (file) pickLogo(file);
+      try { setTimeout(() => { try { target.value = ""; } catch {} }, 80); } catch {}
+    }
+
+    function togglePlayer(pid: string) {
+      const id = String(pid || "");
+      if (!id) return;
+      const next = new Set(selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      onRosterChange?.(Array.from(next));
+    }
+
     return (
       <div
-        style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(0,0,0,.72)", display: "grid", placeItems: "center", padding: 16 }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10020,
+          background: "rgba(0,0,0,.74)",
+          display: "grid",
+          placeItems: "center",
+          padding: 14,
+        }}
         onMouseDown={onClose}
       >
         <div
           style={{
-            width: "min(420px, 100%)",
+            width: "min(520px, 100%)",
+            maxHeight: "min(78vh, 720px)",
+            overflowY: "auto",
             borderRadius: 24,
-            border: `1px solid ${primary}44`,
-            background: `radial-gradient(130% 135% at 0% 0%, ${primary}20, transparent 56%), linear-gradient(180deg, rgba(20,20,26,.99), rgba(6,6,9,.995))`,
+            border: `1px solid ${primary}55`,
+            background: `radial-gradient(130% 135% at 0% 0%, ${primary}22, transparent 58%), linear-gradient(180deg, rgba(20,20,26,.99), rgba(6,6,9,.995))`,
             boxShadow: "0 24px 80px rgba(0,0,0,.78)",
             padding: 16,
             color: "#fff",
           }}
           onMouseDown={(e: any) => e.stopPropagation()}
         >
-          <div style={{ color: primary, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45 }}>
-            Créer une équipe
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div>
+              <div style={{ color: primary, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45 }}>
+                Créer une équipe
+              </div>
+              <div style={{ marginTop: 3, fontSize: 11.5, opacity: .72 }}>
+                Nom, logo et joueurs — équipe disponible pour ce sport.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(0,0,0,.36)",
+                color: "#fff",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+            >
+              ×
+            </button>
           </div>
-          <div style={{ marginTop: 12 }}>
-            <TextInput value={value} onChange={(e: any) => onChange?.(e.target.value)} placeholder="Nom de l’équipe" />
+
+          <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "center" }}>
+            <label
+              style={{
+                position: "relative",
+                width: 86,
+                height: 86,
+                borderRadius: 999,
+                border: `1px solid ${primary}88`,
+                background: `radial-gradient(circle at 35% 20%, ${primary}35, rgba(0,0,0,.45) 62%), rgba(0,0,0,.48)`,
+                boxShadow: `0 0 24px ${primary}33, inset 0 0 18px rgba(255,255,255,.04)`,
+                display: "grid",
+                placeItems: "center",
+                overflow: "hidden",
+                cursor: "pointer",
+                color: primary,
+                fontSize: 11,
+                fontWeight: 1000,
+                textAlign: "center",
+              }}
+            >
+              <img
+                ref={logoPreviewImgRef}
+                key={String(logo || "").slice(0, 100)}
+                src={logo || ""}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: logo ? "block" : "none" }}
+              />
+              {!logo ? <>LOGO<br />ÉQUIPE</> : null}
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
+                aria-label="Choisir le logo de l’équipe"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  opacity: 0,
+                  cursor: "pointer",
+                  zIndex: 5,
+                }}
+                onClick={(e: any) => e.stopPropagation()}
+                onInput={handleLogoInput}
+                onChange={handleLogoInput}
+              />
+            </label>
+            <div style={{ display: "grid", gap: 9 }}>
+              <TextInput value={value} onChange={(e: any) => onChange?.(e.target.value)} placeholder="Nom de l’équipe" />
+              <TextInput value={query} onChange={(e: any) => onQueryChange?.(e.target.value)} placeholder="Rechercher un joueur à ajouter" />
+            </div>
           </div>
+
+          <div style={{ marginTop: 14 }}>
+            <RowTitle label={`Joueurs sélectionnés : ${selected.size}`} />
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8, WebkitOverflowScrolling: "touch" }}>
+              {list.map((p: any) => {
+                const active = selected.has(String(p.id));
+                return (
+                  <button
+                    key={String(p.id)}
+                    type="button"
+                    onClick={() => togglePlayer(String(p.id))}
+                    style={{
+                      flex: "0 0 auto",
+                      width: 82,
+                      display: "grid",
+                      justifyItems: "center",
+                      gap: 6,
+                      border: "none",
+                      background: "transparent",
+                      color: "#fff",
+                      opacity: active ? 1 : .72,
+                      cursor: "pointer",
+                    }}
+                    title={p.name}
+                  >
+                    <div style={{ position: "relative" }}>
+                      <ProfileAvatar name={p.name} dataUrl={p.avatar || undefined} size={58} />
+                      {active ? (
+                        <span style={{ position: "absolute", right: -3, top: -3, width: 22, height: 22, borderRadius: 999, background: primary, color: "#191007", display: "grid", placeItems: "center", fontSize: 13, fontWeight: 1000, boxShadow: `0 0 12px ${primary}66` }}>✓</span>
+                      ) : null}
+                    </div>
+                    <span style={{ width: 82, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10.5, fontWeight: 900 }}>{p.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <button
               type="button"
@@ -2811,23 +3187,94 @@ function TeamCarouselTile({ team, index, onRemove, primary = THEME }: any) {
 
 function IdentityImageCard({ label, value, onChange, variant = "avatar", accent = primary, onOpenGallery }: any) {
     const inputRef = React.useRef<HTMLInputElement | null>(null);
+    const previewImgRef = React.useRef<HTMLImageElement | null>(null);
+    const bgImgRef = React.useRef<HTMLImageElement | null>(null);
     const isCover = variant === "cover";
+    const inputId = React.useMemo(() => `competition_identity_${Math.random().toString(36).slice(2)}`, []);
+    const [localPreview, setLocalPreview] = React.useState<string>(typeof value === "string" && value ? value : "");
+
+    React.useEffect(() => {
+      const incoming = typeof value === "string" ? value : "";
+      if (incoming && incoming !== localPreview) setLocalPreview(incoming);
+      if (!incoming && localPreview && !String(localPreview).startsWith("blob:")) setLocalPreview("");
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
+
+    function commitPreview(src: string) {
+      const clean = String(src || "");
+      if (!clean) return;
+
+      // Preview immédiate en DOM natif + state React.
+      // Certains WebViews/PWA gardent l'input file actif mais retardent le repaint React :
+      // on force donc aussi le src de l'image visible.
+      try {
+        if (previewImgRef.current) {
+          previewImgRef.current.src = clean;
+          previewImgRef.current.style.display = "block";
+        }
+        if (bgImgRef.current) {
+          bgImgRef.current.src = clean;
+          bgImgRef.current.style.display = "block";
+        }
+      } catch {}
+
+      setLocalPreview(clean);
+      onChange?.(clean);
+    }
 
     function pickFile(file?: File | null) {
       if (!file) return;
-      if (!String(file.type || "").startsWith("image/")) return;
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = typeof reader.result === "string" ? reader.result : "";
-        if (result) onChange?.(result);
-      };
-      reader.onerror = () => console.warn("[TournamentCreate] identity image import failed");
-      reader.readAsDataURL(file);
+      // ✅ Couverture / logo : AUCUN blocage de dimension, AUCUN blocage MIME strict.
+      // On force d'abord un aperçu blob immédiat, puis un dataURL persistant.
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        if (objectUrl) commitPreview(objectUrl);
+      } catch (err) {
+        console.warn("[TournamentCreate] createObjectURL identity failed", err);
+      }
+
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === "string" ? reader.result : "";
+          if (result) commitPreview(result);
+        };
+        reader.onerror = () => console.warn("[TournamentCreate] identity image import failed", { name: (file as any)?.name, type: (file as any)?.type });
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.warn("[TournamentCreate] readAsDataURL identity failed", err);
+      }
     }
 
+    function handleInputFile(e: any) {
+      const target = e?.currentTarget || e?.target;
+      const file = target?.files?.[0] || e?.target?.files?.[0] || null;
+      if (file) pickFile(file);
+      try {
+        // On laisse le navigateur terminer le cycle change/input avant de vider l'input.
+        setTimeout(() => { try { target.value = ""; } catch {} }, 80);
+      } catch {}
+    }
+
+    React.useEffect(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      const nativeHandler = (ev: any) => handleInputFile(ev);
+      el.addEventListener("change", nativeHandler);
+      el.addEventListener("input", nativeHandler);
+      return () => {
+        el.removeEventListener("change", nativeHandler);
+        el.removeEventListener("input", nativeHandler);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inputRef.current, onChange]);
+
+    const preview = localPreview || (typeof value === "string" ? value : "");
+    const hasPreview = !!preview;
+
     const choose = () => {
-      if (onOpenGallery) onOpenGallery();
+      if (onOpenGallery && !isCover) onOpenGallery();
       else inputRef.current?.click();
     };
 
@@ -2844,119 +3291,142 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
       </svg>
     );
 
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={choose}
-        onKeyDown={(e: any) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            choose();
-          }
-        }}
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          minHeight: 146,
-          borderRadius: 22,
-          border: value ? `1px solid ${accent}BB` : "1px solid rgba(255,255,255,.11)",
-          background: value && isCover
-            ? `linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.66)), center / cover no-repeat url(${value}), radial-gradient(120% 135% at 50% 0%, ${accent}20, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
-            : value
-            ? `radial-gradient(120% 135% at 50% 0%, ${accent}20, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
-            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
-          color: value ? accent : "rgba(255,255,255,.86)",
-          boxShadow: value ? `0 0 24px ${accent}24, 0 18px 42px rgba(0,0,0,.48)` : "0 12px 28px rgba(0,0,0,.34)",
-          cursor: "pointer",
-          display: "grid",
-          placeItems: "center",
-          gap: 9,
-          padding: "14px 10px 12px",
-          WebkitTapHighlightColor: "transparent",
-        }}
-      >
+    const cardStyle: React.CSSProperties = {
+      position: "relative",
+      overflow: "hidden",
+      minHeight: 146,
+      borderRadius: 22,
+      border: hasPreview ? `1px solid ${accent}BB` : "1px solid rgba(255,255,255,.11)",
+      background: hasPreview
+        ? `radial-gradient(120% 135% at 50% 0%, ${accent}20, transparent 58%), linear-gradient(180deg, rgba(24,24,30,.98), rgba(8,8,12,.99))`
+        : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+      color: hasPreview ? accent : "rgba(255,255,255,.86)",
+      boxShadow: hasPreview ? `0 0 24px ${accent}24, 0 18px 42px rgba(0,0,0,.48)` : "0 12px 28px rgba(0,0,0,.34)",
+      cursor: "pointer",
+      display: "grid",
+      placeItems: "center",
+      gap: 9,
+      padding: "14px 10px 12px",
+      WebkitTapHighlightColor: "transparent",
+      appearance: "none",
+      textAlign: "center",
+    };
+
+    const inner = (
+      <>
         <input
+          id={inputId}
           ref={inputRef}
           type="file"
-          accept="image/*"
-          style={onOpenGallery ? { display: "none" } : {
+          accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
+          aria-label={isCover ? "Choisir une couverture" : "Choisir une image"}
+          style={isCover ? {
             position: "absolute",
             inset: 0,
             width: "100%",
             height: "100%",
-            opacity: 0,
+            opacity: 0.001,
             cursor: "pointer",
-            zIndex: 4,
+            zIndex: 30,
+            display: "block",
+          } : {
+            position: "absolute",
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: "none",
           }}
-          onClick={(e: any) => e.stopPropagation()}
-          onChange={(e: any) => {
-            pickFile(e?.target?.files?.[0]);
-            try { e.currentTarget.value = ""; } catch {}
-          }}
+          onChange={handleInputFile}
+          onInput={handleInputFile}
         />
+
+        {isCover ? (
+          <img
+            ref={bgImgRef}
+            key={`cover-bg-${String(preview).slice(0, 80)}`}
+            src={preview || ""}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              opacity: hasPreview ? .64 : 0,
+              display: hasPreview ? "block" : "none",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+        ) : null}
 
         <div
           style={{
+            position: "relative",
+            zIndex: 1,
             width: isCover ? "100%" : 76,
-            maxWidth: isCover ? 190 : 76,
-            height: isCover ? 64 : 76,
+            maxWidth: isCover ? 205 : 76,
+            height: isCover ? 66 : 76,
             borderRadius: isCover ? 14 : 999,
-            padding: isCover ? 3 : 4,
-            border: value ? `1px solid ${accent}AA` : `1px solid ${accent}55`,
-            background: "rgba(0,0,0,.34)",
-            boxShadow: value ? `0 0 22px ${accent}44` : `inset 0 0 18px rgba(0,0,0,.32), 0 0 14px ${accent}18`,
+            padding: isCover ? 0 : 4,
+            border: hasPreview ? `1px solid ${accent}AA` : `1px solid ${accent}55`,
+            background: hasPreview ? "rgba(0,0,0,.22)" : "rgba(0,0,0,.34)",
+            boxShadow: hasPreview ? `0 0 22px ${accent}44` : `inset 0 0 18px rgba(0,0,0,.32), 0 0 14px ${accent}18`,
             display: "grid",
             placeItems: "center",
             overflow: "hidden",
+            pointerEvents: "none",
           }}
         >
-          {value ? (
-            <img
-              key={String(value).slice(0, 96)}
-              src={value}
-              alt=""
-              draggable={false}
-              style={{
-                width: isCover ? "100%" : "100%",
-                height: isCover ? "auto" : "100%",
-                minHeight: isCover ? "100%" : undefined,
-                objectFit: isCover ? "cover" : "cover",
-                borderRadius: isCover ? 11 : 999,
-                display: "block",
-                background: "rgba(0,0,0,.35)",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: isCover ? 46 : 48,
-                height: isCover ? 30 : 48,
-                borderRadius: isCover ? 12 : 999,
-                border: `1px solid ${accent}66`,
-                display: "grid",
-                placeItems: "center",
-                background: "rgba(0,0,0,.28)",
-                color: accent,
-              }}
-            >
-              {fallbackIcon}
-            </div>
-          )}
+          <img
+            ref={previewImgRef}
+            key={`identity-main-${String(preview).slice(0, 100)}`}
+            src={preview || ""}
+            alt=""
+            draggable={false}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              borderRadius: isCover ? 13 : 999,
+              display: hasPreview ? "block" : "none",
+              background: "rgba(0,0,0,.35)",
+            }}
+            onError={(e: any) => {
+              console.warn("[TournamentCreate] preview image error", { label, len: String(preview).length, start: String(preview).slice(0, 60) });
+              try { e.currentTarget.style.display = "none"; } catch {}
+            }}
+          />
+          <div
+            style={{
+              width: isCover ? 52 : 48,
+              height: isCover ? 34 : 48,
+              borderRadius: isCover ? 12 : 999,
+              border: `1px solid ${accent}66`,
+              display: hasPreview ? "none" : "grid",
+              placeItems: "center",
+              background: "rgba(0,0,0,.28)",
+              color: accent,
+            }}
+          >
+            {fallbackIcon}
+          </div>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: value ? accent : "rgba(255,255,255,.86)" }}>
+        <div style={{ position: "relative", zIndex: 1, fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: hasPreview ? accent : "rgba(255,255,255,.86)", pointerEvents: "none" }}>
           {label}
         </div>
 
-        {value ? (
-          <button
-            type="button"
+        {hasPreview ? (
+          <span
+            role="button"
             aria-label="Retirer"
             title="Retirer"
             onClick={(e: any) => {
               e.preventDefault();
               e.stopPropagation();
+              setLocalPreview("");
               onChange?.(null);
             }}
             style={{
@@ -2975,12 +3445,46 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               fontWeight: 1000,
               cursor: "pointer",
               boxShadow: "0 6px 16px rgba(0,0,0,.32)",
-              zIndex: 6,
+              zIndex: 40,
             }}
           >
             ×
-          </button>
+          </span>
         ) : null}
+      </>
+    );
+
+    if (isCover) {
+      return (
+        <label
+          htmlFor={inputId}
+          style={cardStyle}
+          onDragOver={(e: any) => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={(e: any) => {
+            e.preventDefault();
+            e.stopPropagation();
+            pickFile(e?.dataTransfer?.files?.[0]);
+          }}
+        >
+          {inner}
+        </label>
+      );
+    }
+
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={choose}
+        onKeyDown={(e: any) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            choose();
+          }
+        }}
+        style={cardStyle}
+      >
+        {inner}
       </div>
     );
   }
@@ -3333,7 +3837,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
       >
         <GuidedVisualHeader
           accent={primary}
-          onBack={() => go("tournaments", { forceMode, source })}
+          onBack={() => go("tournaments", { forceMode, source, entry: "create" })}
         />
 
         <GuidedHeroCard
@@ -3349,10 +3853,11 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           competitionLogo={competitionAvatar}
         />
 
-        <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" as any }}>
+        <div ref={guidedTabsRef} style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" as any, scrollBehavior: "smooth" }}>
           {guidedSteps.map((s, idx) => (
             <button
               key={s}
+              ref={(el) => { guidedTabRefs.current[idx] = el; }}
               type="button"
               onClick={() => setGuidedStep(idx)}
               style={{
@@ -3473,8 +3978,79 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               </div>
             ) : null}
 
+            {participantKind !== "teams" && (!isPetanque || petanqueEntry === "profiles") ? (
+              <div style={{ marginTop: 6, display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                  <NeonGhost label={participantsDropdownOpen ? "Masquer liste" : "Liste rapide"} onClick={() => setParticipantsDropdownOpen((v) => !v)} />
+                  {!isPetanque ? (
+                    <button
+                      type="button"
+                      onClick={() => setIncludeBotsInParticipantList((v) => { const next = !v; if (!next) setBotIds([]); return next; })}
+                      style={{
+                        borderRadius: 999,
+                        border: `1px solid ${includeBotsInParticipantList ? primary : "rgba(255,255,255,.14)"}`,
+                        background: includeBotsInParticipantList ? `${primary}22` : "rgba(255,255,255,.05)",
+                        color: includeBotsInParticipantList ? primary : "rgba(255,255,255,.82)",
+                        padding: "8px 10px",
+                        fontSize: 11.5,
+                        fontWeight: 1000,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {includeBotsInParticipantList ? "☑" : "☐"} BOTS
+                    </button>
+                  ) : null}
+                </div>
+                {participantsDropdownOpen ? (
+                  <div style={{ maxHeight: 230, overflowY: "auto", borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.22)", padding: 8 }} className="dc-scroll-thin">
+                    {profiles.map((p: any) => {
+                      const active = playerIds.includes(String(p.id));
+                      return (
+                        <button key={`list_${p.id}`} type="button" onClick={() => togglePlayer(String(p.id))} style={{ width: "100%", display: "grid", gridTemplateColumns: "26px 34px 1fr", alignItems: "center", gap: 8, border: "none", background: active ? `${primary}18` : "transparent", color: "#fff", borderRadius: 12, padding: "7px 8px", cursor: "pointer", textAlign: "left" }}>
+                          <span style={{ color: active ? primary : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
+                          <ProfileAvatar name={p.name} dataUrl={p.avatar || undefined} size={30} />
+                          <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                        </button>
+                      );
+                    })}
+                    {!isPetanque && includeBotsInParticipantList === true ? botsCatalog.map((b: any) => {
+                      const id = String(b.id);
+                      const active = botIds.includes(id);
+                      return (
+                        <button key={`bot_list_${id}`} type="button" onClick={() => toggleBot(id)} style={{ width: "100%", display: "grid", gridTemplateColumns: "26px 34px 1fr auto", alignItems: "center", gap: 8, border: "none", background: active ? `${primary}18` : "transparent", color: "#fff", borderRadius: 12, padding: "7px 8px", cursor: "pointer", textAlign: "left" }}>
+                          <span style={{ color: active ? primary : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
+                          <ProfileAvatar name={b.name} dataUrl={b.avatar || undefined} size={30} />
+                          <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
+                          <span style={{ color: primary, fontSize: 10, fontWeight: 1000 }}>BOT</span>
+                        </button>
+                      );
+                    }) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {participantKind === "teams" && !isPetanque ? (
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                  <NeonGhost label={participantsDropdownOpen ? "Masquer liste" : "Liste équipes"} onClick={() => setParticipantsDropdownOpen((v) => !v)} />
+                  <button
+                    type="button"
+                    onClick={() => setIncludeBotTeamsInTeamList((v) => { const next = !v; if (!next) setTeamsInput((prev: any[]) => (prev || []).filter((t: any) => !t?.isBotTeam)); return next; })}
+                    style={{
+                      borderRadius: 999,
+                      border: `1px solid ${includeBotTeamsInTeamList ? primary : "rgba(255,255,255,.14)"}`,
+                      background: includeBotTeamsInTeamList ? `${primary}22` : "rgba(255,255,255,.05)",
+                      color: includeBotTeamsInTeamList ? primary : "rgba(255,255,255,.82)",
+                      padding: "8px 10px",
+                      fontSize: 11.5,
+                      fontWeight: 1000,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {includeBotTeamsInTeamList ? "☑" : "☐"} TEAMS BOTS
+                  </button>
+                </div>
                 <div
                   style={{
                     display: "flex",
@@ -3488,18 +4064,53 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                   }}
                   className="dc-scroll-thin"
                 >
-                  {(teamsInput || []).map((t: any, idx: number) => (
+                  {(storedTeams || []).map((t: any, idx: number) => {
+                    const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(t?.id || ""));
+                    return (
+                      <TeamCarouselTile
+                        key={String(t.id || idx)}
+                        team={t}
+                        index={idx}
+                        active={active}
+                        primary={primary}
+                        onClick={() => toggleStoredTeam(t)}
+                      />
+                    );
+                  })}
+                  {(storedTeams || []).length === 0 && (teamsInput || []).map((t: any, idx: number) => (
                     <TeamCarouselTile
                       key={String(t.id || idx)}
                       team={t}
                       index={idx}
+                      active
                       primary={primary}
                       onRemove={() => setTeamsInput((prev) => (prev || []).filter((_: any, i: number) => i !== idx))}
                     />
                   ))}
+                  {includeBotTeamsInTeamList === true ? botTeamsCatalog.map((t: any, idx: number) => {
+                    const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(t?.id || ""));
+                    return <TeamCarouselTile key={String(t.id || idx)} team={t} index={idx} active={active} primary={primary} onClick={() => toggleStoredTeam(t)} />;
+                  }) : null}
                   <TeamAddTile primary={primary} onClick={openTeamCreate} />
                 </div>
-                {(teamsInput || []).length < 2 ? <div style={{ fontSize: 12, opacity: .74 }}>Ajoute au moins 2 équipes.</div> : null}
+                {participantsDropdownOpen ? (
+                  <div style={{ maxHeight: 230, overflowY: "auto", borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.22)", padding: 8 }} className="dc-scroll-thin">
+                    {[...(storedTeams || []), ...(includeBotTeamsInTeamList === true ? botTeamsCatalog : [])].map((t: any, idx: number) => {
+                      const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(t?.id || ""));
+                      const logo = t?.logoDataUrl || t?.logoUrl || t?.avatarDataUrl || null;
+                      const name = String(t?.name || `Équipe ${idx + 1}`);
+                      return (
+                        <button key={`team_list_${String(t?.id || idx)}`} type="button" onClick={() => toggleStoredTeam(t)} style={{ width: "100%", display: "grid", gridTemplateColumns: "26px 38px 1fr auto", alignItems: "center", gap: 8, border: "none", background: active ? `${primary}18` : "transparent", color: "#fff", borderRadius: 12, padding: "7px 8px", cursor: "pointer", textAlign: "left" }}>
+                          <span style={{ color: active ? primary : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
+                          <ProfileAvatar name={name} dataUrl={logo || undefined} size={34} />
+                          <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                          {t?.isBotTeam ? <span style={{ color: primary, fontSize: 10, fontWeight: 1000 }}>BOT TEAM</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {(teamsInput || []).length < 2 ? <div style={{ fontSize: 12, opacity: .74 }}>Choisis ou crée au moins 2 équipes pour {sportLabel}.</div> : null}
               </div>
             ) : null}
 
@@ -3521,7 +4132,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               </div>
             ) : null}
 
-            {!isPetanque && participantKind !== "teams" ? (
+            {!isPetanque && participantKind !== "teams" && includeBotsInParticipantList === true ? (
               <div style={{ marginTop: 12 }}>
                 <RowTitle label="Bots IA optionnels" />
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
@@ -3636,18 +4247,28 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
         ) : null}
 
         {currentGuidedKey === "multiRules" ? (
-          <Section title={guidedStepTitle("multiRules", "Barème MULTI")} subtitle="La ligue sera alimentée plus tard par des parties libres ajoutées au classement." accent={primary} watermark={kindWatermark}>
-            <div style={{ display: "grid", gap: 12 }}>
+          <Section title={guidedStepTitle("multiRules", "Barème MULTI")} subtitle="Configure simplement les places récompensées. Les places au-delà marqueront 0 point." accent={primary} watermark={kindWatermark}>
+            <div style={{ display: "grid", gap: 14 }}>
               <div>
-                <RowTitle label="Points par classement" />
-                <TextInput
-                  value={leagueMultiPoints}
-                  onChange={(e: any) => setLeagueMultiPoints(e.target.value)}
-                  placeholder="10,8,6,4,2,1"
-                />
+                <RowTitle label="Places qui marquent des points" />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[3, 5, 6, 8, 10].map((n) => (
+                    <NeonPill key={n} active={leagueMultiPaidPlaces === n} label={`${n} place${n > 1 ? "s" : ""}`} onClick={() => setLeagueMultiPaidPlaces(n)} primary={primary} />
+                  ))}
+                </div>
               </div>
+
+              <div>
+                <RowTitle label="Points du vainqueur" />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[10, 12, 15, 20].map((n) => (
+                    <NeonPill key={n} active={leagueMultiFirstPoints === n} label={`${n} pts`} onClick={() => setLeagueMultiFirstPoints(n)} primary={primary} />
+                  ))}
+                </div>
+              </div>
+
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {parsedLeagueMultiPoints.slice(0, 8).map((pts, idx) => (
+                {parsedLeagueMultiPoints.map((pts, idx) => (
                   <span
                     key={`${idx}-${pts}`}
                     style={{
@@ -3680,15 +4301,15 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               <div><b style={{ color: primary }}>Type :</b> {guidedKindLabel}</div>
               <div><b style={{ color: primary }}>Sport :</b> {sportLabel}</div>
               <div><b style={{ color: primary }}>Source :</b> {source === "online" ? "Online" : "Local"}</div>
-              <div><b style={{ color: primary }}>Participants :</b> {isLeagueMulti ? "Dynamiques, ajoutés par les parties" : participantKind === "teams" && !isPetanque ? (teamsInput || []).length : isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
+              <div><b style={{ color: primary }}>Participants :</b> {isParticipantlessLeague ? "Dynamiques, ajoutés par les parties" : participantKind === "teams" && !isPetanque ? (teamsInput || []).length : isPetanque && petanqueEntry === "teams" ? petanqueTeamsCountEffective : totalSelectedIds.length}</div>
               <div><b style={{ color: primary }}>Format :</b> {isLeagueMulti ? "Ligue MULTI" : isLeague ? (leagueFormat === "return" ? "Aller / retour" : leagueFormat === "free" ? "Saison libre" : "Championnat simple") : (TYPE_INFO[format] ? format : "—")}</div>
-              {isLeagueMulti ? <div><b style={{ color: primary }}>Barème :</b> {parsedLeagueMultiPoints.map((p, idx) => `${idx + 1}${idx === 0 ? "er" : "e"}=${p}`).join(" · ")}</div> : null}
+              {isLeagueMulti ? <div><b style={{ color: primary }}>Barème :</b> {parsedLeagueMultiPoints.map((p, idx) => `${idx + 1}${idx === 0 ? "er" : "e"}=${p}`).join(" · ")} · puis 0 pt</div> : null}
               <div><b style={{ color: primary }}>Identité :</b> {competitionAvatar ? "Logo OK" : "Sans logo"} · {competitionCover ? "Couverture OK" : "Sans couverture"}</div>
               {selectedNames.length ? <div style={{ opacity: .78 }}>Aperçu : {selectedNames.join(", ")}{selectedNames.length >= 6 ? "…" : ""}</div> : null}
             </div>
             {!canCreate ? (
               <div style={{ marginTop: 10, fontSize: 12, opacity: .75 }}>
-                ⚠️ {isLeagueMulti ? "Nom requis pour créer la ligue MULTI." : isPetanque ? `Nom + au moins ${petanqueMinPlayers} joueurs / équipes valides.` : "Nom + au moins 2 participants."}
+                ⚠️ {isParticipantlessLeague ? "Nom requis pour créer cette ligue." : isPetanque ? `Nom + au moins ${petanqueMinPlayers} joueurs / équipes valides.` : "Nom + au moins 2 participants."}
               </div>
             ) : null}
             <GuidedFooter final />
@@ -3719,6 +4340,13 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           open={teamCreateOpen}
           value={teamCreateName}
           onChange={setTeamCreateName}
+          logo={teamCreateLogo}
+          onLogoChange={setTeamCreateLogo}
+          roster={teamCreateRoster}
+          onRosterChange={setTeamCreateRoster}
+          query={teamCreateQuery}
+          onQueryChange={setTeamCreateQuery}
+          profiles={profiles}
           onCreate={commitTeamCreate}
           onClose={() => setTeamCreateOpen(false)}
           primary={primary}
@@ -3744,7 +4372,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
     >
       <GuidedVisualHeader
         accent={primary}
-        onBack={() => go("tournaments", { forceMode, source })}
+        onBack={() => go("tournaments", { forceMode, source, entry: "create" })}
       />
 
       <GuidedHeroCard

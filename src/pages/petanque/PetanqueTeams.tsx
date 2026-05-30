@@ -14,15 +14,34 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useStore } from "../../contexts/StoreContext";
 import {
-  loadPetanqueTeams,
-  createPetanqueTeam,
-  upsertPetanqueTeam,
-  deletePetanqueTeam,
-  type PetanqueTeam,
+  loadTeamsBySport,
+  createTeam,
+  upsertTeam,
+  deleteTeam,
+  type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
 import { getCountryFlagSrc, getFRRegionLogoSrc } from "../../lib/geoAssets";
 
 type Props = { go: (tab: any, params?: any) => void; params?: any };
+
+function normalizeTeamSport(value: any): string {
+  const raw = String(value || "darts").toLowerCase().trim();
+  if (raw === "baby-foot" || raw === "baby_foot" || raw === "foosball") return "babyfoot";
+  if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
+  if (raw === "dice" || raw === "dice_game") return "dicegame";
+  return raw || "darts";
+}
+
+function teamSportLabel(value: any): string {
+  const s = normalizeTeamSport(value);
+  if (s === "darts") return "FLÉCHETTES";
+  if (s === "babyfoot") return "BABY-FOOT";
+  if (s === "petanque") return "PÉTANQUE";
+  if (s === "pingpong") return "PING-PONG";
+  if (s === "molkky") return "MÖLKKY";
+  if (s === "dicegame") return "DÉS";
+  return s.toUpperCase();
+}
 
 function resolveAvatar(p: any): string | null {
   return p?.avatarDataUrl || p?.avatarUrl || p?.avatar || null;
@@ -32,35 +51,39 @@ function safeUpper2(code?: string) {
   return String(code || "").toUpperCase().slice(0, 2);
 }
 
-export default function PetanqueTeams({ go }: Props) {
+export default function PetanqueTeams({ go, params }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
   const { store } = useStore() as any;
 
-  const [teams, setTeams] = React.useState<PetanqueTeam[]>(() => loadPetanqueTeams());
+  const activeSport = normalizeTeamSport(params?.sport || params?.forceMode || "petanque");
+  const sportLabel = teamSportLabel(activeSport);
+  const returnTo = String(params?.returnTo || "profiles");
+
+  const [teams, setTeams] = React.useState<TeamEntity[]>(() => loadTeamsBySport(activeSport));
 
   React.useEffect(() => {
     // si une autre page modifie les teams (edit), on refresh au focus
     const onVis = () => {
-      if (document.visibilityState === "visible") setTeams(loadPetanqueTeams());
+      if (document.visibilityState === "visible") setTeams(loadTeamsBySport(activeSport));
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
+  }, [activeSport]);
 
   function refresh() {
-    setTeams(loadPetanqueTeams());
+    setTeams(loadTeamsBySport(activeSport));
   }
 
   function handleCreate() {
-    const team = createPetanqueTeam();
-    upsertPetanqueTeam(team);
-    go("petanque_team_edit" as any, { teamId: team.id });
+    const team = createTeam({ sport: activeSport, name: "Nouvelle équipe" });
+    upsertTeam(team);
+    go("petanque_team_edit" as any, { teamId: team.id, sport: activeSport, returnTo });
   }
 
   function handleDelete(teamId: string) {
     if (!confirm(t("teams.delete.confirm", "Supprimer cette équipe ?"))) return;
-    deletePetanqueTeam(teamId);
+    deleteTeam(teamId);
     refresh();
   }
 
@@ -74,7 +97,7 @@ export default function PetanqueTeams({ go }: Props) {
   return (
     <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <button onClick={() => go("petanque_menu" as any)} style={btnBack(theme)}>
+        <button onClick={() => go(returnTo as any, { sport: activeSport })} style={btnBack(theme)}>
           ← {t("common.back", "Retour")}
         </button>
 
@@ -84,7 +107,7 @@ export default function PetanqueTeams({ go }: Props) {
       </div>
 
       <h1 style={{ margin: 0, textAlign: "center", color: theme.primary, textTransform: "uppercase", letterSpacing: 2 }}>
-        {t("teams.title", "Teams")}
+        {t("teams.title", "Teams")} {sportLabel}
       </h1>
 
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -127,7 +150,7 @@ export default function PetanqueTeams({ go }: Props) {
 
                 {/* Main content (clickable => edit) */}
                 <button
-                  onClick={() => go("petanque_team_edit" as any, { teamId: tm.id })}
+                  onClick={() => go("petanque_team_edit" as any, { teamId: tm.id, sport: activeSport, returnTo })}
                   style={cardMainBtn(theme)}
                   title={t("common.edit", "Éditer")}
                 >

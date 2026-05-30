@@ -10,7 +10,7 @@
 
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 
-export type TeamSport = "petanque" | "babyfoot" | "darts" | "generic";
+export type TeamSport = string;
 
 export type TeamEntity = {
   id: string;
@@ -96,8 +96,12 @@ export function makeTeamId(prefix: string = "team") {
 }
 
 function normalizeSport(s: any): TeamSport {
-  if (s === "petanque" || s === "babyfoot" || s === "darts" || s === "generic") return s;
-  return "generic";
+  const raw = String(s || "generic").toLowerCase().trim();
+  if (!raw) return "generic";
+  if (raw === "baby-foot" || raw === "baby_foot" || raw === "foosball") return "babyfoot";
+  if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
+  if (raw === "dice" || raw === "dice_game") return "dicegame";
+  return raw;
 }
 
 function normalizeTeamEntity(t: any): TeamEntity | null {

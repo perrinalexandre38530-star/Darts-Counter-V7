@@ -47,6 +47,12 @@ function pickActiveSport(store: Store, params?: any): string {
   return normalizeCompetitionSport(forced || fromStore || "darts");
 }
 
+function smartBack(go: Props["go"], fallbackTab: any = "home", fallbackParams?: any) {
+  // Navigation interne uniquement : history.back() pouvait revenir sur un hash vide/non géré
+  // et provoquer l'écran noir. On utilise donc un fallback applicatif sûr.
+  go(fallbackTab, fallbackParams);
+}
+
 function CompetitionHeader({ onBack }: { onBack: () => void }) {
   return (
     <div
@@ -236,8 +242,8 @@ function CompetitionCard({
           position: "relative",
           zIndex: 2,
           marginTop: 18,
-          fontSize: 16,
-          lineHeight: 1.12,
+          fontSize: 15,
+          lineHeight: 1.10,
           fontWeight: 950,
           letterSpacing: 0.1,
           paddingRight: 42,
@@ -289,7 +295,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
       setEntryMode("menu");
       return;
     }
-    go("games");
+    smartBack(go, "home");
   };
 
   return (
@@ -384,7 +390,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
                 </p>
               </div>
             }
-            onClick={() => go("tournaments", listParams("league", "active"))}
+            onClick={() => go("tournament_list", listParams("league", "active"))}
           />
           <CompetitionCard
             tag="TOURNOIS EN COURS"
@@ -398,7 +404,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
                 </p>
               </div>
             }
-            onClick={() => go("tournaments", listParams("tournament", "active"))}
+            onClick={() => go("tournament_list", listParams("tournament", "active"))}
           />
         </div>
       ) : null}
@@ -419,7 +425,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
                 </p>
               </div>
             }
-            onClick={() => go("tournaments", listParams("league", "done"))}
+            onClick={() => go("tournament_list", listParams("league", "done"))}
           />
           <CompetitionCard
             tag="HISTORIQUE TOURNOIS"
@@ -433,7 +439,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
                 </p>
               </div>
             }
-            onClick={() => go("tournaments", listParams("tournament", "done"))}
+            onClick={() => go("tournament_list", listParams("tournament", "done"))}
           />
         </div>
       ) : null}

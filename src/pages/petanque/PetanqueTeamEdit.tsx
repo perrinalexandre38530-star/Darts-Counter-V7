@@ -16,16 +16,26 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useStore } from "../../contexts/StoreContext";
 import {
-  loadPetanqueTeams,
-  upsertPetanqueTeam,
-  createPetanqueTeam,
-  type PetanqueTeam,
+  loadTeamsBySport,
+  upsertTeam,
+  createTeam,
+  type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
 
 // ✅ NEW: mêmes flags partout (PNG, pas emojis)
 import { getCountryFlagSrc, getRegionFlagSrc } from "../../lib/geoAssets";
 
 type Props = { go: (tab: any, params?: any) => void; params?: any };
+
+type PetanqueTeam = TeamEntity;
+
+function normalizeTeamSport(value: any): string {
+  const raw = String(value || "darts").toLowerCase().trim();
+  if (raw === "baby-foot" || raw === "baby_foot" || raw === "foosball") return "babyfoot";
+  if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
+  if (raw === "dice" || raw === "dice_game") return "dicegame";
+  return raw || "darts";
+}
 
 // -----------------------------
 // Data pays + régions (FR)
@@ -118,14 +128,16 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
   const { t } = useLang() as any;
   const { store, update } = useStore() as any;
 
+  const activeSport = normalizeTeamSport(params?.sport || params?.forceMode || "petanque");
+  const returnTo = String(params?.returnTo || "petanque_teams");
   const teamId = params?.teamId as string | undefined;
   const existing = React.useMemo(() => {
     if (!teamId) return null;
-    return loadPetanqueTeams().find((x) => x.id === teamId) ?? null;
-  }, [teamId]);
+    return loadTeamsBySport(activeSport).find((x) => x.id === teamId) ?? null;
+  }, [teamId, activeSport]);
 
   const [team, setTeam] = React.useState<PetanqueTeam>(() =>
-    existing ?? createPetanqueTeam({ id: teamId })
+    existing ?? createTeam({ sport: activeSport, name: "Nouvelle équipe" })
   );
 
   React.useEffect(() => {
@@ -184,6 +196,7 @@ const availableProfiles = React.useMemo(() => {
 
   function save(next: PetanqueTeam) {
     const fixed: PetanqueTeam = {
+      sport: activeSport,
       ...next,
       name: (next.name || "").trim() || "Équipe",
       countryCode: String(next.countryCode || "FR")
@@ -204,7 +217,7 @@ const availableProfiles = React.useMemo(() => {
       updatedAt: Date.now(),
     };
     setTeam(fixed);
-    upsertPetanqueTeam(fixed);
+    upsertTeam(fixed as any);
   }
 
   async function onPickTeamLogo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -346,7 +359,7 @@ const availableProfiles = React.useMemo(() => {
         }}
       >
         <button
-          onClick={() => go("petanque_teams" as any)}
+          onClick={() => go(returnTo as any, { sport: activeSport, returnTo: "profiles" })}
           style={btnGhost(theme)}
         >
           ← {t("common.back", "Retour")}

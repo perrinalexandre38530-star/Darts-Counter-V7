@@ -3151,55 +3151,28 @@ function ProfilesMenuView({
         />
       )}
 
-      {/* ✅ Remplacement BOTS -> condition sport (robuste) */}
-      {(() => {
-        const key = sportKey;
-        const isPetanque = key.includes("petanque");
-  
-        if (isDarts) {
-          return (
-            <CardBtn
-              title={t("profiles.menu.boat.title", "BOTS (CPU)")}
-              subtitle={t(
-                "profiles.menu.boat.subtitle",
-                "Crée et gère tes joueurs virtuels contrôlés par l’IA."
-              )}
-              badge={t("profiles.menu.boat.badge", "NEW")}
-              onClick={() => go?.("profiles_bots")}
-            />
-          );
-        }
-  
-        if (isPetanque) {
-          return (
-            <CardBtn
-              title={t("petanque.teams.title", "TEAMS (PÉTANQUE)")}
-              subtitle={t(
-                "petanque.teams.subtitle",
-                "Crée et gère tes équipes (doublette, triplette, etc.)."
-              )}
-              badge={t("common.soon", "SOON")}
-              onClick={() => go?.("petanque_teams")}
-            />
-          );
-        }
-  
-        if (isBabyFoot) {
-          return (
-            <CardBtn
-              title={t("babyfoot.teams.title", "TEAMS (BABY-FOOT)")}
-              subtitle={t(
-                "babyfoot.teams.subtitle",
-                "Crée et gère tes équipes Baby-Foot (1v1 / 2v2 / 2v1)."
-              )}
-              badge={t("profiles.menu.teams.badge", "NEW")}
-              onClick={() => go?.("babyfoot_teams")}
-            />
-          );
-        }
+      {/* ✅ BOTS darts + TEAMS disponible pour TOUS les sports */}
+      {isDarts ? (
+        <CardBtn
+          title={t("profiles.menu.boat.title", "BOTS (CPU)")}
+          subtitle={t(
+            "profiles.menu.boat.subtitle",
+            "Crée et gère tes joueurs virtuels contrôlés par l’IA."
+          )}
+          badge={t("profiles.menu.boat.badge", "NEW")}
+          onClick={() => go?.("profiles_bots")}
+        />
+      ) : null}
 
-        return null;
-      })()}
+      <CardBtn
+        title={t("profiles.menu.teams.title", `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`)}
+        subtitle={t(
+          "profiles.menu.teams.subtitle",
+          "Crée et gère tes équipes pour le sport actif."
+        )}
+        badge={t("profiles.menu.teams.badge", "NEW")}
+        onClick={() => go?.("petanque_teams", { sport: sportResolved || "darts", returnTo: "profiles" })}
+      />
     </div>
   );
 }
