@@ -656,7 +656,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
               onClick={() => go("online", { section: "competitions", forceMode })}
             />
           </div>
-        )}
+        ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
           <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: kindFilter, competitionKind: kindFilter })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
