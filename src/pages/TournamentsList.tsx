@@ -495,11 +495,24 @@ function TinyIcon({ kind, size = 18 }: { kind: string; size?: number }) {
   return <svg {...common}><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.1l-6-3.4V9.7Zm14 0v6.1l-6 3.4v-6.1l6-3.4Z" /></svg>;
 }
 
-function avatarForCompetition(t: any): string | null {
+function competitionLogoForCard(t: any): string | null {
   return (
-    t?.logoUrl || t?.logoURL || t?.logoDataUrl || t?.logoDataURL || t?.logo ||
-    t?.coverUrl || t?.coverDataUrl || t?.imageUrl || t?.avatarUrl ||
-    t?.meta?.logoUrl || t?.meta?.logoDataUrl || t?.settings?.logoUrl || null
+    t?.logoDataUrl || t?.logoDataURL || t?.logoUrl || t?.logoURL || t?.logo ||
+    t?.avatarDataUrl || t?.avatarUrl ||
+    t?.meta?.logoDataUrl || t?.meta?.logoUrl ||
+    t?.settings?.logoDataUrl || t?.settings?.logoUrl ||
+    null
+  );
+}
+
+function competitionCoverForCard(t: any): string | null {
+  return (
+    t?.coverDataUrl || t?.coverUrl || t?.coverDataURL || t?.coverURL ||
+    t?.bannerDataUrl || t?.bannerUrl || t?.imageUrl ||
+    t?.meta?.coverDataUrl || t?.meta?.coverUrl ||
+    t?.settings?.coverDataUrl || t?.settings?.coverUrl ||
+    competitionLogoForCard(t) ||
+    null
   );
 }
 
@@ -546,6 +559,29 @@ function roundIconButton(accent: string, active = false): React.CSSProperties {
     boxShadow: active ? `0 0 0 1px rgba(0,0,0,.5), 0 0 18px ${accent}66` : "0 10px 20px rgba(0,0,0,.38)",
     cursor: "pointer",
     flex: "0 0 auto",
+  };
+}
+
+function headerGlowButtonStyle(accent: string, active = false): React.CSSProperties {
+  return {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    border: `2px solid ${active ? accent : "rgba(255,255,255,.18)"}`,
+    background: active
+      ? `radial-gradient(circle at 50% 18%, ${accent}77, rgba(0,0,0,.46) 64%)`
+      : "rgba(0,0,0,0.48)",
+    color: accent,
+    display: "grid",
+    placeItems: "center",
+    boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 22px ${accent}88, 0 0 44px ${accent}55`,
+    cursor: "pointer",
+    flex: "0 0 auto",
+    fontSize: 21,
+    fontWeight: 1000,
+    lineHeight: 1,
+    userSelect: "none",
+    WebkitTapHighlightColor: "transparent",
   };
 }
 
@@ -714,15 +750,22 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const kindHeaderLabel = competitionKindLabel(kindFilter);
   const listContext = String((params as any)?.view || "").toLowerCase();
   const showCreateShortcuts = listContext !== "resume" && listContext !== "history";
+  const backOnceRef = React.useRef(false);
   const handleBack = React.useCallback(() => {
-    try {
-      if (window.history.length > 1) {
-        window.history.back();
-        return;
-      }
-    } catch {}
-    go("tournaments_home", { forceMode, sport: forceMode });
-  }, [forceMode, go]);
+    // BackDot déclenche pointerdown + click : garde-fou anti double retour,
+    // sinon StackBlitz peut tomber sur une entrée d'historique vide / écran noir.
+    if (backOnceRef.current) return;
+    backOnceRef.current = true;
+    window.setTimeout(() => { backOnceRef.current = false; }, 420);
+
+    const entry = listContext === "history" ? "consult" : "resume";
+    go("tournaments", {
+      forceMode,
+      sport: forceMode,
+      source: isOnline ? "online" : "local",
+      entry,
+    });
+  }, [forceMode, go, isOnline, listContext]);
 
   React.useEffect(() => {
     setFilter(routeStatusFilter);
@@ -826,8 +869,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
   const activeFilterCaption = React.useMemo(() => {
     const statusLabel = statusFilterLabel(filter);
-    if (dateFilter === "all") return statusLabel;
-    return `${statusLabel} · ${dateFilterLabel(dateFilter)}`;
+    return dateFilter === "all" ? statusLabel : `${statusLabel} · ${dateFilterLabel(dateFilter)}`;
   }, [filter, dateFilter]);
 
   const toggleDateFilterPanel = React.useCallback(() => {
@@ -904,14 +946,11 @@ export default function TournamentsHome({ store, go, source = "local", params }:
             >
               {listContext === "history" ? "Historique compétitions" : "Reprise compétitions"}
             </div>
-            <div style={{ marginTop: 5, fontSize: 10.5, opacity: 0.68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {kindHeaderLabel} · {sportLabel} · {isOnline ? "ONLINE NAS" : "LOCAL + BACKUP NAS"}
-            </div>
           </div>
           <button
             type="button"
             onClick={reload}
-            style={roundIconButton("#4fb4ff", loading)}
+            style={headerGlowButtonStyle("#ffd56a", loading)}
             title="Rafraîchir la liste"
             aria-label="Rafraîchir la liste"
           >
@@ -919,7 +958,12 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 14 }}>
+        <div style={{ marginTop: 8, textAlign: "center", fontSize: 10.5, lineHeight: 1.22, opacity: 0.74 }}>
+          <div>{kindHeaderLabel} · {sportLabel}</div>
+          <div>{isOnline ? "ONLINE NAS" : "LOCAL + BACKUP NAS"}</div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 12 }}>
           <div style={historyTileStyle("#ffd56a")}>
             <div style={{ fontSize: 10, opacity: 0.62, fontWeight: 900 }}>TOTAL</div>
             <div style={{ marginTop: 3, fontWeight: 1000, fontSize: 24, color: "#ffd56a" }}>{loading ? "…" : counts.total}</div>
@@ -1018,7 +1062,8 @@ export default function TournamentsHome({ store, go, source = "local", params }:
               const statusInfo = statusLabelFromTournament(t);
               const updatedAt = Number(t?.updatedAt || t?.createdAt || Date.now());
               const teams = competitionTeams(t);
-              const logo = avatarForCompetition(t);
+              const logo = competitionLogoForCard(t);
+              const cover = competitionCoverForCard(t);
               const countsForMatches = id ? computeCountsForTournament(id) : { pending: 0, running: 0, done: 0, playable: 0, total: 0 };
               const accent = kind === "league" ? "#ffd56a" : "#ff7fe2";
 
@@ -1030,7 +1075,9 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                     borderRadius: 24,
                     padding: 13,
                     border: `1px solid ${accent}33`,
-                    background: `radial-gradient(120% 150% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(22,22,29,.97), rgba(7,7,12,.995))`,
+                    background: cover
+                      ? `linear-gradient(90deg, rgba(7,7,12,.82) 0%, rgba(7,7,12,.74) 46%, rgba(7,7,12,.94) 100%), radial-gradient(120% 150% at 0% 0%, ${accent}24, transparent 56%), center / cover no-repeat url(${cover})`
+                      : `radial-gradient(120% 150% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(22,22,29,.97), rgba(7,7,12,.995))`,
                     boxShadow: `0 18px 46px rgba(0,0,0,.62), 0 0 26px ${accent}11`,
                     cursor: id ? "pointer" : "default",
                     opacity: id ? 1 : 0.62,
