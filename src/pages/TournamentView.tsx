@@ -2403,8 +2403,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
         </div>
       ) : null}
 
-      {/* HEADER */}
-      <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 88px", alignItems: "center", gap: 10 }}>
+      {/* NAVIGATION PRINCIPALE : titre supprimé, icônes intégrées à la place */}
+      <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0, 1fr) 88px", alignItems: "center", gap: 10 }}>
         <button
           type="button"
           onClick={() => go("tournaments")}
@@ -2423,13 +2423,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
           <Icon name="back" color="#ffcf57" />
         </button>
 
-        <div style={{ textAlign: "center", minWidth: 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 950, letterSpacing: 0.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {(tour as any)?.name || "Mon tournoi"}
-          </div>
-          <div style={{ fontSize: 11.5, opacity: 0.75, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {(tour as any)?.status ? String((tour as any).status).toUpperCase() : "—"} • {playableMatches.length} à jouer
-          </div>
+        <div style={{ minWidth: 0, display: "flex", justifyContent: "center", overflow: "hidden" }}>
+          <NeonTopTabsIconsOnly tabs={TABS} activeKey={tab} onChange={setTab} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -2482,8 +2477,6 @@ async function createSyntheticHistoryForSimulation(args: any) {
           </button>
         </div>
       </div>
-
-      <NeonTopTabsIconsOnly tabs={TABS} activeKey={tab} onChange={setTab} />
 
       <div
         style={{
