@@ -42,7 +42,7 @@ import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
 import botTeamChallengerLogo from "../assets/ui/competition_bot_team_challenger.webp";
 import botTeamMixLogo from "../assets/ui/competition_bot_team_mix.webp";
 import { BABYFOOT_LEAGUE_BADGES } from "../lib/leagueBadgeAssets";
-import { loadTeamsBySport, createTeam as createStoredTeam, upsertTeam as upsertStoredTeam } from "../lib/petanqueTeamsStore";
+import { loadTeamsBySport, createTeam as createStoredTeam, upsertTeam as upsertStoredTeam, fileToDataUrl as fileToCompressedTeamLogoDataUrl } from "../lib/petanqueTeamsStore";
 
 // ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
@@ -3479,7 +3479,7 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
 
     const selected = new Set((Array.isArray(roster) ? roster : []).map(String));
 
-    function pickLogo(file?: File | null) {
+    async function pickLogo(file?: File | null) {
       if (!file) {
         setLogoImportDiag("Aucun fichier reçu");
         return;
@@ -3505,10 +3505,10 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
         console.warn("[TournamentCreate] team logo objectURL preview failed", err);
       }
 
-      // 2) Version persistable en dataURL pour que le logo reste affichable après création/reload.
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = typeof reader.result === "string" ? reader.result : "";
+      // 2) Version compressée persistable : c'est la même logique que Profiles > Teams.
+      // Ne jamais stocker l'original en base64, sinon le logo est rejeté au save ou le quota saute.
+      try {
+        const result = await fileToCompressedTeamLogoDataUrl(file);
         if (!result || !result.startsWith("data:image")) {
           setLogoImportDiag(`Erreur · image illisible · ${filename}`);
           return;
@@ -3519,13 +3519,11 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
         teamLogoObjectUrlRef.current = null;
         setLocalLogoPreview(result);
         onLogoChange?.(result);
-        setLogoImportDiag(`OK · ${filename} · aperçu chargé`);
-      };
-      reader.onerror = () => {
-        console.warn("[TournamentCreate] team logo import failed", { filename, type, size });
-        setLogoImportDiag(`Erreur FileReader · ${filename}`);
-      };
-      reader.readAsDataURL(file);
+        setLogoImportDiag(`OK · ${filename} · logo compressé et chargé`);
+      } catch (err) {
+        console.warn("[TournamentCreate] team logo compression failed", { filename, type, size, err });
+        setLogoImportDiag(`Erreur compression · ${filename}`);
+      }
     }
 
     function handleLogoInput(e: any) {

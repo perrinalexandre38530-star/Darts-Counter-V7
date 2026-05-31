@@ -19,6 +19,7 @@ import {
   loadTeamsBySport,
   upsertTeam,
   createTeam,
+  fileToDataUrl as fileToCompressedTeamLogoDataUrl,
   type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
 
@@ -223,9 +224,19 @@ const availableProfiles = React.useMemo(() => {
   async function onPickTeamLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await readFileAsDataUrl(file);
-    save({ ...team, logoDataUrl: dataUrl });
-    e.target.value = "";
+    try {
+      // IMPORTANT : même logique que la création de ligue/tournoi.
+      // On ne persiste jamais l'image originale en base64, sinon sanitizeStoredImage
+      // la refuse ou localStorage explose son quota et le logo disparaît après sauvegarde.
+      const dataUrl = await fileToCompressedTeamLogoDataUrl(file);
+      save({ ...team, logoDataUrl: dataUrl });
+    } catch (err) {
+      console.warn("[TeamEdit] logo compression failed, fallback FileReader", err);
+      const dataUrl = await readFileAsDataUrl(file);
+      save({ ...team, logoDataUrl: dataUrl });
+    } finally {
+      e.target.value = "";
+    }
   }
 
   function removeLogo() {

@@ -238,7 +238,9 @@ export function upsertTeam(team: TeamEntity) {
     playerIds: Array.isArray((team as any).playerIds) ? (team as any).playerIds.filter((x: any) => typeof x === "string") : (team as any).playerIds,
   };
 
-  if (!next.name) next.name = "Team";
+  // Ne pas réinjecter "Team" ici : pendant l'édition, un champ nom vide doit rester vide
+  // sinon la dernière lettre effacée fait réapparaître automatiquement "Équipe" / "Team".
+  if (!next.name && idx < 0) next.name = "Team";
 
   if (idx >= 0) list[idx] = next;
   else list.unshift(next);
@@ -281,8 +283,7 @@ export function updateTeam(
     updatedAt: now(),
   };
 
-  if (!next.name) next.name = prev.name || "Team";
-
+  // Laisser le nom vide pendant la saisie; les écrans d'affichage ont déjà leurs fallbacks.
   list[idx] = next;
   saveTeams(list);
   return next;

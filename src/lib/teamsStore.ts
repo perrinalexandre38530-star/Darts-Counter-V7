@@ -88,7 +88,6 @@ export function createTeam(input: {
     createdAt: now,
     updatedAt: now,
   };
-  next.logoDataUrl = sanitizeStoredImage(next.logoDataUrl) || undefined;
 
   const prev = loadTeams();
   saveTeams([team, ...prev]);
