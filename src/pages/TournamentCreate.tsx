@@ -1323,9 +1323,13 @@ export default function TournamentCreate({ store, go, params }: Props) {
   // ✅ Confrontations par équipes (Ligue + Tournoi)
   // Dans les ligues réelles, une rencontre d'équipe n'est pas seulement "équipe A vs équipe B" :
   // elle peut contenir plusieurs matchs individuels/doublettes, puis les points de rencontre sont additionnés.
-  const [teamConfrontationFormat, setTeamConfrontationFormat] = React.useState<"single" | "singles" | "singles_doubles">("singles");
+  const [teamConfrontationFormat, setTeamConfrontationFormat] = React.useState<"custom" | "single" | "singles" | "singles_doubles">("custom");
   const [teamConfrontationPlayers, setTeamConfrontationPlayers] = React.useState<string>("4");
   const [teamConfrontationDoubles, setTeamConfrontationDoubles] = React.useState<string>("1");
+  const [teamConfrontationSoloCount, setTeamConfrontationSoloCount] = React.useState<string>("4");
+  const [teamConfrontationDuoCount, setTeamConfrontationDuoCount] = React.useState<string>("1");
+  const [teamConfrontationMultiCount, setTeamConfrontationMultiCount] = React.useState<string>("0");
+  const [teamConfrontationMultiPlayers, setTeamConfrontationMultiPlayers] = React.useState<string>("3");
   const [teamConfrontationWinMode, setTeamConfrontationWinMode] = React.useState<"match_points" | "legs_sets">("match_points");
 
   const [participantsDropdownOpen, setParticipantsDropdownOpen] = React.useState(false);
@@ -2522,12 +2526,26 @@ async function createTournament() {
     finalPlayers = finalPlayers.concat(bots);
   }
 
+  const teamSoloMatches = Math.max(0, Math.floor(numFromText(teamConfrontationSoloCount)) || 0);
+  const teamDuoMatches = Math.max(0, Math.floor(numFromText(teamConfrontationDuoCount)) || 0);
+  const teamMultiMatches = Math.max(0, Math.floor(numFromText(teamConfrontationMultiCount)) || 0);
+  const teamMultiPlayersPerSide = Math.max(3, Math.floor(numFromText(teamConfrontationMultiPlayers)) || 3);
   const teamConfrontation = participantKind === "teams" ? {
     enabled: true,
     format: teamConfrontationFormat,
-    label: teamConfrontationFormat === "single" ? "Rencontre unique" : teamConfrontationFormat === "singles_doubles" ? "Simples + doublettes" : "Simples par ligne",
-    playersPerTeam: Math.max(1, Math.floor(numFromText(teamConfrontationPlayers)) || 1),
-    doublesMatches: teamConfrontationFormat === "singles_doubles" ? Math.max(0, Math.floor(numFromText(teamConfrontationDoubles)) || 0) : 0,
+    label: teamConfrontationFormat === "single"
+      ? "Rencontre unique"
+      : teamConfrontationFormat === "singles"
+        ? "Simples par ligne"
+        : teamConfrontationFormat === "singles_doubles"
+          ? "Simples + doublettes"
+          : `${teamSoloMatches} SOLO · ${teamDuoMatches} DUO · ${teamMultiMatches} MULTI`,
+    playersPerTeam: Math.max(1, Math.floor(numFromText(teamConfrontationPlayers)) || Math.max(teamSoloMatches, teamDuoMatches * 2, teamMultiMatches * teamMultiPlayersPerSide, 1)),
+    singlesMatches: teamConfrontationFormat === "custom" ? teamSoloMatches : (teamConfrontationFormat === "single" ? 0 : Math.max(1, Math.floor(numFromText(teamConfrontationPlayers)) || 1)),
+    doublesMatches: teamConfrontationFormat === "custom" ? teamDuoMatches : (teamConfrontationFormat === "singles_doubles" ? Math.max(0, Math.floor(numFromText(teamConfrontationDoubles)) || 0) : 0),
+    multiMatches: teamConfrontationFormat === "custom" ? teamMultiMatches : 0,
+    multiPlayersPerSide: teamMultiPlayersPerSide,
+    totalLines: teamConfrontationFormat === "custom" ? (teamSoloMatches + teamDuoMatches + teamMultiMatches) : undefined,
     winMode: teamConfrontationWinMode,
     points: { win: 3, draw: 1, loss: 0 },
   } : { enabled: false };
@@ -2650,6 +2668,10 @@ async function createTournament() {
   (tour as any).avatarDataUrl = competitionAvatar || null;
   (tour as any).coverDataUrl = competitionCover || null;
   (tour as any).bannerDataUrl = competitionCover || null;
+
+  // Un tournoi/une ligue créée avec ses affiches doit apparaître directement dans "En cours" / "À reprendre".
+  // Le statut "draft" restait caché derrière le filtre Brouillons et donnait l'impression que la création avait échoué.
+  (tour as any).status = "running";
 
   const matches = buildInitialMatches(tour);
 
@@ -4696,17 +4718,25 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 <div style={{ display: "grid", gap: 10 }}>
                   <RowTitle label="Confrontation par équipes" />
                   <div style={{ fontSize: 11.5, lineHeight: 1.35, opacity: .74 }}>
-                    Réglage commun Ligue + Tournoi : chaque affiche peut être une rencontre unique, plusieurs simples, ou simples + doublettes.
+                    Réglage commun Ligue + Tournoi : une affiche d’équipes peut contenir plusieurs lignes à jouer. Exemple réel : 4 SOLO + 2 DUO + 1 MULTI, puis la rencontre est gagnée aux points.
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={teamConfrontationFormat === "custom"} label="SOLO / DUO / MULTI" onClick={() => setTeamConfrontationFormat("custom")} primary={primary} />
                     <NeonPill active={teamConfrontationFormat === "single"} label="1 match équipe" onClick={() => setTeamConfrontationFormat("single")} primary={primary} />
-                    <NeonPill active={teamConfrontationFormat === "singles"} label="Simples" onClick={() => setTeamConfrontationFormat("singles")} primary={primary} />
+                    <NeonPill active={teamConfrontationFormat === "singles"} label="Simples seuls" onClick={() => setTeamConfrontationFormat("singles")} primary={primary} />
                     <NeonPill active={teamConfrontationFormat === "singles_doubles"} label="Simples + doubles" onClick={() => setTeamConfrontationFormat("singles_doubles")} primary={primary} />
                   </div>
-                  {teamConfrontationFormat !== "single" ? (
+                  {teamConfrontationFormat === "custom" ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                      <TextInput value={teamConfrontationSoloCount} onChange={(e: any) => setTeamConfrontationSoloCount(e.target.value)} placeholder="Nb confrontations SOLO" />
+                      <TextInput value={teamConfrontationDuoCount} onChange={(e: any) => setTeamConfrontationDuoCount(e.target.value)} placeholder="Nb confrontations DUO" />
+                      <TextInput value={teamConfrontationMultiCount} onChange={(e: any) => setTeamConfrontationMultiCount(e.target.value)} placeholder="Nb confrontations MULTI" />
+                      <TextInput value={teamConfrontationMultiPlayers} onChange={(e: any) => setTeamConfrontationMultiPlayers(e.target.value)} placeholder="Joueurs par camp en MULTI" />
+                    </div>
+                  ) : teamConfrontationFormat !== "single" ? (
                     <div style={{ display: "grid", gridTemplateColumns: teamConfrontationFormat === "singles_doubles" ? "1fr 1fr" : "1fr", gap: 8 }}>
-                      <TextInput value={teamConfrontationPlayers} onChange={(e: any) => setTeamConfrontationPlayers(e.target.value)} placeholder="Joueurs alignés par équipe" />
-                      {teamConfrontationFormat === "singles_doubles" ? <TextInput value={teamConfrontationDoubles} onChange={(e: any) => setTeamConfrontationDoubles(e.target.value)} placeholder="Nombre de doublettes" /> : null}
+                      <TextInput value={teamConfrontationPlayers} onChange={(e: any) => setTeamConfrontationPlayers(e.target.value)} placeholder="Joueurs alignés par équipe / nb simples" />
+                      {teamConfrontationFormat === "singles_doubles" ? <TextInput value={teamConfrontationDoubles} onChange={(e: any) => setTeamConfrontationDoubles(e.target.value)} placeholder="Nombre de confrontations DUO" /> : null}
                     </div>
                   ) : null}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
