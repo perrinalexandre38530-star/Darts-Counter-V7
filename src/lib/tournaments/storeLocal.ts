@@ -14,6 +14,48 @@ type AnyObj = any;
 
 /** --- LocalStorage legacy keys --- */
 const LS_TOURNAMENTS = "dc_tournaments_v1";
+const LS_TOURNAMENTS_DELETED = "dc_tournaments_deleted_v1";
+
+function readDeletedTournamentIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_TOURNAMENTS_DELETED);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map((v) => String(v || "")).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markTournamentDeleted(id: string) {
+  const tid = String(id || "").trim();
+  if (!tid) return;
+  try {
+    const deleted = readDeletedTournamentIds();
+    deleted.add(tid);
+    localStorage.setItem(LS_TOURNAMENTS_DELETED, JSON.stringify(Array.from(deleted)));
+  } catch {}
+}
+
+function removeTournamentFromLegacyLocalStorage(id: string) {
+  const tid = String(id || "").trim();
+  if (!tid) return;
+  try {
+    const arr = safeParseJSON(localStorage.getItem(LS_TOURNAMENTS));
+    if (Array.isArray(arr)) {
+      const next = arr.filter((t: any) => String(t?.id || t?.tournamentId || t?.tid || t?.code || "") !== tid);
+      if (next.length) localStorage.setItem(LS_TOURNAMENTS, JSON.stringify(next));
+      else localStorage.removeItem(LS_TOURNAMENTS);
+    }
+
+    const map = safeParseJSON(localStorage.getItem(LS_TOURNAMENT_MATCHES_MAP));
+    if (map && typeof map === "object" && !Array.isArray(map)) {
+      delete map[tid];
+      localStorage.setItem(LS_TOURNAMENT_MATCHES_MAP, JSON.stringify(map));
+    }
+
+    for (const k of lsMatchesKeyCandidates(tid)) localStorage.removeItem(k);
+  } catch {}
+}
 
 // format "map": { [tournamentId]: matches[] }
 const LS_TOURNAMENT_MATCHES_MAP = "dc_tournament_matches_v1";
@@ -142,7 +184,11 @@ async function migrateFromLocalStorageIfNeeded() {
   const rawTours = localStorage.getItem(LS_TOURNAMENTS);
   const tours = safeParseJSON(rawTours);
 
-  const hasTours = Array.isArray(tours) && tours.length > 0;
+  const deletedIds = readDeletedTournamentIds();
+  const migratedTours = Array.isArray(tours)
+    ? tours.filter((t: any) => !deletedIds.has(String(t?.id || t?.tournamentId || t?.tid || t?.code || "")))
+    : [];
+  const hasTours = Array.isArray(migratedTours) && migratedTours.length > 0;
   const matchesMap = safeParseJSON(localStorage.getItem(LS_TOURNAMENT_MATCHES_MAP));
   const hasMap = matchesMap && typeof matchesMap === "object";
 
@@ -150,14 +196,14 @@ async function migrateFromLocalStorageIfNeeded() {
 
   // 1) Tournois
   if (hasTours) {
-    await Promise.all((tours as any[]).map((t) => idbPut(STORE_T, t)));
+    await Promise.all((migratedTours as any[]).map((t) => idbPut(STORE_T, t)));
   }
 
   // 2) Matches via map (si présent)
   if (hasMap) {
     const mapObj = matchesMap as Record<string, any[]>;
     for (const [tid, matches] of Object.entries(mapObj)) {
-      if (!tid) continue;
+      if (!tid || deletedIds.has(String(tid))) continue;
       if (Array.isArray(matches)) {
         await idbPut(STORE_M, { id: String(tid), matches });
       }
@@ -166,7 +212,7 @@ async function migrateFromLocalStorageIfNeeded() {
 
   // 3) Matches legacy par tournoi (si tours dispo)
   if (hasTours) {
-    for (const t of tours as any[]) {
+    for (const t of migratedTours as any[]) {
       const tid = String(t?.id || "");
       if (!tid) continue;
 
@@ -194,7 +240,7 @@ async function migrateFromLocalStorageIfNeeded() {
     localStorage.removeItem(LS_TOURNAMENT_MATCHES_MAP);
 
     if (hasTours) {
-      for (const t of tours as any[]) {
+      for (const t of migratedTours as any[]) {
         const tid = String(t?.id || "");
         for (const k of lsMatchesKeyCandidates(tid)) localStorage.removeItem(k);
       }
@@ -351,15 +397,18 @@ export function deleteTournamentLocal(tournamentId: string) {
   const tid = String(tournamentId || "");
   if (!tid) return;
 
-  cacheTournaments = cacheTournaments.filter((t) => String(t?.id) !== tid);
+  markTournamentDeleted(tid);
+  removeTournamentFromLegacyLocalStorage(tid);
+
+  cacheTournaments = cacheTournaments.filter((t) => String(t?.id || t?.tournamentId || t?.tid || t?.code || "") !== tid);
   delete cacheMatchesByTid[tid];
 
-  void idbDelete(STORE_T, tid).catch((e) =>
-    console.error("[tournaments] idbDelete tournament failed:", e)
-  );
-  void idbDelete(STORE_M, tid).catch((e) =>
-    console.error("[tournaments] idbDelete matches failed:", e)
-  );
+  void Promise.all([
+    idbDelete(STORE_T, tid),
+    idbDelete(STORE_M, tid),
+  ])
+    .then(() => notifyTournamentsUpdated())
+    .catch((e) => console.error("[tournaments] delete tournament failed:", e));
 
   notifyTournamentsUpdated();
 }

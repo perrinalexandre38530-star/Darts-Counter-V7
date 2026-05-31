@@ -194,7 +194,7 @@ const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
 import SyncCenter from "./pages/SyncCenter";
 const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
-const TournamentsList = React.lazy(() => import("./pages/TournamentsList"));
+import TournamentsList from "./pages/TournamentsList";
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";

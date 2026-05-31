@@ -569,6 +569,71 @@ function competitionCardActionStyle(accent: string, primary = false): React.CSSP
   };
 }
 
+function IconFilterButton({
+  active,
+  tint,
+  label,
+  count,
+  onClick,
+  icon,
+}: {
+  active: boolean;
+  tint: string;
+  label: string;
+  count: number;
+  onClick: () => void;
+  icon: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${label} (${count})`}
+      aria-label={`${label} (${count})`}
+      style={{
+        width: 48,
+        height: 42,
+        borderRadius: 999,
+        border: active ? `1px solid ${tint}` : "1px solid rgba(255,255,255,.13)",
+        background: active
+          ? `radial-gradient(circle at 50% 18%, ${tint}66, ${tint}24 50%, rgba(255,255,255,.04))`
+          : "linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.025))",
+        color: active ? tint : "rgba(255,255,255,.88)",
+        display: "grid",
+        placeItems: "center",
+        position: "relative",
+        cursor: "pointer",
+        boxShadow: active ? `0 0 20px ${tint}66` : "0 10px 18px rgba(0,0,0,.34)",
+        flex: "0 0 auto",
+      }}
+    >
+      {icon}
+      <span
+        style={{
+          position: "absolute",
+          right: -3,
+          top: -5,
+          minWidth: 18,
+          height: 18,
+          padding: "0 5px",
+          borderRadius: 999,
+          display: "grid",
+          placeItems: "center",
+          border: `1px solid ${tint}66`,
+          background: "rgba(5,5,8,.94)",
+          color: tint,
+          fontSize: 10,
+          fontWeight: 1000,
+          lineHeight: 1,
+          boxShadow: `0 0 12px ${tint}33`,
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 function StatMini({ label, value, accent }: { label: string; value: React.ReactNode; accent: string }) {
   return (
     <div style={{ borderRadius: 14, padding: "8px 9px", background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
@@ -655,71 +720,45 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     };
   }, [reload]);
 
-  React.useEffect(() => {
-    const anyStore: any = store as any;
-    const legacy =
-      anyStore?.tournaments ||
-      anyStore?.tournamentsLocal ||
-      anyStore?.tournamentsList ||
-      null;
-
-    if (Array.isArray(legacy) && legacy.length && (!items || items.length === 0)) {
-      // legacy non filtré : on applique le filtre par mode
-      setItems(legacy.filter((t: any) => normalizeCompetitionSport(t) === forceMode));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, forceMode]);
-
   const tournaments = React.useMemo(() => items || [], [items]);
 
-  const filtered = React.useMemo(() => {
+  const statusKeyOf = React.useCallback((t: any): FilterKey => {
+    // Même normalisation partout : compteurs, filtres et cartes.
+    return statusLabelFromTournament(t).key;
+  }, []);
+
+  const visibleByKind = React.useMemo(() => {
     const base = Array.isArray(tournaments) ? tournaments : [];
     // Sécurité anti-écran vide : les anciennes créations n'avaient pas toujours
     // competitionKind au bon niveau. Si le filtre Ligue/Tournoi ne matche rien,
     // on affiche quand même les compétitions du sport au lieu de les cacher.
     const strictKindList = kindFilter === "all" ? base : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter);
-    const list = strictKindList.length || kindFilter === "all" ? strictKindList : base;
+    return strictKindList.length || kindFilter === "all" ? strictKindList : base;
+  }, [tournaments, kindFilter]);
 
-    const norm = (t: any): FilterKey => {
-      const st = String(t?.status || "").toLowerCase();
-      if (st.includes("draft") || st.includes("brouillon") || st.includes("new") || st.includes("config"))
-        return "draft";
-      if (
-        st.includes("run") ||
-        st.includes("progress") ||
-        st.includes("en_cours") ||
-        st.includes("ongoing") ||
-        st.includes("active") ||
-        st.includes("playing")
-      )
-        return "running";
-      if (st.includes("done") || st.includes("finish") || st.includes("term") || st.includes("end"))
-        return "done";
-      return "draft";
-    };
-
+  const filtered = React.useMemo(() => {
+    const list = Array.isArray(visibleByKind) ? visibleByKind : [];
     if (filter === "all") return list;
-    if (filter === "active") return list.filter((t) => norm(t) !== "done");
-    return list.filter((t) => norm(t) === filter);
-  }, [tournaments, filter, kindFilter]);
+    if (filter === "active") return list.filter((t) => statusKeyOf(t) !== "done");
+    return list.filter((t) => statusKeyOf(t) === filter);
+  }, [visibleByKind, filter, statusKeyOf]);
 
   const hasAny = (filtered?.length || 0) > 0;
-  const scopedByKindCount = React.useMemo(() => {
-    const base = Array.isArray(tournaments) ? tournaments : [];
-    return kindFilter === "all" ? base.length : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter).length;
-  }, [tournaments, kindFilter]);
 
   const counts = React.useMemo(() => {
-    const base = Array.isArray(tournaments) ? tournaments : [];
-    const byKind = kindFilter === "all" ? base : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter);
-    const statusOf = (t: any) => statusLabelFromTournament(t).key;
+    // IMPORTANT : les compteurs utilisent EXACTEMENT la même base que la liste.
+    // Avant, la liste basculait en fallback si les anciennes compétitions étaient
+    // mal typées, mais les compteurs restaient sur le filtre strict => 0 partout.
+    const list = Array.isArray(visibleByKind) ? visibleByKind : [];
+    const statusOf = (t: any) => statusKeyOf(t);
     return {
-      total: byKind.length,
-      active: byKind.filter((t: any) => statusOf(t) !== "done").length,
-      running: byKind.filter((t: any) => statusOf(t) === "running").length,
-      done: byKind.filter((t: any) => statusOf(t) === "done").length,
+      total: list.length,
+      active: list.filter((t: any) => statusOf(t) !== "done").length,
+      draft: list.filter((t: any) => statusOf(t) === "draft").length,
+      running: list.filter((t: any) => statusOf(t) === "running").length,
+      done: list.filter((t: any) => statusOf(t) === "done").length,
     };
-  }, [tournaments, kindFilter]);
+  }, [visibleByKind, statusKeyOf]);
 
   const openTournament = React.useCallback((t: any) => {
     const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
@@ -808,10 +847,42 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         </div>
 
         <div style={{ marginTop: 14, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local" })} style={roundIconButton("#ffd56a", kindFilter === "all")} title="Toutes"><TinyIcon kind="cup" /></button>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "league", competitionKind: "league", view: listContext || "resume" })} style={roundIconButton("#ffd56a", kindFilter === "league")} title="Ligues"><TinyIcon kind="users" /></button>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "tournament", competitionKind: "tournament", view: listContext || "resume" })} style={roundIconButton("#ff7fe2", kindFilter === "tournament")} title="Tournois"><TinyIcon kind="play" /></button>
-          <button type="button" onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: kindFilter === "league" ? "league" : "tournament", preset: kindFilter === "league" ? "league" : "tournament" })} style={roundIconButton("#7fe2a9", false)} title="Créer"><span style={{ fontWeight: 1000 }}>+</span></button>
+          <button
+            type="button"
+            onClick={() => go("tournaments", { ...params, forceMode, sport: forceMode, source, filterKind: "all", competitionKind: "all", filter, statusFilter: filter, view: listContext || "resume" })}
+            style={roundIconButton("#ffd56a", kindFilter === "all")}
+            title="Toutes les compétitions"
+            aria-label="Toutes les compétitions"
+          >
+            <TinyIcon kind="cup" />
+          </button>
+          <button
+            type="button"
+            onClick={() => go("tournaments", { ...params, forceMode, sport: forceMode, source, filterKind: "league", competitionKind: "league", filter, statusFilter: filter, view: listContext || "resume" })}
+            style={roundIconButton("#ffd56a", kindFilter === "league")}
+            title="Ligues uniquement"
+            aria-label="Ligues uniquement"
+          >
+            <TinyIcon kind="users" />
+          </button>
+          <button
+            type="button"
+            onClick={() => go("tournaments", { ...params, forceMode, sport: forceMode, source, filterKind: "tournament", competitionKind: "tournament", filter, statusFilter: filter, view: listContext || "resume" })}
+            style={roundIconButton("#ff7fe2", kindFilter === "tournament")}
+            title="Tournois uniquement"
+            aria-label="Tournois uniquement"
+          >
+            <TinyIcon kind="play" />
+          </button>
+          <button
+            type="button"
+            onClick={() => go("tournament_create", { forceMode, sport: forceMode, source: "local", competitionKind: kindFilter === "league" ? "league" : "tournament", preset: kindFilter === "league" ? "league" : "tournament" })}
+            style={roundIconButton("#7fe2a9", false)}
+            title="Créer une compétition"
+            aria-label="Créer une compétition"
+          >
+            <span style={{ fontWeight: 1000 }}>+</span>
+          </button>
         </div>
       </div>
 
@@ -830,11 +901,11 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           <div style={{ fontSize: 11, opacity: 0.62 }}>{loading ? "Chargement…" : "Tri activité récente"}</div>
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: 9, flexWrap: "wrap" }}>
-          <button onClick={() => setFilter("all")} style={pillStyle(filter === "all", "#ffd56a")}>Tous</button>
-          <button onClick={() => setFilter("active")} style={pillStyle(filter === "active", "#4fb4ff")}>À reprendre</button>
-          <button onClick={() => setFilter("draft")} style={pillStyle(filter === "draft", "#b0b0b0")}>Brouillons</button>
-          <button onClick={() => setFilter("running")} style={pillStyle(filter === "running", "#ff7fe2")}>En cours</button>
-          <button onClick={() => setFilter("done")} style={pillStyle(filter === "done", "#7fe2a9")}>Terminées</button>
+          <IconFilterButton active={filter === "all"} tint="#ffd56a" label="Tous" count={counts.total} onClick={() => setFilter("all")} icon={<TinyIcon kind="cup" size={17} />} />
+          <IconFilterButton active={filter === "active"} tint="#4fb4ff" label="À reprendre" count={counts.active} onClick={() => setFilter("active")} icon={<TinyIcon kind="play" size={17} />} />
+          <IconFilterButton active={filter === "draft"} tint="#b0b0b0" label="Brouillons" count={counts.draft} onClick={() => setFilter("draft")} icon={<TinyIcon kind="box" size={17} />} />
+          <IconFilterButton active={filter === "running"} tint="#ff7fe2" label="En cours" count={counts.running} onClick={() => setFilter("running")} icon={<TinyIcon kind="users" size={17} />} />
+          <IconFilterButton active={filter === "done"} tint="#7fe2a9" label="Terminées" count={counts.done} onClick={() => setFilter("done")} icon={<TinyIcon kind="calendar" size={17} />} />
         </div>
       </div>
 
@@ -953,9 +1024,6 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                   <div style={{ display: "flex", justifyContent: "center", gap: 9, flexWrap: "wrap", marginTop: 12 }}>
                     <button type="button" onClick={(ev) => { ev.stopPropagation(); openTournament(t); }} style={competitionCardActionStyle(accent, true)}>
                       <TinyIcon kind="play" size={15} /> Reprendre
-                    </button>
-                    <button type="button" onClick={(ev) => { ev.stopPropagation(); openTournament(t); }} style={competitionCardActionStyle("#4fb4ff", false)}>
-                      <TinyIcon kind="cup" size={15} /> Détails
                     </button>
                     {!isOnline ? (
                       <button type="button" onClick={(ev) => { ev.stopPropagation(); removeTournament(t); }} style={competitionCardActionStyle("#ff4f8b", false)}>
