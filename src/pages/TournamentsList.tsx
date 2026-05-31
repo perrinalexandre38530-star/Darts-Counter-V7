@@ -16,6 +16,7 @@ import {
   listMatchesForTournamentLocal,
   upsertTournamentLocal,
   upsertMatchesForTournamentLocal,
+  deleteTournamentLocal,
   TOURNAMENTS_UPDATED_EVENT,
 } from "../lib/tournaments/storeLocal";
 import { listOnlineCompetitions } from "../lib/tournaments/onlineStore";
@@ -481,6 +482,102 @@ function TickerRow({
   );
 }
 
+
+function TinyIcon({ kind, size = 18 }: { kind: string; size?: number }) {
+  const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": true } as any;
+  if (kind === "play") return <svg {...common}><path d="M8 5v14l11-7z" /></svg>;
+  if (kind === "trash") return <svg {...common}><path d="M9 3h6l1 2h5v2H3V5h5l1-2Zm-3 6h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9Z" /></svg>;
+  if (kind === "cup") return <svg {...common}><path d="M6 2h12v2h3a1 1 0 0 1 1 1v1a5 5 0 0 1-5 5h-1.1A6 6 0 0 1 13 13.9V16h3v2H8v-2h3v-2.1A6 6 0 0 1 8.1 11H7A5 5 0 0 1 2 6V5a1 1 0 0 1 1-1h3V2Zm12 4v2.8A3 3 0 0 0 20 6h-2ZM4 6a3 3 0 0 0 2 2.8V6H4Z" /></svg>;
+  if (kind === "calendar") return <svg {...common}><path d="M7 2h2v2h6V2h2v2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3V2Zm13 8H4v10h16V10Z" /></svg>;
+  if (kind === "users") return <svg {...common}><path d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8.5 0a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM8 13c-4 0-7 2-7 4.7V20h14v-2.3C15 15 12 13 8 13Zm8.5.5c-.9 0-1.8.1-2.5.4 1.8 1 3 2.4 3 4.1V20h6v-1.8c0-2.7-2.8-4.7-6.5-4.7Z" /></svg>;
+  return <svg {...common}><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.6 3.7L12 11.7 5.4 8 12 4.3ZM5 9.7l6 3.4v6.1l-6-3.4V9.7Zm14 0v6.1l-6 3.4v-6.1l6-3.4Z" /></svg>;
+}
+
+function avatarForCompetition(t: any): string | null {
+  return (
+    t?.logoUrl || t?.logoURL || t?.logoDataUrl || t?.logoDataURL || t?.logo ||
+    t?.coverUrl || t?.coverDataUrl || t?.imageUrl || t?.avatarUrl ||
+    t?.meta?.logoUrl || t?.meta?.logoDataUrl || t?.settings?.logoUrl || null
+  );
+}
+
+function teamLogo(team: any): string | null {
+  return team?.logoUrl || team?.logoDataUrl || team?.avatarUrl || team?.avatar || team?.imageUrl || null;
+}
+
+function competitionTeams(t: any): any[] {
+  const lists = [t?.teams, t?.participants, t?.players, t?.entries, t?.config?.teams, t?.config?.participants];
+  for (const value of lists) if (Array.isArray(value) && value.length) return value;
+  return [];
+}
+
+function statusLabelFromTournament(t: any): { label: string; tone: string; key: FilterKey } {
+  const raw = String(t?.status || "draft").toLowerCase();
+  if (raw.includes("done") || raw.includes("finish") || raw.includes("term") || raw.includes("end")) return { label: "TERMINÉ", tone: "#7fe2a9", key: "done" };
+  if (raw.includes("run") || raw.includes("progress") || raw.includes("en_cours") || raw.includes("ongoing") || raw.includes("active") || raw.includes("playing")) return { label: "EN COURS", tone: "#ff7fe2", key: "running" };
+  return { label: "À REPRENDRE", tone: "#4fb4ff", key: "draft" };
+}
+
+function historyTileStyle(accent: string): React.CSSProperties {
+  return {
+    minWidth: 0,
+    borderRadius: 18,
+    padding: "12px 10px",
+    border: `1px solid ${accent}44`,
+    background: `radial-gradient(120% 140% at 0% 0%, ${accent}22, transparent 58%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(8,8,12,.98))`,
+    boxShadow: `0 14px 32px rgba(0,0,0,.52), 0 0 24px ${accent}18`,
+  };
+}
+
+function roundIconButton(accent: string, active = false): React.CSSProperties {
+  return {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    border: `1px solid ${active ? accent : "rgba(255,255,255,.14)"}`,
+    background: active
+      ? `radial-gradient(circle at 50% 20%, ${accent}66, ${accent}24 48%, rgba(255,255,255,.04))`
+      : "linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.025))",
+    color: active ? accent : "rgba(255,255,255,.88)",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: active ? `0 0 0 1px rgba(0,0,0,.5), 0 0 18px ${accent}66` : "0 10px 20px rgba(0,0,0,.38)",
+    cursor: "pointer",
+    flex: "0 0 auto",
+  };
+}
+
+function competitionCardActionStyle(accent: string, primary = false): React.CSSProperties {
+  return {
+    border: `1px solid ${primary ? accent : "rgba(255,255,255,.12)"}`,
+    background: primary
+      ? `linear-gradient(180deg, ${accent}, ${accent}aa)`
+      : "linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03))",
+    color: primary ? "#111" : "#fff",
+    borderRadius: 999,
+    padding: "8px 12px",
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minHeight: 36,
+    whiteSpace: "nowrap",
+    boxShadow: primary ? `0 0 18px ${accent}44` : "0 10px 20px rgba(0,0,0,.35)",
+  };
+}
+
+function StatMini({ label, value, accent }: { label: string; value: React.ReactNode; accent: string }) {
+  return (
+    <div style={{ borderRadius: 14, padding: "8px 9px", background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
+      <div style={{ fontSize: 9.5, opacity: 0.66, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.45 }}>{label}</div>
+      <div style={{ marginTop: 3, color: accent, fontWeight: 1000, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+    </div>
+  );
+}
+
 export default function TournamentsHome({ store, go, source = "local", params }: Props) {
   const routeStatusFilter = normalizeStatusFilter((params as any)?.statusFilter || (params as any)?.filter || (params as any)?.view);
   const [filter, setFilter] = React.useState<FilterKey>(routeStatusFilter);
@@ -608,225 +705,269 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     return kindFilter === "all" ? base.length : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter).length;
   }, [tournaments, kindFilter]);
 
+  const counts = React.useMemo(() => {
+    const base = Array.isArray(tournaments) ? tournaments : [];
+    const byKind = kindFilter === "all" ? base : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter);
+    const statusOf = (t: any) => statusLabelFromTournament(t).key;
+    return {
+      total: byKind.length,
+      active: byKind.filter((t: any) => statusOf(t) !== "done").length,
+      running: byKind.filter((t: any) => statusOf(t) === "running").length,
+      done: byKind.filter((t: any) => statusOf(t) === "done").length,
+    };
+  }, [tournaments, kindFilter]);
+
+  const openTournament = React.useCallback((t: any) => {
+    const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
+    if (!id) return;
+    if (isOnline) {
+      try {
+        const payload = (t as any)?.__onlineRow?.payload || {};
+        const remoteTournament = payload?.tournament || t;
+        const remoteMatches = Array.isArray(payload?.matches) ? payload.matches : [];
+        upsertTournamentLocal({ ...(remoteTournament || t), id, source: "online", onlineCompetitionId: id });
+        upsertMatchesForTournamentLocal(id, remoteMatches);
+      } catch (e) {
+        console.error("[TournamentsHome] online hydrate failed:", e);
+      }
+    }
+    go("tournament_view", { id, forceMode: forceMode || undefined, source: isOnline ? "online" : "local" });
+  }, [forceMode, go, isOnline]);
+
+  const removeTournament = React.useCallback((t: any) => {
+    const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
+    if (!id || isOnline) return;
+    const name = String(t?.name || t?.title || "cette compétition");
+    if (!window.confirm(`Supprimer ${name} ?`)) return;
+    deleteTournamentLocal(id);
+    setItems((old) => (Array.isArray(old) ? old.filter((x: any) => String(x?.id || x?.tournamentId || x?.tid || x?.code || "") !== id) : []));
+  }, [isOnline]);
+
   return (
-    <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
-      <Card tone="gold">
-        <div style={{ fontWeight: 950, fontSize: 20, letterSpacing: 0.5 }}>
-          {isOnline ? `ONLINE · ${listContext === "resume" ? "À REPRENDRE · " : listContext === "history" ? "HISTORIQUE · " : ""}${kindHeaderLabel} ${sportLabel}` : `${listContext === "resume" ? "À REPRENDRE · " : listContext === "history" ? "HISTORIQUE · " : ""}${kindHeaderLabel} ${sportLabel}`}
-        </div>
-        <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 4, lineHeight: 1.35 }}>
-          {isPetanque
-            ? "Crée des tournois Pétanque (poules, élimination…), partage le code et saisis les scores match par match."
-            : "Crée des tournois en local (poules, élimination…), et reprends-les facilement avec une vue claire."}
-        </div>
-
-        <div style={{ fontSize: 12.5, opacity: 0.9, marginTop: 10 }}>
-          {loading ? (
-            <>Chargement…</>
-          ) : scopedByKindCount ? (
-            <>
-              <b>{scopedByKindCount}</b> {kindFilter === "league" ? "ligue" : kindFilter === "tournament" ? "tournoi" : "compétition"}{scopedByKindCount > 1 ? "s" : ""} locale{scopedByKindCount > 1 ? "s" : ""} pour <b>{sportLabel}</b>.
-            </>
-          ) : (
-            <>Aucune {kindFilter === "league" ? "ligue" : kindFilter === "tournament" ? "tournoi" : "compétition"} locale pour <b>{sportLabel}</b>.</>
-          )}
-        </div>
-
-        {showCreateShortcuts && !isOnline ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
-            <TickerCard
-              tag="TOURNOI"
-              title={`Créer un tournoi ${sportLabel}`}
-              sub="Bracket, poules + KO, élimination simple/double selon le sport actif."
-              tone="pink"
-              cta="Créer tournoi"
-              kpi="LOCAL"
-              onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: "tournament", preset: "tournament" })}
-            />
-            <TickerCard
-              tag="LIGUE"
-              title={`Créer une ligue / championnat ${sportLabel}`}
-              sub="Classement, matchs aller/retour et logique championnat sur le sport actif."
-              tone="gold"
-              cta="Créer ligue"
-              kpi="LOCAL"
-              onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: "league", preset: "league", format: "round_robin" })}
-            />
+    <div
+      className="container"
+      style={{
+        padding: 16,
+        paddingBottom: 104,
+        color: "#f5f5f7",
+        minHeight: "100vh",
+        background: "radial-gradient(circle at 50% 0%, rgba(255,213,106,.11), transparent 36%), linear-gradient(180deg, rgba(4,5,10,.98), rgba(0,0,0,1))",
+      }}
+    >
+      <div
+        style={{
+          borderRadius: 24,
+          padding: 14,
+          border: "1px solid rgba(255,213,106,.25)",
+          background: "radial-gradient(110% 140% at 0% 0%, rgba(255,213,106,.18), transparent 55%), linear-gradient(180deg, rgba(24,24,30,.96), rgba(8,8,12,.99))",
+          boxShadow: "0 22px 55px rgba(0,0,0,.68), 0 0 42px rgba(255,213,106,.10)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 10 }}>
+          <button type="button" onClick={() => go("tournaments_home", { forceMode })} style={roundIconButton("#ffd56a", false)} title="Retour">
+            ←
+          </button>
+          <div style={{ textAlign: "center", minWidth: 0 }}>
+            <div style={{ fontWeight: 1000, fontSize: 19, lineHeight: 1.05, letterSpacing: 0.4, textTransform: "uppercase" }}>
+              {listContext === "history" ? "Historique compétitions" : "Reprise compétitions"}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 11.5, opacity: 0.72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {kindHeaderLabel} · {sportLabel} · {isOnline ? "ONLINE NAS" : "LOCAL + BACKUP NAS"}
+            </div>
           </div>
-        ) : showCreateShortcuts ? (
-          <div style={{ marginTop: 12 }}>
-            <TickerCard
-              tag="ONLINE"
-              title={`Créer une compétition online ${sportLabel}`}
-              sub="Ce flux reste séparé : on bascule vers la création ONLINE depuis le menu Online."
-              tone="blue"
-              cta="Aller au ONLINE"
-              kpi="NAS"
-              onClick={() => go("online", { section: "competitions", forceMode })}
-            />
-          </div>
-        ) : null}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: kindFilter, competitionKind: kindFilter })} style={pillStyle(!isOnline, "#ffd56a")}>LOCAL</button>
-          <button type="button" onClick={() => go("online", { section: "competitions", forceMode })} style={pillStyle(isOnline, "#4fb4ff")}>CRÉER ONLINE</button>
+          <button
+            type="button"
+            onClick={reload}
+            style={roundIconButton("#4fb4ff", loading)}
+            title="Rafraîchir"
+          >
+            <TinyIcon kind="calendar" />
+          </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 10 }}>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local" })} style={pillStyle(kindFilter === "all", "#ffd56a")}>TOUT</button>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "league", competitionKind: "league", view: "existing" })} style={pillStyle(kindFilter === "league", "#ffd56a")}>LIGUES</button>
-          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "tournament", competitionKind: "tournament", view: "existing" })} style={pillStyle(kindFilter === "tournament", "#ff7fe2")}>TOURNOIS</button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 9, marginTop: 14 }}>
+          <div style={historyTileStyle("#ffd56a")}>
+            <div style={{ fontSize: 10, opacity: 0.62, fontWeight: 900 }}>TOTAL</div>
+            <div style={{ marginTop: 3, fontWeight: 1000, fontSize: 24, color: "#ffd56a" }}>{loading ? "…" : counts.total}</div>
+          </div>
+          <div style={historyTileStyle("#4fb4ff")}>
+            <div style={{ fontSize: 10, opacity: 0.62, fontWeight: 900 }}>À REPRENDRE</div>
+            <div style={{ marginTop: 3, fontWeight: 1000, fontSize: 24, color: "#4fb4ff" }}>{loading ? "…" : counts.active}</div>
+          </div>
+          <div style={historyTileStyle("#7fe2a9")}>
+            <div style={{ fontSize: 10, opacity: 0.62, fontWeight: 900 }}>TERMINÉES</div>
+            <div style={{ marginTop: 3, fontWeight: 1000, fontSize: 24, color: "#7fe2a9" }}>{loading ? "…" : counts.done}</div>
+          </div>
         </div>
 
-        {showCreateShortcuts ? <TickerRow go={go} setFilter={setFilter} sport={forceMode} /> : null}
-      </Card>
-
-      {/* FILTER BAR */}
-      <div style={{ marginTop: 14 }}>
-        <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 8 }}>Filtrer</div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-            borderRadius: 16,
-            padding: 12,
-            background:
-              "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02))",
-            border: "1px solid rgba(255,255,255,.10)",
-            boxShadow: "0 12px 30px rgba(0,0,0,.52)",
-          }}
-        >
-          <button onClick={() => setFilter("all")} style={pillStyle(filter === "all", "#ffd56a")}>
-            Tous
-          </button>
-          <button onClick={() => setFilter("active")} style={pillStyle(filter === "active", "#4fb4ff")}>
-            À reprendre
-          </button>
-          <button onClick={() => setFilter("draft")} style={pillStyle(filter === "draft", "#b0b0b0")}>
-            Brouillons
-          </button>
-          <button onClick={() => setFilter("running")} style={pillStyle(filter === "running", "#ff4fd8")}>
-            En cours
-          </button>
-          <button onClick={() => setFilter("done")} style={pillStyle(filter === "done", "#7fe2a9")}>
-            Terminés
-          </button>
-
-          <div style={{ marginLeft: "auto", fontSize: 11.5, opacity: 0.75 }}>
-            {loading ? "Chargement…" : "Tri : activité récente"}
-          </div>
+        <div style={{ marginTop: 14, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local" })} style={roundIconButton("#ffd56a", kindFilter === "all")} title="Toutes"><TinyIcon kind="cup" /></button>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "league", competitionKind: "league", view: listContext || "resume" })} style={roundIconButton("#ffd56a", kindFilter === "league")} title="Ligues"><TinyIcon kind="users" /></button>
+          <button type="button" onClick={() => go("tournaments", { forceMode, source: "local", filterKind: "tournament", competitionKind: "tournament", view: listContext || "resume" })} style={roundIconButton("#ff7fe2", kindFilter === "tournament")} title="Tournois"><TinyIcon kind="play" /></button>
+          <button type="button" onClick={() => go("tournament_create", { forceMode, source: "local", competitionKind: kindFilter === "league" ? "league" : "tournament", preset: kindFilter === "league" ? "league" : "tournament" })} style={roundIconButton("#7fe2a9", false)} title="Créer"><span style={{ fontWeight: 1000 }}>+</span></button>
         </div>
       </div>
 
-      {/* LIST */}
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 8 }}>Liste</div>
+      <div
+        style={{
+          marginTop: 14,
+          borderRadius: 22,
+          padding: 12,
+          border: "1px solid rgba(255,255,255,.10)",
+          background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+          boxShadow: "0 18px 44px rgba(0,0,0,.56)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.86, textTransform: "uppercase" }}>Filtres</div>
+          <div style={{ fontSize: 11, opacity: 0.62 }}>{loading ? "Chargement…" : "Tri activité récente"}</div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 9, flexWrap: "wrap" }}>
+          <button onClick={() => setFilter("all")} style={pillStyle(filter === "all", "#ffd56a")}>Tous</button>
+          <button onClick={() => setFilter("active")} style={pillStyle(filter === "active", "#4fb4ff")}>À reprendre</button>
+          <button onClick={() => setFilter("draft")} style={pillStyle(filter === "draft", "#b0b0b0")}>Brouillons</button>
+          <button onClick={() => setFilter("running")} style={pillStyle(filter === "running", "#ff7fe2")}>En cours</button>
+          <button onClick={() => setFilter("done")} style={pillStyle(filter === "done", "#7fe2a9")}>Terminées</button>
+        </div>
+      </div>
 
+      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
         {!hasAny ? (
-          <Card tone="blue">
-            <div style={{ fontWeight: 950, fontSize: 16, color: "#4fb4ff" }}>Aucune compétition {sportLabel}</div>
-            <div style={{ opacity: 0.85, fontSize: 12.5, marginTop: 6, lineHeight: 1.35 }}>
-              {listContext === "resume"
-                ? "Aucune compétition non terminée à reprendre pour ce sport."
-                : listContext === "history"
-                ? "Aucune compétition terminée dans l’historique pour ce sport."
-                : "Crée d’abord un Tournoi ou une Ligue / Championnat. Les propositions restent verrouillées sur le sport choisi dans GameSelect."}
+          <div
+            style={{
+              borderRadius: 22,
+              padding: 16,
+              border: "1px solid rgba(79,180,255,.22)",
+              background: "radial-gradient(120% 140% at 0% 0%, rgba(79,180,255,.13), transparent 55%), linear-gradient(180deg, rgba(18,18,26,.96), rgba(8,8,12,.99))",
+              boxShadow: "0 18px 42px rgba(0,0,0,.58)",
+            }}
+          >
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ ...roundIconButton("#4fb4ff", true), cursor: "default" }}><TinyIcon kind="cup" /></div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 1000, fontSize: 16, color: "#4fb4ff" }}>Aucune compétition {sportLabel}</div>
+                <div style={{ opacity: 0.78, fontSize: 12.5, marginTop: 5, lineHeight: 1.35 }}>
+                  {listContext === "history"
+                    ? "Aucune ligue ou tournoi terminé pour ce sport."
+                    : "Aucune ligue ou tournoi non terminé à reprendre. Si tu viens de restaurer un backup NAS, appuie sur le bouton de rafraîchissement."}
+                </div>
+              </div>
             </div>
-          </Card>
+          </div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {filtered
-              .slice()
-              .sort(
-                (a: any, b: any) =>
-                  Number(b?.updatedAt || b?.createdAt || 0) -
-                  Number(a?.updatedAt || a?.createdAt || 0)
-              )
-              .map((t: any) => {
-                const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
-                const name = t?.name || "Tournoi";
-                const mode = String(t?.game?.mode || t?.mode || t?.gameMode || "x01").toUpperCase();
-                const status = String(t?.status || "draft");
-                const updatedAt = Number(t?.updatedAt || t?.createdAt || Date.now());
+          filtered
+            .slice()
+            .sort((a: any, b: any) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0))
+            .map((t: any) => {
+              const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
+              const name = String(t?.name || t?.title || (normalizeTournamentKind(t) === "league" ? "Ligue" : "Tournoi"));
+              const mode = String(t?.game?.mode || t?.mode || t?.gameMode || forceMode || "x01").toUpperCase();
+              const kind = normalizeTournamentKind(t);
+              const statusInfo = statusLabelFromTournament(t);
+              const updatedAt = Number(t?.updatedAt || t?.createdAt || Date.now());
+              const teams = competitionTeams(t);
+              const logo = avatarForCompetition(t);
+              const countsForMatches = id ? computeCountsForTournament(id) : { pending: 0, running: 0, done: 0, playable: 0, total: 0 };
+              const accent = kind === "league" ? "#ffd56a" : "#ff7fe2";
 
-                return (
-                  <div
-                    key={id || name + String(updatedAt)}
-                    onClick={() => {
-                      if (!id) return;
-                      if (isOnline) {
-                        try {
-                          const payload = (t as any)?.__onlineRow?.payload || {};
-                          const remoteTournament = payload?.tournament || t;
-                          const remoteMatches = Array.isArray(payload?.matches) ? payload.matches : [];
-                          upsertTournamentLocal({ ...(remoteTournament || t), id, source: "online", onlineCompetitionId: id });
-                          upsertMatchesForTournamentLocal(id, remoteMatches);
-                        } catch (e) {
-                          console.error("[TournamentsHome] online hydrate failed:", e);
-                        }
-                      }
-                      go("tournament_view", { id, forceMode: forceMode || undefined, source: isOnline ? "online" : "local" });
-                    }}
-                    style={{
-                      borderRadius: 18,
-                      padding: 14,
-                      background:
-                        "radial-gradient(120% 160% at 0% 0%, rgba(255,79,216,.10), transparent 55%), linear-gradient(180deg, rgba(18,18,26,.96), rgba(10,10,12,.98))",
-                      border: "1px solid rgba(255,255,255,.10)",
-                      boxShadow: "0 16px 40px rgba(0,0,0,.60)",
-                      cursor: id ? "pointer" : "default",
-                      opacity: id ? 1 : 0.65,
-                    }}
-                    title={id ? "Ouvrir" : "ID manquant"}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 950,
-                            fontSize: 14,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {name}
-                        </div>
-                        <div style={{ opacity: 0.78, fontSize: 11.5, marginTop: 2 }}>
-                          {mode} · {new Date(updatedAt).toLocaleString()}
-                        </div>
+              return (
+                <div
+                  key={id || name + String(updatedAt)}
+                  onClick={() => openTournament(t)}
+                  style={{
+                    borderRadius: 24,
+                    padding: 13,
+                    border: `1px solid ${accent}33`,
+                    background: `radial-gradient(120% 150% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(22,22,29,.97), rgba(7,7,12,.995))`,
+                    boxShadow: `0 18px 46px rgba(0,0,0,.62), 0 0 26px ${accent}11`,
+                    cursor: id ? "pointer" : "default",
+                    opacity: id ? 1 : 0.62,
+                    overflow: "hidden",
+                  }}
+                  title={id ? "Ouvrir la compétition" : "ID manquant"}
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "62px 1fr", gap: 12, alignItems: "center" }}>
+                    <div
+                      style={{
+                        width: 62,
+                        height: 62,
+                        borderRadius: 18,
+                        border: `1px solid ${accent}66`,
+                        background: logo ? `center / cover no-repeat url(${logo})` : `radial-gradient(circle at 50% 20%, ${accent}55, rgba(0,0,0,.35) 60%)`,
+                        display: "grid",
+                        placeItems: "center",
+                        color: accent,
+                        fontWeight: 1000,
+                        boxShadow: `0 0 22px ${accent}28`,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {!logo ? (kind === "league" ? "L" : "T") : null}
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <div style={{ fontSize: 15.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                        <span style={{ flex: "0 0 auto", borderRadius: 999, padding: "4px 8px", border: `1px solid ${statusInfo.tone}55`, color: statusInfo.tone, background: `${statusInfo.tone}16`, fontSize: 10, fontWeight: 1000 }}>{statusInfo.label}</span>
                       </div>
 
-                      <span
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 950,
-                          border: "1px solid rgba(255,255,255,.12)",
-                          background: "rgba(0,0,0,.35)",
-                          color: "#ffd56a",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {status}
-                      </span>
+                      <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                        <span style={{ color: accent, fontSize: 11, fontWeight: 1000 }}>{kind === "league" ? "LIGUE" : "TOURNOI"}</span>
+                        <span style={{ opacity: 0.45 }}>•</span>
+                        <span style={{ fontSize: 11.5, opacity: 0.78 }}>{mode}</span>
+                        <span style={{ opacity: 0.45 }}>•</span>
+                        <span style={{ fontSize: 11.5, opacity: 0.78 }}>{fmtDate(updatedAt)}</span>
+                      </div>
+
+                      {teams.length ? (
+                        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 4, overflow: "hidden" }}>
+                          {teams.slice(0, 7).map((team: any, idx: number) => {
+                            const src = teamLogo(team);
+                            const label = String(team?.name || team?.label || `Équipe ${idx + 1}`);
+                            return (
+                              <div key={`${label}-${idx}`} title={label} style={{ width: 24, height: 24, borderRadius: 999, border: `1px solid ${accent}66`, background: src ? `center / cover no-repeat url(${src})` : "rgba(255,255,255,.06)", display: "grid", placeItems: "center", color: accent, fontSize: 9, fontWeight: 1000, flex: "0 0 auto" }}>
+                                {!src ? label.slice(0, 2).toUpperCase() : null}
+                              </div>
+                            );
+                          })}
+                          {teams.length > 7 ? <span style={{ marginLeft: 3, fontSize: 11, fontWeight: 1000, opacity: 0.72 }}>+{teams.length - 7}</span> : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                );
-              })}
-          </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
+                    <StatMini label="Matchs" value={countsForMatches.total || "—"} accent={accent} />
+                    <StatMini label="À jouer" value={countsForMatches.playable || countsForMatches.pending || "—"} accent="#4fb4ff" />
+                    <StatMini label="Joués" value={countsForMatches.done || "—"} accent="#7fe2a9" />
+                    <StatMini label="Équipes" value={teams.length || "—"} accent="#ffd56a" />
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "center", gap: 9, flexWrap: "wrap", marginTop: 12 }}>
+                    <button type="button" onClick={(ev) => { ev.stopPropagation(); openTournament(t); }} style={competitionCardActionStyle(accent, true)}>
+                      <TinyIcon kind="play" size={15} /> Reprendre
+                    </button>
+                    <button type="button" onClick={(ev) => { ev.stopPropagation(); openTournament(t); }} style={competitionCardActionStyle("#4fb4ff", false)}>
+                      <TinyIcon kind="cup" size={15} /> Détails
+                    </button>
+                    {!isOnline ? (
+                      <button type="button" onClick={(ev) => { ev.stopPropagation(); removeTournament(t); }} style={competitionCardActionStyle("#ff4f8b", false)}>
+                        <TinyIcon kind="trash" size={15} /> Suppr.
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
         )}
       </div>
 
       {source === "online" ? (
-        <div style={{ marginTop: 12, opacity: 0.7, fontSize: 11.5 }}>
-          ONLINE actif : les compétitions sont persistées côté NAS et réhydratées en local à l’ouverture pour conserver la vue/bracket existante.
+        <div style={{ marginTop: 12, opacity: 0.7, fontSize: 11.5, textAlign: "center" }}>
+          ONLINE actif : les compétitions NAS sont réhydratées en local à l’ouverture pour conserver la vue/bracket.
         </div>
       ) : null}
     </div>
   );
-}
+
