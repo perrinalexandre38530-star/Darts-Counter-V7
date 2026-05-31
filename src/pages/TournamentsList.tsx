@@ -674,7 +674,11 @@ export default function TournamentsHome({ store, go, source = "local", params }:
 
   const filtered = React.useMemo(() => {
     const base = Array.isArray(tournaments) ? tournaments : [];
-    const list = kindFilter === "all" ? base : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter);
+    // Sécurité anti-écran vide : les anciennes créations n'avaient pas toujours
+    // competitionKind au bon niveau. Si le filtre Ligue/Tournoi ne matche rien,
+    // on affiche quand même les compétitions du sport au lieu de les cacher.
+    const strictKindList = kindFilter === "all" ? base : base.filter((t: any) => normalizeTournamentKind(t) === kindFilter);
+    const list = strictKindList.length || kindFilter === "all" ? strictKindList : base;
 
     const norm = (t: any): FilterKey => {
       const st = String(t?.status || "").toLowerCase();
@@ -749,6 +753,8 @@ export default function TournamentsHome({ store, go, source = "local", params }:
       style={{
         padding: 16,
         paddingBottom: 104,
+        maxWidth: 560,
+        margin: "0 auto",
         color: "#f5f5f7",
         minHeight: "100vh",
         background: "radial-gradient(circle at 50% 0%, rgba(255,213,106,.11), transparent 36%), linear-gradient(180deg, rgba(4,5,10,.98), rgba(0,0,0,1))",
@@ -850,7 +856,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                 <div style={{ opacity: 0.78, fontSize: 12.5, marginTop: 5, lineHeight: 1.35 }}>
                   {listContext === "history"
                     ? "Aucune ligue ou tournoi terminé pour ce sport."
-                    : "Aucune ligue ou tournoi non terminé à reprendre. Si tu viens de restaurer un backup NAS, appuie sur le bouton de rafraîchissement."}
+                    : "Aucune ligue ou tournoi visible avec ce filtre. Les anciennes créations mal typées ne sont plus masquées : appuie sur rafraîchir après restauration NAS."}
                 </div>
               </div>
             </div>

@@ -2216,6 +2216,13 @@ async function createTournament() {
     (tour as any).avatarDataUrl = competitionAvatar || null;
     (tour as any).coverDataUrl = competitionCover || null;
     (tour as any).bannerDataUrl = competitionCover || null;
+    (tour as any).sport = forceMode || mode || "darts";
+    (tour as any).competitionSport = normalizeModeToTournamentMode(forceMode || mode || "darts");
+    (tour as any).kind = competitionKind;
+    (tour as any).type = competitionKind;
+    (tour as any).competitionKind = competitionKind;
+    (tour as any).updatedAt = Date.now();
+    (tour as any).createdAt = (tour as any).createdAt || Date.now();
 
     // Une ligue libre/multi doit aussi être visible immédiatement dans À reprendre / En cours.
     (tour as any).status = "running";
@@ -2425,6 +2432,13 @@ async function createTournament() {
     (tour as any).avatarDataUrl = competitionAvatar || null;
     (tour as any).coverDataUrl = competitionCover || null;
     (tour as any).bannerDataUrl = competitionCover || null;
+    (tour as any).sport = forceMode || mode || "darts";
+    (tour as any).competitionSport = normalizeModeToTournamentMode(forceMode || mode || "darts");
+    (tour as any).kind = competitionKind;
+    (tour as any).type = competitionKind;
+    (tour as any).competitionKind = competitionKind;
+    (tour as any).updatedAt = Date.now();
+    (tour as any).createdAt = (tour as any).createdAt || Date.now();
 
     const matches = buildInitialMatches(tour);
 
@@ -3489,6 +3503,7 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
     const [logoImportDiag, setLogoImportDiag] = React.useState<string>("");
     const teamLogoObjectUrlRef = React.useRef<string | null>(null);
     const teamLogoInputRef = React.useRef<HTMLInputElement | null>(null);
+    const teamLogoInputId = React.useMemo(() => `team-logo-input-${Math.random().toString(36).slice(2)}`, []);
 
     const teamLogoPreviewSrc = React.useMemo(() => {
       const local = typeof localLogoPreview === "string" ? localLogoPreview : "";
@@ -3707,6 +3722,7 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
                   <span style={{ pointerEvents: "none" }}>LOGO<br />ÉQUIPE</span>
                 )}
                 <input
+                  id={teamLogoInputId}
                   ref={teamLogoInputRef}
                   type="file"
                   accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
@@ -3714,17 +3730,18 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
                   onChange={handleLogoInput}
                   style={{
                     position: "absolute",
-                    width: 1,
-                    height: 1,
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
                     opacity: 0,
-                    pointerEvents: "none",
-                    overflow: "hidden",
+                    cursor: "pointer",
+                    zIndex: 3,
                   }}
                 />
               </div>
-              <button
-                type="button"
-                onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); teamLogoInputRef.current?.click?.(); }}
+              <label
+                htmlFor={teamLogoInputId}
+                onClick={(e: any) => { e.stopPropagation(); }}
                 style={{
                   height: 28,
                   minWidth: 86,
@@ -3735,10 +3752,14 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
                   fontSize: 10,
                   fontWeight: 1000,
                   cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  userSelect: "none",
                 }}
               >
                 Importer
-              </button>
+              </label>
               {logoImportDiag ? (
                 <div style={{ maxWidth: 92, fontSize: 9.5, lineHeight: 1.15, color: "rgba(255,255,255,.64)", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {logoImportDiag}
@@ -4718,33 +4739,35 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
               ) : null}
 
               {participantKind === "teams" && !isPetanque ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <RowTitle label="Confrontation par équipes" />
-                  <div style={{ fontSize: 11.5, lineHeight: 1.35, opacity: .74 }}>
-                    Réglage commun Ligue + Tournoi : une affiche d’équipes peut contenir plusieurs lignes à jouer. Exemple réel : 4 SOLO + 2 DUO + 1 MULTI, puis la rencontre est gagnée aux points.
+                <div style={{ display: "grid", gap: 12, padding: 12, borderRadius: 18, border: `1px solid ${primary}33`, background: "rgba(255,255,255,.035)" }}>
+                  <RowTitle label="Programme d’une rencontre équipe" />
+                  <div style={{ fontSize: 12, lineHeight: 1.35, opacity: .82 }}>
+                    Définis simplement combien de matchs composent UNE affiche entre deux équipes. Exemple : Chartreuse United vs BOT Pro = 4 simples + 2 doubles + 1 multi.
+                  </div>
+                  <div style={{ display: "grid", gap: 9 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 86px", gap: 8, alignItems: "center" }}>
+                      <div><b style={{ color: primary }}>SOLO</b><div style={{ fontSize: 10.5, opacity: .66 }}>1 joueur contre 1 joueur</div></div>
+                      <TextInput value={teamConfrontationSoloCount} onChange={(e: any) => { setTeamConfrontationFormat("custom"); setTeamConfrontationSoloCount(e.target.value); }} placeholder="ex: 4" />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 86px", gap: 8, alignItems: "center" }}>
+                      <div><b style={{ color: primary }}>DUO</b><div style={{ fontSize: 10.5, opacity: .66 }}>2 joueurs contre 2 joueurs</div></div>
+                      <TextInput value={teamConfrontationDuoCount} onChange={(e: any) => { setTeamConfrontationFormat("custom"); setTeamConfrontationDuoCount(e.target.value); }} placeholder="ex: 2" />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 86px", gap: 8, alignItems: "center" }}>
+                      <div><b style={{ color: primary }}>MULTI</b><div style={{ fontSize: 10.5, opacity: .66 }}>plusieurs joueurs par camp</div></div>
+                      <TextInput value={teamConfrontationMultiCount} onChange={(e: any) => { setTeamConfrontationFormat("custom"); setTeamConfrontationMultiCount(e.target.value); }} placeholder="ex: 1" />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 86px", gap: 8, alignItems: "center" }}>
+                      <div><b style={{ color: primary }}>Joueurs en MULTI</b><div style={{ fontSize: 10.5, opacity: .66 }}>par équipe, seulement si MULTI &gt; 0</div></div>
+                      <TextInput value={teamConfrontationMultiPlayers} onChange={(e: any) => setTeamConfrontationMultiPlayers(e.target.value)} placeholder="ex: 3" />
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <NeonPill active={teamConfrontationFormat === "custom"} label="SOLO / DUO / MULTI" onClick={() => setTeamConfrontationFormat("custom")} primary={primary} />
-                    <NeonPill active={teamConfrontationFormat === "single"} label="1 match équipe" onClick={() => setTeamConfrontationFormat("single")} primary={primary} />
-                    <NeonPill active={teamConfrontationFormat === "singles"} label="Simples seuls" onClick={() => setTeamConfrontationFormat("singles")} primary={primary} />
-                    <NeonPill active={teamConfrontationFormat === "singles_doubles"} label="Simples + doubles" onClick={() => setTeamConfrontationFormat("singles_doubles")} primary={primary} />
+                    <NeonPill active={teamConfrontationWinMode === "match_points"} label="1 victoire = 1 point" onClick={() => setTeamConfrontationWinMode("match_points")} primary={primary} />
+                    <NeonPill active={teamConfrontationWinMode === "legs_sets"} label="Cumuler legs / sets" onClick={() => setTeamConfrontationWinMode("legs_sets")} primary={primary} />
                   </div>
-                  {teamConfrontationFormat === "custom" ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                      <TextInput value={teamConfrontationSoloCount} onChange={(e: any) => setTeamConfrontationSoloCount(e.target.value)} placeholder="Nb confrontations SOLO" />
-                      <TextInput value={teamConfrontationDuoCount} onChange={(e: any) => setTeamConfrontationDuoCount(e.target.value)} placeholder="Nb confrontations DUO" />
-                      <TextInput value={teamConfrontationMultiCount} onChange={(e: any) => setTeamConfrontationMultiCount(e.target.value)} placeholder="Nb confrontations MULTI" />
-                      <TextInput value={teamConfrontationMultiPlayers} onChange={(e: any) => setTeamConfrontationMultiPlayers(e.target.value)} placeholder="Joueurs par camp en MULTI" />
-                    </div>
-                  ) : teamConfrontationFormat !== "single" ? (
-                    <div style={{ display: "grid", gridTemplateColumns: teamConfrontationFormat === "singles_doubles" ? "1fr 1fr" : "1fr", gap: 8 }}>
-                      <TextInput value={teamConfrontationPlayers} onChange={(e: any) => setTeamConfrontationPlayers(e.target.value)} placeholder="Joueurs alignés par équipe / nb simples" />
-                      {teamConfrontationFormat === "singles_doubles" ? <TextInput value={teamConfrontationDoubles} onChange={(e: any) => setTeamConfrontationDoubles(e.target.value)} placeholder="Nombre de confrontations DUO" /> : null}
-                    </div>
-                  ) : null}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <NeonPill active={teamConfrontationWinMode === "match_points"} label="Points rencontre" onClick={() => setTeamConfrontationWinMode("match_points")} primary={primary} />
-                    <NeonPill active={teamConfrontationWinMode === "legs_sets"} label="Legs / sets" onClick={() => setTeamConfrontationWinMode("legs_sets")} primary={primary} />
+                  <div style={{ fontSize: 11, color: primary, fontWeight: 900 }}>
+                    Total : {(Math.max(0, Math.floor(numFromText(teamConfrontationSoloCount)) || 0) + Math.max(0, Math.floor(numFromText(teamConfrontationDuoCount)) || 0) + Math.max(0, Math.floor(numFromText(teamConfrontationMultiCount)) || 0))} matchs par rencontre
                   </div>
                 </div>
               ) : null}
