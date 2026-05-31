@@ -971,3 +971,5 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     </div>
   );
 
+
+}
