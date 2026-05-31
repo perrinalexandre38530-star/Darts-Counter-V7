@@ -7,6 +7,7 @@
 // ============================================
 
 import React from "react";
+import BackDot from "../components/BackDot";
 import type { Store } from "../lib/types";
 
 // ✅ NEW: source de vérité local (IDB cache + event refresh)
@@ -30,6 +31,7 @@ type Props = {
 };
 
 type FilterKey = "all" | "active" | "draft" | "running" | "done";
+type DateFilterKey = "all" | "day" | "week" | "month" | "year";
 
 /** ✅ Pills style */
 function pillStyle(active: boolean, tint: string, disabled = false) {
@@ -634,6 +636,57 @@ function IconFilterButton({
   );
 }
 
+
+function startOfDayTs(now = Date.now()) {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function startOfWeekTs(now = Date.now()) {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() - day + 1);
+  return d.getTime();
+}
+
+function dateFilterLabel(filter: DateFilterKey) {
+  if (filter === "day") return "Aujourd’hui";
+  if (filter === "week") return "Cette semaine";
+  if (filter === "month") return "Ce mois";
+  if (filter === "year") return "Cette année";
+  return "Toutes dates / archives";
+}
+
+function statusFilterLabel(filter: FilterKey) {
+  if (filter === "active") return "À reprendre";
+  if (filter === "draft") return "Brouillons";
+  if (filter === "running") return "En cours";
+  if (filter === "done") return "Terminées";
+  return "Toutes";
+}
+
+function dateFilterMatch(t: any, filter: DateFilterKey) {
+  if (filter === "all") return true;
+  const ts = Number(t?.updatedAt || t?.createdAt || t?.date || t?.startedAt || 0);
+  if (!Number.isFinite(ts) || ts <= 0) return true;
+  const now = Date.now();
+  if (filter === "day") return ts >= startOfDayTs(now);
+  if (filter === "week") return ts >= startOfWeekTs(now);
+  if (filter === "month") {
+    const d = new Date(now);
+    d.setDate(1); d.setHours(0, 0, 0, 0);
+    return ts >= d.getTime();
+  }
+  if (filter === "year") {
+    const d = new Date(now);
+    d.setMonth(0, 1); d.setHours(0, 0, 0, 0);
+    return ts >= d.getTime();
+  }
+  return true;
+}
+
 function StatMini({ label, value, accent }: { label: string; value: React.ReactNode; accent: string }) {
   return (
     <div style={{ borderRadius: 14, padding: "8px 9px", background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>
@@ -646,6 +699,8 @@ function StatMini({ label, value, accent }: { label: string; value: React.ReactN
 export default function TournamentsHome({ store, go, source = "local", params }: Props) {
   const routeStatusFilter = normalizeStatusFilter((params as any)?.statusFilter || (params as any)?.filter || (params as any)?.view);
   const [filter, setFilter] = React.useState<FilterKey>(routeStatusFilter);
+  const [dateFilter, setDateFilter] = React.useState<DateFilterKey>("all");
+  const [showDateFilters, setShowDateFilters] = React.useState(false);
 
   const [items, setItems] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -659,6 +714,15 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const kindHeaderLabel = competitionKindLabel(kindFilter);
   const listContext = String((params as any)?.view || "").toLowerCase();
   const showCreateShortcuts = listContext !== "resume" && listContext !== "history";
+  const handleBack = React.useCallback(() => {
+    try {
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+    } catch {}
+    go("tournaments_home", { forceMode, sport: forceMode });
+  }, [forceMode, go]);
 
   React.useEffect(() => {
     setFilter(routeStatusFilter);
@@ -737,11 +801,11 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   }, [tournaments, kindFilter]);
 
   const filtered = React.useMemo(() => {
-    const list = Array.isArray(visibleByKind) ? visibleByKind : [];
+    const list = (Array.isArray(visibleByKind) ? visibleByKind : []).filter((t) => dateFilterMatch(t, dateFilter));
     if (filter === "all") return list;
     if (filter === "active") return list.filter((t) => statusKeyOf(t) !== "done");
     return list.filter((t) => statusKeyOf(t) === filter);
-  }, [visibleByKind, filter, statusKeyOf]);
+  }, [visibleByKind, filter, dateFilter, statusKeyOf]);
 
   const hasAny = (filtered?.length || 0) > 0;
 
@@ -749,7 +813,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     // IMPORTANT : les compteurs utilisent EXACTEMENT la même base que la liste.
     // Avant, la liste basculait en fallback si les anciennes compétitions étaient
     // mal typées, mais les compteurs restaient sur le filtre strict => 0 partout.
-    const list = Array.isArray(visibleByKind) ? visibleByKind : [];
+    const list = (Array.isArray(visibleByKind) ? visibleByKind : []).filter((t: any) => dateFilterMatch(t, dateFilter));
     const statusOf = (t: any) => statusKeyOf(t);
     return {
       total: list.length,
@@ -758,7 +822,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
       running: list.filter((t: any) => statusOf(t) === "running").length,
       done: list.filter((t: any) => statusOf(t) === "done").length,
     };
-  }, [visibleByKind, statusKeyOf]);
+  }, [visibleByKind, dateFilter, statusKeyOf]);
 
   const openTournament = React.useCallback((t: any) => {
     const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
@@ -810,14 +874,22 @@ export default function TournamentsHome({ store, go, source = "local", params }:
         }}
       >
         <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 10 }}>
-          <button type="button" onClick={() => go("tournaments_home", { forceMode })} style={roundIconButton("#ffd56a", false)} title="Retour">
-            ←
-          </button>
+          <BackDot onClick={handleBack} size={42} color="#ffd56a" title="Retour page précédente" />
           <div style={{ textAlign: "center", minWidth: 0 }}>
-            <div style={{ fontWeight: 1000, fontSize: 19, lineHeight: 1.05, letterSpacing: 0.4, textTransform: "uppercase" }}>
+            <div
+              style={{
+                fontWeight: 1000,
+                fontSize: 20,
+                lineHeight: 1.05,
+                letterSpacing: 0.7,
+                textTransform: "uppercase",
+                color: "#ffd56a",
+                textShadow: "0 0 12px rgba(255,213,106,.72), 0 0 34px rgba(255,213,106,.42)",
+              }}
+            >
               {listContext === "history" ? "Historique compétitions" : "Reprise compétitions"}
             </div>
-            <div style={{ marginTop: 5, fontSize: 11.5, opacity: 0.72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ marginTop: 5, fontSize: 10.5, opacity: 0.68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {kindHeaderLabel} · {sportLabel} · {isOnline ? "ONLINE NAS" : "LOCAL + BACKUP NAS"}
             </div>
           </div>
@@ -825,9 +897,10 @@ export default function TournamentsHome({ store, go, source = "local", params }:
             type="button"
             onClick={reload}
             style={roundIconButton("#4fb4ff", loading)}
-            title="Rafraîchir"
+            title="Rafraîchir la liste"
+            aria-label="Rafraîchir la liste"
           >
-            <TinyIcon kind="calendar" />
+            ↻
           </button>
         </div>
 
@@ -844,45 +917,6 @@ export default function TournamentsHome({ store, go, source = "local", params }:
             <div style={{ fontSize: 10, opacity: 0.62, fontWeight: 900 }}>TERMINÉES</div>
             <div style={{ marginTop: 3, fontWeight: 1000, fontSize: 24, color: "#7fe2a9" }}>{loading ? "…" : counts.done}</div>
           </div>
-        </div>
-
-        <div style={{ marginTop: 14, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => go("tournaments", { ...params, forceMode, sport: forceMode, source, filterKind: "all", competitionKind: "all", filter, statusFilter: filter, view: listContext || "resume" })}
-            style={roundIconButton("#ffd56a", kindFilter === "all")}
-            title="Toutes les compétitions"
-            aria-label="Toutes les compétitions"
-          >
-            <TinyIcon kind="cup" />
-          </button>
-          <button
-            type="button"
-            onClick={() => go("tournaments", { ...params, forceMode, sport: forceMode, source, filterKind: "league", competitionKind: "league", filter, statusFilter: filter, view: listContext || "resume" })}
-            style={roundIconButton("#ffd56a", kindFilter === "league")}
-            title="Ligues uniquement"
-            aria-label="Ligues uniquement"
-          >
-            <TinyIcon kind="users" />
-          </button>
-          <button
-            type="button"
-            onClick={() => go("tournaments", { ...params, forceMode, sport: forceMode, source, filterKind: "tournament", competitionKind: "tournament", filter, statusFilter: filter, view: listContext || "resume" })}
-            style={roundIconButton("#ff7fe2", kindFilter === "tournament")}
-            title="Tournois uniquement"
-            aria-label="Tournois uniquement"
-          >
-            <TinyIcon kind="play" />
-          </button>
-          <button
-            type="button"
-            onClick={() => go("tournament_create", { forceMode, sport: forceMode, source: "local", competitionKind: kindFilter === "league" ? "league" : "tournament", preset: kindFilter === "league" ? "league" : "tournament" })}
-            style={roundIconButton("#7fe2a9", false)}
-            title="Créer une compétition"
-            aria-label="Créer une compétition"
-          >
-            <span style={{ fontWeight: 1000 }}>+</span>
-          </button>
         </div>
       </div>
 
@@ -906,6 +940,31 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           <IconFilterButton active={filter === "draft"} tint="#b0b0b0" label="Brouillons" count={counts.draft} onClick={() => setFilter("draft")} icon={<TinyIcon kind="box" size={17} />} />
           <IconFilterButton active={filter === "running"} tint="#ff7fe2" label="En cours" count={counts.running} onClick={() => setFilter("running")} icon={<TinyIcon kind="users" size={17} />} />
           <IconFilterButton active={filter === "done"} tint="#7fe2a9" label="Terminées" count={counts.done} onClick={() => setFilter("done")} icon={<TinyIcon kind="calendar" size={17} />} />
+          <IconFilterButton active={showDateFilters || dateFilter !== "all"} tint="#ffffff" label="Calendrier" count={dateFilter === "all" ? 0 : 1} onClick={() => setShowDateFilters((v) => !v)} icon={<TinyIcon kind="calendar" size={17} />} />
+        </div>
+        {showDateFilters ? (
+          <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+            {([
+              ["day", "J"],
+              ["week", "S"],
+              ["month", "M"],
+              ["year", "A"],
+              ["all", "ARV"],
+            ] as Array<[DateFilterKey, string]>).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setDateFilter(key)}
+                style={pillStyle(dateFilter === key, key === "all" ? "#ffd56a" : "#4fb4ff")}
+                title={dateFilterLabel(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div style={{ marginTop: 11, textAlign: "center", fontSize: 12, fontWeight: 950, color: "#ffd56a", textShadow: "0 0 14px rgba(255,213,106,.42)" }}>
+          Filtre actif : {statusFilterLabel(filter)} · {dateFilterLabel(dateFilter)}
         </div>
       </div>
 
