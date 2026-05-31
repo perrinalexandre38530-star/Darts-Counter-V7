@@ -221,6 +221,10 @@ async function ensureLoaded() {
       cacheMatchesByTid = {};
     } finally {
       loaded = true;
+      // ✅ IMPORTANT UI: les pages peuvent avoir rendu une liste vide pendant le chargement IDB.
+      // On force un refresh dès que le cache mémoire est hydraté, sinon "À reprendre / En cours"
+      // reste vide jusqu'à un autre événement utilisateur.
+      notifyTournamentsUpdated();
     }
   })();
 
@@ -234,6 +238,21 @@ void ensureLoaded();
 
 export function listTournamentsLocal(): AnyObj[] {
   void ensureLoaded();
+  return cacheTournaments
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b?.updatedAt || b?.createdAt || 0) -
+        Number(a?.updatedAt || a?.createdAt || 0)
+    );
+}
+
+/**
+ * ✅ ASYNC — liste fiable pour les écrans de reprise.
+ * Attend la migration/local IndexedDB avant de filtrer, au lieu de rendre définitivement vide.
+ */
+export async function listTournamentsLocalAsync(): Promise<AnyObj[]> {
+  await ensureLoaded();
   return cacheTournaments
     .slice()
     .sort(
@@ -430,4 +449,111 @@ export function upsertMatchesForTournamentLocal(tournamentId: string, matches: A
  */
 export function getMatchesForTournamentLocal(tournamentId: string): AnyObj[] {
   return listMatchesForTournamentLocal(tournamentId);
+}
+
+/* =============================================================
+ * ✅ NAS BACKUP / RESTORE
+ * Les tournois/ligues sont stockés dans une IndexedDB séparée
+ * (dc_tournaments_db_v1), donc ils ne sont PAS inclus par l’export
+ * générique src/lib/storage.ts si on ne les injecte pas explicitement.
+ * Ces helpers sont appelés par exportCloudSnapshot()/importCloudSnapshot().
+ * ============================================================= */
+
+async function idbClearStore(storeName: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const st = tx.objectStore(storeName);
+    const req = st.clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => db.close();
+    tx.onerror = () => db.close();
+  });
+}
+
+export type LocalTournamentsBackupV1 = {
+  _v: 1;
+  exportedAt: string;
+  tournaments: AnyObj[];
+  matchesByTournament: Record<string, AnyObj[]>;
+  counts: {
+    tournaments: number;
+    matchesBuckets: number;
+    matches: number;
+  };
+};
+
+export async function exportLocalTournamentsSnapshot(): Promise<LocalTournamentsBackupV1> {
+  await ensureLoaded();
+
+  const tournaments = await idbGetAll(STORE_T).catch(() => cacheTournaments.slice());
+  const matchRows = await idbGetAll(STORE_M).catch(() => []);
+
+  const matchesByTournament: Record<string, AnyObj[]> = {};
+  for (const row of Array.isArray(matchRows) ? matchRows : []) {
+    const tid = String(row?.id || "").trim();
+    if (!tid) continue;
+    matchesByTournament[tid] = Array.isArray(row?.matches) ? row.matches : [];
+  }
+
+  // Si certains matchs ne sont qu’en cache mémoire, on les ajoute aussi.
+  for (const [tid, matches] of Object.entries(cacheMatchesByTid || {})) {
+    if (!tid || !Array.isArray(matches)) continue;
+    if (!matchesByTournament[tid] || matches.length > matchesByTournament[tid].length) {
+      matchesByTournament[tid] = matches.slice();
+    }
+  }
+
+  const safeTournaments = Array.isArray(tournaments) ? tournaments : [];
+  const matchesCount = Object.values(matchesByTournament).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+
+  return {
+    _v: 1,
+    exportedAt: new Date().toISOString(),
+    tournaments: safeTournaments,
+    matchesByTournament,
+    counts: {
+      tournaments: safeTournaments.length,
+      matchesBuckets: Object.keys(matchesByTournament).length,
+      matches: matchesCount,
+    },
+  };
+}
+
+export async function importLocalTournamentsSnapshot(snapshot: any, opts: { replace?: boolean } = {}): Promise<void> {
+  const data = snapshot && typeof snapshot === "object" ? snapshot : null;
+  const tournaments = Array.isArray(data?.tournaments) ? data.tournaments : [];
+  const matchesByTournament = data?.matchesByTournament && typeof data.matchesByTournament === "object"
+    ? data.matchesByTournament as Record<string, AnyObj[]>
+    : {};
+
+  if (opts.replace) {
+    await idbClearStore(STORE_T).catch(() => {});
+    await idbClearStore(STORE_M).catch(() => {});
+    cacheTournaments = [];
+    cacheMatchesByTid = {};
+  }
+
+  for (const tour of tournaments) {
+    if (!tour || typeof tour !== "object") continue;
+    const tid = String(tour?.id || "").trim();
+    if (!tid) continue;
+    await idbPut(STORE_T, tour).catch((e) => console.error("[tournaments] restore tournament failed:", e));
+  }
+
+  for (const [tidRaw, matches] of Object.entries(matchesByTournament)) {
+    const tid = String(tidRaw || "").trim();
+    if (!tid) continue;
+    await idbPut(STORE_M, { id: tid, matches: Array.isArray(matches) ? matches : [] })
+      .catch((e) => console.error("[tournaments] restore matches failed:", e));
+  }
+
+  cacheTournaments = await idbGetAll(STORE_T).catch(() => tournaments.slice());
+  cacheMatchesByTid = {};
+  for (const [tid, matches] of Object.entries(matchesByTournament)) {
+    cacheMatchesByTid[String(tid)] = Array.isArray(matches) ? matches : [];
+  }
+  loaded = true;
+  notifyTournamentsUpdated();
 }

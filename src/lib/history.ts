@@ -1629,6 +1629,30 @@ export async function list(): Promise<SavedMatch[]> {
   }
 }
 
+export async function getAll(): Promise<SavedMatch[]> {
+  const rows = await list();
+  const out: SavedMatch[] = [];
+
+  for (const row of rows) {
+    const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
+    if (!id) {
+      out.push(normalizeHistoryRow(row as any) as SavedMatch);
+      continue;
+    }
+
+    try {
+      const full = await get(id);
+      out.push((full || row) as SavedMatch);
+    } catch {
+      out.push(normalizeHistoryRow(row as any) as SavedMatch);
+    }
+  }
+
+  return out
+    .filter(isHistoryRowUsable)
+    .map((row: any) => normalizeHistoryRow(row)) as SavedMatch[];
+}
+
 export async function get(id: string): Promise<SavedMatch | null> {
   await migrateFromLocalStorageOnce();
 
@@ -2985,6 +3009,7 @@ export const History = {
     return rows;
   },
   get,
+  getAll,
   async upsert(rec: SavedMatch) {
     await upsert(rec);
     // V4 FIX : si l'upsert a été ignoré car il tentait de downgrader

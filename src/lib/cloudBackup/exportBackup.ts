@@ -105,8 +105,12 @@ export async function exportCloudBackupAsJson(): Promise<{
   backupJson: string;
   backupObj: any;
 }> {
+  const historyPromise = typeof (History as any).getAll === "function"
+    ? (History as any).getAll()
+    : (History.list?.() ?? Promise.resolve([]));
+
   const [history, storeAny] = await Promise.all([
-    History.list?.() ?? [],
+    historyPromise,
     loadStore<any>().catch(() => null),
   ]);
 

@@ -14,6 +14,7 @@ import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
+import { History } from "../../lib/history";
 
 import { computeDecisiveGoals, computeMomentum, computePenaltyImpact, computeShotConversion } from "../../lib/babyfootQualityStats";
 import { computeBabyFootRichStats, formatBabyFootAvg } from "../../lib/babyfootRichStats";
@@ -47,6 +48,34 @@ function getPayload(h: any) {
   const p0 = h?.payload ?? {};
   const p1 = p0?.payload ?? p0;
   return p1 ?? {};
+}
+
+function historyRowId(row: any) {
+  return String(row?.id || row?.matchId || row?.payload?.id || row?.payload?.matchId || "").trim();
+}
+
+function historyRowScore(row: any) {
+  const payload = getPayload(row);
+  let score = 0;
+  if (row?.payload && typeof row.payload === "object") score += 8;
+  if (Array.isArray(payload?.events) && payload.events.length) score += 6;
+  if (payload?.summary?.stats || row?.summary?.stats) score += 5;
+  if (Array.isArray(row?.players) && row.players.length) score += row.players.length;
+  if (Array.isArray(payload?.players) && payload.players.length) score += payload.players.length;
+  return score;
+}
+
+function mergeHistoryRows(...sources: any[][]) {
+  const byId = new Map<string, any>();
+  for (const source of sources) {
+    for (const row of Array.isArray(source) ? source : []) {
+      const id = historyRowId(row);
+      if (!id) continue;
+      const prev = byId.get(id);
+      if (!prev || historyRowScore(row) >= historyRowScore(prev)) byId.set(id, row);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 function getEvents(payload: any): any[] {
@@ -130,6 +159,40 @@ export default function BabyFootStatsHistoryPage({ store, go, params }: Props) {
   const { theme } = useTheme();
   const lang = useLang() as any;
   const t = lang?.t ?? ((_: string, fb: string) => fb);
+  const [historyRows, setHistoryRows] = useState<any[]>(() => Array.isArray(store?.history) ? store.history : []);
+
+  useEffect(() => {
+    let alive = true;
+    const loadRows = async () => {
+      const fromStore = Array.isArray(store?.history) ? store.history : [];
+      let fromHistory: any[] = [];
+      try {
+        const api: any = History as any;
+        if (typeof api.getAll === "function") {
+          fromHistory = await api.getAll();
+        } else if (typeof api.list === "function") {
+          const light = await api.list();
+          fromHistory = await Promise.all((Array.isArray(light) ? light : []).map(async (row: any) => {
+            const id = historyRowId(row);
+            if (!id || typeof api.get !== "function") return row;
+            return (await api.get(id).catch(() => null)) || row;
+          }));
+        }
+      } catch {
+        fromHistory = [];
+      }
+      if (alive) setHistoryRows(mergeHistoryRows(fromStore, fromHistory));
+    };
+
+    loadRows();
+    window.addEventListener("dc-history-updated", loadRows as EventListener);
+    window.addEventListener("storage", loadRows as EventListener);
+    return () => {
+      alive = false;
+      window.removeEventListener("dc-history-updated", loadRows as EventListener);
+      window.removeEventListener("storage", loadRows as EventListener);
+    };
+  }, [store?.history]);
 
   const playersRef = React.useRef<HTMLDivElement | null>(null);
   const rankingsRef = React.useRef<HTMLDivElement | null>(null);
@@ -175,9 +238,10 @@ export default function BabyFootStatsHistoryPage({ store, go, params }: Props) {
   }, [store?.profiles]);
 
   const all = useMemo(() => {
-    const list = (store?.history ?? []).filter((h: any) => h?.sport === "babyfoot" || h?.kind === "babyfoot");
-    return list.sort((a: any, b: any) => (b?.createdAt || 0) - (a?.createdAt || 0));
-  }, [store?.history]);
+    const list = mergeHistoryRows(Array.isArray(store?.history) ? store.history : [], historyRows)
+      .filter((h: any) => h?.sport === "babyfoot" || h?.kind === "babyfoot" || getPayload(h)?.sport === "babyfoot" || getPayload(h)?.kind === "babyfoot");
+    return list.sort((a: any, b: any) => (b?.updatedAt || b?.createdAt || 0) - (a?.updatedAt || a?.createdAt || 0));
+  }, [store?.history, historyRows]);
 
   const availableModes = useMemo(() => {
     const s = new Set<string>();
@@ -1007,6 +1071,41 @@ function HistoryCardsView({
 }: HistoryCardsViewProps) {
   const focusRef = React.useRef<HTMLDivElement | null>(null);
 
+  const shareMatch = React.useCallback(async (h: any) => {
+    try {
+      const json = JSON.stringify(h, null, 2);
+      const fileName = `babyfoot-match-${String(h?.id || h?.matchId || Date.now())}.json`;
+      const blob = new Blob([json], { type: "application/json" });
+      const file = new File([blob], fileName, { type: "application/json" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "Match Baby-Foot" });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch {
+      window.alert("Partage impossible pour cette partie.");
+    }
+  }, []);
+
+  const deleteMatch = React.useCallback(async (h: any) => {
+    const id = String(h?.id || h?.matchId || "").trim();
+    if (!id) return;
+    if (!window.confirm("Supprimer cette partie Baby-Foot de l’historique ?")) return;
+    try {
+      await (History as any).remove(id);
+      window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { sport: "babyfoot", id, deleted: true } }));
+    } catch {
+      window.alert("Suppression impossible.");
+    }
+  }, []);
+
   React.useEffect(() => {
     if (!focusMatchId || !focusRef.current) return;
     const id = window.setTimeout(() => {
@@ -1152,13 +1251,13 @@ function HistoryCardsView({
                 </div>
 
                 <div style={historyActionRow}>
-                  <button type="button" style={historyPrimaryAction(theme)} onClick={() => go("babyfoot_stats_history", { section: "history", focusMatchId: h.id })}>
+                  <button type="button" style={historyPrimaryAction(theme)} onClick={() => go("babyfoot_end" as any, { matchId: h.id, focusMatchId: h.id, matchPayload: h, from: "babyfoot_stats_history" })}>
                     <HistIcon.Eye /> Voir stats
                   </button>
                   <div style={historyIconRow}>
-                    <button type="button" style={historyIconBtn(theme)} title="Partager"><HistIcon.Share /></button>
-                    <button type="button" style={historyIconBtn(theme)} title="Envoyer"><HistIcon.Send /></button>
-                    <button type="button" style={historyIconBtn(theme, true)} title="Supprimer"><HistIcon.Trash /></button>
+                    <button type="button" style={historyIconBtn(theme)} title="Partager" onClick={() => shareMatch(h)}><HistIcon.Share /></button>
+                    <button type="button" style={historyIconBtn(theme)} title="Envoyer" onClick={() => shareMatch(h)}><HistIcon.Send /></button>
+                    <button type="button" style={historyIconBtn(theme, true)} title="Supprimer" onClick={() => deleteMatch(h)}><HistIcon.Trash /></button>
                   </div>
                 </div>
               </div>

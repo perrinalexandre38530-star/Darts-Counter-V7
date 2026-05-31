@@ -15,6 +15,7 @@ import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
+import { exportLocalTournamentsSnapshot, importLocalTournamentsSnapshot } from "./tournaments/storeLocal";
 
 const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
 const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
@@ -1421,11 +1422,21 @@ export async function exportAll(): Promise<any> {
   const lsDump = exportLocalStorageDc();
   const nextIdbDump = injectCollectionsIntoSnapshotStore(idbDump);
 
+  const tournaments = await exportLocalTournamentsSnapshot().catch((err) => {
+    console.warn("[storage] export tournaments snapshot failed", err);
+    return { _v: 1, exportedAt: new Date().toISOString(), tournaments: [], matchesByTournament: {}, counts: { tournaments: 0, matchesBuckets: 0, matches: 0 } };
+  });
+
   return {
     _v: 2,
     idb: nextIdbDump,
     localStorage: lsDump,
     history: await exportHistoryDump().catch(() => ({ _v: 1, rows: {} })),
+    // ✅ NAS BACKUP: les ligues/tournois vivent dans dc_tournaments_db_v1,
+    // une IndexedDB séparée du store principal. On les embarque explicitement
+    // pour que /sync/push puis /sync/pull restaurent aussi les compétitions.
+    tournaments,
+    competitions: tournaments,
     exportedAt: new Date().toISOString(),
   };
 }
@@ -1491,6 +1502,18 @@ export async function importAll(dump: any): Promise<void> {
       }
     } catch (e) {
       console.warn("[storage] importAll history restore failed", e);
+    }
+
+    // 4) ✅ NAS BACKUP : restore ligues/tournois créés.
+    // Compat: "tournaments" est le champ officiel, "competitions" est gardé
+    // comme alias de sécurité pour les snapshots patchés.
+    try {
+      const competitionsDump = dump.tournaments || dump.competitions || null;
+      if (competitionsDump && typeof competitionsDump === "object") {
+        await importLocalTournamentsSnapshot(competitionsDump, { replace: true });
+      }
+    } catch (e) {
+      console.warn("[storage] importAll tournaments restore failed", e);
     }
 
     try {

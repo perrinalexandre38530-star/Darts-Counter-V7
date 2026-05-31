@@ -260,6 +260,15 @@ function isBatardEntry(e: SavedEntry) {
   );
 }
 
+function isBabyFootEntry(e: SavedEntry) {
+  const m = baseMode(e);
+  const sport = String((e as any)?.sport || (e as any)?.payload?.sport || (e as any)?.summary?.sport || "").toLowerCase();
+  const kind = String((e as any)?.kind || (e as any)?.payload?.kind || "").toLowerCase();
+  const pm = String((e as any)?.payload?.mode || (e as any)?.payload?.summary?.mode || (e as any)?.summary?.mode || "").toLowerCase();
+  return sport.includes("babyfoot") || sport.includes("baby-foot") || kind.includes("babyfoot") || kind.includes("baby-foot") || m.includes("babyfoot") || m.includes("baby-foot") || pm.includes("babyfoot") || pm.includes("baby-foot");
+}
+
+
 
 type GameFilterKey = "all" | string;
 type PlayerFilterKey = "all" | string;
@@ -1782,7 +1791,41 @@ export default function HistoryPage({
     await loadInbox();
   }
 
+  async function hydrateSavedEntry(entry: SavedEntry): Promise<SavedEntry> {
+    try {
+      const wantedId = String((entry as any)?.id || (entry as any)?.matchId || (entry as any)?.resumeId || "").trim();
+      const wantedResume = String((entry as any)?.resumeId || matchLink(entry) || wantedId || "").trim();
+      const loaded = (wantedId && (await (History as any)?.get?.(wantedId))) || (wantedResume && wantedResume !== wantedId && (await (History as any)?.get?.(wantedResume))) || null;
+      if (!loaded || typeof loaded !== "object") return entry;
+
+      const entryPayload = (entry as any)?.payload && typeof (entry as any).payload === "object" && !Array.isArray((entry as any).payload) ? (entry as any).payload : {};
+      const loadedPayload = (loaded as any)?.payload && typeof (loaded as any).payload === "object" && !Array.isArray((loaded as any).payload) ? (loaded as any).payload : {};
+      const payload = { ...entryPayload, ...loadedPayload };
+      const summary = {
+        ...(((entry as any).summary && typeof (entry as any).summary === "object") ? (entry as any).summary : {}),
+        ...(((loaded as any).summary && typeof (loaded as any).summary === "object") ? (loaded as any).summary : {}),
+        ...((payload as any)?.summary && typeof (payload as any).summary === "object" ? (payload as any).summary : {}),
+      };
+      const players = Array.isArray((payload as any).players) && (payload as any).players.length
+        ? (payload as any).players
+        : Array.isArray((loaded as any).players) && (loaded as any).players.length
+        ? (loaded as any).players
+        : (entry as any).players;
+
+      return {
+        ...(entry as any),
+        ...(loaded as any),
+        payload: { ...payload, summary },
+        summary,
+        players,
+      } as SavedEntry;
+    } catch {
+      return entry;
+    }
+  }
+
   async function handleShare(entry: SavedEntry) {
+    entry = await hydrateSavedEntry(entry);
     // 1) tente Web Share (Android / PWA)
     const res = await shareOneMatch(entry);
 
@@ -1898,7 +1941,7 @@ export default function HistoryPage({
   }
 
   async function handleSendToFriend(entry: SavedEntry) {
-    await openFriendShare(entry);
+    await openFriendShare(await hydrateSavedEntry(entry));
   }
 
 
@@ -2159,6 +2202,20 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
     const m = baseMode(e);
     const inferredMode = inferGameFilterKey(e, "darts");
+
+    // ✅ BABY-FOOT : ouvrir la vraie fiche Baby-Foot, jamais X01.
+    if (isBabyFootEntry(e)) {
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || resumeId || "");
+      go("babyfoot_end" as any, {
+        matchId,
+        focusMatchId: matchId,
+        matchPayload: full,
+        rec: full,
+        from: "history",
+      });
+      return;
+    }
 
     // ✅ VARIANTES CRICKET : stats dans Cricket, pas X01
     if (isCricketVariantMode(m) || isCricketVariantMode(inferredMode)) {

@@ -12,6 +12,7 @@ import type { Store } from "../lib/types";
 // ✅ NEW: source de vérité local (IDB cache + event refresh)
 import {
   listTournamentsLocal,
+  listTournamentsLocalAsync,
   listMatchesForTournamentLocal,
   upsertTournamentLocal,
   upsertMatchesForTournamentLocal,
@@ -520,11 +521,19 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     }
 
     try {
-      const list = listTournamentsLocal() || [];
-      setItems(applyScope(Array.isArray(list) ? list : []));
+      // ✅ fiable au premier affichage : attend l’hydratation IndexedDB/migration localStorage.
+      // Avant, listTournamentsLocal() pouvait renvoyer [] pendant le load async,
+      // donc les compétitions créées semblaient disparaître de “À reprendre / En cours”.
+      void listTournamentsLocalAsync()
+        .then((list) => setItems(applyScope(Array.isArray(list) ? list : [])))
+        .catch((e) => {
+          console.error("[TournamentsHome] local async load failed:", e);
+          const fallback = listTournamentsLocal() || [];
+          setItems(applyScope(Array.isArray(fallback) ? fallback : []));
+        })
+        .finally(() => setLoading(false));
     } catch {
       setItems([]);
-    } finally {
       setLoading(false);
     }
   }, [forceMode, isOnline]);

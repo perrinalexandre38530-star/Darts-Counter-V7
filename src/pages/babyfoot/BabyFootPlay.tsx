@@ -636,9 +636,23 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const teamBIds = state.teamBProfileIds || [];
 
   const players = useMemo(() => {
-    const makePlayer = (id: string) => ({ id });
-    return [...teamAIds.map(makePlayer), ...teamBIds.map(makePlayer)];
-  }, [teamAIds.join("|"), teamBIds.join("|")]);
+    const makePlayer = (id: string, team: BabyFootTeamId, teamIndex: number) => {
+      const profile: any = getProfile(id);
+      return {
+        id,
+        profileId: id,
+        name: profile?.name || profile?.displayName || profile?.nickname || id,
+        avatarUrl: profile?.avatarUrl || profile?.avatar_url || profile?.avatar || null,
+        avatarDataUrl: profile?.avatarDataUrl || profile?.avatar_data_url || null,
+        team,
+        teamIndex,
+      };
+    };
+    return [
+      ...teamAIds.map((id) => makePlayer(id, "A", 0)),
+      ...teamBIds.map((id) => makePlayer(id, "B", 1)),
+    ];
+  }, [teamAIds.join("|"), teamBIds.join("|"), profiles]);
 
   const durationMs = computeDurationMs(state);
   const hasClockStarted = !!state.startedAt;

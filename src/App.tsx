@@ -2733,6 +2733,12 @@ useEffect(() => {
     });
 
     const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+    const winnerTeamRaw = (m as any)?.winnerTeam ?? summary?.winnerTeam ?? (m as any)?.winner ?? summary?.winner ?? null;
+    const winnerTeamIndex = winnerTeamRaw === "A" || winnerTeamRaw === 0 || winnerTeamRaw === "0"
+      ? 0
+      : winnerTeamRaw === "B" || winnerTeamRaw === 1 || winnerTeamRaw === "1"
+      ? 1
+      : null;
     const originalPayload =
       (m as any)?.payload && typeof (m as any)?.payload === "object"
         ? ({ ...((m as any).payload as any) } as any)
@@ -3065,7 +3071,7 @@ const unifiedStats = (() => {
     const scoreB = Number(s?.scoreB ?? s?.teamB?.score ?? 0) || 0;
     const setsA = Number(s?.setsA ?? s?.teamA?.sets ?? 0) || 0;
     const setsB = Number(s?.setsB ?? s?.teamB?.sets ?? 0) || 0;
-    const winnerTeam = s?.winnerTeam ?? (scoreA === scoreB ? null : scoreA > scoreB ? 0 : 1);
+    const winnerTeam = winnerTeamIndex ?? (scoreA === scoreB ? null : scoreA > scoreB ? 0 : 1);
     const duration = Number(s?.durationMs ?? s?.duration ?? 0) || 0;
 
     return {
@@ -3108,7 +3114,8 @@ const unifiedStats = (() => {
         kind: (m as any)?.kind || "babyfoot",
         sport: "babyfoot",
         status: "finished",
-        stats: unifiedStats,
+        stats: summary?.stats ?? (m as any)?.stats ?? unifiedStats,
+        statsIndex: unifiedStats,
       },
     };
 

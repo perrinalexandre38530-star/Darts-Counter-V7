@@ -3,6 +3,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import tickerBabyFootLigue from "../../assets/tickers/ticker_babyfoot_ligue.png";
+import { History } from "../../lib/history";
 
 type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any };
 
@@ -60,12 +61,101 @@ function avatarOf(p: any) {
   return p?.avatarDataUrl || p?.avatarUrl || p?.avatar || null;
 }
 
+function getEventsFrom(payload: any, summary: any, match: any): any[] {
+  const sources = [payload?.events, summary?.events, match?.events, match?.payload?.events, match?.payload?.summary?.events];
+  const hit = sources.find((v) => Array.isArray(v));
+  return Array.isArray(hit) ? hit : [];
+}
+
+function playerNameFromPayload(payload: any, id: any) {
+  const pid = String(id || "").trim();
+  if (!pid) return "";
+  const players = Array.isArray(payload?.players) ? payload.players : [];
+  const hit = players.find((p: any) => String(p?.id || p?.playerId || p?.profileId || "") === pid);
+  return String(hit?.name || hit?.displayName || hit?.nickname || "").trim();
+}
+
+function totalStat(stats: any, specialStats: any, keys: string[], sideKeys: string[]) {
+  const direct = statValue(stats, keys, NaN);
+  if (Number.isFinite(direct)) return direct;
+  const nested = n(stats?.teamA?.[sideKeys[0]], 0) + n(stats?.teamB?.[sideKeys[1]], 0);
+  if (nested > 0) return nested;
+  return n(specialStats?.[sideKeys[2]], 0) + n(specialStats?.[sideKeys[3]], 0);
+}
+
+function actionLabel(ev: any, payload: any, teamA: string, teamB: string) {
+  const team = ev?.team === "A" ? teamA : ev?.team === "B" ? teamB : "";
+  const player = playerNameFromPayload(payload, ev?.scorerId) || playerNameFromPayload(payload, ev?.ownGoalById);
+  const who = player ? ` · ${player}` : "";
+  if (ev?.t === "start") return "Début du match";
+  if (ev?.t === "finish") return `Fin du match${ev?.winner ? ` · ${ev.winner === "A" ? teamA : teamB}` : ""}`;
+  if (ev?.t === "phase") return `Phase ${String(ev?.phase || "").toUpperCase()}`;
+  if (ev?.t === "set_win") return `Set gagné · ${team}`;
+  if (ev?.t === "pen_shot") return `Penalty ${ev?.scored ? "marqué" : "raté"} · ${team}${who}`;
+  if (ev?.t === "demi") return `Demi · ${team}${who}`;
+  if (ev?.t === "special") {
+    const map: Record<string, string> = { gamelle: "Gamelle", peche_off: "Pêche offensive", peche_def: "Pêche défensive", pissette: "Pissette", csc: "CSC" };
+    return `${map[String(ev?.kind || "")] || String(ev?.kind || "Action")} · ${team}${who}`;
+  }
+  if (ev?.t === "goal") {
+    const line = ev?.sourceLine ? ` ${String(ev.sourceLine).toUpperCase()}` : "";
+    const kind = ev?.kind === "gamelle" ? "Gamelle" : ev?.kind === "pissette" ? "Pissette" : ev?.kind === "csc" ? "CSC" : `But${line}`;
+    const pts = n(ev?.points, 1);
+    return `${kind} · ${team}${who}${pts > 1 ? ` · +${pts}` : ""}`;
+  }
+  return String(ev?.label || ev?.type || ev?.kind || "Action");
+}
+
+function buildTimelineRows(events: any[], payload: any, summary: any, teamA: string, teamB: string) {
+  const start = n(payload?.startedAt ?? summary?.startedAt ?? payload?.createdAt ?? summary?.createdAt, 0);
+  let scoreA = Math.max(0, n(payload?.handicapB ?? summary?.handicapB, 0));
+  let scoreB = Math.max(0, n(payload?.handicapA ?? summary?.handicapA, 0));
+  return (events || []).map((ev: any, index: number) => {
+    if (ev?.t === "goal") {
+      const pts = Math.max(1, n(ev?.points, 1));
+      if (ev?.team === "A") scoreA += pts;
+      if (ev?.team === "B") scoreB += pts;
+    } else if (ev?.t === "special") {
+      scoreA = Math.max(0, scoreA + n(ev?.scoreDeltaA, 0));
+      scoreB = Math.max(0, scoreB + n(ev?.scoreDeltaB, 0));
+    } else if (ev?.t === "set_win") {
+      scoreA = Math.max(0, n(payload?.handicapB ?? summary?.handicapB, 0));
+      scoreB = Math.max(0, n(payload?.handicapA ?? summary?.handicapA, 0));
+    }
+    const elapsed = start && ev?.at ? Math.max(0, n(ev.at) - start) : 0;
+    return {
+      key: `${ev?.t || "event"}-${ev?.at || index}-${index}`,
+      time: fmtDuration(elapsed),
+      label: actionLabel(ev, payload, teamA, teamB),
+      score: `${scoreA}-${scoreB}`,
+      team: ev?.team || null,
+      raw: ev,
+    };
+  });
+}
+
 export default function BabyFootEndPage({ go, store, params }: Props) {
   const { theme } = useTheme();
-  const match = pickMatch(store, params);
+  const requestedId = String(params?.matchId || params?.focusMatchId || params?.matchPayload?.id || params?.matchPayload?.matchId || "").trim();
+  const [idbMatch, setIdbMatch] = React.useState<AnyMatch | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (params?.matchPayload || !requestedId) {
+      setIdbMatch(null);
+      return () => { alive = false; };
+    }
+    (History as any).get?.(requestedId)
+      ?.then((row: any) => { if (alive) setIdbMatch(row || null); })
+      ?.catch(() => { if (alive) setIdbMatch(null); });
+    return () => { alive = false; };
+  }, [requestedId, params?.matchPayload]);
+
+  const match = params?.matchPayload || idbMatch || pickMatch(store, params);
   const payload = getPayload(match);
   const summary = getSummary(match);
-  const stats = summary?.stats || payload?.stats || summary?.specialStats || {};
+  const stats = summary?.stats || payload?.summary?.stats || payload?.stats || summary?.specialStats || {};
+  const specialStats = summary?.specialStats || payload?.specialStats || payload?.summary?.specialStats || {};
   const scoreA = n(summary?.scoreA ?? payload?.scoreA ?? params?.scoreA);
   const scoreB = n(summary?.scoreB ?? payload?.scoreB ?? params?.scoreB);
   const teamA = String(summary?.teamA || payload?.teamA || params?.teamA || "Équipe A");
@@ -73,7 +163,14 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const winnerTeam = String(payload?.winnerTeam || (scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "D"));
   const winnerLabel = winnerTeam === "A" ? teamA : winnerTeam === "B" ? teamB : "Match nul";
   const durationMs = summary?.durationMs ?? payload?.durationMs ?? params?.durationMs;
-  const events = Array.isArray(payload?.events) ? payload.events : [];
+  const events = getEventsFrom(payload, summary, match);
+  const timelineRows = buildTimelineRows(events, payload, summary, teamA, teamB);
+  const totalDemi = totalStat(stats, specialStats, ["totalDemi", "totalDemis", "demi", "demis"], ["demi", "demi", "demiA", "demiB"]);
+  const totalGamelle = totalStat(stats, specialStats, ["totalGamelle", "totalGamelles", "gamelle", "gamelles"], ["gamelle", "gamelle", "gamelleA", "gamelleB"]);
+  const totalPeche = totalStat(stats, specialStats, ["totalPeche", "totalPeches", "peche", "peches"], ["peche", "peche", "pecheOffA", "pecheOffB"]);
+  const totalPissette = totalStat(stats, specialStats, ["totalPissette", "totalPissettes", "pissette", "pissettes"], ["pissette", "pissette", "pissetteA", "pissetteB"]);
+  const totalGoalAv = n(stats?.teamA?.goalAv, 0) + n(stats?.teamB?.goalAv, 0) + n(specialStats?.goalAvA, 0) + n(specialStats?.goalAvB, 0);
+  const totalGoalDef = n(stats?.teamA?.goalDef, 0) + n(stats?.teamB?.goalDef, 0) + n(specialStats?.goalDefA, 0) + n(specialStats?.goalDefB, 0);
   const teamAPlayers = teamPlayers(payload, "A");
   const teamBPlayers = teamPlayers(payload, "B");
   const backToLeague = params?.fromLeague || params?.leagueId || payload?.fromLeague || payload?.leagueId;
@@ -113,9 +210,12 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
           <StatBox theme={theme} label="Buts" value={String(scoreA + scoreB)} />
           <StatBox theme={theme} label="Durée" value={fmtDuration(durationMs)} />
           <StatBox theme={theme} label="Écart" value={String(Math.abs(scoreA - scoreB))} />
-          <StatBox theme={theme} label="Demi" value={String(statValue(stats, ["demi", "demis", "totalDemis"]))} />
-          <StatBox theme={theme} label="Gamelle" value={String(statValue(stats, ["gamelle", "gamelles", "totalGamelles"]))} />
-          <StatBox theme={theme} label="Pêche" value={String(statValue(stats, ["peche", "peches", "totalPeches"]))} />
+          <StatBox theme={theme} label="Demi" value={String(totalDemi)} />
+          <StatBox theme={theme} label="Gamelle" value={String(totalGamelle)} />
+          <StatBox theme={theme} label="Pêche" value={String(totalPeche)} />
+          <StatBox theme={theme} label="Pissette" value={String(totalPissette)} />
+          <StatBox theme={theme} label="Buts AV" value={String(totalGoalAv)} />
+          <StatBox theme={theme} label="Buts DEF" value={String(totalGoalDef)} />
         </div>
       </section>
 
@@ -129,14 +229,22 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
       </section>
 
       <section style={{ ...panel(theme), marginTop: 12 }}>
-        <div style={sectionTitle(theme)}>Journal du match</div>
-        {events.length ? (
-          <div style={{ display: "grid", gap: 7, maxHeight: 280, overflow: "auto" }}>
-            {events.slice().reverse().slice(0, 80).map((ev: any, i: number) => (
-              <div key={ev?.id || i} style={{ borderRadius: 12, padding: "8px 10px", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.10)"}`, background: "rgba(255,255,255,.04)", fontSize: 12, fontWeight: 850 }}>
-                {String(ev?.label || ev?.type || ev?.kind || "Action").toUpperCase()} · {ev?.team ? `Équipe ${ev.team}` : ""}
-              </div>
-            ))}
+        <div style={sectionTitle(theme)}>Frise chronologique du match</div>
+        {timelineRows.length ? (
+          <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto", paddingLeft: 6 }}>
+            {timelineRows.slice(-140).map((row: any, i: number) => {
+              const accent = row.team === "B" ? "#ff59b0" : theme.primary;
+              return (
+                <div key={row.key || i} style={{ display: "grid", gridTemplateColumns: "58px 1fr 48px", gap: 8, alignItems: "center" }}>
+                  <div style={{ fontSize: 11, fontWeight: 1000, color: accent, textAlign: "right" }}>{row.time}</div>
+                  <div style={{ position: "relative", borderRadius: 14, padding: "9px 10px 9px 16px", border: `1px solid ${accent}55`, background: `${accent}12`, fontSize: 12, fontWeight: 900 }}>
+                    <span style={{ position: "absolute", left: -7, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: 999, background: accent, boxShadow: `0 0 12px ${accent}` }} />
+                    {row.label}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 1100, color: theme.text, textAlign: "center" }}>{row.score}</div>
+                </div>
+              );
+            })}
           </div>
         ) : <div style={{ ...small(theme), padding: 10 }}>Aucun journal détaillé disponible pour ce match.</div>}
       </section>

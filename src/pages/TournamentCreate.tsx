@@ -2217,6 +2217,9 @@ async function createTournament() {
     (tour as any).coverDataUrl = competitionCover || null;
     (tour as any).bannerDataUrl = competitionCover || null;
 
+    // Une ligue libre/multi doit aussi être visible immédiatement dans À reprendre / En cours.
+    (tour as any).status = "running";
+
     const matches: any[] = [];
 
     try {
