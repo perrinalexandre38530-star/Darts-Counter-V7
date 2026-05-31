@@ -656,7 +656,7 @@ function dateFilterLabel(filter: DateFilterKey) {
   if (filter === "week") return "Cette semaine";
   if (filter === "month") return "Ce mois";
   if (filter === "year") return "Cette année";
-  return "Toutes dates / archives";
+  return "Toutes dates";
 }
 
 function statusFilterLabel(filter: FilterKey) {
@@ -824,6 +824,21 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     };
   }, [visibleByKind, dateFilter, statusKeyOf]);
 
+  const activeFilterCaption = React.useMemo(() => {
+    const statusLabel = statusFilterLabel(filter);
+    if (dateFilter === "all") return statusLabel;
+    return `${statusLabel} · ${dateFilterLabel(dateFilter)}`;
+  }, [filter, dateFilter]);
+
+  const toggleDateFilterPanel = React.useCallback(() => {
+    if (showDateFilters || dateFilter !== "all") {
+      setShowDateFilters(false);
+      setDateFilter("all");
+      return;
+    }
+    setShowDateFilters(true);
+  }, [showDateFilters, dateFilter]);
+
   const openTournament = React.useCallback((t: any) => {
     const id = String(t?.id || t?.tournamentId || t?.tid || t?.code || "");
     if (!id) return;
@@ -940,7 +955,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           <IconFilterButton active={filter === "draft"} tint="#b0b0b0" label="Brouillons" count={counts.draft} onClick={() => setFilter("draft")} icon={<TinyIcon kind="box" size={17} />} />
           <IconFilterButton active={filter === "running"} tint="#ff7fe2" label="En cours" count={counts.running} onClick={() => setFilter("running")} icon={<TinyIcon kind="users" size={17} />} />
           <IconFilterButton active={filter === "done"} tint="#7fe2a9" label="Terminées" count={counts.done} onClick={() => setFilter("done")} icon={<TinyIcon kind="calendar" size={17} />} />
-          <IconFilterButton active={showDateFilters || dateFilter !== "all"} tint="#ffffff" label="Calendrier" count={dateFilter === "all" ? 0 : 1} onClick={() => setShowDateFilters((v) => !v)} icon={<TinyIcon kind="calendar" size={17} />} />
+          <IconFilterButton active={showDateFilters || dateFilter !== "all"} tint="#ffffff" label="Calendrier" count={dateFilter === "all" ? 0 : 1} onClick={toggleDateFilterPanel} icon={<TinyIcon kind="calendar" size={17} />} />
         </div>
         {showDateFilters ? (
           <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
@@ -964,7 +979,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           </div>
         ) : null}
         <div style={{ marginTop: 11, textAlign: "center", fontSize: 12, fontWeight: 950, color: "#ffd56a", textShadow: "0 0 14px rgba(255,213,106,.42)" }}>
-          Filtre actif : {statusFilterLabel(filter)} · {dateFilterLabel(dateFilter)}
+          {activeFilterCaption}
         </div>
       </div>
 
