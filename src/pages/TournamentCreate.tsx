@@ -1319,6 +1319,15 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [teamCreateLogo, setTeamCreateLogo] = React.useState<string | null>(null);
   const [teamCreateRoster, setTeamCreateRoster] = React.useState<string[]>([]);
   const [teamCreateQuery, setTeamCreateQuery] = React.useState("");
+
+  // ✅ Confrontations par équipes (Ligue + Tournoi)
+  // Dans les ligues réelles, une rencontre d'équipe n'est pas seulement "équipe A vs équipe B" :
+  // elle peut contenir plusieurs matchs individuels/doublettes, puis les points de rencontre sont additionnés.
+  const [teamConfrontationFormat, setTeamConfrontationFormat] = React.useState<"single" | "singles" | "singles_doubles">("singles");
+  const [teamConfrontationPlayers, setTeamConfrontationPlayers] = React.useState<string>("4");
+  const [teamConfrontationDoubles, setTeamConfrontationDoubles] = React.useState<string>("1");
+  const [teamConfrontationWinMode, setTeamConfrontationWinMode] = React.useState<"match_points" | "legs_sets">("match_points");
+
   const [participantsDropdownOpen, setParticipantsDropdownOpen] = React.useState(false);
   const [includeBotsInParticipantList, setIncludeBotsInParticipantList] = React.useState(false);
   const [includeBotTeamsInTeamList, setIncludeBotTeamsInTeamList] = React.useState(false);
@@ -2513,6 +2522,16 @@ async function createTournament() {
     finalPlayers = finalPlayers.concat(bots);
   }
 
+  const teamConfrontation = participantKind === "teams" ? {
+    enabled: true,
+    format: teamConfrontationFormat,
+    label: teamConfrontationFormat === "single" ? "Rencontre unique" : teamConfrontationFormat === "singles_doubles" ? "Simples + doublettes" : "Simples par ligne",
+    playersPerTeam: Math.max(1, Math.floor(numFromText(teamConfrontationPlayers)) || 1),
+    doublesMatches: teamConfrontationFormat === "singles_doubles" ? Math.max(0, Math.floor(numFromText(teamConfrontationDoubles)) || 0) : 0,
+    winMode: teamConfrontationWinMode,
+    points: { win: 3, draw: 1, loss: 0 },
+  } : { enabled: false };
+
   // ✅ règles : X01 spécifiques + autres modes (+ baby-foot)
   const rules =
     mode === "babyfoot"
@@ -2529,6 +2548,7 @@ async function createTournament() {
           desiredSize: desiredSize || 0,
           autoFillBots: false, // ⚠️ pas de bots auto en baby-foot (pour l'instant)
           maxPlayers: capEnabled ? cap : 0,
+          teamConfrontation,
 
           // baby-foot specific
           sport: "babyfoot",
@@ -2552,6 +2572,7 @@ async function createTournament() {
           desiredSize: desiredSize || 0,
           autoFillBots: !!autoFillBots,
           maxPlayers: capEnabled ? cap : 0,
+          teamConfrontation,
         }
       : {
           bestOf,
@@ -2565,6 +2586,7 @@ async function createTournament() {
           desiredSize: desiredSize || 0,
           autoFillBots: !!autoFillBots,
           maxPlayers: capEnabled ? cap : 0,
+          teamConfrontation,
         };
 
   const stages = buildStagesForEngine(format, finalPlayers.length);
@@ -2610,6 +2632,7 @@ async function createTournament() {
       source,
       competitionKind,
       participantKind,
+      teamConfrontation: participantKind === "teams" ? teamConfrontation : undefined,
       teams: participantKind === "teams" ? finalPlayers.map((t: any) => ({ id: t.id, name: t.name, memberIds: t.memberIds || [] })) : undefined,
       isPetanque,
       petanqueTeamSize: isPetanque ? petanqueTeamSize : undefined,
@@ -3495,22 +3518,40 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
 
       setLogoImportDiag(`Lecture · ${filename} · ${Math.round(size / 1024)} Ko`);
 
-      // 1) Aperçu immédiat local dans le médaillon.
+      // 1) Aperçu garanti comme dans Profils > Teams : FileReader d'abord.
+      // Le médaillon ne dépend plus uniquement de la compression canvas.
+      let rawDataUrl = "";
+      try {
+        rawDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+          reader.onerror = () => reject(new Error("FileReader error"));
+          reader.readAsDataURL(file);
+        });
+        if (rawDataUrl && rawDataUrl.startsWith("data:image")) {
+          setLocalLogoPreview(rawDataUrl);
+          // Fallback persistable seulement si raisonnable; la compression remplace juste après.
+          if (rawDataUrl.length < 220_000) onLogoChange?.(rawDataUrl);
+        }
+      } catch (err) {
+        console.warn("[TournamentCreate] team logo FileReader preview failed", err);
+      }
+
+      // 2) ObjectURL en renfort pour affichage instantané sur navigateurs capricieux.
       try {
         if (teamLogoObjectUrlRef.current) URL.revokeObjectURL(teamLogoObjectUrlRef.current);
         const blobUrl = URL.createObjectURL(file);
         teamLogoObjectUrlRef.current = blobUrl;
-        setLocalLogoPreview(blobUrl);
+        if (!rawDataUrl) setLocalLogoPreview(blobUrl);
       } catch (err) {
         console.warn("[TournamentCreate] team logo objectURL preview failed", err);
       }
 
-      // 2) Version compressée persistable : c'est la même logique que Profiles > Teams.
-      // Ne jamais stocker l'original en base64, sinon le logo est rejeté au save ou le quota saute.
+      // 3) Version compressée pour sauvegarde anti-quota.
       try {
         const result = await fileToCompressedTeamLogoDataUrl(file);
         if (!result || !result.startsWith("data:image")) {
-          setLogoImportDiag(`Erreur · image illisible · ${filename}`);
+          setLogoImportDiag(rawDataUrl ? `Aperçu OK · compression impossible · ${filename}` : `Erreur · image illisible · ${filename}`);
           return;
         }
         try {
@@ -3519,10 +3560,14 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
         teamLogoObjectUrlRef.current = null;
         setLocalLogoPreview(result);
         onLogoChange?.(result);
-        setLogoImportDiag(`OK · ${filename} · logo compressé et chargé`);
+        setLogoImportDiag(`OK · ${filename} · logo chargé`);
       } catch (err) {
         console.warn("[TournamentCreate] team logo compression failed", { filename, type, size, err });
-        setLogoImportDiag(`Erreur compression · ${filename}`);
+        if (rawDataUrl && rawDataUrl.startsWith("data:image")) {
+          setLogoImportDiag(`Aperçu OK · image non compressée · ${filename}`);
+        } else {
+          setLogoImportDiag(`Erreur import · ${filename}`);
+        }
       }
     }
 
@@ -3652,25 +3697,28 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
                   }}
                 />
               </div>
+              <button
+                type="button"
+                onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); teamLogoInputRef.current?.click?.(); }}
+                style={{
+                  height: 28,
+                  minWidth: 86,
+                  borderRadius: 999,
+                  border: `1px solid ${primary}66`,
+                  background: "rgba(0,0,0,.38)",
+                  color: primary,
+                  fontSize: 10,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                Importer
+              </button>
               {logoImportDiag ? (
                 <div style={{ maxWidth: 92, fontSize: 9.5, lineHeight: 1.15, color: "rgba(255,255,255,.64)", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {logoImportDiag}
                 </div>
               ) : null}
-              <input
-                type="file"
-                accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
-                aria-label="Importer le logo équipe"
-                onChange={handleLogoInput}
-                style={{
-                  display: "block",
-                  width: 92,
-                  minHeight: 28,
-                  fontSize: 9,
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              />
             </div>
             <div style={{ display: "grid", gap: 9 }}>
               <TextInput value={value} onChange={(e: any) => onChange?.(e.target.value)} placeholder="Nom de l’équipe" />
@@ -4640,6 +4688,30 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                   <RowTitle label="Best-of" />
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {([1, 3, 5, 7] as BestOf[]).map((v) => <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />)}
+                  </div>
+                </div>
+              ) : null}
+
+              {participantKind === "teams" && !isPetanque ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <RowTitle label="Confrontation par équipes" />
+                  <div style={{ fontSize: 11.5, lineHeight: 1.35, opacity: .74 }}>
+                    Réglage commun Ligue + Tournoi : chaque affiche peut être une rencontre unique, plusieurs simples, ou simples + doublettes.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={teamConfrontationFormat === "single"} label="1 match équipe" onClick={() => setTeamConfrontationFormat("single")} primary={primary} />
+                    <NeonPill active={teamConfrontationFormat === "singles"} label="Simples" onClick={() => setTeamConfrontationFormat("singles")} primary={primary} />
+                    <NeonPill active={teamConfrontationFormat === "singles_doubles"} label="Simples + doubles" onClick={() => setTeamConfrontationFormat("singles_doubles")} primary={primary} />
+                  </div>
+                  {teamConfrontationFormat !== "single" ? (
+                    <div style={{ display: "grid", gridTemplateColumns: teamConfrontationFormat === "singles_doubles" ? "1fr 1fr" : "1fr", gap: 8 }}>
+                      <TextInput value={teamConfrontationPlayers} onChange={(e: any) => setTeamConfrontationPlayers(e.target.value)} placeholder="Joueurs alignés par équipe" />
+                      {teamConfrontationFormat === "singles_doubles" ? <TextInput value={teamConfrontationDoubles} onChange={(e: any) => setTeamConfrontationDoubles(e.target.value)} placeholder="Nombre de doublettes" /> : null}
+                    </div>
+                  ) : null}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <NeonPill active={teamConfrontationWinMode === "match_points"} label="Points rencontre" onClick={() => setTeamConfrontationWinMode("match_points")} primary={primary} />
+                    <NeonPill active={teamConfrontationWinMode === "legs_sets"} label="Legs / sets" onClick={() => setTeamConfrontationWinMode("legs_sets")} primary={primary} />
                   </div>
                 </div>
               ) : null}
