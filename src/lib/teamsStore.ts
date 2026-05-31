@@ -4,6 +4,8 @@
 // Key: dc-teams-v1
 // =============================================================
 
+import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
+
 export type TeamSport = "petanque" | "darts" | string;
 
 export type Team = {
@@ -43,7 +45,7 @@ export function loadTeams(): Team[] {
       id: String(t.id || ""),
       sport: String(t.sport || "petanque"),
       name: String(t.name || "Team"),
-      logoDataUrl: t.logoDataUrl ? String(t.logoDataUrl) : undefined,
+      logoDataUrl: sanitizeStoredImage(t.logoDataUrl) || undefined,
       logoUrl: t.logoUrl ? String(t.logoUrl) : undefined,
       createdAt: Number(t.createdAt || Date.now()),
       updatedAt: Number(t.updatedAt || Date.now()),
@@ -52,7 +54,10 @@ export function loadTeams(): Team[] {
 }
 
 export function saveTeams(next: Team[]) {
-  localStorage.setItem(KEY, safeStringify(next || []));
+  const clean = (next || []).map((t: any) => ({ ...t, logoDataUrl: sanitizeStoredImage(t?.logoDataUrl) || undefined }));
+  setJsonWithQuotaRecovery(KEY, clean, (list: any[]) =>
+    (list || []).map((t: any) => ({ ...t, logoDataUrl: undefined }))
+  );
 }
 
 export function loadTeamsBySport(sport: TeamSport): Team[] {
@@ -78,11 +83,12 @@ export function createTeam(input: {
     id: uid(),
     sport: input.sport,
     name: input.name.trim() || "Team",
-    logoDataUrl: input.logoDataUrl,
+    logoDataUrl: sanitizeStoredImage(input.logoDataUrl) || undefined,
     logoUrl: input.logoUrl,
     createdAt: now,
     updatedAt: now,
   };
+  next.logoDataUrl = sanitizeStoredImage(next.logoDataUrl) || undefined;
 
   const prev = loadTeams();
   saveTeams([team, ...prev]);
@@ -121,10 +127,5 @@ export function deleteTeam(id: string) {
 // DataURL helper (logo upload)
 // ---------------------------
 export function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("FileReader error"));
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.readAsDataURL(file);
-  });
+  return fileToCompressedImageDataUrl(file, { maxSize: 256, quality: 0.78 });
 }

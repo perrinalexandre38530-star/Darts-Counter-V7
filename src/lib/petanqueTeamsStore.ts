@@ -9,6 +9,7 @@
 // =============================================================
 
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
+import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
 
 export type TeamSport = string;
 
@@ -117,7 +118,7 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const countryName = typeof t.countryName === "string" ? t.countryName : undefined;
   const regionCode = typeof t.regionCode === "string" ? t.regionCode : undefined;
   const regionName = typeof t.regionName === "string" ? t.regionName : undefined;
-  const regionLogoDataUrl = t.regionLogoDataUrl ?? null;
+  const regionLogoDataUrl = sanitizeStoredImage(t.regionLogoDataUrl);
   const slogan = typeof t.slogan === "string" ? t.slogan : undefined;
   const description = typeof t.description === "string" ? t.description : undefined;
   const playerIds = Array.isArray(t.playerIds) ? t.playerIds.filter((x: any) => typeof x === "string") : undefined;
@@ -126,7 +127,7 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
     id,
     sport: normalizeSport(t.sport),
     name,
-    logoDataUrl: t.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
     countryCode,
     countryName,
     regionCode,
@@ -173,7 +174,7 @@ function dedupeById(list: TeamEntity[]) {
 //         id: String(t.id || makeTeamId("petanque")),
 //         sport: "petanque" as const,
 //         name: String(t.name || "").trim() || "Équipe",
-//         logoDataUrl: t.logoDataUrl ?? null,
+//         logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
 //         createdAt: Number(t.createdAt || now()),
 //         updatedAt: Number(t.updatedAt || now()),
 //       }))
@@ -203,7 +204,13 @@ export function loadTeams(): TeamEntity[] {
 
 export function saveTeams(list: TeamEntity[]) {
   const clean = dedupeById((list ?? []).map((x) => normalizeTeamEntity(x)).filter(Boolean) as TeamEntity[]);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+  setJsonWithQuotaRecovery(STORAGE_KEY, clean, (teams: TeamEntity[]) =>
+    (teams || []).map((t: any) => ({
+      ...t,
+      logoDataUrl: null,
+      regionLogoDataUrl: null,
+    }))
+  );
 }
 
 export function upsertTeam(team: TeamEntity) {
@@ -217,7 +224,7 @@ export function upsertTeam(team: TeamEntity) {
     name: (team.name ?? "").trim(),
     updatedAt: ts,
     createdAt: Number(team.createdAt ?? 0) || ts,
-    logoDataUrl: team.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(team.logoDataUrl),
     sport: normalizeSport(team.sport),
 
     // Champs étendus
@@ -225,7 +232,7 @@ export function upsertTeam(team: TeamEntity) {
     countryName: typeof team.countryName === "string" ? team.countryName : team.countryName,
     regionCode: typeof team.regionCode === "string" ? team.regionCode : team.regionCode,
     regionName: typeof team.regionName === "string" ? team.regionName : team.regionName,
-    regionLogoDataUrl: (team as any).regionLogoDataUrl ?? null,
+    regionLogoDataUrl: sanitizeStoredImage((team as any).regionLogoDataUrl),
     slogan: typeof (team as any).slogan === "string" ? (team as any).slogan : (team as any).slogan,
     description: typeof (team as any).description === "string" ? (team as any).description : (team as any).description,
     playerIds: Array.isArray((team as any).playerIds) ? (team as any).playerIds.filter((x: any) => typeof x === "string") : (team as any).playerIds,
@@ -246,7 +253,7 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
     id: makeTeamId(input.sport),
     sport: normalizeSport(input.sport),
     name: (input.name ?? "").trim(),
-    logoDataUrl: input.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(input.logoDataUrl),
     createdAt: ts,
     updatedAt: ts,
   };
@@ -270,7 +277,7 @@ export function updateTeam(
     ...patch,
     name: (patch.name ?? prev.name).trim(),
     sport: normalizeSport(patch.sport ?? prev.sport),
-    logoDataUrl: patch.logoDataUrl ?? prev.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(patch.logoDataUrl ?? prev.logoDataUrl),
     updatedAt: now(),
   };
 
@@ -296,12 +303,7 @@ export function loadTeamsBySport(sport: TeamSport): TeamEntity[] {
 // DataURL helper (logo upload)
 // ---------------------------
 export function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onerror = () => reject(new Error("FileReader error"));
-    r.onload = () => resolve(String(r.result || ""));
-    r.readAsDataURL(file);
-  });
+  return fileToCompressedImageDataUrl(file, { maxSize: 256, quality: 0.78 });
 }
 
 // =====================================================================
@@ -328,7 +330,7 @@ export function loadPetanqueTeams(): PetanqueTeam[] {
     slogan: t.slogan ?? "",
     description: t.description ?? "",
     playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-    logoDataUrl: t.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   }));
@@ -346,12 +348,12 @@ export function savePetanqueTeams(list: PetanqueTeam[]) {
       id: String(t.id || makeTeamId("petanque")),
       sport: "petanque" as const,
       name: String(t.name || "").trim() || "Équipe",
-      logoDataUrl: t.logoDataUrl ?? null,
+      logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
       countryCode: (t.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
       countryName: t.countryName ?? FALLBACK_CN,
       regionCode: t.regionCode ?? "",
       regionName: t.regionName ?? "",
-      regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+      regionLogoDataUrl: sanitizeStoredImage(t.regionLogoDataUrl),
       slogan: t.slogan ?? "",
       description: t.description ?? "",
       playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
@@ -371,11 +373,11 @@ export function createPetanqueTeam(partial?: Partial<PetanqueTeam>): PetanqueTea
     countryName: partial?.countryName ?? FALLBACK_CN,
     regionCode: partial?.regionCode ?? "FR-IDF",
     regionName: partial?.regionName ?? "Île-de-France",
-    regionLogoDataUrl: partial?.regionLogoDataUrl ?? null,
+    regionLogoDataUrl: sanitizeStoredImage(partial?.regionLogoDataUrl),
     slogan: partial?.slogan ?? "",
     description: partial?.description ?? "",
     playerIds: Array.isArray(partial?.playerIds) ? partial?.playerIds : [],
-    logoDataUrl: partial?.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(partial?.logoDataUrl),
     createdAt: partial?.createdAt ?? ts,
     updatedAt: partial?.updatedAt ?? ts,
   };
@@ -388,12 +390,12 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
     id: team.id || makeTeamId("petanque"),
     sport: "petanque",
     name: (team.name ?? "").trim() || "Équipe",
-    logoDataUrl: team.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(team.logoDataUrl),
     countryCode: (team.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
     countryName: team.countryName ?? FALLBACK_CN,
     regionCode: team.regionCode ?? "",
     regionName: team.regionName ?? "",
-    regionLogoDataUrl: team.regionLogoDataUrl ?? null,
+    regionLogoDataUrl: sanitizeStoredImage(team.regionLogoDataUrl),
     slogan: team.slogan ?? "",
     description: team.description ?? "",
     playerIds: Array.isArray(team.playerIds) ? team.playerIds : [],
@@ -435,11 +437,11 @@ export function deletePetanqueTeam(teamId: string) {
       countryName: t.countryName ?? FALLBACK_CN,
       regionCode: t.regionCode ?? "",
       regionName: t.regionName ?? "",
-      regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+      regionLogoDataUrl: sanitizeStoredImage(t.regionLogoDataUrl),
       slogan: t.slogan ?? "",
       description: t.description ?? "",
       playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-      logoDataUrl: t.logoDataUrl ?? null,
+      logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })) as PetanqueTeam[];
@@ -517,7 +519,7 @@ export function loadBabyFootTeams(): BabyFootTeam[] {
     slogan: t.slogan ?? "",
     description: t.description ?? "",
     playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-    logoDataUrl: t.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
     createdAt: Number(t.createdAt || now()),
     updatedAt: Number(t.updatedAt || now()),
   }));
@@ -532,11 +534,11 @@ export function createBabyFootTeam(partial?: Partial<BabyFootTeam>): BabyFootTea
     countryName: partial?.countryName ?? "France",
     regionCode: partial?.regionCode ?? "FR-IDF",
     regionName: partial?.regionName ?? "Île-de-France",
-    regionLogoDataUrl: partial?.regionLogoDataUrl ?? null,
+    regionLogoDataUrl: sanitizeStoredImage(partial?.regionLogoDataUrl),
     slogan: (partial?.slogan ?? "").slice(0, 50),
     description: partial?.description ?? "",
     playerIds: Array.isArray(partial?.playerIds) ? partial!.playerIds : [],
-    logoDataUrl: partial?.logoDataUrl ?? null,
+    logoDataUrl: sanitizeStoredImage(partial?.logoDataUrl),
     createdAt: Number((partial as any)?.createdAt ?? 0) || ts,
     updatedAt: Number((partial as any)?.updatedAt ?? 0) || ts,
   };
@@ -554,7 +556,7 @@ export function upsertBabyFootTeam(team: BabyFootTeam) {
     countryName: (team as any).countryName ?? "France",
     regionCode: (team as any).regionCode ?? "",
     regionName: (team as any).regionName ?? "",
-    regionLogoDataUrl: (team as any).regionLogoDataUrl ?? null,
+    regionLogoDataUrl: sanitizeStoredImage((team as any).regionLogoDataUrl),
     slogan: typeof (team as any).slogan === "string" ? (team as any).slogan.slice(0, 50) : "",
     description: typeof (team as any).description === "string" ? (team as any).description : "",
     playerIds: Array.isArray((team as any).playerIds)
