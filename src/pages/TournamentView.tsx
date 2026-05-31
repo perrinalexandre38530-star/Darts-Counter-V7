@@ -2333,8 +2333,76 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
   const [bracketSub, setBracketSub] = React.useState<"view" | "details">("view");
 
+  const tourIdentity: any = (tour as any)?.identity || {};
+  const tournamentLogoSrc =
+    tourIdentity.logoDataUrl ||
+    tourIdentity.logoUrl ||
+    tourIdentity.avatarDataUrl ||
+    (tour as any)?.logoDataUrl ||
+    (tour as any)?.logoUrl ||
+    (tour as any)?.avatarDataUrl ||
+    null;
+  const tournamentCoverSrc =
+    tourIdentity.coverDataUrl ||
+    tourIdentity.bannerDataUrl ||
+    tourIdentity.coverUrl ||
+    (tour as any)?.coverDataUrl ||
+    (tour as any)?.bannerDataUrl ||
+    (tour as any)?.coverUrl ||
+    null;
+
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+      {/* HEADER VISUEL COMPÉTITION */}
+      {(tournamentCoverSrc || tournamentLogoSrc) ? (
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: 24,
+            border: "1px solid rgba(255,207,87,0.18)",
+            background: tournamentCoverSrc
+              ? `linear-gradient(90deg, rgba(0,0,0,.82), rgba(0,0,0,.32), rgba(0,0,0,.82)), url("${tournamentCoverSrc}") center / cover no-repeat`
+              : "linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025))",
+            boxShadow: "0 16px 44px rgba(0,0,0,.42)",
+            padding: "12px 14px",
+            minHeight: 94,
+            display: "grid",
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: tournamentLogoSrc ? "54px 1fr" : "1fr", alignItems: "center", gap: 12, position: "relative", zIndex: 1 }}>
+            {tournamentLogoSrc ? (
+              <div
+                style={{
+                  width: 54,
+                  height: 54,
+                  borderRadius: 999,
+                  padding: 4,
+                  border: "1px solid rgba(255,207,87,.62)",
+                  background: "rgba(0,0,0,.50)",
+                  boxShadow: "0 0 22px rgba(255,207,87,.30)",
+                  display: "grid",
+                  placeItems: "center",
+                  overflow: "hidden",
+                }}
+              >
+                <img src={tournamentLogoSrc} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 999, display: "block" }} />
+              </div>
+            ) : null}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 18, fontWeight: 1000, letterSpacing: 0.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 2px 16px rgba(0,0,0,.80)" }}>
+                {(tour as any)?.name || "Mon tournoi"}
+              </div>
+              <div style={{ marginTop: 3, fontSize: 11.5, opacity: 0.88, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 2px 12px rgba(0,0,0,.75)" }}>
+                {(tour as any)?.status ? String((tour as any).status).toUpperCase() : "—"} • {playableMatches.length} à jouer
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* HEADER */}
       <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 88px", alignItems: "center", gap: 10 }}>
         <button

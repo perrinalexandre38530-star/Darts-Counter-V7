@@ -74,6 +74,188 @@ type PetanqueTeamSize = 1 | 2 | 3 | 4;
 
 const BOT_TEAM_LOGOS = [botTeamEliteLogo, botTeamProLogo, botTeamChallengerLogo, botTeamMixLogo];
 
+const COVER_PRESETS_PER_PAGE = 6;
+
+const COMMON_COVER_PRESETS = [
+  { id: "common-01", label: "Commun 01", src: new URL("../assets/covers/common/common_cover_01.webp", import.meta.url).href },
+  { id: "common-02", label: "Commun 02", src: new URL("../assets/covers/common/common_cover_02.webp", import.meta.url).href },
+  { id: "common-03", label: "Commun 03", src: new URL("../assets/covers/common/common_cover_03.webp", import.meta.url).href },
+  { id: "common-04", label: "Commun 04", src: new URL("../assets/covers/common/common_cover_04.webp", import.meta.url).href },
+  { id: "common-05", label: "Commun 05", src: new URL("../assets/covers/common/common_cover_05.webp", import.meta.url).href },
+  { id: "common-06", label: "Commun 06", src: new URL("../assets/covers/common/common_cover_06.webp", import.meta.url).href },
+  { id: "common-07", label: "Commun 07", src: new URL("../assets/covers/common/common_cover_07.webp", import.meta.url).href },
+  { id: "common-08", label: "Commun 08", src: new URL("../assets/covers/common/common_cover_08.webp", import.meta.url).href },
+  { id: "common-09", label: "Commun 09", src: new URL("../assets/covers/common/common_cover_09.webp", import.meta.url).href },
+  { id: "common-10", label: "Commun 10", src: new URL("../assets/covers/common/common_cover_10.webp", import.meta.url).href },
+  { id: "common-11", label: "Commun 11", src: new URL("../assets/covers/common/common_cover_11.webp", import.meta.url).href },
+  { id: "common-12", label: "Commun 12", src: new URL("../assets/covers/common/common_cover_12.webp", import.meta.url).href },
+  { id: "common-13", label: "Commun 13", src: new URL("../assets/covers/common/common_cover_13.webp", import.meta.url).href },
+  { id: "common-14", label: "Commun 14", src: new URL("../assets/covers/common/common_cover_14.webp", import.meta.url).href },
+  { id: "common-15", label: "Commun 15", src: new URL("../assets/covers/common/common_cover_15.webp", import.meta.url).href },
+];
+
+const DARTS_COVER_PRESETS = [
+  { id: "darts-01", label: "Fléchettes 01", src: new URL("../assets/covers/darts/darts_cover_01.webp", import.meta.url).href },
+  { id: "darts-02", label: "Fléchettes 02", src: new URL("../assets/covers/darts/darts_cover_02.webp", import.meta.url).href },
+  { id: "darts-03", label: "Fléchettes 03", src: new URL("../assets/covers/darts/darts_cover_03.webp", import.meta.url).href },
+  { id: "darts-04", label: "Fléchettes 04", src: new URL("../assets/covers/darts/darts_cover_04.webp", import.meta.url).href },
+  { id: "darts-05", label: "Fléchettes 05", src: new URL("../assets/covers/darts/darts_cover_05.webp", import.meta.url).href },
+  { id: "darts-06", label: "Fléchettes 06", src: new URL("../assets/covers/darts/darts_cover_06.webp", import.meta.url).href },
+  { id: "darts-07", label: "Fléchettes 07", src: new URL("../assets/covers/darts/darts_cover_07.webp", import.meta.url).href },
+  { id: "darts-08", label: "Fléchettes 08", src: new URL("../assets/covers/darts/darts_cover_08.webp", import.meta.url).href },
+  { id: "darts-09", label: "Fléchettes 09", src: new URL("../assets/covers/darts/darts_cover_09.webp", import.meta.url).href },
+  { id: "darts-10", label: "Fléchettes 10", src: new URL("../assets/covers/darts/darts_cover_10.webp", import.meta.url).href },
+  { id: "darts-11", label: "Fléchettes 11", src: new URL("../assets/covers/darts/darts_cover_11.webp", import.meta.url).href },
+  { id: "darts-12", label: "Fléchettes 12", src: new URL("../assets/covers/darts/darts_cover_12.webp", import.meta.url).href },
+  { id: "darts-13", label: "Fléchettes 13", src: new URL("../assets/covers/darts/darts_cover_13.webp", import.meta.url).href },
+  { id: "darts-14", label: "Fléchettes 14", src: new URL("../assets/covers/darts/darts_cover_14.webp", import.meta.url).href },
+  { id: "darts-15", label: "Fléchettes 15", src: new URL("../assets/covers/darts/darts_cover_15.webp", import.meta.url).href },
+  { id: "darts-16", label: "Fléchettes 16", src: new URL("../assets/covers/darts/darts_cover_16.webp", import.meta.url).href },
+  { id: "darts-17", label: "Fléchettes 17", src: new URL("../assets/covers/darts/darts_cover_17.webp", import.meta.url).href },
+  { id: "darts-18", label: "Fléchettes 18", src: new URL("../assets/covers/darts/darts_cover_18.webp", import.meta.url).href },
+  { id: "darts-19", label: "Fléchettes 19", src: new URL("../assets/covers/darts/darts_cover_19.webp", import.meta.url).href },
+  { id: "darts-20", label: "Fléchettes 20", src: new URL("../assets/covers/darts/darts_cover_20.webp", import.meta.url).href },
+  { id: "darts-21", label: "Fléchettes 21", src: new URL("../assets/covers/darts/darts_cover_21.webp", import.meta.url).href },
+  { id: "darts-22", label: "Fléchettes 22", src: new URL("../assets/covers/darts/darts_cover_22.webp", import.meta.url).href },
+  { id: "darts-23", label: "Fléchettes 23", src: new URL("../assets/covers/darts/darts_cover_23.webp", import.meta.url).href },
+  { id: "darts-24", label: "Fléchettes 24", src: new URL("../assets/covers/darts/darts_cover_24.webp", import.meta.url).href },
+  { id: "darts-25", label: "Fléchettes 25", src: new URL("../assets/covers/darts/darts_cover_25.webp", import.meta.url).href },
+  { id: "darts-26", label: "Fléchettes 26", src: new URL("../assets/covers/darts/darts_cover_26.webp", import.meta.url).href },
+  { id: "darts-27", label: "Fléchettes 27", src: new URL("../assets/covers/darts/darts_cover_27.webp", import.meta.url).href },
+  { id: "darts-28", label: "Fléchettes 28", src: new URL("../assets/covers/darts/darts_cover_28.webp", import.meta.url).href },
+  { id: "darts-29", label: "Fléchettes 29", src: new URL("../assets/covers/darts/darts_cover_29.webp", import.meta.url).href },
+  { id: "darts-30", label: "Fléchettes 30", src: new URL("../assets/covers/darts/darts_cover_30.webp", import.meta.url).href },
+  { id: "darts-31", label: "Fléchettes 31", src: new URL("../assets/covers/darts/darts_cover_31.webp", import.meta.url).href },
+  { id: "darts-32", label: "Fléchettes 32", src: new URL("../assets/covers/darts/darts_cover_32.webp", import.meta.url).href },
+  { id: "darts-33", label: "Fléchettes 33", src: new URL("../assets/covers/darts/darts_cover_33.webp", import.meta.url).href },
+  { id: "darts-34", label: "Fléchettes 34", src: new URL("../assets/covers/darts/darts_cover_34.webp", import.meta.url).href },
+  { id: "darts-35", label: "Fléchettes 35", src: new URL("../assets/covers/darts/darts_cover_35.webp", import.meta.url).href },
+  { id: "darts-36", label: "Fléchettes 36", src: new URL("../assets/covers/darts/darts_cover_36.webp", import.meta.url).href },
+  { id: "darts-37", label: "Fléchettes 37", src: new URL("../assets/covers/darts/darts_cover_37.webp", import.meta.url).href },
+  { id: "darts-38", label: "Fléchettes 38", src: new URL("../assets/covers/darts/darts_cover_38.webp", import.meta.url).href },
+  { id: "darts-39", label: "Fléchettes 39", src: new URL("../assets/covers/darts/darts_cover_39.webp", import.meta.url).href },
+];
+
+const PETANQUE_COVER_PRESETS = [
+  { id: "petanque-01", label: "Pétanque 01", src: new URL("../assets/covers/petanque/petanque_cover_01.webp", import.meta.url).href },
+  { id: "petanque-02", label: "Pétanque 02", src: new URL("../assets/covers/petanque/petanque_cover_02.webp", import.meta.url).href },
+  { id: "petanque-03", label: "Pétanque 03", src: new URL("../assets/covers/petanque/petanque_cover_03.webp", import.meta.url).href },
+  { id: "petanque-04", label: "Pétanque 04", src: new URL("../assets/covers/petanque/petanque_cover_04.webp", import.meta.url).href },
+  { id: "petanque-05", label: "Pétanque 05", src: new URL("../assets/covers/petanque/petanque_cover_05.webp", import.meta.url).href },
+  { id: "petanque-06", label: "Pétanque 06", src: new URL("../assets/covers/petanque/petanque_cover_06.webp", import.meta.url).href },
+  { id: "petanque-07", label: "Pétanque 07", src: new URL("../assets/covers/petanque/petanque_cover_07.webp", import.meta.url).href },
+  { id: "petanque-08", label: "Pétanque 08", src: new URL("../assets/covers/petanque/petanque_cover_08.webp", import.meta.url).href },
+  { id: "petanque-09", label: "Pétanque 09", src: new URL("../assets/covers/petanque/petanque_cover_09.webp", import.meta.url).href },
+  { id: "petanque-10", label: "Pétanque 10", src: new URL("../assets/covers/petanque/petanque_cover_10.webp", import.meta.url).href },
+  { id: "petanque-11", label: "Pétanque 11", src: new URL("../assets/covers/petanque/petanque_cover_11.webp", import.meta.url).href },
+  { id: "petanque-12", label: "Pétanque 12", src: new URL("../assets/covers/petanque/petanque_cover_12.webp", import.meta.url).href },
+];
+
+const BABYFOOT_COVER_PRESETS = [
+  { id: "babyfoot-01", label: "Baby-foot 01", src: new URL("../assets/covers/babyfoot/babyfoot_cover_01.webp", import.meta.url).href },
+  { id: "babyfoot-02", label: "Baby-foot 02", src: new URL("../assets/covers/babyfoot/babyfoot_cover_02.webp", import.meta.url).href },
+  { id: "babyfoot-03", label: "Baby-foot 03", src: new URL("../assets/covers/babyfoot/babyfoot_cover_03.webp", import.meta.url).href },
+  { id: "babyfoot-04", label: "Baby-foot 04", src: new URL("../assets/covers/babyfoot/babyfoot_cover_04.webp", import.meta.url).href },
+  { id: "babyfoot-05", label: "Baby-foot 05", src: new URL("../assets/covers/babyfoot/babyfoot_cover_05.webp", import.meta.url).href },
+  { id: "babyfoot-06", label: "Baby-foot 06", src: new URL("../assets/covers/babyfoot/babyfoot_cover_06.webp", import.meta.url).href },
+  { id: "babyfoot-07", label: "Baby-foot 07", src: new URL("../assets/covers/babyfoot/babyfoot_cover_07.webp", import.meta.url).href },
+  { id: "babyfoot-08", label: "Baby-foot 08", src: new URL("../assets/covers/babyfoot/babyfoot_cover_08.webp", import.meta.url).href },
+  { id: "babyfoot-09", label: "Baby-foot 09", src: new URL("../assets/covers/babyfoot/babyfoot_cover_09.webp", import.meta.url).href },
+  { id: "babyfoot-10", label: "Baby-foot 10", src: new URL("../assets/covers/babyfoot/babyfoot_cover_10.webp", import.meta.url).href },
+  { id: "babyfoot-11", label: "Baby-foot 11", src: new URL("../assets/covers/babyfoot/babyfoot_cover_11.webp", import.meta.url).href },
+  { id: "babyfoot-12", label: "Baby-foot 12", src: new URL("../assets/covers/babyfoot/babyfoot_cover_12.webp", import.meta.url).href },
+];
+
+const PINGPONG_COVER_PRESETS = [
+  { id: "pingpong-01", label: "Ping-Pong 01", src: new URL("../assets/covers/pingpong/pingpong_cover_01.webp", import.meta.url).href },
+  { id: "pingpong-02", label: "Ping-Pong 02", src: new URL("../assets/covers/pingpong/pingpong_cover_02.webp", import.meta.url).href },
+  { id: "pingpong-03", label: "Ping-Pong 03", src: new URL("../assets/covers/pingpong/pingpong_cover_03.webp", import.meta.url).href },
+  { id: "pingpong-04", label: "Ping-Pong 04", src: new URL("../assets/covers/pingpong/pingpong_cover_04.webp", import.meta.url).href },
+  { id: "pingpong-05", label: "Ping-Pong 05", src: new URL("../assets/covers/pingpong/pingpong_cover_05.webp", import.meta.url).href },
+  { id: "pingpong-06", label: "Ping-Pong 06", src: new URL("../assets/covers/pingpong/pingpong_cover_06.webp", import.meta.url).href },
+  { id: "pingpong-07", label: "Ping-Pong 07", src: new URL("../assets/covers/pingpong/pingpong_cover_07.webp", import.meta.url).href },
+  { id: "pingpong-08", label: "Ping-Pong 08", src: new URL("../assets/covers/pingpong/pingpong_cover_08.webp", import.meta.url).href },
+  { id: "pingpong-09", label: "Ping-Pong 09", src: new URL("../assets/covers/pingpong/pingpong_cover_09.webp", import.meta.url).href },
+  { id: "pingpong-10", label: "Ping-Pong 10", src: new URL("../assets/covers/pingpong/pingpong_cover_10.webp", import.meta.url).href },
+];
+
+const MOLKKY_COVER_PRESETS = [
+  { id: "molkky-01", label: "Mölkky 01", src: new URL("../assets/covers/molkky/molkky_cover_01.webp", import.meta.url).href },
+  { id: "molkky-02", label: "Mölkky 02", src: new URL("../assets/covers/molkky/molkky_cover_02.webp", import.meta.url).href },
+  { id: "molkky-03", label: "Mölkky 03", src: new URL("../assets/covers/molkky/molkky_cover_03.webp", import.meta.url).href },
+  { id: "molkky-04", label: "Mölkky 04", src: new URL("../assets/covers/molkky/molkky_cover_04.webp", import.meta.url).href },
+  { id: "molkky-05", label: "Mölkky 05", src: new URL("../assets/covers/molkky/molkky_cover_05.webp", import.meta.url).href },
+  { id: "molkky-06", label: "Mölkky 06", src: new URL("../assets/covers/molkky/molkky_cover_06.webp", import.meta.url).href },
+  { id: "molkky-07", label: "Mölkky 07", src: new URL("../assets/covers/molkky/molkky_cover_07.webp", import.meta.url).href },
+  { id: "molkky-08", label: "Mölkky 08", src: new URL("../assets/covers/molkky/molkky_cover_08.webp", import.meta.url).href },
+  { id: "molkky-09", label: "Mölkky 09", src: new URL("../assets/covers/molkky/molkky_cover_09.webp", import.meta.url).href },
+  { id: "molkky-10", label: "Mölkky 10", src: new URL("../assets/covers/molkky/molkky_cover_10.webp", import.meta.url).href },
+];
+
+const FOOTBALL_COVER_PRESETS = [
+  { id: "football-01", label: "Football 01", src: new URL("../assets/covers/football/football_cover_01.webp", import.meta.url).href },
+  { id: "football-02", label: "Football 02", src: new URL("../assets/covers/football/football_cover_02.webp", import.meta.url).href },
+  { id: "football-03", label: "Football 03", src: new URL("../assets/covers/football/football_cover_03.webp", import.meta.url).href },
+  { id: "football-04", label: "Football 04", src: new URL("../assets/covers/football/football_cover_04.webp", import.meta.url).href },
+  { id: "football-05", label: "Football 05", src: new URL("../assets/covers/football/football_cover_05.webp", import.meta.url).href },
+  { id: "football-06", label: "Football 06", src: new URL("../assets/covers/football/football_cover_06.webp", import.meta.url).href },
+  { id: "football-07", label: "Football 07", src: new URL("../assets/covers/football/football_cover_07.webp", import.meta.url).href },
+  { id: "football-08", label: "Football 08", src: new URL("../assets/covers/football/football_cover_08.webp", import.meta.url).href },
+];
+
+const DICEGAME_COVER_PRESETS = [
+  { id: "dicegame-01", label: "Dés 01", src: new URL("../assets/covers/dicegame/dicegame_cover_01.webp", import.meta.url).href },
+  { id: "dicegame-02", label: "Dés 02", src: new URL("../assets/covers/dicegame/dicegame_cover_02.webp", import.meta.url).href },
+  { id: "dicegame-03", label: "Dés 03", src: new URL("../assets/covers/dicegame/dicegame_cover_03.webp", import.meta.url).href },
+  { id: "dicegame-04", label: "Dés 04", src: new URL("../assets/covers/dicegame/dicegame_cover_04.webp", import.meta.url).href },
+  { id: "dicegame-05", label: "Dés 05", src: new URL("../assets/covers/dicegame/dicegame_cover_05.webp", import.meta.url).href },
+  { id: "dicegame-06", label: "Dés 06", src: new URL("../assets/covers/dicegame/dicegame_cover_06.webp", import.meta.url).href },
+  { id: "dicegame-07", label: "Dés 07", src: new URL("../assets/covers/dicegame/dicegame_cover_07.webp", import.meta.url).href },
+  { id: "dicegame-08", label: "Dés 08", src: new URL("../assets/covers/dicegame/dicegame_cover_08.webp", import.meta.url).href },
+];
+
+const BADMINTON_COVER_PRESETS = [
+  { id: "badminton-01", label: "Badminton 01", src: new URL("../assets/covers/badminton/badminton_cover_01.webp", import.meta.url).href },
+  { id: "badminton-02", label: "Badminton 02", src: new URL("../assets/covers/badminton/badminton_cover_02.webp", import.meta.url).href },
+  { id: "badminton-03", label: "Badminton 03", src: new URL("../assets/covers/badminton/badminton_cover_03.webp", import.meta.url).href },
+  { id: "badminton-04", label: "Badminton 04", src: new URL("../assets/covers/badminton/badminton_cover_04.webp", import.meta.url).href },
+  { id: "badminton-05", label: "Badminton 05", src: new URL("../assets/covers/badminton/badminton_cover_05.webp", import.meta.url).href },
+  { id: "badminton-06", label: "Badminton 06", src: new URL("../assets/covers/badminton/badminton_cover_06.webp", import.meta.url).href },
+  { id: "badminton-07", label: "Badminton 07", src: new URL("../assets/covers/badminton/badminton_cover_07.webp", import.meta.url).href },
+  { id: "badminton-08", label: "Badminton 08", src: new URL("../assets/covers/badminton/badminton_cover_08.webp", import.meta.url).href },
+];
+
+const TENNIS_COVER_PRESETS = [
+  { id: "tennis-01", label: "Tennis 01", src: new URL("../assets/covers/tennis/tennis_cover_01.webp", import.meta.url).href },
+  { id: "tennis-02", label: "Tennis 02", src: new URL("../assets/covers/tennis/tennis_cover_02.webp", import.meta.url).href },
+  { id: "tennis-03", label: "Tennis 03", src: new URL("../assets/covers/tennis/tennis_cover_03.webp", import.meta.url).href },
+  { id: "tennis-04", label: "Tennis 04", src: new URL("../assets/covers/tennis/tennis_cover_04.webp", import.meta.url).href },
+  { id: "tennis-05", label: "Tennis 05", src: new URL("../assets/covers/tennis/tennis_cover_05.webp", import.meta.url).href },
+  { id: "tennis-06", label: "Tennis 06", src: new URL("../assets/covers/tennis/tennis_cover_06.webp", import.meta.url).href },
+  { id: "tennis-07", label: "Tennis 07", src: new URL("../assets/covers/tennis/tennis_cover_07.webp", import.meta.url).href },
+  { id: "tennis-08", label: "Tennis 08", src: new URL("../assets/covers/tennis/tennis_cover_08.webp", import.meta.url).href },
+];
+
+const COMPETITION_COVER_PRESETS_BY_MODE: Partial<Record<Mode, any[]>> = {
+  x01: DARTS_COVER_PRESETS,
+  cricket: DARTS_COVER_PRESETS,
+  killer: DARTS_COVER_PRESETS,
+  shanghai: DARTS_COVER_PRESETS,
+  petanque: PETANQUE_COVER_PRESETS,
+  babyfoot: BABYFOOT_COVER_PRESETS,
+  pingpong: PINGPONG_COVER_PRESETS,
+  molkky: MOLKKY_COVER_PRESETS,
+  dicegame: DICEGAME_COVER_PRESETS,
+  football: FOOTBALL_COVER_PRESETS,
+  badminton: BADMINTON_COVER_PRESETS,
+  tennis: TENNIS_COVER_PRESETS,
+};
+
+const getCompetitionCoverPresets = (m?: Mode | null) => [
+  ...((m && COMPETITION_COVER_PRESETS_BY_MODE[m]) ? COMPETITION_COVER_PRESETS_BY_MODE[m]! : COMMON_COVER_PRESETS),
+  ...COMMON_COVER_PRESETS,
+];
+
 const MODE_LABEL: Record<Mode, string> = {
   x01: "X01",
   cricket: "Cricket",
@@ -1101,7 +1283,9 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [name, setName] = React.useState(isLeague ? `Ligue ${sportLabel}` : `Tournoi ${sportLabel}`);
   const [competitionAvatar, setCompetitionAvatar] = React.useState<string | null>(null);
   const [competitionCover, setCompetitionCover] = React.useState<string | null>(null);
+  const [competitionCoverImportDiag, setCompetitionCoverImportDiag] = React.useState<string>("");
   const [showCompetitionLogoPicker, setShowCompetitionLogoPicker] = React.useState(false);
+  const [showCompetitionCoverPicker, setShowCompetitionCoverPicker] = React.useState(false);
 
   // ✅ IMPORTANT: le choix est verrouillé au SPORT actif. Darts peut choisir X01/Cricket/Killer/Shanghai, jamais Baby-foot.
   const [mode, setMode] = React.useState<Mode | null>(lockedSportMode || availableModes[0] || "x01");
@@ -2918,6 +3102,326 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
     );
   }
 
+  function pickCompetitionCoverFile(file?: File | null) {
+    if (!file) {
+      setCompetitionCoverImportDiag("Aucun fichier reçu");
+      return;
+    }
+
+    const filename = String((file as any).name || "couverture");
+    const sizeKo = Math.round((Number((file as any).size || 0) || 0) / 1024);
+    setCompetitionCoverImportDiag(`Lecture · ${filename} · ${sizeKo} Ko`);
+
+    // Aperçu immédiat dès la sélection : on affiche un blob local sans attendre FileReader.
+    try {
+      const instantUrl = URL.createObjectURL(file);
+      setCompetitionCover(instantUrl);
+    } catch (err) {
+      console.warn("[TournamentCreate] cover objectURL preview failed", err);
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result || !result.startsWith("data:image")) {
+        setCompetitionCoverImportDiag(`Erreur · image illisible · ${filename}`);
+        return;
+      }
+      setCompetitionCover(result);
+      setCompetitionCoverImportDiag(`OK · ${filename} · aperçu affiché`);
+    };
+    reader.onerror = () => {
+      setCompetitionCoverImportDiag(`Erreur FileReader · ${filename}`);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleCompetitionCoverInput(e: any) {
+    const input = e?.currentTarget || e?.target;
+    const file = input?.files?.[0] || null;
+    pickCompetitionCoverFile(file);
+    // Important : on ne vide PAS input.value avant la lecture, sinon certains navigateurs perdent le fichier.
+  }
+
+  function CoverPickerCard() {
+    const hasCover = typeof competitionCover === "string" && competitionCover.length > 0;
+
+    return (
+      <button
+        type="button"
+        data-competition-identity-card="cover-picker"
+        onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); setShowCompetitionCoverPicker(true); }}
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          minHeight: 146,
+          borderRadius: 22,
+          border: hasCover ? `1px solid ${primary}BB` : "1px solid rgba(255,255,255,.11)",
+          background: hasCover
+            ? `radial-gradient(120% 135% at 50% 0%, ${primary}20, transparent 58%), linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025))`
+            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
+          color: hasCover ? primary : "rgba(255,255,255,.86)",
+          boxShadow: hasCover ? `0 0 24px ${primary}24, 0 18px 42px rgba(0,0,0,.48)` : "0 12px 28px rgba(0,0,0,.34)",
+          padding: 10,
+          display: "grid",
+          alignContent: "center",
+          gap: 8,
+          textAlign: "center",
+          cursor: "pointer",
+        }}
+        title="Choisir une couverture"
+      >
+        <div style={{ borderRadius: 14, overflow: "hidden", border: `1px solid ${hasCover ? primary + "77" : "rgba(255,255,255,.12)"}`, boxShadow: hasCover ? `0 0 20px ${primary}22` : "inset 0 0 18px rgba(0,0,0,.35)", background: "rgba(0,0,0,.34)", minHeight: 72 }}>
+          {hasCover ? (
+            <img
+              key={`cover-card-preview-${String(competitionCover).length}-${String(competitionCover).slice(0, 40)}`}
+              src={competitionCover}
+              alt="Aperçu couverture"
+              draggable={false}
+              style={{ display: "block", width: "100%", height: 72, objectFit: "cover" }}
+              onError={() => setCompetitionCoverImportDiag("Image couverture non affichable")}
+            />
+          ) : (
+            <div style={{ height: 72, display: "grid", placeItems: "center", color: primary }}>
+              <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3.5 7h17v10H3.5z" fill="none" stroke="currentColor" strokeWidth="2" rx="2" />
+                <path d="M7 14.5l3-3 2.2 2.2 1.5-1.5 3.3 3.3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="16.4" cy="9.4" r="1.15" fill="currentColor" />
+              </svg>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: hasCover ? "1fr 30px" : "1fr", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: hasCover ? primary : "rgba(255,255,255,.86)", textAlign: "center" }}>
+            COUVERTURE
+          </div>
+          {hasCover ? (
+            <span
+              aria-label="Couverture sélectionnée"
+              title="Couverture sélectionnée"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                border: `1px solid ${primary}66`,
+                background: "rgba(0,0,0,.46)",
+                color: primary,
+                display: "grid",
+                placeItems: "center",
+                boxShadow: `0 0 16px ${primary}22`,
+                fontWeight: 1000,
+              }}
+            >
+              ✓
+            </span>
+          ) : null}
+        </div>
+      </button>
+    );
+  }
+
+  function CompetitionCoverPickerModal({ selected, onPick, onClose, accent = primary }: any) {
+    const hasSelected = typeof selected === "string" && selected.length > 0;
+    const coverPresets = getCompetitionCoverPresets(mode);
+    const [coverPresetPage, setCoverPresetPage] = React.useState(0);
+    const coverPresetPageCount = Math.max(1, Math.ceil(coverPresets.length / COVER_PRESETS_PER_PAGE));
+    const safeCoverPresetPage = Math.min(coverPresetPage, coverPresetPageCount - 1);
+    const visibleCoverPresets = coverPresets.slice(
+      safeCoverPresetPage * COVER_PRESETS_PER_PAGE,
+      safeCoverPresetPage * COVER_PRESETS_PER_PAGE + COVER_PRESETS_PER_PAGE
+    );
+
+    React.useEffect(() => {
+      setCoverPresetPage(0);
+    }, [mode]);
+
+    function clearCover(e?: any) {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      onPick?.(null);
+      setCompetitionCoverImportDiag("");
+    }
+
+    function pickPresetCover(src: string, label: string) {
+      onPick?.(src);
+      setCompetitionCoverImportDiag(`Bibliothèque · ${label}`);
+    }
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          padding: 14,
+          background: "rgba(0,0,0,.72)",
+          display: "grid",
+          placeItems: "center",
+        }}
+        onMouseDown={onClose}
+      >
+        <div
+          style={{
+            width: "min(560px, 100%)",
+            maxHeight: "86vh",
+            overflowY: "auto",
+            borderRadius: 22,
+            border: `1px solid ${accent}44`,
+            background: `radial-gradient(130% 135% at 0% 0%, ${accent}20, transparent 56%), linear-gradient(180deg, rgba(18,18,24,.98), rgba(6,6,9,.995))`,
+            boxShadow: "0 24px 80px rgba(0,0,0,.78)",
+            padding: 12,
+            color: "#fff",
+          }}
+          className="dc-scroll-thin"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: accent, fontSize: 14, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45 }}>
+                Choisir une couverture
+              </div>
+              <div style={{ marginTop: 3, fontSize: 11.5, opacity: .72 }}>
+                Bibliothèque intégrée de couvertures
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.06)",
+                color: "#fff",
+                fontWeight: 1000,
+                cursor: "pointer",
+              }}
+              title="Fermer"
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {hasSelected ? (
+              <div style={{ borderRadius: 18, border: `1px solid ${accent}55`, background: "rgba(0,0,0,.24)", padding: 10, display: "grid", gap: 8 }}>
+                <img
+                  src={selected}
+                  alt="Aperçu couverture sélectionnée"
+                  draggable={false}
+                  style={{ width: "100%", height: 118, objectFit: "cover", display: "block", borderRadius: 14, border: `1px solid ${accent}44` }}
+                />
+                <button
+                  type="button"
+                  onClick={clearCover}
+                  style={{
+                    justifySelf: "end",
+                    display: "inline-grid",
+                    gridAutoFlow: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    borderRadius: 999,
+                    border: `1px solid ${accent}66`,
+                    background: "rgba(0,0,0,.46)",
+                    color: accent,
+                    padding: "7px 10px",
+                    fontSize: 11.5,
+                    fontWeight: 1000,
+                    cursor: "pointer",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M9 7V5h6v2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M7 10l1 10h8l1-10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M10 12v5M14 12v5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Retirer
+                </button>
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45 }}>
+                Bibliothèque de couvertures
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                {visibleCoverPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    title={preset.label}
+                    onClick={() => pickPresetCover(preset.src, preset.label)}
+                    style={{
+                      borderRadius: 14,
+                      border: selected === preset.src ? `1px solid ${accent}` : "1px solid rgba(255,255,255,.14)",
+                      padding: 0,
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,.32)",
+                      cursor: "pointer",
+                      boxShadow: selected === preset.src ? `0 0 18px ${accent}33` : "none",
+                      display: "grid",
+                    }}
+                  >
+                    <img src={preset.src} alt={preset.label} draggable={false} style={{ width: "100%", height: 76, objectFit: "cover", display: "block" }} />
+                    <span style={{ padding: "7px 8px", fontSize: 11, fontWeight: 1000, color: selected === preset.src ? accent : "rgba(255,255,255,.82)", textAlign: "center" }}>
+                      {preset.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {coverPresetPageCount > 1 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "42px 1fr 42px", alignItems: "center", gap: 8, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCoverPresetPage((p: number) => Math.max(0, p - 1))}
+                    disabled={safeCoverPresetPage <= 0}
+                    aria-label="Page précédente"
+                    title="Page précédente"
+                    style={{
+                      height: 34,
+                      borderRadius: 999,
+                      border: `1px solid ${accent}55`,
+                      background: safeCoverPresetPage <= 0 ? "rgba(255,255,255,.045)" : "rgba(0,0,0,.42)",
+                      color: safeCoverPresetPage <= 0 ? "rgba(255,255,255,.32)" : accent,
+                      fontWeight: 1000,
+                      cursor: safeCoverPresetPage <= 0 ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    ‹
+                  </button>
+                  <div style={{ textAlign: "center", fontSize: 11.5, fontWeight: 1000, color: "rgba(255,255,255,.72)" }}>
+                    Page {safeCoverPresetPage + 1} / {coverPresetPageCount}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCoverPresetPage((p: number) => Math.min(coverPresetPageCount - 1, p + 1))}
+                    disabled={safeCoverPresetPage >= coverPresetPageCount - 1}
+                    aria-label="Page suivante"
+                    title="Page suivante"
+                    style={{
+                      height: 34,
+                      borderRadius: 999,
+                      border: `1px solid ${accent}55`,
+                      background: safeCoverPresetPage >= coverPresetPageCount - 1 ? "rgba(255,255,255,.045)" : "rgba(0,0,0,.42)",
+                      color: safeCoverPresetPage >= coverPresetPageCount - 1 ? "rgba(255,255,255,.32)" : accent,
+                      fontWeight: 1000,
+                      cursor: safeCoverPresetPage >= coverPresetPageCount - 1 ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    ›
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function TeamCreateModal({
     open,
     value,
@@ -2933,8 +3437,30 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
     query = "",
     onQueryChange,
   }: any) {
-    const logoInputRef = React.useRef<HTMLInputElement | null>(null);
-    const logoPreviewImgRef = React.useRef<HTMLImageElement | null>(null);
+    const [localLogoPreview, setLocalLogoPreview] = React.useState<string>(typeof logo === "string" && logo ? logo : "");
+    const [logoImportDiag, setLogoImportDiag] = React.useState<string>("");
+    const teamLogoObjectUrlRef = React.useRef<string | null>(null);
+    const teamLogoInputRef = React.useRef<HTMLInputElement | null>(null);
+
+    const teamLogoPreviewSrc = React.useMemo(() => {
+      const local = typeof localLogoPreview === "string" ? localLogoPreview : "";
+      const external = typeof logo === "string" ? logo : "";
+      return local || external || "";
+    }, [localLogoPreview, logo]);
+
+    React.useEffect(() => {
+      const incoming = typeof logo === "string" && logo ? logo : "";
+      if (incoming) setLocalLogoPreview(incoming);
+      else if (!teamLogoObjectUrlRef.current) setLocalLogoPreview("");
+    }, [logo]);
+
+    React.useEffect(() => {
+      return () => {
+        try {
+          if (teamLogoObjectUrlRef.current) URL.revokeObjectURL(teamLogoObjectUrlRef.current);
+        } catch {}
+      };
+    }, []);
 
     if (!open) return null;
 
@@ -2953,46 +3479,60 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
 
     const selected = new Set((Array.isArray(roster) ? roster : []).map(String));
 
-    function applyTeamLogoPreview(src: string) {
-      const clean = String(src || "");
-      if (!clean) return;
-      try {
-        if (logoPreviewImgRef.current) {
-          logoPreviewImgRef.current.src = clean;
-          logoPreviewImgRef.current.style.display = "block";
-        }
-      } catch {}
-      onLogoChange?.(clean);
-    }
-
     function pickLogo(file?: File | null) {
-      if (!file) return;
+      if (!file) {
+        setLogoImportDiag("Aucun fichier reçu");
+        return;
+      }
+      const filename = String((file as any).name || "logo");
       const type = String((file as any).type || "").toLowerCase();
-      const filename = String((file as any).name || "").toLowerCase();
-      const ok = !type || type.startsWith("image/") || /\.(png|jpe?g|webp|gif|avif|svg|bmp|heic|heif)$/i.test(filename);
-      if (!ok) return;
+      const size = Number((file as any).size || 0);
+      const ok = !type || type.startsWith("image/") || /\.(png|jpe?g|jfif|webp|gif|avif|svg|bmp|heic|heif)$/i.test(filename);
+      if (!ok) {
+        setLogoImportDiag(`Format refusé · ${filename}`);
+        return;
+      }
 
-      // Aperçu immédiat, avant même que FileReader ait terminé.
+      setLogoImportDiag(`Lecture · ${filename} · ${Math.round(size / 1024)} Ko`);
+
+      // 1) Aperçu immédiat local dans le médaillon.
       try {
-        const objectUrl = URL.createObjectURL(file);
-        if (objectUrl) applyTeamLogoPreview(objectUrl);
-      } catch {}
+        if (teamLogoObjectUrlRef.current) URL.revokeObjectURL(teamLogoObjectUrlRef.current);
+        const blobUrl = URL.createObjectURL(file);
+        teamLogoObjectUrlRef.current = blobUrl;
+        setLocalLogoPreview(blobUrl);
+      } catch (err) {
+        console.warn("[TournamentCreate] team logo objectURL preview failed", err);
+      }
 
-      // Version persistante : remplace ensuite le blob temporaire.
+      // 2) Version persistable en dataURL pour que le logo reste affichable après création/reload.
       const reader = new FileReader();
       reader.onload = () => {
         const result = typeof reader.result === "string" ? reader.result : "";
-        if (result) applyTeamLogoPreview(result);
+        if (!result || !result.startsWith("data:image")) {
+          setLogoImportDiag(`Erreur · image illisible · ${filename}`);
+          return;
+        }
+        try {
+          if (teamLogoObjectUrlRef.current) URL.revokeObjectURL(teamLogoObjectUrlRef.current);
+        } catch {}
+        teamLogoObjectUrlRef.current = null;
+        setLocalLogoPreview(result);
+        onLogoChange?.(result);
+        setLogoImportDiag(`OK · ${filename} · aperçu chargé`);
       };
-      reader.onerror = () => console.warn("[TournamentCreate] team logo import failed", { filename, type });
+      reader.onerror = () => {
+        console.warn("[TournamentCreate] team logo import failed", { filename, type, size });
+        setLogoImportDiag(`Erreur FileReader · ${filename}`);
+      };
       reader.readAsDataURL(file);
     }
 
     function handleLogoInput(e: any) {
       const target = e?.currentTarget || e?.target;
-      const file = target?.files?.[0] || e?.target?.files?.[0] || null;
-      if (file) pickLogo(file);
-      try { setTimeout(() => { try { target.value = ""; } catch {} }, 80); } catch {}
+      const file = target?.files?.[0] || null;
+      pickLogo(file);
+      // Important : on ne vide PAS target.value avant FileReader.
     }
 
     function togglePlayer(pid: string) {
@@ -3059,52 +3599,81 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
           </div>
 
           <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "center" }}>
-            <label
-              style={{
-                position: "relative",
-                width: 86,
-                height: 86,
-                borderRadius: 999,
-                border: `1px solid ${primary}88`,
-                background: `radial-gradient(circle at 35% 20%, ${primary}35, rgba(0,0,0,.45) 62%), rgba(0,0,0,.48)`,
-                boxShadow: `0 0 24px ${primary}33, inset 0 0 18px rgba(255,255,255,.04)`,
-                display: "grid",
-                placeItems: "center",
-                overflow: "hidden",
-                cursor: "pointer",
-                color: primary,
-                fontSize: 11,
-                fontWeight: 1000,
-                textAlign: "center",
-              }}
-            >
-              <img
-                ref={logoPreviewImgRef}
-                key={String(logo || "").slice(0, 100)}
-                src={logo || ""}
-                alt=""
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: logo ? "block" : "none" }}
-              />
-              {!logo ? <>LOGO<br />ÉQUIPE</> : null}
+            <div style={{ display: "grid", gap: 6, justifyItems: "center" }}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); teamLogoInputRef.current?.click?.(); }}
+                onKeyDown={(e: any) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); teamLogoInputRef.current?.click?.(); } }}
+                style={{
+                  position: "relative",
+                  width: 86,
+                  height: 86,
+                  borderRadius: 999,
+                  border: `1px solid ${primary}88`,
+                  background: teamLogoPreviewSrc
+                    ? `center / contain no-repeat url("${teamLogoPreviewSrc}"), radial-gradient(circle at 35% 20%, ${primary}35, rgba(0,0,0,.45) 62%), rgba(0,0,0,.48)`
+                    : `radial-gradient(circle at 35% 20%, ${primary}35, rgba(0,0,0,.45) 62%), rgba(0,0,0,.48)`,
+                  boxShadow: `0 0 24px ${primary}33, inset 0 0 18px rgba(255,255,255,.04)`,
+                  display: "grid",
+                  placeItems: "center",
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  color: primary,
+                  fontSize: 11,
+                  fontWeight: 1000,
+                  textAlign: "center",
+                  padding: 0,
+                }}
+              >
+                {teamLogoPreviewSrc ? (
+                  <img
+                    key={String(teamLogoPreviewSrc || "").slice(0, 100)}
+                    src={teamLogoPreviewSrc}
+                    alt="Logo équipe"
+                    draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none", padding: 4 }}
+                    onError={() => setLogoImportDiag("Image non affichable")}
+                  />
+                ) : (
+                  <span style={{ pointerEvents: "none" }}>LOGO<br />ÉQUIPE</span>
+                )}
+                <input
+                  ref={teamLogoInputRef}
+                  type="file"
+                  accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
+                  aria-label="Choisir le logo de l’équipe"
+                  onChange={handleLogoInput}
+                  style={{
+                    position: "absolute",
+                    width: 1,
+                    height: 1,
+                    opacity: 0,
+                    pointerEvents: "none",
+                    overflow: "hidden",
+                  }}
+                />
+              </div>
+              {logoImportDiag ? (
+                <div style={{ maxWidth: 92, fontSize: 9.5, lineHeight: 1.15, color: "rgba(255,255,255,.64)", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {logoImportDiag}
+                </div>
+              ) : null}
               <input
-                ref={logoInputRef}
                 type="file"
                 accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
-                aria-label="Choisir le logo de l’équipe"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  opacity: 0,
-                  cursor: "pointer",
-                  zIndex: 5,
-                }}
-                onClick={(e: any) => e.stopPropagation()}
-                onInput={handleLogoInput}
+                aria-label="Importer le logo équipe"
                 onChange={handleLogoInput}
+                style={{
+                  display: "block",
+                  width: 92,
+                  minHeight: 28,
+                  fontSize: 9,
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
               />
-            </label>
+            </div>
             <div style={{ display: "grid", gap: 9 }}>
               <TextInput value={value} onChange={(e: any) => onChange?.(e.target.value)} placeholder="Nom de l’équipe" />
               <TextInput value={query} onChange={(e: any) => onQueryChange?.(e.target.value)} placeholder="Rechercher un joueur à ajouter" />
@@ -3186,101 +3755,60 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
   }
 
 function IdentityImageCard({ label, value, onChange, variant = "avatar", accent = primary, onOpenGallery }: any) {
-    const inputRef = React.useRef<HTMLInputElement | null>(null);
-    const previewImgRef = React.useRef<HTMLImageElement | null>(null);
-    const bgImgRef = React.useRef<HTMLImageElement | null>(null);
     const isCover = variant === "cover";
-    const inputId = React.useMemo(() => `competition_identity_${Math.random().toString(36).slice(2)}`, []);
     const [localPreview, setLocalPreview] = React.useState<string>(typeof value === "string" && value ? value : "");
+    const [importDiag, setImportDiag] = React.useState<string>("");
 
     React.useEffect(() => {
-      const incoming = typeof value === "string" ? value : "";
-      if (incoming && incoming !== localPreview) setLocalPreview(incoming);
-      if (!incoming && localPreview && !String(localPreview).startsWith("blob:")) setLocalPreview("");
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const incoming = typeof value === "string" && value ? value : "";
+      setLocalPreview(incoming);
     }, [value]);
 
-    function commitPreview(src: string) {
+    function applyPreview(src: string, fileName = "image") {
       const clean = String(src || "");
-      if (!clean) return;
-
-      // Preview immédiate en DOM natif + state React.
-      // Certains WebViews/PWA gardent l'input file actif mais retardent le repaint React :
-      // on force donc aussi le src de l'image visible.
-      try {
-        if (previewImgRef.current) {
-          previewImgRef.current.src = clean;
-          previewImgRef.current.style.display = "block";
-        }
-        if (bgImgRef.current) {
-          bgImgRef.current.src = clean;
-          bgImgRef.current.style.display = "block";
-        }
-      } catch {}
-
+      if (!clean) {
+        setImportDiag(`Erreur · lecture vide · ${fileName}`);
+        return;
+      }
       setLocalPreview(clean);
       onChange?.(clean);
+      setImportDiag(`OK · ${fileName} · aperçu affiché`);
     }
 
-    function pickFile(file?: File | null) {
-      if (!file) return;
-
-      // ✅ Couverture / logo : AUCUN blocage de dimension, AUCUN blocage MIME strict.
-      // On force d'abord un aperçu blob immédiat, puis un dataURL persistant.
-      try {
-        const objectUrl = URL.createObjectURL(file);
-        if (objectUrl) commitPreview(objectUrl);
-      } catch (err) {
-        console.warn("[TournamentCreate] createObjectURL identity failed", err);
+    function readPickedFile(file?: File | null) {
+      if (!file) {
+        setImportDiag("Aucun fichier reçu");
+        return;
       }
+      const fileName = String((file as any)?.name || "image");
+      const fileSize = Number((file as any)?.size || 0);
+      setImportDiag(`Lecture · ${fileName} · ${Math.round(fileSize / 1024)} Ko`);
 
       try {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = typeof reader.result === "string" ? reader.result : "";
-          if (result) commitPreview(result);
-        };
-        reader.onerror = () => console.warn("[TournamentCreate] identity image import failed", { name: (file as any)?.name, type: (file as any)?.type });
-        reader.readAsDataURL(file);
-      } catch (err) {
-        console.warn("[TournamentCreate] readAsDataURL identity failed", err);
-      }
+        const blobUrl = URL.createObjectURL(file);
+        setLocalPreview(blobUrl);
+        onChange?.(blobUrl);
+      } catch {}
+
+      const reader = new FileReader();
+      reader.onload = () => applyPreview(typeof reader.result === "string" ? reader.result : "", fileName);
+      reader.onerror = () => setImportDiag(`Erreur FileReader · ${fileName}`);
+      reader.readAsDataURL(file);
     }
 
     function handleInputFile(e: any) {
-      const target = e?.currentTarget || e?.target;
-      const file = target?.files?.[0] || e?.target?.files?.[0] || null;
-      if (file) pickFile(file);
-      try {
-        // On laisse le navigateur terminer le cycle change/input avant de vider l'input.
-        setTimeout(() => { try { target.value = ""; } catch {} }, 80);
-      } catch {}
+      const input = e?.currentTarget || e?.target;
+      const file = input?.files?.[0] || null;
+      readPickedFile(file);
+      window.setTimeout(() => { try { input.value = ""; } catch {} }, 0);
     }
-
-    React.useEffect(() => {
-      const el = inputRef.current;
-      if (!el) return;
-      const nativeHandler = (ev: any) => handleInputFile(ev);
-      el.addEventListener("change", nativeHandler);
-      el.addEventListener("input", nativeHandler);
-      return () => {
-        el.removeEventListener("change", nativeHandler);
-        el.removeEventListener("input", nativeHandler);
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [inputRef.current, onChange]);
 
     const preview = localPreview || (typeof value === "string" ? value : "");
     const hasPreview = !!preview;
 
-    const choose = () => {
-      if (onOpenGallery && !isCover) onOpenGallery();
-      else inputRef.current?.click();
-    };
-
     const fallbackIcon = isCover ? (
       <svg width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3.5 7h17v10H3.5z" fill="none" stroke="currentColor" strokeWidth="2" rx="2" />
+        <path d="M3.5 7h17v10H3.5z" fill="none" stroke="currentColor" strokeWidth="2" />
         <path d="M7 14.5l3-3 2.2 2.2 1.5-1.5 3.3 3.3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         <circle cx="16.4" cy="9.4" r="1.15" fill="currentColor" />
       </svg>
@@ -3305,60 +3833,38 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
       cursor: "pointer",
       display: "grid",
       placeItems: "center",
-      gap: 9,
+      gap: 8,
       padding: "14px 10px 12px",
       WebkitTapHighlightColor: "transparent",
-      appearance: "none",
       textAlign: "center",
+      userSelect: "none",
     };
 
-    const inner = (
+    const content = (
       <>
-        <input
-          id={inputId}
-          ref={inputRef}
-          type="file"
-          accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
-          aria-label={isCover ? "Choisir une couverture" : "Choisir une image"}
-          style={isCover ? {
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            opacity: 0.001,
-            cursor: "pointer",
-            zIndex: 30,
-            display: "block",
-          } : {
-            position: "absolute",
-            width: 1,
-            height: 1,
-            opacity: 0,
-            pointerEvents: "none",
-          }}
-          onChange={handleInputFile}
-          onInput={handleInputFile}
-        />
-
         {isCover ? (
-          <img
-            ref={bgImgRef}
-            key={`cover-bg-${String(preview).slice(0, 80)}`}
-            src={preview || ""}
-            alt=""
-            draggable={false}
+          <input
+            type="file"
+            accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.svg,.bmp,.heic,.heif"
+            aria-label="Choisir une couverture"
+            onChange={handleInputFile}
             style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              opacity: hasPreview ? .64 : 0,
-              display: hasPreview ? "block" : "none",
-              pointerEvents: "none",
-              zIndex: 0,
-            }}
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                opacity: hasPreview ? 0.06 : 0.78,
+                cursor: "pointer",
+                zIndex: 80,
+                fontSize: 10,
+                color: "#fff",
+                background: "rgba(0,0,0,.06)",
+              }}
           />
+        ) : null}
+
+        {isCover && hasPreview ? (
+          <img src={preview} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .62, pointerEvents: "none", zIndex: 0 }} />
         ) : null}
 
         <div
@@ -3379,113 +3885,46 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             pointerEvents: "none",
           }}
         >
-          <img
-            ref={previewImgRef}
-            key={`identity-main-${String(preview).slice(0, 100)}`}
-            src={preview || ""}
-            alt=""
-            draggable={false}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              borderRadius: isCover ? 13 : 999,
-              display: hasPreview ? "block" : "none",
-              background: "rgba(0,0,0,.35)",
-            }}
-            onError={(e: any) => {
-              console.warn("[TournamentCreate] preview image error", { label, len: String(preview).length, start: String(preview).slice(0, 60) });
-              try { e.currentTarget.style.display = "none"; } catch {}
-            }}
-          />
-          <div
-            style={{
-              width: isCover ? 52 : 48,
-              height: isCover ? 34 : 48,
-              borderRadius: isCover ? 12 : 999,
-              border: `1px solid ${accent}66`,
-              display: hasPreview ? "none" : "grid",
-              placeItems: "center",
-              background: "rgba(0,0,0,.28)",
-              color: accent,
-            }}
-          >
-            {fallbackIcon}
-          </div>
+          {hasPreview ? (
+            <img src={preview} alt={label} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: isCover ? 13 : 999, background: "rgba(0,0,0,.35)", display: "block" }} onError={() => setImportDiag("Image non affichable")} />
+          ) : (
+            <div style={{ width: isCover ? 52 : 48, height: isCover ? 34 : 48, borderRadius: isCover ? 12 : 999, border: `1px solid ${accent}66`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.28)", color: accent }}>
+              {fallbackIcon}
+            </div>
+          )}
         </div>
 
-        <div style={{ position: "relative", zIndex: 1, fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: hasPreview ? accent : "rgba(255,255,255,.86)", pointerEvents: "none" }}>
-          {label}
-        </div>
-
+        <div style={{ position: "relative", zIndex: 1, fontSize: 12, fontWeight: 1000, letterSpacing: .5, color: hasPreview ? accent : "rgba(255,255,255,.86)", pointerEvents: "none" }}>{label}</div>
+        {importDiag ? <div style={{ position: "relative", zIndex: 1, maxWidth: "100%", fontSize: 9.5, lineHeight: 1.2, color: hasPreview ? "rgba(255,255,255,.72)" : "rgba(255,255,255,.58)", opacity: .95, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>{importDiag}</div> : null}
         {hasPreview ? (
-          <span
-            role="button"
+          <button
+            type="button"
             aria-label="Retirer"
             title="Retirer"
-            onClick={(e: any) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setLocalPreview("");
-              onChange?.(null);
-            }}
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              width: 24,
-              height: 24,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,.14)",
-              background: "rgba(0,0,0,.48)",
-              color: "rgba(255,255,255,.86)",
-              display: "grid",
-              placeItems: "center",
-              fontSize: 15,
-              fontWeight: 1000,
-              cursor: "pointer",
-              boxShadow: "0 6px 16px rgba(0,0,0,.32)",
-              zIndex: 40,
-            }}
-          >
-            ×
-          </span>
+            onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); setLocalPreview(""); setImportDiag(""); onChange?.(null); }}
+            style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, border: "1px solid rgba(255,255,255,.14)", background: "rgba(0,0,0,.48)", color: "rgba(255,255,255,.86)", display: "grid", placeItems: "center", fontSize: 15, fontWeight: 1000, cursor: "pointer", boxShadow: "0 6px 16px rgba(0,0,0,.32)", zIndex: 120 }}
+          >×</button>
         ) : null}
       </>
     );
 
     if (isCover) {
       return (
-        <label
-          htmlFor={inputId}
-          style={cardStyle}
-          onDragOver={(e: any) => { e.preventDefault(); e.stopPropagation(); }}
-          onDrop={(e: any) => {
-            e.preventDefault();
-            e.stopPropagation();
-            pickFile(e?.dataTransfer?.files?.[0]);
-          }}
-        >
-          {inner}
+        <label data-competition-identity-card="cover" style={cardStyle}>
+          {content}
         </label>
       );
     }
 
     return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={choose}
-        onKeyDown={(e: any) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            choose();
-          }
-        }}
-        style={cardStyle}
+      <button
+        type="button"
+        data-competition-identity-card="logo"
+        onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); onOpenGallery?.(); }}
+        style={{ ...cardStyle, border: hasPreview ? `1px solid ${accent}BB` : "1px solid rgba(255,255,255,.11)" }}
       >
-        {inner}
-      </div>
+        {content}
+      </button>
     );
   }
 
@@ -3908,13 +4347,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 accent={primary}
                 onOpenGallery={() => setShowCompetitionLogoPicker(true)}
               />
-              <IdentityImageCard
-                label="COUVERTURE"
-                value={competitionCover}
-                onChange={setCompetitionCover}
-                variant="cover"
-                accent={primary}
-              />
+              <CoverPickerCard />
             </div>
             <GuidedFooter />
           </Section>
@@ -4336,6 +4769,18 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           />
         ) : null}
 
+        {showCompetitionCoverPicker ? (
+          <CompetitionCoverPickerModal
+            selected={competitionCover}
+            accent={primary}
+            onClose={() => setShowCompetitionCoverPicker(false)}
+            onPick={(url: string | null) => {
+              setCompetitionCover(url || null);
+              if (url) setShowCompetitionCoverPicker(false);
+            }}
+          />
+        ) : null}
+
         <TeamCreateModal
           open={teamCreateOpen}
           value={teamCreateName}
@@ -4470,13 +4915,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             accent={primary}
             onOpenGallery={() => setShowCompetitionLogoPicker(true)}
           />
-          <IdentityImageCard
-            label="COUVERTURE"
-            value={competitionCover}
-            onChange={setCompetitionCover}
-            variant="cover"
-            accent={primary}
-          />
+          <CoverPickerCard />
         </div>
       </Section>
 
@@ -5285,6 +5724,18 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
           onPick={(url: string | null) => {
             setCompetitionAvatar(url || null);
             if (url) setShowCompetitionLogoPicker(false);
+          }}
+        />
+      ) : null}
+
+      {showCompetitionCoverPicker ? (
+        <CompetitionCoverPickerModal
+          selected={competitionCover}
+          accent={primary}
+          onClose={() => setShowCompetitionCoverPicker(false)}
+          onPick={(url: string | null) => {
+            setCompetitionCover(url || null);
+            if (url) setShowCompetitionCoverPicker(false);
           }}
         />
       ) : null}
