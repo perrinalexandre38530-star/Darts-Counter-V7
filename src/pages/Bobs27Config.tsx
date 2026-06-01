@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+stimport React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";

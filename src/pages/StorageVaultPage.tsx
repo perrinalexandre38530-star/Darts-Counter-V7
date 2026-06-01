@@ -1,4 +1,5 @@
 import * as React from "react";
+import { apiPost } from "../lib/apiClient";
 
 // Page autonome volontairement : aucun import projet fragile.
 // Objectif : permettre d'inspecter localStorage / IndexedDB / NAS même en situation de récupération.
@@ -314,10 +315,8 @@ export default function StorageVaultPage({ go }: Props) {
     setBusy(true);
     try {
       const snap = await makeSnapshot();
-      const token = localStorage.getItem("dc_auth_token") || localStorage.getItem("token") || "";
-      const res = await fetch("/sync/slots", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ label: "Backup NAS versionné", payload: snap }) });
-      if (!res.ok) throw new Error(`NAS indisponible (${res.status})`);
-      setMsg("Backup NAS versionné demandé. Vérifie que le backend patché est installé.");
+      await apiPost("/sync/slots", { label: "Backup NAS versionné", payload: snap });
+      setMsg("Slot NAS créé. Le backup versionné est enregistré côté NAS.");
     } catch (e: any) {
       setMsg(`NAS non disponible ou backend non patché : ${e?.message || e}`);
     } finally { setBusy(false); }
