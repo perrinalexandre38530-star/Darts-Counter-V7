@@ -1075,9 +1075,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                     borderRadius: 24,
                     padding: 13,
                     border: `1px solid ${accent}33`,
-                    background: cover
-                      ? `linear-gradient(90deg, rgba(7,7,12,.82) 0%, rgba(7,7,12,.74) 46%, rgba(7,7,12,.94) 100%), radial-gradient(120% 150% at 0% 0%, ${accent}24, transparent 56%), center / cover no-repeat url(${cover})`
-                      : `radial-gradient(120% 150% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(22,22,29,.97), rgba(7,7,12,.995))`,
+                    background: `radial-gradient(120% 150% at 0% 0%, ${accent}18, transparent 56%), linear-gradient(180deg, rgba(22,22,29,.97), rgba(7,7,12,.995))`,
                     boxShadow: `0 18px 46px rgba(0,0,0,.62), 0 0 26px ${accent}11`,
                     cursor: id ? "pointer" : "default",
                     opacity: id ? 1 : 0.62,
@@ -1085,7 +1083,22 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                   }}
                   title={id ? "Ouvrir la compétition" : "ID manquant"}
                 >
-                  <div style={{ display: "grid", gridTemplateColumns: "62px 1fr", gap: 12, alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "62px 1fr",
+                      gap: 12,
+                      alignItems: "center",
+                      minHeight: 74,
+                      margin: -2,
+                      padding: 8,
+                      borderRadius: 18,
+                      overflow: "hidden",
+                      background: cover
+                        ? `linear-gradient(90deg, rgba(7,7,12,.80) 0%, rgba(7,7,12,.68) 48%, rgba(7,7,12,.92) 100%), radial-gradient(90% 120% at 0% 0%, ${accent}20, transparent 62%), center / cover no-repeat url(${cover})`
+                        : "transparent",
+                    }}
+                  >
                     <div
                       style={{
                         width: 62,
