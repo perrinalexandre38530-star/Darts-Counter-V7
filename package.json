@@ -1,16 +1,51 @@
 {
-  "name": "multisports-api",
-  "version": "2.0.0",
-  "main": "server.js",
+  "name": "darts-counter-v5",
+  "private": true,
+  "version": "5.3.0",
+  "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "deploy:online": "wrangler deploy",
+    "test:auth": "node ./src/tools/test-auth-spine.mjs",
+    "test:x01v3": "node --experimental-strip-types ./tools/test-x01v3-regression.ts",
+    "test:sync": "node ./tools/test-cloud-sync.mjs",
+    "test:ci": "npm run typecheck && npm run build && npm run test:auth && npm run test:sync",
+    "compress-images": "node ./src/tools/compress-images.js",
+    "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2",
-    "pg": "^8.13.1"
+    "@supabase/supabase-js": "^2.48.0",
+    "fflate": "^0.8.2",
+    "jsqr": "^1.4.0",
+    "lz-string": "^1.5.0",
+    "nanoid": "^5.1.6",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.3",
+    "recharts": "^3.3.0",
+    "stripe": "^22.1.1",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@types/node": "^24.8.1",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "eslint": "^9.38.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "glob": "^11.0.3",
+    "globals": "^16.4.0",
+    "sharp": "^0.33.5",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.1",
+    "vite": "^7.1.10",
+    "wrangler": "^4.50.0"
   }
 }
