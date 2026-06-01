@@ -188,6 +188,7 @@ import MessagesPage from "./pages/MessagesPage";
 const Settings = React.lazy(() => import("./pages/Settings"));
 const StatsShell = React.lazy(() => import("./pages/StatsShell"));
 const StatsHub = React.lazy(() => import("./pages/StatsHub"));
+const StorageVaultPage = React.lazy(() => import("./pages/StorageVaultPage"));
 // StatsOnline en import statique : évite les crashs de chunk dynamique après déploiement/cache
 
 const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
@@ -3942,6 +3943,10 @@ case "babyfoot_team_edit":
 
       case "sync_center":
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
+        break;
+
+      case "storage_vault":
+        page = <StorageVaultPage go={go} />;
         break;
 
         case "tournaments": {

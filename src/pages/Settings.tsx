@@ -3023,6 +3023,13 @@ export function Settings({ go }: Props) {
             />
 
             <SettingsMenuCard
+              title="Carte mémoire / Coffre"
+              subtitle="Inspecte LocalStorage, IndexedDB et NAS. Slots locaux + 10 sauvegardes NAS restaurables."
+              theme={theme}
+              onClick={() => go?.("storage_vault")}
+            />
+
+            <SettingsMenuCard
               title={t("settings.menu.developer", "Développeur")}
               subtitle="Diagnostic, tests, simulations, push NAS, logs et sécurité technique."
               theme={theme}
