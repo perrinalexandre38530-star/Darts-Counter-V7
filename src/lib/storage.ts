@@ -1471,6 +1471,185 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   }
 }
 
+
+
+// ============================================================
+// ✅ RESTORE FALLBACK latest.json / NAS
+// Certains backups ne contiennent plus history.rows, mais contiennent encore
+// dc_stats_index_v2 avec matchIdsByMode. Dans ce cas on recrée des lignes
+// d'historique MINIMALES pour que HistoryPage revoie les parties, tout en
+// gardant l'index stats restauré comme source de vérité.
+// ============================================================
+function storageStatsIndexHasData(idx: any): boolean {
+  try {
+    if (!idx || typeof idx !== "object") return false;
+    if (Number(idx?.totals?.matches || 0) > 0) return true;
+    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
+    return Object.values(byPlayer).some((p: any) => Number((p as any)?.matches || 0) > 0);
+  } catch { return false; }
+}
+
+function pickBestRestorableStatsIndexFromDump(dump: any): any | null {
+  try {
+    const idb = dump?.idb && typeof dump.idb === "object" ? dump.idb : {};
+    const currentUid = getStorageUser();
+    const candidates = Object.entries(idb)
+      .filter(([k, v]) => String(k).startsWith("dc_stats_index_v2") && storageStatsIndexHasData(v))
+      .map(([k, v]) => {
+        const idx: any = v || {};
+        const matches = Number(idx?.totals?.matches || 0) || 0;
+        const players = idx?.byPlayer && typeof idx.byPlayer === "object" ? Object.keys(idx.byPlayer).length : 0;
+        const scopedBonus = currentUid && String(k).includes(currentUid) ? 100000 : 0;
+        return { key: String(k), value: idx, score: scopedBonus + matches * 1000 + players };
+      })
+      .sort((a, b) => b.score - a.score);
+    return candidates[0]?.value || null;
+  } catch { return null; }
+}
+
+function markRestoredStatsIndex(idx: any): any {
+  if (!idx || typeof idx !== "object") return idx;
+  return {
+    ...idx,
+    version: Number(idx?.version || 2) || 2,
+    rebuiltAt: Number(idx?.rebuiltAt || Date.now()) || Date.now(),
+    meta: {
+      ...(idx?.meta && typeof idx.meta === "object" ? idx.meta : {}),
+      source: "restore-latest-json-stats-index",
+      restoredFromStatsIndex: true,
+      rowsScanned: Number(idx?.meta?.rowsScanned || idx?.totals?.matches || 0) || 0,
+      historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || idx?.rebuiltAt || Date.now()) || Date.now(),
+    },
+  };
+}
+
+function storageModeLabel(mode: string): string {
+  const m = String(mode || "unknown").toLowerCase();
+  if (m === "x01") return "X01";
+  if (m === "babyfoot") return "Baby-foot";
+  if (m === "cricket") return "Cricket";
+  if (m === "killer") return "Killer";
+  if (m === "golf") return "Golf";
+  if (m === "shanghai") return "Shanghai";
+  return m ? m.toUpperCase() : "MATCH";
+}
+
+function storageTsFromMatchId(id: string, fallback: number, offset: number): number {
+  try {
+    const s = String(id || "");
+    const m = s.match(/(?:^|[-_])(\d{13})(?:[-_]|$)/);
+    if (m) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 1000000000000) return n;
+    }
+  } catch {}
+  const base = Number(fallback || Date.now()) || Date.now();
+  return base - Math.max(0, offset) * 60000;
+}
+
+function storagePlayerModeScore(p: any, mode: string): number {
+  try {
+    const m = String(mode || "").toLowerCase();
+    let score = 0;
+    if (m && p?.[m] && typeof p[m] === "object") score += 5000;
+    if (m === "x01") {
+      score += Number(p?.dartsThrown || 0) > 0 || Number(p?.pointsScored || 0) > 0 || p?.buckets ? 2500 : 0;
+    }
+    score += (Number(p?.matches || 0) || 0) * 20;
+    score += (Number(p?.wins || 0) || 0) * 8;
+    score += Number(p?.lastMatchAt || 0) / 1000000000;
+    return score;
+  } catch { return 0; }
+}
+
+function storagePlayersForSyntheticHistory(idx: any, mode: string): any[] {
+  try {
+    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
+    const rows = Object.entries(byPlayer)
+      .map(([pid, raw]) => ({ pid: String(pid), raw: raw as any, score: storagePlayerModeScore(raw, mode) }))
+      .filter((x) => x.pid && x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+    return rows.map(({ pid, raw }) => ({
+      id: String(raw?.playerId || pid),
+      playerId: String(raw?.playerId || pid),
+      profileId: String(raw?.playerId || pid),
+      name: String(raw?.name || raw?.displayName || raw?.nickname || pid),
+      matches: Number(raw?.matches || 0) || 0,
+      wins: Number(raw?.wins || 0) || 0,
+      losses: Number(raw?.losses || 0) || 0,
+      dartsThrown: Number(raw?.dartsThrown || 0) || 0,
+      pointsScored: Number(raw?.pointsScored || 0) || 0,
+      avg3: Number(raw?.avg3 || 0) || 0,
+      bestVisit: Number(raw?.bestVisit || 0) || 0,
+      bestCheckout: Number(raw?.bestCheckout || 0) || 0,
+      buckets: raw?.buckets && typeof raw.buckets === "object" ? raw.buckets : {},
+      ...(raw?.[String(mode).toLowerCase()] && typeof raw[String(mode).toLowerCase()] === "object" ? { [String(mode).toLowerCase()]: raw[String(mode).toLowerCase()] } : {}),
+    }));
+  } catch { return []; }
+}
+
+function buildSyntheticHistoryDumpFromStatsIndex(idx: any): any | null {
+  try {
+    if (!storageStatsIndexHasData(idx)) return null;
+    const rows: Record<string, any> = {};
+    const byMode = idx?.byMode && typeof idx.byMode === "object" ? idx.byMode : {};
+    const matchIdsByMode = idx?.matchIdsByMode && typeof idx.matchIdsByMode === "object" ? idx.matchIdsByMode : {};
+    const defaultTs = Number(idx?.meta?.historyUpdatedAt || idx?.rebuiltAt || Date.now()) || Date.now();
+
+    for (const [modeRaw, infoRaw] of Object.entries(byMode)) {
+      const mode = String(modeRaw || "unknown").toLowerCase();
+      const info: any = infoRaw || {};
+      const count = Number(info?.matches || 0) || 0;
+      if (!count) continue;
+      const rawIds = Array.isArray((matchIdsByMode as any)[mode]) ? (matchIdsByMode as any)[mode].filter(Boolean).map(String) : [];
+      const ids = rawIds.length ? rawIds : Array.from({ length: count }, (_, i) => `restored-${mode}-${defaultTs}-${i + 1}`);
+      const players = storagePlayersForSyntheticHistory(idx, mode);
+      const winner = players.find((p: any) => Number(p?.wins || 0) > 0) || players[0] || null;
+      const modeTs = Number(info?.lastMatchAt || defaultTs) || defaultTs;
+
+      ids.forEach((id: string, i: number) => {
+        const ts = storageTsFromMatchId(id, modeTs, i);
+        rows[id] = {
+          id,
+          matchId: id,
+          kind: mode,
+          mode,
+          sport: mode === "babyfoot" ? "babyfoot" : "darts",
+          status: "finished",
+          createdAt: ts,
+          updatedAt: ts,
+          finishedAt: ts,
+          players,
+          winnerId: winner?.id || winner?.playerId || null,
+          winnerName: winner?.name || null,
+          restoredFromStatsIndex: true,
+          statsOnly: true,
+          game: {
+            mode,
+            startScore: mode === "x01" ? 301 : undefined,
+            restoredFromStatsIndex: true,
+          },
+          summary: {
+            mode,
+            status: "finished",
+            title: `${storageModeLabel(mode)} restauré`,
+            restoredFromStatsIndex: true,
+            statsOnly: true,
+            players,
+            winnerId: winner?.id || winner?.playerId || null,
+            scoreLine: "Stats restaurées depuis dc_stats_index_v2 — détail des volées absent",
+            avg3ByPlayer: Object.fromEntries(players.map((p: any) => [String(p.id), Number(p.avg3 || 0) || 0])),
+            bestVisitByPlayer: Object.fromEntries(players.map((p: any) => [String(p.id), Number(p.bestVisit || 0) || 0])),
+          },
+        };
+      });
+    }
+
+    return Object.keys(rows).length ? { _v: 1, rows } : null;
+  } catch { return null; }
+}
+
 export async function importAll(dump: any): Promise<void> {
   if (!dump) return;
 
@@ -1479,6 +1658,7 @@ export async function importAll(dump: any): Promise<void> {
   if ((dump._v === 1 || dump._v === 2) && dump.idb) {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
+    const restoredStatsIndex = markRestoredStatsIndex(pickBestRestorableStatsIndexFromDump(dump));
 
     // 1) restore KV (IDB kv)
     // ⚠️ IMPORTANT: un exportAll() v2 contient déjà des clés IDB potentiellement namespacées
@@ -1492,14 +1672,40 @@ export async function importAll(dump: any): Promise<void> {
       }
     }
 
+    // ✅ Si un vrai dc_stats_index_v2 est présent, on le réécrit explicitement
+    // sur la clé scopée de l'utilisateur courant. C'est le bloc qui contient
+    // les 51 parties/stats quand history.rows est vide.
+    try {
+      if (storageStatsIndexHasData(restoredStatsIndex)) {
+        await importIdbEntryRaw("dc_stats_index_v2", restoredStatsIndex);
+      }
+    } catch (e) {
+      console.warn("[storage] importAll restored stats index preserve failed", e);
+    }
+
     // 2) restore localStorage (dc_* + dc-*)
     importLocalStorageDc(lsDump);
 
     // 3) ✅ CRITIQUE : restore DB historique (historyCloud)
+    // Si history.rows est vide mais dc_stats_index_v2 contient les matchIds,
+    // on reconstruit des cartes d'historique minimales. Elles ne recréent pas
+    // les volées perdues, mais elles font réapparaître les parties dans Historique
+    // et empêchent l'écran Stats de repartir d'un historique totalement vide.
     try {
-      if (dump.history && dump.history._v === 1) {
+      const rawRows = dump?.history?.rows && typeof dump.history.rows === "object" ? dump.history.rows : {};
+      const hasRealHistoryRows = Object.keys(rawRows).length > 0;
+      if (dump.history && dump.history._v === 1 && hasRealHistoryRows) {
         await importHistoryDump(dump.history, { replace: true });
+      } else {
+        const syntheticHistory = buildSyntheticHistoryDumpFromStatsIndex(restoredStatsIndex);
+        if (syntheticHistory?.rows && Object.keys(syntheticHistory.rows).length > 0) {
+          await importHistoryDump(syntheticHistory, { replace: true });
+          try { localStorage.setItem("dc_history_restored_from_stats_index_v1", "1"); } catch {}
+        } else if (dump.history && dump.history._v === 1) {
+          await importHistoryDump(dump.history, { replace: true });
+        }
       }
+      try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
     } catch (e) {
       console.warn("[storage] importAll history restore failed", e);
     }

@@ -241,11 +241,20 @@ function writeDashboardCacheFromStatsIndex(idx: any) {
 async function preserveRestoredStatsIndex(snapshot: any) {
   const idx = pickBestStatsIndexFromSnapshot(snapshot);
   if (!idx) return null;
-  await saveStatsIndex(idx as any);
-  writeDashboardCacheFromStatsIndex(idx);
+  const restoredIdx = {
+    ...(idx as any),
+    meta: {
+      ...(((idx as any)?.meta && typeof (idx as any).meta === "object") ? (idx as any).meta : {}),
+      source: "restore-latest-json-stats-index",
+      restoredFromStatsIndex: true,
+      rowsScanned: Number((idx as any)?.meta?.rowsScanned || (idx as any)?.totals?.matches || 0) || 0,
+    },
+  };
+  await saveStatsIndex(restoredIdx as any);
+  writeDashboardCacheFromStatsIndex(restoredIdx);
   try { localStorage.removeItem("dc_stats_index_dirty_v1"); } catch {}
-  try { window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: { reason: "restore-latest-json-index", totals: idx?.totals || null } })); } catch {}
-  return idx;
+  try { window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: { reason: "restore-latest-json-index", totals: restoredIdx?.totals || null } })); } catch {}
+  return restoredIdx;
 }
 
 function unwrapSnapshotEnvelope(input: any): any {

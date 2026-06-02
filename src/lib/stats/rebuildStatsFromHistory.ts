@@ -143,6 +143,25 @@ function statsIndexHasData(idx: any): boolean {
   }
 }
 
+function isRestoredStatsIndex(idx: any): boolean {
+  try {
+    if (!statsIndexHasData(idx)) return false;
+    const source = String(idx?.meta?.source || "").toLowerCase();
+    return !!idx?.meta?.restoredFromStatsIndex || source.includes("restore") || source.includes("latest-json") || source.includes("nas");
+  } catch {
+    return false;
+  }
+}
+
+function rowsAreStatsOnlyRestored(rows: any[]): boolean {
+  try {
+    if (!Array.isArray(rows) || rows.length === 0) return false;
+    return rows.every((r: any) => !!r?.restoredFromStatsIndex || !!r?.statsOnly || !!r?.summary?.restoredFromStatsIndex || !!r?.summary?.statsOnly);
+  } catch {
+    return false;
+  }
+}
+
 function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
   return {
     version: STATS_VERSION,
@@ -252,7 +271,8 @@ export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
     version: STATS_VERSION,
     rebuiltAt: Number(idx?.rebuiltAt || Date.now()) || Date.now(),
     meta: {
-      source: "history-rebuild",
+      ...(idx?.meta && typeof idx.meta === "object" ? idx.meta : {}),
+      source: String(idx?.meta?.source || "history-rebuild"),
       rowsScanned: Number(idx?.meta?.rowsScanned || idx?.totals?.matches || 0) || 0,
       includeNonFinished: Boolean(idx?.meta?.includeNonFinished),
       historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || 0) || undefined,
@@ -918,6 +938,12 @@ export async function getOrRebuildStatsIndex(options?: {
     if ((!Array.isArray(rows) || rows.length === 0) && statsIndexHasData(cached)) {
       return cached as StatsIndex;
     }
+    // Latest.json peut restaurer des cartes d'historique synthétiques générées
+    // depuis dc_stats_index_v2. Elles servent à réafficher l'historique, mais
+    // ne doivent JAMAIS déclencher un rebuild qui écraserait l'index réel.
+    if (isRestoredStatsIndex(cached) && rowsAreStatsOnlyRestored(rows as any[])) {
+      return cached as StatsIndex;
+    }
   } catch {
     if (statsIndexHasData(cached)) return cached as StatsIndex;
   }
@@ -955,7 +981,7 @@ export async function rebuildStatsFromHistory(options?: {
 
   // RESTORE FIX : ne pas écraser un index restauré par latest.json/NAS
   // quand l'historique détaillé est absent du snapshot.
-  if (rows.length === 0) {
+  if (rows.length === 0 || rowsAreStatsOnlyRestored(rows)) {
     const cached = await loadStatsIndex().catch(() => null);
     if (statsIndexHasData(cached)) {
       clearStatsIndexDirty();
