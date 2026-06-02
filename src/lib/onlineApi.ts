@@ -1221,11 +1221,10 @@ async function pullStoreSnapshot(): Promise<{
   }
 }
 
-async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
+async function pushStoreSnapshot(payload: any, version = 8, opts?: { force?: boolean; reason?: string }): Promise<any> {
   if (isNasDataSyncEnabled()) {
     await ensureNasSession();
-    await nasPushStoreSnapshot(payload, version);
-    return;
+    return await nasPushStoreSnapshot(payload, version, opts);
   }
 
   const { user } = await ensureAuthedUser();

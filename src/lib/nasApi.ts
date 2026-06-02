@@ -835,27 +835,44 @@ export async function nasPullStoreSnapshot(): Promise<{
   }
 }
 
-export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<{ ok: boolean; version: number; updatedAt?: string | null; verify?: { status: string; updatedAt?: string | null; version?: number | null; summary?: any } }> {
+export async function nasPushStoreSnapshot(
+  payload: any,
+  version = 8,
+  opts?: { force?: boolean; reason?: string }
+): Promise<{ ok: boolean; version: number; updatedAt?: string | null; verify?: { status: string; updatedAt?: string | null; version?: number | null; summary?: any } } | undefined> {
+  const force = !!opts?.force;
   const now = Date.now();
 
-  if (nasPushBlockedUntil && now < nasPushBlockedUntil) {
+  // CRITIQUE HISTORIQUE : une suppression ne doit jamais être annulée par le throttle.
+  // Sans force, l'ancien comportement reste inchangé pour éviter de spammer le NAS.
+  if (!force && nasPushBlockedUntil && now < nasPushBlockedUntil) {
     logNasPushSkip("blocked", { waitMs: nasPushBlockedUntil - now, failures: nasPushFailureCount });
     return;
   }
 
   if (nasPushInFlight) {
-    logNasPushSkip("inflight");
-    return;
+    if (!force) {
+      logNasPushSkip("inflight");
+      return;
+    }
+    const started = Date.now();
+    while (nasPushInFlight && Date.now() - started < 4000) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    if (nasPushInFlight) {
+      logNasPushSkip("inflight", { forced: true, reason: opts?.reason || null });
+      return;
+    }
   }
 
   const sinceLastAttempt = now - nasPushLastAttemptAt;
-  if (nasPushLastAttemptAt && sinceLastAttempt < NAS_PUSH_MIN_INTERVAL_MS) {
+  if (!force && nasPushLastAttemptAt && sinceLastAttempt < NAS_PUSH_MIN_INTERVAL_MS) {
     logNasPushSkip("throttled", { waitMs: NAS_PUSH_MIN_INTERVAL_MS - sinceLastAttempt });
     return;
   }
 
   nasPushInFlight = true;
-  nasPushLastAttemptAt = now;
+  nasPushLastAttemptAt = Date.now();
   try {
     const session0 = await nasRestoreSession();
     if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
@@ -885,6 +902,8 @@ export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<{
     try {
       console.log("[nasSync] push success", {
         version,
+        forced: force || undefined,
+        reason: opts?.reason || undefined,
         updatedAt: pushRes?.updatedAt || pushRes?.updated_at || null,
         summary: summarizeSnapshotForDiag(payload),
         verify,

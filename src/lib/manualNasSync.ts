@@ -583,7 +583,7 @@ export async function pushNasHistoryDeletion(idsToRemove?: string[]) {
 
   const cleaned = removeHistoryFromNasPayload(pulled.payload, idsToRemove);
   const version = Number((cleaned as any)?._v ?? (cleaned as any)?.v ?? pulled.version ?? 8);
-  const res = await api.pushStoreSnapshot(cleaned, version);
+  const res = await api.pushStoreSnapshot(cleaned, version, { force: true, reason: "history-delete" });
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   return { ok: true, clearedAll: !idsToRemove || idsToRemove.length === 0, removedIds: idsToRemove || [], result: res };
