@@ -567,6 +567,88 @@ const MAX_ROWS = 400;
 const MAX_CACHE_ROWS = 200;
 const LIST_PAYLOAD_KINDS = new Set(["cricket"]); // payload décodé seulement si vraiment utile
 
+
+// ============================================================
+// TOMBSTONES HISTORIQUE — suppression vraiment persistante
+// ------------------------------------------------------------
+// Quand le NAS / cloud réimporte un vieux snapshot juste après une suppression,
+// la partie supprimée pouvait réapparaître. On garde donc une petite liste locale
+// d'IDs supprimés et on refuse toute réinjection de ces matchs.
+// ============================================================
+const HISTORY_DELETED_IDS_KEY = "dc-history-deleted-ids-v1";
+const HISTORY_DELETED_IDS_TTL_MS = 1000 * 60 * 60 * 24 * 90;
+
+type HistoryDeletedIdsMap = Record<string, number>;
+
+function readHistoryDeletedIdsMap(): HistoryDeletedIdsMap {
+  try {
+    if (typeof localStorage === "undefined") return {};
+    const raw = localStorage.getItem(HISTORY_DELETED_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const now = Date.now();
+    const out: HistoryDeletedIdsMap = {};
+    for (const [id, ts] of Object.entries(parsed)) {
+      const key = String(id || "").trim();
+      const n = Number(ts || 0);
+      if (key && n > 0 && now - n < HISTORY_DELETED_IDS_TTL_MS) out[key] = n;
+    }
+    if (Object.keys(out).length !== Object.keys(parsed).length) {
+      try { localStorage.setItem(HISTORY_DELETED_IDS_KEY, JSON.stringify(out)); } catch {}
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function getHistoryDeletedIdsSet(): Set<string> {
+  return new Set(Object.keys(readHistoryDeletedIdsMap()));
+}
+
+function markHistoryDeletedIds(ids: Iterable<any>) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const map = readHistoryDeletedIdsMap();
+    const now = Date.now();
+    for (const raw of ids || []) {
+      const id = String(raw ?? "").trim();
+      if (id) map[id] = now;
+    }
+    localStorage.setItem(HISTORY_DELETED_IDS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+function getAllCandidateIdsForDeletion(rec: any): string[] {
+  const out: string[] = [];
+  const push = (v: any) => {
+    const s = String(v ?? "").trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  try {
+    push(rec?.id);
+    push(rec?.matchId);
+    push(rec?.resumeId);
+    push(rec?.sessionId);
+    push(rec?.summary?.id);
+    push(rec?.summary?.matchId);
+    push(rec?.summary?.resumeId);
+    push(rec?.payload?.id);
+    push(rec?.payload?.matchId);
+    push(rec?.payload?.resumeId);
+    push(rec?.payload?.sessionId);
+    push(getCanonicalMatchId(rec));
+  } catch {}
+  return out;
+}
+
+function isHistoryDeletedByTombstone(recOrId: any): boolean {
+  const deleted = getHistoryDeletedIdsSet();
+  if (!deleted.size) return false;
+  if (typeof recOrId === "string") return deleted.has(recOrId);
+  return getAllCandidateIdsForDeletion(recOrId).some((id) => deleted.has(id));
+}
+
 // =========================
 // ✅ PATCH CRITICAL — JSON parse SAFE (ANTI-FREEZE + JSONC)
 // - ne parse QUE si JSON-like ({ ou [)
@@ -1586,6 +1668,7 @@ export async function list(): Promise<SavedMatch[]> {
     for (const r0 of rows || []) {
       const r: any = r0;
       if (!r) continue;
+      if (isHistoryDeletedByTombstone(r)) continue;
       let key = getCanonicalMatchId(r) ?? String(r?.matchId ?? "");
       if (!key) key = String(r?.id ?? "");
       if (!key) continue;
@@ -1621,7 +1704,7 @@ export async function list(): Promise<SavedMatch[]> {
       : normalized;
   } catch {
     const rows = readLegacyRowsSafe();
-    const normalized = rows.map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+    const normalized = rows.filter((r: any) => !isHistoryDeletedByTombstone(r)).map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
     const finishedRows = normalized.filter((r: any) => inferHistoryStatus(r) === "finished");
     return normalized.filter((candidate: any) => {
       if (inferHistoryStatus(candidate) !== "in_progress") return true;
@@ -2713,6 +2796,9 @@ export async function upsertFromCloud(
   if (!baseId) {
     return { applied: "conflict_only", baseId: "", reason: "missing_base_id" };
   }
+  if (isHistoryDeletedByTombstone({ ...(rec as any), id: baseId, matchId: baseId })) {
+    return { applied: "local", baseId, reason: "deleted_locally" };
+  }
 
   return await withCloudImportGuard(async () => {
     const local = await get(baseId).catch(() => null);
@@ -2801,6 +2887,10 @@ export async function remove(id: string): Promise<void> {
   const idsToDelete = new Set<string>([wanted]);
 
   try {
+    markHistoryDeletedIds(idsToDelete);
+  } catch {}
+
+  try {
     await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", (stores) => {
       const headers = stores[STORE_HEADERS];
       const details = stores[STORE_DETAILS];
@@ -2840,6 +2930,8 @@ export async function remove(id: string): Promise<void> {
               cur.continue();
               return;
             }
+
+            try { markHistoryDeletedIds(idsToDelete); } catch {}
 
             for (const key of Array.from(idsToDelete)) {
               // eslint-disable-next-line no-await-in-loop

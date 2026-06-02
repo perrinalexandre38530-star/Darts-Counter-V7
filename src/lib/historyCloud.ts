@@ -12,6 +12,54 @@ const STORE_LEGACY = "history";
 const STORE_HEADERS = "history_headers";
 const STORE_DETAILS = "history_details";
 
+
+const HISTORY_DELETED_IDS_KEY = "dc-history-deleted-ids-v1";
+const HISTORY_DELETED_IDS_TTL_MS = 1000 * 60 * 60 * 24 * 90;
+
+function readHistoryDeletedIdsSet(): Set<string> {
+  try {
+    if (typeof localStorage === "undefined") return new Set();
+    const raw = localStorage.getItem(HISTORY_DELETED_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return new Set();
+    const now = Date.now();
+    const out = new Set<string>();
+    const cleaned: Record<string, number> = {};
+    for (const [id, ts] of Object.entries(parsed)) {
+      const key = String(id || "").trim();
+      const n = Number(ts || 0);
+      if (key && n > 0 && now - n < HISTORY_DELETED_IDS_TTL_MS) {
+        out.add(key);
+        cleaned[key] = n;
+      }
+    }
+    if (Object.keys(cleaned).length !== Object.keys(parsed).length) {
+      try { localStorage.setItem(HISTORY_DELETED_IDS_KEY, JSON.stringify(cleaned)); } catch {}
+    }
+    return out;
+  } catch {
+    return new Set();
+  }
+}
+
+function isDeletedHistoryRecord(rec: any, deleted: Set<string>): boolean {
+  if (!deleted.size) return false;
+  const ids = [
+    rec?.id,
+    rec?.matchId,
+    rec?.resumeId,
+    rec?.sessionId,
+    rec?.summary?.id,
+    rec?.summary?.matchId,
+    rec?.summary?.resumeId,
+    rec?.payload?.id,
+    rec?.payload?.matchId,
+    rec?.payload?.resumeId,
+    rec?.payload?.sessionId,
+  ].map((x) => String(x ?? "").trim()).filter(Boolean);
+  return ids.some((id) => deleted.has(id));
+}
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VER);
@@ -174,6 +222,7 @@ export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: 
   const replace = opts?.replace ?? false;
 
   const db = await openDB();
+  const deletedIds = readHistoryDeletedIdsSet();
 
   if (db.objectStoreNames.contains(STORE_HEADERS) && db.objectStoreNames.contains(STORE_DETAILS)) {
     await new Promise<void>((resolve, reject) => {
@@ -189,7 +238,7 @@ export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: 
       for (const r of Object.values(dump.rows || {})) {
         try {
           const id = String((r as any)?.id || (r as any)?.matchId || "").trim();
-          if (!id) continue;
+          if (!id || deletedIds.has(id) || isDeletedHistoryRecord(r, deletedIds)) continue;
           headers.put(toHeaderRecord({ ...(r as any), id, matchId: String((r as any)?.matchId || id) }));
           details.put(toDetailRecord(id, r));
         } catch {}
@@ -210,7 +259,11 @@ export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: 
         try { store.clear(); } catch {}
       }
       for (const r of Object.values(dump.rows || {})) {
-        try { store.put(r as any); } catch {}
+        try {
+          const id = String((r as any)?.id || (r as any)?.matchId || "").trim();
+          if (!id || deletedIds.has(id) || isDeletedHistoryRecord(r, deletedIds)) continue;
+          store.put(r as any);
+        } catch {}
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
