@@ -192,6 +192,15 @@ function looksLikeCloudSnapshot(payload: any) {
   return !!payload && typeof payload === "object" && (payload._v === 1 || payload._v === 2 || payload.idb || payload.history || payload.tournaments || payload.competitions);
 }
 
+function unwrapSnapshotEnvelope(input: any): any {
+  // Compat NAS: les exports /sync/pull ou /sync/slots/:id renvoient parfois
+  // { ok, id, ownerId, payload: { _v:2, idb, localStorage, history... } }.
+  // Le vrai snapshot restaurable est input.payload, pas le wrapper externe.
+  if (input?.payload && looksLikeCloudSnapshot(input.payload)) return input.payload;
+  if (input?.latest?.payload && looksLikeCloudSnapshot(input.latest.payload)) return input.latest.payload;
+  return input;
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
@@ -335,7 +344,7 @@ async function makeSnapshot() {
 }
 
 async function restoreSnapshot(payload: any) {
-  const actual = payload?.payload && looksLikeCloudSnapshot(payload.payload) ? payload.payload : payload;
+  const actual = unwrapSnapshotEnvelope(payload);
   if (looksLikeCloudSnapshot(actual)) {
     await importCloudSnapshot(actual, { mode: "replace" });
     return;
@@ -347,7 +356,7 @@ async function restoreSnapshot(payload: any) {
 }
 
 async function pushSnapshotToAccount(payload: any, reason = "storage-vault-restore") {
-  const actual = payload?.payload && looksLikeCloudSnapshot(payload.payload) ? payload.payload : payload;
+  const actual = unwrapSnapshotEnvelope(payload);
   const cloudPayload = looksLikeCloudSnapshot(actual) ? actual : await exportCloudSnapshot();
   await apiPost("/sync/push", { payload: cloudPayload, version: Number((cloudPayload as any)?._v || 2), reason });
   return cloudPayload;
@@ -452,6 +461,37 @@ export default function StorageVaultPage({ go }: Props) {
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
   const [msg, setMsg] = React.useState("Scan en attente…");
   const [busy, setBusy] = React.useState(false);
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const restoreImportedJsonFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const snapshot = unwrapSnapshotEnvelope(parsed);
+      if (!looksLikeCloudSnapshot(snapshot)) {
+        throw new Error("Ce fichier JSON ne contient pas un snapshot restaurable (_v/idb/localStorage/history introuvables).");
+      }
+      const sum = summarize(snapshot);
+      const ok = window.confirm(
+        `Restaurer ce fichier JSON dans ce navigateur ET sur ton compte utilisateur ?\n\n` +
+        `${sum.matches} parties • ${sum.profiles} profils • ${sum.statsBlocks} blocs stats • ${fmtBytes(sum.bytes)}\n\n` +
+        `Un bloc local de sécurité sera créé avant restauration.`
+      );
+      if (!ok) return;
+      await createSlot();
+      await importCloudSnapshot(snapshot, { mode: "replace" });
+      await pushSnapshotToAccount(snapshot, `restore-json-file:${file.name || "snapshot"}`);
+      setMsg("Fichier JSON restauré dans le navigateur et envoyé sur le compte utilisateur. Rechargement…");
+      setTimeout(() => window.location.reload(), 700);
+    } catch (e: any) {
+      setMsg(`Import/restauration JSON impossible : ${e?.message || e}`);
+    } finally {
+      setBusy(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
@@ -587,12 +627,20 @@ export default function StorageVaultPage({ go }: Props) {
         <button style={btn} disabled={busy} onClick={createSlot}>Créer bloc sécurité</button>
         <button style={btn} disabled={busy} onClick={createNasSlot}>Créer slot NAS</button>
         <button style={btn} disabled={busy} onClick={pushCurrentBrowserToAccount}>Envoyer au compte</button>
+        <button style={{ ...btn, borderColor: warn, color: warn, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => importInputRef.current?.click()}>Importer latest.json</button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: "none" }}
+          onChange={(e) => restoreImportedJsonFile(e.currentTarget.files?.[0] || null)}
+        />
       </div>
 
       <div style={{ ...panel, borderColor: "rgba(251,191,36,.45)", marginBottom: 14 }}>
         <strong style={{ color: warn }}>Comment restaurer dans ton compte utilisateur</strong>
         <div style={{ marginTop: 6, color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...mutedText }}>
-          Le bon flux est : <b>Créer bloc sécurité</b> pour figer ce que voit le navigateur, puis <b>Envoyer au compte</b> pour l’enregistrer dans le NAS du compte connecté. Pour une vraie sauvegarde NAS, utilise directement <b>Restaurer NAS</b>. Les cartes “blocs locaux détectés” sont des zones brutes : le bouton <b>Restaurer ce bloc vers compte</b> les réécrit puis pousse un snapshot complet sur le compte.
+          Le bon flux est : <b>Importer latest.json</b> si tu as téléchargé un bloc NAS, ou <b>Restaurer NAS</b> si le slot apparaît dans la liste. La page extrait automatiquement le vrai snapshot dans <b>payload</b>, le restaure dans IndexedDB/localStorage, puis l’envoie sur le compte utilisateur NAS. Les cartes “blocs locaux détectés” sont seulement des zones brutes : à utiliser en dernier recours.
         </div>
       </div>
 
