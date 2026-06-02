@@ -7,10 +7,13 @@ import {
   createNasVersionedSnapshot,
   deleteLocalMemorySlot,
   deleteNasMemorySlot,
+  emptyNasDeletedMemorySlots,
   exportJsonDownload,
   listLocalMemorySlots,
+  listNasDeletedMemorySlots,
   listNasMemorySlots,
   pullNasMemorySlot,
+  restoreNasDeletedMemorySlot,
   scanLocalStorageAndIndexedDb,
   summarizeVaultPayload,
   type MemorySlot,
@@ -34,6 +37,7 @@ import {
 
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
+type RestoreView = "current" | "archives" | "trash";
 type SaveSource = "nas" | "local";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
@@ -492,7 +496,7 @@ function SummaryLines({ summary }: { summary: Partial<VaultSummary> }) {
   );
 }
 
-function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDelete }: {
+function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDelete, restoreLabel = "Restaurer cet état", exportLabel = "Exporter JSON", deleteLabel = "Supprimer" }: {
   entry: SaveEntry;
   busy: boolean;
   expanded: boolean;
@@ -500,6 +504,9 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
   onRestore: () => void;
   onExport: () => void;
   onDelete?: () => void;
+  restoreLabel?: string;
+  exportLabel?: string;
+  deleteLabel?: string;
 }) {
   const q = entry.quality;
   const s = normalizeSummary(entry.summary);
@@ -561,10 +568,10 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <button style={q.restorable ? primaryBtn : { ...btn, borderColor: muted, color: muted }} disabled={busy || !q.restorable} onClick={onRestore}>
-          Restaurer cet état
+          {restoreLabel}
         </button>
-        <button style={btn} disabled={busy} onClick={onExport}>Exporter JSON</button>
-        {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>Supprimer</button>}
+        <button style={btn} disabled={busy} onClick={onExport}>{exportLabel}</button>
+        {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>{deleteLabel}</button>}
       </div>
     </div>
   );
@@ -680,6 +687,8 @@ export default function StorageVaultPage({ go }: Props) {
   const [message, setMessage] = React.useState("Scan en attente…");
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
+  const [trashNasSlots, setTrashNasSlots] = React.useState<NasSlot[]>([]);
+  const [restoreView, setRestoreView] = React.useState<RestoreView>("current");
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
   const [showDiagnostic, setShowDiagnostic] = React.useState(false);
@@ -713,7 +722,37 @@ export default function StorageVaultPage({ go }: Props) {
         if (gradeA !== gradeB) return gradeB - gradeA;
         return (Date.parse(b.createdAt || b.updatedAt || "") || 0) - (Date.parse(a.createdAt || a.updatedAt || "") || 0);
       });
-  }, [nasSlots]);
+  const trashNasEntries = React.useMemo<SaveEntry[]>(() => {
+    return trashNasSlots
+      .map((slot, idx) => {
+        const summary = normalizeSummary(slot.summary || {});
+        const q = assessSave(summary);
+        const id = String(slot.id || "");
+        return {
+          key: `trash-nas:${id}`,
+          source: "nas" as const,
+          slot,
+          summary,
+          latest: false,
+          createdAt: slot.createdAt || slot.updatedAt || null,
+          updatedAt: slot.deletedAt || slot.updatedAt || slot.createdAt || null,
+          index: idx + 1,
+          quality: q.restorable ? q : { ...q, restorable: true, color: amber, short: q.short || "Corbeille", reason: "Emplacement supprimé : récupérable tant que la corbeille n’est pas vidée." },
+          title: `Corbeille NAS ${String(idx + 1).padStart(2, "0")}`,
+          subtitle: `${saveCategory(summary)} · supprimé le ${fmtDate(slot.deletedAt || slot.updatedAt || slot.createdAt || null)}`,
+        };
+      })
+      .sort((a, b) => (Date.parse(b.updatedAt || "") || 0) - (Date.parse(a.updatedAt || "") || 0));
+  }, [trashNasSlots]);
+
+  const latestNasEntry = React.useMemo(() => {
+    const latest = nasEntries.find((entry) => entry.latest) || nasEntries[0] || null;
+    return latest;
+  }, [nasEntries]);
+
+  const archivedNasEntries = React.useMemo(() => {
+    return nasEntries.filter((entry) => !entry.latest && entry.key !== latestNasEntry?.key);
+  }, [nasEntries, latestNasEntry]);
 
   const localEntries = React.useMemo<SaveEntry[]>(() => {
     return localSlots
@@ -737,8 +776,9 @@ export default function StorageVaultPage({ go }: Props) {
   }, [localSlots]);
 
   const restorableEntries = React.useMemo(() => [...nasEntries, ...localEntries], [nasEntries, localEntries]);
-  const completeEntries = React.useMemo(() => restorableEntries.filter((entry) => entry.quality.grade === "complete"), [restorableEntries]);
-  const historyEntries = React.useMemo(() => restorableEntries.filter((entry) => entry.quality.grade === "history"), [restorableEntries]);
+  const archiveEntries = React.useMemo(() => [...archivedNasEntries, ...localEntries], [archivedNasEntries, localEntries]);
+  const archiveCompleteEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.quality.grade === "complete"), [archiveEntries]);
+  const archiveHistoryEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.quality.grade === "history"), [archiveEntries]);
   const matchBackupEntries = React.useMemo(() => {
     const byId = new Map<string, MatchBackupItem>();
     for (const item of matchBackups || []) {
@@ -758,9 +798,10 @@ export default function StorageVaultPage({ go }: Props) {
   const refresh = React.useCallback(async () => {
     setBusy(true);
     try {
-      const [ls, nsRaw, bs, localMatches, nasMatches] = await Promise.all([
+      const [ls, nsRaw, trashRaw, bs, localMatches, nasMatches] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
         listNasMemorySlots().catch(() => []),
+        listNasDeletedMemorySlots().catch(() => []),
         scanLocalStorageAndIndexedDb().catch(() => []),
         listLocalMatchBackups().catch(() => []),
         listNasMatchBackups().catch(() => []),
@@ -783,15 +824,34 @@ export default function StorageVaultPage({ go }: Props) {
         }
       }));
 
+      const trashToCheck = trashRaw.slice(0, 30);
+      const checkedTrashNas = await Promise.all(trashToCheck.map(async (slot: NasSlot) => {
+        try {
+          const id = String(slot.id || "");
+          const pulled = await pullNasMemorySlot(id, { trash: true });
+          return {
+            ...slot,
+            summary: strictSummaryForRestore(pulled.payload, pulled.summary),
+            updatedAt: pulled.slot.updatedAt || slot.updatedAt,
+            createdAt: pulled.slot.createdAt || slot.createdAt,
+            deletedAt: slot.deletedAt || pulled.slot.deletedAt || null,
+            __strictChecked: true,
+          } as NasSlot & { __strictChecked?: boolean };
+        } catch {
+          return { ...slot, summary: normalizeSummary(slot.summary || {}), __strictChecked: false } as NasSlot & { __strictChecked?: boolean };
+        }
+      }));
+
       setLocalSlots(ls);
       setNasSlots(checkedNas);
+      setTrashNasSlots(checkedTrashNas);
       setBlocks(bs);
       setMatchBackups([...(localMatches || []), ...(nasMatches || [])]);
 
       const validNas = checkedNas.filter((slot) => isRestorable(slot.summary)).length;
       const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
       const hidden = Math.max(0, nsRaw.length - checkedNas.length);
-      setMessage(`${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). Les catalogues, stats seules et blocs douteux sont cachés. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
+      setMessage(`${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Affichage simple : la dernière sauvegarde NAS reste visible, les anciennes sont dans l’onglet Archives, la corbeille contient ${checkedTrashNas.length} emplacement(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
     } catch (error: any) {
       setMessage(`Erreur scan : ${error?.message || error}`);
     } finally {
@@ -997,9 +1057,9 @@ ${label}`)) return;
       onDelete={entry.source === "nas" && !(entry.slot as NasSlot).latest ? async () => {
         const slot = entry.slot as NasSlot;
         const id = String(slot.id || "");
-        if (!window.confirm(`Supprimer définitivement cet emplacement NAS ?\n${entry.title}`)) return;
+        if (!window.confirm(`Envoyer cet emplacement NAS dans la corbeille ?\n\n${entry.title}\n\nTu pourras encore le récupérer depuis l’onglet Corbeille. Pour libérer définitivement la place serveur, il faudra vider la corbeille.`)) return;
         setBusy(true);
-        try { await deleteNasMemorySlot(id); setMessage("Emplacement NAS supprimé."); await refresh(); }
+        try { await deleteNasMemorySlot(id); setMessage("Emplacement NAS envoyé dans la corbeille."); await refresh(); }
         catch (error: any) { setMessage(`Suppression NAS impossible : ${error?.message || error}`); }
         finally { setBusy(false); }
       } : entry.source === "local" ? async () => {
@@ -1008,8 +1068,63 @@ ${label}`)) return;
         await deleteLocalMemorySlot(slot.id);
         await refresh();
       } : undefined}
+      deleteLabel={entry.source === "nas" && !(entry.slot as NasSlot).latest ? "Mettre corbeille" : "Supprimer"}
     />
   );
+
+  const renderTrashEntry = (entry: SaveEntry) => (
+    <SaveCard
+      key={entry.key}
+      entry={entry}
+      busy={busy}
+      expanded={Boolean(expanded[entry.key])}
+      onToggle={() => toggleExpanded(entry.key)}
+      restoreLabel="Sortir de la corbeille"
+      exportLabel="Exporter JSON"
+      deleteLabel="Supprimer définitivement"
+      onRestore={async () => {
+        const id = String((entry.slot as NasSlot).id || "");
+        setBusy(true);
+        try {
+          await restoreNasDeletedMemorySlot(id);
+          setMessage("Emplacement NAS sorti de la corbeille.");
+          await refresh();
+        } catch (error: any) {
+          setMessage(`Restauration corbeille impossible : ${error?.message || error}`);
+        } finally { setBusy(false); }
+      }}
+      onExport={async () => {
+        try {
+          const id = String((entry.slot as NasSlot).id || "");
+          const pulled = await pullNasMemorySlot(id, { trash: true });
+          exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+        } catch (error: any) {
+          setMessage(`Export corbeille impossible : ${error?.message || error}`);
+        }
+      }}
+      onDelete={async () => {
+        const id = String((entry.slot as NasSlot).id || "");
+        if (!window.confirm(`Supprimer définitivement cet emplacement NAS ?\n\n${entry.title}\n\nCette action libère la place serveur et sera irréversible.`)) return;
+        setBusy(true);
+        try { await deleteNasMemorySlot(id, true); setMessage("Emplacement NAS supprimé définitivement."); await refresh(); }
+        catch (error: any) { setMessage(`Suppression définitive impossible : ${error?.message || error}`); }
+        finally { setBusy(false); }
+      }}
+    />
+  );
+
+  const emptyTrash = async () => {
+    if (!trashNasEntries.length) return;
+    if (!window.confirm(`Vider la corbeille NAS ?\n\n${trashNasEntries.length} emplacement(s) seront supprimés définitivement du serveur.`)) return;
+    setBusy(true);
+    try {
+      await emptyNasDeletedMemorySlots();
+      setMessage("Corbeille NAS vidée. Les sauvegardes supprimées sont définitivement perdues.");
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Vidage corbeille impossible : ${error?.message || error}`);
+    } finally { setBusy(false); }
+  };
 
   return (
     <div style={{ ...pageStyle, ...themeVars }}>
@@ -1062,31 +1177,68 @@ ${label}`)) return;
             <div style={{ ...panel, borderColor: "rgba(52,211,153,.36)" }}>
               <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Choisir un état à restaurer</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
-                Comme une carte mémoire : tu choisis un emplacement fiable, puis <b>Restaurer cet état</b>. Le garde-fou bloque les sauvegardes sans historique de parties.
+                Affichage simplifié : la page montre d’abord <b>la dernière sauvegarde NAS</b>. Les anciennes sauvegardes sont rangées dans Archives, et les suppressions passent par la Corbeille avant suppression définitive serveur.
               </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+                <TabButton active={restoreView === "current"} onClick={() => setRestoreView("current")}>Dernière</TabButton>
+                <TabButton active={restoreView === "archives"} onClick={() => setRestoreView("archives")}>Archives ({archiveEntries.length})</TabButton>
+                <TabButton active={restoreView === "trash"} onClick={() => setRestoreView("trash")}>Corbeille ({trashNasEntries.length})</TabButton>
+              </div>
             </div>
 
-            {completeEntries.length > 0 && (
+            {restoreView === "current" && (
               <>
-                <h2 style={{ margin: "4px 0 0", color: green, fontSize: 17, textShadow: "0 0 12px rgba(52,211,153,.45)" }}>Sauvegardes complètes recommandées</h2>
-                {completeEntries.map(renderEntry)}
+                <h2 style={{ margin: "4px 0 0", color: green, fontSize: 17, textShadow: "0 0 12px rgba(52,211,153,.45)" }}>Dernière sauvegarde NAS</h2>
+                {latestNasEntry ? renderEntry(latestNasEntry) : (
+                  <div style={panel}>
+                    <strong style={{ color: amber }}>Aucune sauvegarde NAS courante affichable</strong>
+                    <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
+                      Crée une sauvegarde NAS depuis l’onglet Sauver. Les anciens blocs restent accessibles dans Archives si le backend les renvoie.
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
-            {historyEntries.length > 0 && (
+            {restoreView === "archives" && (
               <>
-                <h2 style={{ margin: "8px 0 0", color: gold, fontSize: 17, textShadow: "0 0 12px color-mix(in srgb, var(--dc-accent, #d9ff33) 35%, transparent)" }}>Parties / historique à vérifier</h2>
-                {historyEntries.map(renderEntry)}
+                <h2 style={{ margin: "4px 0 0", color: gold, fontSize: 17, textShadow: "0 0 12px color-mix(in srgb, var(--dc-accent, #d9ff33) 35%, transparent)" }}>Anciennes sauvegardes restaurables</h2>
+                {archiveCompleteEntries.length > 0 && archiveCompleteEntries.map(renderEntry)}
+                {archiveHistoryEntries.length > 0 && (
+                  <>
+                    <h3 style={{ margin: "4px 0 0", color: amber, fontSize: 15 }}>Historique à vérifier</h3>
+                    {archiveHistoryEntries.map(renderEntry)}
+                  </>
+                )}
+                {!archiveEntries.length && (
+                  <div style={panel}>
+                    <strong style={{ color: amber }}>Aucune ancienne sauvegarde restaurable</strong>
+                    <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
+                      Les blocs techniques, stats seules ou sans historique réel restent masqués pour éviter les mauvaises restaurations.
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
-            {!restorableEntries.length && (
-              <div style={panel}>
-                <strong style={{ color: amber }}>Aucun emplacement fiable affiché</strong>
-                <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
-                  Le garde-fou ne trouve pas de sauvegarde avec parties/historique. Ouvre l’onglet Expert uniquement pour diagnostiquer les blocs bruts.
+            {restoreView === "trash" && (
+              <>
+                <div style={{ ...panel, borderColor: "rgba(251,113,133,.35)" }}>
+                  <h2 style={{ margin: 0, color: red, fontSize: 18 }}>Corbeille NAS</h2>
+                  <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
+                    Ici les sauvegardes sont seulement mises de côté. <b>Vider la corbeille</b> les supprime définitivement du serveur et libère la place.
+                  </p>
+                  <button style={dangerBtn} disabled={busy || !trashNasEntries.length} onClick={emptyTrash}>Vider la corbeille</button>
                 </div>
-              </div>
+                {trashNasEntries.length > 0 ? trashNasEntries.map(renderTrashEntry) : (
+                  <div style={panel}>
+                    <strong style={{ color: green }}>Corbeille vide</strong>
+                    <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
+                      Rien à supprimer définitivement pour le moment.
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

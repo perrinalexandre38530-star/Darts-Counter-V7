@@ -14,8 +14,10 @@ import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
 import { loadAllOnlineX01Samples } from "../lib/x01StatsSource";
+import { onlineApi } from "../lib/onlineApi";
+import { loadOnlineMatches } from "../lib/onlineMatchesStore";
+import { filterOnlineStatsHardDeleted } from "../lib/onlineStatsExclusions";
 
-const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
 
 type TimeRange = "day" | "week" | "month" | "year" | "all";
 
@@ -254,11 +256,10 @@ async function loadOnlineMatchesFromHistory(range: TimeRange) {
 // Lecture souple de l’historique Online localStorage
 function loadOnlineMatchesFromLocalStorage(range: TimeRange) {
   try {
-    const raw = window.localStorage.getItem(LS_ONLINE_MATCHES_KEY);
-    if (!raw)
+    const all = typeof loadOnlineMatches === "function" ? loadOnlineMatches() : [];
+    if (!Array.isArray(all) || !all.length)
       return { matches: [] as any[], sessions: [] as OnlineSession[] };
 
-    const all = JSON.parse(raw) || [];
     const filtered = (Array.isArray(all) ? all : [])
       .map((m: any, idx: number) => normalizeOnlineHistoryMatch(m, idx))
       .filter(Boolean)
@@ -509,7 +510,7 @@ export default function StatsOnline() {
         if (cancelled) return;
         const fromTs = getRangeStart(range);
         const filteredSamples = samples.filter((s: any) => !fromTs || Number(s.createdAt || 0) >= fromTs);
-        const matches = filteredSamples.map((s: any, idx: number) => {
+        const sampleMatches = filteredSamples.map((s: any, idx: number) => {
           const hits = Number(s.singleHits || 0) + Number(s.doubleHits || 0) + Number(s.tripleHits || 0) + Number(s.bull25 || 0) + Number(s.bull50 || 0);
           return {
             id: `${s.matchId || s.id || "online"}:${s.playerId || idx}`,
@@ -541,6 +542,30 @@ export default function StatsOnline() {
             },
           };
         });
+        const historyMatches = await loadOnlineMatchesFromHistory(range);
+        const lsMatches = loadOnlineMatchesFromLocalStorage(range).matches;
+        let apiMatches: any[] = [];
+        try {
+          const apiRows = await (onlineApi as any)?.listMatches?.(250);
+          apiMatches = (Array.isArray(apiRows) ? apiRows : [])
+            .map((row: any, idx: number) => normalizeOnlineHistoryMatch(row, idx))
+            .filter(Boolean)
+            .filter((row: any) => inSelectedRange(row.createdAt, range));
+        } catch (apiErr) {
+          console.warn("[StatsOnline] lecture NAS online/matches impossible", apiErr);
+        }
+
+        const byId = new Map<string, any>();
+        const push = (m: any, idx: number) => {
+          if (!m) return;
+          const key = String(m.matchId || m.id || m.online_match_id || m.lobbyCode || `online-${idx}-${m.createdAt || ''}`);
+          const prev = byId.get(key);
+          byId.set(key, { ...(prev || {}), ...m, stats: { ...(prev?.stats || {}), ...(m.stats || {}) } });
+        };
+        [...sampleMatches, ...historyMatches, ...lsMatches, ...apiMatches].forEach(push);
+        const matches = filterOnlineStatsHardDeleted(Array.from(byId.values()))
+          .filter((m: any) => inSelectedRange(m?.createdAt ?? m?.date ?? m?.ts, range));
+
         const sessions: OnlineSession[] = matches.map((m: any, idx: number) => {
           const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
           const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);

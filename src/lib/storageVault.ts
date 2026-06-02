@@ -55,6 +55,8 @@ export type NasSlot = {
   createdAt?: string | null;
   updatedAt?: string | null;
   promotedAt?: string | null;
+  deletedAt?: string | null;
+  deletedReason?: string | null;
   summary?: Partial<VaultSummary> | null;
   latest?: boolean;
 };
@@ -445,13 +447,20 @@ export async function listNasMemorySlots(): Promise<NasSlot[]> {
   return slots as NasSlot[];
 }
 
-export async function pullNasMemorySlot(slotId: string): Promise<{ slot: NasSlot; payload: any; summary: VaultSummary }> {
-  const data = slotId === "latest" ? await apiGet("/sync/pull") : await apiGet(`/sync/slots/${encodeURIComponent(slotId)}`);
+export async function listNasDeletedMemorySlots(): Promise<NasSlot[]> {
+  const data = await apiGet("/sync/slots/trash?limit=120").catch(() => ({ slots: [] }));
+  const slots = Array.isArray(data) ? data : Array.isArray(data?.slots) ? data.slots : [];
+  return slots as NasSlot[];
+}
+
+export async function pullNasMemorySlot(slotId: string, opts?: { trash?: boolean }): Promise<{ slot: NasSlot; payload: any; summary: VaultSummary }> {
+  const suffix = opts?.trash ? "?trash=1" : "";
+  const data = slotId === "latest" ? await apiGet("/sync/pull") : await apiGet(`/sync/slots/${encodeURIComponent(slotId)}${suffix}`);
   const payloadRaw = data?.payload ?? null;
   if (!payloadRaw) throw new Error("Payload NAS introuvable");
   const payload = decodeMaybeCompressedNasPayload(payloadRaw);
   return {
-    slot: { id: data?.id || slotId, version: data?.version, updatedAt: data?.updatedAt, createdAt: data?.createdAt, latest: slotId === "latest" },
+    slot: { id: data?.id || slotId, version: data?.version, updatedAt: data?.updatedAt, createdAt: data?.createdAt, deletedAt: data?.deletedAt || null, deletedReason: data?.deletedReason || null, latest: slotId === "latest" },
     payload,
     summary: summarizeVaultPayload(payload),
   };
@@ -472,9 +481,18 @@ export async function createNasVersionedSnapshot(): Promise<any> {
 }
 
 
-export async function deleteNasMemorySlot(slotId: string): Promise<void> {
+export async function deleteNasMemorySlot(slotId: string, force = false): Promise<void> {
   if (!slotId || slotId === "latest") throw new Error("Le backup NAS courant ne peut pas être supprimé directement.");
-  await apiDelete(`/sync/slots/${encodeURIComponent(slotId)}`);
+  await apiDelete(`/sync/slots/${encodeURIComponent(slotId)}${force ? "?force=1" : ""}`);
+}
+
+export async function restoreNasDeletedMemorySlot(slotId: string): Promise<void> {
+  if (!slotId || slotId === "latest") throw new Error("Emplacement NAS invalide.");
+  await apiPost(`/sync/slots/${encodeURIComponent(slotId)}/undelete`, {});
+}
+
+export async function emptyNasDeletedMemorySlots(): Promise<void> {
+  await apiDelete("/sync/slots/trash");
 }
 
 export async function exportJsonDownload(value: any, filename: string) {
