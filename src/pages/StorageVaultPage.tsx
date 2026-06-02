@@ -23,14 +23,40 @@ import {
 } from "../lib/stats/rebuildStatsFromHistory";
 
 type Props = { go?: (tab: any, params?: any) => void };
-type TabKey = "backup" | "restore" | "valid" | "diagnostic";
+type TabKey = "restore" | "backup" | "diagnostic";
+type SaveSource = "nas" | "local";
+type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
+
+type SaveQuality = {
+  grade: SaveGrade;
+  label: string;
+  short: string;
+  color: string;
+  score: number;
+  restorable: boolean;
+  reason: string;
+};
+
+type SaveEntry = {
+  key: string;
+  source: SaveSource;
+  slot: NasSlot | MemorySlot;
+  summary: VaultSummary;
+  title: string;
+  subtitle: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  latest?: boolean;
+  index: number;
+  quality: SaveQuality;
+};
 
 const neon = "#22d3ee";
 const gold = "#d9ff33";
-const pink = "#f472b6";
 const red = "#fb7185";
 const green = "#34d399";
 const amber = "#fbbf24";
+const muted = "#94a3b8";
 
 const AUTH_KEYS = [
   "dc_nas_access_token_v1",
@@ -92,30 +118,91 @@ function normalizeSummary(raw: Partial<VaultSummary> | undefined | null): VaultS
     statsBlocks: n(s.statsBlocks || s.stats),
     mediaRefs: n(s.mediaRefs),
     dataImages: n(s.dataImages),
-    sports: Array.isArray(s.sports) ? s.sports.map(String).slice(0, 12) : [],
-    names: Array.isArray(s.names) ? s.names.map(String).slice(0, 16) : [],
+    sports: Array.isArray(s.sports) ? s.sports.map(String).filter(Boolean).slice(0, 16) : [],
+    names: Array.isArray(s.names) ? s.names.map(String).filter(Boolean).slice(0, 20) : [],
     exportedAt: s.exportedAt || null,
-    probableContent: Array.isArray(s.probableContent) ? s.probableContent.map(String) : [],
+    probableContent: Array.isArray(s.probableContent) ? s.probableContent.map(String).filter(Boolean) : [],
   };
 }
 
-function hasUsefulGameData(summary?: Partial<VaultSummary> | null): boolean {
+function assessSave(summary?: Partial<VaultSummary> | null): SaveQuality {
   const s = normalizeSummary(summary || {});
   const probable = s.probableContent.map((x) => x.toLowerCase()).join(" ");
-  return s.historyRows > 0 || s.matches > 0 || probable.includes("parties") || probable.includes("historique");
+  const hasHistory = s.historyRows > 0 || s.matches > 0 || probable.includes("historique") || probable.includes("parties");
+  const hasStats = s.statsBlocks > 0;
+  const hasProfiles = s.profiles > 0;
+  const hasSports = s.sports.length > 0;
+  const hasPayloadSize = s.bytes > 25_000 || s.keys > 20;
+
+  const score =
+    Math.min(40, s.historyRows * 4) +
+    Math.min(35, s.matches) +
+    (hasStats ? 18 : 0) +
+    (hasProfiles ? 14 : 0) +
+    (hasSports ? 8 : 0) +
+    (hasPayloadSize ? 5 : 0);
+
+  if (hasHistory && hasProfiles && hasStats && hasSports) {
+    return {
+      grade: "complete",
+      label: "SAUVEGARDE COMPLÈTE",
+      short: "Complet",
+      color: green,
+      score: Math.max(92, score),
+      restorable: true,
+      reason: "Parties + historique + profils + stats détectés.",
+    };
+  }
+
+  if (hasHistory && (hasProfiles || hasSports || hasStats)) {
+    return {
+      grade: "history",
+      label: "PARTIES / HISTORIQUE",
+      short: "Parties",
+      color: gold,
+      score: Math.max(68, score),
+      restorable: true,
+      reason: "Parties détectées. Restauration possible, mais le bloc semble moins complet.",
+    };
+  }
+
+  if (hasStats) {
+    return {
+      grade: "stats-only",
+      label: "STATS SEULES",
+      short: "Stats seules",
+      color: amber,
+      score: Math.max(42, score),
+      restorable: false,
+      reason: "Stats détectées, mais pas assez d'historique pour recréer les cartes de parties.",
+    };
+  }
+
+  if (hasProfiles) {
+    return {
+      grade: "profiles-only",
+      label: "PROFILS SEULS",
+      short: "Profils",
+      color: neon,
+      score: Math.max(25, score),
+      restorable: false,
+      reason: "Profils détectés, mais pas de parties exploitables.",
+    };
+  }
+
+  return {
+    grade: "technical",
+    label: "TECHNIQUE",
+    short: "Technique",
+    color: muted,
+    score,
+    restorable: false,
+    reason: "Bloc interne ou incomplet : masqué pour éviter une mauvaise restauration.",
+  };
 }
 
-function isStatsOnly(summary?: Partial<VaultSummary> | null): boolean {
-  const s = normalizeSummary(summary || {});
-  return !hasUsefulGameData(s) && s.statsBlocks > 0;
-}
-
-function quality(summary?: Partial<VaultSummary> | null) {
-  const s = normalizeSummary(summary || {});
-  if (s.historyRows > 0 || s.matches > 0) return { label: "PARTIES VALIDES", color: green };
-  if (s.statsBlocks > 0) return { label: "STATS SEULES", color: amber };
-  if (s.profiles > 0) return { label: "PROFILS", color: neon };
-  return { label: "TECHNIQUE", color: "#94a3b8" };
+function isRestorable(summary?: Partial<VaultSummary> | null) {
+  return assessSave(summary).restorable;
 }
 
 function fmtBytes(bytes?: number | null) {
@@ -136,6 +223,17 @@ function fmtDate(value?: string | null) {
 function join(values?: string[], fallback = "—") {
   const list = Array.isArray(values) ? values.filter(Boolean).slice(0, 10) : [];
   return list.length ? list.join(", ") : fallback;
+}
+
+function saveCategory(summary: Partial<VaultSummary>) {
+  const s = normalizeSummary(summary);
+  const sports = s.sports.map((x) => x.toLowerCase());
+  const probable = s.probableContent.map((x) => x.toLowerCase()).join(" ");
+  if (sports.some((x) => /baby|foot|foos/.test(x))) return "Baby-foot";
+  if (probable.includes("tournoi") || probable.includes("ligue") || probable.includes("compétition") || probable.includes("competition")) return "Compétitions";
+  if (sports.some((x) => /x01|dart|cricket|killer|golf|shanghai|scram|warfare|territories|capital/.test(x))) return "Fléchettes";
+  if (sports.length > 1) return "Multi-sports";
+  return "Jeux";
 }
 
 const pageStyle: React.CSSProperties = {
@@ -204,24 +302,6 @@ const dangerBtn: React.CSSProperties = {
   background: "rgba(251,113,133,.10)",
 };
 
-function StatBox({ label, value, color = gold }: { label: string; value: React.ReactNode; color?: string }) {
-  return (
-    <div style={{ ...panel, borderRadius: 16, padding: 12, minHeight: 70 }}>
-      <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ color, fontSize: 25, lineHeight: 1.1, fontWeight: 1000, marginTop: 5 }}>{value}</div>
-    </div>
-  );
-}
-
-function Line({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0,1fr)", gap: 10, alignItems: "start", minWidth: 0 }}>
-      <span style={{ color: "#94a3b8", fontSize: 12, fontWeight: 800 }}>{label}</span>
-      <strong style={{ color: "#f8fafc", fontSize: 12, textAlign: "right", ...wrapText }}>{value}</strong>
-    </div>
-  );
-}
-
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -239,11 +319,28 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-function Badge({ summary }: { summary: Partial<VaultSummary> }) {
-  const q = quality(summary);
+function StatBox({ label, value, color = gold }: { label: string; value: React.ReactNode; color?: string }) {
   return (
-    <span style={{ border: `1px solid ${q.color}`, color: q.color, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap" }}>
-      {q.label}
+    <div style={{ ...panel, borderRadius: 16, padding: 12, minHeight: 70 }}>
+      <div style={{ color: muted, fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ color, fontSize: 25, lineHeight: 1.1, fontWeight: 1000, marginTop: 5 }}>{value}</div>
+    </div>
+  );
+}
+
+function Line({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "98px minmax(0,1fr)", gap: 10, alignItems: "start", minWidth: 0 }}>
+      <span style={{ color: muted, fontSize: 12, fontWeight: 800 }}>{label}</span>
+      <strong style={{ color: "#f8fafc", fontSize: 12, textAlign: "right", ...wrapText }}>{value}</strong>
+    </div>
+  );
+}
+
+function QualityBadge({ quality }: { quality: SaveQuality }) {
+  return (
+    <span style={{ border: `1px solid ${quality.color}`, color: quality.color, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap" }}>
+      {quality.short} · {Math.min(100, Math.round(quality.score))}%
     </span>
   );
 }
@@ -254,6 +351,7 @@ function SummaryLines({ summary }: { summary: Partial<VaultSummary> }) {
     <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
       <Line label="Contenu" value={`${s.matches} parties • ${s.profiles} profils • ${s.statsBlocks} stats • ${s.mediaRefs + s.dataImages} médias`} />
       <Line label="Historique" value={`${s.historyRows} lignes`} />
+      <Line label="Catégorie" value={saveCategory(s)} />
       <Line label="Taille" value={fmtBytes(s.bytes)} />
       <Line label="Sports" value={join(s.sports)} />
       <Line label="Noms" value={join(s.names)} />
@@ -261,88 +359,107 @@ function SummaryLines({ summary }: { summary: Partial<VaultSummary> }) {
   );
 }
 
-function NasCard({ slot, busy, onRestore, onExport, onDelete }: {
-  slot: NasSlot;
+function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDelete }: {
+  entry: SaveEntry;
   busy: boolean;
+  expanded: boolean;
+  onToggle: () => void;
   onRestore: () => void;
   onExport: () => void;
   onDelete?: () => void;
 }) {
-  const summary = normalizeSummary(slot.summary || {});
-  const id = String(slot.id || "latest");
+  const q = entry.quality;
+  const s = normalizeSummary(entry.summary);
   return (
-    <div style={panel}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start", minWidth: 0 }}>
-        <div style={wrapText}>
-          <div style={{ color: "#fff", fontWeight: 1000, fontSize: 16 }}>{slot.latest ? "Backup NAS courant" : `Slot NAS ${id.slice(-6)}`}</div>
-          <div style={{ color: "#93c5fd", fontSize: 11, marginTop: 3, ...wrapText }}>{slot.latest ? "/sync/pull" : `/sync/slots/${id}`}</div>
+    <div style={{ ...panel, borderColor: q.restorable ? "rgba(52,211,153,.38)" : "rgba(251,191,36,.28)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 12, alignItems: "center", minWidth: 0 }}>
+        <div
+          style={{
+            width: 50,
+            height: 50,
+            borderRadius: 16,
+            display: "grid",
+            placeItems: "center",
+            background: q.grade === "complete" ? "rgba(52,211,153,.14)" : "rgba(217,255,51,.12)",
+            border: `1px solid ${q.color}`,
+            color: q.color,
+            fontWeight: 1000,
+            boxShadow: `0 0 18px ${q.color}33`,
+          }}
+        >
+          {String(entry.index).padStart(2, "0")}
         </div>
-        <Badge summary={summary} />
+
+        <div style={wrapText}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong style={{ color: "#fff", fontSize: 16, ...wrapText }}>{entry.title}</strong>
+            <QualityBadge quality={q} />
+          </div>
+          <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 4, ...wrapText }}>{entry.subtitle}</div>
+          <div style={{ color: q.color, fontSize: 12, fontWeight: 900, marginTop: 6, ...wrapText }}>{q.reason}</div>
+        </div>
+
+        <button style={{ ...btn, padding: "9px 10px", borderColor: "rgba(148,163,184,.35)", color: "#e5e7eb" }} onClick={onToggle}>
+          {expanded ? "Masquer" : "Détails"}
+        </button>
       </div>
-      <div style={{ height: 1, background: "rgba(148,163,184,.15)", margin: "12px 0" }} />
-      <SummaryLines summary={summary} />
-      <Line label="Créé" value={fmtDate(slot.createdAt || slot.updatedAt || null)} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
+          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>PARTIES</div>
+          <div style={{ color: gold, fontWeight: 1000, fontSize: 18 }}>{s.matches}</div>
+        </div>
+        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
+          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>PROFILS</div>
+          <div style={{ color: neon, fontWeight: 1000, fontSize: 18 }}>{s.profiles}</div>
+        </div>
+        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
+          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>STATS</div>
+          <div style={{ color: green, fontWeight: 1000, fontSize: 18 }}>{s.statsBlocks}</div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 12 }}>
+          <SummaryLines summary={s} />
+          <Line label="Date" value={fmtDate(entry.createdAt || entry.updatedAt || null)} />
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button style={primaryBtn} disabled={busy} onClick={onRestore}>Restaurer navigateur + compte</button>
+        <button style={q.restorable ? primaryBtn : { ...btn, borderColor: muted, color: muted }} disabled={busy || !q.restorable} onClick={onRestore}>
+          Restaurer cet état
+        </button>
         <button style={btn} disabled={busy} onClick={onExport}>Exporter JSON</button>
-        {!slot.latest && onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>Supprimer slot</button>}
+        {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>Supprimer</button>}
       </div>
     </div>
   );
 }
 
-function LocalSlotCard({ slot, busy, onRestore, onPush, onExport, onDelete }: {
-  slot: MemorySlot;
-  busy: boolean;
-  onRestore: () => void;
-  onPush: () => void;
-  onExport: () => void;
-  onDelete: () => void;
-}) {
-  const summary = normalizeSummary(slot.summary || summarizeVaultPayload(slot.payload));
-  return (
-    <div style={panel}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start", minWidth: 0 }}>
-        <div style={wrapText}>
-          <div style={{ color: "#fff", fontWeight: 1000, fontSize: 16 }}>{slot.label || "Bloc local"}</div>
-          <div style={{ color: "#93c5fd", fontSize: 11, marginTop: 3, ...wrapText }}>{slot.id}</div>
-        </div>
-        <Badge summary={summary} />
-      </div>
-      <div style={{ height: 1, background: "rgba(148,163,184,.15)", margin: "12px 0" }} />
-      <SummaryLines summary={summary} />
-      <Line label="Créé" value={fmtDate(slot.createdAt)} />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button style={primaryBtn} disabled={busy} onClick={onRestore}>Restaurer navigateur + compte</button>
-        <button style={btn} disabled={busy} onClick={onPush}>Envoyer au compte</button>
-        <button style={btn} disabled={busy} onClick={onExport}>Exporter</button>
-        <button style={dangerBtn} disabled={busy} onClick={onDelete}>Supprimer</button>
-      </div>
-    </div>
-  );
-}
-
-function BlockCard({ block, busy, onRestore, onExport }: {
+function TechnicalBlockCard({ block, busy, onExport }: {
   block: StorageBlock;
   busy: boolean;
-  onRestore?: () => void;
   onExport: () => void;
 }) {
   const summary = normalizeSummary(block.summary);
+  const q = assessSave(summary);
   return (
-    <div style={panel}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start", minWidth: 0 }}>
+    <div style={{ ...panel, borderColor: "rgba(148,163,184,.18)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, minWidth: 0 }}>
         <div style={wrapText}>
-          <div style={{ color: "#fff", fontWeight: 1000, fontSize: 16, ...wrapText }}>{block.title}</div>
-          <div style={{ color: "#93c5fd", fontSize: 11, marginTop: 3, ...wrapText }}>{block.subtitle || block.location}</div>
+          <strong style={{ color: "#fff", fontSize: 14, ...wrapText }}>{block.title}</strong>
+          <div style={{ color: muted, fontSize: 11, marginTop: 3, ...wrapText }}>{block.subtitle || block.location}</div>
         </div>
-        <Badge summary={summary} />
+        <QualityBadge quality={q} />
       </div>
-      <div style={{ height: 1, background: "rgba(148,163,184,.15)", margin: "12px 0" }} />
-      <SummaryLines summary={summary} />
-      <Line label="Empl." value={block.location} />
+      <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 8, ...wrapText }}>
+        Bloc brut détecté pour diagnostic. Il n’est pas proposé comme restauration principale.
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <SummaryLines summary={summary} />
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        {onRestore && <button style={primaryBtn} disabled={busy} onClick={onRestore}>Restaurer ce bloc vers compte</button>}
         <button style={btn} disabled={busy} onClick={onExport}>Exporter bloc</button>
       </div>
     </div>
@@ -355,53 +472,6 @@ async function pushSnapshotToAccount(payload: any, reason: string) {
   return apiPost("/sync/push", { payload: snapshot, version, reason });
 }
 
-async function openExistingDb(dbName: string): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(dbName);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function applyRawBlockToBrowser(block: StorageBlock) {
-  if (block.source === "localStorage") {
-    const payload: any = block.payload || {};
-    if (payload.key != null) {
-      localStorage.setItem(String(payload.key), typeof payload.value === "string" ? payload.value : JSON.stringify(payload.value));
-      return;
-    }
-    if (payload.all && typeof payload.all === "object") {
-      for (const [key, value] of Object.entries(payload.all)) {
-        localStorage.setItem(String(key), typeof value === "string" ? value : JSON.stringify(value));
-      }
-      return;
-    }
-  }
-
-  if (block.source === "indexedDB" && block.dbName && block.storeName && Array.isArray((block.payload as any)?.rows)) {
-    const db = await openExistingDb(block.dbName);
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(String(block.storeName), "readwrite");
-        const store = tx.objectStore(String(block.storeName));
-        const keyPath = store.keyPath;
-        for (const row of (block.payload as any).rows) {
-          if (keyPath) store.put(row.value);
-          else if (row.key != null) store.put(row.value, row.key);
-          else store.put(row.value);
-        }
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    } finally {
-      try { db.close(); } catch {}
-    }
-    return;
-  }
-
-  throw new Error("Ce bloc est seulement diagnostique : il ne contient pas de payload restaurable direct.");
-}
-
 export default function StorageVaultPage({ go }: Props) {
   const [tab, setTab] = React.useState<TabKey>("restore");
   const [busy, setBusy] = React.useState(false);
@@ -409,16 +479,64 @@ export default function StorageVaultPage({ go }: Props) {
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
-  const [showTechnical, setShowTechnical] = React.useState(false);
+  const [showDiagnostic, setShowDiagnostic] = React.useState(false);
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
-  const validNasSlots = React.useMemo(() => nasSlots.filter((slot) => hasUsefulGameData(slot.summary)), [nasSlots]);
-  const statsOnlyNasSlots = React.useMemo(() => nasSlots.filter((slot) => isStatsOnly(slot.summary)), [nasSlots]);
-  const validBlocks = React.useMemo(() => blocks.filter((block) => hasUsefulGameData(block.summary)), [blocks]);
-  const technicalBlocks = React.useMemo(() => blocks.filter((block) => !hasUsefulGameData(block.summary)), [blocks]);
-  const visibleNasSlots = showTechnical ? nasSlots : validNasSlots;
-  const visibleBlocks = showTechnical ? blocks : validBlocks;
-  const allValidCount = validNasSlots.length + validBlocks.length + localSlots.filter((slot) => hasUsefulGameData(slot.summary)).length;
+  const nasEntries = React.useMemo<SaveEntry[]>(() => {
+    return nasSlots
+      .map((slot, idx) => {
+        const summary = normalizeSummary(slot.summary || {});
+        const q = assessSave(summary);
+        const id = String(slot.id || "latest");
+        return {
+          key: `nas:${id}`,
+          source: "nas" as const,
+          slot,
+          summary,
+          latest: Boolean((slot as any).latest || id === "latest"),
+          createdAt: slot.createdAt || slot.updatedAt || null,
+          updatedAt: slot.updatedAt || slot.createdAt || null,
+          index: idx + 1,
+          quality: q,
+          title: (slot as any).latest || id === "latest" ? "Emplacement courant NAS" : `Emplacement NAS ${String(idx + 1).padStart(2, "0")}`,
+          subtitle: q.restorable ? `${saveCategory(summary)} · ${fmtDate(slot.createdAt || slot.updatedAt || null)}` : `Masqué par garde-fou · ${q.label}`,
+        };
+      })
+      .filter((entry) => entry.quality.grade === "complete" || entry.quality.grade === "history")
+      .sort((a, b) => {
+        const gradeA = a.quality.grade === "complete" ? 2 : 1;
+        const gradeB = b.quality.grade === "complete" ? 2 : 1;
+        if (gradeA !== gradeB) return gradeB - gradeA;
+        return (Date.parse(b.createdAt || b.updatedAt || "") || 0) - (Date.parse(a.createdAt || a.updatedAt || "") || 0);
+      });
+  }, [nasSlots]);
+
+  const localEntries = React.useMemo<SaveEntry[]>(() => {
+    return localSlots
+      .map((slot, idx) => {
+        const summary = normalizeSummary(slot.summary || summarizeVaultPayload(slot.payload));
+        const q = assessSave(summary);
+        return {
+          key: `local:${slot.id}`,
+          source: "local" as const,
+          slot,
+          summary,
+          createdAt: slot.createdAt,
+          updatedAt: slot.updatedAt,
+          index: idx + 1,
+          quality: q,
+          title: `Bloc local ${String(idx + 1).padStart(2, "0")}`,
+          subtitle: `${slot.label || "Sécurité locale"} · ${fmtDate(slot.createdAt)}`,
+        };
+      })
+      .filter((entry) => entry.quality.restorable);
+  }, [localSlots]);
+
+  const restorableEntries = React.useMemo(() => [...nasEntries, ...localEntries], [nasEntries, localEntries]);
+  const completeEntries = React.useMemo(() => restorableEntries.filter((entry) => entry.quality.grade === "complete"), [restorableEntries]);
+  const historyEntries = React.useMemo(() => restorableEntries.filter((entry) => entry.quality.grade === "history"), [restorableEntries]);
+  const technicalCount = blocks.length;
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
@@ -431,8 +549,10 @@ export default function StorageVaultPage({ go }: Props) {
       setLocalSlots(ls);
       setNasSlots(ns);
       setBlocks(bs);
-      const valid = ns.filter((slot) => hasUsefulGameData(slot.summary)).length + bs.filter((block) => hasUsefulGameData(block.summary)).length + ls.filter((slot) => hasUsefulGameData(slot.summary)).length;
-      setMessage(`Scan terminé : ${valid} bloc(s) avec données de parties exploitables. Les blocs purement techniques sont masqués par défaut.`);
+
+      const validNas = ns.filter((slot) => isRestorable(slot.summary)).length;
+      const validLocal = ls.filter((slot) => isRestorable(slot.summary || summarizeVaultPayload(slot.payload))).length;
+      setMessage(`${validNas + validLocal} emplacement(s) restaurable(s). Les blocs techniques/douteux restent cachés en mode expert pour éviter les mauvaises restaurations.`);
     } catch (error: any) {
       setMessage(`Erreur scan : ${error?.message || error}`);
     } finally {
@@ -453,19 +573,25 @@ export default function StorageVaultPage({ go }: Props) {
     const snapshot = unwrapSnapshotEnvelope(payload);
     if (!looksLikeCloudSnapshot(snapshot)) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
     const summary = summarizeVaultPayload(snapshot);
+    const q = assessSave(summary);
+    if (!q.restorable) {
+      throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason}`);
+    }
+
     const ok = window.confirm(
-      `Restaurer ${label} ?\n\n` +
-      `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${fmtBytes(summary.bytes)}\n\n` +
-      `Étapes : bloc local de sécurité → restauration navigateur → envoi au compte NAS.`
+      `Restaurer "${label}" ?\n\n` +
+      `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
+      `L’application va créer une sécurité, restaurer le navigateur, envoyer au compte NAS puis recharger.`
     );
     if (!ok) return;
+
     const restoreAuth = rememberAuthKeys();
     await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
     await importCloudSnapshot(snapshot, { mode: "replace" });
     restoreAuth();
     await afterRestoreHousekeeping(reason);
     await pushSnapshotToAccount(snapshot, reason);
-    setMessage(`Restauration terminée : ${summary.matches} partie(s) restaurée(s), puis renvoyée(s) sur ton compte. Rechargement…`);
+    setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
     window.setTimeout(() => window.location.reload(), 900);
   };
 
@@ -473,7 +599,8 @@ export default function StorageVaultPage({ go }: Props) {
     setBusy(true);
     try {
       const slot = await createLocalMemorySlot("Bloc local de sécurité", "manual");
-      setMessage(`Bloc local créé : ${slot.summary.matches} parties • ${slot.summary.profiles} profils.`);
+      const q = assessSave(slot.summary || summarizeVaultPayload(slot.payload));
+      setMessage(`Bloc local créé : ${q.label} · ${slot.summary.matches} parties • ${slot.summary.profiles} profils.`);
       await refresh();
     } catch (error: any) {
       setMessage(`Création bloc local impossible : ${error?.message || error}`);
@@ -486,9 +613,11 @@ export default function StorageVaultPage({ go }: Props) {
     setBusy(true);
     try {
       const snapshot = await exportCloudSnapshot();
-      await pushSnapshotToAccount(snapshot, "manual-save-page-push");
       const summary = summarizeVaultPayload(snapshot);
-      setMessage(`Compte NAS mis à jour : ${summary.matches} parties • ${summary.profiles} profils.`);
+      const q = assessSave(summary);
+      if (!q.restorable && !window.confirm(`Attention : le garde-fou ne trouve pas de parties fiables dans l’état actuel.\n\n${q.reason}\n\nEnvoyer quand même ?`)) return;
+      await pushSnapshotToAccount(snapshot, "manual-save-page-push");
+      setMessage(`Compte NAS mis à jour : ${summary.matches} parties • ${summary.profiles} profils • ${summary.statsBlocks} stats.`);
       await refresh();
     } catch (error: any) {
       setMessage(`Envoi au compte impossible : ${error?.message || error}`);
@@ -496,55 +625,42 @@ export default function StorageVaultPage({ go }: Props) {
   };
 
   const createNasBackup = async () => {
-    const ok = window.confirm("Créer une sauvegarde NAS complète maintenant ?\n\nElle remplace le backup courant et ajoute un slot versionné côté NAS.");
+    const ok = window.confirm("Créer une sauvegarde NAS complète maintenant ?\n\nElle remplace l’emplacement courant et ajoute un point de restauration versionné.");
     if (!ok) return;
     setBusy(true);
     try {
       const res: any = await createNasVersionedSnapshot();
-      setMessage(`Sauvegarde NAS créée. ${res?.summary?.matches || res?.summary?.after?.historyCount || ""} partie(s) détectée(s).`);
+      const summary = normalizeSummary(res?.summary || res?.summary?.after || {});
+      setMessage(`Sauvegarde NAS créée. ${summary.matches || res?.summary?.after?.historyCount || ""} partie(s) détectée(s).`);
       await refresh();
     } catch (error: any) {
       setMessage(`Sauvegarde NAS impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
   };
 
-  const restoreNas = async (slot: NasSlot) => {
+  const restoreNas = async (entry: SaveEntry) => {
     setBusy(true);
     try {
+      const slot = entry.slot as NasSlot;
       const id = String(slot.id || "latest");
       const pulled = await pullNasMemorySlot(id);
-      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-nas:${id}`, slot.latest ? "le backup NAS courant" : `le slot NAS ${id.slice(-6)}`);
+      await restoreSnapshotIntoBrowserAndAccount(
+        pulled.payload,
+        `restore-nas:${id}`,
+        entry.title
+      );
     } catch (error: any) {
       setMessage(`Restauration NAS impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
   };
 
-  const restoreLocal = async (slot: MemorySlot) => {
+  const restoreLocal = async (entry: SaveEntry) => {
     setBusy(true);
     try {
-      await restoreSnapshotIntoBrowserAndAccount(slot.payload, `restore-local:${slot.id}`, slot.label || slot.id);
+      const slot = entry.slot as MemorySlot;
+      await restoreSnapshotIntoBrowserAndAccount(slot.payload, `restore-local:${slot.id}`, entry.title);
     } catch (error: any) {
       setMessage(`Restauration locale impossible : ${error?.message || error}`);
-    } finally { setBusy(false); }
-  };
-
-  const restoreRawBlock = async (block: StorageBlock) => {
-    const ok = window.confirm(
-      `Restaurer ce bloc brut vers ton compte ?\n\n${block.title}\n${block.location}\n\n` +
-      `À utiliser seulement pour un bloc qui contient de vraies parties/historique.`
-    );
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await createLocalMemorySlot("Sécurité avant bloc brut", "before-restore").catch(() => null);
-      await applyRawBlockToBrowser(block);
-      const snapshot = await exportCloudSnapshot();
-      await afterRestoreHousekeeping(`restore-raw-block:${block.location}`);
-      await pushSnapshotToAccount(snapshot, `restore-raw-block:${block.location}`);
-      setMessage("Bloc brut réappliqué, puis snapshot complet envoyé sur le compte. Rechargement…");
-      window.setTimeout(() => window.location.reload(), 900);
-    } catch (error: any) {
-      setMessage(`Restauration bloc brut impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
   };
 
@@ -564,6 +680,47 @@ export default function StorageVaultPage({ go }: Props) {
     }
   };
 
+  const toggleExpanded = (key: string) => setExpanded((old) => ({ ...old, [key]: !old[key] }));
+
+  const renderEntry = (entry: SaveEntry) => (
+    <SaveCard
+      key={entry.key}
+      entry={entry}
+      busy={busy}
+      expanded={Boolean(expanded[entry.key])}
+      onToggle={() => toggleExpanded(entry.key)}
+      onRestore={() => entry.source === "nas" ? restoreNas(entry) : restoreLocal(entry)}
+      onExport={async () => {
+        try {
+          if (entry.source === "nas") {
+            const slot = entry.slot as NasSlot;
+            const id = String(slot.id || "latest");
+            const pulled = await pullNasMemorySlot(id);
+            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+          } else {
+            exportJsonDownload(entry.slot, `${(entry.slot as MemorySlot).id}.json`);
+          }
+        } catch (error: any) {
+          setMessage(`Export impossible : ${error?.message || error}`);
+        }
+      }}
+      onDelete={entry.source === "nas" && !(entry.slot as NasSlot).latest ? async () => {
+        const slot = entry.slot as NasSlot;
+        const id = String(slot.id || "");
+        if (!window.confirm(`Supprimer définitivement cet emplacement NAS ?\n${entry.title}`)) return;
+        setBusy(true);
+        try { await deleteNasMemorySlot(id); setMessage("Emplacement NAS supprimé."); await refresh(); }
+        catch (error: any) { setMessage(`Suppression NAS impossible : ${error?.message || error}`); }
+        finally { setBusy(false); }
+      } : entry.source === "local" ? async () => {
+        const slot = entry.slot as MemorySlot;
+        if (!window.confirm(`Supprimer ce bloc local ?\n${entry.title}`)) return;
+        await deleteLocalMemorySlot(slot.id);
+        await refresh();
+      } : undefined}
+    />
+  );
+
   return (
     <div style={pageStyle}>
       <div style={shellStyle}>
@@ -578,8 +735,8 @@ export default function StorageVaultPage({ go }: Props) {
             </button>
             <div style={{ textAlign: "center", minWidth: 0 }}>
               <div style={{ color: gold, fontWeight: 1000, fontSize: 25, lineHeight: 1.05, letterSpacing: ".04em", textShadow: "0 0 18px rgba(217,255,51,.8)", ...wrapText }}>SAUVEGARDE</div>
-              <div style={{ color: "#cbd5e1", fontSize: 11, marginTop: 4, ...wrapText }}>Backup NAS • Synchronisation compte</div>
-              <div style={{ color: "#94a3b8", fontSize: 11, ...wrapText }}>Restauration historique / stats / profils</div>
+              <div style={{ color: "#cbd5e1", fontSize: 11, marginTop: 4, ...wrapText }}>Carte mémoire de l’application</div>
+              <div style={{ color: muted, fontSize: 11, ...wrapText }}>On n’affiche que les emplacements restaurables.</div>
             </div>
             <button
               style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: neon, color: neon, boxShadow: "0 0 16px rgba(34,211,238,.22)" }}
@@ -592,9 +749,9 @@ export default function StorageVaultPage({ go }: Props) {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 14 }}>
-            <StatBox label="Valides" value={allValidCount} color={green} />
-            <StatBox label="NAS" value={validNasSlots.length} color={neon} />
-            <StatBox label="Stats seules" value={statsOnlyNasSlots.length} color={amber} />
+            <StatBox label="Emplacements" value={restorableEntries.length} color={green} />
+            <StatBox label="Complets" value={completeEntries.length} color={gold} />
+            <StatBox label="NAS" value={nasEntries.length} color={neon} />
           </div>
         </div>
 
@@ -603,134 +760,89 @@ export default function StorageVaultPage({ go }: Props) {
           <div style={{ marginTop: 5, color: "#cbd5e1", fontSize: 13, lineHeight: 1.4, ...wrapText }}>{message}</div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
-          <TabButton active={tab === "backup"} onClick={() => setTab("backup")}>💾 Backup</TabButton>
-          <TabButton active={tab === "restore"} onClick={() => setTab("restore")}>♻️ Restore</TabButton>
-          <TabButton active={tab === "valid"} onClick={() => setTab("valid")}>✅ Valides</TabButton>
-          <TabButton active={tab === "diagnostic"} onClick={() => setTab("diagnostic")}>🔎 Scan</TabButton>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+          <TabButton active={tab === "restore"} onClick={() => setTab("restore")}>🎮 Restaurer</TabButton>
+          <TabButton active={tab === "backup"} onClick={() => setTab("backup")}>💾 Sauver</TabButton>
+          <TabButton active={tab === "diagnostic"} onClick={() => setTab("diagnostic")}>🔎 Expert</TabButton>
         </div>
+
+        {tab === "restore" && (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ ...panel, borderColor: "rgba(52,211,153,.36)" }}>
+              <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Choisir un état à restaurer</h2>
+              <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
+                Comme une carte mémoire : tu choisis un emplacement fiable, puis <b>Restaurer cet état</b>. Le garde-fou bloque les sauvegardes sans historique de parties.
+              </p>
+            </div>
+
+            {completeEntries.length > 0 && (
+              <>
+                <h2 style={{ margin: "4px 0 0", color: green, fontSize: 17, textShadow: "0 0 12px rgba(52,211,153,.45)" }}>Sauvegardes complètes recommandées</h2>
+                {completeEntries.map(renderEntry)}
+              </>
+            )}
+
+            {historyEntries.length > 0 && (
+              <>
+                <h2 style={{ margin: "8px 0 0", color: gold, fontSize: 17, textShadow: "0 0 12px rgba(217,255,51,.35)" }}>Parties / historique à vérifier</h2>
+                {historyEntries.map(renderEntry)}
+              </>
+            )}
+
+            {!restorableEntries.length && (
+              <div style={panel}>
+                <strong style={{ color: amber }}>Aucun emplacement fiable affiché</strong>
+                <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
+                  Le garde-fou ne trouve pas de sauvegarde avec parties/historique. Ouvre l’onglet Expert uniquement pour diagnostiquer les blocs bruts.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {tab === "backup" && (
           <div style={{ display: "grid", gap: 12 }}>
             <div style={panel}>
-              <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Créer / synchroniser</h2>
+              <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Créer un point de restauration</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
-                Ici on garde uniquement les actions utiles : bloc local de sécurité, sauvegarde NAS complète, envoi du navigateur vers le compte et import JSON.
+                Utilise surtout <b>Créer sauvegarde NAS</b>. C’est l’équivalent “Sauvegarder la partie” : historique, stats, profils et médias sont envoyés dans ton compte.
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
                 <button style={primaryBtn} disabled={busy} onClick={createNasBackup}>Créer sauvegarde NAS</button>
-                <button style={btn} disabled={busy} onClick={pushCurrentToAccount}>Envoyer au compte</button>
-                <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer bloc sécurité</button>
-                <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer JSON</button>
+                <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer sécurité locale</button>
+                <button style={btn} disabled={busy} onClick={pushCurrentToAccount}>Envoyer état actuel</button>
+                <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer latest.json</button>
                 <input ref={inputRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(e) => importJsonFile(e.currentTarget.files?.[0] || null)} />
               </div>
             </div>
 
-            <div style={{ ...panel, borderColor: "rgba(251,191,36,.40)" }}>
-              <strong style={{ color: amber }}>Flux clair pour récupérer tes données</strong>
+            <div style={{ ...panel, borderColor: "rgba(251,191,36,.34)" }}>
+              <strong style={{ color: amber }}>Règle simple</strong>
               <div style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.48, marginTop: 7, ...wrapText }}>
-                1) Choisir un slot NAS ou un bloc local avec <b>PARTIES VALIDES</b>. 2) Cliquer <b>Restaurer navigateur + compte</b>. 3) L’application recharge. 4) Aller dans <b>Historique</b>, puis Stats. Les blocs <b>STATS SEULES</b> ne recréent pas les cartes historiques détaillées.
+                Une sauvegarde fiable doit contenir <b>parties + historique + profils + stats</b>. Les blocs “stats seules” ou “techniques” sont masqués parce qu’ils ne peuvent pas reconstruire correctement les cartes historiques.
               </div>
             </div>
-          </div>
-        )}
-
-        {tab === "restore" && (
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ ...panel, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={wrapText}>
-                <strong style={{ color: "#fff" }}>Backups NAS restaurables</strong>
-                <div style={{ color: "#94a3b8", fontSize: 12 }}>Affichage filtré : seulement les sauvegardes qui contiennent des parties/historique.</div>
-              </div>
-              <button style={btn} onClick={() => setShowTechnical((v) => !v)}>{showTechnical ? "Masquer technique" : "Afficher tout"}</button>
-            </div>
-            {visibleNasSlots.length ? visibleNasSlots.map((slot) => {
-              const id = String(slot.id || "latest");
-              return (
-                <NasCard
-                  key={`nas-${id}`}
-                  slot={slot}
-                  busy={busy}
-                  onRestore={() => restoreNas(slot)}
-                  onExport={async () => {
-                    try {
-                      const pulled = await pullNasMemorySlot(id);
-                      exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
-                    } catch (error: any) { setMessage(`Export NAS impossible : ${error?.message || error}`); }
-                  }}
-                  onDelete={!slot.latest ? async () => {
-                    if (!window.confirm(`Supprimer définitivement ce slot NAS ?\n${id}`)) return;
-                    setBusy(true);
-                    try { await deleteNasMemorySlot(id); setMessage("Slot NAS supprimé."); await refresh(); }
-                    catch (error: any) { setMessage(`Suppression NAS impossible : ${error?.message || error}`); }
-                    finally { setBusy(false); }
-                  } : undefined}
-                />
-              );
-            }) : <div style={panel}>Aucun backup NAS avec parties valides affiché. Active “Afficher tout” pour voir les blocs techniques/stats seules.</div>}
-          </div>
-        )}
-
-        {tab === "valid" && (
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ ...panel, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={wrapText}>
-                <strong style={{ color: "#fff" }}>Données valides trouvées dans le navigateur</strong>
-                <div style={{ color: "#94a3b8", fontSize: 12 }}>Ces blocs sont filtrés pour éviter les centaines de lignes inutiles.</div>
-              </div>
-              <button style={btn} onClick={() => setShowTechnical((v) => !v)}>{showTechnical ? "Masquer technique" : "Afficher tout"}</button>
-            </div>
-
-            <h2 style={{ margin: "6px 0 0", color: "#fff", fontSize: 18 }}>Blocs locaux de sécurité</h2>
-            {localSlots.length ? localSlots.map((slot) => (
-              <LocalSlotCard
-                key={slot.id}
-                slot={slot}
-                busy={busy}
-                onRestore={() => restoreLocal(slot)}
-                onPush={async () => {
-                  setBusy(true);
-                  try { await pushSnapshotToAccount(slot.payload, `push-local-slot:${slot.id}`); setMessage("Bloc local envoyé au compte NAS."); await refresh(); }
-                  catch (error: any) { setMessage(`Envoi impossible : ${error?.message || error}`); }
-                  finally { setBusy(false); }
-                }}
-                onExport={() => exportJsonDownload(slot, `${slot.id}.json`)}
-                onDelete={async () => { await deleteLocalMemorySlot(slot.id); await refresh(); }}
-              />
-            )) : <div style={panel}>Aucun bloc local de sécurité. Crée-en un avant toute restauration risquée.</div>}
-
-            <h2 style={{ margin: "10px 0 0", color: "#fff", fontSize: 18 }}>Blocs de parties détectés</h2>
-            {visibleBlocks.length ? visibleBlocks.map((block) => (
-              <BlockCard
-                key={block.id}
-                block={block}
-                busy={busy}
-                onRestore={hasUsefulGameData(block.summary) ? () => restoreRawBlock(block) : undefined}
-                onExport={() => exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`)}
-              />
-            )) : <div style={panel}>Aucun bloc local avec parties/historique. Lance “Scanner” ou restaure un slot NAS valide.</div>}
           </div>
         )}
 
         {tab === "diagnostic" && (
           <div style={{ display: "grid", gap: 12 }}>
             <div style={panel}>
-              <h2 style={{ color: "#fff", margin: 0, fontSize: 19 }}>Diagnostic filtré</h2>
+              <h2 style={{ color: "#fff", margin: 0, fontSize: 19 }}>Mode expert</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
-                Total scanné : {blocks.length} bloc(s). Valides parties : {validBlocks.length}. Techniques masqués : {technicalBlocks.length}. Par défaut, les blocs qui ne contiennent pas de parties/historique ne polluent plus la liste.
+                Ici seulement on voit les blocs bruts IndexedDB/localStorage. Ils servent à comprendre où sont les données, pas à choisir une restauration normale.
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button style={primaryBtn} disabled={busy} onClick={refresh}>Scanner maintenant</button>
-                <button style={btn} onClick={() => setShowTechnical((v) => !v)}>{showTechnical ? "Masquer technique" : "Afficher technique"}</button>
+                <button style={btn} onClick={() => setShowDiagnostic((v) => !v)}>{showDiagnostic ? "Masquer blocs bruts" : `Afficher ${technicalCount} blocs bruts`}</button>
               </div>
             </div>
 
-            {(showTechnical ? blocks : validBlocks).map((block) => (
-              <BlockCard
+            {showDiagnostic && blocks.map((block) => (
+              <TechnicalBlockCard
                 key={`diag-${block.id}`}
                 block={block}
                 busy={busy}
-                onRestore={hasUsefulGameData(block.summary) ? () => restoreRawBlock(block) : undefined}
                 onExport={() => exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`)}
               />
             ))}
