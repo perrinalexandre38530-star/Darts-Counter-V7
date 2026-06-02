@@ -1,434 +1,557 @@
 import * as React from "react";
-import { apiGet, apiPost } from "../lib/apiClient";
+import {
+  createLocalMemorySlot,
+  createNasVersionedSnapshot,
+  deleteLocalMemorySlot,
+  exportJsonDownload,
+  listLocalMemorySlots,
+  listNasMemorySlots,
+  pullNasMemorySlot,
+  restoreLocalMemorySlot,
+  restoreNasMemorySlot,
+  scanLocalStorageAndIndexedDb,
+  summarizeVaultPayload,
+  type MemorySlot,
+  type NasSlot,
+  type StorageBlock,
+  type VaultSummary,
+} from "../lib/storageVault";
 
-// Page autonome volontairement : aucun import projet fragile.
-// Objectif : permettre d'inspecter localStorage / IndexedDB / NAS même en situation de récupération.
+// Page autonome côté UI, mais restauration branchée sur le vrai moteur de l'app :
+// exportCloudSnapshot()/importCloudSnapshot() via src/lib/storageVault.ts.
+// Important : ne pas remplacer ce fichier par un simple proxy de 2 lignes, sinon
+// certains environnements/patchs l'ouvrent comme fichier incomplet.
 
 type Props = { go?: (tab: any, params?: any) => void };
-type Summary = {
-  bytes: number;
-  keys: number;
-  profiles: number;
-  matches: number;
-  historyRows: number;
-  statsBlocks: number;
-  mediaRefs: number;
-  dataImages: number;
-  names: string[];
-  sports: string[];
-};
-type Block = {
-  id: string;
-  label: string;
-  source: string;
-  path: string;
-  createdAt?: string;
-  summary: Summary;
-  payload?: any;
+
+type ReadNasState = {
+  slotId: string;
+  summary: VaultSummary;
+  payload: any;
 };
 
-type NasSlot = {
-  id: string;
-  slotId?: string;
-  ownerId?: string;
-  version?: number;
-  summary?: Partial<Summary> & Record<string, any>;
-  reason?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  promotedAt?: string | null;
-  latest?: boolean;
-};
-
-
-const DB_NAME = "dc_memory_card_v1";
-const STORE = "slots";
-const MAX_SLOTS = 10;
 const neon = "#22d3ee";
+const gold = "#facc15";
 const danger = "#fb7185";
 const success = "#34d399";
 const warn = "#fbbf24";
+const bg = "#020617";
 
-function toText(value: any): string {
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function fmtBytes(n: number | null | undefined) {
+  const v = Number(n || 0);
+  if (!v) return "0 o";
+  if (v < 1024) return `${v} o`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} ko`;
+  return `${(v / 1024 / 1024).toFixed(2)} Mo`;
+}
+
+function fmtDate(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("fr-FR");
+}
+
+function summaryFromSlot(slot: NasSlot | MemorySlot | StorageBlock | null | undefined): VaultSummary {
+  const raw: any = (slot as any)?.summary || {};
+  return {
+    bytes: Number(raw.bytes || 0),
+    keys: Number(raw.keys || 0),
+    profiles: Number(raw.profiles || 0),
+    matches: Number(raw.matches || 0),
+    historyRows: Number(raw.historyRows || 0),
+    statsBlocks: Number(raw.statsBlocks || raw.stats || 0),
+    mediaRefs: Number(raw.mediaRefs || 0),
+    dataImages: Number(raw.dataImages || 0),
+    sports: Array.isArray(raw.sports) ? raw.sports : [],
+    names: Array.isArray(raw.names) ? raw.names : [],
+    probableContent: Array.isArray(raw.probableContent) ? raw.probableContent : [],
+    exportedAt: raw.exportedAt || null,
+  };
+}
+
+function score(summary: Partial<VaultSummary>) {
+  return Number(summary.matches || 0) * 20
+    + Number(summary.historyRows || 0) * 10
+    + Number(summary.profiles || 0) * 6
+    + Number(summary.statsBlocks || 0) * 5
+    + Number(summary.mediaRefs || 0)
+    + Number(summary.dataImages || 0);
+}
+
+function quality(summary: Partial<VaultSummary>) {
+  const s = score(summary);
+  if (s >= 80) return { label: "TRÈS PROMETTEUR", color: success };
+  if (s >= 20) return { label: "À INSPECTER", color: warn };
+  return { label: "FAIBLE", color: danger };
+}
+
+function titleForSource(source?: string) {
+  if (source === "nasSlot") return "Slot NAS";
+  if (source === "nasLatest") return "Backup NAS courant";
+  if (source === "localSlot") return "Bloc local restaurable";
+  if (source === "indexedDB") return "IndexedDB";
+  if (source === "localStorage") return "LocalStorage";
+  return "Bloc";
+}
+
+function stringifySafe(value: any) {
+  try { return JSON.stringify(value, null, 2); } catch { return String(value ?? ""); }
+}
+
+async function copyText(text: string) {
   try {
-    if (typeof value === "string") return value;
-    return JSON.stringify(value);
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    return String(value ?? "");
+    return false;
   }
 }
 
-function bytesOf(value: any): number {
-  return new Blob([toText(value)]).size;
+const pageStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  color: "#e2e8f0",
+  background: `radial-gradient(circle at 30% 0%, rgba(34,211,238,.16), transparent 34%), ${bg}`,
+  padding: "18px 14px 96px",
+};
+
+const panelStyle: React.CSSProperties = {
+  border: "1px solid rgba(34,211,238,.30)",
+  background: "linear-gradient(180deg, rgba(15,23,42,.96), rgba(2,6,23,.96))",
+  boxShadow: "0 0 24px rgba(34,211,238,.12)",
+  borderRadius: 20,
+  padding: 14,
+};
+
+const buttonStyle: React.CSSProperties = {
+  border: `1px solid ${neon}`,
+  color: neon,
+  background: "rgba(34,211,238,.12)",
+  borderRadius: 13,
+  padding: "10px 12px",
+  fontWeight: 1000,
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+function ActionButton({ children, onClick, disabled, tone = "cyan", title }: {
+  children: React.ReactNode;
+  onClick?: () => void | Promise<void>;
+  disabled?: boolean;
+  tone?: "cyan" | "gold" | "red" | "green" | "dark";
+  title?: string;
+}) {
+  const color = tone === "gold" ? gold : tone === "red" ? danger : tone === "green" ? success : tone === "dark" ? "#e2e8f0" : neon;
+  return (
+    <button
+      title={title}
+      disabled={disabled}
+      onClick={() => { void onClick?.(); }}
+      style={{
+        ...buttonStyle,
+        borderColor: color,
+        color,
+        background: tone === "dark" ? "rgba(15,23,42,.72)" : `${color}20`,
+        opacity: disabled ? 0.45 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
 }
-
-function uniq(values: string[], max = 12) {
-  return Array.from(new Set(values.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))).slice(0, max);
-}
-
-function walk(value: any, acc: any = { profiles: 0, matches: 0, historyRows: 0, statsBlocks: 0, mediaRefs: 0, dataImages: 0, names: [], sports: [] }, depth = 0) {
-  if (depth > 8 || value == null) return acc;
-  if (typeof value === "string") {
-    const s = value;
-    if (/data:image\//i.test(s)) acc.dataImages += 1;
-    if (/x01|darts|babyfoot|cricket|killer|petanque|pingpong|molkky/i.test(s)) {
-      const m = s.match(/x01|darts|babyfoot|cricket|killer|petanque|pingpong|molkky/gi);
-      if (m) acc.sports.push(...m.map((x) => x.toLowerCase()));
-    }
-    return acc;
-  }
-  if (typeof value !== "object") return acc;
-  if (Array.isArray(value)) {
-    for (const item of value.slice(0, 500)) walk(item, acc, depth + 1);
-    return acc;
-  }
-  const obj = value as Record<string, any>;
-  const keys = Object.keys(obj);
-  const joined = keys.join(" ").toLowerCase();
-  if (joined.includes("profile") || obj.displayName || obj.nickname || obj.avatarUrl) acc.profiles += 1;
-  if (joined.includes("match") || obj.sport || obj.result || obj.players) acc.matches += 1;
-  if (joined.includes("history") || obj.createdAt || obj.created_at) acc.historyRows += 1;
-  if (joined.includes("stats") || obj.avg3 || obj.bestVisit) acc.statsBlocks += 1;
-  if (obj.avatarUrl || obj.avatar || obj.mediaId || obj.assetId || obj.avatarAssetId) acc.mediaRefs += 1;
-  const name = obj.name || obj.displayName || obj.nickname || obj.local_profile_name || obj.playerName;
-  if (typeof name === "string" && name.length <= 60) acc.names.push(name);
-  const sport = obj.sport || obj.mode || obj.game;
-  if (typeof sport === "string" && sport.length <= 30) acc.sports.push(sport.toLowerCase());
-  for (const k of keys.slice(0, 100)) walk(obj[k], acc, depth + 1);
-  return acc;
-}
-
-function summarize(value: any, keyCount = 1): Summary {
-  let parsed = value;
-  if (typeof value === "string") {
-    try { parsed = JSON.parse(value); } catch {}
-  }
-  const acc = walk(parsed);
-  return {
-    bytes: bytesOf(value),
-    keys: keyCount,
-    profiles: Number(acc.profiles || 0),
-    matches: Number(acc.matches || 0),
-    historyRows: Number(acc.historyRows || 0),
-    statsBlocks: Number(acc.statsBlocks || 0),
-    mediaRefs: Number(acc.mediaRefs || 0),
-    dataImages: Number(acc.dataImages || 0),
-    names: uniq(acc.names || []),
-    sports: uniq(acc.sports || []),
-  };
-}
-
-function score(s: Partial<Summary>) {
-  return Number(s.matches || 0) * 20 + Number(s.historyRows || 0) * 8 + Number(s.profiles || 0) * 6 + Number(s.statsBlocks || 0) * 5 + Number(s.mediaRefs || 0) + Number(s.dataImages || 0);
-}
-
-function quality(s: Partial<Summary>) {
-  const n = score(s);
-  if (n >= 80) return { text: "TRÈS PROMETTEUR", color: success };
-  if (n >= 20) return { text: "À INSPECTER", color: warn };
-  return { text: "FAIBLE", color: danger };
-}
-
-
-function normalizeSummary(raw: any): Summary {
-  const s = raw && typeof raw === "object" ? raw : {};
-  return {
-    bytes: Number(s.bytes || 0),
-    keys: Number(s.keys || 0),
-    profiles: Number(s.profiles || 0),
-    matches: Number(s.matches || 0),
-    historyRows: Number(s.historyRows || 0),
-    statsBlocks: Number(s.statsBlocks || s.stats || 0),
-    mediaRefs: Number(s.mediaRefs || 0),
-    dataImages: Number(s.dataImages || 0),
-    names: uniq(Array.isArray(s.names) ? s.names : []),
-    sports: uniq(Array.isArray(s.sports) ? s.sports : []),
-  };
-}
-
-function nasSlotToBlock(slot: NasSlot): Block {
-  const id = String(slot.id || slot.slotId || "");
-  return {
-    id,
-    label: slot.latest ? "Backup NAS courant" : `Slot NAS ${id.slice(-6) || "versionné"}`,
-    source: "NAS PostgreSQL",
-    path: slot.latest ? "/sync/pull" : `/sync/slots/${id}`,
-    createdAt: String(slot.createdAt || slot.updatedAt || ""),
-    summary: normalizeSummary(slot.summary),
-    payload: slot,
-  };
-}
-
-function fmtBytes(n: number) {
-  if (!n) return "0 o";
-  if (n < 1024) return `${n} o`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} ko`;
-  return `${(n / 1024 / 1024).toFixed(2)} Mo`;
-}
-
-function fmtDate(v?: string) {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString("fr-FR");
-}
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbGetAll(): Promise<Block[]> {
-  const db = await openDb();
-  return await new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve((req.result || []).sort((a: Block, b: Block) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))));
-    req.onerror = () => reject(req.error);
-    tx.oncomplete = () => db.close();
-  });
-}
-
-async function idbPut(block: Block) {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(block);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-  const all = await idbGetAll();
-  for (const old of all.slice(MAX_SLOTS)) await idbDelete(old.id);
-}
-
-async function idbDelete(id: string) {
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-}
-
-async function scanAll(): Promise<Block[]> {
-  const blocks: Block[] = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i) || "";
-    const value = localStorage.getItem(key) || "";
-    const summary = summarize(value);
-    blocks.push({ id: `ls:${key}`, label: key, source: "localStorage", path: `localStorage.${key}`, summary });
-  }
-  const idbAny: any = indexedDB as any;
-  if (typeof idbAny.databases === "function") {
-    const dbs = await idbAny.databases();
-    for (const info of dbs) {
-      if (!info?.name) continue;
-      await new Promise<void>((resolve) => {
-        const req = indexedDB.open(info.name);
-        req.onerror = () => resolve();
-        req.onsuccess = () => {
-          const db = req.result;
-          const stores = Array.from(db.objectStoreNames);
-          let pending = stores.length;
-          if (!pending) { db.close(); resolve(); return; }
-          stores.forEach((storeName) => {
-            try {
-              const tx = db.transaction(String(storeName), "readonly");
-              const store = tx.objectStore(String(storeName));
-              const getAll = store.getAll ? store.getAll(undefined, 200) : null;
-              if (!getAll) throw new Error("getAll indisponible");
-              getAll.onsuccess = () => {
-                const rows = getAll.result || [];
-                const summary = summarize(rows, rows.length);
-                blocks.push({ id: `idb:${info.name}:${storeName}`, label: `${info.name} / ${storeName}`, source: "IndexedDB", path: `IndexedDB.${info.name}.${storeName}`, summary });
-              };
-              tx.oncomplete = () => { if (--pending === 0) { db.close(); resolve(); } };
-              tx.onerror = () => { if (--pending === 0) { db.close(); resolve(); } };
-            } catch {
-              if (--pending === 0) { db.close(); resolve(); }
-            }
-          });
-        };
-      });
-    }
-  }
-  return blocks.sort((a, b) => score(b.summary) - score(a.summary));
-}
-
-async function makeSnapshot() {
-  const local: Record<string, string> = {};
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i) || "";
-    local[key] = localStorage.getItem(key) || "";
-  }
-  const blocks = await scanAll();
-  const summary = summarize({ localStorage: local, blocks }, Object.keys(local).length + blocks.length);
-  return { exportedAt: new Date().toISOString(), origin: location.origin, localStorage: local, blocks, summary };
-}
-
-async function restoreSnapshot(payload: any) {
-  const local = payload?.payload?.localStorage || payload?.localStorage || {};
-  if (local && typeof local === "object") {
-    for (const [k, v] of Object.entries(local)) localStorage.setItem(String(k), String(v));
-  }
-}
-
-function downloadJson(name: string, data: any) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-const panel: React.CSSProperties = { background: "linear-gradient(180deg, rgba(15,23,42,.96), rgba(2,6,23,.96))", border: "1px solid rgba(34,211,238,.32)", boxShadow: "0 0 24px rgba(34,211,238,.14)", borderRadius: 18, padding: 14 };
-const btn: React.CSSProperties = { border: `1px solid ${neon}`, color: neon, background: "rgba(34,211,238,.12)", borderRadius: 12, padding: "9px 11px", fontWeight: 900, fontSize: 12, cursor: "pointer" };
 
 function Line({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div style={{ display: "flex", justifyContent: "space-between", gap: 10, color: "#cbd5e1", fontSize: 12 }}><span style={{ opacity: .72 }}>{label}</span><strong style={{ color: "#f8fafc", textAlign: "right" }}>{value}</strong></div>;
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#cbd5e1", fontSize: 12 }}>
+      <span style={{ opacity: 0.72 }}>{label}</span>
+      <strong style={{ color: "#f8fafc", textAlign: "right", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</strong>
+    </div>
+  );
 }
 
-function Card({ block, actions }: { block: Block; actions?: React.ReactNode }) {
-  const q = quality(block.summary);
-  return <div style={panel}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-      <div><div style={{ color: "#fff", fontWeight: 1000 }}>{block.label}</div><div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>{block.source} • {block.path}</div></div>
-      <span style={{ color: q.color, border: `1px solid ${q.color}`, borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 1000, height: 18 }}>{q.text}</span>
-    </div>
-    <div style={{ height: 1, background: "rgba(148,163,184,.18)", margin: "12px 0" }} />
+function SummaryLines({ summary }: { summary: VaultSummary }) {
+  return (
     <div style={{ display: "grid", gap: 7 }}>
-      <Line label="Contenu" value={`${block.summary.matches} parties • ${block.summary.profiles} profils • ${block.summary.statsBlocks} stats • ${block.summary.mediaRefs} médias`} />
-      <Line label="Taille" value={fmtBytes(block.summary.bytes)} />
-      <Line label="Noms" value={block.summary.names.join(", ") || "—"} />
-      <Line label="Sports" value={block.summary.sports.join(", ") || "—"} />
-      {block.createdAt && <Line label="Créé" value={fmtDate(block.createdAt)} />}
+      <Line label="Contenu" value={`${summary.matches} parties • ${summary.profiles} profils • ${summary.statsBlocks} stats • ${summary.mediaRefs + summary.dataImages} médias`} />
+      <Line label="Taille" value={fmtBytes(summary.bytes)} />
+      <Line label="Sports" value={summary.sports?.length ? summary.sports.join(", ") : "—"} />
+      <Line label="Noms" value={summary.names?.length ? summary.names.join(", ") : "—"} />
+      {summary.probableContent?.length ? <Line label="Probable" value={summary.probableContent.join(", ")} /> : null}
+      {summary.exportedAt ? <Line label="Export" value={fmtDate(summary.exportedAt)} /> : null}
     </div>
-    {actions && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>{actions}</div>}
-  </div>;
+  );
+}
+
+function BlockCard({ block }: { block: StorageBlock }) {
+  const summary = summaryFromSlot(block);
+  const q = quality(summary);
+  return (
+    <div style={panelStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: "#fff", fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis" }}>{block.title || titleForSource(block.source)}</div>
+          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {block.subtitle || titleForSource(block.source)} • {block.location}
+          </div>
+        </div>
+        <span style={{ color: q.color, border: `1px solid ${q.color}`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap" }}>{q.label}</span>
+      </div>
+      <div style={{ height: 1, background: "rgba(148,163,184,.18)", margin: "12px 0" }} />
+      <SummaryLines summary={summary} />
+      {block.createdAt || block.updatedAt ? <div style={{ marginTop: 8 }}><Line label="Date" value={fmtDate(block.createdAt || block.updatedAt)} /></div> : null}
+    </div>
+  );
+}
+
+function LocalSlotCard({ slot, busy, onRestore, onDelete, onExport }: {
+  slot: MemorySlot;
+  busy?: boolean;
+  onRestore: (slot: MemorySlot) => void | Promise<void>;
+  onDelete: (slot: MemorySlot) => void | Promise<void>;
+  onExport: (slot: MemorySlot) => void | Promise<void>;
+}) {
+  const summary = summaryFromSlot(slot);
+  const q = quality(summary);
+  return (
+    <div style={panelStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ color: "#fff", fontWeight: 1000 }}>{slot.label || "Bloc local"}</div>
+          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>IndexedDB sécurité • dc_memory_card_v1.slots</div>
+        </div>
+        <span style={{ color: q.color, border: `1px solid ${q.color}`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, height: 18 }}>{q.label}</span>
+      </div>
+      <div style={{ height: 1, background: "rgba(148,163,184,.18)", margin: "12px 0" }} />
+      <SummaryLines summary={summary} />
+      <div style={{ marginTop: 8 }}><Line label="Créé" value={fmtDate(slot.createdAt)} /></div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+        <ActionButton disabled={busy} tone="green" onClick={() => onRestore(slot)}>Restaurer local</ActionButton>
+        <ActionButton disabled={busy} onClick={() => onExport(slot)}>Exporter</ActionButton>
+        <ActionButton disabled={busy} tone="red" onClick={() => onDelete(slot)}>Supprimer</ActionButton>
+      </div>
+    </div>
+  );
+}
+
+function NasSlotCard({ slot, busy, readState, onRead, onRestore, onExport }: {
+  slot: NasSlot;
+  busy?: boolean;
+  readState?: ReadNasState | null;
+  onRead: (slot: NasSlot) => void | Promise<void>;
+  onRestore: (slot: NasSlot) => void | Promise<void>;
+  onExport: (slot: NasSlot) => void | Promise<void>;
+}) {
+  const slotId = String(slot.id || "");
+  const baseSummary = readState?.slotId === slotId ? readState.summary : summaryFromSlot(slot as any);
+  const q = quality(baseSummary);
+  const label = slot.latest ? "Backup NAS courant" : `Slot NAS ${slotId.slice(-8) || "versionné"}`;
+  return (
+    <div style={{ ...panelStyle, borderColor: slot.latest ? "rgba(250,204,21,.42)" : "rgba(34,211,238,.30)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: "#fff", fontWeight: 1000 }}>{label}</div>
+          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis" }}>
+            PostgreSQL NAS • {slot.latest ? "/sync/pull" : `/sync/slots/${slotId}`}
+          </div>
+        </div>
+        <span style={{ color: q.color, border: `1px solid ${q.color}`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, height: 18 }}>{q.label}</span>
+      </div>
+      <div style={{ height: 1, background: "rgba(148,163,184,.18)", margin: "12px 0" }} />
+      <SummaryLines summary={baseSummary} />
+      <div style={{ marginTop: 8 }}>
+        <Line label="Créé" value={fmtDate(slot.createdAt || slot.updatedAt)} />
+        <Line label="Version" value={slot.version ?? "—"} />
+        <Line label="Promu" value={fmtDate(slot.promotedAt)} />
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+        <ActionButton disabled={busy} onClick={() => onRead(slot)}>Lire contenu</ActionButton>
+        <ActionButton disabled={busy} tone="green" onClick={() => onRestore(slot)}>Restaurer ce NAS</ActionButton>
+        <ActionButton disabled={busy} onClick={() => onExport(slot)}>Exporter NAS</ActionButton>
+      </div>
+      {readState?.slotId === slotId ? (
+        <div style={{ marginTop: 10, border: "1px solid rgba(52,211,153,.35)", borderRadius: 14, padding: 10, background: "rgba(52,211,153,.08)", color: "#bbf7d0", fontSize: 12, fontWeight: 800 }}>
+          Contenu lu : {readState.summary.matches} parties • {readState.summary.profiles} profils • {readState.summary.statsBlocks} stats. Ce payload est restaurable dans ton compte/navigateur.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: React.ReactNode }) {
+  return (
+    <div style={{ margin: "22px 0 10px" }}>
+      <h2 style={{ color: "#fff", fontSize: 18, margin: 0 }}>{children}</h2>
+      {sub ? <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>{sub}</div> : null}
+    </div>
+  );
 }
 
 export default function StorageVaultPage({ go }: Props) {
-  const [blocks, setBlocks] = React.useState<Block[]>([]);
-  const [slots, setSlots] = React.useState<Block[]>([]);
+  const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
+  const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
-  const [msg, setMsg] = React.useState("Scan en attente…");
+  const [readNas, setReadNas] = React.useState<Record<string, ReadNasState>>({});
+  const [message, setMessage] = React.useState("Scan en attente…");
   const [busy, setBusy] = React.useState(false);
+  const [showRaw, setShowRaw] = React.useState(false);
+  const [rawPreview, setRawPreview] = React.useState("");
+
+  const sortedBlocks = React.useMemo(() => {
+    return [...blocks].sort((a, b) => score(summaryFromSlot(b)) - score(summaryFromSlot(a))).slice(0, 80);
+  }, [blocks]);
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
     try {
-      const [b, s, nas] = await Promise.all([
-        scanAll(),
-        idbGetAll(),
-        apiGet("/sync/slots").catch((error: any) => ({ ok: false, slots: [], error: error?.message || String(error) })),
+      const [nextBlocks, nextLocalSlots, nextNasSlots] = await Promise.all([
+        scanLocalStorageAndIndexedDb().catch((error) => {
+          console.warn("scanLocalStorageAndIndexedDb failed", error);
+          return [] as StorageBlock[];
+        }),
+        listLocalMemorySlots().catch((error) => {
+          console.warn("listLocalMemorySlots failed", error);
+          return [] as MemorySlot[];
+        }),
+        listNasMemorySlots().catch((error) => {
+          console.warn("listNasMemorySlots failed", error);
+          setMessage(`NAS indisponible : ${error?.message || error}`);
+          return [] as NasSlot[];
+        }),
       ]);
-      const remoteSlots = Array.isArray((nas as any)?.slots) ? (nas as any).slots : [];
-      setBlocks(b);
-      setSlots(s);
-      setNasSlots(remoteSlots);
-      const nasMessage = (nas as any)?.ok === false ? ` NAS indisponible : ${(nas as any).error}` : `${remoteSlots.length} slot(s) NAS.`;
-      setMsg(`Scan terminé : ${b.length} blocs détectés, ${s.length} blocs de sécurité locaux. ${nasMessage}`);
-    } catch (e: any) {
-      setMsg(`Erreur scan : ${e?.message || e}`);
-    } finally { setBusy(false); }
+      setBlocks(nextBlocks);
+      setLocalSlots(nextLocalSlots);
+      setNasSlots(nextNasSlots);
+      setMessage(`Scan terminé : ${nextBlocks.length} bloc(s) locaux, ${nextLocalSlots.length} bloc(s) de sécurité, ${nextNasSlots.length} slot(s) NAS.`);
+    } catch (error: any) {
+      setMessage(`Erreur scan : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
-  React.useEffect(() => { refresh(); }, [refresh]);
+  React.useEffect(() => { void refresh(); }, [refresh]);
 
-  const createSlot = async () => {
-    setBusy(true);
-    const snap = await makeSnapshot();
-    const block: Block = { id: `slot_${Date.now()}`, label: "Bloc local de sécurité", source: "IndexedDB sécurité", path: `${DB_NAME}.${STORE}`, createdAt: snap.exportedAt, summary: snap.summary, payload: snap };
-    await idbPut(block);
-    await refresh();
-    setMsg("Bloc local créé. Les 10 derniers sont conservés.");
-    setBusy(false);
-  };
-
-  const restoreSlot = async (slot: Block) => {
-    if (!window.confirm(`Restaurer ce bloc ?\n\n${slot.label}\n${fmtDate(slot.createdAt)}\n\nUn bloc de sécurité sera créé avant restauration.`)) return;
-    await createSlot();
-    await restoreSnapshot(slot);
-    setMsg("Bloc restauré. Rechargement…");
-    setTimeout(() => window.location.reload(), 600);
-  };
-
-  const createNasSlot = async () => {
+  const createLocal = async () => {
     setBusy(true);
     try {
-      const snap = await makeSnapshot();
-      await apiPost("/sync/slots", { label: "Backup NAS versionné", payload: snap });
-      const nas = await apiGet("/sync/slots").catch(() => null);
-      setNasSlots(Array.isArray((nas as any)?.slots) ? (nas as any).slots : []);
-      setMsg("Slot NAS créé. Le backup versionné est enregistré côté NAS.");
-    } catch (e: any) {
-      setMsg(`NAS non disponible ou backend non patché : ${e?.message || e}`);
-    } finally { setBusy(false); }
+      const slot = await createLocalMemorySlot("Bloc local de sécurité", "manual");
+      setMessage(`Bloc local créé : ${slot.summary.matches} parties • ${slot.summary.profiles} profils • ${slot.summary.statsBlocks} stats.`);
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Création bloc local impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const restoreNasSlot = async (slot: NasSlot) => {
-    const id = String(slot.id || slot.slotId || "");
+  const createNas = async () => {
+    setBusy(true);
+    try {
+      const result = await createNasVersionedSnapshot();
+      setMessage(`Slot NAS créé. ${result?.slotId ? `ID : ${result.slotId}` : "Backup versionné enregistré côté NAS."}`);
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Création slot NAS impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const readNasSlot = async (slot: NasSlot) => {
+    const id = String(slot.id || "");
     if (!id) return;
-    if (!window.confirm(`Restaurer ce slot NAS ?\n\n${slot.latest ? "Backup courant" : id}\n${fmtDate(slot.createdAt || slot.updatedAt)}\n\nUn bloc local sera créé avant restauration.`)) return;
     setBusy(true);
     try {
-      await createSlot();
-      const data = await apiGet(`/sync/slots/${encodeURIComponent(id)}`);
-      const payload = (data as any)?.payload;
-      if (!payload) throw new Error("Payload NAS absent");
-      await restoreSnapshot(payload);
-      await apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {}).catch(() => null);
-      setMsg("Slot NAS restauré. Rechargement…");
-      setTimeout(() => window.location.reload(), 600);
-    } catch (e: any) {
-      setMsg(`Restauration NAS impossible : ${e?.message || e}`);
-    } finally { setBusy(false); }
+      const pulled = await pullNasMemorySlot(id);
+      const summary = pulled.summary || summarizeVaultPayload(pulled.payload);
+      setReadNas((prev) => ({ ...prev, [id]: { slotId: id, summary, payload: pulled.payload } }));
+      setRawPreview(stringifySafe(pulled.payload).slice(0, 16000));
+      setMessage(`Slot NAS lu : ${summary.matches} parties • ${summary.profiles} profils • ${summary.statsBlocks} stats.`);
+    } catch (error: any) {
+      setMessage(`Lecture NAS impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  return <div style={{ minHeight: "100vh", padding: "18px 14px 96px", color: "#e2e8f0", background: "radial-gradient(circle at 30% 0%, rgba(34,211,238,.14), transparent 34%), #020617" }}>
-    <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
-        <div><div style={{ color: neon, fontSize: 12, fontWeight: 1000, letterSpacing: ".12em", textTransform: "uppercase" }}>Carte mémoire</div><h1 style={{ color: "#fff", margin: "4px 0", fontSize: 25 }}>Coffre de sauvegardes</h1><p style={{ color: "#94a3b8", margin: 0, fontSize: 13 }}>Inspecte localStorage, IndexedDB et prépare des blocs de restauration comme une carte mémoire.</p></div>
-        <button style={{ ...btn, color: "#e2e8f0", borderColor: "rgba(226,232,240,.5)", background: "rgba(15,23,42,.72)" }} onClick={() => go ? go("settings") : history.back()}>Retour</button>
-      </div>
-      <div style={{ ...panel, marginBottom: 12 }}><strong style={{ color: busy ? warn : neon }}>{busy ? "Traitement" : "Info"}</strong><div style={{ marginTop: 5, color: "#cbd5e1", fontSize: 13 }}>{msg}</div></div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
-        <button style={btn} disabled={busy} onClick={refresh}>Scanner</button>
-        <button style={btn} disabled={busy} onClick={createSlot}>Créer bloc local</button>
-        <button style={btn} disabled={busy} onClick={createNasSlot}>Créer slot NAS</button>
-      </div>
-      <h2 style={{ color: "#fff", fontSize: 18 }}>Blocs locaux détectés</h2>
-      <div style={{ display: "grid", gap: 10 }}>{blocks.map((b) => <Card key={b.id} block={b} />)}</div>
-      <h2 style={{ color: "#fff", fontSize: 18, marginTop: 22 }}>Slots NAS / backups versionnés</h2>
-      <div style={{ display: "grid", gap: 10 }}>
-        {nasSlots.length ? nasSlots.map((slot) => {
-          const block = nasSlotToBlock(slot);
-          return <Card key={`nas-${block.id}`} block={block} actions={<>
-            <button style={btn} onClick={() => restoreNasSlot(slot)}>Restaurer NAS</button>
-            <button style={btn} onClick={async () => {
-              try {
-                const data = await apiGet(`/sync/slots/${encodeURIComponent(block.id)}`);
-                downloadJson(`${block.id || "slot-nas"}.json`, data);
-              } catch (e: any) {
-                setMsg(`Export NAS impossible : ${e?.message || e}`);
-              }
-            }}>Exporter NAS</button>
-          </>} />;
-        }) : <div style={panel}>Aucun slot NAS affiché. Clique sur “Créer slot NAS”, puis “Scanner”.</div>}
-      </div>
+  const restoreNas = async (slot: NasSlot) => {
+    const id = String(slot.id || "");
+    if (!id) return;
+    const known = readNas[id]?.summary || summaryFromSlot(slot as any);
+    const ok = window.confirm(
+      `Restaurer cette sauvegarde NAS sur ce navigateur/compte ?\n\n` +
+      `${slot.latest ? "Backup courant" : id}\n` +
+      `${fmtDate(slot.createdAt || slot.updatedAt)}\n\n` +
+      `Contenu détecté : ${known.matches} parties • ${known.profiles} profils • ${known.statsBlocks} stats.\n\n` +
+      `Un bloc local de sécurité sera créé avant restauration, puis l'application sera rechargée.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const restored = await restoreNasMemorySlot(id);
+      setMessage(`Sauvegarde NAS restaurée : ${restored.summary.matches} parties • ${restored.summary.profiles} profils • ${restored.summary.statsBlocks} stats. Rechargement…`);
+      window.setTimeout(() => window.location.reload(), 900);
+    } catch (error: any) {
+      setMessage(`Restauration NAS impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
-      <h2 style={{ color: "#fff", fontSize: 18, marginTop: 22 }}>Blocs de sécurité locaux</h2>
-      <div style={{ display: "grid", gap: 10 }}>{slots.length ? slots.map((s) => <Card key={s.id} block={s} actions={<><button style={btn} onClick={() => restoreSlot(s)}>Restaurer</button><button style={btn} onClick={() => downloadJson(`${s.id}.json`, s)}>Exporter</button><button style={{ ...btn, borderColor: danger, color: danger, background: "rgba(251,113,133,.1)" }} onClick={async () => { await idbDelete(s.id); await refresh(); }}>Supprimer</button></>} />) : <div style={panel}>Aucun bloc de sécurité local. Crée un bloc avant toute restauration.</div>}</div>
+  const exportNas = async (slot: NasSlot) => {
+    const id = String(slot.id || "");
+    if (!id) return;
+    setBusy(true);
+    try {
+      const pulled = readNas[id] || await pullNasMemorySlot(id).then((r) => ({ slotId: id, summary: r.summary, payload: r.payload }));
+      await exportJsonDownload({ slot, summary: pulled.summary, payload: pulled.payload }, `${id || "slot-nas"}.json`);
+      setMessage("Export NAS téléchargé.");
+    } catch (error: any) {
+      setMessage(`Export NAS impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreLocal = async (slot: MemorySlot) => {
+    const s = summaryFromSlot(slot);
+    const ok = window.confirm(
+      `Restaurer ce bloc local ?\n\n${slot.label}\n${fmtDate(slot.createdAt)}\n\n` +
+      `Contenu : ${s.matches} parties • ${s.profiles} profils • ${s.statsBlocks} stats.\n\n` +
+      `Un bloc de sécurité sera créé avant restauration, puis l'application sera rechargée.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await restoreLocalMemorySlot(slot.id);
+      setMessage("Bloc local restauré. Rechargement…");
+      window.setTimeout(() => window.location.reload(), 900);
+    } catch (error: any) {
+      setMessage(`Restauration locale impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteLocal = async (slot: MemorySlot) => {
+    if (!window.confirm(`Supprimer ce bloc local ?\n\n${slot.label}\n${fmtDate(slot.createdAt)}`)) return;
+    setBusy(true);
+    try {
+      await deleteLocalMemorySlot(slot.id);
+      setMessage("Bloc local supprimé.");
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Suppression impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportLocal = async (slot: MemorySlot) => {
+    await exportJsonDownload(slot, `${slot.id || "bloc-local"}.json`);
+    setMessage("Export local téléchargé.");
+  };
+
+  const goBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    if (go) go("settings");
+  };
+
+  return (
+    <div style={pageStyle}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: neon, fontSize: 12, fontWeight: 1000, letterSpacing: ".12em", textTransform: "uppercase" }}>Carte mémoire</div>
+            <h1 style={{ color: "#fff", margin: "4px 0", fontSize: 25 }}>Coffre de sauvegardes</h1>
+            <p style={{ color: "#94a3b8", margin: 0, fontSize: 13, lineHeight: 1.35 }}>
+              Inspecte localStorage, IndexedDB, blocs locaux et backups NAS. Une restauration réelle réinjecte le snapshot avec le moteur de stockage de l'application.
+            </p>
+          </div>
+          <ActionButton tone="dark" onClick={goBack}>Retour</ActionButton>
+        </div>
+
+        <div style={{ ...panelStyle, marginBottom: 12, borderColor: busy ? "rgba(251,191,36,.40)" : "rgba(34,211,238,.30)" }}>
+          <strong style={{ color: busy ? warn : neon }}>{busy ? "Traitement" : "Info"}</strong>
+          <div style={{ marginTop: 5, color: "#cbd5e1", fontSize: 13, lineHeight: 1.35 }}>{message}</div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 14 }}>
+          <ActionButton disabled={busy} onClick={refresh}>Scanner</ActionButton>
+          <ActionButton disabled={busy} onClick={createLocal}>Créer bloc local</ActionButton>
+          <ActionButton disabled={busy} tone="gold" onClick={createNas}>Créer slot NAS</ActionButton>
+          <ActionButton disabled={busy} tone="dark" onClick={() => setShowRaw((v) => !v)}>{showRaw ? "Masquer brut" : "Voir brut"}</ActionButton>
+        </div>
+
+        <SectionTitle sub="Backups stockés côté NAS/PostgreSQL. C'est ici qu'il faut lire puis restaurer une sauvegarde sur ton compte/navigateur.">
+          Slots NAS / backups versionnés
+        </SectionTitle>
+        <div style={{ display: "grid", gap: 10 }}>
+          {asArray(nasSlots).length ? asArray(nasSlots).map((slot) => (
+            <NasSlotCard
+              key={`nas-${slot.id}`}
+              slot={slot}
+              busy={busy}
+              readState={readNas[String(slot.id || "")] || null}
+              onRead={readNasSlot}
+              onRestore={restoreNas}
+              onExport={exportNas}
+            />
+          )) : (
+            <div style={panelStyle}>
+              <div style={{ color: "#fff", fontWeight: 1000 }}>Aucun slot NAS affiché</div>
+              <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 6, lineHeight: 1.4 }}>
+                Clique sur <strong>Scanner</strong>. Si rien n'apparaît, crée d'abord un slot avec <strong>Créer slot NAS</strong>. Si le NAS est indisponible, vérifie que tu es connecté au compte utilisateur et que le backend répond à <code>/sync/slots</code>.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <SectionTitle sub="Ces blocs sont stockés dans le navigateur. Ils servent de point de sécurité avant restauration.">
+          Blocs de sécurité locaux
+        </SectionTitle>
+        <div style={{ display: "grid", gap: 10 }}>
+          {asArray(localSlots).length ? asArray(localSlots).map((slot) => (
+            <LocalSlotCard
+              key={`local-${slot.id}`}
+              slot={slot}
+              busy={busy}
+              onRestore={restoreLocal}
+              onDelete={deleteLocal}
+              onExport={exportLocal}
+            />
+          )) : (
+            <div style={panelStyle}>Aucun bloc de sécurité local. Crée un bloc avant toute restauration risquée.</div>
+          )}
+        </div>
+
+        <SectionTitle sub="Inspection brute des zones de stockage trouvées. Ces cartes ne sont pas toutes restaurables telles quelles.">
+          Blocs locaux détectés
+        </SectionTitle>
+        <div style={{ display: "grid", gap: 10 }}>
+          {sortedBlocks.length ? sortedBlocks.map((block) => <BlockCard key={block.id} block={block} />) : <div style={panelStyle}>Aucun bloc local détecté pour l'instant.</div>}
+        </div>
+
+        {showRaw ? (
+          <>
+            <SectionTitle sub="Aperçu du dernier payload NAS lu, utile pour diagnostic.">Aperçu brut</SectionTitle>
+            <div style={panelStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                <div style={{ color: "#94a3b8", fontSize: 12 }}>Limité aux 16 000 premiers caractères.</div>
+                <ActionButton tone="dark" onClick={async () => { const ok = await copyText(rawPreview); setMessage(ok ? "Aperçu copié." : "Copie impossible."); }}>Copier</ActionButton>
+              </div>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 360, overflow: "auto", margin: 0, color: "#bae6fd", fontSize: 11 }}>{rawPreview || "Aucun slot NAS lu. Clique sur Lire contenu."}</pre>
+            </div>
+          </>
+        ) : null}
+      </div>
     </div>
-  </div>;
+  );
 }
