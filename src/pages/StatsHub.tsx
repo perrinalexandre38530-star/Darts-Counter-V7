@@ -5438,6 +5438,8 @@ const [liveDashboard, setLiveDashboard] =
     [x01HydratedRows, combinedHistory]
   );
 
+const quick = useQuickStats(selectedPlayer?.id ?? null);
+
 React.useEffect(() => {
   let cancelled = false;
 
@@ -5494,6 +5496,7 @@ React.useEffect(() => {
   };
 }, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
 
+
 // ✅ Dashboard calculé "memo" (léger) — NE DOIT PAS être bloqué par le cache
 const computedDashboard = React.useMemo(() => {
   if (!selectedPlayer) return null;
@@ -5507,15 +5510,37 @@ const computedDashboard = React.useMemo(() => {
     }
     const pid = String(selectedPlayer.id);
     const pname = String(selectedPlayer.name || "Joueur");
-    return applyX01AggToDashboard(
+    const base = applyX01AggToDashboard(
       buildDashboardFromNormalized(pid, pname, nmEffective),
       pid,
       pname
     );
+    const hasBaseData =
+      Number((base as any)?.sessions || 0) > 0 ||
+      Number((base as any)?.avg3Overall || 0) > 0 ||
+      Number((base as any)?.bestVisit || 0) > 0 ||
+      Object.values((base as any)?.sessionsByMode || {}).some((v: any) => Number(v || 0) > 0);
+
+    // RESTORE FIX : un latest.json peut restaurer uniquement dc_stats_index_v2
+    // sans historique détaillé. Dans ce cas nmEffective est vide, donc le dashboard
+    // historique reste à 0. On bascule alors sur quickStats, qui lit l'index restauré.
+    if (!hasBaseData && quick) {
+      return buildDashboardForPlayer(selectedPlayer as any, records as any, {
+        avg3: (quick as any).avg3,
+        avg3Overall: (quick as any).avg3,
+        bestVisit: (quick as any).bestVisit,
+        bestCheckout: (quick as any).bestCheckout,
+        winRatePct: (quick as any).winRatePct,
+        distribution: (quick as any).buckets,
+        buckets: (quick as any).buckets,
+      } as any) as any;
+    }
+
+    return base;
   } catch {
     return null;
   }
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
+}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records, quick?.avg3, quick?.bestVisit, quick?.bestCheckout, quick?.winRatePct]);
 
 // ✅ Dashboard final à passer au composant.
 // Pour les fléchettes, l'historique est la source de vérité : le cache ne passe plus devant
@@ -5576,7 +5601,6 @@ React.useEffect(() => {
 ]);
 
 // ---------- 5) Quick-stats & Cricket + X01 multi ----------
-const quick = useQuickStats(selectedPlayer?.id ?? null);
 
 // ============================================================
 // ✅ BLOC 3 — KILLER (agrégat "résumé" pour le Dashboard)
@@ -7552,7 +7576,7 @@ return (
         </div>
       )}
 
-      {selectedPlayer && !isMolkkySport && globalModeDashboard.length === 0 && (
+      {selectedPlayer && !isMolkkySport && globalModeDashboard.length === 0 && !quick && (
         <div style={{ ...card, marginTop: 0, padding: 14, color: T.text70, fontSize: 12 }}>
           Aucune statistique de mode exploitable dans l’historique pour ce joueur.
         </div>

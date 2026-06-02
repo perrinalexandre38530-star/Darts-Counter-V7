@@ -1,6 +1,7 @@
 import * as React from "react";
 import { apiGet, apiPost } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot } from "../lib/storage";
+import { saveStatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 
 // Coffre autonome : inspecte les zones locales, crée de vrais snapshots compte,
 // restaure les snapshots NAS/local et garde les cartes dans la largeur écran.
@@ -192,6 +193,61 @@ function looksLikeCloudSnapshot(payload: any) {
   return !!payload && typeof payload === "object" && (payload._v === 1 || payload._v === 2 || payload.idb || payload.history || payload.tournaments || payload.competitions);
 }
 
+function pickBestStatsIndexFromSnapshot(snapshot: any): any | null {
+  try {
+    const idb = snapshot?.idb && typeof snapshot.idb === "object" ? snapshot.idb : {};
+    const candidates = Object.entries(idb)
+      .filter(([k, v]) => String(k).startsWith("dc_stats_index_v2") && v && typeof v === "object")
+      .map(([, v]) => v as any)
+      .filter((idx: any) => idx?.byPlayer && typeof idx.byPlayer === "object");
+    candidates.sort((a: any, b: any) => {
+      const am = Number(a?.totals?.matches || 0) || 0;
+      const bm = Number(b?.totals?.matches || 0) || 0;
+      const ap = Object.keys(a?.byPlayer || {}).length;
+      const bp = Object.keys(b?.byPlayer || {}).length;
+      return (bm - am) || (bp - ap);
+    });
+    return candidates[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDashboardCacheFromStatsIndex(idx: any) {
+  try {
+    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
+    for (const [pid, raw] of Object.entries(byPlayer)) {
+      const p: any = raw || {};
+      const matches = Number(p.matches || 0) || 0;
+      const wins = Number(p.wins || 0) || 0;
+      const dashboard = {
+        playerId: String(pid),
+        playerName: p.name || String(pid),
+        avg3Overall: Number(p.avg3 || 0) || 0,
+        bestVisit: Number(p.bestVisit || 0) || 0,
+        bestCheckout: Number(p.bestCheckout || 0) || 0,
+        winRatePct: matches > 0 ? Math.round((wins / matches) * 1000) / 10 : 0,
+        distribution: p.buckets || {},
+        buckets: p.buckets || {},
+        evolution: [{ date: new Date(Number(p.lastMatchAt || Date.now())).toLocaleDateString("fr-FR"), avg3: Number(p.avg3 || 0) || 0 }],
+        sessionsByMode: {},
+      };
+      localStorage.setItem(`dc_stats_cache:${pid}`, JSON.stringify({ dashboard }));
+      localStorage.setItem(`dc-stats-cache:${pid}`, JSON.stringify({ dashboard }));
+    }
+  } catch {}
+}
+
+async function preserveRestoredStatsIndex(snapshot: any) {
+  const idx = pickBestStatsIndexFromSnapshot(snapshot);
+  if (!idx) return null;
+  await saveStatsIndex(idx as any);
+  writeDashboardCacheFromStatsIndex(idx);
+  try { localStorage.removeItem("dc_stats_index_dirty_v1"); } catch {}
+  try { window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: { reason: "restore-latest-json-index", totals: idx?.totals || null } })); } catch {}
+  return idx;
+}
+
 function unwrapSnapshotEnvelope(input: any): any {
   // Compat NAS: les exports /sync/pull ou /sync/slots/:id renvoient parfois
   // { ok, id, ownerId, payload: { _v:2, idb, localStorage, history... } }.
@@ -347,6 +403,7 @@ async function restoreSnapshot(payload: any) {
   const actual = unwrapSnapshotEnvelope(payload);
   if (looksLikeCloudSnapshot(actual)) {
     await importCloudSnapshot(actual, { mode: "replace" });
+    await preserveRestoredStatsIndex(actual);
     return;
   }
   const local = actual?.payload?.localStorage || actual?.localStorage || {};
@@ -482,6 +539,7 @@ export default function StorageVaultPage({ go }: Props) {
       if (!ok) return;
       await createSlot();
       await importCloudSnapshot(snapshot, { mode: "replace" });
+      await preserveRestoredStatsIndex(snapshot);
       await pushSnapshotToAccount(snapshot, `restore-json-file:${file.name || "snapshot"}`);
       setMsg("Fichier JSON restauré dans le navigateur et envoyé sur le compte utilisateur. Rechargement…");
       setTimeout(() => window.location.reload(), 700);

@@ -34,9 +34,13 @@ export default function StatsPage() {
       setRows(list);
 
       const idx: StatsIndex = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
-      const visibleIds = Array.from(
+      const idsFromHistory = Array.from(
         new Set(list.flatMap((r) => (Array.isArray(r.players) ? r.players.map((p) => p.id) : [])))
-      ).slice(0, 128);
+      );
+      // RESTORE FIX : les snapshots latest.json peuvent contenir un stats_index complet
+      // mais aucune ligne d'historique. Dans ce cas on affiche directement les joueurs
+      // présents dans l'index restauré.
+      const visibleIds = (idsFromHistory.length ? idsFromHistory : Object.keys(idx?.byPlayer || {})).slice(0, 128);
 
       const merged: Record<string, any> = {};
       for (const id of visibleIds) {
@@ -79,7 +83,7 @@ export default function StatsPage() {
   const nameById = buildNameIndex(rows);
   const perPlayerRows = Object.keys(byPlayer).map((id) => ({
     id,
-    name: nameById[id] || id,
+    name: nameById[id] || byPlayer[id]?.name || id,
     ...byPlayer[id],
   }));
   perPlayerRows.sort((a, b) => (b.avg3 || 0) - (a.avg3 || 0));

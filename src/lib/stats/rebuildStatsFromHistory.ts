@@ -131,6 +131,18 @@ function dispatchStatsIndexUpdated(detail?: any) {
 }
 
 
+function statsIndexHasData(idx: any): boolean {
+  try {
+    if (!idx || typeof idx !== "object") return false;
+    const totalsMatches = Number(idx?.totals?.matches || 0) || 0;
+    if (totalsMatches > 0) return true;
+    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
+    return Object.values(byPlayer).some((p: any) => Number((p as any)?.matches || 0) > 0 || Number((p as any)?.dartsThrown || 0) > 0 || Number((p as any)?.pointsScored || 0) > 0);
+  } catch {
+    return false;
+  }
+}
+
 function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
   return {
     version: STATS_VERSION,
@@ -892,9 +904,24 @@ export async function getOrRebuildStatsIndex(options?: {
   persist?: boolean;
   force?: boolean;
 }): Promise<StatsIndex> {
-  // SOURCE UNIQUE + anti-cache fantôme : les écrans stats doivent refléter l'historique
-  // réellement présent maintenant, pas un ancien dc_stats_index conservé en IDB/localStorage.
-  // Le rebuild est déclenché à l'ouverture des écrans stats/Home, pas en tâche de fond.
+  // RESTORE FIX : certains backups NAS / latest.json contiennent un vrai
+  // dc_stats_index_v2 mais pas les lignes d'historique détaillées.
+  // Dans ce cas, forcer un rebuild depuis History.list() vide écrasait les stats
+  // restaurées par un index vide. Si l'historique est vide et qu'un index restauré
+  // existe, on garde l'index restauré comme source de vérité exploitable.
+  const cached = await loadStatsIndex().catch(() => null);
+  try {
+    const { History } = await import("../history");
+    const rows = options?.includeNonFinished
+      ? await History.list()
+      : ((await (History as any).listFinished?.()) ?? (await History.list()));
+    if ((!Array.isArray(rows) || rows.length === 0) && statsIndexHasData(cached)) {
+      return cached as StatsIndex;
+    }
+  } catch {
+    if (statsIndexHasData(cached)) return cached as StatsIndex;
+  }
+
   return rebuildStatsFromHistory(options);
 }
 
@@ -925,6 +952,17 @@ export async function rebuildStatsFromHistory(options?: {
   };
 
   const rows: any[] = Array.isArray(list) ? list : [];
+
+  // RESTORE FIX : ne pas écraser un index restauré par latest.json/NAS
+  // quand l'historique détaillé est absent du snapshot.
+  if (rows.length === 0) {
+    const cached = await loadStatsIndex().catch(() => null);
+    if (statsIndexHasData(cached)) {
+      clearStatsIndexDirty();
+      return cached as StatsIndex;
+    }
+  }
+
   for (const lightRec of rows) {
     let rec: any = lightRec;
     try {
