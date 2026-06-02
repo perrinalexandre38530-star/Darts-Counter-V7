@@ -1,5 +1,5 @@
 import * as React from "react";
-import { apiPost } from "../lib/apiClient";
+import { apiGet, apiPost } from "../lib/apiClient";
 
 // Page autonome volontairement : aucun import projet fragile.
 // Objectif : permettre d'inspecter localStorage / IndexedDB / NAS même en situation de récupération.
@@ -26,6 +26,20 @@ type Block = {
   summary: Summary;
   payload?: any;
 };
+
+type NasSlot = {
+  id: string;
+  slotId?: string;
+  ownerId?: string;
+  version?: number;
+  summary?: Partial<Summary> & Record<string, any>;
+  reason?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  promotedAt?: string | null;
+  latest?: boolean;
+};
+
 
 const DB_NAME = "dc_memory_card_v1";
 const STORE = "slots";
@@ -113,6 +127,36 @@ function quality(s: Partial<Summary>) {
   if (n >= 80) return { text: "TRÈS PROMETTEUR", color: success };
   if (n >= 20) return { text: "À INSPECTER", color: warn };
   return { text: "FAIBLE", color: danger };
+}
+
+
+function normalizeSummary(raw: any): Summary {
+  const s = raw && typeof raw === "object" ? raw : {};
+  return {
+    bytes: Number(s.bytes || 0),
+    keys: Number(s.keys || 0),
+    profiles: Number(s.profiles || 0),
+    matches: Number(s.matches || 0),
+    historyRows: Number(s.historyRows || 0),
+    statsBlocks: Number(s.statsBlocks || s.stats || 0),
+    mediaRefs: Number(s.mediaRefs || 0),
+    dataImages: Number(s.dataImages || 0),
+    names: uniq(Array.isArray(s.names) ? s.names : []),
+    sports: uniq(Array.isArray(s.sports) ? s.sports : []),
+  };
+}
+
+function nasSlotToBlock(slot: NasSlot): Block {
+  const id = String(slot.id || slot.slotId || "");
+  return {
+    id,
+    label: slot.latest ? "Backup NAS courant" : `Slot NAS ${id.slice(-6) || "versionné"}`,
+    source: "NAS PostgreSQL",
+    path: slot.latest ? "/sync/pull" : `/sync/slots/${id}`,
+    createdAt: String(slot.createdAt || slot.updatedAt || ""),
+    summary: normalizeSummary(slot.summary),
+    payload: slot,
+  };
 }
 
 function fmtBytes(n: number) {
@@ -276,16 +320,24 @@ function Card({ block, actions }: { block: Block; actions?: React.ReactNode }) {
 export default function StorageVaultPage({ go }: Props) {
   const [blocks, setBlocks] = React.useState<Block[]>([]);
   const [slots, setSlots] = React.useState<Block[]>([]);
+  const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
   const [msg, setMsg] = React.useState("Scan en attente…");
   const [busy, setBusy] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
     try {
-      const [b, s] = await Promise.all([scanAll(), idbGetAll()]);
+      const [b, s, nas] = await Promise.all([
+        scanAll(),
+        idbGetAll(),
+        apiGet("/sync/slots").catch((error: any) => ({ ok: false, slots: [], error: error?.message || String(error) })),
+      ]);
+      const remoteSlots = Array.isArray((nas as any)?.slots) ? (nas as any).slots : [];
       setBlocks(b);
       setSlots(s);
-      setMsg(`Scan terminé : ${b.length} blocs détectés, ${s.length} blocs de sécurité.`);
+      setNasSlots(remoteSlots);
+      const nasMessage = (nas as any)?.ok === false ? ` NAS indisponible : ${(nas as any).error}` : `${remoteSlots.length} slot(s) NAS.`;
+      setMsg(`Scan terminé : ${b.length} blocs détectés, ${s.length} blocs de sécurité locaux. ${nasMessage}`);
     } catch (e: any) {
       setMsg(`Erreur scan : ${e?.message || e}`);
     } finally { setBusy(false); }
@@ -316,9 +368,30 @@ export default function StorageVaultPage({ go }: Props) {
     try {
       const snap = await makeSnapshot();
       await apiPost("/sync/slots", { label: "Backup NAS versionné", payload: snap });
+      const nas = await apiGet("/sync/slots").catch(() => null);
+      setNasSlots(Array.isArray((nas as any)?.slots) ? (nas as any).slots : []);
       setMsg("Slot NAS créé. Le backup versionné est enregistré côté NAS.");
     } catch (e: any) {
       setMsg(`NAS non disponible ou backend non patché : ${e?.message || e}`);
+    } finally { setBusy(false); }
+  };
+
+  const restoreNasSlot = async (slot: NasSlot) => {
+    const id = String(slot.id || slot.slotId || "");
+    if (!id) return;
+    if (!window.confirm(`Restaurer ce slot NAS ?\n\n${slot.latest ? "Backup courant" : id}\n${fmtDate(slot.createdAt || slot.updatedAt)}\n\nUn bloc local sera créé avant restauration.`)) return;
+    setBusy(true);
+    try {
+      await createSlot();
+      const data = await apiGet(`/sync/slots/${encodeURIComponent(id)}`);
+      const payload = (data as any)?.payload;
+      if (!payload) throw new Error("Payload NAS absent");
+      await restoreSnapshot(payload);
+      await apiPost(`/sync/slots/${encodeURIComponent(id)}/restore`, {}).catch(() => null);
+      setMsg("Slot NAS restauré. Rechargement…");
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e: any) {
+      setMsg(`Restauration NAS impossible : ${e?.message || e}`);
     } finally { setBusy(false); }
   };
 
@@ -336,8 +409,26 @@ export default function StorageVaultPage({ go }: Props) {
       </div>
       <h2 style={{ color: "#fff", fontSize: 18 }}>Blocs locaux détectés</h2>
       <div style={{ display: "grid", gap: 10 }}>{blocks.map((b) => <Card key={b.id} block={b} />)}</div>
-      <h2 style={{ color: "#fff", fontSize: 18, marginTop: 22 }}>Blocs de sécurité</h2>
-      <div style={{ display: "grid", gap: 10 }}>{slots.length ? slots.map((s) => <Card key={s.id} block={s} actions={<><button style={btn} onClick={() => restoreSlot(s)}>Restaurer</button><button style={btn} onClick={() => downloadJson(`${s.id}.json`, s)}>Exporter</button><button style={{ ...btn, borderColor: danger, color: danger, background: "rgba(251,113,133,.1)" }} onClick={async () => { await idbDelete(s.id); await refresh(); }}>Supprimer</button></>} />) : <div style={panel}>Aucun bloc de sécurité. Crée un bloc avant toute restauration.</div>}</div>
+      <h2 style={{ color: "#fff", fontSize: 18, marginTop: 22 }}>Slots NAS / backups versionnés</h2>
+      <div style={{ display: "grid", gap: 10 }}>
+        {nasSlots.length ? nasSlots.map((slot) => {
+          const block = nasSlotToBlock(slot);
+          return <Card key={`nas-${block.id}`} block={block} actions={<>
+            <button style={btn} onClick={() => restoreNasSlot(slot)}>Restaurer NAS</button>
+            <button style={btn} onClick={async () => {
+              try {
+                const data = await apiGet(`/sync/slots/${encodeURIComponent(block.id)}`);
+                downloadJson(`${block.id || "slot-nas"}.json`, data);
+              } catch (e: any) {
+                setMsg(`Export NAS impossible : ${e?.message || e}`);
+              }
+            }}>Exporter NAS</button>
+          </>} />;
+        }) : <div style={panel}>Aucun slot NAS affiché. Clique sur “Créer slot NAS”, puis “Scanner”.</div>}
+      </div>
+
+      <h2 style={{ color: "#fff", fontSize: 18, marginTop: 22 }}>Blocs de sécurité locaux</h2>
+      <div style={{ display: "grid", gap: 10 }}>{slots.length ? slots.map((s) => <Card key={s.id} block={s} actions={<><button style={btn} onClick={() => restoreSlot(s)}>Restaurer</button><button style={btn} onClick={() => downloadJson(`${s.id}.json`, s)}>Exporter</button><button style={{ ...btn, borderColor: danger, color: danger, background: "rgba(251,113,133,.1)" }} onClick={async () => { await idbDelete(s.id); await refresh(); }}>Supprimer</button></>} />) : <div style={panel}>Aucun bloc de sécurité local. Crée un bloc avant toute restauration.</div>}</div>
     </div>
   </div>;
 }
