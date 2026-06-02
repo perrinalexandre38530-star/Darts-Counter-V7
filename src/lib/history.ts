@@ -271,6 +271,60 @@ function _isLikelyStaleX01InProgress(finished: any, candidate: any): boolean {
   }
 }
 
+function _histStaleKey(rec: any): string {
+  try {
+    const players = _histPlayersKey(rec);
+    if (!players) return "";
+    const mode = _histMode(rec) || "x01";
+    const startScore = _histStartScore(rec) || 0;
+    return `${players}::${mode}::${startScore}`;
+  } catch {
+    return "";
+  }
+}
+
+function _filterStaleInProgressFast<T extends any>(rows: T[]): T[] {
+  try {
+    if (!Array.isArray(rows) || rows.length < 2) return rows || [];
+
+    const finishedByKey = new Map<string, any[]>();
+    for (const row of rows as any[]) {
+      if (inferHistoryStatus(row) !== "finished") continue;
+      const key = _histStaleKey(row);
+      if (!key) continue;
+      const list = finishedByKey.get(key) || [];
+      list.push(row);
+      finishedByKey.set(key, list);
+    }
+    if (!finishedByKey.size) return rows;
+
+    const staleIds = new Set<string>();
+    for (const candidate of rows as any[]) {
+      if (inferHistoryStatus(candidate) !== "in_progress") continue;
+      const key = _histStaleKey(candidate);
+      if (!key) continue;
+      const possible = finishedByKey.get(key);
+      if (!possible || !possible.length) continue;
+
+      const ct = _histTime(candidate);
+      const hit = possible.find((finished: any) => {
+        if (ct) {
+          const ft = _histTime(finished);
+          if (ft && Math.abs(ft - ct) > 15 * 60 * 1000) return false;
+        }
+        return _isLikelyStaleX01InProgress(finished, candidate);
+      });
+      if (hit) staleIds.add(String(candidate?.id || candidate?.matchId || ""));
+    }
+
+    return staleIds.size
+      ? rows.filter((r: any) => !staleIds.has(String(r?.id || r?.matchId || "")))
+      : rows;
+  } catch {
+    return rows || [];
+  }
+}
+
 // ============================================
 // 🔒 PATCH AVATAR HELPERS
 // - supprime les avatars base64 dans history/payload
@@ -1689,27 +1743,16 @@ export async function list(): Promise<SavedMatch[]> {
       .filter(isHistoryRowUsable)
       .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
 
-    // ✅ Masque les anciennes cartes "En cours" devenues fantômes après sauvegarde finale.
-    // Cela corrige aussi les historiques déjà pollués avant ce patch.
-    const finishedRows = normalized.filter((r: any) => inferHistoryStatus(r) === "finished");
-    const staleIds = new Set<string>();
-    for (const candidate of normalized as any[]) {
-      if (inferHistoryStatus(candidate) !== "in_progress") continue;
-      const hit = finishedRows.find((f: any) => _isLikelyStaleX01InProgress(f, candidate));
-      if (hit) staleIds.add(String((candidate as any)?.id || (candidate as any)?.matchId || ""));
-    }
-
-    return staleIds.size
-      ? normalized.filter((r: any) => !staleIds.has(String(r?.id || r?.matchId || ""))) as SavedMatch[]
-      : normalized;
+    // ✅ PERF HISTORIQUE: ancien code = comparaison en O(n²) entre toutes les parties finies
+    // et toutes les cartes en cours. Avec une restauration NAS de milliers de lignes,
+    // cela pouvait bloquer l’ouverture de l’historique pendant 15–20s.
+    return _filterStaleInProgressFast(normalized) as SavedMatch[];
   } catch {
     const rows = readLegacyRowsSafe();
-    const normalized = rows.filter((r: any) => !isHistoryDeletedByTombstone(r)).map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
-    const finishedRows = normalized.filter((r: any) => inferHistoryStatus(r) === "finished");
-    return normalized.filter((candidate: any) => {
-      if (inferHistoryStatus(candidate) !== "in_progress") return true;
-      return !finishedRows.some((f: any) => _isLikelyStaleX01InProgress(f, candidate));
-    }) as SavedMatch[];
+    const normalized = rows
+      .filter((r: any) => !isHistoryDeletedByTombstone(r))
+      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+    return _filterStaleInProgressFast(normalized) as SavedMatch[];
   }
 }
 

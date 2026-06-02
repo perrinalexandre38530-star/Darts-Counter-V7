@@ -924,12 +924,19 @@ export async function getOrRebuildStatsIndex(options?: {
   persist?: boolean;
   force?: boolean;
 }): Promise<StatsIndex> {
+  // ✅ PERF STATS/HISTORIQUE : si un index valide existe et qu'il n'est pas marqué dirty,
+  // on le renvoie immédiatement. Avant, chaque ouverture de stats pouvait relire tout
+  // l'historique puis recharger les détails un par un, ce qui explosait à 15–20s après restore.
+  const cached = await loadStatsIndex().catch(() => null);
+  if (!options?.force && isValidStatsIndex(cached) && !isStatsIndexDirty()) {
+    return cached as StatsIndex;
+  }
+
   // RESTORE FIX : certains backups NAS / latest.json contiennent un vrai
   // dc_stats_index_v2 mais pas les lignes d'historique détaillées.
   // Dans ce cas, forcer un rebuild depuis History.list() vide écrasait les stats
   // restaurées par un index vide. Si l'historique est vide et qu'un index restauré
   // existe, on garde l'index restauré comme source de vérité exploitable.
-  const cached = await loadStatsIndex().catch(() => null);
   try {
     const { History } = await import("../history");
     const rows = options?.includeNonFinished

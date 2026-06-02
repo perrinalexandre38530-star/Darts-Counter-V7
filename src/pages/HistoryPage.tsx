@@ -920,45 +920,96 @@ async function pushHistoryDeletionToNas(ids?: string[]) {
   return false;
 }
 
+const HISTORY_LINKED_PROJECTION_CACHE_KEY = "dc_linked_profile_projection_v1";
+const HISTORY_LINKED_PROJECTION_TTL_MS = 2 * 60 * 1000;
+let __historyLinkedProjectionInFlight: Promise<any> | null = null;
+let __historyLinkedProjectionLastKick = 0;
+
+function mergeHistoryRowsFast(rowsLocal: SavedEntry[], linkedRows: SavedEntry[] = []): SavedEntry[] {
+  if (!linkedRows.length) return rowsLocal;
+  const byId = new Map<string, SavedEntry>();
+  for (const row of [...rowsLocal, ...linkedRows]) {
+    const key = String((row as any)?.id || (row as any)?.matchId || (row as any)?.resumeId || "");
+    if (!key) continue;
+    const prev = byId.get(key);
+    if (!prev) byId.set(key, row);
+    else {
+      const score = (x: any) => (x?.payload ? 4 : 0) + (x?.summary ? 2 : 0) + (Array.isArray(x?.players) ? x.players.length : 0);
+      if (score(row) >= score(prev)) byId.set(key, row);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+function readCachedLinkedHistoryRows(): SavedEntry[] {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(HISTORY_LINKED_PROJECTION_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const at = Number(parsed?.at || 0) || 0;
+    if (!at || Date.now() - at > HISTORY_LINKED_PROJECTION_TTL_MS) return [];
+    return safeArray<SavedEntry>(parsed?.projection?.history)
+      .filter(isUsableSavedEntry)
+      .map((r) => normalizeSavedEntry(r));
+  } catch {
+    return [];
+  }
+}
+
+function kickLinkedProjectionRefresh(localProfiles: any[]) {
+  try {
+    if (!Array.isArray(localProfiles) || !localProfiles.length) return;
+    const now = Date.now();
+    if (__historyLinkedProjectionInFlight) return;
+    if (now - __historyLinkedProjectionLastKick < 30_000) return;
+    __historyLinkedProjectionLastKick = now;
+    __historyLinkedProjectionInFlight = loadLinkedProfileProjection(localProfiles)
+      .then((projection: any) => {
+        const linkedRows = safeArray<SavedEntry>(projection?.history);
+        if (linkedRows.length && typeof window !== "undefined") {
+          window.dispatchEvent(new Event("dc-history-updated"));
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        __historyLinkedProjectionInFlight = null;
+      });
+  } catch {}
+}
+
 const HistoryAPI = {
   async list(store: Store): Promise<SavedEntry[]> {
     try {
-      const rowsLocal = safeArray<SavedEntry>(await History.list()).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
-      let rows = rowsLocal;
-      try {
-        const anyStore: any = store as any;
-        const localProfiles = [
-          ...(Array.isArray(anyStore?.profiles) ? anyStore.profiles : []),
-          ...(Array.isArray(anyStore?.localProfiles) ? anyStore.localProfiles : []),
-        ];
-        const projection = await loadLinkedProfileProjection(localProfiles);
-        const linkedRows = safeArray<SavedEntry>(projection?.history).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
-        const byId = new Map<string, SavedEntry>();
-        for (const row of [...rowsLocal, ...linkedRows]) {
-          const key = String((row as any)?.id || (row as any)?.matchId || (row as any)?.resumeId || "");
-          if (!key) continue;
-          const prev = byId.get(key);
-          if (!prev) byId.set(key, row);
-          else {
-            const score = (x: any) => (x?.payload ? 4 : 0) + (x?.summary ? 2 : 0) + (Array.isArray(x?.players) ? x.players.length : 0);
-            if (score(row) >= score(prev)) byId.set(key, row);
-          }
-        }
-        rows = Array.from(byId.values());
-      } catch {
-        rows = rowsLocal;
-      }
+      const rowsLocal = safeArray<SavedEntry>(await History.list())
+        .filter(isUsableSavedEntry)
+        .map((r) => normalizeSavedEntry(r));
+
+      const anyStore: any = store as any;
+      const localProfiles = [
+        ...(Array.isArray(anyStore?.profiles) ? anyStore.profiles : []),
+        ...(Array.isArray(anyStore?.localProfiles) ? anyStore.localProfiles : []),
+      ];
+
+      // ✅ PERF: l’historique ne doit plus attendre le NAS / profils liés.
+      // On affiche immédiatement l’IDB local + cache éventuel, puis on rafraîchit en arrière-plan.
+      const cachedLinkedRows = readCachedLinkedHistoryRows();
+      const rows = mergeHistoryRowsFast(rowsLocal, cachedLinkedRows);
+      kickLinkedProjectionRefresh(localProfiles);
 
       const enhanced: SavedEntry[] = [];
+      let payloadDecodeBudget = 25;
       for (const row of rows) {
         try {
           const r: any = row;
           if (!r.summary) r.summary = {};
           if (!r.game) r.game = {};
 
-          // Décodage strictement léger : pas de gzip/base64/LZ au rendu de l'historique.
-          // Les détails lourds restent chargés à la demande par les écrans stats/reprise.
-          if (typeof r.payload === "string") {
+          // Décodage léger uniquement si une carte n’a pas déjà ses infos de base.
+          // Avant : toutes les payload string pouvaient être décodées en série au chargement.
+          const needsPayloadForCard = !r.game?.mode || !r.game?.startScore || !r.summary || Object.keys(r.summary || {}).length === 0;
+          if (payloadDecodeBudget > 0 && needsPayloadForCard && typeof r.payload === "string") {
+            payloadDecodeBudget -= 1;
             const decoded = await decodePayload(r.payload);
             if (decoded && typeof decoded === "object") {
               r.decoded = decoded;

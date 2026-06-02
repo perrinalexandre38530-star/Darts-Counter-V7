@@ -33,7 +33,7 @@ export default function StatsPage() {
       const list = ((await (History as any).listFinished?.()) ?? (await History.list())) as Row[];
       setRows(list);
 
-      const idx: StatsIndex = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
+      const idx: StatsIndex = await getOrRebuildStatsIndex({ includeNonFinished: false, force: false, persist: true });
       const idsFromHistory = Array.from(
         new Set(list.flatMap((r) => (Array.isArray(r.players) ? r.players.map((p) => p.id) : [])))
       );
