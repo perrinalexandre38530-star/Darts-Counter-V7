@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTheme } from "../contexts/ThemeContext";
 import { apiPost } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot } from "../lib/storage";
 import {
@@ -51,12 +52,16 @@ type SaveEntry = {
   quality: SaveQuality;
 };
 
-const neon = "#22d3ee";
-const gold = "#d9ff33";
+const neon = "var(--dc-accent-soft, #22d3ee)";
+const gold = "var(--dc-accent, #d9ff33)";
 const red = "#fb7185";
 const green = "#34d399";
 const amber = "#fbbf24";
 const muted = "#94a3b8";
+const accentSoftBg = "color-mix(in srgb, var(--dc-accent, #d9ff33) 14%, transparent)";
+const accentSoftBorder = "color-mix(in srgb, var(--dc-accent, #d9ff33) 32%, transparent)";
+const accentGlow = "color-mix(in srgb, var(--dc-accent, #d9ff33) 45%, transparent)";
+const accentSoftGlow = "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 28%, transparent)";
 
 const AUTH_KEYS = [
   "dc_nas_access_token_v1",
@@ -102,6 +107,113 @@ function unwrapSnapshotEnvelope(input: any): any {
   return input;
 }
 
+function rowsFrom(value: any): any[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value);
+  return [];
+}
+
+function isCatalogOnlySnapshot(snapshot: any): boolean {
+  return !!snapshot &&
+    typeof snapshot === "object" &&
+    Array.isArray(snapshot.blocks) &&
+    !snapshot.idb &&
+    !snapshot.history &&
+    !snapshot.tournaments &&
+    !snapshot.competitions;
+}
+
+function countStatsIndexMatches(snapshot: any): number {
+  const idb = snapshot?.idb;
+  if (!idb || typeof idb !== "object") return 0;
+  let best = 0;
+  for (const [key, value] of Object.entries<any>(idb)) {
+    if (!String(key).startsWith("dc_stats_index_v2")) continue;
+    const byMode = value?.matchIdsByMode || value?.matchesByMode;
+    if (!byMode || typeof byMode !== "object") continue;
+    const total = Object.values<any>(byMode).reduce((sum, ids) => sum + (Array.isArray(ids) ? ids.length : 0), 0);
+    best = Math.max(best, total);
+  }
+  return best;
+}
+
+function countRealHistoryRows(snapshot: any): { rows: number; detailed: number } {
+  const rawRows = snapshot?.history?.rows;
+  const rows = rowsFrom(rawRows);
+  let valid = 0;
+  let detailed = 0;
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const hasId = Boolean(row.id || row.matchId);
+    const hasPlayers = Array.isArray(row.players) && row.players.length > 0;
+    const hasSummary = !!row.summary && typeof row.summary === "object";
+    const hasCompact = !!row.compact || (typeof row.payloadCompressed === "string" && row.payloadCompressed.length > 80);
+    const hasTurns =
+      (Array.isArray(row.visitHistory) && row.visitHistory.length > 0) ||
+      (Array.isArray(row.visitsHistory) && row.visitsHistory.length > 0) ||
+      (!!row.resume && typeof row.resume === "object") ||
+      (!!row.__legStats && typeof row.__legStats === "object");
+
+    if (hasId && hasPlayers && (hasSummary || hasCompact || hasTurns)) valid += 1;
+    if (hasId && hasPlayers && (hasCompact || hasTurns)) detailed += 1;
+  }
+
+  return { rows: valid, detailed };
+}
+
+function strictSummaryForRestore(payload: any, fallback?: Partial<VaultSummary> | null): VaultSummary {
+  const snapshot = unwrapSnapshotEnvelope(payload);
+  const base = normalizeSummary(fallback || summarizeVaultPayload(snapshot));
+
+  if (isCatalogOnlySnapshot(snapshot)) {
+    return {
+      ...base,
+      matches: 0,
+      historyRows: 0,
+      statsBlocks: 0,
+      probableContent: ["catalogue technique"],
+    };
+  }
+
+  const realHistory = countRealHistoryRows(snapshot);
+  const statsIds = countStatsIndexMatches(snapshot);
+
+  if (realHistory.rows > 0) {
+    return {
+      ...base,
+      matches: realHistory.rows,
+      historyRows: realHistory.rows,
+      statsBlocks: Math.max(base.statsBlocks, statsIds ? 1 : 0),
+      probableContent: Array.from(new Set([...(base.probableContent || []), "historique réel", "parties"])),
+    };
+  }
+
+  if (statsIds > 0) {
+    return {
+      ...base,
+      matches: statsIds,
+      historyRows: 0,
+      statsBlocks: Math.max(base.statsBlocks, 1),
+      probableContent: Array.from(new Set([...(base.probableContent || []), "stats seules"])),
+    };
+  }
+
+  return base;
+}
+
+function explainStrictPayload(payload: any): string {
+  const snapshot = unwrapSnapshotEnvelope(payload);
+  if (isCatalogOnlySnapshot(snapshot)) {
+    return "Ce fichier est seulement un catalogue de blocs détectés. Il ne contient pas les vraies lignes de parties à restaurer.";
+  }
+  const realHistory = countRealHistoryRows(snapshot);
+  const statsIds = countStatsIndexMatches(snapshot);
+  if (realHistory.rows > 0) return `${realHistory.rows} vraie(s) ligne(s) historique, dont ${realHistory.detailed} détaillée(s).`;
+  if (statsIds > 0) return `${statsIds} référence(s) de stats, mais aucune vraie carte historique détaillée.`;
+  return "Aucune vraie donnée de partie restaurable détectée.";
+}
+
 function n(value: any): number {
   const out = Number(value || 0);
   return Number.isFinite(out) ? out : 0;
@@ -128,19 +240,31 @@ function normalizeSummary(raw: Partial<VaultSummary> | undefined | null): VaultS
 function assessSave(summary?: Partial<VaultSummary> | null): SaveQuality {
   const s = normalizeSummary(summary || {});
   const probable = s.probableContent.map((x) => x.toLowerCase()).join(" ");
-  const hasHistory = s.historyRows > 0 || s.matches > 0 || probable.includes("historique") || probable.includes("parties");
+  const isCatalog = probable.includes("catalogue");
+  const hasHistory = s.historyRows > 0 || probable.includes("historique réel");
   const hasStats = s.statsBlocks > 0;
   const hasProfiles = s.profiles > 0;
   const hasSports = s.sports.length > 0;
   const hasPayloadSize = s.bytes > 25_000 || s.keys > 20;
 
   const score =
-    Math.min(40, s.historyRows * 4) +
-    Math.min(35, s.matches) +
-    (hasStats ? 18 : 0) +
+    Math.min(45, s.historyRows * 8) +
+    Math.min(20, hasStats ? s.statsBlocks * 2 : 0) +
     (hasProfiles ? 14 : 0) +
     (hasSports ? 8 : 0) +
     (hasPayloadSize ? 5 : 0);
+
+  if (isCatalog) {
+    return {
+      grade: "technical",
+      label: "CATALOGUE TECHNIQUE",
+      short: "Non restaurable",
+      color: muted,
+      score: 0,
+      restorable: false,
+      reason: "Catalogue de blocs seulement : pas de vraies parties à restaurer.",
+    };
+  }
 
   if (hasHistory && hasProfiles && hasStats && hasSports) {
     return {
@@ -150,7 +274,7 @@ function assessSave(summary?: Partial<VaultSummary> | null): SaveQuality {
       color: green,
       score: Math.max(92, score),
       restorable: true,
-      reason: "Parties + historique + profils + stats détectés.",
+      reason: "Vraies lignes d’historique + profils + stats détectés.",
     };
   }
 
@@ -162,7 +286,7 @@ function assessSave(summary?: Partial<VaultSummary> | null): SaveQuality {
       color: gold,
       score: Math.max(68, score),
       restorable: true,
-      reason: "Parties détectées. Restauration possible, mais le bloc semble moins complet.",
+      reason: "Historique réel détecté, mais le bloc semble moins complet.",
     };
   }
 
@@ -240,7 +364,7 @@ const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   padding: "18px 10px 96px",
   color: "#e5e7eb",
-  background: "radial-gradient(circle at 20% 0%, rgba(217,255,51,.14), transparent 34%), radial-gradient(circle at 85% 12%, rgba(34,211,238,.10), transparent 32%), #020617",
+  background: "radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--dc-accent, #d9ff33) 14%, transparent), transparent 34%), radial-gradient(circle at 85% 12%, color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 10%, transparent), transparent 32%), #020617",
   overflowX: "hidden",
   boxSizing: "border-box",
 };
@@ -256,9 +380,9 @@ const shellStyle: React.CSSProperties = {
 
 const panel: React.CSSProperties = {
   background: "linear-gradient(180deg, rgba(15,23,42,.94), rgba(2,6,23,.96))",
-  border: "1px solid rgba(217,255,51,.20)",
+  border: "1px solid color-mix(in srgb, var(--dc-accent, #d9ff33) 20%, transparent)",
   borderRadius: 20,
-  boxShadow: "0 0 28px rgba(217,255,51,.08)",
+  boxShadow: "0 0 28px color-mix(in srgb, var(--dc-accent, #d9ff33) 8%, transparent)",
   padding: 14,
   width: "100%",
   maxWidth: "100%",
@@ -276,7 +400,7 @@ const wrapText: React.CSSProperties = {
 const btn: React.CSSProperties = {
   border: `1px solid ${neon}`,
   color: neon,
-  background: "rgba(34,211,238,.10)",
+  background: "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 10%, transparent)",
   borderRadius: 14,
   padding: "10px 12px",
   fontWeight: 1000,
@@ -292,7 +416,7 @@ const primaryBtn: React.CSSProperties = {
   borderColor: gold,
   color: "#08111f",
   background: `linear-gradient(180deg, ${gold}, #b8ef19)`,
-  boxShadow: "0 0 18px rgba(217,255,51,.24)",
+  boxShadow: "0 0 18px color-mix(in srgb, var(--dc-accent, #d9ff33) 24%, transparent)",
 };
 
 const dangerBtn: React.CSSProperties = {
@@ -309,8 +433,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
         ...btn,
         borderColor: active ? gold : "rgba(148,163,184,.24)",
         color: active ? gold : "#d1d5db",
-        background: active ? "rgba(217,255,51,.13)" : "rgba(15,23,42,.62)",
-        boxShadow: active ? "0 0 18px rgba(217,255,51,.22)" : "none",
+        background: active ? "color-mix(in srgb, var(--dc-accent, #d9ff33) 13%, transparent)" : "rgba(15,23,42,.62)",
+        boxShadow: active ? "0 0 18px color-mix(in srgb, var(--dc-accent, #d9ff33) 22%, transparent)" : "none",
       }}
       onClick={onClick}
     >
@@ -380,11 +504,11 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
             borderRadius: 16,
             display: "grid",
             placeItems: "center",
-            background: q.grade === "complete" ? "rgba(52,211,153,.14)" : "rgba(217,255,51,.12)",
+            background: q.grade === "complete" ? "color-mix(in srgb, #34d399 14%, transparent)" : "color-mix(in srgb, var(--dc-accent, #d9ff33) 12%, transparent)",
             border: `1px solid ${q.color}`,
             color: q.color,
             fontWeight: 1000,
-            boxShadow: `0 0 18px ${q.color}33`,
+            boxShadow: `0 0 18px color-mix(in srgb, ${q.color} 33%, transparent)`,
           }}
         >
           {String(entry.index).padStart(2, "0")}
@@ -473,6 +597,8 @@ async function pushSnapshotToAccount(payload: any, reason: string) {
 }
 
 export default function StorageVaultPage({ go }: Props) {
+  const { theme } = useTheme();
+  const themeVars = React.useMemo(() => ({ "--dc-accent": theme?.primary || "#d9ff33", "--dc-accent-soft": theme?.accent1 || theme?.primary || "#22d3ee" }) as React.CSSProperties, [theme]);
   const [tab, setTab] = React.useState<TabKey>("restore");
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("Scan en attente…");
@@ -515,7 +641,7 @@ export default function StorageVaultPage({ go }: Props) {
   const localEntries = React.useMemo<SaveEntry[]>(() => {
     return localSlots
       .map((slot, idx) => {
-        const summary = normalizeSummary(slot.summary || summarizeVaultPayload(slot.payload));
+        const summary = strictSummaryForRestore(slot.payload, slot.summary);
         const q = assessSave(summary);
         return {
           key: `local:${slot.id}`,
@@ -541,18 +667,37 @@ export default function StorageVaultPage({ go }: Props) {
   const refresh = React.useCallback(async () => {
     setBusy(true);
     try {
-      const [ls, ns, bs] = await Promise.all([
+      const [ls, nsRaw, bs] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
         listNasMemorySlots().catch(() => []),
         scanLocalStorageAndIndexedDb().catch(() => []),
       ]);
+
+      const nsToCheck = nsRaw.slice(0, 30);
+      const checkedNas = await Promise.all(nsToCheck.map(async (slot: NasSlot) => {
+        try {
+          const id = String(slot.id || "latest");
+          const pulled = await pullNasMemorySlot(id);
+          return {
+            ...slot,
+            summary: strictSummaryForRestore(pulled.payload, pulled.summary),
+            updatedAt: pulled.slot.updatedAt || slot.updatedAt,
+            createdAt: pulled.slot.createdAt || slot.createdAt,
+            __strictChecked: true,
+          } as NasSlot & { __strictChecked?: boolean };
+        } catch {
+          return { ...slot, summary: normalizeSummary(slot.summary || {}), __strictChecked: false } as NasSlot & { __strictChecked?: boolean };
+        }
+      }));
+
       setLocalSlots(ls);
-      setNasSlots(ns);
+      setNasSlots(checkedNas);
       setBlocks(bs);
 
-      const validNas = ns.filter((slot) => isRestorable(slot.summary)).length;
-      const validLocal = ls.filter((slot) => isRestorable(slot.summary || summarizeVaultPayload(slot.payload))).length;
-      setMessage(`${validNas + validLocal} emplacement(s) restaurable(s). Les blocs techniques/douteux restent cachés en mode expert pour éviter les mauvaises restaurations.`);
+      const validNas = checkedNas.filter((slot) => isRestorable(slot.summary)).length;
+      const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
+      const hidden = Math.max(0, nsRaw.length - checkedNas.length);
+      setMessage(`${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Les catalogues, stats seules et blocs douteux sont cachés. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
     } catch (error: any) {
       setMessage(`Erreur scan : ${error?.message || error}`);
     } finally {
@@ -572,10 +717,10 @@ export default function StorageVaultPage({ go }: Props) {
   const restoreSnapshotIntoBrowserAndAccount = async (payload: any, reason: string, label: string) => {
     const snapshot = unwrapSnapshotEnvelope(payload);
     if (!looksLikeCloudSnapshot(snapshot)) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
-    const summary = summarizeVaultPayload(snapshot);
+    const summary = strictSummaryForRestore(snapshot);
     const q = assessSave(summary);
     if (!q.restorable) {
-      throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason}`);
+      throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason} ${explainStrictPayload(snapshot)}`);
     }
 
     const ok = window.confirm(
@@ -599,7 +744,7 @@ export default function StorageVaultPage({ go }: Props) {
     setBusy(true);
     try {
       const slot = await createLocalMemorySlot("Bloc local de sécurité", "manual");
-      const q = assessSave(slot.summary || summarizeVaultPayload(slot.payload));
+      const q = assessSave(strictSummaryForRestore(slot.payload, slot.summary));
       setMessage(`Bloc local créé : ${q.label} · ${slot.summary.matches} parties • ${slot.summary.profiles} profils.`);
       await refresh();
     } catch (error: any) {
@@ -613,7 +758,7 @@ export default function StorageVaultPage({ go }: Props) {
     setBusy(true);
     try {
       const snapshot = await exportCloudSnapshot();
-      const summary = summarizeVaultPayload(snapshot);
+      const summary = strictSummaryForRestore(snapshot);
       const q = assessSave(summary);
       if (!q.restorable && !window.confirm(`Attention : le garde-fou ne trouve pas de parties fiables dans l’état actuel.\n\n${q.reason}\n\nEnvoyer quand même ?`)) return;
       await pushSnapshotToAccount(snapshot, "manual-save-page-push");
@@ -722,24 +867,24 @@ export default function StorageVaultPage({ go }: Props) {
   );
 
   return (
-    <div style={pageStyle}>
+    <div style={{ ...pageStyle, ...themeVars }}>
       <div style={shellStyle}>
-        <div style={{ ...panel, borderColor: "rgba(217,255,51,.36)", marginBottom: 12 }}>
+        <div style={{ ...panel, borderColor: "color-mix(in srgb, var(--dc-accent, #d9ff33) 36%, transparent)", marginBottom: 12 }}>
           <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", gap: 10, alignItems: "center", minWidth: 0 }}>
             <button
-              style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: gold, color: gold, boxShadow: "0 0 16px rgba(217,255,51,.22)" }}
+              style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: gold, color: gold, boxShadow: "0 0 16px color-mix(in srgb, var(--dc-accent, #d9ff33) 22%, transparent)" }}
               onClick={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}
               aria-label="Retour"
             >
               ←
             </button>
             <div style={{ textAlign: "center", minWidth: 0 }}>
-              <div style={{ color: gold, fontWeight: 1000, fontSize: 25, lineHeight: 1.05, letterSpacing: ".04em", textShadow: "0 0 18px rgba(217,255,51,.8)", ...wrapText }}>SAUVEGARDE</div>
+              <div style={{ color: gold, fontWeight: 1000, fontSize: 25, lineHeight: 1.05, letterSpacing: ".04em", textShadow: "0 0 18px color-mix(in srgb, var(--dc-accent, #d9ff33) 80%, transparent)", ...wrapText }}>SAUVEGARDE</div>
               <div style={{ color: "#cbd5e1", fontSize: 11, marginTop: 4, ...wrapText }}>Carte mémoire de l’application</div>
               <div style={{ color: muted, fontSize: 11, ...wrapText }}>On n’affiche que les emplacements restaurables.</div>
             </div>
             <button
-              style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: neon, color: neon, boxShadow: "0 0 16px rgba(34,211,238,.22)" }}
+              style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: neon, color: neon, boxShadow: "0 0 16px color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 22%, transparent)" }}
               disabled={busy}
               onClick={refresh}
               aria-label="Actualiser"
@@ -755,7 +900,7 @@ export default function StorageVaultPage({ go }: Props) {
           </div>
         </div>
 
-        <div style={{ ...panel, borderColor: busy ? `rgba(251,191,36,.45)` : "rgba(34,211,238,.28)", marginBottom: 12 }}>
+        <div style={{ ...panel, borderColor: busy ? `rgba(251,191,36,.45)` : "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 28%, transparent)", marginBottom: 12 }}>
           <strong style={{ color: busy ? amber : neon }}>{busy ? "Traitement en cours" : "Info"}</strong>
           <div style={{ marginTop: 5, color: "#cbd5e1", fontSize: 13, lineHeight: 1.4, ...wrapText }}>{message}</div>
         </div>
@@ -784,7 +929,7 @@ export default function StorageVaultPage({ go }: Props) {
 
             {historyEntries.length > 0 && (
               <>
-                <h2 style={{ margin: "8px 0 0", color: gold, fontSize: 17, textShadow: "0 0 12px rgba(217,255,51,.35)" }}>Parties / historique à vérifier</h2>
+                <h2 style={{ margin: "8px 0 0", color: gold, fontSize: 17, textShadow: "0 0 12px color-mix(in srgb, var(--dc-accent, #d9ff33) 35%, transparent)" }}>Parties / historique à vérifier</h2>
                 {historyEntries.map(renderEntry)}
               </>
             )}
@@ -811,7 +956,7 @@ export default function StorageVaultPage({ go }: Props) {
                 <button style={primaryBtn} disabled={busy} onClick={createNasBackup}>Créer sauvegarde NAS</button>
                 <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer sécurité locale</button>
                 <button style={btn} disabled={busy} onClick={pushCurrentToAccount}>Envoyer état actuel</button>
-                <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer latest.json</button>
+                <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer JSON</button>
                 <input ref={inputRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(e) => importJsonFile(e.currentTarget.files?.[0] || null)} />
               </div>
             </div>
