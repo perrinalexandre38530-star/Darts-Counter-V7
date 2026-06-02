@@ -4731,6 +4731,10 @@ function UnifiedAuthBlock({
       { id: "orange", label: t("settings.theme.orange.label", "Orange") },
       { id: "white", label: t("settings.theme.white.label", "Blanc") },
       {
+        id: "blueNight",
+        label: t("settings.theme.blueNight.label", "Bleu nuit"),
+      },
+      {
         id: "blueOcean",
         label: t("settings.theme.blueOcean.label", "Bleu océan"),
       },

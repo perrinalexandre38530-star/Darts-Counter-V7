@@ -16,7 +16,7 @@ type Props = {
 };
 
 // Descriptions visibles sous le nom du thème
-const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
+const THEME_DESCRIPTIONS: Partial<Record<ThemeId, string>> = {
   gold: "Thème premium doré",
   pink: "Ambiance arcade rose",
   petrol: "Bleu profond néon",
@@ -25,6 +25,7 @@ const THEME_DESCRIPTIONS: Record<ThemeId, string> = {
   red: "Rouge arcade agressif",
   orange: "Orange chaud énergique",
   white: "Fond clair moderne",
+  blueNight: "Fond sombre + flash bleu clair",
 };
 
 // --------------------------------------------------
@@ -110,7 +111,7 @@ export default function SettingsThemeSection({
 type ItemProps = {
   theme: AppTheme;
   active: boolean;
-  description: string;
+  description?: string;
   onPress: () => void;
 };
 
@@ -186,7 +187,7 @@ function ThemeItem({ theme, active, description, onPress }: ItemProps) {
             color: textColorDesc,
           }}
         >
-          {description}
+          {description ?? theme.name}
         </span>
       </div>
     </div>

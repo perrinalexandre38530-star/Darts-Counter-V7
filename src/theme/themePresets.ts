@@ -13,6 +13,7 @@ export type ThemeId =
   | "red"
   | "orange"
   | "white"
+  | "blueNight"
   | "blueOcean"
   | "limeYellow"
   | "sage"
@@ -156,6 +157,22 @@ export const THEMES: AppTheme[] = [
     borderSoft: "rgba(255,255,255,0.15)",
     success: "#2ECC71",
     danger: "#E74C3C",
+  },
+
+
+  {
+    id: "blueNight",
+    name: "Bleu nuit",
+    primary: "#18D8FF",
+    bg: "#020817",
+    card: "#061326",
+    text: "#F2FBFF",
+    textSoft: "rgba(195,225,240,0.82)",
+    accent1: "#18D8FF",
+    accent2: "#54F0FF",
+    borderSoft: "rgba(24,216,255,0.38)",
+    success: "#2EEB9A",
+    danger: "#FF4A6A",
   },
 
   // --------------------------------------------

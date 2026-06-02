@@ -88,7 +88,7 @@ type Props = { go?: (tab: any, params?: any) => void };
 // ---------------- Thèmes dispo + descriptions fallback ----------------
 
 const NEONS: ThemeId[] = ["gold", "pink", "petrol", "green", "magenta", "red", "orange", "white"];
-const SOFTS: ThemeId[] = ["blueOcean", "limeYellow", "sage", "skyBlue"];
+const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "sage", "skyBlue"];
 const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidian"];
 
 const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }> = {
@@ -101,6 +101,7 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   orange: { defaultLabel: "Orange", defaultDesc: "Orange chaud énergique" },
   white: { defaultLabel: "Blanc", defaultDesc: "Fond clair moderne" },
 
+  blueNight: { defaultLabel: "Bleu nuit", defaultDesc: "Fond sombre + flash bleu clair" },
   blueOcean: { defaultLabel: "Bleu océan", defaultDesc: "Bleu naturel océan / ciel" },
   limeYellow: { defaultLabel: "Vert jaune", defaultDesc: "Couleur lime hyper flashy" },
   sage: { defaultLabel: "Vert sauge", defaultDesc: "Tons verts naturels et doux" },
