@@ -81,6 +81,7 @@ export type CloudImportResult = {
 import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
 import { triggerAutoBackupIfEnabled } from "./backup/triggerAutoBackup";
+import { saveMatchBackupAfterHistoryUpsert } from "./matchAutoBackup";
 import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
 /* =========================
@@ -2460,6 +2461,23 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     });
 
     // ================================
+    // 🧯 SAUVEGARDE PAR PARTIE (non bloquante)
+    // - locale IndexedDB + NAS si connecté
+    // - uniquement parties terminées avec payload détaillé
+    // - ne bloque jamais le gameplay ni l'historique si le NAS est lent
+    // ================================
+    try {
+      if (String((safe as any)?.status || "").toLowerCase() !== "in_progress") {
+        void saveMatchBackupAfterHistoryUpsert({
+          header: { ...safe, players: stripAvatarDataFromPlayers(safe.players) || [] },
+          payload: payloadEffective,
+          payloadCompressed,
+          source: "history-upsert",
+        });
+      }
+    } catch {}
+
+    // ================================
     // 🔔 NOTIFY UI/STATS (history changed)
     // ================================
     try {
@@ -2588,6 +2606,17 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
       localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(rows));
+
+      // Même garde-fou en fallback localStorage : sauvegarde par partie non bloquante.
+      try {
+        if (String((trimmed as any)?.status || "").toLowerCase() !== "in_progress") {
+          void saveMatchBackupAfterHistoryUpsert({
+            header: trimmed,
+            payload: payloadLiteFinal,
+            source: "history-upsert-ls-fallback",
+          });
+        }
+      } catch {}
 
       // ================================
       // 🔔 NOTIFY UI/STATS (history changed)

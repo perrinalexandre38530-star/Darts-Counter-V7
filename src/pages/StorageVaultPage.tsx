@@ -22,9 +22,18 @@ import {
   markStatsIndexDirty,
   refreshStatsIndexFromHistoryNow,
 } from "../lib/stats/rebuildStatsFromHistory";
+import {
+  deleteLocalMatchBackup,
+  deleteNasMatchBackup,
+  listLocalMatchBackups,
+  listNasMatchBackups,
+  pullNasMatchBackup,
+  restoreMatchBackupItem,
+  type MatchBackupItem,
+} from "../lib/matchAutoBackup";
 
 type Props = { go?: (tab: any, params?: any) => void };
-type TabKey = "restore" | "backup" | "diagnostic";
+type TabKey = "restore" | "backup" | "matches" | "diagnostic";
 type SaveSource = "nas" | "local";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
@@ -561,6 +570,73 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
   );
 }
 
+function MatchBackupCard({ item, busy, onRestore, onExport, onDelete }: {
+  item: MatchBackupItem;
+  busy: boolean;
+  onRestore: () => void;
+  onExport: () => void;
+  onDelete?: () => void;
+}) {
+  const players = Array.isArray(item.players) ? item.players : [];
+  const names = players
+    .map((p: any) => String(p?.name || p?.displayName || p?.nickname || p?.id || "").trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(" · ");
+  const origin = item.origin === "nas" ? "NAS" : "LOCAL";
+  const when = item.updatedAt || item.createdAt || Date.parse(item.savedAt || "") || 0;
+  return (
+    <div style={{ ...panel, borderColor: "rgba(52,211,153,.38)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 12, alignItems: "center", minWidth: 0 }}>
+        <div style={{
+          width: 50,
+          height: 50,
+          borderRadius: 16,
+          display: "grid",
+          placeItems: "center",
+          background: "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 14%, transparent)",
+          border: `1px solid ${item.origin === "nas" ? neon : green}`,
+          color: item.origin === "nas" ? neon : green,
+          fontWeight: 1000,
+          boxShadow: `0 0 18px color-mix(in srgb, ${item.origin === "nas" ? neon : green} 28%, transparent)`,
+        }}>{origin}</div>
+        <div style={wrapText}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <strong style={{ color: "#fff", fontSize: 16, ...wrapText }}>{item.title || "Partie sauvegardée"}</strong>
+            <span style={{ border: `1px solid ${green}`, color: green, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000 }}>RESTAURABLE</span>
+          </div>
+          <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 4, ...wrapText }}>
+            {String(item.sport || "darts")} • {String(item.kind || "match")} • {fmtDate(when)}
+          </div>
+          <div style={{ color: neon, fontSize: 12, fontWeight: 900, marginTop: 6, ...wrapText }}>
+            {names || "Joueurs détectés dans le détail"}
+          </div>
+        </div>
+        <div style={{ color: gold, fontWeight: 1000, fontSize: 13, textAlign: "right" }}>{fmtBytes(item.payloadBytes || 0)}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
+          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>JOUEURS</div>
+          <div style={{ color: gold, fontWeight: 1000, fontSize: 18 }}>{players.length || "—"}</div>
+        </div>
+        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
+          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>VAINQUEUR</div>
+          <div style={{ color: green, fontWeight: 1000, fontSize: 18 }}>{item.winnerId ? "OK" : "—"}</div>
+        </div>
+        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
+          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>DÉTAIL</div>
+          <div style={{ color: neon, fontWeight: 1000, fontSize: 18 }}>{item.payloadCompressed || item.origin === "nas" ? "OK" : "—"}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+        <button style={primaryBtn} disabled={busy || !item.matchId} onClick={onRestore}>Restaurer cette partie</button>
+        <button style={btn} disabled={busy} onClick={onExport}>Exporter JSON</button>
+        {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>Supprimer</button>}
+      </div>
+    </div>
+  );
+}
+
 function TechnicalBlockCard({ block, busy, onExport }: {
   block: StorageBlock;
   busy: boolean;
@@ -604,6 +680,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [message, setMessage] = React.useState("Scan en attente…");
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
+  const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
   const [showDiagnostic, setShowDiagnostic] = React.useState(false);
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
@@ -662,15 +739,31 @@ export default function StorageVaultPage({ go }: Props) {
   const restorableEntries = React.useMemo(() => [...nasEntries, ...localEntries], [nasEntries, localEntries]);
   const completeEntries = React.useMemo(() => restorableEntries.filter((entry) => entry.quality.grade === "complete"), [restorableEntries]);
   const historyEntries = React.useMemo(() => restorableEntries.filter((entry) => entry.quality.grade === "history"), [restorableEntries]);
+  const matchBackupEntries = React.useMemo(() => {
+    const byId = new Map<string, MatchBackupItem>();
+    for (const item of matchBackups || []) {
+      const id = String(item.matchId || item.id || "").trim();
+      if (!id) continue;
+      const existing = byId.get(id);
+      if (!existing || existing.origin !== "nas" || item.origin === "nas") byId.set(id, item);
+    }
+    return Array.from(byId.values()).sort((a, b) => {
+      const ta = Number(a.updatedAt || a.createdAt || Date.parse(a.savedAt || "") || 0);
+      const tb = Number(b.updatedAt || b.createdAt || Date.parse(b.savedAt || "") || 0);
+      return tb - ta;
+    });
+  }, [matchBackups]);
   const technicalCount = blocks.length;
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
     try {
-      const [ls, nsRaw, bs] = await Promise.all([
+      const [ls, nsRaw, bs, localMatches, nasMatches] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
         listNasMemorySlots().catch(() => []),
         scanLocalStorageAndIndexedDb().catch(() => []),
+        listLocalMatchBackups().catch(() => []),
+        listNasMatchBackups().catch(() => []),
       ]);
 
       const nsToCheck = nsRaw.slice(0, 30);
@@ -693,11 +786,12 @@ export default function StorageVaultPage({ go }: Props) {
       setLocalSlots(ls);
       setNasSlots(checkedNas);
       setBlocks(bs);
+      setMatchBackups([...(localMatches || []), ...(nasMatches || [])]);
 
       const validNas = checkedNas.filter((slot) => isRestorable(slot.summary)).length;
       const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
       const hidden = Math.max(0, nsRaw.length - checkedNas.length);
-      setMessage(`${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Les catalogues, stats seules et blocs douteux sont cachés. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
+      setMessage(`${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). Les catalogues, stats seules et blocs douteux sont cachés. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
     } catch (error: any) {
       setMessage(`Erreur scan : ${error?.message || error}`);
     } finally {
@@ -738,6 +832,57 @@ export default function StorageVaultPage({ go }: Props) {
     await pushSnapshotToAccount(snapshot, reason);
     setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
     window.setTimeout(() => window.location.reload(), 900);
+  };
+
+  const restoreSingleMatch = async (item: MatchBackupItem) => {
+    const label = item.title || item.matchId || "partie";
+    const ok = window.confirm(
+      `Restaurer cette partie ?
+
+${label}
+
+Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const full = item.origin === "nas" ? await pullNasMatchBackup(item.matchId || item.id) : item;
+      if (!full) throw new Error("Sauvegarde de partie introuvable.");
+      await restoreMatchBackupItem(full);
+      await afterRestoreHousekeeping(`restore-single-match:${full.matchId || full.id}`);
+      setMessage(`Partie restaurée dans l’Historique : ${full.title || full.matchId}.`);
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Restauration de la partie impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportSingleMatch = async (item: MatchBackupItem) => {
+    try {
+      const full = item.origin === "nas" ? await pullNasMatchBackup(item.matchId || item.id) : item;
+      exportJsonDownload(full || item, `${String(item.matchId || item.id || "match").replace(/[^a-z0-9_-]/gi, "_")}.json`);
+    } catch (error: any) {
+      setMessage(`Export partie impossible : ${error?.message || error}`);
+    }
+  };
+
+  const deleteSingleMatch = async (item: MatchBackupItem) => {
+    const label = item.title || item.matchId || "partie";
+    if (!window.confirm(`Supprimer cette sauvegarde de partie ?
+${label}`)) return;
+    setBusy(true);
+    try {
+      if (item.origin === "nas") await deleteNasMatchBackup(item.matchId || item.id);
+      await deleteLocalMatchBackup(item.matchId || item.id).catch(() => undefined);
+      setMessage("Sauvegarde de partie supprimée.");
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Suppression partie impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const createLocalSlot = async () => {
@@ -895,7 +1040,7 @@ export default function StorageVaultPage({ go }: Props) {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 14 }}>
             <StatBox label="Emplacements" value={restorableEntries.length} color={green} />
-            <StatBox label="Complets" value={completeEntries.length} color={gold} />
+            <StatBox label="Parties auto" value={matchBackupEntries.length} color={gold} />
             <StatBox label="NAS" value={nasEntries.length} color={neon} />
           </div>
         </div>
@@ -905,8 +1050,9 @@ export default function StorageVaultPage({ go }: Props) {
           <div style={{ marginTop: 5, color: "#cbd5e1", fontSize: 13, lineHeight: 1.4, ...wrapText }}>{message}</div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
           <TabButton active={tab === "restore"} onClick={() => setTab("restore")}>🎮 Restaurer</TabButton>
+          <TabButton active={tab === "matches"} onClick={() => setTab("matches")}>🎯 Parties</TabButton>
           <TabButton active={tab === "backup"} onClick={() => setTab("backup")}>💾 Sauver</TabButton>
           <TabButton active={tab === "diagnostic"} onClick={() => setTab("diagnostic")}>🔎 Expert</TabButton>
         </div>
@@ -939,6 +1085,35 @@ export default function StorageVaultPage({ go }: Props) {
                 <strong style={{ color: amber }}>Aucun emplacement fiable affiché</strong>
                 <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
                   Le garde-fou ne trouve pas de sauvegarde avec parties/historique. Ouvre l’onglet Expert uniquement pour diagnostiquer les blocs bruts.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "matches" && (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ ...panel, borderColor: "rgba(52,211,153,.36)" }}>
+              <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Restaurer une partie à l’unité</h2>
+              <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
+                Chaque partie terminée est sauvegardée séparément après son enregistrement dans l’Historique. Ici tu peux remettre une seule partie sans remplacer tout le compte.
+              </p>
+            </div>
+
+            {matchBackupEntries.length > 0 ? matchBackupEntries.map((item) => (
+              <MatchBackupCard
+                key={`${item.origin || "local"}:${item.matchId || item.id}`}
+                item={item}
+                busy={busy}
+                onRestore={() => restoreSingleMatch(item)}
+                onExport={() => exportSingleMatch(item)}
+                onDelete={() => deleteSingleMatch(item)}
+              />
+            )) : (
+              <div style={panel}>
+                <strong style={{ color: amber }}>Aucune sauvegarde de partie encore détectée</strong>
+                <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
+                  Termine une nouvelle partie : elle créera automatiquement un bloc local, puis un bloc NAS si ton compte est connecté et le backend disponible.
                 </div>
               </div>
             )}
