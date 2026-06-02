@@ -163,14 +163,17 @@ export const THEMES: AppTheme[] = [
   {
     id: "blueNight",
     name: "Bleu nuit",
-    primary: "#18D8FF",
-    bg: "#0b1d2f",
-    card: "#10263d",
+    primary: "#22E6FF",
+    // Effet nuit profond : base presque noire + reflets bleu pétrole.
+    // C'est volontairement plus sombre que l'ancien #0b1d2f pour retrouver
+    // le rendu "nuit + auras cyan" validé sur l'écran d'accueil.
+    bg: "#06111F",
+    card: "#0B1728",
     text: "#F2FBFF",
-    textSoft: "rgba(195,225,240,0.82)",
-    accent1: "#18D8FF",
-    accent2: "#54F0FF",
-    borderSoft: "rgba(24,216,255,0.38)",
+    textSoft: "rgba(205,232,245,0.84)",
+    accent1: "#22E6FF",
+    accent2: "#7AF7FF",
+    borderSoft: "rgba(34,230,255,0.44)",
     success: "#2EEB9A",
     danger: "#FF4A6A",
   },

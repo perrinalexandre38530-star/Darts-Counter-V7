@@ -325,8 +325,10 @@ function LanguageChoiceButton({ id, label, active, onClick, primary }: LanguageC
 
 // ---------------- Constantes de page & prefs ----------------
 
-const PAGE_BG = "#050712";
-const CARD_BG = "rgba(8, 10, 20, 0.98)";
+const LEGACY_PAGE_BG = "#050712";
+const LEGACY_CARD_BG = "rgba(8, 10, 20, 0.98)";
+const PAGE_BG = LEGACY_PAGE_BG;
+const CARD_BG = LEGACY_CARD_BG;
 const LS_ACCOUNT_PREFS = "dc_account_prefs_v1";
 
 // ✅ Choix jeu/sport au démarrage
@@ -1868,6 +1870,14 @@ function CastViewerSettingsSection({ go }: { go?: (tab: any, params?: any) => vo
 export function Settings({ go }: Props) {
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { lang, setLang, t } = useLang();
+
+  const isBlueNightTheme = themeId === "blueNight";
+  const PAGE_BG = isBlueNightTheme
+    ? "radial-gradient(900px 520px at 50% -14%, rgba(34,230,255,0.14), transparent 62%), radial-gradient(680px 360px at 0% 28%, rgba(122,247,255,0.08), transparent 62%), #06111F"
+    : LEGACY_PAGE_BG;
+  const CARD_BG = isBlueNightTheme
+    ? "linear-gradient(180deg, rgba(15,34,55,0.96), rgba(6,17,31,0.98))"
+    : LEGACY_CARD_BG;
 
   const [tab, setTab] = React.useState<SettingsTab>("menu");
   const [nasBusy, setNasBusy] = React.useState<null | "backup" | "restore">(null);
