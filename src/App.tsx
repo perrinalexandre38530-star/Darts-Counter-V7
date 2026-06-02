@@ -3942,9 +3942,6 @@ case "babyfoot_team_edit":
         break;
 
       case "sync_center":
-        page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
-        break;
-
       case "storage_vault":
         page = <StorageVaultPage go={go} />;
         break;

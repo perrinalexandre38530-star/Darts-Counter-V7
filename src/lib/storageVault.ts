@@ -1,6 +1,6 @@
 import LZString from "lz-string";
 import { gunzipSync, strFromU8 } from "fflate";
-import { apiGet, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiPost } from "./apiClient";
 import { exportCloudSnapshot, importCloudSnapshot } from "./storage";
 import { pushNasAccountSnapshot } from "./manualNasSync";
 
@@ -35,6 +35,7 @@ export type StorageBlock = {
   version?: number | null;
   recoverable: boolean;
   summary: VaultSummary;
+  payload?: any;
 };
 
 export type MemorySlot = {
@@ -333,6 +334,7 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
         storeName,
         recoverable: wholeSummary.matches > 0 || wholeSummary.profiles > 0 || wholeSummary.keys > 0,
         summary: { ...wholeSummary, keys: rows.length || wholeSummary.keys },
+        payload: { dbName: name, storeName, rows },
       });
       for (const row of rows.slice(0, 120)) {
         const summary = summarizeVaultPayload(row.value);
@@ -348,6 +350,7 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
           key: String(row.key),
           recoverable: true,
           summary,
+          payload: { dbName: name, storeName, rows: [row] },
         });
       }
     }
@@ -377,6 +380,7 @@ export async function scanLocalStorageBlocks(): Promise<StorageBlock[]> {
           key,
           recoverable: true,
           summary,
+          payload: { key, value },
         });
       }
     }
@@ -389,6 +393,7 @@ export async function scanLocalStorageBlocks(): Promise<StorageBlock[]> {
       location: "localStorage/*",
       recoverable: true,
       summary: { ...whole, keys: ls.length },
+      payload: { all },
     });
   } catch {}
   return blocks;
@@ -431,7 +436,7 @@ export function decodeMaybeCompressedNasPayload(payload: any): any {
 }
 
 export async function listNasMemorySlots(): Promise<NasSlot[]> {
-  const data = await apiGet("/sync/slots").catch(async () => {
+  const data = await apiGet("/sync/slots?limit=120").catch(async () => {
     const latest = await apiGet("/sync/pull");
     if (!latest?.payload) return { slots: [] };
     return { slots: [{ id: "latest", latest: true, version: latest.version, updatedAt: latest.updatedAt, createdAt: latest.updatedAt }] };
@@ -464,6 +469,12 @@ export async function restoreNasMemorySlot(slotId: string): Promise<{ slot: NasS
 
 export async function createNasVersionedSnapshot(): Promise<any> {
   return pushNasAccountSnapshot();
+}
+
+
+export async function deleteNasMemorySlot(slotId: string): Promise<void> {
+  if (!slotId || slotId === "latest") throw new Error("Le backup NAS courant ne peut pas être supprimé directement.");
+  await apiDelete(`/sync/slots/${encodeURIComponent(slotId)}`);
 }
 
 export async function exportJsonDownload(value: any, filename: string) {

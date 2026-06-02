@@ -2880,7 +2880,7 @@ export function Settings({ go }: Props) {
       : tab === "lang"
       ? t("settings.menu.lang", "Langues")
       : tab === "general"
-      ? t("settings.menu.backupNas", "Backup NAS")
+      ? "SAUVEGARDE"
       : tab === "castViewer"
       ? "Cast / Viewer"
       : tab === "developer"
@@ -2902,7 +2902,7 @@ export function Settings({ go }: Props) {
       ? "Paramètres des deux sorties écran : Google Cast TV et Viewer tablette."
       : tab === "developer"
       ? t("settings.dev.pageSubtitle", "Diagnostic, tests, logs, sécurité technique et outils NAS avancés.")
-      : t("settings.nas.pageSubtitle", "Créer ou charger manuellement la sauvegarde NAS du compte.");
+      : "Backup NAS, synchronisation et restauration du compte.";
 
   return (
     <div
@@ -3016,15 +3016,8 @@ export function Settings({ go }: Props) {
             />
 
             <SettingsMenuCard
-              title={t("settings.menu.backupNas", "Backup NAS")}
-              subtitle="Créer sauvegarde NAS ou charger sauvegarde NAS. Aucun reset ici."
-              theme={theme}
-              onClick={() => setTab("general")}
-            />
-
-            <SettingsMenuCard
-              title="Carte mémoire / Coffre"
-              subtitle="Inspecte LocalStorage, IndexedDB et NAS. Slots locaux + 10 sauvegardes NAS restaurables."
+              title="SAUVEGARDE"
+              subtitle="Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page."
               theme={theme}
               onClick={() => go?.("storage_vault")}
             />
