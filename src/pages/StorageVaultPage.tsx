@@ -722,6 +722,8 @@ export default function StorageVaultPage({ go }: Props) {
         if (gradeA !== gradeB) return gradeB - gradeA;
         return (Date.parse(b.createdAt || b.updatedAt || "") || 0) - (Date.parse(a.createdAt || a.updatedAt || "") || 0);
       });
+  }, [nasSlots]);
+
   const trashNasEntries = React.useMemo<SaveEntry[]>(() => {
     return trashNasSlots
       .map((slot, idx) => {
