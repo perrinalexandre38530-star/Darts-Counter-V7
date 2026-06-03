@@ -25,6 +25,7 @@ import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
+import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
 import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
 import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
@@ -1802,10 +1803,26 @@ export default function HistoryPage({
     try {
       const text = await file.text();
       const json = JSON.parse(text);
+
       if (!isMatchSharePacketV1(json)) {
+        // ✅ PATCH RÉCUPÉRATION HISTORIQUE
+        // Accepte les fichiers reconstruits depuis localStorage/backup :
+        // - match-partageable-*.json
+        // - share-match-*.json
+        // - RESTORE_COMPLET_7_PARTIES_v2.json
+        // - dc_recovered_history_bundle_v2
+        // et les injecte directement dans History.upsert.
+        const recovered = await importRecoveredHistoryJson(json);
+        if (recovered?.ok) {
+          await loadHistory();
+          window.alert(recovered.message || `${recovered.imported || 0} partie(s) récupérée(s) importée(s) dans l'historique.`);
+          return;
+        }
+
         window.alert("Format invalide : ce fichier n'est pas une partie partageable.");
         return;
       }
+
       inboxAddLocal(json as MatchSharePacketV1);
       setInboxLocal(inboxListLocal());
       window.alert("Partie reçue ✅ (en attente d'acceptation)");
