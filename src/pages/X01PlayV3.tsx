@@ -97,6 +97,9 @@ type HeaderBlockProps = {
   dartSetBgColor?: string | null;
   onlineCameraPanel?: React.ReactNode;
   onlineCameraActive?: boolean;
+  voiceScoreEnabled?: boolean;
+  configuredScoreInputMethod?: string;
+  voiceScore?: any;
 };
 
 
@@ -4563,6 +4566,9 @@ if (isLandscapeTablet) {
               dartSetBgColor={activePlayerDartSetBg}
               onlineCameraPanel={x01OnlineCameraPanel}
               onlineCameraActive={x01OnlineCameraActive}
+              voiceScoreEnabled={voiceScoreEnabled}
+              configuredScoreInputMethod={configuredScoreInputMethod}
+              voiceScore={voiceScore}
             showThrowCounter={showThrowCounter}
             />
           )}
@@ -4947,6 +4953,9 @@ if (isLandscapeTablet) {
                 dartSetBgColor={activePlayerDartSetBg}
                 onlineCameraPanel={x01OnlineCameraPanel}
                 onlineCameraActive={x01OnlineCameraActive}
+                voiceScoreEnabled={voiceScoreEnabled}
+                configuredScoreInputMethod={configuredScoreInputMethod}
+                voiceScore={voiceScore}
               showThrowCounter={showThrowCounter}
             />
             )}
@@ -5349,6 +5358,9 @@ function HeaderBlock(props: HeaderBlockProps) {
     showThrowCounter = false,
     onlineCameraPanel = null,
     onlineCameraActive = false,
+    voiceScoreEnabled = false,
+    configuredScoreInputMethod = "buttons",
+    voiceScore = null,
   } = props;
 
   const legsWonThisSet =
