@@ -119,6 +119,27 @@ const NAV_HEIGHT = 64;
 const CONTENT_MAX = 520;
 const AUTOSAVE_KEY = "x01v3:autosave";
 
+// ✅ Garde-fou UI voix : fonction pure hors composant pour éviter tout crash
+// si un ancien rendu/minification perd la constante locale pendant les pastilles.
+function isVoiceHitPromptActiveForUi(
+  voiceScoreEnabled: unknown,
+  configuredScoreInputMethod: unknown,
+  voiceScore: any
+): boolean {
+  const phase = String(voiceScore?.phase || "");
+  return (
+    !!voiceScoreEnabled &&
+    configuredScoreInputMethod === "voice" &&
+    !!phase &&
+    (phase.startsWith("WAIT_D") || phase.startsWith("LISTEN_D"))
+  );
+}
+
+function getVoiceExpectedHitIndexForUi(voiceScore: any, currentThrowLength: number): number {
+  const raw = Number(voiceScore?.expectedIndex ?? currentThrowLength ?? 0);
+  return Math.max(0, Math.min(2, Number.isFinite(raw) ? raw : 0));
+}
+
 function getDartSetMedallionSrcById(dartSetId: any): string | null {
   const id = String(dartSetId || "").trim();
   if (!id) return null;
@@ -2781,12 +2802,12 @@ const [bustError, setBustError] = React.useState<string | null>(null);
   const [isBust, setIsBust] = React.useState<boolean>(false);
 
 const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
-const voiceExpectedHitIndex = Math.max(0, Math.min(2, Number(voiceScore.expectedIndex ?? currentThrow.length ?? 0)));
-const voiceHitPromptActive =
-  voiceScoreEnabled &&
-  configuredScoreInputMethod === "voice" &&
-  !!voiceScore.phase &&
-  (String(voiceScore.phase).startsWith("WAIT_D") || String(voiceScore.phase).startsWith("LISTEN_D"));
+const voiceExpectedHitIndex = getVoiceExpectedHitIndexForUi(voiceScore, currentThrow.length);
+const voiceHitPromptActive = isVoiceHitPromptActiveForUi(
+  voiceScoreEnabled,
+  configuredScoreInputMethod,
+  voiceScore
+);
 
 React.useEffect(() => {
   if (!effectiveOnline || !onlineTurnLocked) return;
@@ -5614,7 +5635,10 @@ function HeaderBlock(props: HeaderBlockProps) {
                         currentThrow.slice(0, i + 1).reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
                       0;
                     const st = chipStyle(d, wouldBust);
-                    const voiceBlink = voiceHitPromptActive && i === voiceExpectedHitIndex && !d;
+                    const voiceBlink =
+                      isVoiceHitPromptActiveForUi(voiceScoreEnabled, configuredScoreInputMethod, voiceScore) &&
+                      i === getVoiceExpectedHitIndexForUi(voiceScore, currentThrow.length) &&
+                      !d;
                     return (
                       <span
                         key={i}
@@ -5740,7 +5764,10 @@ function HeaderBlock(props: HeaderBlockProps) {
                 0;
 
               const st = chipStyle(d, wouldBust);
-              const voiceBlink = voiceHitPromptActive && i === voiceExpectedHitIndex && !d;
+              const voiceBlink =
+                isVoiceHitPromptActiveForUi(voiceScoreEnabled, configuredScoreInputMethod, voiceScore) &&
+                i === getVoiceExpectedHitIndexForUi(voiceScore, currentThrow.length) &&
+                !d;
 
               return (
                 <span
