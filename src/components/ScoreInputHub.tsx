@@ -645,10 +645,10 @@ function VoiceInlineNotice({
     : activity === "speech"
     ? "Voix détectée — continue"
     : isRecording
-    ? `MICRO ACTIF — annonce le HIT ${hitNo}`
+    ? `MICRO ACTIF — annonce le HIT ${hitNo} ou les 3 hits à la suite`
     : isWaitingHit
-    ? `HIT ${hitNo} attendu — appuie sur MICRO puis annonce le hit`
-    : "Appuie sur MICRO puis annonce le hit";
+    ? `HIT ${hitNo} attendu — MICRO puis 1 hit ou les 3 hits`
+    : "Appuie sur MICRO puis dicte 1 hit ou les 3 hits";
 
   const liveDotColor = tone === "warn" ? "#ffcc66" : tone === "live" ? "#b4ff1e" : tone === "confirm" ? "#ffffff" : "rgba(255,255,255,.42)";
 

@@ -1996,12 +1996,13 @@ const isBotTurn = React.useMemo(() => {
   );
 
   const voiceDirectDartRef = React.useRef<((dart: UIDart) => void) | null>(null);
+  const voiceSetVisitDartsRef = React.useRef<((darts: UIDart[]) => void) | null>(null);
   const voiceValidateVisitRef = React.useRef<(() => void) | null>(null);
 
   function voiceDartToUIDart(d: any): UIDart {
     if (d?.kind === "BULL") return ({ v: 25, mult: 1 } as any);
     if (d?.kind === "DBULL") return ({ v: 25, mult: 2 } as any);
-    if (d?.kind === "MISS") return ({ v: 20, mult: 0 } as any);
+    if (d?.kind === "MISS") return ({ v: 0, mult: 1 } as any);
     const kind = d?.kind as "S" | "D" | "T";
     const base = Number(d?.base || 0);
     const mult = kind === "T" ? 3 : kind === "D" ? 2 : 1;
@@ -2019,6 +2020,18 @@ const isBotTurn = React.useMemo(() => {
     speak: speakVoiceScore,
     announcePlayer: false, // X01PlayV3 annonce déjà le tour
     playerName: activePlayer?.name || "",
+    onVisitDarts: (vdarts) => {
+      try {
+        if (!voiceMatchIsLive) return;
+        if (scoringSource === "external") return;
+        if (isBotTurn) return;
+        const uiDarts = (Array.isArray(vdarts) ? vdarts : []).slice(0, 3).map(voiceDartToUIDart);
+        if (!uiDarts.length) return;
+        voiceSetVisitDartsRef.current?.(uiDarts);
+      } catch (e) {
+        console.warn("[X01PlayV3] voice visit injection failed", e);
+      }
+    },
     onDart: (dart) => {
       try {
         if (!voiceMatchIsLive) return;
@@ -3053,10 +3066,14 @@ const handleSetVisitDarts = (darts: UIDart[]) => {
   const nextThrow = (Array.isArray(darts) ? darts : [])
     .slice(0, 3)
     .map((d: any) => {
-      const v = Number(d?.v ?? 0);
+      const rawV = Number(d?.v ?? 0);
       const rawMult = Number(d?.mult ?? 1);
+      if (!Number.isFinite(rawV) || rawV === 0 || rawMult === 0) {
+        return { v: 0, mult: 1 } as UIDart;
+      }
+      const v = rawV;
       const mult = v === 25 ? (rawMult === 2 ? 2 : 1) : rawMult === 3 ? 3 : rawMult === 2 ? 2 : 1;
-      return { v: Number.isFinite(v) ? v : 0, mult } as UIDart;
+      return { v, mult } as UIDart;
     });
   if (!nextThrow.length) return;
 
@@ -3388,6 +3405,7 @@ const requestValidateThrow = () => {
 };
 
 voiceDirectDartRef.current = handleDirectDart;
+voiceSetVisitDartsRef.current = handleSetVisitDarts;
 voiceValidateVisitRef.current = requestValidateThrow;
 
 const confirmOnlineVisit = () => {

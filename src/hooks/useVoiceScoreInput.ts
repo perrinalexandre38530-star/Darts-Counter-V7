@@ -7,7 +7,7 @@
 // ============================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { parseVoiceDart, VoiceDart, formatDartLabel, sumDarts } from "../lib/voice/voiceScore";
+import { parseVoiceVisit, VoiceDart, formatDartLabel, sumDarts } from "../lib/voice/voiceScore";
 
 type Phase =
   | "OFF"
@@ -42,7 +42,10 @@ type UseVoiceScoreInputArgs = {
   playerName?: string;
   announcePlayer?: boolean;
 
-  /** Appelé dès qu'un hit est compris : la page l'injecte comme un hit keypad. */
+  /** Appelé quand une ou plusieurs fléchettes sont comprises : la page remplace la volée UI complète. */
+  onVisitDarts?: (darts: VoiceDart[]) => void;
+
+  /** Compat : appelé hit par hit seulement si onVisitDarts n'est pas fourni. */
   onDart?: (dart: VoiceDart, index: number) => void;
 
   /** Ancien callback conservé pour compat, non utilisé dans le flux bouton VALIDER. */
@@ -115,6 +118,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
     speak,
     playerName,
     announcePlayer = false,
+    onVisitDarts,
     onDart,
     onConfirmVisit,
     onCommit,
@@ -252,10 +256,13 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
             return;
           }
 
-          const dart = parseVoiceDart(text);
-          if (dart) {
+          const parsed = parseVoiceVisit(text);
+          if (parsed.length) {
             const index = Math.max(0, Math.min(expectedIndexRef.current, 2));
-            const next = [...dartsRef.current.slice(0, index), dart].slice(0, 3);
+            const slotsLeft = Math.max(0, 3 - index);
+            const accepted = parsed.slice(0, slotsLeft);
+            const next = [...dartsRef.current.slice(0, index), ...accepted].slice(0, 3);
+
             dartsRef.current = next;
             setDarts(next);
             setExpectedIndex(next.length >= 3 ? 3 : next.length);
@@ -264,9 +271,13 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
             listeningRef.current = false;
 
             try {
-              onDart?.(dart, index);
+              if (onVisitDarts) {
+                onVisitDarts(next);
+              } else {
+                accepted.forEach((dart, offset) => onDart?.(dart, index + offset));
+              }
             } catch (err) {
-              console.warn("[voice] onDart failed", err);
+              console.warn("[voice] visit injection failed", err);
             }
 
             if (next.length >= 3) {
@@ -277,6 +288,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
               } catch {}
             } else {
               setPhase(waitPhaseForIndex(next.length));
+              setPermissionHint(`hit_${next.length + 1}_attendu`);
             }
           } else {
             setPermissionHint("hit_incompris");
@@ -325,7 +337,7 @@ export function useVoiceScoreInput(args: UseVoiceScoreInputArgs) {
         return false;
       }
     },
-    [lang, onDart, speak, stopRecognitionOnly, stopTimers]
+    [lang, onDart, onVisitDarts, speak, stopRecognitionOnly, stopTimers]
   );
 
   const resetTurn = useCallback(() => {

@@ -455,9 +455,12 @@ function parseTokens(tokens: string[]): VoiceDart[] {
     }
 
     const joinedDart = compactTokenToDart(joined);
-    if (joinedDart && token.length <= 12 && next.length <= 12) {
+    const bothAreDigits = /^\d+$/.test(token) && /^\d+$/.test(next);
+    if (joinedDart && !bothAreDigits && token.length <= 12 && next.length <= 12) {
       push(joinedDart);
-      if (TRIPLE_WORDS.has(token) || DOUBLE_WORDS.has(token) || SIMPLE_WORDS.has(token) || joined.startsWith("doublebull")) i += 1;
+      // Les alias vocaux multi-mots comme "plein centre", "demi bull",
+      // "bull eye" ou "a cote" doivent consommer les 2 mots.
+      i += 1;
       continue;
     }
 

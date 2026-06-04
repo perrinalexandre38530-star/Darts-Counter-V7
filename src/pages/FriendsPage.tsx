@@ -33,6 +33,7 @@
 
 import React from "react";
 import { useSport } from "../contexts/SportContext";
+import { useTheme } from "../contexts/ThemeContext";
 import type { Store } from "../lib/types";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
@@ -40,6 +41,7 @@ import type { OnlineLobby } from "../lib/onlineApi";
 import type { OnlineMatch } from "../lib/onlineTypes";
 import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
+import DartSetSelector from "../components/DartSetSelector";
 import {
   listFriends,
   listFriendRequests,
@@ -341,6 +343,21 @@ function normalizeErrMessage(e: any) {
   return msg;
 }
 
+
+function hexToRgbParts(hex: string) {
+  const clean = String(hex || "#22E6FF").replace("#", "").trim();
+  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const n = Number.parseInt(full.slice(0, 6), 16);
+  if (!Number.isFinite(n)) return "34,230,255";
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+
+function darkenHex(hex: string, amount = 0.38) {
+  const parts = hexToRgbParts(hex).split(",").map((v) => Number(v));
+  const [r, g, b] = parts.map((v) => Math.max(0, Math.min(255, Math.round(v * (1 - amount)))));
+  return `rgb(${r},${g},${b})`;
+}
+
 /* -------------------------------------------------
    UI atoms
 --------------------------------------------------*/
@@ -354,10 +371,10 @@ function Pill({
   title?: string;
 }) {
   const map: any = {
-    gold: ["rgba(255,213,106,.18)", "#ffd56a", "rgba(255,213,106,.35)"],
+    gold: ["rgba(var(--online-accent-rgb),.18)", "var(--online-accent)", "rgba(var(--online-accent-rgb),.35)"],
     blue: ["rgba(79,180,255,.14)", "#4fb4ff", "rgba(79,180,255,.35)"],
     green: ["rgba(127,226,169,.14)", "#7fe2a9", "rgba(127,226,169,.35)"],
-    orange: ["rgba(255,179,71,.14)", "#ffb347", "rgba(255,179,71,.35)"],
+    orange: ["rgba(255,179,71,.14)", "var(--online-accent)", "rgba(255,179,71,.35)"],
     red: ["rgba(255,90,90,.14)", "#ff5a5a", "rgba(255,90,90,.35)"],
     gray: ["rgba(255,255,255,.08)", "rgba(255,255,255,.9)", "rgba(255,255,255,.12)"],
   };
@@ -400,7 +417,7 @@ function NeonCard({
         padding: 14,
         border: "1px solid rgba(255,255,255,.10)",
         background:
-          "radial-gradient(120% 160% at 0% 0%, rgba(255,195,26,.06), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
+          "radial-gradient(120% 160% at 0% 0%, rgba(var(--online-accent-rgb),.06), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
         boxShadow: "0 12px 26px rgba(0,0,0,.55)",
         position: "relative",
         overflow: "hidden",
@@ -429,8 +446,8 @@ function SectionTitle({
             fontSize: 15,
             fontWeight: 950,
             letterSpacing: 0.2,
-            color: "#ffd56a",
-            textShadow: "0 0 12px rgba(255,215,80,.25)",
+            color: "var(--online-accent)",
+            textShadow: "0 0 12px rgba(var(--online-accent-rgb),.25)",
           }}
         >
           {title}
@@ -462,9 +479,9 @@ function PrimaryButton({
       ? ["#4fb4ff", "#1c78d5"]
       : tone === "gray"
       ? ["#454545", "#2d2d2d"]
-      : ["#ffd56a", "#e9a93d"];
+      : ["var(--online-accent)", "var(--online-accent-dark)"];
 
-  const fg = tone === "gray" ? "rgba(255,255,255,.60)" : tone === "gold" ? "#1c1304" : "#04101f";
+  const fg = tone === "gray" ? "rgba(255,255,255,.60)" : tone === "gold" ? "#04101f" : "#04101f";
 
   return (
     <button
@@ -560,7 +577,7 @@ function OnlineTicker({
         borderRadius: 16,
         border: "1px solid rgba(255,255,255,.10)",
         background:
-          "radial-gradient(1200px 180px at 20% 0%, rgba(255,213,106,.14), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
+          "radial-gradient(1200px 180px at 20% 0%, rgba(var(--online-accent-rgb),.14), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
         boxShadow: "0 12px 26px rgba(0,0,0,.55)",
         overflow: "hidden",
         position: "relative",
@@ -584,7 +601,7 @@ function OnlineTicker({
         <Pill label="AUTO" tone="blue" />
       </div>
 
-      <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(255,213,106,.55), rgba(79,180,255,.35), transparent)", opacity: 0.75 }} />
+      <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(var(--online-accent-rgb),.55), rgba(79,180,255,.35), transparent)", opacity: 0.75 }} />
 
       <div style={{ position: "relative", overflow: "hidden", padding: "10px 0" }}>
         <div
@@ -685,7 +702,7 @@ function MatchMiniCard({
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontSize: 11, opacity: 0.82 }}>{dateLabel}</div>
-        {winner ? <div style={{ fontSize: 11, color: "#ffd56a", fontWeight: 950 }}>🏆 {winner}</div> : null}
+        {winner ? <div style={{ fontSize: 11, color: "var(--online-accent)", fontWeight: 950 }}>🏆 {winner}</div> : null}
       </div>
 
       <div style={{ fontSize: 11, opacity: 0.88, lineHeight: 1.2 }}>{playersLabel}</div>
@@ -827,9 +844,9 @@ function ShareDetailsModal({
           maxHeight: "82vh",
           overflow: "auto",
           borderRadius: 22,
-          border: "1px solid rgba(255,213,106,.28)",
+          border: "1px solid rgba(var(--online-accent-rgb),.28)",
           background:
-            "radial-gradient(140% 120% at 0% 0%, rgba(255,213,106,.16), transparent 48%), linear-gradient(180deg, rgba(25,25,32,.98), rgba(7,7,10,.99))",
+            "radial-gradient(140% 120% at 0% 0%, rgba(var(--online-accent-rgb),.16), transparent 48%), linear-gradient(180deg, rgba(25,25,32,.98), rgba(7,7,10,.99))",
           boxShadow: "0 24px 70px rgba(0,0,0,.78), 0 0 34px rgba(198,255,0,.13)",
           padding: 16,
           color: "#f5f5f7",
@@ -838,7 +855,7 @@ function ShareDetailsModal({
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 1000, letterSpacing: 1 }}>PARTAGE REÇU</div>
-            <div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000, color: "#ffd56a", lineHeight: 1.15 }}>
+            <div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000, color: "var(--online-accent)", lineHeight: 1.15 }}>
               {item.title || (isStats ? "Stats partagées" : "Match partagé")}
             </div>
             <div style={{ marginTop: 5, fontSize: 12.2, opacity: 0.82 }}>Envoyé par {owner}</div>
@@ -1083,6 +1100,21 @@ function saveSelectedOnlineMode(mode: OnlineGameModeId) {
   } catch {}
 }
 
+
+function OnlineTabIcon({ id, size = 30, color = "currentColor" }: { id: OnlineMainTab; size?: number; color?: string }) {
+  const common = { fill: "none", stroke: color, strokeWidth: 2.15, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}>
+      {id === "hub" ? <><path {...common} d="M13 2 4 14h7l-1 8 10-13h-7V2Z" /></> : null}
+      {id === "play" ? <><circle {...common} cx="12" cy="12" r="8" /><path {...common} d="M12 12 17 7" /><path {...common} d="M17 7h-4" /><path {...common} d="M17 7v4" /></> : null}
+      {id === "friends" ? <><path {...common} d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" /><path {...common} d="M3.5 19c.8-3 2.4-4.6 5-4.6s4.2 1.6 5 4.6" /><path {...common} d="M16.5 11.5a2.6 2.6 0 1 0 0-5.2" /><path {...common} d="M15.4 14.5c2.2.2 3.8 1.7 4.6 4.2" /></> : null}
+      {id === "requests" ? <><path {...common} d="M4 7h16v11H4z" /><path {...common} d="m4 8 8 5.7L20 8" /></> : null}
+      {id === "shares" ? <><path {...common} d="M7 17h10" /><path {...common} d="M8 17V9h8v8" /><path {...common} d="M10 9V6h4v3" /><path {...common} d="M12 12v3" /><path {...common} d="M10.5 13.5h3" /></> : null}
+      {id === "activity" ? <><path {...common} d="M5 19V9" /><path {...common} d="M12 19V5" /><path {...common} d="M19 19v-7" /><path {...common} d="M3.5 19.5h17" /></> : null}
+    </svg>
+  );
+}
+
 function OnlineTabsBar({
   tabs,
   active,
@@ -1097,15 +1129,12 @@ function OnlineTabsBar({
       style={{
         marginTop: 12,
         marginBottom: 12,
-        position: "sticky",
-        top: 8,
-        zIndex: 5,
-        borderRadius: 18,
+        borderRadius: 22,
         padding: 8,
-        border: "1px solid rgba(255,255,255,.10)",
+        border: "1px solid rgba(var(--online-accent-rgb),.28)",
         background:
-          "radial-gradient(800px 120px at 12% 0%, rgba(255,213,106,.16), transparent 55%), linear-gradient(180deg, rgba(20,20,27,.94), rgba(7,7,11,.94))",
-        boxShadow: "0 14px 34px rgba(0,0,0,.58)",
+          "radial-gradient(900px 150px at 10% 0%, rgba(var(--online-accent-rgb),.18), transparent 60%), linear-gradient(180deg, rgba(7,13,27,.96), rgba(3,7,16,.96))",
+        boxShadow: "0 16px 38px rgba(0,0,0,.62), 0 0 28px rgba(var(--online-accent-rgb),.18)",
         backdropFilter: "blur(12px)",
         overflowX: "auto",
         WebkitOverflowScrolling: "touch",
@@ -1115,25 +1144,14 @@ function OnlineTabsBar({
         style={{
           display: "grid",
           gridAutoFlow: "column",
-          gridAutoColumns: "minmax(118px, 1fr)",
+          gridAutoColumns: "minmax(92px, 1fr)",
           gap: 8,
-          minWidth: 760,
+          minWidth: 650,
         }}
       >
         {tabs.map((tab) => {
           const selected = tab.id === active;
-          const accent =
-            tab.tone === "green"
-              ? "#7fe2a9"
-              : tab.tone === "blue"
-              ? "#4fb4ff"
-              : tab.tone === "orange"
-              ? "#ffb347"
-              : tab.tone === "red"
-              ? "#ff8a8a"
-              : tab.tone === "gray"
-              ? "rgba(255,255,255,.72)"
-              : "#ffd56a";
+          const accent = "var(--online-accent)";
 
           return (
             <button
@@ -1141,73 +1159,75 @@ function OnlineTabsBar({
               type="button"
               onClick={() => onChange(tab.id)}
               style={{
-                minHeight: 64,
-                borderRadius: 15,
-                padding: "8px 9px",
-                border: selected ? `1px solid ${accent}` : "1px solid rgba(255,255,255,.10)",
+                position: "relative",
+                minHeight: 88,
+                borderRadius: 18,
+                padding: "9px 8px",
+                border: selected ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.18)",
                 background: selected
-                  ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
-                  : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.20))",
+                  ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.28), rgba(var(--online-accent-rgb),.08))"
+                  : "linear-gradient(180deg, rgba(var(--online-accent-rgb),.08), rgba(0,0,0,.22))",
                 color: "#f5f5f7",
                 cursor: "pointer",
-                boxShadow: selected ? `0 0 22px ${accent}33, 0 10px 22px rgba(0,0,0,.42)` : "0 8px 18px rgba(0,0,0,.32)",
-                textAlign: "left",
+                boxShadow: selected
+                  ? "0 0 26px rgba(var(--online-accent-rgb),.55), 0 10px 22px rgba(0,0,0,.42), inset 0 0 0 1px rgba(255,255,255,.07)"
+                  : "0 8px 18px rgba(0,0,0,.32), inset 0 0 0 1px rgba(255,255,255,.025)",
+                textAlign: "center",
                 display: "grid",
-                gap: 4,
+                justifyItems: "center",
                 alignContent: "center",
+                gap: 8,
               }}
             >
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                  <span style={{ fontSize: 15, lineHeight: 1 }}>{tab.icon}</span>
-                  <span
-                    style={{
-                      fontSize: 12.2,
-                      fontWeight: 1000,
-                      letterSpacing: 0.2,
-                      color: selected ? accent : "rgba(255,255,255,.92)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {tab.label}
-                  </span>
-                </span>
-                {tab.badge != null && tab.badge !== "" ? (
-                  <span
-                    style={{
-                      minWidth: 22,
-                      height: 22,
-                      padding: "0 7px",
-                      borderRadius: 999,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: selected ? `${accent}22` : "rgba(255,255,255,.08)",
-                      border: selected ? `1px solid ${accent}66` : "1px solid rgba(255,255,255,.10)",
-                      color: selected ? accent : "rgba(255,255,255,.84)",
-                      fontSize: 11,
-                      fontWeight: 1000,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {tab.badge}
-                  </span>
-                ) : null}
+              <span
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 15,
+                  display: "grid",
+                  placeItems: "center",
+                  color: accent,
+                  background: selected ? "rgba(var(--online-accent-rgb),.16)" : "rgba(var(--online-accent-rgb),.07)",
+                  filter: selected ? "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.85))" : "drop-shadow(0 0 5px rgba(var(--online-accent-rgb),.45))",
+                }}
+              >
+                <OnlineTabIcon id={tab.id} />
               </span>
               <span
                 style={{
-                  fontSize: 10.6,
-                  lineHeight: 1.15,
-                  opacity: selected ? 0.92 : 0.62,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  fontSize: 12.5,
+                  fontWeight: 1000,
+                  letterSpacing: 0.15,
+                  color: selected ? accent : "rgba(255,255,255,.88)",
+                  textShadow: selected ? "0 0 12px rgba(var(--online-accent-rgb),.72)" : "none",
                 }}
               >
-                {tab.hint}
+                {tab.label}
               </span>
+              {tab.badge != null && tab.badge !== "" ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 9,
+                    right: 9,
+                    minWidth: 21,
+                    height: 21,
+                    padding: "0 6px",
+                    borderRadius: 999,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(255,255,255,.08)",
+                    border: "1px solid rgba(var(--online-accent-rgb),.38)",
+                    color: accent,
+                    fontSize: 10.5,
+                    fontWeight: 1000,
+                  }}
+                >
+                  {tab.badge}
+                </span>
+              ) : null}
+              {selected ? <span style={{ position: "absolute", left: 15, right: 15, bottom: 5, height: 3, borderRadius: 999, background: accent, boxShadow: "0 0 14px rgba(var(--online-accent-rgb),.9)" }} /> : null}
             </button>
           );
         })}
@@ -1220,7 +1240,7 @@ function OnlineEmptyCard({ title, text }: { title: string; text: string }) {
   return (
     <NeonCard style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 7 }}>
-        <div style={{ color: "#ffd56a", fontWeight: 1000, fontSize: 14 }}>{title}</div>
+        <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 14 }}>{title}</div>
         <div style={{ fontSize: 12.4, opacity: 0.82, lineHeight: 1.35 }}>{text}</div>
       </div>
     </NeonCard>
@@ -1238,6 +1258,11 @@ type Props = {
 };
 
 export default function FriendsPage({ store, update, go, initialOnlineTab }: Props) {
+  const { theme } = useTheme();
+  const onlineAccent = theme?.primary || "#22E6FF";
+  const onlineAccentRgb = hexToRgbParts(onlineAccent);
+  const onlineAccentDark = darkenHex(onlineAccent);
+  const onlineBg = theme?.bg || "#020611";
   const sportCtx = useSport() as any;
   const activeSportId = String(sportCtx?.sport || "darts").toLowerCase();
   const onlineModesForSport = React.useMemo(() => {
@@ -2158,6 +2183,15 @@ const doLogout = React.useCallback(async () => {
     return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
   }, [sortedMatches]);
 
+  const avg3DOverall = React.useMemo(() => {
+    const vals = sortedMatches
+      .map((m: any) => m?.stats?.avg3D ?? m?.payload?.stats?.avg3D ?? m?.payload?.avg3D)
+      .map((v: any) => Number(v))
+      .filter((v: number) => Number.isFinite(v) && v > 0);
+    if (!vals.length) return 0;
+    return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
+  }, [sortedMatches]);
+
   const checkoutPctWeek = React.useMemo(() => {
     const now = Date.now();
     const week = 7 * 24 * 60 * 60 * 1000;
@@ -2233,10 +2267,35 @@ const doLogout = React.useCallback(async () => {
   }, [serverState, sessionState, lobby, lastMatch, weekMatchesCount, avg3DWeek, checkoutPctWeek, presenceMap]);
 
   const [showInfo, setShowInfo] = React.useState(false);
+  const [showPresencePanel, setShowPresencePanel] = React.useState(false);
+  const [showDartSetPicker, setShowDartSetPicker] = React.useState(false);
 
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
+  const onlineRatingValue = Math.max(0, Math.round(avg3DWeek || avg3DOverall || 0));
+  const onlineLeagueLabel = activeSportId === "darts" ? "X01 501 · Dbl.Out" : activeSportId.toUpperCase();
+  const onlineRankLabel = sortedMatches.length > 0 ? `#${Math.max(1, Math.min(999, 1000 - sortedMatches.length))}` : "—";
+  const profileStars = Math.max(1, Math.min(5, Math.round(Number((activeProfile as any)?.profileStars ?? (activeProfile as any)?.stars ?? (activeProfile as any)?.levelStars ?? (activeProfile as any)?.rating ?? (onlineRatingValue > 0 ? Math.min(5, onlineRatingValue / 20) : 1)))));
+  const activeDartSetId = String((activeProfile as any)?.dartSetId || (activeProfile as any)?.activeDartSetId || (activeProfile as any)?.favoriteDartSetId || "").trim();
+
+  function handlePickOnlineDartSet(dartSetId: string | null) {
+    const profileId = String((activeProfile as any)?.id || "").trim();
+    if (!profileId) return;
+    update((st: any) => ({
+      ...st,
+      profiles: (st.profiles || []).map((p: any) =>
+        String(p?.id || "") === profileId
+          ? { ...p, dartSetId: dartSetId || null, activeDartSetId: dartSetId || null }
+          : p
+      ),
+    }));
+    try {
+      window.dispatchEvent(new Event("dc-store-updated"));
+      window.dispatchEvent(new Event("dc-dartsets-updated"));
+    } catch {}
+    setShowDartSetPicker(false);
+  }
 
 
   const [activeOnlineTab, setActiveOnlineTab] = React.useState<OnlineMainTab>(() => (activeSportId === "babyfoot" ? "play" : initialOnlineTab || "hub"));
@@ -2252,7 +2311,7 @@ const doLogout = React.useCallback(async () => {
         id: "hub",
         label: "Hub",
         icon: "⚡",
-        hint: "Essentiel",
+        hint: "",
         badge: serverState === "ok" ? "OK" : serverState === "down" ? "OFF" : "…",
         tone: serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray",
       },
@@ -2260,7 +2319,7 @@ const doLogout = React.useCallback(async () => {
         id: "play",
         label: "Jouer",
         icon: "🎯",
-        hint: lobby?.code ? lobbyModeSpec.shortLabel : "Mode + salon",
+        hint: "",
         badge: lobby?.code ? String((lobby as any).code).toUpperCase() : selectedOnlineModeSpec.shortLabel,
         tone: lobby?.code ? "gold" : "blue",
       },
@@ -2268,7 +2327,7 @@ const doLogout = React.useCallback(async () => {
         id: "friends",
         label: "Amis",
         icon: "👥",
-        hint: "Liste + recherche",
+        hint: "",
         badge: onlineFriends.length,
         tone: "green",
       },
@@ -2276,7 +2335,7 @@ const doLogout = React.useCallback(async () => {
         id: "requests",
         label: "Demandes",
         icon: "📨",
-        hint: "Reçues / envoyées",
+        hint: "",
         badge: incomingRequests.length + outgoingRequests.length,
         tone: incomingRequests.length > 0 ? "gold" : "gray",
       },
@@ -2284,7 +2343,7 @@ const doLogout = React.useCallback(async () => {
         id: "shares",
         label: "Partages",
         icon: "🔗",
-        hint: "Matchs + stats NAS",
+        hint: "",
         badge: unreadSharesCount || incomingShares.length,
         tone: unreadSharesCount > 0 ? "gold" : "blue",
       },
@@ -2292,7 +2351,7 @@ const doLogout = React.useCallback(async () => {
         id: "activity",
         label: "Activité",
         icon: "📈",
-        hint: "Matchs récents",
+        hint: "",
         badge: sortedMatches.length,
         tone: "orange",
       },
@@ -2326,12 +2385,24 @@ const doLogout = React.useCallback(async () => {
   }
 
   return (
-    <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+    <div
+      className="container"
+      style={{
+        padding: 16,
+        paddingBottom: 96,
+        color: "#f5f5f7",
+        minHeight: "100dvh",
+        background: `radial-gradient(760px 300px at 92% -8%, rgba(${onlineAccentRgb},.42), transparent 62%), radial-gradient(620px 260px at 0% 30%, rgba(${onlineAccentRgb},.18), transparent 64%), linear-gradient(180deg, ${onlineBg}, #020611 58%, #000 100%)`,
+        ["--online-accent" as any]: onlineAccent,
+        ["--online-accent-rgb" as any]: onlineAccentRgb,
+        ["--online-accent-dark" as any]: onlineAccentDark,
+      }}
+    >
       {/* ================= HEADER (CAPTURE 1 EXACTE) ================= */}
       <NeonCard
         style={{
           background:
-            "radial-gradient(1200px 240px at 20% 0%, rgba(255,213,106,.18), transparent 55%), radial-gradient(900px 220px at 90% 0%, rgba(79,180,255,.14), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
+            "radial-gradient(1200px 240px at 20% 0%, rgba(var(--online-accent-rgb),.18), transparent 55%), radial-gradient(900px 220px at 90% 0%, rgba(79,180,255,.14), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
           marginBottom: 12,
         }}
       >
@@ -2352,8 +2423,8 @@ const doLogout = React.useCallback(async () => {
                 margin: 0,
                 fontSize: 30,
                 fontWeight: 1000,
-                color: "#ffd56a",
-                textShadow: "0 0 18px rgba(255,215,80,.22)",
+                color: "var(--online-accent)",
+                textShadow: "0 0 18px rgba(var(--online-accent-rgb),.22)",
                 lineHeight: 1.0,
               }}
             >
@@ -2382,7 +2453,7 @@ const doLogout = React.useCallback(async () => {
               boxShadow: "0 12px 26px rgba(0,0,0,.55)",
             }}
           >
-            <div style={{ fontWeight: 1000, color: "#ffd56a" }}>Infos</div>
+            <div style={{ fontWeight: 1000, color: "var(--online-accent)" }}>Infos</div>
             <div style={{ marginTop: 6, fontSize: 12.2, opacity: 0.88, lineHeight: 1.25 }}>
               Crée un salon, rejoins un ami, retrouve ton historique online, et bientôt :
               spectateur • chat amis • classements • tournois.
@@ -2391,103 +2462,240 @@ const doLogout = React.useCallback(async () => {
               <div style={{ marginTop: 8, fontSize: 12, color: "#ff8a8a", fontWeight: 950 }}>{serverHint}</div>
             ) : null}
             {authHint ? (
-              <div style={{ marginTop: 8, fontSize: 12, color: "#ffd56a", fontWeight: 950 }}>{authHint}</div>
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--online-accent)", fontWeight: 950 }}>{authHint}</div>
             ) : null}
           </div>
         ) : null}
 
-        {/* ===== HEADER PROFIL ===== */}
+        {/* ===== HEADER PROFIL — layout demandé */}
         <div
-          className="online-profile"
+          className="online-profile online-profile-v2"
           style={{
-            marginTop: 12,
-            display: "flex",
-            alignItems: "stretch",
-            justifyContent: "space-between",
+            marginTop: 14,
+            borderRadius: 20,
+            padding: 12,
+            border: "1px solid rgba(var(--online-accent-rgb),.24)",
+            background:
+              "radial-gradient(360px 180px at 50% 0%, rgba(var(--online-accent-rgb),.13), transparent 68%), linear-gradient(180deg, rgba(4,12,24,.58), rgba(0,0,0,.18))",
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,.025)",
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr)",
             gap: 12,
+            alignItems: "center",
+            justifyItems: "center",
           }}
         >
-          <div className="avatar-block" style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <div style={{ width: "100%", maxWidth: 430, minWidth: 0, display: "grid", justifyItems: "center", alignContent: "start", gap: 10, margin: "0 auto" }}>
             <div
+              aria-label={`Niveau ${profileStars} étoiles`}
               style={{
-                width: 58,
-                height: 58,
-                borderRadius: "50%",
-                overflow: "hidden",
-                background: "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
-                boxShadow: "0 0 18px rgba(255,215,80,.22)",
-                border: "1px solid rgba(255,255,255,.18)",
-                flexShrink: 0,
+                height: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                color: "var(--online-accent)",
+                textShadow: "0 0 12px rgba(var(--online-accent-rgb),.72)",
+                filter: "drop-shadow(0 0 6px rgba(var(--online-accent-rgb),.48))",
               }}
             >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 1000,
-                    color: "#1a1a1a",
-                    fontSize: 16,
-                  }}
-                >
-                  {(displayName || "??").slice(0, 2).toUpperCase()}
-                </div>
-              )}
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <span key={idx} style={{ fontSize: idx === 2 ? 23 : 20, opacity: idx < profileStars ? 1 : 0.24 }}>★</span>
+              ))}
             </div>
 
-            <div style={{ minWidth: 0 }}>
+            <div style={{ position: "relative", width: 118, height: 104 }}>
               <div
-                className="player-name"
                 style={{
-                  fontWeight: 1000,
-                  color: "#ffd56a",
-                  textShadow: "0 0 12px rgba(255,215,80,.18)",
+                  position: "absolute",
+                  left: "50%",
+                  top: 0,
+                  transform: "translateX(-50%)",
+                  width: 92,
+                  height: 92,
+                  borderRadius: "50%",
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  background: "radial-gradient(circle at 30% 0%, rgba(var(--online-accent-rgb),.92), rgba(var(--online-accent-rgb),.45) 45%, rgba(0,0,0,.82))",
+                  boxShadow: "0 0 28px rgba(var(--online-accent-rgb),.45), inset 0 0 0 4px rgba(0,0,0,.25)",
+                  border: "2px solid rgba(var(--online-accent-rgb),.82)",
                 }}
               >
-                {displayName}
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 1000,
+                      color: "#04101f",
+                      fontSize: 22,
+                    }}
+                  >
+                    {(displayName || "??").slice(0, 2).toUpperCase()}
+                  </div>
+                )}
               </div>
 
-              <div className={`status ${selfStatus}`} style={{ marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <Pill label={presenceLabel} tone={presenceTone} />
-                {countryFlag ? <span style={{ fontSize: 16, lineHeight: 1 }} title={countryRaw}>{countryFlag}</span> : null}
-                {lastSeenLabel ? <span style={{ opacity: 0.78, fontSize: 12 }}>({lastSeenLabel})</span> : null}
-              </div>
+              <button
+                type="button"
+                title={activeDartSetId ? `Dartset ${activeDartSetId}` : "Choisir mon dartset"}
+                onClick={() => setShowDartSetPicker((v) => !v)}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  bottom: 2,
+                  width: 42,
+                  height: 42,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  background: showDartSetPicker ? "rgba(var(--online-accent-rgb),.24)" : "linear-gradient(180deg, rgba(var(--online-accent-rgb),.28), rgba(0,0,0,.55))",
+                  border: "1px solid rgba(var(--online-accent-rgb),.65)",
+                  color: "var(--online-accent)",
+                  fontSize: 18,
+                  boxShadow: "0 0 16px rgba(var(--online-accent-rgb),.35)",
+                  cursor: "pointer",
+                }}
+              >
+                🎯
+              </button>
 
-              {/* (optionnel) mini aperçu présenceMap */}
-              {Object.keys(presenceMap || {}).length > 0 ? (
-                <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.85 }}>
-                  {Object.keys(presenceMap).length} joueur(s) en présence
-                </div>
-              ) : null}
+              <div
+                title={countryRaw || "Flag"}
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  bottom: 2,
+                  width: 42,
+                  height: 42,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.22), rgba(0,0,0,.55))",
+                  border: "1px solid rgba(var(--online-accent-rgb),.65)",
+                  color: "var(--online-accent)",
+                  fontSize: countryFlag ? 18 : 12,
+                  fontWeight: 1000,
+                  boxShadow: "0 0 16px rgba(var(--online-accent-rgb),.35)",
+                }}
+              >
+                {countryFlag || "FR"}
+              </div>
             </div>
-          </div>
 
-          <div className="profile-actions" style={{ display: "grid", gap: 8, alignContent: "start", width: 190 }}>
-            {/* boutons alignés (même taille) */}
-            <button onClick={() => setPresence("online")} className="btn green" style={{ width: "100%" }}>
-              En ligne
-            </button>
-            <button onClick={() => setPresence("away")} className="btn orange" style={{ width: "100%" }}>
-              Absent
-            </button>
+            <div
+              style={{
+                width: "100%",
+                minWidth: 0,
+                textAlign: "center",
+                fontSize: 18,
+                fontWeight: 1000,
+                color: "var(--online-accent)",
+                textShadow: "0 0 14px rgba(var(--online-accent-rgb),.45)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {displayName}
+            </div>
 
-            {isSignedIn ? (
-              <button onClick={doLogout} className="btn red" style={{ width: "100%" }}>
-                Déconnexion
+            <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setShowPresencePanel((v) => !v)}
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(var(--online-accent-rgb),.56)",
+                  background: showPresencePanel ? "rgba(var(--online-accent-rgb),.20)" : "rgba(255,255,255,.045)",
+                  color: "var(--online-accent)",
+                  padding: "8px 4px",
+                  fontSize: 10.2,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                  boxShadow: showPresencePanel ? "0 0 14px rgba(var(--online-accent-rgb),.28)" : "none",
+                }}
+              >
+                {presenceLabel}
               </button>
-            ) : (
-              <button onClick={() => go("profiles")} className="btn blue" style={{ width: "100%" }}>
-                Connexion
-              </button>
-            )}
+              <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "8px 4px", textAlign: "center" }}>
+                <div style={{ color: "var(--online-accent)", fontSize: 10.2, fontWeight: 1000 }}>RATING</div>
+                <div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000 }}>{onlineRatingValue || "—"}</div>
+              </div>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "8px 4px", textAlign: "center" }}>
+                <div style={{ color: "var(--online-accent)", fontSize: 10.2, fontWeight: 1000 }}>LIGUE</div>
+                <div style={{ marginTop: 2, fontSize: 9.2, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{onlineLeagueLabel}</div>
+              </div>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "8px 4px", textAlign: "center" }}>
+                <div style={{ color: "var(--online-accent)", fontSize: 9.4, fontWeight: 1000 }}>CLASSEMENT</div>
+                <div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000 }}>{onlineRankLabel}</div>
+              </div>
+            </div>
+
+            {showPresencePanel ? (
+              <div
+                style={{
+                  width: "100%",
+                  borderRadius: 14,
+                  border: "1px solid rgba(var(--online-accent-rgb),.40)",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.14), rgba(0,0,0,.56))",
+                  padding: 8,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 6,
+                  boxShadow: "0 12px 26px rgba(0,0,0,.45), 0 0 20px rgba(var(--online-accent-rgb),.18)",
+                }}
+              >
+                <GhostButton label="En ligne" onClick={() => { setPresence("online"); setShowPresencePanel(false); }} />
+                <GhostButton label="Absent" onClick={() => { setPresence("away"); setShowPresencePanel(false); }} />
+                {isSignedIn ? (
+                  <GhostButton label="Déconnexion" onClick={() => { setShowPresencePanel(false); doLogout(); }} tone="danger" />
+                ) : (
+                  <GhostButton label="Connexion" onClick={() => { setShowPresencePanel(false); go("profiles"); }} />
+                )}
+              </div>
+            ) : null}
+
+            {showDartSetPicker && activeProfile ? (
+              <div
+                style={{
+                  width: "100%",
+                  borderRadius: 16,
+                  border: "1px solid rgba(var(--online-accent-rgb),.42)",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.13), rgba(0,0,0,.62))",
+                  padding: 10,
+                  boxShadow: "0 14px 34px rgba(0,0,0,.52), 0 0 22px rgba(var(--online-accent-rgb),.18)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                  <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 12.5 }}>CHOISIR MON DARTSET</div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDartSetPicker(false)}
+                    style={{
+                      border: "1px solid rgba(var(--online-accent-rgb),.32)",
+                      background: "rgba(0,0,0,.28)",
+                      color: "var(--online-accent)",
+                      borderRadius: 999,
+                      padding: "4px 8px",
+                      fontWeight: 1000,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <DartSetSelector
+                  profileId={String((activeProfile as any)?.id || "")}
+                  value={activeDartSetId || null}
+                  onChange={handlePickOnlineDartSet}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </NeonCard>
@@ -2499,7 +2707,7 @@ const doLogout = React.useCallback(async () => {
 
       {showHubTab ? (
         <>
-          <SectionTitle title="Hub" subtitle="L’essentiel uniquement — les détails sont dans les onglets dédiés" />
+          <SectionTitle title="Hub" />
 
           <NeonCard style={{ marginTop: 10, padding: 12 }}>
             <div style={{ display: "grid", gap: 12 }}>
@@ -2508,15 +2716,15 @@ const doLogout = React.useCallback(async () => {
                   style={{
                     borderRadius: 16,
                     padding: 12,
-                    border: "1px solid rgba(255,213,106,.16)",
-                    background: "linear-gradient(180deg, rgba(255,213,106,.10), rgba(255,255,255,.045))",
+                    border: "1px solid rgba(var(--online-accent-rgb),.16)",
+                    background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.10), rgba(255,255,255,.045))",
                     display: "grid",
                     gap: 8,
                     alignContent: "center",
                   }}
                 >
                   <div style={{ fontSize: 11, fontWeight: 1000, opacity: 0.74 }}>ACTION PRIORITAIRE</div>
-                  <div style={{ color: "#ffd56a", fontWeight: 1000, fontSize: 15.5, lineHeight: 1.15 }}>
+                  <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15.5, lineHeight: 1.15 }}>
                     {!isSignedIn
                       ? "Connecte ton compte"
                       : incomingRequests.length > 0
@@ -2567,15 +2775,15 @@ const doLogout = React.useCallback(async () => {
                 </NeonCard>
                 <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
                   <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>DEMANDES</div>
-                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: incomingRequests.length ? "#ffd56a" : "#f5f5f7" }}>{incomingRequests.length}</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: incomingRequests.length ? "var(--online-accent)" : "#f5f5f7" }}>{incomingRequests.length}</div>
                 </NeonCard>
                 <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
                   <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>PARTAGES</div>
-                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: unreadSharesCount ? "#ffd56a" : "#4fb4ff" }}>{unreadSharesCount}</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: unreadSharesCount ? "var(--online-accent)" : "#4fb4ff" }}>{unreadSharesCount}</div>
                 </NeonCard>
                 <NeonCard style={{ padding: 10, borderRadius: 14, boxShadow: "none" }}>
                   <div style={{ fontSize: 10, fontWeight: 1000, opacity: 0.65 }}>MATCHS</div>
-                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: "#ffb347" }}>{sortedMatches.length}</div>
+                  <div style={{ marginTop: 3, fontSize: 20, fontWeight: 1000, color: "var(--online-accent)" }}>{sortedMatches.length}</div>
                 </NeonCard>
               </div>
 
@@ -2646,8 +2854,8 @@ const doLogout = React.useCallback(async () => {
                   borderRadius: 12,
                   padding: "10px 12px",
                   border: "1px solid rgba(255,255,255,.16)",
-                  background: "linear-gradient(180deg, #ffd56a, #e9a93d)",
-                  color: "#1c1304",
+                  background: "linear-gradient(180deg, var(--online-accent), var(--online-accent-dark))",
+                  color: "#04101f",
                   fontWeight: 1000,
                   cursor: friendSearching ? "default" : "pointer",
                   opacity: friendSearching ? 0.65 : 1,
@@ -2686,14 +2894,14 @@ const doLogout = React.useCallback(async () => {
                           height: 42,
                           borderRadius: "50%",
                           overflow: "hidden",
-                          background: "radial-gradient(circle at 30% 0%, #ffde75, #856116)",
+                          background: "radial-gradient(circle at 30% 0%, var(--online-accent), #856116)",
                           flexShrink: 0,
                         }}
                       >
                         {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 1000, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                        <div style={{ fontWeight: 1000, color: "var(--online-accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
                         <div style={{ fontSize: 11.5, opacity: 0.75 }}>{u.status || "offline"}</div>
                       </div>
                       <button
@@ -2725,7 +2933,7 @@ const doLogout = React.useCallback(async () => {
                   const u = r.fromUser || {};
                   const name = u.displayName || u.nickname || "Joueur";
                   return (
-                    <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,213,106,.22)", background: "rgba(255,213,106,.08)" }}>
+                    <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(var(--online-accent-rgb),.22)", background: "rgba(var(--online-accent-rgb),.08)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                         <div style={{ fontWeight: 1000 }}>{name}</div>
                         <Pill label="Demande" tone="gold" />
@@ -2760,7 +2968,7 @@ const doLogout = React.useCallback(async () => {
                           {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 1000, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                          <div style={{ fontWeight: 1000, color: "var(--online-accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
                           <div style={{ marginTop: 4 }}><Pill label={status === "online" ? "En ligne" : status === "away" ? "Absent" : "Offline"} tone={tone as any} /></div>
                         </div>
                         <button
@@ -2809,7 +3017,7 @@ const doLogout = React.useCallback(async () => {
               <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 1000, color: "#ffd56a" }}>Demandes reçues</div>
+                    <div style={{ fontSize: 12, fontWeight: 1000, color: "var(--online-accent)" }}>Demandes reçues</div>
                     <Pill label={`${incomingRequests.length}`} tone={incomingRequests.length ? "gold" : "gray"} />
                   </div>
                   {incomingRequests.length === 0 ? (
@@ -2819,13 +3027,13 @@ const doLogout = React.useCallback(async () => {
                       const u = r.fromUser || {};
                       const name = u.displayName || u.nickname || "Joueur";
                       return (
-                        <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,213,106,.22)", background: "rgba(255,213,106,.08)", display: "grid", gap: 10 }}>
+                        <div key={r.id} style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(var(--online-accent-rgb),.22)", background: "rgba(var(--online-accent-rgb),.08)", display: "grid", gap: 10 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,213,106,.20)", flexShrink: 0 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", border: "1px solid rgba(var(--online-accent-rgb),.20)", flexShrink: 0 }}>
                               {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 1000, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                              <div style={{ fontWeight: 1000, color: "var(--online-accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
                               <div style={{ fontSize: 11.5, opacity: 0.74 }}>Souhaite t’ajouter en ami</div>
                             </div>
                             <Pill label="Reçue" tone="gold" />
@@ -2900,13 +3108,13 @@ const doLogout = React.useCallback(async () => {
                         textAlign: "left",
                         borderRadius: 14,
                         padding: 10,
-                        border: `1px solid ${it.readAt ? "rgba(255,255,255,.10)" : "rgba(255,213,106,.30)"}`,
-                        background: it.readAt ? "rgba(255,255,255,.055)" : "rgba(255,213,106,.08)",
+                        border: `1px solid ${it.readAt ? "rgba(255,255,255,.10)" : "rgba(var(--online-accent-rgb),.30)"}`,
+                        background: it.readAt ? "rgba(255,255,255,.055)" : "rgba(var(--online-accent-rgb),.08)",
                         color: "#f5f5f7",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <div style={{ fontWeight: 1000, color: "#ffd56a" }}>{it.title || it.type}</div>
+                        <div style={{ fontWeight: 1000, color: "var(--online-accent)" }}>{it.title || it.type}</div>
                         <Pill label={it.type} tone={it.readAt ? "gray" : "gold"} />
                       </div>
                       <div style={{ marginTop: 5, fontSize: 11.8, opacity: 0.82 }}>Envoyé par {owner}</div>
@@ -2935,7 +3143,7 @@ const doLogout = React.useCallback(async () => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <NeonCard style={{ padding: 12 }}>
           <div style={{ fontSize: 11, fontWeight: 1000, opacity: 0.78 }}>DERNIER MATCH</div>
-          <div style={{ marginTop: 6, fontSize: 14, fontWeight: 1000, color: "#ffd56a" }}>
+          <div style={{ marginTop: 6, fontSize: 14, fontWeight: 1000, color: "var(--online-accent)" }}>
             {lastMatch ? getMatchTitle(lastMatch) : "—"}
           </div>
           <div style={{ marginTop: 6, fontSize: 11.5, opacity: 0.85, lineHeight: 1.25 }}>
@@ -2961,7 +3169,7 @@ const doLogout = React.useCallback(async () => {
 
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 12, opacity: 0.85 }}>Avg 3D</div>
-              <div style={{ fontSize: 18, fontWeight: 1000, color: "#ffd56a" }}>
+              <div style={{ fontSize: 18, fontWeight: 1000, color: "var(--online-accent)" }}>
                 {avg3DWeek > 0 ? fmt1(avg3DWeek) : "—"}
               </div>
             </div>
@@ -3062,11 +3270,11 @@ const doLogout = React.useCallback(async () => {
                         style={{
                           minHeight: 88,
                           borderRadius: 16,
-                          border: active ? "1px solid rgba(255,213,106,.86)" : "1px solid rgba(255,255,255,.12)",
+                          border: active ? "1px solid rgba(var(--online-accent-rgb),.86)" : "1px solid rgba(255,255,255,.12)",
                           background: active
-                            ? "radial-gradient(circle at 50% 0%, rgba(255,213,106,.22), rgba(255,255,255,.055))"
+                            ? "radial-gradient(circle at 50% 0%, rgba(var(--online-accent-rgb),.22), rgba(255,255,255,.055))"
                             : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025))",
-                          boxShadow: active ? "0 0 22px rgba(255,213,106,.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
+                          boxShadow: active ? "0 0 22px rgba(var(--online-accent-rgb),.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
                           color: "#f5f5f7",
                           padding: "9px 7px",
                           fontWeight: 1000,
@@ -3077,13 +3285,13 @@ const doLogout = React.useCallback(async () => {
                         title={scope.joinHint}
                       >
                         <div style={{ fontSize: 20, lineHeight: 1 }}>{scope.icon}</div>
-                        <div style={{ marginTop: 6, fontSize: 11.5, color: active ? "#ffd56a" : "#f5f5f7", textTransform: "uppercase", letterSpacing: .2 }}>{scope.shortLabel}</div>
+                        <div style={{ marginTop: 6, fontSize: 11.5, color: active ? "var(--online-accent)" : "#f5f5f7", textTransform: "uppercase", letterSpacing: .2 }}>{scope.shortLabel}</div>
                         <div style={{ marginTop: 4, fontSize: 9.7, opacity: .78, lineHeight: 1.15 }}>{scope.id === "match" ? "Classique" : scope.id === "league" ? "Rejoindre ligue" : "Rejoindre tournoi"}</div>
                       </button>
                     );
                   })}
                 </div>
-                <div style={{ borderRadius: 14, border: "1px solid rgba(255,213,106,.18)", background: "rgba(255,213,106,.07)", padding: "8px 10px", fontSize: 11.2, lineHeight: 1.3, color: "#ffe4a0", fontWeight: 850 }}>
+                <div style={{ borderRadius: 14, border: "1px solid rgba(var(--online-accent-rgb),.18)", background: "rgba(var(--online-accent-rgb),.07)", padding: "8px 10px", fontSize: 11.2, lineHeight: 1.3, color: "var(--online-accent)", fontWeight: 850 }}>
                   <b>CRÉER</b> ouvre un salon Baby-Foot du type choisi. <b>REJOINDRE</b> accepte un code de salon, de ligue ou de tournoi.
                 </div>
               </>
@@ -3112,13 +3320,13 @@ const doLogout = React.useCallback(async () => {
                         minHeight: 92,
                         textAlign: "left",
                         borderRadius: 16,
-                        border: active ? "1px solid rgba(255,213,106,.82)" : "1px solid rgba(255,255,255,.12)",
+                        border: active ? "1px solid rgba(var(--online-accent-rgb),.82)" : "1px solid rgba(255,255,255,.12)",
                         background: tickerUrl
                           ? `linear-gradient(90deg, rgba(0,0,0,.86), rgba(0,0,0,.30)), url(${tickerUrl}) center / cover no-repeat`
                           : active
-                          ? "linear-gradient(180deg, rgba(255,213,106,.18), rgba(255,255,255,.055))"
+                          ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.18), rgba(255,255,255,.055))"
                           : "rgba(255,255,255,.045)",
-                        boxShadow: active ? "0 0 20px rgba(255,213,106,.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
+                        boxShadow: active ? "0 0 20px rgba(var(--online-accent-rgb),.22), inset 0 0 0 1px rgba(255,255,255,.08)" : "inset 0 0 0 1px rgba(255,255,255,.035)",
                         color: "#f5f5f7",
                         padding: "10px 11px",
                         fontWeight: 1000,
@@ -3202,7 +3410,7 @@ const doLogout = React.useCallback(async () => {
           </div>
 
           {!canPlayOnline && (
-            <div className="hint" style={{ fontSize: 12, opacity: 0.88, color: "#ffd56a", fontWeight: 950 }}>
+            <div className="hint" style={{ fontSize: 12, opacity: 0.88, color: "var(--online-accent)", fontWeight: 950 }}>
               Connexion requise pour jouer en ligne
             </div>
           )}
@@ -3230,7 +3438,7 @@ const doLogout = React.useCallback(async () => {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 16, fontWeight: 1000, color: "#ffd56a", textShadow: "0 0 12px rgba(255,215,80,.18)" }}>
+            <div style={{ fontSize: 16, fontWeight: 1000, color: "var(--online-accent)", textShadow: "0 0 12px rgba(var(--online-accent-rgb),.18)" }}>
               Salle d’attente
             </div>
             <Pill label="LIVE" tone="green" />
@@ -3247,9 +3455,9 @@ const doLogout = React.useCallback(async () => {
               letterSpacing: 2,
               fontSize: 16,
               fontWeight: 1000,
-              color: "#ffd56a",
+              color: "var(--online-accent)",
               textAlign: "center",
-              boxShadow: "0 0 14px rgba(255,215,80,.18)",
+              boxShadow: "0 0 14px rgba(var(--online-accent-rgb),.18)",
             }}
           >
             {String((lobby as any).code || "").toUpperCase()}
@@ -3258,7 +3466,7 @@ const doLogout = React.useCallback(async () => {
           <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.84 }}>
-                Mode : <span style={{ color: "#ffd56a" }}>{lobbyModeSpec.label}</span>
+                Mode : <span style={{ color: "var(--online-accent)" }}>{lobbyModeSpec.label}</span>
               </div>
               <Pill label={String((lobby as any).status || "waiting") === "started" ? "Lancé" : "En attente"} tone="green" />
             </div>
@@ -3294,7 +3502,7 @@ const doLogout = React.useCallback(async () => {
                           height: 34,
                           borderRadius: 999,
                           background: avatar ? `center/cover no-repeat url(${avatar})` : "rgba(255,255,255,.10)",
-                          border: "1px solid rgba(255,213,106,.28)",
+                          border: "1px solid rgba(var(--online-accent-rgb),.28)",
                           flexShrink: 0,
                         }}
                       />
