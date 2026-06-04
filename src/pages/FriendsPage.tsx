@@ -1903,29 +1903,49 @@ export default function FriendsPage({ store, update, go, initialOnlineTab }: Pro
   const countryFlag = getCountryFlag(countryRaw);
   const activeProfileId = String((activeProfile as any)?.id || "guest");
   const officialRegistrationKey = `dc_online_official_registration_${activeProfileId}`;
+  const profileOfficialRegistration = (activeProfile as any)?.onlineOfficialLeague || null;
   const [officialRegistered, setOfficialRegistered] = React.useState<boolean>(() => {
     try {
-      return window.localStorage.getItem(officialRegistrationKey) === "1";
+      return !!profileOfficialRegistration || window.localStorage.getItem(officialRegistrationKey) === "1";
     } catch {
-      return false;
+      return !!profileOfficialRegistration;
     }
   });
 
   React.useEffect(() => {
     try {
-      setOfficialRegistered(window.localStorage.getItem(officialRegistrationKey) === "1");
+      setOfficialRegistered(!!profileOfficialRegistration || window.localStorage.getItem(officialRegistrationKey) === "1");
     } catch {
-      setOfficialRegistered(false);
+      setOfficialRegistered(!!profileOfficialRegistration);
     }
-  }, [officialRegistrationKey]);
+  }, [officialRegistrationKey, profileOfficialRegistration]);
 
   const registerOfficialLeague = React.useCallback(() => {
     setOfficialRegistered(true);
+    const payload = {
+      registered: true,
+      tier: "Bronze",
+      division: "2",
+      country: String(countryRaw || "").trim() || "France",
+      scope: "world-europe-country",
+      format: "X01 501 Double Out",
+      registeredAt: new Date().toISOString(),
+    };
+    update((st: any) => ({
+      ...st,
+      profiles: (st.profiles || []).map((p: any) =>
+        String(p?.id || "") === activeProfileId
+          ? { ...p, onlineOfficialLeague: payload }
+          : p
+      ),
+    }));
     try {
       window.localStorage.setItem(officialRegistrationKey, "1");
+      window.localStorage.setItem(`${officialRegistrationKey}_payload`, JSON.stringify(payload));
+      window.dispatchEvent(new Event("dc-store-updated"));
       window.dispatchEvent(new Event("dc-online-official-registration-updated"));
     } catch {}
-  }, [officialRegistrationKey]);
+  }, [officialRegistrationKey, activeProfileId, countryRaw, update]);
 
   const avatarUrl =
     (activeProfile as any)?.avatarDataUrl ||
@@ -2892,7 +2912,10 @@ const doLogout = React.useCallback(async () => {
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
   const onlineRatingValue = Math.max(0, Math.round(avg3DWeek || avg3DOverall || 0));
-  const onlineLeagueLabel = activeSportId === "darts" ? "X01 501 · Dbl.Out" : activeSportId.toUpperCase();
+  const officialTierLabel = onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze";
+  const officialDivisionLabel = onlineRatingValue >= 40 ? "1" : "2";
+  const officialCountryLabel = String(countryRaw || "").trim() || "France";
+  const onlineLeagueLabel = activeSportId === "darts" ? `${officialTierLabel} ${officialDivisionLabel} · ${officialCountryLabel}` : activeSportId.toUpperCase();
   const onlineRankLabel = sortedMatches.length > 0 ? `#${Math.max(1, Math.min(999, 1000 - sortedMatches.length))}` : "—";
   const activeDartSetId = String((activeProfile as any)?.dartSetId || (activeProfile as any)?.activeDartSetId || (activeProfile as any)?.favoriteDartSetId || "").trim();
   const onlineProfileDartSets = React.useMemo(() => {
@@ -3015,14 +3038,13 @@ const doLogout = React.useCallback(async () => {
   const showActivityTab = activeOnlineTab === "activity";
   const showOfficialTab = activeOnlineTab === "official";
 
-  if (!ready) {
-    if (showOfficialLeaguePage) {
+  if (showOfficialLeaguePage) {
     return (
       <OfficialLeagueFullScreen
         accent={onlineAccent}
         accentRgb={onlineAccentRgb}
         bg={onlineBg}
-        leagueName={`Ligue ${onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze"} 1`}
+        leagueName={`Ligue ${onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze"} ${onlineRatingValue >= 40 ? "1" : "2"}`}
         country={countryRaw}
         rating={Number(onlineRatingValue || 0)}
         matches={sortedMatches.length}
@@ -3035,7 +3057,8 @@ const doLogout = React.useCallback(async () => {
     );
   }
 
-  return (
+  if (!ready) {
+    return (
       <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
         Connexion en cours…
       </div>
@@ -3080,15 +3103,7 @@ const doLogout = React.useCallback(async () => {
             size={42}
             color={onlineAccent}
             glow={`rgba(${onlineAccentRgb},.55)`}
-            onClick={() => {
-              try {
-                if (typeof window !== "undefined" && window.history.length > 1) {
-                  window.history.back();
-                  return;
-                }
-              } catch {}
-              go("home" as any);
-            }}
+            onClick={() => go("home" as any)}
           />
 
           <div className="online-title" style={{ minWidth: 0, textAlign: "center" }}>
@@ -3212,7 +3227,7 @@ const doLogout = React.useCallback(async () => {
                 }}
               >
                 {activeOnlineDartSetThumb ? (
-                  <img src={activeOnlineDartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={activeOnlineDartSetThumb} alt="" style={{ width: "132%", height: "132%", objectFit: "cover", objectPosition: "center", transform: "scale(1.08)" }} />
                 ) : (
                   <span aria-hidden>🎯</span>
                 )}
@@ -3238,6 +3253,33 @@ const doLogout = React.useCallback(async () => {
                 }}
               >
                 {countryFlag || "FR"}
+              </div>
+
+              <div
+                title="Moyenne globale Online Avg3D"
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  bottom: 0,
+                  transform: "translateX(-50%) translateY(30%)",
+                  minWidth: 58,
+                  minHeight: 28,
+                  borderRadius: 999,
+                  display: "grid",
+                  placeItems: "center",
+                  padding: "3px 8px",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.24), rgba(0,0,0,.72))",
+                  border: "1px solid rgba(var(--online-accent-rgb),.62)",
+                  color: "var(--online-accent)",
+                  fontWeight: 1000,
+                  fontSize: 10.5,
+                  lineHeight: 1.05,
+                  textAlign: "center",
+                  boxShadow: "0 0 15px rgba(var(--online-accent-rgb),.32)",
+                }}
+              >
+                <span style={{ opacity: .78, fontSize: 8.5 }}>AVG3D</span>
+                <span>{avg3DOverall ? fmt1(avg3DOverall) : "—"}</span>
               </div>
             </div>
 
