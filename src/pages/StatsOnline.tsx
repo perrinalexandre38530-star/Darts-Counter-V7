@@ -569,11 +569,12 @@ export default function StatsOnline() {
         const sessions: OnlineSession[] = matches.map((m: any, idx: number) => {
           const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
           const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);
+          const indexedAvg3 = Number(m?.stats?.avg3D ?? m?.stats?.avg3 ?? m?.avg3D ?? m?.avg3 ?? 0);
           return {
             id: String(m?.id || m?.matchId || `sess-${idx}`),
             createdAt: Number(m?.createdAt ?? Date.now()),
             darts,
-            avg3: darts > 0 ? Math.round(((totalScore / darts) * 3) * 10) / 10 : 0,
+            avg3: indexedAvg3 > 0 ? Math.round(indexedAvg3 * 10) / 10 : darts > 0 ? Math.round(((totalScore / darts) * 3) * 10) / 10 : 0,
             bestVisit: Number(m?.stats?.bestVisit ?? m?.bestVisit ?? 0),
             bestCheckout: Number(m?.stats?.bestCheckout ?? m?.bestCheckout ?? 0),
           };
@@ -615,6 +616,7 @@ export default function StatsOnline() {
   const lastSessions = React.useMemo(
     () =>
       [...sessions]
+        .filter((s) => s.darts > 0 && s.avg3 > 0)
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 5),
     [sessions]

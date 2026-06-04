@@ -1606,7 +1606,6 @@ function OfficialLeagueTabIcon({ id, size = 30, color = "currentColor" }: { id: 
       {id === "results" ? <><path {...common} d="M20 6 9 17l-5-5" /><path {...common} d="M5 21h14" /></> : null}
       {id === "ranking" ? <><path {...common} d="M8 21h8" /><path {...common} d="M12 17v4" /><path {...common} d="M7 4h10v4a5 5 0 0 1-10 0V4Z" /><path {...common} d="M7 6H4a3 3 0 0 0 3 3" /><path {...common} d="M17 6h3a3 3 0 0 1-3 3" /></> : null}
       {id === "forum" ? <><path {...common} d="M21 12a7 7 0 0 1-7 7H8l-5 3 1.7-5.2A7 7 0 1 1 21 12Z" /></> : null}
-      {id === "rules" ? <><path {...common} d="M7 3h8l4 4v14H7z" /><path {...common} d="M15 3v5h4" /><path {...common} d="M10 12h6" /><path {...common} d="M10 16h6" /></> : null}
     </svg>
   );
 }
@@ -1713,7 +1712,7 @@ function RuleChip({ title, value }: { title: string; value: string }) {
   );
 }
 
-type OfficialLeagueSubTab = "resume" | "calendar" | "results" | "ranking" | "forum" | "rules";
+type OfficialLeagueSubTab = "resume" | "calendar" | "results" | "ranking" | "forum";
 
 function OfficialLeagueFullScreen({
   accent,
@@ -1737,6 +1736,7 @@ function OfficialLeagueFullScreen({
   onEnterMatch: () => void;
 }) {
   const [tab, setTab] = React.useState<OfficialLeagueSubTab>("resume");
+  const [showRulesInfo, setShowRulesInfo] = React.useState(false);
   const safeCountry = String(country || "").trim() || "France";
   const meta = getOfficialLeagueMeta(rating, matches, safeCountry);
   const rules = OFFICIAL_LEAGUE_RULES;
@@ -1746,7 +1746,6 @@ function OfficialLeagueFullScreen({
     { id: "results", label: "Résultats", icon: "✅" },
     { id: "ranking", label: "Classement", icon: "🏆" },
     { id: "forum", label: "Forum Ligue", icon: "💬" },
-    { id: "rules", label: "Règles", icon: "📜" },
   ];
   const nextMatches = [
     { id: "m1", label: "Journée 1", opponent: "Adversaire à définir", time: "Aujourd’hui · 20:30", status: "Salle ouvrable à l’heure du match", playable: true },
@@ -1869,12 +1868,24 @@ function OfficialLeagueFullScreen({
               <span style={{ opacity: .75 }}>• Saison 2026-S1</span>
             </div>
           </div>
-          <InfoDot active={false} onClick={() => setTab("rules")} />
+          <InfoDot active={showRulesInfo} onClick={() => setShowRulesInfo((v) => !v)} />
         </div>
 
         <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
           {tabs.map(tabButton)}
         </div>
+        {showRulesInfo ? (
+          <div style={{ marginTop: 12, borderRadius: 16, padding: 12, border: "1px solid rgba(var(--online-accent-rgb),.30)", background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.11), rgba(0,0,0,.24))" }}>
+            <div style={{ color: "var(--online-accent)", fontWeight: 1000, marginBottom: 8 }}>Règles officielles</div>
+            <div style={{ display: "grid", gap: 7, fontSize: 12.2, lineHeight: 1.3 }}>
+              <RuleChip title="Format" value={rules.matchFormat} />
+              <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
+              <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
+              <RuleChip title="Retard / forfait" value="5 min = forfait automatique · 3 forfaits = radiation" />
+              <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
+            </div>
+          </div>
+        ) : null}
       </NeonCard>
 
       {tab === "resume" ? (
@@ -2021,23 +2032,6 @@ function OfficialLeagueFullScreen({
         </>
       ) : null}
 
-      {tab === "rules" ? (
-        <>
-          <SectionTitle title="Règles officielles" subtitle="Format officiel automatisé : BO3 sets / 3 legs par set." />
-          <NeonCard style={{ marginTop: 10 }}>
-            <div style={{ display: "grid", gap: 8, fontSize: 12.5, lineHeight: 1.35 }}>
-              <RuleChip title="Format" value={rules.matchFormat} />
-              <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
-              <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
-              <RuleChip title="Retard" value="5 min = forfait automatique" />
-              <RuleChip title="Double forfait" value="Si 2 joueurs absents : -1 chacun + avertissement" />
-              <RuleChip title="Radiation" value="3 forfaits sur la saison = exclusion de la ligue" />
-              <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend. Si niveau minimum : pas de descente.`} />
-              <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
-            </div>
-          </NeonCard>
-        </>
-      ) : null}
     </div>
   );
 }
@@ -3050,7 +3044,15 @@ const doLogout = React.useCallback(async () => {
   const onlineTruthAvg3D = React.useMemo(() => {
     const v = Number((onlineProfileAgg as any)?.avg3 || 0);
     if (Number.isFinite(v) && v > 0) return v;
-    // Fallback défensif uniquement si l'historique X01 source unique ne remonte rien.
+
+    // Même logique que Stats > Online : priorité aux avg3D déjà indexées,
+    // puis recalcul pondéré totalScore/darts si disponible. Les sessions à 0 dart
+    // ne doivent jamais écraser la vraie moyenne du joueur.
+    const avgVals = sortedMatches
+      .map((m: any) => onlineNum(m?.stats?.avg3D ?? m?.stats?.avg3 ?? m?.payload?.stats?.avg3D ?? m?.payload?.stats?.avg3 ?? m?.payload?.avg3D ?? m?.avg3D ?? m?.avg3, 0))
+      .filter((n: number) => Number.isFinite(n) && n > 0);
+    if (avgVals.length) return avgVals.reduce((a: number, b: number) => a + b, 0) / avgVals.length;
+
     const valid = sortedMatches
       .map((m: any) => {
         const darts = onlineNum(m?.stats?.darts ?? m?.darts, 0);
