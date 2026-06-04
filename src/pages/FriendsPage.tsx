@@ -1684,25 +1684,6 @@ function OfficialLeagueFullScreen({
     );
   };
 
-  if (showOfficialLeaguePage) {
-    return (
-      <OfficialLeagueFullScreen
-        accent={onlineAccent}
-        accentRgb={onlineAccentRgb}
-        bg={onlineBg}
-        leagueName={`Ligue ${onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze"} 1`}
-        country={countryRaw}
-        rating={Number(onlineRatingValue || 0)}
-        matches={sortedMatches.length}
-        onBack={() => setShowOfficialLeaguePage(false)}
-        onEnterMatch={() => {
-          setShowOfficialLeaguePage(false);
-          setActiveOnlineTab("play");
-        }}
-      />
-    );
-  }
-
   return (
     <div
       className="container"
@@ -3035,7 +3016,26 @@ const doLogout = React.useCallback(async () => {
   const showOfficialTab = activeOnlineTab === "official";
 
   if (!ready) {
+    if (showOfficialLeaguePage) {
     return (
+      <OfficialLeagueFullScreen
+        accent={onlineAccent}
+        accentRgb={onlineAccentRgb}
+        bg={onlineBg}
+        leagueName={`Ligue ${onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze"} 1`}
+        country={countryRaw}
+        rating={Number(onlineRatingValue || 0)}
+        matches={sortedMatches.length}
+        onBack={() => setShowOfficialLeaguePage(false)}
+        onEnterMatch={() => {
+          setShowOfficialLeaguePage(false);
+          setActiveOnlineTab("play");
+        }}
+      />
+    );
+  }
+
+  return (
       <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
         Connexion en cours…
       </div>
