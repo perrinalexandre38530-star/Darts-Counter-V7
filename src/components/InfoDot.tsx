@@ -29,6 +29,9 @@ type Props = {
 
   /** Si fourni, ouvre un modal RulesModal au clic. */
   content?: React.ReactNode;
+
+  /** Compatibilité avec les anciens appels <InfoDot active />. */
+  active?: boolean;
 };
 
 export default function InfoDot({
@@ -38,6 +41,7 @@ export default function InfoDot({
   size = 42,
   color,
   content,
+  active = false,
 }: Props) {
   const { theme } = useTheme();
   const [open, setOpen] = React.useState(false);
@@ -70,7 +74,6 @@ export default function InfoDot({
         aria-label={title}
         title={title}
         tabIndex={0}
-        onPointerDown={handle}
         onClick={handle}
         onKeyDown={(e: any) => {
           if (e.key === "Enter" || e.key === " ") handle(e);
@@ -85,8 +88,10 @@ export default function InfoDot({
           userSelect: "none",
           WebkitTapHighlightColor: "transparent",
           border: `2px solid ${theme.borderSoft}`,
-          background: "rgba(0,0,0,0.48)",
-          boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 22px ${halo}, 0 0 44px ${halo}`,
+          background: active ? "rgba(0,0,0,0.66)" : "rgba(0,0,0,0.48)",
+          boxShadow: active
+            ? `0 0 0 2px rgba(0,0,0,0.22), 0 0 28px ${halo}, 0 0 58px ${halo}, inset 0 0 18px ${halo}`
+            : `0 0 0 2px rgba(0,0,0,0.22), 0 0 22px ${halo}, 0 0 44px ${halo}`,
           color: iconColor, // ✅ la couleur THEME se propage au SVG via currentColor
           flex: "0 0 auto",
           pointerEvents: "auto",

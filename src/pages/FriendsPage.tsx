@@ -1868,24 +1868,25 @@ function OfficialLeagueFullScreen({
               <span style={{ opacity: .75 }}>• Saison 2026-S1</span>
             </div>
           </div>
-          <InfoDot active={showRulesInfo} onClick={() => setShowRulesInfo((v) => !v)} />
+          <InfoDot
+            title="Règles officielles"
+            content={(
+              <div style={{ display: "grid", gap: 9, lineHeight: 1.35 }}>
+                <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 16 }}>Règles officielles</div>
+                <RuleChip title="Format" value={rules.matchFormat} />
+                <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
+                <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
+                <RuleChip title="Retard / forfait" value="5 min = forfait automatique · 3 forfaits = radiation" />
+                <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
+                <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
+              </div>
+            )}
+          />
         </div>
 
         <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
           {tabs.map(tabButton)}
         </div>
-        {showRulesInfo ? (
-          <div style={{ marginTop: 12, borderRadius: 16, padding: 12, border: "1px solid rgba(var(--online-accent-rgb),.30)", background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.11), rgba(0,0,0,.24))" }}>
-            <div style={{ color: "var(--online-accent)", fontWeight: 1000, marginBottom: 8 }}>Règles officielles</div>
-            <div style={{ display: "grid", gap: 7, fontSize: 12.2, lineHeight: 1.3 }}>
-              <RuleChip title="Format" value={rules.matchFormat} />
-              <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
-              <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
-              <RuleChip title="Retard / forfait" value="5 min = forfait automatique · 3 forfaits = radiation" />
-              <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
-            </div>
-          </div>
-        ) : null}
       </NeonCard>
 
       {tab === "resume" ? (
@@ -3042,9 +3043,17 @@ const doLogout = React.useCallback(async () => {
 
   const onlineProfileAgg = React.useMemo(() => aggregateX01Samples(onlineProfileSamples as any), [onlineProfileSamples]);
   const onlineTruthAvg3D = React.useMemo(() => {
-    // SOURCE UNIQUE : même méthode que Stats > Online.
-    // On calcule en priorité une moyenne pondérée score/darts depuis les matchs online
-    // valides, et on ignore toujours les sessions à 0 dart.
+    // SOURCE UNIQUE VISUELLE : même priorité que Stats > Online.
+    // 1) agrégat X01 du profil actif (History via x01StatsSource) ;
+    // 2) si indisponible, moyenne pondérée score/darts depuis les matchs Online ;
+    // 3) dernier recours : avg indexé uniquement si plausible (> 10), pour éviter les faux 0.9 / 3.0.
+    const sampleAvg = onlineNum((onlineProfileAgg as any)?.avg3, 0);
+    if (sampleAvg > 0) return sampleAvg;
+
+    const sampleDarts = onlineNum((onlineProfileAgg as any)?.darts, 0);
+    const sampleScore = onlineNum((onlineProfileAgg as any)?.totalScore, 0);
+    if (sampleDarts > 0 && sampleScore > 0) return (sampleScore / sampleDarts) * 3;
+
     const validMatches = sortedMatches
       .map((m: any) => {
         const st = m?.stats && typeof m.stats === "object" ? m.stats : {};
@@ -3060,12 +3069,10 @@ const doLogout = React.useCallback(async () => {
     const score = validMatches.reduce((a: number, b: any) => a + b.totalScore, 0);
     if (darts > 0 && score > 0) return (score / darts) * 3;
 
-    const indexed = validMatches.map((x: any) => x.indexedAvg3).filter((n: number) => Number.isFinite(n) && n > 0);
+    const indexed = validMatches
+      .map((x: any) => x.indexedAvg3)
+      .filter((n: number) => Number.isFinite(n) && n >= 10 && n <= 180);
     if (indexed.length) return indexed.reduce((a: number, b: number) => a + b, 0) / indexed.length;
-
-    const sampleDarts = onlineNum((onlineProfileAgg as any)?.darts, 0);
-    const sampleScore = onlineNum((onlineProfileAgg as any)?.totalScore, 0);
-    if (sampleDarts > 0 && sampleScore > 0) return (sampleScore / sampleDarts) * 3;
 
     return 0;
   }, [onlineProfileAgg, sortedMatches]);
@@ -3371,7 +3378,17 @@ const doLogout = React.useCallback(async () => {
           </div>
 
           <div style={{ justifySelf: "end" }}>
-            <InfoDot onClick={() => setShowInfo((v) => !v)} active={showInfo} />
+            <InfoDot
+              title="Infos Online"
+              content={(
+                <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
+                  <div>Crée un salon, rejoins un ami, retrouve ton historique Online.</div>
+                  <div><strong>Format ligue officielle :</strong> X01 501 Double Out — BO3 sets / 3 legs par set.</div>
+                  {serverState === "down" && serverHint ? <div style={{ color: "#ff8a8a", fontWeight: 900 }}>{serverHint}</div> : null}
+                  {authHint ? <div style={{ color: "var(--online-accent)", fontWeight: 900 }}>{authHint}</div> : null}
+                </div>
+              )}
+            />
           </div>
         </div>
 
