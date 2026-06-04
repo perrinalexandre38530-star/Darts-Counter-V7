@@ -1491,158 +1491,380 @@ function OfficialCompetitionsPanel({
   rating,
   matches,
   country,
+  isRegistered,
+  onRegister,
   goPlay,
 }: {
   rating: number;
   matches: number;
   country?: string | null;
+  isRegistered: boolean;
+  onRegister: () => void;
   goPlay: () => void;
 }) {
-  const safeCountry = String(country || "").trim() || "pays du profil";
-  const leagueSize = 32;
+  const safeCountry = String(country || "").trim() || "France";
+  const leagueSize = 24;
   const seasonWeeks = 8;
-  const divisions = [
-    {
-      id: "world",
-      label: "Compétition mondiale",
-      icon: "🌍",
-      scope: "Monde entier",
-      desc: "Classement global X01 501 Double Out, divisions alimentées avec tous les inscrits.",
-    },
-    {
-      id: "continent",
-      label: "Compétition continent",
-      icon: "🧭",
-      scope: "Auto selon ton pays",
-      desc: "Affectation automatique par continent à partir du pays choisi dans le profil.",
-    },
-    {
-      id: "country",
-      label: "Compétition par pays",
-      icon: "🏳️",
-      scope: safeCountry,
-      desc: "Ligues nationales créées automatiquement. Si une ligue est pleine, une nouvelle division du même niveau est ouverte.",
-    },
-  ];
-
   const leagues = [
-    { id: "bronze", name: "Bronze", range: "0–39 Avg3D", required: 0, promote: "Top 6", relegate: "—" },
-    { id: "silver", name: "Argent", range: "40–54 Avg3D", required: 40, promote: "Top 5", relegate: "Bottom 5" },
-    { id: "gold", name: "Or", range: "55–69 Avg3D", required: 55, promote: "Top 4", relegate: "Bottom 5" },
-    { id: "elite", name: "Élite", range: "70+ Avg3D", required: 70, promote: "Finales", relegate: "Bottom 6" },
+    { id: "bronze", name: "Bronze", range: "0–39 Avg3D", required: 0, promote: 4, relegate: 0 },
+    { id: "silver", name: "Argent", range: "40–54 Avg3D", required: 40, promote: 3, relegate: 4 },
+    { id: "gold", name: "Or", range: "55–69 Avg3D", required: 55, promote: 3, relegate: 4 },
+    { id: "elite", name: "Élite", range: "70+ Avg3D", required: 70, promote: 0, relegate: 5 },
   ];
   const current = leagues.slice().reverse().find((l) => rating >= l.required) || leagues[0];
-
-  const rules = [
-    `Divisions de ${leagueSize} joueurs maximum par ligue.`,
-    `Inscription ouverte à tout moment : placement automatique selon Avg3D Online.`,
-    `Saison de ${seasonWeeks} semaines, X01 501 Double Out fixe.`,
-    "Victoire 3 pts · défaite 0 pt · forfait -1 pt.",
-    "Départage : différence de legs, Avg3D, checkout %, meilleur CO.",
-    "Montées/descentes automatiques à la fin de saison selon le rang.",
+  const divisionLabel = `${current.name} ${Math.max(1, Math.ceil(Math.max(1, matches || 1) / leagueSize))}`;
+  const scopes = [
+    { id: "world", icon: "🌍", title: "Mondiale", line: "Ouverte à tous les joueurs inscrits." },
+    { id: "continent", icon: "🌐", title: "Européenne", line: "Auto selon le pays du profil." },
+    { id: "country", icon: "🏳️", title: safeCountry, line: "Division nationale créée si besoin." },
   ];
 
   return (
     <>
       <SectionTitle
         title="Compétitions officielles"
-        subtitle="Mondiale · Continent · Pays — ligues X01 501 Double Out automatisées"
-        right={<Pill label={`Ta ligue : ${current.name}`} tone="blue" />}
+        subtitle="Placement automatique selon ton niveau Online. Seules tes ligues s’affichent ici."
+        right={<Pill label={isRegistered ? `Inscrit · ${current.name}` : `Ta ligue : ${current.name}`} tone="blue" />}
       />
 
       <NeonCard style={{ marginTop: 10, padding: 12 }}>
-        <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gap: 10 }}>
           <div
             style={{
               borderRadius: 18,
               padding: 12,
-              border: "1px solid rgba(var(--online-accent-rgb),.36)",
-              background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.16), rgba(0,0,0,.30))",
-              boxShadow: "0 0 22px rgba(var(--online-accent-rgb),.14)",
+              border: "1px solid rgba(var(--online-accent-rgb),.34)",
+              background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.15), rgba(0,0,0,.30))",
+              boxShadow: "0 0 20px rgba(var(--online-accent-rgb),.13)",
             }}
           >
             <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15 }}>
-              Placement automatique : Ligue {current.name}
+              {isRegistered ? `Tu es inscrit en Ligue ${divisionLabel}` : `Placement proposé : Ligue ${current.name}`}
             </div>
             <div style={{ marginTop: 5, fontSize: 12, opacity: 0.84, lineHeight: 1.35 }}>
-              Base de calcul : Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s) compté(s).
-              Les compétitions utilisent ton pays de profil pour t’inscrire automatiquement au bon continent et au bon pays.
+              Base : Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). Format fixe : X01 501 Double Out.
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-            {divisions.map((scope) => (
+            {scopes.map((scope) => (
               <div
                 key={scope.id}
                 style={{
                   borderRadius: 16,
                   padding: 10,
-                  border: "1px solid rgba(var(--online-accent-rgb),.24)",
-                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.09), rgba(0,0,0,.22))",
+                  border: "1px solid rgba(var(--online-accent-rgb),.25)",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.08), rgba(0,0,0,.22))",
                   minWidth: 0,
                 }}
               >
                 <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 18 }}>{scope.icon}</div>
-                <div style={{ marginTop: 5, color: "#fff", fontWeight: 1000, fontSize: 11.5, lineHeight: 1.12 }}>{scope.label}</div>
-                <div style={{ marginTop: 4, color: "var(--online-accent)", fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{scope.scope}</div>
-                <div style={{ marginTop: 6, fontSize: 10.5, opacity: 0.74, lineHeight: 1.25 }}>{scope.desc}</div>
+                <div style={{ marginTop: 4, color: "#fff", fontWeight: 1000, fontSize: 12 }}>{scope.title}</div>
+                <div style={{ marginTop: 5, fontSize: 10.5, opacity: 0.72, lineHeight: 1.25 }}>{scope.line}</div>
               </div>
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-            {leagues.map((league) => {
-              const unlocked = rating >= league.required || league.required === 0;
-              const active = league.id === current.id;
-              return (
-                <div
-                  key={league.id}
-                  style={{
-                    borderRadius: 16,
-                    padding: 10,
-                    border: active ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.20)",
-                    background: active
-                      ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.18), rgba(0,0,0,.28))"
-                      : "linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.18))",
-                    boxShadow: active ? "0 0 18px rgba(var(--online-accent-rgb),.24)" : "none",
-                    opacity: unlocked ? 1 : 0.58,
-                  }}
-                >
-                  <div style={{ color: active ? "var(--online-accent)" : "#f5f5f7", fontWeight: 1000, fontSize: 12.5 }}>Ligue {league.name}</div>
-                  <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 900, opacity: 0.75 }}>{league.range}</div>
-                  <div style={{ marginTop: 6, display: "grid", gap: 3, fontSize: 10.5, lineHeight: 1.22, opacity: 0.8 }}>
-                    <span>👥 {leagueSize} joueurs max / division</span>
-                    <span>⬆️ Montée : {league.promote}</span>
-                    <span>⬇️ Descente : {league.relegate}</span>
-                  </div>
-                  <div style={{ marginTop: 7 }}>
-                    <Pill label={active ? "Ta ligue" : unlocked ? "Accessible" : "Verrouillée"} tone={active || unlocked ? "blue" : "gray"} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
           <div
             style={{
-              borderRadius: 16,
-              padding: 10,
-              border: "1px solid rgba(var(--online-accent-rgb),.22)",
-              background: "rgba(255,255,255,.035)",
-              fontSize: 11.5,
-              lineHeight: 1.35,
-              opacity: 0.9,
               display: "grid",
-              gap: 5,
+              gridTemplateColumns: "1fr 1fr",
+              gap: 8,
+              fontSize: 11,
+              lineHeight: 1.25,
             }}
           >
-            {rules.map((rule) => <div key={rule}>• {rule}</div>)}
+            <RuleChip title="Division" value={`${leagueSize} joueurs max`} />
+            <RuleChip title="Saison" value={`${seasonWeeks} semaines`} />
+            <RuleChip title="Points" value="Victoire 3 · forfait -1" />
+            <RuleChip title="Départage" value="Legs · Avg3D · CO%" />
+            <RuleChip title="Montée" value={current.promote ? `Top ${current.promote}` : "Finales"} />
+            <RuleChip title="Descente" value={current.relegate ? `Bottom ${current.relegate}` : "Aucune"} />
           </div>
 
-          <PrimaryButton label="🏆 S'inscrire / jouer une ligue officielle" subLabel="Mondiale · Continent · Pays" onClick={goPlay} />
+          <PrimaryButton
+            label={isRegistered ? "🏆 Ouvrir ma ligue officielle" : "🏆 M’inscrire automatiquement"}
+            subLabel={isRegistered ? `${current.name} · Mondiale / Europe / ${safeCountry}` : "Mondiale · Europe · Pays"}
+            onClick={isRegistered ? goPlay : onRegister}
+          />
         </div>
       </NeonCard>
     </>
+  );
+}
+
+function RuleChip({ title, value }: { title: string; value: string }) {
+  return (
+    <div
+      style={{
+        borderRadius: 13,
+        padding: "8px 9px",
+        border: "1px solid rgba(var(--online-accent-rgb),.18)",
+        background: "rgba(255,255,255,.035)",
+      }}
+    >
+      <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 10.5, textTransform: "uppercase" }}>{title}</div>
+      <div style={{ marginTop: 3, fontWeight: 800, opacity: 0.9 }}>{value}</div>
+    </div>
+  );
+}
+
+
+type OfficialLeagueSubTab = "resume" | "calendar" | "results" | "ranking" | "forum" | "rules";
+
+function OfficialLeagueFullScreen({
+  accent,
+  accentRgb,
+  bg,
+  leagueName,
+  country,
+  rating,
+  matches,
+  onBack,
+  onEnterMatch,
+}: {
+  accent: string;
+  accentRgb: string;
+  bg: string;
+  leagueName: string;
+  country?: string | null;
+  rating: number;
+  matches: number;
+  onBack: () => void;
+  onEnterMatch: () => void;
+}) {
+  const [tab, setTab] = React.useState<OfficialLeagueSubTab>("resume");
+  const safeCountry = String(country || "").trim() || "France";
+  const tabs: { id: OfficialLeagueSubTab; label: string; icon: string }[] = [
+    { id: "resume", label: "Résumé", icon: "⚡" },
+    { id: "calendar", label: "Calendrier", icon: "📅" },
+    { id: "results", label: "Résultats", icon: "✅" },
+    { id: "ranking", label: "Classement", icon: "🏆" },
+    { id: "forum", label: "Forum Ligue", icon: "💬" },
+    { id: "rules", label: "Règles", icon: "📜" },
+  ];
+  const nextMatches = [
+    { id: "m1", label: "Journée 1", opponent: "Adversaire à définir", time: "Aujourd’hui · 20:30", status: "Salle ouvrable à l’heure du match", playable: true },
+    { id: "m2", label: "Journée 2", opponent: "Adversaire à définir", time: "Dans 3 jours · 20:30", status: "Planifié", playable: false },
+  ];
+  const ranking = [
+    { rank: 1, name: "Toi", pts: 0, played: 0, avg: rating ? rating.toFixed(1) : "—" },
+    { rank: 2, name: "Joueur inscrit", pts: 0, played: 0, avg: "—" },
+    { rank: 3, name: "Joueur inscrit", pts: 0, played: 0, avg: "—" },
+  ];
+
+  const tabButton = (item: { id: OfficialLeagueSubTab; label: string; icon: string }) => {
+    const active = item.id === tab;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => setTab(item.id)}
+        style={{
+          minWidth: 98,
+          borderRadius: 16,
+          padding: "9px 10px",
+          border: active ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.18)",
+          background: active
+            ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.26), rgba(var(--online-accent-rgb),.08))"
+            : "linear-gradient(180deg, rgba(var(--online-accent-rgb),.07), rgba(0,0,0,.22))",
+          color: active ? "var(--online-accent)" : "rgba(255,255,255,.86)",
+          boxShadow: active ? "0 0 22px rgba(var(--online-accent-rgb),.45)" : "0 8px 18px rgba(0,0,0,.25)",
+          cursor: "pointer",
+          display: "grid",
+          justifyItems: "center",
+          gap: 4,
+          fontWeight: 1000,
+          fontSize: 11.5,
+        }}
+      >
+        <span style={{ fontSize: 20, filter: active ? "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.8))" : "none" }}>{item.icon}</span>
+        <span>{item.label}</span>
+      </button>
+    );
+  };
+
+  if (showOfficialLeaguePage) {
+    return (
+      <OfficialLeagueFullScreen
+        accent={onlineAccent}
+        accentRgb={onlineAccentRgb}
+        bg={onlineBg}
+        leagueName={`Ligue ${onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze"} 1`}
+        country={countryRaw}
+        rating={Number(onlineRatingValue || 0)}
+        matches={sortedMatches.length}
+        onBack={() => setShowOfficialLeaguePage(false)}
+        onEnterMatch={() => {
+          setShowOfficialLeaguePage(false);
+          setActiveOnlineTab("play");
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="container"
+      style={{
+        padding: 16,
+        paddingBottom: 96,
+        color: "#f5f5f7",
+        minHeight: "100dvh",
+        background: `radial-gradient(760px 300px at 92% -8%, rgba(${accentRgb},.42), transparent 62%), radial-gradient(620px 260px at 0% 30%, rgba(${accentRgb},.18), transparent 64%), linear-gradient(180deg, ${bg}, #020611 58%, #000 100%)`,
+        ["--online-accent" as any]: accent,
+        ["--online-accent-rgb" as any]: accentRgb,
+      }}
+    >
+      <NeonCard
+        style={{
+          background:
+            "radial-gradient(900px 220px at 50% 0%, rgba(var(--online-accent-rgb),.20), transparent 62%), linear-gradient(180deg, rgba(7,13,27,.96), rgba(3,7,16,.98))",
+          marginBottom: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "44px minmax(0, 1fr) 44px",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <BackDot
+            title="Retour Online"
+            size={42}
+            color={accent}
+            glow={`rgba(${accentRgb},.55)`}
+            onClick={onBack}
+          />
+          <div style={{ textAlign: "center", minWidth: 0 }}>
+            <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 22, textShadow: "0 0 16px rgba(var(--online-accent-rgb),.55)" }}>
+              LIGUE OFFICIELLE
+            </div>
+            <div style={{ marginTop: 3, fontSize: 12, opacity: 0.82, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {leagueName} · Mondiale / Europe / {safeCountry}
+            </div>
+          </div>
+          <InfoDot active={false} onClick={() => setTab("rules")} />
+        </div>
+
+        <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
+          {tabs.map(tabButton)}
+        </div>
+      </NeonCard>
+
+      {tab === "resume" ? (
+        <>
+          <SectionTitle title="Résumé joueur" subtitle="Ce qui te concerne dans cette ligue." />
+          <NeonCard style={{ marginTop: 10 }}>
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <RuleChip title="Classement" value="—" />
+                <RuleChip title="Points" value="0" />
+                <RuleChip title="Matchs joués" value={`${matches || 0}`} />
+                <RuleChip title="Avg3D Online" value={rating ? rating.toFixed(1) : "—"} />
+              </div>
+              <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 14 }}>Match à jouer</div>
+              {nextMatches.slice(0, 1).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={m.playable ? onEnterMatch : undefined}
+                  style={{
+                    textAlign: "left",
+                    borderRadius: 16,
+                    padding: 12,
+                    border: "1px solid rgba(var(--online-accent-rgb),.36)",
+                    background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.13), rgba(0,0,0,.22))",
+                    color: "#fff",
+                    cursor: m.playable ? "pointer" : "default",
+                    boxShadow: m.playable ? "0 0 20px rgba(var(--online-accent-rgb),.20)" : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <b style={{ color: "var(--online-accent)" }}>{m.label}</b>
+                    <span style={{ fontWeight: 1000 }}>{m.time}</span>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12.5, opacity: 0.86 }}>Toi vs {m.opponent}</div>
+                  <div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 900, color: m.playable ? "var(--online-accent)" : "rgba(255,255,255,.65)" }}>
+                    {m.playable ? "Cliquer pour entrer dans le salon du match" : m.status}
+                  </div>
+                </button>
+              ))}
+              <OnlineEmptyCard title="Derniers résultats" text="Aucun résultat officiel enregistré pour cette saison." />
+            </div>
+          </NeonCard>
+        </>
+      ) : null}
+
+      {tab === "calendar" ? (
+        <>
+          <SectionTitle title="Calendrier" subtitle="Les matchs s’ouvrent uniquement autour de l’heure prévue." />
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            {nextMatches.map((m) => (
+              <NeonCard key={m.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <b style={{ color: "var(--online-accent)" }}>{m.label}</b>
+                  <span style={{ fontWeight: 1000 }}>{m.time}</span>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12.5 }}>Toi vs {m.opponent}</div>
+                <div style={{ marginTop: 6, opacity: 0.72, fontSize: 12 }}>{m.status}</div>
+              </NeonCard>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {tab === "results" ? (
+        <>
+          <SectionTitle title="Résultats" subtitle="Résultats validés automatiquement après match." />
+          <OnlineEmptyCard title="Aucun résultat" text="Les résultats apparaîtront ici après les premières rencontres officielles." />
+        </>
+      ) : null}
+
+      {tab === "ranking" ? (
+        <>
+          <SectionTitle title="Classement" subtitle="Points, matchs joués et départage officiel." />
+          <NeonCard style={{ marginTop: 10 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              {ranking.map((r) => (
+                <div key={r.rank} style={{ display: "grid", gridTemplateColumns: "34px 1fr 52px 52px", gap: 8, alignItems: "center", padding: "9px 8px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
+                  <b style={{ color: "var(--online-accent)" }}>#{r.rank}</b>
+                  <b>{r.name}</b>
+                  <span>{r.pts} pts</span>
+                  <span>{r.avg}</span>
+                </div>
+              ))}
+            </div>
+          </NeonCard>
+        </>
+      ) : null}
+
+      {tab === "forum" ? (
+        <>
+          <SectionTitle title="Forum Ligue" subtitle="Espace discussion dédié à cette ligue." />
+          <OnlineEmptyCard title="Forum bientôt connecté" text="Le fil de ligue sera relié au chat online : annonces, organisation et messages des joueurs." />
+        </>
+      ) : null}
+
+      {tab === "rules" ? (
+        <>
+          <SectionTitle title="Règles officielles" subtitle="Format X01 501 Double Out automatisé." />
+          <NeonCard style={{ marginTop: 10 }}>
+            <div style={{ display: "grid", gap: 8, fontSize: 12.5, lineHeight: 1.35 }}>
+              <RuleChip title="Format" value="X01 501 · Double Out" />
+              <RuleChip title="Points" value="Victoire +3 · Défaite 0 · Forfait -1" />
+              <RuleChip title="Retard" value="5 min = forfait automatique" />
+              <RuleChip title="Double forfait" value="Si 2 joueurs absents : -1 chacun + avertissement" />
+              <RuleChip title="Radiation" value="3 forfaits sur la saison = exclusion de la ligue" />
+              <RuleChip title="Montée / descente" value="Bronze : Top 4 monte · pas de descente. Argent/Or : Top 3 monte · Bottom 4 descend. Élite : Bottom 5 descend." />
+              <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
+            </div>
+          </NeonCard>
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -1698,6 +1920,31 @@ export default function FriendsPage({ store, update, go, initialOnlineTab }: Pro
   const privateInfo = ((activeProfile as any)?.privateInfo || {}) as any;
   const countryRaw = privateInfo.country || "";
   const countryFlag = getCountryFlag(countryRaw);
+  const activeProfileId = String((activeProfile as any)?.id || "guest");
+  const officialRegistrationKey = `dc_online_official_registration_${activeProfileId}`;
+  const [officialRegistered, setOfficialRegistered] = React.useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(officialRegistrationKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  React.useEffect(() => {
+    try {
+      setOfficialRegistered(window.localStorage.getItem(officialRegistrationKey) === "1");
+    } catch {
+      setOfficialRegistered(false);
+    }
+  }, [officialRegistrationKey]);
+
+  const registerOfficialLeague = React.useCallback(() => {
+    setOfficialRegistered(true);
+    try {
+      window.localStorage.setItem(officialRegistrationKey, "1");
+      window.dispatchEvent(new Event("dc-online-official-registration-updated"));
+    } catch {}
+  }, [officialRegistrationKey]);
 
   const avatarUrl =
     (activeProfile as any)?.avatarDataUrl ||
@@ -2658,6 +2905,7 @@ const doLogout = React.useCallback(async () => {
   const [showInfo, setShowInfo] = React.useState(false);
   const [showPresencePanel, setShowPresencePanel] = React.useState(false);
   const [showDartSetPicker, setShowDartSetPicker] = React.useState(false);
+  const [showOfficialLeaguePage, setShowOfficialLeaguePage] = React.useState(false);
 
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
@@ -3191,7 +3439,9 @@ const doLogout = React.useCallback(async () => {
           rating={Number(onlineRatingValue || 0)}
           matches={sortedMatches.length}
           country={countryRaw}
-          goPlay={() => setActiveOnlineTab("play")}
+          isRegistered={officialRegistered}
+          onRegister={registerOfficialLeague}
+          goPlay={() => setShowOfficialLeaguePage(true)}
         />
       ) : null}
 
