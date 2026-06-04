@@ -42,6 +42,7 @@ import type { OnlineMatch } from "../lib/onlineTypes";
 import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
 import DartSetSelector from "../components/DartSetSelector";
+import ProfileAvatar from "../components/ProfileAvatar";
 import {
   listFriends,
   listFriendRequests,
@@ -2276,7 +2277,6 @@ const doLogout = React.useCallback(async () => {
   const onlineRatingValue = Math.max(0, Math.round(avg3DWeek || avg3DOverall || 0));
   const onlineLeagueLabel = activeSportId === "darts" ? "X01 501 · Dbl.Out" : activeSportId.toUpperCase();
   const onlineRankLabel = sortedMatches.length > 0 ? `#${Math.max(1, Math.min(999, 1000 - sortedMatches.length))}` : "—";
-  const profileStars = Math.max(1, Math.min(5, Math.round(Number((activeProfile as any)?.profileStars ?? (activeProfile as any)?.stars ?? (activeProfile as any)?.levelStars ?? (activeProfile as any)?.rating ?? (onlineRatingValue > 0 ? Math.min(5, onlineRatingValue / 20) : 1)))));
   const activeDartSetId = String((activeProfile as any)?.dartSetId || (activeProfile as any)?.activeDartSetId || (activeProfile as any)?.favoriteDartSetId || "").trim();
 
   function handlePickOnlineDartSet(dartSetId: string | null) {
@@ -2486,58 +2486,30 @@ const doLogout = React.useCallback(async () => {
           }}
         >
           <div style={{ width: "100%", maxWidth: 430, minWidth: 0, display: "grid", justifyItems: "center", alignContent: "start", gap: 10, margin: "0 auto" }}>
-            <div
-              aria-label={`Niveau ${profileStars} étoiles`}
-              style={{
-                height: 24,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                color: "var(--online-accent)",
-                textShadow: "0 0 12px rgba(var(--online-accent-rgb),.72)",
-                filter: "drop-shadow(0 0 6px rgba(var(--online-accent-rgb),.48))",
-              }}
-            >
-              {Array.from({ length: 5 }).map((_, idx) => (
-                <span key={idx} style={{ fontSize: idx === 2 ? 23 : 20, opacity: idx < profileStars ? 1 : 0.24 }}>★</span>
-              ))}
-            </div>
-
-            <div style={{ position: "relative", width: 118, height: 104 }}>
+            <div style={{ position: "relative", width: 138, height: 118 }}>
               <div
                 style={{
                   position: "absolute",
                   left: "50%",
                   top: 0,
                   transform: "translateX(-50%)",
-                  width: 92,
-                  height: 92,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  background: "radial-gradient(circle at 30% 0%, rgba(var(--online-accent-rgb),.92), rgba(var(--online-accent-rgb),.45) 45%, rgba(0,0,0,.82))",
-                  boxShadow: "0 0 28px rgba(var(--online-accent-rgb),.45), inset 0 0 0 4px rgba(0,0,0,.25)",
-                  border: "2px solid rgba(var(--online-accent-rgb),.82)",
+                  width: 98,
+                  height: 98,
+                  display: "grid",
+                  placeItems: "center",
+                  filter: "drop-shadow(0 0 22px rgba(var(--online-accent-rgb),.48))",
                 }}
+                title={`Niveau basé sur l'Avg 3D Online : ${onlineRatingValue || 0}`}
               >
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 1000,
-                      color: "#04101f",
-                      fontSize: 22,
-                    }}
-                  >
-                    {(displayName || "??").slice(0, 2).toUpperCase()}
-                  </div>
-                )}
+                <ProfileAvatar
+                  profile={activeProfile as any}
+                  size={92}
+                  avg3D={onlineRatingValue || avg3DOverall || 0}
+                  showStars={true}
+                  showDartOverlay={false}
+                  ringColor="rgba(var(--online-accent-rgb),.86)"
+                  textColor="var(--online-accent)"
+                />
               </div>
 
               <button
