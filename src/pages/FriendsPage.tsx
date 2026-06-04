@@ -1492,6 +1492,9 @@ const OFFICIAL_LEAGUE_RULES = {
   minPlayers: 8,
   maxPlayers: 10,
   seasonWeeks: 8,
+  matchFormat: "X01 501 · Double Out · BO3 sets · 3 legs/set",
+  setsToWin: 2,
+  legsPerSet: 3,
   pointsWin: 4,
   pointsLoss: 1,
   pointsForfeit: -1,
@@ -1571,8 +1574,9 @@ function getOfficialLeagueMeta(rating: number, matches: number, country?: string
     countryFlag,
     continentFlag,
     label: `${tier.name} ${division}`,
-    shortLabel: `${countryFlag} ${tier.name} ${division}`,
-    fullLabel: `${countryFlag} ${tier.name} ${division} • ${continentFlag}`,
+    shortLabel: `${tier.name} ${division}`,
+    badgeFlagLabel: `${countryFlag} ${tier.name} ${division}`,
+    fullLabel: `${tier.name} ${division} • ${countryFlag} • ${continentFlag}`,
   };
 }
 
@@ -1589,6 +1593,20 @@ function LeagueBadgeIcon({ src, size = 22 }: { src: string; size?: number }) {
         filter: "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.45))",
       }}
     />
+  );
+}
+
+function OfficialLeagueTabIcon({ id, size = 30, color = "currentColor" }: { id: OfficialLeagueSubTab; size?: number; color?: string }) {
+  const common = { fill: "none", stroke: color, strokeWidth: 2.15, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}>
+      {id === "resume" ? <><path {...common} d="M13 2 4 14h7l-1 8 10-13h-7V2Z" /></> : null}
+      {id === "calendar" ? <><path {...common} d="M7 3v4" /><path {...common} d="M17 3v4" /><path {...common} d="M4 8h16" /><rect {...common} x="4" y="5" width="16" height="16" rx="3" /><path {...common} d="M8 12h3" /><path {...common} d="M13 12h3" /><path {...common} d="M8 16h3" /></> : null}
+      {id === "results" ? <><path {...common} d="M20 6 9 17l-5-5" /><path {...common} d="M5 21h14" /></> : null}
+      {id === "ranking" ? <><path {...common} d="M8 21h8" /><path {...common} d="M12 17v4" /><path {...common} d="M7 4h10v4a5 5 0 0 1-10 0V4Z" /><path {...common} d="M7 6H4a3 3 0 0 0 3 3" /><path {...common} d="M17 6h3a3 3 0 0 1-3 3" /></> : null}
+      {id === "forum" ? <><path {...common} d="M21 12a7 7 0 0 1-7 7H8l-5 3 1.7-5.2A7 7 0 1 1 21 12Z" /></> : null}
+      {id === "rules" ? <><path {...common} d="M7 3h8l4 4v14H7z" /><path {...common} d="M15 3v5h4" /><path {...common} d="M10 12h6" /><path {...common} d="M10 16h6" /></> : null}
+    </svg>
   );
 }
 
@@ -1617,7 +1635,7 @@ function OfficialCompetitionsPanel({
       <SectionTitle
         title="Compétitions officielles"
         subtitle="Placement automatique selon ton niveau Online. Seules tes ligues s’affichent ici."
-        right={<Pill label={isRegistered ? `Inscrit · ${meta.shortLabel}` : `Ta ligue : ${meta.shortLabel}`} tone="blue" />}
+        right={<Pill label={isRegistered ? `Inscrit · ${meta.badgeFlagLabel}` : `Ta ligue : ${meta.badgeFlagLabel}`} tone="blue" />}
       />
 
       <NeonCard style={{ marginTop: 10, padding: 12 }}>
@@ -1638,10 +1656,10 @@ function OfficialCompetitionsPanel({
             <LeagueBadgeIcon src={meta.badge} size={32} />
             <div>
               <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15 }}>
-                {isRegistered ? `Tu es inscrit en ${meta.shortLabel}` : `Placement proposé : ${meta.shortLabel}`}
+                {isRegistered ? `Tu es inscrit en ${meta.badgeFlagLabel}` : `Placement proposé : ${meta.badgeFlagLabel}`}
               </div>
               <div style={{ marginTop: 5, fontSize: 12, opacity: 0.84, lineHeight: 1.35 }}>
-                Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). X01 501 Double Out.
+                Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). {rules.matchFormat}.
               </div>
             </div>
           </div>
@@ -1669,7 +1687,7 @@ function OfficialCompetitionsPanel({
 
           <PrimaryButton
             label={isRegistered ? "🏆 Ouvrir ma ligue officielle" : "🏆 M’inscrire automatiquement"}
-            subLabel={`${meta.shortLabel} · ${meta.continentFlag} · ${safeCountry}`}
+            subLabel={`${meta.badgeFlagLabel} · ${meta.continentFlag}`}
             onClick={isRegistered ? goPlay : onRegister}
           />
         </div>
@@ -1747,25 +1765,45 @@ function OfficialLeagueFullScreen({
         type="button"
         onClick={() => setTab(item.id)}
         style={{
-          minWidth: 98,
-          borderRadius: 16,
-          padding: "9px 10px",
-          border: active ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.18)",
+          position: "relative",
+          minWidth: 86,
+          minHeight: 96,
+          borderRadius: 18,
+          padding: "10px 8px 14px",
+          border: active ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.20)",
           background: active
-            ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.26), rgba(var(--online-accent-rgb),.08))"
-            : "linear-gradient(180deg, rgba(var(--online-accent-rgb),.07), rgba(0,0,0,.22))",
+            ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.24), rgba(3,7,16,.72))"
+            : "linear-gradient(180deg, rgba(var(--online-accent-rgb),.08), rgba(3,7,16,.88))",
           color: active ? "var(--online-accent)" : "rgba(255,255,255,.86)",
-          boxShadow: active ? "0 0 22px rgba(var(--online-accent-rgb),.45)" : "0 8px 18px rgba(0,0,0,.25)",
+          boxShadow: active
+            ? "0 0 22px rgba(var(--online-accent-rgb),.52), inset 0 0 0 1px rgba(255,255,255,.06)"
+            : "inset 0 0 0 1px rgba(255,255,255,.025)",
           cursor: "pointer",
           display: "grid",
           justifyItems: "center",
-          gap: 4,
+          alignContent: "center",
+          gap: 7,
           fontWeight: 1000,
           fontSize: 11.5,
         }}
       >
-        <span style={{ width: 42, height: 42, borderRadius: 16, display: "grid", placeItems: "center", background: active ? "rgba(var(--online-accent-rgb),.20)" : "rgba(var(--online-accent-rgb),.08)", fontSize: 22, filter: active ? "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.8))" : "none" }}>{item.icon}</span>
-        <span>{item.label}</span>
+        <span
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 18,
+            display: "grid",
+            placeItems: "center",
+            background: active ? "rgba(var(--online-accent-rgb),.18)" : "rgba(var(--online-accent-rgb),.08)",
+            color: "var(--online-accent)",
+            filter: active ? "drop-shadow(0 0 14px rgba(var(--online-accent-rgb),.95))" : "drop-shadow(0 0 7px rgba(var(--online-accent-rgb),.45))",
+            boxShadow: active ? "0 0 18px rgba(var(--online-accent-rgb),.28)" : "none",
+          }}
+        >
+          <OfficialLeagueTabIcon id={item.id} size={31} color="var(--online-accent)" />
+        </span>
+        <span style={{ textAlign: "center", color: active ? "var(--online-accent)" : "rgba(255,255,255,.88)", textShadow: active ? "0 0 12px rgba(var(--online-accent-rgb),.75)" : "none", lineHeight: 1.05 }}>{item.label}</span>
+        {active ? <span style={{ position: "absolute", left: 18, right: 18, bottom: 6, height: 3, borderRadius: 999, background: "var(--online-accent)", boxShadow: "0 0 14px rgba(var(--online-accent-rgb),.95)" }} /> : null}
       </button>
     );
   };
@@ -1809,8 +1847,25 @@ function OfficialLeagueFullScreen({
             <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 22, textShadow: "0 0 16px rgba(var(--online-accent-rgb),.55)" }}>
               LIGUE OFFICIELLE
             </div>
-            <div style={{ marginTop: 3, fontSize: 12, opacity: 0.82, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {meta.shortLabel} · {meta.continentFlag}
+            <div
+              style={{
+                marginTop: 5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                fontSize: 12,
+                opacity: 0.92,
+                fontWeight: 1000,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <LeagueBadgeIcon src={meta.badge} size={18} />
+              <span>{meta.countryFlag}</span>
+              <span>{meta.label}</span>
+              <span style={{ opacity: .75 }}>• Saison 2026-S1</span>
             </div>
           </div>
           <InfoDot active={false} onClick={() => setTab("rules")} />
@@ -1967,10 +2022,10 @@ function OfficialLeagueFullScreen({
 
       {tab === "rules" ? (
         <>
-          <SectionTitle title="Règles officielles" subtitle="Format X01 501 Double Out automatisé." />
+          <SectionTitle title="Règles officielles" subtitle="Format officiel automatisé : BO3 sets / 3 legs par set." />
           <NeonCard style={{ marginTop: 10 }}>
             <div style={{ display: "grid", gap: 8, fontSize: 12.5, lineHeight: 1.35 }}>
-              <RuleChip title="Format" value="X01 501 · Double Out" />
+              <RuleChip title="Format" value={rules.matchFormat} />
               <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
               <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
               <RuleChip title="Retard" value="5 min = forfait automatique" />
@@ -3048,7 +3103,7 @@ const doLogout = React.useCallback(async () => {
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
-  const onlineRatingValue = Math.max(0, Math.round(avg3DWeek || avg3DOverall || 0));
+  const onlineRatingValue = Math.max(0, avg3DWeek || avg3DOverall || 0);
   const officialTierLabel = onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze";
   const officialCountryLabel = String(countryRaw || "").trim() || "France";
   const officialLeagueMeta = getOfficialLeagueMeta(onlineRatingValue, sortedMatches.length, officialCountryLabel);
@@ -3457,7 +3512,7 @@ const doLogout = React.useCallback(async () => {
               </button>
               <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "8px 4px", textAlign: "center" }}>
                 <div style={{ color: "var(--online-accent)", fontSize: 10.2, fontWeight: 1000 }}>RATING</div>
-                <div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000 }}>{onlineRatingValue || "—"}</div>
+                <div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000 }}>{onlineRatingValue ? fmt1(onlineRatingValue) : "—"}</div>
               </div>
               <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "6px 4px", textAlign: "center", display: "grid", placeItems: "center", gap: 2 }}>
                 {activeSportId === "darts" ? <LeagueBadgeIcon src={officialLeagueMeta.badge} size={22} /> : null}
