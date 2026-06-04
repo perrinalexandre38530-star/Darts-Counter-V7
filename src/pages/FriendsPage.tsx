@@ -65,7 +65,7 @@ import {
 import { joinPresence } from "../lib/onlinePresence";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import { History } from "../lib/history";
-import { loadOnlineX01SamplesForActiveProfile, aggregateX01Samples } from "../lib/x01StatsSource";
+import { loadOnlineX01SamplesForActiveProfile, loadAllOnlineX01Samples, aggregateX01Samples } from "../lib/x01StatsSource";
 import { getTicker } from "../lib/tickers";
 import {
   filterOnlineStatsHardDeleted,
@@ -173,6 +173,10 @@ function safePct(n: number) {
 function fmt1(n: number) {
   if (!Number.isFinite(n)) return "0.0";
   return n.toFixed(1);
+}
+
+function normOnlineName(v: any): string {
+  return String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
 }
 
 
@@ -1496,9 +1500,11 @@ const OFFICIAL_LEAGUE_RULES = {
   matchFormat: "X01 501 · Double Out · BO3 sets · 3 legs/set",
   setsToWin: 2,
   legsPerSet: 3,
-  pointsWin: 4,
-  pointsLoss: 1,
-  pointsForfeit: -1,
+  pointsWinClear: 4,
+  pointsWinClose: 3,
+  pointsLossClose: 1,
+  pointsLossClear: 0,
+  pointsForfeit: -3,
   promote: 2,
   relegate: 2,
 };
@@ -1557,14 +1563,71 @@ function getOfficialLeagueTier(rating: number) {
   return { id: "bronze", name: "Bronze", range: "0–39 Avg3D" };
 }
 
-function getOfficialDivisionNumber(matches: number) {
-  const registrations = Math.max(1, Number(matches || 0) + 1);
-  return Math.max(1, Math.ceil(registrations / OFFICIAL_LEAGUE_RULES.maxPlayers));
+const OFFICIAL_LEAGUE_QUEUE_KEY = "dc_online_official_league_registrations_v2";
+
+function readOfficialLeagueQueue(): any[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(OFFICIAL_LEAGUE_QUEUE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeOfficialLeagueQueue(rows: any[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(OFFICIAL_LEAGUE_QUEUE_KEY, JSON.stringify(Array.isArray(rows) ? rows : []));
+  } catch {}
+}
+
+function getOfficialLeagueSeasonWeeks(playerCount: number) {
+  const n = Number(playerCount || 0);
+  if (n >= 10) return 10;
+  if (n >= 9) return 9;
+  return 8;
+}
+
+function getOfficialDivisionNumber(_matches: number, tierId?: string, country?: string | null) {
+  const rules = OFFICIAL_LEAGUE_RULES;
+  const t = String(tierId || "bronze").toLowerCase();
+  const c = String(country || "France").trim().toLowerCase() || "france";
+  const rows = readOfficialLeagueQueue().filter((r) => String(r?.tierId || "bronze") === t && String(r?.country || "France").trim().toLowerCase() === c);
+  for (let d = 1; d < 99; d += 1) {
+    const count = rows.filter((r) => Number(r?.division || 1) === d).length;
+    if (count < rules.maxPlayers) return d;
+  }
+  return 1;
+}
+
+function countOfficialDivisionPlayers(tierId: string, division: number, country?: string | null) {
+  const t = String(tierId || "bronze").toLowerCase();
+  const c = String(country || "France").trim().toLowerCase() || "france";
+  return readOfficialLeagueQueue().filter((r) => String(r?.tierId || "bronze") === t && Number(r?.division || 1) === Number(division || 1) && String(r?.country || "France").trim().toLowerCase() === c).length;
+}
+
+function getNextOfficialSeasonStart() {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  d.setHours(20, 30, 0, 0);
+  return d;
+}
+
+function formatCountdownTo(ts: number) {
+  const diff = Math.max(0, ts - Date.now());
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  if (days > 0) return `${days}j ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 function getOfficialLeagueMeta(rating: number, matches: number, country?: string | null) {
   const tier = getOfficialLeagueTier(rating);
-  const division = getOfficialDivisionNumber(matches);
+  const division = getOfficialDivisionNumber(matches, tier.id, country);
   const countryFlag = officialCountryFlag(country);
   const continentFlag = officialContinentFlag(country);
   const badge = OFFICIAL_LEAGUE_BADGES[tier.id] || OFFICIAL_LEAGUE_BADGES.bronze;
@@ -1666,8 +1729,8 @@ function OfficialCompetitionsPanel({
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 11, lineHeight: 1.25 }}>
             <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs`} />
-            <RuleChip title="Saison" value={`${rules.seasonWeeks} semaines max`} />
-            <RuleChip title="Points" value={`Victoire ${rules.pointsWin} · Défaite ${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
+            <RuleChip title="Saison" value={`${getOfficialLeagueSeasonWeeks(Math.max(rules.minPlayers, countOfficialDivisionPlayers(meta.tier.id, meta.division, safeCountry)))} semaines max`} />
+            <RuleChip title="Points" value={`2-0 +${rules.pointsWinClear} · 2-1 +${rules.pointsWinClose} · 1-2 +${rules.pointsLossClose} · 0-2 ${rules.pointsLossClear} · Forfait ${rules.pointsForfeit}`} />
             <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
           </div>
 
@@ -1684,6 +1747,28 @@ function OfficialCompetitionsPanel({
           >
             Les inscriptions remplissent d’abord la division en cours. Une nouvelle division {meta.tier.name} est créée uniquement quand la précédente est complète et lancée.
           </div>
+
+          {isRegistered ? (
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 10,
+                border: "1px solid rgba(var(--online-accent-rgb),.28)",
+                background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.10), rgba(0,0,0,.26))",
+                display: "grid",
+                gap: 7,
+              }}
+            >
+              <div style={{ color: "var(--online-accent)", fontWeight: 1000 }}>⏳ Salle d’attente inscriptions</div>
+              <div style={{ fontSize: 12, opacity: .88, lineHeight: 1.35 }}>
+                Division actuelle : {countOfficialDivisionPlayers(meta.tier.id, meta.division, safeCountry)}/{rules.maxPlayers} joueur(s). Lancement dès {rules.minPlayers} inscrits, maximum {rules.maxPlayers}. Début estimé : {formatCountdownTo(getNextOfficialSeasonStart().getTime())}.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <GhostButton label="Inviter un ami" onClick={() => alert("Invitation ligue prête : le branchement Messenger sera relié au salon de ligue.")} />
+                <GhostButton label="Copier invitation" onClick={() => { try { navigator.clipboard?.writeText(`Rejoins ma ligue officielle ${meta.badgeFlagLabel} sur Darts Counter !`); } catch {} }} />
+              </div>
+            </div>
+          ) : null}
 
           <PrimaryButton
             label={isRegistered ? "🏆 Ouvrir ma ligue officielle" : "🏆 M’inscrire automatiquement"}
@@ -1875,7 +1960,7 @@ function OfficialLeagueFullScreen({
                 <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 16 }}>Règles officielles</div>
                 <RuleChip title="Format" value={rules.matchFormat} />
                 <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
-                <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
+                <RuleChip title="Points" value={`2-0 +${rules.pointsWinClear} · 2-1 +${rules.pointsWinClose} · 1-2 +${rules.pointsLossClose} · 0-2 ${rules.pointsLossClear} · Forfait ${rules.pointsForfeit}`} />
                 <RuleChip title="Retard / forfait" value="5 min = forfait automatique · 3 forfaits = radiation" />
                 <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
                 <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
@@ -2108,17 +2193,26 @@ export default function FriendsPage({ store, update, go, initialOnlineTab }: Pro
     }
   }, [officialRegistrationKey, profileOfficialRegistration]);
 
-  const registerOfficialLeague = React.useCallback(() => {
+  const registerOfficialLeague = () => {
     setOfficialRegistered(true);
+    const meta = getOfficialLeagueMeta(onlineTruthAvg3D, sortedMatches.length, String(countryRaw || "").trim() || "France");
     const payload = {
       registered: true,
-      tier: "Bronze",
-      division: "2",
+      tier: meta.tier.name,
+      tierId: meta.tier.id,
+      division: String(meta.division),
       country: String(countryRaw || "").trim() || "France",
-      scope: "world-europe-country",
-      format: "X01 501 Double Out",
+      scope: "country-continent",
+      format: OFFICIAL_LEAGUE_RULES.matchFormat,
+      points: { win20: 4, win21: 3, loss12: 1, loss02: 0, forfeit: -3 },
       registeredAt: new Date().toISOString(),
     };
+    const queue = readOfficialLeagueQueue();
+    const existingIdx = queue.findIndex((r: any) => String(r?.profileId || "") === activeProfileId);
+    const queueRow = { profileId: activeProfileId, playerName: displayName, ...payload };
+    if (existingIdx >= 0) queue[existingIdx] = { ...queue[existingIdx], ...queueRow };
+    else queue.push(queueRow);
+    writeOfficialLeagueQueue(queue);
     update((st: any) => ({
       ...st,
       profiles: (st.profiles || []).map((p: any) =>
@@ -2133,7 +2227,7 @@ export default function FriendsPage({ store, update, go, initialOnlineTab }: Pro
       window.dispatchEvent(new Event("dc-store-updated"));
       window.dispatchEvent(new Event("dc-online-official-registration-updated"));
     } catch {}
-  }, [officialRegistrationKey, activeProfileId, countryRaw, update]);
+  };
 
   const avatarUrl =
     (activeProfile as any)?.avatarDataUrl ||
@@ -2285,6 +2379,7 @@ const doLogout = React.useCallback(async () => {
   const [matches, setMatches] = React.useState<OnlineMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = React.useState(false);
   const [onlineProfileSamples, setOnlineProfileSamples] = React.useState<any[]>([]);
+  const [onlineStatsMirror, setOnlineStatsMirror] = React.useState<{ avg3: number; matches: number; wins: number; rating: number } | null>(null);
 
   const reloadOnlineProfileSamples = React.useCallback(async () => {
     try {
@@ -2295,6 +2390,54 @@ const doLogout = React.useCallback(async () => {
       setOnlineProfileSamples([]);
     }
   }, []);
+
+  const reloadOnlineStatsMirror = React.useCallback(async () => {
+    try {
+      const profiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+      const active = (activeProfile as any) || null;
+      const samplesAll = await loadAllOnlineX01Samples(profiles as any);
+      const activeIds = new Set([active?.id, active?.profileId, active?.playerId, active?.uid].filter(Boolean).map((x: any) => String(x)));
+      const activeName = normOnlineName(active?.name || active?.displayName || active?.nickname || displayName);
+      const samples = (Array.isArray(samplesAll) ? samplesAll : [])
+        .filter((s: any) => Number(s?.darts || 0) > 0)
+        .filter((s: any) => {
+          const sid = String(s?.playerId || "");
+          const sname = normOnlineName(s?.playerName || "");
+          return activeIds.has(sid) || (!!activeName && sname === activeName);
+        });
+      const darts = samples.reduce((a: number, s: any) => a + Number(s?.darts || 0), 0);
+      const weightedScore = samples.reduce((a: number, s: any) => {
+        const d = Number(s?.darts || 0);
+        const avg = Number(s?.avg3 || 0);
+        const total = Number(s?.totalScore || 0);
+        if (d > 0 && avg > 0) return a + (avg / 3) * d;
+        if (d > 0 && total > 0) return a + total;
+        return a;
+      }, 0);
+      const avg3 = darts > 0 && weightedScore > 0 ? (weightedScore / darts) * 3 : 0;
+      const matches = samples.reduce((a: number, s: any) => a + Math.max(1, Number(s?.matchesPlayed || 1)), 0);
+      const wins = samples.reduce((a: number, s: any) => a + Number(s?.matchesWon || 0), 0);
+      const winRate = matches > 0 ? wins / matches : 0;
+      const rating = matches > 0 ? Math.max(0.5, Math.min(1.5, 1 + (winRate - 0.5))) : 1.0;
+      setOnlineStatsMirror({ avg3, matches, wins, rating });
+    } catch (err) {
+      console.warn("[OnlineHub] miroir Stats Online impossible", err);
+      setOnlineStatsMirror(null);
+    }
+  }, [store, activeProfile, displayName]);
+
+  React.useEffect(() => {
+    reloadOnlineStatsMirror();
+    const onChanged = () => reloadOnlineStatsMirror();
+    window.addEventListener("dc-online-matches-deleted", onChanged);
+    window.addEventListener("dc-online-stats-exclusions-changed", onChanged);
+    window.addEventListener("dc-history-updated", onChanged);
+    return () => {
+      window.removeEventListener("dc-online-matches-deleted", onChanged);
+      window.removeEventListener("dc-online-stats-exclusions-changed", onChanged);
+      window.removeEventListener("dc-history-updated", onChanged);
+    };
+  }, [reloadOnlineStatsMirror]);
 
   React.useEffect(() => {
     reloadOnlineProfileSamples();
@@ -3043,39 +3186,26 @@ const doLogout = React.useCallback(async () => {
 
   const onlineProfileAgg = React.useMemo(() => aggregateX01Samples(onlineProfileSamples as any), [onlineProfileSamples]);
   const onlineTruthAvg3D = React.useMemo(() => {
-    // SOURCE UNIQUE VISUELLE : même priorité que Stats > Online.
-    // 1) agrégat X01 du profil actif (History via x01StatsSource) ;
-    // 2) si indisponible, moyenne pondérée score/darts depuis les matchs Online ;
-    // 3) dernier recours : avg indexé uniquement si plausible (> 10), pour éviter les faux 0.9 / 3.0.
-    const sampleAvg = onlineNum((onlineProfileAgg as any)?.avg3, 0);
-    if (sampleAvg > 0) return sampleAvg;
+    // Même valeur que Stats > Online : moyenne 3D pondérée sur les samples Online valides du profil actif.
+    const mirrorAvg = onlineNum((onlineStatsMirror as any)?.avg3, 0);
+    if (mirrorAvg > 0) return mirrorAvg;
 
-    const sampleDarts = onlineNum((onlineProfileAgg as any)?.darts, 0);
-    const sampleScore = onlineNum((onlineProfileAgg as any)?.totalScore, 0);
-    if (sampleDarts > 0 && sampleScore > 0) return (sampleScore / sampleDarts) * 3;
-
-    const validMatches = sortedMatches
-      .map((m: any) => {
-        const st = m?.stats && typeof m.stats === "object" ? m.stats : {};
-        const pst = m?.payload?.stats && typeof m.payload.stats === "object" ? m.payload.stats : {};
-        const darts = onlineNum(st?.darts ?? pst?.darts ?? m?.darts ?? m?.payload?.darts, 0);
-        const totalScore = onlineNum(st?.totalScore ?? pst?.totalScore ?? m?.totalScore ?? m?.payload?.totalScore, 0);
-        const indexedAvg3 = onlineNum(st?.avg3D ?? st?.avg3 ?? pst?.avg3D ?? pst?.avg3 ?? m?.avg3D ?? m?.avg3 ?? m?.payload?.avg3D ?? m?.payload?.avg3, 0);
-        return { darts, totalScore, indexedAvg3 };
-      })
-      .filter((x: any) => x.darts > 0 && (x.totalScore > 0 || x.indexedAvg3 > 0));
-
-    const darts = validMatches.reduce((a: number, b: any) => a + b.darts, 0);
-    const score = validMatches.reduce((a: number, b: any) => a + b.totalScore, 0);
+    const samples = (Array.isArray(onlineProfileSamples) ? onlineProfileSamples : [])
+      .filter((s: any) => Number(s?.darts || 0) > 0);
+    const darts = samples.reduce((a: number, s: any) => a + onlineNum(s?.darts, 0), 0);
+    const score = samples.reduce((a: number, s: any) => {
+      const d = onlineNum(s?.darts, 0);
+      const avg = onlineNum(s?.avg3 ?? s?.avg3D, 0);
+      const total = onlineNum(s?.totalScore, 0);
+      if (d > 0 && avg > 0) return a + (avg / 3) * d;
+      if (d > 0 && total > 0) return a + total;
+      return a;
+    }, 0);
     if (darts > 0 && score > 0) return (score / darts) * 3;
 
-    const indexed = validMatches
-      .map((x: any) => x.indexedAvg3)
-      .filter((n: number) => Number.isFinite(n) && n >= 10 && n <= 180);
-    if (indexed.length) return indexed.reduce((a: number, b: number) => a + b, 0) / indexed.length;
-
-    return 0;
-  }, [onlineProfileAgg, sortedMatches]);
+    const sampleAvg = onlineNum((onlineProfileAgg as any)?.avg3, 0);
+    return sampleAvg > 0 ? sampleAvg : 0;
+  }, [onlineStatsMirror, onlineProfileSamples, onlineProfileAgg]);
 
   const checkoutPctWeek = React.useMemo(() => {
     const now = Date.now();
@@ -3159,10 +3289,10 @@ const doLogout = React.useCallback(async () => {
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
-  const onlineRatingValue = Math.max(0, onlineTruthAvg3D || 0);
-  const officialTierLabel = onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze";
+  const onlineRatingValue = Math.max(0, onlineNum((onlineStatsMirror as any)?.rating, 1));
+  const officialTierLabel = onlineTruthAvg3D >= 70 ? "Élite" : onlineTruthAvg3D >= 55 ? "Or" : onlineTruthAvg3D >= 40 ? "Argent" : "Bronze";
   const officialCountryLabel = String(countryRaw || "").trim() || "France";
-  const officialLeagueMeta = getOfficialLeagueMeta(onlineRatingValue, sortedMatches.length, officialCountryLabel);
+  const officialLeagueMeta = getOfficialLeagueMeta(onlineTruthAvg3D, sortedMatches.length, officialCountryLabel);
   const onlineLeagueLabel = activeSportId === "darts" ? officialLeagueMeta.shortLabel : activeSportId.toUpperCase();
   const onlineRankLabel = sortedMatches.length > 0 ? `#${Math.max(1, Math.min(999, 1000 - sortedMatches.length))}` : "—";
   const activeDartSetId = String((activeProfile as any)?.dartSetId || (activeProfile as any)?.activeDartSetId || (activeProfile as any)?.favoriteDartSetId || "").trim();
@@ -3292,9 +3422,9 @@ const doLogout = React.useCallback(async () => {
         accent={onlineAccent}
         accentRgb={onlineAccentRgb}
         bg={onlineBg}
-        leagueName={`Ligue ${onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze"} ${onlineRatingValue >= 40 ? "1" : "2"}`}
+        leagueName={`Ligue ${officialLeagueMeta.label}`}
         country={countryRaw}
-        rating={Number(onlineRatingValue || 0)}
+        rating={Number(onlineTruthAvg3D || 0)}
         matches={sortedMatches.length}
         onBack={() => setShowOfficialLeaguePage(false)}
         onEnterMatch={() => {
@@ -3736,7 +3866,7 @@ const doLogout = React.useCallback(async () => {
 
       {showOfficialTab ? (
         <OfficialCompetitionsPanel
-          rating={Number(onlineRatingValue || 0)}
+          rating={Number(onlineTruthAvg3D || 0)}
           matches={sortedMatches.length}
           country={countryRaw}
           isRegistered={officialRegistered}
