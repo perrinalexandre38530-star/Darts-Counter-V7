@@ -1487,6 +1487,112 @@ type Props = {
 };
 
 
+
+const OFFICIAL_LEAGUE_RULES = {
+  minPlayers: 8,
+  maxPlayers: 10,
+  seasonWeeks: 8,
+  pointsWin: 4,
+  pointsLoss: 1,
+  pointsForfeit: -1,
+  promote: 2,
+  relegate: 2,
+};
+
+const OFFICIAL_LEAGUE_BADGES: Record<string, string> = {
+  bronze: "/images/league-badges/league-badge-027.webp",
+  silver: "/images/league-badges/league-badge-026.webp",
+  gold: "/images/league-badges/league-badge-025.webp",
+  elite: "/images/league-badges/league-badge-018.webp",
+};
+
+function officialCountryFlag(country?: string | null) {
+  const c = String(country || "").trim().toLowerCase();
+  const map: Record<string, string> = {
+    france: "🇫🇷",
+    fr: "🇫🇷",
+    belgique: "🇧🇪",
+    belgium: "🇧🇪",
+    suisse: "🇨🇭",
+    switzerland: "🇨🇭",
+    allemagne: "🇩🇪",
+    germany: "🇩🇪",
+    espagne: "🇪🇸",
+    spain: "🇪🇸",
+    italie: "🇮🇹",
+    italy: "🇮🇹",
+    portugal: "🇵🇹",
+    "royaume-uni": "🇬🇧",
+    "united kingdom": "🇬🇧",
+    uk: "🇬🇧",
+    angleterre: "🏴",
+    england: "🏴",
+    japon: "🇯🇵",
+    japan: "🇯🇵",
+    canada: "🇨🇦",
+    usa: "🇺🇸",
+    "united states": "🇺🇸",
+    etatsunis: "🇺🇸",
+    "états-unis": "🇺🇸",
+  };
+  return map[c] || "🇫🇷";
+}
+
+function officialContinentFlag(country?: string | null) {
+  const c = String(country || "").trim().toLowerCase();
+  if (["japon", "japan"].includes(c)) return "🌏";
+  if (["usa", "united states", "canada"].includes(c)) return "🌎";
+  return "🇪🇺";
+}
+
+function getOfficialLeagueTier(rating: number) {
+  const value = Number.isFinite(rating) ? rating : 0;
+  if (value >= 70) return { id: "elite", name: "Élite", range: "70+ Avg3D" };
+  if (value >= 55) return { id: "gold", name: "Or", range: "55–69 Avg3D" };
+  if (value >= 40) return { id: "silver", name: "Argent", range: "40–54 Avg3D" };
+  return { id: "bronze", name: "Bronze", range: "0–39 Avg3D" };
+}
+
+function getOfficialDivisionNumber(matches: number) {
+  const registrations = Math.max(1, Number(matches || 0) + 1);
+  return Math.max(1, Math.ceil(registrations / OFFICIAL_LEAGUE_RULES.maxPlayers));
+}
+
+function getOfficialLeagueMeta(rating: number, matches: number, country?: string | null) {
+  const tier = getOfficialLeagueTier(rating);
+  const division = getOfficialDivisionNumber(matches);
+  const countryFlag = officialCountryFlag(country);
+  const continentFlag = officialContinentFlag(country);
+  const badge = OFFICIAL_LEAGUE_BADGES[tier.id] || OFFICIAL_LEAGUE_BADGES.bronze;
+  return {
+    tier,
+    division,
+    badge,
+    countryFlag,
+    continentFlag,
+    label: `${tier.name} ${division}`,
+    shortLabel: `${countryFlag} ${tier.name} ${division}`,
+    fullLabel: `${countryFlag} ${tier.name} ${division} • ${continentFlag}`,
+  };
+}
+
+function LeagueBadgeIcon({ src, size = 22 }: { src: string; size?: number }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        display: "block",
+        filter: "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.45))",
+      }}
+    />
+  );
+}
+
+
 function OfficialCompetitionsPanel({
   rating,
   matches,
@@ -1503,34 +1609,25 @@ function OfficialCompetitionsPanel({
   goPlay: () => void;
 }) {
   const safeCountry = String(country || "").trim() || "France";
-  const leagueSize = 24;
-  const seasonWeeks = 8;
-  const leagues = [
-    { id: "bronze", name: "Bronze", range: "0–39 Avg3D", required: 0, promote: 4, relegate: 0 },
-    { id: "silver", name: "Argent", range: "40–54 Avg3D", required: 40, promote: 3, relegate: 4 },
-    { id: "gold", name: "Or", range: "55–69 Avg3D", required: 55, promote: 3, relegate: 4 },
-    { id: "elite", name: "Élite", range: "70+ Avg3D", required: 70, promote: 0, relegate: 5 },
-  ];
-  const current = leagues.slice().reverse().find((l) => rating >= l.required) || leagues[0];
-  const divisionLabel = `${current.name} ${Math.max(1, Math.ceil(Math.max(1, matches || 1) / leagueSize))}`;
-  const scopes = [
-    { id: "world", icon: "🌍", title: "Mondiale", line: "Ouverte à tous les joueurs inscrits." },
-    { id: "continent", icon: "🌐", title: "Européenne", line: "Auto selon le pays du profil." },
-    { id: "country", icon: "🏳️", title: safeCountry, line: "Division nationale créée si besoin." },
-  ];
+  const meta = getOfficialLeagueMeta(rating, matches, safeCountry);
+  const rules = OFFICIAL_LEAGUE_RULES;
 
   return (
     <>
       <SectionTitle
         title="Compétitions officielles"
         subtitle="Placement automatique selon ton niveau Online. Seules tes ligues s’affichent ici."
-        right={<Pill label={isRegistered ? `Inscrit · ${current.name}` : `Ta ligue : ${current.name}`} tone="blue" />}
+        right={<Pill label={isRegistered ? `Inscrit · ${meta.shortLabel}` : `Ta ligue : ${meta.shortLabel}`} tone="blue" />}
       />
 
       <NeonCard style={{ marginTop: 10, padding: 12 }}>
         <div style={{ display: "grid", gap: 10 }}>
           <div
             style={{
+              display: "grid",
+              gridTemplateColumns: "34px minmax(0, 1fr)",
+              gap: 10,
+              alignItems: "center",
               borderRadius: 18,
               padding: 12,
               border: "1px solid rgba(var(--online-accent-rgb),.34)",
@@ -1538,53 +1635,41 @@ function OfficialCompetitionsPanel({
               boxShadow: "0 0 20px rgba(var(--online-accent-rgb),.13)",
             }}
           >
-            <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15 }}>
-              {isRegistered ? `Tu es inscrit en Ligue ${divisionLabel}` : `Placement proposé : Ligue ${current.name}`}
-            </div>
-            <div style={{ marginTop: 5, fontSize: 12, opacity: 0.84, lineHeight: 1.35 }}>
-              Base : Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). Format fixe : X01 501 Double Out.
+            <LeagueBadgeIcon src={meta.badge} size={32} />
+            <div>
+              <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15 }}>
+                {isRegistered ? `Tu es inscrit en ${meta.shortLabel}` : `Placement proposé : ${meta.shortLabel}`}
+              </div>
+              <div style={{ marginTop: 5, fontSize: 12, opacity: 0.84, lineHeight: 1.35 }}>
+                Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). X01 501 Double Out.
+              </div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-            {scopes.map((scope) => (
-              <div
-                key={scope.id}
-                style={{
-                  borderRadius: 16,
-                  padding: 10,
-                  border: "1px solid rgba(var(--online-accent-rgb),.25)",
-                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.08), rgba(0,0,0,.22))",
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 18 }}>{scope.icon}</div>
-                <div style={{ marginTop: 4, color: "#fff", fontWeight: 1000, fontSize: 12 }}>{scope.title}</div>
-                <div style={{ marginTop: 5, fontSize: 10.5, opacity: 0.72, lineHeight: 1.25 }}>{scope.line}</div>
-              </div>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 11, lineHeight: 1.25 }}>
+            <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs`} />
+            <RuleChip title="Saison" value={`${rules.seasonWeeks} semaines max`} />
+            <RuleChip title="Points" value={`Victoire ${rules.pointsWin} · Défaite ${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
+            <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
           </div>
 
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 8,
-              fontSize: 11,
-              lineHeight: 1.25,
+              borderRadius: 16,
+              padding: 10,
+              border: "1px solid rgba(var(--online-accent-rgb),.22)",
+              background: "rgba(255,255,255,.035)",
+              fontSize: 11.5,
+              lineHeight: 1.35,
+              opacity: 0.88,
             }}
           >
-            <RuleChip title="Division" value={`${leagueSize} joueurs max`} />
-            <RuleChip title="Saison" value={`${seasonWeeks} semaines`} />
-            <RuleChip title="Points" value="Victoire 3 · forfait -1" />
-            <RuleChip title="Départage" value="Legs · Avg3D · CO%" />
-            <RuleChip title="Montée" value={current.promote ? `Top ${current.promote}` : "Finales"} />
-            <RuleChip title="Descente" value={current.relegate ? `Bottom ${current.relegate}` : "Aucune"} />
+            Les inscriptions remplissent d’abord la division en cours. Une nouvelle division {meta.tier.name} est créée uniquement quand la précédente est complète et lancée.
           </div>
 
           <PrimaryButton
             label={isRegistered ? "🏆 Ouvrir ma ligue officielle" : "🏆 M’inscrire automatiquement"}
-            subLabel={isRegistered ? `${current.name} · Mondiale / Europe / ${safeCountry}` : "Mondiale · Europe · Pays"}
+            subLabel={`${meta.shortLabel} · ${meta.continentFlag} · ${safeCountry}`}
             onClick={isRegistered ? goPlay : onRegister}
           />
         </div>
@@ -1608,7 +1693,6 @@ function RuleChip({ title, value }: { title: string; value: string }) {
     </div>
   );
 }
-
 
 type OfficialLeagueSubTab = "resume" | "calendar" | "results" | "ranking" | "forum" | "rules";
 
@@ -1635,6 +1719,8 @@ function OfficialLeagueFullScreen({
 }) {
   const [tab, setTab] = React.useState<OfficialLeagueSubTab>("resume");
   const safeCountry = String(country || "").trim() || "France";
+  const meta = getOfficialLeagueMeta(rating, matches, safeCountry);
+  const rules = OFFICIAL_LEAGUE_RULES;
   const tabs: { id: OfficialLeagueSubTab; label: string; icon: string }[] = [
     { id: "resume", label: "Résumé", icon: "⚡" },
     { id: "calendar", label: "Calendrier", icon: "📅" },
@@ -1678,7 +1764,7 @@ function OfficialLeagueFullScreen({
           fontSize: 11.5,
         }}
       >
-        <span style={{ fontSize: 20, filter: active ? "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.8))" : "none" }}>{item.icon}</span>
+        <span style={{ width: 42, height: 42, borderRadius: 16, display: "grid", placeItems: "center", background: active ? "rgba(var(--online-accent-rgb),.20)" : "rgba(var(--online-accent-rgb),.08)", fontSize: 22, filter: active ? "drop-shadow(0 0 10px rgba(var(--online-accent-rgb),.8))" : "none" }}>{item.icon}</span>
         <span>{item.label}</span>
       </button>
     );
@@ -1724,7 +1810,7 @@ function OfficialLeagueFullScreen({
               LIGUE OFFICIELLE
             </div>
             <div style={{ marginTop: 3, fontSize: 12, opacity: 0.82, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {leagueName} · Mondiale / Europe / {safeCountry}
+              {meta.shortLabel} · {meta.continentFlag}
             </div>
           </div>
           <InfoDot active={false} onClick={() => setTab("rules")} />
@@ -1807,15 +1893,32 @@ function OfficialLeagueFullScreen({
       {tab === "ranking" ? (
         <>
           <SectionTitle title="Classement" subtitle="Points, matchs joués et départage officiel." />
-          <NeonCard style={{ marginTop: 10 }}>
-            <div style={{ display: "grid", gap: 8 }}>
+          <NeonCard style={{ marginTop: 10, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "42px minmax(118px, 1fr) 42px 42px 52px 58px",
+                gap: 0,
+                alignItems: "stretch",
+                minWidth: 354,
+                border: "1px solid rgba(var(--online-accent-rgb),.20)",
+                borderRadius: 14,
+                overflow: "hidden",
+                fontSize: 11.5,
+              }}
+            >
+              {["#", "Joueur", "MJ", "V", "Pts", "Avg3D"].map((h) => (
+                <div key={h} style={{ padding: "8px 7px", background: "rgba(var(--online-accent-rgb),.14)", color: "var(--online-accent)", fontWeight: 1000, borderRight: "1px solid rgba(var(--online-accent-rgb),.16)" }}>{h}</div>
+              ))}
               {ranking.map((r) => (
-                <div key={r.rank} style={{ display: "grid", gridTemplateColumns: "34px 1fr 52px 52px", gap: 8, alignItems: "center", padding: "9px 8px", borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}>
-                  <b style={{ color: "var(--online-accent)" }}>#{r.rank}</b>
-                  <b>{r.name}</b>
-                  <span>{r.pts} pts</span>
-                  <span>{r.avg}</span>
-                </div>
+                <React.Fragment key={r.rank}>
+                  <div style={{ padding: "8px 7px", borderTop: "1px solid rgba(255,255,255,.08)", color: "var(--online-accent)", fontWeight: 1000 }}>#{r.rank}</div>
+                  <div style={{ padding: "8px 7px", borderTop: "1px solid rgba(255,255,255,.08)", fontWeight: 950 }}>{r.name}</div>
+                  <div style={{ padding: "8px 7px", borderTop: "1px solid rgba(255,255,255,.08)" }}>{r.played}</div>
+                  <div style={{ padding: "8px 7px", borderTop: "1px solid rgba(255,255,255,.08)" }}>{r.rank === 1 ? 0 : "—"}</div>
+                  <div style={{ padding: "8px 7px", borderTop: "1px solid rgba(255,255,255,.08)", fontWeight: 950 }}>{r.pts}</div>
+                  <div style={{ padding: "8px 7px", borderTop: "1px solid rgba(255,255,255,.08)" }}>{r.avg}</div>
+                </React.Fragment>
               ))}
             </div>
           </NeonCard>
@@ -1824,8 +1927,41 @@ function OfficialLeagueFullScreen({
 
       {tab === "forum" ? (
         <>
-          <SectionTitle title="Forum Ligue" subtitle="Espace discussion dédié à cette ligue." />
-          <OnlineEmptyCard title="Forum bientôt connecté" text="Le fil de ligue sera relié au chat online : annonces, organisation et messages des joueurs." />
+          <SectionTitle title="Forum Ligue" subtitle="Réservé aux joueurs inscrits dans cette division." />
+          <NeonCard style={{ marginTop: 10 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ borderRadius: 14, padding: 10, background: "rgba(var(--online-accent-rgb),.08)", border: "1px solid rgba(var(--online-accent-rgb),.18)" }}>
+                <b style={{ color: "var(--online-accent)" }}>Message système</b>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: .82 }}>Bienvenue dans le forum privé de ta ligue. Les annonces, disponibilités et échanges de match seront regroupés ici.</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                <input
+                  placeholder="Écrire au forum de ligue…"
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid rgba(var(--online-accent-rgb),.28)",
+                    background: "rgba(255,255,255,.045)",
+                    color: "#fff",
+                    padding: "11px 12px",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid rgba(var(--online-accent-rgb),.55)",
+                    background: "rgba(var(--online-accent-rgb),.16)",
+                    color: "var(--online-accent)",
+                    fontWeight: 1000,
+                    padding: "0 14px",
+                  }}
+                >
+                  Envoyer
+                </button>
+              </div>
+            </div>
+          </NeonCard>
         </>
       ) : null}
 
@@ -1835,11 +1971,12 @@ function OfficialLeagueFullScreen({
           <NeonCard style={{ marginTop: 10 }}>
             <div style={{ display: "grid", gap: 8, fontSize: 12.5, lineHeight: 1.35 }}>
               <RuleChip title="Format" value="X01 501 · Double Out" />
-              <RuleChip title="Points" value="Victoire +3 · Défaite 0 · Forfait -1" />
+              <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
+              <RuleChip title="Points" value={`Victoire +${rules.pointsWin} · Défaite +${rules.pointsLoss} · Forfait ${rules.pointsForfeit}`} />
               <RuleChip title="Retard" value="5 min = forfait automatique" />
               <RuleChip title="Double forfait" value="Si 2 joueurs absents : -1 chacun + avertissement" />
               <RuleChip title="Radiation" value="3 forfaits sur la saison = exclusion de la ligue" />
-              <RuleChip title="Montée / descente" value="Bronze : Top 4 monte · pas de descente. Argent/Or : Top 3 monte · Bottom 4 descend. Élite : Bottom 5 descend." />
+              <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend. Si niveau minimum : pas de descente.`} />
               <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
             </div>
           </NeonCard>
@@ -2913,9 +3050,9 @@ const doLogout = React.useCallback(async () => {
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
   const onlineRatingValue = Math.max(0, Math.round(avg3DWeek || avg3DOverall || 0));
   const officialTierLabel = onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze";
-  const officialDivisionLabel = onlineRatingValue >= 40 ? "1" : "2";
   const officialCountryLabel = String(countryRaw || "").trim() || "France";
-  const onlineLeagueLabel = activeSportId === "darts" ? `${officialTierLabel} ${officialDivisionLabel} · ${officialCountryLabel}` : activeSportId.toUpperCase();
+  const officialLeagueMeta = getOfficialLeagueMeta(onlineRatingValue, sortedMatches.length, officialCountryLabel);
+  const onlineLeagueLabel = activeSportId === "darts" ? officialLeagueMeta.shortLabel : activeSportId.toUpperCase();
   const onlineRankLabel = sortedMatches.length > 0 ? `#${Math.max(1, Math.min(999, 1000 - sortedMatches.length))}` : "—";
   const activeDartSetId = String((activeProfile as any)?.dartSetId || (activeProfile as any)?.activeDartSetId || (activeProfile as any)?.favoriteDartSetId || "").trim();
   const onlineProfileDartSets = React.useMemo(() => {
@@ -3322,9 +3459,9 @@ const doLogout = React.useCallback(async () => {
                 <div style={{ color: "var(--online-accent)", fontSize: 10.2, fontWeight: 1000 }}>RATING</div>
                 <div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000 }}>{onlineRatingValue || "—"}</div>
               </div>
-              <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "8px 4px", textAlign: "center" }}>
-                <div style={{ color: "var(--online-accent)", fontSize: 10.2, fontWeight: 1000 }}>LIGUE</div>
-                <div style={{ marginTop: 2, fontSize: 9.2, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{onlineLeagueLabel}</div>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "6px 4px", textAlign: "center", display: "grid", placeItems: "center", gap: 2 }}>
+                {activeSportId === "darts" ? <LeagueBadgeIcon src={officialLeagueMeta.badge} size={22} /> : null}
+                <div style={{ fontSize: 9.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{onlineLeagueLabel}</div>
               </div>
               <div style={{ borderRadius: 12, border: "1px solid rgba(var(--online-accent-rgb),.26)", background: "rgba(255,255,255,.035)", padding: "8px 4px", textAlign: "center" }}>
                 <div style={{ color: "var(--online-accent)", fontSize: 9.4, fontWeight: 1000 }}>CLASSEMENT</div>
