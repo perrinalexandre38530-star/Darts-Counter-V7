@@ -620,6 +620,43 @@ export default function StatsOnline() {
     [sessions]
   );
 
+
+  const progressionSessions = React.useMemo(
+    () => [...sessions].filter((s) => s.darts > 0 && s.avg3 > 0).sort((a, b) => a.createdAt - b.createdAt).slice(-12),
+    [sessions]
+  );
+  const progressionPath = React.useMemo(() => {
+    if (progressionSessions.length < 2) return "";
+    const vals = progressionSessions.map((s) => s.avg3);
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const span = Math.max(1, max - min);
+    return vals.map((v, i) => {
+      const x = 10 + (i * 180) / Math.max(1, vals.length - 1);
+      const y = 78 - ((v - min) / span) * 58;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(" " );
+  }, [progressionSessions]);
+
+  const radarItems = React.useMemo(() => [
+    { label: "S", value: row.s },
+    { label: "D", value: row.d },
+    { label: "T", value: row.t },
+    { label: "Bull", value: row.bull + row.dbull },
+    { label: "CO", value: agg.bestCheckout },
+    { label: "BV", value: agg.bestVisit },
+  ], [row, agg]);
+
+  const segmentItems = React.useMemo(() => [
+    { label: "S", value: row.s },
+    { label: "D", value: row.d },
+    { label: "T", value: row.t },
+    { label: "Bull", value: row.bull },
+    { label: "DBull", value: row.dbull },
+    { label: "Miss", value: row.miss },
+  ], [row]);
+  const maxSegment = Math.max(1, ...segmentItems.map((x) => x.value));
+
   return (
     <div
       className="online-stats-page"
@@ -1275,18 +1312,29 @@ export default function StatsOnline() {
                 marginTop: 10,
                 borderRadius: 18,
                 padding: 10,
-                background: "radial-gradient(circle at 0 0,#f6c25622,transparent)",
-                minHeight: 80,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                color: theme.textSoft,
+                background: "radial-gradient(circle at 0 0, rgba(34,230,255,.16), transparent 62%), #08080e",
+                minHeight: 96,
+                display: "grid",
+                gap: 8,
               }}
             >
-              {t(
-                "stats_online.progress.placeholder",
-                "Les courbes de progression Online apparaîtront ici à mesure que tu joueras."
+              {progressionPath ? (
+                <svg viewBox="0 0 200 90" width="100%" height="96" role="img" aria-label="Progression Moyenne 3 Darts">
+                  <path d="M10 80H190" stroke="rgba(255,255,255,.12)" strokeWidth="1" />
+                  <path d="M10 20H190" stroke="rgba(255,255,255,.08)" strokeWidth="1" />
+                  <path d={progressionPath} fill="none" stroke={theme.primary} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 8px ${theme.primary})` }} />
+                  {progressionSessions.map((pt, i) => {
+                    const vals = progressionSessions.map((s) => s.avg3);
+                    const min = Math.min(...vals);
+                    const max = Math.max(...vals);
+                    const span = Math.max(1, max - min);
+                    const x = 10 + (i * 180) / Math.max(1, vals.length - 1);
+                    const y = 78 - ((pt.avg3 - min) / span) * 58;
+                    return <circle key={pt.id} cx={x} cy={y} r="3.5" fill={theme.primary} />;
+                  })}
+                </svg>
+              ) : (
+                <div style={{ minHeight: 76, display: "grid", placeItems: "center", fontSize: 11, color: theme.textSoft }}>Pas encore assez de sessions valides pour tracer la progression.</div>
               )}
             </div>
           </div>
@@ -1306,20 +1354,28 @@ export default function StatsOnline() {
               style={{
                 marginTop: 10,
                 borderRadius: 18,
-                padding: 10,
-                minHeight: 120,
-                background: "radial-gradient(circle,#f6c25615,transparent 60%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                color: theme.textSoft,
+                padding: 12,
+                minHeight: 150,
+                background: "radial-gradient(circle, rgba(34,230,255,.13), transparent 60%), #08080e",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
               }}
             >
-              {t(
-                "stats_online.radar.placeholder",
-                "Le radar Online sera basé sur les segments touchés dans tes futures parties Online."
-              )}
+              {radarItems.map((it) => {
+                const maxRadar = Math.max(1, ...radarItems.map((x) => x.value));
+                const w = Math.round((it.value / maxRadar) * 100);
+                return (
+                  <div key={it.label} style={{ display: "grid", gap: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900 }}>
+                      <span>{it.label}</span><span>{it.value}</span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                      <div style={{ width: `${w}%`, height: "100%", borderRadius: 999, background: theme.primary, boxShadow: `0 0 12px ${theme.primary}` }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -1338,20 +1394,22 @@ export default function StatsOnline() {
               style={{
                 marginTop: 10,
                 borderRadius: 18,
-                padding: 10,
-                minHeight: 90,
+                padding: 12,
+                minHeight: 120,
                 background: "#08080e",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                color: theme.textSoft,
+                display: "grid",
+                gap: 9,
               }}
             >
-              {t(
-                "stats_online.segment.placeholder",
-                "Cette section affichera bientôt la répartition de tes hits Online par segment."
-              )}
+              {segmentItems.map((it) => (
+                <div key={it.label} style={{ display: "grid", gridTemplateColumns: "46px 1fr 34px", gap: 8, alignItems: "center", fontSize: 11.5 }}>
+                  <strong>{it.label}</strong>
+                  <div style={{ height: 10, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                    <div style={{ width: `${Math.round((it.value / maxSegment) * 100)}%`, height: "100%", background: theme.primary, borderRadius: 999, boxShadow: `0 0 10px ${theme.primary}` }} />
+                  </div>
+                  <strong style={{ textAlign: "right" }}>{it.value}</strong>
+                </div>
+              ))}
             </div>
           </div>
         </section>

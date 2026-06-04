@@ -65,6 +65,7 @@ import {
 import { joinPresence } from "../lib/onlinePresence";
 import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import { History } from "../lib/history";
+import { loadOnlineX01SamplesForActiveProfile, aggregateX01Samples } from "../lib/x01StatsSource";
 import { getTicker } from "../lib/tickers";
 import {
   filterOnlineStatsHardDeleted,
@@ -1767,7 +1768,7 @@ function OfficialLeagueFullScreen({
         style={{
           position: "relative",
           minWidth: 86,
-          minHeight: 96,
+          minHeight: 86,
           borderRadius: 18,
           padding: "10px 8px 14px",
           border: active ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.20)",
@@ -1789,9 +1790,9 @@ function OfficialLeagueFullScreen({
       >
         <span
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 18,
+            width: 44,
+            height: 44,
+            borderRadius: 16,
             display: "grid",
             placeItems: "center",
             background: active ? "rgba(var(--online-accent-rgb),.18)" : "rgba(var(--online-accent-rgb),.08)",
@@ -2288,6 +2289,30 @@ const doLogout = React.useCallback(async () => {
   ------------------------------ */
   const [matches, setMatches] = React.useState<OnlineMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = React.useState(false);
+  const [onlineProfileSamples, setOnlineProfileSamples] = React.useState<any[]>([]);
+
+  const reloadOnlineProfileSamples = React.useCallback(async () => {
+    try {
+      const samples = await loadOnlineX01SamplesForActiveProfile();
+      setOnlineProfileSamples((Array.isArray(samples) ? samples : []).filter((s: any) => Number(s?.darts || 0) > 0));
+    } catch (err) {
+      console.warn("[OnlineHub] stats online profil actif impossibles", err);
+      setOnlineProfileSamples([]);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    reloadOnlineProfileSamples();
+    const onChanged = () => reloadOnlineProfileSamples();
+    window.addEventListener("dc-online-matches-deleted", onChanged);
+    window.addEventListener("dc-online-stats-exclusions-changed", onChanged);
+    window.addEventListener("dc-history-updated", onChanged);
+    return () => {
+      window.removeEventListener("dc-online-matches-deleted", onChanged);
+      window.removeEventListener("dc-online-stats-exclusions-changed", onChanged);
+      window.removeEventListener("dc-history-updated", onChanged);
+    };
+  }, [reloadOnlineProfileSamples]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -3021,6 +3046,24 @@ const doLogout = React.useCallback(async () => {
     return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
   }, [sortedMatches]);
 
+  const onlineProfileAgg = React.useMemo(() => aggregateX01Samples(onlineProfileSamples as any), [onlineProfileSamples]);
+  const onlineTruthAvg3D = React.useMemo(() => {
+    const v = Number((onlineProfileAgg as any)?.avg3 || 0);
+    if (Number.isFinite(v) && v > 0) return v;
+    // Fallback défensif uniquement si l'historique X01 source unique ne remonte rien.
+    const valid = sortedMatches
+      .map((m: any) => {
+        const darts = onlineNum(m?.stats?.darts ?? m?.darts, 0);
+        const totalScore = onlineNum(m?.stats?.totalScore ?? m?.totalScore, 0);
+        if (darts > 0 && totalScore > 0) return { darts, totalScore };
+        return null;
+      })
+      .filter(Boolean) as Array<{ darts: number; totalScore: number }>;
+    const darts = valid.reduce((a, b) => a + b.darts, 0);
+    const score = valid.reduce((a, b) => a + b.totalScore, 0);
+    return darts > 0 ? (score / darts) * 3 : 0;
+  }, [onlineProfileAgg, sortedMatches]);
+
   const checkoutPctWeek = React.useMemo(() => {
     const now = Date.now();
     const week = 7 * 24 * 60 * 60 * 1000;
@@ -3103,7 +3146,7 @@ const doLogout = React.useCallback(async () => {
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
-  const onlineRatingValue = Math.max(0, avg3DWeek || avg3DOverall || 0);
+  const onlineRatingValue = Math.max(0, onlineTruthAvg3D || 0);
   const officialTierLabel = onlineRatingValue >= 70 ? "Élite" : onlineRatingValue >= 55 ? "Or" : onlineRatingValue >= 40 ? "Argent" : "Bronze";
   const officialCountryLabel = String(countryRaw || "").trim() || "France";
   const officialLeagueMeta = getOfficialLeagueMeta(onlineRatingValue, sortedMatches.length, officialCountryLabel);
@@ -3388,7 +3431,7 @@ const doLogout = React.useCallback(async () => {
                 <ProfileAvatar
                   profile={activeProfile as any}
                   size={92}
-                  avg3D={onlineRatingValue || avg3DOverall || 0}
+                  avg3D={onlineTruthAvg3D || 0}
                   showStars={true}
                   showDartOverlay={false}
                   ringColor="rgba(var(--online-accent-rgb),.86)"
@@ -3471,7 +3514,7 @@ const doLogout = React.useCallback(async () => {
                 }}
               >
                 <span style={{ opacity: .78, fontSize: 8.5 }}>AVG3D</span>
-                <span>{avg3DOverall ? fmt1(avg3DOverall) : "—"}</span>
+                <span>{onlineTruthAvg3D ? fmt1(onlineTruthAvg3D) : "—"}</span>
               </div>
             </div>
 
