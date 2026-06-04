@@ -3042,28 +3042,32 @@ const doLogout = React.useCallback(async () => {
 
   const onlineProfileAgg = React.useMemo(() => aggregateX01Samples(onlineProfileSamples as any), [onlineProfileSamples]);
   const onlineTruthAvg3D = React.useMemo(() => {
-    const v = Number((onlineProfileAgg as any)?.avg3 || 0);
-    if (Number.isFinite(v) && v > 0) return v;
-
-    // Même logique que Stats > Online : priorité aux avg3D déjà indexées,
-    // puis recalcul pondéré totalScore/darts si disponible. Les sessions à 0 dart
-    // ne doivent jamais écraser la vraie moyenne du joueur.
-    const avgVals = sortedMatches
-      .map((m: any) => onlineNum(m?.stats?.avg3D ?? m?.stats?.avg3 ?? m?.payload?.stats?.avg3D ?? m?.payload?.stats?.avg3 ?? m?.payload?.avg3D ?? m?.avg3D ?? m?.avg3, 0))
-      .filter((n: number) => Number.isFinite(n) && n > 0);
-    if (avgVals.length) return avgVals.reduce((a: number, b: number) => a + b, 0) / avgVals.length;
-
-    const valid = sortedMatches
+    // SOURCE UNIQUE : même méthode que Stats > Online.
+    // On calcule en priorité une moyenne pondérée score/darts depuis les matchs online
+    // valides, et on ignore toujours les sessions à 0 dart.
+    const validMatches = sortedMatches
       .map((m: any) => {
-        const darts = onlineNum(m?.stats?.darts ?? m?.darts, 0);
-        const totalScore = onlineNum(m?.stats?.totalScore ?? m?.totalScore, 0);
-        if (darts > 0 && totalScore > 0) return { darts, totalScore };
-        return null;
+        const st = m?.stats && typeof m.stats === "object" ? m.stats : {};
+        const pst = m?.payload?.stats && typeof m.payload.stats === "object" ? m.payload.stats : {};
+        const darts = onlineNum(st?.darts ?? pst?.darts ?? m?.darts ?? m?.payload?.darts, 0);
+        const totalScore = onlineNum(st?.totalScore ?? pst?.totalScore ?? m?.totalScore ?? m?.payload?.totalScore, 0);
+        const indexedAvg3 = onlineNum(st?.avg3D ?? st?.avg3 ?? pst?.avg3D ?? pst?.avg3 ?? m?.avg3D ?? m?.avg3 ?? m?.payload?.avg3D ?? m?.payload?.avg3, 0);
+        return { darts, totalScore, indexedAvg3 };
       })
-      .filter(Boolean) as Array<{ darts: number; totalScore: number }>;
-    const darts = valid.reduce((a, b) => a + b.darts, 0);
-    const score = valid.reduce((a, b) => a + b.totalScore, 0);
-    return darts > 0 ? (score / darts) * 3 : 0;
+      .filter((x: any) => x.darts > 0 && (x.totalScore > 0 || x.indexedAvg3 > 0));
+
+    const darts = validMatches.reduce((a: number, b: any) => a + b.darts, 0);
+    const score = validMatches.reduce((a: number, b: any) => a + b.totalScore, 0);
+    if (darts > 0 && score > 0) return (score / darts) * 3;
+
+    const indexed = validMatches.map((x: any) => x.indexedAvg3).filter((n: number) => Number.isFinite(n) && n > 0);
+    if (indexed.length) return indexed.reduce((a: number, b: number) => a + b, 0) / indexed.length;
+
+    const sampleDarts = onlineNum((onlineProfileAgg as any)?.darts, 0);
+    const sampleScore = onlineNum((onlineProfileAgg as any)?.totalScore, 0);
+    if (sampleDarts > 0 && sampleScore > 0) return (sampleScore / sampleDarts) * 3;
+
+    return 0;
   }, [onlineProfileAgg, sortedMatches]);
 
   const checkoutPctWeek = React.useMemo(() => {

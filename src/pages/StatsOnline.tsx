@@ -17,6 +17,9 @@ import { loadAllOnlineX01Samples } from "../lib/x01StatsSource";
 import { onlineApi } from "../lib/onlineApi";
 import { loadOnlineMatches } from "../lib/onlineMatchesStore";
 import { filterOnlineStatsHardDeleted } from "../lib/onlineStatsExclusions";
+import X01MultiStatsSparkline from "../components/stats/x01multi/X01MultiStatsSparkline";
+import X01MultiStatsRadar from "../components/stats/x01multi/X01MultiStatsRadar";
+import X01MultiStatsHitsBySegment from "../components/stats/x01multi/X01MultiStatsHitsBySegment";
 
 
 type TimeRange = "day" | "week" | "month" | "year" | "all";
@@ -61,6 +64,88 @@ type LeaderRow = {
   wins: number;
   avg3: number;
 };
+
+type OnlineVisualDart = { v: number; mult: number };
+type OnlineVisualMatch = { id: string; t: number; avg3: number; bv: number; bco: number; darts: OnlineVisualDart[]; result: "W" | "L" | "?" };
+
+function walkOnlineObjects(root: any, maxDepth = 5): any[] {
+  const out: any[] = [];
+  const seen = new WeakSet<object>();
+  const walk = (x: any, depth: number) => {
+    if (!x || typeof x !== "object" || depth > maxDepth) return;
+    if (seen.has(x)) return;
+    seen.add(x);
+    out.push(x);
+    if (Array.isArray(x)) {
+      x.slice(0, 500).forEach((v) => walk(v, depth + 1));
+      return;
+    }
+    for (const key of ["payload", "summary", "state", "finalState", "data", "stats", "darts", "replayDarts", "dartsDetail", "dartsdetail", "visits", "throws", "rounds"]) {
+      if (x?.[key] && typeof x[key] === "object") walk(x[key], depth + 1);
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+function normalizeVisualDart(raw: any): OnlineVisualDart | null {
+  if (!raw || typeof raw !== "object") return null;
+  const code = String(raw?.code ?? raw?.label ?? raw?.text ?? "").toUpperCase();
+  const miss = raw?.isMiss === true || raw?.ismiss === true || code === "MISS" || code === "M";
+  const v = Number(raw?.v ?? raw?.value ?? raw?.segment ?? raw?.seg ?? (miss ? 0 : 0));
+  let mult = Number(raw?.mult ?? raw?.multiplier ?? raw?.m ?? raw?.mul ?? 0);
+  if (!mult && !miss && Number.isFinite(v) && v > 0) mult = 1;
+  if (miss || !Number.isFinite(v) || v <= 0) return { v: 0, mult: 0 };
+  return { v, mult: Number.isFinite(mult) ? mult : 1 };
+}
+
+function collectVisualDartsFromMatch(match: any): OnlineVisualDart[] {
+  for (const obj of walkOnlineObjects(match, 7)) {
+    for (const key of ["__x01OnlineDarts", "replayDarts", "dartsDetail", "dartsdetail", "darts", "throws"]) {
+      const arr = obj?.[key];
+      if (Array.isArray(arr)) {
+        const darts = arr.map(normalizeVisualDart).filter(Boolean) as OnlineVisualDart[];
+        if (darts.length) return darts;
+      }
+    }
+  }
+
+  // Fallback quand seules les stats agrégées existent : on garde le rendu visuel X01Multi
+  // sans inventer l'Avg3D, mais avec des darts synthétiques cohérents S/D/T/Miss.
+  const br = match?.stats?.breakdown ?? match?.breakdown ?? {};
+  const out: OnlineVisualDart[] = [];
+  const push = (count: any, v: number, mult: number) => {
+    const n = Math.max(0, Math.min(400, Number(count) || 0));
+    for (let i = 0; i < n; i++) out.push({ v, mult });
+  };
+  push(br.s ?? br.S, 20, 1);
+  push(br.d ?? br.D, 20, 2);
+  push(br.t ?? br.T, 20, 3);
+  push(br.bull, 25, 1);
+  push(br.dbull, 25, 2);
+  push(br.miss, 0, 0);
+  return out;
+}
+
+function buildOnlineVisualMatches(matches: any[]): OnlineVisualMatch[] {
+  return (Array.isArray(matches) ? matches : [])
+    .map((m: any, idx: number) => {
+      const darts = Number(m?.stats?.darts ?? m?.darts ?? 0);
+      const totalScore = Number(m?.stats?.totalScore ?? m?.totalScore ?? 0);
+      const indexedAvg3 = Number(m?.stats?.avg3D ?? m?.stats?.avg3 ?? m?.avg3D ?? m?.avg3 ?? 0);
+      const avg3 = indexedAvg3 > 0 ? Math.round(indexedAvg3 * 10) / 10 : darts > 0 && totalScore > 0 ? Math.round(((totalScore / darts) * 3) * 10) / 10 : 0;
+      return {
+        id: String(m?.id || m?.matchId || `online-visual-${idx}`),
+        t: Number(m?.createdAt ?? m?.finishedAt ?? m?.startedAt ?? Date.now()),
+        avg3,
+        bv: Number(m?.stats?.bestVisit ?? m?.bestVisit ?? 0),
+        bco: Number(m?.stats?.bestCheckout ?? m?.bestCheckout ?? 0),
+        darts: collectVisualDartsFromMatch(m),
+        result: "?" as const,
+      };
+    })
+    .filter((m) => m.avg3 > 0 || m.darts.length > 0);
+}
 
 function getRangeStart(range: TimeRange): number | null {
   const now = new Date();
@@ -658,6 +743,8 @@ export default function StatsOnline() {
     { label: "Miss", value: row.miss },
   ], [row]);
   const maxSegment = Math.max(1, ...segmentItems.map((x) => x.value));
+
+  const onlineVisualMatches = React.useMemo(() => buildOnlineVisualMatches(matches), [matches]);
 
   return (
     <div
@@ -1299,121 +1386,19 @@ export default function StatsOnline() {
           </div>
         </section>
 
-        {/* PROGRESSION */}
-        <section
-          style={{
-            marginBottom: 16,
-          }}
-        >
-          <div className="online-section-card">
-            <div className="online-section-title">
-              {t("stats_online.progress.title", "PROGRESSION")}
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                borderRadius: 18,
-                padding: 10,
-                background: "radial-gradient(circle at 0 0, rgba(34,230,255,.16), transparent 62%), #08080e",
-                minHeight: 96,
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              {progressionPath ? (
-                <svg viewBox="0 0 200 90" width="100%" height="96" role="img" aria-label="Progression Moyenne 3 Darts">
-                  <path d="M10 80H190" stroke="rgba(255,255,255,.12)" strokeWidth="1" />
-                  <path d="M10 20H190" stroke="rgba(255,255,255,.08)" strokeWidth="1" />
-                  <path d={progressionPath} fill="none" stroke={theme.primary} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 8px ${theme.primary})` }} />
-                  {progressionSessions.map((pt, i) => {
-                    const vals = progressionSessions.map((s) => s.avg3);
-                    const min = Math.min(...vals);
-                    const max = Math.max(...vals);
-                    const span = Math.max(1, max - min);
-                    const x = 10 + (i * 180) / Math.max(1, vals.length - 1);
-                    const y = 78 - ((pt.avg3 - min) / span) * 58;
-                    return <circle key={pt.id} cx={x} cy={y} r="3.5" fill={theme.primary} />;
-                  })}
-                </svg>
-              ) : (
-                <div style={{ minHeight: 76, display: "grid", placeItems: "center", fontSize: 11, color: theme.textSoft }}>Pas encore assez de sessions valides pour tracer la progression.</div>
-              )}
-            </div>
-          </div>
+        {/* PROGRESSION — même rendu que StatsHub X01 Multi */}
+        <section style={{ marginBottom: 16 }}>
+          <X01MultiStatsSparkline matches={onlineVisualMatches as any} />
         </section>
 
-        {/* RADAR HITS */}
-        <section
-          style={{
-            marginBottom: 16,
-          }}
-        >
-          <div className="online-section-card">
-            <div className="online-section-title">
-              {t("stats_online.radar.title", "RADAR HITS")}
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                borderRadius: 18,
-                padding: 12,
-                minHeight: 150,
-                background: "radial-gradient(circle, rgba(34,230,255,.13), transparent 60%), #08080e",
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-              }}
-            >
-              {radarItems.map((it) => {
-                const maxRadar = Math.max(1, ...radarItems.map((x) => x.value));
-                const w = Math.round((it.value / maxRadar) * 100);
-                return (
-                  <div key={it.label} style={{ display: "grid", gap: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900 }}>
-                      <span>{it.label}</span><span>{it.value}</span>
-                    </div>
-                    <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                      <div style={{ width: `${w}%`, height: "100%", borderRadius: 999, background: theme.primary, boxShadow: `0 0 12px ${theme.primary}` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        {/* RADAR HITS — même rendu que StatsHub X01 Multi */}
+        <section style={{ marginBottom: 16 }}>
+          <X01MultiStatsRadar matches={onlineVisualMatches as any} />
         </section>
 
-        {/* HITS PAR SEGMENT */}
-        <section
-          style={{
-            marginBottom: 16,
-          }}
-        >
-          <div className="online-section-card">
-            <div className="online-section-title">
-              {t("stats_online.segment.title", "HITS PAR SEGMENT")}
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                borderRadius: 18,
-                padding: 12,
-                minHeight: 120,
-                background: "#08080e",
-                display: "grid",
-                gap: 9,
-              }}
-            >
-              {segmentItems.map((it) => (
-                <div key={it.label} style={{ display: "grid", gridTemplateColumns: "46px 1fr 34px", gap: 8, alignItems: "center", fontSize: 11.5 }}>
-                  <strong>{it.label}</strong>
-                  <div style={{ height: 10, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                    <div style={{ width: `${Math.round((it.value / maxSegment) * 100)}%`, height: "100%", background: theme.primary, borderRadius: 999, boxShadow: `0 0 10px ${theme.primary}` }} />
-                  </div>
-                  <strong style={{ textAlign: "right" }}>{it.value}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* HITS PAR SEGMENT — même rendu que StatsHub X01 Multi */}
+        <section style={{ marginBottom: 16 }}>
+          <X01MultiStatsHitsBySegment matches={onlineVisualMatches as any} />
         </section>
 
         {/* DERNIÈRES SESSIONS */}
