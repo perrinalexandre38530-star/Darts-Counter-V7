@@ -16,6 +16,7 @@ import {
   restoreNasDeletedMemorySlot,
   scanLocalStorageAndIndexedDb,
   summarizeVaultPayload,
+  getVaultCurrentUserId,
   type MemorySlot,
   type NasSlot,
   type StorageBlock,
@@ -348,6 +349,12 @@ function fmtBytes(bytes?: number | null) {
   if (b < 1024) return `${b} o`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} ko`;
   return `${(b / 1024 / 1024).toFixed(2)} Mo`;
+}
+
+function shortId(value?: string | null) {
+  const s = String(value || "").trim();
+  if (!s) return "—";
+  return s.length <= 12 ? s : `${s.slice(0, 6)}…${s.slice(-4)}`;
 }
 
 function fmtDate(value?: string | null) {
@@ -799,6 +806,7 @@ export default function StorageVaultPage({ go }: Props) {
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
+    setAccountScopeId(getVaultCurrentUserId());
     try {
       const [ls, nsRaw, trashRaw, bs, localMatches, nasMatches] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
@@ -853,7 +861,8 @@ export default function StorageVaultPage({ go }: Props) {
       const validNas = checkedNas.filter((slot) => isRestorable(slot.summary)).length;
       const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
       const hidden = Math.max(0, nsRaw.length - checkedNas.length);
-      setMessage(`${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Affichage simple : la dernière sauvegarde NAS reste visible, les anciennes sont dans l’onglet Archives, la corbeille contient ${checkedTrashNas.length} emplacement(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
+      const accountHint = getVaultCurrentUserId() ? `Compte isolé : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes utilisateur sont masquées.";
+      setMessage(`${accountHint} ${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Affichage simple : la dernière sauvegarde NAS reste visible, les anciennes sont dans l’onglet Archives, la corbeille contient ${checkedTrashNas.length} emplacement(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). Les blocs locaux d’un autre compte sont maintenant masqués. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
     } catch (error: any) {
       setMessage(`Erreur scan : ${error?.message || error}`);
     } finally {
@@ -1144,6 +1153,9 @@ ${label}`)) return;
               <div style={{ color: gold, fontWeight: 1000, fontSize: 25, lineHeight: 1.05, letterSpacing: ".04em", textShadow: "0 0 18px color-mix(in srgb, var(--dc-accent, #d9ff33) 80%, transparent)", ...wrapText }}>SAUVEGARDE</div>
               <div style={{ color: "#cbd5e1", fontSize: 11, marginTop: 4, ...wrapText }}>Carte mémoire de l’application</div>
               <div style={{ color: muted, fontSize: 11, ...wrapText }}>On n’affiche que les emplacements restaurables.</div>
+              <div style={{ color: accountScopeId ? green : red, fontSize: 11, marginTop: 3, fontWeight: 900, ...wrapText }}>
+                Compte sauvegarde : {accountScopeId ? shortId(accountScopeId) : "aucun compte connecté"}
+              </div>
             </div>
             <button
               style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: neon, color: neon, boxShadow: "0 0 16px color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 22%, transparent)" }}

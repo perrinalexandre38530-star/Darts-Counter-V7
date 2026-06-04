@@ -90,7 +90,7 @@ import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
    - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
-import { loadStore, scopedStorageKey } from "./storage";
+import { getStorageUser, loadStore, scopedStorageKey } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
@@ -611,7 +611,15 @@ function scheduleCloudSnapshotPush(reason: string) {
 ========================= */
 const LSK = "dc-history-v1"; // ancien storage (migration + fallback)
 const scopedHistoryLsKey = () => scopedStorageKey(LSK);
-const DB_NAME = "dc-store-v1";
+const HISTORY_DB_BASE = "dc-store-v1";
+function historyDbName(): string {
+  try {
+    const uid = getStorageUser();
+    return uid ? `${HISTORY_DB_BASE}:${uid}` : HISTORY_DB_BASE;
+  } catch {
+    return HISTORY_DB_BASE;
+  }
+}
 const DB_VER = 3; // ⬅ split header/detail stores
 const STORE_LEGACY = "history";
 const STORE_HEADERS = "history_headers";
@@ -1303,7 +1311,7 @@ function openDB(): Promise<IDBDatabase> {
       fail(new Error("[history] openDB timeout (IndexedDB blocked?)"));
     }, 1500);
 
-    const req = indexedDB.open(DB_NAME, DB_VER);
+    const req = indexedDB.open(historyDbName(), DB_VER);
 
     req.onupgradeneeded = () => {
       try {
