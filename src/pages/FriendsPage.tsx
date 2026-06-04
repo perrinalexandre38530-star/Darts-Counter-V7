@@ -41,8 +41,9 @@ import type { OnlineLobby } from "../lib/onlineApi";
 import type { OnlineMatch } from "../lib/onlineTypes";
 import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
-import DartSetSelector from "../components/DartSetSelector";
+import BackDot from "../components/BackDot";
 import ProfileAvatar from "../components/ProfileAvatar";
+import { getDartSetsForProfile, type DartSet } from "../lib/dartSetsStore";
 import {
   listFriends,
   listFriendRequests,
@@ -950,7 +951,7 @@ function ShareDetailsModal({
    Objectif: conserver la page historique et restructurer l'affichage
    sans supprimer les blocs existants.
 --------------------------------------------------*/
-type OnlineMainTab = "hub" | "friends" | "requests" | "shares" | "play" | "activity";
+type OnlineMainTab = "hub" | "friends" | "requests" | "shares" | "play" | "activity" | "official";
 
 type OnlineTabSpec = {
   id: OnlineMainTab;
@@ -1102,6 +1103,232 @@ function saveSelectedOnlineMode(mode: OnlineGameModeId) {
 }
 
 
+function sortOnlineDartSetsForPicker(list: DartSet[]): DartSet[] {
+  return (Array.isArray(list) ? list : [])
+    .slice()
+    .sort((a: any, b: any) => {
+      const favA = a?.isFavorite ? 1 : 0;
+      const favB = b?.isFavorite ? 1 : 0;
+      if (favA !== favB) return favB - favA;
+      const usageA = Number(a?.usageCount || 0);
+      const usageB = Number(b?.usageCount || 0);
+      if (usageA !== usageB) return usageB - usageA;
+      return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+}
+
+function getOnlineDartSetThumbSrc(set: any): string | null {
+  if (!set) return null;
+  const candidates = [
+    set.thumbImageUrl,
+    set.mainImageUrl,
+    set.photoThumbDataUrl,
+    set.thumbDataUrl,
+    set.thumbImageDataUrl,
+    set.photoDataUrl,
+    set.imageDataUrl,
+    set.mainImageDataUrl,
+    set.dartSetImageDataUrl,
+    set.thumb,
+    set.imageUrl,
+    set.image,
+    set.previewImageUrl,
+    set.preview,
+  ];
+  for (const raw of candidates) {
+    const v = typeof raw === "string" ? raw.trim() : "";
+    if (v) return v;
+  }
+  return null;
+}
+
+function OnlineDartSetPickerOverlay({
+  open,
+  profileId,
+  value,
+  accent,
+  onClose,
+  onChange,
+}: {
+  open: boolean;
+  profileId?: string | null;
+  value?: string | null;
+  accent: string;
+  onClose: () => void;
+  onChange: (id: string | null) => void;
+}) {
+  const [sets, setSets] = React.useState<DartSet[]>([]);
+
+  React.useEffect(() => {
+    if (!open || !profileId) return;
+    try {
+      setSets(sortOnlineDartSetsForPicker(getDartSetsForProfile(profileId) || []));
+    } catch {
+      setSets([]);
+    }
+  }, [open, profileId]);
+
+  if (!open || !profileId) return null;
+
+  const selectSet = (id: string | null) => {
+    onChange(id);
+    onClose();
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,.70)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 14,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(92vw, 430px)",
+          maxHeight: "78vh",
+          overflow: "hidden",
+          borderRadius: 24,
+          border: `1px solid ${accent}66`,
+          background: "linear-gradient(180deg, rgba(16,18,32,.98), rgba(5,6,13,.98))",
+          boxShadow: `0 0 34px ${accent}44, 0 24px 70px rgba(0,0,0,.75)`,
+          padding: 14,
+          color: "#fff",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+          <div style={{ color: accent, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", fontSize: 15 }}>
+            Choisir mon dartset
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "1px solid rgba(255,255,255,.16)",
+              background: "rgba(255,255,255,.06)",
+              color: "#fff",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+            maxHeight: "calc(78vh - 86px)",
+            overflowY: "auto",
+            paddingRight: 2,
+          }}
+          className="dc-scroll-thin"
+        >
+          <button
+            type="button"
+            onClick={() => selectSet(null)}
+            style={{
+              borderRadius: 18,
+              border: !value ? `2px solid ${accent}` : "1px solid rgba(255,255,255,.12)",
+              background: !value ? `radial-gradient(circle at 50% 0%, ${accent}30, rgba(12,13,23,.98))` : "rgba(255,255,255,.04)",
+              color: "#fff",
+              minHeight: 106,
+              padding: 8,
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 28 }}>⛔</span>
+            <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>Aucun set</span>
+          </button>
+
+          {sets.map((set: any) => {
+            const thumb = getOnlineDartSetThumbSrc(set);
+            const selected = String(set?.id) === String(value || "");
+            return (
+              <button
+                key={set.id}
+                type="button"
+                onClick={() => selectSet(set.id)}
+                style={{
+                  position: "relative",
+                  borderRadius: 18,
+                  border: selected ? `2px solid ${accent}` : "1px solid rgba(255,255,255,.12)",
+                  background: selected ? `radial-gradient(circle at 50% 0%, ${accent}30, rgba(12,13,23,.98))` : "rgba(255,255,255,.04)",
+                  color: "#fff",
+                  padding: 8,
+                  cursor: "pointer",
+                  boxShadow: selected ? `0 0 18px ${accent}55` : "0 10px 22px rgba(0,0,0,.35)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 7,
+                  minWidth: 0,
+                }}
+              >
+                {set?.isFavorite ? (
+                  <span style={{ position: "absolute", top: 6, left: 8, color: "#ffd76a", textShadow: "0 0 10px #ffd76a" }}>★</span>
+                ) : null}
+                <span
+                  style={{
+                    width: "100%",
+                    aspectRatio: "1 / 1",
+                    borderRadius: 15,
+                    overflow: "hidden",
+                    background: set?.bgColor || "rgba(255,255,255,.06)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {thumb ? <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 26 }}>🎯</span>}
+                </span>
+                <span
+                  style={{
+                    width: "100%",
+                    fontSize: 10,
+                    fontWeight: 900,
+                    lineHeight: 1.1,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {set?.name || "SET"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function OnlineTabIcon({ id, size = 30, color = "currentColor" }: { id: OnlineMainTab; size?: number; color?: string }) {
   const common = { fill: "none", stroke: color, strokeWidth: 2.15, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   return (
@@ -1112,6 +1339,7 @@ function OnlineTabIcon({ id, size = 30, color = "currentColor" }: { id: OnlineMa
       {id === "requests" ? <><path {...common} d="M4 7h16v11H4z" /><path {...common} d="m4 8 8 5.7L20 8" /></> : null}
       {id === "shares" ? <><path {...common} d="M7 17h10" /><path {...common} d="M8 17V9h8v8" /><path {...common} d="M10 9V6h4v3" /><path {...common} d="M12 12v3" /><path {...common} d="M10.5 13.5h3" /></> : null}
       {id === "activity" ? <><path {...common} d="M5 19V9" /><path {...common} d="M12 19V5" /><path {...common} d="M19 19v-7" /><path {...common} d="M3.5 19.5h17" /></> : null}
+      {id === "official" ? <><path {...common} d="M8 21h8" /><path {...common} d="M12 17v4" /><path {...common} d="M7 4h10v4a5 5 0 0 1-10 0V4Z" /><path {...common} d="M7 6H4a3 3 0 0 0 3 3" /><path {...common} d="M17 6h3a3 3 0 0 1-3 3" /></> : null}
     </svg>
   );
 }
@@ -1257,6 +1485,166 @@ type Props = {
   go: (tab: any, params?: any) => void;
   initialOnlineTab?: OnlineMainTab;
 };
+
+
+function OfficialCompetitionsPanel({
+  rating,
+  matches,
+  country,
+  goPlay,
+}: {
+  rating: number;
+  matches: number;
+  country?: string | null;
+  goPlay: () => void;
+}) {
+  const safeCountry = String(country || "").trim() || "pays du profil";
+  const leagueSize = 32;
+  const seasonWeeks = 8;
+  const divisions = [
+    {
+      id: "world",
+      label: "Compétition mondiale",
+      icon: "🌍",
+      scope: "Monde entier",
+      desc: "Classement global X01 501 Double Out, divisions alimentées avec tous les inscrits.",
+    },
+    {
+      id: "continent",
+      label: "Compétition continent",
+      icon: "🧭",
+      scope: "Auto selon ton pays",
+      desc: "Affectation automatique par continent à partir du pays choisi dans le profil.",
+    },
+    {
+      id: "country",
+      label: "Compétition par pays",
+      icon: "🏳️",
+      scope: safeCountry,
+      desc: "Ligues nationales créées automatiquement. Si une ligue est pleine, une nouvelle division du même niveau est ouverte.",
+    },
+  ];
+
+  const leagues = [
+    { id: "bronze", name: "Bronze", range: "0–39 Avg3D", required: 0, promote: "Top 6", relegate: "—" },
+    { id: "silver", name: "Argent", range: "40–54 Avg3D", required: 40, promote: "Top 5", relegate: "Bottom 5" },
+    { id: "gold", name: "Or", range: "55–69 Avg3D", required: 55, promote: "Top 4", relegate: "Bottom 5" },
+    { id: "elite", name: "Élite", range: "70+ Avg3D", required: 70, promote: "Finales", relegate: "Bottom 6" },
+  ];
+  const current = leagues.slice().reverse().find((l) => rating >= l.required) || leagues[0];
+
+  const rules = [
+    `Divisions de ${leagueSize} joueurs maximum par ligue.`,
+    `Inscription ouverte à tout moment : placement automatique selon Avg3D Online.`,
+    `Saison de ${seasonWeeks} semaines, X01 501 Double Out fixe.`,
+    "Victoire 3 pts · défaite 0 pt · forfait -1 pt.",
+    "Départage : différence de legs, Avg3D, checkout %, meilleur CO.",
+    "Montées/descentes automatiques à la fin de saison selon le rang.",
+  ];
+
+  return (
+    <>
+      <SectionTitle
+        title="Compétitions officielles"
+        subtitle="Mondiale · Continent · Pays — ligues X01 501 Double Out automatisées"
+        right={<Pill label={`Ta ligue : ${current.name}`} tone="blue" />}
+      />
+
+      <NeonCard style={{ marginTop: 10, padding: 12 }}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              border: "1px solid rgba(var(--online-accent-rgb),.36)",
+              background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.16), rgba(0,0,0,.30))",
+              boxShadow: "0 0 22px rgba(var(--online-accent-rgb),.14)",
+            }}
+          >
+            <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15 }}>
+              Placement automatique : Ligue {current.name}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 12, opacity: 0.84, lineHeight: 1.35 }}>
+              Base de calcul : Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s) compté(s).
+              Les compétitions utilisent ton pays de profil pour t’inscrire automatiquement au bon continent et au bon pays.
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            {divisions.map((scope) => (
+              <div
+                key={scope.id}
+                style={{
+                  borderRadius: 16,
+                  padding: 10,
+                  border: "1px solid rgba(var(--online-accent-rgb),.24)",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.09), rgba(0,0,0,.22))",
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 18 }}>{scope.icon}</div>
+                <div style={{ marginTop: 5, color: "#fff", fontWeight: 1000, fontSize: 11.5, lineHeight: 1.12 }}>{scope.label}</div>
+                <div style={{ marginTop: 4, color: "var(--online-accent)", fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{scope.scope}</div>
+                <div style={{ marginTop: 6, fontSize: 10.5, opacity: 0.74, lineHeight: 1.25 }}>{scope.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+            {leagues.map((league) => {
+              const unlocked = rating >= league.required || league.required === 0;
+              const active = league.id === current.id;
+              return (
+                <div
+                  key={league.id}
+                  style={{
+                    borderRadius: 16,
+                    padding: 10,
+                    border: active ? "1px solid var(--online-accent)" : "1px solid rgba(var(--online-accent-rgb),.20)",
+                    background: active
+                      ? "linear-gradient(180deg, rgba(var(--online-accent-rgb),.18), rgba(0,0,0,.28))"
+                      : "linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.18))",
+                    boxShadow: active ? "0 0 18px rgba(var(--online-accent-rgb),.24)" : "none",
+                    opacity: unlocked ? 1 : 0.58,
+                  }}
+                >
+                  <div style={{ color: active ? "var(--online-accent)" : "#f5f5f7", fontWeight: 1000, fontSize: 12.5 }}>Ligue {league.name}</div>
+                  <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 900, opacity: 0.75 }}>{league.range}</div>
+                  <div style={{ marginTop: 6, display: "grid", gap: 3, fontSize: 10.5, lineHeight: 1.22, opacity: 0.8 }}>
+                    <span>👥 {leagueSize} joueurs max / division</span>
+                    <span>⬆️ Montée : {league.promote}</span>
+                    <span>⬇️ Descente : {league.relegate}</span>
+                  </div>
+                  <div style={{ marginTop: 7 }}>
+                    <Pill label={active ? "Ta ligue" : unlocked ? "Accessible" : "Verrouillée"} tone={active || unlocked ? "blue" : "gray"} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 10,
+              border: "1px solid rgba(var(--online-accent-rgb),.22)",
+              background: "rgba(255,255,255,.035)",
+              fontSize: 11.5,
+              lineHeight: 1.35,
+              opacity: 0.9,
+              display: "grid",
+              gap: 5,
+            }}
+          >
+            {rules.map((rule) => <div key={rule}>• {rule}</div>)}
+          </div>
+
+          <PrimaryButton label="🏆 S'inscrire / jouer une ligue officielle" subLabel="Mondiale · Continent · Pays" onClick={goPlay} />
+        </div>
+      </NeonCard>
+    </>
+  );
+}
 
 export default function FriendsPage({ store, update, go, initialOnlineTab }: Props) {
   const { theme } = useTheme();
@@ -2278,6 +2666,20 @@ const doLogout = React.useCallback(async () => {
   const onlineLeagueLabel = activeSportId === "darts" ? "X01 501 · Dbl.Out" : activeSportId.toUpperCase();
   const onlineRankLabel = sortedMatches.length > 0 ? `#${Math.max(1, Math.min(999, 1000 - sortedMatches.length))}` : "—";
   const activeDartSetId = String((activeProfile as any)?.dartSetId || (activeProfile as any)?.activeDartSetId || (activeProfile as any)?.favoriteDartSetId || "").trim();
+  const onlineProfileDartSets = React.useMemo(() => {
+    const profileId = String((activeProfile as any)?.id || "").trim();
+    if (!profileId) return [] as DartSet[];
+    try {
+      return sortOnlineDartSetsForPicker(getDartSetsForProfile(profileId) || []);
+    } catch {
+      return [] as DartSet[];
+    }
+  }, [(activeProfile as any)?.id, activeDartSetId]);
+  const activeOnlineDartSet = React.useMemo(
+    () => onlineProfileDartSets.find((set: any) => String(set?.id || "") === String(activeDartSetId || "")) || null,
+    [onlineProfileDartSets, activeDartSetId]
+  );
+  const activeOnlineDartSetThumb = getOnlineDartSetThumbSrc(activeOnlineDartSet);
 
   function handlePickOnlineDartSet(dartSetId: string | null) {
     const profileId = String((activeProfile as any)?.id || "").trim();
@@ -2324,6 +2726,14 @@ const doLogout = React.useCallback(async () => {
         tone: lobby?.code ? "gold" : "blue",
       },
       {
+        id: "official",
+        label: "Officiel",
+        icon: "🏆",
+        hint: "",
+        badge: "Ligues",
+        tone: "blue",
+      },
+      {
         id: "friends",
         label: "Amis",
         icon: "👥",
@@ -2356,9 +2766,8 @@ const doLogout = React.useCallback(async () => {
         tone: "orange",
       },
     ],
-    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, lobbyModeSpec.shortLabel, selectedOnlineModeSpec.shortLabel, sortedMatches.length]
+    [serverState, onlineFriends.length, incomingRequests.length, outgoingRequests.length, unreadSharesCount, incomingShares.length, lobby, selectedOnlineModeSpec.shortLabel, sortedMatches.length]
   );
-
   React.useEffect(() => {
     if (activeSportId === "babyfoot") {
       setActiveOnlineTab("play");
@@ -2375,6 +2784,7 @@ const doLogout = React.useCallback(async () => {
   const showSharesTab = activeOnlineTab === "shares";
   const showPlayTab = activeOnlineTab === "play";
   const showActivityTab = activeOnlineTab === "activity";
+  const showOfficialTab = activeOnlineTab === "official";
 
   if (!ready) {
     return (
@@ -2406,26 +2816,43 @@ const doLogout = React.useCallback(async () => {
           marginBottom: 12,
         }}
       >
-        {/* ===== HEADER TITRE ===== */}
+        {/* ===== HEADER TITRE CENTRÉ : BackDot / ONLINE / InfoDot ===== */}
         <div
           className="online-header"
           style={{
             position: "relative",
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
+            display: "grid",
+            gridTemplateColumns: "46px minmax(0, 1fr) 46px",
+            alignItems: "start",
+            gap: 10,
           }}
         >
-          <div className="online-title" style={{ minWidth: 0 }}>
+          <BackDot
+            title="Retour"
+            size={42}
+            color={onlineAccent}
+            glow={`rgba(${onlineAccentRgb},.55)`}
+            onClick={() => {
+              try {
+                if (typeof window !== "undefined" && window.history.length > 1) {
+                  window.history.back();
+                  return;
+                }
+              } catch {}
+              go("home" as any);
+            }}
+          />
+
+          <div className="online-title" style={{ minWidth: 0, textAlign: "center" }}>
             <h1
               style={{
                 margin: 0,
                 fontSize: 30,
                 fontWeight: 1000,
                 color: "var(--online-accent)",
-                textShadow: "0 0 18px rgba(var(--online-accent-rgb),.22)",
+                textShadow: "0 0 18px rgba(var(--online-accent-rgb),.38)",
                 lineHeight: 1.0,
+                letterSpacing: ".4px",
               }}
             >
               ONLINE
@@ -2439,7 +2866,9 @@ const doLogout = React.useCallback(async () => {
             </span>
           </div>
 
-          <InfoDot onClick={() => setShowInfo((v) => !v)} active={showInfo} />
+          <div style={{ justifySelf: "end" }}>
+            <InfoDot onClick={() => setShowInfo((v) => !v)} active={showInfo} />
+          </div>
         </div>
 
         {showInfo ? (
@@ -2514,8 +2943,8 @@ const doLogout = React.useCallback(async () => {
 
               <button
                 type="button"
-                title={activeDartSetId ? `Dartset ${activeDartSetId}` : "Choisir mon dartset"}
-                onClick={() => setShowDartSetPicker((v) => !v)}
+                title={activeOnlineDartSet ? `Dartset : ${(activeOnlineDartSet as any)?.name || "sélectionné"}` : "Choisir mon dartset"}
+                onClick={() => setShowDartSetPicker(true)}
                 style={{
                   position: "absolute",
                   left: 0,
@@ -2531,9 +2960,14 @@ const doLogout = React.useCallback(async () => {
                   fontSize: 18,
                   boxShadow: "0 0 16px rgba(var(--online-accent-rgb),.35)",
                   cursor: "pointer",
+                  overflow: "hidden",
                 }}
               >
-                🎯
+                {activeOnlineDartSetThumb ? (
+                  <img src={activeOnlineDartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <span aria-hidden>🎯</span>
+                )}
               </button>
 
               <div
@@ -2632,42 +3066,15 @@ const doLogout = React.useCallback(async () => {
               </div>
             ) : null}
 
-            {showDartSetPicker && activeProfile ? (
-              <div
-                style={{
-                  width: "100%",
-                  borderRadius: 16,
-                  border: "1px solid rgba(var(--online-accent-rgb),.42)",
-                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.13), rgba(0,0,0,.62))",
-                  padding: 10,
-                  boxShadow: "0 14px 34px rgba(0,0,0,.52), 0 0 22px rgba(var(--online-accent-rgb),.18)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                  <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 12.5 }}>CHOISIR MON DARTSET</div>
-                  <button
-                    type="button"
-                    onClick={() => setShowDartSetPicker(false)}
-                    style={{
-                      border: "1px solid rgba(var(--online-accent-rgb),.32)",
-                      background: "rgba(0,0,0,.28)",
-                      color: "var(--online-accent)",
-                      borderRadius: 999,
-                      padding: "4px 8px",
-                      fontWeight: 1000,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <DartSetSelector
-                  profileId={String((activeProfile as any)?.id || "")}
-                  value={activeDartSetId || null}
-                  onChange={handlePickOnlineDartSet}
-                />
-              </div>
-            ) : null}
+            <OnlineDartSetPickerOverlay
+              open={showDartSetPicker}
+              profileId={String((activeProfile as any)?.id || "")}
+              value={activeDartSetId || null}
+              accent={onlineAccent}
+              onClose={() => setShowDartSetPicker(false)}
+              onChange={handlePickOnlineDartSet}
+            />
+
           </div>
         </div>
       </NeonCard>
@@ -2777,6 +3184,15 @@ const doLogout = React.useCallback(async () => {
             </div>
           </NeonCard>
         </>
+      ) : null}
+
+      {showOfficialTab ? (
+        <OfficialCompetitionsPanel
+          rating={Number(onlineRatingValue || 0)}
+          matches={sortedMatches.length}
+          country={countryRaw}
+          goPlay={() => setActiveOnlineTab("play")}
+        />
       ) : null}
 
       {/* ================= AMIS / PARTAGE ================= */}
