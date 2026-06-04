@@ -1,6 +1,5 @@
 import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
-import { getStorageUser } from "./storage";
 
 const DB_NAME = "dc-match-backups-v1";
 const DB_VERSION = 1;
@@ -11,8 +10,6 @@ export type MatchBackupOrigin = "local" | "nas";
 
 export type MatchBackupItem = {
   id: string;
-  /** Compte propriétaire de la sauvegarde locale. Empêche un autre compte du même navigateur de la voir/restaurer. */
-  ownerId?: string | null;
   matchId: string;
   origin?: MatchBackupOrigin;
   sport: string;
@@ -35,31 +32,6 @@ export type MatchBackupItem = {
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function currentOwnerId(): string | null {
-  try {
-    const direct = getStorageUser();
-    if (direct) return String(direct);
-  } catch {}
-  try {
-    const raw = localStorage.getItem("dc_user_id") || localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_online_auth_supabase_v1") || "";
-    if (!raw) return null;
-    if (raw.startsWith("{") || raw.startsWith("[")) {
-      const parsed = JSON.parse(raw);
-      return String(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || "").trim() || null;
-    }
-    return String(raw).trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-function backupBelongsToCurrentUser(item: any): boolean {
-  const uid = currentOwnerId();
-  const owner = String(item?.ownerId || item?.userId || item?.user_id || "").trim();
-  if (!uid) return !owner;
-  return owner === uid;
 }
 
 function safeString(value: any, fallback = ""): string {
@@ -247,7 +219,7 @@ async function trimLocalMatchBackups(): Promise<void> {
 export async function saveLocalMatchBackup(item: MatchBackupItem): Promise<void> {
   await txStore("readwrite", async (store) => {
     await new Promise<void>((resolve, reject) => {
-      const req = store.put({ ...item, ownerId: item.ownerId || currentOwnerId(), origin: "local" });
+      const req = store.put({ ...item, origin: "local" });
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
@@ -263,8 +235,8 @@ export async function listLocalMatchBackups(): Promise<MatchBackupItem[]> {
       req.onerror = () => resolve([]);
     });
     return rows
-      .filter((r) => r?.matchId && r?.payloadCompressed && backupBelongsToCurrentUser(r))
-      .map((r) => ({ ...r, ownerId: r.ownerId || currentOwnerId(), origin: "local" as const }))
+      .filter((r) => r?.matchId && r?.payloadCompressed)
+      .map((r) => ({ ...r, origin: "local" as const }))
       .sort((a, b) => Date.parse(b.savedAt || "") - Date.parse(a.savedAt || ""));
   }).catch(() => []);
 }
@@ -273,10 +245,7 @@ export async function getLocalMatchBackup(id: string): Promise<MatchBackupItem |
   return txStore("readonly", async (store) => {
     return await new Promise<MatchBackupItem | null>((resolve) => {
       const req = store.get(String(id || ""));
-      req.onsuccess = () => {
-        const row = req.result;
-        resolve(row && backupBelongsToCurrentUser(row) ? { ...row, origin: "local" } : null);
-      };
+      req.onsuccess = () => resolve(req.result ? { ...req.result, origin: "local" } : null);
       req.onerror = () => resolve(null);
     });
   }).catch(() => null);

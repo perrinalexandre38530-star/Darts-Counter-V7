@@ -32,28 +32,8 @@ export interface GameEvent {
   synced: boolean;
 }
 
-const EVENTS_DB_BASE = "dc-events-v1";
+const DB_NAME = "dc-events-v1";
 const DB_VER = 1;
-
-function detectEventScopeUserId(): string | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || localStorage.getItem("dc_online_auth_supabase_v1") || "";
-    if (!raw) return null;
-    if (raw.startsWith("{") || raw.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(raw);
-        return String(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || "").trim() || null;
-      } catch { return null; }
-    }
-    return String(raw).trim() || null;
-  } catch { return null; }
-}
-
-function eventsDbName(): string {
-  const uid = detectEventScopeUserId();
-  return uid ? `${EVENTS_DB_BASE}:${uid}` : EVENTS_DB_BASE;
-}
 const STORE = "events";
 
 function canUseWindow(): boolean {
@@ -71,7 +51,7 @@ function openDb(): Promise<IDBDatabase> {
       return;
     }
 
-    const req = indexedDB.open(eventsDbName(), DB_VER);
+    const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {

@@ -1730,7 +1730,7 @@ function OfficialCompetitionsPanel({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 11, lineHeight: 1.25 }}>
             <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs`} />
             <RuleChip title="Saison" value={`${getOfficialLeagueSeasonWeeks(Math.max(rules.minPlayers, countOfficialDivisionPlayers(meta.tier.id, meta.division, safeCountry)))} semaines max`} />
-            <RuleChip title="Points" value={`2-0 +${rules.pointsWinClear} · 2-1 +${rules.pointsWinClose} · 1-2 +${rules.pointsLossClose} · 0-2 ${rules.pointsLossClear} · Forfait ${rules.pointsForfeit}`} />
+            <div style={{ gridColumn: "1 / -1" }}><RuleChip title="Points" value="Barème par score" /><div style={{ marginTop: 7 }}><OfficialPointsGrid /></div></div>
             <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
           </div>
 
@@ -1781,6 +1781,92 @@ function OfficialCompetitionsPanel({
   );
 }
 
+
+function OfficialPointsGrid() {
+  const rows = [
+    { score: "2–0", label: "Victoire nette", pts: "+4 pts" },
+    { score: "2–1", label: "Victoire serrée", pts: "+3 pts" },
+    { score: "1–2", label: "Défaite accrochée", pts: "+1 pt" },
+    { score: "0–2", label: "Défaite sèche", pts: "0 pt" },
+    { score: "Forfait", label: "Absence / retard", pts: "-3 pts" },
+  ];
+  return (
+    <div style={{ display: "grid", gap: 7 }}>
+      {rows.map((r) => (
+        <div
+          key={r.score}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "54px minmax(0, 1fr) 56px",
+            alignItems: "center",
+            gap: 8,
+            borderRadius: 12,
+            padding: "7px 8px",
+            border: "1px solid rgba(var(--online-accent-rgb),.18)",
+            background: "rgba(255,255,255,.035)",
+            fontSize: 11.5,
+          }}
+        >
+          <b style={{ color: "var(--online-accent)", fontWeight: 1000 }}>{r.score}</b>
+          <span style={{ opacity: 0.86, minWidth: 0 }}>{r.label}</span>
+          <b style={{ textAlign: "right", color: r.pts.startsWith("-") ? "#ff7c8d" : "#fff" }}>{r.pts}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OfficialLeaguePlayerMiniCard({
+  name,
+  status,
+  avg3,
+  rating,
+  badge,
+  avatar,
+}: {
+  name: string;
+  status: string;
+  avg3: number;
+  rating: number;
+  badge: string;
+  avatar?: string | null;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "52px minmax(0, 1fr)",
+        gap: 10,
+        alignItems: "center",
+        borderRadius: 16,
+        padding: 10,
+        border: "1px solid rgba(var(--online-accent-rgb),.22)",
+        background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.10), rgba(255,255,255,.035))",
+      }}
+    >
+      <div style={{ position: "relative", width: 52, height: 52 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 999, overflow: "hidden", border: "2px solid var(--online-accent)", boxShadow: "0 0 16px rgba(var(--online-accent-rgb),.35)", background: "rgba(var(--online-accent-rgb),.13)", display: "grid", placeItems: "center", fontWeight: 1000 }}>
+          {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : name.slice(0, 2).toUpperCase()}
+        </div>
+        <div style={{ position: "absolute", right: -4, bottom: -4, width: 22, height: 22, borderRadius: 999, background: "#06101b", border: "1px solid rgba(var(--online-accent-rgb),.45)", display: "grid", placeItems: "center" }}>
+          <LeagueBadgeIcon src={badge} size={17} />
+        </div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <b style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</b>
+          <span style={{ borderRadius: 999, padding: "3px 8px", border: "1px solid rgba(72,255,164,.35)", background: "rgba(72,255,164,.12)", color: "#91ffc2", fontSize: 10, fontWeight: 900 }}>{status}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, marginTop: 8, fontSize: 10.5 }}>
+          <span><b style={{ color: "var(--online-accent)" }}>Avg3D</b><br />{avg3 > 0 ? avg3.toFixed(1) : "—"}</span>
+          <span><b style={{ color: "var(--online-accent)" }}>Rating</b><br />{rating > 0 ? rating.toFixed(1) : "—"}</span>
+          <span><b style={{ color: "var(--online-accent)" }}>Pts</b><br />0</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RuleChip({ title, value }: { title: string; value: string }) {
   return (
     <div
@@ -1825,8 +1911,9 @@ function OfficialLeagueFullScreen({
   const safeCountry = String(country || "").trim() || "France";
   const meta = getOfficialLeagueMeta(rating, matches, safeCountry);
   const rules = OFFICIAL_LEAGUE_RULES;
+  const onlineRatingValue = Math.max(0.5, Math.min(1.5, 1 + ((matches > 0 ? 0.5 : 0.5) - 0.5)));
   const tabs: { id: OfficialLeagueSubTab; label: string; icon: string }[] = [
-    { id: "resume", label: "Résumé", icon: "⚡" },
+    { id: "resume", label: "Salon", icon: "⚡" },
     { id: "calendar", label: "Calendrier", icon: "📅" },
     { id: "results", label: "Résultats", icon: "✅" },
     { id: "ranking", label: "Classement", icon: "🏆" },
@@ -1960,7 +2047,7 @@ function OfficialLeagueFullScreen({
                 <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 16 }}>Règles officielles</div>
                 <RuleChip title="Format" value={rules.matchFormat} />
                 <RuleChip title="Division" value={`${rules.minPlayers} à ${rules.maxPlayers} joueurs · nouvelle division si complète`} />
-                <RuleChip title="Points" value={`2-0 +${rules.pointsWinClear} · 2-1 +${rules.pointsWinClose} · 1-2 +${rules.pointsLossClose} · 0-2 ${rules.pointsLossClear} · Forfait ${rules.pointsForfeit}`} />
+                <div style={{ gridColumn: "1 / -1" }}><RuleChip title="Points" value="Barème par score" /><div style={{ marginTop: 7 }}><OfficialPointsGrid /></div></div>
                 <RuleChip title="Retard / forfait" value="5 min = forfait automatique · 3 forfaits = radiation" />
                 <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
                 <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
@@ -1976,15 +2063,54 @@ function OfficialLeagueFullScreen({
 
       {tab === "resume" ? (
         <>
-          <SectionTitle title="Résumé joueur" subtitle="Ce qui te concerne dans cette ligue." />
+          <SectionTitle title="Salon Ligue" subtitle="Statut de la division, joueurs inscrits et prochain match." />
           <NeonCard style={{ marginTop: 10 }}>
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <RuleChip title="Classement" value="—" />
-                <RuleChip title="Points" value="0" />
-                <RuleChip title="Matchs joués" value={`${matches || 0}`} />
-                <RuleChip title="Avg3D Online" value={rating ? rating.toFixed(1) : "—"} />
+            <div style={{ display: "grid", gap: 12 }}>
+              <div
+                style={{
+                  borderRadius: 17,
+                  padding: 12,
+                  border: "1px solid rgba(var(--online-accent-rgb),.28)",
+                  background: "linear-gradient(180deg, rgba(var(--online-accent-rgb),.12), rgba(0,0,0,.22))",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 15 }}>Statut de la ligue</div>
+                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.86 }}>
+                      En attente de joueurs · {Math.max(0, rules.minPlayers - Math.max(1, countOfficialDivisionPlayers(meta.tier.id, meta.division, safeCountry)))} joueur(s) restant(s) pour lancer la saison.
+                    </div>
+                  </div>
+                  <Pill label={`Début prévu : ${getNextOfficialSeasonStart().toLocaleDateString("fr-FR")}`} tone="blue" />
+                </div>
+                <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.35, opacity: 0.82 }}>
+                  Une inscription est définitive. La saison dure {getOfficialLeagueSeasonWeeks(Math.max(rules.minPlayers, countOfficialDivisionPlayers(meta.tier.id, meta.division, safeCountry)))} semaine(s) selon le nombre de joueurs. Forfait ou retard = sanctions officielles.
+                </div>
               </div>
+
+              <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 14 }}>Joueurs de la ligue</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <OfficialLeaguePlayerMiniCard name="Toi" status="Inscrit" avg3={rating} rating={onlineRatingValue || 1} badge={meta.badge} />
+                <OfficialLeaguePlayerMiniCard name="Place ouverte" status="En attente" avg3={0} rating={0} badge={meta.badge} />
+                <OfficialLeaguePlayerMiniCard name="Place ouverte" status="En attente" avg3={0} rating={0} badge={meta.badge} />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => alert("Invitation ligue : sélection d’amis à brancher sur Messenger.")}
+                style={{
+                  border: "1px solid rgba(var(--online-accent-rgb),.38)",
+                  borderRadius: 15,
+                  padding: "11px 12px",
+                  background: "rgba(var(--online-accent-rgb),.12)",
+                  color: "var(--online-accent)",
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                Inviter des amis à rejoindre la ligue
+              </button>
+
               <div style={{ color: "var(--online-accent)", fontWeight: 1000, fontSize: 14 }}>Match à jouer</div>
               {nextMatches.slice(0, 1).map((m) => (
                 <button
@@ -2012,7 +2138,6 @@ function OfficialLeagueFullScreen({
                   </div>
                 </button>
               ))}
-              <OnlineEmptyCard title="Derniers résultats" text="Aucun résultat officiel enregistré pour cette saison." />
             </div>
           </NeonCard>
         </>

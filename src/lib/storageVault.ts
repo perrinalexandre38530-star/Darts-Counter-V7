@@ -1,7 +1,7 @@
 import LZString from "lz-string";
 import { gunzipSync, strFromU8 } from "fflate";
 import { apiDelete, apiGet, apiPost } from "./apiClient";
-import { exportCloudSnapshot, getStorageUser, importCloudSnapshot } from "./storage";
+import { exportCloudSnapshot, importCloudSnapshot } from "./storage";
 import { pushNasAccountSnapshot } from "./manualNasSync";
 
 type AnyRecord = Record<string, any>;
@@ -40,8 +40,6 @@ export type StorageBlock = {
 
 export type MemorySlot = {
   id: string;
-  /** Compte propriétaire du bloc local. Obligatoire pour éviter le mélange entre comptes sur le même navigateur. */
-  ownerId?: string | null;
   createdAt: string;
   updatedAt: string;
   label: string;
@@ -66,85 +64,6 @@ export type NasSlot = {
 const VAULT_DB = "dc_memory_card_v1";
 const VAULT_STORE = "slots";
 const MAX_LOCAL_SLOTS = 10;
-
-
-const STORAGE_USER_LS_KEY = "dc_storage_user_id_v1";
-const AUTH_SESSION_LS_KEY = "dc_online_auth_supabase_v1";
-const FALLBACK_USER_KEYS = ["dc_user_id", STORAGE_USER_LS_KEY, AUTH_SESSION_LS_KEY];
-
-function normalizeOwnerId(value: unknown): string | null {
-  const s = String(value ?? "").trim();
-  return s ? s : null;
-}
-
-function readOwnerIdFromBrowser(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const direct = normalizeOwnerId(getStorageUser());
-    if (direct) return direct;
-  } catch {}
-  try {
-    for (const key of FALLBACK_USER_KEYS) {
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-      if (raw.startsWith("{") || raw.startsWith("[")) {
-        try {
-          const parsed = JSON.parse(raw);
-          const id = normalizeOwnerId(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || parsed?.profile?.userId);
-          if (id) return id;
-        } catch {}
-      } else {
-        const id = normalizeOwnerId(raw);
-        if (id) return id;
-      }
-    }
-  } catch {}
-  return null;
-}
-
-export function getVaultCurrentUserId(): string | null {
-  return readOwnerIdFromBrowser();
-}
-
-function ownerMatchesCurrent(ownerId?: string | null): boolean {
-  const uid = getVaultCurrentUserId();
-  const owner = normalizeOwnerId(ownerId);
-  if (!uid) return !owner;
-  return owner === uid;
-}
-
-function stringContainsCurrentUser(value: string): boolean {
-  const uid = getVaultCurrentUserId();
-  if (!uid) return false;
-  const raw = String(value || "");
-  return raw === uid || raw.endsWith(`:${uid}`) || raw.includes(`:${uid}:`) || raw.includes(uid);
-}
-
-function payloadMentionsCurrentUser(value: any): boolean {
-  const uid = getVaultCurrentUserId();
-  if (!uid || value == null) return false;
-  try {
-    const text = typeof value === "string" ? value : JSON.stringify(value);
-    return text.includes(uid);
-  } catch {
-    return false;
-  }
-}
-
-function localKeyBelongsToCurrentAccount(key: string): boolean {
-  const uid = getVaultCurrentUserId();
-  if (!uid) return false;
-  const raw = String(key || "");
-  if (stringContainsCurrentUser(raw)) return true;
-  // paramètres techniques non restaurables, lisibles par tous les comptes mais non considérés comme backup utilisateur
-  return raw === "dc_api_url" || raw === "dc_api_timeout_ms";
-}
-
-function indexedDbNameBelongsToCurrentAccount(dbName: string): boolean {
-  const uid = getVaultCurrentUserId();
-  if (!uid) return false;
-  return stringContainsCurrentUser(dbName);
-}
 
 function isRecord(value: any): value is AnyRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -325,9 +244,7 @@ async function vaultDelete(id: string): Promise<void> {
 
 export async function listLocalMemorySlots(): Promise<MemorySlot[]> {
   const slots = await vaultGetAll().catch(() => []);
-  return slots
-    .filter((slot: any) => ownerMatchesCurrent(slot?.ownerId))
-    .sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""));
+  return slots.sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""));
 }
 
 export async function createLocalMemorySlot(label = "Bloc local", source: MemorySlot["source"] = "manual"): Promise<MemorySlot> {
@@ -335,7 +252,6 @@ export async function createLocalMemorySlot(label = "Bloc local", source: Memory
   const now = new Date().toISOString();
   const slot: MemorySlot = {
     id: `local_${now.replace(/[^0-9]/g, "")}_${Math.random().toString(16).slice(2, 8)}`,
-    ownerId: getVaultCurrentUserId(),
     createdAt: now,
     updatedAt: now,
     label,
@@ -398,7 +314,6 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
   for (const info of dbs) {
     const name = String(info?.name || "").trim();
     if (!name || name === VAULT_DB) continue;
-    const dbOwned = indexedDbNameBelongsToCurrentAccount(name);
     const db = await new Promise<IDBDatabase | null>((resolve) => {
       try {
         const req = indexedDB.open(name);
@@ -409,9 +324,7 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
     if (!db) continue;
     const stores = Array.from(db.objectStoreNames || []);
     for (const storeName of stores) {
-      const rowsRaw = await readAllFromObjectStore(db, storeName);
-      const rows = rowsRaw.filter((r) => dbOwned || stringContainsCurrentUser(String(r.key || "")) || payloadMentionsCurrentUser(r.value));
-      if (!rows.length) continue;
+      const rows = await readAllFromObjectStore(db, storeName);
       const wholeSummary = summarizeVaultPayload(rows.map((r) => r.value));
       blocks.push({
         id: stableId("idb-store", [name, storeName]),
@@ -457,7 +370,6 @@ export async function scanLocalStorageBlocks(): Promise<StorageBlock[]> {
     for (let i = 0; i < ls.length; i += 1) {
       const key = ls.key(i) || "";
       if (!key) continue;
-      if (!localKeyBelongsToCurrentAccount(key)) continue;
       const value = ls.getItem(key);
       all[key] = tryParse(value);
       const summary = summarizeVaultPayload(all[key]);
