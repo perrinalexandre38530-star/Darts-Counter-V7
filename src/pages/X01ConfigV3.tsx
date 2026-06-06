@@ -16,6 +16,7 @@ import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
@@ -851,6 +852,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   // profileId -> dartSetId (ou null)
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(true);
 
   const handleChangePlayerDartSet = (profileId: string, dartSetId: string | null) => {
     setPlayerDartSets((prev) => ({ ...prev, [profileId]: dartSetId }));
@@ -1160,133 +1162,21 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             </p>
           ) : (
             <>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 18,
-                  overflowX: "auto",
-                  paddingBottom: 12,
-                  marginBottom: 6,
-                  paddingLeft: 24,
-                  paddingRight: 8,
-                  justifyContent: "flex-start",
-                }}
-                className="dc-scroll-thin"
-              >
-                {humanProfiles.map((p) => {
-                  const active = selectedIds.includes(p.id);
-                  const selectedDartSetId = playerDartSets[p.id] ?? null;
-                  const selectedDartSet = selectedDartSetId
-                    ? (getDartSetsForProfile(p.id) || []).find((set: any) => String(set?.id) === String(selectedDartSetId))
-                    : null;
-                  const selectedDartSetThumb = getDartSetThumbSrc(selectedDartSet);
-
-                  const teamId =
-                    matchMode === "teams" ? (teamAssignments[p.id] as TeamId | null) ?? null : null;
-                  const haloColor = teamId ? TEAM_COLORS[teamId] : primary;
-
-                  return (
-                    <div
-                      key={p.id}
-                      role="button"
-                      onClick={() => togglePlayer(p.id)}
-                      style={{
-                        minWidth: 120,
-                        maxWidth: 120,
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 6,
-                        flexShrink: 0,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 78,
-                          height: 78,
-                          borderRadius: "50%",
-                          overflow: "visible",
-                          boxShadow: active ? `0 0 28px ${haloColor}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                          background: active
-                            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${haloColor})`
-                            : "#111320",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          position: "relative",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            borderRadius: "50%",
-                            overflow: "hidden",
-                            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                            opacity: active ? 1 : 0.6,
-                            transition: "filter 0.2s ease, opacity 0.2s ease",
-                          }}
-                        >
-                          <ProfileAvatar profile={p} size={78} />
-                        </div>
-
-                        {selectedDartSetThumb ? (
-                          <span
-                            aria-hidden
-                            style={{
-                              position: "absolute",
-                              right: -10,
-                              bottom: -8,
-                              width: 42,
-                              height: 42,
-                              borderRadius: "50%",
-                              border: `2px solid ${primary}DD`,
-                              background: "rgba(0,0,0,.72)",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              overflow: "hidden",
-                              boxShadow: `0 0 18px ${primary}88, 0 8px 18px rgba(0,0,0,.65)`,
-                              zIndex: 8,
-                              pointerEvents: "none",
-                            }}
-                          >
-                            <img src={selectedDartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          textAlign: "center",
-                          color: active ? "#f6f2e9" : "#7e8299",
-                          maxWidth: "100%",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {p.name}
-                      </div>
-
-                      {/* Badge set (ne doit pas toggle le joueur) */}
-                      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", display: "flex", justifyContent: "center" }}>
-                        <PlayerDartBadge
-                          profileId={p.id}
-                          dartSetId={playerDartSets[p.id] ?? null}
-                          onChange={(id) => handleChangePlayerDartSet(p.id, id)}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <PlayerPagedSelector
+                profiles={humanProfiles}
+                selectedIds={selectedIds}
+                onToggle={togglePlayer}
+                accent={primary}
+                pageSize={9}
+                modalTitle="Choisir des joueurs"
+                renderActions={(p: any) => (
+                  <PlayerDartBadge
+                    profileId={p.id}
+                    dartSetId={playerDartSets[p.id] ?? null}
+                    onChange={(id) => handleChangePlayerDartSet(p.id, id)}
+                  />
+                )}
+              />
 
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
                 {t("x01v3.playersHint", "2 joueurs pour un duel, 3+ pour Multi ou Équipes.")}
@@ -1306,39 +1196,63 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             border: `1px solid rgba(255,255,255,0.04)`,
           }}
         >
-          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
-            {t("x01v3.bots.title", "Bots IA")}
-          </h3>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, margin: 0 }}>
+              {t("x01v3.bots.title", "Bots IA")}
+            </h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                aria-pressed={botsPanelEnabled}
+                onClick={() => setBotsPanelEnabled((v) => !v)}
+                style={{
+                  padding: "7px 11px",
+                  borderRadius: 999,
+                  border: `1px solid ${primary}88`,
+                  background: botsPanelEnabled ? `${primary}18` : "rgba(255,255,255,0.04)",
+                  color: primary,
+                  fontWeight: 900,
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                {botsPanelEnabled ? "☑ ON" : "☐ OFF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => go && go("profiles_bots")}
+                style={{
+                  padding: "7px 11px",
+                  borderRadius: 999,
+                  border: `1px solid ${primary}`,
+                  background: "rgba(255,255,255,0.04)",
+                  color: primary,
+                  fontWeight: 900,
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                {t("x01v3.bots.manage", "Gérer les BOTS")}
+              </button>
+            </div>
+          </div>
 
           <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
             {t("x01v3.bots.subtitle", 'Ajoute des BOTS IA : bots "pro" prédéfinis ou BOTS que tu as créés dans le menu Profils.')}
           </p>
 
-          <BotPagedSelector
-            bots={botProfiles}
-            selectedIds={selectedIds}
-            onToggle={togglePlayer}
-            accent={primary}
-            label="BOTS IA"
-          />
-
-          <button
-            type="button"
-            onClick={() => go && go("profiles_bots")}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${primary}`,
-              background: "rgba(255,255,255,0.04)",
-              color: primary,
-              fontWeight: 700,
-              fontSize: 11,
-              textTransform: "uppercase",
-              cursor: "pointer",
-            }}
-          >
-            {t("x01v3.bots.manage", "Gérer les BOTS")}
-          </button>
+          {botsPanelEnabled ? (
+            <BotPagedSelector
+              bots={botProfiles}
+              selectedIds={selectedIds}
+              onToggle={togglePlayer}
+              accent={primary}
+              label="BOTS IA"
+              showCheckbox={false}
+            />
+          ) : null}
         </section>
 
         {/* --------- BLOC PARAMÈTRES DE BASE + AUDIO + EXTERNAL --------- */}
