@@ -6,8 +6,28 @@
 
 import type { SavedMatch } from "./history";
 
-const DB_NAME = "dc-store-v1";
+const HISTORY_DB_BASE = "dc-store-v1";
 const DB_VER = 3;
+
+function detectHistoryScopeUserId(): string | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || localStorage.getItem("dc_online_auth_supabase_v1") || "";
+    if (!raw) return null;
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(raw);
+        return String(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id || "").trim() || null;
+      } catch { return null; }
+    }
+    return String(raw).trim() || null;
+  } catch { return null; }
+}
+
+function historyDbName(): string {
+  const uid = detectHistoryScopeUserId();
+  return uid ? `${HISTORY_DB_BASE}:${uid}` : HISTORY_DB_BASE;
+}
 const STORE_LEGACY = "history";
 const STORE_HEADERS = "history_headers";
 const STORE_DETAILS = "history_details";
@@ -62,7 +82,7 @@ function isDeletedHistoryRecord(rec: any, deleted: Set<string>): boolean {
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VER);
+    const req = indexedDB.open(historyDbName(), DB_VER);
 
     req.onupgradeneeded = () => {
       const db = req.result;
