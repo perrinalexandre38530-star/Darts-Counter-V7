@@ -24,6 +24,7 @@ import AvatarLite from "./profile/AvatarLite";
 import {
   type DartSet,
   getAllDartSets, // ✅ PATCH B
+  getAllSelectableDartSets,
   getDartSetsForProfile,
   createDartSet,
   deleteDartSet,
@@ -559,7 +560,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     if (!profile?.id && !showAllOwners) return;
     try {
       const all = showAllOwners
-        ? await Promise.resolve(getAllDartSets() as any)
+        ? await Promise.resolve(getAllSelectableDartSets() as any)
         : await Promise.resolve(getDartSetsForProfile(profile.id) as any);
       const sorted = sortSets((all || []) as DartSet[]);
       const requestedActiveId = keepActiveDartSetIdRef.current || activeSetIdRef.current;

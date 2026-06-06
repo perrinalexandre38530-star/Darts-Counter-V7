@@ -128,12 +128,55 @@ function pickImageLike(raw: any, ...keys: string[]): string {
   return "";
 }
 
-function normalizeScope(value: any): "private" | "public" {
-  return value === "public" ? "public" : "private";
-}
-
 function normalizeKind(value: any): "plain" | "preset" | "photo" | undefined {
   return value === "photo" || value === "preset" || value === "plain" ? value : undefined;
+}
+
+function isPublicOwnerProfileId(profileId: any): boolean {
+  const id = normalizeText(profileId);
+  return !id || ["global", "public", "shared", "all", "default", "library", "bibliotheque", "common", "commun", "device", "local device"].includes(id);
+}
+
+function readOwnerProfileId(raw: any): string {
+  return s(raw?.profileId || raw?.profile_id || raw?.ownerProfileId || raw?.localProfileId || raw?.ownerId || raw?.userProfileId || "");
+}
+
+function readVisibilityFlag(raw: any): string {
+  return normalizeText(raw?.scope || raw?.visibility || raw?.access || raw?.sharing || raw?.shareScope || "");
+}
+
+function isExplicitPublicDartSet(raw: any): boolean {
+  const flag = readVisibilityFlag(raw);
+  return (
+    flag === "public" ||
+    flag === "global" ||
+    flag === "shared" ||
+    flag === "all" ||
+    raw?.isPublic === true ||
+    raw?.public === true ||
+    raw?.shared === true
+  );
+}
+
+function effectiveDartSetScope(raw: any): "private" | "public" {
+  if (!raw || typeof raw !== "object") return "private";
+  if (isLinkedRemoteLike(raw) || isRemoteDartSetBucket(raw?.profileId)) return "private";
+  if (isExplicitPublicDartSet(raw)) return "public";
+
+  const flag = readVisibilityFlag(raw);
+  if (flag === "private" && !isPublicOwnerProfileId(readOwnerProfileId(raw))) return "private";
+
+  // Compat ancien stockage : les presets publics ont souvent profileId="global"
+  // mais pas de scope, ou ont été réécrits par erreur en scope="private".
+  // Un propriétaire global-like doit donc rester public.
+  if (isPublicOwnerProfileId(readOwnerProfileId(raw))) return "public";
+
+  return "private";
+}
+
+function normalizeScope(value: any, raw?: any): "private" | "public" {
+  const merged = raw && typeof raw === "object" ? { ...raw, scope: value } : { scope: value };
+  return effectiveDartSetScope(merged);
 }
 
 function isLinkedRemoteLike(raw: any): boolean {
@@ -197,7 +240,7 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
       ""
   );
 
-  let profileId = s(raw.profileId || raw.profile_id || raw.ownerProfileId || raw.localProfileId || raw.ownerId || raw.userProfileId || "global");
+  let profileId = readOwnerProfileId(raw) || "global";
 
   // Les dartsets arrivant d'une projection ONLINE / profil lié ne doivent jamais
   // devenir des dartsets sélectionnables du profil local courant. On les garde en
@@ -234,7 +277,7 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
     isFavorite: Boolean(raw.isFavorite),
     usageCount: n(raw.usageCount, 0),
     lastUsedAt: n(raw.lastUsedAt, 0),
-    scope: normalizeScope(raw.scope),
+    scope: normalizeScope(raw.scope, { ...raw, profileId }),
     duplicateIds: uniqStrings([...(Array.isArray(raw.duplicateIds) ? raw.duplicateIds : []), ...(Array.isArray(raw.aliasIds) ? raw.aliasIds : [])]),
     aliasIds: uniqStrings(Array.isArray(raw.aliasIds) ? raw.aliasIds : []),
     linkedSourceDartSetId: raw.linkedSourceDartSetId ? s(raw.linkedSourceDartSetId) : rawId || null,
@@ -262,7 +305,7 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
 }
 
 function canonicalKeyForSet(set: any): string {
-  const scope = normalizeScope(set?.scope);
+  const scope = effectiveDartSetScope(set);
   const linkedRemote = isLinkedRemoteLike(set) || isRemoteDartSetBucket(set?.profileId);
   const owner = linkedRemote
     ? `remote:${normalizeText(set?.linkedSourceProfileId || set?.profileId || set?.ownerProfileId || "remote")}`
@@ -402,7 +445,7 @@ function sanitizeDartSetForStorage(raw: any): any {
     next.kind = next.presetId ? "preset" : "plain";
   }
 
-  next.scope = normalizeScope(next.scope);
+  next.scope = normalizeScope(next.scope, next);
   next.name = s(next.name) || "Mes fléchettes";
   next.profileId = s(next.profileId || "global");
   next.id = s(next.id) || `dartset_recovered_${hashString(`${next.profileId}|${next.name}|${Date.now()}`)}`;
@@ -552,55 +595,44 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     ...(Array.isArray(store.profiles) ? store.profiles : []),
     ...(Array.isArray(store.localProfiles) ? store.localProfiles : []),
     ...(Array.isArray(store.players) ? store.players : []),
-    ...(Array.isArray(store.accounts) ? store.accounts : []),
   ].filter(Boolean);
 
-  const accountIds = uniqStrings([
-    store.userId,
-    store.accountId,
-    store.authUserId,
-    store.sessionUserId,
-    store.currentUserId,
-    store.onlineUserId,
-    store.user?.id,
-    store.account?.id,
-    store.session?.user?.id,
-  ]);
+  // Règle stricte : un set privé appartient à un profil, pas au compte complet.
+  // On ne propage donc jamais userId/accountId vers tous les profils, car c'est
+  // précisément ce qui faisait apparaître Alex/Romrom chez le mauvais joueur.
+  const profileOnlyKeys = [
+    "id",
+    "profileId",
+    "localProfileId",
+    "playerId",
+    "pid",
+    "uid",
+    "linkedSourceLocalProfileId",
+    "linkedTargetLocalProfileId",
+    "ownerProfileId",
+  ];
 
-  // 1) Profil demandé : seulement les objets qui portent directement cet id
-  // ou un alias déjà connu. On ne propage plus un compte vers TOUS les profils :
-  // c'était la cause principale des dartsets privés qui apparaissaient chez
-  // n'importe qui après un passage ONLINE.
-  let changed = true;
-  for (let pass = 0; pass < 4 && changed; pass += 1) {
-    changed = false;
-    for (const obj of roots) {
-      const vals = collectIdLikeValues(obj);
-      const hit = vals.some((id) => aliases.has(id));
-      if (!hit) continue;
-      for (const id of vals) {
-        const before = aliases.size;
-        add(id);
-        if (aliases.size !== before) changed = true;
-      }
-    }
-  }
-
-  // 2) Si l'appel vient d'un vrai compte connecté (usr_* / auth id), on ajoute
-  // uniquement le profil actif courant, pas tous les profils du compte. Cela
-  // permet au mode ONLINE de retrouver le dartset privé du profil actif sans
-  // aspirer les sets d'Alex/Romrom/Jess/etc.
-  if (pid && accountIds.includes(pid)) {
-    accountIds.forEach(add);
-    const activeId = s(store.activeProfileId || store.currentProfileId || store.selectedProfileId);
-    if (activeId) {
-      add(activeId);
-      const activeObj = roots.find((obj: any) => collectIdLikeValues(obj).includes(activeId));
-      collectIdLikeValues(activeObj).forEach(add);
-    }
+  for (const obj of roots) {
+    const vals = uniqStrings(profileOnlyKeys.map((k) => obj?.[k]));
+    if (!vals.includes(pid)) continue;
+    vals.forEach(add);
   }
 
   return aliases;
+}
+
+function collectSelectableOwnerIds(set: any): string[] {
+  return uniqStrings([
+    set?.profileId,
+    set?.profile_id,
+    set?.ownerProfileId,
+    set?.localProfileId,
+    set?.linkedTargetLocalProfileId,
+  ]);
+}
+
+export function isSelectableDartSet(set: any): boolean {
+  return !!set && !isLinkedRemoteDartSet(set);
 }
 
 function dartSetMatchesAnyId(set: any, id: any): boolean {
@@ -618,31 +650,28 @@ function isLinkedRemoteDartSet(set: any): boolean {
 
 function profileCanSeeDartSet(set: DartSet, profileId: string): boolean {
   if (!set) return false;
-  if (set.scope === "public" && !isLinkedRemoteDartSet(set)) return true;
 
-  // Les sets matérialisés depuis ONLINE/profils liés servent uniquement à
-  // résoudre les historiques et les stats. Ils ne doivent pas apparaître dans
-  // les listes de sélection/création/favori du joueur local.
-  if (isLinkedRemoteDartSet(set)) return false;
+  // Les sets ONLINE/profils liés restent un dictionnaire technique pour les
+  // historiques/stats. Ils ne sont jamais sélectionnables dans X01/Online/Mes fléchettes.
+  if (!isSelectableDartSet(set)) return false;
 
+  // Public = visible pour TOUS les joueurs, même si l'ancien stockage avait
+  // profileId="global" ou avait été réécrit en scope="private".
+  if (effectiveDartSetScope(set) === "public") return true;
+
+  // Privé = seulement le profil propriétaire exact (avec alias stricts du même profil).
   const aliases = collectProfileAliasIds(profileId);
-  const setOwners = collectIdLikeValues({
-    id: set.profileId,
-    profileId: set.profileId,
-    linkedSourceProfileId: set.linkedSourceProfileId,
-    linkedTargetLocalProfileId: set.linkedTargetLocalProfileId,
-    ownerUserId: set.ownerUserId,
-    userId: set.userId,
-    accountId: set.accountId,
-  });
+  const setOwners = collectSelectableOwnerIds(set);
   return setOwners.some((id) => aliases.has(id));
 }
 
 function visibleDartSetKey(set: any): string {
+  const scope = effectiveDartSetScope(set);
+  const owner = scope === "public" ? "public" : normalizeText(collectSelectableOwnerIds(set)[0] || set?.profileId || "private");
   const name = normalizeText(set?.name || set?.label || set?.title || "");
-  if (name) return `name:${name}`;
+  if (name) return `${scope}|${owner}|name:${name}`;
   const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.id || "");
-  return `visual:${visual}`;
+  return `${scope}|${owner}|visual:${visual}`;
 }
 
 function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {
@@ -670,6 +699,10 @@ export function getAllDartSets(): DartSet[] {
   return loadAll();
 }
 
+export function getAllSelectableDartSets(): DartSet[] {
+  return loadAll().filter((set) => isSelectableDartSet(set));
+}
+
 // ✅ Utilisé par la synchro cloud: remplace la liste entière (migration device → device)
 export function setAllDartSets(list: DartSet[]) {
   return saveAll(Array.isArray(list) ? list : []);
@@ -678,7 +711,7 @@ export function setAllDartSets(list: DartSet[]) {
 // 👇 sets du profil + publics, avec alias compte/profil actif.
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
-  const visible = loadAll().filter((set) => !pid ? set.scope === "public" && !isLinkedRemoteDartSet(set) : profileCanSeeDartSet(set, pid));
+  const visible = loadAll().filter((set) => !pid ? effectiveDartSetScope(set) === "public" && isSelectableDartSet(set) : profileCanSeeDartSet(set, pid));
   return dedupeVisibleDartSets(visible);
 }
 
@@ -913,13 +946,13 @@ export function getFavoriteDartSetForProfile(profileId: string): DartSet | undef
 
   // 1) Premier favori prioritaire du profil : favoris multiples OK.
   const favoriteOwn = visible
-    .filter((set) => aliases.has(String(set.profileId)) && set.isFavorite)
+    .filter((set) => effectiveDartSetScope(set) !== "public" && collectSelectableOwnerIds(set).some((id) => aliases.has(id)) && set.isFavorite)
     .sort(byPriority)[0];
   if (favoriteOwn) return favoriteOwn;
 
   // 2) Sinon : set du profil le plus utilisé, puis alphabétique.
   const ownSorted = visible
-    .filter((set) => aliases.has(String(set.profileId)))
+    .filter((set) => effectiveDartSetScope(set) !== "public" && collectSelectableOwnerIds(set).some((id) => aliases.has(id)))
     .sort(byPriority);
 
   if (ownSorted.length > 0) return ownSorted[0];
