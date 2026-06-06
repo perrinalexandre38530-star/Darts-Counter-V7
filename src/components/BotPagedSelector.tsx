@@ -101,20 +101,28 @@ export default function BotPagedSelector({
         {showCheckbox ? (
           <button
             type="button"
+            aria-pressed={enabled}
+            title={enabled ? `Masquer ${label}` : `Afficher ${label}`}
             onClick={() => setEnabled((v) => !v)}
-            style={pillBtn(accent, enabled)}
+            style={{
+              ...pillBtn(accent, enabled),
+              minWidth: 54,
+              justifyContent: "center",
+              paddingInline: 12,
+            }}
           >
-            {enabled ? "☑" : "☐"} {label}
+            {enabled ? "☑ ON" : "☐ OFF"}
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={() => enabled && setOpen(true)}
-          disabled={!enabled}
-          style={pillBtn(accent, enabled)}
-        >
-          Choisir {label.toLowerCase()} {selectedCount ? `(${selectedCount})` : ""}
-        </button>
+        {enabled ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            style={pillBtn(accent, true)}
+          >
+            Choisir {label.toLowerCase()} {selectedCount ? `(${selectedCount})` : ""}
+          </button>
+        ) : null}
       </div>
 
       {enabled && selectedCount ? (
@@ -123,7 +131,7 @@ export default function BotPagedSelector({
         </div>
       ) : null}
 
-      {open ? (
+      {enabled && open ? (
         <div
           role="dialog"
           aria-modal="true"
