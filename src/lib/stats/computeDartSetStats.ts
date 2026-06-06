@@ -5,6 +5,7 @@
 // ============================================
 
 import { History } from "../history";
+import { getCanonicalDartSetId } from "../dartSetsStore";
 
 export type DartSetAgg = {
   byDartSetId: Record<
@@ -105,7 +106,8 @@ export async function computeDartSetStats(profileId?: string | null): Promise<Da
 
     const dsMap = getDartSetIdsByPlayer(r0);
 
-    const dsid = pid ? (dsMap[pid] || null) : getDartSetIdForMatch(r0);
+    const rawDsid = pid ? (dsMap[pid] || null) : getDartSetIdForMatch(r0);
+    const dsid = rawDsid ? (getCanonicalDartSetId(rawDsid, pid || null) || rawDsid) : null;
     if (!dsid) continue;
 
     if (!by[dsid]) by[dsid] = { matches: 0, legs: 0, avg3: 0, updatedAt: 0 };

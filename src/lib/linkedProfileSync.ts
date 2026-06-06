@@ -42,6 +42,19 @@ export function invalidateLinkedProfileProjectionCache() {
 
 function s(v: any) { return String(v ?? "").trim(); }
 function low(v: any) { return s(v).toLowerCase(); }
+function hashString(value: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+function remoteDartSetBucketId(sourceProfileId: any, sourceSetId?: any): string {
+  const src = s(sourceProfileId) || "unknown-profile";
+  const sid = s(sourceSetId);
+  return `__remote_dartsets_${hashString(`${src}|${sid}`)}`;
+}
 
 function arr(v: any): any[] {
   return Array.isArray(v) ? v : [];
@@ -675,16 +688,21 @@ async function materializeLinkedDartSetsForProjection(projection: LinkedProfileP
         if (!belongsToLinkedProfile && !usedByLinkedHistory) continue;
 
         const image = pickDartSetImageLike(rawSet);
+        const sourceProfileForSet = remoteLocalProfileId || setProfileId || link?.localProfileId || link?.local_profile_id || targetLocalId || "remote";
         const normalized = {
           ...rawSet,
           id: setId,
-          profileId: targetLocalId,
-          scope: rawSet?.scope === "public" ? "public" : "private",
+          // IMPORTANT : ne jamais attribuer un dartset ONLINE/profil lié au profil local cible.
+          // Sinon il devient sélectionnable dans MES FLÉCHETTES et se retrouve chez n'importe qui.
+          // On le stocke dans un bucket distant, uniquement pour résoudre noms/images dans les historiques.
+          profileId: remoteDartSetBucketId(sourceProfileForSet, setId),
+          scope: "private",
           name: s(rawSet?.name || rawSet?.label || rawSet?.title || "Set lié"),
           mainImageUrl: s(rawSet?.mainImageUrl || rawSet?.imageUrl || rawSet?.photoUrl || image || ""),
           thumbImageUrl: s(rawSet?.thumbImageUrl || rawSet?.photoThumbUrl || rawSet?.thumbUrl || rawSet?.thumbDataUrl || image || "") || undefined,
           linkedRemoteDartSet: true,
-          linkedSourceProfileId: remoteLocalProfileId || null,
+          linkedSourceProfileId: sourceProfileForSet || null,
+          linkedTargetLocalProfileId: targetLocalId || null,
           linkedSourceDartSetId: setId,
           linkedOwnerUserId: (snap as any)?.ownerUserId || link?.requesterUser?.id || null,
           updatedAt: Number(rawSet?.updatedAt || Date.now()),

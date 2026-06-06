@@ -56,6 +56,12 @@ import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
 import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 import avatarThePower from "../assets/avatars/bots-pro/the-power.png";
 import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
+import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
+import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
+import avatarBarney from "../assets/avatars/bots-pro/barney.png";
+import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
+import avatarTheMenace from "../assets/avatars/bots-pro/the-menace.png";
+import { BOT_PRO_TEAMS } from "../lib/botTeams";
 
 // ⚠️ Si tu as aussi "the-nuke.png" dans le dossier, décommente :
 // import avatarTheNuke from "../assets/avatars/bots-pro/the-nuke.png";
@@ -432,23 +438,22 @@ async function safeAvg3DForProfile(profileRaw: any, store?: any): Promise<number
 
 // ✅ 1) Bots PRO (assets réels)
 const BOTS_PRO_ASSETS = [
-  { id: "bot_bully_boy", name: "Bully Boy", rating: 66, avatarDataUrl: avatarBullyBoy },
-  { id: "bot_cool_hand", name: "Cool Hand", rating: 64, avatarDataUrl: avatarCoolHand },
-  { id: "bot_flying_scotsman", name: "Flying Scotsman", rating: 62, avatarDataUrl: avatarFlyingScotsman },
-
-  { id: "bot_green_machine", name: "Green Machine", rating: 78, avatarDataUrl: avatarGreenMachine },
-  { id: "bot_hollywood", name: "Hollywood", rating: 70, avatarDataUrl: avatarHollywood },
-  { id: "bot_ice_man", name: "Ice Man", rating: 69, avatarDataUrl: avatarIceMan },
-
-  { id: "bot_snake_king", name: "Snake King", rating: 72, avatarDataUrl: avatarSnakeKing },
-  { id: "bot_the_asp", name: "The Asp", rating: 67, avatarDataUrl: avatarTheAsp },
-  { id: "bot_the_ferret", name: "The Ferret", rating: 65, avatarDataUrl: avatarTheFerret },
-  { id: "bot_the_power", name: "The Power", rating: 74, avatarDataUrl: avatarThePower },
-
-  { id: "bot_wonder_kid", name: "Wonder Kid", rating: 68, avatarDataUrl: avatarWonderKid },
-
-  // ⚠️ si tu ajoutes the-nuke.png :
-  // { id: "bot_the_nuke", name: "The Nuke", rating: 71, avatarDataUrl: avatarTheNuke },
+  { id: "bot_green_machine", name: "Green Machine", rating: 100, botLevel: 5, avatarDataUrl: avatarGreenMachine },
+  { id: "bot_wonder_kid", name: "Wonder Kid", rating: 100, botLevel: 5, avatarDataUrl: avatarWonderKid },
+  { id: "bot_cool_hand", name: "Cool Hand", rating: 100, botLevel: 5, avatarDataUrl: avatarCoolHand },
+  { id: "bot_the_power", name: "The Power", rating: 100, botLevel: 5, avatarDataUrl: avatarThePower },
+  { id: "bot_crafty", name: "Crafty", rating: 100, botLevel: 5, avatarDataUrl: avatarCraftyCockney },
+  { id: "bot_jackpot", name: "Jackpot", rating: 90, botLevel: 4.5, avatarDataUrl: avatarJackpot },
+  { id: "bot_barney", name: "Barney", rating: 90, botLevel: 4.5, avatarDataUrl: avatarBarney },
+  { id: "bot_ice_man", name: "Ice Man", rating: 80, botLevel: 4, avatarDataUrl: avatarIceMan },
+  { id: "bot_snake_king", name: "Snake King", rating: 80, botLevel: 4, avatarDataUrl: avatarSnakeKing },
+  { id: "bot_flying_scotsman", name: "Flying Scotsman", rating: 80, botLevel: 4, avatarDataUrl: avatarFlyingScotsman },
+  { id: "bot_bully_boy", name: "Bully Boy", rating: 80, botLevel: 4, avatarDataUrl: avatarBullyBoy },
+  { id: "bot_the_ferret", name: "The Ferret", rating: 80, botLevel: 4, avatarDataUrl: avatarTheFerret },
+  { id: "bot_the_asp", name: "The Asp", rating: 80, botLevel: 4, avatarDataUrl: avatarTheAsp },
+  { id: "bot_dobey", name: "Dobey", rating: 70, botLevel: 3.5, avatarDataUrl: avatarDobeyPro },
+  { id: "bot_hollywood", name: "Hollywood", rating: 60, botLevel: 3, avatarDataUrl: avatarHollywood },
+  { id: "bot_the_menace", name: "The Menace", rating: 60, botLevel: 3, avatarDataUrl: avatarTheMenace },
 ];
 
 const BOT_PRO_AVATAR_BY_NAME: Record<string, any> = Object.fromEntries(
@@ -1433,6 +1438,7 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
       name: b.name,
       avatar: b.avatarDataUrl ?? null,
       avg3D: Number(b.rating) || 0,
+      botLevel: b.botLevel,
       isBot: true,
       raw: b,
     }));
@@ -1457,28 +1463,48 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
   }, [store, botsRefresh]);
 
   const botTeamsCatalog = React.useMemo(() => {
-    const bots = Array.isArray(botsCatalog) ? botsCatalog : [];
-    if (!bots.length) return [];
-    const tiers = [
-      { key: "elite", name: "BOT Élite", start: 0 },
-      { key: "pro", name: "BOT Pro", start: 4 },
-      { key: "challenger", name: "BOT Challenger", start: 8 },
-      { key: "mix", name: "BOT Mixte", start: 2 },
-    ];
-    return tiers.map((tier, idx) => {
-      const roster = bots.slice(tier.start, tier.start + 4);
-      const fallback = roster.length ? roster : bots.slice(0, 4);
+    const avatarById = new Map<string, any>();
+    const botById = new Map<string, any>();
+    for (const b of Array.isArray(botsCatalog) ? botsCatalog : []) {
+      const id = String(b?.id || "");
+      if (!id) continue;
+      avatarById.set(id, botAvatarFor(b?.raw || b) || b?.avatar || b?.avatarDataUrl || null);
+      botById.set(id, b);
+    }
+
+    const logoByKey: Record<string, any> = {
+      elite: botTeamEliteLogo,
+      pro: botTeamProLogo,
+      challenger: botTeamChallengerLogo,
+      mix: botTeamMixLogo,
+    };
+
+    return BOT_PRO_TEAMS.map((team: any) => {
+      const members = (team.members || []).map((member: any) => {
+        const src = botById.get(String(member.id)) || member;
+        return {
+          ...member,
+          avatar: avatarById.get(String(member.id)) || src?.avatar || src?.avatarDataUrl || null,
+          avg3D: Number(member.targetAvg3 || src?.avg3D || team.avg3D || 0) || 0,
+          isBot: true,
+        };
+      });
       return {
-        id: `botteam_${forceMode}_${tier.key}`,
-        name: tier.name,
+        id: `botteam_${forceMode}_${team.key}`,
+        key: team.key,
+        name: team.name,
         sport: forceMode,
         isBotTeam: true,
-        logoDataUrl: BOT_TEAM_LOGOS[idx % BOT_TEAM_LOGOS.length] || null,
-        logoUrl: BOT_TEAM_LOGOS[idx % BOT_TEAM_LOGOS.length] || null,
-        playerIds: fallback.map((b: any) => String(b.id)),
-        players: fallback.map((b: any) => String(b.name || "BOT")),
+        botTeamLevel: Number(team.botLevel || 1),
+        avg3D: Number(team.avg3D || (Number(team.botLevel || 1) * 20)) || 0,
+        stars: starsFromAvg3D(Number(team.avg3D || (Number(team.botLevel || 1) * 20)) || 0),
+        logoDataUrl: logoByKey[team.key] || null,
+        logoUrl: logoByKey[team.key] || null,
+        playerIds: members.map((b: any) => String(b.id)),
+        players: members.map((b: any) => String(b.name || "BOT")),
+        members,
       };
-    }).filter((t: any) => (t.playerIds || []).length > 0);
+    });
   }, [botsCatalog, forceMode]);
 
   // avg3D cache (humains)
@@ -1703,6 +1729,12 @@ const togglePlayer = (id: string) => {
           players: Array.isArray(team?.playerIds) ? team.playerIds : [],
           playerIds: Array.isArray(team?.playerIds) ? team.playerIds : [],
           logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null,
+          logoUrl: team?.logoUrl || team?.logoDataUrl || team?.avatarDataUrl || null,
+          isBotTeam: !!team?.isBotTeam,
+          botTeamLevel: team?.botTeamLevel ?? null,
+          avg3D: Number(team?.avg3D || 0) || 0,
+          stars: Number(team?.stars || 0) || 0,
+          members: Array.isArray(team?.members) ? team.members : [],
         },
       ];
     });
@@ -2491,10 +2523,13 @@ async function createTournament() {
         avatarDataUrl: t?.logoDataUrl || t?.avatarDataUrl || null,
         source: "team",
         isTeam: true,
-        isBot: false,
+        isBot: !!t?.isBotTeam,
+        isBotTeam: !!t?.isBotTeam,
+        botTeamLevel: t?.botTeamLevel ?? null,
         memberIds: Array.isArray(t?.playerIds) ? t.playerIds : [],
-        avg3D: 0,
-        stars: 0,
+        members: Array.isArray(t?.members) ? t.members : [],
+        avg3D: Number(t?.avg3D || (t?.botTeamLevel ? Number(t.botTeamLevel) * 20 : 0)) || 0,
+        stars: Number(t?.stars || starsFromAvg3D(Number(t?.avg3D || (t?.botTeamLevel ? Number(t.botTeamLevel) * 20 : 0)) || 0)) || 0,
       }))
       .filter((t: any) => !!String(t?.name || "").trim());
   }
@@ -3012,6 +3047,8 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
     const name = String(team?.name || `Équipe ${index + 1}`).trim() || `Équipe ${index + 1}`;
     const initial = name.slice(0, 1).toUpperCase() || "É";
     const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
+    const botLevel = Number(team?.botTeamLevel || 0) || 0;
+    const ringScore = Number(team?.avg3D || (botLevel ? botLevel * 20 : 0)) || 0;
     return (
       <button
         type="button"
@@ -3032,33 +3069,38 @@ function TeamCarouselTile({ team, index, onRemove, onClick, active = false, prim
         }}
         title={name}
       >
-        <div
-          style={{
-            width: 76,
-            height: 76,
-            borderRadius: 999,
-            border: active ? `2px solid ${primary}` : `1px solid ${primary}AA`,
-            background: `radial-gradient(circle at 35% 20%, ${primary}33, rgba(0,0,0,.42) 62%), rgba(0,0,0,.48)`,
-            boxShadow: active ? `0 0 28px ${primary}66, inset 0 0 18px rgba(255,255,255,.05)` : `0 0 24px ${primary}30, inset 0 0 18px rgba(255,255,255,.04)`,
-            display: "grid",
-            placeItems: "center",
-            color: "#fff",
-            fontSize: 30,
-            fontWeight: 1000,
-            textShadow: `0 0 14px ${primary}55`,
-            overflow: "hidden",
-          }}
-        >
-          {logo ? (
-            <img
-              src={logo}
-              alt=""
-              draggable={false}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            />
-          ) : (
-            initial
-          )}
+        <div style={{ width: 76, height: 86, position: "relative", display: "grid", placeItems: "end center", overflow: "visible" }}>
+          {team?.isBotTeam && ringScore > 0 ? (
+            <ProfileStarRing anchorSize={76} starSize={10} gapPx={-2} stepDeg={10} avg3d={ringScore} animateGlow />
+          ) : null}
+          <div
+            style={{
+              width: 76,
+              height: 76,
+              borderRadius: 999,
+              border: active ? `2px solid ${primary}` : `1px solid ${primary}AA`,
+              background: `radial-gradient(circle at 35% 20%, ${primary}33, rgba(0,0,0,.42) 62%), rgba(0,0,0,.48)`,
+              boxShadow: active ? `0 0 28px ${primary}66, inset 0 0 18px rgba(255,255,255,.05)` : `0 0 24px ${primary}30, inset 0 0 18px rgba(255,255,255,.04)`,
+              display: "grid",
+              placeItems: "center",
+              color: "#fff",
+              fontSize: 30,
+              fontWeight: 1000,
+              textShadow: `0 0 14px ${primary}55`,
+              overflow: "hidden",
+            }}
+          >
+            {logo ? (
+              <img
+                src={logo}
+                alt=""
+                draggable={false}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            ) : (
+              initial
+            )}
+          </div>
         </div>
         <div style={{ width: 104, fontSize: 11.5, fontWeight: 950, opacity: active ? 1 : .88, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {name}
@@ -4629,7 +4671,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                           <span style={{ color: active ? primary : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
                           <ProfileAvatar name={name} dataUrl={logo || undefined} size={34} />
                           <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-                          {t?.isBotTeam ? <span style={{ color: primary, fontSize: 10, fontWeight: 1000 }}>BOT TEAM</span> : null}
+                          {t?.isBotTeam ? <span style={{ color: primary, fontSize: 10, fontWeight: 1000 }}>BOT TEAM · {Number(t?.botTeamLevel || 0) || ""}★</span> : null}
                         </button>
                       );
                     })}

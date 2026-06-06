@@ -56,6 +56,8 @@ export interface DartSet {
   linkedSourceDartSetId?: string | null;
   linkedRemoteDartSet?: boolean;
   linkedSourceProfileId?: string | null;
+  linkedTargetLocalProfileId?: string | null;
+  linkedOwnerUserId?: string | null;
   ownerUserId?: string | null;
   userId?: string | null;
   accountId?: string | null;
@@ -134,6 +136,25 @@ function normalizeKind(value: any): "plain" | "preset" | "photo" | undefined {
   return value === "photo" || value === "preset" || value === "plain" ? value : undefined;
 }
 
+function isLinkedRemoteLike(raw: any): boolean {
+  return Boolean(
+    raw?.linkedRemoteDartSet === true ||
+      raw?.linkedRemote === true ||
+      raw?.__linkedRemote === true ||
+      raw?.remoteDartSet === true
+  );
+}
+
+function remoteDartSetBucketId(sourceProfileId: any, sourceSetId?: any): string {
+  const src = s(sourceProfileId) || "unknown-profile";
+  const sid = s(sourceSetId);
+  return `__remote_dartsets_${hashString(`${src}|${sid}`)}`;
+}
+
+function isRemoteDartSetBucket(profileId: any): boolean {
+  return s(profileId).startsWith("__remote_dartsets_");
+}
+
 function imageIdentity(set: any): string {
   const asset = s(set?.photoAssetId || set?.mainImageAssetId || set?.thumbImageAssetId);
   if (asset) return `asset:${asset}`;
@@ -163,7 +184,30 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
 
   const now = Date.now();
   const name = s(raw.name || raw.label || raw.title || raw.presetName || "Mes fléchettes") || "Mes fléchettes";
-  const profileId = s(raw.profileId || raw.profile_id || raw.ownerProfileId || raw.localProfileId || raw.ownerId || raw.userProfileId || "global");
+
+  const rawId = s(raw.id || raw.dartSetId || raw.setId || raw.uuid);
+  const linkedRemote = isLinkedRemoteLike(raw);
+  const linkedSourceProfileId = s(
+    raw.linkedSourceProfileId ||
+      raw.remoteProfileId ||
+      raw.sourceProfileId ||
+      raw.linkedSourceLocalProfileId ||
+      raw.remoteLocalProfileId ||
+      raw.ownerProfileId ||
+      ""
+  );
+
+  let profileId = s(raw.profileId || raw.profile_id || raw.ownerProfileId || raw.localProfileId || raw.ownerId || raw.userProfileId || "global");
+
+  // Les dartsets arrivant d'une projection ONLINE / profil lié ne doivent jamais
+  // devenir des dartsets sélectionnables du profil local courant. On les garde en
+  // base uniquement comme dictionnaire d'images/noms pour les historiques déjà
+  // joués, via leurs alias d'id.
+  if (linkedRemote) {
+    const sourceProfile = linkedSourceProfileId || profileId || "remote";
+    profileId = remoteDartSetBucketId(sourceProfile, rawId || raw.linkedSourceDartSetId || raw.presetId || name);
+  }
+
   const mainImageUrl = sanitizeDartSetImageUrl(
     pickImageLike(raw, "mainImageUrl", "imageUrl", "photoUrl", "imgUrlMain", "imgUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl")
   ) || "";
@@ -173,7 +217,7 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
 
   const base: DartSet = sanitizeDartSetForStorage({
     ...raw,
-    id: s(raw.id || raw.dartSetId || raw.setId || raw.uuid) || `dartset_recovered_${hashString(`${profileId}|${name}|${imageIdentity(raw)}`)}`,
+    id: rawId || `dartset_recovered_${hashString(`${profileId}|${name}|${imageIdentity(raw)}`)}`,
     profileId,
     name,
     brand: s(raw.brand) || undefined,
@@ -193,9 +237,11 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
     scope: normalizeScope(raw.scope),
     duplicateIds: uniqStrings([...(Array.isArray(raw.duplicateIds) ? raw.duplicateIds : []), ...(Array.isArray(raw.aliasIds) ? raw.aliasIds : [])]),
     aliasIds: uniqStrings(Array.isArray(raw.aliasIds) ? raw.aliasIds : []),
-    linkedSourceDartSetId: raw.linkedSourceDartSetId ? s(raw.linkedSourceDartSetId) : null,
-    linkedRemoteDartSet: Boolean(raw.linkedRemoteDartSet),
-    linkedSourceProfileId: raw.linkedSourceProfileId ? s(raw.linkedSourceProfileId) : null,
+    linkedSourceDartSetId: raw.linkedSourceDartSetId ? s(raw.linkedSourceDartSetId) : rawId || null,
+    linkedRemoteDartSet: linkedRemote,
+    linkedSourceProfileId: linkedSourceProfileId || (linkedRemote ? s(raw.profileId || raw.ownerProfileId || raw.localProfileId) || null : null),
+    linkedTargetLocalProfileId: raw.linkedTargetLocalProfileId ? s(raw.linkedTargetLocalProfileId) : null,
+    linkedOwnerUserId: raw.linkedOwnerUserId ? s(raw.linkedOwnerUserId) : null,
     ownerUserId: raw.ownerUserId ? s(raw.ownerUserId) : null,
     userId: raw.userId ? s(raw.userId) : null,
     accountId: raw.accountId ? s(raw.accountId) : null,
@@ -205,6 +251,7 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
 
   base.duplicateIds = uniqStrings([
     base.id,
+    rawId,
     base.linkedSourceDartSetId,
     ...(Array.isArray(base.duplicateIds) ? base.duplicateIds : []),
     ...(Array.isArray(base.aliasIds) ? base.aliasIds : []),
@@ -216,7 +263,12 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
 
 function canonicalKeyForSet(set: any): string {
   const scope = normalizeScope(set?.scope);
-  const owner = scope === "public" ? "public" : normalizeText(set?.profileId || set?.ownerProfileId || set?.linkedSourceProfileId || "global");
+  const linkedRemote = isLinkedRemoteLike(set) || isRemoteDartSetBucket(set?.profileId);
+  const owner = linkedRemote
+    ? `remote:${normalizeText(set?.linkedSourceProfileId || set?.profileId || set?.ownerProfileId || "remote")}`
+    : scope === "public"
+    ? "public"
+    : normalizeText(set?.profileId || set?.ownerProfileId || set?.linkedSourceProfileId || "global");
   const name = normalizeText(set?.name || set?.label || set?.title || "");
 
   // Le nom est volontairement prioritaire : les doublons constatés viennent de la
@@ -284,6 +336,8 @@ function mergeDartSetIntoCanonical(base: DartSet, incoming: DartSet): DartSet {
     "kind",
     "presetId",
     "linkedSourceProfileId",
+    "linkedTargetLocalProfileId",
+    "linkedOwnerUserId",
     "ownerUserId",
     "userId",
     "accountId",
@@ -354,6 +408,10 @@ function sanitizeDartSetForStorage(raw: any): any {
   next.id = s(next.id) || `dartset_recovered_${hashString(`${next.profileId}|${next.name}|${Date.now()}`)}`;
   next.duplicateIds = uniqStrings(Array.isArray(next.duplicateIds) ? next.duplicateIds : []).filter((id) => id !== next.id);
   next.aliasIds = uniqStrings([...(Array.isArray(next.aliasIds) ? next.aliasIds : []), ...next.duplicateIds]).filter((id) => id !== next.id);
+  next.linkedTargetLocalProfileId = s(next.linkedTargetLocalProfileId) || null;
+  next.linkedOwnerUserId = s(next.linkedOwnerUserId) || null;
+  next.linkedSourceProfileId = s(next.linkedSourceProfileId) || null;
+  next.linkedSourceDartSetId = s(next.linkedSourceDartSetId) || null;
   next.createdAt = n(next.createdAt, Date.now());
   next.updatedAt = n(next.updatedAt, next.createdAt);
 
@@ -481,7 +539,8 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     const id = s(v);
     if (id) aliases.add(id);
   };
-  add(profileId);
+  const pid = s(profileId);
+  add(pid);
 
   const store = appStoreSnapshot();
   if (!store) return aliases;
@@ -496,8 +555,24 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     ...(Array.isArray(store.accounts) ? store.accounts : []),
   ].filter(Boolean);
 
+  const accountIds = uniqStrings([
+    store.userId,
+    store.accountId,
+    store.authUserId,
+    store.sessionUserId,
+    store.currentUserId,
+    store.onlineUserId,
+    store.user?.id,
+    store.account?.id,
+    store.session?.user?.id,
+  ]);
+
+  // 1) Profil demandé : seulement les objets qui portent directement cet id
+  // ou un alias déjà connu. On ne propage plus un compte vers TOUS les profils :
+  // c'était la cause principale des dartsets privés qui apparaissaient chez
+  // n'importe qui après un passage ONLINE.
   let changed = true;
-  for (let pass = 0; pass < 3 && changed; pass += 1) {
+  for (let pass = 0; pass < 4 && changed; pass += 1) {
     changed = false;
     for (const obj of roots) {
       const vals = collectIdLikeValues(obj);
@@ -511,10 +586,18 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     }
   }
 
-  // Cas fréquent : profileId actif = compte usr_*, set privé = profil local courant.
-  const activeIds = [store.activeProfileId, store.currentProfileId, store.selectedProfileId, store.userId, store.accountId, store.authUserId];
-  if (activeIds.some((id) => id && aliases.has(String(id)))) {
-    for (const obj of roots) collectIdLikeValues(obj).forEach(add);
+  // 2) Si l'appel vient d'un vrai compte connecté (usr_* / auth id), on ajoute
+  // uniquement le profil actif courant, pas tous les profils du compte. Cela
+  // permet au mode ONLINE de retrouver le dartset privé du profil actif sans
+  // aspirer les sets d'Alex/Romrom/Jess/etc.
+  if (pid && accountIds.includes(pid)) {
+    accountIds.forEach(add);
+    const activeId = s(store.activeProfileId || store.currentProfileId || store.selectedProfileId);
+    if (activeId) {
+      add(activeId);
+      const activeObj = roots.find((obj: any) => collectIdLikeValues(obj).includes(activeId));
+      collectIdLikeValues(activeObj).forEach(add);
+    }
   }
 
   return aliases;
@@ -529,19 +612,54 @@ function dartSetMatchesAnyId(set: any, id: any): boolean {
   return ids.includes(sid);
 }
 
+function isLinkedRemoteDartSet(set: any): boolean {
+  return isLinkedRemoteLike(set) || isRemoteDartSetBucket(set?.profileId);
+}
+
 function profileCanSeeDartSet(set: DartSet, profileId: string): boolean {
   if (!set) return false;
-  if (set.scope === "public") return true;
+  if (set.scope === "public" && !isLinkedRemoteDartSet(set)) return true;
+
+  // Les sets matérialisés depuis ONLINE/profils liés servent uniquement à
+  // résoudre les historiques et les stats. Ils ne doivent pas apparaître dans
+  // les listes de sélection/création/favori du joueur local.
+  if (isLinkedRemoteDartSet(set)) return false;
+
   const aliases = collectProfileAliasIds(profileId);
   const setOwners = collectIdLikeValues({
     id: set.profileId,
     profileId: set.profileId,
     linkedSourceProfileId: set.linkedSourceProfileId,
+    linkedTargetLocalProfileId: set.linkedTargetLocalProfileId,
     ownerUserId: set.ownerUserId,
     userId: set.userId,
     accountId: set.accountId,
   });
   return setOwners.some((id) => aliases.has(id));
+}
+
+function visibleDartSetKey(set: any): string {
+  const name = normalizeText(set?.name || set?.label || set?.title || "");
+  if (name) return `name:${name}`;
+  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.id || "");
+  return `visual:${visual}`;
+}
+
+function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {
+  const byKey = new Map<string, DartSet>();
+  const order: string[] = [];
+  for (const set of Array.isArray(list) ? list : []) {
+    if (!set) continue;
+    const key = visibleDartSetKey(set);
+    const old = byKey.get(key);
+    if (!old) {
+      byKey.set(key, set);
+      order.push(key);
+      continue;
+    }
+    byKey.set(key, scoreDartSetForCanonical(set) > scoreDartSetForCanonical(old) ? set : old);
+  }
+  return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
 }
 
 // -------------------------------------------------------------
@@ -560,7 +678,8 @@ export function setAllDartSets(list: DartSet[]) {
 // 👇 sets du profil + publics, avec alias compte/profil actif.
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
-  return loadAll().filter((set) => !pid ? set.scope === "public" : profileCanSeeDartSet(set, pid));
+  const visible = loadAll().filter((set) => !pid ? set.scope === "public" && !isLinkedRemoteDartSet(set) : profileCanSeeDartSet(set, pid));
+  return dedupeVisibleDartSets(visible);
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {
@@ -572,9 +691,24 @@ export function getDartSetById(id: DartSetId): DartSet | undefined {
 export function getCanonicalDartSetId(id: DartSetId | null | undefined, profileId?: string | null): string | null {
   const sid = s(id);
   if (!sid) return null;
-  const all = profileId ? getDartSetsForProfile(String(profileId)) : loadAll();
-  const hit = all.find((set) => dartSetMatchesAnyId(set, sid)) || loadAll().find((set) => dartSetMatchesAnyId(set, sid));
-  return hit?.id ? String(hit.id) : sid;
+
+  const pid = s(profileId);
+  const visible = pid ? getDartSetsForProfile(pid) : [];
+  const visibleHit = visible.find((set) => dartSetMatchesAnyId(set, sid));
+  if (visibleHit?.id) return String(visibleHit.id);
+
+  const globalHit = loadAll().find((set) => dartSetMatchesAnyId(set, sid));
+
+  // Cas historique / ONLINE : un match peut pointer vers un doublon masqué ou
+  // un set matérialisé distant. Si le profil courant possède un set visible avec
+  // le même nom/visuel, on fusionne les stats vers celui-ci au lieu de produire
+  // un "Set inconnu" ou une ligne doublon.
+  if (pid && globalHit) {
+    const sameVisible = visible.find((set) => visibleDartSetKey(set) === visibleDartSetKey(globalHit));
+    if (sameVisible?.id) return String(sameVisible.id);
+  }
+
+  return globalHit?.id ? String(globalHit.id) : sid;
 }
 
 export function getDartSetAliases(id: DartSetId | null | undefined): string[] {
