@@ -11,6 +11,7 @@
 
 import React from "react";
 import type { Profile } from "../lib/types";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
 
 export type CricketScoreMode = "points" | "no-points";
 export type CricketStartOrder = "selected" | "random";
@@ -189,122 +190,41 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
           Mode solo: 2 à 4 joueurs. Mode équipes: <strong>4 joueurs</strong> (2v2).
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {allPlayers.map((p) => {
-            const isSelected = value.selectedIds.includes(p.id);
-            const isBot = String(p.id).startsWith("bot_");
-            return (
-              <div
-                key={p.id}
-                style={{
-                  width: "calc(50% - 5px)",
-                  borderRadius: 14,
-                  border: `1px solid ${isSelected ? "rgba(246,194,86,0.55)" : T.borderSoft}`,
-                  background: isSelected ? "rgba(246,194,86,0.10)" : "rgba(0,0,0,0.25)",
-                  padding: 10,
-                }}
-                onClick={() => toggleId(p.id)}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
+        <PlayerPagedSelector
+          profiles={allPlayers}
+          selectedIds={value.selectedIds}
+          onToggle={toggleId}
+          accent={T.gold}
+          pageSize={9}
+          modalTitle="Choisir des joueurs"
+          renderActions={(p: any) => value.mode === "teams" && value.selectedIds.includes(p.id) ? (
+            <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+              {(["A", "B"] as const).map((team) => {
+                const active = value.teamsMap[p.id] === team;
+                return (
+                  <button
+                    key={team}
+                    type="button"
+                    onClick={() => set({ teamsMap: { ...value.teamsMap, [p.id]: team } })}
                     style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: "50%",
-                      background: "#0b1220",
-                      border: `2px solid ${isSelected ? T.gold : "rgba(148,163,184,0.25)"}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      minWidth: 42,
+                      padding: "5px 8px",
+                      borderRadius: 999,
+                      border: active ? `1px solid ${T.gold}` : `1px solid ${T.borderSoft}`,
+                      background: active ? "rgba(246,194,86,0.16)" : "rgba(0,0,0,0.25)",
+                      color: active ? T.gold : T.textSoft,
+                      fontSize: 11,
                       fontWeight: 900,
-                      color: isSelected ? T.gold : "rgba(255,255,255,0.65)",
-                      flexShrink: 0,
+                      cursor: "pointer",
                     }}
                   >
-                    {(p.name || "?")
-                      .split(" ")
-                      .filter(Boolean)
-                      .map((s) => s[0])
-                      .join("")
-                      .toUpperCase()
-                      .slice(0, 2)}
-                  </div>
-
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 800,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {p.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: T.textSoft }}>
-                      {isSelected ? "Sélectionné" : "—"} {isBot ? " • BOT" : ""}
-                    </div>
-                  </div>
-
-                  {isBot && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeBot(p.id);
-                      }}
-                      style={{
-                        border: "none",
-                        background: "rgba(255,255,255,0.08)",
-                        color: "#fff",
-                        borderRadius: 10,
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                {/* Teams assignation */}
-                {value.mode === "teams" && isSelected && (
-                  <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                    {(["A", "B"] as const).map((team) => {
-                      const active = value.teamsMap[p.id] === team;
-                      return (
-                        <button
-                          key={team}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            set({
-                              teamsMap: { ...value.teamsMap, [p.id]: team },
-                            });
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: "6px 0",
-                            borderRadius: 999,
-                            border: active ? `1px solid ${T.gold}` : `1px solid ${T.borderSoft}`,
-                            background: active ? "rgba(246,194,86,0.16)" : "rgba(0,0,0,0.25)",
-                            color: active ? T.gold : T.textSoft,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Team {team}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                    Team {team}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        />
 
         <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
           <button

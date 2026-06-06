@@ -4731,7 +4731,7 @@ if (isLandscapeTablet) {
                         textShadow: "0 0 14px rgba(255,90,90,.35)",
                       }}
                     >
-                      BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
+                      BUST — {t("x01v3.bust.lock", "Valide ou annule la volée")}
                     </div>
                   ) : null}
 
@@ -4754,7 +4754,7 @@ if (isLandscapeTablet) {
                       onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
                       preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
                       voiceControl={{
-                        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && voiceMatchIsLive),
+                        enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
                         supported: voiceScore.supported,
                         phase: voiceScore.phase,
                         activity: voiceScore.activity,
@@ -4770,7 +4770,7 @@ if (isLandscapeTablet) {
                       }}
                       hidePreview
                       showPlaceholders={false}
-                      disabled={isBustLocked || !onlineCanScore}
+                      disabled={!onlineCanScore}
                       switcherMode="hidden"
                     />
                     )}
@@ -5132,7 +5132,7 @@ if (isLandscapeTablet) {
                   textShadow: "0 0 14px rgba(255,90,90,.35)",
                 }}
               >
-                BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
+                BUST — {t("x01v3.bust.lock", "Valide ou annule la volée")}
               </div>
             ) : null}
 
@@ -5159,7 +5159,7 @@ if (isLandscapeTablet) {
               onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
               preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
               voiceControl={{
-                enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && voiceMatchIsLive),
+                enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
                 supported: voiceScore.supported,
                 phase: voiceScore.phase,
                 activity: voiceScore.activity,
@@ -5175,7 +5175,7 @@ if (isLandscapeTablet) {
               }}
               hidePreview
               showPlaceholders={false}
-              disabled={isBustLocked || !onlineCanScore}
+              disabled={!onlineCanScore}
               // ✅ UX: pas de dropdown, modes visibles, et auto-fit pour que le keypad ne force JAMAIS un scroll.
               switcherMode="inline"
               fitToParent

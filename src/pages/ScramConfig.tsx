@@ -17,6 +17,8 @@ import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import BotPagedSelector from "../components/BotPagedSelector";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -275,75 +277,15 @@ export default function ScramConfig(props: any) {
               Sélection : {selectedIds.length}/8 — min 2
             </div>
 
-            {/* Profils */}
-            <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10 }}>
-              {humanProfiles.map((p) => {
-                const id = String(p.id);
-                const active = selectedIds.includes(id);
-                return (
-                  <div
-                    key={id}
-                    style={{
-                      minWidth: 122,
-                      maxWidth: 122,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 7,
-                      flexShrink: 0,
-                      userSelect: "none",
-                    }}
-                  >
-                    <div
-                      role="button"
-                      onClick={() => togglePlayer(id)}
-                      style={{
-                        width: 78,
-                        height: 78,
-                        borderRadius: "50%",
-                        overflow: "hidden",
-                        boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                        background: active
-                          ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
-                          : "#111320",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                          opacity: active ? 1 : 0.6,
-                          transition: "filter .2s ease, opacity .2s ease",
-                        }}
-                      >
-                        <ProfileAvatar profile={p} size={78} showStars={false} />
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        textAlign: "center",
-                        color: active ? "#f6f2e9" : "#7e8299",
-                        maxWidth: "100%",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {p.name || "Joueur"}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Profils : sélection en bloc flottant type avatars */}
+            <PlayerPagedSelector
+              profiles={humanProfiles}
+              selectedIds={selectedIds}
+              onToggle={togglePlayer}
+              accent={primary}
+              pageSize={9}
+              modalTitle="Choisir des joueurs"
+            />
 
             {/* Bots */}
             <div style={{ marginTop: 10 }}>
@@ -365,83 +307,16 @@ export default function ScramConfig(props: any) {
                     />
                   </OptionRow>
 
-                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, marginTop: 8 }}>
-                    Bots : {userBots.length}
-                  </div>
-
-                  {userBots.length > 0 && (
-                    <div
-                      className="dc-scroll-thin"
-                      style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}
-                    >
-                      {userBots.map((b) => {
-                        const active = selectedIds.includes(b.id);
-                        const fakeProfile = botToFakeProfile(b);
-                        return (
-                          <div
-                            key={b.id}
-                            style={{
-                              minWidth: 122,
-                              maxWidth: 122,
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: 7,
-                              flexShrink: 0,
-                              userSelect: "none",
-                            }}
-                          >
-                            <div
-                              role="button"
-                              onClick={() => togglePlayer(b.id)}
-                              style={{
-                                width: 78,
-                                height: 78,
-                                borderRadius: "50%",
-                                overflow: "hidden",
-                                boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                                background: active
-                                  ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
-                                  : "#111320",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  borderRadius: "50%",
-                                  overflow: "hidden",
-                                  filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                                  opacity: active ? 1 : 0.6,
-                                  transition: "filter .2s ease, opacity .2s ease",
-                                }}
-                              >
-                                <ProfileAvatar profile={fakeProfile} size={78} showStars={false} />
-                              </div>
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                fontWeight: 700,
-                                textAlign: "center",
-                                color: active ? "#f6f2e9" : "#7e8299",
-                                maxWidth: "100%",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {b.name}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div style={{ marginTop: 10 }}>
+                  <BotPagedSelector
+                    bots={userBots}
+                    selectedIds={selectedIds}
+                    onToggle={togglePlayer}
+                    accent={primary}
+                    label="BOTS IA"
+                    modalTitle="Choisir des BOTS IA"
+                  />
+                </div>
                 </>
               )}
             </div>

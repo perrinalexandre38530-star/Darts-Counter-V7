@@ -19,6 +19,7 @@ import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
@@ -528,89 +529,14 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
             </p>
           ) : (
             <>
-              <div
-                className="dc-scroll-thin"
-                style={{
-                  display: "flex",
-                  gap: 18,
-                  overflowX: "auto",
-                  paddingBottom: 10,
-                  marginTop: 12,
-                  paddingLeft: 14,
-                  paddingRight: 8,
-                }}
-              >
-                {humanProfiles.map((p: any) => {
-                  const active = selectedIds.includes(p.id);
-
-                  return (
-                    <div
-                      key={p.id}
-                      role="button"
-                      onClick={() => togglePlayer(p.id)}
-                      style={{
-                        minWidth: 122,
-                        maxWidth: 122,
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 7,
-                        flexShrink: 0,
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 78,
-                          height: 78,
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                          background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            borderRadius: "50%",
-                            overflow: "hidden",
-                            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                            opacity: active ? 1 : 0.6,
-                            transition: "filter .2s ease, opacity .2s ease",
-                          }}
-                        >
-                          <ProfileAvatar profile={p as any} size={78} />
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          textAlign: "center",
-                          color: active ? "#f6f2e9" : "#7e8299",
-                          maxWidth: "100%",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={p.name}
-                      >
-                        {p.name}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
+              <PlayerPagedSelector
+                profiles={humanProfiles}
+                selectedIds={selectedIds}
+                onToggle={togglePlayer}
+                accent={primary}
+                pageSize={9}
+                modalTitle="Choisir des joueurs"
+              />
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
                 Il faut au moins <b>2 joueurs</b> pour démarrer.
               </p>

@@ -29,6 +29,7 @@ import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
@@ -755,6 +756,17 @@ export default function KillerConfigPage(props: Props) {
     });
   }
 
+  const miniRoundBtn: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,.12)",
+    background: "rgba(0,0,0,.25)",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+
   const canStart = selectedIds.length >= 2;
 
   function resolvePlayer(id: string) {
@@ -985,172 +997,31 @@ export default function KillerConfigPage(props: Props) {
             </p>
           ) : (
             <>
-              <div
-                className="dc-scroll-thin"
-                style={{
-                  display: "flex",
-                  gap: 18,
-                  overflowX: "auto",
-                  paddingBottom: 10,
-                  marginTop: 12,
-                  paddingLeft: 14,
-                  paddingRight: 8,
-                  opacity: numberAssignMode === "throw" ? 0.78 : 1,
-                }}
-              >
-                {humanProfiles.map((p) => {
-                  const active = selectedIds.includes(p.id);
-                  const num = killerNumberById[p.id] ?? 20;
-                  const disableManualNumber = numberAssignMode === "throw";
-
-                  return (
-                    <div
-                      key={p.id}
-                      role="button"
-                      onClick={() => togglePlayer(p.id)}
-                      style={{
-                        minWidth: 122,
-                        maxWidth: 122,
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 7,
-                        flexShrink: 0,
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 78,
-                          height: 78,
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                          background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            borderRadius: "50%",
-                            overflow: "hidden",
-                            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                            opacity: active ? 1 : 0.6,
-                            transition: "filter .2s ease, opacity .2s ease",
-                          }}
-                        >
-                          <ProfileAvatar profile={p as any} size={78} />
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          textAlign: "center",
-                          color: active ? "#f6f2e9" : "#7e8299",
-                          maxWidth: "100%",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {p.name}
-                      </div>
-
-                      {/* numéro killer */}
+              <div style={{ opacity: numberAssignMode === "throw" ? 0.78 : 1 }}>
+                <PlayerPagedSelector
+                  profiles={humanProfiles}
+                  selectedIds={selectedIds}
+                  onToggle={togglePlayer}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle="Choisir des joueurs"
+                  renderActions={(p: any) => {
+                    const num = killerNumberById[p.id] ?? 20;
+                    const disableManualNumber = numberAssignMode === "throw";
+                    return (
                       <div
                         onClick={(e) => e.stopPropagation()}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          width: "100%",
-                          justifyContent: "center",
-                          opacity: disableManualNumber ? 0.55 : 1,
-                          pointerEvents: disableManualNumber ? "none" : "auto",
-                        }}
-                        title={
-                          disableManualNumber
-                            ? "Mode 1er lancer : le numéro sera choisi pendant la partie."
-                            : "Ajuster le numéro KILLER"
-                        }
+                        style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", opacity: disableManualNumber ? 0.55 : 1, pointerEvents: disableManualNumber ? "none" : "auto" }}
+                        title={disableManualNumber ? "Mode 1er lancer : le numéro sera choisi pendant la partie." : "Ajuster le numéro KILLER"}
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num - 1 < 1 ? 20 : num - 1 }))
-                          }
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,.12)",
-                            background: "rgba(0,0,0,.25)",
-                            color: "#fff",
-                            fontWeight: 900,
-                            cursor: "pointer",
-                          }}
-                          title="Diminuer"
-                        >
-                          −
-                        </button>
-
-                        <div
-                          style={{
-                            width: 44,
-                            height: 34,
-                            borderRadius: 12,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: 900,
-                            color: "#111",
-                            background: `linear-gradient(135deg, ${primary}, #ffe9a3)`,
-                            boxShadow: `0 0 14px ${primary}55`,
-                          }}
-                          title="Numéro KILLER"
-                        >
-                          {num}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num + 1 > 20 ? 1 : num + 1 }))
-                          }
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,.12)",
-                            background: "rgba(0,0,0,.25)",
-                            color: "#fff",
-                            fontWeight: 900,
-                            cursor: "pointer",
-                          }}
-                          title="Augmenter"
-                        >
-                          +
-                        </button>
+                        <button type="button" onClick={() => setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num - 1 < 1 ? 20 : num - 1 }))} style={miniRoundBtn}>−</button>
+                        <div style={{ width: 40, height: 30, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#111", background: `linear-gradient(135deg, ${primary}, #ffe9a3)`, boxShadow: `0 0 14px ${primary}55` }}>{num}</div>
+                        <button type="button" onClick={() => setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num + 1 > 20 ? 1 : num + 1 }))} style={miniRoundBtn}>+</button>
                       </div>
-
-                      <div style={{ fontSize: 10, opacity: 0.65 }}>
-                        {numberAssignMode === "throw" ? "Numéro choisi au 1er lancer" : "Numéro KILLER"}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  }}
+                />
               </div>
-
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
                 Il faut au moins <b>2 joueurs</b> pour démarrer.
               </p>
