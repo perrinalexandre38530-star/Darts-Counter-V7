@@ -12,6 +12,7 @@
 // =============================================================
 
 import { History } from "./history";
+import { getCanonicalDartSetId } from "./dartSetsStore";
 
 export type SegmentsMap = Record<string, number>;
 
@@ -217,6 +218,17 @@ function resolveDartSetIdFromRecord(r: any, profileId: string | null | undefined
     null;
 
   return global ? String(global) : null;
+}
+
+
+function canonicalDartSetId(id: any, profileId?: string | null): string {
+  const sid = String(id ?? "").trim();
+  if (!sid) return "";
+  try {
+    return String(getCanonicalDartSetId(sid, profileId || null) || sid);
+  } catch {
+    return sid;
+  }
 }
 
 function resolveAvg3(pp: any): number {
@@ -756,7 +768,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
           const raw = computeFromRaw(r, String(pid || profileId));
           const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(pid || profileId || ""), pp);
           if (!fallbackSetId) continue;
-          const sid = String(fallbackSetId);
+          const sid = canonicalDartSetId(fallbackSetId, String(pid || profileId || ""));
           const a = (agg[sid] ||= {
             dartSetId: sid,
             matches: 0,
@@ -804,7 +816,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
           continue;
         }
 
-        const sid = String(dartSetId);
+        const sid = canonicalDartSetId(dartSetId, String(pid || profileId || ""));
 
         const a = (agg[sid] ||= {
           dartSetId: sid,
@@ -909,7 +921,7 @@ export async function getX01StatsByDartSet(profileId?: string) {
       const raw = computeFromRaw(r, String(profileId));
       const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(profileId), null);
       if (!fallbackSetId) continue;
-      const sid = String(fallbackSetId);
+      const sid = canonicalDartSetId(fallbackSetId, String(pid || profileId || ""));
 
       const a = (agg[sid] ||= {
         dartSetId: sid,

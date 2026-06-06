@@ -19,7 +19,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 
-import { getDartSetsForProfile, type DartSet } from "../lib/dartSetsStore";
+import { getDartSetsForProfile, getDartSetById, getCanonicalDartSetId, type DartSet } from "../lib/dartSetsStore";
 import { dartPresets } from "../lib/dartPresets";
 import { getX01StatsByDartSetForProfile } from "../lib/statsByDartSet";
 import { History } from "../lib/history";
@@ -650,7 +650,8 @@ function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName 
     const mine = resolvePlayerStatsRowFromRecord(r, profileId, playerName);
     if (!mine) continue;
 
-    const dsid = resolveDartSetIdFromRecord(r, profileId, mine);
+    const dsidRaw = resolveDartSetIdFromRecord(r, profileId, mine);
+    const dsid = canonicalDartSetIdForStats(dsidRaw, profileId);
     if (!dsid) continue;
 
     const at =
@@ -984,9 +985,56 @@ function detailToOrderedStacks(detail: SegDetailMap) {
 
 /** ---------- Nom + image ---------- **/
 
+function setMatchesId(set: any, id: any): boolean {
+  const sid = String(id ?? "").trim();
+  if (!sid || !set) return false;
+  if (String(set?.id ?? "") === sid) return true;
+  if (String(set?.linkedSourceDartSetId ?? "") === sid) return true;
+  const aliases = [
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
+  ].map((x: any) => String(x ?? "").trim()).filter(Boolean);
+  return aliases.includes(sid);
+}
+
+function findSetByAnyId(id: string, mySets: DartSet[]): any | null {
+  const sid = String(id ?? "").trim();
+  if (!sid) return null;
+  return (mySets || []).find((s: any) => setMatchesId(s, sid)) || getDartSetById(sid) || null;
+}
+
+function canonicalDartSetIdForStats(id: any, profileId?: string | null): string {
+  const sid = String(id ?? "").trim();
+  if (!sid) return "";
+  return String(getCanonicalDartSetId(sid, profileId || null) || sid);
+}
+
+function canonicalizeRecentMap(map: Record<string, MiniMatch[]>, profileId?: string | null): Record<string, MiniMatch[]> {
+  const out: Record<string, MiniMatch[]> = {};
+  for (const [rawId, rows] of Object.entries(map || {})) {
+    const id = canonicalDartSetIdForStats(rawId, profileId);
+    if (!id) continue;
+    (out[id] ||= []).push(...(Array.isArray(rows) ? rows : []));
+  }
+  for (const key of Object.keys(out)) {
+    const seen = new Set<string>();
+    out[key] = out[key]
+      .slice()
+      .sort((a, b) => N(b?.at, 0) - N(a?.at, 0))
+      .filter((m: any) => {
+        const sig = String(m?.id || `${m?.at || ""}-${m?.label || ""}-${m?.score || ""}`);
+        if (seen.has(sig)) return false;
+        seen.add(sig);
+        return true;
+      })
+      .slice(0, 12);
+  }
+  return out;
+}
+
 function resolveSetName(id: string, mySets: DartSet[], t: any) {
   const sid = String(id ?? "");
-  const mine = (mySets || []).find((s: any) => String(s?.id) === sid) || null;
+  const mine = findSetByAnyId(sid, mySets);
   if (mine?.name) return String(mine.name);
 
   const pr = (dartPresets || []).find((p: any) => String(p?.id) === sid) || null;
@@ -997,7 +1045,7 @@ function resolveSetName(id: string, mySets: DartSet[], t: any) {
 
 function resolveSetImage(id: string, mySets: DartSet[]) {
   const sid = String(id ?? "");
-  const mine: any = (mySets || []).find((s: any) => String(s?.id) === sid) || null;
+  const mine: any = findSetByAnyId(sid, mySets);
 
   // 1) custom set direct
   const mineImg =
@@ -1336,7 +1384,7 @@ function computeAggFromHistory(allHistory: any[], profileId: string, playerName 
     const mine = resolvePlayerStatsRowFromRecord(r, profileId, playerName);
     if (!mine) continue;
 
-    const dsid = String(resolveDartSetIdFromRecord(r, profileId, mine) ?? "");
+    const dsid = canonicalDartSetIdForStats(resolveDartSetIdFromRecord(r, profileId, mine), profileId);
     if (!dsid) continue;
 
     const row = (out[dsid] ||= {
@@ -1553,7 +1601,7 @@ function buildCompareItems(rows: any[], mySets: DartSet[], recentBySet: Record<s
   return (rows || [])
     .filter((r: any) => String(r?.dartSetId || "").trim())
     .map((row: any, index: number) => {
-      const id = String(row?.dartSetId || "");
+      const id = canonicalDartSetIdForStats(row?.dartSetId || "");
       const recent = recentBySet?.[id] || [];
       const values: Record<string, number> = { matches: rowMatches(row) };
       for (const m of COMPARE_METRICS) values[m.key] = rowMetricValue(row, m.key, recent);
@@ -1738,22 +1786,35 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const allEnriched = Array.from(enrichedMap.values());
 
 
-        const recMap = buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || "");
+        const recMap = canonicalizeRecentMap(buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || ""), activeProfileId);
         if (mounted) setRecentBySet(recMap);
 
-        const aggMap = computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
+        const aggMapRaw = computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
+        const aggMap: Record<string, any> = {};
+        for (const [rawId, row] of Object.entries(aggMapRaw || {})) {
+          const id = canonicalDartSetIdForStats(rawId, activeProfileId);
+          if (!id) continue;
+          aggMap[id] = mergeRowPreferNonZero(aggMap[id] || { dartSetId: id }, { ...(row as any), dartSetId: id });
+        }
+
+        const rowsAByCanonical = new Map<string, any>();
+        for (const row of rowsA) {
+          const id = canonicalDartSetIdForStats(row?.dartSetId || row?.dartPresetId || "", activeProfileId);
+          if (!id) continue;
+          rowsAByCanonical.set(id, mergeRowPreferNonZero(rowsAByCanonical.get(id) || { dartSetId: id }, { ...(row as any), dartSetId: id }));
+        }
 
         const ids = new Set<string>();
-        for (const r of rowsA) ids.add(String(r?.dartSetId || r?.dartPresetId || ""));
+        for (const id of rowsAByCanonical.keys()) ids.add(String(id));
         for (const id of Object.keys(aggMap)) ids.add(String(id));
 
         const outRows = Array.from(ids)
           .filter(Boolean)
           .map((id) => {
-            const a = rowsA.find((x: any) => String(x?.dartSetId || x?.dartPresetId || "") === String(id)) || { dartSetId: id };
+            const a = rowsAByCanonical.get(String(id)) || { dartSetId: id };
             const b = aggMap[String(id)] || { dartSetId: id };
             const mergedRow = mergeRowPreferNonZero(a, b);
-            mergedRow.dartSetId = String(mergedRow.dartSetId || id);
+            mergedRow.dartSetId = String(id);
             return mergedRow;
           });
 
@@ -2489,7 +2550,7 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
   if (!r) return null;
 
   const id: string = String(r.dartSetId || "");
-  const my: any = (mySets || []).find((s: any) => String(s?.id) === id) || null;
+  const my: any = findSetByAnyId(id, mySets);
 
   const prDirect = !my ? presetById(id) : null;
 
