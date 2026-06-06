@@ -23,8 +23,12 @@ export type BotId =
   | "pro_jackpot"
   | "pro_crafty"
   | "pro_barney"
-  | "pro_dobey_custom"
-  | "pro_menace";
+  | "pro_darth_maple"
+  | "pro_menace"
+  | "pro_the_giant"
+  | "pro_the_hammer"
+  | "pro_voltage"
+  | "pro_one_dart";
 
 // Style de jeu (pour guider l'IA)
 export type BotPlayStyle =
@@ -131,7 +135,7 @@ export const PRO_BOTS: ProBot[] = [
     id: "pro_dobey",
     displayName: "Hollywood",
     avatarKey: "pro_dobey",
-    botLevel: 3,
+    botLevel: 3.5,
     style: "all_rounder",
     targetAvg3: 92,
     checkoutSkill: "medium",
@@ -173,22 +177,58 @@ export const PRO_BOTS: ProBot[] = [
     checkoutSkill: "high",
   },
   {
-    id: "pro_dobey_custom",
-    displayName: "Dobey",
-    avatarKey: "pro_dobey_custom",
+    id: "pro_darth_maple",
+    displayName: "Darth Maple",
+    avatarKey: "pro_darth_maple",
     botLevel: 3.5,
-    style: "all_rounder",
+    style: "checkout_master",
     targetAvg3: 94,
-    checkoutSkill: "medium",
+    checkoutSkill: "high",
   },
   {
     id: "pro_menace",
     displayName: "The Menace",
     avatarKey: "pro_menace",
-    botLevel: 3,
+    botLevel: 3.5,
     style: "all_rounder",
     targetAvg3: 91,
     checkoutSkill: "medium",
+  },
+  {
+    id: "pro_the_giant",
+    displayName: "The Giant",
+    avatarKey: "pro_the_giant",
+    botLevel: 3,
+    style: "power_scorer",
+    targetAvg3: 90,
+    checkoutSkill: "medium",
+  },
+  {
+    id: "pro_the_hammer",
+    displayName: "The Hammer",
+    avatarKey: "pro_the_hammer",
+    botLevel: 3,
+    style: "all_rounder",
+    targetAvg3: 90,
+    checkoutSkill: "medium",
+  },
+  {
+    id: "pro_voltage",
+    displayName: "Voltage",
+    avatarKey: "pro_voltage",
+    botLevel: 3,
+    style: "ultra_regular",
+    targetAvg3: 89,
+    checkoutSkill: "medium",
+  },
+  {
+    id: "pro_one_dart",
+    displayName: "One Dart",
+    avatarKey: "pro_one_dart",
+    botLevel: 3,
+    style: "checkout_master",
+    targetAvg3: 88,
+    checkoutSkill: "high",
   },
 ];
 

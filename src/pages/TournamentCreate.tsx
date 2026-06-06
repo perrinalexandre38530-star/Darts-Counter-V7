@@ -41,6 +41,7 @@ import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
 import botTeamChallengerLogo from "../assets/ui/competition_bot_team_challenger.webp";
 import botTeamMixLogo from "../assets/ui/competition_bot_team_mix.webp";
+import botTeamRisingLogo from "../assets/ui/competition_bot_team_rising.webp";
 import { BABYFOOT_LEAGUE_BADGES } from "../lib/leagueBadgeAssets";
 import { loadTeamsBySport, createTeam as createStoredTeam, upsertTeam as upsertStoredTeam, fileToDataUrl as fileToCompressedTeamLogoDataUrl } from "../lib/petanqueTeamsStore";
 
@@ -59,8 +60,12 @@ import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
 import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
 import avatarBarney from "../assets/avatars/bots-pro/barney.png";
-import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
 import avatarTheMenace from "../assets/avatars/bots-pro/the-menace.png";
+import avatarDarthMaple from "../assets/avatars/bots-pro/darth-maple.png";
+import avatarTheGiant from "../assets/avatars/bots-pro/the-giant.png";
+import avatarTheHammer from "../assets/avatars/bots-pro/the-hammer.png";
+import avatarVoltage from "../assets/avatars/bots-pro/voltage.png";
+import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 
 // ⚠️ Si tu as aussi "the-nuke.png" dans le dossier, décommente :
@@ -451,9 +456,13 @@ const BOTS_PRO_ASSETS = [
   { id: "bot_bully_boy", name: "Bully Boy", rating: 80, botLevel: 4, avatarDataUrl: avatarBullyBoy },
   { id: "bot_the_ferret", name: "The Ferret", rating: 80, botLevel: 4, avatarDataUrl: avatarTheFerret },
   { id: "bot_the_asp", name: "The Asp", rating: 80, botLevel: 4, avatarDataUrl: avatarTheAsp },
-  { id: "bot_dobey", name: "Dobey", rating: 70, botLevel: 3.5, avatarDataUrl: avatarDobeyPro },
+  { id: "bot_darth_maple", name: "Darth Maple", rating: 70, botLevel: 3.5, avatarDataUrl: avatarDarthMaple },
   { id: "bot_hollywood", name: "Hollywood", rating: 60, botLevel: 3, avatarDataUrl: avatarHollywood },
   { id: "bot_the_menace", name: "The Menace", rating: 60, botLevel: 3, avatarDataUrl: avatarTheMenace },
+  { id: "bot_the_giant", name: "The Giant", rating: 80, botLevel: 4, avatarDataUrl: avatarTheGiant },
+  { id: "bot_voltage", name: "Voltage", rating: 70, botLevel: 3.5, avatarDataUrl: avatarVoltage },
+  { id: "bot_one_dart", name: "One Dart", rating: 70, botLevel: 3.5, avatarDataUrl: avatarOneDart },
+  { id: "bot_the_hammer", name: "THE HAMMER", rating: 60, botLevel: 3, avatarDataUrl: avatarTheHammer },
 ];
 
 const BOT_PRO_AVATAR_BY_NAME: Record<string, any> = Object.fromEntries(
@@ -1477,6 +1486,7 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
       pro: botTeamProLogo,
       challenger: botTeamChallengerLogo,
       mix: botTeamMixLogo,
+      rising: botTeamRisingLogo,
     };
 
     return BOT_PRO_TEAMS.map((team: any) => {

@@ -4,7 +4,7 @@
 // Répartition du plus fort au moins fort, avec niveau global utilisé par ProfileStarRing.
 // ============================================
 
-export type BotTeamTier = "elite" | "pro" | "challenger" | "mix";
+export type BotTeamTier = "elite" | "pro" | "challenger" | "mix" | "rising";
 
 export type BotTeamMember = {
   id: string;
@@ -25,7 +25,7 @@ export type BotProTeam = {
 export const BOT_PRO_TEAMS: BotProTeam[] = [
   {
     key: "elite",
-    name: "BOT Élite",
+    name: "BOT Élite IA",
     botLevel: 5,
     avg3D: 100,
     members: [
@@ -37,7 +37,7 @@ export const BOT_PRO_TEAMS: BotProTeam[] = [
   },
   {
     key: "pro",
-    name: "BOT Pro",
+    name: "BOT Pro IA",
     botLevel: 4.5,
     avg3D: 90,
     members: [
@@ -49,7 +49,7 @@ export const BOT_PRO_TEAMS: BotProTeam[] = [
   },
   {
     key: "challenger",
-    name: "BOT Challenger",
+    name: "BOT Challenger IA",
     botLevel: 4,
     avg3D: 80,
     members: [
@@ -61,14 +61,26 @@ export const BOT_PRO_TEAMS: BotProTeam[] = [
   },
   {
     key: "mix",
-    name: "BOT Mixte",
+    name: "BOT Mixte IA",
     botLevel: 3.5,
     avg3D: 70,
     members: [
-      { id: "bot_the_asp", name: "The Asp", avatarKey: "pro_aspinall", botLevel: 4, targetAvg3: 96 },
-      { id: "bot_hollywood", name: "Hollywood", avatarKey: "pro_dobey", botLevel: 3, targetAvg3: 92 },
-      { id: "bot_dobey", name: "Dobey", avatarKey: "pro_dobey_custom", botLevel: 3.5, targetAvg3: 94 },
-      { id: "bot_the_menace", name: "The Menace", avatarKey: "pro_menace", botLevel: 3, targetAvg3: 91 },
+      { id: "bot_the_asp", name: "The Asp", avatarKey: "pro_aspinall", botLevel: 3.5, targetAvg3: 70 },
+      { id: "bot_hollywood", name: "Hollywood", avatarKey: "pro_dobey", botLevel: 3.5, targetAvg3: 70 },
+      { id: "bot_darth_maple", name: "Darth Maple", avatarKey: "pro_darth_maple", botLevel: 3.5, targetAvg3: 70 },
+      { id: "bot_the_menace", name: "The Menace", avatarKey: "pro_menace", botLevel: 3.5, targetAvg3: 70 },
+    ],
+  },
+  {
+    key: "rising",
+    name: "BOT Rising IA",
+    botLevel: 3,
+    avg3D: 60,
+    members: [
+      { id: "bot_the_giant", name: "The Giant", avatarKey: "pro_the_giant", botLevel: 3, targetAvg3: 90 },
+      { id: "bot_voltage", name: "Voltage", avatarKey: "pro_voltage", botLevel: 3, targetAvg3: 89 },
+      { id: "bot_one_dart", name: "One Dart", avatarKey: "pro_one_dart", botLevel: 3, targetAvg3: 88 },
+      { id: "bot_the_hammer", name: "THE HAMMER", avatarKey: "pro_the_hammer", botLevel: 3, targetAvg3: 90 },
     ],
   },
 ];

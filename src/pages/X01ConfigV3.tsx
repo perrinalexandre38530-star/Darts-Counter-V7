@@ -43,8 +43,12 @@ import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
 import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
 import avatarBarney from "../assets/avatars/bots-pro/barney.png";
-import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
 import avatarTheMenace from "../assets/avatars/bots-pro/the-menace.png";
+import avatarDarthMaple from "../assets/avatars/bots-pro/darth-maple.png";
+import avatarTheGiant from "../assets/avatars/bots-pro/the-giant.png";
+import avatarTheHammer from "../assets/avatars/bots-pro/the-hammer.png";
+import avatarVoltage from "../assets/avatars/bots-pro/voltage.png";
+import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
 
 // UI-only: "multi" = plusieurs joueurs en mode classique (pas teams)
 type MatchModeV3 = "solo" | "multi" | "teams";
@@ -535,53 +539,31 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 // BOTS IA "PRO" PRÉDÉFINIS
 // ------------------------------------------------------
 const PRO_BOTS: BotLite[] = [
-  {
-    id: "bot_pro_mvg",
-    name: "Green Machine",
-    botLevel: "Légende",
-    avatarDataUrl: avatarGreenMachine,
-  },
-  {
-    id: "bot_pro_wright",
-    name: "Snake King",
-    botLevel: "Pro",
-    avatarDataUrl: avatarSnakeKing,
-  },
-  {
-    id: "bot_pro_littler",
-    name: "Wonder Kid",
-    botLevel: "Prodige Pro",
-    avatarDataUrl: avatarWonderKid,
-  },
-  { id: "bot_pro_price", name: "Ice Man", botLevel: "Pro", avatarDataUrl: avatarIceMan },
-  {
-    id: "bot_pro_anderson",
-    name: "Flying Scotsman",
-    botLevel: "Pro",
-    avatarDataUrl: avatarFlyingScotsman,
-  },
-  {
-    id: "bot_pro_humphries",
-    name: "Cool Hand",
-    botLevel: "Pro",
-    avatarDataUrl: avatarCoolHand,
-  },
-  {
-    id: "bot_pro_taylor",
-    name: "The Power",
-    botLevel: "Légende",
-    avatarDataUrl: avatarThePower,
-  },
-  { id: "bot_pro_smith", name: "Bully Boy", botLevel: "Pro", avatarDataUrl: avatarBullyBoy },
-  { id: "bot_pro_aspinall", name: "The Asp", botLevel: "Fort", avatarDataUrl: avatarTheAsp },
-  { id: "bot_pro_dobey", name: "Hollywood", botLevel: "Fort", avatarDataUrl: avatarHollywood },
-  { id: "bot_pro_clayton", name: "The Ferret", botLevel: "Fort", avatarDataUrl: avatarTheFerret },
+  { id: "bot_pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
+  { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
+  { id: "bot_pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
+  { id: "bot_pro_taylor", name: "The Power", botLevel: "5/5", avatarDataUrl: avatarThePower as any },
 
-  { id: "bot_pro_jackpot", name: "Jackpot", botLevel: "4.5/5", avatarDataUrl: avatarJackpot as any },
   { id: "bot_pro_crafty", name: "Crafty", botLevel: "5/5", avatarDataUrl: avatarCraftyCockney as any },
+  { id: "bot_pro_jackpot", name: "Jackpot", botLevel: "4.5/5", avatarDataUrl: avatarJackpot as any },
   { id: "bot_pro_barney", name: "Barney", botLevel: "4.5/5", avatarDataUrl: avatarBarney as any },
-  { id: "bot_pro_dobey_custom", name: "Dobey", botLevel: "3.5/5", avatarDataUrl: avatarDobeyPro as any },
-  { id: "bot_pro_menace", name: "The Menace", botLevel: "3/5", avatarDataUrl: avatarTheMenace as any },];
+  { id: "bot_pro_price", name: "Ice Man", botLevel: "4/5", avatarDataUrl: avatarIceMan as any },
+
+  { id: "bot_pro_wright", name: "Snake King", botLevel: "4/5", avatarDataUrl: avatarSnakeKing as any },
+  { id: "bot_pro_anderson", name: "Flying Scotsman", botLevel: "4/5", avatarDataUrl: avatarFlyingScotsman as any },
+  { id: "bot_pro_smith", name: "Bully Boy", botLevel: "4/5", avatarDataUrl: avatarBullyBoy as any },
+  { id: "bot_pro_clayton", name: "The Ferret", botLevel: "4/5", avatarDataUrl: avatarTheFerret as any },
+
+  { id: "bot_pro_aspinall", name: "The Asp", botLevel: "3.5/5", avatarDataUrl: avatarTheAsp as any },
+  { id: "bot_pro_dobey", name: "Hollywood", botLevel: "3.5/5", avatarDataUrl: avatarHollywood as any },
+  { id: "bot_pro_darth_maple", name: "Darth Maple", botLevel: "3.5/5", avatarDataUrl: avatarDarthMaple as any },
+  { id: "bot_pro_menace", name: "The Menace", botLevel: "3.5/5", avatarDataUrl: avatarTheMenace as any },
+
+  { id: "bot_pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant as any },
+  { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
+  { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
+  { id: "bot_pro_the_hammer", name: "THE HAMMER", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+];
 
 export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go }: Props) {
   const { theme } = useTheme() as any;

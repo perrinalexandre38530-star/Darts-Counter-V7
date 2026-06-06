@@ -58,8 +58,12 @@ import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
 import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
 import avatarBarney from "../assets/avatars/bots-pro/barney.png";
-import avatarDobeyPro from "../assets/avatars/bots-pro/dobey-pro.png";
 import avatarTheMenace from "../assets/avatars/bots-pro/the-menace.png";
+import avatarDarthMaple from "../assets/avatars/bots-pro/darth-maple.png";
+import avatarTheGiant from "../assets/avatars/bots-pro/the-giant.png";
+import avatarTheHammer from "../assets/avatars/bots-pro/the-hammer.png";
+import avatarVoltage from "../assets/avatars/bots-pro/voltage.png";
+import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
 
 import tickerCricket from "../assets/tickers/ticker_cricket.png";
 import tickerEnculette from "../assets/tickers/ticker_enculette.png";
@@ -140,8 +144,13 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_jackpot", name: "Jackpot", botLevel: "4.5/5", avatarDataUrl: avatarJackpot as any },
   { id: "bot_pro_crafty", name: "Crafty", botLevel: "5/5", avatarDataUrl: avatarCraftyCockney as any },
   { id: "bot_pro_barney", name: "Barney", botLevel: "4.5/5", avatarDataUrl: avatarBarney as any },
-  { id: "bot_pro_dobey_custom", name: "Dobey", botLevel: "3.5/5", avatarDataUrl: avatarDobeyPro as any },
-  { id: "bot_pro_menace", name: "The Menace", botLevel: "3/5", avatarDataUrl: avatarTheMenace as any },];
+  { id: "bot_pro_darth_maple", name: "Darth Maple", botLevel: "3.5/5", avatarDataUrl: avatarDarthMaple as any },
+  { id: "bot_pro_menace", name: "The Menace", botLevel: "3/5", avatarDataUrl: avatarTheMenace as any },
+  { id: "bot_pro_the_giant", name: "The Giant", botLevel: "4/5", avatarDataUrl: avatarTheGiant as any },
+  { id: "bot_pro_voltage", name: "Voltage", botLevel: "3.5/5", avatarDataUrl: avatarVoltage as any },
+  { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3.5/5", avatarDataUrl: avatarOneDart as any },
+  { id: "bot_pro_the_hammer", name: "THE HAMMER", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+];
 
 // --------------------------------------------------
 // UI helpers style "config X01"
