@@ -31,6 +31,7 @@ import { saveOnlineCompetition } from "../lib/tournaments/onlineStore";
 // ✅ Avatar + StarRing (comme X01Config)
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BotPagedSelector from "../components/BotPagedSelector";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { loadBots as loadStoredBots } from "../lib/bots";
@@ -1349,6 +1350,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [participantsDropdownOpen, setParticipantsDropdownOpen] = React.useState(false);
   const [includeBotsInParticipantList, setIncludeBotsInParticipantList] = React.useState(false);
   const [includeBotTeamsInTeamList, setIncludeBotTeamsInTeamList] = React.useState(false);
+  const [botTeamPickerOpen, setBotTeamPickerOpen] = React.useState(false);
+  const [botTeamPickerPage, setBotTeamPickerPage] = React.useState(0);
   const guidedTabsRef = React.useRef<HTMLDivElement | null>(null);
   const guidedTabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -4613,7 +4616,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                   <NeonGhost label={participantsDropdownOpen ? "Masquer liste" : "Liste équipes"} onClick={() => setParticipantsDropdownOpen((v) => !v)} />
                   <button
                     type="button"
-                    onClick={() => setIncludeBotTeamsInTeamList((v) => { const next = !v; if (!next) setTeamsInput((prev: any[]) => (prev || []).filter((t: any) => !t?.isBotTeam)); return next; })}
+                    onClick={() => setIncludeBotTeamsInTeamList((v) => { const next = !v; if (!next) setTeamsInput((prev: any[]) => (prev || []).filter((t: any) => !t?.isBotTeam)); if (next) setBotTeamPickerOpen(true); return next; })}
                     style={{
                       borderRadius: 999,
                       border: `1px solid ${includeBotTeamsInTeamList ? primary : "rgba(255,255,255,.14)"}`,
@@ -4627,6 +4630,24 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                   >
                     {includeBotTeamsInTeamList ? "☑" : "☐"} TEAMS BOTS
                   </button>
+                  {includeBotTeamsInTeamList ? (
+                    <button
+                      type="button"
+                      onClick={() => setBotTeamPickerOpen(true)}
+                      style={{
+                        borderRadius: 999,
+                        border: `1px solid ${primary}`,
+                        background: `${primary}18`,
+                        color: primary,
+                        padding: "8px 10px",
+                        fontSize: 11.5,
+                        fontWeight: 1000,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Choisir teams bots
+                    </button>
+                  ) : null}
                 </div>
                 <div
                   style={{
@@ -4664,12 +4685,62 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                       onRemove={() => setTeamsInput((prev) => (prev || []).filter((_: any, i: number) => i !== idx))}
                     />
                   ))}
-                  {includeBotTeamsInTeamList === true ? botTeamsCatalog.map((t: any, idx: number) => {
-                    const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(t?.id || ""));
-                    return <TeamCarouselTile key={String(t.id || idx)} team={t} index={idx} active={active} primary={primary} onClick={() => toggleStoredTeam(t)} />;
-                  }) : null}
                   <TeamAddTile primary={primary} onClick={openTeamCreate} />
                 </div>
+                {botTeamPickerOpen ? (
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={() => setBotTeamPickerOpen(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+                  >
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: "min(520px, 96vw)", maxHeight: "88vh", borderRadius: 18, border: `1px solid ${primary}88`, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${primary}44`, overflow: "hidden", display: "flex", flexDirection: "column" }}
+                    >
+                      <div style={{ padding: "12px 12px 10px", borderBottom: `1px solid ${primary}44`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 950, color: primary, textTransform: "uppercase", letterSpacing: 1.2, fontSize: 13 }}>Choisir une team BOT IA</div>
+                        <button className="btn sm" type="button" onClick={() => setBotTeamPickerOpen(false)}>✕</button>
+                      </div>
+                      <div style={{ padding: 14 }}>
+                        {(() => {
+                          const pageSize = 4;
+                          const pages = Math.max(1, Math.ceil((botTeamsCatalog || []).length / pageSize));
+                          const safePage = Math.min(Math.max(botTeamPickerPage, 0), pages - 1);
+                          const pageItems = (botTeamsCatalog || []).slice(safePage * pageSize, safePage * pageSize + pageSize);
+                          return (
+                            <>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+                                {pageItems.map((team: any, idx: number) => {
+                                  const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(team?.id || ""));
+                                  const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
+                                  const level = Number(team?.botTeamLevel || team?.level || 0);
+                                  const name = String(team?.name || `BOT Team ${idx + 1}`);
+                                  return (
+                                    <button key={String(team?.id || idx)} type="button" onClick={() => toggleStoredTeam(team)} style={{ minWidth: 0, borderRadius: 18, padding: "12px 8px 10px", background: active ? `${primary}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${primary}` : `1px solid ${primary}33`, boxShadow: active ? `0 0 22px ${primary}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+                                      <div style={{ position: "relative", width: 112, height: 112, display: "grid", placeItems: "center", overflow: "visible", marginTop: 8 }}>
+                                        {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={102} starSize={13} gapPx={-5} /> : null}
+                                        <ProfileAvatar name={name} dataUrl={logo || undefined} size={92} />
+                                      </div>
+                                      <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+                                      <span style={{ padding: "2px 9px", borderRadius: 999, fontSize: 9, fontWeight: 950, background: `linear-gradient(180deg, ${primary}, ${primary}AA)`, color: "#020611", border: "1px solid rgba(255,255,255,.45)" }}>BOT TEAM</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                                <button type="button" onClick={() => setBotTeamPickerPage((p) => Math.max(0, p - 1))} disabled={safePage <= 0} style={{ minWidth: 84, height: 34, borderRadius: 999, border: `1px solid ${primary}88`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 950 }}>←</button>
+                                <div style={{ color: "#aab0cc", fontSize: 12, fontWeight: 900 }}>PAGE {safePage + 1}/{pages}</div>
+                                <button type="button" onClick={() => setBotTeamPickerPage((p) => Math.min(pages - 1, p + 1))} disabled={safePage >= pages - 1} style={{ minWidth: 84, height: 34, borderRadius: 999, border: `1px solid ${primary}88`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 950 }}>→</button>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 {participantsDropdownOpen ? (
                   <div style={{ maxHeight: 230, overflowY: "auto", borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.22)", padding: 8 }} className="dc-scroll-thin">
                     {[...(storedTeams || []), ...(includeBotTeamsInTeamList === true ? botTeamsCatalog : [])].map((t: any, idx: number) => {
@@ -4712,13 +4783,20 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             {!isPetanque && participantKind !== "teams" && includeBotsInParticipantList === true ? (
               <div style={{ marginTop: 12 }}>
                 <RowTitle label="Bots IA optionnels" />
-                <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
-                  {botsCatalog.slice(0, 24).map((b: any) => {
-                    const id = String(b.id);
-                    const active = botIds.includes(id);
-                    return <PlayerCarouselTile key={id} active={active} name={b.name} avatarUrl={b.avatar} avg3D={b.avg3D} isBot onClick={() => setBotIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])} primary={primary} />;
-                  })}
-                </div>
+                <BotPagedSelector
+                  bots={(botsCatalog || []).map((b: any) => ({
+                    id: String(b.id),
+                    name: String(b.name || b.displayName || "BOT IA"),
+                    avatarDataUrl: b.avatar || b.avatarDataUrl || b.avatarUrl || null,
+                    botLevel: b.botLevel || b.level || (Number(b.avg3D || 0) ? Number(b.avg3D) / 20 : undefined),
+                    source: b.isUserBot ? "cpu" : undefined,
+                  }))}
+                  selectedIds={botIds}
+                  onToggle={(id: string) => setBotIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
+                  accent={primary}
+                  label="BOTS IA"
+                  modalTitle="Choisir des BOTS IA"
+                />
               </div>
             ) : null}
             <GuidedFooter />
