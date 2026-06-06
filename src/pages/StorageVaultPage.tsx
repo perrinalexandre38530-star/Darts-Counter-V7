@@ -1,7 +1,8 @@
 import * as React from "react";
 import { useTheme } from "../contexts/ThemeContext";
-import { apiPost } from "../lib/apiClient";
-import { exportCloudSnapshot, importCloudSnapshot } from "../lib/storage";
+import { useAuthOnline } from "../hooks/useAuthOnline";
+import { apiPost, readNasAccessToken } from "../lib/apiClient";
+import { exportCloudSnapshot, importCloudSnapshot, setStorageUser } from "../lib/storage";
 import {
   createLocalMemorySlot,
   createNasVersionedSnapshot,
@@ -84,6 +85,123 @@ const AUTH_KEYS = [
   "dc_api_url",
   "dc_api_timeout_ms",
 ];
+
+function readAuthTokenFromObject(value: any): string {
+  if (!value || typeof value !== "object") return "";
+  return String(
+    value.token ||
+    value.accessToken ||
+    value.access_token ||
+    value.jwt ||
+    value.access ||
+    value.session?.token ||
+    value.session?.accessToken ||
+    value.session?.access_token ||
+    value.data?.token ||
+    value.data?.accessToken ||
+    value.data?.access_token ||
+    value.data?.session?.token ||
+    value.data?.session?.accessToken ||
+    value.data?.session?.access_token ||
+    ""
+  ).trim();
+}
+
+function readRefreshTokenFromObject(value: any): string {
+  if (!value || typeof value !== "object") return "";
+  return String(
+    value.refreshToken ||
+    value.refresh_token ||
+    value.session?.refreshToken ||
+    value.session?.refresh_token ||
+    value.data?.refreshToken ||
+    value.data?.refresh_token ||
+    value.data?.session?.refreshToken ||
+    value.data?.session?.refresh_token ||
+    ""
+  ).trim();
+}
+
+function readUserIdFromObject(value: any): string {
+  if (!value || typeof value !== "object") return "";
+  return String(
+    value.userId ||
+    value.user?.id ||
+    value.profile?.userId ||
+    value.profile?.user_id ||
+    value.session?.user?.id ||
+    value.data?.userId ||
+    value.data?.user?.id ||
+    value.data?.profile?.userId ||
+    ""
+  ).trim();
+}
+
+function persistNasAuthForVault(authLike?: any): string {
+  if (typeof window === "undefined") return "";
+
+  let token = readAuthTokenFromObject(authLike || {});
+  let refreshToken = readRefreshTokenFromObject(authLike || {});
+  let userId = String(authLike?.userId || authLike?.user?.id || readUserIdFromObject(authLike || "") || "").trim();
+
+  try {
+    const raw = window.localStorage.getItem("dc_online_auth_supabase_v1") || "";
+    if (raw) {
+      const cached = JSON.parse(raw);
+      token = token || readAuthTokenFromObject(cached);
+      refreshToken = refreshToken || readRefreshTokenFromObject(cached);
+      userId = userId || readUserIdFromObject(cached);
+    }
+  } catch {}
+
+  try {
+    token = token || readNasAccessToken();
+  } catch {}
+
+  if (userId) {
+    try { window.localStorage.setItem("dc_user_id", userId); } catch {}
+    try { window.localStorage.setItem("dc_storage_user_id_v1", userId); } catch {}
+    try { setStorageUser(userId); } catch {}
+  }
+
+  if (token) {
+    try { window.localStorage.setItem("dc_nas_access_token_v1", token); } catch {}
+    if (refreshToken) {
+      try { window.localStorage.setItem("dc_nas_refresh_token_v1", refreshToken); } catch {}
+    }
+    try {
+      const raw = window.localStorage.getItem("dc_online_auth_supabase_v1") || "{}";
+      const previous = JSON.parse(raw);
+      const next = {
+        ...(previous && typeof previous === "object" ? previous : {}),
+        token,
+        accessToken: token,
+        refreshToken: refreshToken || previous?.refreshToken || previous?.refresh_token || "",
+        userId: userId || previous?.userId || previous?.user?.id || null,
+        user: {
+          ...(previous?.user || {}),
+          ...(authLike?.user || {}),
+          id: userId || previous?.user?.id || authLike?.user?.id || null,
+        },
+      };
+      window.localStorage.setItem("dc_online_auth_supabase_v1", JSON.stringify(next));
+    } catch {}
+  }
+
+  return token || "";
+}
+
+async function ensureNasTokenFromOnlineRuntime(authLike?: any): Promise<string> {
+  let token = persistNasAuthForVault(authLike);
+  if (token) return token;
+  try {
+    const mod: any = await import("../lib/onlineApi");
+    const session = await mod?.onlineApi?.getCurrentSession?.();
+    token = persistNasAuthForVault(session);
+    if (token) return token;
+  } catch {}
+  return persistNasAuthForVault(authLike);
+}
 
 function rememberAuthKeys() {
   const saved: Record<string, string> = {};
@@ -688,6 +806,7 @@ async function pushSnapshotToAccount(payload: any, reason: string) {
 
 export default function StorageVaultPage({ go }: Props) {
   const { theme } = useTheme();
+  const auth = useAuthOnline();
   const themeVars = React.useMemo(() => ({ "--dc-accent": theme?.primary || "#d9ff33", "--dc-accent-soft": theme?.accent1 || theme?.primary || "#22d3ee" }) as React.CSSProperties, [theme]);
   const [tab, setTab] = React.useState<TabKey>("restore");
   const [busy, setBusy] = React.useState(false);
@@ -702,6 +821,23 @@ export default function StorageVaultPage({ go }: Props) {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const [accountScopeId, setAccountScopeId] = React.useState<string | null>(() => getVaultCurrentUserId());
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const currentAuthForVault = React.useMemo(() => ({
+    token: (auth.session as any)?.access_token || (auth.session as any)?.token || "",
+    refreshToken: (auth.session as any)?.refresh_token || (auth.session as any)?.refreshToken || "",
+    userId: auth.userId || (auth.user as any)?.id || null,
+    user: auth.user || null,
+  }), [auth.session, auth.user, auth.userId]);
+
+  const ensureVaultNasToken = React.useCallback(() => {
+    const token = persistNasAuthForVault(currentAuthForVault);
+    setAccountScopeId(getVaultCurrentUserId());
+    return token;
+  }, [currentAuthForVault]);
+
+  React.useEffect(() => {
+    ensureVaultNasToken();
+  }, [ensureVaultNasToken]);
 
   const nasEntries = React.useMemo<SaveEntry[]>(() => {
     return nasSlots
@@ -807,6 +943,7 @@ export default function StorageVaultPage({ go }: Props) {
 
   const refresh = React.useCallback(async () => {
     setBusy(true);
+    ensureVaultNasToken();
     setAccountScopeId(getVaultCurrentUserId());
     try {
       const [ls, nsRaw, trashRaw, bs, localMatches, nasMatches] = await Promise.all([
@@ -869,7 +1006,7 @@ export default function StorageVaultPage({ go }: Props) {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [ensureVaultNasToken]);
 
   React.useEffect(() => { refresh(); }, [refresh]);
 
@@ -970,6 +1107,12 @@ ${label}`)) return;
   };
 
   const pushCurrentToAccount = async () => {
+    const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+    setAccountScopeId(getVaultCurrentUserId());
+    if (!token) {
+      setMessage("Sauvegarde NAS impossible : session NAS connectée en mémoire mais token non retrouvé. Retourne sur la page Connexion, déconnecte/reconnecte-toi, puis reviens ici.");
+      return;
+    }
     const ok = window.confirm("Envoyer l’état complet actuel de ce navigateur sur ton compte NAS ?");
     if (!ok) return;
     setBusy(true);
@@ -987,6 +1130,12 @@ ${label}`)) return;
   };
 
   const createNasBackup = async () => {
+    const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+    setAccountScopeId(getVaultCurrentUserId());
+    if (!token) {
+      setMessage("Sauvegarde NAS impossible : token NAS introuvable malgré le compte détecté. Déconnecte/reconnecte-toi depuis le compte NAS, puis relance Créer sauvegarde NAS.");
+      return;
+    }
     const ok = window.confirm("Créer une sauvegarde NAS complète maintenant ?\n\nElle remplace l’emplacement courant et ajoute un point de restauration versionné.");
     if (!ok) return;
     setBusy(true);
@@ -1001,6 +1150,12 @@ ${label}`)) return;
   };
 
   const restoreNas = async (entry: SaveEntry) => {
+    const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+    setAccountScopeId(getVaultCurrentUserId());
+    if (!token) {
+      setMessage("Restauration NAS impossible : token NAS introuvable. Déconnecte/reconnecte-toi au compte NAS.");
+      return;
+    }
     setBusy(true);
     try {
       const slot = entry.slot as NasSlot;

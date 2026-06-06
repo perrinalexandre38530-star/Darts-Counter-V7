@@ -15,6 +15,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BotPagedSelector from "../components/BotPagedSelector";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
@@ -562,7 +563,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant as any },
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
-  { id: "bot_pro_the_hammer", name: "THE HAMMER", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+  { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
 ];
 
 export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go }: Props) {
@@ -1313,83 +1314,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             {t("x01v3.bots.subtitle", 'Ajoute des BOTS IA : bots "pro" prédéfinis ou BOTS que tu as créés dans le menu Profils.')}
           </p>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              overflowY: "visible",
-              paddingBottom: 10,
-              paddingTop: 16,
-              marginTop: 10,
-              marginBottom: 10,
-            }}
-            className="dc-scroll-thin"
-          >
-            {botProfiles.map((bot) => {
-              const { level } = resolveBotLevel(bot.botLevel);
-              const active = selectedIds.includes(bot.id);
-
-              return (
-                <button
-                  key={bot.id}
-                  type="button"
-                  onClick={() => togglePlayer(bot.id)}
-                  style={{
-                    minWidth: 96,
-                    maxWidth: 96,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                  }}
-                >
-                  <BotMedallion bot={bot} level={level} active={active} />
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: 4,
-                    }}
-                  >
-                    {bot.name}
-                  </div>
-
-                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 9,
-                        fontWeight: 800,
-                        letterSpacing: 0.7,
-                        textTransform: "uppercase",
-                        background: "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
-                        color: "#020611",
-                        boxShadow: "0 0 10px rgba(0,172,255,0.55), 0 0 18px rgba(0,172,255,0.35)",
-                        border: "1px solid rgba(144,228,255,0.9)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      BOT
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <BotPagedSelector
+            bots={botProfiles}
+            selectedIds={selectedIds}
+            onToggle={togglePlayer}
+            accent={primary}
+            label="BOTS IA"
+          />
 
           <button
             type="button"

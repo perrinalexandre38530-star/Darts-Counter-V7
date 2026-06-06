@@ -28,6 +28,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BotPagedSelector from "../components/BotPagedSelector";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
@@ -156,7 +157,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant as any },
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
-  { id: "bot_pro_the_hammer", name: "THE HAMMER", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+  { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
 ];
 
 function clampInt(n: any, min: number, max: number, fb: number) {
@@ -1176,89 +1177,13 @@ export default function KillerConfigPage(props: Props) {
             Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
           </p>
 
-          <div
-            className="dc-scroll-thin"
-            style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              overflowY: "visible",
-              paddingBottom: 10,
-              paddingTop: 14,
-              marginTop: 6,
-              marginBottom: 10,
-            }}
-          >
-            {botProfiles.map((bot) => {
-              const { level } = resolveBotLevel(bot.botLevel);
-              const active = selectedIds.includes(bot.id);
-
-              return (
-                <div
-                  key={bot.id}
-                  role="button"
-                  onClick={() => togglePlayer(bot.id)}
-                  style={{
-                    minWidth: 96,
-                    maxWidth: 96,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                >
-                  <BotMedallion bot={bot} level={level} active={active} />
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: 4,
-                    }}
-                    title={bot.name}
-                  >
-                    {bot.name}
-                  </div>
-
-                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 9,
-                        fontWeight: 900,
-                        letterSpacing: 0.7,
-                        textTransform: "uppercase",
-                        background: bot.id.startsWith("bot_pro_")
-                          ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
-                          : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
-                        color: "#020611",
-                        boxShadow: bot.id.startsWith("bot_pro_")
-                          ? "0 0 12px rgba(247,200,92,0.5)"
-                          : "0 0 12px rgba(0,172,255,0.55)",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <BotPagedSelector
+            bots={botProfiles}
+            selectedIds={selectedIds}
+            onToggle={togglePlayer}
+            accent={primary}
+            label="BOTS IA"
+          />
 
           <button
             type="button"

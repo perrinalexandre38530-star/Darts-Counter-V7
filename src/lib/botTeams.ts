@@ -80,7 +80,7 @@ export const BOT_PRO_TEAMS: BotProTeam[] = [
       { id: "bot_the_giant", name: "The Giant", avatarKey: "pro_the_giant", botLevel: 3, targetAvg3: 90 },
       { id: "bot_voltage", name: "Voltage", avatarKey: "pro_voltage", botLevel: 3, targetAvg3: 89 },
       { id: "bot_one_dart", name: "One Dart", avatarKey: "pro_one_dart", botLevel: 3, targetAvg3: 88 },
-      { id: "bot_the_hammer", name: "THE HAMMER", avatarKey: "pro_the_hammer", botLevel: 3, targetAvg3: 90 },
+      { id: "bot_the_hammer", name: "The Hammer", avatarKey: "pro_the_hammer", botLevel: 3, targetAvg3: 90 },
     ],
   },
 ];

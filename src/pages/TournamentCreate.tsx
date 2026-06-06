@@ -462,7 +462,7 @@ const BOTS_PRO_ASSETS = [
   { id: "bot_the_giant", name: "The Giant", rating: 80, botLevel: 4, avatarDataUrl: avatarTheGiant },
   { id: "bot_voltage", name: "Voltage", rating: 70, botLevel: 3.5, avatarDataUrl: avatarVoltage },
   { id: "bot_one_dart", name: "One Dart", rating: 70, botLevel: 3.5, avatarDataUrl: avatarOneDart },
-  { id: "bot_the_hammer", name: "THE HAMMER", rating: 60, botLevel: 3, avatarDataUrl: avatarTheHammer },
+  { id: "bot_the_hammer", name: "The Hammer", rating: 60, botLevel: 3, avatarDataUrl: avatarTheHammer },
 ];
 
 const BOT_PRO_AVATAR_BY_NAME: Record<string, any> = Object.fromEntries(

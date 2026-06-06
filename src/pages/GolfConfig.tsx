@@ -111,7 +111,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant as any },
   { id: "pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
-  { id: "pro_the_hammer", name: "THE HAMMER", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+  { id: "pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
 ];
 
 const TEAM_META: Record<TeamKey, { label: string; color: string; logo: string }> = {

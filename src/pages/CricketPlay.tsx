@@ -149,7 +149,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_the_giant", name: "The Giant", botLevel: "4/5", avatarDataUrl: avatarTheGiant as any },
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3.5/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3.5/5", avatarDataUrl: avatarOneDart as any },
-  { id: "bot_pro_the_hammer", name: "THE HAMMER", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+  { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
 ];
 
 // --------------------------------------------------
