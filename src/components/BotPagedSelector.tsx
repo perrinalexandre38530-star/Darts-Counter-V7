@@ -89,7 +89,11 @@ export default function BotPagedSelector({
   const safePage = Math.min(Math.max(page, 0), pages - 1);
   const pageBots = sorted.slice(safePage * pageSize, safePage * pageSize + pageSize);
   const pageTitle = pageBots.length ? itemGroup(pageBots[0]) : "BOTS IA";
-  const selectedCount = selectedIds?.filter((id) => sorted.some((b) => b.id === id)).length || 0;
+  const selectedBots = React.useMemo(
+    () => sorted.filter((b) => selectedIds?.includes(b.id)),
+    [sorted, selectedIds]
+  );
+  const selectedCount = selectedBots.length;
 
   React.useEffect(() => {
     if (open) setPage(0);
@@ -126,8 +130,26 @@ export default function BotPagedSelector({
       </div>
 
       {enabled && selectedCount ? (
-        <div style={{ marginTop: 8, color: "#aab0cc", fontSize: 11, fontWeight: 800 }}>
-          {selectedCount} sélectionné(s)
+        <div style={{ marginTop: 10, borderRadius: 16, border: `1px solid ${accent}33`, background: "rgba(255,255,255,.035)", padding: 10 }}>
+          <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>BOTS sélectionnés</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))", gap: 10 }}>
+            {selectedBots.map((bot) => {
+              const level = resolveLevel(bot.botLevel ?? bot.level);
+              const src = avatarOf(bot);
+              return (
+                <div key={bot.id} style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
+                  <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
+                    {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={72} starSize={10} gapPx={-5} /> : null}
+                    <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
+                      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 950 }}>BOT</span>}
+                    </div>
+                    <button type="button" onClick={() => onToggle(bot.id)} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
+                  </div>
+                  <div style={{ color: "#fff", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bot.name}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 

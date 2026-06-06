@@ -41,6 +41,8 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import DartboardClickable from "../components/DartboardClickable";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import BotPagedSelector from "../components/BotPagedSelector";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
@@ -1943,6 +1945,7 @@ return {
               letterSpacing: 1.2,
               color: T.textSoft,
               marginBottom: 4,
+              fontWeight: 950,
             }}
           >
             Joueurs
@@ -1953,75 +1956,14 @@ return {
             <span style={{ opacity: 0.75 }}>(sauf “départ aléatoire”).</span>
           </div>
 
-          <div style={{ position: "relative", width: "100%", overflow: "hidden" }}>
-            <ArrowBtn
-              dir="left"
-              onClick={() => {
-                const el = document.getElementById("cricket-humans-scroll");
-                if (el) el.scrollBy({ left: -140, behavior: "smooth" });
-              }}
-            />
-
-            <div
-              id="cricket-humans-scroll"
-              style={{
-                display: "flex",
-                gap: 14,
-                overflowX: "auto",
-                scrollSnapType: "x mandatory",
-                padding: "0 26px 8px 26px",
-              }}
-            >
-              {allProfiles.filter((p: any) => !p?.isBot).map((p) => {
-                const active = selectedIds.includes(p.id);
-                const j = labelForId(p.id);
-
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => toggleProfile(p.id)}
-                    style={{
-                      scrollSnapAlign: "start",
-                      minWidth: "25%",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      opacity: !active && selectedCountLocal >= 4 ? 0.45 : 1,
-                    }}
-                  >
-                    {renderAvatarCircle(p, { selected: active, size: 58, mode: "setup" })}
-
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: active ? "#ffffff" : T.textSoft,
-                        textAlign: "center",
-                        maxWidth: 92,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {p.name}
-                    </div>
-
-                    <ChipMini active={active} label={j ?? "—"} />
-                  </div>
-                );
-              })}
-            </div>
-
-            <ArrowBtn
-              dir="right"
-              onClick={() => {
-                const el = document.getElementById("cricket-humans-scroll");
-                if (el) el.scrollBy({ left: 140, behavior: "smooth" });
-              }}
-            />
-          </div>
+          <PlayerPagedSelector
+            profiles={allProfiles.filter((p: any) => !p?.isBot)}
+            selectedIds={selectedIds}
+            onToggle={toggleProfile}
+            accent={T.gold}
+            pageSize={9}
+            modalTitle="Choisir des joueurs"
+          />
         </div>
 
         {/* BOTS IA */}
@@ -2036,14 +1978,25 @@ return {
         >
           <div
             style={{
-              fontSize: 13,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
-              color: T.textSoft,
-              marginBottom: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              marginBottom: 8,
             }}
           >
-            Bots IA
+            <div
+              style={{
+                fontSize: 13,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#22dfff",
+                fontWeight: 950,
+              }}
+            >
+              Bots IA
+            </div>
           </div>
 
           <div style={{ fontSize: 12, color: T.textSoft, marginBottom: 10 }}>
@@ -2051,84 +2004,18 @@ return {
           </div>
 
           {!botProfiles?.length ? (
-  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Aucun bot détecté.</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Aucun bot détecté.</div>
           ) : (
-            <div style={{ position: "relative", width: "100%", overflow: "hidden" }}>
-              <ArrowBtn
-                dir="left"
-                onClick={() => {
-                  const el = document.getElementById("cricket-bots-scroll");
-                  if (el) el.scrollBy({ left: -140, behavior: "smooth" });
-                }}
-              />
-
-              <div
-                id="cricket-bots-scroll"
-                style={{
-                  display: "flex",
-                  gap: 14,
-                  overflowX: "auto",
-                  scrollSnapType: "x mandatory",
-                  padding: "0 26px 8px 26px",
-                }}
-              >
-                {botProfiles.map((b: any) => {
-  const id = String(b.id);
-  const active = selectedBotIds.includes(id);
-  const j = labelForId(id);
-  const botProfile = (profileById.get(id) as any) ?? (b as any);
-
-  return (
-    <div
-      key={id}
-      onClick={() => toggleBot(id)}
-      style={{
-        scrollSnapAlign: "start",
-        minWidth: "25%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        cursor: "pointer",
-        opacity: !active && selectedCountLocal >= 4 ? 0.45 : 1,
-      }}
-    >
-      {renderAvatarCircle(botProfile as any, { selected: active, size: 58, mode: "setup" })}
-
-      <div
-        style={{
-          marginTop: 4,
-          fontSize: 11,
-          fontWeight: 800,
-          color: active ? "#ffffff" : T.textSoft,
-          textAlign: "center",
-          maxWidth: 92,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {botProfile.name ?? "BOT"}
-      </div>
-
-      <ChipMini active={active} label={j ?? "BOT"} />
-    </div>
-                  );
-                })}
-              </div>
-
-              <ArrowBtn
-                dir="right"
-                onClick={() => {
-                  const el = document.getElementById("cricket-bots-scroll");
-                  if (el) el.scrollBy({ left: 140, behavior: "smooth" });
-                }}
-              />
-            </div>
+            <BotPagedSelector
+              bots={botProfiles}
+              selectedIds={selectedBotIds}
+              onToggle={toggleBot}
+              accent="#22dfff"
+              label="BOTS IA"
+              modalTitle="Choisir des BOTS IA"
+            />
           )}
         </div>
-
-        {/* ... LE RESTE DE TON FICHIER EST INCHANGÉ ... */}
-        {/* (À partir d’ici, tu gardes exactement la suite de ton bloc actuel) */}
 
         {/* PARAMÈTRES DE BASE */}
         <SectionCard

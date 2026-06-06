@@ -315,6 +315,7 @@ export default function ScramConfig(props: any) {
                     accent={primary}
                     label="BOTS IA"
                     modalTitle="Choisir des BOTS IA"
+                    showCheckbox={false}
                   />
                 </div>
                 </>

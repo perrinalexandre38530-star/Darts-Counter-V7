@@ -767,6 +767,7 @@ export default function GolfConfig(props: any) {
                     accent={primary}
                     label="BOTS IA"
                     modalTitle="Choisir des BOTS IA"
+                    showCheckbox={false}
                   />
                 </div>
               </>

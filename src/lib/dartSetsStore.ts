@@ -461,11 +461,68 @@ function sanitizeDartSetForStorage(raw: any): any {
   return next;
 }
 
+const LEGACY_DARTSET_STORAGE_KEYS = [
+  "dc-dartsets-v1",
+  "dc-dartSets-v1",
+  "dc_lite_dartsets_v1",
+  "dc-lite-dartsets-v1",
+];
+
+function normalizeDartSetArray(value: any): any[] {
+  if (Array.isArray(value)) return value.filter((item) => item && typeof item === "object");
+  if (!value) return [];
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return normalizeDartSetArray(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (typeof value === "object") return Object.values(value).filter((item) => item && typeof item === "object");
+  return [];
+}
+
+function readDartSetArrayFromLocalStorageKey(key: string): any[] {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    try {
+      const viaCodec = safeLocalStorageGetJson<any>(key, []);
+      const arr = normalizeDartSetArray(viaCodec);
+      if (arr.length) return arr;
+    } catch {}
+    return normalizeDartSetArray(raw);
+  } catch {
+    return [];
+  }
+}
+
 function loadAllRaw(): DartSet[] {
   try {
-    const arr = safeLocalStorageGetJson<any>(STORAGE_KEY, []);
-    if (!Array.isArray(arr)) return [];
-    return arr.map((item: any) => sanitizeDartSetForStorage(item) as DartSet);
+    const merged: any[] = [];
+    const pushMany = (items: any) => {
+      for (const item of normalizeDartSetArray(items)) merged.push(item);
+    };
+
+    // Source principale.
+    pushMany(safeLocalStorageGetJson<any>(STORAGE_KEY, []));
+
+    // Sources de secours : certains patchs/syncs peuvent avoir réécrit la clé
+    // principale avec une liste partielle. On relit donc aussi l'app store et les
+    // anciennes clés pour ne jamais vider la bibliothèque MES FLÉCHETTES.
+    try {
+      const st = appStoreSnapshot();
+      pushMany(st?.dartSets);
+      pushMany(st?.dartsets);
+    } catch {}
+
+    for (const key of LEGACY_DARTSET_STORAGE_KEYS) {
+      pushMany(readDartSetArrayFromLocalStorageKey(key));
+    }
+
+    return merged.map((item: any) => sanitizeDartSetForStorage(item) as DartSet);
   } catch (err) {
     console.warn("[dartSetsStore] loadAll error", err);
     return [];
@@ -597,9 +654,6 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     ...(Array.isArray(store.players) ? store.players : []),
   ].filter(Boolean);
 
-  // Règle stricte : un set privé appartient à un profil, pas au compte complet.
-  // On ne propage donc jamais userId/accountId vers tous les profils, car c'est
-  // précisément ce qui faisait apparaître Alex/Romrom chez le mauvais joueur.
   const profileOnlyKeys = [
     "id",
     "profileId",
@@ -612,10 +666,40 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     "ownerProfileId",
   ];
 
+  const addProfileAliasesFrom = (obj: any) => {
+    uniqStrings(profileOnlyKeys.map((k) => obj?.[k])).forEach(add);
+  };
+
+  // Profil local exact : on ne remonte que les alias du même profil.
+  // On n'ajoute pas userId/accountId ici, sinon un set privé finit visible
+  // sur tous les joueurs du même compte après synchro ONLINE.
   for (const obj of roots) {
     const vals = uniqStrings(profileOnlyKeys.map((k) => obj?.[k]));
     if (!vals.includes(pid)) continue;
     vals.forEach(add);
+  }
+
+  // Cas spécial compte actif / mode ONLINE : certains écrans passent usr_xxx
+  // au lieu du profil local. Dans ce cas seulement, on pointe vers le profil
+  // actif courant, sans propager ce compte à tous les profils.
+  const accountIds = uniqStrings([
+    store.userId,
+    store.accountId,
+    store.authUserId,
+    store.sessionUserId,
+    store.currentUserId,
+    store.onlineUserId,
+    store.user?.id,
+    store.account?.id,
+    store.session?.user?.id,
+  ]);
+  if (pid && accountIds.includes(pid)) {
+    const activeId = s(store.activeProfileId || store.currentProfileId || store.selectedProfileId);
+    if (activeId) {
+      add(activeId);
+      const activeObj = roots.find((obj: any) => uniqStrings(profileOnlyKeys.map((k) => obj?.[k])).includes(activeId));
+      if (activeObj) addProfileAliasesFrom(activeObj);
+    }
   }
 
   return aliases;
@@ -632,7 +716,17 @@ function collectSelectableOwnerIds(set: any): string[] {
 }
 
 export function isSelectableDartSet(set: any): boolean {
-  return !!set && !isLinkedRemoteDartSet(set);
+  if (!set) return false;
+
+  // Les dartsets ONLINE/profils liés ne sont pas bannis en bloc :
+  // un set privé distant peut être le vrai set du profil lié (Alex/Romrom/etc.).
+  // Il devient sélectionnable uniquement s'il est explicitement rattaché à un
+  // profil local cible. Sans cible, il reste un simple dictionnaire stats/images.
+  if (isLinkedRemoteDartSet(set)) {
+    return Boolean(s(set?.linkedTargetLocalProfileId));
+  }
+
+  return true;
 }
 
 function dartSetMatchesAnyId(set: any, id: any): boolean {
@@ -691,6 +785,14 @@ function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {
   return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
 }
 
+function mergeDartSetListsPreservingCurrent(incoming: any[]): DartSet[] {
+  const current = loadAllRaw();
+  const inc = Array.isArray(incoming) ? incoming : [];
+  // IMPORTANT : les snapshots ONLINE / profils liés peuvent ne contenir qu'un
+  // sous-ensemble. On merge donc avec l'existant au lieu d'écraser la bibliothèque.
+  return dedupeDartSets([...current, ...inc]);
+}
+
 // -------------------------------------------------------------
 // API publique
 // -------------------------------------------------------------
@@ -703,9 +805,9 @@ export function getAllSelectableDartSets(): DartSet[] {
   return loadAll().filter((set) => isSelectableDartSet(set));
 }
 
-// ✅ Utilisé par la synchro cloud: remplace la liste entière (migration device → device)
+// ✅ Utilisé par la synchro cloud: merge non destructif (évite de vider MES FLÉCHETTES avec un snapshot partiel)
 export function setAllDartSets(list: DartSet[]) {
-  return saveAll(Array.isArray(list) ? list : []);
+  return saveAll(mergeDartSetListsPreservingCurrent(Array.isArray(list) ? list : []));
 }
 
 // 👇 sets du profil + publics, avec alias compte/profil actif.
@@ -961,7 +1063,8 @@ export function getFavoriteDartSetForProfile(profileId: string): DartSet | undef
   return visible.slice().sort(byPriority)[0];
 }
 
-// ✅ Replace full list (used when cloud hydrate wins)
+// ✅ Hydratation cloud/NAS: merge non destructif.
+// Les suppressions manuelles passent par deleteDartSet(), pas par cette fonction.
 export function replaceAllDartSets(list: DartSet[]) {
-  return saveAll(Array.isArray(list) ? list : []);
+  return saveAll(mergeDartSetListsPreservingCurrent(Array.isArray(list) ? list : []));
 }

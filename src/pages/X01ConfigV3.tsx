@@ -374,8 +374,31 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           boxShadow: selectedSet ? `0 0 14px ${primary}55` : "0 0 10px rgba(0,0,0,.55)",
         }}
       >
-        <span style={{ fontSize: 13, lineHeight: 1 }}>{selectedSet ? "🎯" : "+"}</span>
-        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chooseLabel}</span>
+        {selectedSet ? (
+          <span
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: `1px solid ${primary}`,
+              boxShadow: `0 0 10px ${primary}66`,
+              display: "inline-grid",
+              placeItems: "center",
+              flex: "0 0 auto",
+              background: "rgba(0,0,0,.6)",
+            }}
+          >
+            {getDartSetThumbSrc(selectedSet) ? (
+              <img src={getDartSetThumbSrc(selectedSet) as string} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <span style={{ fontSize: 13, lineHeight: 1 }}>🎯</span>
+            )}
+          </span>
+        ) : (
+          <span style={{ fontSize: 13, lineHeight: 1 }}>+</span>
+        )}
+        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedSet ? "SET" : chooseLabel}</span>
       </button>
 
       {open ? (
