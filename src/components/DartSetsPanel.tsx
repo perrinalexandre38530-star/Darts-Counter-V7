@@ -29,6 +29,8 @@ import {
   createDartSet,
   deleteDartSet,
   updateDartSet,
+  getDartSetMainImageSrc,
+  getDartSetThumbImageSrc,
 } from "../lib/dartSetsStore";
 
 import { dartPresets } from "../lib/dartPresets";
@@ -227,7 +229,7 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
       ? "Photo compressée automatiquement (mobile-friendly). Stockage local."
       : "Photo is auto-compressed (mobile-friendly). Stored locally.";
 
-  const currentUrl = (dartSet as any).thumbImageUrl || (dartSet as any).mainImageUrl || "";
+  const currentUrl = getDartSetThumbImageSrc(dartSet) || getDartSetMainImageSrc(dartSet) || "";
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1798,9 +1800,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                   overflow: "hidden",
                 }}
               >
-                {activeSet.thumbImageUrl || activeSet.mainImageUrl ? (
+                {getDartSetMainImageSrc(activeSet) || getDartSetThumbImageSrc(activeSet) ? (
                   <DartImage
-                    url={activeSet.mainImageUrl || activeSet.thumbImageUrl!}
+                    url={(getDartSetMainImageSrc(activeSet) || getDartSetThumbImageSrc(activeSet)) as string}
                     width="100%"
                     height="100%"
                     angleDeg={0}

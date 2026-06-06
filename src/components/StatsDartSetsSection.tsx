@@ -19,7 +19,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 
-import { getDartSetsForProfile, getDartSetById, getCanonicalDartSetId, type DartSet } from "../lib/dartSetsStore";
+import { getDartSetsForProfile, getDartSetById, getCanonicalDartSetId, getDartSetMainImageSrc, getDartSetThumbImageSrc, type DartSet } from "../lib/dartSetsStore";
 import { dartPresets } from "../lib/dartPresets";
 import { getX01StatsByDartSetForProfile } from "../lib/statsByDartSet";
 import { History } from "../lib/history";
@@ -1049,6 +1049,8 @@ function resolveSetImage(id: string, mySets: DartSet[]) {
 
   // 1) custom set direct
   const mineImg =
+    asUrl(getDartSetThumbImageSrc(mine)) ||
+    asUrl(getDartSetMainImageSrc(mine)) ||
     asUrl(mine?.photoDataUrl) ||
     asUrl(mine?.photoUrl) ||
     asUrl(mine?.imageDataUrl) ||
@@ -1597,11 +1599,11 @@ function rowMetricValue(row: any, key: CompareMetricKey, recent: MiniMatch[] = [
   return 0;
 }
 
-function buildCompareItems(rows: any[], mySets: DartSet[], recentBySet: Record<string, MiniMatch[]>, t: any, accent: string): CompareItem[] {
+function buildCompareItems(rows: any[], mySets: DartSet[], recentBySet: Record<string, MiniMatch[]>, t: any, accent: string, profileId?: string | null): CompareItem[] {
   return (rows || [])
     .filter((r: any) => String(r?.dartSetId || "").trim())
     .map((row: any, index: number) => {
-      const id = canonicalDartSetIdForStats(row?.dartSetId || "");
+      const id = canonicalDartSetIdForStats(row?.dartSetId || "", profileId || null);
       const recent = recentBySet?.[id] || [];
       const values: Record<string, number> = { matches: rowMatches(row) };
       for (const m of COMPARE_METRICS) values[m.key] = rowMetricValue(row, m.key, recent);
@@ -1845,7 +1847,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
     });
   }, [rows?.length]);
 
-  const compareItems = React.useMemo(() => buildCompareItems(rows, mySets, recentBySet, t, accent), [rows, mySets, recentBySet, t, accent]);
+  const compareItems = React.useMemo(() => buildCompareItems(rows, mySets, recentBySet, t, accent, activeProfileId), [rows, mySets, recentBySet, t, accent, activeProfileId]);
   const visibleCompareItems = React.useMemo(() => {
     const visible = compareItems.filter((it) => !hiddenCompareIds?.[it.id]);
     return visible.length ? visible : compareItems.slice(0, 1);

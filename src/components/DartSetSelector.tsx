@@ -13,6 +13,8 @@ import { useLang } from "../contexts/LangContext";
 import {
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
+  getDartSetThumbImageSrc,
+  getDartSetMainImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 
@@ -248,10 +250,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
           const isSelected = value === set.id;
 
           // Compat avec la nouvelle archi : vignette (preset ou photo)
-          const thumb =
-            (set as any).thumbImageUrl ||
-            (set as any).mainImageUrl ||
-            undefined;
+          const thumb = getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || undefined;
           const kind: string | undefined = (set as any).kind; // "preset" | "photo" | ...
 
           let kindLabel: string | null = null;

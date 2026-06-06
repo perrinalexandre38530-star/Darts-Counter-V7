@@ -699,6 +699,7 @@ export default function KillerConfigPage(props: Props) {
   }, [numberAssignMode, blindKiller]);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(true);
 
   const [killerNumberById, setKillerNumberById] = React.useState<Record<string, number>>({});
 
@@ -1040,39 +1041,64 @@ export default function KillerConfigPage(props: Props) {
             border: "1px solid rgba(255,255,255,0.04)",
           }}
         >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Bots IA
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>
+              Bots IA
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                aria-pressed={botsPanelEnabled}
+                onClick={() => setBotsPanelEnabled((v) => !v)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: `1px solid ${primary}`,
+                  background: botsPanelEnabled ? `${primary}22` : "rgba(255,255,255,0.04)",
+                  color: primary,
+                  fontWeight: 900,
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.7,
+                  boxShadow: botsPanelEnabled ? `0 0 14px ${primary}44` : "none",
+                }}
+              >
+                {botsPanelEnabled ? "☑ ON" : "☐ OFF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: `1px solid ${primary}`,
+                  background: "rgba(255,255,255,0.04)",
+                  color: primary,
+                  fontWeight: 800,
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.7,
+                }}
+              >
+                Gérer mes bots
+              </button>
+            </div>
           </div>
 
           <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
             Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
           </p>
 
-          <BotPagedSelector
-            bots={botProfiles}
-            selectedIds={selectedIds}
-            onToggle={togglePlayer}
-            accent={primary}
-            label="BOTS IA"
-          />
-
-          <button
-            type="button"
-            onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${primary}`,
-              background: "rgba(255,255,255,0.04)",
-              color: primary,
-              fontWeight: 800,
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 0.7,
-            }}
-          >
-            Gérer mes bots
-          </button>
+          {botsPanelEnabled ? (
+            <BotPagedSelector
+              bots={botProfiles}
+              selectedIds={selectedIds}
+              onToggle={togglePlayer}
+              accent={primary}
+              label="BOTS IA"
+              showCheckbox={false}
+            />
+          ) : null}
         </section>
 
 

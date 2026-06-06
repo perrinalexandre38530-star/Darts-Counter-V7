@@ -23,6 +23,8 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 import {
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
+  getDartSetThumbImageSrc,
+  getDartSetMainImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
@@ -248,6 +250,7 @@ type PlayerDartBadgeProps = {
   profileId?: string | null;
   dartSetId?: string | null;
   onChange: (id: string | null) => void;
+  compact?: boolean;
 };
 
 function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
@@ -271,33 +274,14 @@ function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
 
 function getDartSetThumbSrc(set: any): string | null {
   if (!set) return null;
-  const candidates = [
-    set.thumbImageUrl,
-    set.mainImageUrl,
-    set.photoThumbDataUrl,
-    set.thumbDataUrl,
-    set.thumbImageDataUrl,
-    set.photoDataUrl,
-    set.imageDataUrl,
-    set.mainImageDataUrl,
-    set.dartSetImageDataUrl,
-    set.thumb,
-    set.imageUrl,
-    set.image,
-    set.previewImageUrl,
-    set.preview,
-  ];
-  for (const raw of candidates) {
-    const v = typeof raw === "string" ? raw.trim() : "";
-    if (v) return v;
-  }
-  return null;
+  return getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || null;
 }
 
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   profileId,
   dartSetId,
   onChange,
+  compact = false,
 }) => {
   const { theme, palette } = useTheme() as any;
   const { lang } = useLang() as any;
@@ -350,9 +334,15 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         aria-label={chooseLabel}
         title={titleLabel}
         style={{
-          marginTop: 6,
+          position: compact ? "absolute" : "relative",
+          left: compact ? -2 : undefined,
+          bottom: compact ? -2 : undefined,
+          zIndex: compact ? 4 : undefined,
+          marginTop: compact ? 0 : 6,
           alignSelf: "center",
-          padding: "7px 12px",
+          padding: compact ? 0 : "7px 12px",
+          width: compact ? 32 : undefined,
+          height: compact ? 32 : undefined,
           borderRadius: 999,
           border: `1px solid ${selectedSet ? primary : "rgba(255,255,255,.14)"}`,
           background: selectedSet
@@ -361,14 +351,14 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          gap: 7,
+          gap: compact ? 0 : 7,
           color: selectedSet ? "#fff" : "rgba(255,255,255,.86)",
           fontSize: 10,
           fontWeight: 900,
           letterSpacing: 0.45,
           textTransform: "uppercase",
-          minWidth: 98,
-          maxWidth: 108,
+          minWidth: compact ? 32 : 98,
+          maxWidth: compact ? 32 : 108,
           overflow: "hidden",
           cursor: "pointer",
           boxShadow: selectedSet ? `0 0 14px ${primary}55` : "0 0 10px rgba(0,0,0,.55)",
@@ -377,8 +367,8 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         {selectedSet ? (
           <span
             style={{
-              width: 30,
-              height: 30,
+              width: compact ? 26 : 30,
+              height: compact ? 26 : 30,
               borderRadius: "50%",
               overflow: "hidden",
               border: `1px solid ${primary}`,
@@ -398,7 +388,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         ) : (
           <span style={{ fontSize: 13, lineHeight: 1 }}>+</span>
         )}
-        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedSet ? "SET" : chooseLabel}</span>
+        {compact ? null : <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedSet ? "SET" : chooseLabel}</span>}
       </button>
 
       {open ? (
@@ -1192,11 +1182,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 accent={primary}
                 pageSize={9}
                 modalTitle="Choisir des joueurs"
-                renderActions={(p: any) => (
+                renderAvatarOverlay={(p: any) => (
                   <PlayerDartBadge
                     profileId={p.id}
                     dartSetId={playerDartSets[p.id] ?? null}
                     onChange={(id) => handleChangePlayerDartSet(p.id, id)}
+                    compact
                   />
                 )}
               />

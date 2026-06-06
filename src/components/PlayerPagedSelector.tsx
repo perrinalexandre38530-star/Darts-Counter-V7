@@ -21,6 +21,7 @@ export default function PlayerPagedSelector({
   pageSize = 9,
   modalTitle = "Choisir des joueurs",
   renderActions,
+  renderAvatarOverlay,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -65,7 +66,7 @@ export default function PlayerPagedSelector({
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-            {selected.map((p: any) => <SelectedCard key={p.id} p={p} accent={accent} renderActions={renderActions} onRemove={() => onToggle(p.id)} />)}
+            {selected.map((p: any) => <SelectedCard key={p.id} p={p} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
           </div>
         </div>
       ) : null}
@@ -92,6 +93,7 @@ export default function PlayerPagedSelector({
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)" }}>
                           <ProfileAvatar profile={p} size={82} />
                         </div>
+                        {renderAvatarOverlay?.(p)}
                       </div>
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", display: "flex", justifyContent: "center" }}>{renderActions?.(p)}</div>
@@ -112,7 +114,7 @@ export default function PlayerPagedSelector({
   );
 }
 
-function SelectedCard({ p, accent, renderActions, onRemove }: any) {
+function SelectedCard({ p, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
   const lvl = profileLevel(p);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
@@ -121,6 +123,7 @@ function SelectedCard({ p, accent, renderActions, onRemove }: any) {
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55` }}>
           <ProfileAvatar profile={p} size={66} />
         </div>
+        {renderAvatarOverlay?.(p)}
         <button type="button" onClick={onRemove} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ color: "#fff", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
