@@ -157,6 +157,18 @@ function isSyntheticRecoveredDartSet(raw: any): boolean {
   return id.startsWith("builtin_public_") || id.startsWith("dartset_recovered_") || id.startsWith("recovered_dartset_");
 }
 
+function objectLooksLikeProfileOrTeam(raw: any): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const keys = Object.keys(raw).join("|").toLowerCase();
+  const type = normalizeText(raw.type || raw.kind || raw.category || raw.role || raw.entityType);
+  if (/profile|profil|player|joueur|avatar|team|equipe|équipe|bot|league|ligue|tournament|tournoi/.test(type)) return true;
+  if (/teamname|members|players|captain|avatarurl|avatardataurl|medallion|coverurl|coverdataurl|profileavatar|teamlogo|logoasset|botlevel|botdifficulty/.test(keys)) {
+    // Un vrai dartset peut avoir profileId ou ownerProfileId, mais pas les champs structurels d'un profil/team.
+    if (!/dartset|dartpreset|weightgrams|barrel|shaft|flight|mainimage|thumbimage|photoasset|presetid/.test(keys)) return true;
+  }
+  return false;
+}
+
 function valueLooksLikeAvatarOrProfileImage(value: any): boolean {
   const raw = s(value).toLowerCase();
   return raw.includes("avatar") || raw.includes("profile") || raw.includes("profil") || raw.includes("medallion") || raw.includes("logo-equipe") || raw.includes("team-logo") || raw.includes("league") || raw.includes("cover");
@@ -220,30 +232,40 @@ function isKnownDartPresetName(value: any): boolean {
 
 function isLikelyBadRecoveredDartSet(raw: any): boolean {
   if (!raw || typeof raw !== "object") return true;
-  if (isSyntheticRecoveredDartSet(raw)) return true;
+  const rawIdForPollution = s(raw?.id || raw?.dartSetId || raw?.setId || "").toLowerCase();
+  // Les presets publics inventés par une ancienne rustine restent interdits.
+  // En revanche certains vrais sets utilisateur peuvent avoir reçu un id
+  // dartset_recovered_* lors d'une migration : on les garde s'ils passent les
+  // contrôles stricts ci-dessous.
+  if (rawIdForPollution.startsWith("builtin_public_") || rawIdForPollution.startsWith("recovered_dartset_")) return true;
+
   const name = s(raw?.name || raw?.label || raw?.title || raw?.presetName || "");
   const normName = normalizeText(name);
   if (!normName) return true;
 
-  // Les anciennes rustines ont scanné trop large et ont transformé des URL,
-  // profils, teams et avatars en faux dartsets. On les retire au chargement.
+  // Jamais d'URL, jamais de profil/team/avatar transformé en jeu de fléchettes.
   if (isUrlishText(name)) return true;
+  if (objectLooksLikeProfileOrTeam(raw)) return true;
 
   const storeNames = collectStoreNameSet();
   const id = s(raw?.id || raw?.dartSetId || raw?.setId || "");
-  const looksRecovered = id.startsWith("dartset_recovered_");
+  const lowerId = id.toLowerCase();
   const hasDartField = objectHasDartSpecificField(raw);
   const hasRealImage = Boolean(readMainImage(raw) || readThumbImage(raw));
   const hasPreset = Boolean(resolvePresetForSet(raw) || isKnownDartPresetName(name));
+  const hasProductMeta = Boolean(s(raw?.brand) || Number.isFinite(Number(raw?.weightGrams ?? raw?.weight)));
   const profileOrTeamName = storeNames.has(normName);
 
-  if (profileOrTeamName && looksRecovered && !hasPreset && !s(raw?.brand) && !Number.isFinite(Number(raw?.weightGrams ?? raw?.weight))) return true;
-  if (looksRecovered && !hasDartField && !hasRealImage) return true;
-  if (looksRecovered && valueLooksLikeAvatarOrProfileImage(readMainImage(raw) || readThumbImage(raw)) && !hasPreset) return true;
+  if (profileOrTeamName && !hasProductMeta && !hasPreset) return true;
+  if (/profile|profil|team|equipe|équipe|avatar|bot|league|ligue|tournament|tournoi/.test(lowerId) && !hasProductMeta && !hasPreset) return true;
 
-  // Les objets de team/profil créés comme publics sans vraie donnée fléchette.
-  const lowerId = id.toLowerCase();
-  if (/profile|profil|team|equipe|avatar|bot/.test(lowerId) && !hasPreset && !s(raw?.brand) && !Number.isFinite(Number(raw?.weightGrams ?? raw?.weight))) return true;
+  // Un objet doit avoir au moins un vrai indice dartset. Une simple image + nom
+  // ne suffit pas : c'est précisément comme ça que les avatars/teams/URLs ont pollué la liste.
+  if (!hasDartField && !hasPreset && !hasProductMeta) return true;
+
+  // On accepte les sets créés par l'utilisateur même sans image, mais pas les
+  // fragments récupérés sans donnée produit ni preset.
+  if (!hasRealImage && !hasPreset && !hasProductMeta && !hasDartField) return true;
 
   return false;
 }
@@ -708,6 +730,44 @@ function readRecoveryRaw(): any[] {
   out.push(...normalizeDartSetArray(store?.dartSets || store?.dartsets));
   for (const key of LEGACY_DARTSET_STORAGE_KEYS) out.push(...readDartSetArrayFromLocalStorageKey(key));
   return filterOutPollutedDartSets(out);
+}
+
+function mergeExplicitLibrarySources(primaryRaw: any[], recoveryRaw: any[]): any[] {
+  const meta = cleanupDeletedKeys(readMeta());
+  const out: DartSet[] = mergePrimaryDuplicates(filterOutPollutedDartSets(primaryRaw || []));
+  const seenIds = new Set<string>();
+  const seenVisible = new Set<string>();
+  const addSeen = (set: any) => {
+    for (const id of uniqStrings([set?.id, set?.linkedSourceDartSetId, ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []), ...(Array.isArray(set?.aliasIds) ? set.aliasIds : [])])) seenIds.add(id);
+    seenVisible.add(visibleDartSetKey(set));
+  };
+  out.forEach(addSeen);
+
+  let restored = 0;
+  for (const raw of recoveryRaw || []) {
+    if (!raw || typeof raw !== "object") continue;
+    if (isLikelyBadRecoveredDartSet(raw)) continue;
+    if (isLinkedRemoteLike(raw)) continue;
+    if (isDeletedByMeta(raw, meta)) continue;
+    const ds = normalizeDartSetForRuntime(raw, { allowDeleted: true });
+    if (!ds || isLikelyBadRecoveredDartSet(ds) || isLinkedRemoteLike(ds) || isDeletedByMeta(ds, meta)) continue;
+
+    const ids = uniqStrings([ds.id, ds.linkedSourceDartSetId, ...(ds.duplicateIds || []), ...(ds.aliasIds || [])]);
+    if (ids.some((id) => seenIds.has(id))) continue;
+
+    // Même nom + même visuel = doublon. Même nom sans visuel peut être un vrai set différent, on le garde.
+    const vk = visibleDartSetKey(ds);
+    if (vk && seenVisible.has(vk) && imageIdentity(ds)) continue;
+
+    out.push(ds);
+    addSeen(ds);
+    restored += 1;
+  }
+
+  if (restored > 0) {
+    diag("library-explicit-merge:restored", { primary: primaryRaw?.length || 0, recovery: recoveryRaw?.length || 0, restored, result: out.length, names: out.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 16) });
+  }
+  return out;
 }
 
 function readImageRecoveryRaw(): any[] {
@@ -1184,7 +1244,9 @@ function loadPrimaryAuthoritative(): DartSet[] {
     // (sinon on réinjecte presets imaginaires, profils, teams et URLs).
     const recovery = readRecoveryRaw();
     const imageRecovery = readImageRecoveryRaw();
-    const raw = filterOutPollutedDartSets(primaryExists ? primaryRaw : recovery);
+    const raw = primaryExists
+      ? mergeExplicitLibrarySources(primaryRaw, recovery)
+      : filterOutPollutedDartSets(recovery);
 
     rememberImagesForSets([...raw, ...imageRecovery]);
     const primary = mergePrimaryDuplicates(raw);
@@ -1704,9 +1766,10 @@ export function getAllDartSets(): DartSet[] {
 
 export function getAllSelectableDartSets(): DartSet[] {
   // MES FLÉCHETTES = bibliothèque officielle créée par l'utilisateur.
-  // Aucun preset/fallback/récupération large ne doit apparaître ici.
+  // On accepte aussi les dartsets explicites présents dans appStore/anciennes clés
+  // pour réparer les publics perdus, mais jamais les presets inventés / profils / teams / URLs.
   return dedupeVisibleDartSets(
-    loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set) && !isSyntheticRecoveredDartSet(set))
+    loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set))
   );
 }
 
@@ -1718,11 +1781,33 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
   const all = getAllSelectableDartSets();
   const visible = all.filter((set) => {
-    const scope = effectiveDartSetScope(set);
-    if (scope === "public") return true;
+    if (!set || isLikelyBadRecoveredDartSet(set)) return false;
+
+    // Règle stricte demandée : tous les vrais PUBLICS de MES FLÉCHETTES sont
+    // sélectionnables par tous les joueurs, sans tenir compte du propriétaire.
+    const explicitPublic =
+      set.scope === "public" ||
+      isExplicitPublicDartSet(set) ||
+      isPublicOwnerProfileId(set.profileId) ||
+      isPublicOwnerProfileId((set as any).ownerProfileId) ||
+      isPublicOwnerProfileId((set as any).localProfileId);
+    if (explicitPublic) return true;
+
+    // PRIVÉ = seulement le joueur propriétaire/attribué.
     return pid ? profileCanSeeDartSet(set, pid) : false;
   });
-  return withSelectorPublicFallback(visible, all, `profile:${pid || "none"}`);
+  const result = withSelectorPublicFallback(visible, all, `profile:${pid || "none"}`);
+  try {
+    diag("selector:profile-result", {
+      profileId: pid,
+      all: all.length,
+      result: result.length,
+      publicAll: all.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isPublicOwnerProfileId(x.profileId)).length,
+      publicResult: result.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isPublicOwnerProfileId(x.profileId)).length,
+      names: result.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 20),
+    });
+  } catch {}
+  return result;
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {

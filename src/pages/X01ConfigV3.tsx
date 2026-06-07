@@ -21,6 +21,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
 import {
+  getAllSelectableDartSets,
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
   getDartSetThumbImageSrc,
@@ -277,6 +278,51 @@ function getDartSetThumbSrc(set: any): string | null {
   return getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || null;
 }
 
+function x01IsPublicDartSet(set: any): boolean {
+  const profileId = String(set?.profileId || set?.ownerProfileId || set?.localProfileId || "").trim().toLowerCase();
+  const scope = String(set?.scope || set?.visibility || set?.access || "").trim().toLowerCase();
+  return (
+    scope === "public" ||
+    scope === "global" ||
+    set?.isPublic === true ||
+    set?.public === true ||
+    set?.shared === true ||
+    profileId === "" ||
+    profileId === "global" ||
+    profileId === "public" ||
+    profileId === "shared" ||
+    profileId === "all"
+  );
+}
+
+function x01DartSetMatchesProfile(set: any, profileId: string): boolean {
+  const pid = String(profileId || "").trim();
+  if (!pid || !set) return false;
+  if (x01IsPublicDartSet(set)) return true;
+  const owners = [
+    set.profileId,
+    set.profile_id,
+    set.ownerProfileId,
+    set.localProfileId,
+    set.linkedTargetLocalProfileId,
+    set.privateProfileId,
+  ].map((v) => String(v || "").trim()).filter(Boolean);
+  return owners.includes(pid);
+}
+
+function x01DedupeDartSets(list: DartSet[]): DartSet[] {
+  const out: DartSet[] = [];
+  const seen = new Set<string>();
+  for (const set of Array.isArray(list) ? list : []) {
+    const id = String((set as any)?.id || "").trim();
+    const key = id || `${String((set as any)?.name || "").trim().toLowerCase()}|${String((set as any)?.mainImageUrl || (set as any)?.thumbImageUrl || "")}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(set);
+  }
+  return out;
+}
+
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   profileId,
   dartSetId,
@@ -295,14 +341,25 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       setSets([]);
       return;
     }
-    const all = getDartSetsForProfile(profileId) || [];
+    const fromStore = getDartSetsForProfile(profileId) || [];
+
+    // Sécurité locale du configurateur : même si le store a encore une trace
+    // legacy, le picker X01 doit afficher publics + privés du joueur, jamais
+    // seulement ses privés. On prend uniquement la bibliothèque MES FLÉCHETTES.
+    const library = getAllSelectableDartSets() || [];
+    const publicSets = library.filter((set: any) => x01IsPublicDartSet(set));
+    const ownPrivateSets = library.filter((set: any) => !x01IsPublicDartSet(set) && x01DartSetMatchesProfile(set, profileId));
+    const all = x01DedupeDartSets([...publicSets, ...ownPrivateSets, ...fromStore]);
+
     try {
       console.info("[DartSetsDiag:X01Picker] reload", {
         profileId,
+        storeCount: fromStore.length,
+        libraryCount: library.length,
         count: all.length,
-        publicCount: all.filter((x: any) => x?.scope === "public" || x?.profileId === "global").length,
-        privateCount: all.filter((x: any) => x?.scope !== "public" && x?.profileId !== "global").length,
-        names: all.map((x: any) => `${x?.name || "SET"}:${x?.scope || "?"}:${x?.profileId || "?"}`).slice(0, 12),
+        publicCount: all.filter((x: any) => x01IsPublicDartSet(x)).length,
+        privateCount: all.filter((x: any) => !x01IsPublicDartSet(x)).length,
+        names: all.map((x: any) => `${x?.name || "SET"}:${x?.scope || "?"}:${x?.profileId || "?"}`).slice(0, 20),
       });
     } catch {}
     setSets(sortDartSetsForProfilePicker(all));
