@@ -3066,7 +3066,28 @@ function pushDart(value: number, multOverride?: 1 | 2 | 3) {
   }
 }
 
-const isBustLocked = !!(activePlayerId && (lastVisitIsBustByPlayer as any)?.[activePlayerId]);
+const currentThrowVisitScore = React.useMemo(() => {
+  return (Array.isArray(currentThrow) ? currentThrow : []).reduce(
+    (sum, d: any) =>
+      sum +
+      (Number(d?.v) === 25 && Number(d?.mult) === 2
+        ? 50
+        : Number(d?.v || 0) * Number(d?.mult || 1)),
+    0
+  );
+}, [currentThrow]);
+
+const currentThrowIsBust = React.useMemo(() => {
+  if (!activePlayerId) return false;
+  if (!Array.isArray(currentThrow) || currentThrow.length <= 0) return false;
+  const remainingAfter = Number(currentScore || 0) - currentThrowVisitScore;
+  return remainingAfter < 0 || ((outMode === "double" || outMode === "master") && remainingAfter === 1);
+}, [activePlayerId, currentScore, currentThrow, currentThrowVisitScore, outMode]);
+
+// IMPORTANT : le BUST affiché dans la liste joueurs ne doit PAS verrouiller le tour suivant.
+// lastVisitIsBustByPlayer sert uniquement à garder la dernière volée rouge dans la modale.
+// Le verrou clavier ne concerne que la volée BUST actuellement saisie et pas encore validée.
+const isBustLocked = currentThrowIsBust;
 
 const handleSimple = () => {
   if (isBustLocked || !onlineCanScore) return;
