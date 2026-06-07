@@ -686,7 +686,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     const weight = parseInt(form.weightGrams, 10);
     const weightGrams = Number.isFinite(weight) ? weight : undefined;
     const scope = form.scope;
-    const targetProfileId = scope === "private" ? String(form.privateProfileId || profile.id || "") : String(profile.id || "");
+    const targetProfileId = scope === "private" ? String(form.privateProfileId || profile.id || "") : "global";
 
     const chosenPreset = form.presetId ? dartPresets.find((p) => p.id === form.presetId) : undefined;
 
@@ -757,6 +757,10 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     const kind: "plain" | "preset" | "photo" = ((set as any).kind as any) || "plain";
     const presetId: string | null = ((set as any).presetId as any) || null;
 
+    const initialScope: "private" | "public" = set.scope === "public" ? "public" : "private";
+    const rawOwnerId = String((set as any).profileId || "");
+    const initialPrivateProfileId = initialScope === "private" && rawOwnerId && rawOwnerId !== "global" ? rawOwnerId : String(profile.id || "");
+
     setEditingId(set.id);
     setEditForm({
       name: set.name || "",
@@ -764,8 +768,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       weightGrams: set.weightGrams ? String(set.weightGrams) : "",
       notes: set.notes || "",
       bgColor: set.bgColor || primary || DEFAULT_BG,
-      scope: set.scope || "private",
-      privateProfileId: String((set as any).profileId || profile.id || ""),
+      scope: initialScope,
+      privateProfileId: initialPrivateProfileId,
       kind,
       presetId,
       photoDataUrl: null,
@@ -787,7 +791,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     const weight = parseInt(editForm.weightGrams, 10);
     const weightGrams = Number.isFinite(weight) ? weight : undefined;
     const scope = editForm.scope;
-    const nextOwnerProfileId = scope === "private" ? String(editForm.privateProfileId || profile.id || "") : String(profile.id || "");
+    const nextOwnerProfileId = scope === "private" ? String(editForm.privateProfileId || profile.id || "") : "global";
 
     const chosenPreset = editForm.presetId ? dartPresets.find((p) => p.id === editForm.presetId) : undefined;
 
@@ -1345,7 +1349,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                 <button
                   type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, scope: "private" }))}
+                  onClick={() => setForm((prev) => ({ ...prev, scope: "private", privateProfileId: prev.privateProfileId && prev.privateProfileId !== "global" ? prev.privateProfileId : String(profile.id || "") }))}
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
@@ -1626,7 +1630,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setEditForm((prev) => (prev ? { ...prev, scope: "private" } : prev))}
+                onClick={() => setEditForm((prev) => (prev ? { ...prev, scope: "private", privateProfileId: prev.privateProfileId && prev.privateProfileId !== "global" ? prev.privateProfileId : String(profile.id || "") } : prev))}
                 style={{
                   padding: "6px 10px",
                   borderRadius: 8,

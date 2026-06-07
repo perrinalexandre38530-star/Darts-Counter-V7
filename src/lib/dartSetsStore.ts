@@ -527,13 +527,35 @@ function sanitizeDartSetForStorage(raw: any): any {
 
   next.scope = effectiveDartSetScope(next);
   next.name = s(next.name) || "Mes fléchettes";
-  next.profileId = s(next.profileId || (next.scope === "public" ? "global" : next.linkedTargetLocalProfileId || "global"));
+
+  // IMPORTANT : un set PUBLIC ne doit jamais rester rattaché à un profil local.
+  // Sinon l'UI affiche l'avatar propriétaire et, à la prochaine édition, l'ancien
+  // profil peut faire rebasculer le set en PRIVÉ via les vieux champs legacy.
+  if (next.scope === "public") {
+    next.profileId = "global";
+    next.ownerProfileId = undefined;
+    next.localProfileId = undefined;
+    next.linkedTargetLocalProfileId = null;
+    next.isPublic = true;
+    next.public = true;
+    next.shared = true;
+    next.isPrivate = false;
+    next.private = false;
+  } else {
+    next.profileId = s(next.profileId || next.linkedTargetLocalProfileId || next.ownerProfileId || next.localProfileId || "global");
+    next.isPublic = false;
+    next.public = false;
+    next.shared = false;
+    next.isPrivate = true;
+    next.private = true;
+  }
+
   next.id = s(next.id) || `dartset_recovered_${hashString(`${next.profileId}|${next.name}|${Date.now()}`)}`;
   next.duplicateIds = uniqStrings(Array.isArray(next.duplicateIds) ? next.duplicateIds : []).filter((id) => id !== next.id);
   next.aliasIds = uniqStrings([...(Array.isArray(next.aliasIds) ? next.aliasIds : []), ...next.duplicateIds]).filter((id) => id !== next.id);
-  next.linkedTargetLocalProfileId = s(next.linkedTargetLocalProfileId) || null;
+  next.linkedTargetLocalProfileId = next.scope === "public" ? null : (s(next.linkedTargetLocalProfileId) || null);
   next.linkedOwnerUserId = s(next.linkedOwnerUserId) || null;
-  next.linkedSourceProfileId = s(next.linkedSourceProfileId) || null;
+  next.linkedSourceProfileId = next.scope === "public" ? null : (s(next.linkedSourceProfileId) || null);
   next.linkedSourceDartSetId = s(next.linkedSourceDartSetId) || null;
   next.ownerUserId = s(next.ownerUserId) || null;
   next.userId = s(next.userId) || null;
@@ -937,6 +959,43 @@ export function getDartSetThumbImageSrc(set: any): string | null {
   return src || null;
 }
 
+function normalizeDartSetMutationPatch(patch: any): any {
+  const next: any = { ...(patch || {}) };
+  if (Object.prototype.hasOwnProperty.call(next, "scope")) {
+    const scope: "private" | "public" = next.scope === "public" ? "public" : "private";
+    next.scope = scope;
+    if (scope === "public") {
+      next.profileId = "global";
+      next.ownerProfileId = undefined;
+      next.localProfileId = undefined;
+      next.linkedTargetLocalProfileId = null;
+      next.linkedSourceProfileId = null;
+      next.linkedRemoteDartSet = false;
+      next.linkedRemote = false;
+      next.__linkedRemote = false;
+      next.remoteDartSet = false;
+      next.isPublic = true;
+      next.public = true;
+      next.shared = true;
+      next.isPrivate = false;
+      next.private = false;
+    } else {
+      next.profileId = s(next.profileId || next.privateProfileId || next.ownerProfileId || next.localProfileId || "global");
+      next.linkedTargetLocalProfileId = null;
+      next.linkedRemoteDartSet = false;
+      next.linkedRemote = false;
+      next.__linkedRemote = false;
+      next.remoteDartSet = false;
+      next.isPublic = false;
+      next.public = false;
+      next.shared = false;
+      next.isPrivate = true;
+      next.private = true;
+    }
+  }
+  return next;
+}
+
 export function createDartSet(input: {
   profileId: string;
   name: string;
@@ -959,13 +1018,15 @@ export function createDartSet(input: {
 }): DartSet | undefined {
   const all = loadAll();
   const now = Date.now();
-  const payload = normalizeDartSetForRuntime({
+  const wantedScope: "private" | "public" = input.scope === "public" ? "public" : "private";
+  const payload = normalizeDartSetForRuntime(normalizeDartSetMutationPatch({
     ...input,
+    profileId: wantedScope === "public" ? "global" : input.profileId,
     id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,
     createdAt: now,
     updatedAt: now,
-    scope: input.scope ?? "private",
-  });
+    scope: wantedScope,
+  }));
   if (!payload) return undefined;
 
   const existing = all.find((set) => canonicalKeyForSet(set) === canonicalKeyForSet(payload));
@@ -1001,10 +1062,11 @@ export function createDartSet(input: {
 }
 
 export function updateDartSet(id: DartSetId, patch: Partial<Omit<DartSet, "id" | "createdAt">>): DartSet | undefined {
+  const mutationPatch = normalizeDartSetMutationPatch(patch);
   const all = loadAll();
   const target = findDartSetByIdIn(all, id);
   if (!target) {
-    diag("update:not-found", { id, patch });
+    diag("update:not-found", { id, patch: mutationPatch });
     return undefined;
   }
 
@@ -1012,10 +1074,10 @@ export function updateDartSet(id: DartSetId, patch: Partial<Omit<DartSet, "id" |
     if (!dartSetMatchesAnyId(set, target.id) && !dartSetMatchesAnyId(set, id)) return set;
     return sanitizeDartSetForStorage({
       ...set,
-      ...patch,
+      ...mutationPatch,
       id: set.id,
-      duplicateIds: uniqStrings([...(set.duplicateIds || []), ...(Array.isArray((patch as any).duplicateIds) ? (patch as any).duplicateIds : [])]),
-      aliasIds: uniqStrings([...(set.aliasIds || []), ...(Array.isArray((patch as any).aliasIds) ? (patch as any).aliasIds : [])]),
+      duplicateIds: uniqStrings([...(set.duplicateIds || []), ...(Array.isArray((mutationPatch as any).duplicateIds) ? (mutationPatch as any).duplicateIds : [])]),
+      aliasIds: uniqStrings([...(set.aliasIds || []), ...(Array.isArray((mutationPatch as any).aliasIds) ? (mutationPatch as any).aliasIds : [])]),
       updatedAt: Date.now(),
     }) as DartSet;
   });
