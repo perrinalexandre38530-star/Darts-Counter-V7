@@ -251,9 +251,11 @@ type Props = {
   online?: boolean;
   lobbyCode?: string | null;
   onlineUserId?: string | null;
-  onExit?: () => void; // QUITTER -> Home (via App)
-  onShowSummary?: (matchId: string) => void; // RÉSUMÉ -> Historique détaillé
-  onReplayNewConfig?: () => void; // REJOUER -> changer paramètres (App)
+  onExit?: () => void; // QUITTER en cours de partie
+  onFinishExit?: () => void; // TERMINER LA PARTIE -> Historique
+  onShowSummary?: (matchId: string) => void; // RÉSUMÉ -> page détail/résumé
+  onReplaySameConfig?: () => void; // REJOUER -> même config + mêmes joueurs
+  onReplayNewConfig?: () => void; // NOUVELLE PARTIE -> configurateur
   resume?: {
     resumeId: string;
     darts: X01DartInputV3[];
@@ -999,7 +1001,9 @@ export default function X01PlayV3({
   lobbyCode = null,
   onlineUserId = null,
   onExit,
+  onFinishExit,
   onShowSummary,
+  onReplaySameConfig,
   onReplayNewConfig,
   resume,
 }: Props) {
@@ -4043,11 +4047,55 @@ React.useEffect(() => {
     </div>
   ) : null;
 
-   // =====================================================
+ 
+  const forceSaveFinishedMatchToHistory = React.useCallback(() => {
+    const fallbackId =
+      historyIdRef.current ||
+      String((state as any)?.matchId || `x01v3-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+    // IMPORTANT : tous les boutons de fin de partie passent ici avant de naviguer.
+    // Cela force l'upsert "finished" même si l'effet React de fin de match n'a pas
+    // encore eu le temps de flusher l'historique. L'id est stable pour écraser
+    // l'ancienne entrée in_progress au lieu de créer un doublon.
+    historyIdRef.current = fallbackId;
+
+    try {
+      saveX01V3MatchToHistory({
+        config,
+        state,
+        scores,
+        liveStatsByPlayer,
+        historyId: fallbackId,
+        darts: Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [],
+      });
+      hasSavedMatchRef.current = true;
+    } catch (err) {
+      console.warn("[X01PlayV3] forceSaveFinishedMatchToHistory failed", err);
+    }
+
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(AUTOSAVE_KEY);
+        window.localStorage.removeItem(AUTOSAVE_KEY + ":resume");
+      }
+    } catch {}
+
+    return fallbackId;
+  }, [config, state, scores, liveStatsByPlayer]);
+
+  // =====================================================
   // Quitter / Rejouer / Résumé / Continuer
   // =====================================================
 
   function handleQuit() {
+    if (status === "match_end") {
+      forceSaveFinishedMatchToHistory();
+      if (!effectiveOnline && onFinishExit) {
+        onFinishExit();
+        return;
+      }
+    }
+
     // ONLINE : retour salon sans détruire l'autosave/reprise. Un téléphone peut se mettre en veille ou quitter par erreur.
     if (effectiveOnline && effectiveLobbyCode) {
       setOnlineExitingToLobby(true);
@@ -4094,17 +4142,29 @@ React.useEffect(() => {
     }
   }
 
-  // REJOUER même config : on relance l'écran avec la même config
+  // REJOUER même config : même config + mêmes joueurs, sans repasser par le configurateur.
   function handleReplaySameConfig() {
-    // 🔁 Pour l’instant: reload complet de la page -> recrée un match X01V3
-    if (typeof window !== "undefined") {
-      window.location.reload();
+    if (status === "match_end") forceSaveFinishedMatchToHistory();
+
+    if (onReplaySameConfig) {
+      onReplaySameConfig();
       return;
+    }
+
+    // Fallback de sécurité : on garde la config dans sessionStorage puis on force un fresh token.
+    // L'ancien reload simple perdait parfois x01ConfigV3 et renvoyait au mauvais écran.
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem("dc_x01v3_replay_same_config", JSON.stringify(config));
+      } catch {}
+      window.location.hash = `#/x01_play_v3?fresh=${Date.now()}`;
     }
   }
 
   // NOUVELLE PARTIE (retour écran de config)
   function handleReplayNewConfigInternal() {
+    if (status === "match_end") forceSaveFinishedMatchToHistory();
+
     if (onReplayNewConfig) {
       onReplayNewConfig();
       return;
@@ -4115,6 +4175,13 @@ React.useEffect(() => {
 
   // RÉSUMÉ : on construit un LegStats à partir du moteur V3 + liveStats
   function handleShowSummary(_matchId: string) {
+    const savedMatchId = status === "match_end" ? forceSaveFinishedMatchToHistory() : (_matchId || (state as any).matchId || "");
+
+    if (status === "match_end" && onShowSummary) {
+      onShowSummary(savedMatchId);
+      return;
+    }
+
     try {
       const replayVisitsForSummary = buildReplayVisitsForX01History(
         replayDartsRef.current,
@@ -4142,8 +4209,7 @@ React.useEffect(() => {
       console.warn("[X01PlayV3] failed to build LegStats for summary", err);
       // fallback : si jamais ça casse, on garde l'ancien comportement
       if (onShowSummary) {
-        const id = _matchId || (state as any).matchId || "";
-        onShowSummary(id);
+        onShowSummary(savedMatchId);
       }
     }
   }

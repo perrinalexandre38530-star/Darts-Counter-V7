@@ -4,7 +4,7 @@
 // - Style néon + trophée 🏆
 // - 1v1 : duel avec avatars alignés + scoreboard central
 // - 3+ joueurs : classement final simple
-// - Boutons : Manche suivante / Rejouer / Nouvelle partie / Résumé / Quitter
+// - Boutons : Manche suivante / Rejouer / Nouvelle partie / Résumé / Terminer la partie
 // - Mini stats : vainqueur en doré / perdant en blanc
 // =============================================================
 

@@ -5318,7 +5318,18 @@ function X01PlayV3Route({
       routeParams?.initialState?.x01ConfigV3 ??
       routeParams?.initialState?.config ??
       null;
-    const cfgToStart = x01ConfigV3 || routeConfig;
+    const replaySameSessionConfig = (() => {
+      if (typeof window === "undefined") return null;
+      try {
+        const raw = window.sessionStorage.getItem("dc_x01v3_replay_same_config");
+        if (!raw) return null;
+        window.sessionStorage.removeItem("dc_x01v3_replay_same_config");
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    })();
+    const cfgToStart = x01ConfigV3 || routeConfig || replaySameSessionConfig;
     const isOnline = !!routeParams?.online || !!routeParams?.lobbyCode;
 
     if (!cfgToStart) {
@@ -5370,6 +5381,11 @@ function X01PlayV3Route({
           }
           go("x01_config_v3");
         }}
+        onFinishExit={() => go("statsHub", { tab: "history" })}
+        onReplaySameConfig={() => {
+          setX01ConfigV3(cfgToStart);
+          go("x01_play_v3", { ...(routeParams || {}), resumeId: undefined, fresh: Date.now(), replaySame: true });
+        }}
         onReplayNewConfig={() => go(isOnline ? "x01setup" : "x01_config_v3", routeParams)}
         onShowSummary={(matchId: string) =>
           go("statsDetail", { matchId, showEnd: true, online: isOnline, lobbyCode: routeLobbyCode || routeParams?.lobbyCode })
@@ -5414,7 +5430,12 @@ function X01PlayV3Route({
       key={key}
       config={cfgToUse}
       resume={resume}
-      onExit={() => go("history")}
+      onExit={() => go("statsHub", { tab: "history" })}
+      onFinishExit={() => go("statsHub", { tab: "history" })}
+      onReplaySameConfig={() => {
+        setX01ConfigV3(cfgToUse);
+        go("x01_play_v3", { fresh: Date.now(), replaySame: true });
+      }}
       onReplayNewConfig={() => go("x01_config_v3")}
       onShowSummary={(matchId: string) =>
         go("statsDetail", { matchId, showEnd: true })

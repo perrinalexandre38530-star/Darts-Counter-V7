@@ -864,28 +864,90 @@ function x01HistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
   };
   const setsMap = data.setsWonByPlayer || data.setsByPlayer || data.setsWon || data.setsScore || result.setsWonByPlayer || result.setsWon;
   const legsMap = data.legsWonByPlayer || data.legsByPlayer || data.legsWon || data.legsScore || result.legsWonByPlayer || result.legsWon;
-  const remainingMap = data.remainingByPlayer || data.scoresByPlayer || data.scoreByPlayer || result.remainingByPlayer || result.scoresByPlayer;
+
+  // X01 MULTI : le chiffre affiché sur la carte doit être le score RESTANT, jamais le nombre de legs/sets gagnés.
+  // Certains anciens exports ne possèdent que `rankings.score` (= legs gagnés), donc on privilégie finalScore/remaining/finalScores
+  // puis on reconstruit depuis startScore - totalScore si nécessaire.
+  const remainingMap =
+    data.finalScores ||
+    data.remainingScores ||
+    data.remainingByPlayer ||
+    data.scoresByPlayer ||
+    data.scoreByPlayer ||
+    result.finalScores ||
+    result.remainingScores ||
+    result.remainingByPlayer ||
+    result.scoresByPlayer ||
+    anyE.payload?.summary?.finalScores ||
+    anyE.payload?.summary?.remainingScores ||
+    anyE.payload?.summary?.remainingByPlayer ||
+    anyE.payload?.summary?.scoreByPlayer;
+  const detailed = data.detailedByPlayer || anyE.payload?.summary?.detailedByPlayer || result.detailedByPlayer;
+  const startScore = Number(data.game?.startScore ?? anyE.game?.startScore ?? anyE.payload?.summary?.game?.startScore ?? anyE.payload?.config?.startScore ?? 0);
 
   const sourceRows = rows.length ? rows : (Array.isArray(anyE.players) ? anyE.players : []);
   return sourceRows.map((r: any, idx: number) => {
     const sets = historyScoreNumber(r?.setsWon ?? r?.sw ?? r?.sets ?? r?.setsScore ?? looseMap(setsMap, r));
     const legs = historyScoreNumber(r?.legsWon ?? r?.lw ?? r?.legs ?? r?.legsScore ?? looseMap(legsMap, r));
-    const remaining = historyScoreNumber(
-      r?.remaining ?? r?.scoreRemaining ?? r?.currentScore ?? r?.scoreLeft ?? r?.left ?? r?.score ?? looseMap(remainingMap, r),
-      idx === 0 ? "0" : "0"
-    );
+    const explicitRemaining = r?.remaining ?? r?.finalScore ?? r?.scoreRemaining ?? r?.currentScore ?? r?.scoreLeft ?? r?.left ?? looseMap(remainingMap, r);
+    let remainingRaw = explicitRemaining;
+    if (remainingRaw == null && startScore > 0 && detailed && typeof detailed === "object") {
+      const ids = [r?.id, r?.playerId, r?.profileId, r?.selectedPlayerId, r?.pid].filter(Boolean).map(String);
+      const hitKey = ids.find((id) => detailed[id]);
+      const total = hitKey ? Number(detailed[hitKey]?.totalScore ?? detailed[hitKey]?.totalscore) : NaN;
+      if (Number.isFinite(total)) remainingRaw = Math.max(0, startScore - total);
+    }
+    const remaining = historyScoreNumber(remainingRaw, idx === 0 ? "0" : "0");
     return {
       name: historyScoreName(e, r),
       main: sets,
       sub: legs,
-      rank: Number(r?.rank ?? r?.position ?? idx + 1) || idx + 1,
+      rank: Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position ?? idx + 1) || idx + 1,
       remaining,
     } as any;
   }).filter((x: any) => x.name);
 }
 
+function genericHistoryRankScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
+  const anyE: any = e;
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
+  const result = data.result || {};
+  const rows = historyRankingRows(e);
+  const sourceRows = rows.length ? rows : (Array.isArray(data.perPlayer) ? data.perPlayer : (Array.isArray(result.players) ? result.players : []));
+  return sourceRows.map((r: any, idx: number) => {
+    const rawScore = r?.livesTaken ?? r?.kills ?? r?.score ?? r?.points ?? r?.total ?? r?.number ?? r?.finalScore;
+    return {
+      name: historyScoreName(e, r),
+      main: historyScoreNumber(rawScore, "0"),
+      rank: Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position ?? idx + 1) || idx + 1,
+    };
+  }).filter((x: any) => x.name);
+}
+
+function historyRankColor(rank: number): string {
+  return rank === 1 ? "#ffd76a" : rank === 2 ? "#dce6f2" : rank === 3 ? "#c98945" : "rgba(255,255,255,.88)";
+}
+
+function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore: (p: any) => any) {
+  const scoreStyle = { color: theme.primary, fontWeight: 950, textShadow: `0 0 9px ${theme.primary}55` };
+  return (
+    <span>
+      {players.map((p: any, idx) => (
+        <React.Fragment key={`${p.name}-${idx}`}>
+          {idx > 0 ? <span style={{ color: "rgba(255,255,255,.58)" }}> * </span> : null}
+          <span style={{ color: historyRankColor(p.rank || idx + 1), fontWeight: 950 }}>{p.rank || idx + 1}.</span>{" "}
+          <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{p.name}</span>{" "}
+          <span style={scoreStyle}>{getScore(p) ?? "0"}</span>
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
   if (!isX01Entry(e)) {
+    const ranked = genericHistoryRankScorePlayers(e);
+    if (ranked.length > 1) return renderRankScoreLine(ranked, theme, (p: any) => p.main || "0");
     const s = summarizeScore(e);
     return s ? <>{s}</> : null;
   }
@@ -907,19 +969,36 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
       </span>
     );
   }
-  const rankColor = (rank: number) => rank === 1 ? "#ffd76a" : rank === 2 ? "#dce6f2" : rank === 3 ? "#c98945" : "rgba(255,255,255,.88)";
-  return (
-    <span>
-      {players.map((p, idx) => (
-        <React.Fragment key={`${p.name}-${idx}`}>
-          {idx > 0 ? <span style={{ color: "rgba(255,255,255,.58)" }}> * </span> : null}
-          <span style={{ color: rankColor(p.rank || idx + 1), fontWeight: 950 }}>{p.rank || idx + 1}.</span>{" "}
-          <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{p.name}</span>{" "}
-          <span style={scoreStyle}>{p.remaining ?? p.main ?? "0"}</span>
-        </React.Fragment>
-      ))}
-    </span>
-  );
+  return renderRankScoreLine(players, theme, (p: any) => p.remaining ?? p.main ?? "0");
+}
+
+function deriveHistoryWinnerName(e: SavedEntry): string {
+  const anyE: any = e;
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
+  const result = data.result || {};
+  const direct = cleanName(anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName);
+  if (direct) return direct;
+
+  const winnerId =
+    anyE.winnerId ||
+    data.winnerId ||
+    result.winnerId ||
+    data.winner?.id ||
+    result.winner?.id ||
+    anyE.payload?.summary?.winnerId ||
+    anyE.payload?.winnerId ||
+    anyE.payload?.resume?.state?.lastWinnerId ||
+    anyE.payload?.resume?.state?.lastLegWinnerId ||
+    null;
+  if (winnerId) {
+    const nm = historyPlayerNameById(e, winnerId);
+    if (nm) return nm;
+  }
+
+  const rows = historyRankingRows(e);
+  const hit = rows.find((r: any) => r?.win === true || r?.winner === true || Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position) === 1);
+  if (hit) return historyScoreName(e, hit);
+  return "";
 }
 
 function summarizeScore(e: SavedEntry): string {
@@ -2903,14 +2982,17 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                     })}
                   </div>
 
-                  {(!inProg && e.winnerName) ? (
-                    <div style={{ display: "grid", justifyItems: "center", gap: 1, minWidth: 86, color: theme.primary }}>
-                      <img src={victoryCup} style={{ width: 48, height: 38, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(255,210,80,.62))" }} />
-                      <div style={{ fontSize: 10, lineHeight: 1, fontWeight: 950, color: "#ffd76a", textAlign: "center", maxWidth: 92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 0 5px rgba(255,214,106,.95), 0 0 12px rgba(255,176,0,.45)" }}>
-                        {e.winnerName}
+                  {(() => {
+                    const winnerName = !inProg ? deriveHistoryWinnerName(e) : "";
+                    return winnerName ? (
+                      <div style={{ display: "grid", justifyItems: "center", gap: 1, minWidth: 86, color: theme.primary }}>
+                        <img src={victoryCup} style={{ width: 48, height: 38, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(255,210,80,.62))" }} />
+                        <div style={{ fontSize: 10, lineHeight: 1, fontWeight: 950, color: "#ffd76a", textAlign: "center", maxWidth: 92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 0 5px rgba(255,214,106,.95), 0 0 12px rgba(255,176,0,.45)" }}>
+                          {winnerName}
+                        </div>
                       </div>
-                    </div>
-                  ) : null}
+                    ) : null;
+                  })()}
                 </div>
 
                 <div style={S.actionRow}>
