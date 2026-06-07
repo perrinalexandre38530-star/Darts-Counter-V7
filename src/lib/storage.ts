@@ -1142,6 +1142,16 @@ async function normalizeStoreAll<T extends Store>(store: T): Promise<{ store: T;
   return { store: perf.store, changed: compat.changed || perf.changed };
 }
 
+function attachAuthoritativeDartSetsToStore<T extends any>(store: T): T {
+  try {
+    const dartSets = getAllDartSets();
+    if (Array.isArray(dartSets) && dartSets.length > 0) {
+      return { ...(store as any), dartSets } as T;
+    }
+  } catch {}
+  return store;
+}
+
 /* ---------- API publique principale ---------- */
 
 export async function loadStore<T extends Store>(): Promise<T | null> {
@@ -1172,7 +1182,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         } catch {}
       }
 
-      return guardStoreShape(norm.store);
+      return guardStoreShape(attachAuthoritativeDartSetsToStore(norm.store));
     }
 
     const legacy = localStorage.getItem(LEGACY_LS_KEY);
@@ -1188,7 +1198,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         localStorage.removeItem(scopedLegacyStoreKey());
       } catch {}
 
-      return guardStoreShape(norm.store);
+      return guardStoreShape(attachAuthoritativeDartSetsToStore(norm.store));
     }
 
     return null;
@@ -1214,25 +1224,27 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     // IMPORTANT:
     // We no longer re-run expensive async avatar downscaling on every global store save.
     // Avatar compression must happen at import/edit time, not during routine navigation saves.
-    let persistedStore = guardStoreShape(sanitizeStoreForPersistence(compat.store as T));
+    let persistedStore = guardStoreShape(sanitizeStoreForPersistence(attachAuthoritativeDartSetsToStore(compat.store as T)));
     const tSanitize1 = storageNowMs();
 
     let json = safeJsonStringify(persistedStore);
     let bytes = json.length;
 
     if (bytes > STORE_SOFT_TARGET_BYTES) {
-      persistedStore = compactStoreForMobile(persistedStore, "soft");
+      persistedStore = attachAuthoritativeDartSetsToStore(compactStoreForMobile(persistedStore, "soft"));
       json = safeJsonStringify(persistedStore);
       bytes = json.length;
     }
 
     if (bytes > STORE_HARD_TARGET_BYTES) {
-      persistedStore = compactStoreForMobile(persistedStore, "hard");
+      persistedStore = attachAuthoritativeDartSetsToStore(compactStoreForMobile(persistedStore, "hard"));
       json = safeJsonStringify(persistedStore);
       bytes = json.length;
     }
 
-    persistedStore = guardStoreSizeForMobile(persistedStore);
+    persistedStore = attachAuthoritativeDartSetsToStore(guardStoreSizeForMobile(persistedStore));
+    json = safeJsonStringify(persistedStore);
+    bytes = json.length;
     const tCompact1 = storageNowMs();
 
     const storeScopeKey = scopedStorageKey(STORE_KEY);
@@ -1272,7 +1284,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
           projected,
           bytes,
         });
-        const emergencyStore = compactStoreForMobile(persistedStore, "hard");
+        const emergencyStore = attachAuthoritativeDartSetsToStore(compactStoreForMobile(persistedStore, "hard"));
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
         payload = await persistPayloadForKey(scopedStorageKey(STORE_KEY), json);

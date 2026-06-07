@@ -235,9 +235,20 @@ function isLinkedRemoteLike(raw: any): boolean {
 function effectiveDartSetScope(raw: any): "private" | "public" {
   if (!raw || typeof raw !== "object") return "private";
   if (isLinkedRemoteLike(raw)) return "private";
+
+  const ownerProfileId = readOwnerProfileId(raw);
+  const hasExplicitPrivateTarget = Boolean(s(raw?.privateProfileId || raw?.linkedTargetLocalProfileId || raw?.targetLocalProfileId || raw?.targetProfileId));
+
   if (isExplicitPublicDartSet(raw)) return "public";
+
+  // Défense anti-corruption legacy : plusieurs anciennes versions ont enregistré
+  // des sets PUBLICS avec des flags private/isPrivate restés à true. Si le
+  // propriétaire est clairement global/public, on rétablit PUBLIC avant de lire
+  // ces anciens flags. Un vrai privé doit avoir un profil joueur concret.
+  if (isPublicOwnerProfileId(ownerProfileId) && !hasExplicitPrivateTarget) return "public";
+
   if (isExplicitPrivateDartSet(raw)) return "private";
-  if (isPublicOwnerProfileId(readOwnerProfileId(raw))) return "public";
+  if (isPublicOwnerProfileId(ownerProfileId)) return "public";
   return "private";
 }
 
@@ -573,9 +584,13 @@ function canonicalKeyForSet(set: any): string {
 
 function visibleDartSetKey(set: any): string {
   const name = normalizeText(set?.name || set?.label || set?.title || "");
-  if (name) return `visible|name:${name}`;
-  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.id || "");
-  return `visible|visual:${visual}`;
+  const visual = imageIdentity(set);
+  // Avant : clé basée seulement sur le nom. Résultat : plusieurs sets publics
+  // différents portant un nom proche pouvaient disparaître du sélecteur.
+  // Maintenant on fusionne seulement les doublons vraiment identiques.
+  if (name && visual) return `visible|name:${name}|visual:${visual}`;
+  if (name) return `visible|name:${name}|owner:${selectableOwnerKey(set)}`;
+  return `visible|visual:${visual || normalizeText(set?.presetId || set?.id || "")}`;
 }
 
 function scoreDartSetForCanonical(set: any): number {
@@ -719,6 +734,20 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
   const byKey = new Map<string, DartSet>();
   const order: string[] = [];
 
+  const pickMetadataWinner = (a: DartSet, b: DartSet): DartSet => {
+    const au = n(a?.updatedAt, 0);
+    const bu = n(b?.updatedAt, 0);
+    if (au !== bu) return au > bu ? a : b;
+    const ac = n(a?.createdAt, 0);
+    const bc = n(b?.createdAt, 0);
+    if (ac !== bc) return ac > bc ? a : b;
+    return scoreDartSetForCanonical(a) >= scoreDartSetForCanonical(b) ? a : b;
+  };
+
+  const pickImageWinner = (a: DartSet, b: DartSet): DartSet => {
+    return scoreDartSetForCanonical(a) >= scoreDartSetForCanonical(b) ? a : b;
+  };
+
   for (const raw of Array.isArray(list) ? list : []) {
     const normalized = normalizeDartSetForRuntime(raw);
     if (!normalized) continue;
@@ -730,33 +759,38 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
       continue;
     }
 
-    // Ici seulement : doublons dans la source officielle. On garde la version la
-    // plus riche, mais canonicalKey protège scope + propriétaire.
-    const winner = scoreDartSetForCanonical(normalized) > scoreDartSetForCanonical(old) ? normalized : old;
+    // IMPORTANT : les champs éditables (favori, scope, propriétaire, nom, poids)
+    // doivent venir de la version la plus récente. Avant, isFavorite faisait
+    // un OR avec les anciens doublons, donc un favori supprimé revenait au refresh.
+    // Les images, elles, peuvent venir du doublon le plus riche.
+    const winner = pickMetadataWinner(normalized, old);
     const loser = winner === normalized ? old : normalized;
+    const imageSource = pickImageWinner(normalized, old);
+
     const merged: DartSet = sanitizeDartSetForStorage({
       ...winner,
       brand: winner.brand || loser.brand,
       weightGrams: winner.weightGrams ?? loser.weightGrams,
       notes: winner.notes || loser.notes,
-      mainImageUrl: winner.mainImageUrl || loser.mainImageUrl || "",
-      thumbImageUrl: winner.thumbImageUrl || loser.thumbImageUrl,
-      photoDataUrl: winner.photoDataUrl || loser.photoDataUrl,
-      imageDataUrl: winner.imageDataUrl || loser.imageDataUrl,
-      mainImageDataUrl: winner.mainImageDataUrl || loser.mainImageDataUrl,
-      dartSetImageDataUrl: winner.dartSetImageDataUrl || loser.dartSetImageDataUrl,
-      photoThumbDataUrl: winner.photoThumbDataUrl || loser.photoThumbDataUrl,
-      thumbDataUrl: winner.thumbDataUrl || loser.thumbDataUrl,
-      thumbImageDataUrl: winner.thumbImageDataUrl || loser.thumbImageDataUrl,
-      mainImageAssetId: winner.mainImageAssetId || loser.mainImageAssetId || null,
-      thumbImageAssetId: winner.thumbImageAssetId || loser.thumbImageAssetId || null,
-      photoAssetId: winner.photoAssetId || loser.photoAssetId || null,
-      isFavorite: Boolean(winner.isFavorite || loser.isFavorite),
+      mainImageUrl: winner.mainImageUrl || imageSource.mainImageUrl || loser.mainImageUrl || "",
+      thumbImageUrl: winner.thumbImageUrl || imageSource.thumbImageUrl || loser.thumbImageUrl,
+      photoDataUrl: winner.photoDataUrl || imageSource.photoDataUrl || loser.photoDataUrl,
+      imageDataUrl: winner.imageDataUrl || imageSource.imageDataUrl || loser.imageDataUrl,
+      mainImageDataUrl: winner.mainImageDataUrl || imageSource.mainImageDataUrl || loser.mainImageDataUrl,
+      dartSetImageDataUrl: winner.dartSetImageDataUrl || imageSource.dartSetImageDataUrl || loser.dartSetImageDataUrl,
+      photoThumbDataUrl: winner.photoThumbDataUrl || imageSource.photoThumbDataUrl || loser.photoThumbDataUrl,
+      thumbDataUrl: winner.thumbDataUrl || imageSource.thumbDataUrl || loser.thumbDataUrl,
+      thumbImageDataUrl: winner.thumbImageDataUrl || imageSource.thumbImageDataUrl || loser.thumbImageDataUrl,
+      mainImageAssetId: winner.mainImageAssetId || imageSource.mainImageAssetId || loser.mainImageAssetId || null,
+      thumbImageAssetId: winner.thumbImageAssetId || imageSource.thumbImageAssetId || loser.thumbImageAssetId || null,
+      photoAssetId: winner.photoAssetId || imageSource.photoAssetId || loser.photoAssetId || null,
+      isFavorite: Boolean(winner.isFavorite),
       usageCount: Math.max(n(winner.usageCount, 0), n(loser.usageCount, 0)),
       lastUsedAt: Math.max(n(winner.lastUsedAt, 0), n(loser.lastUsedAt, 0)),
       createdAt: Math.min(n(winner.createdAt, Date.now()), n(loser.createdAt, Date.now())),
       updatedAt: Math.max(n(winner.updatedAt, 0), n(loser.updatedAt, 0)),
       duplicateIds: uniqStrings([winner.id, loser.id, winner.linkedSourceDartSetId, loser.linkedSourceDartSetId, ...(winner.duplicateIds || []), ...(loser.duplicateIds || []), ...(winner.aliasIds || []), ...(loser.aliasIds || [])]).filter((id) => id !== winner.id),
+      aliasIds: uniqStrings([...(winner.aliasIds || []), ...(loser.aliasIds || []), winner.id, loser.id]).filter((id) => id !== winner.id),
     }) as DartSet;
     byKey.set(key, merged);
   }
@@ -1017,6 +1051,15 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
       try {
         if (typeof w?.__markNasSyncDirty === "function") w.__markNasSyncDirty(`dartsets_${reason}`);
       } catch {}
+      // Évite le cas constaté : l'utilisateur modifie un set puis rafraîchit
+      // immédiatement avant que l'auto-save React/IDB n'ait persisté le store.
+      try {
+        if (typeof w?.__flushLocalStoreNow === "function") {
+          setTimeout(() => {
+            try { w.__flushLocalStoreNow(`dartsets_${reason}`); } catch {}
+          }, 0);
+        }
+      } catch {}
     }
   } catch {}
 
@@ -1145,9 +1188,96 @@ function markDeleted(set: DartSet) {
   writeMeta({ ...meta, initialized: true, deletedKeys });
 }
 
+function findSameIdentitySet(list: DartSet[], incoming: DartSet): DartSet | undefined {
+  return (Array.isArray(list) ? list : []).find((current) => {
+    if (!current || !incoming) return false;
+    if (dartSetMatchesAnyId(current, incoming.id) || dartSetMatchesAnyId(incoming, current.id)) return true;
+    const a = s(current.linkedSourceDartSetId);
+    const b = s(incoming.linkedSourceDartSetId);
+    return !!a && !!b && a === b;
+  });
+}
+
+function mergeImageFieldsKeepMetadata(authoritative: DartSet, imageSource: DartSet): DartSet {
+  if (!authoritative || !imageSource) return authoritative;
+  return sanitizeDartSetForStorage({
+    ...authoritative,
+    mainImageUrl: authoritative.mainImageUrl || imageSource.mainImageUrl || "",
+    thumbImageUrl: authoritative.thumbImageUrl || imageSource.thumbImageUrl,
+    photoDataUrl: authoritative.photoDataUrl || imageSource.photoDataUrl,
+    imageDataUrl: authoritative.imageDataUrl || imageSource.imageDataUrl,
+    mainImageDataUrl: authoritative.mainImageDataUrl || imageSource.mainImageDataUrl,
+    dartSetImageDataUrl: authoritative.dartSetImageDataUrl || imageSource.dartSetImageDataUrl,
+    photoThumbDataUrl: authoritative.photoThumbDataUrl || imageSource.photoThumbDataUrl,
+    thumbDataUrl: authoritative.thumbDataUrl || imageSource.thumbDataUrl,
+    thumbImageDataUrl: authoritative.thumbImageDataUrl || imageSource.thumbImageDataUrl,
+    mainImageAssetId: authoritative.mainImageAssetId || imageSource.mainImageAssetId || null,
+    thumbImageAssetId: authoritative.thumbImageAssetId || imageSource.thumbImageAssetId || null,
+    photoAssetId: authoritative.photoAssetId || imageSource.photoAssetId || null,
+    duplicateIds: uniqStrings([authoritative.id, imageSource.id, authoritative.linkedSourceDartSetId, imageSource.linkedSourceDartSetId, ...(authoritative.duplicateIds || []), ...(imageSource.duplicateIds || []), ...(authoritative.aliasIds || []), ...(imageSource.aliasIds || [])]).filter((id) => id !== authoritative.id),
+    aliasIds: uniqStrings([...(authoritative.aliasIds || []), ...(imageSource.aliasIds || []), imageSource.id]).filter((id) => id !== authoritative.id),
+  }) as DartSet;
+}
+
+function mergeIncomingWithCurrentPrimary(incomingRaw: any[], reason: string): DartSet[] {
+  const incoming = mergePrimaryDuplicates(Array.isArray(incomingRaw) ? incomingRaw : []);
+  const primaryExists = hasLocalStorageKey(STORAGE_KEY);
+  const current = primaryExists ? loadPrimaryAuthoritative() : [];
+
+  if (!primaryExists || current.length === 0) return incoming;
+
+  const currentById = new Map<string, DartSet>();
+  const out: DartSet[] = [];
+  for (const cur of current) {
+    currentById.set(String(cur.id), cur);
+    out.push(cur);
+  }
+
+  const added: DartSet[] = [];
+  let keptLocal = 0;
+  let acceptedIncoming = 0;
+
+  for (const inc of incoming) {
+    const same = findSameIdentitySet(out, inc);
+    if (same) {
+      const incomingIsNewer = n(inc.updatedAt, 0) > n(same.updatedAt, 0) + 250;
+      const merged = incomingIsNewer
+        ? mergeImageFieldsKeepMetadata(inc, same)
+        : mergeImageFieldsKeepMetadata(same, inc);
+      const idx = out.findIndex((x) => String(x.id) === String(same.id));
+      if (idx >= 0) out[idx] = merged;
+      if (incomingIsNewer) acceptedIncoming += 1;
+      else keptLocal += 1;
+      continue;
+    }
+
+    const sameCanonical = out.find((cur) => canonicalKeyForSet(cur) === canonicalKeyForSet(inc));
+    if (sameCanonical) {
+      const incomingIsNewer = n(inc.updatedAt, 0) > n(sameCanonical.updatedAt, 0) + 250;
+      const merged = incomingIsNewer
+        ? mergeImageFieldsKeepMetadata(inc, sameCanonical)
+        : mergeImageFieldsKeepMetadata(sameCanonical, inc);
+      const idx = out.findIndex((x) => String(x.id) === String(sameCanonical.id));
+      if (idx >= 0) out[idx] = merged;
+      if (incomingIsNewer) acceptedIncoming += 1;
+      else keptLocal += 1;
+      continue;
+    }
+
+    // Nouveau set réellement absent : on l'accepte. Les sets supprimés sont déjà
+    // filtrés par normalizeDartSetForRuntime/isDeletedByMeta dans mergePrimaryDuplicates.
+    added.push(inc);
+    acceptedIncoming += 1;
+  }
+
+  const merged = mergePrimaryDuplicates([...out, ...added]);
+  diag("replaceAll:merge-current", { reason, current: current.length, incoming: incoming.length, result: merged.length, keptLocal, acceptedIncoming, added: added.length });
+  return merged;
+}
+
 function replacePrimaryWith(list: any[], reason: string): boolean {
-  const incoming = mergePrimaryDuplicates(Array.isArray(list) ? list : []);
-  const enriched = enrichImagesFromRecovery(incoming, [...loadPrimaryAuthoritative(), ...readRecoveryRaw()]);
+  const merged = mergeIncomingWithCurrentPrimary(Array.isArray(list) ? list : [], reason);
+  const enriched = enrichImagesFromRecovery(merged, [...loadPrimaryAuthoritative(), ...readRecoveryRaw(), ...(Array.isArray(list) ? list : [])]);
   return savePrimary(enriched, reason);
 }
 
