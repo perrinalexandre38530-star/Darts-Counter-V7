@@ -130,14 +130,14 @@ function buildDiceDashboardForPlayer(playerId: string, playerName: string, rows:
 
 
 function isMolkkyRecord(r: any) {
-  const sport = String(r?.sport ?? r?.payload?.stats?.sport ?? r?.payload?.sport ?? r?.kind ?? r?.summary?.sport ?? "").toLowerCase();
-  const mode = String(r?.payload?.stats?.mode ?? r?.payload?.mode ?? r?.summary?.mode ?? "").toLowerCase();
+  const sport = lc(r?.sport ?? r?.payload?.stats?.sport ?? r?.payload?.sport ?? r?.kind ?? r?.summary?.sport);
+  const mode = lc(r?.payload?.stats?.mode ?? r?.payload?.mode ?? r?.summary?.mode);
   return sport === "molkky" || mode === "molkky";
 }
 
 function molkkyPlayerInRecord(r: any, playerId: string, playerName: string) {
   const pid = String(playerId || "").trim();
-  const pname = String(playerName || "").trim().toLowerCase();
+  const pname = lc(playerName).trim();
   const pools = [
     ...(Array.isArray(r?.players) ? r.players : []),
     ...(Array.isArray(r?.payload?.stats?.players) ? r.payload.stats.players : []),
@@ -145,14 +145,14 @@ function molkkyPlayerInRecord(r: any, playerId: string, playerName: string) {
   ];
   return pools.some((p: any) => {
     const id = String(p?.id ?? p?.playerId ?? p?.profileId ?? "").trim();
-    const name = String(p?.name ?? p?.playerName ?? p?.label ?? "").trim().toLowerCase();
+    const name = lc(p?.name ?? p?.playerName ?? p?.label).trim();
     return (pid && id === pid) || (pname && name === pname);
   });
 }
 
 function molkkyPlayerScore(r: any, playerId: string, playerName: string) {
   const pid = String(playerId || "").trim();
-  const pname = String(playerName || "").trim().toLowerCase();
+  const pname = lc(playerName).trim();
   const pools = [
     ...(Array.isArray(r?.payload?.stats?.players) ? r.payload.stats.players : []),
     ...(Array.isArray(r?.players) ? r.players : []),
@@ -160,7 +160,7 @@ function molkkyPlayerScore(r: any, playerId: string, playerName: string) {
   ];
   const hit = pools.find((p: any) => {
     const id = String(p?.id ?? p?.playerId ?? p?.profileId ?? "").trim();
-    const name = String(p?.name ?? p?.playerName ?? p?.label ?? "").trim().toLowerCase();
+    const name = lc(p?.name ?? p?.playerName ?? p?.label).trim();
     return (pid && id === pid) || (pname && name === pname);
   });
   return Number(hit?.score ?? hit?.points ?? hit?.total ?? 0) || 0;
@@ -170,7 +170,7 @@ function buildMolkkyDashboardForPlayer(playerId: string, playerName: string, row
   const molkkyRows = (rows || []).filter((r: any) => isMolkkyRecord(r));
   const mine = molkkyRows.filter((r: any) => molkkyPlayerInRecord(r, playerId, playerName));
   const agg = aggregateMolkkyPlayers(mine as any).find(
-    (x: any) => String(x?.name ?? "").trim().toLowerCase() === String(playerName || "").trim().toLowerCase()
+    (x: any) => lc(x?.name).trim() === lc(playerName).trim()
   );
 
   const sessions = mine.length || 0;
@@ -556,6 +556,7 @@ type Props = {
 const toArr = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
 const toObj = <T,>(v: any): T => (v && typeof v === "object" ? v : ({} as T));
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
+const lc = (v: any): string => String(v ?? "").toLowerCase();
 const fmtDate = (ts?: number) =>
   new Date(N(ts, Date.now())).toLocaleString();
 
@@ -1128,7 +1129,7 @@ function classifyRecordMode(rec: SavedMatch): string {
 
   const tag = parts
     .filter((v) => v !== undefined && v !== null)
-    .map((v) => String(v).toLowerCase())
+    .map((v) => lc(v))
     .join("|");
 
   if (!tag) return "other";
@@ -1170,7 +1171,7 @@ function classifyRecordMode(rec: SavedMatch): string {
 }
 
 function recordMatchesEffectiveSport(rec: any, sportName: string): boolean {
-  const sp = String(sportName || "").toLowerCase();
+  const sp = lc(sportName);
   if (!sp) return true;
 
   const mode = classifyRecordMode(rec as any);
@@ -1196,7 +1197,7 @@ function recordMatchesEffectiveSport(rec: any, sportName: string): boolean {
     summary?.game?.game,
   ]
     .filter((v) => v !== undefined && v !== null)
-    .map((v) => String(v).toLowerCase())
+    .map((v) => lc(v))
     .join("|");
 
   if (sp.includes("dice")) return mode === "dice" || tag.includes("dice");
@@ -1221,10 +1222,10 @@ function recordMatchesEffectiveSport(rec: any, sportName: string): boolean {
 }
 
 function normalizedMatchMatchesEffectiveSport(m: any, sportName: string): boolean {
-  const sp = String(sportName || "").toLowerCase();
+  const sp = lc(sportName);
   if (!sp) return true;
 
-  const mode = String(m?.mode ?? m?.kind ?? "").toLowerCase();
+  const mode = lc(m?.mode ?? m?.kind);
   const rawTag = [
     m?.mode,
     m?.kind,
@@ -1242,7 +1243,7 @@ function normalizedMatchMatchesEffectiveSport(m: any, sportName: string): boolea
     m?.raw?.payload?.stats?.mode,
   ]
     .filter((v) => v !== undefined && v !== null)
-    .map((v) => String(v).toLowerCase())
+    .map((v) => lc(v))
     .join("|");
 
   if (sp.includes("dice")) return mode.includes("dice") || rawTag.includes("dice");
@@ -1366,9 +1367,9 @@ function resolveActivePlayerIdLocalOnly(opts: {
   if (activeId && allPlayers.some((p) => String(p?.id) === String(activeId))) return activeId;
 
   // 2) Try exact name match (common when history uses numeric ids).
-  const nameLc = activeName.toLowerCase();
+  const nameLc = lc(activeName);
   const byName = nameLc
-    ? allPlayers.filter((p) => (p?.name ?? "").toLowerCase() === nameLc)
+    ? allPlayers.filter((p) => lc(p?.name) === nameLc)
     : [];
 
   if (byName.length === 1) return String(byName[0].id);
@@ -4548,7 +4549,7 @@ go,
 
   
   const { sport } = useSport();
-  const effectiveSport = String(sportOverride || sport || "").toLowerCase();
+  const effectiveSport = lc(sportOverride || sport);
   const isDiceSport = effectiveSport.includes("dice");
   const isMolkkySport = effectiveSport === "molkky";
   const isBabyFootSport = effectiveSport === "babyfoot";
@@ -4671,8 +4672,8 @@ React.useEffect(() => {
 
 // -- 0) BOT helper --
 function isBotPlayer(p: PlayerLite): boolean {
-  const name = (p.name ?? "").toLowerCase();
-  const id = (p.id ?? "").toLowerCase();
+  const name = lc(p?.name);
+  const id = lc(p?.id);
   return (
     id.startsWith("bot_") ||
     id.startsWith("bot:") ||
@@ -4994,8 +4995,8 @@ function recordToNormalizedFallback(r: any): any | null {
 const diceRows = React.useMemo(() => {
   const arr = Array.isArray(records) ? records : [];
   return arr.filter((r: any) => {
-    const k = String(r?.kind ?? r?.payload?.kind ?? r?.summary?.kind ?? "").toLowerCase();
-    const sp = String(r?.sport ?? r?.payload?.sport ?? "").toLowerCase();
+    const k = lc(r?.kind ?? r?.payload?.kind ?? r?.summary?.kind);
+    const sp = lc(r?.sport ?? r?.payload?.sport);
     return k.includes("dice") || sp.includes("dice");
   });
 }, [records?.length]);
@@ -5331,7 +5332,7 @@ const [liveDashboard, setLiveDashboard] =
     (async () => {
       try {
         const isX01Row = (r: any) =>
-          String(r?.kind ?? r?.mode ?? r?.game ?? "").toLowerCase().includes("x01");
+          lc(r?.kind ?? r?.mode ?? r?.game).includes("x01");
 
         const ids = (combinedHistory || [])
           .filter(isX01Row)
@@ -5366,7 +5367,7 @@ const [liveDashboard, setLiveDashboard] =
       try {
         const hydrated = x01HydratedRows || [];
         const x01CombinedRows = (combinedHistory || []).filter((r: any) =>
-          String(r?.kind ?? r?.mode ?? r?.game ?? "").toLowerCase().includes("x01")
+          lc(r?.kind ?? r?.mode ?? r?.game).includes("x01")
         );
         const hydratedIds = new Set(hydrated.map((r: any) => String(r?.id ?? "")));
         const linkedOrMissingRows = x01CombinedRows.filter((r: any) => {
@@ -5381,13 +5382,13 @@ const [liveDashboard, setLiveDashboard] =
 
         // If playerId mismatch, try resolve by player name from payload
         if ((agg?.sessions ?? 0) == 0 && pname) {
-          const target = String(pname).toLowerCase().trim();
+          const target = lc(pname).trim();
           let candidateId: string | null = null;
           for (const r of rows as any[]) {
             const session = r?.payload?.session || r?.payload || r;
             const players = session?.players || session?.session?.players || [];
             const found = (players || []).find(
-              (pl: any) => String(pl?.name ?? pl?.public_name ?? "").toLowerCase().trim() === target
+              (pl: any) => lc(pl?.name ?? pl?.public_name).trim() === target
             );
             if (found?.id) {
               candidateId = String(found.id);
@@ -5796,9 +5797,7 @@ function buildShanghaiStatsFromRecords(
     const t = Nn((r as any)?.updatedAt ?? (r as any)?.createdAt, 0);
     if (t < minTs) continue;
 
-    const tag = `${String(r.kind ?? "").toLowerCase()}|${String(r.game ?? "").toLowerCase()}|${String(
-      r.mode ?? ""
-    ).toLowerCase()}|${String(r.variant ?? "").toLowerCase()}`;
+    const tag = `${lc(r?.kind)}|${lc(r?.game)}|${lc(r?.mode)}|${lc(r?.variant)}`;
     if (!tag.includes("shanghai")) continue;
     if (!recordHasPlayer(r as any, pid)) continue;
 
@@ -6247,7 +6246,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const out = { s: 0, d: 0, t: 0, bull: 0, dbull: 0, miss: 0, darts: 0, score: 0, bestRound: 0, favMap: {} as Record<string, number> };
     const addFav = (seg: any, qty = 1) => {
       const key = String(seg ?? "").replace(/^S|^D|^T/i, "").trim();
-      if (!key || key === "0" || key.toLowerCase() === "miss") return;
+      if (!key || key === "0" || lc(key) === "miss") return;
       out.favMap[key] = (out.favMap[key] || 0) + Math.max(0, Number(qty) || 0);
     };
     const visitScores: number[] = [];
@@ -7781,7 +7780,7 @@ return (
                 m?.summary?.status,
                 m?.payload?.summary?.status,
               ]
-                .map((v) => String(v ?? "").toLowerCase())
+                .map((v) => lc(v))
                 .filter(Boolean);
 
               if (statuses.some((v) => ["finished", "done", "completed", "complete", "ended"].includes(v))) return true;
@@ -8250,7 +8249,7 @@ return (
                     const modeAliases = aliases[String(currentMode)] || [String(currentMode)];
                     const rows = (records || []).filter((r: any) => {
                       const blob = [r?.kind, r?.mode, r?.game, r?.variantId, r?.summary?.mode, r?.payload?.kind, r?.payload?.mode, r?.payload?.originalMode, r?.payload?.variantId, r?.payload?.summary?.mode]
-                        .filter(Boolean).map((x: any) => String(x).toLowerCase()).join(" ");
+                        .filter(Boolean).map((x: any) => lc(x)).join(" ");
                       if (!modeAliases.some((a) => blob.includes(a))) return false;
                       const pools = [r?.players, r?.summary?.players, r?.summary?.perPlayer, r?.payload?.players, r?.payload?.stats?.players, r?.payload?.summary?.players, r?.payload?.summary?.perPlayer];
                       return pools.some((arr: any) => Array.isArray(arr) && arr.some((pl: any) => String(pl?.id || pl?.playerId || pl?.profileId || "") === pid));
