@@ -250,7 +250,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
           const isSelected = value === set.id;
 
           // Compat avec la nouvelle archi : vignette (preset ou photo)
-          const thumb = getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || undefined;
+          const thumb = getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || undefined;
           const kind: string | undefined = (set as any).kind; // "preset" | "photo" | ...
 
           let kindLabel: string | null = null;

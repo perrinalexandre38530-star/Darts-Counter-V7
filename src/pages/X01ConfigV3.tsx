@@ -274,7 +274,7 @@ function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
 
 function getDartSetThumbSrc(set: any): string | null {
   if (!set) return null;
-  return getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || null;
+  return getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || null;
 }
 
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({

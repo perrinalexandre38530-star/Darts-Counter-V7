@@ -624,6 +624,16 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     );
   }, [lang]);
 
+  const dartSetDiag = React.useCallback((action: string, payload: any = {}) => {
+    try {
+      console.info("[DartSetsDiag:Panel]", action, {
+        activeProfileId: String(profile?.id || ""),
+        activeSetId: activeSetIdRef.current,
+        ...payload,
+      });
+    } catch {}
+  }, [profile?.id]);
+
   // ------------------------------------------------------------------
   // Handlers formulaires
   // ------------------------------------------------------------------
@@ -787,6 +797,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     else if (!chosenPreset && kind === "preset") kind = "plain";
 
     try {
+      dartSetDiag("update:submit", { editingId, name, scope, nextOwnerProfileId, privateProfileId: editForm.privateProfileId });
       const res = await Promise.resolve(
         updateDartSet(editingId, {
           name,
@@ -812,6 +823,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
         return;
       }
 
+      dartSetDiag("update:ok", { editingId, resultId: (res as any)?.id, resultOwner: (res as any)?.profileId, resultScope: (res as any)?.scope });
       reloadSets();
       setEditingId(null);
       setEditForm(null);
@@ -826,8 +838,10 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
   const handleDelete = (set: DartSet | null) => {
     if (!set) return;
+    dartSetDiag("delete:click", { id: set.id, name: set.name, profileId: (set as any).profileId, scope: (set as any).scope });
     if (!window.confirm("Supprimer ce jeu de fléchettes ?")) return;
     const ok = deleteDartSet(set.id);
+    dartSetDiag("delete:after", { id: set.id, ok });
     if (!ok) {
       alert(lang === "fr" ? "Suppression impossible (stockage plein ?)" : "Delete failed (storage full?)");
       reloadSets();
@@ -852,7 +866,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     // Important : on garde ce même set affiché après le tri, même s'il remonte
     // au début de la liste des favoris.
     keepActiveDartSetIdRef.current = String(set.id);
+    dartSetDiag("favorite:click", { id: set.id, name: set.name, from: !!set.isFavorite, to: !set.isFavorite });
     const ok = updateDartSet(set.id, { isFavorite: !set.isFavorite } as any);
+    dartSetDiag("favorite:after", { id: set.id, ok });
 
     if (!ok) {
       keepActiveDartSetIdRef.current = null;

@@ -4,15 +4,16 @@ import { getNasApiUrl } from "./serverConfig";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
-// Gestion des jeux de fléchettes (DartSets)
-// ✅ AUDIT FIX 2026-06
-// - une seule source principale : dc_dart_sets_v1
-// - les anciennes clés ne servent qu'à RECUPERER une image manquante, pas à réinjecter des sets supprimés
-// - public = visible/sélectionnable par tous les profils
-// - privé = visible/sélectionnable uniquement par son profil propriétaire / cible liée
-// - dartsets ONLINE/profils liés = visibles uniquement pour linkedTargetLocalProfileId
-// - dédoublonnage réel par portée + propriétaire + nom normalisé
-// - conservation des alias d'anciens IDs pour les stats/historiques
+// Source officielle des jeux de fléchettes.
+//
+// Règle impérative :
+// - dc_dart_sets_v1 = source de vérité UI.
+// - appStore / anciennes clés / snapshots ONLINE = sources de récupération IMAGE seulement.
+// - PUBLIC = visible/sélectionnable par tous.
+// - PRIVÉ = visible/sélectionnable uniquement par le profil propriétaire.
+// - ONLINE lié = visible uniquement pour linkedTargetLocalProfileId.
+//
+// Diagnostics mutations : [DartSetsDiag]
 // =============================================================
 
 export type DartSetId = string;
@@ -65,6 +66,7 @@ export interface DartSet {
 }
 
 const STORAGE_KEY = "dc_dart_sets_v1";
+const META_KEY = "dc_dart_sets_v1_meta";
 const LEGACY_DARTSET_STORAGE_KEYS = [
   "dc-dartsets-v1",
   "dc-dartSets-v1",
@@ -72,9 +74,15 @@ const LEGACY_DARTSET_STORAGE_KEYS = [
   "dc-lite-dartsets-v1",
 ];
 
-// Les photos de fléchettes sont déjà compressées dans DartSetsPanel.
-// L'ancien seuil 350k supprimait des photos valides et créait les carrés 🎯.
+// Les photos sont compressées côté panel. On accepte large pour ne plus remplacer
+// des photos valides par le placeholder 🎯 au premier souci de quota.
 const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 2_500_000;
+
+type DartSetsMeta = {
+  initialized?: boolean;
+  updatedAt?: number;
+  deletedKeys?: Record<string, number>;
+};
 
 function s(value: any): string {
   return String(value ?? "").trim();
@@ -83,6 +91,13 @@ function s(value: any): string {
 function n(value: any, fallback = 0): number {
   const v = Number(value);
   return Number.isFinite(v) ? v : fallback;
+}
+
+function diag(action: string, payload: any = {}) {
+  try {
+    // Toujours actif volontairement : demandé pour comprendre les clics / réinjections.
+    console.info("[DartSetsDiag]", action, payload);
+  } catch {}
 }
 
 function uniqStrings(values: any[]): string[] {
@@ -167,9 +182,7 @@ function sanitizeDartSetImageUrl(value: any): string | undefined {
   if (typeof value !== "string") return undefined;
   const v = normalizeRuntimeImageUrl(value.trim());
   if (!v) return undefined;
-  // Ne plus supprimer brutalement les photos : si localStorage est trop plein,
-  // saveAll() fera un fallback contrôlé, mais l'affichage runtime garde l'image.
-  if (v.startsWith("data:image/") && v.length > MAX_DARTSET_IMAGE_DATA_URL_CHARS) return v;
+  // Ne jamais supprimer à la lecture runtime : la sauvegarde gère le quota.
   return v;
 }
 
@@ -238,7 +251,10 @@ function presetByName(name: any) {
   if (!wanted) return null;
   return (
     (dartPresets || []).find((p: any) => normalizeText(p?.name) === wanted) ||
-    (dartPresets || []).find((p: any) => normalizeText(p?.name).includes(wanted) || wanted.includes(normalizeText(p?.name))) ||
+    (dartPresets || []).find((p: any) => {
+      const pn = normalizeText(p?.name);
+      return !!pn && (pn.includes(wanted) || wanted.includes(pn));
+    }) ||
     null
   );
 }
@@ -282,9 +298,9 @@ function readThumbImage(raw: any): string | undefined {
     "photoThumbDataUrl",
     "thumbDataUrl",
     "thumbImageDataUrl",
+    "mainImageUrl",
     "photoDataUrl",
     "imageDataUrl",
-    "mainImageUrl",
     "imageUrl"
   );
   if (direct) return direct;
@@ -312,8 +328,7 @@ function normalizeDartSetArray(value: any): any[] {
   if (!value) return [];
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value);
-      return normalizeDartSetArray(parsed);
+      return normalizeDartSetArray(JSON.parse(value));
     } catch {
       return [];
     }
@@ -322,13 +337,11 @@ function normalizeDartSetArray(value: any): any[] {
   return [];
 }
 
-function appStoreSnapshot(): any {
+function hasLocalStorageKey(key: string): boolean {
   try {
-    if (typeof window === "undefined") return null;
-    const w: any = window as any;
-    return w?.__appStore?.store || w?.__appStore?.getState?.() || w?.__APP_STORE__ || null;
+    return typeof window !== "undefined" && !!window.localStorage && window.localStorage.getItem(key) != null;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -341,45 +354,106 @@ function readDartSetArrayFromLocalStorageKey(key: string): any[] {
   }
 }
 
-function isKnownBaseRecoveryCandidate(candidate: any, baseKeys: Set<string>, baseNames: Set<string>): boolean {
-  const normalized = normalizeDartSetForRuntime(candidate);
+function appStoreSnapshot(): any {
+  try {
+    if (typeof window === "undefined") return null;
+    const w: any = window as any;
+    return w?.__appStore?.store || w?.__appStore?.getState?.() || w?.__APP_STORE__ || null;
+  } catch {
+    return null;
+  }
+}
+
+function readMeta(): DartSetsMeta {
+  try {
+    if (typeof window === "undefined") return {};
+    return safeLocalStorageGetJson<DartSetsMeta>(META_KEY, {}) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMeta(meta: DartSetsMeta) {
+  try {
+    safeLocalStorageSetJson(META_KEY, { ...(meta || {}), updatedAt: Date.now() }, { sanitizeImages: false });
+  } catch {}
+}
+
+function cleanupDeletedKeys(meta: DartSetsMeta): DartSetsMeta {
+  const now = Date.now();
+  const keepMs = 1000 * 60 * 60 * 24 * 14;
+  const next: Record<string, number> = {};
+  for (const [key, ts] of Object.entries(meta.deletedKeys || {})) {
+    if (now - Number(ts || 0) <= keepMs) next[key] = Number(ts || now);
+  }
+  return { ...(meta || {}), deletedKeys: next };
+}
+
+function isDeletedByMeta(raw: any, meta: DartSetsMeta): boolean {
+  const deleted = meta.deletedKeys || {};
+  const normalized = normalizeDartSetForRuntime(raw, { allowDeleted: true });
   if (!normalized) return false;
-  if (baseKeys.has(canonicalKeyForSet(normalized))) return true;
-  const name = normalizeText(normalized.name);
-  return !!name && baseNames.has(name);
+  const keys = deletionKeysForSet(normalized);
+  return keys.some((key) => !!deleted[key]);
 }
 
-function collectRawDartSets(): any[] {
-  const primary = readDartSetArrayFromLocalStorageKey(STORAGE_KEY);
+function readPrimaryRaw(): any[] {
+  return readDartSetArrayFromLocalStorageKey(STORAGE_KEY);
+}
+
+function readRecoveryRaw(): any[] {
   const store = appStoreSnapshot();
-  const storeDartSets = normalizeDartSetArray(store?.dartSets || store?.dartsets);
-
-  const base = primary.length ? [...primary, ...storeDartSets] : storeDartSets.slice();
-
-  const legacy: any[] = [];
-  for (const key of LEGACY_DARTSET_STORAGE_KEYS) legacy.push(...readDartSetArrayFromLocalStorageKey(key));
-
-  if (!base.length) return legacy;
-
-  // Les anciennes clés ont souvent des vieux doublons. On ne les réinjecte pas.
-  // Elles servent uniquement à récupérer une image/asset pour un set déjà connu.
-  const baseNormalized = base.map(normalizeDartSetForRuntime).filter(Boolean) as DartSet[];
-  const baseKeys = new Set(baseNormalized.map(canonicalKeyForSet));
-  const baseNames = new Set(baseNormalized.map((x) => normalizeText(x.name)).filter(Boolean));
-  const recovery = legacy.filter((item) => isKnownBaseRecoveryCandidate(item, baseKeys, baseNames));
-
-  return [...base, ...recovery];
+  const out: any[] = [];
+  out.push(...normalizeDartSetArray(store?.dartSets || store?.dartsets));
+  for (const key of LEGACY_DARTSET_STORAGE_KEYS) out.push(...readDartSetArrayFromLocalStorageKey(key));
+  return out;
 }
 
-function normalizeDartSetForRuntime(raw: any): DartSet | null {
+function selectableOwnerKey(set: any): string {
+  if (effectiveDartSetScope(set) === "public") return "public";
+  return normalizeText(set?.linkedTargetLocalProfileId || set?.ownerProfileId || set?.localProfileId || set?.profileId || set?.linkedSourceProfileId || set?.ownerUserId || set?.userId || "private");
+}
+
+function canonicalKeyForSet(set: any): string {
+  const scope = effectiveDartSetScope(set);
+  const owner = scope === "public" ? "public" : selectableOwnerKey(set);
+  const name = normalizeText(set?.name || set?.label || set?.title || "");
+  if (name) return `${scope}|${owner}|name:${name}`;
+  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.kind || set?.id || "plain");
+  return `${scope}|${owner}|visual:${visual}`;
+}
+
+function visibleDartSetKey(set: any): string {
+  const name = normalizeText(set?.name || set?.label || set?.title || "");
+  if (name) return `visible|name:${name}`;
+  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.id || "");
+  return `visible|visual:${visual}`;
+}
+
+function scoreDartSetForCanonical(set: any): number {
+  const main = readMainImage(set);
+  const thumb = readThumbImage(set);
+  const hasImage = Boolean(main || thumb || set?.mainImageAssetId || set?.photoAssetId || set?.thumbImageAssetId);
+  const hasDataImage = isDataImageUrl(main) || isDataImageUrl(thumb) || isDataImageUrl(set?.photoDataUrl) || isDataImageUrl(set?.imageDataUrl) || isDataImageUrl(set?.mainImageDataUrl);
+  const hasAsset = Boolean(s(set?.mainImageAssetId || set?.photoAssetId || set?.thumbImageAssetId || set?.imageAssetId || set?.dartSetImageAssetId));
+  return (
+    (hasDataImage ? 100_000_000 : 0) +
+    (hasAsset ? 50_000_000 : 0) +
+    (hasImage ? 10_000_000 : 0) +
+    (set?.isFavorite ? 1_000_000 : 0) +
+    n(set?.usageCount, 0) * 1_000 +
+    n(set?.lastUsedAt, 0) / 1_000_000 +
+    n(set?.updatedAt, 0) / 10_000_000
+  );
+}
+
+function normalizeDartSetForRuntime(raw: any, opts?: { allowDeleted?: boolean }): DartSet | null {
   if (!raw || typeof raw !== "object") return null;
 
-  const now = Date.now();
   const rawId = s(raw.id || raw.dartSetId || raw.setId || raw.uuid);
   const name = s(raw.name || raw.label || raw.title || raw.presetName || "Mes fléchettes") || "Mes fléchettes";
   const scope = effectiveDartSetScope(raw);
   const linkedRemote = isLinkedRemoteLike(raw);
-
   const linkedSourceProfileId = s(
     raw.linkedSourceProfileId ||
       raw.remoteProfileId ||
@@ -398,6 +472,7 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
   const presetId = s(raw.presetId || raw.dartPresetId || raw.preset || raw.basePresetId || raw.refPresetId || preset?.id || "") || undefined;
   const mainImageUrl = readMainImage({ ...raw, presetId });
   const thumbImageUrl = readThumbImage({ ...raw, presetId });
+  const now = Date.now();
 
   const base: DartSet = {
     ...(raw as any),
@@ -436,119 +511,9 @@ function normalizeDartSetForRuntime(raw: any): DartSet | null {
   base.duplicateIds = uniqStrings([base.id, rawId, base.linkedSourceDartSetId, ...(base.duplicateIds || []), ...(base.aliasIds || [])]).filter((id) => id !== base.id);
   base.aliasIds = uniqStrings([...(base.duplicateIds || []), ...(base.aliasIds || [])]).filter((id) => id !== base.id);
 
-  return sanitizeDartSetForStorage(base) as DartSet;
-}
-
-function selectableOwnerKey(set: any): string {
-  if (effectiveDartSetScope(set) === "public") return "public";
-  return normalizeText(set?.linkedTargetLocalProfileId || set?.ownerProfileId || set?.localProfileId || set?.profileId || set?.linkedSourceProfileId || set?.ownerUserId || set?.userId || "private");
-}
-
-function canonicalKeyForSet(set: any): string {
-  const scope = effectiveDartSetScope(set);
-  const owner = scope === "public" ? "public" : selectableOwnerKey(set);
-  const name = normalizeText(set?.name || set?.label || set?.title || "");
-  if (name) return `${scope}|${owner}|name:${name}`;
-  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.kind || set?.id || "plain");
-  return `${scope}|${owner}|visual:${visual}`;
-}
-
-function visibleDartSetKey(set: any): string {
-  // Dans une liste visible d'un profil, deux cartes avec le même nom sont des doublons,
-  // même si l'ancien stockage a varié profileId/scope pendant la synchro.
-  const name = normalizeText(set?.name || set?.label || set?.title || "");
-  if (name) return `visible|name:${name}`;
-  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.id || "");
-  return `visible|visual:${visual}`;
-}
-
-function scoreDartSetForCanonical(set: any): number {
-  const main = readMainImage(set);
-  const thumb = readThumbImage(set);
-  const hasImage = Boolean(main || thumb || set?.mainImageAssetId || set?.photoAssetId || set?.thumbImageAssetId);
-  const hasDataImage = isDataImageUrl(main) || isDataImageUrl(thumb) || isDataImageUrl(set?.photoDataUrl) || isDataImageUrl(set?.imageDataUrl) || isDataImageUrl(set?.mainImageDataUrl);
-  const hasAsset = Boolean(s(set?.mainImageAssetId || set?.photoAssetId || set?.thumbImageAssetId || set?.imageAssetId || set?.dartSetImageAssetId));
-  return (
-    (hasDataImage ? 100_000_000 : 0) +
-    (hasAsset ? 50_000_000 : 0) +
-    (hasImage ? 10_000_000 : 0) +
-    (set?.isFavorite ? 1_000_000 : 0) +
-    n(set?.usageCount, 0) * 1_000 +
-    n(set?.lastUsedAt, 0) / 1_000_000 +
-    n(set?.updatedAt, 0) / 10_000_000
-  );
-}
-
-function mergeDartSetIntoCanonical(base: DartSet, incoming: DartSet): DartSet {
-  const winner = scoreDartSetForCanonical(incoming) > scoreDartSetForCanonical(base) ? incoming : base;
-  const loser = winner === incoming ? base : incoming;
-  const next: any = { ...winner };
-
-  const fill = (key: keyof DartSet | string) => {
-    const current = next[key];
-    const candidate = (loser as any)[key];
-    if ((current === undefined || current === null || current === "") && candidate !== undefined && candidate !== null && candidate !== "") next[key] = candidate;
-  };
-
-  [
-    "brand", "notes", "mainImageUrl", "thumbImageUrl", "bgColor", "mainImageAssetId", "thumbImageAssetId", "photoAssetId",
-    "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl",
-    "kind", "presetId", "linkedSourceProfileId", "linkedTargetLocalProfileId", "linkedOwnerUserId", "ownerUserId", "userId", "accountId",
-    "imageAssetId", "dartSetImageAssetId", "photoUrl", "imageUrl", "photoThumbUrl",
-  ].forEach(fill);
-
-  next.mainImageUrl = readMainImage(next) || readMainImage(loser) || next.mainImageUrl || "";
-  next.thumbImageUrl = readThumbImage(next) || readThumbImage(loser) || next.thumbImageUrl;
-  next.weightGrams = Number.isFinite(Number(next.weightGrams)) ? next.weightGrams : loser.weightGrams;
-  next.isFavorite = Boolean(base.isFavorite || incoming.isFavorite);
-  next.usageCount = Math.max(n(base.usageCount, 0), n(incoming.usageCount, 0));
-  next.lastUsedAt = Math.max(n(base.lastUsedAt, 0), n(incoming.lastUsedAt, 0));
-  next.createdAt = Math.min(n(base.createdAt, Date.now()), n(incoming.createdAt, Date.now()));
-  next.updatedAt = Math.max(n(base.updatedAt, 0), n(incoming.updatedAt, 0), Date.now());
-  next.duplicateIds = uniqStrings([
-    base.id, incoming.id, base.linkedSourceDartSetId, incoming.linkedSourceDartSetId,
-    ...(base.duplicateIds || []), ...(incoming.duplicateIds || []), ...(base.aliasIds || []), ...(incoming.aliasIds || []),
-  ]).filter((id) => id !== next.id);
-  next.aliasIds = uniqStrings([...(next.duplicateIds || []), ...(next.aliasIds || [])]).filter((id) => id !== next.id);
-
-  return sanitizeDartSetForStorage(next) as DartSet;
-}
-
-function dedupeDartSets(list: any[]): DartSet[] {
-  const byKey = new Map<string, DartSet>();
-  const order: string[] = [];
-
-  for (const raw of Array.isArray(list) ? list : []) {
-    const normalized = normalizeDartSetForRuntime(raw);
-    if (!normalized) continue;
-    const key = canonicalKeyForSet(normalized);
-    const old = byKey.get(key);
-    if (!old) {
-      byKey.set(key, normalized);
-      order.push(key);
-    } else {
-      byKey.set(key, mergeDartSetIntoCanonical(old, normalized));
-    }
-  }
-
-  return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
-}
-
-function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {
-  const byKey = new Map<string, DartSet>();
-  const order: string[] = [];
-  for (const set of Array.isArray(list) ? list : []) {
-    if (!set) continue;
-    const key = visibleDartSetKey(set);
-    const old = byKey.get(key);
-    if (!old) {
-      byKey.set(key, set);
-      order.push(key);
-    } else {
-      byKey.set(key, scoreDartSetForCanonical(set) > scoreDartSetForCanonical(old) ? mergeDartSetIntoCanonical(old, set) : mergeDartSetIntoCanonical(set, old));
-    }
-  }
-  return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
+  const sanitized = sanitizeDartSetForStorage(base) as DartSet;
+  if (!opts?.allowDeleted && isDeletedByMeta(sanitized, cleanupDeletedKeys(readMeta()))) return null;
+  return sanitized;
 }
 
 function sanitizeDartSetForStorage(raw: any): any {
@@ -577,15 +542,137 @@ function sanitizeDartSetForStorage(raw: any): any {
   next.updatedAt = n(next.updatedAt, next.createdAt);
 
   if (next.kind === "photo" && !next.mainImageUrl && !next.photoDataUrl && !next.photoAssetId) next.kind = next.presetId ? "preset" : "plain";
-
   return next;
 }
 
-function loadAllRaw(): DartSet[] {
+function mergePrimaryDuplicates(list: any[]): DartSet[] {
+  const byKey = new Map<string, DartSet>();
+  const order: string[] = [];
+
+  for (const raw of Array.isArray(list) ? list : []) {
+    const normalized = normalizeDartSetForRuntime(raw);
+    if (!normalized) continue;
+    const key = canonicalKeyForSet(normalized);
+    const old = byKey.get(key);
+    if (!old) {
+      byKey.set(key, normalized);
+      order.push(key);
+      continue;
+    }
+
+    // Ici seulement : doublons dans la source officielle. On garde la version la
+    // plus riche, mais canonicalKey protège scope + propriétaire.
+    const winner = scoreDartSetForCanonical(normalized) > scoreDartSetForCanonical(old) ? normalized : old;
+    const loser = winner === normalized ? old : normalized;
+    const merged: DartSet = sanitizeDartSetForStorage({
+      ...winner,
+      brand: winner.brand || loser.brand,
+      weightGrams: winner.weightGrams ?? loser.weightGrams,
+      notes: winner.notes || loser.notes,
+      mainImageUrl: winner.mainImageUrl || loser.mainImageUrl || "",
+      thumbImageUrl: winner.thumbImageUrl || loser.thumbImageUrl,
+      photoDataUrl: winner.photoDataUrl || loser.photoDataUrl,
+      imageDataUrl: winner.imageDataUrl || loser.imageDataUrl,
+      mainImageDataUrl: winner.mainImageDataUrl || loser.mainImageDataUrl,
+      dartSetImageDataUrl: winner.dartSetImageDataUrl || loser.dartSetImageDataUrl,
+      photoThumbDataUrl: winner.photoThumbDataUrl || loser.photoThumbDataUrl,
+      thumbDataUrl: winner.thumbDataUrl || loser.thumbDataUrl,
+      thumbImageDataUrl: winner.thumbImageDataUrl || loser.thumbImageDataUrl,
+      mainImageAssetId: winner.mainImageAssetId || loser.mainImageAssetId || null,
+      thumbImageAssetId: winner.thumbImageAssetId || loser.thumbImageAssetId || null,
+      photoAssetId: winner.photoAssetId || loser.photoAssetId || null,
+      isFavorite: Boolean(winner.isFavorite || loser.isFavorite),
+      usageCount: Math.max(n(winner.usageCount, 0), n(loser.usageCount, 0)),
+      lastUsedAt: Math.max(n(winner.lastUsedAt, 0), n(loser.lastUsedAt, 0)),
+      createdAt: Math.min(n(winner.createdAt, Date.now()), n(loser.createdAt, Date.now())),
+      updatedAt: Math.max(n(winner.updatedAt, 0), n(loser.updatedAt, 0)),
+      duplicateIds: uniqStrings([winner.id, loser.id, winner.linkedSourceDartSetId, loser.linkedSourceDartSetId, ...(winner.duplicateIds || []), ...(loser.duplicateIds || []), ...(winner.aliasIds || []), ...(loser.aliasIds || [])]).filter((id) => id !== winner.id),
+    }) as DartSet;
+    byKey.set(key, merged);
+  }
+
+  return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
+}
+
+function recoveryKeyStrict(set: any): string {
+  return canonicalKeyForSet(set);
+}
+
+function recoveryKeyLoose(set: any): string {
+  const name = normalizeText(set?.name || set?.label || set?.title || "");
+  return name ? `name:${name}` : imageIdentity(set) ? `visual:${imageIdentity(set)}` : "";
+}
+
+function buildRecoveryIndexes(rawRecovery: any[]) {
+  const strict = new Map<string, DartSet[]>();
+  const loose = new Map<string, DartSet[]>();
+  const meta = cleanupDeletedKeys(readMeta());
+
+  for (const raw of rawRecovery || []) {
+    if (isDeletedByMeta(raw, meta)) continue;
+    const ds = normalizeDartSetForRuntime(raw, { allowDeleted: true });
+    if (!ds) continue;
+    const sk = recoveryKeyStrict(ds);
+    const lk = recoveryKeyLoose(ds);
+    if (sk) strict.set(sk, [...(strict.get(sk) || []), ds]);
+    if (lk) loose.set(lk, [...(loose.get(lk) || []), ds]);
+  }
+
+  const sort = (arr: DartSet[]) => arr.slice().sort((a, b) => scoreDartSetForCanonical(b) - scoreDartSetForCanonical(a));
+  for (const [k, v] of Array.from(strict.entries())) strict.set(k, sort(v));
+  for (const [k, v] of Array.from(loose.entries())) loose.set(k, sort(v));
+  return { strict, loose };
+}
+
+function enrichImagesFromRecovery(primary: DartSet[], recoveryRaw: any[]): DartSet[] {
+  if (!primary.length || !recoveryRaw.length) return primary;
+  const indexes = buildRecoveryIndexes(recoveryRaw);
+
+  return primary.map((item) => {
+    const strictList = indexes.strict.get(recoveryKeyStrict(item)) || [];
+    const looseList = indexes.loose.get(recoveryKeyLoose(item)) || [];
+    const candidate = strictList[0] || looseList[0] || null;
+    if (!candidate) return item;
+
+    const hasMain = !!readMainImage(item);
+    const hasThumb = !!readThumbImage(item);
+    const candidateMain = readMainImage(candidate);
+    const candidateThumb = readThumbImage(candidate);
+    if (hasMain && hasThumb) return item;
+
+    const next: any = { ...item };
+    if (!hasMain && candidateMain) next.mainImageUrl = candidateMain;
+    if (!hasThumb && (candidateThumb || candidateMain)) next.thumbImageUrl = candidateThumb || candidateMain;
+
+    for (const key of ["photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl"]) {
+      if (!next[key] && (candidate as any)[key]) next[key] = (candidate as any)[key];
+    }
+    for (const key of ["mainImageAssetId", "thumbImageAssetId", "photoAssetId"]) {
+      if (!next[key] && (candidate as any)[key]) next[key] = (candidate as any)[key];
+    }
+    if ((!next.presetId || next.kind === "plain") && candidate.presetId) {
+      next.presetId = candidate.presetId;
+      if (!next.kind || next.kind === "plain") next.kind = "preset";
+    }
+    if ((!next.kind || next.kind === "plain") && (candidateMain || candidateThumb)) next.kind = candidate.kind || "photo";
+
+    return sanitizeDartSetForStorage(next) as DartSet;
+  });
+}
+
+function loadPrimaryAuthoritative(): DartSet[] {
   try {
-    return collectRawDartSets().map((item: any) => sanitizeDartSetForStorage(item) as DartSet);
+    const primaryExists = hasLocalStorageKey(STORAGE_KEY);
+    const primaryRaw = readPrimaryRaw();
+
+    // Si la clé officielle existe, même vide, on ne réimporte jamais les vieux stores.
+    // Si elle n'existe pas encore, on bootstrap une seule fois depuis appStore/legacy.
+    const raw = primaryExists ? primaryRaw : readRecoveryRaw();
+    const primary = mergePrimaryDuplicates(raw);
+    const enriched = enrichImagesFromRecovery(primary, readRecoveryRaw());
+    return mergePrimaryDuplicates(enriched);
   } catch (err) {
-    console.warn("[dartSetsStore] loadAll error", err);
+    console.warn("[dartSetsStore] load error", err);
     return [];
   }
 }
@@ -594,20 +681,20 @@ function stripHeavyInlineImagesForFallback(list: DartSet[]): DartSet[] {
   return (Array.isArray(list) ? list : []).map((item: any) => {
     const next: any = { ...(item || {}) };
     for (const key of ["mainImageUrl", "thumbImageUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl"]) {
-      if (typeof next[key] === "string" && next[key].startsWith("data:image/")) {
+      if (typeof next[key] === "string" && next[key].startsWith("data:image/") && next[key].length > MAX_DARTSET_IMAGE_DATA_URL_CHARS) {
         if (key === "mainImageUrl") next[key] = "";
         else delete next[key];
       }
     }
-    if (next.kind === "photo") next.kind = next.presetId ? "preset" : "plain";
+    if (next.kind === "photo" && !next.mainImageUrl && !next.photoDataUrl && !next.photoAssetId) next.kind = next.presetId ? "preset" : "plain";
     return next;
   }) as DartSet[];
 }
 
-function saveAll(list: DartSet[]): boolean {
-  const sanitized = dedupeDartSets(Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
-
+function savePrimary(list: DartSet[], reason = "save"): boolean {
+  const sanitized = mergePrimaryDuplicates(Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
   let saved = false;
+
   try {
     saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
       sanitizeImages: true,
@@ -615,7 +702,7 @@ function saveAll(list: DartSet[]): boolean {
       compressAboveChars: 12_000,
     });
   } catch (err) {
-    console.warn("[dartSetsStore] saveAll error", err);
+    console.warn("[dartSetsStore] save error", err);
     saved = false;
   }
 
@@ -627,35 +714,50 @@ function saveAll(list: DartSet[]): boolean {
         imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
         compressAboveChars: 4_000,
       });
+      if (saved) diag("save:fallback-stripped", { reason, count: stripped.length });
     } catch (fallbackErr) {
-      console.warn("[dartSetsStore] fallback saveAll error", fallbackErr);
+      console.warn("[dartSetsStore] fallback save error", fallbackErr);
       saved = false;
     }
   }
 
-  if (!saved) return false;
+  if (!saved) {
+    diag("save:failed", { reason, count: sanitized.length });
+    return false;
+  }
+
+  const meta = cleanupDeletedKeys(readMeta());
+  writeMeta({ ...meta, initialized: true });
 
   try {
     if (typeof window !== "undefined") {
+      const w: any = window as any;
+      try {
+        if (w?.__appStore?.update) {
+          w.__appStore.update((st: any) => {
+            const prev = Array.isArray((st || {}).dartSets) ? (st || {}).dartSets : [];
+            try {
+              if (JSON.stringify(prev) === JSON.stringify(sanitized)) return st;
+            } catch {}
+            return { ...(st || {}), dartSets: sanitized };
+          });
+        }
+      } catch (e) {
+        console.warn("[dartSetsStore] appStore update failed", e);
+      }
       window.dispatchEvent(new Event("dc-dartsets-updated"));
       try {
-        const w: any = window as any;
-        if (typeof w?.__markNasSyncDirty === "function") w.__markNasSyncDirty("dartsets_save");
-      } catch {}
-      try {
-        const w: any = window as any;
-        if (w?.__appStore?.update) {
-          w.__appStore.update((st: any) => ({ ...(st || {}), dartSets: sanitized }));
-        }
+        if (typeof w?.__markNasSyncDirty === "function") w.__markNasSyncDirty(`dartsets_${reason}`);
       } catch {}
     }
   } catch {}
 
+  diag("save:ok", { reason, count: sanitized.length, ids: sanitized.map((x) => `${x.name}:${x.id}`).slice(0, 8) });
   return true;
 }
 
 function loadAll(): DartSet[] {
-  return dedupeDartSets(loadAllRaw());
+  return loadPrimaryAuthoritative();
 }
 
 function collectProfileAliasIds(profileId: string): Set<string> {
@@ -684,7 +786,6 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     vals.forEach(add);
   }
 
-  // Si un écran passe l'id du compte au lieu de l'id du profil, on le ramène au profil actif uniquement.
   const accountIds = uniqStrings([store.userId, store.accountId, store.authUserId, store.sessionUserId, store.currentUserId, store.onlineUserId, store.user?.id, store.account?.id, store.session?.user?.id]);
   if (pid && accountIds.includes(pid)) {
     const activeId = s(store.activeProfileId || store.currentProfileId || store.selectedProfileId);
@@ -723,15 +824,63 @@ function profileCanSeeDartSet(set: DartSet, profileId: string): boolean {
   const aliases = collectProfileAliasIds(profileId);
   const owners = collectSelectableOwnerIds(set);
   if (owners.some((id) => aliases.has(id))) return true;
-  // Sécurité pour les projections ONLINE : seul le profil cible voit ce set distant.
   const target = s((set as any).linkedTargetLocalProfileId);
   return !!target && aliases.has(target);
 }
 
-function mergeDartSetListsPreservingCurrent(incoming: any[]): DartSet[] {
-  const current = loadAllRaw();
-  const inc = Array.isArray(incoming) ? incoming : [];
-  return dedupeDartSets([...current, ...inc]);
+function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {
+  const byKey = new Map<string, DartSet>();
+  const order: string[] = [];
+  for (const set of Array.isArray(list) ? list : []) {
+    if (!set) continue;
+    const key = visibleDartSetKey(set);
+    const old = byKey.get(key);
+    if (!old) {
+      byKey.set(key, set);
+      order.push(key);
+      continue;
+    }
+    const winner = scoreDartSetForCanonical(set) > scoreDartSetForCanonical(old) ? set : old;
+    const loser = winner === set ? old : set;
+    byKey.set(key, sanitizeDartSetForStorage({
+      ...winner,
+      // Visible merge : garder surtout la version avec image, mais additionner les aliases.
+      duplicateIds: uniqStrings([winner.id, loser.id, winner.linkedSourceDartSetId, loser.linkedSourceDartSetId, ...(winner.duplicateIds || []), ...(loser.duplicateIds || []), ...(winner.aliasIds || []), ...(loser.aliasIds || [])]).filter((id) => id !== winner.id),
+      aliasIds: uniqStrings([...(winner.aliasIds || []), ...(loser.aliasIds || []), winner.id, loser.id]).filter((id) => id !== winner.id),
+    }) as DartSet);
+  }
+  return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
+}
+
+function findDartSetByIdIn(list: DartSet[], id: any): DartSet | undefined {
+  const sid = s(id);
+  if (!sid) return undefined;
+  return (list || []).find((set) => dartSetMatchesAnyId(set, sid));
+}
+
+function deletionKeysForSet(set: any): string[] {
+  if (!set) return [];
+  return uniqStrings([
+    `id:${set.id}`,
+    `canon:${canonicalKeyForSet(set)}`,
+    `source:${set.linkedSourceDartSetId}`,
+    ...(Array.isArray(set.duplicateIds) ? set.duplicateIds.map((id: string) => `id:${id}`) : []),
+    ...(Array.isArray(set.aliasIds) ? set.aliasIds.map((id: string) => `id:${id}`) : []),
+  ]);
+}
+
+function markDeleted(set: DartSet) {
+  const meta = cleanupDeletedKeys(readMeta());
+  const deletedKeys = { ...(meta.deletedKeys || {}) };
+  const now = Date.now();
+  for (const key of deletionKeysForSet(set)) deletedKeys[key] = now;
+  writeMeta({ ...meta, initialized: true, deletedKeys });
+}
+
+function replacePrimaryWith(list: any[], reason: string): boolean {
+  const incoming = mergePrimaryDuplicates(Array.isArray(list) ? list : []);
+  const enriched = enrichImagesFromRecovery(incoming, [...loadPrimaryAuthoritative(), ...readRecoveryRaw()]);
+  return savePrimary(enriched, reason);
 }
 
 // -------------------------------------------------------------
@@ -743,11 +892,12 @@ export function getAllDartSets(): DartSet[] {
 }
 
 export function getAllSelectableDartSets(): DartSet[] {
-  return dedupeVisibleDartSets(loadAll().filter((set) => effectiveDartSetScope(set) === "public" || Boolean(s((set as any).linkedTargetLocalProfileId)) || !isLinkedRemoteLike(set)));
+  // Pour le panneau global : tous les sets officiels sauf projections remote sans cible.
+  return dedupeVisibleDartSets(loadAll().filter((set) => !isLinkedRemoteLike(set) || Boolean(s((set as any).linkedTargetLocalProfileId))));
 }
 
 export function setAllDartSets(list: DartSet[]) {
-  return saveAll(mergeDartSetListsPreservingCurrent(Array.isArray(list) ? list : []));
+  return replacePrimaryWith(Array.isArray(list) ? list : [], "setAll");
 }
 
 export function getDartSetsForProfile(profileId: string): DartSet[] {
@@ -757,9 +907,7 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {
-  const sid = s(id);
-  if (!sid) return undefined;
-  return loadAll().find((set) => dartSetMatchesAnyId(set, sid));
+  return findDartSetByIdIn(loadAll(), id);
 }
 
 export function getCanonicalDartSetId(id: DartSetId | null | undefined, profileId?: string | null): string | null {
@@ -767,13 +915,9 @@ export function getCanonicalDartSetId(id: DartSetId | null | undefined, profileI
   if (!sid) return null;
   const pid = s(profileId);
   const visible = pid ? getDartSetsForProfile(pid) : [];
-  const visibleHit = visible.find((set) => dartSetMatchesAnyId(set, sid));
+  const visibleHit = findDartSetByIdIn(visible, sid);
   if (visibleHit?.id) return String(visibleHit.id);
-  const globalHit = loadAll().find((set) => dartSetMatchesAnyId(set, sid));
-  if (pid && globalHit) {
-    const sameVisible = visible.find((set) => visibleDartSetKey(set) === visibleDartSetKey(globalHit));
-    if (sameVisible?.id) return String(sameVisible.id);
-  }
+  const globalHit = findDartSetByIdIn(loadAll(), sid);
   return globalHit?.id ? String(globalHit.id) : sid;
 }
 
@@ -815,121 +959,114 @@ export function createDartSet(input: {
 }): DartSet | undefined {
   const all = loadAll();
   const now = Date.now();
-  const normalizedInput = normalizeDartSetForRuntime({
+  const payload = normalizeDartSetForRuntime({
     ...input,
-    id: `dartset_pending_${hashString(`${input.profileId}|${input.name}|${input.presetId || input.mainImageUrl || ""}`)}`,
+    id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,
     createdAt: now,
     updatedAt: now,
     scope: input.scope ?? "private",
   });
+  if (!payload) return undefined;
 
-  const existing = normalizedInput ? all.find((set) => canonicalKeyForSet(set) === canonicalKeyForSet(normalizedInput)) : null;
+  const existing = all.find((set) => canonicalKeyForSet(set) === canonicalKeyForSet(payload));
   if (existing) {
-    const patch: Partial<DartSet> = {
-      name: input.name.trim() || existing.name || "Mes fléchettes",
-      brand: input.brand?.trim() || existing.brand,
-      weightGrams: input.weightGrams ?? existing.weightGrams,
-      notes: input.notes?.trim() || existing.notes,
-      mainImageUrl: input.mainImageUrl || existing.mainImageUrl || "",
-      thumbImageUrl: input.thumbImageUrl || existing.thumbImageUrl,
-      bgColor: input.bgColor || existing.bgColor,
-      photoDataUrl: input.photoDataUrl || existing.photoDataUrl,
-      imageDataUrl: input.imageDataUrl || existing.imageDataUrl,
-      mainImageDataUrl: input.mainImageDataUrl || existing.mainImageDataUrl,
-      dartSetImageDataUrl: input.dartSetImageDataUrl || existing.dartSetImageDataUrl,
-      photoThumbDataUrl: input.photoThumbDataUrl || existing.photoThumbDataUrl,
-      thumbDataUrl: input.thumbDataUrl || existing.thumbDataUrl,
-      thumbImageDataUrl: input.thumbImageDataUrl || existing.thumbImageDataUrl,
-      kind: input.kind || existing.kind,
-      presetId: input.presetId || existing.presetId,
-      scope: input.scope ?? existing.scope,
-      profileId: input.profileId || existing.profileId,
-    } as any;
-    return updateDartSet(existing.id, patch as any) || existing;
+    diag("create:dedupe-update", { existing: existing.id, name: payload.name, profileId: payload.profileId, scope: payload.scope });
+    return updateDartSet(existing.id, {
+      name: payload.name,
+      brand: payload.brand,
+      weightGrams: payload.weightGrams,
+      notes: payload.notes,
+      mainImageUrl: payload.mainImageUrl || existing.mainImageUrl || "",
+      thumbImageUrl: payload.thumbImageUrl || existing.thumbImageUrl,
+      bgColor: payload.bgColor || existing.bgColor,
+      photoDataUrl: payload.photoDataUrl || existing.photoDataUrl,
+      imageDataUrl: payload.imageDataUrl || existing.imageDataUrl,
+      mainImageDataUrl: payload.mainImageDataUrl || existing.mainImageDataUrl,
+      dartSetImageDataUrl: payload.dartSetImageDataUrl || existing.dartSetImageDataUrl,
+      photoThumbDataUrl: payload.photoThumbDataUrl || existing.photoThumbDataUrl,
+      thumbDataUrl: payload.thumbDataUrl || existing.thumbDataUrl,
+      thumbImageDataUrl: payload.thumbImageDataUrl || existing.thumbImageDataUrl,
+      kind: payload.kind,
+      presetId: payload.presetId,
+      scope: payload.scope,
+      profileId: payload.profileId,
+    } as any);
   }
 
-  const alreadyForProfile = all.filter((set) => String(set.profileId) === String(input.profileId));
-  const newSet: DartSet = sanitizeDartSetForStorage({
-    id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,
-    profileId: input.profileId,
-    name: input.name.trim() || "Mes fléchettes",
-    brand: input.brand?.trim() || undefined,
-    weightGrams: input.weightGrams,
-    notes: input.notes?.trim() || undefined,
-    mainImageUrl: input.mainImageUrl,
-    thumbImageUrl: input.thumbImageUrl,
-    bgColor: input.bgColor,
-    photoDataUrl: input.photoDataUrl || undefined,
-    imageDataUrl: input.imageDataUrl || undefined,
-    mainImageDataUrl: input.mainImageDataUrl || undefined,
-    dartSetImageDataUrl: input.dartSetImageDataUrl || undefined,
-    photoThumbDataUrl: input.photoThumbDataUrl || undefined,
-    thumbDataUrl: input.thumbDataUrl || undefined,
-    thumbImageDataUrl: input.thumbImageDataUrl || undefined,
-    kind: input.kind,
-    presetId: input.presetId ?? undefined,
-    isFavorite: alreadyForProfile.length === 0,
-    usageCount: 0,
-    lastUsedAt: 0,
-    scope: input.scope ?? "private",
-    createdAt: now,
-    updatedAt: now,
-  }) as DartSet;
-
-  all.push(newSet);
-  if (!saveAll(all)) return undefined;
-  return getDartSetById(newSet.id) || newSet;
+  if (all.filter((set) => String(set.profileId) === String(payload.profileId)).length === 0) payload.isFavorite = true;
+  const next = [...all, payload];
+  if (!savePrimary(next, "create")) return undefined;
+  diag("create:ok", { id: payload.id, name: payload.name, profileId: payload.profileId, scope: payload.scope });
+  return getDartSetById(payload.id) || payload;
 }
 
 export function updateDartSet(id: DartSetId, patch: Partial<Omit<DartSet, "id" | "createdAt">>): DartSet | undefined {
   const all = loadAll();
-  const canonicalId = getCanonicalDartSetId(id) || id;
-  const index = all.findIndex((set) => String(set.id) === String(canonicalId) || dartSetMatchesAnyId(set, id));
-  if (index === -1) return undefined;
+  const target = findDartSetByIdIn(all, id);
+  if (!target) {
+    diag("update:not-found", { id, patch });
+    return undefined;
+  }
 
-  const updated = sanitizeDartSetForStorage({
-    ...all[index],
-    ...patch,
-    id: all[index].id,
-    duplicateIds: uniqStrings([...(all[index].duplicateIds || []), ...(Array.isArray((patch as any).duplicateIds) ? (patch as any).duplicateIds : [])]),
-    aliasIds: uniqStrings([...(all[index].aliasIds || []), ...(Array.isArray((patch as any).aliasIds) ? (patch as any).aliasIds : [])]),
-    updatedAt: Date.now(),
-  }) as DartSet;
+  const next = all.map((set) => {
+    if (!dartSetMatchesAnyId(set, target.id) && !dartSetMatchesAnyId(set, id)) return set;
+    return sanitizeDartSetForStorage({
+      ...set,
+      ...patch,
+      id: set.id,
+      duplicateIds: uniqStrings([...(set.duplicateIds || []), ...(Array.isArray((patch as any).duplicateIds) ? (patch as any).duplicateIds : [])]),
+      aliasIds: uniqStrings([...(set.aliasIds || []), ...(Array.isArray((patch as any).aliasIds) ? (patch as any).aliasIds : [])]),
+      updatedAt: Date.now(),
+    }) as DartSet;
+  });
 
-  all[index] = updated;
-  if (!saveAll(all)) return undefined;
-  return getDartSetById(updated.id) || updated;
+  const saved = savePrimary(next, "update");
+  if (!saved) return undefined;
+  const updated = getDartSetById(target.id);
+  diag("update:ok", { id, canonicalId: target.id, name: updated?.name, profileId: updated?.profileId, scope: updated?.scope, isFavorite: updated?.isFavorite });
+  return updated;
 }
 
 export function deleteDartSet(id: DartSetId): boolean {
-  const canonicalId = getCanonicalDartSetId(id) || id;
-  const filtered = loadAll().filter((set) => String(set.id) !== String(canonicalId) && !dartSetMatchesAnyId(set, id));
-  return saveAll(filtered);
+  const all = loadAll();
+  const target = findDartSetByIdIn(all, id);
+  if (!target) {
+    diag("delete:not-found", { id, count: all.length });
+    return false;
+  }
+
+  markDeleted(target);
+  const targetCanonical = canonicalKeyForSet(target);
+  const targetImage = imageIdentity(target);
+  const targetName = normalizeText(target.name);
+  const targetAliases = new Set(uniqStrings([target.id, target.linkedSourceDartSetId, ...(target.duplicateIds || []), ...(target.aliasIds || []), id]));
+
+  const filtered = all.filter((set) => {
+    if (dartSetMatchesAnyId(set, id)) return false;
+    if (targetAliases.has(set.id) || targetAliases.has(s(set.linkedSourceDartSetId))) return false;
+    if (canonicalKeyForSet(set) === targetCanonical) return false;
+    // Cas doublons anciens : même nom + même image, mais propriétaire/scope corrompus.
+    if (targetName && normalizeText(set.name) === targetName && targetImage && imageIdentity(set) === targetImage) return false;
+    return true;
+  });
+
+  const ok = savePrimary(filtered, "delete");
+  diag("delete:result", { id, canonicalId: target.id, name: target.name, before: all.length, after: filtered.length, ok });
+  return ok;
 }
 
 export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
-  const all = loadAll();
-  const canonicalId = getCanonicalDartSetId(dartSetId, profileId) || dartSetId;
-  let changed = false;
-  const now = Date.now();
-  const updated = all.map((set) => {
-    if (!profileCanSeeDartSet(set, profileId) || !dartSetMatchesAnyId(set, canonicalId)) return set;
-    changed = true;
-    return { ...set, isFavorite: !set.isFavorite, updatedAt: now };
-  });
-  if (changed) return saveAll(updated);
-  return true;
+  const set = getDartSetById(dartSetId);
+  if (!set) return false;
+  if (!profileCanSeeDartSet(set, profileId)) return false;
+  return !!updateDartSet(set.id, { isFavorite: !set.isFavorite } as any);
 }
 
 export function bumpDartSetUsage(dartSetId: DartSetId) {
-  const all = loadAll();
-  const canonicalId = getCanonicalDartSetId(dartSetId) || dartSetId;
-  const index = all.findIndex((set) => String(set.id) === String(canonicalId) || dartSetMatchesAnyId(set, dartSetId));
-  if (index === -1) return;
+  const set = getDartSetById(dartSetId);
+  if (!set) return;
   const now = Date.now();
-  const current = all[index];
-  all[index] = { ...current, usageCount: (current.usageCount ?? 0) + 1, lastUsedAt: now, updatedAt: now };
-  return saveAll(all);
+  return updateDartSet(set.id, { usageCount: (set.usageCount ?? 0) + 1, lastUsedAt: now } as any);
 }
 
 export function getFavoriteDartSetForProfile(profileId: string): DartSet | undefined {
@@ -945,19 +1082,10 @@ export function getFavoriteDartSetForProfile(profileId: string): DartSet | undef
   };
 
   const aliases = collectProfileAliasIds(profileId);
-  const favoriteOwn = visible
-    .filter((set) => effectiveDartSetScope(set) !== "public" && collectSelectableOwnerIds(set).some((id) => aliases.has(id)) && set.isFavorite)
-    .sort(byPriority)[0];
-  if (favoriteOwn) return favoriteOwn;
-
-  const ownSorted = visible
-    .filter((set) => effectiveDartSetScope(set) !== "public" && collectSelectableOwnerIds(set).some((id) => aliases.has(id)))
-    .sort(byPriority);
-  if (ownSorted.length > 0) return ownSorted[0];
-
-  return visible.slice().sort(byPriority)[0];
+  const own = (set: DartSet) => effectiveDartSetScope(set) !== "public" && collectSelectableOwnerIds(set).some((id) => aliases.has(id));
+  return visible.filter((set) => own(set) && set.isFavorite).sort(byPriority)[0] || visible.filter(own).sort(byPriority)[0] || visible.slice().sort(byPriority)[0];
 }
 
 export function replaceAllDartSets(list: DartSet[]) {
-  return saveAll(mergeDartSetListsPreservingCurrent(Array.isArray(list) ? list : []));
+  return replacePrimaryWith(Array.isArray(list) ? list : [], "replaceAll");
 }
