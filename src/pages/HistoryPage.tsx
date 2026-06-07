@@ -842,6 +842,93 @@ function historyRankingRows(e: SavedEntry): any[] {
   return Array.isArray(rankings) ? rankings : [];
 }
 
+
+function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
+  const anyE: any = e as any;
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
+  const result = data.result || {};
+
+  const fullPools = [
+    anyE.players,
+    anyE.summary?.players,
+    anyE.summary?.result?.players,
+    anyE.payload?.summary?.players,
+    anyE.payload?.summary?.perPlayer,
+    anyE.payload?.summary?.rankings,
+    anyE.payload?.summary?.ranking,
+    anyE.payload?.config?.players,
+    anyE.payload?.players,
+    anyE.payload?.state?.players,
+    anyE.decoded?.players,
+    anyE.decoded?.config?.players,
+    data.players,
+    data.perPlayer,
+    data.rankings,
+    data.ranking,
+    result.players,
+    result.rankings,
+  ];
+
+  const fullPlayers: any[] = [];
+  const seenFull = new Set<string>();
+  for (const pool of fullPools) {
+    if (!Array.isArray(pool)) continue;
+    for (const p of pool) {
+      const id = getId(p) || p?.playerId || p?.profileId || p?.pid || getName(p) || p?.name;
+      const key = String(id || "").trim();
+      if (!key || seenFull.has(key)) continue;
+      seenFull.add(key);
+      fullPlayers.push(p);
+    }
+  }
+
+  const rankingRows = historyRankingRows(e);
+  const explicitRows = rankingRows.length
+    ? rankingRows
+    : [data.ranking, data.rankings, data.perPlayer, result.rankings, result.players].find((x: any) => Array.isArray(x) && x.length) || [];
+
+  const rowKey = (x: any) => String(getId(x) || x?.playerId || x?.profileId || x?.selectedPlayerId || x?.pid || getName(x) || x?.name || "").trim();
+  const rowName = (x: any) => cleanName(getName(x) || x?.name || x?.playerName || x?.displayName || x?.nickname || x?.label);
+  const rankOf = (x: any, idx: number) => Number(x?.rank ?? x?.finalRank ?? x?.placement ?? x?.place ?? x?.position ?? idx + 1) || idx + 1;
+
+  const orderedRows = (Array.isArray(explicitRows) ? explicitRows : [])
+    .map((r: any, idx: number) => ({ r, idx, rank: rankOf(r, idx) }))
+    .filter((x: any) => rowKey(x.r) || rowName(x.r))
+    .sort((a: any, b: any) => a.rank - b.rank || a.idx - b.idx)
+    .map((x: any) => x.r);
+
+  const byId = new Map<string, any>();
+  const byName = new Map<string, any>();
+  for (const p of fullPlayers) {
+    const id = rowKey(p);
+    const name = rowName(p);
+    if (id && !byId.has(id)) byId.set(id, p);
+    if (name && !byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), p);
+  }
+
+  const out: any[] = [];
+  const used = new Set<string>();
+  for (const r of orderedRows) {
+    const id = rowKey(r);
+    const name = rowName(r);
+    const full = (id && byId.get(id)) || (name && byName.get(name.toLowerCase())) || null;
+    const merged = full ? { ...full, ...r, avatarDataUrl: r?.avatarDataUrl || r?.avatarUrl || r?.avatar || full?.avatarDataUrl || full?.avatarUrl || full?.avatar } : r;
+    const key = rowKey(merged) || rowName(merged);
+    if (!key || used.has(key)) continue;
+    used.add(key);
+    out.push(merged);
+  }
+
+  for (const p of fullPlayers) {
+    const key = rowKey(p) || rowName(p);
+    if (!key || used.has(key)) continue;
+    used.add(key);
+    out.push(p);
+  }
+
+  return out.length ? out : getAllEntryPlayers(e);
+}
+
 function historyScoreName(e: SavedEntry, r: any): string {
   return cleanName(r?.name || r?.playerName || r?.displayName || r?.nickname || r?.label) || historyPlayerNameById(e, r?.id || r?.playerId || r?.profileId || r?.pid) || "Joueur";
 }
@@ -2967,7 +3054,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
                 <div style={{ ...S.rowBetween, marginTop: 10 }}>
                   <div style={S.avatars}>
-                    {(e.players || []).slice(0, 6).map((p, i) => {
+                    {getHistoryAvatarPlayersInFinalOrder(e).slice(0, 6).map((p, i) => {
                       const nm = getName(p);
                       const url = getAvatarUrl(store, p);
                       return (
