@@ -335,14 +335,14 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         title={titleLabel}
         style={{
           position: compact ? "absolute" : "relative",
-          left: compact ? -2 : undefined,
-          bottom: compact ? -2 : undefined,
+          left: compact ? 8 : undefined,
+          bottom: compact ? 6 : undefined,
           zIndex: compact ? 4 : undefined,
           marginTop: compact ? 0 : 6,
           alignSelf: "center",
           padding: compact ? 0 : "7px 12px",
-          width: compact ? 32 : undefined,
-          height: compact ? 32 : undefined,
+          width: compact ? 30 : undefined,
+          height: compact ? 30 : undefined,
           borderRadius: 999,
           border: `1px solid ${selectedSet ? primary : "rgba(255,255,255,.14)"}`,
           background: selectedSet
@@ -357,8 +357,8 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           fontWeight: 900,
           letterSpacing: 0.45,
           textTransform: "uppercase",
-          minWidth: compact ? 32 : 98,
-          maxWidth: compact ? 32 : 108,
+          minWidth: compact ? 30 : 98,
+          maxWidth: compact ? 30 : 108,
           overflow: "hidden",
           cursor: "pointer",
           boxShadow: selectedSet ? `0 0 14px ${primary}55` : "0 0 10px rgba(0,0,0,.55)",
@@ -367,8 +367,8 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         {selectedSet ? (
           <span
             style={{
-              width: compact ? 26 : 30,
-              height: compact ? 26 : 30,
+              width: compact ? 24 : 30,
+              height: compact ? 24 : 30,
               borderRadius: "50%",
               overflow: "hidden",
               border: `1px solid ${primary}`,

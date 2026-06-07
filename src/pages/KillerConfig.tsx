@@ -62,7 +62,7 @@ import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
 // --------------------------------------------------
 export type KillerBecomeRule = "single" | "double";
 export type KillerDamageRule = "one" | "multiplier";
-export type KillerNumberAssignMode = "random" | "throw";
+export type KillerNumberAssignMode = "none" | "random" | "throw";
 
 
 export type KillerResurrectionMode = "off" | "one_player_once" | "all_once" | "all";
@@ -964,32 +964,6 @@ export default function KillerConfigPage(props: Props) {
             <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary }}>
               Joueurs
             </div>
-
-            <button
-              type="button"
-              onClick={randomizeNumbers}
-              disabled={numberAssignMode === "throw"}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${primary}55`,
-                padding: "5px 10px",
-                background: "rgba(255,255,255,0.04)",
-                color: primary,
-                fontWeight: 800,
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 0.7,
-                opacity: numberAssignMode === "throw" ? 0.45 : 1,
-                cursor: numberAssignMode === "throw" ? "default" : "pointer",
-              }}
-              title={
-                numberAssignMode === "throw"
-                  ? "Désactivé : en mode 1er lancer, les numéros sont choisis pendant la partie."
-                  : "Assigner des numéros aléatoires"
-              }
-            >
-              Numéros aléatoires
-            </button>
           </div>
 
           {humanProfiles.length === 0 ? (
@@ -1015,9 +989,9 @@ export default function KillerConfigPage(props: Props) {
                         style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", opacity: disableManualNumber ? 0.55 : 1, pointerEvents: disableManualNumber ? "none" : "auto" }}
                         title={disableManualNumber ? "Mode 1er lancer : le numéro sera choisi pendant la partie." : "Ajuster le numéro KILLER"}
                       >
-                        <button type="button" onClick={() => setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num - 1 < 1 ? 20 : num - 1 }))} style={miniRoundBtn}>−</button>
+                        <button type="button" onClick={() => { setNumberAssignMode("none"); setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num - 1 < 1 ? 20 : num - 1 })); }} style={miniRoundBtn}>−</button>
                         <div style={{ width: 40, height: 30, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#111", background: `linear-gradient(135deg, ${primary}, #ffe9a3)`, boxShadow: `0 0 14px ${primary}55` }}>{num}</div>
-                        <button type="button" onClick={() => setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num + 1 > 20 ? 1 : num + 1 }))} style={miniRoundBtn}>+</button>
+                        <button type="button" onClick={() => { setNumberAssignMode("none"); setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num + 1 > 20 ? 1 : num + 1 })); }} style={miniRoundBtn}>+</button>
                       </div>
                     );
                   }}
@@ -1137,7 +1111,7 @@ export default function KillerConfigPage(props: Props) {
                   cursor: "pointer",
                 }}
               >
-                Ordre des joueurs
+                Ordre de sélection
               </button>
 
               <button
@@ -1168,6 +1142,13 @@ export default function KillerConfigPage(props: Props) {
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Attribution des numéros</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
+                label="✋ Choix manuel"
+                active={numberAssignMode === "none"}
+                onClick={() => setNumberAssignMode("none")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+              <PillButton
                 label="🎲 Numéros aléatoires"
                 active={numberAssignMode === "random"}
                 onClick={() => setNumberAssignMode("random")}
@@ -1190,7 +1171,7 @@ export default function KillerConfigPage(props: Props) {
             </div>
 
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              En mode “1er lancer”, les numéros du menu sont ignorés (le premier tir de chaque joueur fixe son numéro).
+              En “Choix manuel”, les numéros affichés sous chaque joueur sont utilisés. En “1er lancer”, ils sont ignorés.
             </div>
 
             {blindLocksThrow && (

@@ -28,7 +28,37 @@ export default function PlayerPagedSelector({
   const [listOpen, setListOpen] = React.useState(false);
 
   const ordered = React.useMemo(() => {
-    return [...(profiles || [])].sort((a: any, b: any) => String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { sensitivity: "base", numeric: true }));
+    const usageScore = (p: any): number => {
+      const candidates = [
+        p?.usageCount,
+        p?.useCount,
+        p?.uses,
+        p?.timesUsed,
+        p?.matchCount,
+        p?.matchesCount,
+        p?.matchesPlayed,
+        p?.gamesPlayed,
+        p?.played,
+        p?.stats?.played,
+        p?.stats?.matches,
+        p?.stats?.totalMatches,
+        p?.x01?.played,
+        p?.cricket?.played,
+        p?.killer?.played,
+      ];
+      let best = 0;
+      for (const raw of candidates) {
+        const n = Number(raw);
+        if (Number.isFinite(n)) best = Math.max(best, n);
+      }
+      return best;
+    };
+    const nameOf = (p: any) => String(p?.name || p?.label || p?.displayName || "");
+    return [...(profiles || [])].sort((a: any, b: any) => {
+      const usageDelta = usageScore(b) - usageScore(a);
+      if (usageDelta !== 0) return usageDelta;
+      return nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base", numeric: true });
+    });
   }, [profiles]);
 
   const selected = React.useMemo(() => ordered.filter((p: any) => selectedIds?.includes(p.id)), [ordered, selectedIds]);

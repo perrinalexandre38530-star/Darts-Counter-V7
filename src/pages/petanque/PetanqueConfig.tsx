@@ -1559,7 +1559,7 @@ function handleStart() {
           </div>
 
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <LabelRow label={t("petanque.config.throwOrder", "Ordre des joueurs")} />
+            <LabelRow label={t("petanque.config.throwOrder", "Ordre de sélection")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
                 label={t("petanque.config.throwOrder.free", "Libre (compétition)")}
