@@ -79,10 +79,30 @@ const LEGACY_DARTSET_STORAGE_KEYS = [
 // des photos valides par le placeholder 🎯 au premier souci de quota.
 const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 8_000_000;
 
+type DartSetMutationLock = {
+  at: number;
+  values: {
+    scope?: "private" | "public";
+    profileId?: string;
+    isFavorite?: boolean;
+    name?: string;
+    brand?: string | undefined;
+    weightGrams?: number | undefined;
+    notes?: string | undefined;
+    bgColor?: string | undefined;
+    kind?: "plain" | "preset" | "photo" | undefined;
+    presetId?: string | undefined;
+  };
+};
+
 type DartSetsMeta = {
   initialized?: boolean;
   updatedAt?: number;
   deletedKeys?: Record<string, number>;
+  // Anti-réinjection : mémorise les derniers champs éditables modifiés par l'utilisateur.
+  // Les snapshots IDB/NAS/appStore peuvent encore apporter des images, mais ils ne
+  // doivent plus écraser scope/profileId/isFavorite juste après une modification.
+  mutationLocks?: Record<string, DartSetMutationLock>;
 };
 
 function s(value: any): string {
@@ -433,7 +453,16 @@ function cleanupDeletedKeys(meta: DartSetsMeta): DartSetsMeta {
   for (const [key, ts] of Object.entries(meta.deletedKeys || {})) {
     if (now - Number(ts || 0) <= keepMs) next[key] = Number(ts || now);
   }
-  return { ...(meta || {}), deletedKeys: next };
+
+  const mutationLocks: Record<string, DartSetMutationLock> = {};
+  for (const [key, lock] of Object.entries(meta.mutationLocks || {})) {
+    const at = Number((lock as any)?.at || 0);
+    if (at > 0 && now - at <= keepMs && (lock as any)?.values && typeof (lock as any).values === "object") {
+      mutationLocks[key] = { at, values: { ...((lock as any).values || {}) } };
+    }
+  }
+
+  return { ...(meta || {}), deletedKeys: next, mutationLocks };
 }
 
 function isDeletedByMeta(raw: any, meta: DartSetsMeta): boolean {
@@ -767,7 +796,7 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
     const loser = winner === normalized ? old : normalized;
     const imageSource = pickImageWinner(normalized, old);
 
-    const merged: DartSet = sanitizeDartSetForStorage({
+    const merged: DartSet = applyMutationLockToSet(sanitizeDartSetForStorage({
       ...winner,
       brand: winner.brand || loser.brand,
       weightGrams: winner.weightGrams ?? loser.weightGrams,
@@ -791,7 +820,7 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
       updatedAt: Math.max(n(winner.updatedAt, 0), n(loser.updatedAt, 0)),
       duplicateIds: uniqStrings([winner.id, loser.id, winner.linkedSourceDartSetId, loser.linkedSourceDartSetId, ...(winner.duplicateIds || []), ...(loser.duplicateIds || []), ...(winner.aliasIds || []), ...(loser.aliasIds || [])]).filter((id) => id !== winner.id),
       aliasIds: uniqStrings([...(winner.aliasIds || []), ...(loser.aliasIds || []), winner.id, loser.id]).filter((id) => id !== winner.id),
-    }) as DartSet;
+    }) as DartSet, [winner, loser, normalized, old]);
     byKey.set(key, merged);
   }
 
@@ -1187,6 +1216,98 @@ function markDeleted(set: DartSet) {
   for (const key of deletionKeysForSet(set)) deletedKeys[key] = now;
   writeMeta({ ...meta, initialized: true, deletedKeys });
 }
+function mutationLockKeysForSet(set: any): string[] {
+  if (!set) return [];
+  return uniqStrings([
+    s(set?.id) ? `id:${s(set.id)}` : "",
+    s(set?.linkedSourceDartSetId) ? `id:${s(set.linkedSourceDartSetId)}` : "",
+    s(set?.linkedSourceDartSetId) ? `source:${s(set.linkedSourceDartSetId)}` : "",
+    canonicalKeyForSet(set) ? `canon:${canonicalKeyForSet(set)}` : "",
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds.map((id: string) => `id:${id}`) : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds.map((id: string) => `id:${id}`) : []),
+  ]);
+}
+
+function editableLockValues(set: any): DartSetMutationLock["values"] {
+  const scope: "private" | "public" = effectiveDartSetScope(set);
+  return {
+    scope,
+    profileId: scope === "public" ? "global" : s(set?.profileId || set?.privateProfileId || set?.ownerProfileId || set?.localProfileId || "global"),
+    isFavorite: Boolean(set?.isFavorite),
+    name: s(set?.name) || "Mes fléchettes",
+    brand: s(set?.brand) || undefined,
+    weightGrams: Number.isFinite(Number(set?.weightGrams)) ? Number(set.weightGrams) : undefined,
+    notes: s(set?.notes) || undefined,
+    bgColor: s(set?.bgColor) || undefined,
+    kind: normalizeKind(set?.kind),
+    presetId: s(set?.presetId) || undefined,
+  };
+}
+
+function readMutationLockForSet(...sets: any[]): DartSetMutationLock | null {
+  const meta = cleanupDeletedKeys(readMeta());
+  let best: DartSetMutationLock | null = null;
+  for (const set of sets || []) {
+    for (const key of mutationLockKeysForSet(set)) {
+      const lock = meta.mutationLocks?.[key];
+      if (!lock) continue;
+      if (!best || Number(lock.at || 0) > Number(best.at || 0)) best = lock;
+    }
+  }
+  return best;
+}
+
+function applyMutationLockToSet<T extends any>(set: T, related: any[] = []): T {
+  if (!set || typeof set !== "object") return set;
+  const lock = readMutationLockForSet(set, ...(related || []));
+  if (!lock?.values) return set;
+  const values: any = { ...(lock.values || {}) };
+  if (values.scope === "public") {
+    values.profileId = "global";
+    values.linkedTargetLocalProfileId = null;
+    values.linkedSourceProfileId = null;
+    values.isPublic = true;
+    values.public = true;
+    values.shared = true;
+    values.isPrivate = false;
+    values.private = false;
+  } else if (values.scope === "private") {
+    values.profileId = s(values.profileId || (set as any).profileId || "global");
+    values.linkedTargetLocalProfileId = null;
+    values.isPublic = false;
+    values.public = false;
+    values.shared = false;
+    values.isPrivate = true;
+    values.private = true;
+  }
+  return sanitizeDartSetForStorage({
+    ...(set as any),
+    ...values,
+    updatedAt: Math.max(n((set as any).updatedAt, 0), Number(lock.at || 0)),
+  }) as T;
+}
+
+function rememberMutationLock(before: any, after: any, reason: string) {
+  try {
+    const normalizedBefore = normalizeDartSetForRuntime(before, { allowDeleted: true });
+    const normalizedAfter = normalizeDartSetForRuntime(after, { allowDeleted: true });
+    if (!normalizedAfter) return;
+    const meta = cleanupDeletedKeys(readMeta());
+    const mutationLocks = { ...(meta.mutationLocks || {}) };
+    const at = Date.now();
+    const lock: DartSetMutationLock = { at, values: editableLockValues(normalizedAfter) };
+    const keys = uniqStrings([
+      ...mutationLockKeysForSet(normalizedBefore),
+      ...mutationLockKeysForSet(normalizedAfter),
+    ]);
+    for (const key of keys) mutationLocks[key] = lock;
+    writeMeta({ ...meta, initialized: true, mutationLocks });
+    diag("mutation-lock:set", { reason, keys: keys.slice(0, 8), values: lock.values });
+  } catch (err) {
+    console.warn("[DartSetsDiag] mutation-lock failed", err);
+  }
+}
+
 
 function findSameIdentitySet(list: DartSet[], incoming: DartSet): DartSet | undefined {
   return (Array.isArray(list) ? list : []).find((current) => {
@@ -1241,9 +1362,10 @@ function mergeIncomingWithCurrentPrimary(incomingRaw: any[], reason: string): Da
     const same = findSameIdentitySet(out, inc);
     if (same) {
       const incomingIsNewer = n(inc.updatedAt, 0) > n(same.updatedAt, 0) + 250;
-      const merged = incomingIsNewer
-        ? mergeImageFieldsKeepMetadata(inc, same)
-        : mergeImageFieldsKeepMetadata(same, inc);
+      const merged = applyMutationLockToSet(
+        incomingIsNewer ? mergeImageFieldsKeepMetadata(inc, same) : mergeImageFieldsKeepMetadata(same, inc),
+        [same, inc]
+      );
       const idx = out.findIndex((x) => String(x.id) === String(same.id));
       if (idx >= 0) out[idx] = merged;
       if (incomingIsNewer) acceptedIncoming += 1;
@@ -1254,9 +1376,10 @@ function mergeIncomingWithCurrentPrimary(incomingRaw: any[], reason: string): Da
     const sameCanonical = out.find((cur) => canonicalKeyForSet(cur) === canonicalKeyForSet(inc));
     if (sameCanonical) {
       const incomingIsNewer = n(inc.updatedAt, 0) > n(sameCanonical.updatedAt, 0) + 250;
-      const merged = incomingIsNewer
-        ? mergeImageFieldsKeepMetadata(inc, sameCanonical)
-        : mergeImageFieldsKeepMetadata(sameCanonical, inc);
+      const merged = applyMutationLockToSet(
+        incomingIsNewer ? mergeImageFieldsKeepMetadata(inc, sameCanonical) : mergeImageFieldsKeepMetadata(sameCanonical, inc),
+        [sameCanonical, inc]
+      );
       const idx = out.findIndex((x) => String(x.id) === String(sameCanonical.id));
       if (idx >= 0) out[idx] = merged;
       if (incomingIsNewer) acceptedIncoming += 1;
@@ -1482,6 +1605,14 @@ export function updateDartSet(id: DartSetId, patch: Partial<Omit<DartSet, "id" |
     diag("update:not-found", { id, patch: mutationPatch });
     return undefined;
   }
+
+  const lockDraft = sanitizeDartSetForStorage({
+    ...target,
+    ...mutationPatch,
+    id: target.id,
+    updatedAt: Date.now(),
+  }) as DartSet;
+  rememberMutationLock(target, lockDraft, "update");
 
   const next = all.map((set) => {
     if (!dartSetMatchesAnyId(set, target.id) && !dartSetMatchesAnyId(set, id)) return set;

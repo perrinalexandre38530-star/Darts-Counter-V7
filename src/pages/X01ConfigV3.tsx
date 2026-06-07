@@ -303,6 +303,13 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     reloadSets();
   }, [reloadSets]);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onUpdated = () => reloadSets();
+    window.addEventListener("dc-dartsets-updated", onUpdated);
+    return () => window.removeEventListener("dc-dartsets-updated", onUpdated);
+  }, [reloadSets]);
+
   const hasProfile = !!profileId;
   const noneLabel = lang === "fr" ? "Aucun set" : "No set";
   const chooseLabel = lang === "fr" ? "Choix SET" : "SET choice";

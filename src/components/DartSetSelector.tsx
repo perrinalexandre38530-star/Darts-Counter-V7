@@ -71,7 +71,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
   const [sets, setSets] = React.useState<DartSet[]>([]);
   const [favorite, setFavorite] = React.useState<DartSet | null>(null);
 
-  React.useEffect(() => {
+  const reloadSets = React.useCallback(() => {
     if (!profileId) {
       setSets([]);
       setFavorite(null);
@@ -82,6 +82,17 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
     const fav = getFavoriteDartSetForProfile(profileId) || null;
     setFavorite(fav);
   }, [profileId]);
+
+  React.useEffect(() => {
+    reloadSets();
+  }, [reloadSets]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onUpdated = () => reloadSets();
+    window.addEventListener("dc-dartsets-updated", onUpdated);
+    return () => window.removeEventListener("dc-dartsets-updated", onUpdated);
+  }, [reloadSets]);
 
   if (!profileId) return null;
 

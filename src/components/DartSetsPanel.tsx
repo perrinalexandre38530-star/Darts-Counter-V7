@@ -561,9 +561,12 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   const loadSets = React.useCallback(async () => {
     if (!profile?.id && !showAllOwners) return;
     try {
-      const all = showAllOwners
-        ? await Promise.resolve(getAllSelectableDartSets() as any)
-        : await Promise.resolve(getDartSetsForProfile(profile.id) as any);
+      // MES FLÉCHETTES est une bibliothèque : elle doit rester complète.
+      // Le filtrage public/privé ne doit s'appliquer qu'aux sélecteurs de partie.
+      // Avant, quand on passait ASPRIA en privé pour Ninja, la page était rechargée
+      // avec getDartSetsForProfile(profile.id), donc le set disparaissait si le
+      // profil courant du panneau n'était pas exactement Ninja.
+      const all = await Promise.resolve(getAllSelectableDartSets() as any);
       const sorted = sortSets((all || []) as DartSet[]);
       const requestedActiveId = keepActiveDartSetIdRef.current || activeSetIdRef.current;
       keepActiveDartSetIdRef.current = null;
@@ -583,6 +586,17 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
   React.useEffect(() => {
     loadSets();
+  }, [loadSets]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onUpdated = () => { void loadSets(); };
+    window.addEventListener("dc-dartsets-updated", onUpdated);
+    window.addEventListener("storage", onUpdated);
+    return () => {
+      window.removeEventListener("dc-dartsets-updated", onUpdated);
+      window.removeEventListener("storage", onUpdated);
+    };
   }, [loadSets]);
 
   React.useEffect(() => {
