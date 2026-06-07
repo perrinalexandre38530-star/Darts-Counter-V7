@@ -433,7 +433,9 @@ export default function X01LegOverlayV3({
                   </button>
                 )}
 
-                <BackDot onClick={quitMatch} size={40} />
+                <button style={btnGhostWide} onClick={quitMatch}>
+                  {t("x01.leg_overlay.finish_match", "Terminer la partie")}
+                </button>
               </div>
             </div>
           )}
