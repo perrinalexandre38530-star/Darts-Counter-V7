@@ -296,6 +296,15 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       return;
     }
     const all = getDartSetsForProfile(profileId) || [];
+    try {
+      console.info("[DartSetsDiag:X01Picker] reload", {
+        profileId,
+        count: all.length,
+        publicCount: all.filter((x: any) => x?.scope === "public" || x?.profileId === "global").length,
+        privateCount: all.filter((x: any) => x?.scope !== "public" && x?.profileId !== "global").length,
+        names: all.map((x: any) => `${x?.name || "SET"}:${x?.scope || "?"}:${x?.profileId || "?"}`).slice(0, 12),
+      });
+    } catch {}
     setSets(sortDartSetsForProfilePicker(all));
   }, [profileId]);
 

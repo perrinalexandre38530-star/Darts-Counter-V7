@@ -973,19 +973,101 @@ function enrichImagesFromRecovery(primary: DartSet[], recoveryRaw: any[]): DartS
   });
 }
 
+function recoverMissingPublicDartSetsForSelector(primary: DartSet[], recoveryRaw: any[]): DartSet[] {
+  const meta = cleanupDeletedKeys(readMeta());
+  const primaryKeys = new Set<string>();
+  const primaryIds = new Set<string>();
+  for (const item of primary || []) {
+    primaryKeys.add(canonicalKeyForSet(item));
+    primaryKeys.add(visibleDartSetKey(item));
+    primaryIds.add(s(item.id));
+    for (const alias of uniqStrings([item.linkedSourceDartSetId, ...(item.duplicateIds || []), ...(item.aliasIds || [])])) primaryIds.add(alias);
+  }
+
+  const recovered: DartSet[] = [];
+  for (const raw of Array.isArray(recoveryRaw) ? recoveryRaw : []) {
+    if (!raw || typeof raw !== "object") continue;
+    if (isDeletedByMeta(raw, meta)) continue;
+
+    // Les projections ONLINE / profils liés ne doivent jamais être ajoutées comme
+    // sets publics globaux. Elles servent seulement à résoudre images/stats.
+    if (isLinkedRemoteLike(raw)) continue;
+
+    const ds = normalizeDartSetForRuntime(raw, { allowDeleted: true });
+    if (!ds) continue;
+    if (isDeletedByMeta(ds, meta)) continue;
+    if (isLinkedRemoteLike(ds)) continue;
+
+    const owner = readOwnerProfileId(raw) || readOwnerProfileId(ds);
+    const explicitPublic = isExplicitPublicDartSet(raw) || isExplicitPublicDartSet(ds);
+    const publicOwner = isPublicOwnerProfileId(owner) || isPublicOwnerProfileId(ds.profileId);
+    const explicitPrivate = isExplicitPrivateDartSet(raw) || isExplicitPrivateDartSet(ds);
+    const privateTarget = Boolean(s(
+      raw.privateProfileId || raw.linkedTargetLocalProfileId || raw.targetLocalProfileId || raw.targetProfileId ||
+      (ds as any).privateProfileId || ds.linkedTargetLocalProfileId
+    ));
+
+    // On ne récupère que les vrais sets bibliothèque/publics. Un set privé avec
+    // propriétaire concret ne doit pas être proposé à tout le monde.
+    const looksPublic = explicitPublic || publicOwner || effectiveDartSetScope(raw) === "public" || effectiveDartSetScope(ds) === "public";
+    if (!looksPublic) continue;
+    if (explicitPrivate && !explicitPublic && !publicOwner) continue;
+    if (privateTarget && !explicitPublic && !publicOwner) continue;
+
+    const publicSet = sanitizeDartSetForStorage({
+      ...ds,
+      scope: "public",
+      profileId: "global",
+      ownerProfileId: undefined,
+      localProfileId: undefined,
+      privateProfileId: undefined,
+      linkedTargetLocalProfileId: null,
+      linkedSourceProfileId: null,
+      linkedRemoteDartSet: false,
+      linkedRemote: false,
+      __linkedRemote: false,
+      remoteDartSet: false,
+      isPublic: true,
+      public: true,
+      shared: true,
+      isPrivate: false,
+      private: false,
+    }) as DartSet;
+
+    if (!publicSet?.id) continue;
+    if (primaryIds.has(publicSet.id) || primaryIds.has(s(publicSet.linkedSourceDartSetId))) continue;
+    if (primaryKeys.has(canonicalKeyForSet(publicSet)) || primaryKeys.has(visibleDartSetKey(publicSet))) continue;
+    recovered.push(publicSet);
+    primaryKeys.add(canonicalKeyForSet(publicSet));
+    primaryKeys.add(visibleDartSetKey(publicSet));
+    primaryIds.add(publicSet.id);
+  }
+
+  if (recovered.length) {
+    diag("public-recovery:selector", {
+      recovered: recovered.length,
+      names: recovered.map((x) => `${x.name}:${x.id}`).slice(0, 12),
+    });
+  }
+  return recovered;
+}
+
 function loadPrimaryAuthoritative(): DartSet[] {
   try {
     const primaryExists = hasLocalStorageKey(STORAGE_KEY);
     const primaryRaw = readPrimaryRaw();
 
-    // Si la clé officielle existe, même vide, on ne réimporte jamais les vieux stores.
-    // Si elle n'existe pas encore, on bootstrap une seule fois depuis appStore/legacy.
+    // Si la clé officielle existe, on la garde comme source de vérité pour les
+    // champs éditables. MAIS on ne doit pas perdre les sets publics encore présents
+    // dans un ancien snapshot/appStore : ils sont réintroduits uniquement comme
+    // PUBLIC/global, sans reprendre favori/propriétaire privés.
     const raw = primaryExists ? primaryRaw : readRecoveryRaw();
     const recovery = readRecoveryRaw();
     rememberImagesForSets([...raw, ...recovery]);
     const primary = mergePrimaryDuplicates(raw);
     const enriched = enrichImagesFromRecovery(primary, recovery);
-    const finalList = mergePrimaryDuplicates(enriched);
+    const publicRecovered = primaryExists ? recoverMissingPublicDartSetsForSelector(enriched, recovery) : [];
+    const finalList = mergePrimaryDuplicates([...enriched, ...publicRecovered]);
     installDartSetsDiagnostics(finalList, recovery);
     return finalList;
   } catch (err) {
@@ -1426,6 +1508,23 @@ function installDartSetsDiagnostics(list: DartSet[] = [], recovery: any[] = []) 
       }));
       console.table(rows);
       console.info("[DartSetsDiag] image recovery", { officialCount: sets.length, recoveryCount: readRecoveryRaw().length, bankCount: readImageBankRaw().length });
+      return rows;
+    };
+    w.__DARTSETS_SELECTABLE_DIAG = (profileId: string) => {
+      const pid = s(profileId);
+      const all = loadPrimaryAuthoritative();
+      const rows = all.map((set) => ({
+        id: set.id,
+        name: set.name,
+        scope: effectiveDartSetScope(set),
+        profileId: set.profileId,
+        public: effectiveDartSetScope(set) === "public",
+        visibleForProfile: pid ? profileCanSeeDartSet(set, pid) : false,
+        owners: collectSelectableOwnerIds(set).join(","),
+        hasImage: Boolean(readMainImage(set) || readThumbImage(set)),
+      }));
+      console.table(rows);
+      console.info("[DartSetsDiag] selectable", { profileId: pid, total: rows.length, visible: rows.filter((r) => r.visibleForProfile).length, public: rows.filter((r) => r.public).length });
       return rows;
     };
     diag("image-diag:installed", { officialCount: list.length, recoveryCount: recovery.length });
