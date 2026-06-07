@@ -116,8 +116,11 @@ function n(value: any, fallback = 0): number {
 
 function diag(action: string, payload: any = {}) {
   try {
-    // Toujours actif volontairement : demandé pour comprendre les clics / réinjections.
-    console.info("[DartSetsDiag]", action, payload);
+    // Diagnostics désactivés par défaut : les logs massifs ralentissaient les
+    // modales X01. Pour réactiver : window.__DARTSETS_DEBUG = true
+    if (typeof window !== "undefined" && (window as any).__DARTSETS_DEBUG === true) {
+      console.info("[DartSetsDiag]", action, payload);
+    }
   } catch {}
 }
 
@@ -1325,6 +1328,7 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
 
   const meta = cleanupDeletedKeys(readMeta());
   writeMeta({ ...meta, initialized: true });
+  invalidateLoadAllCache();
 
   try {
     if (typeof window !== "undefined") {
@@ -1362,8 +1366,20 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
   return true;
 }
 
+let loadAllCacheAt = 0;
+let loadAllCache: DartSet[] | null = null;
+
+function invalidateLoadAllCache() {
+  loadAllCacheAt = 0;
+  loadAllCache = null;
+}
+
 function loadAll(): DartSet[] {
-  return loadPrimaryAuthoritative();
+  const now = Date.now();
+  if (loadAllCache && now - loadAllCacheAt < 750) return loadAllCache.slice();
+  loadAllCache = loadPrimaryAuthoritative();
+  loadAllCacheAt = now;
+  return loadAllCache.slice();
 }
 
 function collectProfileAliasIds(profileId: string): Set<string> {
@@ -1392,16 +1408,8 @@ function collectProfileAliasIds(profileId: string): Set<string> {
     vals.forEach(add);
   }
 
-  const accountIds = uniqStrings([store.userId, store.accountId, store.authUserId, store.sessionUserId, store.currentUserId, store.onlineUserId, store.user?.id, store.account?.id, store.session?.user?.id]);
-  if (pid && accountIds.includes(pid)) {
-    const activeId = s(store.activeProfileId || store.currentProfileId || store.selectedProfileId);
-    if (activeId) {
-      add(activeId);
-      const activeObj = roots.find((obj: any) => uniqStrings(profileKeys.map((k) => obj?.[k])).includes(activeId));
-      if (activeObj) uniqStrings(profileKeys.map((k) => activeObj?.[k])).forEach(add);
-    }
-  }
-
+  // Ne pas mapper un compte utilisateur vers le profil actif : en X01, cela
+  // rend les sets privés du profil actif visibles pour les autres profils.
   return aliases;
 }
 
@@ -1412,7 +1420,43 @@ function collectSelectableOwnerIds(set: any): string[] {
     set?.ownerProfileId,
     set?.localProfileId,
     set?.linkedTargetLocalProfileId,
-  ]);
+    set?.privateProfileId,
+    set?.targetLocalProfileId,
+    set?.targetProfileId,
+  ]).filter((id) => !isPublicOwnerProfileId(id));
+}
+
+function collectStrictProfileIds(profileId: string): Set<string> {
+  const ids = new Set<string>();
+  const add = (v: any) => {
+    const id = s(v);
+    if (id && !isPublicOwnerProfileId(id)) ids.add(id);
+  };
+  const pid = s(profileId);
+  add(pid);
+
+  // Alias stricts seulement : on ne prend que les identifiants portés par
+  // l'objet profil qui correspond déjà à profileId. On ne mappe plus
+  // accountId -> activeProfile, car cela rendait les sets privés visibles
+  // pour plusieurs joueurs dans X01.
+  try {
+    const store = appStoreSnapshot();
+    const roots = [
+      store?.currentProfile,
+      store?.activeProfile,
+      store?.profile,
+      ...(Array.isArray(store?.profiles) ? store.profiles : []),
+      ...(Array.isArray(store?.localProfiles) ? store.localProfiles : []),
+      ...(Array.isArray(store?.players) ? store.players : []),
+    ].filter(Boolean);
+    const profileKeys = ["id", "profileId", "localProfileId", "playerId", "pid", "uid", "uuid", "linkedSourceLocalProfileId", "linkedTargetLocalProfileId", "ownerProfileId"];
+    for (const obj of roots) {
+      const vals = uniqStrings(profileKeys.map((k) => obj?.[k]));
+      if (vals.includes(pid)) vals.forEach(add);
+    }
+  } catch {}
+
+  return ids;
 }
 
 function dartSetMatchesAnyId(set: any, id: any): boolean {
@@ -1427,11 +1471,15 @@ function dartSetMatchesAnyId(set: any, id: any): boolean {
 function profileCanSeeDartSet(set: DartSet, profileId: string): boolean {
   if (!set) return false;
   if (effectiveDartSetScope(set) === "public") return true;
-  const aliases = collectProfileAliasIds(profileId);
+
+  // PRIVÉ = exclusif au profil propriétaire.
+  // On n'utilise plus les alias de compte larges : ils rendaient Romrom / Zen JuJi
+  // visibles chez Ninja, Chevroute, Lehna, etc.
+  const profileIds = collectStrictProfileIds(profileId);
+  if (!profileIds.size) return false;
   const owners = collectSelectableOwnerIds(set);
-  if (owners.some((id) => aliases.has(id))) return true;
-  const target = s((set as any).linkedTargetLocalProfileId);
-  return !!target && aliases.has(target);
+  if (!owners.length) return false;
+  return owners.some((id) => profileIds.has(id));
 }
 
 function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {

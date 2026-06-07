@@ -69,18 +69,33 @@ export default function PlayerPagedSelector({
   const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>({});
 
   React.useEffect(() => {
+    // Le scan de l'historique peut être lourd sur mobile. Avant il se lançait
+    // dès l'arrivée sur X01Config, ce qui ralentissait l'ouverture du choix de
+    // joueurs et les changements de page. On le lance seulement après ouverture
+    // de la modale, en idle, et la liste reste immédiatement utilisable.
+    if (!open) return;
     let alive = true;
-    (async () => {
+    const run = async () => {
       try {
         const mod = await import("../lib/history");
         const rows = await mod.History.list().catch(() => []);
-        if (alive) setHistoryUsageById(collectPlayerUsageFromRows(rows as any[]));
+        if (alive) setHistoryUsageById(collectPlayerUsageFromRows((rows as any[]).slice(0, 300)));
       } catch {
         if (alive) setHistoryUsageById({});
       }
-    })();
-    return () => { alive = false; };
-  }, []);
+    };
+    const w: any = typeof window !== "undefined" ? window : null;
+    const idle = w?.requestIdleCallback
+      ? w.requestIdleCallback(run, { timeout: 900 })
+      : window.setTimeout(run, 120);
+    return () => {
+      alive = false;
+      try {
+        if (w?.cancelIdleCallback && typeof idle === "number") w.cancelIdleCallback(idle);
+        else clearTimeout(idle);
+      } catch {}
+    };
+  }, [open]);
 
   const ordered = React.useMemo(() => {
     const usageScore = (p: any): number => {

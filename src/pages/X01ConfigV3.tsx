@@ -299,6 +299,10 @@ function x01DartSetMatchesProfile(set: any, profileId: string): boolean {
   const pid = String(profileId || "").trim();
   if (!pid || !set) return false;
   if (x01IsPublicDartSet(set)) return true;
+
+  // Privé strict : uniquement le profil réellement propriétaire.
+  // Pas d'alias compte actif, pas de fallback global, sinon les sets privés
+  // apparaissent chez tous les joueurs sélectionnés.
   const owners = [
     set.profileId,
     set.profile_id,
@@ -306,7 +310,11 @@ function x01DartSetMatchesProfile(set: any, profileId: string): boolean {
     set.localProfileId,
     set.linkedTargetLocalProfileId,
     set.privateProfileId,
-  ].map((v) => String(v || "").trim()).filter(Boolean);
+    set.targetLocalProfileId,
+    set.targetProfileId,
+  ]
+    .map((v) => String(v || "").trim())
+    .filter((v) => v && !["global", "public", "shared", "all", "default", "library"].includes(v.toLowerCase()));
   return owners.includes(pid);
 }
 
@@ -341,26 +349,25 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       setSets([]);
       return;
     }
-    const fromStore = getDartSetsForProfile(profileId) || [];
-
-    // Sécurité locale du configurateur : même si le store a encore une trace
-    // legacy, le picker X01 doit afficher publics + privés du joueur, jamais
-    // seulement ses privés. On prend uniquement la bibliothèque MES FLÉCHETTES.
+    // Source stricte : uniquement la bibliothèque MES FLÉCHETTES officielle.
+    // getDartSetsForProfile peut servir ailleurs, mais ici on filtre nous-mêmes
+    // pour garantir : PUBLICS pour tous + PRIVÉS du joueur uniquement.
     const library = getAllSelectableDartSets() || [];
     const publicSets = library.filter((set: any) => x01IsPublicDartSet(set));
     const ownPrivateSets = library.filter((set: any) => !x01IsPublicDartSet(set) && x01DartSetMatchesProfile(set, profileId));
-    const all = x01DedupeDartSets([...publicSets, ...ownPrivateSets, ...fromStore]);
+    const all = x01DedupeDartSets([...publicSets, ...ownPrivateSets]);
 
     try {
-      console.info("[DartSetsDiag:X01Picker] reload", {
-        profileId,
-        storeCount: fromStore.length,
-        libraryCount: library.length,
-        count: all.length,
-        publicCount: all.filter((x: any) => x01IsPublicDartSet(x)).length,
-        privateCount: all.filter((x: any) => !x01IsPublicDartSet(x)).length,
-        names: all.map((x: any) => `${x?.name || "SET"}:${x?.scope || "?"}:${x?.profileId || "?"}`).slice(0, 20),
-      });
+      if (typeof window !== "undefined" && (window as any).__DARTSETS_DEBUG === true) {
+        console.info("[DartSetsDiag:X01Picker] reload", {
+          profileId,
+          libraryCount: library.length,
+          count: all.length,
+          publicCount: all.filter((x: any) => x01IsPublicDartSet(x)).length,
+          privateCount: all.filter((x: any) => !x01IsPublicDartSet(x)).length,
+          names: all.map((x: any) => `${x?.name || "SET"}:${x?.scope || "?"}:${x?.profileId || "?"}`).slice(0, 20),
+        });
+      }
     } catch {}
     setSets(sortDartSetsForProfilePicker(all));
   }, [profileId]);
