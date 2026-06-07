@@ -834,21 +834,40 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
 
 type HistoryScorePlayer = { name: string; main: string; sub?: string; rank?: number };
 
-function historyRankingRows(e: SavedEntry): any[] {
-  const anyE: any = e;
-  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
-  const result = data.result || {};
-  const rankings = data.rankings || result.rankings || result.players || data.players || result.standings || anyE.payload?.rankings || [];
-  return Array.isArray(rankings) ? rankings : [];
+
+function historyIsX01Like(e: SavedEntry): boolean {
+  return isX01Entry(e) || String((e as any)?.kind || (e as any)?.summary?.kind || (e as any)?.payload?.summary?.kind || (e as any)?.payload?.summary?.mode || "").toLowerCase().includes("x01");
 }
 
+function historyRowKey(x: any): string {
+  return String(getId(x) || x?.playerId || x?.profileId || x?.selectedPlayerId || x?.pid || getName(x) || x?.name || "").trim();
+}
 
-function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
+function historyRowName(x: any): string {
+  return cleanName(getName(x) || x?.name || x?.playerName || x?.displayName || x?.nickname || x?.label);
+}
+
+function historyLooseMapValue(map: any, r: any): any {
+  if (!map || typeof map !== "object") return undefined;
+  const ids = [r?.id, r?.playerId, r?.profileId, r?.selectedPlayerId, r?.pid].filter(Boolean).map(String);
+  for (const id of ids) if (Object.prototype.hasOwnProperty.call(map, id)) return map[id];
+  const nm = historyRowName(r).toLowerCase();
+  if (nm) {
+    for (const [k, v] of Object.entries(map)) if (String(k).toLowerCase() === nm) return v;
+  }
+  return undefined;
+}
+
+function getHistoryDataBundle(e: SavedEntry): { data: any; result: any; anyE: any } {
   const anyE: any = e as any;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
+  return { data, result, anyE };
+}
 
-  const fullPools = [
+function historyAllPlayerRows(e: SavedEntry): any[] {
+  const { data, result, anyE } = getHistoryDataBundle(e);
+  const pools = [
     anyE.players,
     anyE.summary?.players,
     anyE.summary?.result?.players,
@@ -868,65 +887,138 @@ function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
     result.players,
     result.rankings,
   ];
-
-  const fullPlayers: any[] = [];
-  const seenFull = new Set<string>();
-  for (const pool of fullPools) {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  for (const pool of pools) {
     if (!Array.isArray(pool)) continue;
     for (const p of pool) {
-      const id = getId(p) || p?.playerId || p?.profileId || p?.pid || getName(p) || p?.name;
-      const key = String(id || "").trim();
-      if (!key || seenFull.has(key)) continue;
-      seenFull.add(key);
-      fullPlayers.push(p);
+      const key = historyRowKey(p) || historyRowName(p);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
     }
+  }
+  return out;
+}
+
+function x01RemainingForRow(e: SavedEntry, r: any): any {
+  const { data, result, anyE } = getHistoryDataBundle(e);
+  const remainingMap =
+    data.finalScores || data.remainingScores || data.remainingByPlayer || data.scoresByPlayer || data.scoreByPlayer ||
+    result.finalScores || result.remainingScores || result.remainingByPlayer || result.scoresByPlayer ||
+    anyE.payload?.summary?.finalScores || anyE.payload?.summary?.remainingScores || anyE.payload?.summary?.remainingByPlayer || anyE.payload?.summary?.scoreByPlayer;
+  const direct = r?.remaining ?? r?.remainingScore ?? r?.finalScore ?? r?.scoreRemaining ?? r?.currentScore ?? r?.scoreLeft ?? r?.left ?? historyLooseMapValue(remainingMap, r);
+  if (direct != null && cleanScore(direct) != null) return direct;
+  const detailed = data.detailedByPlayer || anyE.payload?.summary?.detailedByPlayer || result.detailedByPlayer;
+  const startScore = Number(data.game?.startScore ?? anyE.game?.startScore ?? anyE.payload?.summary?.game?.startScore ?? anyE.payload?.config?.startScore ?? 0);
+  if (startScore > 0 && detailed && typeof detailed === "object") {
+    const ids = [r?.id, r?.playerId, r?.profileId, r?.selectedPlayerId, r?.pid].filter(Boolean).map(String);
+    const name = historyRowName(r).toLowerCase();
+    let hitKey = ids.find((id) => detailed[id]);
+    if (!hitKey && name) {
+      hitKey = Object.keys(detailed).find((k) => historyRowName(detailed[k]).toLowerCase() === name || String(detailed[k]?.playerName || "").toLowerCase() === name);
+    }
+    const d = hitKey ? detailed[hitKey] : null;
+    const fromDetail = d?.remaining ?? d?.remainingScore ?? d?.finalScore ?? d?.scoreAfter;
+    if (fromDetail != null && cleanScore(fromDetail) != null) return fromDetail;
+    const total = Number(d?.totalScore ?? d?.pointsScored ?? d?.points ?? d?.totalscore);
+    if (Number.isFinite(total)) return Math.max(0, startScore - total);
+  }
+  return undefined;
+}
+
+function x01FinalSortedRows(e: SavedEntry): any[] {
+  const { data, result, anyE } = getHistoryDataBundle(e);
+  const explicit = historyRankingRows(e);
+  let rows = explicit.length ? explicit : [];
+  if (!rows.length) {
+    const detailed = data.detailedByPlayer || anyE.payload?.summary?.detailedByPlayer || result.detailedByPlayer;
+    if (detailed && typeof detailed === "object") {
+      rows = Object.entries(detailed).map(([id, v]: [string, any]) => ({ ...(typeof v === "object" ? v : {}), id, playerId: (v as any)?.playerId || id }));
+    }
+  }
+  if (!rows.length) rows = historyAllPlayerRows(e);
+
+  const full = historyAllPlayerRows(e);
+  const byId = new Map<string, any>();
+  const byName = new Map<string, any>();
+  for (const p of full) {
+    const id = historyRowKey(p);
+    const nm = historyRowName(p).toLowerCase();
+    if (id && !byId.has(id)) byId.set(id, p);
+    if (nm && !byName.has(nm)) byName.set(nm, p);
+  }
+  const merged = rows.map((r: any) => {
+    const id = historyRowKey(r);
+    const nm = historyRowName(r).toLowerCase();
+    const f = (id && byId.get(id)) || (nm && byName.get(nm)) || {};
+    return { ...f, ...r, avatarDataUrl: r?.avatarDataUrl || r?.avatarUrl || r?.avatar || f?.avatarDataUrl || f?.avatarUrl || f?.avatar };
+  }).filter((r: any) => historyRowKey(r) || historyRowName(r));
+
+  const winnerId = String(anyE.winnerId || data.winnerId || result.winnerId || anyE.payload?.summary?.winnerId || "").trim();
+  const winnerName = cleanName(anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName).toLowerCase();
+  const orderArr = Array.isArray(data.order) ? data.order : Array.isArray(anyE.payload?.summary?.order) ? anyE.payload.summary.order : [];
+  const orderIdx = (r: any) => {
+    const id = historyRowKey(r);
+    const i = orderArr.findIndex((x: any) => String(x) === id);
+    return i >= 0 ? i : 9999;
+  };
+  const hasExplicitRank = merged.some((r: any) => Number.isFinite(Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position)));
+  return merged
+    .map((r: any, idx: number) => {
+      const remRaw = x01RemainingForRow(e, r);
+      const remNum = Number(cleanScore(remRaw));
+      const id = historyRowKey(r);
+      const nm = historyRowName(r).toLowerCase();
+      const explicitRank = Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position);
+      const isWinner = (winnerId && id === winnerId) || (winnerName && nm === winnerName) || r?.win === true || r?.winner === true || remNum === 0;
+      return { r, idx, remNum: Number.isFinite(remNum) ? remNum : 999999, explicitRank: Number.isFinite(explicitRank) ? explicitRank : null, isWinner };
+    })
+    .sort((a: any, b: any) => {
+      if (hasExplicitRank && a.explicitRank != null && b.explicitRank != null) return a.explicitRank - b.explicitRank || a.idx - b.idx;
+      if (a.isWinner !== b.isWinner) return a.isWinner ? -1 : 1;
+      return a.remNum - b.remNum || orderIdx(a.r) - orderIdx(b.r) || a.idx - b.idx;
+    })
+    .map((x: any, i: number) => ({ ...x.r, rank: i + 1, finalRank: x.r?.finalRank ?? i + 1, remaining: x.r?.remaining ?? x.r?.remainingScore ?? x.r?.finalScore ?? x.remNum }));
+}
+
+function historyRankingRows(e: SavedEntry): any[] {
+  const anyE: any = e;
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
+  const result = data.result || {};
+  const rankings = data.rankings || result.rankings || result.players || data.players || result.standings || anyE.payload?.rankings || [];
+  return Array.isArray(rankings) ? rankings : [];
+}
+
+
+function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
+  if (historyIsX01Like(e)) {
+    const rows = x01FinalSortedRows(e);
+    return rows.length ? rows : getAllEntryPlayers(e);
   }
 
   const rankingRows = historyRankingRows(e);
-  const explicitRows = rankingRows.length
-    ? rankingRows
-    : [data.ranking, data.rankings, data.perPlayer, result.rankings, result.players].find((x: any) => Array.isArray(x) && x.length) || [];
-
-  const rowKey = (x: any) => String(getId(x) || x?.playerId || x?.profileId || x?.selectedPlayerId || x?.pid || getName(x) || x?.name || "").trim();
-  const rowName = (x: any) => cleanName(getName(x) || x?.name || x?.playerName || x?.displayName || x?.nickname || x?.label);
-  const rankOf = (x: any, idx: number) => Number(x?.rank ?? x?.finalRank ?? x?.placement ?? x?.place ?? x?.position ?? idx + 1) || idx + 1;
-
-  const orderedRows = (Array.isArray(explicitRows) ? explicitRows : [])
-    .map((r: any, idx: number) => ({ r, idx, rank: rankOf(r, idx) }))
-    .filter((x: any) => rowKey(x.r) || rowName(x.r))
-    .sort((a: any, b: any) => a.rank - b.rank || a.idx - b.idx)
-    .map((x: any) => x.r);
-
-  const byId = new Map<string, any>();
-  const byName = new Map<string, any>();
-  for (const p of fullPlayers) {
-    const id = rowKey(p);
-    const name = rowName(p);
-    if (id && !byId.has(id)) byId.set(id, p);
-    if (name && !byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), p);
+  if (rankingRows.length) {
+    const all = historyAllPlayerRows(e);
+    const byId = new Map<string, any>();
+    const byName = new Map<string, any>();
+    for (const p of all) {
+      const id = historyRowKey(p);
+      const nm = historyRowName(p).toLowerCase();
+      if (id && !byId.has(id)) byId.set(id, p);
+      if (nm && !byName.has(nm)) byName.set(nm, p);
+    }
+    return rankingRows
+      .map((r: any, idx: number) => ({ r, idx, rank: Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position ?? idx + 1) || idx + 1 }))
+      .sort((a: any, b: any) => a.rank - b.rank || a.idx - b.idx)
+      .map(({ r }: any) => {
+        const id = historyRowKey(r);
+        const nm = historyRowName(r).toLowerCase();
+        const f = (id && byId.get(id)) || (nm && byName.get(nm)) || {};
+        return { ...f, ...r, avatarDataUrl: r?.avatarDataUrl || r?.avatarUrl || r?.avatar || f?.avatarDataUrl || f?.avatarUrl || f?.avatar };
+      });
   }
-
-  const out: any[] = [];
-  const used = new Set<string>();
-  for (const r of orderedRows) {
-    const id = rowKey(r);
-    const name = rowName(r);
-    const full = (id && byId.get(id)) || (name && byName.get(name.toLowerCase())) || null;
-    const merged = full ? { ...full, ...r, avatarDataUrl: r?.avatarDataUrl || r?.avatarUrl || r?.avatar || full?.avatarDataUrl || full?.avatarUrl || full?.avatar } : r;
-    const key = rowKey(merged) || rowName(merged);
-    if (!key || used.has(key)) continue;
-    used.add(key);
-    out.push(merged);
-  }
-
-  for (const p of fullPlayers) {
-    const key = rowKey(p) || rowName(p);
-    if (!key || used.has(key)) continue;
-    used.add(key);
-    out.push(p);
-  }
-
-  return out.length ? out : getAllEntryPlayers(e);
+  return getAllEntryPlayers(e);
 }
 
 function historyScoreName(e: SavedEntry, r: any): string {
@@ -939,57 +1031,24 @@ function historyScoreNumber(raw: any, fallback = "0"): string {
 }
 
 function x01HistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
-  const anyE: any = e;
-  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
-  const result = data.result || {};
-  const rows = historyRankingRows(e);
-  const looseMap = (map: any, r: any) => {
-    if (!map || typeof map !== "object") return undefined;
-    const ids = [r?.id, r?.playerId, r?.profileId, r?.selectedPlayerId, r?.pid].filter(Boolean).map(String);
-    for (const id of ids) if (Object.prototype.hasOwnProperty.call(map, id)) return map[id];
-    return undefined;
-  };
+  const { data, result } = getHistoryDataBundle(e);
+  const rows = x01FinalSortedRows(e);
   const setsMap = data.setsWonByPlayer || data.setsByPlayer || data.setsWon || data.setsScore || result.setsWonByPlayer || result.setsWon;
   const legsMap = data.legsWonByPlayer || data.legsByPlayer || data.legsWon || data.legsScore || result.legsWonByPlayer || result.legsWon;
 
-  // X01 MULTI : le chiffre affiché sur la carte doit être le score RESTANT, jamais le nombre de legs/sets gagnés.
-  // Certains anciens exports ne possèdent que `rankings.score` (= legs gagnés), donc on privilégie finalScore/remaining/finalScores
-  // puis on reconstruit depuis startScore - totalScore si nécessaire.
-  const remainingMap =
-    data.finalScores ||
-    data.remainingScores ||
-    data.remainingByPlayer ||
-    data.scoresByPlayer ||
-    data.scoreByPlayer ||
-    result.finalScores ||
-    result.remainingScores ||
-    result.remainingByPlayer ||
-    result.scoresByPlayer ||
-    anyE.payload?.summary?.finalScores ||
-    anyE.payload?.summary?.remainingScores ||
-    anyE.payload?.summary?.remainingByPlayer ||
-    anyE.payload?.summary?.scoreByPlayer;
-  const detailed = data.detailedByPlayer || anyE.payload?.summary?.detailedByPlayer || result.detailedByPlayer;
-  const startScore = Number(data.game?.startScore ?? anyE.game?.startScore ?? anyE.payload?.summary?.game?.startScore ?? anyE.payload?.config?.startScore ?? 0);
-
-  const sourceRows = rows.length ? rows : (Array.isArray(anyE.players) ? anyE.players : []);
-  return sourceRows.map((r: any, idx: number) => {
-    const sets = historyScoreNumber(r?.setsWon ?? r?.sw ?? r?.sets ?? r?.setsScore ?? looseMap(setsMap, r));
-    const legs = historyScoreNumber(r?.legsWon ?? r?.lw ?? r?.legs ?? r?.legsScore ?? looseMap(legsMap, r));
-    const explicitRemaining = r?.remaining ?? r?.finalScore ?? r?.scoreRemaining ?? r?.currentScore ?? r?.scoreLeft ?? r?.left ?? looseMap(remainingMap, r);
-    let remainingRaw = explicitRemaining;
-    if (remainingRaw == null && startScore > 0 && detailed && typeof detailed === "object") {
-      const ids = [r?.id, r?.playerId, r?.profileId, r?.selectedPlayerId, r?.pid].filter(Boolean).map(String);
-      const hitKey = ids.find((id) => detailed[id]);
-      const total = hitKey ? Number(detailed[hitKey]?.totalScore ?? detailed[hitKey]?.totalscore) : NaN;
-      if (Number.isFinite(total)) remainingRaw = Math.max(0, startScore - total);
-    }
-    const remaining = historyScoreNumber(remainingRaw, idx === 0 ? "0" : "0");
+  return rows.map((r: any, idx: number) => {
+    const remainingRaw = x01RemainingForRow(e, r);
+    const remaining = historyScoreNumber(remainingRaw, "0");
+    const isWinner = Number(cleanScore(remainingRaw)) === 0 || r?.win === true || r?.winner === true || Number(r?.rank ?? r?.finalRank ?? idx + 1) === 1;
+    const setsRaw = r?.setsWon ?? r?.sw ?? r?.sets ?? r?.setsScore ?? historyLooseMapValue(setsMap, r);
+    const legsRaw = r?.legsWon ?? r?.lw ?? r?.legs ?? r?.legsScore ?? historyLooseMapValue(legsMap, r);
+    const sets = historyScoreNumber(setsRaw, isWinner ? "1" : "0");
+    const legs = historyScoreNumber(legsRaw, "0");
     return {
       name: historyScoreName(e, r),
       main: sets,
       sub: legs,
-      rank: Number(r?.rank ?? r?.finalRank ?? r?.placement ?? r?.place ?? r?.position ?? idx + 1) || idx + 1,
+      rank: idx + 1,
       remaining,
     } as any;
   }).filter((x: any) => x.name);
