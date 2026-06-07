@@ -380,19 +380,24 @@ function formatCheckoutFromVisit(suggestion: any): string {
 function renderLastVisitChips(
   pid: string,
   lastVisits: Record<string, UIDart[]>,
-  isBust?: boolean
+  isBust?: boolean,
+  bustCount?: number
 ) {
   const darts = lastVisits[pid] ?? [];
   if (!darts.length) return null;
 
+  const safeBustCount = Math.max(1, Number(bustCount || 0));
+
   return (
-    <span style={{ display: "inline-flex", gap: 6 }}>
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
       {darts.map((d, i) => {
         const st = chipStyle(d, false);
 
-        const bg = isBust ? "rgba(200,30,30,.18)" : (st.background as string);
-        const bd = isBust ? "1px solid rgba(255,80,80,.35)" : (st.border as string);
-        const co = isBust ? "#ff8a8a" : (st.color as string);
+        const bg = isBust
+          ? "linear-gradient(180deg, rgba(255,50,50,.34), rgba(130,0,0,.38))"
+          : (st.background as string);
+        const bd = isBust ? "1px solid rgba(255,85,85,.82)" : (st.border as string);
+        const co = isBust ? "#ffb0b0" : (st.color as string);
 
         return (
           <span
@@ -402,16 +407,38 @@ function renderLastVisitChips(
               padding: "2px 8px",
               borderRadius: 10,
               fontSize: 11,
-              fontWeight: 700,
+              fontWeight: 900,
               background: bg,
               border: bd,
               color: co,
+              boxShadow: isBust ? "0 0 10px rgba(255,40,40,.42)" : undefined,
+              textShadow: isBust ? "0 0 8px rgba(255,80,80,.55)" : undefined,
             }}
           >
             {fmt(d)}
           </span>
         );
       })}
+
+      {isBust ? (
+        <span
+          style={{
+            padding: "2px 9px",
+            borderRadius: 999,
+            fontSize: 10.5,
+            fontWeight: 950,
+            letterSpacing: 0.25,
+            color: "#fff",
+            background: "linear-gradient(180deg, rgba(255,42,42,.96), rgba(130,0,0,.92))",
+            border: "1px solid rgba(255,120,120,.9)",
+            boxShadow: "0 0 14px rgba(255,35,35,.55)",
+            textShadow: "0 0 8px rgba(255,255,255,.35)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          BUST {safeBustCount}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -2847,6 +2874,10 @@ const [lastVisitIsBustByPlayer, setLastVisitIsBustByPlayer] = React.useState<
   Record<string, boolean>
 >({});
 
+const [lastVisitBustCountByPlayer, setLastVisitBustCountByPlayer] = React.useState<
+  Record<string, number>
+>({});
+
 // 🔒 garde-fou anti double-validation HUMAIN
 const isValidatingRef = React.useRef(false);
 
@@ -3289,11 +3320,18 @@ const validateThrow = async () => {
       isCheckoutNow,
     });
 
-    // ✅ volée validée : reset le flag rouge
+    // ✅ volée validée : si BUST, on conserve le flag rouge dans la liste joueurs.
+    // Avant, ce reset à false écrasait l'état BUST juste avant l'affichage de la modale.
     setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
       ...m,
-      [pid]: false,
+      [pid]: !!isBustNow,
     }));
+    if (isBustNow) {
+      setLastVisitBustCountByPlayer((m: Record<string, number>) => ({
+        ...m,
+        [pid]: Number(m?.[pid] ?? 0) + 1,
+      }));
+    }
   } catch (e) {
     console.warn("[X01PlayV3] end-of-visit sfx/voice failed", e);
   }
@@ -3535,8 +3573,14 @@ React.useEffect(() => {
           isCheckoutNow,
         });
 
-        // reset bust flag rouge
-        setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({ ...m, [pid]: false }));
+        // Si une visite distante/BOT est un BUST, elle doit rester visible en rouge dans la liste joueurs.
+        setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({ ...m, [pid]: !!isBustNow }));
+        if (isBustNow) {
+          setLastVisitBustCountByPlayer((m: Record<string, number>) => ({
+            ...m,
+            [pid]: Number(m?.[pid] ?? 0) + 1,
+          }));
+        }
       } catch {}
 
       currentThrowFromEngineRef.current = true;
@@ -4672,6 +4716,7 @@ if (isLandscapeTablet) {
               useSets={useSetsUi}
               lastVisitsByPlayer={lastVisitsByPlayer}
               lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+              lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
               avg3ByPlayer={avg3ByPlayer}
             />
           ) : (
@@ -4688,6 +4733,7 @@ if (isLandscapeTablet) {
               useSets={useSetsUi}
               lastVisitsByPlayer={lastVisitsByPlayer}
               lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+              lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
               avg3ByPlayer={avg3ByPlayer}
             />
           )}
@@ -5084,6 +5130,7 @@ if (isLandscapeTablet) {
                 useSets={useSetsUi}
                 lastVisitsByPlayer={lastVisitsByPlayer}
                 lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
                 avg3ByPlayer={avg3ByPlayer}
               />
             ) : (
@@ -5100,6 +5147,7 @@ if (isLandscapeTablet) {
                 useSets={useSetsUi}
                 lastVisitsByPlayer={lastVisitsByPlayer}
                 lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
                 avg3ByPlayer={avg3ByPlayer}
               />
             )}
@@ -6413,6 +6461,7 @@ function TeamsPlayersList(props: {
   useSets: boolean;
   lastVisitsByPlayer: Record<string, UIDart[]>;
   lastVisitIsBustByPlayer: Record<string, boolean>;
+  lastVisitBustCountByPlayer: Record<string, number>;
   avg3ByPlayer: Record<string, number>;
 }) {
   const {
@@ -6426,6 +6475,7 @@ function TeamsPlayersList(props: {
     scoresByPlayer: rawScoresByPlayer,
     lastVisitsByPlayer: rawLastVisitsByPlayer,
     lastVisitIsBustByPlayer: rawLastVisitIsBustByPlayer,
+    lastVisitBustCountByPlayer: rawLastVisitBustCountByPlayer,
     avg3ByPlayer: rawAvg3ByPlayer,
   } = props;
 
@@ -6435,6 +6485,7 @@ function TeamsPlayersList(props: {
   const scoresByPlayer = rawScoresByPlayer || {};
   const lastVisitsByPlayer = rawLastVisitsByPlayer || {};
   const lastVisitIsBustByPlayer = rawLastVisitIsBustByPlayer || {};
+  const lastVisitBustCountByPlayer = rawLastVisitBustCountByPlayer || {};
   const avg3ByPlayer = rawAvg3ByPlayer || {};
 
   return (
@@ -6573,7 +6624,12 @@ function TeamsPlayersList(props: {
                         {p.name}
                       </div>
 
-                      {renderLastVisitChips(p.id, lastVisitsByPlayer, (lastVisitIsBustByPlayer as any)?.[p.id])}
+                      {renderLastVisitChips(
+                        p.id,
+                        lastVisitsByPlayer,
+                        (lastVisitIsBustByPlayer as any)?.[p.id],
+                        (lastVisitBustCountByPlayer as any)?.[p.id]
+                      )}
                     </div>
                     <div style={{ fontSize: 11.5, color: "#cfd1d7", marginTop: 2 }}>
                       Darts: {dCount} • Moy/3D: {a3d}
@@ -6639,6 +6695,7 @@ function PlayersListOnly(props: {
   useSets: boolean;
   lastVisitsByPlayer: Record<string, UIDart[]>;
   lastVisitIsBustByPlayer: Record<string, boolean>;
+  lastVisitBustCountByPlayer: Record<string, number>;
   avg3ByPlayer: Record<string, number>;
 }) {
   const {
@@ -6654,6 +6711,7 @@ function PlayersListOnly(props: {
     useSets,
     lastVisitsByPlayer: rawLastVisitsByPlayer,
     lastVisitIsBustByPlayer: rawLastVisitIsBustByPlayer,
+    lastVisitBustCountByPlayer: rawLastVisitBustCountByPlayer,
     avg3ByPlayer: rawAvg3ByPlayer,
   } = props;
 
@@ -6665,6 +6723,7 @@ function PlayersListOnly(props: {
   const setsWon = rawSetsWon || {};
   const lastVisitsByPlayer = rawLastVisitsByPlayer || {};
   const lastVisitIsBustByPlayer = rawLastVisitIsBustByPlayer || {};
+  const lastVisitBustCountByPlayer = rawLastVisitBustCountByPlayer || {};
   const avg3ByPlayer = rawAvg3ByPlayer || {};
 
 
@@ -6780,7 +6839,12 @@ function PlayersListOnly(props: {
                 </div>
 
                 {/* Pastilles dernière volée */}
-                {renderLastVisitChips(p.id, lastVisitsByPlayer, (lastVisitIsBustByPlayer as any)?.[p.id])}
+                {renderLastVisitChips(
+                        p.id,
+                        lastVisitsByPlayer,
+                        (lastVisitIsBustByPlayer as any)?.[p.id],
+                        (lastVisitBustCountByPlayer as any)?.[p.id]
+                      )}
               </div>
               <div
                 style={{

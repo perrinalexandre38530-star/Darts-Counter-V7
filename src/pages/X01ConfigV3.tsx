@@ -356,14 +356,8 @@ function x01HasExplicitPrivateTarget(set: any): boolean {
   return Boolean(x01NormId(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
 }
 
-function x01IsExplicitPrivate(set: any): boolean {
+function x01IsExplicitPublic(set: any): boolean {
   const flag = x01ScopeFlag(set);
-  return flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
-}
-
-function x01IsPublicDartSet(set: any): boolean {
-  const flag = x01ScopeFlag(set);
-  const owners = x01OwnerIds(set);
   return (
     flag === "public" ||
     flag === "global" ||
@@ -372,8 +366,25 @@ function x01IsPublicDartSet(set: any): boolean {
     set?.isPublic === true ||
     set?.public === true ||
     set?.shared === true ||
-    owners.length === 0
+    x01IsGlobalOwnerId(set?.profileId) ||
+    x01IsGlobalOwnerId(set?.ownerProfileId) ||
+    x01IsGlobalOwnerId(set?.localProfileId)
   );
+}
+
+function x01IsExplicitPrivate(set: any): boolean {
+  // IMPORTANT : PUBLIC gagne toujours sur les vieux flags legacy private/isPrivate.
+  // Plusieurs versions précédentes ont laissé privateProfileId/private=true sur
+  // des sets repassés en public, ce qui cachait tous les publics dans X01.
+  if (x01IsExplicitPublic(set)) return false;
+  const flag = x01ScopeFlag(set);
+  return flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
+}
+
+function x01IsPublicDartSet(set: any): boolean {
+  if (x01IsExplicitPublic(set)) return true;
+  const owners = x01OwnerIds(set);
+  return owners.length === 0 && !x01IsExplicitPrivate(set);
 }
 
 function x01DartSetMatchesProfile(set: any, profileId: string, allProfiles: any[] = []): boolean {
@@ -387,23 +398,24 @@ function x01DartSetMatchesProfile(set: any, profileId: string, allProfiles: any[
 function x01DartSetSelectableForProfile(set: any, profileId: string, allProfiles: any[] = []): boolean {
   if (!set) return false;
 
-  // PUBLIC réel = toujours visible pour tous. C'est la règle attendue.
-  if (x01IsPublicDartSet(set) && !x01HasExplicitPrivateTarget(set)) return true;
+  // RÈGLE FINALE X01 :
+  // - PUBLIC = visible pour tous, même si des vieux champs privateProfileId/private
+  //   sont encore stockés sur l'objet après une ancienne édition.
+  // - PRIVÉ = visible uniquement pour le profil propriétaire.
+  // L'erreur précédente était le "&& !x01HasExplicitPrivateTarget(set)" :
+  // il cachait les sets publics qui portaient encore un champ privé legacy.
+  if (x01IsPublicDartSet(set)) return true;
 
   const owners = x01OwnerIds(set);
   const profileIds = x01ProfileIdentitySet(profileId, allProfiles);
   const knownIds = x01KnownProfileIds(allProfiles);
   const ownerMatchesProfile = owners.some((id) => profileIds.has(id));
 
-  // PRIVÉ réel = visible uniquement pour le propriétaire.
-  // On considère privé si le set est explicitement privé OU s'il est rattaché
-  // à un profil local connu.
   const ownerIsKnownProfile = owners.some((id) => knownIds.has(id));
   if (x01IsExplicitPrivate(set) || ownerIsKnownProfile) return ownerMatchesProfile;
 
-  // Anciennes données ambiguës : si aucun flag privé fiable ne rattache le set
-  // à un joueur, on le traite comme bibliothèque publique plutôt que de cacher
-  // tous les publics aux profils sans set privé.
+  // Données anciennes sans propriétaire clair : on les garde visibles plutôt que
+  // de vider le sélecteur d'un profil sans set privé.
   return true;
 }
 
