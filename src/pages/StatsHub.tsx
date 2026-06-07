@@ -556,14 +556,15 @@ type Props = {
 const toArr = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
 const toObj = <T,>(v: any): T => (v && typeof v === "object" ? v : ({} as T));
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
-const lc = (v: any): string => String(v ?? "").toLowerCase();
+const lc = (v: any): string => {
+  try { return String(v ?? "").toLocaleLowerCase(); } catch { return ""; }
+};
 const fmtDate = (ts?: number) =>
   new Date(N(ts, Date.now())).toLocaleString();
 
 const normPlayerName = (v: any) =>
-  String(v ?? "")
+  lc(v)
     .trim()
-    .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, " ");
@@ -1266,9 +1267,8 @@ function statHubIdMatches(a: any, b: any): boolean {
 }
 
 function statHubNormName(v: any): string {
-  return String(v ?? "")
+  return lc(v)
     .trim()
-    .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ");
@@ -1478,7 +1478,7 @@ function buildDashboardForPlayer(
     const truthyWin = [pstat?.win, pstat?.won, pstat?.winner, pstat?.isWinner, pstat?.victory, pstat?.hasWon].some((v) => v === true || v === 1 || v === "1");
     if (truthyWin) return true;
 
-    const resultText = String(
+    const resultText = lc(
       pstat?.result ??
       pstat?.outcome ??
       pstat?.status ??
@@ -1486,7 +1486,7 @@ function buildDashboardForPlayer(
       pstat?.finalResult ??
       pstat?.label ??
       ""
-    ).trim().toLowerCase();
+    ).trim();
     if (["w", "win", "winner", "won", "victory", "victoire", "gagne", "gagné", "vainqueur", "1er", "1ere", "1ère"].includes(resultText)) return true;
 
     const place = Number(pstat?.place ?? pstat?.rank ?? pstat?.finalRank ?? pstat?.position ?? pstat?.standing ?? 0);
@@ -6142,7 +6142,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const truthy = [pl?.win, pl?.won, pl?.winner, pl?.isWinner, pl?.victory, pl?.hasWon].some((v) => v === true || v === 1 || v === "1");
     if (truthy) return true;
 
-    const resultText = String(
+    const resultText = lc(
       pl?.result ??
       pl?.outcome ??
       pl?.status ??
@@ -6150,7 +6150,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       pl?.finalResult ??
       pl?.label ??
       ""
-    ).trim().toLowerCase();
+    ).trim();
     if (["w", "win", "winner", "won", "victory", "victoire", "gagne", "gagné", "vainqueur", "1er", "1ere", "1ère"].includes(resultText)) return true;
 
     const place = Number(pl?.place ?? pl?.rank ?? pl?.finalRank ?? pl?.position ?? pl?.standing ?? 0);
