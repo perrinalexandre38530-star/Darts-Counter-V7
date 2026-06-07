@@ -21,6 +21,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
 import {
+  getAllDartSets,
   getAllSelectableDartSets,
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
@@ -252,6 +253,7 @@ type PlayerDartBadgeProps = {
   dartSetId?: string | null;
   onChange: (id: string | null) => void;
   compact?: boolean;
+  allProfiles?: any[];
 };
 
 function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
@@ -278,44 +280,131 @@ function getDartSetThumbSrc(set: any): string | null {
   return getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || null;
 }
 
+function x01NormId(value: any): string {
+  return String(value || "").trim();
+}
+
+function x01NormText(value: any): string {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function x01IsGlobalOwnerId(value: any): boolean {
+  const id = x01NormText(value);
+  return !id || ["global", "public", "shared", "all", "default", "library", "bibliotheque", "commun", "common"].includes(id);
+}
+
+function x01ScopeFlag(set: any): string {
+  return x01NormText(set?.scope || set?.visibility || set?.access || set?.sharing || set?.shareScope || "");
+}
+
+function x01OwnerIds(set: any): string[] {
+  const raw = [
+    set?.profileId,
+    set?.profile_id,
+    set?.ownerProfileId,
+    set?.localProfileId,
+    set?.linkedTargetLocalProfileId,
+    set?.privateProfileId,
+    set?.targetLocalProfileId,
+    set?.targetProfileId,
+  ];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of raw) {
+    const id = x01NormId(v);
+    if (!id || x01IsGlobalOwnerId(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function x01ProfileIdentitySet(profileId: string, allProfiles: any[] = []): Set<string> {
+  const ids = new Set<string>();
+  const add = (v: any) => {
+    const id = x01NormId(v);
+    if (id && !x01IsGlobalOwnerId(id)) ids.add(id);
+  };
+  add(profileId);
+  const pid = x01NormId(profileId);
+  for (const p of Array.isArray(allProfiles) ? allProfiles : []) {
+    const values = [p?.id, p?.profileId, p?.localProfileId, p?.playerId, p?.uid, p?.uuid];
+    if (values.map(x01NormId).includes(pid)) values.forEach(add);
+  }
+  return ids;
+}
+
+function x01KnownProfileIds(allProfiles: any[] = []): Set<string> {
+  const ids = new Set<string>();
+  const add = (v: any) => {
+    const id = x01NormId(v);
+    if (id && !x01IsGlobalOwnerId(id)) ids.add(id);
+  };
+  for (const p of Array.isArray(allProfiles) ? allProfiles : []) {
+    [p?.id, p?.profileId, p?.localProfileId, p?.playerId, p?.uid, p?.uuid].forEach(add);
+  }
+  return ids;
+}
+
+function x01HasExplicitPrivateTarget(set: any): boolean {
+  return Boolean(x01NormId(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
+}
+
+function x01IsExplicitPrivate(set: any): boolean {
+  const flag = x01ScopeFlag(set);
+  return flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
+}
+
 function x01IsPublicDartSet(set: any): boolean {
-  const profileId = String(set?.profileId || set?.ownerProfileId || set?.localProfileId || "").trim().toLowerCase();
-  const scope = String(set?.scope || set?.visibility || set?.access || "").trim().toLowerCase();
+  const flag = x01ScopeFlag(set);
+  const owners = x01OwnerIds(set);
   return (
-    scope === "public" ||
-    scope === "global" ||
+    flag === "public" ||
+    flag === "global" ||
+    flag === "shared" ||
+    flag === "all" ||
     set?.isPublic === true ||
     set?.public === true ||
     set?.shared === true ||
-    profileId === "" ||
-    profileId === "global" ||
-    profileId === "public" ||
-    profileId === "shared" ||
-    profileId === "all"
+    owners.length === 0
   );
 }
 
-function x01DartSetMatchesProfile(set: any, profileId: string): boolean {
-  const pid = String(profileId || "").trim();
-  if (!pid || !set) return false;
-  if (x01IsPublicDartSet(set)) return true;
+function x01DartSetMatchesProfile(set: any, profileId: string, allProfiles: any[] = []): boolean {
+  const ids = x01ProfileIdentitySet(profileId, allProfiles);
+  if (!ids.size || !set) return false;
+  const owners = x01OwnerIds(set);
+  if (!owners.length) return true;
+  return owners.some((id) => ids.has(id));
+}
 
-  // Privé strict : uniquement le profil réellement propriétaire.
-  // Pas d'alias compte actif, pas de fallback global, sinon les sets privés
-  // apparaissent chez tous les joueurs sélectionnés.
-  const owners = [
-    set.profileId,
-    set.profile_id,
-    set.ownerProfileId,
-    set.localProfileId,
-    set.linkedTargetLocalProfileId,
-    set.privateProfileId,
-    set.targetLocalProfileId,
-    set.targetProfileId,
-  ]
-    .map((v) => String(v || "").trim())
-    .filter((v) => v && !["global", "public", "shared", "all", "default", "library"].includes(v.toLowerCase()));
-  return owners.includes(pid);
+function x01DartSetSelectableForProfile(set: any, profileId: string, allProfiles: any[] = []): boolean {
+  if (!set) return false;
+
+  // PUBLIC réel = toujours visible pour tous. C'est la règle attendue.
+  if (x01IsPublicDartSet(set) && !x01HasExplicitPrivateTarget(set)) return true;
+
+  const owners = x01OwnerIds(set);
+  const profileIds = x01ProfileIdentitySet(profileId, allProfiles);
+  const knownIds = x01KnownProfileIds(allProfiles);
+  const ownerMatchesProfile = owners.some((id) => profileIds.has(id));
+
+  // PRIVÉ réel = visible uniquement pour le propriétaire.
+  // On considère privé si le set est explicitement privé OU s'il est rattaché
+  // à un profil local connu.
+  const ownerIsKnownProfile = owners.some((id) => knownIds.has(id));
+  if (x01IsExplicitPrivate(set) || ownerIsKnownProfile) return ownerMatchesProfile;
+
+  // Anciennes données ambiguës : si aucun flag privé fiable ne rattache le set
+  // à un joueur, on le traite comme bibliothèque publique plutôt que de cacher
+  // tous les publics aux profils sans set privé.
+  return true;
 }
 
 function x01DedupeDartSets(list: DartSet[]): DartSet[] {
@@ -336,6 +425,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   dartSetId,
   onChange,
   compact = false,
+  allProfiles = [],
 }) => {
   const { theme, palette } = useTheme() as any;
   const { lang } = useLang() as any;
@@ -352,10 +442,13 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     // Source stricte : uniquement la bibliothèque MES FLÉCHETTES officielle.
     // getDartSetsForProfile peut servir ailleurs, mais ici on filtre nous-mêmes
     // pour garantir : PUBLICS pour tous + PRIVÉS du joueur uniquement.
-    const library = getAllSelectableDartSets() || [];
-    const publicSets = library.filter((set: any) => x01IsPublicDartSet(set));
-    const ownPrivateSets = library.filter((set: any) => !x01IsPublicDartSet(set) && x01DartSetMatchesProfile(set, profileId));
-    const all = x01DedupeDartSets([...publicSets, ...ownPrivateSets]);
+    const library = x01DedupeDartSets([
+      ...(getAllSelectableDartSets() || []),
+      ...(getAllDartSets() || []),
+    ] as any);
+    const all = x01DedupeDartSets(
+      library.filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles))
+    );
 
     try {
       if (typeof window !== "undefined" && (window as any).__DARTSETS_DEBUG === true) {
@@ -363,14 +456,14 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           profileId,
           libraryCount: library.length,
           count: all.length,
-          publicCount: all.filter((x: any) => x01IsPublicDartSet(x)).length,
-          privateCount: all.filter((x: any) => !x01IsPublicDartSet(x)).length,
+          publicCount: all.filter((x: any) => x01IsPublicDartSet(x) && !x01IsExplicitPrivate(x)).length,
+          privateCount: all.filter((x: any) => x01IsExplicitPrivate(x)).length,
           names: all.map((x: any) => `${x?.name || "SET"}:${x?.scope || "?"}:${x?.profileId || "?"}`).slice(0, 20),
         });
       }
     } catch {}
     setSets(sortDartSetsForProfilePicker(all));
-  }, [profileId]);
+  }, [profileId, allProfiles]);
 
   React.useEffect(() => {
     reloadSets();
@@ -1268,6 +1361,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                     dartSetId={playerDartSets[p.id] ?? null}
                     onChange={(id) => handleChangePlayerDartSet(p.id, id)}
                     compact
+                    allProfiles={humanProfiles}
                   />
                 )}
               />
