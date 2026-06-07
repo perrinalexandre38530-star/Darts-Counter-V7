@@ -13,6 +13,46 @@ function profileLevel(profile: any): number {
   return 0;
 }
 
+function usageKeyOf(value: any): string {
+  return String(value ?? "").trim();
+}
+
+function bumpUsage(map: Record<string, number>, value: any, weight = 1) {
+  const key = usageKeyOf(value);
+  if (!key) return;
+  map[key] = (map[key] || 0) + weight;
+}
+
+function collectPlayerUsageFromRows(rows: any[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  const visitPlayer = (p: any, weight = 1) => {
+    if (!p || typeof p !== "object") return;
+    const ids = [p.id, p.profileId, p.playerId, p.localProfileId, p.uid].filter(Boolean);
+    for (const id of ids) bumpUsage(out, id, weight);
+  };
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const buckets = [
+      row?.players,
+      row?.participants,
+      row?.summary?.players,
+      row?.summary?.participants,
+      row?.payload?.players,
+      row?.payload?.participants,
+      row?.payload?.config?.players,
+      row?.payload?.config?.participants,
+      row?.resume?.players,
+      row?.resume?.config?.players,
+      row?.game?.players,
+    ];
+    for (const bucket of buckets) {
+      if (Array.isArray(bucket)) bucket.forEach((x) => visitPlayer(x, 1));
+    }
+    const winnerId = row?.winnerId ?? row?.summary?.winnerId ?? row?.payload?.winnerId ?? row?.payload?.summary?.winnerId;
+    bumpUsage(out, winnerId, 0.25);
+  }
+  return out;
+}
+
 export default function PlayerPagedSelector({
   profiles,
   selectedIds,
@@ -26,9 +66,27 @@ export default function PlayerPagedSelector({
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [listOpen, setListOpen] = React.useState(false);
+  const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>({});
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const mod = await import("../lib/history");
+        const rows = await mod.History.list().catch(() => []);
+        if (alive) setHistoryUsageById(collectPlayerUsageFromRows(rows as any[]));
+      } catch {
+        if (alive) setHistoryUsageById({});
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const ordered = React.useMemo(() => {
     const usageScore = (p: any): number => {
+      const ids = [p?.id, p?.profileId, p?.playerId, p?.localProfileId, p?.uid].map(usageKeyOf).filter(Boolean);
+      let best = 0;
+      for (const id of ids) best = Math.max(best, Number(historyUsageById[id] || 0));
       const candidates = [
         p?.usageCount,
         p?.useCount,
@@ -46,7 +104,6 @@ export default function PlayerPagedSelector({
         p?.cricket?.played,
         p?.killer?.played,
       ];
-      let best = 0;
       for (const raw of candidates) {
         const n = Number(raw);
         if (Number.isFinite(n)) best = Math.max(best, n);
@@ -59,7 +116,7 @@ export default function PlayerPagedSelector({
       if (usageDelta !== 0) return usageDelta;
       return nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base", numeric: true });
     });
-  }, [profiles]);
+  }, [profiles, historyUsageById]);
 
   const selected = React.useMemo(() => ordered.filter((p: any) => selectedIds?.includes(p.id)), [ordered, selectedIds]);
   const pages = Math.max(1, Math.ceil(ordered.length / pageSize));

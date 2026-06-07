@@ -1,4 +1,4 @@
-import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
+import { safeLocalStorageGetJson, safeLocalStorageSetJson, unpackJsonFromStorage } from "./imageStorageCodec";
 import { dartPresets } from "./dartPresets";
 import { getNasApiUrl } from "./serverConfig";
 
@@ -67,6 +67,7 @@ export interface DartSet {
 
 const STORAGE_KEY = "dc_dart_sets_v1";
 const META_KEY = "dc_dart_sets_v1_meta";
+const IMAGE_BANK_KEY = "dc_dart_sets_image_bank_v1";
 const LEGACY_DARTSET_STORAGE_KEYS = [
   "dc-dartsets-v1",
   "dc-dartSets-v1",
@@ -76,7 +77,7 @@ const LEGACY_DARTSET_STORAGE_KEYS = [
 
 // Les photos sont compressées côté panel. On accepte large pour ne plus remplacer
 // des photos valides par le placeholder 🎯 au premier souci de quota.
-const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 2_500_000;
+const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 8_000_000;
 
 type DartSetsMeta = {
   initialized?: boolean;
@@ -266,22 +267,46 @@ function resolvePresetForSet(raw: any) {
   );
 }
 
+function readNestedImage(raw: any, ...paths: string[]): string {
+  for (const path of paths || []) {
+    const parts = String(path || "").split(".").filter(Boolean);
+    let cur = raw;
+    for (const part of parts) cur = cur?.[part];
+    const v = sanitizeDartSetImageUrl(cur);
+    if (v) return v;
+  }
+  return "";
+}
+
 function readMainImage(raw: any): string {
   const direct = pickImageLike(
     raw,
     "mainImageUrl",
+    "mainImage",
     "photoUrl",
+    "photo",
     "imageUrl",
+    "image",
+    "src",
+    "url",
+    "dataUrl",
+    "dataURL",
     "imgUrlMain",
     "imgUrl",
     "photoDataUrl",
     "imageDataUrl",
     "mainImageDataUrl",
-    "dartSetImageDataUrl"
+    "dartSetImageDataUrl",
+    "visualUrl",
+    "pictureUrl",
+    "customImageUrl"
   );
   if (direct) return direct;
 
-  const asset = mediaUrlFromAssetId(raw?.mainImageAssetId || raw?.photoAssetId || raw?.imageAssetId || raw?.dartSetImageAssetId);
+  const nested = readNestedImage(raw, "main.url", "main.src", "image.url", "image.src", "photo.url", "photo.src", "media.url", "media.publicUrl", "media.path", "asset.url", "asset.publicUrl");
+  if (nested) return nested;
+
+  const asset = mediaUrlFromAssetId(raw?.mainImageAssetId || raw?.photoAssetId || raw?.imageAssetId || raw?.dartSetImageAssetId || raw?.mediaAssetId || raw?.assetId || raw?.asset_id);
   if (asset) return asset;
 
   const preset = resolvePresetForSet(raw);
@@ -292,6 +317,8 @@ function readThumbImage(raw: any): string | undefined {
   const direct = pickImageLike(
     raw,
     "thumbImageUrl",
+    "thumbnailUrl",
+    "thumb",
     "photoThumbUrl",
     "thumbUrl",
     "imgUrlThumb",
@@ -299,13 +326,22 @@ function readThumbImage(raw: any): string | undefined {
     "thumbDataUrl",
     "thumbImageDataUrl",
     "mainImageUrl",
+    "mainImage",
     "photoDataUrl",
     "imageDataUrl",
-    "imageUrl"
+    "imageUrl",
+    "image",
+    "src",
+    "url",
+    "dataUrl",
+    "dataURL"
   );
   if (direct) return direct;
 
-  const asset = mediaUrlFromAssetId(raw?.thumbImageAssetId || raw?.photoThumbAssetId || raw?.mainImageAssetId || raw?.photoAssetId || raw?.imageAssetId || raw?.dartSetImageAssetId);
+  const nested = readNestedImage(raw, "thumb.url", "thumb.src", "thumbnail.url", "thumbnail.src", "image.thumb", "photo.thumb", "media.thumbUrl", "media.url", "asset.thumbUrl", "asset.url");
+  if (nested) return nested;
+
+  const asset = mediaUrlFromAssetId(raw?.thumbImageAssetId || raw?.photoThumbAssetId || raw?.mainImageAssetId || raw?.photoAssetId || raw?.imageAssetId || raw?.dartSetImageAssetId || raw?.mediaAssetId || raw?.assetId || raw?.asset_id);
   if (asset) return asset;
 
   const preset = resolvePresetForSet(raw);
@@ -401,11 +437,123 @@ function readPrimaryRaw(): any[] {
   return readDartSetArrayFromLocalStorageKey(STORAGE_KEY);
 }
 
+let deepRecoveryCacheAt = 0;
+let deepRecoveryCache: any[] = [];
+
+function readLocalStorageJsonLoose(key: string): any {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return unpackJsonFromStorage<any>(raw, null);
+  } catch {
+    return null;
+  }
+}
+
+function objectHasImageCandidate(obj: any): boolean {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  if (readMainImage(obj) || readThumbImage(obj)) return true;
+  return Boolean(
+    obj.mainImageAssetId || obj.thumbImageAssetId || obj.photoAssetId || obj.imageAssetId || obj.dartSetImageAssetId || obj.mediaAssetId || obj.assetId ||
+      obj.photoDataUrl || obj.imageDataUrl || obj.mainImageDataUrl || obj.dartSetImageDataUrl || obj.dataUrl || obj.dataURL
+  );
+}
+
+function objectLooksLikeDartSetCandidate(obj: any, path = ""): boolean {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  const keys = Object.keys(obj).join("|").toLowerCase();
+  const p = String(path || "").toLowerCase();
+  const hasName = !!s(obj.name || obj.label || obj.title || obj.presetName);
+  const hasDartSetHint = /dartset|dart_set|dartsets|dartsets|fléchette|flechette|preset|mainimage|thumbimage|photoasset|imageasset/.test(`${p}|${keys}`);
+  const hasProductHint = Boolean(obj.brand || obj.weightGrams || obj.weight || obj.presetId || obj.dartPresetId || obj.kind === "photo" || obj.kind === "preset");
+  return hasName && (objectHasImageCandidate(obj) || hasDartSetHint || hasProductHint);
+}
+
+function collectDeepDartSetCandidates(root: any, sourceKey = ""): any[] {
+  const out: any[] = [];
+  const seen = new Set<any>();
+  let nodes = 0;
+  const maxNodes = 25000;
+
+  const walk = (value: any, path = "") => {
+    if (value == null || nodes >= maxNodes) return;
+    if (typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    nodes += 1;
+
+    if (Array.isArray(value)) {
+      if (/dartset|dartsets|dart_sets|flechette|fléchette/i.test(path)) {
+        for (const item of value) if (item && typeof item === "object") out.push(item);
+      }
+      for (let i = 0; i < value.length && nodes < maxNodes; i += 1) walk(value[i], `${path}[${i}]`);
+      return;
+    }
+
+    if (objectLooksLikeDartSetCandidate(value, path)) out.push(value);
+
+    for (const [key, child] of Object.entries(value)) {
+      if (nodes >= maxNodes) break;
+      const nextPath = path ? `${path}.${key}` : key;
+      if (/dartset|dartsets|dart_sets/i.test(String(key))) {
+        out.push(...normalizeDartSetArray(child));
+      }
+      walk(child, nextPath);
+    }
+  };
+
+  walk(root, sourceKey);
+  const bySig = new Map<string, any>();
+  for (const item of out) {
+    const name = normalizeText(item?.name || item?.label || item?.title || "");
+    const img = imageIdentity(item) || readMainImage(item) || readThumbImage(item) || s(item?.id || item?.presetId || "");
+    const key = `${name}|${img}|${s(item?.profileId || item?.ownerProfileId || item?.localProfileId || "")}`;
+    if (!bySig.has(key)) bySig.set(key, item);
+  }
+  return Array.from(bySig.values());
+}
+
+function readDeepRecoveryRaw(): any[] {
+  try {
+    const now = Date.now();
+    if (now - deepRecoveryCacheAt < 1500) return deepRecoveryCache.slice();
+    const out: any[] = [];
+    if (typeof window !== "undefined" && window.localStorage) {
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const key = window.localStorage.key(i) || "";
+        if (!key) continue;
+        // On scanne large mais on ignore les historiques massifs inutiles au visuel.
+        if (/history|match-backups|events|sessions|crash|log/i.test(key) && !/dartset|store|profile/i.test(key)) continue;
+        const parsed = readLocalStorageJsonLoose(key);
+        if (!parsed || typeof parsed !== "object") continue;
+        out.push(...collectDeepDartSetCandidates(parsed, key));
+      }
+    }
+    deepRecoveryCacheAt = now;
+    deepRecoveryCache = out;
+    return out.slice();
+  } catch {
+    return [];
+  }
+}
+
+function readImageBankRaw(): any[] {
+  try {
+    const bank = safeLocalStorageGetJson<Record<string, any>>(IMAGE_BANK_KEY, {}) || {};
+    return Object.values(bank).filter((item) => item && typeof item === "object");
+  } catch {
+    return [];
+  }
+}
+
 function readRecoveryRaw(): any[] {
   const store = appStoreSnapshot();
   const out: any[] = [];
   out.push(...normalizeDartSetArray(store?.dartSets || store?.dartsets));
   for (const key of LEGACY_DARTSET_STORAGE_KEYS) out.push(...readDartSetArrayFromLocalStorageKey(key));
+  out.push(...readImageBankRaw());
+  out.push(...readDeepRecoveryRaw());
   return out;
 }
 
@@ -625,6 +773,86 @@ function recoveryKeyLoose(set: any): string {
   return name ? `name:${name}` : imageIdentity(set) ? `visual:${imageIdentity(set)}` : "";
 }
 
+function imageBankKeysForSet(set: any): string[] {
+  const name = normalizeText(set?.name || set?.label || set?.title || "");
+  return uniqStrings([
+    s(set?.id) ? `id:${s(set?.id)}` : "",
+    s(set?.linkedSourceDartSetId) ? `id:${s(set?.linkedSourceDartSetId)}` : "",
+    name ? `name:${name}` : "",
+    canonicalKeyForSet(set) ? `canon:${canonicalKeyForSet(set)}` : "",
+    recoveryKeyLoose(set) ? `loose:${recoveryKeyLoose(set)}` : "",
+    imageIdentity(set) ? `visual:${imageIdentity(set)}` : "",
+  ]);
+}
+
+function extractImageBankEntry(raw: any): any | null {
+  if (!raw || typeof raw !== "object") return null;
+  const main = readMainImage(raw);
+  const thumb = readThumbImage(raw) || main;
+  const mainAsset = s(raw?.mainImageAssetId || raw?.photoAssetId || raw?.imageAssetId || raw?.dartSetImageAssetId || raw?.mediaAssetId || raw?.assetId || "");
+  const thumbAsset = s(raw?.thumbImageAssetId || raw?.photoThumbAssetId || raw?.mainImageAssetId || raw?.photoAssetId || raw?.imageAssetId || "");
+  if (!main && !thumb && !mainAsset && !thumbAsset) return null;
+  const normalized = normalizeDartSetForRuntime(raw, { allowDeleted: true });
+  if (!normalized) return null;
+  return sanitizeDartSetForStorage({
+    ...normalized,
+    mainImageUrl: main || normalized.mainImageUrl || "",
+    thumbImageUrl: thumb || normalized.thumbImageUrl,
+    mainImageAssetId: mainAsset || normalized.mainImageAssetId || null,
+    thumbImageAssetId: thumbAsset || normalized.thumbImageAssetId || null,
+    photoAssetId: mainAsset || normalized.photoAssetId || null,
+    photoDataUrl: raw.photoDataUrl || normalized.photoDataUrl,
+    imageDataUrl: raw.imageDataUrl || normalized.imageDataUrl,
+    mainImageDataUrl: raw.mainImageDataUrl || normalized.mainImageDataUrl,
+    dartSetImageDataUrl: raw.dartSetImageDataUrl || normalized.dartSetImageDataUrl,
+    photoThumbDataUrl: raw.photoThumbDataUrl || normalized.photoThumbDataUrl,
+    thumbDataUrl: raw.thumbDataUrl || normalized.thumbDataUrl,
+    thumbImageDataUrl: raw.thumbImageDataUrl || normalized.thumbImageDataUrl,
+    updatedAt: Math.max(n(normalized.updatedAt, 0), Date.now()),
+  });
+}
+
+function rememberImagesForSets(rawList: any[]) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const bank = safeLocalStorageGetJson<Record<string, any>>(IMAGE_BANK_KEY, {}) || {};
+    let changed = false;
+    for (const raw of rawList || []) {
+      const entry = extractImageBankEntry(raw);
+      if (!entry) continue;
+      const keys = imageBankKeysForSet(entry);
+      for (const key of keys) {
+        const old = bank[key];
+        if (!old || scoreDartSetForCanonical(entry) >= scoreDartSetForCanonical(old)) {
+          bank[key] = entry;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) return;
+    safeLocalStorageSetJson(IMAGE_BANK_KEY, bank, {
+      sanitizeImages: false,
+      compressAboveChars: 8_000,
+    });
+  } catch (err) {
+    console.warn("[DartSetsDiag] image-bank save failed", err);
+  }
+}
+
+function recoverImageForSet(set: any): DartSet | null {
+  if (!set) return null;
+  const candidates = [
+    ...readImageBankRaw(),
+    ...readDeepRecoveryRaw(),
+    ...normalizeDartSetArray(appStoreSnapshot()?.dartSets || appStoreSnapshot()?.dartsets),
+  ];
+  if (!candidates.length) return null;
+  const indexes = buildRecoveryIndexes(candidates);
+  const strictList = indexes.strict.get(recoveryKeyStrict(set)) || [];
+  const looseList = indexes.loose.get(recoveryKeyLoose(set)) || [];
+  return strictList[0] || looseList[0] || null;
+}
+
 function buildRecoveryIndexes(rawRecovery: any[]) {
   const strict = new Map<string, DartSet[]>();
   const loose = new Map<string, DartSet[]>();
@@ -690,9 +918,13 @@ function loadPrimaryAuthoritative(): DartSet[] {
     // Si la clé officielle existe, même vide, on ne réimporte jamais les vieux stores.
     // Si elle n'existe pas encore, on bootstrap une seule fois depuis appStore/legacy.
     const raw = primaryExists ? primaryRaw : readRecoveryRaw();
+    const recovery = readRecoveryRaw();
+    rememberImagesForSets([...raw, ...recovery]);
     const primary = mergePrimaryDuplicates(raw);
-    const enriched = enrichImagesFromRecovery(primary, readRecoveryRaw());
-    return mergePrimaryDuplicates(enriched);
+    const enriched = enrichImagesFromRecovery(primary, recovery);
+    const finalList = mergePrimaryDuplicates(enriched);
+    installDartSetsDiagnostics(finalList, recovery);
+    return finalList;
   } catch (err) {
     console.warn("[dartSetsStore] load error", err);
     return [];
@@ -714,18 +946,32 @@ function stripHeavyInlineImagesForFallback(list: DartSet[]): DartSet[] {
 }
 
 function savePrimary(list: DartSet[], reason = "save"): boolean {
+  rememberImagesForSets(Array.isArray(list) ? list : []);
   const sanitized = mergePrimaryDuplicates(Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
   let saved = false;
 
   try {
+    // 1er essai : ne pas couper les photos valides. Le packer compresse déjà la clé.
     saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
-      sanitizeImages: true,
-      imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+      sanitizeImages: false,
       compressAboveChars: 12_000,
     });
   } catch (err) {
     console.warn("[dartSetsStore] save error", err);
     saved = false;
+  }
+
+  if (!saved) {
+    try {
+      saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
+        sanitizeImages: true,
+        imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+        compressAboveChars: 12_000,
+      });
+    } catch (err) {
+      console.warn("[dartSetsStore] save sanitized error", err);
+      saved = false;
+    }
   }
 
   if (!saved) {
@@ -905,6 +1151,34 @@ function replacePrimaryWith(list: any[], reason: string): boolean {
   return savePrimary(enriched, reason);
 }
 
+function installDartSetsDiagnostics(list: DartSet[] = [], recovery: any[] = []) {
+  try {
+    if (typeof window === "undefined") return;
+    const w: any = window as any;
+    if (w.__DARTSETS_IMAGE_DIAG_INSTALLED__) return;
+    w.__DARTSETS_IMAGE_DIAG_INSTALLED__ = true;
+    w.__DARTSETS_IMAGE_DIAG = () => {
+      const sets = loadPrimaryAuthoritative();
+      const rows = sets.map((set) => ({
+        id: set.id,
+        name: set.name,
+        scope: set.scope,
+        profileId: set.profileId,
+        kind: set.kind,
+        presetId: set.presetId,
+        main: Boolean(readMainImage(set)),
+        thumb: Boolean(readThumbImage(set)),
+        recoveredMain: Boolean(recoverImageForSet(set) && readMainImage(recoverImageForSet(set))),
+        imageKeys: Object.keys(set || {}).filter((k) => /image|photo|thumb|asset|url/i.test(k)),
+      }));
+      console.table(rows);
+      console.info("[DartSetsDiag] image recovery", { officialCount: sets.length, recoveryCount: readRecoveryRaw().length, bankCount: readImageBankRaw().length });
+      return rows;
+    };
+    diag("image-diag:installed", { officialCount: list.length, recoveryCount: recovery.length });
+  } catch {}
+}
+
 // -------------------------------------------------------------
 // API publique
 // -------------------------------------------------------------
@@ -951,12 +1225,21 @@ export function getDartSetAliases(id: DartSetId | null | undefined): string[] {
 
 export function getDartSetMainImageSrc(set: any): string | null {
   const src = readMainImage(set);
-  return src || null;
+  if (src) return src;
+  const recovered = recoverImageForSet(set);
+  const recoveredSrc = recovered ? readMainImage(recovered) || readThumbImage(recovered) : "";
+  if (!recoveredSrc) {
+    try { console.info("[DartSetsDiag] image:missing", { id: set?.id, name: set?.name, presetId: set?.presetId, keys: Object.keys(set || {}).filter((k) => /image|photo|thumb|asset|url/i.test(k)) }); } catch {}
+  }
+  return recoveredSrc || null;
 }
 
 export function getDartSetThumbImageSrc(set: any): string | null {
   const src = readThumbImage(set) || readMainImage(set);
-  return src || null;
+  if (src) return src;
+  const recovered = recoverImageForSet(set);
+  const recoveredSrc = recovered ? readThumbImage(recovered) || readMainImage(recovered) : "";
+  return recoveredSrc || null;
 }
 
 function normalizeDartSetMutationPatch(patch: any): any {
