@@ -150,6 +150,13 @@ function isUrlishText(value: any): boolean {
   return raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/media/") || raw.startsWith("/images/") || raw.startsWith("data:image/") || raw.includes("darts-counter-v7.pages.dev") || raw.includes("/assets/");
 }
 
+function isSyntheticRecoveredDartSet(raw: any): boolean {
+  const id = s(raw?.id || raw?.dartSetId || raw?.setId || "").toLowerCase();
+  // Ces IDs ont été créés par d'anciennes rustines de récupération/fallback.
+  // Ils ne correspondent pas à des dartsets réellement créés dans MES FLÉCHETTES.
+  return id.startsWith("builtin_public_") || id.startsWith("dartset_recovered_") || id.startsWith("recovered_dartset_");
+}
+
 function valueLooksLikeAvatarOrProfileImage(value: any): boolean {
   const raw = s(value).toLowerCase();
   return raw.includes("avatar") || raw.includes("profile") || raw.includes("profil") || raw.includes("medallion") || raw.includes("logo-equipe") || raw.includes("team-logo") || raw.includes("league") || raw.includes("cover");
@@ -213,6 +220,7 @@ function isKnownDartPresetName(value: any): boolean {
 
 function isLikelyBadRecoveredDartSet(raw: any): boolean {
   if (!raw || typeof raw !== "object") return true;
+  if (isSyntheticRecoveredDartSet(raw)) return true;
   const name = s(raw?.name || raw?.label || raw?.title || raw?.presetName || "");
   const normName = normalizeText(name);
   if (!normName) return true;
@@ -1171,18 +1179,16 @@ function loadPrimaryAuthoritative(): DartSet[] {
     const primaryExists = hasLocalStorageKey(STORAGE_KEY);
     const primaryRaw = readPrimaryRaw();
 
-    // Si la clé officielle existe, on la garde comme source de vérité pour les
-    // champs éditables. MAIS on ne doit pas perdre les sets publics encore présents
-    // dans un ancien snapshot/appStore : ils sont réintroduits uniquement comme
-    // PUBLIC/global, sans reprendre favori/propriétaire privés.
+    // Source de vérité stricte : uniquement dc_dart_sets_v1 quand elle existe.
+    // Les anciennes sources ne peuvent plus recréer de sets sélectionnables
+    // (sinon on réinjecte presets imaginaires, profils, teams et URLs).
     const recovery = readRecoveryRaw();
     const imageRecovery = readImageRecoveryRaw();
     const raw = filterOutPollutedDartSets(primaryExists ? primaryRaw : recovery);
-    rememberImagesForSets([...raw, ...recovery, ...imageRecovery]);
+
+    rememberImagesForSets([...raw, ...imageRecovery]);
     const primary = mergePrimaryDuplicates(raw);
-    const enriched = enrichImagesFromRecovery(primary, imageRecovery);
-    const publicRecovered = primaryExists ? recoverMissingPublicDartSetsForSelector(enriched, recovery) : [];
-    const finalList = mergePrimaryDuplicates([...enriched, ...publicRecovered]);
+    const finalList = enrichImagesFromRecovery(primary, imageRecovery).filter((set) => !isLikelyBadRecoveredDartSet(set));
     installDartSetsDiagnostics(finalList, recovery);
     return finalList;
   } catch (err) {
@@ -1668,58 +1674,24 @@ function bgForPresetTheme(theme: any): string {
   return "#25273a";
 }
 
-function getBuiltInPublicPresetDartSets(existing: DartSet[] = []): DartSet[] {
-  const existingKeys = new Set<string>();
-  for (const set of existing || []) {
-    existingKeys.add(normalizeText(set?.presetId || ""));
-    existingKeys.add(normalizeText(set?.name || ""));
-  }
-
-  return (dartPresets || [])
-    .filter((preset: any) => preset?.id && preset?.name)
-    .filter((preset: any) => {
-      const pid = normalizeText(preset.id);
-      const pname = normalizeText(preset.name);
-      return !existingKeys.has(pid) && !existingKeys.has(pname);
-    })
-    .map((preset: any) => sanitizeDartSetForStorage({
-      id: `builtin_public_${preset.id}`,
-      profileId: "global",
-      name: String(preset.name || "Set public"),
-      brand: undefined,
-      weightGrams: undefined,
-      notes: undefined,
-      mainImageUrl: preset.imgUrlMain || preset.imgUrlThumb || "",
-      thumbImageUrl: preset.imgUrlThumb || preset.imgUrlMain || "",
-      bgColor: bgForPresetTheme(preset.theme),
-      kind: "preset",
-      presetId: preset.id,
-      isFavorite: false,
-      usageCount: 0,
-      lastUsedAt: 0,
-      scope: "public",
-      createdAt: 1,
-      updatedAt: 1,
-    }) as DartSet);
+function getBuiltInPublicPresetDartSets(_existing: DartSet[] = []): DartSet[] {
+  // Désactivé : le sélecteur ne doit jamais inventer de sets depuis les presets.
+  // Il doit afficher uniquement les dartsets réellement présents dans MES FLÉCHETTES.
+  return [];
 }
 
-function withSelectorPublicFallback(visible: DartSet[], all: DartSet[], reason: string): DartSet[] {
-  const cleanVisible = dedupeVisibleDartSets(visible || []);
-  const publicCount = cleanVisible.filter((set) => effectiveDartSetScope(set) === "public").length;
-  if (publicCount > 0) return cleanVisible;
-
-  const recoveredPublics = recoverMissingPublicDartSetsForSelector(all || [], readRecoveryRaw());
-  const builtins = getBuiltInPublicPresetDartSets([...(all || []), ...recoveredPublics]);
-  const result = dedupeVisibleDartSets([...cleanVisible, ...recoveredPublics, ...builtins]);
-  diag("selector-public-fallback", {
-    reason,
-    before: cleanVisible.length,
-    after: result.length,
-    recoveredPublics: recoveredPublics.length,
-    builtins: builtins.length,
-    names: result.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 16),
-  });
-  return result;
+function withSelectorPublicFallback(visible: DartSet[], _all: DartSet[], reason: string): DartSet[] {
+  const cleanVisible = dedupeVisibleDartSets((visible || []).filter((set) => !isLikelyBadRecoveredDartSet(set)));
+  try {
+    diag("selector:official-only", {
+      reason,
+      count: cleanVisible.length,
+      publicCount: cleanVisible.filter((set) => effectiveDartSetScope(set) === "public").length,
+      privateCount: cleanVisible.filter((set) => effectiveDartSetScope(set) !== "public").length,
+      names: cleanVisible.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 16),
+    });
+  } catch {}
+  return cleanVisible;
 }
 
 // -------------------------------------------------------------
@@ -1731,8 +1703,11 @@ export function getAllDartSets(): DartSet[] {
 }
 
 export function getAllSelectableDartSets(): DartSet[] {
-  // Pour le panneau global : bibliothèque officielle nettoyée.
-  return dedupeVisibleDartSets(loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set) && (!isLinkedRemoteLike(set) || Boolean(s((set as any).linkedTargetLocalProfileId)))));
+  // MES FLÉCHETTES = bibliothèque officielle créée par l'utilisateur.
+  // Aucun preset/fallback/récupération large ne doit apparaître ici.
+  return dedupeVisibleDartSets(
+    loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set) && !isSyntheticRecoveredDartSet(set))
+  );
 }
 
 export function setAllDartSets(list: DartSet[]) {
@@ -1741,14 +1716,17 @@ export function setAllDartSets(list: DartSet[]) {
 
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
-  const all = loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set));
-  const visible = all.filter((set) => pid ? profileCanSeeDartSet(set, pid) : effectiveDartSetScope(set) === "public");
+  const all = getAllSelectableDartSets();
+  const visible = all.filter((set) => {
+    const scope = effectiveDartSetScope(set);
+    if (scope === "public") return true;
+    return pid ? profileCanSeeDartSet(set, pid) : false;
+  });
   return withSelectorPublicFallback(visible, all, `profile:${pid || "none"}`);
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {
-  const all = loadAll();
-  return findDartSetByIdIn([...all, ...getBuiltInPublicPresetDartSets(all)], id);
+  return findDartSetByIdIn(loadAll(), id);
 }
 
 export function getCanonicalDartSetId(id: DartSetId | null | undefined, profileId?: string | null): string | null {
