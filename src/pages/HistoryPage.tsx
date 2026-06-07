@@ -33,6 +33,7 @@ import logoDarts from "../assets/games/logo-darts.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoBabyfoot from "../assets/games/logo-babyfoot.png";
+import victoryCup from "../assets/victory.webp";
 
 
 /* ---------- Icônes ---------- */
@@ -827,6 +828,98 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
     })
     .filter(Boolean) as string[];
   return parts.join(" • ");
+}
+
+
+
+type HistoryScorePlayer = { name: string; main: string; sub?: string; rank?: number };
+
+function historyRankingRows(e: SavedEntry): any[] {
+  const anyE: any = e;
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
+  const result = data.result || {};
+  const rankings = data.rankings || result.rankings || result.players || data.players || result.standings || anyE.payload?.rankings || [];
+  return Array.isArray(rankings) ? rankings : [];
+}
+
+function historyScoreName(e: SavedEntry, r: any): string {
+  return cleanName(r?.name || r?.playerName || r?.displayName || r?.nickname || r?.label) || historyPlayerNameById(e, r?.id || r?.playerId || r?.profileId || r?.pid) || "Joueur";
+}
+
+function historyScoreNumber(raw: any, fallback = "0"): string {
+  const s = cleanScore(raw);
+  return s == null ? fallback : s;
+}
+
+function x01HistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
+  const anyE: any = e;
+  const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
+  const result = data.result || {};
+  const rows = historyRankingRows(e);
+  const looseMap = (map: any, r: any) => {
+    if (!map || typeof map !== "object") return undefined;
+    const ids = [r?.id, r?.playerId, r?.profileId, r?.selectedPlayerId, r?.pid].filter(Boolean).map(String);
+    for (const id of ids) if (Object.prototype.hasOwnProperty.call(map, id)) return map[id];
+    return undefined;
+  };
+  const setsMap = data.setsWonByPlayer || data.setsByPlayer || data.setsWon || data.setsScore || result.setsWonByPlayer || result.setsWon;
+  const legsMap = data.legsWonByPlayer || data.legsByPlayer || data.legsWon || data.legsScore || result.legsWonByPlayer || result.legsWon;
+  const remainingMap = data.remainingByPlayer || data.scoresByPlayer || data.scoreByPlayer || result.remainingByPlayer || result.scoresByPlayer;
+
+  const sourceRows = rows.length ? rows : (Array.isArray(anyE.players) ? anyE.players : []);
+  return sourceRows.map((r: any, idx: number) => {
+    const sets = historyScoreNumber(r?.setsWon ?? r?.sw ?? r?.sets ?? r?.setsScore ?? looseMap(setsMap, r));
+    const legs = historyScoreNumber(r?.legsWon ?? r?.lw ?? r?.legs ?? r?.legsScore ?? looseMap(legsMap, r));
+    const remaining = historyScoreNumber(
+      r?.remaining ?? r?.scoreRemaining ?? r?.currentScore ?? r?.scoreLeft ?? r?.left ?? r?.score ?? looseMap(remainingMap, r),
+      idx === 0 ? "0" : "0"
+    );
+    return {
+      name: historyScoreName(e, r),
+      main: sets,
+      sub: legs,
+      rank: Number(r?.rank ?? r?.position ?? idx + 1) || idx + 1,
+      remaining,
+    } as any;
+  }).filter((x: any) => x.name);
+}
+
+function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  if (!isX01Entry(e)) {
+    const s = summarizeScore(e);
+    return s ? <>{s}</> : null;
+  }
+  const players: any[] = x01HistoryScorePlayers(e);
+  if (!players.length) {
+    const s = summarizeScore(e);
+    return s ? <>{s}</> : null;
+  }
+  const isMulti = players.length > 2 || String(modeLabel(e) || "").toLowerCase().includes("multi");
+  const scoreStyle = { color: theme.primary, fontWeight: 950, textShadow: `0 0 9px ${theme.primary}55` };
+  if (!isMulti && players.length >= 2) {
+    const a = players[0];
+    const b = players[1];
+    return (
+      <span>
+        <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{a.name}</span>{" "}
+        <span style={scoreStyle}>({a.sub || "0"}) {a.main || "0"} - {b.main || "0"} ({b.sub || "0"})</span>{" "}
+        <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{b.name}</span>
+      </span>
+    );
+  }
+  const rankColor = (rank: number) => rank === 1 ? "#ffd76a" : rank === 2 ? "#dce6f2" : rank === 3 ? "#c98945" : "rgba(255,255,255,.88)";
+  return (
+    <span>
+      {players.map((p, idx) => (
+        <React.Fragment key={`${p.name}-${idx}`}>
+          {idx > 0 ? <span style={{ color: "rgba(255,255,255,.58)" }}> * </span> : null}
+          <span style={{ color: rankColor(p.rank || idx + 1), fontWeight: 950 }}>{p.rank || idx + 1}.</span>{" "}
+          <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{p.name}</span>{" "}
+          <span style={scoreStyle}>{p.remaining ?? p.main ?? "0"}</span>
+        </React.Fragment>
+      ))}
+    </span>
+  );
 }
 
 function summarizeScore(e: SavedEntry): string {
@@ -2760,8 +2853,9 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                         borderRadius: 999,
                         fontSize: 11,
                         fontWeight: 800,
-                        background: getModeColor(e) + "22",
-                        border: `1px solid ${getModeColor(e)}99`,
+                        background: `linear-gradient(180deg, ${getModeColor(e)}55, rgba(10,10,10,0.92))`,
+                        border: `1px solid ${getModeColor(e)}`,
+                        boxShadow: `inset 0 1px 0 rgba(255,255,255,.18), 0 0 12px ${getModeColor(e)}33`,
                         color: getModeColor(e),
                         textShadow: "0 0 4px rgba(0,0,0,0.6)",
                       }}
@@ -2775,8 +2869,9 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                         borderRadius: 999,
                         fontSize: 11,
                         fontWeight: 800,
-                        background: inProg ? "rgba(255,0,0,0.1)" : getModeColor(e) + "22",
+                        background: inProg ? "linear-gradient(180deg, rgba(255,60,80,.36), rgba(10,10,10,.92))" : `linear-gradient(180deg, ${getModeColor(e)}4d, rgba(10,10,10,0.92))`,
                         border: "1px solid " + (inProg ? theme.danger : getModeColor(e)),
+                        boxShadow: `inset 0 1px 0 rgba(255,255,255,.16), 0 0 12px ${(inProg ? theme.danger : getModeColor(e))}33`,
                         color: inProg ? theme.danger : getModeColor(e),
                         textShadow: "0 0 4px rgba(0,0,0,0.6)",
                       }}
@@ -2787,12 +2882,8 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                   <span style={{ fontSize: 11, color: theme.primary }}>{fmtDate(historyPlayedAt(e))}</span>
                 </div>
 
-                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)" }}>
-                  {detectFormat(e)}
-                  {(() => {
-                    const s = summarizeScore(e);
-                    return s ? " • " + s : "";
-                  })()}
+                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)", fontWeight: 800 }}>
+                  <HistoryScoreLine e={e} theme={theme} />
                 </div>
 
                 <div style={{ ...S.rowBetween, marginTop: 10 }}>
@@ -2813,8 +2904,11 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                   </div>
 
                   {(!inProg && e.winnerName) ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: theme.primary }}>
-                      <Icon.Trophy /> {e.winnerName}
+                    <div style={{ display: "grid", justifyItems: "center", gap: 1, minWidth: 86, color: theme.primary }}>
+                      <img src={victoryCup} style={{ width: 48, height: 38, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(255,210,80,.62))" }} />
+                      <div style={{ fontSize: 10, lineHeight: 1, fontWeight: 950, color: "#ffd76a", textAlign: "center", maxWidth: 92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 0 5px rgba(255,214,106,.95), 0 0 12px rgba(255,176,0,.45)" }}>
+                        {e.winnerName}
+                      </div>
                     </div>
                   ) : null}
                 </div>
