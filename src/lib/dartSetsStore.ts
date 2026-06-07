@@ -144,6 +144,112 @@ function normalizeText(value: any): string {
     .replace(/\s+/g, " ");
 }
 
+
+function isUrlishText(value: any): boolean {
+  const raw = s(value).toLowerCase();
+  return raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/media/") || raw.startsWith("/images/") || raw.startsWith("data:image/") || raw.includes("darts-counter-v7.pages.dev") || raw.includes("/assets/");
+}
+
+function valueLooksLikeAvatarOrProfileImage(value: any): boolean {
+  const raw = s(value).toLowerCase();
+  return raw.includes("avatar") || raw.includes("profile") || raw.includes("profil") || raw.includes("medallion") || raw.includes("logo-equipe") || raw.includes("team-logo") || raw.includes("league") || raw.includes("cover");
+}
+
+function collectStoreNameSet(): Set<string> {
+  const names = new Set<string>();
+  const add = (v: any) => {
+    const name = normalizeText(v);
+    if (name) names.add(name);
+  };
+  try {
+    const store = appStoreSnapshot();
+    const arrays = [
+      store?.profiles,
+      store?.localProfiles,
+      store?.players,
+      store?.bots,
+      store?.teams,
+      store?.localTeams,
+      store?.leagueTeams,
+      store?.babyfootTeams,
+      store?.contacts,
+    ];
+    for (const arr of arrays) {
+      if (!Array.isArray(arr)) continue;
+      for (const obj of arr) {
+        add(obj?.name);
+        add(obj?.displayName);
+        add(obj?.nickname);
+        add(obj?.playerName);
+        add(obj?.teamName);
+        add(obj?.label);
+        add(obj?.title);
+      }
+    }
+    add(store?.currentProfile?.name);
+    add(store?.currentProfile?.displayName);
+    add(store?.activeProfile?.name);
+    add(store?.activeProfile?.displayName);
+  } catch {}
+  return names;
+}
+
+function objectHasDartSpecificField(obj: any): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  return Boolean(
+    obj.dartSetId || obj.setId || obj.presetId || obj.dartPresetId || obj.basePresetId || obj.refPresetId ||
+      obj.weightGrams || obj.weight || obj.brand || obj.grip || obj.barrel || obj.shaft || obj.flight ||
+      obj.kind === "preset" || obj.kind === "photo" || obj.kind === "plain" ||
+      obj.mainImageUrl || obj.thumbImageUrl || obj.photoDataUrl || obj.imageDataUrl || obj.mainImageDataUrl || obj.dartSetImageDataUrl ||
+      obj.mainImageAssetId || obj.thumbImageAssetId || obj.photoAssetId || obj.dartSetImageAssetId || obj.imageAssetId
+  );
+}
+
+function isKnownDartPresetName(value: any): boolean {
+  const wanted = normalizeText(value);
+  if (!wanted) return false;
+  return (dartPresets || []).some((p: any) => normalizeText(p?.name) === wanted || wanted.includes(normalizeText(p?.name)) || normalizeText(p?.name).includes(wanted));
+}
+
+function isLikelyBadRecoveredDartSet(raw: any): boolean {
+  if (!raw || typeof raw !== "object") return true;
+  const name = s(raw?.name || raw?.label || raw?.title || raw?.presetName || "");
+  const normName = normalizeText(name);
+  if (!normName) return true;
+
+  // Les anciennes rustines ont scanné trop large et ont transformé des URL,
+  // profils, teams et avatars en faux dartsets. On les retire au chargement.
+  if (isUrlishText(name)) return true;
+
+  const storeNames = collectStoreNameSet();
+  const id = s(raw?.id || raw?.dartSetId || raw?.setId || "");
+  const looksRecovered = id.startsWith("dartset_recovered_");
+  const hasDartField = objectHasDartSpecificField(raw);
+  const hasRealImage = Boolean(readMainImage(raw) || readThumbImage(raw));
+  const hasPreset = Boolean(resolvePresetForSet(raw) || isKnownDartPresetName(name));
+  const profileOrTeamName = storeNames.has(normName);
+
+  if (profileOrTeamName && looksRecovered && !hasPreset && !s(raw?.brand) && !Number.isFinite(Number(raw?.weightGrams ?? raw?.weight))) return true;
+  if (looksRecovered && !hasDartField && !hasRealImage) return true;
+  if (looksRecovered && valueLooksLikeAvatarOrProfileImage(readMainImage(raw) || readThumbImage(raw)) && !hasPreset) return true;
+
+  // Les objets de team/profil créés comme publics sans vraie donnée fléchette.
+  const lowerId = id.toLowerCase();
+  if (/profile|profil|team|equipe|avatar|bot/.test(lowerId) && !hasPreset && !s(raw?.brand) && !Number.isFinite(Number(raw?.weightGrams ?? raw?.weight))) return true;
+
+  return false;
+}
+
+function filterOutPollutedDartSets(rawList: any[]): any[] {
+  const arr = Array.isArray(rawList) ? rawList : [];
+  const kept = arr.filter((raw) => !isLikelyBadRecoveredDartSet(raw));
+  const removed = arr.length - kept.length;
+  if (removed > 0) {
+    diag("pollution-filter:removed", { removed, kept: kept.length, removedNames: arr.filter((raw) => isLikelyBadRecoveredDartSet(raw)).map((x:any) => s(x?.name || x?.label || x?.title || x?.id)).slice(0, 20) });
+  }
+  return kept;
+}
+
 function hashString(value: string): string {
   let h = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -504,10 +610,16 @@ function objectLooksLikeDartSetCandidate(obj: any, path = ""): boolean {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
   const keys = Object.keys(obj).join("|").toLowerCase();
   const p = String(path || "").toLowerCase();
-  const hasName = !!s(obj.name || obj.label || obj.title || obj.presetName);
-  const hasDartSetHint = /dartset|dart_set|dartsets|dartsets|fléchette|flechette|preset|mainimage|thumbimage|photoasset|imageasset/.test(`${p}|${keys}`);
+  const name = s(obj.name || obj.label || obj.title || obj.presetName);
+  if (!name || isUrlishText(name)) return false;
+
+  // STRICT : un objet avec juste un nom + une image peut être un profil/avatar/team.
+  // On n'accepte comme dartset récupérable que les chemins/champs explicitement dartsets.
+  const hasDartPath = /dartset|dartsets|dart_set|dart_sets/.test(p);
+  const hasDartKeys = /dartset|dartpreset|presetid|mainimage|thumbimage|photoasset|dartsetimage|weightgrams|barrel|shaft|flight/.test(keys);
   const hasProductHint = Boolean(obj.brand || obj.weightGrams || obj.weight || obj.presetId || obj.dartPresetId || obj.kind === "photo" || obj.kind === "preset");
-  return hasName && (objectHasImageCandidate(obj) || hasDartSetHint || hasProductHint);
+  if (!(hasDartPath || hasDartKeys || hasProductHint)) return false;
+  return !isLikelyBadRecoveredDartSet(obj);
 }
 
 function collectDeepDartSetCandidates(root: any, sourceKey = ""): any[] {
@@ -555,24 +667,16 @@ function collectDeepDartSetCandidates(root: any, sourceKey = ""): any[] {
 }
 
 function readDeepRecoveryRaw(): any[] {
+  // DÉSACTIVÉ pour les dartsets.
+  // Le scan large localStorage a transformé des profils, équipes, avatars et URLs
+  // en faux dartsets. On garde cette fonction pour compatibilité diagnostic, mais
+  // elle ne doit plus alimenter la bibliothèque ni le sélecteur.
   try {
     const now = Date.now();
     if (now - deepRecoveryCacheAt < 1500) return deepRecoveryCache.slice();
-    const out: any[] = [];
-    if (typeof window !== "undefined" && window.localStorage) {
-      for (let i = 0; i < window.localStorage.length; i += 1) {
-        const key = window.localStorage.key(i) || "";
-        if (!key) continue;
-        // On scanne large mais on ignore les historiques massifs inutiles au visuel.
-        if (/history|match-backups|events|sessions|crash|log/i.test(key) && !/dartset|store|profile/i.test(key)) continue;
-        const parsed = readLocalStorageJsonLoose(key);
-        if (!parsed || typeof parsed !== "object") continue;
-        out.push(...collectDeepDartSetCandidates(parsed, key));
-      }
-    }
     deepRecoveryCacheAt = now;
-    deepRecoveryCache = out;
-    return out.slice();
+    deepRecoveryCache = [];
+    return [];
   } catch {
     return [];
   }
@@ -590,11 +694,12 @@ function readImageBankRaw(): any[] {
 function readRecoveryRaw(): any[] {
   const store = appStoreSnapshot();
   const out: any[] = [];
+  // Sources autorisées : collections explicitement nommées dartSets seulement.
+  // Plus de scan global profiles/teams/history.
   out.push(...normalizeDartSetArray(store?.dartSets || store?.dartsets));
   for (const key of LEGACY_DARTSET_STORAGE_KEYS) out.push(...readDartSetArrayFromLocalStorageKey(key));
   out.push(...readImageBankRaw());
-  out.push(...readDeepRecoveryRaw());
-  return out;
+  return filterOutPollutedDartSets(out);
 }
 
 function selectableOwnerKey(set: any): string {
@@ -987,6 +1092,7 @@ function recoverMissingPublicDartSetsForSelector(primary: DartSet[], recoveryRaw
   const recovered: DartSet[] = [];
   for (const raw of Array.isArray(recoveryRaw) ? recoveryRaw : []) {
     if (!raw || typeof raw !== "object") continue;
+    if (isLikelyBadRecoveredDartSet(raw)) continue;
     if (isDeletedByMeta(raw, meta)) continue;
 
     // Les projections ONLINE / profils liés ne doivent jamais être ajoutées comme
@@ -1061,7 +1167,7 @@ function loadPrimaryAuthoritative(): DartSet[] {
     // champs éditables. MAIS on ne doit pas perdre les sets publics encore présents
     // dans un ancien snapshot/appStore : ils sont réintroduits uniquement comme
     // PUBLIC/global, sans reprendre favori/propriétaire privés.
-    const raw = primaryExists ? primaryRaw : readRecoveryRaw();
+    const raw = filterOutPollutedDartSets(primaryExists ? primaryRaw : readRecoveryRaw());
     const recovery = readRecoveryRaw();
     rememberImagesForSets([...raw, ...recovery]);
     const primary = mergePrimaryDuplicates(raw);
@@ -1091,8 +1197,9 @@ function stripHeavyInlineImagesForFallback(list: DartSet[]): DartSet[] {
 }
 
 function savePrimary(list: DartSet[], reason = "save"): boolean {
-  rememberImagesForSets(Array.isArray(list) ? list : []);
-  const sanitized = mergePrimaryDuplicates(Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
+  const cleanInput = filterOutPollutedDartSets(Array.isArray(list) ? list : []);
+  rememberImagesForSets(cleanInput);
+  const sanitized = mergePrimaryDuplicates(cleanInput).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
   let saved = false;
 
   try {
@@ -1423,7 +1530,7 @@ function mergeImageFieldsKeepMetadata(authoritative: DartSet, imageSource: DartS
 }
 
 function mergeIncomingWithCurrentPrimary(incomingRaw: any[], reason: string): DartSet[] {
-  const incoming = mergePrimaryDuplicates(Array.isArray(incomingRaw) ? incomingRaw : []);
+  const incoming = mergePrimaryDuplicates(filterOutPollutedDartSets(Array.isArray(incomingRaw) ? incomingRaw : []));
   const primaryExists = hasLocalStorageKey(STORAGE_KEY);
   const current = primaryExists ? loadPrimaryAuthoritative() : [];
 
@@ -1510,6 +1617,13 @@ function installDartSetsDiagnostics(list: DartSet[] = [], recovery: any[] = []) 
       console.info("[DartSetsDiag] image recovery", { officialCount: sets.length, recoveryCount: readRecoveryRaw().length, bankCount: readImageBankRaw().length });
       return rows;
     };
+    w.__DARTSETS_CLEAN_POLLUTION_NOW = () => {
+      const before = readPrimaryRaw();
+      const clean = filterOutPollutedDartSets(before);
+      const ok = savePrimary(clean as any, "manual-clean-pollution");
+      console.info("[DartSetsDiag] clean-pollution", { before: before.length, after: clean.length, ok });
+      return { before: before.length, after: clean.length, ok };
+    };
     w.__DARTSETS_SELECTABLE_DIAG = (profileId: string) => {
       const pid = s(profileId);
       const all = loadPrimaryAuthoritative();
@@ -1540,8 +1654,8 @@ export function getAllDartSets(): DartSet[] {
 }
 
 export function getAllSelectableDartSets(): DartSet[] {
-  // Pour le panneau global : tous les sets officiels sauf projections remote sans cible.
-  return dedupeVisibleDartSets(loadAll().filter((set) => !isLinkedRemoteLike(set) || Boolean(s((set as any).linkedTargetLocalProfileId))));
+  // Pour le panneau global : bibliothèque officielle nettoyée.
+  return dedupeVisibleDartSets(loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set) && (!isLinkedRemoteLike(set) || Boolean(s((set as any).linkedTargetLocalProfileId)))));
 }
 
 export function setAllDartSets(list: DartSet[]) {
@@ -1550,7 +1664,7 @@ export function setAllDartSets(list: DartSet[]) {
 
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
-  const visible = loadAll().filter((set) => (pid ? profileCanSeeDartSet(set, pid) : effectiveDartSetScope(set) === "public"));
+  const visible = loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set) && (pid ? profileCanSeeDartSet(set, pid) : effectiveDartSetScope(set) === "public"));
   return dedupeVisibleDartSets(visible);
 }
 
