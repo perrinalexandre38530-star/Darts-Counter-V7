@@ -844,7 +844,9 @@ function historyRowKey(x: any): string {
 }
 
 function historyRowName(x: any): string {
-  return cleanName(getName(x) || x?.name || x?.playerName || x?.displayName || x?.nickname || x?.label);
+  // Toujours retourner une chaîne : plusieurs traitements appellent .toLowerCase() derrière.
+  // cleanName() peut volontairement renvoyer undefined pour filtrer les ids techniques.
+  return cleanName(getName(x) || x?.name || x?.playerName || x?.displayName || x?.nickname || x?.label) || "";
 }
 
 function historyLooseMapValue(map: any, r: any): any {
@@ -956,7 +958,7 @@ function x01FinalSortedRows(e: SavedEntry): any[] {
   }).filter((r: any) => historyRowKey(r) || historyRowName(r));
 
   const winnerId = String(anyE.winnerId || data.winnerId || result.winnerId || anyE.payload?.summary?.winnerId || "").trim();
-  const winnerName = cleanName(anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName).toLowerCase();
+  const winnerName = (cleanName(anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName) || "").toLowerCase();
   const orderArr = Array.isArray(data.order) ? data.order : Array.isArray(anyE.payload?.summary?.order) ? anyE.payload.summary.order : [];
   const orderIdx = (r: any) => {
     const id = historyRowKey(r);
