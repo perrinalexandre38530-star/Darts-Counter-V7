@@ -367,6 +367,14 @@ function isPublicOwnerProfileId(profileId: any): boolean {
   return !id || ["global", "public", "shared", "all", "default", "library", "bibliotheque", "common", "commun", "device", "local device"].includes(id);
 }
 
+function hasConcreteOwnerProfileId(profileId: any): boolean {
+  return s(profileId).length > 0;
+}
+
+function isExplicitPublicOwnerProfileId(profileId: any): boolean {
+  return hasConcreteOwnerProfileId(profileId) && isPublicOwnerProfileId(profileId);
+}
+
 function readVisibilityFlag(raw: any): string {
   return normalizeText(raw?.scope || raw?.visibility || raw?.access || raw?.sharing || raw?.shareScope || "");
 }
@@ -1833,12 +1841,20 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
 
     // Règle stricte demandée : tous les vrais PUBLICS de MES FLÉCHETTES sont
     // sélectionnables par tous les joueurs, sans tenir compte du propriétaire.
+    const hasPrivateTarget = Boolean(s(
+      (set as any).privateProfileId ||
+      (set as any).linkedTargetLocalProfileId ||
+      (set as any).targetLocalProfileId ||
+      (set as any).targetProfileId
+    ));
+    const explicitPrivate = set.scope !== "public" && (isExplicitPrivateDartSet(set) || hasPrivateTarget);
     const explicitPublic =
-      set.scope === "public" ||
-      isExplicitPublicDartSet(set) ||
-      isPublicOwnerProfileId(set.profileId) ||
-      isPublicOwnerProfileId((set as any).ownerProfileId) ||
-      isPublicOwnerProfileId((set as any).localProfileId);
+      !explicitPrivate &&
+      (set.scope === "public" ||
+        isExplicitPublicDartSet(set) ||
+        isExplicitPublicOwnerProfileId(set.profileId) ||
+        isExplicitPublicOwnerProfileId((set as any).ownerProfileId) ||
+        isExplicitPublicOwnerProfileId((set as any).localProfileId));
     if (explicitPublic) return true;
 
     // PRIVÉ = seulement le joueur propriétaire/attribué.
@@ -1850,8 +1866,8 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
       profileId: pid,
       all: all.length,
       result: result.length,
-      publicAll: all.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isPublicOwnerProfileId(x.profileId)).length,
-      publicResult: result.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isPublicOwnerProfileId(x.profileId)).length,
+      publicAll: all.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isExplicitPublicOwnerProfileId(x.profileId)).length,
+      publicResult: result.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isExplicitPublicOwnerProfileId(x.profileId)).length,
       names: result.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 20),
     });
   } catch {}

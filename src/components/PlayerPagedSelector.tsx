@@ -69,11 +69,15 @@ export default function PlayerPagedSelector({
   const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>({});
 
   React.useEffect(() => {
-    // Le scan de l'historique peut être lourd sur mobile. Avant il se lançait
-    // dès l'arrivée sur X01Config, ce qui ralentissait l'ouverture du choix de
-    // joueurs et les changements de page. On le lance seulement après ouverture
-    // de la modale, en idle, et la liste reste immédiatement utilisable.
     if (!open) return;
+    // Par défaut on ne scanne plus l'historique : sur mobile/StackBlitz ça bloquait
+    // l'ouverture du sélecteur et les changements de page. Tri stable immédiat.
+    // Debug ponctuel possible : window.__PLAYER_SELECTOR_HISTORY_SCAN = true
+    const allowHistoryScan = typeof window !== "undefined" && (window as any).__PLAYER_SELECTOR_HISTORY_SCAN === true;
+    if (!allowHistoryScan) {
+      setHistoryUsageById({});
+      return;
+    }
     let alive = true;
     const run = async () => {
       try {

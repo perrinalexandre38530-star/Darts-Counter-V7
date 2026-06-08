@@ -356,20 +356,26 @@ function x01HasExplicitPrivateTarget(set: any): boolean {
   return Boolean(x01NormId(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
 }
 
+function x01HasConcreteOwnerValue(value: any): boolean {
+  return x01NormId(value).length > 0;
+}
+
 function x01IsExplicitPublic(set: any): boolean {
   const flag = x01ScopeFlag(set);
-  return (
-    flag === "public" ||
-    flag === "global" ||
-    flag === "shared" ||
-    flag === "all" ||
-    set?.isPublic === true ||
-    set?.public === true ||
-    set?.shared === true ||
-    x01IsGlobalOwnerId(set?.profileId) ||
-    x01IsGlobalOwnerId(set?.ownerProfileId) ||
-    x01IsGlobalOwnerId(set?.localProfileId)
-  );
+  if (flag === "public" || flag === "global" || flag === "shared" || flag === "all") return true;
+  if (set?.isPublic === true || set?.public === true || set?.shared === true) return true;
+
+  // Si le set porte un vrai marqueur privé, un profileId global legacy ne doit
+  // pas l'ouvrir à tout le monde. Les publics corrigés portent scope/public=true.
+  const privateMarker = flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
+  if (privateMarker) return false;
+
+  // IMPORTANT : undefined/absent ownerProfileId/localProfileId ne veut PAS dire public.
+  // C'était la cause qui rendait les sets privés Romrom/Zen JuJi visibles chez tous les joueurs.
+  if (x01HasConcreteOwnerValue(set?.profileId) && x01IsGlobalOwnerId(set?.profileId)) return true;
+  if (x01HasConcreteOwnerValue(set?.ownerProfileId) && x01IsGlobalOwnerId(set?.ownerProfileId)) return true;
+  if (x01HasConcreteOwnerValue(set?.localProfileId) && x01IsGlobalOwnerId(set?.localProfileId)) return true;
+  return false;
 }
 
 function x01IsExplicitPrivate(set: any): boolean {
@@ -391,7 +397,8 @@ function x01DartSetMatchesProfile(set: any, profileId: string, allProfiles: any[
   const ids = x01ProfileIdentitySet(profileId, allProfiles);
   if (!ids.size || !set) return false;
   const owners = x01OwnerIds(set);
-  if (!owners.length) return true;
+  // Un set privé sans propriétaire explicite ne doit pas devenir visible pour tout le monde.
+  if (!owners.length) return false;
   return owners.some((id) => ids.has(id));
 }
 
@@ -414,9 +421,9 @@ function x01DartSetSelectableForProfile(set: any, profileId: string, allProfiles
   const ownerIsKnownProfile = owners.some((id) => knownIds.has(id));
   if (x01IsExplicitPrivate(set) || ownerIsKnownProfile) return ownerMatchesProfile;
 
-  // Données anciennes sans propriétaire clair : on les garde visibles plutôt que
-  // de vider le sélecteur d'un profil sans set privé.
-  return true;
+  // Données anciennes non publiques avec propriétaire inconnu : on ne les étend plus
+  // à tous les joueurs. Les vrais publics passent déjà par x01IsPublicDartSet().
+  return false;
 }
 
 function x01DedupeDartSets(list: DartSet[]): DartSet[] {
