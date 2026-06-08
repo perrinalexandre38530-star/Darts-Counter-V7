@@ -458,12 +458,21 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       setSets([]);
       return;
     }
-    // Source stricte : uniquement la bibliothèque MES FLÉCHETTES officielle.
-    // getDartSetsForProfile peut servir ailleurs, mais ici on filtre nous-mêmes
-    // pour garantir : PUBLICS pour tous + PRIVÉS du joueur uniquement.
+    // Source stricte et centralisée : le store applique la règle métier unique :
+    // PUBLICS pour tous + PRIVÉS uniquement pour le profil propriétaire.
+    // On garde ensuite une passe X01 locale comme garde-fou anti-corruption legacy,
+    // mais on ne reconstruit plus la liste depuis des sources mélangées qui pouvaient
+    // masquer les publics ou réouvrir des privés d'autres joueurs.
+    const officialForProfile = getDartSetsForProfile(String(profileId || "")) || [];
+    const publicLibrary = (getAllSelectableDartSets() || []).filter((set: any) => x01IsPublicDartSet(set));
+    const privateOwn = (getAllDartSets() || []).filter((set: any) => {
+      if (!set || x01IsPublicDartSet(set)) return false;
+      return x01DartSetMatchesProfile(set, String(profileId || ""), allProfiles);
+    });
     const library = x01DedupeDartSets([
-      ...(getAllSelectableDartSets() || []),
-      ...(getAllDartSets() || []),
+      ...officialForProfile,
+      ...publicLibrary,
+      ...privateOwn,
     ] as any);
     const all = x01DedupeDartSets(
       library.filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles))
