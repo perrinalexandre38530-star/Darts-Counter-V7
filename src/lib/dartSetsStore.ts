@@ -1956,14 +1956,22 @@ export function getPublicDartSetsForSelector(): DartSet[] {
       private: false,
     }) as DartSet);
 
-  // Réparation ciblée : certains sets publics anciens/sans propriétaire peuvent
-  // encore être stockés seulement dans appStore/legacy, donc absents de
-  // dc_dart_sets_v1. On les ajoute, mais UNIQUEMENT s'ils sont explicitement
-  // publics ET sans propriétaire concret. Les privés propriétaires restent
-  // exclusifs et ne passent pas par ce fallback.
+  // IMPORTANT X01 : dc_dart_sets_v1 peut exister mais être incomplet après des
+  // anciens patchs. Dans ce cas, les sets publics visibles dans MES FLÉCHETTES
+  // sont parfois encore seulement dans appStore/legacy. On les récupère ici
+  // uniquement pour le sélecteur, sans ouvrir les privés propriétaires.
+  const missingPublicFallback = recoverMissingPublicDartSetsForSelector(primary, readRecoveryRaw());
+
+  // Cas demandé : tout set sans propriétaire concret et sans cible privée doit
+  // être visible pour tous les joueurs. Cette récupération est volontairement
+  // limitée aux sources dartSets explicites, pas à la banque d’images.
   const ownerlessPublicFallback = collectOwnerlessPublicRecoveryCandidates(primary);
 
-  return dedupeVisibleDartSets([...publicFromPrimary, ...ownerlessPublicFallback]);
+  return dedupeVisibleDartSets([
+    ...publicFromPrimary,
+    ...missingPublicFallback,
+    ...ownerlessPublicFallback,
+  ]);
 }
 
 export function getDartSetsForProfile(profileId: string): DartSet[] {

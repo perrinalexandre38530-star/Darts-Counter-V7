@@ -724,8 +724,17 @@ function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []):
     // Cache PAR PROFIL + invalidation par contenu localStorage : le changement
     // public/privé/favori est donc visible immédiatement dans X01, même si
     // l'évènement dc-dartsets-updated n'a pas été reçu par cette page.
+    // Source robuste du sélecteur X01 :
+    // 1) TOUS les sets publics réellement présents dans MES FLÉCHETTES, même si
+    //    le store legacy ne les remonte pas via getPublicDartSetsForSelector().
+    // 2) Les sets privés du profil demandé uniquement.
+    // On ne modifie pas la règle propriétaire : le filtre final garde les privés
+    // exclusifs au joueur, mais les publics passent enfin pour tout le monde.
+    const allSelectable = getAllSelectableDartSets() || [];
+    const allPublics = (allSelectable as any[]).filter((set: any) => x01IsPublicDartSet(set));
     x01DartSetPickerCache.byProfile[pid] = x01DedupeDartSets([
       ...(getPublicDartSetsForSelector() || []),
+      ...allPublics,
       ...(getDartSetsForProfile(pid) || []),
     ] as any).filter((set: any) => x01DartSetSelectableForProfile(set, pid, allProfiles));
   }
