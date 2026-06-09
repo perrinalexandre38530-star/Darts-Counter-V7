@@ -406,15 +406,15 @@ function effectiveDartSetScope(raw: any): "private" | "public" {
   const ownerProfileId = readOwnerProfileId(raw);
   const hasExplicitPrivateTarget = Boolean(s(raw?.privateProfileId || raw?.linkedTargetLocalProfileId || raw?.targetLocalProfileId || raw?.targetProfileId));
 
+  // PUBLIC explicite gagne toujours : c'est le cas normal des sets publics
+  // créés/édités dans MES FLÉCHETTES.
   if (isExplicitPublicDartSet(raw)) return "public";
 
-  // Défense anti-corruption legacy : plusieurs anciennes versions ont enregistré
-  // des sets PUBLICS avec des flags private/isPrivate restés à true. Si le
-  // propriétaire est clairement global/public, on rétablit PUBLIC avant de lire
-  // ces anciens flags. Un vrai privé doit avoir un profil joueur concret.
-  if (isPublicOwnerProfileId(ownerProfileId) && !hasExplicitPrivateTarget) return "public";
+  // PRIVÉ explicite gagne ensuite : jamais de fallback global qui ouvrirait un
+  // set privé sans propriétaire correct à tous les joueurs.
+  if (isExplicitPrivateDartSet(raw) || hasExplicitPrivateTarget) return "private";
 
-  if (isExplicitPrivateDartSet(raw)) return "private";
+  // Owner global/public sans marqueur privé = ancien public légitime.
   if (isPublicOwnerProfileId(ownerProfileId)) return "public";
   return "private";
 }
@@ -1839,25 +1839,29 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
   const visible = all.filter((set) => {
     if (!set || isLikelyBadRecoveredDartSet(set)) return false;
 
-    // Règle stricte demandée : tous les vrais PUBLICS de MES FLÉCHETTES sont
-    // sélectionnables par tous les joueurs, sans tenir compte du propriétaire.
-    const hasPrivateTarget = Boolean(s(
-      (set as any).privateProfileId ||
-      (set as any).linkedTargetLocalProfileId ||
-      (set as any).targetLocalProfileId ||
-      (set as any).targetProfileId
-    ));
-    const explicitPrivate = set.scope !== "public" && (isExplicitPrivateDartSet(set) || hasPrivateTarget);
-    const explicitPublic =
-      !explicitPrivate &&
-      (set.scope === "public" ||
-        isExplicitPublicDartSet(set) ||
-        isExplicitPublicOwnerProfileId(set.profileId) ||
+    // Règle stricte demandée :
+    // 1) PUBLIC explicite = sélectionnable par TOUS les joueurs.
+    //    On le teste AVANT les vieux champs privés, car d'anciennes sauvegardes
+    //    ont parfois conservé private=true/privateProfileId après passage public.
+    // 2) PRIVÉ = seulement le profil propriétaire/attribué.
+    if (set.scope === "public" || isExplicitPublicDartSet(set)) return true;
+
+    const hasPrivateMarker = Boolean(
+      isExplicitPrivateDartSet(set) ||
+      s((set as any).privateProfileId) ||
+      s((set as any).linkedTargetLocalProfileId) ||
+      s((set as any).targetLocalProfileId) ||
+      s((set as any).targetProfileId)
+    );
+    const publicOwner =
+      !hasPrivateMarker &&
+      (isExplicitPublicOwnerProfileId(set.profileId) ||
         isExplicitPublicOwnerProfileId((set as any).ownerProfileId) ||
         isExplicitPublicOwnerProfileId((set as any).localProfileId));
-    if (explicitPublic) return true;
+    if (publicOwner) return true;
 
-    // PRIVÉ = seulement le joueur propriétaire/attribué.
+    // Tout ce qui n'est pas explicitement public reste privé et doit matcher
+    // strictement le joueur demandé. Aucun fallback global ici.
     return pid ? profileCanSeeDartSet(set, pid) : false;
   });
   const result = withSelectorPublicFallback(visible, all, `profile:${pid || "none"}`);

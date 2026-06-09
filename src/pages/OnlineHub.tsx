@@ -5,6 +5,7 @@ import { useFriendRequests } from "../hooks/useFriendRequests";
 import { usePresence } from "../hooks/usePresence";
 import { useSharedOnlineItems } from "../hooks/useSharedOnlineItems";
 import { onlineApi } from "../lib/onlineApi";
+import { filterOnlineStatsEligible, listOnlineStatsCleanupSessions } from "../lib/onlineStatsExclusions";
 import { useTheme } from "../contexts/ThemeContext";
 
 type Props = { store?: any; update?: (patch: any) => void; go?: (tab: string, params?: any) => void };
@@ -130,8 +131,20 @@ export default function OnlineHub({ go }: Props) {
 
   const loadMatches = React.useCallback(async () => {
     try {
+      // Le compteur du Hub doit afficher les mêmes matchs réellement comptés
+      // que le panneau Développeur > Nettoyage ONLINE.
+      // Avant, il affichait le nombre brut renvoyé par /online/matches, ce qui
+      // incluait aussi les sessions de test, incomplètes ou exclues des stats.
+      const cleanupSessions = await listOnlineStatsCleanupSessions();
+      setMatchCount(cleanupSessions.filter((session) => !session.excludedFromStats).length);
+      return;
+    } catch {}
+
+    try {
+      // Fallback si le store local n'est pas encore lisible : on filtre au moins
+      // les lignes backend avec la même carte d'exclusion locale.
       const rows = await (onlineApi as any)?.listMatches?.(250);
-      setMatchCount(Array.isArray(rows) ? rows.length : 0);
+      setMatchCount(Array.isArray(rows) ? filterOnlineStatsEligible(rows).length : 0);
     } catch {}
   }, []);
 

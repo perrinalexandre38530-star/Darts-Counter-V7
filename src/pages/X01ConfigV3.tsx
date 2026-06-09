@@ -362,16 +362,19 @@ function x01HasConcreteOwnerValue(value: any): boolean {
 
 function x01IsExplicitPublic(set: any): boolean {
   const flag = x01ScopeFlag(set);
+
+  // PRIORITÉ ABSOLUE AU PUBLIC EXPLICITE.
+  // Des anciennes sauvegardes ont gardé private=true/privateProfileId sur des
+  // sets repassés en public. Si on relit ces vieux champs avant le public, X01
+  // cache les publics pour les joueurs qui n'ont pas de privé.
   if (flag === "public" || flag === "global" || flag === "shared" || flag === "all") return true;
   if (set?.isPublic === true || set?.public === true || set?.shared === true) return true;
 
-  // Si le set porte un vrai marqueur privé, un profileId global legacy ne doit
-  // pas l'ouvrir à tout le monde. Les publics corrigés portent scope/public=true.
+  // Un owner global n'est public que s'il existe vraiment ET qu'aucun marqueur
+  // privé n'est présent. Sinon un ancien privé mal propriétaire deviendrait
+  // visible chez tous les joueurs.
   const privateMarker = flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
   if (privateMarker) return false;
-
-  // IMPORTANT : undefined/absent ownerProfileId/localProfileId ne veut PAS dire public.
-  // C'était la cause qui rendait les sets privés Romrom/Zen JuJi visibles chez tous les joueurs.
   if (x01HasConcreteOwnerValue(set?.profileId) && x01IsGlobalOwnerId(set?.profileId)) return true;
   if (x01HasConcreteOwnerValue(set?.ownerProfileId) && x01IsGlobalOwnerId(set?.ownerProfileId)) return true;
   if (x01HasConcreteOwnerValue(set?.localProfileId) && x01IsGlobalOwnerId(set?.localProfileId)) return true;
@@ -458,21 +461,12 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       setSets([]);
       return;
     }
-    // Source stricte et centralisée : le store applique la règle métier unique :
-    // PUBLICS pour tous + PRIVÉS uniquement pour le profil propriétaire.
-    // On garde ensuite une passe X01 locale comme garde-fou anti-corruption legacy,
-    // mais on ne reconstruit plus la liste depuis des sources mélangées qui pouvaient
-    // masquer les publics ou réouvrir des privés d'autres joueurs.
-    const officialForProfile = getDartSetsForProfile(String(profileId || "")) || [];
-    const publicLibrary = (getAllSelectableDartSets() || []).filter((set: any) => x01IsPublicDartSet(set));
-    const privateOwn = (getAllDartSets() || []).filter((set: any) => {
-      if (!set || x01IsPublicDartSet(set)) return false;
-      return x01DartSetMatchesProfile(set, String(profileId || ""), allProfiles);
-    });
+    // Source stricte : uniquement la bibliothèque MES FLÉCHETTES officielle.
+    // getDartSetsForProfile peut servir ailleurs, mais ici on filtre nous-mêmes
+    // pour garantir : PUBLICS pour tous + PRIVÉS du joueur uniquement.
     const library = x01DedupeDartSets([
-      ...officialForProfile,
-      ...publicLibrary,
-      ...privateOwn,
+      ...(getAllSelectableDartSets() || []),
+      ...(getAllDartSets() || []),
     ] as any);
     const all = x01DedupeDartSets(
       library.filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles))
