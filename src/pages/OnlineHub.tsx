@@ -4,8 +4,7 @@ import { useOnlineFriends } from "../hooks/useOnlineFriends";
 import { useFriendRequests } from "../hooks/useFriendRequests";
 import { usePresence } from "../hooks/usePresence";
 import { useSharedOnlineItems } from "../hooks/useSharedOnlineItems";
-import { onlineApi } from "../lib/onlineApi";
-import { filterOnlineStatsEligible, listOnlineStatsCleanupSessions } from "../lib/onlineStatsExclusions";
+import { listOnlineStatsCleanupSessions } from "../lib/onlineStatsExclusions";
 import { useTheme } from "../contexts/ThemeContext";
 
 type Props = { store?: any; update?: (patch: any) => void; go?: (tab: string, params?: any) => void };
@@ -108,7 +107,7 @@ function filledButton(primary: string): React.CSSProperties {
   };
 }
 
-export default function OnlineHub({ go }: Props) {
+export default function OnlineHub({ store, go }: Props) {
   const { theme } = useTheme();
   // Couleur unique de page : le doré est interdit ici. Si le thème global renvoie encore du gold,
   // l'Online bascule automatiquement en cyan néon pour rester cohérent avec la maquette validée.
@@ -131,22 +130,14 @@ export default function OnlineHub({ go }: Props) {
 
   const loadMatches = React.useCallback(async () => {
     try {
-      // Le compteur du Hub doit afficher les mêmes matchs réellement comptés
-      // que le panneau Développeur > Nettoyage ONLINE.
-      // Avant, il affichait le nombre brut renvoyé par /online/matches, ce qui
-      // incluait aussi les sessions de test, incomplètes ou exclues des stats.
       const cleanupSessions = await listOnlineStatsCleanupSessions();
-      setMatchCount(cleanupSessions.filter((session) => !session.excludedFromStats).length);
-      return;
-    } catch {}
-
-    try {
-      // Fallback si le store local n'est pas encore lisible : on filtre au moins
-      // les lignes backend avec la même carte d'exclusion locale.
-      const rows = await (onlineApi as any)?.listMatches?.(250);
-      setMatchCount(Array.isArray(rows) ? filterOnlineStatsEligible(rows).length : 0);
-    } catch {}
-  }, []);
+      const counted = cleanupSessions.filter((session) => !session.excludedFromStats).length;
+      setMatchCount(counted);
+    } catch (error) {
+      console.warn("[OnlineHub] compteur MATCHS stats indisponible", error);
+      setMatchCount(0);
+    }
+  }, [store]);
 
   async function runSearch() {
     if (query.trim().length < 2) return setResults([]);
@@ -154,7 +145,17 @@ export default function OnlineHub({ go }: Props) {
     try { setResults(await searchUsers(query)); } finally { setSearching(false); }
   }
   React.useEffect(() => { const id = window.setTimeout(runSearch, 350); return () => window.clearTimeout(id); }, [query]);
-  React.useEffect(() => { let off = false; (async () => { if (!off) await loadMatches(); })(); return () => { off = true; }; }, [loadMatches]);
+  React.useEffect(() => {
+    let off = false;
+    const refreshCount = async () => { if (!off) await loadMatches(); };
+    refreshCount();
+    const events = ["dc-online-stats-exclusions-changed", "dc-history-updated", "storage"];
+    events.forEach((eventName) => window.addEventListener(eventName, refreshCount as EventListener));
+    return () => {
+      off = true;
+      events.forEach((eventName) => window.removeEventListener(eventName, refreshCount as EventListener));
+    };
+  }, [loadMatches]);
   async function refreshAll() {
     await Promise.allSettled([refreshFriends(), refreshRequests(), refreshShared(), setPresence("online")]);
     await loadMatches();

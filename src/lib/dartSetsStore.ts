@@ -1833,45 +1833,70 @@ export function setAllDartSets(list: DartSet[]) {
   return replacePrimaryWith(Array.isArray(list) ? list : [], "setAll");
 }
 
+
+
+function isSelectablePublicForEveryProfile(set: any): boolean {
+  if (!set || isLikelyBadRecoveredDartSet(set) || isLinkedRemoteLike(set)) return false;
+  // Public explicite : source de vérité. On ignore les vieux flags private
+  // résiduels quand scope/visibility/access/isPublic/public/shared dit public.
+  if (isExplicitPublicDartSet(set)) return true;
+  // Ancien format : owner global/public sans cible privée = public.
+  const owner = readOwnerProfileId(set);
+  const hasPrivateTarget = Boolean(s(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
+  if (!hasPrivateTarget && isExplicitPublicOwnerProfileId(owner)) return true;
+  if (!hasPrivateTarget && effectiveDartSetScope(set) === "public") return true;
+  return false;
+}
+
+export function getPublicDartSetsForSelector(): DartSet[] {
+  // Sélecteurs de partie : publics disponibles pour ABSOLUMENT tous les joueurs.
+  // On lit la bibliothèque officielle + les collections dartSets explicites du store
+  // pour éviter le cas où dc_dart_sets_v1 est en retard mais Mes fléchettes affiche
+  // déjà les sets publics via appStore.
+  const raw = [
+    ...loadAll(),
+    ...readRecoveryRaw(),
+  ];
+  const publics = raw
+    .map((item: any) => normalizeDartSetForRuntime(item, { allowDeleted: true }))
+    .filter(Boolean)
+    .filter((set: any) => isSelectablePublicForEveryProfile(set))
+    .map((set: any) => sanitizeDartSetForStorage({
+      ...set,
+      scope: "public",
+      profileId: "global",
+      ownerProfileId: undefined,
+      localProfileId: undefined,
+      privateProfileId: undefined,
+      linkedTargetLocalProfileId: null,
+      isPublic: true,
+      public: true,
+      shared: true,
+      isPrivate: false,
+      private: false,
+    }) as DartSet);
+  return dedupeVisibleDartSets(publics);
+}
+
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
   const all = getAllSelectableDartSets();
-  const visible = all.filter((set) => {
-    if (!set || isLikelyBadRecoveredDartSet(set)) return false;
-
-    // Règle stricte demandée :
-    // 1) PUBLIC explicite = sélectionnable par TOUS les joueurs.
-    //    On le teste AVANT les vieux champs privés, car d'anciennes sauvegardes
-    //    ont parfois conservé private=true/privateProfileId après passage public.
-    // 2) PRIVÉ = seulement le profil propriétaire/attribué.
-    if (set.scope === "public" || isExplicitPublicDartSet(set)) return true;
-
-    const hasPrivateMarker = Boolean(
-      isExplicitPrivateDartSet(set) ||
-      s((set as any).privateProfileId) ||
-      s((set as any).linkedTargetLocalProfileId) ||
-      s((set as any).targetLocalProfileId) ||
-      s((set as any).targetProfileId)
-    );
-    const publicOwner =
-      !hasPrivateMarker &&
-      (isExplicitPublicOwnerProfileId(set.profileId) ||
-        isExplicitPublicOwnerProfileId((set as any).ownerProfileId) ||
-        isExplicitPublicOwnerProfileId((set as any).localProfileId));
-    if (publicOwner) return true;
-
-    // Tout ce qui n'est pas explicitement public reste privé et doit matcher
-    // strictement le joueur demandé. Aucun fallback global ici.
+  const publics = getPublicDartSetsForSelector();
+  const privateForOwner = all.filter((set) => {
+    if (!set || isLikelyBadRecoveredDartSet(set) || isLinkedRemoteLike(set)) return false;
+    if (isSelectablePublicForEveryProfile(set)) return false;
+    // Tout ce qui n'est pas public est privé : visible seulement si le propriétaire
+    // matche le profil demandé. Aucun fallback global, aucun privé des autres.
     return pid ? profileCanSeeDartSet(set, pid) : false;
   });
-  const result = withSelectorPublicFallback(visible, all, `profile:${pid || "none"}`);
+  const result = withSelectorPublicFallback([...publics, ...privateForOwner], all, `profile:${pid || "none"}`);
   try {
     diag("selector:profile-result", {
       profileId: pid,
       all: all.length,
       result: result.length,
-      publicAll: all.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isExplicitPublicOwnerProfileId(x.profileId)).length,
-      publicResult: result.filter((x) => x.scope === "public" || isExplicitPublicDartSet(x) || isExplicitPublicOwnerProfileId(x.profileId)).length,
+      publicResult: result.filter((x) => isSelectablePublicForEveryProfile(x)).length,
+      privateResult: result.filter((x) => !isSelectablePublicForEveryProfile(x)).length,
       names: result.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 20),
     });
   } catch {}

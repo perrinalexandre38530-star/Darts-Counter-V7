@@ -24,6 +24,7 @@ import {
   getAllDartSets,
   getAllSelectableDartSets,
   getDartSetsForProfile,
+  getPublicDartSetsForSelector,
   getFavoriteDartSetForProfile,
   getDartSetThumbImageSrc,
   getDartSetMainImageSrc,
@@ -461,16 +462,16 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       setSets([]);
       return;
     }
-    // Source stricte : uniquement la bibliothèque MES FLÉCHETTES officielle.
-    // getDartSetsForProfile peut servir ailleurs, mais ici on filtre nous-mêmes
-    // pour garantir : PUBLICS pour tous + PRIVÉS du joueur uniquement.
-    const library = x01DedupeDartSets([
-      ...(getAllSelectableDartSets() || []),
-      ...(getAllDartSets() || []),
-    ] as any);
-    const all = x01DedupeDartSets(
-      library.filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles))
-    );
+    // Source finale du sélecteur :
+    // - publics reconstruits par le store = visibles pour tous ;
+    // - privés retournés par getDartSetsForProfile = uniquement propriétaire.
+    // On garde le filtre X01 en sécurité, mais le store fait maintenant la
+    // séparation stricte public/privé à la source.
+    const all = x01DedupeDartSets([
+      ...(getPublicDartSetsForSelector() || []),
+      ...(getDartSetsForProfile(String(profileId || "")) || []),
+    ] as any).filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles));
+    const library = all;
 
     try {
       if (typeof window !== "undefined" && (window as any).__DARTSETS_DEBUG === true) {
