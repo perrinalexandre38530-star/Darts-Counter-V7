@@ -255,44 +255,147 @@ function buildLastOrDefaultSelectedIds(humans: Profile[], activeProfileId: strin
 }
 
 
-function x01ExtractPlayerIdsFromHistoryRow(row: any): string[] {
+
+function x01ProfileNameKey(value: any): string {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function x01BuildProfileLookup(profiles: any[] = []) {
+  const byId = new Map<string, string>();
+  const byName = new Map<string, string>();
+  const addId = (raw: any, canonical: string) => {
+    const id = String(raw || "").trim();
+    if (id && canonical) byId.set(id, canonical);
+  };
+  for (const p of Array.isArray(profiles) ? profiles : []) {
+    const canonical = String(p?.id || p?.profileId || p?.localProfileId || p?.playerId || p?.uid || "").trim();
+    if (!canonical) continue;
+    [p?.id, p?.profileId, p?.localProfileId, p?.playerId, p?.uid, p?.uuid].forEach((v) => addId(v, canonical));
+    const nk = x01ProfileNameKey(p?.name || p?.displayName || p?.label);
+    if (nk) byName.set(nk, canonical);
+  }
+  return { byId, byName };
+}
+
+function x01ResolveHistoryPlayerId(raw: any, lookup: { byId: Map<string, string>; byName: Map<string, string> }): string {
+  const id = String(raw || "").trim();
+  if (!id) return "";
+  return lookup.byId.get(id) || lookup.byName.get(x01ProfileNameKey(id)) || id;
+}
+
+function x01ExtractPlayerIdsFromHistoryRow(row: any, lookup = x01BuildProfileLookup([])): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   const add = (v: any) => {
-    const id = String(v || "").trim();
+    const id = x01ResolveHistoryPlayerId(v, lookup);
     if (!id || seen.has(id)) return;
     seen.add(id);
     out.push(id);
   };
-  const visitPlayer = (p: any) => {
-    if (!p || typeof p !== "object") return;
-    add(p.id); add(p.profileId); add(p.playerId); add(p.localProfileId); add(p.uid); add(p.uuid);
+  const visitPlayer = (p: any, depth = 0) => {
+    if (!p || depth > 4) return;
+    if (typeof p === "string" || typeof p === "number") {
+      add(p);
+      return;
+    }
+    if (Array.isArray(p)) {
+      p.forEach((x) => visitPlayer(x, depth + 1));
+      return;
+    }
+    if (typeof p !== "object") return;
+
+    // Champs d'identité fréquents dans les historiques anciens/nouveaux.
+    [
+      p.id, p.profileId, p.playerId, p.localProfileId, p.uid, p.uuid,
+      p.pid, p.userProfileId, p.ownerProfileId, p.linkedTargetLocalProfileId,
+      p.name, p.displayName, p.label,
+    ].forEach(add);
+
+    // Parcours ciblé : on évite un scan JSON complet trop coûteux mais on couvre
+    // les formes réelles des payloads de match X01 / multi / reprise.
+    const nestedKeys = [
+      "player", "profile", "participant", "players", "profiles", "participants",
+      "teamPlayers", "lineup", "members", "opponents", "scores", "scoreByPlayer",
+      "stats", "statsByPlayer", "avg3ByPlayer", "config", "state", "summary",
+      "payload", "resume", "game",
+    ];
+    for (const key of nestedKeys) {
+      if (p[key] != null) visitPlayer(p[key], depth + 1);
+    }
   };
+
   const buckets = [
     row?.players,
     row?.participants,
+    row?.profiles,
+    row?.playerIds,
+    row?.profileIds,
     row?.summary?.players,
     row?.summary?.participants,
+    row?.summary?.profiles,
+    row?.summary?.playerIds,
+    row?.summary?.profileIds,
     row?.payload?.players,
     row?.payload?.participants,
+    row?.payload?.profiles,
+    row?.payload?.playerIds,
+    row?.payload?.profileIds,
     row?.payload?.config?.players,
     row?.payload?.config?.participants,
+    row?.payload?.config?.profiles,
+    row?.payload?.config?.playerIds,
+    row?.payload?.config?.profileIds,
+    row?.payload?.state?.players,
+    row?.payload?.state?.participants,
     row?.resume?.players,
+    row?.resume?.participants,
     row?.resume?.config?.players,
+    row?.resume?.config?.participants,
     row?.game?.players,
+    row?.game?.participants,
   ];
-  for (const bucket of buckets) {
-    if (Array.isArray(bucket)) bucket.forEach(visitPlayer);
+  for (const bucket of buckets) visitPlayer(bucket);
+
+  // Certains historiques n'ont pas de tableau players mais uniquement des maps
+  // par id joueur : avg3ByPlayer, statsByPlayer, scoreByPlayer...
+  const idMaps = [
+    row?.summary?.avg3ByPlayer,
+    row?.summary?.statsByPlayer,
+    row?.summary?.scoreByPlayer,
+    row?.payload?.summary?.avg3ByPlayer,
+    row?.payload?.summary?.statsByPlayer,
+    row?.payload?.statsByPlayer,
+    row?.payload?.scoreByPlayer,
+    row?.resume?.statsByPlayer,
+    row?.resume?.scoreByPlayer,
+  ];
+  for (const map of idMaps) {
+    if (map && typeof map === "object" && !Array.isArray(map)) {
+      Object.keys(map).forEach(add);
+    }
   }
+
   return out;
 }
 
-function x01MergePlayerUsageFromHistory(rows: any[], base: Record<string, number> = {}): Record<string, number> {
+function x01MergePlayerUsageFromHistory(rows: any[], base: Record<string, number> = {}, profiles: any[] = []): Record<string, number> {
   const out: Record<string, number> = { ...(base || {}) };
+  const lookup = x01BuildProfileLookup(profiles);
   for (const row of Array.isArray(rows) ? rows : []) {
-    for (const id of x01ExtractPlayerIdsFromHistoryRow(row)) out[id] = Number(out[id] || 0) + 1;
+    // On compte uniquement les lignes qui ressemblent à des matchs réels.
+    const kind = String(row?.kind || row?.game?.mode || row?.payload?.kind || row?.payload?.game?.mode || "").toLowerCase();
+    const ids = x01ExtractPlayerIdsFromHistoryRow(row, lookup);
+    if (!ids.length) continue;
+    const weight = kind.includes("x01") || !kind ? 1 : 1;
+    for (const id of ids) out[id] = Number(out[id] || 0) + weight;
     const winnerId = row?.winnerId ?? row?.summary?.winnerId ?? row?.payload?.winnerId ?? row?.payload?.summary?.winnerId;
-    const wid = String(winnerId || "").trim();
+    const wid = x01ResolveHistoryPlayerId(winnerId, lookup);
     if (wid) out[wid] = Number(out[wid] || 0) + 0.25;
   }
   return out;
@@ -404,8 +507,8 @@ function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
       // 2) favoris
       // 3) utilisation
       // 4) alphabétique
-      const privateA = x01IsExplicitPrivate(a) ? 1 : 0;
-      const privateB = x01IsExplicitPrivate(b) ? 1 : 0;
+      const privateA = !x01IsPublicDartSet(a) ? 1 : 0;
+      const privateB = !x01IsPublicDartSet(b) ? 1 : 0;
       if (privateA !== privateB) return privateB - privateA;
 
       const favA = a?.isFavorite ? 1 : 0;
@@ -539,9 +642,14 @@ function x01IsExplicitPrivate(set: any): boolean {
 }
 
 function x01IsPublicDartSet(set: any): boolean {
+  // Public uniquement si le set le dit explicitement, ou si son propriétaire
+  // legacy est global/public. Un custom sans owner clair ne devient plus public :
+  // c'est exactement le cas qui faisait apparaître The Nuke chez Chevroute/Lehna.
   if (x01IsExplicitPublic(set)) return true;
-  const owners = x01OwnerIds(set);
-  return owners.length === 0 && !x01IsExplicitPrivate(set);
+  const hasPrivateMarker = x01IsExplicitPrivate(set) || x01HasExplicitPrivateTarget(set);
+  if (hasPrivateMarker) return false;
+  const ownerValues = [set?.profileId, set?.ownerProfileId, set?.localProfileId, set?.profile_id];
+  return ownerValues.some((v) => x01HasConcreteOwnerValue(v) && x01IsGlobalOwnerId(v));
 }
 
 function x01DartSetMatchesProfile(set: any, profileId: string, allProfiles: any[] = []): boolean {
@@ -591,16 +699,23 @@ function x01DedupeDartSets(list: DartSet[]): DartSet[] {
 }
 
 
-let x01DartSetPickerCache: { ts: number; sets: DartSet[] } | null = null;
+let x01DartSetPickerCache: { ts: number; byProfile: Record<string, DartSet[]> } | null = null;
 function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []): DartSet[] {
   const now = Date.now();
-  if (!x01DartSetPickerCache || now - x01DartSetPickerCache.ts > 1500) {
-    x01DartSetPickerCache = {
-      ts: now,
-      sets: x01DedupeDartSets([...(getPublicDartSetsForSelector() || []), ...(getDartSetsForProfile(String(profileId || "")) || [])] as any),
-    };
+  const pid = String(profileId || "").trim();
+  if (!x01DartSetPickerCache || now - x01DartSetPickerCache.ts > 5000) {
+    x01DartSetPickerCache = { ts: now, byProfile: {} };
   }
-  return (x01DartSetPickerCache.sets || []).filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles));
+  if (!x01DartSetPickerCache.byProfile[pid]) {
+    // Cache PAR PROFIL : l'ancien cache global pouvait recycler la liste du
+    // joueur précédent pendant 1,5s et laisser passer des privés au mauvais
+    // joueur selon l'état legacy des flags.
+    x01DartSetPickerCache.byProfile[pid] = x01DedupeDartSets([
+      ...(getPublicDartSetsForSelector() || []),
+      ...(getDartSetsForProfile(pid) || []),
+    ] as any).filter((set: any) => x01DartSetSelectableForProfile(set, pid, allProfiles));
+  }
+  return x01DartSetPickerCache.byProfile[pid] || [];
 }
 
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
@@ -1088,7 +1203,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         const mod = await import("../lib/history");
         const rows = await mod.History.list().catch(() => []);
         if (!alive) return;
-        const merged = x01MergePlayerUsageFromHistory(rows as any[], x01ReadPlayerUsageCounts());
+        const merged = x01MergePlayerUsageFromHistory(rows as any[], x01ReadPlayerUsageCounts(), humanProfiles);
         try { window.localStorage.setItem(X01_PLAYER_USAGE_KEY, JSON.stringify(merged)); } catch {}
         setPlayerUsageCounts(merged);
         try { window.dispatchEvent(new Event("dc-x01-player-usage-updated")); } catch {}
@@ -1106,7 +1221,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         else window.clearTimeout(id as any);
       } catch {}
     };
-  }, []);
+  }, [humanProfiles]);
 
   const preferredHumanProfiles = React.useMemo(() => {
     return sortProfilesByUsageThenAlpha(humanProfiles, playerUsageCounts, activeProfileId);

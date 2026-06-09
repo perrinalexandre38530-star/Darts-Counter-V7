@@ -364,7 +364,9 @@ function readOwnerProfileId(raw: any): string {
 
 function isPublicOwnerProfileId(profileId: any): boolean {
   const id = normalizeText(profileId);
-  return !id || ["global", "public", "shared", "all", "default", "library", "bibliotheque", "common", "commun", "device", "local device"].includes(id);
+  // Vide ≠ public. Un set custom sans propriétaire clair doit rester privé/invisible
+  // plutôt que réapparaître chez tous les joueurs.
+  return !!id && ["global", "public", "shared", "all", "default", "library", "bibliotheque", "common", "commun", "device", "local device"].includes(id);
 }
 
 function hasConcreteOwnerProfileId(profileId: any): boolean {
@@ -1478,7 +1480,7 @@ function dartSetMatchesAnyId(set: any, id: any): boolean {
 
 function profileCanSeeDartSet(set: DartSet, profileId: string): boolean {
   if (!set) return false;
-  if (effectiveDartSetScope(set) === "public") return true;
+  if (isSelectablePublicForEveryProfile(set)) return true;
 
   // PRIVÉ = exclusif au profil propriétaire.
   // On n'utilise plus les alias de compte larges : ils rendaient Romrom / Zen JuJi
@@ -1844,7 +1846,6 @@ function isSelectablePublicForEveryProfile(set: any): boolean {
   const owner = readOwnerProfileId(set);
   const hasPrivateTarget = Boolean(s(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
   if (!hasPrivateTarget && isExplicitPublicOwnerProfileId(owner)) return true;
-  if (!hasPrivateTarget && effectiveDartSetScope(set) === "public") return true;
   return false;
 }
 

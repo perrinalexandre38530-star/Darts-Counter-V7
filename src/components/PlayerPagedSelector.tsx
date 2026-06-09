@@ -23,32 +23,97 @@ function bumpUsage(map: Record<string, number>, value: any, weight = 1) {
   map[key] = (map[key] || 0) + weight;
 }
 
-function collectPlayerUsageFromRows(rows: any[]): Record<string, number> {
+function nameKey(value: any): string {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function buildProfileLookup(profiles: any[] = []) {
+  const byId = new Map<string, string>();
+  const byName = new Map<string, string>();
+  for (const p of Array.isArray(profiles) ? profiles : []) {
+    const canonical = String(p?.id || p?.profileId || p?.localProfileId || p?.playerId || p?.uid || "").trim();
+    if (!canonical) continue;
+    [p?.id, p?.profileId, p?.localProfileId, p?.playerId, p?.uid, p?.uuid].forEach((v) => {
+      const id = String(v || "").trim();
+      if (id) byId.set(id, canonical);
+    });
+    const nk = nameKey(p?.name || p?.displayName || p?.label);
+    if (nk) byName.set(nk, canonical);
+  }
+  return { byId, byName };
+}
+
+function resolvePlayerId(raw: any, lookup: { byId: Map<string, string>; byName: Map<string, string> }): string {
+  const id = String(raw || "").trim();
+  if (!id) return "";
+  return lookup.byId.get(id) || lookup.byName.get(nameKey(id)) || id;
+}
+
+function collectPlayerUsageFromRows(rows: any[], profiles: any[] = []): Record<string, number> {
   const out: Record<string, number> = {};
-  const visitPlayer = (p: any, weight = 1) => {
-    if (!p || typeof p !== "object") return;
-    const ids = [p.id, p.profileId, p.playerId, p.localProfileId, p.uid].filter(Boolean);
-    for (const id of ids) bumpUsage(out, id, weight);
+  const lookup = buildProfileLookup(profiles);
+  const add = (value: any, weight = 1) => {
+    const id = resolvePlayerId(value, lookup);
+    if (!id) return;
+    out[id] = (out[id] || 0) + weight;
   };
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const buckets = [
-      row?.players,
-      row?.participants,
-      row?.summary?.players,
-      row?.summary?.participants,
-      row?.payload?.players,
-      row?.payload?.participants,
-      row?.payload?.config?.players,
-      row?.payload?.config?.participants,
-      row?.resume?.players,
-      row?.resume?.config?.players,
-      row?.game?.players,
-    ];
-    for (const bucket of buckets) {
-      if (Array.isArray(bucket)) bucket.forEach((x) => visitPlayer(x, 1));
+  const visit = (value: any, depth = 0) => {
+    if (!value || depth > 4) return;
+    if (typeof value === "string" || typeof value === "number") {
+      add(value);
+      return;
     }
+    if (Array.isArray(value)) {
+      value.forEach((x) => visit(x, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") return;
+    [
+      value.id, value.profileId, value.playerId, value.localProfileId, value.uid,
+      value.uuid, value.pid, value.userProfileId, value.name, value.displayName, value.label,
+    ].forEach(add);
+    [
+      "player", "profile", "participant", "players", "profiles", "participants",
+      "teamPlayers", "lineup", "members", "scores", "scoreByPlayer", "statsByPlayer",
+      "avg3ByPlayer", "config", "state", "summary", "payload", "resume", "game",
+    ].forEach((key) => {
+      if (value[key] != null) visit(value[key], depth + 1);
+    });
+  };
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    [
+      row?.players, row?.participants, row?.profiles, row?.playerIds, row?.profileIds,
+      row?.summary?.players, row?.summary?.participants, row?.summary?.playerIds, row?.summary?.profileIds,
+      row?.payload?.players, row?.payload?.participants, row?.payload?.playerIds, row?.payload?.profileIds,
+      row?.payload?.config?.players, row?.payload?.config?.participants, row?.payload?.config?.playerIds, row?.payload?.config?.profileIds,
+      row?.payload?.state?.players, row?.payload?.state?.participants,
+      row?.resume?.players, row?.resume?.participants, row?.resume?.config?.players, row?.resume?.config?.participants,
+      row?.game?.players, row?.game?.participants,
+    ].forEach((bucket) => visit(bucket));
+
+    [
+      row?.summary?.avg3ByPlayer,
+      row?.summary?.statsByPlayer,
+      row?.summary?.scoreByPlayer,
+      row?.payload?.summary?.avg3ByPlayer,
+      row?.payload?.summary?.statsByPlayer,
+      row?.payload?.statsByPlayer,
+      row?.payload?.scoreByPlayer,
+      row?.resume?.statsByPlayer,
+      row?.resume?.scoreByPlayer,
+    ].forEach((map) => {
+      if (map && typeof map === "object" && !Array.isArray(map)) Object.keys(map).forEach((id) => add(id));
+    });
+
     const winnerId = row?.winnerId ?? row?.summary?.winnerId ?? row?.payload?.winnerId ?? row?.payload?.summary?.winnerId;
-    bumpUsage(out, winnerId, 0.25);
+    add(winnerId, 0.25);
   }
   return out;
 }
@@ -101,28 +166,29 @@ export default function PlayerPagedSelector({
 
   React.useEffect(() => {
     if (!open) return;
-    // Par défaut on ne scanne plus l'historique : sur mobile/StackBlitz ça bloquait
-    // l'ouverture du sélecteur et les changements de page. Tri stable immédiat.
-    // Debug ponctuel possible : window.__PLAYER_SELECTOR_HISTORY_SCAN = true
-    const allowHistoryScan = typeof window !== "undefined" && (window as any).__PLAYER_SELECTOR_HISTORY_SCAN === true;
-    if (!allowHistoryScan) {
-      setHistoryUsageById(readX01PlayerUsageCounts());
-      return;
-    }
+    // Scan historique en arrière-plan : il alimente le tri "plus utilisés",
+    // mais ne bloque jamais l'ouverture ni la pagination du sélecteur.
     let alive = true;
     const run = async () => {
       try {
         const mod = await import("../lib/history");
         const rows = await mod.History.list().catch(() => []);
-        if (alive) setHistoryUsageById({ ...readX01PlayerUsageCounts(), ...collectPlayerUsageFromRows((rows as any[]).slice(0, 300)) });
+        if (!alive) return;
+        const fromHistory = collectPlayerUsageFromRows(rows as any[], profiles || []);
+        const merged = { ...readX01PlayerUsageCounts(), ...fromHistory };
+        setHistoryUsageById(merged);
+        try {
+          window.localStorage.setItem("dc_x01_v3_player_usage_counts", JSON.stringify(merged));
+          window.dispatchEvent(new Event("dc-x01-player-usage-updated"));
+        } catch {}
       } catch {
-        if (alive) setHistoryUsageById({});
+        if (alive) setHistoryUsageById(readX01PlayerUsageCounts());
       }
     };
     const w: any = typeof window !== "undefined" ? window : null;
     const idle = w?.requestIdleCallback
-      ? w.requestIdleCallback(run, { timeout: 900 })
-      : window.setTimeout(run, 120);
+      ? w.requestIdleCallback(run, { timeout: 1200 })
+      : window.setTimeout(run, 80);
     return () => {
       alive = false;
       try {
@@ -130,7 +196,7 @@ export default function PlayerPagedSelector({
         else clearTimeout(idle);
       } catch {}
     };
-  }, [open]);
+  }, [open, profiles]);
 
   const ordered = React.useMemo(() => {
     const usageScore = (p: any): number => {
@@ -269,8 +335,6 @@ const SelectedCard = React.memo(function SelectedCard({ p, accent, renderActions
       <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>{renderActions?.(p)}</div>
     </div>
   );
-}
-
 });
 
 function pill(accent: string, active: boolean): React.CSSProperties {
