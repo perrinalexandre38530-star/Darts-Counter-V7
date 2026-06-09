@@ -621,10 +621,16 @@ function x01IsExplicitPublic(set: any): boolean {
   if (flag === "public" || flag === "global" || flag === "shared" || flag === "all") return true;
   if (set?.isPublic === true || set?.public === true || set?.shared === true) return true;
 
-  // Un owner global n'est public que s'il existe vraiment ET qu'aucun marqueur
-  // privé n'est présent. Sinon un ancien privé mal propriétaire deviendrait
-  // visible chez tous les joueurs.
+  const ownerValues = [set?.profileId, set?.ownerProfileId, set?.localProfileId, set?.profile_id];
+  const hasAnyConcreteOwner = ownerValues.some((v) => x01HasConcreteOwnerValue(v) && !x01IsGlobalOwnerId(v));
+
+  // RÈGLE DEMANDÉE : set sans propriétaire concret = public pour tous, tant
+  // qu'il n'a pas de cible privée explicite. Les privés propriétaires restent
+  // exclusifs via x01DartSetMatchesProfile().
   const privateMarker = flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
+  if (!privateMarker && !hasAnyConcreteOwner) return true;
+
+  // Un owner global/public sans marqueur privé = public legacy.
   if (privateMarker) return false;
   if (x01HasConcreteOwnerValue(set?.profileId) && x01IsGlobalOwnerId(set?.profileId)) return true;
   if (x01HasConcreteOwnerValue(set?.ownerProfileId) && x01IsGlobalOwnerId(set?.ownerProfileId)) return true;

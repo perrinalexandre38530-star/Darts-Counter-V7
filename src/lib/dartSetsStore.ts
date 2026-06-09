@@ -1841,12 +1841,20 @@ export function setAllDartSets(list: DartSet[]) {
 
 function isSelectablePublicForEveryProfile(set: any): boolean {
   if (!set || isLikelyBadRecoveredDartSet(set) || isLinkedRemoteLike(set)) return false;
+
+  const owner = readOwnerProfileId(set);
+  const hasPrivateTarget = Boolean(s(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
+
   // Public explicite : source de vérité. On ignore les vieux flags private
   // résiduels quand scope/visibility/access/isPublic/public/shared dit public.
   if (isExplicitPublicDartSet(set)) return true;
+
+  // RÈGLE DEMANDÉE : un DartSet SANS propriétaire concret, et sans cible privée,
+  // est un set de bibliothèque publique accessible à tous les joueurs.
+  // Les sets privés avec propriétaire restent gérés par getDartSetsForProfile().
+  if (!hasPrivateTarget && !hasConcreteOwnerProfileId(owner) && !isExplicitPrivateDartSet(set)) return true;
+
   // Ancien format : owner global/public sans cible privée = public.
-  const owner = readOwnerProfileId(set);
-  const hasPrivateTarget = Boolean(s(set?.privateProfileId || set?.linkedTargetLocalProfileId || set?.targetLocalProfileId || set?.targetProfileId));
   if (!hasPrivateTarget && isExplicitPublicOwnerProfileId(owner)) return true;
   return false;
 }
@@ -1854,11 +1862,10 @@ function isSelectablePublicForEveryProfile(set: any): boolean {
 function isOwnerlessExplicitPublicForSelector(raw: any): boolean {
   if (!raw || typeof raw !== "object") return false;
   if (isLikelyBadRecoveredDartSet(raw) || isLinkedRemoteLike(raw)) return false;
-  if (!isExplicitPublicDartSet(raw)) return false;
 
-  // Cas demandé : dartset public de bibliothèque, sans propriétaire local.
-  // On refuse tout propriétaire concret pour ne pas rouvrir un privé d'un joueur
-  // chez les autres profils.
+  // Cas demandé : dartset de bibliothèque sans propriétaire local.
+  // Certains anciens sets publics n'ont plus le flag scope/public après édition,
+  // mais restent volontairement sans owner : ils doivent être visibles par tous.
   const owner = readOwnerProfileId(raw);
   const ownerIsEmptyOrGlobal = !hasConcreteOwnerProfileId(owner) || isPublicOwnerProfileId(owner);
   if (!ownerIsEmptyOrGlobal) return false;
@@ -1867,7 +1874,7 @@ function isOwnerlessExplicitPublicForSelector(raw: any): boolean {
     s(raw?.privateProfileId || raw?.linkedTargetLocalProfileId || raw?.targetLocalProfileId || raw?.targetProfileId)
   );
   if (hasPrivateTarget) return false;
-  if (isExplicitPrivateDartSet(raw)) return false;
+  if (isExplicitPrivateDartSet(raw) && !isExplicitPublicDartSet(raw)) return false;
 
   return true;
 }
