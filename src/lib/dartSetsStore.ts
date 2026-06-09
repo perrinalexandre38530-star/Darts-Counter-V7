@@ -810,14 +810,16 @@ function canonicalKeyForSet(set: any): string {
 }
 
 function visibleDartSetKey(set: any): string {
+  const scope = effectiveDartSetScope(set);
+  const owner = scope === "public" ? "public" : selectableOwnerKey(set);
   const name = normalizeText(set?.name || set?.label || set?.title || "");
   const visual = imageIdentity(set);
-  // Avant : clé basée seulement sur le nom. Résultat : plusieurs sets publics
-  // différents portant un nom proche pouvaient disparaître du sélecteur.
-  // Maintenant on fusionne seulement les doublons vraiment identiques.
-  if (name && visual) return `visible|name:${name}|visual:${visual}`;
-  if (name) return `visible|name:${name}|owner:${selectableOwnerKey(set)}`;
-  return `visible|visual:${visual || normalizeText(set?.presetId || set?.id || "")}`;
+  // CRITICAL X01 : la clé visible doit inclure scope + propriétaire.
+  // Sinon un vieux doublon public et un privé du même nom/image se fusionnent,
+  // puis le sélecteur réaffiche un privé chez les mauvais joueurs.
+  if (name && visual) return `visible|${scope}|${owner}|name:${name}|visual:${visual}`;
+  if (name) return `visible|${scope}|${owner}|name:${name}`;
+  return `visible|${scope}|${owner}|visual:${visual || normalizeText(set?.presetId || set?.id || "")}`;
 }
 
 function scoreDartSetForCanonical(set: any): number {
@@ -1251,20 +1253,20 @@ function loadPrimaryAuthoritative(): DartSet[] {
   try {
     const primaryExists = hasLocalStorageKey(STORAGE_KEY);
     const primaryRaw = readPrimaryRaw();
-
-    // Source de vérité stricte : uniquement dc_dart_sets_v1 quand elle existe.
-    // Les anciennes sources ne peuvent plus recréer de sets sélectionnables
-    // (sinon on réinjecte presets imaginaires, profils, teams et URLs).
     const recovery = readRecoveryRaw();
     const imageRecovery = readImageRecoveryRaw();
+
+    // Source de vérité stricte : si dc_dart_sets_v1 existe, on ne recrée plus
+    // aucun set sélectionnable depuis appStore/legacy. Ces sources peuvent être
+    // en retard et réinjectaient les anciens statuts public/privé après édition.
     const raw = primaryExists
-      ? mergeExplicitLibrarySources(primaryRaw, recovery)
+      ? filterOutPollutedDartSets(primaryRaw)
       : filterOutPollutedDartSets(recovery);
 
     rememberImagesForSets([...raw, ...imageRecovery]);
     const primary = mergePrimaryDuplicates(raw);
     const finalList = enrichImagesFromRecovery(primary, imageRecovery).filter((set) => !isLikelyBadRecoveredDartSet(set));
-    installDartSetsDiagnostics(finalList, recovery);
+    installDartSetsDiagnostics(finalList, primaryExists ? [] : recovery);
     return finalList;
   } catch (err) {
     console.warn("[dartSetsStore] load error", err);
@@ -1851,13 +1853,10 @@ function isSelectablePublicForEveryProfile(set: any): boolean {
 
 export function getPublicDartSetsForSelector(): DartSet[] {
   // Sélecteurs de partie : publics disponibles pour ABSOLUMENT tous les joueurs.
-  // On lit la bibliothèque officielle + les collections dartSets explicites du store
-  // pour éviter le cas où dc_dart_sets_v1 est en retard mais Mes fléchettes affiche
-  // déjà les sets publics via appStore.
-  const raw = [
-    ...loadAll(),
-    ...readRecoveryRaw(),
-  ];
+  // IMPORTANT : on lit uniquement loadAll() = dc_dart_sets_v1 normalisé.
+  // readRecoveryRaw() contenait parfois l'ancien état d'un set avant édition
+  // (ex-public resté public), ce qui annulait le passage public -> privé.
+  const raw = loadAll();
   const publics = raw
     .map((item: any) => normalizeDartSetForRuntime(item, { allowDeleted: true }))
     .filter(Boolean)

@@ -164,39 +164,10 @@ export default function PlayerPagedSelector({
     };
   }, []);
 
-  React.useEffect(() => {
-    if (!open) return;
-    // Scan historique en arrière-plan : il alimente le tri "plus utilisés",
-    // mais ne bloque jamais l'ouverture ni la pagination du sélecteur.
-    let alive = true;
-    const run = async () => {
-      try {
-        const mod = await import("../lib/history");
-        const rows = await mod.History.list().catch(() => []);
-        if (!alive) return;
-        const fromHistory = collectPlayerUsageFromRows(rows as any[], profiles || []);
-        const merged = { ...readX01PlayerUsageCounts(), ...fromHistory };
-        setHistoryUsageById(merged);
-        try {
-          window.localStorage.setItem("dc_x01_v3_player_usage_counts", JSON.stringify(merged));
-          window.dispatchEvent(new Event("dc-x01-player-usage-updated"));
-        } catch {}
-      } catch {
-        if (alive) setHistoryUsageById(readX01PlayerUsageCounts());
-      }
-    };
-    const w: any = typeof window !== "undefined" ? window : null;
-    const idle = w?.requestIdleCallback
-      ? w.requestIdleCallback(run, { timeout: 1200 })
-      : window.setTimeout(run, 80);
-    return () => {
-      alive = false;
-      try {
-        if (w?.cancelIdleCallback && typeof idle === "number") w.cancelIdleCallback(idle);
-        else clearTimeout(idle);
-      } catch {}
-    };
-  }, [open, profiles]);
+  // Le scan historique est déclenché par la page X01ConfigV3, puis propagé ici
+  // via dc-x01-player-usage-updated. On évite ainsi un double History.list()
+  // à chaque ouverture du sélecteur, qui ralentissait la pagination.
+
 
   const ordered = React.useMemo(() => {
     const usageScore = (p: any): number => {

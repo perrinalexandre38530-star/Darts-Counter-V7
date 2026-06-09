@@ -699,17 +699,25 @@ function x01DedupeDartSets(list: DartSet[]): DartSet[] {
 }
 
 
-let x01DartSetPickerCache: { ts: number; byProfile: Record<string, DartSet[]> } | null = null;
+let x01DartSetPickerCache: { version: string; byProfile: Record<string, DartSet[]> } | null = null;
+function x01DartSetStorageVersion(): string {
+  try {
+    if (typeof window === "undefined") return "server";
+    const raw = window.localStorage.getItem("dc_dart_sets_v1") || "";
+    const meta = window.localStorage.getItem("dc_dart_sets_v1_meta") || "";
+    return `${raw.length}:${meta.length}:${raw.slice(0, 96)}:${meta.slice(0, 96)}`;
+  } catch { return `${Date.now()}`; }
+}
 function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []): DartSet[] {
-  const now = Date.now();
   const pid = String(profileId || "").trim();
-  if (!x01DartSetPickerCache || now - x01DartSetPickerCache.ts > 5000) {
-    x01DartSetPickerCache = { ts: now, byProfile: {} };
+  const version = x01DartSetStorageVersion();
+  if (!x01DartSetPickerCache || x01DartSetPickerCache.version !== version) {
+    x01DartSetPickerCache = { version, byProfile: {} };
   }
   if (!x01DartSetPickerCache.byProfile[pid]) {
-    // Cache PAR PROFIL : l'ancien cache global pouvait recycler la liste du
-    // joueur précédent pendant 1,5s et laisser passer des privés au mauvais
-    // joueur selon l'état legacy des flags.
+    // Cache PAR PROFIL + invalidation par contenu localStorage : le changement
+    // public/privé/favori est donc visible immédiatement dans X01, même si
+    // l'évènement dc-dartsets-updated n'a pas été reçu par cette page.
     x01DartSetPickerCache.byProfile[pid] = x01DedupeDartSets([
       ...(getPublicDartSetsForSelector() || []),
       ...(getDartSetsForProfile(pid) || []),
@@ -1211,14 +1219,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       } catch {}
     };
     const w: any = window as any;
-    const id = typeof w.requestIdleCallback === "function"
-      ? w.requestIdleCallback(run, { timeout: 2200 })
-      : window.setTimeout(run, 350);
+    // L'ordre "plus utilisés" doit être prêt dès l'ouverture du sélecteur.
+    // Avant, requestIdleCallback pouvait attendre plusieurs secondes, donc la
+    // première page restait alphabétique. On lance le scan une fois le rendu rendu.
+    const id = window.setTimeout(run, 0);
     return () => {
       alive = false;
       try {
-        if (typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(id);
-        else window.clearTimeout(id as any);
+        window.clearTimeout(id as any);
       } catch {}
     };
   }, [humanProfiles]);
