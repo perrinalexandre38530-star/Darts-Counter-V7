@@ -1851,13 +1851,86 @@ function isSelectablePublicForEveryProfile(set: any): boolean {
   return false;
 }
 
+function isOwnerlessExplicitPublicForSelector(raw: any): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  if (isLikelyBadRecoveredDartSet(raw) || isLinkedRemoteLike(raw)) return false;
+  if (!isExplicitPublicDartSet(raw)) return false;
+
+  // Cas demandé : dartset public de bibliothèque, sans propriétaire local.
+  // On refuse tout propriétaire concret pour ne pas rouvrir un privé d'un joueur
+  // chez les autres profils.
+  const owner = readOwnerProfileId(raw);
+  const ownerIsEmptyOrGlobal = !hasConcreteOwnerProfileId(owner) || isPublicOwnerProfileId(owner);
+  if (!ownerIsEmptyOrGlobal) return false;
+
+  const hasPrivateTarget = Boolean(
+    s(raw?.privateProfileId || raw?.linkedTargetLocalProfileId || raw?.targetLocalProfileId || raw?.targetProfileId)
+  );
+  if (hasPrivateTarget) return false;
+  if (isExplicitPrivateDartSet(raw)) return false;
+
+  return true;
+}
+
+function collectOwnerlessPublicRecoveryCandidates(primary: DartSet[]): DartSet[] {
+  const seenIds = new Set<string>();
+  const seenVisible = new Set<string>();
+
+  for (const set of primary || []) {
+    for (const id of uniqStrings([set?.id, set?.linkedSourceDartSetId, ...(set?.duplicateIds || []), ...(set?.aliasIds || [])])) {
+      seenIds.add(id);
+    }
+    seenVisible.add(visibleDartSetKey(set));
+  }
+
+  const out: DartSet[] = [];
+  for (const raw of readRecoveryRaw()) {
+    if (!isOwnerlessExplicitPublicForSelector(raw)) continue;
+
+    const candidate = normalizeDartSetForRuntime(
+      {
+        ...raw,
+        scope: "public",
+        profileId: "global",
+        ownerProfileId: undefined,
+        localProfileId: undefined,
+        privateProfileId: undefined,
+        linkedTargetLocalProfileId: null,
+        isPublic: true,
+        public: true,
+        shared: true,
+        isPrivate: false,
+        private: false,
+      },
+      { allowDeleted: true }
+    );
+    if (!candidate || !isSelectablePublicForEveryProfile(candidate)) continue;
+
+    const ids = uniqStrings([candidate.id, candidate.linkedSourceDartSetId, ...(candidate.duplicateIds || []), ...(candidate.aliasIds || [])]);
+    if (ids.some((id) => seenIds.has(id))) continue;
+
+    const key = visibleDartSetKey(candidate);
+    if (key && seenVisible.has(key)) continue;
+
+    out.push(candidate);
+    ids.forEach((id) => seenIds.add(id));
+    if (key) seenVisible.add(key);
+  }
+
+  if (out.length) {
+    diag("selector:ownerless-public-recovery", {
+      recovered: out.length,
+      names: out.map((x) => `${x.name}:${x.id}`).slice(0, 20),
+    });
+  }
+  return out;
+}
+
 export function getPublicDartSetsForSelector(): DartSet[] {
   // Sélecteurs de partie : publics disponibles pour ABSOLUMENT tous les joueurs.
-  // IMPORTANT : on lit uniquement loadAll() = dc_dart_sets_v1 normalisé.
-  // readRecoveryRaw() contenait parfois l'ancien état d'un set avant édition
-  // (ex-public resté public), ce qui annulait le passage public -> privé.
-  const raw = loadAll();
-  const publics = raw
+  // Base officielle : dc_dart_sets_v1 normalisé.
+  const primary = loadAll();
+  const publicFromPrimary = primary
     .map((item: any) => normalizeDartSetForRuntime(item, { allowDeleted: true }))
     .filter(Boolean)
     .filter((set: any) => isSelectablePublicForEveryProfile(set))
@@ -1875,7 +1948,15 @@ export function getPublicDartSetsForSelector(): DartSet[] {
       isPrivate: false,
       private: false,
     }) as DartSet);
-  return dedupeVisibleDartSets(publics);
+
+  // Réparation ciblée : certains sets publics anciens/sans propriétaire peuvent
+  // encore être stockés seulement dans appStore/legacy, donc absents de
+  // dc_dart_sets_v1. On les ajoute, mais UNIQUEMENT s'ils sont explicitement
+  // publics ET sans propriétaire concret. Les privés propriétaires restent
+  // exclusifs et ne passent pas par ce fallback.
+  const ownerlessPublicFallback = collectOwnerlessPublicRecoveryCandidates(primary);
+
+  return dedupeVisibleDartSets([...publicFromPrimary, ...ownerlessPublicFallback]);
 }
 
 export function getDartSetsForProfile(profileId: string): DartSet[] {
