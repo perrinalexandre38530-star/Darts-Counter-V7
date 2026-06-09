@@ -254,6 +254,50 @@ function buildLastOrDefaultSelectedIds(humans: Profile[], activeProfileId: strin
   return buildDefaultSelectedIds(humans, activeProfileId);
 }
 
+
+function x01ExtractPlayerIdsFromHistoryRow(row: any): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (v: any) => {
+    const id = String(v || "").trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  const visitPlayer = (p: any) => {
+    if (!p || typeof p !== "object") return;
+    add(p.id); add(p.profileId); add(p.playerId); add(p.localProfileId); add(p.uid); add(p.uuid);
+  };
+  const buckets = [
+    row?.players,
+    row?.participants,
+    row?.summary?.players,
+    row?.summary?.participants,
+    row?.payload?.players,
+    row?.payload?.participants,
+    row?.payload?.config?.players,
+    row?.payload?.config?.participants,
+    row?.resume?.players,
+    row?.resume?.config?.players,
+    row?.game?.players,
+  ];
+  for (const bucket of buckets) {
+    if (Array.isArray(bucket)) bucket.forEach(visitPlayer);
+  }
+  return out;
+}
+
+function x01MergePlayerUsageFromHistory(rows: any[], base: Record<string, number> = {}): Record<string, number> {
+  const out: Record<string, number> = { ...(base || {}) };
+  for (const row of Array.isArray(rows) ? rows : []) {
+    for (const id of x01ExtractPlayerIdsFromHistoryRow(row)) out[id] = Number(out[id] || 0) + 1;
+    const winnerId = row?.winnerId ?? row?.summary?.winnerId ?? row?.payload?.winnerId ?? row?.payload?.summary?.winnerId;
+    const wid = String(winnerId || "").trim();
+    if (wid) out[wid] = Number(out[wid] || 0) + 0.25;
+  }
+  return out;
+}
+
 function sortProfilesByUsageThenAlpha(profiles: Profile[], usageCounts: Record<string, number>, activeProfileId?: string | null): Profile[] {
   const usageScore = (p: any) => {
     const ids = [p?.id, p?.profileId, p?.playerId, p?.localProfileId, p?.uid].map((x) => String(x || "").trim()).filter(Boolean);
@@ -546,6 +590,19 @@ function x01DedupeDartSets(list: DartSet[]): DartSet[] {
   return out;
 }
 
+
+let x01DartSetPickerCache: { ts: number; sets: DartSet[] } | null = null;
+function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []): DartSet[] {
+  const now = Date.now();
+  if (!x01DartSetPickerCache || now - x01DartSetPickerCache.ts > 1500) {
+    x01DartSetPickerCache = {
+      ts: now,
+      sets: x01DedupeDartSets([...(getPublicDartSetsForSelector() || []), ...(getDartSetsForProfile(String(profileId || "")) || [])] as any),
+    };
+  }
+  return (x01DartSetPickerCache.sets || []).filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles));
+}
+
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   profileId,
   dartSetId,
@@ -570,10 +627,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     // - privés retournés par getDartSetsForProfile = uniquement propriétaire.
     // On garde le filtre X01 en sécurité, mais le store fait maintenant la
     // séparation stricte public/privé à la source.
-    const all = x01DedupeDartSets([
-      ...(getPublicDartSetsForSelector() || []),
-      ...(getDartSetsForProfile(String(profileId || "")) || []),
-    ] as any).filter((set: any) => x01DartSetSelectableForProfile(set, String(profileId || ""), allProfiles));
+    const all = x01GetCachedPickerDartSets(String(profileId || ""), allProfiles);
     const library = all;
 
     try {
@@ -588,7 +642,12 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         });
       }
     } catch {}
-    setSets(sortDartSetsForProfilePicker(all));
+    const nextSets = sortDartSetsForProfilePicker(all);
+    setSets((prev) => {
+      const a = (prev || []).map((x: any) => String(x?.id || "")).join("|");
+      const b = nextSets.map((x: any) => String((x as any)?.id || "")).join("|");
+      return a === b ? prev : nextSets;
+    });
   }, [profileId, allProfiles]);
 
   React.useEffect(() => {
@@ -597,7 +656,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const onUpdated = () => reloadSets();
+    const onUpdated = () => { x01DartSetPickerCache = null; reloadSets(); };
     window.addEventListener("dc-dartsets-updated", onUpdated);
     return () => window.removeEventListener("dc-dartsets-updated", onUpdated);
   }, [reloadSets]);
@@ -1018,6 +1077,34 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     return () => {
       window.removeEventListener("storage", refreshUsage);
       window.removeEventListener("dc-x01-player-usage-updated", refreshUsage as any);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    let alive = true;
+    const run = async () => {
+      try {
+        const mod = await import("../lib/history");
+        const rows = await mod.History.list().catch(() => []);
+        if (!alive) return;
+        const merged = x01MergePlayerUsageFromHistory(rows as any[], x01ReadPlayerUsageCounts());
+        try { window.localStorage.setItem(X01_PLAYER_USAGE_KEY, JSON.stringify(merged)); } catch {}
+        setPlayerUsageCounts(merged);
+        try { window.dispatchEvent(new Event("dc-x01-player-usage-updated")); } catch {}
+        try { console.info("[x01-history-usage-scan-done]", { matches: Array.isArray(rows) ? rows.length : 0, players: Object.keys(merged).length }); } catch {}
+      } catch {}
+    };
+    const w: any = window as any;
+    const id = typeof w.requestIdleCallback === "function"
+      ? w.requestIdleCallback(run, { timeout: 2200 })
+      : window.setTimeout(run, 350);
+    return () => {
+      alive = false;
+      try {
+        if (typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(id);
+        else window.clearTimeout(id as any);
+      } catch {}
     };
   }, []);
 
@@ -1486,7 +1573,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           ) : (
             <>
               <PlayerPagedSelector
-                profiles={humanProfiles}
+                profiles={preferredHumanProfiles}
                 selectedIds={selectedIds}
                 onToggle={togglePlayer}
                 accent={primary}

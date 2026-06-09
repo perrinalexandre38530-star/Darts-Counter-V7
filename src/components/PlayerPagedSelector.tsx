@@ -169,10 +169,11 @@ export default function PlayerPagedSelector({
     });
   }, [profiles, historyUsageById]);
 
-  const selected = React.useMemo(() => ordered.filter((p: any) => selectedIds?.includes(p.id)), [ordered, selectedIds]);
+  const selectedIdSet = React.useMemo(() => new Set((selectedIds || []).map((x: any) => String(x))), [selectedIds]);
+  const selected = React.useMemo(() => ordered.filter((p: any) => selectedIdSet.has(String(p.id))), [ordered, selectedIdSet]);
   const pages = Math.max(1, Math.ceil(ordered.length / pageSize));
   const safePage = Math.min(Math.max(page, 0), pages - 1);
-  const pageItems = ordered.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  const pageItems = React.useMemo(() => ordered.slice(safePage * pageSize, safePage * pageSize + pageSize), [ordered, safePage, pageSize]);
 
   React.useEffect(() => {
     if (open) setPage(0);
@@ -188,7 +189,7 @@ export default function PlayerPagedSelector({
       {listOpen ? (
         <div className="dc-scroll-thin" style={{ maxHeight: 220, overflowY: "auto", borderRadius: 16, border: `1px solid ${accent}44`, background: "rgba(0,0,0,.24)", padding: 8 }}>
           {ordered.map((p: any) => {
-            const active = selectedIds?.includes(p.id);
+            const active = selectedIdSet.has(String(p.id));
             return (
               <button key={p.id} type="button" onClick={() => onToggle(p.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
                 <span style={{ color: active ? accent : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
@@ -222,7 +223,7 @@ export default function PlayerPagedSelector({
             <div style={{ padding: 14, overflowY: "auto" }} className="dc-scroll-thin">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {pageItems.map((p: any) => {
-                  const active = selectedIds?.includes(p.id);
+                  const active = selectedIdSet.has(String(p.id));
                   const lvl = profileLevel(p);
                   return (
                     <button key={p.id} type="button" onClick={() => onToggle(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
@@ -231,7 +232,7 @@ export default function PlayerPagedSelector({
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)" }}>
                           <ProfileAvatar profile={p} size={82} />
                         </div>
-                        {renderAvatarOverlay?.(p)}
+                        {active ? renderAvatarOverlay?.(p) : null}
                       </div>
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", display: "flex", justifyContent: "center" }}>{renderActions?.(p)}</div>
@@ -252,7 +253,7 @@ export default function PlayerPagedSelector({
   );
 }
 
-function SelectedCard({ p, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
+const SelectedCard = React.memo(function SelectedCard({ p, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
   const lvl = profileLevel(p);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
@@ -269,6 +270,8 @@ function SelectedCard({ p, accent, renderActions, renderAvatarOverlay, onRemove 
     </div>
   );
 }
+
+});
 
 function pill(accent: string, active: boolean): React.CSSProperties {
   return { padding: "8px 12px", borderRadius: 999, border: `1px solid ${accent}88`, background: active ? `${accent}18` : "rgba(255,255,255,.04)", color: accent, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7, boxShadow: active ? `0 0 14px ${accent}44` : "none", cursor: "pointer" };
