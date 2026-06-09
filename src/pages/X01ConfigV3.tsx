@@ -186,6 +186,100 @@ function buildDefaultSelectedIds(humans: Profile[], activeProfileId: string | nu
 }
 
 
+const X01_LAST_SELECTED_PLAYERS_KEY = "dc_x01_v3_last_selected_player_ids";
+const X01_PLAYER_USAGE_KEY = "dc_x01_v3_player_usage_counts";
+
+function x01ReadJsonObject(key: string): any {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function x01ReadLastSelectedPlayerIds(): string[] {
+  const parsed = x01ReadJsonObject(X01_LAST_SELECTED_PLAYERS_KEY);
+  const raw = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.ids) ? parsed.ids : [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of raw) {
+    const sid = String(id || "").trim();
+    if (!sid || seen.has(sid)) continue;
+    seen.add(sid);
+    out.push(sid);
+  }
+  return out;
+}
+
+function x01ReadPlayerUsageCounts(): Record<string, number> {
+  const parsed = x01ReadJsonObject(X01_PLAYER_USAGE_KEY);
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(parsed || {})) {
+    const id = String(k || "").trim();
+    const n = Number(v);
+    if (id && Number.isFinite(n) && n > 0) out[id] = n;
+  }
+  return out;
+}
+
+function x01PersistLastSelectedPlayerIds(ids: string[]) {
+  try {
+    if (typeof window === "undefined") return;
+    const clean = (ids || []).map((x) => String(x || "").trim()).filter(Boolean);
+    window.localStorage.setItem(X01_LAST_SELECTED_PLAYERS_KEY, JSON.stringify({ ids: clean, ts: Date.now() }));
+  } catch {}
+}
+
+function x01BumpPlayerUsage(ids: string[]) {
+  try {
+    if (typeof window === "undefined") return;
+    const counts = x01ReadPlayerUsageCounts();
+    for (const raw of ids || []) {
+      const id = String(raw || "").trim();
+      if (!id) continue;
+      counts[id] = Number(counts[id] || 0) + 1;
+    }
+    window.localStorage.setItem(X01_PLAYER_USAGE_KEY, JSON.stringify(counts));
+  } catch {}
+}
+
+function buildLastOrDefaultSelectedIds(humans: Profile[], activeProfileId: string | null | undefined): string[] {
+  const available = new Set((Array.isArray(humans) ? humans : []).map((p: any) => String(p?.id || "").trim()).filter(Boolean));
+  const recent = x01ReadLastSelectedPlayerIds().filter((id) => available.has(id));
+  if (recent.length > 0) return recent;
+  return buildDefaultSelectedIds(humans, activeProfileId);
+}
+
+function sortProfilesByUsageThenAlpha(profiles: Profile[], usageCounts: Record<string, number>, activeProfileId?: string | null): Profile[] {
+  const usageScore = (p: any) => {
+    const ids = [p?.id, p?.profileId, p?.playerId, p?.localProfileId, p?.uid].map((x) => String(x || "").trim()).filter(Boolean);
+    let best = 0;
+    for (const id of ids) best = Math.max(best, Number(usageCounts?.[id] || 0));
+    const fields = [p?.usageCount, p?.useCount, p?.uses, p?.timesUsed, p?.matchCount, p?.matchesCount, p?.matchesPlayed, p?.gamesPlayed, p?.played];
+    for (const raw of fields) {
+      const n = Number(raw);
+      if (Number.isFinite(n)) best = Math.max(best, n);
+    }
+    return best;
+  };
+  return (Array.isArray(profiles) ? profiles : []).slice().sort((a: any, b: any) => {
+    const ua = usageScore(a);
+    const ub = usageScore(b);
+    if (ua !== ub) return ub - ua;
+    // Si aucune stat d'utilisation n'existe encore, on garde le profil actif devant.
+    if (ua === 0 && ub === 0 && activeProfileId) {
+      if (String(a?.id) === String(activeProfileId) && String(b?.id) !== String(activeProfileId)) return -1;
+      if (String(b?.id) === String(activeProfileId) && String(a?.id) !== String(activeProfileId)) return 1;
+    }
+    return String(a?.name || a?.label || "").localeCompare(String(b?.name || b?.label || ""), undefined, { sensitivity: "base", numeric: true });
+  });
+}
+
+
 function parseX01BotLevelValue(input: any, fallback = 1): number {
   if (typeof input === "number" && Number.isFinite(input)) {
     return Math.max(1, Math.min(5, Math.round(input * 2) / 2));
@@ -261,6 +355,15 @@ function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
   return (Array.isArray(list) ? list : [])
     .slice()
     .sort((a: any, b: any) => {
+      // Ordre demandé dans X01 :
+      // 1) sets privés autorisés du joueur courant
+      // 2) favoris
+      // 3) utilisation
+      // 4) alphabétique
+      const privateA = x01IsExplicitPrivate(a) ? 1 : 0;
+      const privateB = x01IsExplicitPrivate(b) ? 1 : 0;
+      if (privateA !== privateB) return privateB - privateA;
+
       const favA = a?.isFavorite ? 1 : 0;
       const favB = b?.isFavorite ? 1 : 0;
       if (favA !== favB) return favB - favA;
@@ -904,17 +1007,23 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   }, [allProfiles, botProfiles]);
 
   // ---- état local des paramètres ----
+  const [playerUsageCounts, setPlayerUsageCounts] = React.useState<Record<string, number>>(() => x01ReadPlayerUsageCounts());
+
+  React.useEffect(() => {
+    const refreshUsage = () => setPlayerUsageCounts(x01ReadPlayerUsageCounts());
+    refreshUsage();
+    if (typeof window === "undefined") return;
+    window.addEventListener("storage", refreshUsage);
+    window.addEventListener("dc-x01-player-usage-updated", refreshUsage as any);
+    return () => {
+      window.removeEventListener("storage", refreshUsage);
+      window.removeEventListener("dc-x01-player-usage-updated", refreshUsage as any);
+    };
+  }, []);
+
   const preferredHumanProfiles = React.useMemo(() => {
-    const ordered = humanProfiles.slice();
-    if (activeProfileId) {
-      const idx = ordered.findIndex((p) => p.id === activeProfileId);
-      if (idx > 0) {
-        const [active] = ordered.splice(idx, 1);
-        if (active) ordered.unshift(active);
-      }
-    }
-    return ordered;
-  }, [humanProfiles, activeProfileId]);
+    return sortProfilesByUsageThenAlpha(humanProfiles, playerUsageCounts, activeProfileId);
+  }, [humanProfiles, playerUsageCounts, activeProfileId]);
 
   const startTouchedRef = React.useRef(false);
   const outTouchedRef = React.useRef(false);
@@ -999,7 +1108,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const voiceTouchedRef = React.useRef(false);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
-    buildDefaultSelectedIds(preferredHumanProfiles, activeProfileId)
+    buildLastOrDefaultSelectedIds(preferredHumanProfiles, activeProfileId)
   );
 
   React.useEffect(() => {
@@ -1012,13 +1121,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const filtered = (prev || []).filter((id) => availableIds.has(id));
       if (filtered.length > 0 && filtered.length === (prev || []).length) return filtered;
       if (filtered.length > 0) return filtered;
-      return buildDefaultSelectedIds(preferredHumanProfiles, activeProfileId);
+      return buildLastOrDefaultSelectedIds(preferredHumanProfiles, activeProfileId);
     });
   }, [humanProfiles, botProfiles, preferredHumanProfiles, activeProfileId]);
 
   React.useEffect(() => {
     if (playersTouchedRef.current) return;
-    setSelectedIds(buildDefaultSelectedIds(preferredHumanProfiles, activeProfileId));
+    setSelectedIds(buildLastOrDefaultSelectedIds(preferredHumanProfiles, activeProfileId));
   }, [preferredHumanProfiles, activeProfileId]);
 
   const prefProfile = React.useMemo(() => {
@@ -1260,6 +1369,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     try {
       try {
         localStorage.setItem(SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod(scoreInputMethod));
+      } catch {}
+      x01PersistLastSelectedPlayerIds(selectedIds);
+      x01BumpPlayerUsage(selectedIds);
+      try {
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-x01-player-usage-updated"));
       } catch {}
       onStart(baseCfg as X01ConfigV3);
     } catch (e) {

@@ -53,6 +53,25 @@ function collectPlayerUsageFromRows(rows: any[]): Record<string, number> {
   return out;
 }
 
+
+function readX01PlayerUsageCounts(): Record<string, number> {
+  try {
+    if (typeof window === "undefined") return {};
+    const raw = window.localStorage.getItem("dc_x01_v3_player_usage_counts");
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed || {})) {
+      const id = String(k || "").trim();
+      const n = Number(v);
+      if (id && Number.isFinite(n) && n > 0) out[id] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export default function PlayerPagedSelector({
   profiles,
   selectedIds,
@@ -66,7 +85,19 @@ export default function PlayerPagedSelector({
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [listOpen, setListOpen] = React.useState(false);
-  const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>({});
+  const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>(() => readX01PlayerUsageCounts());
+
+  React.useEffect(() => {
+    const refresh = () => setHistoryUsageById((prev) => ({ ...prev, ...readX01PlayerUsageCounts() }));
+    refresh();
+    if (typeof window === "undefined") return;
+    window.addEventListener("storage", refresh);
+    window.addEventListener("dc-x01-player-usage-updated", refresh as any);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("dc-x01-player-usage-updated", refresh as any);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
@@ -75,7 +106,7 @@ export default function PlayerPagedSelector({
     // Debug ponctuel possible : window.__PLAYER_SELECTOR_HISTORY_SCAN = true
     const allowHistoryScan = typeof window !== "undefined" && (window as any).__PLAYER_SELECTOR_HISTORY_SCAN === true;
     if (!allowHistoryScan) {
-      setHistoryUsageById({});
+      setHistoryUsageById(readX01PlayerUsageCounts());
       return;
     }
     let alive = true;
@@ -83,7 +114,7 @@ export default function PlayerPagedSelector({
       try {
         const mod = await import("../lib/history");
         const rows = await mod.History.list().catch(() => []);
-        if (alive) setHistoryUsageById(collectPlayerUsageFromRows((rows as any[]).slice(0, 300)));
+        if (alive) setHistoryUsageById({ ...readX01PlayerUsageCounts(), ...collectPlayerUsageFromRows((rows as any[]).slice(0, 300)) });
       } catch {
         if (alive) setHistoryUsageById({});
       }
@@ -107,6 +138,7 @@ export default function PlayerPagedSelector({
       let best = 0;
       for (const id of ids) best = Math.max(best, Number(historyUsageById[id] || 0));
       const candidates = [
+        p?.__x01UsageCount,
         p?.usageCount,
         p?.useCount,
         p?.uses,
