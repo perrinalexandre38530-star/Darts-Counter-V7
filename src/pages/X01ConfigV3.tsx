@@ -66,6 +66,7 @@ type OutModeV3 = "simple" | "double" | "master";
 type ServiceModeV3 = "random" | "alternate";
 type TeamId = "gold" | "pink" | "blue" | "green";
 type TeamsSourceMode = "manual" | "saved";
+type ParticipantMode = "players" | "teams";
 
 type Props = {
   profiles: Profile[];
@@ -1414,6 +1415,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // évite d’écraser le choix manuel si on change de joueur sélectionné
   const voiceTouchedRef = React.useRef(false);
 
+  // Source principale de participants : joueurs classiques ou équipes fléchettes enregistrées/manuelles.
+  const [participantMode, setParticipantMode] = React.useState<ParticipantMode>("players");
+
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
     buildLastOrDefaultSelectedIds(preferredHumanProfiles, activeProfileId)
   );
@@ -1476,6 +1480,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
   const [teamsSourceMode, setTeamsSourceMode] = React.useState<TeamsSourceMode>("manual");
   const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>([]);
+  const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>({});
 
   // profileId -> dartSetId (ou null)
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
@@ -1529,41 +1534,74 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const savedTeamPlayerIds = React.useMemo(() => {
     const ids: string[] = [];
     const seen = new Set<string>();
+    const validProfiles = new Set((allProfiles || []).map((p: any) => String(p.id)));
     for (const team of selectedStoredTeams as any[]) {
-      for (const pid of Array.isArray(team?.playerIds) ? team.playerIds : []) {
+      const tid = String(team?.id || "");
+      const allIds = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+      const chosen = Array.isArray(savedTeamMemberSelections[tid]) ? savedTeamMemberSelections[tid] : allIds;
+      for (const pid of chosen) {
         const id = String(pid || "");
-        if (!id || seen.has(id)) continue;
-        if (!allProfiles.some((p: any) => String(p.id) === id)) continue;
+        if (!id || seen.has(id) || !validProfiles.has(id)) continue;
         seen.add(id);
         ids.push(id);
       }
     }
     return ids;
-  }, [selectedStoredTeams, allProfiles]);
+  }, [selectedStoredTeams, allProfiles, savedTeamMemberSelections]);
 
   const totalPlayers = selectedIds.length;
   const selectedSavedTeamsCount = selectedStoredTeams.length;
 
   // ---- conditions pour pouvoir démarrer ----
   const canStart = React.useMemo(() => {
-    if (matchMode === "teams" && teamsSourceMode === "saved") {
-      return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
+    if (participantMode === "teams") {
+      if (teamsSourceMode === "saved") return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
+      return totalPlayers >= 4;
     }
     if (totalPlayers === 0) return false;
     if (matchMode === "solo") return totalPlayers === 2;
     if (matchMode === "multi") return totalPlayers >= 2;
-    return totalPlayers >= 4; // équipes manuelles
-  }, [totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length]);
+    return totalPlayers >= 4; // équipes manuelles legacy
+  }, [participantMode, totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length]);
 
   // ---- désactivation visuelle des modes impossibles ----
   const soloDisabled = totalPlayers !== 2;
   const multiDisabled = totalPlayers < 2;
   const teamsDisabled = false;
 
+  React.useEffect(() => {
+    if (participantMode === "teams") setMatchMode("teams");
+    else if (matchMode === "teams") setMatchMode(totalPlayers >= 3 ? "multi" : "solo");
+  }, [participantMode]);
+
+  React.useEffect(() => {
+    if (participantMode === "teams") setMatchMode("teams");
+  }, [participantMode, teamsSourceMode]);
+
+  function toggleSavedTeamMember(teamId: string, playerId: string) {
+    setSavedTeamMemberSelections((prev) => {
+      const tid = String(teamId || "");
+      const team = storedDartsTeams.find((t: any) => String(t.id) === tid);
+      const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+      const current = Array.isArray(prev[tid]) ? prev[tid] : allIds;
+      const pid = String(playerId || "");
+      const next = current.includes(pid) ? current.filter((id) => id !== pid) : [...current, pid];
+      return { ...prev, [tid]: next };
+    });
+  }
+
   function toggleStoredTeam(teamId: string) {
-    setSelectedStoredTeamIds((prev) =>
-      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId]
-    );
+    const tid = String(teamId || "");
+    setSelectedStoredTeamIds((prev) => {
+      const exists = prev.includes(tid);
+      return exists ? prev.filter((id) => id !== tid) : [...prev, tid];
+    });
+    setSavedTeamMemberSelections((prev) => {
+      if (prev[tid]) return prev;
+      const team = storedDartsTeams.find((t: any) => String(t.id) === tid);
+      const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+      return { ...prev, [tid]: allIds };
+    });
   }
 
   function validateSavedTeams() {
@@ -1574,11 +1612,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
     const teams = selectedStoredTeams
       .map((team: any, index: number) => {
-        const ids = (Array.isArray(team?.playerIds) ? team.playerIds : [])
+        const tid = String(team.id || `saved-${index}`);
+        const allIds = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((id: any) => String(id || "")).filter(Boolean);
+        const selectedMembers = Array.isArray(savedTeamMemberSelections[tid]) ? savedTeamMemberSelections[tid] : allIds;
+        const ids = selectedMembers
           .map((id: any) => String(id || ""))
           .filter((id: string) => !!id && allProfiles.some((p: any) => String(p.id) === id));
         return {
-          id: String(team.id || `saved-${index}`),
+          id: tid,
           name: String(team.name || `Équipe ${index + 1}`),
           color: ["#f7c85c", "#ff4fa2", "#4fc3ff", "#6dff7c"][index % 4],
           logoDataUrl: team.logoDataUrl ?? null,
@@ -1680,12 +1721,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
     let teams: null | Array<any> = null;
 
-    if (matchMode === "teams") {
+    if (participantMode === "teams" || matchMode === "teams") {
       teams = teamsSourceMode === "saved" ? validateSavedTeams() : validateTeams();
       if (!teams) return;
     }
 
-    const effectivePlayerIds = matchMode === "teams" && teamsSourceMode === "saved" ? savedTeamPlayerIds : selectedIds;
+    const effectivePlayerIds = participantMode === "teams" && teamsSourceMode === "saved" ? savedTeamPlayerIds : selectedIds;
 
     const players = effectivePlayerIds
       .map((id) => {
@@ -1730,9 +1771,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       serveMode,
       // ✅ L'engine V3 se base sur `gameMode` ("solo" | "multi" | "teams")
       // `matchMode` reste un champ UI/backward-compat ("solo" | "multi" | "teams")
-      gameMode: matchMode === "teams" ? "teams" : matchMode === "multi" ? "multi" : "solo",
-      matchMode,
-      teamsSourceMode: matchMode === "teams" ? teamsSourceMode : undefined,
+      gameMode: participantMode === "teams" || matchMode === "teams" ? "teams" : matchMode === "multi" ? "multi" : "solo",
+      matchMode: participantMode === "teams" ? "teams" : matchMode,
+      teamsSourceMode: participantMode === "teams" || matchMode === "teams" ? teamsSourceMode : undefined,
       // MULTI / FFA : choix utilisateur après le premier joueur fini
       multiFinishMode: matchMode === "multi" ? multiFinishMode : "stop_on_first",
       players,
@@ -1752,7 +1793,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId, sfxVolume: profileSfxVolume },
     };
 
-    if (matchMode === "teams" && teams) baseCfg.teams = teams;
+    if ((participantMode === "teams" || matchMode === "teams") && teams) baseCfg.teams = teams;
 
     try {
       try {
@@ -1840,7 +1881,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
-        {/* --------- BLOC JOUEURS (HUMAINS) --------- */}
+        {/* --------- BLOC PARTICIPANTS : JOUEURS / ÉQUIPES --------- */}
         <section
           style={{
             background: cardBg,
@@ -1861,43 +1902,88 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               marginBottom: 10,
             }}
           >
-            {t("x01v3.localPlayers", "Joueurs")}
+            Participants
           </div>
 
-          {humanProfiles.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#b3b8d0", marginBottom: 8 }}>
-              {t(
-                "x01v3.noProfiles",
-                "Aucun profil local. Tu peux créer des joueurs et des BOTS dans le menu Profils."
-              )}
-            </p>
-          ) : (
-            <>
-              <PlayerPagedSelector
-                profiles={preferredHumanProfiles}
-                selectedIds={selectedIds}
-                onToggle={togglePlayer}
-                accent={primary}
-                pageSize={9}
-                modalTitle="Choisir des joueurs"
-                renderAvatarOverlay={(p: any) => (
-                  <PlayerDartBadge
-                    profileId={p.id}
-                    dartSetId={playerDartSets[p.id] ?? null}
-                    onChange={(id) => handleChangePlayerDartSet(p.id, id)}
-                    compact
-                    allProfiles={humanProfiles}
-                  />
-                )}
-              />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            <PillButton
+              label="Joueurs"
+              active={participantMode === "players"}
+              onClick={() => setParticipantMode("players")}
+              primary={primary}
+              primarySoft={primarySoft}
+            />
+            <PillButton
+              label="Équipes"
+              active={participantMode === "teams"}
+              onClick={() => {
+                setParticipantMode("teams");
+                setMatchMode("teams");
+              }}
+              primary={primary}
+              primarySoft={primarySoft}
+            />
+          </div>
 
-              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                {t("x01v3.playersHint", "2 joueurs pour un duel, 3+ pour Multi ou Équipes.")}
+          {participantMode === "players" ? (
+            humanProfiles.length === 0 ? (
+              <p style={{ fontSize: 13, color: "#b3b8d0", marginBottom: 8 }}>
+                {t(
+                  "x01v3.noProfiles",
+                  "Aucun profil local. Tu peux créer des joueurs et des BOTS dans le menu Profils."
+                )}
               </p>
-            </>
+            ) : (
+              <>
+                <PlayerPagedSelector
+                  profiles={preferredHumanProfiles}
+                  selectedIds={selectedIds}
+                  onToggle={togglePlayer}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle="Choisir des joueurs"
+                  renderAvatarOverlay={(p: any) => (
+                    <PlayerDartBadge
+                      profileId={p.id}
+                      dartSetId={playerDartSets[p.id] ?? null}
+                      onChange={(id) => handleChangePlayerDartSet(p.id, id)}
+                      compact
+                      allProfiles={humanProfiles}
+                    />
+                  )}
+                />
+
+                <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
+                  {t("x01v3.playersHint", "2 joueurs pour un duel, 3+ pour Multi.")}
+                </p>
+              </>
+            )
+          ) : (
+            <TeamsSection
+              profiles={teamProfiles}
+              selectableProfiles={preferredHumanProfiles}
+              selectedIds={selectedIds}
+              teamAssignments={teamAssignments}
+              setPlayerTeam={setPlayerTeam}
+              togglePlayer={togglePlayer}
+              playerDartSets={playerDartSets}
+              handleChangePlayerDartSet={handleChangePlayerDartSet}
+              allProfiles={humanProfiles}
+              sourceMode={teamsSourceMode}
+              setSourceMode={setTeamsSourceMode}
+              storedTeams={storedDartsTeams}
+              selectedStoredTeamIds={selectedStoredTeamIds}
+              toggleStoredTeam={toggleStoredTeam}
+              savedTeamMemberSelections={savedTeamMemberSelections}
+              toggleSavedTeamMember={toggleSavedTeamMember}
+              primary={primary}
+              primarySoft={primarySoft}
+            />
           )}
         </section>
 
+        {participantMode === "players" && (
+          <>
         {/* --------- BLOC BOTS IA --------- */}
         <section
           style={{
@@ -1967,6 +2053,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             />
           ) : null}
         </section>
+
+          </>
+        )}
 
         {/* --------- BLOC PARAMÈTRES DE BASE + AUDIO + EXTERNAL --------- */}
         <section
@@ -2186,6 +2275,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 active={matchMode === "teams"}
                 onClick={() => {
                   if (teamsDisabled) return;
+                  setParticipantMode("teams");
                   setMatchMode("teams");
                 }}
                 primary={primary}
@@ -2819,22 +2909,6 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
           )}
         </section>
 
-        {/* --------- BLOC COMPO ÉQUIPES --------- */}
-        {matchMode === "teams" && (
-          <TeamsSection
-            profiles={teamProfiles}
-            selectedIds={selectedIds}
-            teamAssignments={teamAssignments}
-            setPlayerTeam={setPlayerTeam}
-            sourceMode={teamsSourceMode}
-            setSourceMode={setTeamsSourceMode}
-            storedTeams={storedDartsTeams}
-            selectedStoredTeamIds={selectedStoredTeamIds}
-            toggleStoredTeam={toggleStoredTeam}
-            primary={primary}
-            primarySoft={primarySoft}
-          />
-        )}
         <div style={{ height: 96 }} />
       </div>
 
@@ -2949,28 +3023,42 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
 
 type TeamsSectionProps = {
   profiles: Profile[];
+  selectableProfiles?: Profile[];
   selectedIds: string[];
   teamAssignments: Record<string, TeamId | null>;
   setPlayerTeam: (playerId: string, tid: TeamId) => void;
+  togglePlayer?: (id: string) => void;
+  playerDartSets?: Record<string, string | null>;
+  handleChangePlayerDartSet?: (profileId: string, dartSetId: string | null) => void;
+  allProfiles?: Profile[];
   sourceMode: TeamsSourceMode;
   setSourceMode: (mode: TeamsSourceMode) => void;
   storedTeams: TeamEntity[];
   selectedStoredTeamIds: string[];
   toggleStoredTeam: (teamId: string) => void;
+  savedTeamMemberSelections?: Record<string, string[]>;
+  toggleSavedTeamMember?: (teamId: string, playerId: string) => void;
   primary: string;
   primarySoft: string;
 };
 
 function TeamsSection({
   profiles,
+  selectableProfiles,
   selectedIds,
   teamAssignments,
   setPlayerTeam,
+  togglePlayer,
+  playerDartSets,
+  handleChangePlayerDartSet,
+  allProfiles,
   sourceMode,
   setSourceMode,
   storedTeams,
   selectedStoredTeamIds,
   toggleStoredTeam,
+  savedTeamMemberSelections,
+  toggleSavedTeamMember,
   primary,
   primarySoft,
 }: TeamsSectionProps) {
@@ -3012,7 +3100,7 @@ function TeamsSection({
 
       <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
         {sourceMode === "saved"
-          ? "Choisis au moins 2 équipes enregistrées depuis Profils > Teams Fléchettes. Les joueurs sont chargés automatiquement."
+          ? "Choisis au moins 2 équipes enregistrées, puis coche les joueurs qui participent au match dans chaque équipe."
           : t(
               "x01v3.teams.subtitle",
               "Assigne chaque joueur à une Team : Gold, Pink, Blue ou Green. Combos possibles : 2v2, 3v3, 4v4, 2v2v2 ou 2v2v2v2."
@@ -3091,11 +3179,37 @@ function TeamsSection({
                       <div style={{ color: "#9da3c0", fontSize: 11 }}>{members.length} joueur{members.length > 1 ? "s" : ""}</div>
                     </div>
                   </div>
-                  {members.length > 0 && (
-                    <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
-                      {members.slice(0, 6).map((p: any) => (
-                        <ProfileAvatar key={p.id} profile={p} size={22} />
-                      ))}
+                  {members.length > 0 && active && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                      {members.map((p: any) => {
+                        const tid = String(team.id || "");
+                        const allIds = ids;
+                        const chosen = Array.isArray((savedTeamMemberSelections || {})[tid]) ? (savedTeamMemberSelections || {})[tid] : allIds;
+                        const checked = chosen.map(String).includes(String(p.id));
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => toggleSavedTeamMember && toggleSavedTeamMember(tid, String(p.id))}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              borderRadius: 999,
+                              padding: "4px 7px",
+                              border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)",
+                              background: checked ? `${primary}18` : "rgba(255,255,255,0.04)",
+                              color: "#fff",
+                              fontSize: 10,
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <ProfileAvatar profile={p} size={20} />
+                            <span>{p.name}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </button>
@@ -3104,7 +3218,31 @@ function TeamsSection({
           )}
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ color: "#c8cbe4", fontSize: 12, lineHeight: 1.35 }}>
+            Choisir au minimum 4 joueurs, puis assigne-les manuellement à Gold, Pink, Blue ou Green.
+          </div>
+          {togglePlayer ? (
+            <PlayerPagedSelector
+              profiles={selectableProfiles || profiles}
+              selectedIds={selectedIds}
+              onToggle={togglePlayer}
+              accent={primary}
+              pageSize={9}
+              modalTitle="Choisir les joueurs des équipes"
+              renderAvatarOverlay={(p: any) => (
+                handleChangePlayerDartSet ? (
+                  <PlayerDartBadge
+                    profileId={p.id}
+                    dartSetId={(playerDartSets || {})[p.id] ?? null}
+                    onChange={(id) => handleChangePlayerDartSet(p.id, id)}
+                    compact
+                    allProfiles={allProfiles || profiles}
+                  />
+                ) : null
+              )}
+            />
+          ) : null}
           {selectedIds.length < 4 && (
             <div style={{ color: "#8f94b2", fontSize: 12, marginBottom: 4 }}>
               Sélectionne au moins 4 joueurs pour composer des équipes manuelles.
