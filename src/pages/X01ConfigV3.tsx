@@ -34,6 +34,7 @@ import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
 import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
+import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -64,6 +65,7 @@ type InModeV3 = "simple" | "double" | "master";
 type OutModeV3 = "simple" | "double" | "master";
 type ServiceModeV3 = "random" | "alternate";
 type TeamId = "gold" | "pink" | "blue" | "green";
+type TeamsSourceMode = "manual" | "saved";
 
 type Props = {
   profiles: Profile[];
@@ -1472,6 +1474,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   // playerId -> teamId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
+  const [teamsSourceMode, setTeamsSourceMode] = React.useState<TeamsSourceMode>("manual");
+  const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>([]);
 
   // profileId -> dartSetId (ou null)
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
@@ -1509,20 +1513,88 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     });
   }
 
+  const storedDartsTeams: TeamEntity[] = React.useMemo(() => {
+    try {
+      return loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0);
+    } catch {
+      return [];
+    }
+  }, [allProfiles]);
+
+  const selectedStoredTeams = React.useMemo(() => {
+    const selected = new Set(selectedStoredTeamIds.map(String));
+    return storedDartsTeams.filter((team: any) => selected.has(String(team.id)));
+  }, [storedDartsTeams, selectedStoredTeamIds]);
+
+  const savedTeamPlayerIds = React.useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const team of selectedStoredTeams as any[]) {
+      for (const pid of Array.isArray(team?.playerIds) ? team.playerIds : []) {
+        const id = String(pid || "");
+        if (!id || seen.has(id)) continue;
+        if (!allProfiles.some((p: any) => String(p.id) === id)) continue;
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+    return ids;
+  }, [selectedStoredTeams, allProfiles]);
+
   const totalPlayers = selectedIds.length;
+  const selectedSavedTeamsCount = selectedStoredTeams.length;
 
   // ---- conditions pour pouvoir démarrer ----
   const canStart = React.useMemo(() => {
+    if (matchMode === "teams" && teamsSourceMode === "saved") {
+      return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
+    }
     if (totalPlayers === 0) return false;
     if (matchMode === "solo") return totalPlayers === 2;
     if (matchMode === "multi") return totalPlayers >= 2;
-    return totalPlayers >= 4; // teams
-  }, [totalPlayers, matchMode]);
+    return totalPlayers >= 4; // équipes manuelles
+  }, [totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length]);
 
   // ---- désactivation visuelle des modes impossibles ----
   const soloDisabled = totalPlayers !== 2;
   const multiDisabled = totalPlayers < 2;
-  const teamsDisabled = totalPlayers < 4;
+  const teamsDisabled = false;
+
+  function toggleStoredTeam(teamId: string) {
+    setSelectedStoredTeamIds((prev) =>
+      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId]
+    );
+  }
+
+  function validateSavedTeams() {
+    if (selectedStoredTeams.length < 2) {
+      alert("Sélectionne au moins 2 équipes enregistrées.");
+      return null;
+    }
+
+    const teams = selectedStoredTeams
+      .map((team: any, index: number) => {
+        const ids = (Array.isArray(team?.playerIds) ? team.playerIds : [])
+          .map((id: any) => String(id || ""))
+          .filter((id: string) => !!id && allProfiles.some((p: any) => String(p.id) === id));
+        return {
+          id: String(team.id || `saved-${index}`),
+          name: String(team.name || `Équipe ${index + 1}`),
+          color: ["#f7c85c", "#ff4fa2", "#4fc3ff", "#6dff7c"][index % 4],
+          logoDataUrl: team.logoDataUrl ?? null,
+          avatarUrl: team.logoDataUrl ?? null,
+          players: ids,
+        };
+      })
+      .filter((team: any) => team.players.length > 0);
+
+    if (teams.length < 2) {
+      alert("Les équipes enregistrées sélectionnées doivent contenir au moins 1 joueur chacune.");
+      return null;
+    }
+
+    return teams;
+  }
 
   // ---- validation mode équipes ----
   function validateTeams() {
@@ -1576,6 +1648,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- validation & lancement ----
   function handleStart() {
     if (!canStart) {
+      if (matchMode === "teams" && teamsSourceMode === "saved") {
+        alert("Sélectionne au moins 2 équipes enregistrées avec des joueurs.");
+        return;
+      }
+      if (matchMode === "teams" && teamsSourceMode === "manual" && totalPlayers < 4) {
+        alert("Sélectionne au moins 4 joueurs pour composer des équipes manuelles.");
+        return;
+      }
       if (totalPlayers === 0) {
         alert(t("x01v3.config.needPlayer", "Sélectionne au moins un joueur local ou un BOT IA."));
         return;
@@ -1598,14 +1678,16 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       // ignore
     }
 
-    let teams: null | Array<{ id: TeamId; name: string; color: string; players: string[] }> = null;
+    let teams: null | Array<any> = null;
 
     if (matchMode === "teams") {
-      teams = validateTeams();
+      teams = teamsSourceMode === "saved" ? validateSavedTeams() : validateTeams();
       if (!teams) return;
     }
 
-    const players = selectedIds
+    const effectivePlayerIds = matchMode === "teams" && teamsSourceMode === "saved" ? savedTeamPlayerIds : selectedIds;
+
+    const players = effectivePlayerIds
       .map((id) => {
         const human = allProfiles.find((p) => p.id === id);
         if (human) {
@@ -1650,6 +1732,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       // `matchMode` reste un champ UI/backward-compat ("solo" | "multi" | "teams")
       gameMode: matchMode === "teams" ? "teams" : matchMode === "multi" ? "multi" : "solo",
       matchMode,
+      teamsSourceMode: matchMode === "teams" ? teamsSourceMode : undefined,
       // MULTI / FFA : choix utilisateur après le premier joueur fini
       multiFinishMode: matchMode === "multi" ? multiFinishMode : "stop_on_first",
       players,
@@ -1675,8 +1758,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       try {
         localStorage.setItem(SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod(scoreInputMethod));
       } catch {}
-      x01PersistLastSelectedPlayerIds(selectedIds);
-      x01BumpPlayerUsage(selectedIds);
+      x01PersistLastSelectedPlayerIds(effectivePlayerIds);
+      x01BumpPlayerUsage(effectivePlayerIds);
       try {
         if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-x01-player-usage-updated"));
       } catch {}
@@ -2737,12 +2820,19 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
         </section>
 
         {/* --------- BLOC COMPO ÉQUIPES --------- */}
-        {matchMode === "teams" && totalPlayers >= 2 && (
+        {matchMode === "teams" && (
           <TeamsSection
             profiles={teamProfiles}
             selectedIds={selectedIds}
             teamAssignments={teamAssignments}
             setPlayerTeam={setPlayerTeam}
+            sourceMode={teamsSourceMode}
+            setSourceMode={setTeamsSourceMode}
+            storedTeams={storedDartsTeams}
+            selectedStoredTeamIds={selectedStoredTeamIds}
+            toggleStoredTeam={toggleStoredTeam}
+            primary={primary}
+            primarySoft={primarySoft}
           />
         )}
         <div style={{ height: 96 }} />
@@ -2862,13 +2952,34 @@ type TeamsSectionProps = {
   selectedIds: string[];
   teamAssignments: Record<string, TeamId | null>;
   setPlayerTeam: (playerId: string, tid: TeamId) => void;
+  sourceMode: TeamsSourceMode;
+  setSourceMode: (mode: TeamsSourceMode) => void;
+  storedTeams: TeamEntity[];
+  selectedStoredTeamIds: string[];
+  toggleStoredTeam: (teamId: string) => void;
+  primary: string;
+  primarySoft: string;
 };
 
-function TeamsSection({ profiles, selectedIds, teamAssignments, setPlayerTeam }: TeamsSectionProps) {
+function TeamsSection({
+  profiles,
+  selectedIds,
+  teamAssignments,
+  setPlayerTeam,
+  sourceMode,
+  setSourceMode,
+  storedTeams,
+  selectedStoredTeamIds,
+  toggleStoredTeam,
+  primary,
+  primarySoft,
+}: TeamsSectionProps) {
   const { t } = useLang() as any;
 
   const cardBg = "rgba(10, 12, 24, 0.96)";
   const totalPlayers = selectedIds.length;
+  const selectedStored = new Set(selectedStoredTeamIds.map(String));
+  const teamByPlayer = React.useMemo(() => new Map((profiles || []).map((p: any) => [String(p.id), p])), [profiles]);
 
   const counts: Record<TeamId, number> = { gold: 0, pink: 0, blue: 0, green: 0 };
 
@@ -2900,52 +3011,145 @@ function TeamsSection({ profiles, selectedIds, teamAssignments, setPlayerTeam }:
       </h3>
 
       <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-        {t(
-          "x01v3.teams.subtitle",
-          "Assigne chaque joueur à une Team : Gold, Pink, Blue ou Green. Combos possibles : 2v2, 3v3, 4v4, 2v2v2 ou 2v2v2v2."
-        )}
+        {sourceMode === "saved"
+          ? "Choisis au moins 2 équipes enregistrées depuis Profils > Teams Fléchettes. Les joueurs sont chargés automatiquement."
+          : t(
+              "x01v3.teams.subtitle",
+              "Assigne chaque joueur à une Team : Gold, Pink, Blue ou Green. Combos possibles : 2v2, 3v3, 4v4, 2v2v2 ou 2v2v2v2."
+            )}
       </p>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {selectedIds.map((pid) => {
-          const p = profiles.find((pr) => pr.id === pid);
-          if (!p) return null;
-          const team = teamAssignments[pid] ?? null;
-
-          return (
-            <div key={pid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <ProfileAvatar profile={p} size={28} />
-                <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden", maxWidth: 120 }}>
-                  {p.name}
-                </span>
-              </div>
-
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {orderedTeams.map((tid, idx) => {
-                  const allowedTeamSlot = idx < maxTeams;
-                  const full = counts[tid] >= maxPerTeam && team !== tid;
-                  const disabled = !allowedTeamSlot || full;
-
-                  return (
-                    <TeamPillButton
-                      key={tid}
-                      label={TEAM_LABELS[tid].replace("Team ", "")}
-                      color={TEAM_COLORS[tid]}
-                      active={team === tid}
-                      disabled={disabled}
-                      onClick={() => {
-                        if (disabled) return;
-                        setPlayerTeam(pid, tid);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <PillButton
+          label="Manuel"
+          active={sourceMode === "manual"}
+          onClick={() => setSourceMode("manual")}
+          primary={primary}
+          primarySoft={primarySoft}
+        />
+        <PillButton
+          label="Équipes enregistrées"
+          active={sourceMode === "saved"}
+          onClick={() => setSourceMode("saved")}
+          primary={primary}
+          primarySoft={primarySoft}
+        />
       </div>
+
+      {sourceMode === "saved" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 10 }}>
+          {storedTeams.length === 0 ? (
+            <div style={{ color: "#8f94b2", fontSize: 12, lineHeight: 1.35 }}>
+              Aucune équipe fléchettes enregistrée. Crée-les dans Profils → Teams Fléchettes.
+            </div>
+          ) : (
+            storedTeams.map((team: any) => {
+              const active = selectedStored.has(String(team.id));
+              const ids = Array.isArray(team.playerIds) ? team.playerIds.map(String) : [];
+              const members = ids.map((id: string) => teamByPlayer.get(id)).filter(Boolean);
+
+              return (
+                <button
+                  key={team.id}
+                  type="button"
+                  onClick={() => toggleStoredTeam(String(team.id))}
+                  style={{
+                    textAlign: "left",
+                    borderRadius: 16,
+                    padding: 10,
+                    border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.08)",
+                    background: active ? primarySoft : "rgba(8,10,20,0.9)",
+                    color: "#f5f7ff",
+                    cursor: "pointer",
+                    boxShadow: active ? `0 0 18px ${primary}33` : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 14,
+                        overflow: "hidden",
+                        border: `1px solid ${active ? primary : "rgba(255,255,255,0.12)"}`,
+                        display: "grid",
+                        placeItems: "center",
+                        background: "rgba(16,22,36,0.9)",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      {team.logoDataUrl ? (
+                        <img src={team.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        <span style={{ color: primary, fontWeight: 950 }}>{String(team.name || "EQ").slice(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {team.name || "Équipe"}
+                      </div>
+                      <div style={{ color: "#9da3c0", fontSize: 11 }}>{members.length} joueur{members.length > 1 ? "s" : ""}</div>
+                    </div>
+                  </div>
+                  {members.length > 0 && (
+                    <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+                      {members.slice(0, 6).map((p: any) => (
+                        <ProfileAvatar key={p.id} profile={p} size={22} />
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {selectedIds.length < 4 && (
+            <div style={{ color: "#8f94b2", fontSize: 12, marginBottom: 4 }}>
+              Sélectionne au moins 4 joueurs pour composer des équipes manuelles.
+            </div>
+          )}
+          {selectedIds.map((pid) => {
+            const p = profiles.find((pr) => pr.id === pid);
+            if (!p) return null;
+            const team = teamAssignments[pid] ?? null;
+
+            return (
+              <div key={pid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <ProfileAvatar profile={p} size={28} />
+                  <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden", maxWidth: 120 }}>
+                    {p.name}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {orderedTeams.map((tid, idx) => {
+                    const allowedTeamSlot = idx < maxTeams;
+                    const full = counts[tid] >= maxPerTeam && team !== tid;
+                    const disabled = !allowedTeamSlot || full || selectedIds.length < 4;
+
+                    return (
+                      <TeamPillButton
+                        key={tid}
+                        label={TEAM_LABELS[tid].replace("Team ", "")}
+                        color={TEAM_COLORS[tid]}
+                        active={team === tid}
+                        disabled={disabled}
+                        onClick={() => {
+                          if (disabled) return;
+                          setPlayerTeam(pid, tid);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

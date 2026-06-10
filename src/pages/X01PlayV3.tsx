@@ -1021,7 +1021,7 @@ const resolveTeamSkin = (team: any): TeamSkin => {
   // stable fallback
   return "gold";
 };
-const teamAvatarUrl = (team: any) => getTeamAvatarUrl(resolveTeamSkin(team));
+const teamAvatarUrl = (team: any) => team?.logoDataUrl || team?.avatarUrl || getTeamAvatarUrl(resolveTeamSkin(team));
 export default function X01PlayV3({
   config,
   online = false,
