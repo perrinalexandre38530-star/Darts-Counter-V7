@@ -35,6 +35,12 @@ import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } f
 import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
+import { BOT_PRO_TEAMS } from "../lib/botTeams";
+import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
+import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
+import botTeamChallengerLogo from "../assets/ui/competition_bot_team_challenger.webp";
+import botTeamMixLogo from "../assets/ui/competition_bot_team_mix.webp";
+import botTeamRisingLogo from "../assets/ui/competition_bot_team_rising.webp";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -57,6 +63,14 @@ import avatarTheGiant from "../assets/avatars/bots-pro/the-giant.png";
 import avatarTheHammer from "../assets/avatars/bots-pro/the-hammer.png";
 import avatarVoltage from "../assets/avatars/bots-pro/voltage.png";
 import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
+
+const BOT_TEAM_LOGO_BY_KEY: Record<string, any> = {
+  elite: botTeamEliteLogo,
+  pro: botTeamProLogo,
+  challenger: botTeamChallengerLogo,
+  mix: botTeamMixLogo,
+  rising: botTeamRisingLogo,
+};
 
 // UI-only: "multi" = plusieurs joueurs en mode classique (pas teams)
 type MatchModeV3 = "solo" | "multi" | "teams";
@@ -1575,18 +1589,51 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   }, [allProfiles]);
 
   const botDartsTeams: any[] = React.useMemo(() => {
-    const availableBots = new Set((botProfiles || []).map((b: any) => String(b.id)));
-    return BOT_TEAM_OPTIONS
-      .map((team: any) => ({
-        ...team,
-        playerIds: (Array.isArray(team.playerIds) ? team.playerIds : []).filter((id: any) => availableBots.has(String(id))),
-      }))
-      .filter((team: any) => team.playerIds.length > 0);
+    const botByName = new Map<string, any>();
+    for (const b of botProfiles || []) {
+      const nameKey = String((b as any)?.name || "").trim().toLowerCase();
+      if (nameKey && !botByName.has(nameKey)) botByName.set(nameKey, b);
+    }
+
+    return (BOT_PRO_TEAMS || [])
+      .map((team: any) => {
+        const members = (Array.isArray(team?.members) ? team.members : [])
+          .map((member: any) => {
+            const byName = botByName.get(String(member?.name || "").trim().toLowerCase());
+            const id = String(byName?.id || member?.id || "");
+            if (!id) return null;
+            return {
+              ...member,
+              id,
+              name: byName?.name || member?.name || "BOT IA",
+              avatarDataUrl: byName?.avatarDataUrl || byName?.avatarUrl || byName?.avatar || null,
+              botLevel: byName?.botLevel || `${member?.botLevel || team?.botLevel || 1}/5`,
+              targetAvg3: Number(member?.targetAvg3 || team?.avg3D || 0) || 0,
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          id: `botteam_darts_${String(team?.key || team?.name || Date.now())}`,
+          key: String(team?.key || "bot"),
+          name: String(team?.name || "Équipe BOT IA"),
+          sport: "darts",
+          isBotTeam: true,
+          botTeamLevel: Number(team?.botLevel || 1),
+          botLevel: `${team?.botLevel || 1}/5`,
+          avg3D: Number(team?.avg3D || 0) || 0,
+          logoDataUrl: BOT_TEAM_LOGO_BY_KEY[String(team?.key || "")] || null,
+          logoUrl: BOT_TEAM_LOGO_BY_KEY[String(team?.key || "")] || null,
+          playerIds: members.map((m: any) => String(m.id)),
+          members,
+        };
+      })
+      .filter((team: any) => Array.isArray(team.playerIds) && team.playerIds.length > 0);
   }, [botProfiles]);
 
   const selectableDartsTeams: any[] = React.useMemo(() => {
-    return [...storedDartsTeams, ...(botTeamsPanelEnabled ? botDartsTeams : [])];
-  }, [storedDartsTeams, botDartsTeams, botTeamsPanelEnabled]);
+    return [...storedDartsTeams, ...botDartsTeams];
+  }, [storedDartsTeams, botDartsTeams]);
 
   const selectedStoredTeams = React.useMemo(() => {
     const selected = new Set(selectedStoredTeamIds.map(String));
@@ -1621,20 +1668,48 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     return ids;
   }, [selectedSavedTeams, teamProfiles, savedTeamMemberSelections]);
 
+  const botTeamPlayerIds = React.useMemo(() => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    const validProfiles = new Set((teamProfiles || []).map((p: any) => String(p.id)));
+    for (const team of selectedBotTeams as any[]) {
+      const tid = String(team?.id || "");
+      const allIds = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+      const chosen = Array.isArray(savedTeamMemberSelections[tid]) ? savedTeamMemberSelections[tid] : allIds;
+      for (const pid of chosen) {
+        const id = String(pid || "");
+        if (!id || seen.has(id) || !validProfiles.has(id)) continue;
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+    return ids;
+  }, [selectedBotTeams, teamProfiles, savedTeamMemberSelections]);
+
   const totalPlayers = selectedIds.length;
   const selectedSavedTeamsCount = selectedSavedTeams.length;
+  const selectedBotTeamsCount = selectedBotTeams.length;
+  const manualAssignedTeamsCount = React.useMemo(() => {
+    const used = new Set<string>();
+    for (const pid of selectedIds || []) {
+      const tid = teamAssignments[pid];
+      if (tid) used.add(String(tid));
+    }
+    return used.size;
+  }, [selectedIds, teamAssignments]);
 
   // ---- conditions pour pouvoir démarrer ----
   const canStart = React.useMemo(() => {
     if (participantMode === "teams") {
       if (teamsSourceMode === "saved") return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
+      if (selectedBotTeamsCount > 0) return manualAssignedTeamsCount + selectedBotTeamsCount >= 2;
       return totalPlayers >= 4;
     }
     if (totalPlayers === 0) return false;
     if (matchMode === "solo") return totalPlayers === 2;
     if (matchMode === "multi") return totalPlayers >= 2;
     return totalPlayers >= 4; // équipes manuelles legacy
-  }, [participantMode, totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length]);
+  }, [participantMode, totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length, selectedBotTeamsCount, manualAssignedTeamsCount]);
 
   // ---- désactivation visuelle des modes impossibles ----
   const soloDisabled = totalPlayers !== 2;
@@ -1689,13 +1764,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     ensureSavedTeamMembersInitialized(tid, botDartsTeams as any[]);
   }
 
-  function validateSavedTeams() {
-    if (selectedSavedTeams.length < 2) {
-      alert("Sélectionne au moins 2 équipes enregistrées.");
-      return null;
-    }
-
-    const teams = selectedSavedTeams
+  function buildExternalTeamConfigs(teamList: any[]) {
+    return (teamList || [])
       .map((team: any, index: number) => {
         const tid = String(team.id || `saved-${index}`);
         const allIds = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((id: any) => String(id || "")).filter(Boolean);
@@ -1707,17 +1777,27 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           id: tid,
           name: String(team.name || `Équipe ${index + 1}`),
           color: ["#f7c85c", "#ff4fa2", "#4fc3ff", "#6dff7c"][index % 4],
-          logoDataUrl: team.logoDataUrl ?? null,
-          avatarUrl: team.logoDataUrl ?? team.avatarUrl ?? null,
+          logoDataUrl: team.logoDataUrl ?? team.logoUrl ?? null,
+          avatarUrl: team.logoDataUrl ?? team.logoUrl ?? team.avatarUrl ?? null,
           isBotTeam: !!team.isBotTeam,
-          botLevel: team.botLevel ?? undefined,
+          botLevel: team.botLevel ?? team.botTeamLevel ?? undefined,
+          botTeamLevel: team.botTeamLevel ?? undefined,
           players: ids,
         };
       })
-      .filter((team: any) => team.players.length > 0);
+      .filter((team: any) => Array.isArray(team.players) && team.players.length > 0);
+  }
+
+  function validateSavedTeams() {
+    if (selectedSavedTeams.length < 2) {
+      alert("Sélectionne au moins 2 équipes enregistrées ou équipes BOTS IA.");
+      return null;
+    }
+
+    const teams = buildExternalTeamConfigs(selectedSavedTeams);
 
     if (teams.length < 2) {
-      alert("Les équipes enregistrées sélectionnées doivent contenir au moins 1 joueur chacune.");
+      alert("Les équipes sélectionnées doivent contenir au moins 1 joueur chacune.");
       return null;
     }
 
@@ -1734,6 +1814,24 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     });
 
     const usedTeams = (Object.keys(teamBuckets) as TeamId[]).filter((tid) => teamBuckets[tid].length > 0);
+    const manualTeams = usedTeams.map((tid) => ({
+      id: tid,
+      name: TEAM_LABELS[tid],
+      color: TEAM_COLORS[tid],
+      players: teamBuckets[tid],
+    }));
+    const botTeams = buildExternalTeamConfigs(selectedBotTeams);
+
+    // Si des équipes BOTS IA sont ajoutées, elles deviennent des équipes adverses
+    // à part entière. On autorise donc 1 équipe manuelle + 1 équipe BOT IA,
+    // ou 2 équipes BOT IA, sans forcer la règle stricte 2v2/3v3 manuelle.
+    if (botTeams.length > 0) {
+      if (manualTeams.length + botTeams.length < 2) {
+        alert("Compose au moins 1 équipe manuelle ou sélectionne 2 équipes BOTS IA.");
+        return null;
+      }
+      return [...manualTeams, ...botTeams];
+    }
 
     if (usedTeams.length < 2) {
       alert(t("x01v3.teams.needTwoTeams", "Sélectionne au moins 2 équipes (Gold / Pink / Blue / Green)."));
@@ -1765,12 +1863,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       return null;
     }
 
-    return usedTeams.map((tid) => ({
-      id: tid,
-      name: TEAM_LABELS[tid],
-      color: TEAM_COLORS[tid],
-      players: teamBuckets[tid],
-    }));
+    return manualTeams;
   }
 
   // ---- validation & lancement ----
@@ -1778,6 +1871,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     if (!canStart) {
       if (matchMode === "teams" && teamsSourceMode === "saved") {
         alert("Sélectionne au moins 2 équipes enregistrées avec des joueurs.");
+        return;
+      }
+      if (matchMode === "teams" && teamsSourceMode === "manual" && selectedBotTeamsCount > 0) {
+        alert("Assigne au moins une équipe manuelle ou sélectionne 2 équipes BOTS IA.");
         return;
       }
       if (matchMode === "teams" && teamsSourceMode === "manual" && totalPlayers < 4) {
@@ -1813,7 +1910,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       if (!teams) return;
     }
 
-    const effectivePlayerIds = participantMode === "teams" && teamsSourceMode === "saved" ? savedTeamPlayerIds : selectedIds;
+    const effectivePlayerIds =
+      participantMode === "teams" && teamsSourceMode === "saved"
+        ? savedTeamPlayerIds
+        : participantMode === "teams" && teamsSourceMode === "manual" && selectedBotTeams.length > 0
+        ? Array.from(new Set([...(selectedIds || []), ...(botTeamPlayerIds || [])].map(String)))
+        : selectedIds;
 
     const players = effectivePlayerIds
       .map((id) => {
@@ -2073,6 +2175,21 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             />
           )}
         </section>
+
+        {participantMode === "teams" && (
+          <BotTeamsSection
+            botTeams={botDartsTeams}
+            selectedBotTeamIds={selectedBotTeamIds}
+            toggleBotTeam={toggleBotTeam}
+            botTeamsPanelEnabled={botTeamsPanelEnabled}
+            setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
+            profiles={teamProfiles}
+            savedTeamMemberSelections={savedTeamMemberSelections}
+            toggleSavedTeamMember={toggleSavedTeamMember}
+            primary={primary}
+            primarySoft={primarySoft}
+          />
+        )}
 
         {participantMode === "players" && (
           <>
@@ -3139,6 +3256,154 @@ type TeamsSectionProps = {
   primarySoft: string;
 };
 
+function BotTeamsSection({
+  botTeams = [],
+  selectedBotTeamIds = [],
+  toggleBotTeam,
+  botTeamsPanelEnabled = true,
+  setBotTeamsPanelEnabled,
+  profiles = [],
+  savedTeamMemberSelections = {},
+  toggleSavedTeamMember,
+  primary,
+  primarySoft,
+}: any) {
+  const selected = new Set((selectedBotTeamIds || []).map(String));
+  const profileById = React.useMemo(() => {
+    const m = new Map<string, any>();
+    for (const p of profiles || []) m.set(String(p?.id || ""), p);
+    return m;
+  }, [profiles]);
+
+  return (
+    <section
+      style={{
+        background: "rgba(10, 12, 24, 0.96)",
+        borderRadius: 18,
+        padding: 12,
+        marginBottom: 16,
+        boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+        border: `1px solid rgba(255,255,255,0.04)`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <div>
+          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, margin: 0 }}>
+            Équipes BOTS IA
+          </h3>
+          <div style={{ marginTop: 5, color: "#8f94b2", fontSize: 11, lineHeight: 1.35 }}>
+            Active ce bloc pour ajouter une équipe IA en mode manuel ou avec des équipes enregistrées.
+          </div>
+        </div>
+        <button
+          type="button"
+          aria-pressed={!!botTeamsPanelEnabled}
+          onClick={() => setBotTeamsPanelEnabled && setBotTeamsPanelEnabled((v: boolean) => !v)}
+          style={{
+            padding: "7px 11px",
+            borderRadius: 999,
+            border: `1px solid ${primary}88`,
+            background: botTeamsPanelEnabled ? `${primary}18` : "rgba(255,255,255,0.04)",
+            color: primary,
+            fontWeight: 900,
+            fontSize: 11,
+            textTransform: "uppercase",
+            cursor: "pointer",
+            flex: "0 0 auto",
+          }}
+        >
+          {botTeamsPanelEnabled ? "☑ ON" : "☐ OFF"}
+        </button>
+      </div>
+
+      {botTeamsPanelEnabled ? (
+        botTeams.length === 0 ? (
+          <div style={{ color: "#8f94b2", fontSize: 12, lineHeight: 1.35 }}>Aucune équipe BOT IA disponible.</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(168px, 1fr))", gap: 10 }}>
+            {botTeams.map((team: any, index: number) => {
+              const tid = String(team?.id || `bot-team-${index}`);
+              const active = selected.has(tid);
+              const name = String(team?.name || "Équipe BOT IA");
+              const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
+              const level = Number(team?.botTeamLevel || parseFloat(String(team?.botLevel || "0")) || 0);
+              const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+              const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid].map(String) : ids;
+              const members = ids.map((id: string) => profileById.get(id)).filter(Boolean);
+
+              return (
+                <button
+                  key={tid}
+                  type="button"
+                  onClick={() => toggleBotTeam && toggleBotTeam(tid)}
+                  style={{
+                    textAlign: "left",
+                    borderRadius: 18,
+                    padding: "12px 10px",
+                    border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.08)",
+                    background: active ? primarySoft : "rgba(8,10,20,0.90)",
+                    color: "#f5f7ff",
+                    cursor: "pointer",
+                    boxShadow: active ? `0 0 20px ${primary}44` : "none",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <div style={{ position: "relative", width: 58, height: 58, display: "grid", placeItems: "center", flex: "0 0 auto", overflow: "visible" }}>
+                      {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={54} starSize={8} gapPx={-4} /> : null}
+                      <ProfileAvatar name={name} dataUrl={logo || undefined} size={46} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {name}
+                        <span style={{ marginLeft: 6, padding: "2px 5px", borderRadius: 999, border: `1px solid ${primary}77`, color: primary, fontSize: 9, fontWeight: 950, verticalAlign: "middle" }}>IA</span>
+                      </div>
+                      <div style={{ color: "#9da3c0", fontSize: 11 }}>
+                        {members.length || ids.length} joueur{(members.length || ids.length) > 1 ? "s" : ""}{level ? ` • Niveau ${level}/5` : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  {active && members.length > 0 ? (
+                    <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                      {members.map((p: any) => {
+                        const checked = chosen.includes(String(p.id));
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => toggleSavedTeamMember && toggleSavedTeamMember(tid, String(p.id))}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              borderRadius: 999,
+                              padding: "4px 7px",
+                              border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)",
+                              background: checked ? `${primary}18` : "rgba(255,255,255,0.04)",
+                              color: "#fff",
+                              fontSize: 10,
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <ProfileAvatar profile={p} size={20} />
+                            <span>{p.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )
+      ) : null}
+    </section>
+  );
+}
+
 function TeamsSection({
   profiles,
   selectableProfiles,
@@ -3293,7 +3558,7 @@ function TeamsSection({
 
       <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
         {sourceMode === "saved"
-          ? "Choisis au moins 2 équipes enregistrées ou équipes BOTS IA, puis coche les joueurs qui participent au match dans chaque équipe."
+          ? "Choisis tes équipes enregistrées, puis coche les joueurs qui participent au match."
           : t(
               "x01v3.teams.subtitle",
               "Assigne chaque joueur à une Team : Gold, Pink, Blue ou Green. Combos possibles : 2v2, 3v3, 4v4, 2v2v2 ou 2v2v2v2."
@@ -3332,54 +3597,6 @@ function TeamsSection({
                 {storedTeams.map((team: any) => renderSavedTeamCard(team, selectedStored.has(String(team.id)), toggleStoredTeam))}
               </div>
             )}
-          </div>
-
-          <div
-            style={{
-              borderTop: "1px solid rgba(255,255,255,0.08)",
-              paddingTop: 12,
-              marginTop: 2,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <div style={{ fontSize: 12, color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>
-                Équipes BOTS IA
-              </div>
-              <button
-                type="button"
-                aria-pressed={!!botTeamsPanelEnabled}
-                onClick={() => setBotTeamsPanelEnabled && setBotTeamsPanelEnabled((v) => !v)}
-                style={{
-                  padding: "7px 11px",
-                  borderRadius: 999,
-                  border: `1px solid ${primary}88`,
-                  background: botTeamsPanelEnabled ? `${primary}18` : "rgba(255,255,255,0.04)",
-                  color: primary,
-                  fontWeight: 900,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                }}
-              >
-                {botTeamsPanelEnabled ? "☑ ON" : "☐ OFF"}
-              </button>
-            </div>
-
-            <div style={{ color: "#7c80a0", fontSize: 11, lineHeight: 1.35, marginBottom: botTeamsPanelEnabled ? 10 : 0 }}>
-              Active ce bloc pour ajouter une équipe IA prête à jouer contre tes équipes.
-            </div>
-
-            {botTeamsPanelEnabled ? (
-              botTeams.length === 0 ? (
-                <div style={{ color: "#8f94b2", fontSize: 12, lineHeight: 1.35 }}>
-                  Aucune équipe BOT IA disponible.
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 10 }}>
-                  {botTeams.map((team: any) => renderSavedTeamCard(team, selectedBot.has(String(team.id)), toggleBotTeam))}
-                </div>
-              )
-            ) : null}
           </div>
         </div>
       ) : (
