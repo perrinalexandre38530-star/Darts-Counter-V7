@@ -787,10 +787,11 @@ function summarizeSnapshotForDiag(payload: any) {
       Array.isArray((store as any)?.botPlayers) ? (store as any).botPlayers.length : 0,
     );
     const dartSets = Array.isArray((store as any)?.dartSets) ? (store as any).dartSets.length : 0;
+    const teams = Array.isArray((store as any)?.teams) ? (store as any).teams.length : Array.isArray((root as any)?.teams) ? (root as any).teams.length : 0;
     const history = Array.isArray((store as any)?.history) ? (store as any).history.length : 0;
-    return { profiles, bots, dartSets, history, keys: Object.keys(store || {}).slice(0, 12) };
+    return { profiles, bots, dartSets, teams, history, keys: Object.keys(store || {}).slice(0, 12) };
   } catch {
-    return { profiles: 0, bots: 0, dartSets: 0, history: 0, keys: [] as string[] };
+    return { profiles: 0, bots: 0, dartSets: 0, teams: 0, history: 0, keys: [] as string[] };
   }
 }
 

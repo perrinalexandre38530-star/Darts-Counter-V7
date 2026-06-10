@@ -4,6 +4,7 @@ async function getStorage() {
 
 import * as mediaSync from "./mediaSync";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
+import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
 
 async function getOnlineApi() {
   const mod = await import("./onlineApi");
@@ -118,6 +119,58 @@ async function persistDartSetsMirrorFromStore(store: any) {
   } catch {}
 }
 
+async function persistTeamsMirrorFromStore(store: any) {
+  try {
+    if (Array.isArray(store?.teams)) {
+      saveStoredTeams(store.teams as any[]);
+      try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
+      try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
+    }
+  } catch {}
+}
+
+function teamImageQuality(team: any): number {
+  if (!team || typeof team !== "object") return 0;
+  let score = 0;
+  const fields = [
+    team.logoDataUrl, team.avatarDataUrl, team.imageDataUrl, team.regionLogoDataUrl, team.coverDataUrl,
+    team.logoAssetId, team.logoMediaAssetId, team.teamLogoAssetId, team.avatarAssetId, team.imageAssetId, team.regionLogoAssetId, team.coverAssetId,
+    team.logoUrl, team.avatarUrl, team.imageUrl, team.regionLogoUrl, team.coverUrl, team.logo,
+  ];
+  for (const v of fields) {
+    if (typeof v !== "string" || !v.trim()) continue;
+    const raw = v.trim();
+    if (raw.startsWith("data:image/")) score += 1000 + Math.min(1000, Math.floor(raw.length / 1000));
+    else if (/\/media\//.test(raw) || /^https?:\/\//i.test(raw)) score += 700;
+    else score += 100;
+  }
+  return score;
+}
+
+function mergeRuntimeTeamsIntoStore(store: any): any {
+  try {
+    const local = loadStoredTeams();
+    if (!Array.isArray(local) || !local.length) return store;
+    const base = Array.isArray(store?.teams) ? store.teams : [];
+    const byId = new Map<string, any>();
+    for (const team of base) {
+      const id = String(team?.id || "").trim();
+      if (id) byId.set(id, team);
+    }
+    for (const team of local) {
+      const id = String((team as any)?.id || "").trim();
+      if (!id) continue;
+      const prev = byId.get(id);
+      if (!prev || teamImageQuality(team) >= teamImageQuality(prev)) byId.set(id, team);
+    }
+    const merged = Array.from(byId.values());
+    if (!merged.length) return store;
+    return { ...(store || {}), teams: merged };
+  } catch {
+    return store;
+  }
+}
+
 function countArray(value: any): number {
   return Array.isArray(value) ? value.length : 0;
 }
@@ -184,6 +237,7 @@ function summarizeStore(store: any) {
     history: countArray(store?.history),
     bots: countArray(store?.bots) || countArray(store?.cpuBots) || countArray(store?.botPlayers),
     dartSets: countArray(store?.dartSets),
+    teams: countArray(store?.teams),
     dataImageFields: countDataImageFields(store),
     mediaUrls: countMediaUrls(store),
     storeBytes: byteLengthOfJson(store),
@@ -261,6 +315,25 @@ function countProfilesInSnapshot(payload: any): number {
   } catch { return 0; }
 }
 
+function teamCountOfStore(store: any): number {
+  return Array.isArray(store?.teams) ? store.teams.length : 0;
+}
+
+function countTeamsInSnapshot(payload: any): number {
+  try {
+    const idb = payload?.idb && typeof payload.idb === "object" ? payload.idb : null;
+    if (idb) {
+      let max = 0;
+      for (const key of Object.keys(idb)) {
+        if (!isStoreLikeSnapshotKey(key)) continue;
+        max = Math.max(max, teamCountOfStore(idb[key]));
+      }
+      if (max > 0) return max;
+    }
+    return teamCountOfStore(payload?.store || payload?.data || payload) || countArray(payload?.teams);
+  } catch { return 0; }
+}
+
 function stripDataImagesAndSecrets(value: any): any {
   const seen = new WeakSet<object>();
   const walk = (node: any): any => {
@@ -272,7 +345,7 @@ function stripDataImagesAndSecrets(value: any): any {
     if (Array.isArray(node)) return node.map(walk).filter((v) => v !== undefined);
     const out: any = {};
     for (const [k, v] of Object.entries(node)) {
-      if (["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "password", "passwordHash", "confirmPassword"].includes(k)) continue;
+      if (["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "logoDataUrl", "regionLogoDataUrl", "coverDataUrl", "password", "passwordHash", "confirmPassword"].includes(k)) continue;
       const next = walk(v);
       if (next !== undefined) out[k] = next;
     }
@@ -320,13 +393,15 @@ export async function pushNasAccountSnapshot() {
   const runtimeStore: any = getRuntimeStoreSnapshot();
   let currentStore: any = pickStoreWithMostProfiles(persistedStore, runtimeStore);
   currentStore = mergeRuntimeDartSetsIntoStore(currentStore);
+  currentStore = mergeRuntimeTeamsIntoStore(currentStore);
 
-  // ✅ DartSets NAS MEDIA FIX:
+  // ✅ DartSets / Teams NAS MEDIA FIX:
   // La page Profils lit les dartsets depuis localStorage, alors que le push NAS
   // part du store IDB/runtime. On recopie ici la version la plus riche
   // (avec photo data:image ou assetId) dans le store avant upload média.
   if (currentStore) {
     await saveStore(currentStore as any).catch(() => {});
+    await persistTeamsMirrorFromStore(currentStore);
   }
 
   // ✅ COUNT FIX NAS V1:
@@ -364,10 +439,12 @@ export async function pushNasAccountSnapshot() {
       // peut relire l'ancien store sans assetId/avatarUrl selon le timing React.
       await saveStore(hydratedStore as any);
       await persistDartSetsMirrorFromStore(hydratedStore);
+      await persistTeamsMirrorFromStore(hydratedStore);
       try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
     } else {
       await saveStore(hydratedStore as any);
       await persistDartSetsMirrorFromStore(hydratedStore);
+      await persistTeamsMirrorFromStore(hydratedStore);
       try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
     }
   }
@@ -378,10 +455,12 @@ export async function pushNasAccountSnapshot() {
   let payload = await exportCloudSnapshot();
   const snapshotProfiles = countProfilesInSnapshot(payload);
   const hydratedProfiles = profileCountOfStore(hydratedStore || currentStore);
-  if (hydratedProfiles > snapshotProfiles) {
+  const snapshotTeams = countTeamsInSnapshot(payload);
+  const hydratedTeams = teamCountOfStore(hydratedStore || currentStore);
+  if (hydratedProfiles > snapshotProfiles || hydratedTeams > snapshotTeams) {
     payload = forceSnapshotStore(payload, hydratedStore || currentStore);
     try {
-      console.warn("[nasSync] payload store count repaired before push", { snapshotProfiles, hydratedProfiles });
+      console.warn("[nasSync] payload store count repaired before push", { snapshotProfiles, hydratedProfiles, snapshotTeams, hydratedTeams });
     } catch {}
   }
   const payloadBytes = byteLengthOfJson(payload);
@@ -401,6 +480,7 @@ export async function pushNasAccountSnapshot() {
       media: mediaSummary,
       payloadBytes,
       payloadProfiles: countProfilesInSnapshot(payload),
+      payloadTeams: countTeamsInSnapshot(payload),
       runtimeProfiles: profileCountOfStore(runtimeStore),
       persistedProfiles: profileCountOfStore(persistedStore),
       durationMs,
@@ -434,9 +514,12 @@ export async function pullNasAccountSnapshot() {
         const w: any = typeof window !== "undefined" ? window : null;
         if (w && typeof w.__replaceLocalStoreNow === "function") {
           await w.__replaceLocalStoreNow(nextStore, "nas-pull-apply-runtime");
+          await persistDartSetsMirrorFromStore(nextStore);
+          await persistTeamsMirrorFromStore(nextStore);
         } else {
           await saveStore(nextStore as any);
           await persistDartSetsMirrorFromStore(nextStore);
+          await persistTeamsMirrorFromStore(nextStore);
           try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
         }
       }

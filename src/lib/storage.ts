@@ -15,6 +15,7 @@ import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
+import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
 import { exportLocalTournamentsSnapshot, importLocalTournamentsSnapshot } from "./tournaments/storeLocal";
 
 const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
@@ -291,6 +292,8 @@ function isEssentialStoreKey(key: string) {
     "settings",
     "dartsets",
     "activedartsetid",
+    "teams",
+    "profileteams",
     "bots",
     "friends",
     "friendinvites",
@@ -651,6 +654,7 @@ const LS_LARGE_PAYLOAD_KEYS = new Set<string>([
   "dc_lite_dartsets_v1",
   "dc-lite-dartsets-v1",
   "dc_bots_avatars_v1",
+  "dc-teams-v1",
 ]);
 
 function maxLocalStorageExportLenForKey(key: string): number {
@@ -901,6 +905,7 @@ function importLocalStorageDc(map: Record<string, string>) {
 
   let restoredDartSets = false;
   let restoredBots = false;
+  let restoredTeams = false;
 
   for (const [k, v] of Object.entries(map)) {
     if (!shouldExportLocalStorageDcKey(k, typeof v === "string" ? v : String(v ?? ""))) continue;
@@ -908,6 +913,7 @@ function importLocalStorageDc(map: Record<string, string>) {
       window.localStorage.setItem(k, String(v ?? ""));
       if (LS_DARTSETS_KEYS.includes(k as any) || LS_ACTIVE_DARTSET_KEYS.includes(k as any)) restoredDartSets = true;
       if (k === "dc_bots_v1" || k === "dc_bots_avatars_v1") restoredBots = true;
+      if (k === "dc-teams-v1") restoredTeams = true;
     } catch {}
   }
 
@@ -916,6 +922,12 @@ function importLocalStorageDc(map: Record<string, string>) {
   } catch {}
   try {
     if (restoredBots) window.dispatchEvent(new Event("dc:bots-changed"));
+  } catch {}
+  try {
+    if (restoredTeams) {
+      window.dispatchEvent(new Event("dc-teams-updated"));
+      window.dispatchEvent(new Event("dc:teams-changed"));
+    }
   } catch {}
 }
 
@@ -957,6 +969,12 @@ function injectCollectionsIntoSnapshotStore(idbDump: Record<string, any>): Recor
 
     const bots = loadStoredBots();
     if (Array.isArray(bots)) baseStore.bots = bots;
+
+    // ✅ NAS BACKUP TEAMS: Profiles > Teams écrit dans localStorage (dc-teams-v1),
+    // pas toujours dans le store principal. On l'injecte explicitement pour que
+    // le backup NAS soit restaurable même si la clé localStorage est trop lourde.
+    const teams = loadStoredTeams();
+    if (Array.isArray(teams)) baseStore.teams = teams;
 
     nextIdb[storeKey] = sanitizeStoreForPersistence(baseStore as any);
     return nextIdb;
@@ -1449,6 +1467,7 @@ export async function exportAll(): Promise<any> {
     // pour que /sync/push puis /sync/pull restaurent aussi les compétitions.
     tournaments,
     competitions: tournaments,
+    teams: loadStoredTeams(),
     exportedAt: new Date().toISOString(),
   };
 }
@@ -1698,6 +1717,20 @@ export async function importAll(dump: any): Promise<void> {
     // 2) restore localStorage (dc_* + dc-*)
     importLocalStorageDc(lsDump);
 
+    // 2bis) ✅ NAS BACKUP TEAMS : restore Profiles > Teams depuis le champ
+    // explicite du snapshot ou depuis le store injecté. Ça couvre aussi les cas
+    // où dc-teams-v1 a été exclu du localStorage dump car trop volumineux.
+    try {
+      const { teams } = extractTeamsFromSnapshot(dump);
+      if (Array.isArray(teams)) {
+        saveStoredTeams(teams as any[]);
+        try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
+        try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
+      }
+    } catch (e) {
+      console.warn("[storage] importAll teams restore failed", e);
+    }
+
     // 3) ✅ CRITIQUE : restore DB historique (historyCloud)
     // Si history.rows est vide mais dc_stats_index_v2 contient les matchIds,
     // on reconstruit des cartes d'historique minimales. Elles ne recréent pas
@@ -1851,6 +1884,23 @@ function extractDartSetsFromSnapshot(snap: any) {
   return { dartSets, activeId };
 }
 
+function extractTeamsFromSnapshot(snap: any) {
+  if (!isRecord(snap)) return { teams: null as any };
+
+  const { store, data } = extractStoreObjectFromSnapshot(snap);
+  const teams =
+    pickFirst(
+      store?.teams,
+      store?.profileTeams,
+      data?.teams,
+      data?.profileTeams,
+      (snap as any)?.teams,
+      (snap as any)?.profileTeams
+    ) ?? null;
+
+  return { teams };
+}
+
 function extractBotsFromSnapshot(snap: any) {
   if (!isRecord(snap)) return { bots: null as any };
 
@@ -1951,6 +2001,23 @@ function sanitizeStoreForCloud(store: any) {
     });
   }
 
+  if (Array.isArray((clone as any).teams)) {
+    (clone as any).teams = (clone as any).teams.map((team: any) => {
+      const out: any = { ...(team || {}) };
+      delete out.logoDataUrl;
+      delete out.avatarDataUrl;
+      delete out.imageDataUrl;
+      delete out.regionLogoDataUrl;
+      delete out.coverDataUrl;
+      if (typeof out.logoUrl === "string" && out.logoUrl.startsWith("data:")) delete out.logoUrl;
+      if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:")) delete out.avatarUrl;
+      if (typeof out.imageUrl === "string" && out.imageUrl.startsWith("data:")) delete out.imageUrl;
+      if (typeof out.regionLogoUrl === "string" && out.regionLogoUrl.startsWith("data:")) delete out.regionLogoUrl;
+      if (typeof out.coverUrl === "string" && out.coverUrl.startsWith("data:")) delete out.coverUrl;
+      return out;
+    });
+  }
+
   return clone;
 }
 
@@ -2016,6 +2083,17 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
       restoreBotsFromSnapshot(bots as any[]);
     } catch (e) {
       console.warn("[storage] restore bots from snapshot failed", e);
+    }
+  }
+
+  const { teams } = extractTeamsFromSnapshot(dump);
+  if (Array.isArray(teams)) {
+    try {
+      saveStoredTeams(teams as any[]);
+      try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
+      try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
+    } catch (e) {
+      console.warn("[storage] restore teams from snapshot failed", e);
     }
   }
 }

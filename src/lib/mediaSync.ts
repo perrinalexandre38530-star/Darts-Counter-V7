@@ -8,6 +8,7 @@ function resetMediaSyncSummary() {
     profilesScanned: 0,
     botsScanned: 0,
     dartSetsScanned: 0,
+    teamsScanned: 0,
     avatarsUploaded: 0,
     avatarsAlreadyPresent: 0,
     avatarsAlreadyLinked: 0,
@@ -146,6 +147,17 @@ export function collectStoreMediaAssetIds(store: any): string[] {
     pushIfString(ids, ds?.imageAssetId);
     pushIfString(ids, ds?.photoThumbAssetId);
     pushIfString(ids, ds?.dartSetImageAssetId);
+  }
+
+  const teams = Array.isArray(store?.teams) ? store.teams : [];
+  for (const team of teams) {
+    pushIfString(ids, team?.logoAssetId);
+    pushIfString(ids, team?.logoMediaAssetId);
+    pushIfString(ids, team?.teamLogoAssetId);
+    pushIfString(ids, team?.avatarAssetId);
+    pushIfString(ids, team?.imageAssetId);
+    pushIfString(ids, team?.regionLogoAssetId);
+    pushIfString(ids, team?.coverAssetId);
   }
 
   return Array.from(ids);
@@ -470,6 +482,138 @@ async function uploadDartSetMedia(ds: any) {
   return ds;
 }
 
+function stripTeamInlineImages(team: any) {
+  const out: any = { ...(team || {}) };
+  const keys = [
+    "logoDataUrl",
+    "avatarDataUrl",
+    "imageDataUrl",
+    "regionLogoDataUrl",
+    "coverDataUrl",
+  ];
+  for (const key of keys) {
+    if (typeof out[key] === "string" && out[key].startsWith("data:image/")) {
+      delete out[key];
+      bumpMediaSyncSummary("base64FieldsRemoved");
+    }
+  }
+  return out;
+}
+
+async function uploadTeamImage(team: any, input: {
+  dataUrl: string;
+  kind: string;
+  variant: string;
+  assetKeys: string[];
+  urlKeys: string[];
+  shaKeys: string[];
+}) {
+  const localHash = await sha256DataUrl(input.dataUrl);
+  const existingAssetId = asString(input.assetKeys.map((key) => team?.[key]).find(Boolean));
+  const existingUrl = asString(input.urlKeys.map((key) => team?.[key]).find(Boolean));
+  const knownHash = asString(input.shaKeys.map((key) => team?.[key]).find(Boolean));
+
+  if (existingAssetId && existingUrl && sameUploadedImage(localHash, knownHash)) {
+    bumpMediaSyncSummary("mediaAlreadyPresent");
+    return { assetId: existingAssetId, publicUrl: existingUrl, sha256: localHash || knownHash || null };
+  }
+
+  const uploaded: any = await onlineApi.uploadMediaAsset({
+    dataUrl: input.dataUrl,
+    kind: input.kind,
+    ownerId: String(team?.id || ""),
+    variant: input.variant,
+    sha256: localHash || undefined,
+  } as any);
+
+  if ((uploaded as any)?.deduped) bumpMediaSyncSummary("mediaAlreadyPresent");
+  else bumpMediaSyncSummary("mediaUploaded");
+
+  return {
+    assetId: normalizeUploadedAssetId(uploaded, existingAssetId),
+    publicUrl: normalizeUploadedPublicUrl(uploaded),
+    sha256: asString(uploaded?.sha256 || localHash || knownHash) || null,
+  };
+}
+
+async function uploadTeamMedia(team: any) {
+  bumpMediaSyncSummary("teamsScanned");
+  let changed = false;
+  const next: any = { ...(team || {}) };
+
+  const logoImage = pickFirstDataImage(next.logoDataUrl, next.avatarDataUrl, next.imageDataUrl, next.logoUrl, next.avatarUrl, next.imageUrl, next.logo);
+  const regionImage = pickFirstDataImage(next.regionLogoDataUrl, next.regionLogoUrl);
+  const coverImage = pickFirstDataImage(next.coverDataUrl, next.coverUrl);
+
+  try {
+    if (logoImage) {
+      const uploaded = await uploadTeamImage(next, {
+        dataUrl: logoImage,
+        kind: "team_logo",
+        variant: "logo",
+        assetKeys: ["logoAssetId", "logoMediaAssetId", "teamLogoAssetId", "avatarAssetId", "imageAssetId"],
+        urlKeys: ["logoUrl", "avatarUrl", "imageUrl", "logo"],
+        shaKeys: ["logoSha256", "logoHash", "avatarSha256"],
+      });
+      if (uploaded.assetId) {
+        next.logoAssetId = uploaded.assetId;
+        next.logoMediaAssetId = uploaded.assetId;
+        next.teamLogoAssetId = uploaded.assetId;
+        next.avatarAssetId = next.avatarAssetId || uploaded.assetId;
+        next.imageAssetId = next.imageAssetId || uploaded.assetId;
+      }
+      if (uploaded.publicUrl) {
+        next.logoUrl = uploaded.publicUrl;
+        next.avatarUrl = next.avatarUrl || uploaded.publicUrl;
+        next.imageUrl = next.imageUrl || uploaded.publicUrl;
+        next.logo = next.logo || uploaded.publicUrl;
+      }
+      if (uploaded.sha256) next.logoSha256 = uploaded.sha256;
+      changed = true;
+    }
+
+    if (regionImage) {
+      const uploaded = await uploadTeamImage(next, {
+        dataUrl: regionImage,
+        kind: "team_logo",
+        variant: "region",
+        assetKeys: ["regionLogoAssetId"],
+        urlKeys: ["regionLogoUrl"],
+        shaKeys: ["regionLogoSha256", "regionLogoHash"],
+      });
+      if (uploaded.assetId) next.regionLogoAssetId = uploaded.assetId;
+      if (uploaded.publicUrl) next.regionLogoUrl = uploaded.publicUrl;
+      if (uploaded.sha256) next.regionLogoSha256 = uploaded.sha256;
+      changed = true;
+    }
+
+    if (coverImage) {
+      const uploaded = await uploadTeamImage(next, {
+        dataUrl: coverImage,
+        kind: "team_cover",
+        variant: "cover",
+        assetKeys: ["coverAssetId"],
+        urlKeys: ["coverUrl"],
+        shaKeys: ["coverSha256", "coverHash"],
+      });
+      if (uploaded.assetId) next.coverAssetId = uploaded.assetId;
+      if (uploaded.publicUrl) next.coverUrl = uploaded.publicUrl;
+      if (uploaded.sha256) next.coverSha256 = uploaded.sha256;
+      changed = true;
+    }
+  } catch (err) {
+    bumpMediaSyncSummary("uploadErrors");
+    console.error("[mediaSync] uploadTeamMedia failed", err);
+    throw err;
+  }
+
+  const hasLinkedMedia =
+    asString(next.logoAssetId || next.logoMediaAssetId || next.teamLogoAssetId || next.avatarAssetId || next.imageAssetId || next.regionLogoAssetId || next.coverAssetId) ||
+    asString(next.logoUrl || next.avatarUrl || next.imageUrl || next.regionLogoUrl || next.coverUrl);
+
+  return changed || hasLinkedMedia ? stripTeamInlineImages(next) : team;
+}
+
 async function mapSequential<T>(list: T[], fn: (item: T) => Promise<T>): Promise<T[]> {
   const out: T[] = [];
   for (const item of list) out.push(await fn(item));
@@ -499,6 +643,9 @@ export async function uploadStoreMediaAssets(store: any): Promise<any> {
   }
   if (Array.isArray(next.dartSets)) {
     next.dartSets = await mapSequential(next.dartSets, (ds: any) => uploadDartSetMedia(ds));
+  }
+  if (Array.isArray(next.teams)) {
+    next.teams = await mapSequential(next.teams, (team: any) => uploadTeamMedia(team));
   }
   if (lastMediaSyncSummary) {
     lastMediaSyncSummary.finishedAt = Date.now();
@@ -585,6 +732,38 @@ export async function hydrateStoreMediaUrls(store: any): Promise<any> {
       if (thumbUrl && out.thumbImageUrl !== thumbUrl) {
         out.thumbImageUrl = thumbUrl;
         changed = true;
+      }
+      return out;
+    });
+  }
+
+  if (Array.isArray(next.teams)) {
+    next.teams = next.teams.map((team: any) => {
+      const out = { ...(team || {}) };
+      const logoId = asString(out.logoAssetId || out.logoMediaAssetId || out.teamLogoAssetId || out.avatarAssetId || out.imageAssetId);
+      const regionId = asString(out.regionLogoAssetId);
+      const coverId = asString(out.coverAssetId);
+      const logoUrl = logoId ? urls[logoId] : "";
+      const regionUrl = regionId ? urls[regionId] : "";
+      const coverUrl = coverId ? urls[coverId] : "";
+      if (logoUrl) {
+        if (out.logoUrl !== logoUrl || out.logoDataUrl || out.avatarDataUrl || out.imageDataUrl) changed = true;
+        out.logoUrl = logoUrl;
+        out.avatarUrl = out.avatarUrl || logoUrl;
+        out.imageUrl = out.imageUrl || logoUrl;
+        delete out.logoDataUrl;
+        delete out.avatarDataUrl;
+        delete out.imageDataUrl;
+      }
+      if (regionUrl) {
+        if (out.regionLogoUrl !== regionUrl || out.regionLogoDataUrl) changed = true;
+        out.regionLogoUrl = regionUrl;
+        delete out.regionLogoDataUrl;
+      }
+      if (coverUrl) {
+        if (out.coverUrl !== coverUrl || out.coverDataUrl) changed = true;
+        out.coverUrl = coverUrl;
+        delete out.coverDataUrl;
       }
       return out;
     });

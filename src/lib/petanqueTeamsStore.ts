@@ -17,7 +17,16 @@ export type TeamEntity = {
   id: string;
   sport: TeamSport;
   name: string;
-  logoDataUrl?: string | null; // base64 dataURL (PNG/JPG)
+  logoDataUrl?: string | null; // dataURL local ou URL média NAS (compat UI)
+  logoUrl?: string | null;
+  logoAssetId?: string | null;
+  logoMediaAssetId?: string | null;
+  teamLogoAssetId?: string | null;
+  avatarUrl?: string | null;
+  avatarAssetId?: string | null;
+  imageUrl?: string | null;
+  imageAssetId?: string | null;
+  logoSha256?: string | null;
 
   // ---------------------------
   // Champs étendus (optionnels)
@@ -29,6 +38,13 @@ export type TeamEntity = {
   regionCode?: string; // ex: "FR-IDF"
   regionName?: string; // ex: "Île-de-France"
   regionLogoDataUrl?: string | null;
+  regionLogoUrl?: string | null;
+  regionLogoAssetId?: string | null;
+  regionLogoSha256?: string | null;
+  coverDataUrl?: string | null;
+  coverUrl?: string | null;
+  coverAssetId?: string | null;
+  coverSha256?: string | null;
   slogan?: string; // 50 chars max (UI)
   description?: string;
   playerIds?: string[]; // ids de profiles locaux
@@ -55,6 +71,8 @@ export type PetanqueTeam = {
   description?: string;
   playerIds?: string[];
   logoDataUrl?: string | null;
+  logoUrl?: string | null;
+  logoAssetId?: string | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -105,6 +123,22 @@ function normalizeSport(s: any): TeamSport {
   return raw;
 }
 
+function normalizeTextField(value: any): string | undefined {
+  const s = typeof value === "string" ? value.trim() : "";
+  return s || undefined;
+}
+
+function normalizeImageRef(...values: any[]): string | null {
+  for (const value of values) {
+    const dataUrl = sanitizeStoredImage(value);
+    if (dataUrl) return dataUrl;
+    const s = typeof value === "string" ? value.trim() : "";
+    if (!s) continue;
+    if (/^https?:\/\//i.test(s) || s.startsWith("/media/") || s.startsWith("/assets/") || /\/(media|assets)\//.test(s)) return s;
+  }
+  return null;
+}
+
 function normalizeTeamEntity(t: any): TeamEntity | null {
   if (!t || typeof t !== "object") return null;
   const id = typeof t.id === "string" ? t.id : "";
@@ -118,7 +152,13 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const countryName = typeof t.countryName === "string" ? t.countryName : undefined;
   const regionCode = typeof t.regionCode === "string" ? t.regionCode : undefined;
   const regionName = typeof t.regionName === "string" ? t.regionName : undefined;
-  const regionLogoDataUrl = sanitizeStoredImage(t.regionLogoDataUrl);
+  const logoUrl = normalizeTextField(t.logoUrl || t.avatarUrl || t.imageUrl || t.logo);
+  const logoAssetId = normalizeTextField(t.logoAssetId || t.logoMediaAssetId || t.teamLogoAssetId || t.avatarAssetId || t.imageAssetId);
+  const regionLogoUrl = normalizeTextField(t.regionLogoUrl);
+  const regionLogoAssetId = normalizeTextField(t.regionLogoAssetId);
+  const coverUrl = normalizeTextField(t.coverUrl);
+  const coverAssetId = normalizeTextField(t.coverAssetId);
+  const regionLogoDataUrl = normalizeImageRef(t.regionLogoDataUrl, t.regionLogoUrl);
   const slogan = typeof t.slogan === "string" ? t.slogan : undefined;
   const description = typeof t.description === "string" ? t.description : undefined;
   const playerIds = Array.isArray(t.playerIds) ? t.playerIds.filter((x: any) => typeof x === "string") : undefined;
@@ -127,12 +167,28 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
     id,
     sport: normalizeSport(t.sport),
     name,
-    logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
+    logoDataUrl: normalizeImageRef(t.logoDataUrl, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo),
+    logoUrl: logoUrl ?? null,
+    logoAssetId: logoAssetId ?? null,
+    logoMediaAssetId: normalizeTextField(t.logoMediaAssetId || logoAssetId) ?? null,
+    teamLogoAssetId: normalizeTextField(t.teamLogoAssetId || logoAssetId) ?? null,
+    avatarUrl: normalizeTextField(t.avatarUrl || logoUrl) ?? null,
+    avatarAssetId: normalizeTextField(t.avatarAssetId || logoAssetId) ?? null,
+    imageUrl: normalizeTextField(t.imageUrl || logoUrl) ?? null,
+    imageAssetId: normalizeTextField(t.imageAssetId || logoAssetId) ?? null,
+    logoSha256: normalizeTextField(t.logoSha256 || t.logoHash || t.avatarSha256) ?? null,
     countryCode,
     countryName,
     regionCode,
     regionName,
     regionLogoDataUrl,
+    regionLogoUrl: regionLogoUrl ?? null,
+    regionLogoAssetId: regionLogoAssetId ?? null,
+    regionLogoSha256: normalizeTextField(t.regionLogoSha256 || t.regionLogoHash) ?? null,
+    coverDataUrl: normalizeImageRef(t.coverDataUrl, t.coverUrl),
+    coverUrl: coverUrl ?? null,
+    coverAssetId: coverAssetId ?? null,
+    coverSha256: normalizeTextField(t.coverSha256 || t.coverHash) ?? null,
     slogan,
     description,
     playerIds,
@@ -209,8 +265,11 @@ export function saveTeams(list: TeamEntity[]) {
       ...t,
       logoDataUrl: null,
       regionLogoDataUrl: null,
+      coverDataUrl: null,
     }))
   );
+  try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
+  try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
 }
 
 export function upsertTeam(team: TeamEntity) {
@@ -224,7 +283,9 @@ export function upsertTeam(team: TeamEntity) {
     name: (team.name ?? "").trim(),
     updatedAt: ts,
     createdAt: Number(team.createdAt ?? 0) || ts,
-    logoDataUrl: sanitizeStoredImage(team.logoDataUrl),
+    logoDataUrl: normalizeImageRef(team.logoDataUrl, (team as any).logoUrl, (team as any).avatarUrl, (team as any).imageUrl),
+    logoUrl: normalizeTextField((team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl) ?? null,
+    logoAssetId: normalizeTextField((team as any).logoAssetId || (team as any).logoMediaAssetId || (team as any).teamLogoAssetId || (team as any).avatarAssetId || (team as any).imageAssetId) ?? null,
     sport: normalizeSport(team.sport),
 
     // Champs étendus
@@ -232,7 +293,12 @@ export function upsertTeam(team: TeamEntity) {
     countryName: typeof team.countryName === "string" ? team.countryName : team.countryName,
     regionCode: typeof team.regionCode === "string" ? team.regionCode : team.regionCode,
     regionName: typeof team.regionName === "string" ? team.regionName : team.regionName,
-    regionLogoDataUrl: sanitizeStoredImage((team as any).regionLogoDataUrl),
+    regionLogoDataUrl: normalizeImageRef((team as any).regionLogoDataUrl, (team as any).regionLogoUrl),
+    regionLogoUrl: normalizeTextField((team as any).regionLogoUrl) ?? null,
+    regionLogoAssetId: normalizeTextField((team as any).regionLogoAssetId) ?? null,
+    coverDataUrl: normalizeImageRef((team as any).coverDataUrl, (team as any).coverUrl),
+    coverUrl: normalizeTextField((team as any).coverUrl) ?? null,
+    coverAssetId: normalizeTextField((team as any).coverAssetId) ?? null,
     slogan: typeof (team as any).slogan === "string" ? (team as any).slogan : (team as any).slogan,
     description: typeof (team as any).description === "string" ? (team as any).description : (team as any).description,
     playerIds: Array.isArray((team as any).playerIds) ? (team as any).playerIds.filter((x: any) => typeof x === "string") : (team as any).playerIds,
@@ -255,7 +321,7 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
     id: makeTeamId(input.sport),
     sport: normalizeSport(input.sport),
     name: (input.name ?? "").trim(),
-    logoDataUrl: sanitizeStoredImage(input.logoDataUrl),
+    logoDataUrl: normalizeImageRef(input.logoDataUrl),
     createdAt: ts,
     updatedAt: ts,
   };
@@ -279,7 +345,7 @@ export function updateTeam(
     ...patch,
     name: (patch.name ?? prev.name).trim(),
     sport: normalizeSport(patch.sport ?? prev.sport),
-    logoDataUrl: sanitizeStoredImage(patch.logoDataUrl ?? prev.logoDataUrl),
+    logoDataUrl: normalizeImageRef(patch.logoDataUrl ?? prev.logoDataUrl, (patch as any).logoUrl ?? (prev as any).logoUrl),
     updatedAt: now(),
   };
 
@@ -327,11 +393,13 @@ export function loadPetanqueTeams(): PetanqueTeam[] {
     countryName: t.countryName ?? FALLBACK_CN,
     regionCode: t.regionCode ?? "",
     regionName: t.regionName ?? "",
-    regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+    regionLogoDataUrl: t.regionLogoDataUrl ?? t.regionLogoUrl ?? null,
     slogan: t.slogan ?? "",
     description: t.description ?? "",
     playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-    logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
+    logoDataUrl: normalizeImageRef(t.logoDataUrl, t.logoUrl, t.avatarUrl, t.imageUrl),
+    logoUrl: t.logoUrl ?? t.avatarUrl ?? t.imageUrl ?? null,
+    logoAssetId: t.logoAssetId ?? t.logoMediaAssetId ?? t.teamLogoAssetId ?? t.avatarAssetId ?? t.imageAssetId ?? null,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   }));
@@ -349,12 +417,16 @@ export function savePetanqueTeams(list: PetanqueTeam[]) {
       id: String(t.id || makeTeamId("petanque")),
       sport: "petanque" as const,
       name: String(t.name || "").trim() || "Équipe",
-      logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
+      logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl),
+      logoUrl: normalizeTextField((t as any).logoUrl) ?? null,
+      logoAssetId: normalizeTextField((t as any).logoAssetId) ?? null,
       countryCode: (t.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
       countryName: t.countryName ?? FALLBACK_CN,
       regionCode: t.regionCode ?? "",
       regionName: t.regionName ?? "",
-      regionLogoDataUrl: sanitizeStoredImage(t.regionLogoDataUrl),
+      regionLogoDataUrl: normalizeImageRef(t.regionLogoDataUrl, (t as any).regionLogoUrl),
+      regionLogoUrl: normalizeTextField((t as any).regionLogoUrl) ?? null,
+      regionLogoAssetId: normalizeTextField((t as any).regionLogoAssetId) ?? null,
       slogan: t.slogan ?? "",
       description: t.description ?? "",
       playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
@@ -374,11 +446,13 @@ export function createPetanqueTeam(partial?: Partial<PetanqueTeam>): PetanqueTea
     countryName: partial?.countryName ?? FALLBACK_CN,
     regionCode: partial?.regionCode ?? "FR-IDF",
     regionName: partial?.regionName ?? "Île-de-France",
-    regionLogoDataUrl: sanitizeStoredImage(partial?.regionLogoDataUrl),
+    regionLogoDataUrl: normalizeImageRef(partial?.regionLogoDataUrl, (partial as any)?.regionLogoUrl),
     slogan: partial?.slogan ?? "",
     description: partial?.description ?? "",
     playerIds: Array.isArray(partial?.playerIds) ? partial?.playerIds : [],
-    logoDataUrl: sanitizeStoredImage(partial?.logoDataUrl),
+    logoDataUrl: normalizeImageRef(partial?.logoDataUrl, (partial as any)?.logoUrl),
+    logoUrl: normalizeTextField((partial as any)?.logoUrl) ?? null,
+    logoAssetId: normalizeTextField((partial as any)?.logoAssetId) ?? null,
     createdAt: partial?.createdAt ?? ts,
     updatedAt: partial?.updatedAt ?? ts,
   };
@@ -391,12 +465,16 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
     id: team.id || makeTeamId("petanque"),
     sport: "petanque",
     name: (team.name ?? "").trim() || "Équipe",
-    logoDataUrl: sanitizeStoredImage(team.logoDataUrl),
+    logoDataUrl: normalizeImageRef(team.logoDataUrl, (team as any).logoUrl),
+    logoUrl: normalizeTextField((team as any).logoUrl) ?? null,
+    logoAssetId: normalizeTextField((team as any).logoAssetId) ?? null,
     countryCode: (team.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
     countryName: team.countryName ?? FALLBACK_CN,
     regionCode: team.regionCode ?? "",
     regionName: team.regionName ?? "",
-    regionLogoDataUrl: sanitizeStoredImage(team.regionLogoDataUrl),
+    regionLogoDataUrl: normalizeImageRef(team.regionLogoDataUrl, (team as any).regionLogoUrl),
+    regionLogoUrl: normalizeTextField((team as any).regionLogoUrl) ?? null,
+    regionLogoAssetId: normalizeTextField((team as any).regionLogoAssetId) ?? null,
     slogan: team.slogan ?? "",
     description: team.description ?? "",
     playerIds: Array.isArray(team.playerIds) ? team.playerIds : [],
@@ -416,7 +494,9 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
     slogan: next.slogan ?? team.slogan ?? "",
     description: next.description ?? team.description ?? "",
     playerIds: Array.isArray(next.playerIds) ? next.playerIds : Array.isArray(team.playerIds) ? team.playerIds : [],
-    logoDataUrl: next.logoDataUrl ?? null,
+    logoDataUrl: next.logoDataUrl ?? next.logoUrl ?? null,
+    logoUrl: next.logoUrl ?? null,
+    logoAssetId: next.logoAssetId ?? next.logoMediaAssetId ?? next.teamLogoAssetId ?? next.avatarAssetId ?? next.imageAssetId ?? null,
     createdAt: next.createdAt,
     updatedAt: next.updatedAt,
   };
@@ -438,11 +518,13 @@ export function deletePetanqueTeam(teamId: string) {
       countryName: t.countryName ?? FALLBACK_CN,
       regionCode: t.regionCode ?? "",
       regionName: t.regionName ?? "",
-      regionLogoDataUrl: sanitizeStoredImage(t.regionLogoDataUrl),
+      regionLogoDataUrl: normalizeImageRef(t.regionLogoDataUrl, (t as any).regionLogoUrl),
       slogan: t.slogan ?? "",
       description: t.description ?? "",
       playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-      logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
+      logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl, (t as any).avatarUrl, (t as any).imageUrl),
+      logoUrl: (t as any).logoUrl ?? (t as any).avatarUrl ?? (t as any).imageUrl ?? null,
+      logoAssetId: (t as any).logoAssetId ?? (t as any).logoMediaAssetId ?? (t as any).teamLogoAssetId ?? (t as any).avatarAssetId ?? (t as any).imageAssetId ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })) as PetanqueTeam[];
@@ -463,6 +545,8 @@ export type BabyFootTeam = {
   description?: string;
   playerIds?: string[];
   logoDataUrl?: string | null;
+  logoUrl?: string | null;
+  logoAssetId?: string | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -516,11 +600,13 @@ export function loadBabyFootTeams(): BabyFootTeam[] {
     countryName: t.countryName ?? "France",
     regionCode: t.regionCode ?? "",
     regionName: t.regionName ?? "",
-    regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+    regionLogoDataUrl: normalizeImageRef(t.regionLogoDataUrl, (t as any).regionLogoUrl),
     slogan: t.slogan ?? "",
     description: t.description ?? "",
     playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-    logoDataUrl: sanitizeStoredImage(t.logoDataUrl),
+    logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl, (t as any).avatarUrl, (t as any).imageUrl),
+    logoUrl: (t as any).logoUrl ?? (t as any).avatarUrl ?? (t as any).imageUrl ?? null,
+    logoAssetId: (t as any).logoAssetId ?? (t as any).logoMediaAssetId ?? (t as any).teamLogoAssetId ?? (t as any).avatarAssetId ?? (t as any).imageAssetId ?? null,
     createdAt: Number(t.createdAt || now()),
     updatedAt: Number(t.updatedAt || now()),
   }));
@@ -535,11 +621,13 @@ export function createBabyFootTeam(partial?: Partial<BabyFootTeam>): BabyFootTea
     countryName: partial?.countryName ?? "France",
     regionCode: partial?.regionCode ?? "FR-IDF",
     regionName: partial?.regionName ?? "Île-de-France",
-    regionLogoDataUrl: sanitizeStoredImage(partial?.regionLogoDataUrl),
+    regionLogoDataUrl: normalizeImageRef(partial?.regionLogoDataUrl, (partial as any)?.regionLogoUrl),
     slogan: (partial?.slogan ?? "").slice(0, 50),
     description: partial?.description ?? "",
     playerIds: Array.isArray(partial?.playerIds) ? partial!.playerIds : [],
-    logoDataUrl: sanitizeStoredImage(partial?.logoDataUrl),
+    logoDataUrl: normalizeImageRef(partial?.logoDataUrl, (partial as any)?.logoUrl),
+    logoUrl: normalizeTextField((partial as any)?.logoUrl) ?? null,
+    logoAssetId: normalizeTextField((partial as any)?.logoAssetId) ?? null,
     createdAt: Number((partial as any)?.createdAt ?? 0) || ts,
     updatedAt: Number((partial as any)?.updatedAt ?? 0) || ts,
   };
@@ -551,13 +639,17 @@ export function upsertBabyFootTeam(team: BabyFootTeam) {
     id: (team as any).id || makeTeamId("babyfoot"),
     sport: "babyfoot",
     name: String((team as any).name ?? "").trim() || "Équipe",
-    logoDataUrl: (team as any).logoDataUrl ?? null,
+    logoDataUrl: normalizeImageRef((team as any).logoDataUrl, (team as any).logoUrl),
+    logoUrl: normalizeTextField((team as any).logoUrl) ?? null,
+    logoAssetId: normalizeTextField((team as any).logoAssetId) ?? null,
 
     countryCode: String((team as any).countryCode ?? "FR").toUpperCase().slice(0, 2),
     countryName: (team as any).countryName ?? "France",
     regionCode: (team as any).regionCode ?? "",
     regionName: (team as any).regionName ?? "",
-    regionLogoDataUrl: sanitizeStoredImage((team as any).regionLogoDataUrl),
+    regionLogoDataUrl: normalizeImageRef((team as any).regionLogoDataUrl, (team as any).regionLogoUrl),
+    regionLogoUrl: normalizeTextField((team as any).regionLogoUrl) ?? null,
+    regionLogoAssetId: normalizeTextField((team as any).regionLogoAssetId) ?? null,
     slogan: typeof (team as any).slogan === "string" ? (team as any).slogan.slice(0, 50) : "",
     description: typeof (team as any).description === "string" ? (team as any).description : "",
     playerIds: Array.isArray((team as any).playerIds)
