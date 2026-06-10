@@ -405,6 +405,7 @@ export default function ProfileAvatar(props: Props) {
               width: "100%",
               height: "100%",
               objectFit: "cover",
+              objectPosition: "50% 50%",
               display: "block",
               // IMPORTANT: pas de borderRadius ici, c’est le wrapper qui clip
               borderRadius: 0,

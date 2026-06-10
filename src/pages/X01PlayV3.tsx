@@ -4682,6 +4682,7 @@ if (isLandscapeTablet) {
               teamColor={activeTeam.color}
               teamName={activeTeam.name}
               teamPlayers={activeTeam.players}
+              teamLogoUrl={(activeTeam as any).avatarUrl || (activeTeam as any).logoDataUrl || null}
               activePlayerId={activePlayerId}
               teamScore={activeTeam.score}
               currentThrow={currentThrow}
@@ -5062,6 +5063,7 @@ if (isLandscapeTablet) {
                 teamId={activeTeam.id}
                 teamName={activeTeam.name}
                 teamPlayers={activeTeam.players}
+                teamLogoUrl={(activeTeam as any).avatarUrl || (activeTeam as any).logoDataUrl || null}
                 activePlayerId={activePlayerId}
                 teamScore={activeTeam.score}
                 currentThrow={currentThrow}
@@ -6057,6 +6059,7 @@ function TeamHeaderBlock(props: {
   teamId: string;
   teamName: string;
   teamPlayers: Array<{ id: string; name: string; avatar: string | null; dartSetThumb?: string | null; dartSetBgColor?: string | null; isActive: boolean }>;
+  teamLogoUrl?: string | null;
   activePlayerId: string;
   teamScore: number;
   currentThrow: UIDart[];
@@ -6095,6 +6098,7 @@ function TeamHeaderBlock(props: {
     teamId,
     teamName,
     teamPlayers,
+    teamLogoUrl: explicitTeamLogoUrl,
     activePlayerId,
     teamScore,
     currentThrow,
@@ -6115,9 +6119,10 @@ function TeamHeaderBlock(props: {
   const color = teamColor || "#ffcf57";
 
   const teamLogoUrl = React.useMemo(() => {
+    if (explicitTeamLogoUrl) return explicitTeamLogoUrl;
     const skin = guessTeamSkin(teamName, teamId, teamColor);
     return getTeamAvatarUrl(skin as any);
-  }, [teamName, teamId, teamColor]);
+  }, [explicitTeamLogoUrl, teamName, teamId, teamColor]);
 
   const active = teamPlayers.find((p) => p.id === activePlayerId) || teamPlayers[0];
 
