@@ -3320,7 +3320,19 @@ function BotTeamsSection({
         botTeams.length === 0 ? (
           <div style={{ color: "#8f94b2", fontSize: 12, lineHeight: 1.35 }}>Aucune équipe BOT IA disponible.</div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(168px, 1fr))", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              overflowX: "auto",
+              overflowY: "hidden",
+              padding: "2px 4px 12px",
+              margin: "0 -4px",
+              scrollSnapType: "x mandatory",
+              WebkitOverflowScrolling: "touch",
+              overscrollBehaviorX: "contain",
+            }}
+          >
             {botTeams.map((team: any, index: number) => {
               const tid = String(team?.id || `bot-team-${index}`);
               const active = selected.has(tid);
@@ -3337,35 +3349,62 @@ function BotTeamsSection({
                   type="button"
                   onClick={() => toggleBotTeam && toggleBotTeam(tid)}
                   style={{
-                    textAlign: "left",
-                    borderRadius: 18,
-                    padding: "12px 10px",
+                    textAlign: "center",
+                    borderRadius: 20,
+                    padding: "14px 12px 12px",
                     border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.08)",
-                    background: active ? primarySoft : "rgba(8,10,20,0.90)",
+                    background: active
+                      ? `linear-gradient(180deg, ${primarySoft}, rgba(8,10,20,0.94))`
+                      : "rgba(8,10,20,0.90)",
                     color: "#f5f7ff",
                     cursor: "pointer",
-                    boxShadow: active ? `0 0 20px ${primary}44` : "none",
-                    minWidth: 0,
+                    boxShadow: active ? `0 0 22px ${primary}44` : "none",
+                    flex: "0 0 min(68vw, 230px)",
+                    minHeight: active ? 232 : 174,
+                    scrollSnapAlign: "start",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <div style={{ position: "relative", width: 58, height: 58, display: "grid", placeItems: "center", flex: "0 0 auto", overflow: "visible" }}>
-                      {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={54} starSize={8} gapPx={-4} /> : null}
-                      <ProfileAvatar name={name} dataUrl={logo || undefined} size={46} />
+                  <div style={{ display: "grid", justifyItems: "center", gap: 8, minWidth: 0 }}>
+                    <div style={{ position: "relative", width: 86, height: 86, display: "grid", placeItems: "center", overflow: "visible" }}>
+                      {level > 0 ? <ProfileStarRing botLevel={level} anchorSize={74} starSize={9} gapPx={-5} /> : null}
+                      <ProfileAvatar name={name} dataUrl={logo || undefined} size={66} />
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 950, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div style={{ width: "100%", minWidth: 0 }}>
+                      <div style={{ fontWeight: 950, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {name}
-                        <span style={{ marginLeft: 6, padding: "2px 5px", borderRadius: 999, border: `1px solid ${primary}77`, color: primary, fontSize: 9, fontWeight: 950, verticalAlign: "middle" }}>IA</span>
                       </div>
-                      <div style={{ color: "#9da3c0", fontSize: 11 }}>
+                      <div style={{ color: "#9da3c0", fontSize: 11, marginTop: 2 }}>
                         {members.length || ids.length} joueur{(members.length || ids.length) > 1 ? "s" : ""}{level ? ` • Niveau ${level}/5` : ""}
                       </div>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginTop: 7,
+                          padding: "2px 7px",
+                          borderRadius: 999,
+                          border: `1px solid ${primary}77`,
+                          color: primary,
+                          fontSize: 9,
+                          fontWeight: 950,
+                          verticalAlign: "middle",
+                        }}
+                      >
+                        IA
+                      </span>
                     </div>
                   </div>
 
                   {active && members.length > 0 ? (
-                    <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        marginTop: 12,
+                        flexWrap: "wrap",
+                        justifyContent: "center",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {members.map((p: any) => {
                         const checked = chosen.includes(String(p.id));
                         return (

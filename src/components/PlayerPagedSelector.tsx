@@ -266,8 +266,10 @@ export default function PlayerPagedSelector({
                     <button key={p.id} type="button" onClick={() => onToggle(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
                         {lvl > 0 ? <ProfileStarRing botLevel={lvl} anchorSize={88} starSize={12} gapPx={-5} /> : null}
-                        <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)" }}>
-                          <ProfileAvatar profile={p} size={82} />
+                        <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
+                          <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
+                            <ProfileAvatar profile={p} size={76} noFrame />
+                          </div>
                         </div>
                         {active ? renderAvatarOverlay?.(p) : null}
                       </div>
@@ -296,8 +298,10 @@ const SelectedCard = React.memo(function SelectedCard({ p, accent, renderActions
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
         {lvl > 0 ? <ProfileStarRing botLevel={lvl} anchorSize={72} starSize={10} gapPx={-5} /> : null}
-        <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55` }}>
-          <ProfileAvatar profile={p} size={66} />
+        <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
+          <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
+            <ProfileAvatar profile={p} size={60} noFrame />
+          </div>
         </div>
         {renderAvatarOverlay?.(p)}
         <button type="button" onClick={onRemove} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
