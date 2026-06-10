@@ -623,18 +623,15 @@ function x01IsExplicitPublic(set: any): boolean {
 
   const ownerValues = [set?.profileId, set?.ownerProfileId, set?.localProfileId, set?.profile_id];
   const hasAnyConcreteOwner = ownerValues.some((v) => x01HasConcreteOwnerValue(v) && !x01IsGlobalOwnerId(v));
+  const hasGlobalOrEmptyOwner = !hasAnyConcreteOwner;
 
-  // RÈGLE DEMANDÉE : set sans propriétaire concret = public pour tous, tant
-  // qu'il n'a pas de cible privée explicite. Les privés propriétaires restent
-  // exclusifs via x01DartSetMatchesProfile().
-  const privateMarker = flag === "private" || flag === "prive" || flag === "privé" || set?.isPrivate === true || set?.private === true || x01HasExplicitPrivateTarget(set);
-  if (!privateMarker && !hasAnyConcreteOwner) return true;
+  // CORRECTION CIBLÉE : dans tes données actuelles, les publics créés dans
+  // MES FLÉCHETTES peuvent rester marqués private=true/scope=private après
+  // édition, MAIS sans propriétaire concret. Pour X01, sans propriétaire concret
+  // = bibliothèque publique visible par tous. On garde l'exclusion si le set a
+  // une cible privée explicite.
+  if (hasGlobalOrEmptyOwner && !x01HasExplicitPrivateTarget(set)) return true;
 
-  // Un owner global/public sans marqueur privé = public legacy.
-  if (privateMarker) return false;
-  if (x01HasConcreteOwnerValue(set?.profileId) && x01IsGlobalOwnerId(set?.profileId)) return true;
-  if (x01HasConcreteOwnerValue(set?.ownerProfileId) && x01IsGlobalOwnerId(set?.ownerProfileId)) return true;
-  if (x01HasConcreteOwnerValue(set?.localProfileId) && x01IsGlobalOwnerId(set?.localProfileId)) return true;
   return false;
 }
 
@@ -711,7 +708,10 @@ function x01DartSetStorageVersion(): string {
     if (typeof window === "undefined") return "server";
     const raw = window.localStorage.getItem("dc_dart_sets_v1") || "";
     const meta = window.localStorage.getItem("dc_dart_sets_v1_meta") || "";
-    return `${raw.length}:${meta.length}:${raw.slice(0, 96)}:${meta.slice(0, 96)}`;
+    // Inclure début + fin : changer public/privé peut garder la même longueur
+    // et ne pas toucher les 96 premiers caractères, donc l'ancien cache X01
+    // pouvait conserver une liste fausse.
+    return `${raw.length}:${meta.length}:${raw.slice(0, 160)}:${raw.slice(-160)}:${meta.slice(0, 96)}:${meta.slice(-96)}`;
   } catch { return `${Date.now()}`; }
 }
 function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []): DartSet[] {

@@ -1849,13 +1849,14 @@ function isSelectablePublicForEveryProfile(set: any): boolean {
   // résiduels quand scope/visibility/access/isPublic/public/shared dit public.
   if (isExplicitPublicDartSet(set)) return true;
 
-  // RÈGLE DEMANDÉE : un DartSet SANS propriétaire concret, et sans cible privée,
-  // est un set de bibliothèque publique accessible à tous les joueurs.
-  // Les sets privés avec propriétaire restent gérés par getDartSetsForProfile().
-  if (!hasPrivateTarget && !hasConcreteOwnerProfileId(owner) && !isExplicitPrivateDartSet(set)) return true;
+  // CORRECTION X01 : les vrais sets de bibliothèque "publics" de ton app sont
+  // souvent stockés en legacy avec profileId vide/global, mais gardent encore
+  // scope/private=true après plusieurs migrations. Le propriétaire est alors le
+  // seul signal fiable : aucun propriétaire concret = public pour tous.
+  // On protège quand même les vrais privés ciblés : privateProfileId / linkedTarget...
+  // gardent le set exclusif.
+  if (!hasPrivateTarget && (!hasConcreteOwnerProfileId(owner) || isPublicOwnerProfileId(owner))) return true;
 
-  // Ancien format : owner global/public sans cible privée = public.
-  if (!hasPrivateTarget && isExplicitPublicOwnerProfileId(owner)) return true;
   return false;
 }
 
