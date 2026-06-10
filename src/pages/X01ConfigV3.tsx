@@ -576,6 +576,27 @@ function x01OwnerIds(set: any): string[] {
   return out;
 }
 
+
+function x01GetDartSetOwnerProfile(set: any, allProfiles: any[] = []): any | null {
+  if (!set || x01IsPublicDartSet(set)) return null;
+  const owners = x01OwnerIds(set);
+  if (!owners.length) return null;
+
+  const profiles = Array.isArray(allProfiles) ? allProfiles : [];
+  for (const ownerId of owners) {
+    const ownerKey = x01NormId(ownerId);
+    const found = profiles.find((p: any) => {
+      const values = [p?.id, p?.profileId, p?.localProfileId, p?.playerId, p?.uid, p?.uuid];
+      return values.some((v) => x01NormId(v) === ownerKey);
+    });
+    if (found) return found;
+  }
+
+  // Fallback minimal : permet quand même d'afficher une pastille avec initiale
+  // si le profil complet n'est pas encore chargé dans la liste locale.
+  return { id: owners[0], name: "" };
+}
+
 function x01ProfileIdentitySet(profileId: string, allProfiles: any[] = []): Set<string> {
   const ids = new Set<string>();
   const add = (v: any) => {
@@ -980,6 +1001,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
               {orderedSets.map((set: any) => {
                 const thumb = getDartSetThumbSrc(set);
                 const selected = String(set?.id) === String(dartSetId || "");
+                const ownerProfile = x01GetDartSetOwnerProfile(set, allProfiles);
                 return (
                   <button
                     key={set.id}
@@ -1014,6 +1036,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        position: "relative",
                       }}
                     >
                       {thumb ? (
@@ -1021,6 +1044,32 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                       ) : (
                         <span style={{ fontSize: 26 }}>🎯</span>
                       )}
+                      {ownerProfile ? (
+                        <span
+                          title={ownerProfile?.name ? `Set privé de ${ownerProfile.name}` : "Set privé"}
+                          style={{
+                            position: "absolute",
+                            right: 5,
+                            bottom: 5,
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            display: "grid",
+                            placeItems: "center",
+                            background: "rgba(5,6,12,.72)",
+                            border: `1px solid ${primary}`,
+                            boxShadow: `0 0 12px ${primary}88`,
+                            overflow: "visible",
+                          }}
+                        >
+                          <ProfileAvatar
+                            profile={ownerProfile}
+                            size={24}
+                            showStars={false}
+                            noFrame
+                          />
+                        </span>
+                      ) : null}
                     </span>
                     <span
                       style={{
