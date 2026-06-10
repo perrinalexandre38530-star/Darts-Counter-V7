@@ -498,22 +498,38 @@ type PlayerDartBadgeProps = {
   allProfiles?: any[];
 };
 
+function x01IsFavoriteDartSet(set: any): boolean {
+  if (!set) return false;
+  return Boolean(
+    set.isFavorite ||
+      set.favorite ||
+      set.fav ||
+      set.starred ||
+      set.isFav ||
+      set.favoriteDartSet ||
+      set.favoriteSet ||
+      set.pinned
+  );
+}
+
 function sortDartSetsForProfilePicker(list: DartSet[]): DartSet[] {
   return (Array.isArray(list) ? list : [])
     .slice()
     .sort((a: any, b: any) => {
       // Ordre demandé dans X01 :
-      // 1) sets privés autorisés du joueur courant
-      // 2) favoris
-      // 3) utilisation
-      // 4) alphabétique
+      // 1) sets privés favoris autorisés
+      // 2) sets publics favoris
+      // 3) sets privés
+      // 4) sets publics
+      // puis utilisation, puis alphabétique.
       const privateA = !x01IsPublicDartSet(a) ? 1 : 0;
       const privateB = !x01IsPublicDartSet(b) ? 1 : 0;
-      if (privateA !== privateB) return privateB - privateA;
+      const favA = x01IsFavoriteDartSet(a) ? 1 : 0;
+      const favB = x01IsFavoriteDartSet(b) ? 1 : 0;
 
-      const favA = a?.isFavorite ? 1 : 0;
-      const favB = b?.isFavorite ? 1 : 0;
-      if (favA !== favB) return favB - favA;
+      const groupA = privateA * 2 + favA;
+      const groupB = privateB * 2 + favB;
+      if (groupA !== groupB) return groupB - groupA;
 
       const usageA = Number(a?.usageCount || 0);
       const usageB = Number(b?.usageCount || 0);
@@ -1023,9 +1039,6 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                       minWidth: 0,
                     }}
                   >
-                    {set?.isFavorite ? (
-                      <span style={{ position: "absolute", top: 6, left: 8, color: "#ffd76a", textShadow: "0 0 10px #ffd76a" }}>★</span>
-                    ) : null}
                     <span
                       style={{
                         width: "100%",
@@ -1044,6 +1057,24 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                       ) : (
                         <span style={{ fontSize: 26 }}>🎯</span>
                       )}
+                      {x01IsFavoriteDartSet(set) ? (
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            position: "absolute",
+                            left: 7,
+                            top: 6,
+                            zIndex: 3,
+                            color: "#f5c35b",
+                            fontSize: 20,
+                            lineHeight: "20px",
+                            textShadow: "0 0 7px rgba(245,195,91,.95), 0 0 16px rgba(245,195,91,.72)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          ★
+                        </span>
+                      ) : null}
                       {ownerProfile ? (
                         <span
                           title={ownerProfile?.name ? `Set privé de ${ownerProfile.name}` : "Set privé"}
