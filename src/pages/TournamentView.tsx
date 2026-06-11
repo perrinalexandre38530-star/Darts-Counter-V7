@@ -1175,6 +1175,29 @@ function formatPointsAverage(value: number) {
   return n.toFixed(1).replace(/\.0$/, "");
 }
 
+function getPodiumCount(row: any, averageMode = false) {
+  const explicit =
+    Number(row?.podium ?? row?.podiums ?? row?.top3 ?? row?.topThree ?? row?.podiumCount ?? NaN);
+  if (Number.isFinite(explicit)) return Math.max(0, Math.floor(explicit));
+
+  // Saison libre / DUO : une partie à 2 joueurs place forcément les deux joueurs dans le TOP 3.
+  // Pour les anciennes lignes sans champ podium, on retombe donc sur le nombre de matchs joués.
+  if (averageMode) return getPlayedCount(row);
+
+  return 0;
+}
+
+function PodiumHeaderIcon({ color = "#7fe2a9" }: { color?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-label="Podium" style={{ display: "block" }}>
+      <path d="M10 7h4v13h-4V7Z" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M4 12h4v8H4v-8Z" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M16 10h4v10h-4V10Z" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M12 3.5l.78 1.58 1.74.25-1.26 1.23.3 1.73L12 7.47l-1.56.82.3-1.73-1.26-1.23 1.74-.25L12 3.5Z" fill={color} />
+    </svg>
+  );
+}
+
 const AVERAGE_STANDINGS_MIN_PLAYED = 2;
 
 function sortAverageStandingsRows(rows: any[]) {
@@ -1182,6 +1205,7 @@ function sortAverageStandingsRows(rows: any[]) {
     const avgDiff = getPointsAverage(b) - getPointsAverage(a);
     if (Math.abs(avgDiff) > 0.000001) return avgDiff;
     if ((Number(b?.points || 0) || 0) !== (Number(a?.points || 0) || 0)) return (Number(b?.points || 0) || 0) - (Number(a?.points || 0) || 0);
+    if (getPodiumCount(b, true) !== getPodiumCount(a, true)) return getPodiumCount(b, true) - getPodiumCount(a, true);
     if ((Number(b?.wins || 0) || 0) !== (Number(a?.wins || 0) || 0)) return (Number(b?.wins || 0) || 0) - (Number(a?.wins || 0) || 0);
     return ((Number(b?.scored || 0) || 0) - (Number(b?.conceded || 0) || 0)) - ((Number(a?.scored || 0) || 0) - (Number(a?.conceded || 0) || 0));
   });
@@ -1202,7 +1226,7 @@ function computeLinkedMultiStandings(tour: any, linkedMatches: any[]) {
   for (const p of players) {
     const id = String(p?.id || "");
     if (!id) continue;
-    rows[id] = { id, played: 0, wins: 0, losses: 0, points: 0, scored: 0, conceded: 0 };
+    rows[id] = { id, played: 0, wins: 0, losses: 0, points: 0, scored: 0, conceded: 0, podium: 0, podiums: 0, top3: 0 };
   }
 
   for (const link of Array.isArray(linkedMatches) ? linkedMatches : []) {
@@ -1213,11 +1237,16 @@ function computeLinkedMultiStandings(tour: any, linkedMatches: any[]) {
     ranking.forEach((r: any, idx: number) => {
       const id = String(r?.playerId ?? r?.id ?? "");
       if (!id) return;
-      if (!rows[id]) rows[id] = { id, played: 0, wins: 0, losses: 0, points: 0, scored: 0, conceded: 0 };
+      if (!rows[id]) rows[id] = { id, played: 0, wins: 0, losses: 0, points: 0, scored: 0, conceded: 0, podium: 0, podiums: 0, top3: 0 };
       const rank = Math.max(1, Number(r?.rank || idx + 1) || idx + 1);
       rows[id].played += 1;
       if (rank === 1) rows[id].wins += 1;
       if (rank > 1) rows[id].losses += 1;
+      if (rank <= 3) {
+        rows[id].podium = (Number(rows[id].podium || 0) || 0) + 1;
+        rows[id].podiums = (Number(rows[id].podiums || 0) || 0) + 1;
+        rows[id].top3 = (Number(rows[id].top3 || 0) || 0) + 1;
+      }
       rows[id].points += Number(pointsById.get(id) ?? 0) || 0;
       rows[id].scored += Math.max(0, count - rank + 1);
       rows[id].conceded += Math.max(0, rank - 1);
@@ -1605,7 +1634,7 @@ function StandingsTable({
       <table
         style={{
           width: "100%",
-          minWidth: averageMode ? 410 : 430,
+          minWidth: averageMode ? 450 : 430,
           borderCollapse: "collapse",
           tableLayout: "fixed",
         }}
@@ -1614,7 +1643,8 @@ function StandingsTable({
           <col style={{ width: 30 }} />
           <col />
           {averageMode ? <col style={{ width: 52 }} /> : null}
-          <col style={{ width: 44 }} />
+          {averageMode ? <col style={{ width: 42 }} /> : null}
+          <col style={{ width: 42 }} />
           <col style={{ width: 34 }} />
           <col style={{ width: 34 }} />
           <col style={{ width: 38 }} />
@@ -1625,6 +1655,11 @@ function StandingsTable({
             <th style={{ ...thStyle, textAlign: "left" }}>#</th>
             <th style={{ ...thStyle, textAlign: "left" }}>Joueur</th>
             {averageMode ? <th style={{ ...thStyle, ...right, color: accent }}>Pts/m</th> : null}
+            {averageMode ? (
+              <th style={{ ...thStyle, ...right, color: accent }} title="Podiums : nombre de TOP 3">
+                <span style={{ display: "inline-flex", justifyContent: "flex-end", width: "100%" }}><PodiumHeaderIcon color={accent} /></span>
+              </th>
+            ) : null}
             <th style={{ ...thStyle, ...right, color: averageMode ? "rgba(255,255,255,0.80)" : accent }}>Pts</th>
             <th style={{ ...thStyle, ...right }}>J</th>
             <th style={{ ...thStyle, ...right }}>{averageMode ? "1er" : "V"}</th>
@@ -1640,6 +1675,7 @@ function StandingsTable({
             const avg = r?.pointsAverage ?? r?.pointsPerMatch ?? r?.ptMoy ?? getPointsAverage(r);
             const name = pl?.name || "Joueur";
             const avatarUrl = pl?.avatarDataUrl || pl?.avatar || pl?.avatarUrl || null;
+            const podiumCount = getPodiumCount(r, averageMode);
 
             return (
               <tr key={String(r.id)}>
@@ -1664,6 +1700,7 @@ function StandingsTable({
                   </div>
                 </td>
                 {averageMode ? <td style={{ ...tdStyle, ...right, fontWeight: 1000, color: accent, fontSize: 13 }}>{formatPointsAverage(avg)}</td> : null}
+                {averageMode ? <td style={{ ...tdStyle, ...right, fontWeight: 950, color: "rgba(255,255,255,0.86)" }}>{podiumCount}</td> : null}
                 <td style={{ ...tdStyle, ...right, fontWeight: 950, color: averageMode ? "rgba(255,255,255,0.86)" : accent }}>{r.points ?? 0}</td>
                 <td style={{ ...tdStyle, ...right, opacity: 0.9 }}>{played}</td>
                 <td style={{ ...tdStyle, ...right, opacity: 0.9 }}>{r.wins ?? 0}</td>
