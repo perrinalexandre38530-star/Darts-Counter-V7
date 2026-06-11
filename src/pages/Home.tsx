@@ -2271,6 +2271,83 @@ function ensureKillerTickerItemFirst(
   return [killerItem, ...without];
 }
 
+
+type FootHomeStats = {
+  matches: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  yellowCards: number;
+  redCards: number;
+};
+
+function emptyFootHomeStats(): FootHomeStats {
+  return { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, yellowCards: 0, redCards: 0 };
+}
+
+function isFootHistoryMatch(row: any): boolean {
+  const tokens = [row?.sport, row?.kind, row?.game?.sport, row?.game?.mode, row?.summary?.sport, row?.summary?.mode, row?.payload?.sport, row?.payload?.mode, row?.payload?.summary?.sport, row?.payload?.summary?.mode]
+    .map((v) => String(v || "").toLowerCase())
+    .filter(Boolean);
+  return tokens.some((v) => v === "foot" || v === "foot_match" || v.startsWith("foot_"));
+}
+
+function computeFootHomeStats(rows: any[], profileName?: string): FootHomeStats {
+  const out = emptyFootHomeStats();
+  const name = String(profileName || "").trim().toLowerCase();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!isFootHistoryMatch(row)) continue;
+    const summary = row?.summary || row?.payload?.summary || row?.payload || {};
+    const teamA = String(summary?.teamA || row?.players?.[0]?.name || "Équipe A");
+    const teamB = String(summary?.teamB || row?.players?.[1]?.name || "Équipe B");
+    const scoreA = Number(summary?.scoreA ?? summary?.score?.[0] ?? row?.payload?.score?.[0] ?? 0) || 0;
+    const scoreB = Number(summary?.scoreB ?? summary?.score?.[1] ?? row?.payload?.score?.[1] ?? 0) || 0;
+    const events = Array.isArray(summary?.events) ? summary.events : Array.isArray(row?.payload?.events) ? row.payload.events : [];
+    out.matches += 1;
+    out.goalsFor += scoreA + scoreB;
+    for (const ev of events) {
+      const type = String(ev?.type || "").toLowerCase();
+      if (type === "yellow") out.yellowCards += 1;
+      if (type === "red") out.redCards += 1;
+    }
+    if (scoreA === scoreB) out.draws += 1;
+    else {
+      const winner = scoreA > scoreB ? teamA : teamB;
+      if (name && winner.toLowerCase().includes(name)) out.wins += 1;
+      else if (name) out.losses += 1;
+      else out.wins += 1;
+    }
+  }
+  return out;
+}
+
+function formatFootWinRate(fs: FootHomeStats): string {
+  return fs.matches > 0 ? `${Math.round((fs.wins / fs.matches) * 100)}%` : "0%";
+}
+
+function buildFootTickerItems(fs: FootHomeStats, primary: string): ArcadeTickerItem[] {
+  return [
+    {
+      id: "foot-summary",
+      title: "FOOT DU MOMENT",
+      text: fs.matches > 0 ? `${fs.matches} match${fs.matches > 1 ? "s" : ""} FOOT enregistré${fs.matches > 1 ? "s" : ""}. ${fs.goalsFor} but${fs.goalsFor > 1 ? "s" : ""} au total.` : "Aucun match FOOT enregistré pour l’instant. Lance un match rapide pour remplir la Home.",
+      detail: `${fs.wins} V • ${fs.draws} N • ${fs.losses} D`,
+      backgroundImage: pickTickerImage("global", "foot-summary"),
+      accentColor: primary,
+    },
+    {
+      id: "foot-discipline",
+      title: "DISCIPLINE FOOT",
+      text: `${fs.yellowCards} carton${fs.yellowCards > 1 ? "s" : ""} jaune${fs.yellowCards > 1 ? "s" : ""} • ${fs.redCards} rouge${fs.redCards > 1 ? "s" : ""}.`,
+      detail: "Cartons enregistrés via les événements de match.",
+      backgroundImage: pickTickerImage("leaderboard", "foot-discipline"),
+      accentColor: primary,
+    },
+  ];
+}
+
 /* =============================================================
    Component
 ============================================================ */
@@ -2291,6 +2368,9 @@ export default function Home({ store, go, activeSport }: Props) {
     if (s === "petanque") return "PETANQUE COUNTER";
     if (s === "babyfoot") return "BABY-FOOT COUNTER";
     if (s === "pingpong") return "PING-PONG COUNTER";
+    if (s === "molkky") return "MÖLKKY COUNTER";
+    if (s === "dicegame") return "DICE COUNTER";
+    if (s === "foot") return "FOOT SCORING";
     return "DARTS COUNTER";
   }, [sport]);
 
@@ -2324,6 +2404,9 @@ export default function Home({ store, go, activeSport }: Props) {
   const [stats, setStats] = useState<ActiveProfileStats>(() =>
     emptyActiveProfileStats()
   );
+
+  const [footStats, setFootStats] = useState<FootHomeStats>(() => emptyFootHomeStats());
+  const isFootSport = String(sport).toLowerCase() === "foot";
 
   const [tickerIndex, setTickerIndex] = useState(0);
 
@@ -2398,19 +2481,44 @@ export default function Home({ store, go, activeSport }: Props) {
     };
   }, [activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refreshFoot = async () => {
+      if (!isFootSport) {
+        if (!cancelled) setFootStats(emptyFootHomeStats());
+        return;
+      }
+      try {
+        const rows = await History.list();
+        if (!cancelled) setFootStats(computeFootHomeStats(rows as any[], activeProfile?.name));
+      } catch {
+        if (!cancelled) setFootStats(emptyFootHomeStats());
+      }
+    };
+    void refreshFoot();
+    window.addEventListener("dc-history-updated", refreshFoot as EventListener);
+    window.addEventListener("dc-stats-index-updated", refreshFoot as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dc-history-updated", refreshFoot as EventListener);
+      window.removeEventListener("dc-stats-index-updated", refreshFoot as EventListener);
+    };
+  }, [isFootSport, activeProfile?.id, activeProfile?.name]);
+
     // ------------------------------------------------------------
   // Ticker items (✅ on force Killer en 1er + on utilise CETTE liste partout)
   // ------------------------------------------------------------
 
   const tickerItemsRaw = useMemo(
-    () => buildArcadeItems(store, activeProfile, stats, t),
-    [store, activeProfile, stats, t]
+    () => isFootSport ? buildFootTickerItems(footStats, theme.primary ?? "#27E7FF") : buildArcadeItems(store, activeProfile, stats, t),
+    [isFootSport, footStats, store, activeProfile, stats, t, theme.primary]
   );
 
   // ✅ IMPORTANT: pas de side-effects (pas de console.log) dans un useMemo
   const tickerItems = useMemo(() => {
+    if (isFootSport) return tickerItemsRaw;
     return ensureKillerTickerItemFirst(tickerItemsRaw, t, theme.primary);
-  }, [tickerItemsRaw, t, theme.primary]);
+  }, [isFootSport, tickerItemsRaw, t, theme.primary]);
 
   // ✅ Signature stable => permet de détecter les VRAIS changements
   const tickerSignature = useMemo(() => {
@@ -2565,6 +2673,14 @@ React.useEffect(() => {
     setTipTouchStartX(null);
   };
 
+  const footGlobalKpis = useMemo(() => [
+    { label: "matchs", value: footStats.matches },
+    { label: "win%", value: formatFootWinRate(footStats) },
+    { label: "buts", value: footStats.goalsFor },
+    { label: "nuls", value: footStats.draws },
+    { label: "cartons", value: `${footStats.yellowCards + footStats.redCards}` },
+  ], [footStats]);
+
   return (
     <div
       style={{
@@ -2644,6 +2760,8 @@ React.useEffect(() => {
             profile={activeProfile}
             stats={stats}
             status={onlineStatusForUi}
+            globalTitle={isFootSport ? "Vue globale FOOT" : undefined}
+            globalKpis={isFootSport ? footGlobalKpis : undefined}
           />
         )}
   

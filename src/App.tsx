@@ -3583,7 +3583,13 @@ try {
           ) : activeSport === "dicegame" ? (
             <DiceHome store={store} update={update} go={go} />
           ) : activeSport === "foot" ? (
-            <FootHome store={store} update={update} go={go} />
+            <Home
+              store={store}
+              update={update}
+              go={go}
+              activeSport={activeSport}
+              onConnect={() => go("profiles", { view: "me", autoCreate: true })}
+            />
           ) : activeSport === "babyfoot" ? (
             <BabyFootHome store={store} update={update} go={go} />
           ) : activeSport === "pingpong" ? (
