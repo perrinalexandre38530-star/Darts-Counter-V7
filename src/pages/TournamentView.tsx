@@ -1153,6 +1153,47 @@ function buildLinkedHistoryEntry(rec: any, tour: any) {
   };
 }
 
+function getPlayedCount(row: any) {
+  return Math.max(0, Number(row?.played ?? ((Number(row?.wins || 0) + Number(row?.losses || 0)))) || 0);
+}
+
+function getPointsAverage(row: any) {
+  const played = getPlayedCount(row);
+  if (!played) return 0;
+  return (Number(row?.points || 0) || 0) / played;
+}
+
+function roundPointsAverage(value: number) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+function formatPointsAverage(value: number) {
+  const n = roundPointsAverage(value);
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function sortAverageStandingsRows(rows: any[]) {
+  return (Array.isArray(rows) ? rows.slice() : []).sort((a: any, b: any) => {
+    const avgDiff = getPointsAverage(b) - getPointsAverage(a);
+    if (Math.abs(avgDiff) > 0.000001) return avgDiff;
+    if ((Number(b?.points || 0) || 0) !== (Number(a?.points || 0) || 0)) return (Number(b?.points || 0) || 0) - (Number(a?.points || 0) || 0);
+    if ((Number(b?.wins || 0) || 0) !== (Number(a?.wins || 0) || 0)) return (Number(b?.wins || 0) || 0) - (Number(a?.wins || 0) || 0);
+    return ((Number(b?.scored || 0) || 0) - (Number(b?.conceded || 0) || 0)) - ((Number(a?.scored || 0) || 0) - (Number(a?.conceded || 0) || 0));
+  });
+}
+
+function withPointsAverage(rows: any[]) {
+  return (Array.isArray(rows) ? rows : []).map((r: any) => ({
+    ...r,
+    pointsAverage: roundPointsAverage(getPointsAverage(r)),
+    pointsPerMatch: roundPointsAverage(getPointsAverage(r)),
+    ptMoy: roundPointsAverage(getPointsAverage(r)),
+  }));
+}
+
 function computeLinkedMultiStandings(tour: any, linkedMatches: any[]) {
   const rows: Record<string, any> = {};
   const players = Array.isArray(tour?.players) ? tour.players : [];
@@ -1181,11 +1222,7 @@ function computeLinkedMultiStandings(tour: any, linkedMatches: any[]) {
     });
   }
 
-  return Object.values(rows).sort((a: any, b: any) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    return (b.scored - b.conceded) - (a.scored - a.conceded);
-  });
+  return sortAverageStandingsRows(withPointsAverage(Object.values(rows)));
 }
 
 /* -------------------------
@@ -1499,7 +1536,20 @@ function WorldCupBracketViewPure({ koMatches, playersById, allMatches, onOpenMat
   );
 }
 
-function StandingsTable({ rows, playersById, accent = "#7fe2a9" }: { rows: any[]; playersById: Record<string, any>; accent?: string }) {
+function StandingsTable({
+  rows,
+  playersById,
+  accent = "#7fe2a9",
+  averageMode = false,
+}: {
+  rows: any[];
+  playersById: Record<string, any>;
+  accent?: string;
+  averageMode?: boolean;
+}) {
+  const displayRows = averageMode ? sortAverageStandingsRows(withPointsAverage(rows || [])) : (rows || []);
+  const gridColumns = averageMode ? "34px minmax(126px,1fr) 62px 52px 42px 42px 42px 52px" : "34px 1fr 52px 44px 44px 44px 56px";
+
   return (
     <div
       className="dc-scroll-thin"
@@ -1511,11 +1561,26 @@ function StandingsTable({ rows, playersById, accent = "#7fe2a9" }: { rows: any[]
         background: "rgba(0,0,0,0.22)",
       }}
     >
-      <div style={{ minWidth: 420 }}>
+      <div style={{ minWidth: averageMode ? 520 : 420 }}>
+        {averageMode ? (
+          <div
+            style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              background: "rgba(127,226,169,0.055)",
+              color: "rgba(255,255,255,0.78)",
+              fontSize: 10.5,
+              fontWeight: 850,
+            }}
+          >
+            Classement trié par <b style={{ color: accent }}>Pts/match</b>, puis points totaux.
+          </div>
+        ) : null}
+
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "34px 1fr 52px 44px 44px 44px 56px",
+            gridTemplateColumns: gridColumns,
             gap: 10,
             padding: "10px 12px",
             position: "sticky",
@@ -1531,7 +1596,8 @@ function StandingsTable({ rows, playersById, accent = "#7fe2a9" }: { rows: any[]
         >
           <div>#</div>
           <div>Joueur</div>
-          <div style={{ textAlign: "right", color: accent }}>Pts</div>
+          {averageMode ? <div style={{ textAlign: "right", color: accent }}>Pts/m</div> : null}
+          <div style={{ textAlign: "right", color: averageMode ? "rgba(255,255,255,0.82)" : accent }}>Pts</div>
           <div style={{ textAlign: "right" }}>J</div>
           <div style={{ textAlign: "right" }}>V</div>
           <div style={{ textAlign: "right" }}>D</div>
@@ -1539,17 +1605,18 @@ function StandingsTable({ rows, playersById, accent = "#7fe2a9" }: { rows: any[]
         </div>
 
         <div style={{ display: "grid" }}>
-          {(rows || []).map((r: any, idx: number) => {
+          {displayRows.map((r: any, idx: number) => {
             const pl = playersById[String(r.id)];
             const diff = (r.scored ?? 0) - (r.conceded ?? 0);
-            const played = r.played ?? (r.wins ?? 0) + (r.losses ?? 0);
+            const played = getPlayedCount(r);
+            const avg = r?.pointsAverage ?? r?.pointsPerMatch ?? r?.ptMoy ?? getPointsAverage(r);
 
             return (
               <div
                 key={String(r.id)}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "34px 1fr 52px 44px 44px 44px 56px",
+                  gridTemplateColumns: gridColumns,
                   gap: 10,
                   alignItems: "center",
                   padding: "10px 12px",
@@ -1560,7 +1627,8 @@ function StandingsTable({ rows, playersById, accent = "#7fe2a9" }: { rows: any[]
                 <div style={{ minWidth: 0 }}>
                   <PlayerPill name={pl?.name || "Joueur"} avatarUrl={pl?.avatarDataUrl || pl?.avatar || pl?.avatarUrl || null} />
                 </div>
-                <div style={{ textAlign: "right", fontWeight: 950, color: accent }}>{r.points ?? 0}</div>
+                {averageMode ? <div style={{ textAlign: "right", fontWeight: 1000, color: accent }}>{formatPointsAverage(avg)}</div> : null}
+                <div style={{ textAlign: "right", fontWeight: 950, color: averageMode ? "rgba(255,255,255,0.88)" : accent }}>{r.points ?? 0}</div>
                 <div style={{ textAlign: "right", opacity: 0.9 }}>{played}</div>
                 <div style={{ textAlign: "right", opacity: 0.9 }}>{r.wins ?? 0}</div>
                 <div style={{ textAlign: "right", opacity: 0.9 }}>{r.losses ?? 0}</div>
@@ -1741,6 +1809,8 @@ export default function TournamentView({ store, go, id }: Props) {
   }, [tour]);
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
+  const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
+  const isAveragePointsLeague = leagueFormatForStandings === "multi" || leagueFormatForStandings === "free";
 
   const linkedMultiStandings = React.useMemo(() => {
     return computeLinkedMultiStandings(tour, linkedHistoryMatches);
@@ -3153,14 +3223,14 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
           {/* STANDINGS */}
           {tab === "standings" ? (
-            <Card title="Classement" subtitle={viewKind === "round_robin" ? "Classement du championnat." : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
+            <Card title="Classement" subtitle={viewKind === "round_robin" ? (isAveragePointsLeague ? "Classement par moyenne de points par match." : "Classement du championnat.") : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
               {viewKind === "round_robin" ? (
                 <>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <MiniBadge label={isLeagueMulti ? "Parties liées" : "Matchs"} value={isLeagueMulti ? linkedHistoryMatches.length : byPhase.groups.length} accent={TAB_COLORS.standings} />
                     <button type="button" onClick={loadAttachableHistory} style={{ borderRadius: 999, border: "1px solid rgba(255,207,87,.45)", background: "rgba(255,207,87,.10)", color: "#ffcf57", fontWeight: 950, padding: "8px 10px", cursor: "pointer" }}>+ Partie jouée</button>
                   </div>
-                  <StandingsTable rows={isLeagueMulti ? linkedMultiStandings : computeStandings(Object.keys(playersById), byPhase.groups)} playersById={playersById} accent={TAB_COLORS.standings} />
+                  <StandingsTable rows={isLeagueMulti ? linkedMultiStandings : computeStandings(Object.keys(playersById), byPhase.groups)} playersById={playersById} accent={TAB_COLORS.standings} averageMode={isAveragePointsLeague} />
                 </>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
