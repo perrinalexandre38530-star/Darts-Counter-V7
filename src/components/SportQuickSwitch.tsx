@@ -7,8 +7,9 @@ import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 import logoMolkky from "../assets/games/logo-molkky.png";
 import logoDiceGame from "../assets/games/logo-dicegame.png";
+import logoFoot from "../assets/games/logo-foot.png";
 
-type QuickSportId = Extract<SportId, "darts" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame">;
+type QuickSportId = Extract<SportId, "darts" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "foot">;
 
 const SPORTS: Array<{
   id: QuickSportId;
@@ -19,6 +20,7 @@ const SPORTS: Array<{
   { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot, accent: "#ffcf5a" },
   { id: "dicegame", label: "Dice Game", logo: logoDiceGame, accent: "#b9a7ff" },
   { id: "darts", label: "Fléchettes", logo: logoDarts, accent: "#cfe48b" },
+  { id: "foot", label: "FOOT", logo: logoFoot, accent: "#35d86f" },
   { id: "molkky", label: "Mölkky", logo: logoMolkky, accent: "#f7b267" },
   { id: "petanque", label: "Pétanque", logo: logoPetanque, accent: "#8fd7ff" },
   { id: "pingpong", label: "Ping-Pong", logo: logoPingPong, accent: "#ff8fd7" },
@@ -31,6 +33,7 @@ function normalizeSport(value: unknown): QuickSportId {
   if (s === "babyfoot") return "babyfoot";
   if (s === "dicegame" || s === "dice" || s === "dice_game") return "dicegame";
   if (s === "molkky") return "molkky";
+  if (s === "foot" || s === "soccer") return "foot";
   if (s === "petanque") return "petanque";
   if (s === "pingpong") return "pingpong";
   return "darts";

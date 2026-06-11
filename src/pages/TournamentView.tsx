@@ -926,10 +926,87 @@ function getHistorySport(rec: any) {
   );
 }
 
+function getLeagueFormatForLinkedHistory(tour: any) {
+  const f = linkedSafeLower(tour?.game?.rules?.leagueFormat ?? tour?.meta?.leagueFormat ?? tour?.leagueFormat ?? tour?.format);
+  const s = linkedSafeLower(tour?.game?.rules?.scoringMode ?? tour?.meta?.scoringMode ?? tour?.scoringMode);
+  const mf = linkedSafeLower(tour?.meta?.format);
+  if (f === "multi" || s === "rank_points" || mf === "league_multi") return "multi";
+  if (f === "free" || mf === "league_free") return "free";
+  if (f === "return") return "return";
+  if (f === "simple") return "simple";
+  return f || "";
+}
+
+function getHistoryRawModeText(rec: any) {
+  return [
+    rec?.kind,
+    rec?.mode,
+    rec?.variant,
+    rec?.game?.mode,
+    rec?.game?.kind,
+    rec?.summary?.mode,
+    rec?.summary?.kind,
+    rec?.summary?.game?.mode,
+    rec?.payload?.kind,
+    rec?.payload?.mode,
+    rec?.payload?.variant,
+    rec?.payload?.gameMode,
+    rec?.payload?.game?.mode,
+    rec?.payload?.config?.mode,
+    rec?.payload?.summary?.kind,
+    rec?.payload?.summary?.mode,
+  ].filter(Boolean).map((x: any) => linkedSafeLower(x)).join("|");
+}
+
+function getHistoryParticipantCount(rec: any) {
+  const players = getHistoryPlayers(rec);
+  const ranking = getHistoryRanking(rec);
+  const n = Math.max(
+    Array.isArray(players) ? players.length : 0,
+    Array.isArray(ranking) ? ranking.length : 0,
+    Number(rec?.playersCount || 0),
+    Number(rec?.summary?.playersCount || 0),
+    Number(rec?.payload?.playersCount || 0),
+    Number(rec?.payload?.summary?.playersCount || 0)
+  );
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getHistoryX01Kind(rec: any): "multi" | "duo" | "x01" | "other" {
+  const mode = getHistoryMode(rec);
+  const raw = getHistoryRawModeText(rec);
+  const isTraining = raw.includes("training_x01") || raw.includes("training-x01") || raw.includes("training");
+  if (isTraining) return "other";
+  const isX01 = mode === "x01" || raw.includes("x01");
+  if (!isX01) return "other";
+  const count = getHistoryParticipantCount(rec);
+  if (count > 2) return "multi";
+  if (count === 2) return "duo";
+  return "x01";
+}
+
+function getHistoryLinkedDisplayMode(rec: any) {
+  const x01Kind = getHistoryX01Kind(rec);
+  if (x01Kind === "multi") return "x01 multi";
+  if (x01Kind === "duo") return "x01 duo";
+  return getHistoryMode(rec);
+}
+
 function isHistoryCompatibleWithTournament(rec: any, tour: any) {
   const ts = getTournamentSport(tour);
   const hs = getHistorySport(rec);
   if (ts && hs && ts !== hs) return false;
+
+  const leagueFormat = getLeagueFormatForLinkedHistory(tour);
+  if (ts === "darts" && leagueFormat === "multi") {
+    // Une Ligue MULTI est alimentée par des parties libres X01 MULTI uniquement.
+    // On exclut donc les X01 DUO affichés dans l'historique.
+    return getHistoryX01Kind(rec) === "multi";
+  }
+  if (ts === "darts" && leagueFormat === "free") {
+    // Une Saison libre classique est alimentée par des matchs X01 DUO uniquement.
+    return getHistoryX01Kind(rec) === "duo";
+  }
 
   const tMode = linkedSafeLower(tour?.game?.mode ?? tour?.mode ?? "");
   const hMode = getHistoryMode(rec);
@@ -2195,7 +2272,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
         .map((r: any) => ({
           ...r,
           __historyId: getHistoryRowId(r),
-          __mode: getHistoryMode(r) || String((tour as any)?.game?.mode || "match"),
+          __mode: getHistoryLinkedDisplayMode(r) || String((tour as any)?.game?.mode || "match"),
           __time: getHistoryRowTime(r),
           __rankingCount: getHistoryRanking(r).length,
           __playersCount: getHistoryPlayers(r).length,

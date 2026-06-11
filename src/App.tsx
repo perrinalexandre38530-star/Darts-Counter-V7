@@ -289,6 +289,10 @@ import DiceFarkleConfig from "./pages/dice/DiceFarkleConfig";
 import Dice421Config from "./pages/dice/Dice421Config";
 import DicePokerConfig from "./pages/dice/DicePokerConfig";
 import DiceSoonPlay from "./pages/dice/DiceSoonPlay";
+import FootHome from "./pages/foot/FootHome";
+import FootMenuGames from "./pages/foot/FootMenuGames";
+import FootConfig from "./pages/foot/FootConfig";
+import FootPlay from "./pages/foot/FootPlay";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -474,7 +478,7 @@ function safeRouteParamsForCrash(input: any) {
 }
 
 const START_GAME_KEY = "dc-start-game";
-type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame";
+type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
@@ -878,6 +882,9 @@ type Tab =
   | "baseball_play"
   | "game_170_config"
   | "game_170_play"
+  | "foot_menu"
+  | "foot_config"
+  | "foot_play"
   | "football_config"
   | "football_play"
   | "batard_config"
@@ -3575,6 +3582,8 @@ try {
             <MolkkyHome store={store} update={update} go={go} />
           ) : activeSport === "dicegame" ? (
             <DiceHome store={store} update={update} go={go} />
+          ) : activeSport === "foot" ? (
+            <FootHome store={store} update={update} go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootHome store={store} update={update} go={go} />
           ) : activeSport === "pingpong" ? (
@@ -3593,6 +3602,8 @@ try {
             <MolkkyMenuGames go={go} />
           ) : activeSport === "dicegame" ? (
             <DiceMenuGames go={go} />
+          ) : activeSport === "foot" ? (
+            <FootMenuGames go={go} store={store} params={routeParams} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootMenuGames go={go} store={store} params={routeParams} />
           ) : activeSport === "pingpong" ? (
@@ -3637,6 +3648,20 @@ try {
 
       case "petanque_play":
         page = <PetanquePlay go={go} params={routeParams} store={store} onFinish={(m: any) => pushPetanqueHistory(m)} />;
+        break;
+
+
+      // ✅ FOOT (sport football) — séparé du mode darts "football"
+      case "foot_menu":
+        page = <FootMenuGames go={go} store={store} params={routeParams} />;
+        break;
+
+      case "foot_config":
+        page = <FootConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "foot_play":
+        page = <FootPlay go={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "foot", routeParams))} />;
         break;
 
       // ✅ NEW: Baby-Foot flow (LOCAL)

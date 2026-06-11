@@ -8,7 +8,7 @@
 import React from "react";
 
 // ✅ Ajout MÖLKKY + DICE GAME (sports locaux)
-export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame";
+export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot";
 
 const LS_KEY = "dc-start-game"; // on réutilise ta clé existante
 
@@ -19,6 +19,8 @@ function normalizeSport(x: any): SportId {
   if (s === "babyfoot") return "babyfoot";
   if (s === "molkky") return "molkky";
   if (s === "dicegame" || s === "dice" || s === "dice_game") return "dicegame";
+  // FOOT = sport football. Ne pas confondre avec le mode darts "football".
+  if (s === "foot" || s === "soccer") return "foot";
   return "darts";
 }
 

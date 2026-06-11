@@ -210,10 +210,13 @@ export default function GameSelect({ go }: Props) {
     },
     {
       id: "foot",
-      label: "Foot",
+      label: "FOOT",
       logo: logoFoot,
-      enabled: false,
-      onClick: () => {},
+      enabled: true,
+      onClick: () => {
+        setSport("foot" as any);
+        go(GAMES_ROUTE);
+      },
     },
     {
       id: "rugby",
