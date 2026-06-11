@@ -70,6 +70,7 @@ const TAB_COLORS: Record<string, string> = {
   bracket: "#4fb4ff",
   matches: "#ff4fd8",
   repechage: "#ff8f2b",
+  linked: "#ffd56a",
   stats: "#b6b6ff",
 };
 
@@ -293,6 +294,7 @@ function NeonTopTabsIconsOnly({ tabs, activeKey, onChange }: any) {
     bracket: "bracket",
     matches: "matches",
     repechage: "repechage",
+    linked: "matches",
     stats: "stats",
   };
 
@@ -843,6 +845,272 @@ function computeTournamentStats(playersById: Record<string, any>, matches: any[]
   return { global, list, leaders };
 }
 
+
+/* -------------------------
+   PARTIES HISTORIQUES LIÉES À UNE LIGUE
+-------------------------- */
+function linkedSafeLower(v: any) {
+  return String(v ?? "").toLowerCase().trim();
+}
+
+function getHistoryRowId(rec: any) {
+  return String(rec?.id ?? rec?.matchId ?? rec?.historyMatchId ?? "").trim();
+}
+
+function getHistoryRowTime(rec: any) {
+  const n = Number(rec?.updatedAt ?? rec?.createdAt ?? rec?.summary?.finishedAt ?? rec?.payload?.updatedAt ?? rec?.payload?.createdAt ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getHistoryRowStatus(rec: any) {
+  const raw = linkedSafeLower(rec?.status ?? rec?.summary?.status ?? rec?.payload?.status);
+  if (raw === "finished" || raw === "done" || raw === "termine" || raw === "terminé") return "finished";
+  if (rec?.winnerId || rec?.summary?.winnerId || rec?.payload?.winnerId || rec?.payload?.summary?.winnerId) return "finished";
+  if (Array.isArray(rec?.summary?.rankings) || Array.isArray(rec?.payload?.summary?.rankings) || Array.isArray(rec?.payload?.rankings)) return "finished";
+  if (raw === "in_progress" || raw === "playing" || raw === "running") return "in_progress";
+  return raw || "finished";
+}
+
+function getHistoryMode(rec: any) {
+  const raw =
+    rec?.kind ??
+    rec?.mode ??
+    rec?.game?.mode ??
+    rec?.game?.kind ??
+    rec?.summary?.mode ??
+    rec?.summary?.kind ??
+    rec?.summary?.game?.mode ??
+    rec?.payload?.kind ??
+    rec?.payload?.mode ??
+    rec?.payload?.game?.mode ??
+    rec?.payload?.config?.mode ??
+    rec?.payload?.summary?.kind ??
+    rec?.payload?.summary?.mode ??
+    "";
+  return linkedSafeLower(raw);
+}
+
+function normalizeHistorySport(v: any) {
+  const raw = linkedSafeLower(v);
+  if (!raw) return "";
+  if (["darts", "x01", "cricket", "shanghai", "killer", "clock", "scram", "golf"].includes(raw)) return "darts";
+  if (["babyfoot", "baby-foot", "foosball", "baby_foot"].includes(raw)) return "babyfoot";
+  if (["petanque", "pétanque", "boules"].includes(raw)) return "petanque";
+  if (["pingpong", "ping-pong", "table_tennis", "table-tennis"].includes(raw)) return "pingpong";
+  if (["molkky", "mölkky"].includes(raw)) return "molkky";
+  if (["dice", "dicegame", "dés", "des"].includes(raw)) return "dicegame";
+  return raw;
+}
+
+function getTournamentSport(tour: any) {
+  return normalizeHistorySport(
+    tour?.sport ??
+      tour?.competitionSport ??
+      tour?.game?.rules?.sport ??
+      tour?.meta?.forceMode ??
+      tour?.game?.mode ??
+      tour?.mode ??
+      "darts"
+  ) || "darts";
+}
+
+function getHistorySport(rec: any) {
+  return normalizeHistorySport(
+    rec?.sport ??
+      rec?.competitionSport ??
+      rec?.game?.sport ??
+      rec?.summary?.sport ??
+      rec?.payload?.sport ??
+      rec?.payload?.game?.sport ??
+      getHistoryMode(rec)
+  );
+}
+
+function isHistoryCompatibleWithTournament(rec: any, tour: any) {
+  const ts = getTournamentSport(tour);
+  const hs = getHistorySport(rec);
+  if (ts && hs && ts !== hs) return false;
+
+  const tMode = linkedSafeLower(tour?.game?.mode ?? tour?.mode ?? "");
+  const hMode = getHistoryMode(rec);
+  if (!tMode || !hMode) return true;
+  if (tMode === hMode) return true;
+  if (normalizeHistorySport(tMode) === normalizeHistorySport(hMode)) return true;
+  if (normalizeHistorySport(tMode) === "darts" && normalizeHistorySport(hMode) === "darts") return true;
+  return false;
+}
+
+function getHistoryPlayers(rec: any) {
+  const sources = [
+    rec?.players,
+    rec?.summary?.players,
+    rec?.payload?.players,
+    rec?.payload?.summary?.players,
+    rec?.payload?.config?.players,
+    rec?.payload?.state?.players,
+  ];
+  const map = new Map<string, any>();
+  for (const src of sources) {
+    if (!Array.isArray(src)) continue;
+    for (const p of src) {
+      const id = String(p?.id ?? p?.playerId ?? p?.profileId ?? p?.uid ?? p?.name ?? "").trim();
+      if (!id) continue;
+      const prev = map.get(id) || {};
+      map.set(id, {
+        ...prev,
+        ...p,
+        id,
+        name: p?.name ?? p?.displayName ?? p?.nickname ?? p?.label ?? prev?.name ?? id,
+        avatarDataUrl: p?.avatarDataUrl ?? p?.avatar ?? p?.avatarUrl ?? p?.photo ?? p?.image ?? prev?.avatarDataUrl ?? null,
+        avatarUrl: p?.avatarUrl ?? p?.avatarDataUrl ?? p?.avatar ?? p?.photo ?? p?.image ?? prev?.avatarUrl ?? null,
+        avatar: p?.avatarDataUrl ?? p?.avatar ?? p?.avatarUrl ?? p?.photo ?? p?.image ?? prev?.avatar ?? null,
+        isBot: !!(p?.isBot || p?.bot || prev?.isBot),
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+function getHistoryRanking(rec: any) {
+  const candidates = [
+    rec?.summary?.rankings,
+    rec?.summary?.ranking,
+    rec?.summary?.classification,
+    rec?.payload?.summary?.rankings,
+    rec?.payload?.summary?.ranking,
+    rec?.payload?.ranking,
+    rec?.payload?.rankings,
+    rec?.payload?.finalRanking,
+    rec?.payload?.result?.rankings,
+    rec?.payload?.state?.ranking,
+  ];
+  const players = getHistoryPlayers(rec);
+  const byId = new Map(players.map((p: any) => [String(p.id), p]));
+
+  for (const raw of candidates) {
+    if (!Array.isArray(raw) || !raw.length) continue;
+    const out = raw
+      .map((r: any, idx: number) => {
+        const id = String(r?.id ?? r?.playerId ?? r?.profileId ?? r?.pid ?? r?.uid ?? r?.name ?? "").trim();
+        if (!id) return null;
+        const p = byId.get(id) || {};
+        const rank = Math.max(1, Math.floor(Number(r?.rank ?? r?.place ?? r?.position ?? idx + 1) || idx + 1));
+        return {
+          ...p,
+          ...r,
+          id,
+          playerId: id,
+          rank,
+          name: r?.name ?? p?.name ?? id,
+          score: r?.score ?? r?.points ?? r?.remaining ?? r?.total ?? null,
+          avatarDataUrl: r?.avatarDataUrl ?? r?.avatar ?? r?.avatarUrl ?? p?.avatarDataUrl ?? p?.avatar ?? null,
+          avatarUrl: r?.avatarUrl ?? r?.avatarDataUrl ?? r?.avatar ?? p?.avatarUrl ?? null,
+          avatar: r?.avatarDataUrl ?? r?.avatar ?? r?.avatarUrl ?? p?.avatar ?? null,
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => Number(a.rank || 0) - Number(b.rank || 0));
+    if (out.length) return out;
+  }
+
+  // Fallback 1v1 : vainqueur puis autre joueur.
+  const winnerId = String(rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? "").trim();
+  if (winnerId && players.length >= 2) {
+    const rest = players.filter((p: any) => String(p.id) !== winnerId);
+    const win = players.find((p: any) => String(p.id) === winnerId) || { id: winnerId, name: winnerId };
+    return [win, ...rest].map((p: any, idx: number) => ({ ...p, playerId: String(p.id), rank: idx + 1 }));
+  }
+
+  return players.map((p: any, idx: number) => ({ ...p, playerId: String(p.id), rank: idx + 1 }));
+}
+
+function getHistoryScorePair(rec: any, aId: string, bId: string) {
+  const s = rec?.summary || rec?.payload?.summary || rec?.payload || {};
+  const directA = Number(s?.scoreA ?? s?.setsA ?? s?.legsA ?? s?.result?.scoreA ?? s?.result?.a ?? rec?.scoreA ?? rec?.setsA ?? rec?.legsA);
+  const directB = Number(s?.scoreB ?? s?.setsB ?? s?.legsB ?? s?.result?.scoreB ?? s?.result?.b ?? rec?.scoreB ?? rec?.setsB ?? rec?.legsB);
+  if (Number.isFinite(directA) && Number.isFinite(directB)) return { a: Math.floor(directA), b: Math.floor(directB) };
+  const winnerId = String(rec?.winnerId ?? s?.winnerId ?? "");
+  if (winnerId && winnerId === aId) return { a: 1, b: 0 };
+  if (winnerId && winnerId === bId) return { a: 0, b: 1 };
+  return { a: 1, b: 0 };
+}
+
+function getRankPointsForTournament(tour: any) {
+  const raw = tour?.game?.rules?.rankPoints ?? tour?.meta?.rankPoints ?? tour?.rankPoints ?? [];
+  if (Array.isArray(raw)) return raw.map((x: any) => Math.max(0, Math.floor(Number(x) || 0))).filter((x: number) => Number.isFinite(x));
+  if (typeof raw === "string") return raw.split(/[;,|\s]+/).map((x) => Math.max(0, Math.floor(Number(x) || 0))).filter((x) => Number.isFinite(x));
+  return [10, 8, 6, 4, 2, 1];
+}
+
+function isLeagueMultiTournament(tour: any) {
+  const f = linkedSafeLower(tour?.game?.rules?.leagueFormat ?? tour?.meta?.leagueFormat ?? tour?.format);
+  const s = linkedSafeLower(tour?.game?.rules?.scoringMode ?? tour?.meta?.scoringMode ?? tour?.scoringMode);
+  return f === "multi" || s === "rank_points" || linkedSafeLower(tour?.meta?.format) === "league_multi";
+}
+
+function buildLinkedHistoryEntry(rec: any, tour: any) {
+  const historyMatchId = getHistoryRowId(rec);
+  const ranking = getHistoryRanking(rec).map((r: any, idx: number) => ({ ...r, rank: Math.max(1, Number(r?.rank || idx + 1) || idx + 1) }));
+  const rankPoints = getRankPointsForTournament(tour);
+  const pointsAwarded = ranking.map((r: any, idx: number) => ({
+    playerId: String(r?.playerId ?? r?.id ?? ""),
+    name: r?.name || "Joueur",
+    rank: Number(r?.rank || idx + 1),
+    points: Math.max(0, Number(rankPoints[idx] ?? 0) || 0),
+  })).filter((r: any) => r.playerId);
+
+  return {
+    id: `linked_${historyMatchId}`,
+    historyMatchId,
+    matchId: historyMatchId,
+    source: "history",
+    linkedAt: Date.now(),
+    createdAt: getHistoryRowTime(rec) || Date.now(),
+    mode: getHistoryMode(rec) || tour?.game?.mode || "x01",
+    sport: getHistorySport(rec) || getTournamentSport(tour),
+    status: "linked",
+    label: `${String(getHistoryMode(rec) || tour?.game?.mode || "match").toUpperCase()} • ${formatDate(getHistoryRowTime(rec))}`,
+    players: getHistoryPlayers(rec),
+    ranking,
+    pointsAwarded,
+  };
+}
+
+function computeLinkedMultiStandings(tour: any, linkedMatches: any[]) {
+  const rows: Record<string, any> = {};
+  const players = Array.isArray(tour?.players) ? tour.players : [];
+  for (const p of players) {
+    const id = String(p?.id || "");
+    if (!id) continue;
+    rows[id] = { id, played: 0, wins: 0, losses: 0, points: 0, scored: 0, conceded: 0 };
+  }
+
+  for (const link of Array.isArray(linkedMatches) ? linkedMatches : []) {
+    const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
+    const pointsAwarded = Array.isArray(link?.pointsAwarded) ? link.pointsAwarded : [];
+    const pointsById = new Map(pointsAwarded.map((x: any) => [String(x?.playerId || ""), Number(x?.points || 0)]));
+    const count = ranking.length;
+    ranking.forEach((r: any, idx: number) => {
+      const id = String(r?.playerId ?? r?.id ?? "");
+      if (!id) return;
+      if (!rows[id]) rows[id] = { id, played: 0, wins: 0, losses: 0, points: 0, scored: 0, conceded: 0 };
+      const rank = Math.max(1, Number(r?.rank || idx + 1) || idx + 1);
+      rows[id].played += 1;
+      if (rank === 1) rows[id].wins += 1;
+      if (rank > 1) rows[id].losses += 1;
+      rows[id].points += Number(pointsById.get(id) ?? 0) || 0;
+      rows[id].scored += Math.max(0, count - rank + 1);
+      rows[id].conceded += Math.max(0, rank - 1);
+    });
+  }
+
+  return Object.values(rows).sort((a: any, b: any) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return (b.scored - b.conceded) - (a.scored - a.conceded);
+  });
+}
+
 /* -------------------------
    KO DETAILS (Détails)
 -------------------------- */
@@ -1238,6 +1506,12 @@ export default function TournamentView({ store, go, id }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [resultMatch, setResultMatch] = React.useState<TournamentMatch | null>(null);
   const [selectedMatch, setSelectedMatch] = React.useState<TournamentMatch | null>(null);
+  const [attachOpen, setAttachOpen] = React.useState(false);
+  const [attachLoading, setAttachLoading] = React.useState(false);
+  const [attachRows, setAttachRows] = React.useState<any[]>([]);
+  const [attachSelected, setAttachSelected] = React.useState<Record<string, boolean>>({});
+  const [attachError, setAttachError] = React.useState<string>("");
+  const [attachInfo, setAttachInfo] = React.useState<string>("");
 
   // ✅ PÉTANQUE : cache score par historyMatchId
   const [petScoresByHistoryId, setPetScoresByHistoryId] = React.useState<ScoreMap>({});
@@ -1383,6 +1657,17 @@ export default function TournamentView({ store, go, id }: Props) {
 
     return out;
   }, [tour]);
+
+  const linkedHistoryMatches = React.useMemo(() => {
+    const raw = (tour as any)?.linkedMatches ?? (tour as any)?.meta?.linkedMatches ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [tour]);
+
+  const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
+
+  const linkedMultiStandings = React.useMemo(() => {
+    return computeLinkedMultiStandings(tour, linkedHistoryMatches);
+  }, [tour, linkedHistoryMatches]);
 
 
   const tournamentBestOf = React.useMemo(() => {
@@ -1891,6 +2176,169 @@ async function createSyntheticHistoryForSimulation(args: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const loadAttachableHistory = React.useCallback(async () => {
+    if (!tour) return;
+    setAttachOpen(true);
+    setAttachLoading(true);
+    setAttachError("");
+    setAttachInfo("");
+    setAttachSelected({});
+    try {
+      const linkedIds = new Set((linkedHistoryMatches || []).map((x: any) => String(x?.historyMatchId || x?.matchId || x?.id || "")).filter(Boolean));
+      const api: any = History as any;
+      const raw = typeof api.listFinished === "function" ? await api.listFinished() : await api.list();
+      const rows = (Array.isArray(raw) ? raw : [])
+        .filter((r: any) => getHistoryRowId(r))
+        .filter((r: any) => !linkedIds.has(getHistoryRowId(r)))
+        .filter((r: any) => getHistoryRowStatus(r) === "finished")
+        .filter((r: any) => isHistoryCompatibleWithTournament(r, tour))
+        .map((r: any) => ({
+          ...r,
+          __historyId: getHistoryRowId(r),
+          __mode: getHistoryMode(r) || String((tour as any)?.game?.mode || "match"),
+          __time: getHistoryRowTime(r),
+          __rankingCount: getHistoryRanking(r).length,
+          __playersCount: getHistoryPlayers(r).length,
+        }))
+        .filter((r: any) => {
+          if (!isLeagueMulti) return true;
+          return Number(r.__rankingCount || 0) >= 2 || Number(r.__playersCount || 0) >= 2;
+        })
+        .sort((a: any, b: any) => Number(b.__time || 0) - Number(a.__time || 0))
+        .slice(0, 250);
+      setAttachRows(rows);
+      setAttachInfo(rows.length ? `${rows.length} partie(s) compatible(s) trouvée(s).` : "Aucune partie compatible trouvée dans l’historique.");
+    } catch (e: any) {
+      console.error("[TournamentView] load attachable history failed", e);
+      setAttachRows([]);
+      setAttachError(e?.message || "Impossible de charger l’historique.");
+    } finally {
+      setAttachLoading(false);
+    }
+  }, [tour, linkedHistoryMatches, isLeagueMulti]);
+
+  const attachSelectedHistoryMatches = React.useCallback(async () => {
+    if (!tour) return;
+    const selectedIds = Object.keys(attachSelected || {}).filter((id) => attachSelected[id]);
+    if (!selectedIds.length) {
+      setAttachError("Sélectionne au moins une partie à rattacher.");
+      return;
+    }
+
+    setAttachLoading(true);
+    setAttachError("");
+    try {
+      const api: any = History as any;
+      const linkedExisting = Array.isArray((tour as any)?.linkedMatches) ? (tour as any).linkedMatches.slice() : [];
+      const linkedIds = new Set(linkedExisting.map((x: any) => String(x?.historyMatchId || x?.matchId || x?.id || "")).filter(Boolean));
+
+      const entries: any[] = [];
+      for (const hid of selectedIds) {
+        if (linkedIds.has(hid)) continue;
+        const lite = attachRows.find((r: any) => String(r.__historyId || getHistoryRowId(r)) === hid) || null;
+        const full = typeof api.get === "function" ? ((await api.get(hid).catch(() => null)) || lite) : lite;
+        if (!full) continue;
+        entries.push(buildLinkedHistoryEntry(full, tour));
+      }
+
+      if (!entries.length) {
+        setAttachError("Aucune nouvelle partie à rattacher.");
+        return;
+      }
+
+      const playersMap = new Map<string, any>();
+      for (const p of Array.isArray((tour as any)?.players) ? (tour as any).players : []) {
+        const idp = String(p?.id || "");
+        if (idp) playersMap.set(idp, p);
+      }
+      for (const link of entries) {
+        for (const p of Array.isArray(link?.players) ? link.players : []) {
+          const idp = String(p?.id || p?.playerId || "");
+          if (!idp || playersMap.has(idp)) continue;
+          playersMap.set(idp, {
+            id: idp,
+            name: p?.name || "Joueur",
+            avatarDataUrl: p?.avatarDataUrl || p?.avatar || p?.avatarUrl || null,
+            avatarUrl: p?.avatarUrl || p?.avatarDataUrl || p?.avatar || null,
+            avatar: p?.avatarDataUrl || p?.avatar || p?.avatarUrl || null,
+            isBot: !!p?.isBot,
+          });
+        }
+        for (const r of Array.isArray(link?.ranking) ? link.ranking : []) {
+          const idp = String(r?.playerId || r?.id || "");
+          if (!idp || playersMap.has(idp)) continue;
+          playersMap.set(idp, {
+            id: idp,
+            name: r?.name || "Joueur",
+            avatarDataUrl: r?.avatarDataUrl || r?.avatar || r?.avatarUrl || null,
+            avatarUrl: r?.avatarUrl || r?.avatarDataUrl || r?.avatar || null,
+            avatar: r?.avatarDataUrl || r?.avatar || r?.avatarUrl || null,
+            isBot: !!r?.isBot,
+          });
+        }
+      }
+
+      let nextMatches: any[] = Array.isArray(safeMatches) ? safeMatches.slice() : [];
+      if (!isLeagueMulti) {
+        const existingByHistory = new Set(nextMatches.map((m: any) => String(m?.historyMatchId || "")).filter(Boolean));
+        for (const link of entries) {
+          const hid = String(link?.historyMatchId || "");
+          if (!hid || existingByHistory.has(hid)) continue;
+          const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
+          if (ranking.length < 2) continue;
+          const aId = String(ranking[0]?.playerId || ranking[0]?.id || "");
+          const bId = String(ranking[1]?.playerId || ranking[1]?.id || "");
+          if (!aId || !bId) continue;
+          const src = attachRows.find((r: any) => String(r.__historyId || getHistoryRowId(r)) === hid) || null;
+          const sc = getHistoryScorePair(src || link, aId, bId);
+          nextMatches.push({
+            id: `linked_${hid}`,
+            tournamentId: (tour as any).id,
+            stageIndex: 0,
+            groupIndex: 0,
+            roundIndex: 999,
+            orderIndex: nextMatches.length,
+            aPlayerId: aId,
+            bPlayerId: bId,
+            status: "done",
+            winnerId: aId,
+            scoreA: sc.a,
+            scoreB: sc.b,
+            setsA: sc.a,
+            setsB: sc.b,
+            legsA: sc.a,
+            legsB: sc.b,
+            historyMatchId: hid,
+            createdAt: link.createdAt || Date.now(),
+            updatedAt: Date.now(),
+            phase: "groups",
+            linkedFromHistory: true,
+          });
+        }
+      }
+
+      const nextLinked = [...linkedExisting, ...entries];
+      const nextTour: any = {
+        ...(tour as any),
+        players: Array.from(playersMap.values()),
+        linkedMatches: nextLinked,
+        meta: { ...((tour as any)?.meta || {}), linkedMatches: nextLinked },
+        updatedAt: Date.now(),
+      };
+
+      await persist(nextTour as any, nextMatches as any);
+      setAttachOpen(false);
+      setAttachRows([]);
+      setAttachSelected({});
+      setAttachInfo(`${entries.length} partie(s) rattachée(s).`);
+    } catch (e: any) {
+      console.error("[TournamentView] attach selected history failed", e);
+      setAttachError(e?.message || "Erreur pendant le rattachement des parties.");
+    } finally {
+      setAttachLoading(false);
+    }
+  }, [tour, attachSelected, attachRows, safeMatches, isLeagueMulti, persist]);
+
   const onStartMatch = React.useCallback(
     async (matchId: string) => {
       if (!tour) return;
@@ -1968,10 +2416,10 @@ async function createSyntheticHistoryForSimulation(args: any) {
   const groupsMeta = React.useMemo(() => Math.max(1, Number((tour as any)?.stages?.[0]?.groups || 1)), [tour]);
 
   const TABS = React.useMemo(() => {
-    if (viewKind === "single_ko") return ["home", "bracket", "matches", "stats"];
-    if (viewKind === "double_ko") return ["home", "bracket", "matches", "repechage", "stats"];
-    if (viewKind === "round_robin") return ["home", "standings", "matches", "stats"];
-    return ["home", "pools", "standings", "bracket", "matches", ...(repechageEnabled ? ["repechage"] : []), "stats"];
+    if (viewKind === "single_ko") return ["home", "bracket", "matches", "linked", "stats"];
+    if (viewKind === "double_ko") return ["home", "bracket", "matches", "linked", "repechage", "stats"];
+    if (viewKind === "round_robin") return ["home", "standings", "matches", "linked", "stats"];
+    return ["home", "pools", "standings", "bracket", "matches", "linked", ...(repechageEnabled ? ["repechage"] : []), "stats"];
   }, [viewKind, repechageEnabled]);
 
   const [tab, setTab] = React.useState<string>("home");
@@ -1987,6 +2435,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
     standings: "Classement",
     pools: "Poules",
     repechage: "Repêchage",
+    linked: "Liées",
     stats: "Stats",
   };
 
@@ -2561,6 +3010,32 @@ async function createSyntheticHistoryForSimulation(args: any) {
                   </div>
                 ) : null}
               </Card>
+
+              <Card
+                title="Parties déjà jouées"
+                subtitle="Rattache des parties terminées de l’historique à cette ligue, sans les supprimer de l’historique."
+                accent={TAB_COLORS.linked}
+                icon="＋"
+                badge={<MiniBadge label="Liées" value={linkedHistoryMatches.length} accent={TAB_COLORS.linked} />}
+              >
+                <button
+                  type="button"
+                  onClick={loadAttachableHistory}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    borderRadius: 999,
+                    padding: "12px 14px",
+                    fontWeight: 1000,
+                    cursor: "pointer",
+                    color: "#1b1204",
+                    background: "linear-gradient(180deg,#ffe68a,#ffc447)",
+                    boxShadow: "0 12px 28px rgba(255,207,87,.22)",
+                  }}
+                >
+                  + Ajouter des parties déjà jouées
+                </button>
+              </Card>
             </>
           ) : null}
 
@@ -2603,7 +3078,13 @@ async function createSyntheticHistoryForSimulation(args: any) {
           {tab === "standings" ? (
             <Card title="Classement" subtitle={viewKind === "round_robin" ? "Classement du championnat." : "Classement par poule."} accent={TAB_COLORS.standings} icon="🏁">
               {viewKind === "round_robin" ? (
-                <StandingsTable rows={computeStandings(Object.keys(playersById), byPhase.groups)} playersById={playersById} accent={TAB_COLORS.standings} />
+                <>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <MiniBadge label={isLeagueMulti ? "Parties liées" : "Matchs"} value={isLeagueMulti ? linkedHistoryMatches.length : byPhase.groups.length} accent={TAB_COLORS.standings} />
+                    <button type="button" onClick={loadAttachableHistory} style={{ borderRadius: 999, border: "1px solid rgba(255,207,87,.45)", background: "rgba(255,207,87,.10)", color: "#ffcf57", fontWeight: 950, padding: "8px 10px", cursor: "pointer" }}>+ Partie jouée</button>
+                  </div>
+                  <StandingsTable rows={isLeagueMulti ? linkedMultiStandings : computeStandings(Object.keys(playersById), byPhase.groups)} playersById={playersById} accent={TAB_COLORS.standings} />
+                </>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
                   <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" }}>
@@ -2754,6 +3235,65 @@ async function createSyntheticHistoryForSimulation(args: any) {
             </Card>
           ) : null}
 
+          {/* PARTIES LIÉES */}
+          {tab === "linked" ? (
+            <Card title="Parties liées" subtitle="Parties de l’historique rattachées à cette ligue. Le rattachement ne modifie pas l’historique d’origine." accent={TAB_COLORS.linked} icon="↔">
+              <button
+                type="button"
+                onClick={loadAttachableHistory}
+                style={{
+                  width: "100%",
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "12px 14px",
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                  color: "#1b1204",
+                  background: "linear-gradient(180deg,#ffe68a,#ffc447)",
+                  boxShadow: "0 12px 28px rgba(255,207,87,.22)",
+                  marginBottom: 12,
+                }}
+              >
+                + Ajouter des parties déjà jouées
+              </button>
+
+              {linkedHistoryMatches.length ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {linkedHistoryMatches
+                    .slice()
+                    .sort((a: any, b: any) => Number(b?.linkedAt || b?.createdAt || 0) - Number(a?.linkedAt || a?.createdAt || 0))
+                    .map((link: any) => {
+                      const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
+                      const points = Array.isArray(link?.pointsAwarded) ? link.pointsAwarded : [];
+                      return (
+                        <div key={String(link?.historyMatchId || link?.id)} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", padding: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                            <div style={{ fontWeight: 950, color: TAB_COLORS.linked }}>{String(link?.mode || "MATCH").toUpperCase()}</div>
+                            <div style={{ fontSize: 11, opacity: .75 }}>{formatDate(Number(link?.createdAt || link?.linkedAt || 0))}</div>
+                          </div>
+                          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                            {ranking.slice(0, 8).map((r: any, idx: number) => {
+                              const pid = String(r?.playerId || r?.id || "");
+                              const pts = points.find((p: any) => String(p?.playerId || "") === pid)?.points ?? 0;
+                              return (
+                                <div key={`${pid}_${idx}`} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", gap: 8, alignItems: "center", fontSize: 12 }}>
+                                  <b style={{ color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,.72)" }}>{idx + 1}</b>
+                                  <PlayerPill name={r?.name || playersById[pid]?.name || "Joueur"} avatarUrl={r?.avatarDataUrl || r?.avatar || playersById[pid]?.avatar || null} />
+                                  <b style={{ color: TAB_COLORS.linked }}>+{pts}</b>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, opacity: .76 }}>Aucune partie liée pour l’instant.</div>
+              )}
+            </Card>
+          ) : null}
+
           {/* STATS */}
           {tab === "stats" ? (
             <Card title="Statistiques" subtitle="Synthèse (basée sur scores simples). Les “vraies stats mode” seront branchées ensuite." accent={TAB_COLORS.stats} icon="📊">
@@ -2795,6 +3335,80 @@ async function createSyntheticHistoryForSimulation(args: any) {
         </>
       )}
 
+
+      {attachOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,.68)",
+            display: "grid",
+            placeItems: "end center",
+            padding: 14,
+          }}
+          onClick={() => !attachLoading && setAttachOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(560px, 100%)",
+              maxHeight: "78vh",
+              overflow: "hidden",
+              borderRadius: 24,
+              border: "1px solid rgba(255,207,87,.26)",
+              background: "linear-gradient(180deg, rgba(23,21,18,.98), rgba(8,8,12,.98))",
+              boxShadow: "0 28px 80px rgba(0,0,0,.72)",
+              padding: 14,
+              color: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div>
+                <div style={{ color: TAB_COLORS.linked, fontWeight: 1000, fontSize: 14 }}>AJOUTER DES PARTIES JOUÉES</div>
+                <div style={{ fontSize: 11.5, opacity: .75, marginTop: 3 }}>{isLeagueMulti ? "Ligue MULTI : points selon classement." : "Ligue classique : ajout comme résultat joué."}</div>
+              </div>
+              <button type="button" onClick={() => !attachLoading && setAttachOpen(false)} style={{ width: 36, height: 36, borderRadius: 999, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 1000, cursor: "pointer" }}>×</button>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <MiniBadge label="Trouvées" value={attachRows.length} accent={TAB_COLORS.linked} />
+              <MiniBadge label="Sélection" value={Object.values(attachSelected || {}).filter(Boolean).length} accent="#7fe2a9" />
+            </div>
+
+            {attachInfo ? <div style={{ marginTop: 10, fontSize: 12, opacity: .78 }}>{attachInfo}</div> : null}
+            {attachError ? <div style={{ marginTop: 10, fontSize: 12, color: "#ff7a9e", fontWeight: 900 }}>{attachError}</div> : null}
+
+            <div className="dc-scroll-thin" style={{ marginTop: 12, display: "grid", gap: 8, maxHeight: "48vh", overflowY: "auto", paddingRight: 3 }}>
+              {attachLoading ? <div style={{ padding: 16, textAlign: "center", opacity: .8 }}>Chargement…</div> : null}
+              {!attachLoading && !attachRows.length ? <div style={{ padding: 16, textAlign: "center", opacity: .72 }}>Aucune partie compatible à afficher.</div> : null}
+              {!attachLoading && attachRows.map((row: any) => {
+                const hid = String(row.__historyId || getHistoryRowId(row));
+                const ranking = getHistoryRanking(row);
+                const names = ranking.slice(0, 4).map((r: any, idx: number) => `${idx + 1}. ${r?.name || "Joueur"}`).join(" · ");
+                const checked = !!attachSelected[hid];
+                return (
+                  <label key={hid} style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 10, alignItems: "center", borderRadius: 16, border: checked ? `1px solid ${TAB_COLORS.linked}AA` : "1px solid rgba(255,255,255,.10)", background: checked ? "rgba(255,207,87,.12)" : "rgba(255,255,255,.035)", padding: 10, cursor: "pointer" }}>
+                    <input type="checkbox" checked={checked} onChange={(e) => setAttachSelected((prev) => ({ ...prev, [hid]: e.target.checked }))} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <b style={{ color: TAB_COLORS.linked, fontSize: 12 }}>{String(row.__mode || getHistoryMode(row) || "MATCH").toUpperCase()}</b>
+                        <span style={{ fontSize: 11, opacity: .72 }}>{formatDate(Number(row.__time || getHistoryRowTime(row)))}</span>
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 11.5, opacity: .82, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{names || `${row.__playersCount || 0} joueur(s)`}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+              <button type="button" disabled={attachLoading} onClick={() => setAttachOpen(false)} style={{ borderRadius: 999, padding: "12px 14px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>Annuler</button>
+              <button type="button" disabled={attachLoading} onClick={attachSelectedHistoryMatches} style={{ borderRadius: 999, padding: "12px 14px", border: "none", background: "linear-gradient(180deg,#ffe68a,#ffc447)", color: "#1b1204", fontWeight: 1000, cursor: "pointer", opacity: attachLoading ? .55 : 1 }}>Lier</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedMatch ? (
         <MatchDetailCard
