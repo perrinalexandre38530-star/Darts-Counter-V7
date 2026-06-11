@@ -1166,14 +1166,16 @@ function getPointsAverage(row: any) {
 function roundPointsAverage(value: number) {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100) / 100;
+  return Math.round(n * 10) / 10;
 }
 
 function formatPointsAverage(value: number) {
   const n = roundPointsAverage(value);
-  if (Number.isInteger(n)) return String(n);
-  return n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  if (!Number.isFinite(n)) return "0";
+  return n.toFixed(1).replace(/\.0$/, "");
 }
+
+const AVERAGE_STANDINGS_MIN_PLAYED = 2;
 
 function sortAverageStandingsRows(rows: any[]) {
   return (Array.isArray(rows) ? rows.slice() : []).sort((a: any, b: any) => {
@@ -1547,8 +1549,31 @@ function StandingsTable({
   accent?: string;
   averageMode?: boolean;
 }) {
-  const displayRows = averageMode ? sortAverageStandingsRows(withPointsAverage(rows || [])) : (rows || []);
-  const gridColumns = averageMode ? "34px minmax(126px,1fr) 62px 52px 42px 42px 42px 52px" : "34px 1fr 52px 44px 44px 44px 56px";
+  const sortedRows = averageMode ? sortAverageStandingsRows(withPointsAverage(rows || [])) : (rows || []);
+  const eligibleRows = averageMode ? sortedRows.filter((r: any) => getPlayedCount(r) >= AVERAGE_STANDINGS_MIN_PLAYED) : sortedRows;
+  const displayRows = averageMode && eligibleRows.length > 0 ? eligibleRows : sortedRows;
+  const hiddenUnderMin = averageMode && eligibleRows.length > 0 ? Math.max(0, sortedRows.length - eligibleRows.length) : 0;
+  const showDelta = !averageMode;
+
+  const thStyle: React.CSSProperties = {
+    padding: "8px 6px",
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(8,10,14,0.92)",
+    color: "rgba(255,255,255,0.70)",
+    fontSize: 9.5,
+    lineHeight: 1,
+    fontWeight: 950,
+    textTransform: "uppercase",
+    letterSpacing: 0.2,
+  };
+  const tdStyle: React.CSSProperties = {
+    padding: "7px 6px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    fontSize: 11,
+    lineHeight: 1.05,
+    verticalAlign: "middle",
+  };
+  const right: React.CSSProperties = { textAlign: "right", whiteSpace: "nowrap" };
 
   return (
     <div
@@ -1561,83 +1586,94 @@ function StandingsTable({
         background: "rgba(0,0,0,0.22)",
       }}
     >
-      <div style={{ minWidth: averageMode ? 520 : 420 }}>
-        {averageMode ? (
-          <div
-            style={{
-              padding: "8px 12px",
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
-              background: "rgba(127,226,169,0.055)",
-              color: "rgba(255,255,255,0.78)",
-              fontSize: 10.5,
-              fontWeight: 850,
-            }}
-          >
-            Classement trié par <b style={{ color: accent }}>Pts/match</b>, puis points totaux.
-          </div>
-        ) : null}
-
+      {averageMode ? (
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: gridColumns,
-            gap: 10,
-            padding: "10px 12px",
-            position: "sticky",
-            top: 0,
-            background: "rgba(8,10,14,0.85)",
-            backdropFilter: "blur(8px)",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            fontSize: 11,
-            fontWeight: 950,
-            color: "rgba(255,255,255,0.72)",
-            zIndex: 2,
+            padding: "7px 9px",
+            borderBottom: "1px solid rgba(255,255,255,0.07)",
+            background: "rgba(127,226,169,0.055)",
+            color: "rgba(255,255,255,0.74)",
+            fontSize: 10,
+            fontWeight: 850,
           }}
         >
-          <div>#</div>
-          <div>Joueur</div>
-          {averageMode ? <div style={{ textAlign: "right", color: accent }}>Pts/m</div> : null}
-          <div style={{ textAlign: "right", color: averageMode ? "rgba(255,255,255,0.82)" : accent }}>Pts</div>
-          <div style={{ textAlign: "right" }}>J</div>
-          <div style={{ textAlign: "right" }}>V</div>
-          <div style={{ textAlign: "right" }}>D</div>
-          <div style={{ textAlign: "right" }}>Δ</div>
+          Classement officiel : <b style={{ color: accent }}>Pts/match</b>, 2 matchs minimum.
+          {hiddenUnderMin ? <span style={{ opacity: 0.72 }}> {hiddenUnderMin} joueur(s) masqué(s).</span> : null}
         </div>
+      ) : null}
 
-        <div style={{ display: "grid" }}>
+      <table
+        style={{
+          width: "100%",
+          minWidth: averageMode ? 410 : 430,
+          borderCollapse: "collapse",
+          tableLayout: "fixed",
+        }}
+      >
+        <colgroup>
+          <col style={{ width: 30 }} />
+          <col />
+          {averageMode ? <col style={{ width: 52 }} /> : null}
+          <col style={{ width: 44 }} />
+          <col style={{ width: 34 }} />
+          <col style={{ width: 34 }} />
+          <col style={{ width: 38 }} />
+          {showDelta ? <col style={{ width: 42 }} /> : null}
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={{ ...thStyle, textAlign: "left" }}>#</th>
+            <th style={{ ...thStyle, textAlign: "left" }}>Joueur</th>
+            {averageMode ? <th style={{ ...thStyle, ...right, color: accent }}>Pts/m</th> : null}
+            <th style={{ ...thStyle, ...right, color: averageMode ? "rgba(255,255,255,0.80)" : accent }}>Pts</th>
+            <th style={{ ...thStyle, ...right }}>J</th>
+            <th style={{ ...thStyle, ...right }}>{averageMode ? "1er" : "V"}</th>
+            <th style={{ ...thStyle, ...right }}>{averageMode ? "Aut." : "D"}</th>
+            {showDelta ? <th style={{ ...thStyle, ...right }}>Δ</th> : null}
+          </tr>
+        </thead>
+        <tbody>
           {displayRows.map((r: any, idx: number) => {
             const pl = playersById[String(r.id)];
             const diff = (r.scored ?? 0) - (r.conceded ?? 0);
             const played = getPlayedCount(r);
             const avg = r?.pointsAverage ?? r?.pointsPerMatch ?? r?.ptMoy ?? getPointsAverage(r);
+            const name = pl?.name || "Joueur";
+            const avatarUrl = pl?.avatarDataUrl || pl?.avatar || pl?.avatarUrl || null;
 
             return (
-              <div
-                key={String(r.id)}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: gridColumns,
-                  gap: 10,
-                  alignItems: "center",
-                  padding: "10px 12px",
-                  borderBottom: "1px solid rgba(255,255,255,0.06)",
-                }}
-              >
-                <div style={{ fontWeight: 950, color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,0.70)" }}>{idx + 1}</div>
-                <div style={{ minWidth: 0 }}>
-                  <PlayerPill name={pl?.name || "Joueur"} avatarUrl={pl?.avatarDataUrl || pl?.avatar || pl?.avatarUrl || null} />
-                </div>
-                {averageMode ? <div style={{ textAlign: "right", fontWeight: 1000, color: accent }}>{formatPointsAverage(avg)}</div> : null}
-                <div style={{ textAlign: "right", fontWeight: 950, color: averageMode ? "rgba(255,255,255,0.88)" : accent }}>{r.points ?? 0}</div>
-                <div style={{ textAlign: "right", opacity: 0.9 }}>{played}</div>
-                <div style={{ textAlign: "right", opacity: 0.9 }}>{r.wins ?? 0}</div>
-                <div style={{ textAlign: "right", opacity: 0.9 }}>{r.losses ?? 0}</div>
-                <div style={{ textAlign: "right", opacity: 0.9 }}>{diff}</div>
-              </div>
+              <tr key={String(r.id)}>
+                <td style={{ ...tdStyle, fontWeight: 950, color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,0.70)", fontSize: 13 }}>{idx + 1}</td>
+                <td style={{ ...tdStyle, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                    <AvatarCircle name={name} avatarUrl={avatarUrl} size={24} />
+                    <span
+                      title={name}
+                      style={{
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: 10.5,
+                        fontWeight: 900,
+                        color: "rgba(255,255,255,0.92)",
+                      }}
+                    >
+                      {name}
+                    </span>
+                  </div>
+                </td>
+                {averageMode ? <td style={{ ...tdStyle, ...right, fontWeight: 1000, color: accent, fontSize: 13 }}>{formatPointsAverage(avg)}</td> : null}
+                <td style={{ ...tdStyle, ...right, fontWeight: 950, color: averageMode ? "rgba(255,255,255,0.86)" : accent }}>{r.points ?? 0}</td>
+                <td style={{ ...tdStyle, ...right, opacity: 0.9 }}>{played}</td>
+                <td style={{ ...tdStyle, ...right, opacity: 0.9 }}>{r.wins ?? 0}</td>
+                <td style={{ ...tdStyle, ...right, opacity: 0.9 }}>{r.losses ?? 0}</td>
+                {showDelta ? <td style={{ ...tdStyle, ...right, opacity: 0.9 }}>{diff}</td> : null}
+              </tr>
             );
           })}
-        </div>
-      </div>
+        </tbody>
+      </table>
     </div>
   );
 }
