@@ -2348,6 +2348,51 @@ function buildFootTickerItems(fs: FootHomeStats, primary: string): ArcadeTickerI
   ];
 }
 
+function buildFootTickerDetailRows(id: string, fs: FootHomeStats): DetailRow[] {
+  if (id === "foot-summary") {
+    return [
+      { label: "matchs", value: String(fs.matches) },
+      { label: "buts", value: String(fs.goalsFor) },
+      { label: "encaissés", value: String(fs.goalsAgainst) },
+      { label: "diff", value: String(fs.goalsFor - fs.goalsAgainst) },
+      { label: "victoires", value: String(fs.wins) },
+      { label: "nuls", value: String(fs.draws) },
+    ];
+  }
+  if (id === "foot-discipline") {
+    return [
+      { label: "jaunes", value: String(fs.yellowCards) },
+      { label: "rouges", value: String(fs.redCards) },
+      { label: "cartons", value: String(fs.yellowCards + fs.redCards) },
+      { label: "matchs", value: String(fs.matches) },
+    ];
+  }
+  return [];
+}
+
+function buildFootTipSlides(fs: FootHomeStats): LiveTipSlide[] {
+  return [
+    {
+      id: "foot-tip-config",
+      kind: "tip",
+      title: "FOOT SCORING",
+      text: "La Home FOOT affiche uniquement les matchs, buts, résultats et cartons enregistrés en FOOT.",
+      imageKey: "global",
+      hot: true,
+    },
+    {
+      id: "foot-tip-next",
+      kind: "news",
+      title: "PROCHAINE ÉTAPE",
+      text: fs.matches > 0
+        ? "On pourra bientôt détailler les buteurs, passeurs, formats joués et bilans par équipe."
+        : "Lance un match FOOT pour alimenter les statistiques de cette page.",
+      imageKey: "leaderboard",
+      forceNew: true,
+    },
+  ];
+}
+
 /* =============================================================
    Component
 ============================================================ */
@@ -2572,8 +2617,9 @@ export default function Home({ store, go, activeSport }: Props) {
 
   const detailRows: DetailRow[] = useMemo(() => {
     if (!currentTicker) return [];
+    if (isFootSport) return buildFootTickerDetailRows(currentTicker.id, footStats);
     return buildTickerDetailRows(currentTicker.id, stats, t);
-  }, [currentTicker?.id, stats, t]);
+  }, [currentTicker?.id, stats, t, isFootSport, footStats]);
 
   const hasDetailStats = detailRows.length > 0;
   const detailAccent = currentTicker?.accentColor ?? theme.primary ?? "#F6C256";
@@ -2594,6 +2640,7 @@ export default function Home({ store, go, activeSport }: Props) {
   : "";
 
   const tipSlides = useMemo(() => {
+    if (isFootSport) return buildFootTipSlides(footStats);
     return buildLiveTipSlides({
       t,
       profile: activeProfile,
@@ -2601,7 +2648,7 @@ export default function Home({ store, go, activeSport }: Props) {
       feedItems: homeFeedItems,
       changelogEntries,
     });
-  }, [t, activeProfile?.id, stats, homeFeedItems, changelogEntries]);
+  }, [isFootSport, footStats, t, activeProfile?.id, stats, homeFeedItems, changelogEntries]);
 
   useEffect(() => {
     if (!tipSlides.length) {
@@ -2758,7 +2805,7 @@ React.useEffect(() => {
         {activeProfile && (
           <ActiveProfileCard
             profile={activeProfile}
-            stats={stats}
+            stats={isFootSport ? emptyActiveProfileStats() : stats}
             status={onlineStatusForUi}
             globalTitle={isFootSport ? "Vue globale FOOT" : undefined}
             globalKpis={isFootSport ? footGlobalKpis : undefined}
