@@ -310,6 +310,13 @@ function normalizeCompetitionSport(value: any): string {
   return raw;
 }
 
+// ✅ Sécurité création ligue/tournoi : plusieurs branches de création utilisent encore
+// l'ancien nom `normalizeModeToTournamentMode`. Sans cette fonction déclarée au
+// scope module, la création d'une Ligue MULTI crashait en runtime.
+function normalizeModeToTournamentMode(value: any): string {
+  return normalizeCompetitionSport(value);
+}
+
 function competitionSportLabel(sport: string): string {
   const s = normalizeCompetitionSport(sport);
   if (s === "darts") return "Fléchettes";
