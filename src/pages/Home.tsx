@@ -16,6 +16,14 @@ import ActiveProfileCard, {
 import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
+import footHomeCover01 from "../assets/covers/football/football_cover_01.webp";
+import footHomeCover02 from "../assets/covers/football/football_cover_02.webp";
+import footHomeCover03 from "../assets/covers/football/football_cover_03.webp";
+import footHomeCover04 from "../assets/covers/football/football_cover_04.webp";
+import footHomeCover05 from "../assets/covers/football/football_cover_05.webp";
+import footHomeCover06 from "../assets/covers/football/football_cover_06.webp";
+import footHomeCover07 from "../assets/covers/football/football_cover_07.webp";
+import footHomeCover08 from "../assets/covers/football/football_cover_08.webp";
 
 // 🔗 Stats X01 (quick + historique) + Cricket
 import {
@@ -87,6 +95,22 @@ function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(
   if (!arr || arr.length === 0) return "";
   const idx = hashStringToInt(`${key}::${seed}`) % arr.length;
   return IMG_BASE + arr[idx];
+}
+
+const FOOT_HOME_IMAGES = [
+  footHomeCover01,
+  footHomeCover02,
+  footHomeCover03,
+  footHomeCover04,
+  footHomeCover05,
+  footHomeCover06,
+  footHomeCover07,
+  footHomeCover08,
+] as const;
+
+function pickFootHomeImage(seed: string): string {
+  const idx = hashStringToInt(`foot-home::${seed}`) % FOOT_HOME_IMAGES.length;
+  return FOOT_HOME_IMAGES[idx] || "";
 }
 
 /* ============================================================
@@ -2334,7 +2358,7 @@ function buildFootTickerItems(fs: FootHomeStats, primary: string): ArcadeTickerI
       title: "FOOT DU MOMENT",
       text: fs.matches > 0 ? `${fs.matches} match${fs.matches > 1 ? "s" : ""} FOOT enregistré${fs.matches > 1 ? "s" : ""}. ${fs.goalsFor} but${fs.goalsFor > 1 ? "s" : ""} au total.` : "Aucun match FOOT enregistré pour l’instant. Lance un match rapide pour remplir la Home.",
       detail: `${fs.wins} V • ${fs.draws} N • ${fs.losses} D`,
-      backgroundImage: pickTickerImage("global", "foot-summary"),
+      backgroundImage: pickFootHomeImage("foot-summary"),
       accentColor: primary,
     },
     {
@@ -2342,7 +2366,7 @@ function buildFootTickerItems(fs: FootHomeStats, primary: string): ArcadeTickerI
       title: "DISCIPLINE FOOT",
       text: `${fs.yellowCards} carton${fs.yellowCards > 1 ? "s" : ""} jaune${fs.yellowCards > 1 ? "s" : ""} • ${fs.redCards} rouge${fs.redCards > 1 ? "s" : ""}.`,
       detail: "Cartons enregistrés via les événements de match.",
-      backgroundImage: pickTickerImage("leaderboard", "foot-discipline"),
+      backgroundImage: pickFootHomeImage("foot-discipline"),
       accentColor: primary,
     },
   ];
@@ -2502,7 +2526,7 @@ export default function Home({ store, go, activeSport }: Props) {
     let cancelled = false;
 
     const refresh = async () => {
-      if (!activeProfile) {
+      if (isFootSport || !activeProfile) {
         if (!cancelled) setStats(emptyActiveProfileStats());
         return;
       }
@@ -2524,7 +2548,7 @@ export default function Home({ store, go, activeSport }: Props) {
       cancelled = true;
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     };
-  }, [activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
+  }, [isFootSport, activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2636,8 +2660,10 @@ export default function Home({ store, go, activeSport }: Props) {
 
   const statsSeed = String(activeProfile?.id ?? "anon");
   const statsBackgroundImage = currentTicker
-  ? pickStatsBackgroundForTicker(currentTicker.id, `${statsSeed}::stats-card`)
-  : "";
+    ? (isFootSport
+        ? pickFootHomeImage(`${statsSeed}::${currentTicker.id}::stats-card`)
+        : pickStatsBackgroundForTicker(currentTicker.id, `${statsSeed}::stats-card`))
+    : "";
 
   const tipSlides = useMemo(() => {
     if (isFootSport) return buildFootTipSlides(footStats);
@@ -2691,10 +2717,11 @@ React.useEffect(() => {
   const tipBgKey = (currentTip?.imageKey || "tip") as keyof typeof TICKER_IMAGES;
   const tipBgSeed = `${activeProfile?.id ?? "anon"}::tipIndex:${tipIndex}::${currentTip?.id ?? "none"}`;
 
-  const currentTipBackgroundImage =
-  tipBgKey && (TICKER_IMAGES as any)[tipBgKey]
-    ? pickTickerImage(tipBgKey, tipBgSeed)
-    : "";    
+  const currentTipBackgroundImage = isFootSport
+    ? pickFootHomeImage(tipBgSeed)
+    : tipBgKey && (TICKER_IMAGES as any)[tipBgKey]
+      ? pickTickerImage(tipBgKey, tipBgSeed)
+      : "";    
 
   const handleTipTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     const x = e.touches[0]?.clientX;
@@ -2809,6 +2836,7 @@ React.useEffect(() => {
             status={onlineStatusForUi}
             globalTitle={isFootSport ? "Vue globale FOOT" : undefined}
             globalKpis={isFootSport ? footGlobalKpis : undefined}
+            hideStarRing={isFootSport}
           />
         )}
   

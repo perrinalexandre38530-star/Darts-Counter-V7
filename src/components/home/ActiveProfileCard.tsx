@@ -76,6 +76,7 @@ export type ActiveProfileStats = {
 
 type Props = {
   hideStatus?: boolean;
+  hideStarRing?: boolean;
 
   // ✅ override des KPIs (ex: Pétanque)
   globalKpis?: { label: string; value: string | number }[];
@@ -235,6 +236,7 @@ function getLinkedProfileNameCandidates(profile: any): string[] {
 
 function ActiveProfileCard({
   hideStatus,
+  hideStarRing,
   globalKpis,
   globalTitle,
   profile,
@@ -551,14 +553,16 @@ function ActiveProfileCard({
                 ringColor={primary}
                 showStars={false}
               />
-              <ProfileStarRing
-                anchorSize={84}
-                avg3d={stats?.avg3DGlobal ?? 0}
-                gapPx={-3}
-                starSize={14}
-                stepDeg={10}
-                animateGlow={true}
-              />
+              {!hideStarRing && (
+                <ProfileStarRing
+                  anchorSize={84}
+                  avg3d={stats?.avg3DGlobal ?? 0}
+                  gapPx={-3}
+                  starSize={14}
+                  stepDeg={10}
+                  animateGlow={true}
+                />
+              )}
             </div>
 
             {/* NOM shimmer */}
