@@ -5,9 +5,28 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
 import { loadTeamsBySport, type TeamEntity } from "../../lib/petanqueTeamsStore";
 import { getFootFormat } from "./footFormats";
+import tickerPenalty from "../../assets/tickers/ticker_foot_penalty.webp";
+import ticker1v1 from "../../assets/tickers/ticker_foot_1v1.webp";
+import ticker2v2 from "../../assets/tickers/ticker_foot_2v2.webp";
+import ticker3v3 from "../../assets/tickers/ticker_foot_3v3.webp";
+import ticker5v5 from "../../assets/tickers/ticker_foot_5v5.webp";
+import ticker7v7 from "../../assets/tickers/ticker_foot_7v7.webp";
+import ticker8v8 from "../../assets/tickers/ticker_foot_8v8.webp";
+import ticker11v11 from "../../assets/tickers/ticker_foot_11v11.webp";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; store?: any };
 type SourceMode = "manual" | "saved";
+
+const FOOT_CONFIG_TICKERS: Record<string, string> = {
+  penalty: tickerPenalty,
+  "1v1": ticker1v1,
+  "2v2": ticker2v2,
+  "3v3": ticker3v3,
+  "5v5": ticker5v5,
+  "7v7": ticker7v7,
+  "8v8": ticker8v8,
+  "11v11": ticker11v11,
+};
 
 type TeamSlot = {
   name: string;
@@ -30,6 +49,7 @@ function teamLogo(team: any) {
 
 export default function FootConfig({ go, params, store }: Props) {
   const spec = getFootFormat(params?.format || params?.config?.format);
+  const tickerSrc = FOOT_CONFIG_TICKERS[spec.id] || tickerPenalty;
   const primary = "#22e6ff";
   const primarySoft = "rgba(34,230,255,.13)";
   const green = "#31f083";
@@ -61,12 +81,14 @@ export default function FootConfig({ go, params, store }: Props) {
   const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>([]);
   const [minutes, setMinutes] = React.useState(spec.minutesPerPeriod);
   const [periods, setPeriods] = React.useState(spec.periods);
+  const [breakMinutes, setBreakMinutes] = React.useState(5);
   const [shoots, setShoots] = React.useState(5);
   const [rulesOpen, setRulesOpen] = React.useState(false);
 
   React.useEffect(() => {
     setMinutes(spec.minutesPerPeriod);
     setPeriods(spec.periods);
+    setBreakMinutes(spec.id === "penalty" ? 0 : 5);
     setShoots(5);
     setSelectedIds([]);
     setSelectedTeamIds([]);
@@ -151,6 +173,7 @@ export default function FootConfig({ go, params, store }: Props) {
         playersB: b.playerIds.map((id) => profileName(profileById.get(id)) || id),
         minutes,
         periods,
+        breakMinutes,
         shoots,
       },
     });
@@ -160,15 +183,12 @@ export default function FootConfig({ go, params, store }: Props) {
     <div style={pageStyle}>
       <div style={shellStyle}>
         <header style={headerStyle}>
-          <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}>
+          <img src={tickerSrc} alt={spec.label} style={headerTickerStyle} />
+          <div style={headerOverlayStyle} />
+          <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
             <BackDot onClick={() => go("foot_menu")} />
           </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={kickerStyle}>FOOT SCORING</div>
-            <h1 style={titleStyle}>CONFIG {spec.label}</h1>
-            <p style={subStyle}>{spec.kind === "duel" ? "Duel" : "Match par équipes"} · {spec.maxPlayersHint}</p>
-          </div>
-          <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)" }}>
+          <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
             <InfoDot onClick={() => setRulesOpen((v) => !v)} title="Règles" size={46} color={primary} glow={`0 0 18px ${primary}`} />
           </div>
         </header>
@@ -214,9 +234,28 @@ export default function FootConfig({ go, params, store }: Props) {
           {spec.id === "penalty" ? (
             <OptionGrid label="Tirs par camp" value={shoots} setValue={setShoots} options={[3, 5, 7, 10]} suffix=" tirs" />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <OptionGrid label="Durée / période" value={minutes} setValue={setMinutes} options={[5, 7, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45]} suffix=" min" />
-              <OptionGrid label="Périodes" value={periods} setValue={setPeriods} options={[1, 2]} />
+            <div style={compactParamsGrid}>
+              <OptionSelect
+                label="Temps d’une mi-temps"
+                value={minutes}
+                setValue={setMinutes}
+                options={[3, 5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45]}
+                suffix=" min"
+              />
+              <OptionSelect
+                label="Nombre de mi-temps"
+                value={periods}
+                setValue={setPeriods}
+                options={[1, 2]}
+                suffix={periods > 1 ? " mi-temps" : " mi-temps"}
+              />
+              <OptionSelect
+                label="Pause mi-temps"
+                value={breakMinutes}
+                setValue={setBreakMinutes}
+                options={[2, 5, 7, 10, 15]}
+                suffix=" min"
+              />
             </div>
           )}
         </section>
@@ -290,6 +329,43 @@ function SavedTeamsPicker({ teams, selectedSet, onToggle, profilesById, primary,
   );
 }
 
+function OptionSelect({ label, value, setValue, options, suffix = "" }: any) {
+  const [open, setOpen] = React.useState(false);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent | TouchEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("touchstart", onDown);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("touchstart", onDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", minWidth: 0 }}>
+      <div style={selectLabelStyle}>{label}</div>
+      <button type="button" onClick={() => setOpen((v) => !v)} style={selectBoxStyle(open)}>
+        <span>{value}{suffix}</span>
+        <span style={{ fontSize: 16, transform: open ? "rotate(180deg)" : "none", transition: "transform .16s ease" }}>⌄</span>
+      </button>
+      {open && (
+        <div style={selectListStyle}>
+          {options.map((o: number) => (
+            <button key={o} type="button" onClick={() => { setValue(o); setOpen(false); }} style={selectItemStyle(value === o)}>
+              {o}{suffix}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OptionGrid({ label, value, setValue, options, suffix = "" }: any) {
   return (
     <div>
@@ -307,13 +383,17 @@ function Pill({ label, active, onClick, primary, primarySoft }: any) {
 
 const pageStyle: React.CSSProperties = { minHeight: "100vh", padding: "14px 12px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
 const shellStyle: React.CSSProperties = { maxWidth: 680, margin: "0 auto", display: "grid", gap: 14 };
-const headerStyle: React.CSSProperties = { position: "relative", minHeight: 110, borderRadius: 24, padding: "18px 64px", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
-const kickerStyle: React.CSSProperties = { display: "inline-block", border: "1px solid #22e6ff", borderRadius: 999, padding: "5px 22px", color: "#22e6ff", fontWeight: 1000, letterSpacing: 1.5, fontSize: 13, marginBottom: 8 };
-const titleStyle: React.CSSProperties = { margin: 0, fontSize: 30, letterSpacing: 1.6, textShadow: "0 0 18px rgba(34,230,255,.45)" };
-const subStyle: React.CSSProperties = { margin: "7px 0 0", color: "#c7cee2", fontWeight: 850, fontSize: 13 };
+const headerStyle: React.CSSProperties = { position: "relative", minHeight: 86, borderRadius: 24, padding: "0 64px", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
+const headerTickerStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .74, filter: "saturate(1.18) contrast(1.06)", transform: "scale(1.02)" };
+const headerOverlayStyle: React.CSSProperties = { position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(3,7,15,.82) 0%, rgba(3,7,15,.30) 34%, rgba(3,7,15,.30) 66%, rgba(3,7,15,.82) 100%), linear-gradient(180deg, rgba(3,7,15,.42), rgba(3,7,15,.18))", boxShadow: "inset 0 0 34px rgba(34,230,255,.12)" };
 const cardStyle = (bg = "rgba(10,12,24,.96)"): React.CSSProperties => ({ borderRadius: 20, padding: 14, background: bg, border: "1px solid rgba(255,255,255,.07)", boxShadow: "0 16px 40px rgba(0,0,0,.5)" });
 const sectionTitle = (color: string): React.CSSProperties => ({ margin: "0 0 10px", color, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1.1 });
 const hintStyle: React.CSSProperties = { margin: "0 0 12px", color: "#9fa6c0", fontSize: 12, fontWeight: 750, lineHeight: 1.35 };
 const hintLine: React.CSSProperties = { color: "#d5d9ec", fontSize: 13, fontWeight: 800, lineHeight: 1.35 };
+const compactParamsGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 10 };
+const selectLabelStyle: React.CSSProperties = { fontSize: 11, color: "#9da3c0", fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, marginBottom: 7 };
+const selectBoxStyle = (open: boolean): React.CSSProperties => ({ width: "100%", minHeight: 48, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderRadius: 16, border: open ? "1px solid #22e6ff" : "1px solid rgba(255,255,255,.10)", background: open ? "rgba(34,230,255,.14)" : "rgba(255,255,255,.055)", color: "#fff", padding: "0 13px", fontWeight: 1000, boxShadow: open ? "0 0 22px rgba(34,230,255,.24)" : "none" });
+const selectListStyle: React.CSSProperties = { position: "absolute", zIndex: 20, left: 0, right: 0, top: "calc(100% + 7px)", maxHeight: 210, overflowY: "auto", borderRadius: 16, padding: 6, background: "rgba(5,8,16,.98)", border: "1px solid rgba(34,230,255,.38)", boxShadow: "0 18px 34px rgba(0,0,0,.62), 0 0 22px rgba(34,230,255,.18)" };
+const selectItemStyle = (active: boolean): React.CSSProperties => ({ width: "100%", border: 0, borderRadius: 12, padding: "11px 12px", marginBottom: 4, textAlign: "left", background: active ? "rgba(34,230,255,.18)" : "transparent", color: active ? "#22e6ff" : "#fff", fontWeight: 1000 });
 const emptyStyle: React.CSSProperties = { color: "#9fa6c0", fontSize: 13, fontWeight: 800, borderRadius: 16, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" };
 const startButton: React.CSSProperties = { width: "100%", border: 0, borderRadius: 20, padding: "16px 18px", background: "linear-gradient(135deg, #22e6ff, #127cff)", color: "#001019", fontWeight: 1000, fontSize: 15, boxShadow: "0 0 28px rgba(34,230,255,.35)" };
