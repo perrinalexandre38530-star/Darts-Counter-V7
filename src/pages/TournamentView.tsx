@@ -725,7 +725,7 @@ function renderPlayerOrTbd(allMatches: any[], current: any, side: "a" | "b", pla
   );
 }
 
-function computeStandings(groupPlayerIds: string[], groupMatches: any[]) {
+function computeStandings(groupPlayerIds: string[], groupMatches: any[], winPoints = 2) {
   const rows: Record<
     string,
     { id: string; played: number; wins: number; losses: number; points: number; scored: number; conceded: number }
@@ -758,11 +758,11 @@ function computeStandings(groupPlayerIds: string[], groupMatches: any[]) {
     if (w && w === a) {
       rows[a].wins += 1;
       rows[b].losses += 1;
-      rows[a].points += 2;
+      rows[a].points += winPoints;
     } else if (w && w === b) {
       rows[b].wins += 1;
       rows[a].losses += 1;
-      rows[b].points += 2;
+      rows[b].points += winPoints;
     }
   }
 
@@ -1125,16 +1125,74 @@ function isLeagueMultiTournament(tour: any) {
   return f === "multi" || s === "rank_points" || linkedSafeLower(tour?.meta?.format) === "league_multi";
 }
 
+function getLeagueMultiEndPenalty(rank: number, totalPlayers: number) {
+  const r = Math.max(1, Math.floor(Number(rank) || 1));
+  const total = Math.max(0, Math.floor(Number(totalPlayers) || 0));
+  if (total < 3 || r <= 1) return 0;
+  const fromLast = total - r;
+  if (fromLast === 0) return 5;
+  if (fromLast === 1) return 3;
+  if (fromLast === 2) return 1;
+  return 0;
+}
+
+function getLeagueMultiRankPoints(tour: any, rank: number, totalPlayers: number) {
+  const r = Math.max(1, Math.floor(Number(rank) || 1));
+  const base = Math.max(0, Number(getRankPointsForTournament(tour)[r - 1] ?? 0) || 0);
+  const malus = getLeagueMultiEndPenalty(r, totalPlayers);
+  return Math.max(0, base - malus);
+}
+
+function getSeasonFreeRankPoints(rank: number) {
+  return Math.max(1, Math.floor(Number(rank) || 1)) === 1 ? 3 : 0;
+}
+
+function getLinkedPointsAwarded(link: any, tour: any) {
+  const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
+  const leagueFormat = getLeagueFormatForLinkedHistory(tour);
+
+  if (ranking.length && leagueFormat === "multi") {
+    const total = ranking.length;
+    return ranking
+      .map((r: any, idx: number) => {
+        const rank = Math.max(1, Number(r?.rank || idx + 1) || idx + 1);
+        const base = Math.max(0, Number(getRankPointsForTournament(tour)[rank - 1] ?? 0) || 0);
+        const malus = getLeagueMultiEndPenalty(rank, total);
+        return {
+          playerId: String(r?.playerId ?? r?.id ?? ""),
+          name: r?.name || "Joueur",
+          rank,
+          basePoints: base,
+          malus,
+          points: Math.max(0, base - malus),
+        };
+      })
+      .filter((r: any) => r.playerId);
+  }
+
+  if (ranking.length && leagueFormat === "free") {
+    return ranking
+      .map((r: any, idx: number) => {
+        const rank = Math.max(1, Number(r?.rank || idx + 1) || idx + 1);
+        return {
+          playerId: String(r?.playerId ?? r?.id ?? ""),
+          name: r?.name || "Joueur",
+          rank,
+          basePoints: getSeasonFreeRankPoints(rank),
+          malus: 0,
+          points: getSeasonFreeRankPoints(rank),
+        };
+      })
+      .filter((r: any) => r.playerId);
+  }
+
+  return Array.isArray(link?.pointsAwarded) ? link.pointsAwarded : [];
+}
+
 function buildLinkedHistoryEntry(rec: any, tour: any) {
   const historyMatchId = getHistoryRowId(rec);
   const ranking = getHistoryRanking(rec).map((r: any, idx: number) => ({ ...r, rank: Math.max(1, Number(r?.rank || idx + 1) || idx + 1) }));
-  const rankPoints = getRankPointsForTournament(tour);
-  const pointsAwarded = ranking.map((r: any, idx: number) => ({
-    playerId: String(r?.playerId ?? r?.id ?? ""),
-    name: r?.name || "Joueur",
-    rank: Number(r?.rank || idx + 1),
-    points: Math.max(0, Number(rankPoints[idx] ?? 0) || 0),
-  })).filter((r: any) => r.playerId);
+  const pointsAwarded = getLinkedPointsAwarded({ ranking }, tour);
 
   return {
     id: `linked_${historyMatchId}`,
@@ -1231,7 +1289,7 @@ function computeLinkedMultiStandings(tour: any, linkedMatches: any[]) {
 
   for (const link of Array.isArray(linkedMatches) ? linkedMatches : []) {
     const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
-    const pointsAwarded = Array.isArray(link?.pointsAwarded) ? link.pointsAwarded : [];
+    const pointsAwarded = getLinkedPointsAwarded(link, tour);
     const pointsById = new Map(pointsAwarded.map((x: any) => [String(x?.playerId || ""), Number(x?.points || 0)]));
     const count = ranking.length;
     ranking.forEach((r: any, idx: number) => {
@@ -1883,6 +1941,7 @@ export default function TournamentView({ store, go, id }: Props) {
 
   const isLeagueMulti = React.useMemo(() => isLeagueMultiTournament(tour), [tour]);
   const leagueFormatForStandings = React.useMemo(() => getLeagueFormatForLinkedHistory(tour), [tour]);
+  const isLeagueFree = leagueFormatForStandings === "free";
   const isAveragePointsLeague = leagueFormatForStandings === "multi" || leagueFormatForStandings === "free";
 
   const linkedMultiStandings = React.useMemo(() => {
@@ -3303,7 +3362,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     <MiniBadge label={isLeagueMulti ? "Parties liées" : "Matchs"} value={isLeagueMulti ? linkedHistoryMatches.length : byPhase.groups.length} accent={TAB_COLORS.standings} />
                     <button type="button" onClick={loadAttachableHistory} style={{ borderRadius: 999, border: "1px solid rgba(255,207,87,.45)", background: "rgba(255,207,87,.10)", color: "#ffcf57", fontWeight: 950, padding: "8px 10px", cursor: "pointer" }}>+ Partie jouée</button>
                   </div>
-                  <StandingsTable rows={isLeagueMulti ? linkedMultiStandings : computeStandings(Object.keys(playersById), byPhase.groups)} playersById={playersById} accent={TAB_COLORS.standings} averageMode={isAveragePointsLeague} />
+                  <StandingsTable rows={isLeagueMulti ? linkedMultiStandings : computeStandings(Object.keys(playersById), byPhase.groups, isLeagueFree ? 3 : 2)} playersById={playersById} accent={TAB_COLORS.standings} averageMode={isAveragePointsLeague} />
                 </>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
@@ -3484,7 +3543,7 @@ async function createSyntheticHistoryForSimulation(args: any) {
                     .sort((a: any, b: any) => Number(b?.linkedAt || b?.createdAt || 0) - Number(a?.linkedAt || a?.createdAt || 0))
                     .map((link: any) => {
                       const ranking = Array.isArray(link?.ranking) ? link.ranking : [];
-                      const points = Array.isArray(link?.pointsAwarded) ? link.pointsAwarded : [];
+                      const points = getLinkedPointsAwarded(link, tour);
                       return (
                         <div key={String(link?.historyMatchId || link?.id)} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", padding: 12 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
