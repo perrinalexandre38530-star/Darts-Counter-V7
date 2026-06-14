@@ -655,21 +655,20 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const selectedASet = new Set(selA.map(String));
   const selectedBSet = new Set(selB.map(String));
 
-  const profilesForA: Profile[] = profiles.filter((p: any) => {
-    const id = String(p?.id || "");
-    if (!id) return false;
-    if (selectedASet.has(id)) return true;
-    if (selectedBSet.has(id)) return false;
-    return true;
-  });
-
-  const profilesForB: Profile[] = profiles.filter((p: any) => {
-    const id = String(p?.id || "");
-    if (!id) return false;
-    if (selectedBSet.has(id)) return true;
-    if (selectedASet.has(id)) return false;
-    return true;
-  });
+  const teamPlayerIds = (team: BabyFootTeam | null): string[] => {
+    if (!team) return [];
+    const rawIds = Array.isArray((team as any).playerIds)
+      ? (team as any).playerIds
+      : Array.isArray((team as any).players)
+        ? (team as any).players
+            .map((player: any) =>
+              typeof player === "string"
+                ? player
+                : player?.id ?? player?.profileId ?? player?.playerId ?? null
+            )
+        : [];
+    return Array.from(new Set(rawIds.map((id: any) => String(id || "").trim()).filter(Boolean)));
+  };
 
   const headerTickerId =
     routeVariant || (routeCategory ? `${routeCategory}_${mode}` : null) || `babyfoot_${mode}`;
@@ -678,6 +677,27 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const findTeam = (id: string) => teamsCatalog.find((x) => x.id === id) ?? null;
   const teamAObj = teamARefId ? findTeam(teamARefId) : null;
   const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
+
+  const teamAPlayerIdSet = new Set(teamPlayerIds(teamAObj));
+  const teamBPlayerIdSet = new Set(teamPlayerIds(teamBObj));
+
+  const profilesForA: Profile[] = profiles.filter((p: any) => {
+    const id = String(p?.id || "");
+    if (!id) return false;
+    if (useExistingTeams && teamAObj && !teamAPlayerIdSet.has(id)) return false;
+    if (selectedASet.has(id)) return true;
+    if (selectedBSet.has(id)) return false;
+    return true;
+  });
+
+  const profilesForB: Profile[] = profiles.filter((p: any) => {
+    const id = String(p?.id || "");
+    if (!id) return false;
+    if (useExistingTeams && teamBObj && !teamBPlayerIdSet.has(id)) return false;
+    if (selectedBSet.has(id)) return true;
+    if (selectedASet.has(id)) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (mode === "2v1" && teamBRefId) setTeamBRefId("");
@@ -694,6 +714,16 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     const nextB = teamsCatalog.find((t) => t?.id && t.id !== teamARefId);
     if (nextB?.id) setTeamBRefId(String(nextB.id));
   }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
+
+  useEffect(() => {
+    if (!useExistingTeams) return;
+    if (teamAObj) {
+      setSelA((prev) => prev.filter((id) => teamAPlayerIdSet.has(String(id))));
+    }
+    if (teamBObj) {
+      setSelB((prev) => prev.filter((id) => teamBPlayerIdSet.has(String(id))));
+    }
+  }, [useExistingTeams, teamARefId, teamBRefId, teamsCatalog]);
 
   const teamsReady = !useExistingTeams || (mode === "2v1" ? !!teamARefId : !!teamARefId && !!teamBRefId);
   const canStart = teamsReady && selA.length === capA && selB.length === capB && confirmA && confirmB;
@@ -770,11 +800,15 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (side === "A") {
       setTeamBRefId((prev) => (String(prev) === id ? "" : prev));
       setTeamARefId((prev) => (String(prev) === id ? "" : id));
+      setSelA([]);
+      setConfirmA(false);
       return;
     }
 
     setTeamARefId((prev) => (String(prev) === id ? "" : prev));
     setTeamBRefId((prev) => (String(prev) === id ? "" : id));
+    setSelB([]);
+    setConfirmB(false);
   };
 
   const clearTeamSelection = () => {

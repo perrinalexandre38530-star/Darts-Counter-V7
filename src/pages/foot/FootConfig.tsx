@@ -31,6 +31,10 @@ function teamLogo(team: any) {
   return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || null;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 export default function FootConfig({ go, params, store }: Props) {
   const spec = getFootFormat(params?.format || params?.config?.format);
   const tickerSrc = getFootGameTicker(spec.id);
@@ -183,7 +187,9 @@ export default function FootConfig({ go, params, store }: Props) {
   }
 
   function goStep(delta: number) {
-    const next = guidedSteps[clamp(guidedIndex + delta, 0, guidedSteps.length - 1)];
+    const maxIndex = Math.max(0, guidedSteps.length - 1);
+    const nextIndex = Math.min(Math.max(guidedIndex + delta, 0), maxIndex);
+    const next = guidedSteps[nextIndex];
     if (next) setGuidedStep(next);
   }
 
