@@ -77,7 +77,7 @@ export default function GameSelect({ go }: Props) {
 
   // ✅ routes d'entrée (BottomNav)
   // - Darts: on garde le dashboard "Home"
-  // - Sports locaux (Pétanque/Baby-foot/Ping-pong): on ouvre DIRECTEMENT le menu "Games"
+  // - FOOT ouvre la Home commune FOOT SCORING, comme Darts/Pétanque/Baby-foot côté accueil
   const HOME_ROUTE = "home";
   const GAMES_ROUTE = "games";
 
@@ -215,7 +215,7 @@ export default function GameSelect({ go }: Props) {
       enabled: true,
       onClick: () => {
         setSport("foot" as any);
-        go(GAMES_ROUTE);
+        go(HOME_ROUTE);
       },
     },
     {
