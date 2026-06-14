@@ -16,9 +16,11 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   const [score, setScore] = React.useState<[number, number]>([0, 0]);
   const [events, setEvents] = React.useState<any[]>([]);
   const [shoots, setShoots] = React.useState<[number, number]>([0, 0]);
+  const rosterA = React.useMemo(() => buildRoster(cfg.teamAPlayerIds, cfg.playersA), [cfg.teamAPlayerIds, cfg.playersA]);
+  const rosterB = React.useMemo(() => buildRoster(cfg.teamBPlayerIds, cfg.playersB), [cfg.teamBPlayerIds, cfg.playersB]);
 
-  const addEvent = (team: 0 | 1, type: EventType) => {
-    const ev = { id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), team, teamName: team === 0 ? teamA : teamB, type, label: labels[type], icon: icons[type], format: spec.id };
+  const addEvent = (team: 0 | 1, type: EventType, player?: any) => {
+    const ev = { id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, at: new Date().toISOString(), team, teamName: team === 0 ? teamA : teamB, type, label: labels[type], icon: icons[type], format: spec.id, playerId: player?.id || null, playerName: player?.name || null };
     setEvents((prev) => [ev, ...prev]);
     if (type === "goal" || type === "penalty_scored") setScore(([a, b]) => team === 0 ? [a + 1, b] : [a, b + 1]);
     if (type === "own_goal") setScore(([a, b]) => team === 0 ? [a, b + 1] : [a + 1, b]);
@@ -66,15 +68,15 @@ export default function FootPlay({ go, params, onFinish }: Props) {
 
         <div style={{ borderRadius: 26, padding: 18, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", boxShadow: "0 18px 44px rgba(0,0,0,.35)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", textAlign: "center" }}>
-            <TeamScore name={teamA} score={score[0]} extra={isPenalty ? `${shoots[0]} tir(s)` : spec.kind === "team" ? `${spec.playersPerSide} joueurs` : "duel"} />
+            <TeamScore name={teamA} score={score[0]} extra={isPenalty ? `${shoots[0]} tir(s)` : spec.kind === "team" ? `${rosterA.length || spec.playersPerSide} joueurs` : "duel"} />
             <div style={{ fontSize: 28, fontWeight: 1000, opacity: .6 }}>-</div>
-            <TeamScore name={teamB} score={score[1]} extra={isPenalty ? `${shoots[1]} tir(s)` : spec.kind === "team" ? `${spec.playersPerSide} joueurs` : "duel"} />
+            <TeamScore name={teamB} score={score[1]} extra={isPenalty ? `${shoots[1]} tir(s)` : spec.kind === "team" ? `${rosterB.length || spec.playersPerSide} joueurs` : "duel"} />
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-          <EventPanel team={teamA} penalty={isPenalty} on={(type: EventType) => addEvent(0, type)} />
-          <EventPanel team={teamB} penalty={isPenalty} on={(type: EventType) => addEvent(1, type)} />
+          <EventPanel team={teamA} roster={rosterA} penalty={isPenalty} on={(type: EventType, player?: any) => addEvent(0, type, player)} />
+          <EventPanel team={teamB} roster={rosterB} penalty={isPenalty} on={(type: EventType, player?: any) => addEvent(1, type, player)} />
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
@@ -89,17 +91,44 @@ export default function FootPlay({ go, params, onFinish }: Props) {
 
         <h2 style={{ margin: "20px 0 10px", fontSize: 18 }}>ÉVÉNEMENTS</h2>
         <div style={{ display: "grid", gap: 8 }}>
-          {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", fontWeight: 850 }}>{ev.icon} {ev.teamName} · {ev.label}</div>)}
+          {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", fontWeight: 850 }}>{ev.icon} {ev.teamName} · {ev.label}{ev.playerName ? ` · ${ev.playerName}` : ""}</div>)}
         </div>
       </div>
     </div>
   );
 }
 function TeamScore({ name, score, extra }: any) { return <div><div style={{ fontSize: 13, opacity: .78, fontWeight: 900, minHeight: 34 }}>{name}</div><div style={{ fontSize: 58, fontWeight: 1000, lineHeight: 1 }}>{score}</div><div style={{ fontSize: 11, opacity: .6, fontWeight: 800 }}>{extra}</div></div>; }
-function EventPanel({ team, on, penalty }: any) {
-  const keys: EventType[] = penalty ? ["penalty_scored", "penalty_missed", "yellow", "red"] : ["goal", "assist", "yellow", "red", "own_goal"];
-  return <div style={{ borderRadius: 20, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.10)" }}><div style={{ fontWeight: 1000, marginBottom: 9, textAlign: "center" }}>{team}</div><div style={{ display: "grid", gap: 8 }}>{keys.map((type) => <button key={type} onClick={() => on(type)} style={eventBtn}>{icons[type]} {labels[type]}</button>)}</div></div>;
+function buildRoster(idsRaw: any, namesRaw: any) {
+  const ids = Array.isArray(idsRaw) ? idsRaw.map(String) : [];
+  const names = Array.isArray(namesRaw) ? namesRaw.map(String) : [];
+  return ids.map((id, index) => ({ id, name: names[index] || `Joueur ${index + 1}` })).filter((p) => p.id);
+}
+function EventPanel({ team, roster, on, penalty }: any) {
+  const teamKeys: EventType[] = penalty ? ["penalty_scored", "penalty_missed", "yellow", "red"] : ["goal", "assist", "yellow", "red", "own_goal"];
+  const playerKeys: EventType[] = penalty ? ["penalty_scored", "penalty_missed"] : ["goal", "assist", "yellow", "red"];
+  const teamOnlyKeys = teamKeys.filter((type) => !playerKeys.includes(type));
+  return (
+    <div style={{ borderRadius: 20, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.10)" }}>
+      <div style={{ fontWeight: 1000, marginBottom: 9, textAlign: "center" }}>{team}</div>
+      {Array.isArray(roster) && roster.length > 0 && (
+        <div style={{ display: "grid", gap: 8, marginBottom: teamOnlyKeys.length ? 10 : 0 }}>
+          {roster.map((player: any) => (
+            <div key={player.id} style={{ borderRadius: 14, padding: 8, background: "rgba(0,0,0,.18)", border: "1px solid rgba(255,255,255,.08)" }}>
+              <div style={{ fontSize: 12, fontWeight: 1000, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                {playerKeys.map((type) => <button key={type} onClick={() => on(type, player)} style={miniEventBtn}>{icons[type]} {labels[type]}</button>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "grid", gap: 8 }}>
+        {(roster?.length ? teamOnlyKeys : teamKeys).map((type) => <button key={type} onClick={() => on(type)} style={eventBtn}>{icons[type]} {labels[type]}</button>)}
+      </div>
+    </div>
+  );
 }
 const eventBtn: React.CSSProperties = { border: "1px solid rgba(255,255,255,.12)", borderRadius: 13, padding: "10px 8px", background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const miniEventBtn: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 10, padding: "7px 5px", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 11, fontWeight: 900, cursor: "pointer" };
 const secondaryBtn: React.CSSProperties = { flex: 1, border: "1px solid rgba(255,255,255,.14)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer" };
 const primaryBtn: React.CSSProperties = { flex: 1.4, border: 0, borderRadius: 16, padding: 12, background: "linear-gradient(135deg, #35d86f, #087535)", color: "#fff", fontWeight: 1000, cursor: "pointer" };

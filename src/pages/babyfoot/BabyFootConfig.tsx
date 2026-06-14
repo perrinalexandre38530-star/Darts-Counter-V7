@@ -18,6 +18,8 @@ import { onlineApi } from "../../lib/onlineApi";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import PlayerPagedSelector from "../../components/PlayerPagedSelector";
+import TeamPagedSelector from "../../components/TeamPagedSelector";
 
 import {
   loadBabyFootTeams,
@@ -478,12 +480,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     presetMode || routeModeFromId || saved.mode || "1v1"
   );
 
-  const [teamARefId, setTeamARefId] = useState<string>(
-    (saved as any)?.teamARefId ? String((saved as any).teamARefId) : ""
-  );
-  const [teamBRefId, setTeamBRefId] = useState<string>(
-    (saved as any)?.teamBRefId ? String((saved as any).teamBRefId) : ""
-  );
+  // IMPORTANT UX: comme pour les joueurs, on ne réhydrate jamais les équipes
+  // de l’ancienne partie sur une nouvelle config. L’utilisateur repart proprement
+  // de zéro et choisit ses nouvelles équipes explicitement.
+  const [teamARefId, setTeamARefId] = useState<string>("");
+  const [teamBRefId, setTeamBRefId] = useState<string>("");
 
   const [target, setTargetUI] = useState<number>(presetTarget ?? saved.target ?? 10);
 
@@ -578,12 +579,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const [allowTacles, setAllowTacles] = useState<boolean>(!!(saved as any).allowTacles);
   const [allowLobShot, setAllowLobShot] = useState<boolean>(!!(saved as any).allowLobShot);
 
-  const [selA, setSelA] = useState<string[]>(
-    Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []
-  );
-  const [selB, setSelB] = useState<string[]>(
-    Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []
-  );
+  // IMPORTANT UX: la page de config ne doit jamais ressortir les joueurs
+  // de la partie précédente. On repart volontairement de zéro à chaque
+  // nouvelle configuration, comme les sélecteurs Darts Counter.
+  const [selA, setSelA] = useState<string[]>([]);
+  const [selB, setSelB] = useState<string[]>([]);
 
   const [confirmA, setConfirmA] = useState(false);
   const [confirmB, setConfirmB] = useState(false);
@@ -650,35 +650,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (mode === "2v1" && teamBRefId) setTeamBRefId("");
   }, [mode, teamBRefId]);
 
-  useEffect(() => {
-    if (!showTeamsPicker) return;
-    if (!Array.isArray(teamsCatalog) || teamsCatalog.length === 0) return;
-
-    const byName = (needle: string) =>
-      teamsCatalog.find(
-        (t) => String(t?.name || "").trim().toLowerCase() === needle
-      ) ||
-      teamsCatalog.find((t) =>
-        String(t?.name || "").trim().toLowerCase().includes(needle)
-      );
-
-    const gold =
-      byName("team gold") ||
-      teamsCatalog.find((t) => String(t?.id || "") === "bf-team-gold");
-    const pink =
-      byName("team pink") ||
-      teamsCatalog.find((t) => String(t?.id || "") === "bf-team-pink");
-
-    const defA = gold?.id || teamsCatalog[0]?.id || "";
-    const defB =
-      pink?.id ||
-      teamsCatalog.find((t) => t?.id && t.id !== defA)?.id ||
-      defA ||
-      "";
-
-    if (!teamARefId && defA) setTeamARefId(String(defA));
-    if (mode === "2v2" && !teamBRefId && defB) setTeamBRefId(String(defB));
-  }, [showTeamsPicker, teamsCatalog, teamARefId, teamBRefId, mode]);
+  // Pas de sélection automatique des équipes : cela évite de relancer
+  // une ancienne composition ou une équipe par défaut sans action utilisateur.
 
   useEffect(() => {
     if (!showTeamsPicker) return;
@@ -689,14 +662,25 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (nextB?.id) setTeamBRefId(String(nextB.id));
   }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
 
-  const canStart = selA.length === capA && selB.length === capB && confirmA && confirmB;
+  const teamsReady = !showTeamsPicker || (mode === "2v1" ? !!teamARefId : !!teamARefId && !!teamBRefId);
+  const canStart = teamsReady && selA.length === capA && selB.length === capB && confirmA && confirmB;
 
   useEffect(() => {
-    setSelA((prev) => prev.slice(0, capA));
-    setSelB((prev) => prev.slice(0, capB));
+    // Changement de format = vraie nouvelle sélection.
+    // On évite les restes 2v2 -> 1v1 / ancienne partie -> nouvelle partie.
+    setSelA([]);
+    setSelB([]);
+    setTeamARefId("");
+    setTeamBRefId("");
     setConfirmA(false);
     setConfirmB(false);
-  }, [mode, capA, capB]);
+    try {
+      setTeams("TEAM A", "TEAM B", { teamARefId: null, teamBRefId: null, teamALogoDataUrl: null, teamBLogoDataUrl: null } as any);
+      setTeamsProfiles([], []);
+    } catch {
+      // ignore
+    }
+  }, [mode]);
 
   useEffect(() => {
     setConfirmA(selA.length === capA);
@@ -712,26 +696,70 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     }
   }, [setsEnabled]);
 
-  const togglePlayer = (team: "A" | "B", id: string) => {
-    if (team === "A" && confirmA) return;
-    if (team === "B" && confirmB) return;
+  const togglePlayer = (team: "A" | "B", idRaw: string) => {
+    const id = String(idRaw || "").trim();
+    if (!id) return;
 
     if (team === "A") {
+      setSelB((prev) => prev.filter((x) => String(x) !== id));
       setSelA((prev) => {
-        const has = prev.includes(id);
-        if (has) return prev.filter((x) => x !== id);
-        if (prev.length >= capA) return prev;
-        if (selB.includes(id)) return prev;
-        return [...prev, id];
+        const clean = prev.map(String).filter(Boolean);
+        if (clean.includes(id)) return clean.filter((x) => x !== id);
+
+        // Même logique UX que Darts Counter, adaptée aux quotas Baby-Foot :
+        // quand le camp est plein, cliquer un nouveau joueur remplace l'ancien
+        // au lieu de bloquer la sélection.
+        if (capA <= 1) return [id];
+        if (clean.length >= capA) return [...clean.slice(1), id].slice(0, capA);
+        return [...clean, id].slice(0, capA);
       });
-    } else {
-      setSelB((prev) => {
-        const has = prev.includes(id);
-        if (has) return prev.filter((x) => x !== id);
-        if (prev.length >= capB) return prev;
-        if (selA.includes(id)) return prev;
-        return [...prev, id];
-      });
+      return;
+    }
+
+    setSelA((prev) => prev.filter((x) => String(x) !== id));
+    setSelB((prev) => {
+      const clean = prev.map(String).filter(Boolean);
+      if (clean.includes(id)) return clean.filter((x) => x !== id);
+      if (capB <= 1) return [id];
+      if (clean.length >= capB) return [...clean.slice(1), id].slice(0, capB);
+      return [...clean, id].slice(0, capB);
+    });
+  };
+
+
+  const selectTeam = (side: "A" | "B", idRaw: string) => {
+    const id = String(idRaw || "").trim();
+    if (!id) return;
+
+    if (side === "A") {
+      setTeamBRefId((prev) => (String(prev) === id ? "" : prev));
+      setTeamARefId((prev) => (String(prev) === id ? "" : id));
+      return;
+    }
+
+    setTeamARefId((prev) => (String(prev) === id ? "" : prev));
+    setTeamBRefId((prev) => (String(prev) === id ? "" : id));
+  };
+
+  const clearTeamSelection = () => {
+    setTeamARefId("");
+    setTeamBRefId("");
+    try {
+      setTeams("TEAM A", "TEAM B", { teamARefId: null, teamBRefId: null, teamALogoDataUrl: null, teamBLogoDataUrl: null } as any);
+    } catch {
+      // ignore
+    }
+  };
+
+  const clearPlayerSelection = () => {
+    setSelA([]);
+    setSelB([]);
+    setConfirmA(false);
+    setConfirmB(false);
+    try {
+      setTeamsProfiles([], []);
+    } catch {
+      // ignore
     }
   };
 
@@ -1054,8 +1082,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setAllowRoulette(!!(s as any).allowRoulette);
     setAllowTacles(!!(s as any).allowTacles);
     setAllowLobShot(!!(s as any).allowLobShot);
-    setSelA(Array.isArray(s.teamAProfileIds) ? s.teamAProfileIds : []);
-    setSelB(Array.isArray(s.teamBProfileIds) ? s.teamBProfileIds : []);
+    setSelA([]);
+    setSelB([]);
     setConfirmA(false);
     setConfirmB(false);
   };
@@ -1172,19 +1200,41 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
-              <div style={{ display: "grid", justifyItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <ArrowBtn dir="left" onClick={() => cycleTeam("A", "left")} />
-                  <TeamAvatar team={teamAObj} primary={primary} />
-                  <ArrowBtn dir="right" onClick={() => cycleTeam("A", "right")} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 850 }}>
+                {teamARefId || teamBRefId
+                  ? `${teamARefId ? "1" : "0"}/1 côté A${showTeamsPickerB ? ` · ${teamBRefId ? "1" : "0"}/1 côté B` : ""}`
+                  : t("bf_no_teams_selected", "Aucune équipe sélectionnée")}
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <div
+                  style={pillStyle(!teamARefId && !teamBRefId, primary, primarySoft)}
+                  onClick={clearTeamSelection}
+                  role="button"
+                  title={t("bf_clear_teams", "Désélectionner les équipes")}
+                >
+                  {t("bf_clear_teams", "Désélectionner")}
                 </div>
-                <div style={{ height: 8 }} />
-                <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 900, letterSpacing: 1.2 }}>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
                   {mode === "2v1"
                     ? t("bf_team_2players", "Équipe (2 joueurs)")
                     : t("bf_team_a", "Équipe A")}
                 </div>
+                <TeamPagedSelector
+                  teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamBRefId || ""))}
+                  selectedIds={teamARefId ? [teamARefId] : []}
+                  onToggle={(id: string) => selectTeam("A", id)}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle={mode === "2v1" ? t("bf_team_2players", "Équipe (2 joueurs)") : t("bf_team_a", "Équipe A")}
+                  chooseLabel={t("bf_choose_team", "Choisir équipe")}
+                  listLabel={t("bf_team_list", "Liste équipes")}
+                />
               </div>
 
               {showTeamsPickerB ? (
@@ -1193,16 +1243,20 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                     VS
                   </div>
 
-                  <div style={{ display: "grid", justifyItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <ArrowBtn dir="left" onClick={() => cycleTeam("B", "left")} />
-                      <TeamAvatar team={teamBObj} primary={primary} />
-                      <ArrowBtn dir="right" onClick={() => cycleTeam("B", "right")} />
-                    </div>
-                    <div style={{ height: 8 }} />
-                    <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 900, letterSpacing: 1.2 }}>
+                  <div>
+                    <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
                       {t("bf_team_b", "Équipe B")}
                     </div>
+                    <TeamPagedSelector
+                      teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamARefId || ""))}
+                      selectedIds={teamBRefId ? [teamBRefId] : []}
+                      onToggle={(id: string) => selectTeam("B", id)}
+                      accent={primary}
+                      pageSize={9}
+                      modalTitle={t("bf_team_b", "Équipe B")}
+                      chooseLabel={t("bf_choose_team", "Choisir équipe")}
+                      listLabel={t("bf_team_list", "Liste équipes")}
+                    />
                   </div>
                 </>
               ) : null}
@@ -1225,91 +1279,49 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {t("bf_pick_exact", "Sélectionne exactement")} {capA} vs {capB}
           </div>
 
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 850 }}>
+              {selA.length + selB.length > 0
+                ? `${selA.length}/${capA} côté A · ${selB.length}/${capB} côté B`
+                : t("bf_no_players_selected", "Aucun joueur sélectionné")}
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <div
+                style={pillStyle(selA.length === 0 && selB.length === 0, primary, primarySoft)}
+                onClick={clearPlayerSelection}
+                role="button"
+                title={t("bf_clear_players", "Désélectionner les joueurs")}
+              >
+                {t("bf_clear_players", "Désélectionner")}
+              </div>
+            </div>
+          </div>
+
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
             {campAName}
           </div>
+          <PlayerPagedSelector
+            profiles={profilesForA}
+            selectedIds={selA}
+            onToggle={(id: string) => togglePlayer("A", id)}
+            accent={primary}
+            pageSize={9}
+            modalTitle={`${campALabel} · ${capA} joueur${capA > 1 ? "s" : ""}`}
+          />
 
-          {confirmA ? (
-            <SelectedPlayersStrip ids={selA} onEdit={() => setConfirmA(false)} />
-          ) : (
-            <div style={{ position: "relative", marginBottom: 14 }}>
-              <div
-                ref={aPlayersRef}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  overflowX: "auto",
-                  padding: "6px 44px",
-                  scrollSnapType: "x mandatory",
-                  WebkitOverflowScrolling: "touch",
-                }}
-              >
-                {profilesForA.map((p) => {
-                  const id = String((p as any).id);
-                  const selected = selA.includes(id);
-                  return (
-                    <div
-                      key={id}
-                      style={{ scrollSnapAlign: "center" }}
-                      onClick={() => togglePlayer("A", id)}
-                    >
-                      <ProfileAvatarCard p={p} selected={selected} primary={primary} />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)" }}>
-                <ArrowBtn dir="left" onClick={() => scrollByCard(aPlayersRef.current, "left")} />
-              </div>
-              <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-                <ArrowBtn dir="right" onClick={() => scrollByCard(aPlayersRef.current, "right")} />
-              </div>
-            </div>
-          )}
+          <div style={{ height: 14 }} />
 
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
             {campBName}
           </div>
-
-          {confirmB ? (
-            <SelectedPlayersStrip ids={selB} onEdit={() => setConfirmB(false)} />
-          ) : (
-            <div style={{ position: "relative" }}>
-              <div
-                ref={bPlayersRef}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  overflowX: "auto",
-                  padding: "6px 44px",
-                  scrollSnapType: "x mandatory",
-                  WebkitOverflowScrolling: "touch",
-                }}
-              >
-                {profilesForB.map((p) => {
-                  const id = String((p as any).id);
-                  const selected = selB.includes(id);
-                  return (
-                    <div
-                      key={id}
-                      style={{ scrollSnapAlign: "center" }}
-                      onClick={() => togglePlayer("B", id)}
-                    >
-                      <ProfileAvatarCard p={p} selected={selected} primary={primary} />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)" }}>
-                <ArrowBtn dir="left" onClick={() => scrollByCard(bPlayersRef.current, "left")} />
-              </div>
-              <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-                <ArrowBtn dir="right" onClick={() => scrollByCard(bPlayersRef.current, "right")} />
-              </div>
-            </div>
-          )}
+          <PlayerPagedSelector
+            profiles={profilesForB}
+            selectedIds={selB}
+            onToggle={(id: string) => togglePlayer("B", id)}
+            accent={primary}
+            pageSize={9}
+            modalTitle={`${campBLabel} · ${capB} joueur${capB > 1 ? "s" : ""}`}
+          />
         </div>
 
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>

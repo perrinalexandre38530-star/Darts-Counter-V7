@@ -62,6 +62,7 @@ export default function FootConfig({ go, params, store }: Props) {
   const [sourceMode, setSourceMode] = React.useState<SourceMode>(spec.kind === "team" ? "manual" : "manual");
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>([]);
+  const [selectedTeamPlayerIds, setSelectedTeamPlayerIds] = React.useState<Record<string, string[]>>({});
   const [minutes, setMinutes] = React.useState(spec.minutesPerPeriod);
   const [periods, setPeriods] = React.useState(spec.periods);
   const [breakMinutes, setBreakMinutes] = React.useState(5);
@@ -75,6 +76,7 @@ export default function FootConfig({ go, params, store }: Props) {
     setShoots(5);
     setSelectedIds([]);
     setSelectedTeamIds([]);
+    setSelectedTeamPlayerIds({});
     setSourceMode("manual");
   }, [spec.id]);
 
@@ -94,14 +96,39 @@ export default function FootConfig({ go, params, store }: Props) {
     });
   }
 
+  function defaultPlayersForTeam(teamId: string) {
+    const team: any = savedTeams.find((t: any) => String(t.id) === String(teamId));
+    return (Array.isArray(team?.playerIds) ? team.playerIds : []).map(String).filter(Boolean).slice(0, spec.playersPerSide);
+  }
+
   function toggleTeam(idRaw: any) {
     const id = String(idRaw || "");
     if (!id) return;
     setSelectedTeamIds((prev) => {
       const exists = prev.map(String).includes(id);
-      if (exists) return prev.filter((x) => String(x) !== id);
+      if (exists) {
+        setSelectedTeamPlayerIds((cur) => {
+          const next = { ...cur };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => String(x) !== id);
+      }
       if (prev.length >= 2) return prev;
+      setSelectedTeamPlayerIds((cur) => ({ ...cur, [id]: cur[id]?.length ? cur[id] : defaultPlayersForTeam(id) }));
       return [...prev, id];
+    });
+  }
+
+  function toggleTeamPlayer(teamIdRaw: any, playerIdRaw: any) {
+    const teamId = String(teamIdRaw || "");
+    const playerId = String(playerIdRaw || "");
+    if (!teamId || !playerId) return;
+    setSelectedTeamPlayerIds((prev) => {
+      const current = (prev[teamId] || []).map(String);
+      const exists = current.includes(playerId);
+      const nextIds = exists ? current.filter((id) => id !== playerId) : current.length >= spec.playersPerSide ? current : [...current, playerId];
+      return { ...prev, [teamId]: nextIds };
     });
   }
 
@@ -109,8 +136,9 @@ export default function FootConfig({ go, params, store }: Props) {
   const manualA = selectedProfiles.slice(0, spec.playersPerSide);
   const manualB = selectedProfiles.slice(spec.playersPerSide, spec.playersPerSide * 2);
   const savedSelectedTeams = selectedTeamIds.map((id) => savedTeams.find((t: any) => String(t.id) === String(id))).filter(Boolean) as TeamEntity[];
+  const savedTeamsReady = savedSelectedTeams.length === 2 && selectedTeamIds.every((id) => (selectedTeamPlayerIds[String(id)] || []).length === spec.playersPerSide);
 
-  const ready = spec.kind === "duel" ? selectedIds.length === 2 : sourceMode === "saved" ? savedSelectedTeams.length === 2 : selectedIds.length === requiredPlayers;
+  const ready = spec.kind === "duel" ? selectedIds.length === 2 : sourceMode === "saved" ? savedTeamsReady : selectedIds.length === requiredPlayers;
 
   const buildTeamSlots = (): [TeamSlot, TeamSlot] => {
     if (spec.kind === "duel") {
@@ -125,8 +153,8 @@ export default function FootConfig({ go, params, store }: Props) {
       const a: any = savedSelectedTeams[0];
       const b: any = savedSelectedTeams[1];
       return [
-        { name: String(a?.name || "Équipe A"), playerIds: (a?.playerIds || []).map(String).slice(0, spec.playersPerSide), logoDataUrl: teamLogo(a), teamId: String(a?.id || "") },
-        { name: String(b?.name || "Équipe B"), playerIds: (b?.playerIds || []).map(String).slice(0, spec.playersPerSide), logoDataUrl: teamLogo(b), teamId: String(b?.id || "") },
+        { name: String(a?.name || "Équipe A"), playerIds: (selectedTeamPlayerIds[String(a?.id || "")] || []).map(String).slice(0, spec.playersPerSide), logoDataUrl: teamLogo(a), teamId: String(a?.id || "") },
+        { name: String(b?.name || "Équipe B"), playerIds: (selectedTeamPlayerIds[String(b?.id || "")] || []).map(String).slice(0, spec.playersPerSide), logoDataUrl: teamLogo(b), teamId: String(b?.id || "") },
       ];
     }
     return [
@@ -201,7 +229,10 @@ export default function FootConfig({ go, params, store }: Props) {
           )}
 
           {sourceMode === "saved" && spec.kind === "team" ? (
-            <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+            <>
+              <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+              <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+            </>
           ) : (
             <>
               {profiles.length === 0 ? (
@@ -246,16 +277,20 @@ export default function FootConfig({ go, params, store }: Props) {
         </section>
 
         <button onClick={start} disabled={!ready} style={{ ...startButton, opacity: ready ? 1 : .45, cursor: ready ? "pointer" : "not-allowed" }}>
-          {ready ? `DÉMARRER ${spec.label}` : missingLabel(spec, sourceMode, selectedIds.length, savedSelectedTeams.length)}
+          {ready ? `DÉMARRER ${spec.label}` : missingLabel(spec, sourceMode, selectedIds.length, savedSelectedTeams.length, selectedTeamIds, selectedTeamPlayerIds)}
         </button>
       </div>
     </div>
   );
 }
 
-function missingLabel(spec: any, sourceMode: SourceMode, selectedCount: number, teamCount: number) {
+function missingLabel(spec: any, sourceMode: SourceMode, selectedCount: number, teamCount: number, teamIds: string[] = [], teamPlayerIds: Record<string, string[]> = {}) {
   if (spec.kind === "duel") return `SÉLECTIONNE ${Math.max(0, 2 - selectedCount)} JOUEUR(S)`;
-  if (sourceMode === "saved") return `SÉLECTIONNE ${Math.max(0, 2 - teamCount)} ÉQUIPE(S)`;
+  if (sourceMode === "saved") {
+    if (teamCount < 2) return `SÉLECTIONNE ${Math.max(0, 2 - teamCount)} ÉQUIPE(S)`;
+    const missing = teamIds.reduce((sum, id) => sum + Math.max(0, spec.playersPerSide - ((teamPlayerIds[String(id)] || []).length)), 0);
+    return `CHOISIS ${missing} JOUEUR(S) D'ÉQUIPE`;
+  }
   return `SÉLECTIONNE ${Math.max(0, spec.playersPerSide * 2 - selectedCount)} JOUEUR(S)`;
 }
 
@@ -308,6 +343,47 @@ function SavedTeamsPicker({ teams, selectedSet, onToggle, profilesById, primary,
               </div>
             </div>
           </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SavedTeamPlayersStep({ teams, selectedTeamPlayerIds, onTogglePlayer, profilesById, primary, primarySoft, maxPlayers }: any) {
+  if (!teams.length) return null;
+  return (
+    <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 11, color: "#9da3c0", fontWeight: 950, textTransform: "uppercase", letterSpacing: .8 }}>Joueurs du match</div>
+        <div style={{ marginTop: 4, color: "#cfd4ea", fontSize: 12, fontWeight: 800, lineHeight: 1.35 }}>
+          Choisis les {maxPlayers} titulaires utilisés dans chaque équipe. Ces profils seront envoyés au match pour rattacher les stats joueur par joueur.
+        </div>
+      </div>
+      {teams.map((team: any, index: number) => {
+        const teamId = String(team?.id || "");
+        const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map(String).filter(Boolean);
+        const selected = new Set((selectedTeamPlayerIds[teamId] || []).map(String));
+        const count = selected.size;
+        return (
+          <div key={teamId || index} style={{ borderRadius: 18, padding: 12, background: "rgba(5,8,16,.78)", border: `1px solid ${count === maxPlayers ? primary : "rgba(255,255,255,.10)"}`, boxShadow: count === maxPlayers ? `0 0 18px ${primary}22` : "none" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+              <div style={{ color: primary, fontWeight: 1000, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{index === 0 ? "Équipe A" : "Équipe B"} · {team?.name || "Équipe"}</div>
+              <div style={{ color: count === maxPlayers ? "#31f083" : "#ffce63", fontWeight: 1000, fontSize: 12 }}>{count}/{maxPlayers}</div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {ids.length === 0 ? <div style={{ color: "#9fa6c0", fontSize: 12, fontWeight: 800 }}>Aucun joueur dans cette équipe.</div> : ids.map((id: string) => {
+                const profile: any = profilesById.get(id);
+                const active = selected.has(id);
+                return (
+                  <button key={id} type="button" onClick={() => onTogglePlayer(teamId, id)} style={{ display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%", borderRadius: 999, padding: "7px 10px 7px 7px", border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.12)", background: active ? primarySoft : "rgba(255,255,255,.055)", color: "#fff", fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 0 14px ${primary}2f` : "none" }}>
+                    <ProfileAvatar profile={profile || { name: id }} size={26} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{profileName(profile) || id}</span>
+                    {active && <span style={{ color: primary, fontWeight: 1000 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         );
       })}
     </div>
