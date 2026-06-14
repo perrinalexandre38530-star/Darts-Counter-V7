@@ -384,7 +384,51 @@ export default function FootConfig({ go, params, store }: Props) {
   }
 
   return (
-    <div style={pageStyle}>
+    <div style={pageStyle} className="foot-config-page">
+      <style>{`
+        .foot-config-page,
+        .foot-config-page * {
+          box-sizing: border-box;
+        }
+        .foot-config-page {
+          position: fixed !important;
+          inset: 0 !important;
+          width: 100dvw !important;
+          max-width: 100dvw !important;
+          min-width: 0 !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+          overscroll-behavior-x: none !important;
+        }
+        .foot-config-page button,
+        .foot-config-page section,
+        .foot-config-page div {
+          max-width: 100%;
+          min-width: 0;
+        }
+        @media (max-width: 520px) {
+          .foot-config-guide-tabs {
+            justify-content: flex-start !important;
+          }
+          .foot-config-guide-tabs > button {
+            flex: 1 1 100%;
+            width: 100%;
+          }
+          .foot-config-steps {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            overflow: visible !important;
+          }
+          .foot-config-steps > div {
+            width: 100%;
+            max-width: 100% !important;
+            flex: initial !important;
+          }
+          .foot-config-nav {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+        }
+      `}</style>
       <div style={shellStyle}>
         <header style={headerStyle}>
           <div aria-hidden style={headerTickerWrapStyle}>
@@ -399,7 +443,7 @@ export default function FootConfig({ go, params, store }: Props) {
           </div>
         </header>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", boxSizing: "border-box" }}>
+        <div className="foot-config-guide-tabs" style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", boxSizing: "border-box" }}>
           <Pill label="Configuration guidée" active={configMode === "guided"} onClick={() => setConfigMode("guided")} primary={primary} primarySoft={primarySoft} />
           <Pill label="Configuration complète" active={configMode === "full"} onClick={() => setConfigMode("full")} primary={primary} primarySoft={primarySoft} />
         </div>
@@ -415,7 +459,7 @@ export default function FootConfig({ go, params, store }: Props) {
           <>
             <GuideProgress steps={guidedSteps} active={guidedStep} complete={isStepComplete} label={stepLabel} primary={primary} primarySoft={primarySoft} />
             {renderGuidedStep()}
-            <div style={guideNavStyle}>
+            <div className="foot-config-nav" style={guideNavStyle}>
               <button type="button" onClick={() => goStep(-1)} disabled={!canGoPrev} style={navButtonStyle(canGoPrev, "neutral")}>← Retour</button>
               {guidedStep === "summary" ? (
                 <button onClick={start} disabled={!ready} style={navButtonStyle(ready, "primary")}>
@@ -443,7 +487,7 @@ export default function FootConfig({ go, params, store }: Props) {
 function GuideProgress({ steps, active, complete, label, primary, primarySoft }: any) {
   return (
     <section style={{ ...cardStyle(), padding: 12 }}>
-      <div style={{ display: "flex", gap: 7, overflowX: "auto", overflowY: "hidden", maxWidth: "100%", width: "100%", minWidth: 0, paddingBottom: 2, WebkitOverflowScrolling: "touch", boxSizing: "border-box" }}>
+      <div className="foot-config-steps" style={{ display: "flex", flexWrap: "wrap", gap: 7, overflowX: "hidden", overflowY: "visible", maxWidth: "100%", width: "100%", minWidth: 0, paddingBottom: 2, WebkitOverflowScrolling: "touch", boxSizing: "border-box" }}>
         {steps.map((step: GuidedStep, index: number) => {
           const isActive = step === active;
           const done = complete(step);
@@ -473,7 +517,7 @@ function SelectedPreview({ title, leftTitle, rightTitle, left, right, primary }:
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: 11, color: "#9da3c0", fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, marginBottom: 8 }}>{title}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))", gap: 10, minWidth: 0, maxWidth: "100%" }}>
         <RosterCard title={leftTitle} players={left} primary={primary} />
         <RosterCard title={rightTitle} players={right} primary={primary} />
       </div>
@@ -500,7 +544,7 @@ function RosterCard({ title, players, primary }: any) {
 function SavedTeamsPicker({ teams, selectedSet, onToggle, profilesById, primary, primarySoft, maxPlayers }: any) {
   if (!teams.length) return <div style={emptyStyle}>Aucune équipe FOOT enregistrée pour l’instant. Passe en Manuel ou crée tes équipes depuis Profils.</div>;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 10, minWidth: 0, maxWidth: "100%" }}>
       {teams.map((team: any) => {
         const active = selectedSet.has(String(team.id));
         const ids = (Array.isArray(team.playerIds) ? team.playerIds : []).map(String).slice(0, maxPlayers);
@@ -617,8 +661,33 @@ function Pill({ label, active, onClick, primary, primarySoft }: any) {
   return <button type="button" onClick={onClick} style={{ maxWidth: "100%", minWidth: 0, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: active ? primarySoft : "rgba(255,255,255,.045)", color: active ? "#fff" : "#c9cee8", borderRadius: 999, padding: "9px 12px", fontWeight: 1000, cursor: "pointer", boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxShadow: active ? `0 0 18px ${primary}2f` : "none" }}>{label}</button>;
 }
 
-const pageStyle: React.CSSProperties = { minHeight: "100dvh", padding: "14px 10px 92px", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
-const shellStyle: React.CSSProperties = { maxWidth: "min(680px, calc(100vw - 20px))", width: "100%", minWidth: 0, margin: "0 auto", display: "grid", gap: 14, overflowX: "clip", boxSizing: "border-box" };
+const pageStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 20,
+  minHeight: "100dvh",
+  height: "100dvh",
+  padding: "14px max(12px, env(safe-area-inset-left)) calc(92px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-right))",
+  width: "100dvw",
+  maxWidth: "100dvw",
+  minWidth: 0,
+  overflowX: "hidden",
+  overflowY: "auto",
+  overscrollBehaviorX: "none",
+  boxSizing: "border-box",
+  color: "#fff",
+  background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)"
+};
+const shellStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 680,
+  minWidth: 0,
+  margin: "0 auto",
+  display: "grid",
+  gap: 14,
+  overflowX: "hidden",
+  boxSizing: "border-box"
+};
 const headerStyle: React.CSSProperties = { position: "relative", width: "100%", maxWidth: "100%", minWidth: 0, minHeight: 86, borderRadius: 24, padding: "0 58px", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxSizing: "border-box", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
 const headerTickerWrapStyle: React.CSSProperties = { position: "absolute", right: 0, top: 0, height: "100%", width: "75%", pointerEvents: "none", opacity: .28, zIndex: 0, WebkitMaskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)", maskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)" };
 const headerTickerStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", transform: "translateZ(0)", filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))" };
@@ -634,6 +703,16 @@ const selectListStyle: React.CSSProperties = { position: "absolute", zIndex: 20,
 const selectItemStyle = (active: boolean): React.CSSProperties => ({ width: "100%", border: 0, borderRadius: 12, padding: "11px 12px", marginBottom: 4, textAlign: "left", background: active ? "rgba(34,230,255,.18)" : "transparent", color: active ? "#22e6ff" : "#fff", fontWeight: 1000 });
 const emptyStyle: React.CSSProperties = { color: "#9fa6c0", fontSize: 13, fontWeight: 800, borderRadius: 16, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" };
 const summaryLineStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minWidth: 0, maxWidth: "100%", borderRadius: 14, padding: "10px 12px", background: "rgba(5,8,16,.62)", border: "1px solid rgba(255,255,255,.08)", color: "#fff", fontSize: 12, fontWeight: 850, boxSizing: "border-box" };
-const guideNavStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, .45fr) minmax(0, 1fr)", gap: 10, alignItems: "stretch", width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", boxSizing: "border-box" };
+const guideNavStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, .48fr) minmax(0, 1fr)",
+  gap: 10,
+  alignItems: "stretch",
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+  overflow: "hidden",
+  boxSizing: "border-box"
+};
 const navButtonStyle = (enabled: boolean, variant: "primary" | "neutral"): React.CSSProperties => ({ minWidth: 0, width: "100%", maxWidth: "100%", border: variant === "primary" ? 0 : "1px solid rgba(255,255,255,.12)", borderRadius: 18, padding: "13px 10px", background: variant === "primary" ? "linear-gradient(135deg, #22e6ff, #127cff)" : "rgba(255,255,255,.055)", color: variant === "primary" ? "#001019" : "#fff", fontWeight: 1000, opacity: enabled ? 1 : .42, cursor: enabled ? "pointer" : "not-allowed", boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxShadow: variant === "primary" && enabled ? "0 0 24px rgba(34,230,255,.30)" : "none" });
 const startButton: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, border: 0, borderRadius: 20, padding: "16px 18px", background: "linear-gradient(135deg, #22e6ff, #127cff)", color: "#001019", fontWeight: 1000, fontSize: 15, boxSizing: "border-box", boxShadow: "0 0 28px rgba(34,230,255,.35)" };

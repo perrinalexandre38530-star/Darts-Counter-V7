@@ -852,7 +852,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (nextCount < cap) return;
     window.setTimeout(() => {
       if (side === "A") setGuidedStep("playerB");
-      else setGuidedStep("settings");
+      else setGuidedStep("score");
     }, 0);
   };
 
