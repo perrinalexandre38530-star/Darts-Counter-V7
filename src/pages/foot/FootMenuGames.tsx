@@ -4,6 +4,7 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import { FOOT_FORMATS } from "./footFormats";
 import footCover01 from "../../assets/covers/football/football_cover_01.webp";
+import footHeaderTicker from "../../assets/tickers/ticker_foot_header_cartoon.webp";
 
 const TICKERS = import.meta.glob("../../assets/tickers/*.{png,webp,jpg,jpeg}", {
   eager: true,
@@ -41,14 +42,84 @@ function findTickerById(id: string): string | null {
 type Props = { go: (route: any, params?: any) => void; params?: any; store?: any };
 
 const FORMAT_INFO: Record<string, string> = {
-  penalty: "Duel tireur/gardien. Séance rapide avec score des tirs réussis et ratés.",
-  "1v1": "Duel joueur contre joueur. Score simple et événements essentiels.",
-  "2v2": "Match par équipes de 2 joueurs. Sélection équipe domicile / extérieur.",
-  "3v3": "Match par équipes de 3 joueurs. Format réduit rapide.",
-  "5v5": "Match par équipes de 5 joueurs. Format futsal / petit terrain.",
-  "7v7": "Match par équipes de 7 joueurs. Format jeunes / terrain réduit.",
-  "8v8": "Match par équipes de 8 joueurs. Format intermédiaire.",
-  "11v11": "Match complet par équipes de 11 joueurs. Format terrain complet.",
+  penalty: `OBJECTIF
+• Duel tireur contre gardien.
+
+RÈGLES
+• 5 tirs par camp.
+• Victoire au plus grand nombre de buts.
+• Mort subite si égalité.
+• Arrêt ou tir hors cadre = raté.
+
+STATISTIQUES
+• Tirs, buts, arrêts, réussite.`,
+  "1v1": `OBJECTIF
+• Match classique à un joueur contre un joueur.
+
+RÈGLES
+• Gestion des buts, cartons et score.
+• Prolongation et tirs au but possibles.
+
+STATISTIQUES
+• Buteurs, passeurs, cartons, homme du match.`,
+  "2v2": `OBJECTIF
+• Match par équipes de 2 joueurs.
+
+RÈGLES
+• 2 joueurs par équipe.
+• Score équipe.
+• Cartons attribuables aux joueurs.
+
+STATISTIQUES
+• Buteurs, passeurs, cartons.`,
+  "3v3": `OBJECTIF
+• Football réduit rapide.
+
+RÈGLES
+• 3 joueurs par équipe.
+• Match dynamique.
+• Gestion des événements de match.
+
+STATISTIQUES
+• Buteurs, passeurs, cartons.`,
+  "5v5": `OBJECTIF
+• Football Five / Futsal.
+
+RÈGLES
+• 5 joueurs par équipe.
+• Terrain réduit.
+• Remplacements libres.
+
+STATISTIQUES
+• Buteurs, passeurs, CSC, cartons.`,
+  "7v7": `OBJECTIF
+• Football à effectif réduit.
+
+RÈGLES
+• 7 joueurs par équipe.
+• Gestion des remplacements.
+
+STATISTIQUES
+• Buteurs, passeurs, cartons, clean sheet.`,
+  "8v8": `OBJECTIF
+• Format intermédiaire.
+
+RÈGLES
+• 8 joueurs par équipe.
+• Match plus tactique.
+
+STATISTIQUES
+• Gestion complète des événements.`,
+  "11v11": `OBJECTIF
+• Football officiel.
+
+RÈGLES
+• 11 joueurs par équipe.
+• Temps réglementaire configurable.
+• Prolongations et TAB facultatifs.
+
+STATISTIQUES
+• Buteurs, passeurs, cartons, clean sheet, homme du match.`,
 };
 
 export default function FootMenuGames({ go }: Props) {
@@ -62,8 +133,12 @@ export default function FootMenuGames({ go }: Props) {
   const text = theme?.text || "#fff";
   const textSoft = theme?.textSoft || "rgba(255,255,255,.72)";
 
-  function renderTickerWatermark(formatId: string, index: number) {
+  function renderTickerWatermark(formatId: string) {
     const src = findTickerById(formatId) || footCover01;
+    if (!src) return null;
+
+    // Même logique visuelle que les cartes Jeux Darts Counter :
+    // ticker discret, posé à droite, en cover, avec masque horizontal.
     return (
       <div
         aria-hidden
@@ -72,14 +147,14 @@ export default function FootMenuGames({ go }: Props) {
           right: 0,
           top: 0,
           height: "100%",
-          width: "78%",
+          width: "75%",
           pointerEvents: "none",
-          opacity: 0.24,
+          opacity: 0.22,
           zIndex: 0,
           WebkitMaskImage:
-            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 17%, rgba(0,0,0,1) 86%, rgba(0,0,0,0) 100%)",
+            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)",
           maskImage:
-            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 17%, rgba(0,0,0,1) 86%, rgba(0,0,0,0) 100%)",
+            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)",
         }}
       >
         <img
@@ -92,8 +167,9 @@ export default function FootMenuGames({ go }: Props) {
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            objectPosition: `${50 + ((index % 3) - 1) * 8}% center`,
-            filter: "contrast(1.08) saturate(1.08) drop-shadow(0 0 12px rgba(0,0,0,.35))",
+            objectPosition: "center",
+            transform: "translateZ(0)",
+            filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))",
           }}
         />
         <div
@@ -101,8 +177,8 @@ export default function FootMenuGames({ go }: Props) {
             position: "absolute",
             inset: 0,
             background:
-              "linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.10) 40%, rgba(0,0,0,.10) 65%, rgba(0,0,0,.55) 100%)",
-            opacity: 0.72,
+              "linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.35) 100%)",
+            opacity: 0.55,
           }}
         />
       </div>
@@ -121,42 +197,52 @@ export default function FootMenuGames({ go }: Props) {
     >
       <div style={{ maxWidth: 760, margin: "0 auto" }}>
         <div
+          aria-label="FOOT"
           style={{
             position: "relative",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: 38,
-            marginBottom: 6,
+            height: 108,
+            marginBottom: 14,
+            borderRadius: 20,
+            border: `1px solid ${border}`,
+            overflow: "hidden",
+            background: "rgba(2,12,22,.62)",
+            boxShadow: `0 14px 34px rgba(0,0,0,.62), 0 0 22px ${primary}22, inset 0 0 24px ${primary}24`,
           }}
         >
-          <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)" }}>
+          <img
+            src={footHeaderTicker as any}
+            alt="FOOT"
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center",
+              filter: "saturate(1.08) contrast(1.08)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(2,8,18,.18) 0%, rgba(2,8,18,.00) 26%, rgba(2,8,18,.00) 74%, rgba(2,8,18,.18) 100%), linear-gradient(180deg, rgba(2,8,18,.12) 0%, rgba(2,8,18,.00) 48%, rgba(2,8,18,.34) 100%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              boxShadow: `inset 0 0 20px rgba(0,0,0,.45), inset 0 0 20px ${primary}22`,
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
             <BackDot onClick={() => go("home")} />
           </div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 24,
-              letterSpacing: 1.2,
-              color: primary,
-              textAlign: "center",
-              textShadow: `0 0 12px ${primary}66`,
-            }}
-          >
-            FOOT — JEUX
-          </h1>
-        </div>
-
-        <div
-          style={{
-            fontSize: 13,
-            color: textSoft,
-            marginBottom: 18,
-            textAlign: "center",
-            fontWeight: 800,
-          }}
-        >
-          Choisis un format de match FOOT
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -183,7 +269,7 @@ export default function FootMenuGames({ go }: Props) {
                   overflow: "hidden",
                 }}
               >
-                {renderTickerWatermark(f.id, index)}
+                {renderTickerWatermark(f.id)}
 
                 <div style={{ position: "relative", zIndex: 1 }}>
                   <div
@@ -197,9 +283,6 @@ export default function FootMenuGames({ go }: Props) {
                     }}
                   >
                     {f.label}
-                  </div>
-                  <div style={{ marginTop: 5, fontSize: 12, color: textSoft, fontWeight: 800 }}>
-                    {f.maxPlayersHint} · {subtitle}
                   </div>
                 </div>
 

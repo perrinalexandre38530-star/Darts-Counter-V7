@@ -183,8 +183,10 @@ export default function FootConfig({ go, params, store }: Props) {
     <div style={pageStyle}>
       <div style={shellStyle}>
         <header style={headerStyle}>
-          <img src={tickerSrc} alt={spec.label} style={headerTickerStyle} />
-          <div style={headerOverlayStyle} />
+          <div aria-hidden style={headerTickerWrapStyle}>
+            <img src={tickerSrc} alt="" style={headerTickerStyle} draggable={false} />
+            <div style={headerTickerFadeStyle} />
+          </div>
           <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
             <BackDot onClick={() => go("foot_menu")} />
           </div>
@@ -384,8 +386,9 @@ function Pill({ label, active, onClick, primary, primarySoft }: any) {
 const pageStyle: React.CSSProperties = { minHeight: "100vh", padding: "14px 12px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
 const shellStyle: React.CSSProperties = { maxWidth: 680, margin: "0 auto", display: "grid", gap: 14 };
 const headerStyle: React.CSSProperties = { position: "relative", minHeight: 86, borderRadius: 24, padding: "0 64px", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
-const headerTickerStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .74, filter: "saturate(1.18) contrast(1.06)", transform: "scale(1.02)" };
-const headerOverlayStyle: React.CSSProperties = { position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(3,7,15,.82) 0%, rgba(3,7,15,.30) 34%, rgba(3,7,15,.30) 66%, rgba(3,7,15,.82) 100%), linear-gradient(180deg, rgba(3,7,15,.42), rgba(3,7,15,.18))", boxShadow: "inset 0 0 34px rgba(34,230,255,.12)" };
+const headerTickerWrapStyle: React.CSSProperties = { position: "absolute", right: 0, top: 0, height: "100%", width: "75%", pointerEvents: "none", opacity: .28, zIndex: 0, WebkitMaskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)", maskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)" };
+const headerTickerStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", transform: "translateZ(0)", filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))" };
+const headerTickerFadeStyle: React.CSSProperties = { position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.35) 100%)", opacity: .55 };
 const cardStyle = (bg = "rgba(10,12,24,.96)"): React.CSSProperties => ({ borderRadius: 20, padding: 14, background: bg, border: "1px solid rgba(255,255,255,.07)", boxShadow: "0 16px 40px rgba(0,0,0,.5)" });
 const sectionTitle = (color: string): React.CSSProperties => ({ margin: "0 0 10px", color, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1.1 });
 const hintStyle: React.CSSProperties = { margin: "0 0 12px", color: "#9fa6c0", fontSize: 12, fontWeight: 750, lineHeight: 1.35 };
