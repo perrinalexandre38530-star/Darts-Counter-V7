@@ -399,7 +399,7 @@ export default function FootConfig({ go, params, store }: Props) {
           </div>
         </header>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", boxSizing: "border-box" }}>
           <Pill label="Configuration guidée" active={configMode === "guided"} onClick={() => setConfigMode("guided")} primary={primary} primarySoft={primarySoft} />
           <Pill label="Configuration complète" active={configMode === "full"} onClick={() => setConfigMode("full")} primary={primary} primarySoft={primarySoft} />
         </div>
@@ -418,7 +418,7 @@ export default function FootConfig({ go, params, store }: Props) {
             <div style={guideNavStyle}>
               <button type="button" onClick={() => goStep(-1)} disabled={!canGoPrev} style={navButtonStyle(canGoPrev, "neutral")}>← Retour</button>
               {guidedStep === "summary" ? (
-                <button onClick={start} disabled={!ready} style={{ ...navButtonStyle(ready, "primary"), flex: 1 }}>
+                <button onClick={start} disabled={!ready} style={navButtonStyle(ready, "primary")}>
                   {ready ? `DÉMARRER ${spec.label}` : missingLabel(spec, sourceMode, selectedIds.length, savedSelectedTeams.length, selectedTeamIds, selectedTeamPlayerIds)}
                 </button>
               ) : (
@@ -443,14 +443,14 @@ export default function FootConfig({ go, params, store }: Props) {
 function GuideProgress({ steps, active, complete, label, primary, primarySoft }: any) {
   return (
     <section style={{ ...cardStyle(), padding: 12 }}>
-      <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
+      <div style={{ display: "flex", gap: 7, overflowX: "auto", overflowY: "hidden", maxWidth: "100%", width: "100%", minWidth: 0, paddingBottom: 2, WebkitOverflowScrolling: "touch", boxSizing: "border-box" }}>
         {steps.map((step: GuidedStep, index: number) => {
           const isActive = step === active;
           const done = complete(step);
           return (
-            <div key={step} style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 999, padding: "7px 10px", border: isActive ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: isActive ? primarySoft : "rgba(255,255,255,.045)", color: isActive ? "#fff" : "#aeb5d0", fontWeight: 1000, fontSize: 11, textTransform: "uppercase", letterSpacing: .55 }}>
-              <span style={{ width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", background: done ? primary : "rgba(255,255,255,.08)", color: done ? "#001019" : "#fff", fontSize: 10 }}>{done ? "✓" : index + 1}</span>
-              {label(step)}
+            <div key={step} style={{ flex: "0 0 auto", maxWidth: "calc(100vw - 48px)", display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 999, padding: "7px 10px", border: isActive ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: isActive ? primarySoft : "rgba(255,255,255,.045)", color: isActive ? "#fff" : "#aeb5d0", fontWeight: 1000, fontSize: 11, textTransform: "uppercase", letterSpacing: .55, boxSizing: "border-box" }}>
+              <span style={{ width: 20, height: 20, flex: "0 0 20px", borderRadius: 999, display: "grid", placeItems: "center", background: done ? primary : "rgba(255,255,255,.08)", color: done ? "#001019" : "#fff", fontSize: 10 }}>{done ? "✓" : index + 1}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label(step)}</span>
             </div>
           );
         })}
@@ -614,16 +614,16 @@ function OptionGrid({ label, value, setValue, options, suffix = "" }: any) {
 }
 
 function Pill({ label, active, onClick, primary, primarySoft }: any) {
-  return <button type="button" onClick={onClick} style={{ border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: active ? primarySoft : "rgba(255,255,255,.045)", color: active ? "#fff" : "#c9cee8", borderRadius: 999, padding: "9px 12px", fontWeight: 1000, cursor: "pointer", boxShadow: active ? `0 0 18px ${primary}2f` : "none" }}>{label}</button>;
+  return <button type="button" onClick={onClick} style={{ maxWidth: "100%", minWidth: 0, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: active ? primarySoft : "rgba(255,255,255,.045)", color: active ? "#fff" : "#c9cee8", borderRadius: 999, padding: "9px 12px", fontWeight: 1000, cursor: "pointer", boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxShadow: active ? `0 0 18px ${primary}2f` : "none" }}>{label}</button>;
 }
 
-const pageStyle: React.CSSProperties = { minHeight: "100vh", padding: "14px 12px 92px", width: "100%", overflowX: "hidden", boxSizing: "border-box", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
-const shellStyle: React.CSSProperties = { maxWidth: 680, width: "100%", minWidth: 0, margin: "0 auto", display: "grid", gap: 14, overflowX: "hidden", boxSizing: "border-box" };
-const headerStyle: React.CSSProperties = { position: "relative", minHeight: 86, borderRadius: 24, padding: "0 64px", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
+const pageStyle: React.CSSProperties = { minHeight: "100dvh", padding: "14px 10px 92px", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
+const shellStyle: React.CSSProperties = { maxWidth: "min(680px, calc(100vw - 20px))", width: "100%", minWidth: 0, margin: "0 auto", display: "grid", gap: 14, overflowX: "clip", boxSizing: "border-box" };
+const headerStyle: React.CSSProperties = { position: "relative", width: "100%", maxWidth: "100%", minWidth: 0, minHeight: 86, borderRadius: 24, padding: "0 58px", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxSizing: "border-box", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
 const headerTickerWrapStyle: React.CSSProperties = { position: "absolute", right: 0, top: 0, height: "100%", width: "75%", pointerEvents: "none", opacity: .28, zIndex: 0, WebkitMaskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)", maskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)" };
 const headerTickerStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", transform: "translateZ(0)", filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))" };
 const headerTickerFadeStyle: React.CSSProperties = { position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.35) 100%)", opacity: .55 };
-const cardStyle = (bg = "rgba(10,12,24,.96)"): React.CSSProperties => ({ borderRadius: 20, padding: 14, background: bg, border: "1px solid rgba(255,255,255,.07)", boxShadow: "0 16px 40px rgba(0,0,0,.5)" });
+const cardStyle = (bg = "rgba(10,12,24,.96)"): React.CSSProperties => ({ width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", borderRadius: 20, padding: 14, background: bg, border: "1px solid rgba(255,255,255,.07)", boxShadow: "0 16px 40px rgba(0,0,0,.5)" });
 const sectionTitle = (color: string): React.CSSProperties => ({ margin: "0 0 10px", color, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1.1 });
 const hintStyle: React.CSSProperties = { margin: "0 0 12px", color: "#9fa6c0", fontSize: 12, fontWeight: 750, lineHeight: 1.35 };
 const hintLine: React.CSSProperties = { color: "#d5d9ec", fontSize: 13, fontWeight: 800, lineHeight: 1.35 };
@@ -633,7 +633,7 @@ const selectBoxStyle = (open: boolean): React.CSSProperties => ({ width: "100%",
 const selectListStyle: React.CSSProperties = { position: "absolute", zIndex: 20, left: 0, right: 0, top: "calc(100% + 7px)", maxHeight: 210, overflowY: "auto", borderRadius: 16, padding: 6, background: "rgba(5,8,16,.98)", border: "1px solid rgba(34,230,255,.38)", boxShadow: "0 18px 34px rgba(0,0,0,.62), 0 0 22px rgba(34,230,255,.18)" };
 const selectItemStyle = (active: boolean): React.CSSProperties => ({ width: "100%", border: 0, borderRadius: 12, padding: "11px 12px", marginBottom: 4, textAlign: "left", background: active ? "rgba(34,230,255,.18)" : "transparent", color: active ? "#22e6ff" : "#fff", fontWeight: 1000 });
 const emptyStyle: React.CSSProperties = { color: "#9fa6c0", fontSize: 13, fontWeight: 800, borderRadius: 16, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" };
-const summaryLineStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: 14, padding: "10px 12px", background: "rgba(5,8,16,.62)", border: "1px solid rgba(255,255,255,.08)", color: "#fff", fontSize: 12, fontWeight: 850 };
-const guideNavStyle: React.CSSProperties = { display: "flex", gap: 10, alignItems: "stretch", width: "100%", minWidth: 0, flexWrap: "wrap" };
-const navButtonStyle = (enabled: boolean, variant: "primary" | "neutral"): React.CSSProperties => ({ flex: variant === "primary" ? 1 : "0 0 auto", border: variant === "primary" ? 0 : "1px solid rgba(255,255,255,.12)", borderRadius: 18, padding: "13px 16px", background: variant === "primary" ? "linear-gradient(135deg, #22e6ff, #127cff)" : "rgba(255,255,255,.055)", color: variant === "primary" ? "#001019" : "#fff", fontWeight: 1000, opacity: enabled ? 1 : .42, cursor: enabled ? "pointer" : "not-allowed", boxShadow: variant === "primary" && enabled ? "0 0 24px rgba(34,230,255,.30)" : "none" });
-const startButton: React.CSSProperties = { width: "100%", border: 0, borderRadius: 20, padding: "16px 18px", background: "linear-gradient(135deg, #22e6ff, #127cff)", color: "#001019", fontWeight: 1000, fontSize: 15, boxShadow: "0 0 28px rgba(34,230,255,.35)" };
+const summaryLineStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minWidth: 0, maxWidth: "100%", borderRadius: 14, padding: "10px 12px", background: "rgba(5,8,16,.62)", border: "1px solid rgba(255,255,255,.08)", color: "#fff", fontSize: 12, fontWeight: 850, boxSizing: "border-box" };
+const guideNavStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, .45fr) minmax(0, 1fr)", gap: 10, alignItems: "stretch", width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", boxSizing: "border-box" };
+const navButtonStyle = (enabled: boolean, variant: "primary" | "neutral"): React.CSSProperties => ({ minWidth: 0, width: "100%", maxWidth: "100%", border: variant === "primary" ? 0 : "1px solid rgba(255,255,255,.12)", borderRadius: 18, padding: "13px 10px", background: variant === "primary" ? "linear-gradient(135deg, #22e6ff, #127cff)" : "rgba(255,255,255,.055)", color: variant === "primary" ? "#001019" : "#fff", fontWeight: 1000, opacity: enabled ? 1 : .42, cursor: enabled ? "pointer" : "not-allowed", boxSizing: "border-box", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxShadow: variant === "primary" && enabled ? "0 0 24px rgba(34,230,255,.30)" : "none" });
+const startButton: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, border: 0, borderRadius: 20, padding: "16px 18px", background: "linear-gradient(135deg, #22e6ff, #127cff)", color: "#001019", fontWeight: 1000, fontSize: 15, boxSizing: "border-box", boxShadow: "0 0 28px rgba(34,230,255,.35)" };
