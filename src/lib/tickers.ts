@@ -16,6 +16,29 @@ const TICKERS: Record<string, string> = import.meta.glob(
 
 // Optional aliases: key -> filename (without path) or another key
 const ALIASES: Record<string, string> = {
+  // FOOT section aliases
+  "foot_home": "foot-01",
+  "foot_games": "foot-04",
+  "foot_penalty": "foot-04",
+  "foot_1v1": "foot-05",
+  "foot_2v2": "foot-06",
+  "foot_3v3": "foot-07",
+  "foot_5v5": "foot-08",
+  "foot_five": "foot-08",
+  "foot_7v7": "foot-09",
+  "foot_8v8": "foot-10",
+  "foot_11v11": "foot-11",
+  "foot_competitions": "foot-12",
+  "foot_competition": "foot-12",
+  "foot_tournament": "foot-13",
+  "foot_tournoi": "foot-13",
+  "foot_stats": "foot-16",
+  "foot_history": "foot-19",
+  "foot_historique": "foot-19",
+  "foot_online": "foot-22",
+  "foot_profiles": "foot-25",
+  "foot_profile": "foot-25",
+
   // Dice convenience aliases (safe even if redundant)
   "dice_10000": "dice_10k",
   "dice_10_000": "dice_10k",

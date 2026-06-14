@@ -347,6 +347,103 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
   }
 }
 
+
+function SessionExpiredFloatingCard() {
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<any>)?.detail || {};
+      const reason = String(detail?.reason || "");
+      if (detail?.status !== "signed_out") return;
+      if (reason !== "401" && reason !== "missing_token") return;
+
+      setVisible(true);
+      try {
+        const hash = String(window.location.hash || "");
+        if (!hash.startsWith("#/auth/login") && !hash.startsWith("#/auth/signup")) {
+          window.location.hash = "#/auth/login";
+        }
+      } catch {}
+    };
+
+    window.addEventListener("dc-auth-changed", handler as EventListener);
+    return () => window.removeEventListener("dc-auth-changed", handler as EventListener);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        display: "grid",
+        placeItems: "center",
+        pointerEvents: "none",
+        padding: 18,
+      }}
+    >
+      <div
+        role="alert"
+        aria-live="assertive"
+        style={{
+          width: "min(92vw, 360px)",
+          pointerEvents: "auto",
+          border: "1px solid rgba(35, 230, 255, 0.75)",
+          borderRadius: 22,
+          background: "linear-gradient(180deg, rgba(4, 15, 24, 0.96), rgba(0, 0, 0, 0.94))",
+          boxShadow: "0 0 30px rgba(35, 230, 255, 0.28), inset 0 0 22px rgba(255, 203, 70, 0.08)",
+          color: "#eafcff",
+          padding: 20,
+          textAlign: "center",
+          backdropFilter: "blur(14px)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 900,
+            letterSpacing: 0.4,
+            color: "#ffd45a",
+            textTransform: "uppercase",
+            marginBottom: 8,
+          }}
+        >
+          Vous avez été déconnecté
+        </div>
+
+        <div style={{ fontSize: 13, lineHeight: 1.45, color: "rgba(234,252,255,0.82)", marginBottom: 16 }}>
+          Votre session online a expiré. Reconnectez-vous pour accéder aux messages, amis et données online.
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setVisible(false);
+            try { window.location.hash = "#/auth/login"; } catch {}
+          }}
+          style={{
+            width: "100%",
+            border: "1px solid rgba(35, 230, 255, 0.95)",
+            borderRadius: 999,
+            background: "linear-gradient(180deg, rgba(35,230,255,0.24), rgba(35,230,255,0.08))",
+            color: "#eaffff",
+            fontWeight: 900,
+            letterSpacing: 0.8,
+            padding: "12px 14px",
+            boxShadow: "0 0 18px rgba(35, 230, 255, 0.22)",
+            cursor: "pointer",
+          }}
+        >
+          SE CONNECTER
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>(initial);
   const lastNasAuthAttemptRef = React.useRef(0);
@@ -658,7 +755,12 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     [state, signup, login, logout, deleteAccount, refresh]
   );
 
-  return <AuthOnlineContext.Provider value={value}>{children}</AuthOnlineContext.Provider>;
+  return (
+    <AuthOnlineContext.Provider value={value}>
+      {children}
+      <SessionExpiredFloatingCard />
+    </AuthOnlineContext.Provider>
+  );
 }
 
 export function useAuthOnline() {

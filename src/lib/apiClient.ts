@@ -58,14 +58,27 @@ const API_URL = envUrl || localOverride || "http://api.multisports-api.fr:3000";
 const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 60000) || 60000;
 const API_TIMEOUT_MS = Math.max(60000, rawApiTimeoutMs);
 
+let lastAuthChangedDispatchAt = 0;
+
+function dispatchSignedOut(reason: "401" | "missing_token") {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  // Évite de déclencher 20 fois le même écran flottant quand plusieurs hooks /online/* partent ensemble.
+  if (now - lastAuthChangedDispatchAt < 1200) return;
+  lastAuthChangedDispatchAt = now;
+  try {
+    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { status: "signed_out", reason } }));
+  } catch {}
+}
+
 function clearNasAuthBecauseUnauthorized() {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem("dc_nas_access_token_v1");
     window.localStorage.removeItem("dc_nas_refresh_token_v1");
     window.localStorage.removeItem("dc_online_auth_supabase_v1");
-    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { status: "signed_out", reason: "401" } }));
   } catch {}
+  dispatchSignedOut("401");
 }
 
 async function parseJsonSafe(res: Response) {
@@ -90,6 +103,14 @@ function buildHeaders(init?: RequestInit): HeadersInit {
 
 async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  // Garde anti-spam : si l’utilisateur n’a plus de session, on ne lance pas les appels /online/*.
+  // Ça évite les rafales de 401 dans la console et laisse l’UI afficher le bloc de reconnexion.
+  if (normalizedPath.startsWith("/online/") && !readNasAccessToken()) {
+    dispatchSignedOut("missing_token");
+    throw new Error(`${init?.method || "GET"} ${normalizedPath} skipped — session online absente`);
+  }
+
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = ctrl ? window.setTimeout(() => {
     try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }

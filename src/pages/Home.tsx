@@ -16,14 +16,14 @@ import ActiveProfileCard, {
 import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
-import footHomeCover01 from "../assets/covers/football/football_cover_01.webp";
-import footHomeCover02 from "../assets/covers/football/football_cover_02.webp";
-import footHomeCover03 from "../assets/covers/football/football_cover_03.webp";
-import footHomeCover04 from "../assets/covers/football/football_cover_04.webp";
-import footHomeCover05 from "../assets/covers/football/football_cover_05.webp";
-import footHomeCover06 from "../assets/covers/football/football_cover_06.webp";
-import footHomeCover07 from "../assets/covers/football/football_cover_07.webp";
-import footHomeCover08 from "../assets/covers/football/football_cover_08.webp";
+import footHomeCover01 from "../assets/tickers/foot-01.webp";
+import footHomeCover02 from "../assets/tickers/foot-02.webp";
+import footHomeCover03 from "../assets/tickers/foot-03.webp";
+import footHomeCover04 from "../assets/tickers/foot-04.webp";
+import footHomeCover05 from "../assets/tickers/foot-05.webp";
+import footHomeCover06 from "../assets/tickers/foot-06.webp";
+import footHomeCover07 from "../assets/tickers/foot-07.webp";
+import footHomeCover08 from "../assets/tickers/foot-08.webp";
 
 // 🔗 Stats X01 (quick + historique) + Cricket
 import {

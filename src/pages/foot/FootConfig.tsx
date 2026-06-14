@@ -5,28 +5,11 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
 import { loadTeamsBySport, type TeamEntity } from "../../lib/petanqueTeamsStore";
 import { getFootFormat } from "./footFormats";
-import tickerPenalty from "../../assets/tickers/ticker_foot_penalty.webp";
-import ticker1v1 from "../../assets/tickers/ticker_foot_1v1.webp";
-import ticker2v2 from "../../assets/tickers/ticker_foot_2v2.webp";
-import ticker3v3 from "../../assets/tickers/ticker_foot_3v3.webp";
-import ticker5v5 from "../../assets/tickers/ticker_foot_5v5.webp";
-import ticker7v7 from "../../assets/tickers/ticker_foot_7v7.webp";
-import ticker8v8 from "../../assets/tickers/ticker_foot_8v8.webp";
-import ticker11v11 from "../../assets/tickers/ticker_foot_11v11.webp";
+import { getFootGameTicker } from "./footTickers";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; store?: any };
 type SourceMode = "manual" | "saved";
 
-const FOOT_CONFIG_TICKERS: Record<string, string> = {
-  penalty: tickerPenalty,
-  "1v1": ticker1v1,
-  "2v2": ticker2v2,
-  "3v3": ticker3v3,
-  "5v5": ticker5v5,
-  "7v7": ticker7v7,
-  "8v8": ticker8v8,
-  "11v11": ticker11v11,
-};
 
 type TeamSlot = {
   name: string;
@@ -49,7 +32,7 @@ function teamLogo(team: any) {
 
 export default function FootConfig({ go, params, store }: Props) {
   const spec = getFootFormat(params?.format || params?.config?.format);
-  const tickerSrc = FOOT_CONFIG_TICKERS[spec.id] || tickerPenalty;
+  const tickerSrc = getFootGameTicker(spec.id);
   const primary = "#22e6ff";
   const primarySoft = "rgba(34,230,255,.13)";
   const green = "#31f083";

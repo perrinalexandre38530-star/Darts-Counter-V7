@@ -3,6 +3,7 @@ import type { Store } from "../lib/types";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
+import { FOOT_TICKERS } from "./foot/footTickers";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
 import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
 import resumeWatermark from "../assets/ui/competition_resume_watermark.png";
@@ -53,7 +54,7 @@ function smartBack(go: Props["go"], fallbackTab: any = "home", fallbackParams?: 
   go(fallbackTab, fallbackParams);
 }
 
-function CompetitionHeader({ onBack }: { onBack: () => void }) {
+function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions }: { onBack: () => void; tickerSrc?: string }) {
   return (
     <div
       style={{
@@ -63,7 +64,7 @@ function CompetitionHeader({ onBack }: { onBack: () => void }) {
       }}
     >
       <img
-        src={tickerCompetitions}
+        src={tickerSrc}
         alt="Compétitions"
         draggable={false}
         style={{
@@ -259,6 +260,12 @@ function CompetitionCard({
 export default function TournamentsHome({ store, go, params }: Props) {
   const activeSport = pickActiveSport(store, params);
   const label = sportLabel(activeSport);
+  const isFoot = activeSport === "foot" || activeSport === "football";
+  const competitionTicker = isFoot ? FOOT_TICKERS.competition[0] : tickerCompetitions;
+  const resumeWatermark2 = isFoot ? FOOT_TICKERS.competition[2] : resumeWatermark;
+  const consultWatermark2 = isFoot ? FOOT_TICKERS.competition[3] : consultWatermark;
+  const leagueWatermark2 = isFoot ? FOOT_TICKERS.competition[1] : leagueWatermark;
+  const tournamentWatermark2 = isFoot ? FOOT_TICKERS.competition[2] : tournamentWatermark;
   type EntryMode = "menu" | "create" | "resume" | "consult";
 
   function initialMode(): EntryMode {
@@ -300,7 +307,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
 
   return (
     <div style={{ padding: 18, paddingBottom: 108, color: "white" }}>
-      <CompetitionHeader onBack={back} />
+      <CompetitionHeader onBack={back} tickerSrc={competitionTicker} />
 
       {entryMode === "menu" ? (
         <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
@@ -308,7 +315,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="CRÉER"
             title="Création d’une Compétition"
             tone="gold"
-            watermark={leagueWatermark}
+            watermark={leagueWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
@@ -323,7 +330,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="REPRENDRE"
             title="Reprendre une Compétition en cours"
             tone="blue"
-            watermark={resumeWatermark}
+            watermark={resumeWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
@@ -338,7 +345,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="CONSULTER"
             title="Consulter Historique des compétitions terminées"
             tone="green"
-            watermark={consultWatermark}
+            watermark={consultWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
@@ -359,7 +366,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="LIGUE / CHAMPIONNAT"
             title={`Créer une ligue ${label}`}
             tone="gold"
-            watermark={leagueWatermark}
+            watermark={leagueWatermark2}
             info={<InfoContent kind="league" sportLabel={label} />}
             onClick={() => go("tournament_create", createParams("league"))}
           />
@@ -367,7 +374,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="TOURNOI"
             title={`Créer un tournoi ${label}`}
             tone="pink"
-            watermark={tournamentWatermark}
+            watermark={tournamentWatermark2}
             info={<InfoContent kind="tournament" sportLabel={label} />}
             onClick={() => go("tournament_create", createParams("tournament"))}
           />
@@ -382,7 +389,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="LIGUES EN COURS"
             title={`Reprendre une ligue ${label}`}
             tone="gold"
-            watermark={leagueWatermark}
+            watermark={leagueWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
@@ -396,7 +403,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="TOURNOIS EN COURS"
             title={`Reprendre un tournoi ${label}`}
             tone="pink"
-            watermark={tournamentWatermark}
+            watermark={tournamentWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
@@ -417,7 +424,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="HISTORIQUE LIGUES"
             title={`Ligues terminées ${label}`}
             tone="gold"
-            watermark={leagueWatermark}
+            watermark={leagueWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
@@ -431,7 +438,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
             tag="HISTORIQUE TOURNOIS"
             title={`Tournois terminés ${label}`}
             tone="pink"
-            watermark={tournamentWatermark}
+            watermark={tournamentWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>

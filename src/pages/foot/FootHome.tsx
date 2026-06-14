@@ -1,9 +1,7 @@
 import React from "react";
 import BackDot from "../../components/BackDot";
 import logoFoot from "../../assets/games/logo-foot.png";
-import foot01 from "../../assets/tickers/foot-01.webp";
-import foot02 from "../../assets/tickers/foot-02.webp";
-import foot03 from "../../assets/tickers/foot-03.webp";
+import { FOOT_TICKERS } from "./footTickers";
 
 type Props = { go: (route: any, params?: any) => void; store?: any; update?: any };
 
@@ -71,9 +69,9 @@ export default function FootHome({ go }: Props) {
         </div>
 
         <div style={{ display: "grid", gap: 12 }}>
-          <Card title="JOUER" subtitle="Lancer un match rapide : score, buts, cartons, événements." icon="⚽" ticker={foot01} onClick={() => go("foot_menu")} />
-          <Card title="TOURNOIS" subtitle="Créer ou reprendre une compétition FOOT avec poules / classement." icon="🏆" ticker={foot02} onClick={() => go("tournaments", { forceMode: "foot", sport: "foot", source: "local" })} />
-          <Card title="STATS" subtitle="Consulter les matchs FOOT enregistrés et les bilans équipes." icon="📊" ticker={foot03} onClick={() => go("stats")} />
+          <Card title="JOUER" subtitle="Lancer un match rapide : score, buts, cartons, événements." icon="⚽" ticker={FOOT_TICKERS.home[0]} onClick={() => go("foot_menu")} />
+          <Card title="TOURNOIS" subtitle="Créer ou reprendre une compétition FOOT avec poules / classement." icon="🏆" ticker={FOOT_TICKERS.competition[0]} onClick={() => go("tournaments", { forceMode: "foot", sport: "foot", source: "local" })} />
+          <Card title="STATS" subtitle="Consulter les matchs FOOT enregistrés et les bilans équipes." icon="📊" ticker={FOOT_TICKERS.stats[0]} onClick={() => go("stats")} />
         </div>
       </div>
     </div>

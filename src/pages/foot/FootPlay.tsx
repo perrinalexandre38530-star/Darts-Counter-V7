@@ -1,6 +1,7 @@
 import React from "react";
 import BackDot from "../../components/BackDot";
 import { getFootFormat } from "./footFormats";
+import { getFootGameTicker } from "./footTickers";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => void };
 type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_scored" | "penalty_missed";
@@ -48,11 +49,18 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   };
 
   const isPenalty = spec.id === "penalty";
+  const tickerSrc = getFootGameTicker(spec.id);
 
   return (
     <div style={{ minHeight: "100vh", padding: "18px 14px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(40,180,90,.25), transparent 38%), linear-gradient(180deg, #06140b, #020604)" }}>
       <div style={{ maxWidth: 620, margin: "0 auto" }}>
-        <BackDot onClick={() => go("foot_config", { format: spec.id, config: cfg })} />
+        <div style={{ position: "relative", height: 96, marginBottom: 12, borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,.14)", boxShadow: "0 16px 38px rgba(0,0,0,.45)" }}>
+          <img src={tickerSrc} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", filter: "saturate(1.05) contrast(1.05)" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.62), rgba(0,0,0,.12), rgba(0,0,0,.62))" }} />
+          <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+            <BackDot onClick={() => go("foot_config", { format: spec.id, config: cfg })} />
+          </div>
+        </div>
         <h1 style={{ textAlign: "center", margin: "6px 0 4px", fontSize: 30 }}>{spec.label}</h1>
         <p style={{ textAlign: "center", margin: "0 0 14px", opacity: .72, fontWeight: 800 }}>{isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}</p>
 
