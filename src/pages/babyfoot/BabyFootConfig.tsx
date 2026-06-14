@@ -907,6 +907,103 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     );
   }
 
+  function SelectedTeamStrip({
+    team,
+    onClear,
+  }: {
+    team: BabyFootTeam | null;
+    onClear: () => void;
+  }) {
+    if (!team) return null;
+
+    const logo = team.logoDataUrl || team.regionLogoDataUrl || null;
+    const name = team.name || "Équipe";
+    const playersCount = Array.isArray((team as any).players)
+      ? (team as any).players.length
+      : Array.isArray((team as any).playerIds)
+        ? (team as any).playerIds.length
+        : 0;
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: 12,
+          borderRadius: 18,
+          background: "rgba(255,255,255,0.06)",
+          border: `1px solid ${primary}33`,
+          boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+          minWidth: 0,
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 14,
+            overflow: "hidden",
+            border: `1px solid ${primary}33`,
+            background: "rgba(0,0,0,0.24)",
+            display: "grid",
+            placeItems: "center",
+            flex: "0 0 auto",
+          }}
+        >
+          {logo ? (
+            <img
+              src={logo}
+              alt={name}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <div style={{ fontWeight: 1000, opacity: 0.9 }}>
+              {String(name).slice(0, 1).toUpperCase()}
+            </div>
+          )}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 1000,
+              opacity: 0.94,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {name}
+          </div>
+          <div style={{ marginTop: 3, fontSize: 12, opacity: 0.68, fontWeight: 800 }}>
+            {playersCount} joueur(s)
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClear}
+          style={{
+            border: `1px solid ${primary}33`,
+            background: "rgba(255,255,255,0.06)",
+            color: "#fff",
+            borderRadius: 999,
+            padding: "9px 12px",
+            fontWeight: 900,
+            cursor: "pointer",
+            flex: "0 0 auto",
+          }}
+        >
+          Retirer
+        </button>
+      </div>
+    );
+  }
+
+
   const aPlayersRef = useRef<HTMLDivElement | null>(null);
   const bPlayersRef = useRef<HTMLDivElement | null>(null);
 
