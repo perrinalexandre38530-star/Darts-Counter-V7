@@ -16,6 +16,9 @@ export type TeamSport = string;
 export type TeamEntity = {
   id: string;
   sport: TeamSport;
+  /** Sports associés : si allSports=true, l’équipe apparaît partout. Sinon sportIds contient les sports autorisés. */
+  allSports?: boolean;
+  sportIds?: TeamSport[];
   name: string;
   logoDataUrl?: string | null; // dataURL local ou URL média NAS (compat UI)
   logoUrl?: string | null;
@@ -62,6 +65,8 @@ export type TeamEntity = {
 export type PetanqueTeam = {
   id: string;
   name: string;
+  allSports?: boolean;
+  sportIds?: TeamSport[];
   countryCode?: string; // ex: "FR"
   countryName?: string; // ex: "France"
   regionCode?: string;
@@ -123,6 +128,21 @@ function normalizeSport(s: any): TeamSport {
   return raw;
 }
 
+function normalizeSportIds(value: any, fallbackSport?: any): TeamSport[] {
+  const raw = Array.isArray(value) ? value : [];
+  const out = raw.map(normalizeSport).filter(Boolean);
+  const fallback = normalizeSport(fallbackSport);
+  if (out.length === 0 && fallback) out.push(fallback);
+  return Array.from(new Set(out));
+}
+
+function teamMatchesSport(team: Pick<TeamEntity, "sport" | "allSports" | "sportIds">, sport: TeamSport): boolean {
+  const s = normalizeSport(sport);
+  if ((team as any).allSports === true) return true;
+  const ids = normalizeSportIds((team as any).sportIds, (team as any).sport);
+  return ids.includes(s) || normalizeSport((team as any).sport) === s;
+}
+
 function normalizeTextField(value: any): string | undefined {
   const s = typeof value === "string" ? value.trim() : "";
   return s || undefined;
@@ -166,6 +186,8 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   return {
     id,
     sport: normalizeSport(t.sport),
+    allSports: t.allSports === true,
+    sportIds: normalizeSportIds(t.sportIds, t.sport),
     name,
     logoDataUrl: normalizeImageRef(t.logoDataUrl, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo),
     logoUrl: logoUrl ?? null,
@@ -287,6 +309,8 @@ export function upsertTeam(team: TeamEntity) {
     logoUrl: normalizeTextField((team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl) ?? null,
     logoAssetId: normalizeTextField((team as any).logoAssetId || (team as any).logoMediaAssetId || (team as any).teamLogoAssetId || (team as any).avatarAssetId || (team as any).imageAssetId) ?? null,
     sport: normalizeSport(team.sport),
+    allSports: (team as any).allSports === true,
+    sportIds: normalizeSportIds((team as any).sportIds, team.sport),
 
     // Champs étendus
     countryCode: typeof team.countryCode === "string" ? team.countryCode.toUpperCase().slice(0, 2) : team.countryCode,
@@ -315,11 +339,13 @@ export function upsertTeam(team: TeamEntity) {
   return next;
 }
 
-export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?: string | null }): TeamEntity {
+export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?: string | null; allSports?: boolean; sportIds?: TeamSport[] }): TeamEntity {
   const ts = now();
   const t: TeamEntity = {
     id: makeTeamId(input.sport),
     sport: normalizeSport(input.sport),
+    allSports: input.allSports === true,
+    sportIds: normalizeSportIds(input.sportIds, input.sport),
     name: (input.name ?? "").trim(),
     logoDataUrl: normalizeImageRef(input.logoDataUrl),
     createdAt: ts,
@@ -332,7 +358,7 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
 
 export function updateTeam(
   teamId: string,
-  patch: Partial<Pick<TeamEntity, "name" | "logoDataUrl" | "sport">>
+  patch: Partial<Pick<TeamEntity, "name" | "logoDataUrl" | "sport" | "allSports" | "sportIds">>
 ): TeamEntity | null {
   const list = loadTeams();
   const idx = list.findIndex((t) => t.id === teamId);
@@ -345,6 +371,8 @@ export function updateTeam(
     ...patch,
     name: (patch.name ?? prev.name).trim(),
     sport: normalizeSport(patch.sport ?? prev.sport),
+    allSports: patch.allSports ?? prev.allSports,
+    sportIds: normalizeSportIds(patch.sportIds ?? prev.sportIds, patch.sport ?? prev.sport),
     logoDataUrl: normalizeImageRef(patch.logoDataUrl ?? prev.logoDataUrl, (patch as any).logoUrl ?? (prev as any).logoUrl),
     updatedAt: now(),
   };
@@ -363,7 +391,7 @@ export function deleteTeam(teamId: string) {
 
 export function loadTeamsBySport(sport: TeamSport): TeamEntity[] {
   const s = normalizeSport(sport);
-  return loadTeams().filter((t) => t.sport === s);
+  return loadTeams().filter((t) => teamMatchesSport(t, s));
 }
 
 // ---------------------------
@@ -389,6 +417,8 @@ export function loadPetanqueTeams(): PetanqueTeam[] {
   return list.map((t) => ({
     id: t.id,
     name: t.name,
+    allSports: t.allSports === true,
+    sportIds: normalizeSportIds(t.sportIds, t.sport),
     countryCode: t.countryCode ?? FALLBACK_CC,
     countryName: t.countryName ?? FALLBACK_CN,
     regionCode: t.regionCode ?? "",
@@ -536,6 +566,8 @@ export function deletePetanqueTeam(teamId: string) {
 export type BabyFootTeam = {
   id: string;
   name: string;
+  allSports?: boolean;
+  sportIds?: TeamSport[];
   countryCode?: string;
   countryName?: string;
   regionCode?: string;
@@ -596,6 +628,8 @@ export function loadBabyFootTeams(): BabyFootTeam[] {
   return list.map((t: any) => ({
     id: t.id,
     name: t.name,
+    allSports: t.allSports === true,
+    sportIds: normalizeSportIds(t.sportIds, t.sport),
     countryCode: t.countryCode ?? "FR",
     countryName: t.countryName ?? "France",
     regionCode: t.regionCode ?? "",

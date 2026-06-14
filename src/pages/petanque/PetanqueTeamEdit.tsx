@@ -38,6 +38,24 @@ function normalizeTeamSport(value: any): string {
   return raw || "darts";
 }
 
+const TEAM_SPORT_OPTIONS = [
+  { id: "darts", label: "Fléchettes" },
+  { id: "foot", label: "Foot" },
+  { id: "petanque", label: "Pétanque" },
+  { id: "babyfoot", label: "Baby-foot" },
+  { id: "pingpong", label: "Ping-pong" },
+  { id: "molkky", label: "Mölkky" },
+  { id: "dicegame", label: "Dés" },
+];
+
+function normalizeTeamSportIds(value: any, fallbackSport: string): string[] {
+  const raw = Array.isArray(value) ? value : [];
+  const out = raw.map(normalizeTeamSport).filter(Boolean);
+  const fallback = normalizeTeamSport(fallbackSport);
+  if (out.length === 0 && fallback) out.push(fallback);
+  return Array.from(new Set(out));
+}
+
 // -----------------------------
 // Data pays + régions (FR)
 // -----------------------------
@@ -196,9 +214,12 @@ const availableProfiles = React.useMemo(() => {
 }, [filteredProfiles, team.playerIds]);
 
   function save(next: PetanqueTeam) {
+    const selectedSports = normalizeTeamSportIds((next as any).sportIds, activeSport);
     const fixed: PetanqueTeam = {
-      sport: activeSport,
+      sport: selectedSports[0] || activeSport,
       ...next,
+      allSports: (next as any).allSports === true,
+      sportIds: selectedSports,
       name: (next.name || "").trim() || "Équipe",
       countryCode: String(next.countryCode || "FR")
         .toUpperCase()
@@ -280,6 +301,28 @@ const availableProfiles = React.useMemo(() => {
     });
   }
 
+  function setAllSports(enabled: boolean) {
+    save({
+      ...team,
+      allSports: enabled,
+      sportIds: enabled ? TEAM_SPORT_OPTIONS.map((s) => s.id) : normalizeTeamSportIds((team as any).sportIds, activeSport),
+    } as any);
+  }
+
+  function toggleTeamSport(sportId: string) {
+    const s = normalizeTeamSport(sportId);
+    const ids = normalizeTeamSportIds((team as any).sportIds, activeSport);
+    const has = ids.includes(s);
+    const nextIds = has ? ids.filter((x) => x !== s) : [...ids, s];
+
+    // On garde toujours au moins un sport associé.
+    save({
+      ...team,
+      allSports: false,
+      sportIds: nextIds.length ? nextIds : [activeSport],
+    } as any);
+  }
+
   function openCreateProfile() {
     setNewProfileName("");
     setNewProfileAvatar(null);
@@ -339,6 +382,9 @@ const availableProfiles = React.useMemo(() => {
     : null;
 
   // (legacy) si tu avais déjà un logo stocké dans team.regionLogoDataUrl
+  const selectedSportIds = normalizeTeamSportIds((team as any).sportIds, activeSport);
+  const teamAllSports = (team as any).allSports === true;
+
   const legacyRegionLogo = isFR ? resolveRegionLogo(team) : null;
 
   return (
@@ -695,6 +741,105 @@ const availableProfiles = React.useMemo(() => {
 
             <div style={{ height: 14 }} />
 
+            {/* Sports associés */}
+            <div>
+              <label style={label(theme)}>{t("teams.edit.sports", "Sports associés")}</label>
+
+              <button
+                type="button"
+                onClick={() => setAllSports(!teamAllSports)}
+                style={{
+                  ...input(theme),
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  marginBottom: 10,
+                }}
+                title={t("teams.edit.sports_all_hint", "Afficher cette équipe dans tous les sports")}
+              >
+                <span>{t("teams.edit.sports_all", "Tous les sports")}</span>
+                <span
+                  style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 999,
+                    border: `1px solid ${teamAllSports ? theme?.primary || "#28eaff" : theme?.borderSoft || "rgba(255,255,255,.16)"}`,
+                    background: teamAllSports ? "rgba(40,234,255,.22)" : "rgba(255,255,255,.06)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: teamAllSports ? "flex-end" : "flex-start",
+                    padding: 3,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 999,
+                      background: teamAllSports ? theme?.primary || "#28eaff" : "rgba(255,255,255,.45)",
+                      boxShadow: teamAllSports ? `0 0 12px ${theme?.primary || "#28eaff"}` : "none",
+                    }}
+                  />
+                </span>
+              </button>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, opacity: teamAllSports ? 0.55 : 1 }}>
+                {TEAM_SPORT_OPTIONS.map((sport) => {
+                  const checked = teamAllSports || selectedSportIds.includes(sport.id);
+                  return (
+                    <button
+                      key={sport.id}
+                      type="button"
+                      disabled={teamAllSports}
+                      onClick={() => toggleTeamSport(sport.id)}
+                      style={{
+                        borderRadius: 14,
+                        border: `1px solid ${checked ? theme?.primary || "#28eaff" : theme?.borderSoft || "rgba(255,255,255,.14)"}`,
+                        background: checked ? "rgba(40,234,255,.12)" : "rgba(255,255,255,.04)",
+                        color: theme?.text || "#fff",
+                        padding: "10px 10px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        textAlign: "left",
+                        cursor: teamAllSports ? "default" : "pointer",
+                        fontWeight: 850,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 6,
+                          border: `1px solid ${checked ? theme?.primary || "#28eaff" : "rgba(255,255,255,.28)"}`,
+                          background: checked ? theme?.primary || "#28eaff" : "rgba(0,0,0,.18)",
+                          color: "#001018",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 13,
+                          fontWeight: 1000,
+                          flex: "0 0 auto",
+                        }}
+                      >
+                        {checked ? "✓" : ""}
+                      </span>
+                      <span>{sport.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: 8, fontSize: 11, opacity: 0.68 }}>
+                {t("teams.edit.sports_hint", "L’équipe apparaîtra uniquement dans les sports cochés, sauf si “Tous les sports” est activé.")}
+              </div>
+            </div>
+
+            <div style={{ height: 14 }} />
+
             {/* Slogan */}
             <div>
               <label style={label(theme)}>
@@ -826,7 +971,7 @@ const availableProfiles = React.useMemo(() => {
 </div>
 
             <div style={{ marginTop: 14, fontSize: 11, opacity: 0.7 }}>
-              {t("teams.edit.hint", "Ces équipes sont utilisées uniquement en Pétanque.")}
+              {t("teams.edit.hint", "Cette équipe apparaît dans les sports sélectionnés ci-dessus.")}
             </div>
           </div>
         </div>
