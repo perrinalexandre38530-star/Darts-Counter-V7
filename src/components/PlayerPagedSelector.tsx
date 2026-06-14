@@ -146,6 +146,8 @@ export default function PlayerPagedSelector({
   modalTitle = "Choisir des joueurs",
   renderActions,
   renderAvatarOverlay,
+  closeOnSelect = false,
+  onAfterToggle,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -216,6 +218,15 @@ export default function PlayerPagedSelector({
     if (open) setPage(0);
   }, [open]);
 
+  const handlePick = React.useCallback((id: any) => {
+    onToggle?.(id);
+    onAfterToggle?.(id);
+    if (closeOnSelect) {
+      setOpen(false);
+      setListOpen(false);
+    }
+  }, [onToggle, onAfterToggle, closeOnSelect]);
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -228,7 +239,7 @@ export default function PlayerPagedSelector({
           {ordered.map((p: any) => {
             const active = selectedIdSet.has(String(p.id));
             return (
-              <button key={p.id} type="button" onClick={() => onToggle(p.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
+              <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
                 <span style={{ color: active ? accent : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
                 <ProfileAvatar profile={p} size={34} />
                 <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
@@ -263,7 +274,7 @@ export default function PlayerPagedSelector({
                   const active = selectedIdSet.has(String(p.id));
                   const lvl = profileLevel(p);
                   return (
-                    <button key={p.id} type="button" onClick={() => onToggle(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+                    <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
                         {lvl > 0 ? <ProfileStarRing botLevel={lvl} anchorSize={88} starSize={12} gapPx={-5} /> : null}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>

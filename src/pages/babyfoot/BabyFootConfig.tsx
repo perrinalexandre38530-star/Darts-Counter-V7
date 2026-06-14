@@ -591,8 +591,41 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const capA = mode === "2v2" || mode === "2v1" ? 2 : 1;
   const capB = mode === "2v2" ? 2 : 1;
 
-  const showTeamsPicker = mode === "2v2" || mode === "2v1";
-  const showTeamsPickerB = mode === "2v2";
+  const teamsModeAvailable = mode === "2v2" || mode === "2v1";
+  const [campSource, setCampSource] = useState<"manual" | "existing">("manual");
+  const useExistingTeams = teamsModeAvailable && campSource === "existing";
+  const showTeamsPicker = useExistingTeams;
+  const showTeamsPickerB = useExistingTeams && mode === "2v2";
+
+  type GuidedStep = "source" | "teamA" | "teamB" | "playerA" | "playerB" | "settings";
+  const firstGuidedStep: GuidedStep = teamsModeAvailable ? "source" : "playerA";
+  const [configMode, setConfigMode] = useState<"guided" | "full">("guided");
+  const [guidedStep, setGuidedStep] = useState<GuidedStep>(firstGuidedStep);
+
+  const guidedSteps = useMemo(() => {
+    const steps: GuidedStep[] = [];
+    if (teamsModeAvailable) steps.push("source");
+    if (useExistingTeams) steps.push("teamA");
+    if (useExistingTeams && mode === "2v2") steps.push("teamB");
+    steps.push("playerA", "playerB", "settings");
+    return steps;
+  }, [teamsModeAvailable, useExistingTeams, mode]);
+
+  useEffect(() => {
+    if (!guidedSteps.includes(guidedStep)) {
+      setGuidedStep(guidedSteps[0] || "playerA");
+    }
+  }, [guidedStep, guidedSteps]);
+
+  useEffect(() => {
+    if (!teamsModeAvailable && campSource !== "manual") setCampSource("manual");
+  }, [teamsModeAvailable, campSource]);
+
+  const guidedStepIndex = Math.max(0, guidedSteps.indexOf(guidedStep));
+  const goGuided = (delta: number) => {
+    const next = clamp(guidedStepIndex + delta, 0, guidedSteps.length - 1);
+    setGuidedStep(guidedSteps[next] || guidedSteps[0] || "playerA");
+  };
 
   const applyRulePreset = (preset: BabyFootRulePreset) => {
     setRulesPreset(preset);
@@ -662,7 +695,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (nextB?.id) setTeamBRefId(String(nextB.id));
   }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
 
-  const teamsReady = !showTeamsPicker || (mode === "2v1" ? !!teamARefId : !!teamARefId && !!teamBRefId);
+  const teamsReady = !useExistingTeams || (mode === "2v1" ? !!teamARefId : !!teamARefId && !!teamBRefId);
   const canStart = teamsReady && selA.length === capA && selB.length === capB && confirmA && confirmB;
 
   useEffect(() => {
@@ -674,6 +707,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setTeamBRefId("");
     setConfirmA(false);
     setConfirmB(false);
+    setConfigMode("guided");
+    setCampSource("manual");
+    setGuidedStep(mode === "2v2" || mode === "2v1" ? "source" : "playerA");
     try {
       setTeams("TEAM A", "TEAM B", { teamARefId: null, teamBRefId: null, teamALogoDataUrl: null, teamBLogoDataUrl: null } as any);
       setTeamsProfiles([], []);
@@ -756,11 +792,34 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setSelB([]);
     setConfirmA(false);
     setConfirmB(false);
+    setConfigMode("guided");
+    setGuidedStep(teamsModeAvailable ? "source" : "playerA");
     try {
       setTeamsProfiles([], []);
     } catch {
       // ignore
     }
+  };
+
+  const advanceAfterTeamPick = (side: "A" | "B") => {
+    window.setTimeout(() => {
+      if (side === "A") setGuidedStep(showTeamsPickerB ? "teamB" : "playerA");
+      else setGuidedStep("playerA");
+    }, 0);
+  };
+
+  const advanceAfterPlayerPick = (side: "A" | "B", idRaw: string) => {
+    const id = String(idRaw || "").trim();
+    if (!id) return;
+    const ids = side === "A" ? selA : selB;
+    const cap = side === "A" ? capA : capB;
+    const already = ids.map(String).includes(id);
+    const nextCount = already ? Math.max(0, ids.length - 1) : Math.min(cap, ids.length + 1);
+    if (nextCount < cap) return;
+    window.setTimeout(() => {
+      if (side === "A") setGuidedStep("playerB");
+      else setGuidedStep("settings");
+    }, 0);
   };
 
   const getProfileById = (id: string) =>
@@ -951,28 +1010,37 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       (p) => String((p as any)?.id) === String(selB[0] || "")
     ) as any;
 
+    const manualCampA = mode === "2v1" ? "TEAM GOLD" : "TEAM GOLD";
+    const manualCampB = mode === "2v1" ? String(playerB?.name || "JOUEUR SOLO") : "TEAM PINK";
+
     const nameA =
       mode === "1v1"
         ? String(playerA?.name || "JOUEUR A")
-        : teamAObj?.name || (saved as any).teamA || "TEAM A";
+        : useExistingTeams
+        ? teamAObj?.name || "TEAM A"
+        : manualCampA;
 
     const nameB =
       mode === "1v1"
         ? String(playerB?.name || "JOUEUR B")
         : mode === "2v1"
-        ? String(playerB?.name || "JOUEUR")
-        : teamBObj?.name || (saved as any).teamB || "TEAM B";
+        ? manualCampB
+        : useExistingTeams
+        ? teamBObj?.name || "TEAM B"
+        : "TEAM PINK";
 
     setTeams(nameA, nameB, {
-      teamARefId: teamAObj?.id ?? null,
-      teamBRefId: mode === "2v2" ? teamBObj?.id ?? null : null,
-      teamALogoDataUrl:
-        teamAObj?.logoDataUrl ?? teamAObj?.regionLogoDataUrl ?? null,
+      teamARefId: useExistingTeams ? teamAObj?.id ?? null : null,
+      teamBRefId: useExistingTeams && mode === "2v2" ? teamBObj?.id ?? null : null,
+      teamALogoDataUrl: useExistingTeams
+        ? teamAObj?.logoDataUrl ?? teamAObj?.regionLogoDataUrl ?? null
+        : null,
       teamBLogoDataUrl:
-        mode === "2v2"
+        useExistingTeams && mode === "2v2"
           ? teamBObj?.logoDataUrl ?? teamBObj?.regionLogoDataUrl ?? null
           : null,
-    });
+      campSource,
+    } as any);
 
     setTeamsProfiles(selA, selB);
     storeSetTarget(target);
@@ -1044,8 +1112,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     resetBabyFoot();
     const s = loadBabyFootState();
     setModeUI(s.mode);
-    setTeamARefId((s as any).teamARefId ? String((s as any).teamARefId) : "");
-    setTeamBRefId((s as any).teamBRefId ? String((s as any).teamBRefId) : "");
+    setTeamARefId("");
+    setTeamBRefId("");
+    setCampSource("manual");
     setTargetUI(s.target ?? 10);
     setUseTimer(!!(s as any).matchDurationSec);
     setDurationSec(Number((s as any).matchDurationSec ?? 180));
@@ -1086,6 +1155,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setSelB([]);
     setConfirmA(false);
     setConfirmB(false);
+    setConfigMode("guided");
+    setCampSource("manual");
+    setGuidedStep(mode === "2v2" || mode === "2v1" ? "source" : "playerA");
   };
 
   const backTo = (params as any)?.backTo || (params as any)?.from || "babyfoot_games";
@@ -1096,23 +1168,29 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const campALabel =
     mode === "1v1"
       ? t("bf_player_a", "Joueur A")
-      : mode === "2v1"
-      ? t("bf_team", "Équipe")
-      : t("bf_team_a", "Équipe A");
+      : useExistingTeams
+      ? mode === "2v1"
+        ? t("bf_team", "Équipe")
+        : t("bf_team_a", "Équipe A")
+      : "TEAM GOLD";
 
   const campBLabel =
     mode === "1v1"
       ? t("bf_player_b", "Joueur B")
       : mode === "2v1"
-      ? t("bf_player", "Joueur")
-      : t("bf_team_b", "Équipe B");
+      ? t("bf_player", "Joueur solo")
+      : useExistingTeams
+      ? t("bf_team_b", "Équipe B")
+      : "TEAM PINK";
 
   const campAName =
     mode === "1v1"
       ? (profiles.find(
           (p) => String((p as any)?.id) === String(selA[0] || "")
         ) as any)?.name || campALabel
-      : teamAObj?.name || campALabel;
+      : useExistingTeams
+      ? teamAObj?.name || campALabel
+      : campALabel;
 
   const campBName =
     mode === "1v1"
@@ -1123,7 +1201,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       ? (profiles.find(
           (p) => String((p as any)?.id) === String(selB[0] || "")
         ) as any)?.name || campBLabel
-      : teamBObj?.name || campBLabel;
+      : useExistingTeams
+      ? teamBObj?.name || campBLabel
+      : campBLabel;
 
   return (
     <div style={{ minHeight: "100vh", background: screenBg, color: "rgba(255,255,255,0.94)" }}>
@@ -1182,6 +1262,176 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           </div>
         ) : null}
 
+        <div style={{ ...cardStyle(cardBg), marginBottom: 12, border: `1px solid ${primary}22` }}>
+          {sectionTitle("TYPE DE CONFIGURATION", primary)}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <button type="button" onClick={() => setConfigMode("guided")} style={pillStyle(configMode === "guided", primary, primarySoft)}>Visite guidée</button>
+            <button type="button" onClick={() => setConfigMode("full")} style={pillStyle(configMode === "full", primary, primarySoft)}>Config complète</button>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, lineHeight: 1.4, fontWeight: 800 }}>
+            {configMode === "guided"
+              ? "Assistant étape par étape, comme la création tournoi : on choisit d’abord les camps, puis les joueurs, puis les paramètres."
+              : "Configuration classique complète avec tous les blocs affichés sur la page."}
+          </div>
+        </div>
+
+        {configMode === "guided" ? (
+          <>
+            <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+              {sectionTitle(`ÉTAPE ${guidedStepIndex + 1}/${guidedSteps.length}`, primary)}
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 12 }}>
+                {guidedSteps.map((step, idx) => {
+                  const label = step === "source" ? "Type de camps" : step === "teamA" ? (mode === "2v1" ? "Équipe 2 joueurs" : "Équipe domicile") : step === "teamB" ? "Équipe extérieur" : step === "playerA" ? "Joueurs A" : step === "playerB" ? "Joueurs B" : "Paramètres";
+                  return <button key={step} type="button" onClick={() => setGuidedStep(step)} style={pillStyle(guidedStep === step, primary, primarySoft)}>{idx + 1}. {label}</button>;
+                })}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 1000, marginBottom: 6 }}>
+                {guidedStep === "source" ? "Choisir la composition des camps" : guidedStep === "teamA" ? (mode === "2v1" ? "Choisir l’équipe à 2 joueurs" : "Choisir l’équipe domicile") : guidedStep === "teamB" ? "Choisir l’équipe extérieur" : guidedStep === "playerA" ? `Choisir ${capA} joueur${capA > 1 ? "s" : ""} pour ${campAName}` : guidedStep === "playerB" ? `Choisir ${capB} joueur${capB > 1 ? "s" : ""} pour ${campBName}` : "Régler les paramètres de la partie"}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 850, lineHeight: 1.4 }}>
+                {mode === "1v1" ? "Mode SOLO : joueur domicile, joueur extérieur, puis règles." : campSource === "existing" ? (mode === "2v1" ? "Équipe existante : choisis l’équipe à deux joueurs, puis le joueur solo." : "Équipes existantes : choisis les deux équipes, puis les joueurs de chaque camp.") : (mode === "2v1" ? "Sans équipe existante : choisis directement les deux joueurs TEAM GOLD puis le joueur solo." : "Sans équipe existante : choisis directement les joueurs et ils seront rangés en TEAM GOLD / TEAM PINK.")}
+              </div>
+            </div>
+
+
+            {guidedStep === "source" && teamsModeAvailable ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle("COMPOSITION DES CAMPS", primary)}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCampSource("manual");
+                      clearTeamSelection();
+                      setGuidedStep("playerA");
+                    }}
+                    style={pillStyle(campSource === "manual", primary, primarySoft)}
+                  >
+                    Sans équipe
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCampSource("existing");
+                      setSelA([]);
+                      setSelB([]);
+                      setGuidedStep("teamA");
+                    }}
+                    style={pillStyle(campSource === "existing", primary, primarySoft)}
+                  >
+                    Équipe existante
+                  </button>
+                </div>
+                <div style={{ marginTop: 12, fontSize: 12, opacity: 0.74, lineHeight: 1.45, fontWeight: 850 }}>
+                  <b>Sans équipe</b> : joueurs libres assignés directement en TEAM GOLD / TEAM PINK.
+                  <br />
+                  <b>Équipe existante</b> : sélection d’une équipe enregistrée, puis choix des joueurs qui jouent dans cette équipe.
+                </div>
+              </div>
+            ) : null}
+
+            {guidedStep === "teamA" && showTeamsPicker ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle(mode === "2v1" ? "ÉQUIPE À 2 JOUEURS" : "ÉQUIPE DOMICILE", primary)}
+                <TeamPagedSelector teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamBRefId || ""))} selectedIds={teamARefId ? [teamARefId] : []} onToggle={(id: string) => selectTeam("A", id)} onAfterToggle={() => advanceAfterTeamPick("A")} closeOnSelect accent={primary} pageSize={9} modalTitle={mode === "2v1" ? "Équipe à 2 joueurs" : "Équipe domicile"} chooseLabel="Choisir équipe" listLabel="Liste équipes" />
+                {teamARefId ? <div style={{ marginTop: 12 }}><SelectedTeamStrip team={teamAObj} onClear={() => { setTeamARefId(""); setSelA([]); }} /></div> : null}
+              </div>
+            ) : null}
+
+            {guidedStep === "teamB" && showTeamsPickerB ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle("ÉQUIPE EXTÉRIEUR", primary)}
+                <TeamPagedSelector teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamARefId || ""))} selectedIds={teamBRefId ? [teamBRefId] : []} onToggle={(id: string) => selectTeam("B", id)} onAfterToggle={() => advanceAfterTeamPick("B")} closeOnSelect accent={primary} pageSize={9} modalTitle="Équipe extérieur" chooseLabel="Choisir équipe" listLabel="Liste équipes" />
+                {teamBRefId ? <div style={{ marginTop: 12 }}><SelectedTeamStrip team={teamBObj} onClear={() => { setTeamBRefId(""); setSelB([]); }} /></div> : null}
+              </div>
+            ) : null}
+
+            {guidedStep === "playerA" ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle(`JOUEURS ${campAName}`, primary)}
+                <PlayerPagedSelector profiles={profilesForA} selectedIds={selA} onToggle={(id: string) => togglePlayer("A", id)} onAfterToggle={(id: string) => advanceAfterPlayerPick("A", id)} closeOnSelect={capA <= 1 || selA.length >= capA - 1} accent={primary} pageSize={9} modalTitle={`${campAName} · ${capA} joueur${capA > 1 ? "s" : ""}`} />
+                <div style={{ marginTop: 12 }}><SelectedPlayersStrip ids={selA} onEdit={() => setGuidedStep("playerA")} /></div>
+              </div>
+            ) : null}
+
+            {guidedStep === "playerB" ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle(`JOUEURS ${campBName}`, primary)}
+                <PlayerPagedSelector profiles={profilesForB} selectedIds={selB} onToggle={(id: string) => togglePlayer("B", id)} onAfterToggle={(id: string) => advanceAfterPlayerPick("B", id)} closeOnSelect={capB <= 1 || selB.length >= capB - 1} accent={primary} pageSize={9} modalTitle={`${campBName} · ${capB} joueur${capB > 1 ? "s" : ""}`} />
+                <div style={{ marginTop: 12 }}><SelectedPlayersStrip ids={selB} onEdit={() => setGuidedStep("playerB")} /></div>
+              </div>
+            ) : null}
+
+            {guidedStep === "settings" ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ ...cardStyle(cardBg) }}>
+                  {sectionTitle("RÉCAPITULATIF", primary)}
+                  <div style={{ display: "grid", gap: 8, fontSize: 13, fontWeight: 850, opacity: 0.88 }}>
+                    <div><b style={{ color: primary }}>Format :</b> {mode.toUpperCase()}</div>
+                    <div><b style={{ color: primary }}>Camp A :</b> {campAName} · {selA.length}/{capA} joueur{capA > 1 ? "s" : ""}</div>
+                    <div><b style={{ color: primary }}>Camp B :</b> {campBName} · {selB.length}/{capB} joueur{capB > 1 ? "s" : ""}</div>
+                    <div><b style={{ color: primary }}>Score :</b> {setsEnabled ? `BO${setsBestOf} · set en ${setTargetValue}` : `premier à ${target}`}</div>
+                    <div><b style={{ color: primary }}>Chrono :</b> {useTimer ? `${Math.round(durationSec / 60)} min` : "désactivé"}</div>
+                  </div>
+                </div>
+                <div style={{ ...cardStyle(cardBg) }}>
+                  {sectionTitle("PARAMÈTRES RAPIDES", primary)}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                    <div style={pillStyle(!setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(false)}>Score simple</div>
+                    <div style={pillStyle(setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(true)}>Sets</div>
+                    <div style={pillStyle(useTimer, primary, primarySoft)} onClick={() => setUseTimer((v) => !v)}>Chrono</div>
+                    <div style={pillStyle(goldenGoal, primary, primarySoft)} onClick={() => setGoldenGoal((v) => !v)}>Golden Goal</div>
+                  </div>
+                  <button type="button" onClick={() => setConfigMode("full")} style={pillStyle(true, primary, primarySoft)}>Afficher tous les paramètres</button>
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gridTemplateColumns: guidedStepIndex <= 0 ? "1fr" : "1fr 1fr", gap: 10, marginTop: 12 }}>
+              {guidedStepIndex > 0 ? <button type="button" onClick={() => goGuided(-1)} style={pillStyle(false, primary, primarySoft)}>Précédent</button> : null}
+              <button type="button" onClick={() => guidedStepIndex >= guidedSteps.length - 1 ? setConfigMode("full") : goGuided(1)} style={pillStyle(true, primary, primarySoft)}>{guidedStepIndex >= guidedSteps.length - 1 ? "Config complète" : "Suivant"}</button>
+            </div>
+          </>
+        ) : (
+          <>
+
+        {teamsModeAvailable ? (
+          <div style={{ ...cardStyle(cardBg), marginBottom: 12, border: `1px solid ${primary}18` }}>
+            {sectionTitle("COMPOSITION DES CAMPS", primary)}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCampSource("manual");
+                  clearTeamSelection();
+                }}
+                style={pillStyle(campSource === "manual", primary, primarySoft)}
+              >
+                Sans équipe
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCampSource("existing");
+                  setSelA([]);
+                  setSelB([]);
+                  setConfirmA(false);
+                  setConfirmB(false);
+                }}
+                style={pillStyle(campSource === "existing", primary, primarySoft)}
+              >
+                Équipe existante
+              </button>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, lineHeight: 1.4, fontWeight: 850 }}>
+              {campSource === "manual"
+                ? "Joueurs libres : ils seront assignés directement aux camps TEAM GOLD / TEAM PINK."
+                : "Équipes enregistrées : choisis les équipes, puis les joueurs qui jouent dans chaque camp."}
+            </div>
+          </div>
+        ) : null}
+
+
         {showTeamsPicker ? (
           <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
             {sectionTitle(t("bf_teams", "ÉQUIPES"), primary)}
@@ -1229,6 +1479,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                   teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamBRefId || ""))}
                   selectedIds={teamARefId ? [teamARefId] : []}
                   onToggle={(id: string) => selectTeam("A", id)}
+                  onAfterToggle={() => advanceAfterTeamPick("A")}
+                  closeOnSelect
                   accent={primary}
                   pageSize={9}
                   modalTitle={mode === "2v1" ? t("bf_team_2players", "Équipe (2 joueurs)") : t("bf_team_a", "Équipe A")}
@@ -1251,6 +1503,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                       teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamARefId || ""))}
                       selectedIds={teamBRefId ? [teamBRefId] : []}
                       onToggle={(id: string) => selectTeam("B", id)}
+                      onAfterToggle={() => advanceAfterTeamPick("B")}
+                      closeOnSelect
                       accent={primary}
                       pageSize={9}
                       modalTitle={t("bf_team_b", "Équipe B")}
@@ -1304,6 +1558,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             profiles={profilesForA}
             selectedIds={selA}
             onToggle={(id: string) => togglePlayer("A", id)}
+            onAfterToggle={(id: string) => advanceAfterPlayerPick("A", id)}
+            closeOnSelect={capA <= 1 || selA.length >= capA - 1}
             accent={primary}
             pageSize={9}
             modalTitle={`${campALabel} · ${capA} joueur${capA > 1 ? "s" : ""}`}
@@ -1318,6 +1574,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             profiles={profilesForB}
             selectedIds={selB}
             onToggle={(id: string) => togglePlayer("B", id)}
+            onAfterToggle={(id: string) => advanceAfterPlayerPick("B", id)}
+            closeOnSelect={capB <= 1 || selB.length >= capB - 1}
             accent={primary}
             pageSize={9}
             modalTitle={`${campBLabel} · ${capB} joueur${capB > 1 ? "s" : ""}`}
@@ -1645,6 +1903,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {t("bf_handicap_hint", "Handicap = malus : les buts de départ sont donnés à l’adversaire.")}
           </div>
         </div>
+        </>
+        )}
       </div>
 
 

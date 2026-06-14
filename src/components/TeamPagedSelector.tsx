@@ -28,6 +28,8 @@ export default function TeamPagedSelector({
   modalTitle = "Choisir des équipes",
   listLabel = "Liste équipes",
   chooseLabel = "Choisir équipes",
+  closeOnSelect = false,
+  onAfterToggle,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -49,6 +51,15 @@ export default function TeamPagedSelector({
     if (open) setPage(0);
   }, [open]);
 
+  const handlePick = React.useCallback((id: any) => {
+    onToggle?.(id);
+    onAfterToggle?.(id);
+    if (closeOnSelect) {
+      setOpen(false);
+      setListOpen(false);
+    }
+  }, [onToggle, onAfterToggle, closeOnSelect]);
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -61,7 +72,7 @@ export default function TeamPagedSelector({
           {ordered.map((team: any) => {
             const active = selectedIdSet.has(String(team.id));
             return (
-              <button key={team.id} type="button" onClick={() => onToggle(team.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr auto", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
+              <button key={team.id} type="button" onClick={() => handlePick(team.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr auto", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
                 <span style={{ color: active ? accent : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
                 <TeamMedallion team={team} accent={accent} size={34} active={active} />
                 <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(team)}</span>
@@ -96,7 +107,7 @@ export default function TeamPagedSelector({
                 {pageItems.map((team: any) => {
                   const active = selectedIdSet.has(String(team.id));
                   return (
-                    <button key={team.id} type="button" onClick={() => onToggle(team.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+                    <button key={team.id} type="button" onClick={() => handlePick(team.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <TeamMedallion team={team} accent={accent} size={86} active={active} />
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nameOf(team)}</div>
                       <div style={{ color: "rgba(255,255,255,.62)", fontSize: 11, fontWeight: 850 }}>{countPlayers(team)} joueur(s)</div>
