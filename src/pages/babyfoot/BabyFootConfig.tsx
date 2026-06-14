@@ -597,7 +597,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const showTeamsPicker = useExistingTeams;
   const showTeamsPickerB = useExistingTeams && mode === "2v2";
 
-  type GuidedStep = "source" | "teamA" | "teamB" | "playerA" | "playerB" | "settings";
+  type GuidedStep = "source" | "teamA" | "teamB" | "playerA" | "playerB" | "score" | "sets" | "timer" | "golden" | "advanced" | "summary";
   const firstGuidedStep: GuidedStep = teamsModeAvailable ? "source" : "playerA";
   const [configMode, setConfigMode] = useState<"guided" | "full">("guided");
   const [guidedStep, setGuidedStep] = useState<GuidedStep>(firstGuidedStep);
@@ -607,7 +607,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (teamsModeAvailable) steps.push("source");
     if (useExistingTeams) steps.push("teamA");
     if (useExistingTeams && mode === "2v2") steps.push("teamB");
-    steps.push("playerA", "playerB", "settings");
+    steps.push("playerA", "playerB", "score", "sets", "timer", "golden", "advanced", "summary");
     return steps;
   }, [teamsModeAvailable, useExistingTeams, mode]);
 
@@ -965,6 +965,39 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     { value: 90, label: t("bf_90s", "90 sec") },
   ];
 
+  const scoreLabel = (value: number) => scoreOptions.find((o) => o.value === value)?.label || `Premier à ${value}`;
+  const durationLabel = (value: number) => durationOptions.find((o) => o.value === value)?.label || `${Math.round(value / 60)} min`;
+  const overtimeLabel = (value: number) => overtimeOptions.find((o) => o.value === value)?.label || `${value} sec`;
+  const optionLabel = <T extends string>(items: Array<{ value: T; label: string }>, value: T) => items.find((o) => o.value === value)?.label || String(value);
+  const overtimeEnabled = useTimer && !goldenGoal && overtimeSec > 0;
+  const toggleGoldenGoal = () => {
+    setGoldenGoal((current) => {
+      const next = !current;
+      if (next) {
+        setOvertimeSec(0);
+        setOvertimeGoldenGoal(false);
+      }
+      return next;
+    });
+  };
+  const toggleOvertime = () => {
+    if (!useTimer) return;
+    if (overtimeSec > 0) {
+      setOvertimeSec(0);
+      return;
+    }
+    setGoldenGoal(false);
+    setOvertimeGoldenGoal(false);
+    setOvertimeSec(60);
+  };
+  const updateOvertimeSec = (value: number) => {
+    if (value > 0) {
+      setGoldenGoal(false);
+      setOvertimeGoldenGoal(false);
+    }
+    setOvertimeSec(value);
+  };
+
   const [infoOpen, setInfoOpen] = useState(false);
 
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -1049,7 +1082,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       matchDurationSec: useTimer ? durationSec : null,
       overtimeSec: useTimer ? overtimeSec : 0,
       goldenGoal,
-      overtimeGoldenGoal,
+      overtimeGoldenGoal: false,
       handicapA,
       handicapB,
       setsEnabled,
@@ -1281,12 +1314,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               {sectionTitle(`ÉTAPE ${guidedStepIndex + 1}/${guidedSteps.length}`, primary)}
               <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 12 }}>
                 {guidedSteps.map((step, idx) => {
-                  const label = step === "source" ? "Type de camps" : step === "teamA" ? (mode === "2v1" ? "Équipe 2 joueurs" : "Équipe domicile") : step === "teamB" ? "Équipe extérieur" : step === "playerA" ? "Joueurs A" : step === "playerB" ? "Joueurs B" : "Paramètres";
+                  const label = step === "source" ? "Type de camps" : step === "teamA" ? (mode === "2v1" ? "Équipe 2 joueurs" : "Équipe domicile") : step === "teamB" ? "Équipe extérieur" : step === "playerA" ? "Joueurs A" : step === "playerB" ? "Joueurs B" : step === "score" ? "Score" : step === "sets" ? "Sets" : step === "timer" ? "Chrono" : step === "golden" ? "Golden Goal" : step === "advanced" ? "Autres" : "Récap";
                   return <button key={step} type="button" onClick={() => setGuidedStep(step)} style={pillStyle(guidedStep === step, primary, primarySoft)}>{idx + 1}. {label}</button>;
                 })}
               </div>
               <div style={{ fontSize: 18, fontWeight: 1000, marginBottom: 6 }}>
-                {guidedStep === "source" ? "Choisir la composition des camps" : guidedStep === "teamA" ? (mode === "2v1" ? "Choisir l’équipe à 2 joueurs" : "Choisir l’équipe domicile") : guidedStep === "teamB" ? "Choisir l’équipe extérieur" : guidedStep === "playerA" ? `Choisir ${capA} joueur${capA > 1 ? "s" : ""} pour ${campAName}` : guidedStep === "playerB" ? `Choisir ${capB} joueur${capB > 1 ? "s" : ""} pour ${campBName}` : "Régler les paramètres de la partie"}
+                {guidedStep === "source" ? "Choisir la composition des camps" : guidedStep === "teamA" ? (mode === "2v1" ? "Choisir l’équipe à 2 joueurs" : "Choisir l’équipe domicile") : guidedStep === "teamB" ? "Choisir l’équipe extérieur" : guidedStep === "playerA" ? `Choisir ${capA} joueur${capA > 1 ? "s" : ""} pour ${campAName}` : guidedStep === "playerB" ? `Choisir ${capB} joueur${capB > 1 ? "s" : ""} pour ${campBName}` : guidedStep === "score" ? "Régler le score de la partie" : guidedStep === "sets" ? "Régler le format en sets" : guidedStep === "timer" ? "Régler le chrono" : guidedStep === "golden" ? "Régler le Golden Goal" : guidedStep === "advanced" ? "Régler les règles spéciales" : "Vérifier le récapitulatif"}
               </div>
               <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 850, lineHeight: 1.4 }}>
                 {mode === "1v1" ? "Mode SOLO : joueur domicile, joueur extérieur, puis règles." : campSource === "existing" ? (mode === "2v1" ? "Équipe existante : choisis l’équipe à deux joueurs, puis le joueur solo." : "Équipes existantes : choisis les deux équipes, puis les joueurs de chaque camp.") : (mode === "2v1" ? "Sans équipe existante : choisis directement les deux joueurs TEAM GOLD puis le joueur solo." : "Sans équipe existante : choisis directement les joueurs et ils seront rangés en TEAM GOLD / TEAM PINK.")}
@@ -1362,31 +1395,173 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               </div>
             ) : null}
 
-            {guidedStep === "settings" ? (
+            {guidedStep === "score" ? (
               <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ ...cardStyle(cardBg) }}>
-                  {sectionTitle("RÉCAPITULATIF", primary)}
-                  <div style={{ display: "grid", gap: 8, fontSize: 13, fontWeight: 850, opacity: 0.88 }}>
-                    <div><b style={{ color: primary }}>Format :</b> {mode.toUpperCase()}</div>
-                    <div><b style={{ color: primary }}>Camp A :</b> {campAName} · {selA.length}/{capA} joueur{capA > 1 ? "s" : ""}</div>
-                    <div><b style={{ color: primary }}>Camp B :</b> {campBName} · {selB.length}/{capB} joueur{capB > 1 ? "s" : ""}</div>
-                    <div><b style={{ color: primary }}>Score :</b> {setsEnabled ? `BO${setsBestOf} · set en ${setTargetValue}` : `premier à ${target}`}</div>
-                    <div><b style={{ color: primary }}>Chrono :</b> {useTimer ? `${Math.round(durationSec / 60)} min` : "désactivé"}</div>
+                  {sectionTitle("SCORE", primary)}
+                  <div>
+                    <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
+                      {t("bf_target", "Score cible")}
+                    </div>
+                    <select
+                      value={target === 5 || target === 10 ? target : "custom"}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) setTargetUI(v);
+                      }}
+                      style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}
+                    >
+                      {scoreOptions.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <div style={pillStyle(requireTwoGoalLead, primary, primarySoft)} onClick={() => setRequireTwoGoalLead((v) => !v)}>
+                      {t("bf_win_by_two", "2 buts d'écart")}
+                    </div>
+                    {useTimer ? <div style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)} onClick={() => setAllowDrawOnTimeEnd((v) => !v)}>{t("bf_allow_draw", "Match nul")}</div> : null}
                   </div>
                 </div>
                 <div style={{ ...cardStyle(cardBg) }}>
-                  {sectionTitle("PARAMÈTRES RAPIDES", primary)}
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                    <div style={pillStyle(!setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(false)}>Score simple</div>
-                    <div style={pillStyle(setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(true)}>Sets</div>
-                    <div style={pillStyle(useTimer, primary, primarySoft)} onClick={() => setUseTimer((v) => !v)}>Chrono</div>
-                    <div style={pillStyle(goldenGoal, primary, primarySoft)} onClick={() => setGoldenGoal((v) => !v)}>Golden Goal</div>
+                  {sectionTitle(t("bf_handicap", "HANDICAP"), primary)}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>{mode === "1v1" ? t("bf_player_a", "Joueur A") : t("bf_team_a", "Équipe A")}</div><input type="number" value={handicapA} min={0} max={99} onChange={(e) => setHandicapA(clamp(Number(e.target.value || 0), 0, 99))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }} /></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>{mode === "1v1" ? t("bf_player_b", "Joueur B") : mode === "2v1" ? t("bf_player", "Joueur") : t("bf_team_b", "Équipe B")}</div><input type="number" value={handicapB} min={0} max={99} onChange={(e) => setHandicapB(clamp(Number(e.target.value || 0), 0, 99))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }} /></div>
                   </div>
-                  <button type="button" onClick={() => setConfigMode("full")} style={pillStyle(true, primary, primarySoft)}>Afficher tous les paramètres</button>
+                  <div style={{ marginTop: 10, fontSize: 12, opacity: 0.70 }}>{t("bf_handicap_hint", "Handicap = malus : les buts de départ sont donnés à l’adversaire.")}</div>
                 </div>
               </div>
             ) : null}
 
+            {guidedStep === "sets" ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle("SETS", primary)}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1.1 }}>JOUER EN SETS</div>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+                    <div style={pillStyle(!setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(false)}>OFF</div>
+                    <div style={pillStyle(setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(true)}>ON</div>
+                  </div>
+                </div>
+                {setsEnabled ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>{t("bf_bestof", "Best Of")}</div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {[1, 3, 5].map((bo) => <div key={bo} style={pillStyle(setsBestOf === bo, primary, primarySoft)} onClick={() => setSetsBestOf(bo as any)}>BO{bo}</div>)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Score cible par set</div>
+                      <select value={setTargetValue === 5 || setTargetValue === 10 ? setTargetValue : 5} onChange={(e) => setSetTargetValue(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                        {scoreOptions.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ) : <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.45, fontWeight: 850 }}>Sets désactivés : la partie se joue en score simple.</div>}
+              </div>
+            ) : null}
+
+            {guidedStep === "timer" ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle("CHRONO", primary)}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1.1 }}>CHRONO DE MATCH</div>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+                    <div style={pillStyle(!useTimer, primary, primarySoft)} onClick={() => setUseTimer(false)}>OFF</div>
+                    <div style={pillStyle(useTimer, primary, primarySoft)} onClick={() => setUseTimer(true)}>ON</div>
+                  </div>
+                </div>
+                {useTimer ? (
+                  <div>
+                    <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>{t("bf_duration", "Durée")}</div>
+                    <select value={durationSec} onChange={(e) => setDurationSec(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                      {durationOptions.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {guidedStep === "golden" ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle("GOLDEN GOAL / PROLONGATION", primary)}
+                <div style={{ fontSize: 12, opacity: 0.76, lineHeight: 1.45, fontWeight: 850, marginBottom: 10 }}>
+                  Choisis une seule option en cas d’égalité à la fin du temps réglementaire : but en or immédiat OU prolongation chronométrée.
+                </div>
+                {!useTimer ? (
+                  <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.45, fontWeight: 850 }}>
+                    Active d’abord le chrono pour utiliser le Golden Goal ou une prolongation.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={pillStyle(goldenGoal, primary, primarySoft)} onClick={toggleGoldenGoal}>Golden Goal {goldenGoal ? "ON" : "OFF"}</div>
+                      <div style={pillStyle(overtimeEnabled, primary, primarySoft)} onClick={toggleOvertime}>Prolongation {overtimeEnabled ? "ON" : "OFF"}</div>
+                      <div style={{ marginLeft: "auto" }}><div onClick={() => setInfoOpen(true)} style={iconBtnStyle()} title={t("info", "Info")}>?</div></div>
+                    </div>
+                    {overtimeEnabled ? (
+                      <div>
+                        <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Durée de prolongation</div>
+                        <select value={overtimeSec} onChange={(e) => updateOvertimeSec(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                          {overtimeOptions.filter((o) => o.value > 0).map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+                        </select>
+                        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.72, lineHeight: 1.4 }}>La prolongation peut se terminer sur un match nul si l’égalité reste parfaite à la fin du temps ajouté.</div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {guidedStep === "advanced" ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ ...cardStyle(cardBg) }}>
+                  {sectionTitle("RÈGLES SPÉCIALES", primary)}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                    <div style={pillStyle(rulesPreset === "competition", primary, primarySoft)} onClick={() => applyRulePreset("competition")}>RÈGLE DE COMPÉTITION</div>
+                    <div style={pillStyle(rulesPreset === "bar", primary, primarySoft)} onClick={() => applyRulePreset("bar")}>RÈGLE DE BAR</div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Demi</div><select value={demiRule} onChange={(e) => setDemiRule(e.target.value as BabyFootDemiRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>{DEMI_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}</select></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pissette</div><select value={pissetteRule} onChange={(e) => setPissetteRule(e.target.value as BabyFootPissetteRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>{PISSETTE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}</select></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Gamelle</div><select value={gamelleRule} onChange={(e) => setGamelleRule(e.target.value as BabyFootGamelleRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>{GAMELLE_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}</select></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche offensive</div><select value={pecheOffRule} onChange={(e) => setPecheOffRule(e.target.value as BabyFootPecheOffRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>{PECHE_OFF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}</select></div>
+                    <div><div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Pêche défensive</div><select value={pecheDefRule} onChange={(e) => setPecheDefRule(e.target.value as BabyFootPecheDefRule)} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>{PECHE_DEF_OPTIONS.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}</select></div>
+                  </div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <div style={pillStyle(allowRoulette, primary, primarySoft)} onClick={() => setAllowRoulette((v) => !v)}>Roulette {allowRoulette ? "ON" : "OFF"}</div>
+                    <div style={pillStyle(allowTacles, primary, primarySoft)} onClick={() => setAllowTacles((v) => !v)}>Tacles {allowTacles ? "ON" : "OFF"}</div>
+                    <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Lob / choc {allowLobShot ? "ON" : "OFF"}</div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {guidedStep === "summary" ? (
+              <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+                {sectionTitle("RÉCAPITULATIF", primary)}
+                <div style={{ display: "grid", gap: 8, fontSize: 13, fontWeight: 850, opacity: 0.88 }}>
+                  <div><b style={{ color: primary }}>Format :</b> {mode.toUpperCase()}</div>
+                  <div><b style={{ color: primary }}>Composition :</b> {useExistingTeams ? "Équipes existantes" : "Sans équipe existante"}</div>
+                  <div><b style={{ color: primary }}>Camp A :</b> {campAName} · {selA.length}/{capA} joueur{capA > 1 ? "s" : ""}</div>
+                  <div><b style={{ color: primary }}>Camp B :</b> {campBName} · {selB.length}/{capB} joueur{capB > 1 ? "s" : ""}</div>
+                  <div><b style={{ color: primary }}>Mode score :</b> {setsEnabled ? `Sets BO${setsBestOf}` : "Score simple"}</div>
+                  <div><b style={{ color: primary }}>Score cible :</b> {setsEnabled ? `${scoreLabel(setTargetValue)} par set` : scoreLabel(target)}</div>
+                  <div><b style={{ color: primary }}>2 buts d’écart :</b> {requireTwoGoalLead ? "ON" : "OFF"}</div>
+                  <div><b style={{ color: primary }}>Handicap :</b> A +{handicapA} / B +{handicapB}</div>
+                  <div><b style={{ color: primary }}>Chrono :</b> {useTimer ? durationLabel(durationSec) : "désactivé"}</div>
+                  <div><b style={{ color: primary }}>Match nul :</b> {useTimer && allowDrawOnTimeEnd ? "autorisé" : "non"}</div>
+                  <div><b style={{ color: primary }}>Fin en cas d’égalité :</b> {!useTimer ? "sans chrono" : goldenGoal ? "Golden Goal" : overtimeEnabled ? `Prolongation ${overtimeLabel(overtimeSec)}` : allowDrawOnTimeEnd ? "match nul possible" : "aucune option spéciale"}</div>
+                  <div><b style={{ color: primary }}>Règles :</b> {rulesPreset === "bar" ? "Bar" : "Compétition"}</div>
+                  <div><b style={{ color: primary }}>Demi :</b> {optionLabel(DEMI_OPTIONS, demiRule)}</div>
+                  <div><b style={{ color: primary }}>Pissette :</b> {optionLabel(PISSETTE_OPTIONS, pissetteRule)}</div>
+                  <div><b style={{ color: primary }}>Gamelle :</b> {optionLabel(GAMELLE_OPTIONS, gamelleRule)}</div>
+                  <div><b style={{ color: primary }}>Pêche offensive :</b> {optionLabel(PECHE_OFF_OPTIONS, pecheOffRule)}</div>
+                  <div><b style={{ color: primary }}>Pêche défensive :</b> {optionLabel(PECHE_DEF_OPTIONS, pecheDefRule)}</div>
+                  <div><b style={{ color: primary }}>Options :</b> Roulette {allowRoulette ? "ON" : "OFF"} · Tacles {allowTacles ? "ON" : "OFF"} · Lob/choc {allowLobShot ? "ON" : "OFF"}</div>
+                </div>
+              </div>
+            ) : null}
             <div style={{ display: "grid", gridTemplateColumns: guidedStepIndex <= 0 ? "1fr" : "1fr 1fr", gap: 10, marginTop: 12 }}>
               {guidedStepIndex > 0 ? <button type="button" onClick={() => goGuided(-1)} style={pillStyle(false, primary, primarySoft)}>Précédent</button> : null}
               <button type="button" onClick={() => guidedStepIndex >= guidedSteps.length - 1 ? setConfigMode("full") : goGuided(1)} style={pillStyle(true, primary, primarySoft)}>{guidedStepIndex >= guidedSteps.length - 1 ? "Config complète" : "Suivant"}</button>
@@ -1677,6 +1852,29 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 </div>
               ) : null}
             </div>
+
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
+                {t("bf_handicap", "HANDICAP")}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 850, marginBottom: 6 }}>
+                    {mode === "1v1" ? t("bf_player_a", "Joueur A") : t("bf_team_a", "Équipe A")}
+                  </div>
+                  <input type="number" value={handicapA} min={0} max={99} onChange={(e) => setHandicapA(clamp(Number(e.target.value || 0), 0, 99))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 850, marginBottom: 6 }}>
+                    {mode === "1v1" ? t("bf_player_b", "Joueur B") : mode === "2v1" ? t("bf_player", "Joueur") : t("bf_team_b", "Équipe B")}
+                  </div>
+                  <input type="number" value={handicapB} min={0} max={99} onChange={(e) => setHandicapB(clamp(Number(e.target.value || 0), 0, 99))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }} />
+                </div>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.70 }}>
+                {t("bf_handicap_hint", "Handicap = malus : les buts de départ sont donnés à l’adversaire.")}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1762,147 +1960,60 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           </div>
 
           {useTimer ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
-                  {t("bf_duration", "Durée")}
-                </div>
-                <select
-                  value={durationSec}
-                  onChange={(e) => setDurationSec(Number(e.target.value))}
-                  style={{
-                    width: "100%",
-                    borderRadius: 14,
-                    padding: "12px 12px",
-                    background: "rgba(255,255,255,0.06)",
-                    border: `1px solid ${primary}22`,
-                    color: "rgba(255,255,255,0.92)",
-                    outline: "none",
-                    fontWeight: 950,
-                  }}
-                >
-                  {durationOptions.map((o) => (
-                    <option key={o.value} value={o.value} style={{ color: "#111" }}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
+                {t("bf_duration", "Durée")}
               </div>
-
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
-                  {t("bf_overtime", "Prolongation")}
-                </div>
-                <select
-                  value={overtimeSec}
-                  onChange={(e) => setOvertimeSec(Number(e.target.value))}
-                  style={{
-                    width: "100%",
-                    borderRadius: 14,
-                    padding: "12px 12px",
-                    background: "rgba(255,255,255,0.06)",
-                    border: `1px solid ${primary}22`,
-                    color: "rgba(255,255,255,0.92)",
-                    outline: "none",
-                    fontWeight: 950,
-                  }}
-                >
-                  {overtimeOptions.map((o) => (
-                    <option key={o.value} value={o.value} style={{ color: "#111" }}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={pillStyle(goldenGoal, primary, primarySoft)} onClick={() => setGoldenGoal((v) => !v)}>
-                  Golden Goal
-                </div>
-                <div style={pillStyle(overtimeGoldenGoal, primary, primarySoft)} onClick={() => setOvertimeGoldenGoal((v) => !v)}>
-                  OT Golden Goal
-                </div>
-
-                <div style={{ marginLeft: "auto" }}>
-                  <div onClick={() => setInfoOpen(true)} style={iconBtnStyle()} title={t("info", "Info")}>
-                    ?
-                  </div>
-                </div>
-              </div>
+              <select
+                value={durationSec}
+                onChange={(e) => setDurationSec(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  borderRadius: 14,
+                  padding: "12px 12px",
+                  background: "rgba(255,255,255,0.06)",
+                  border: `1px solid ${primary}22`,
+                  color: "rgba(255,255,255,0.92)",
+                  outline: "none",
+                  fontWeight: 950,
+                }}
+              >
+                {durationOptions.map((o) => (
+                  <option key={o.value} value={o.value} style={{ color: "#111" }}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
+          ) : null}
+        </div>
+
+        <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
+          {sectionTitle("GOLDEN GOAL / PROLONGATION", primary)}
+          <div style={{ fontSize: 12, opacity: 0.76, lineHeight: 1.45, marginBottom: 10 }}>
+            En cas d’égalité à la fin du temps réglementaire, choisis soit un but en or immédiat, soit une prolongation chronométrée. Les deux sont exclusifs.
+          </div>
+          {!useTimer ? (
+            <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.45 }}>Active le chrono pour utiliser ces options.</div>
           ) : (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={pillStyle(goldenGoal, primary, primarySoft)} onClick={() => setGoldenGoal((v) => !v)}>
-                Golden Goal
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={pillStyle(goldenGoal, primary, primarySoft)} onClick={toggleGoldenGoal}>Golden Goal {goldenGoal ? "ON" : "OFF"}</div>
+                <div style={pillStyle(overtimeEnabled, primary, primarySoft)} onClick={toggleOvertime}>Prolongation {overtimeEnabled ? "ON" : "OFF"}</div>
+                <div style={{ marginLeft: "auto" }}><div onClick={() => setInfoOpen(true)} style={iconBtnStyle()} title={t("info", "Info")}>?</div></div>
               </div>
-              <div style={pillStyle(overtimeGoldenGoal, primary, primarySoft)} onClick={() => setOvertimeGoldenGoal((v) => !v)}>
-                OT Golden Goal
-              </div>
-              <div style={{ marginLeft: "auto" }}>
-                <div onClick={() => setInfoOpen(true)} style={iconBtnStyle()} title={t("info", "Info")}>
-                  ?
+              {overtimeEnabled ? (
+                <div>
+                  <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Durée de prolongation</div>
+                  <select value={overtimeSec} onChange={(e) => updateOvertimeSec(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                    {overtimeOptions.filter((o) => o.value > 0).map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
+                  </select>
                 </div>
-              </div>
+              ) : null}
             </div>
           )}
         </div>
 
-        <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
-          {sectionTitle(t("bf_handicap", "HANDICAP"), primary)}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
-                {mode === "1v1" ? t("bf_player_a", "Joueur A") : t("bf_team_a", "Équipe A")}
-              </div>
-              <input
-                type="number"
-                value={handicapA}
-                min={0}
-                max={99}
-                onChange={(e) => setHandicapA(clamp(Number(e.target.value || 0), 0, 99))}
-                style={{
-                  width: "100%",
-                  borderRadius: 14,
-                  padding: "12px 12px",
-                  background: "rgba(255,255,255,0.06)",
-                  border: `1px solid ${primary}22`,
-                  color: "rgba(255,255,255,0.92)",
-                  outline: "none",
-                  fontWeight: 950,
-                }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
-                {mode === "1v1"
-                  ? t("bf_player_b", "Joueur B")
-                  : mode === "2v1"
-                  ? t("bf_player", "Joueur")
-                  : t("bf_team_b", "Équipe B")}
-              </div>
-              <input
-                type="number"
-                value={handicapB}
-                min={0}
-                max={99}
-                onChange={(e) => setHandicapB(clamp(Number(e.target.value || 0), 0, 99))}
-                style={{
-                  width: "100%",
-                  borderRadius: 14,
-                  padding: "12px 12px",
-                  background: "rgba(255,255,255,0.06)",
-                  border: `1px solid ${primary}22`,
-                  color: "rgba(255,255,255,0.92)",
-                  outline: "none",
-                  fontWeight: 950,
-                }}
-              />
-            </div>
-          </div>
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.70 }}>
-            {t("bf_handicap_hint", "Handicap = malus : les buts de départ sont donnés à l’adversaire.")}
-          </div>
-        </div>
         </>
         )}
       </div>
@@ -1972,27 +2083,24 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
       <Modal
         open={infoOpen}
-        title={t("bf_rules_info", "Golden Goal — explications")}
+        title={t("bf_rules_info", "Golden Goal / Prolongation — explications")}
         onClose={() => setInfoOpen(false)}
       >
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontWeight: 1000, marginBottom: 4 }}>Golden Goal</div>
             <div style={{ opacity: 0.9 }}>
-              À la fin du temps réglementaire, si le score est à égalité,{" "}
-              <b>le prochain but gagné termine le match</b>.
+              À la fin du temps réglementaire, si le score est à égalité, <b>le prochain but termine le match</b>.
             </div>
           </div>
           <div>
-            <div style={{ fontWeight: 1000, marginBottom: 4 }}>OT Golden Goal</div>
+            <div style={{ fontWeight: 1000, marginBottom: 4 }}>Prolongation</div>
             <div style={{ opacity: 0.9 }}>
-              Si le match est à égalité, on joue d’abord la <b>prolongation</b>. Pendant
-              la prolongation, <b> le prochain but peut terminer le match</b> (si activé).
+              Si le match est à égalité, on ajoute une durée de prolongation. Si l’égalité reste parfaite au bout de cette durée, <b>la partie peut finir sur un match nul</b>.
             </div>
           </div>
           <div style={{ opacity: 0.78, fontSize: 12 }}>
-            Astuce : si tu actives <b>Match nul</b>, le Golden Goal ne s’applique pas à la
-            fin du temps réglementaire.
+            Golden Goal et Prolongation sont exclusifs : activer l’un désactive automatiquement l’autre.
           </div>
         </div>
       </Modal>

@@ -9,7 +9,8 @@ import { getFootGameTicker } from "./footTickers";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; store?: any };
 type SourceMode = "manual" | "saved";
-
+type ConfigMode = "guided" | "full";
+type GuidedStep = "source" | "teams" | "teamPlayers" | "players" | "params" | "summary";
 
 type TeamSlot = {
   name: string;
@@ -68,6 +69,8 @@ export default function FootConfig({ go, params, store }: Props) {
   const [breakMinutes, setBreakMinutes] = React.useState(5);
   const [shoots, setShoots] = React.useState(5);
   const [rulesOpen, setRulesOpen] = React.useState(false);
+  const [configMode, setConfigMode] = React.useState<ConfigMode>("guided");
+  const [guidedStep, setGuidedStep] = React.useState<GuidedStep>(spec.kind === "team" ? "source" : "players");
 
   React.useEffect(() => {
     setMinutes(spec.minutesPerPeriod);
@@ -140,6 +143,50 @@ export default function FootConfig({ go, params, store }: Props) {
 
   const ready = spec.kind === "duel" ? selectedIds.length === 2 : sourceMode === "saved" ? savedTeamsReady : selectedIds.length === requiredPlayers;
 
+  const guidedSteps = React.useMemo<GuidedStep[]>(() => {
+    const steps: GuidedStep[] = [];
+    if (spec.kind === "team") steps.push("source");
+    if (spec.kind === "team" && sourceMode === "saved") {
+      steps.push("teams", "teamPlayers");
+    } else {
+      steps.push("players");
+    }
+    steps.push("params", "summary");
+    return steps;
+  }, [spec.kind, sourceMode]);
+
+  React.useEffect(() => {
+    if (!guidedSteps.includes(guidedStep)) setGuidedStep(guidedSteps[0] || "players");
+  }, [guidedStep, guidedSteps]);
+
+  const guidedIndex = Math.max(0, guidedSteps.indexOf(guidedStep));
+  const canGoPrev = guidedIndex > 0;
+  const canGoNext = guidedIndex < guidedSteps.length - 1;
+
+  function isStepComplete(step: GuidedStep) {
+    if (step === "source") return spec.kind !== "team" || sourceMode === "manual" || sourceMode === "saved";
+    if (step === "teams") return selectedTeamIds.length === 2;
+    if (step === "teamPlayers") return savedTeamsReady;
+    if (step === "players") return spec.kind === "duel" ? selectedIds.length === 2 : selectedIds.length === requiredPlayers;
+    if (step === "params") return spec.id === "penalty" ? shoots > 0 : minutes > 0 && periods > 0;
+    if (step === "summary") return ready;
+    return true;
+  }
+
+  function stepLabel(step: GuidedStep) {
+    if (step === "source") return "Source";
+    if (step === "teams") return "Équipes";
+    if (step === "teamPlayers") return "Titulaires";
+    if (step === "players") return spec.kind === "duel" ? "Joueurs" : "Joueurs";
+    if (step === "params") return "Paramètres";
+    return "Récap";
+  }
+
+  function goStep(delta: number) {
+    const next = guidedSteps[clamp(guidedIndex + delta, 0, guidedSteps.length - 1)];
+    if (next) setGuidedStep(next);
+  }
+
   const buildTeamSlots = (): [TeamSlot, TeamSlot] => {
     if (spec.kind === "duel") {
       const a = selectedProfiles[0];
@@ -190,6 +237,146 @@ export default function FootConfig({ go, params, store }: Props) {
     });
   };
 
+  const SourceChoice = () => (
+    <section style={cardStyle()}>
+      <h2 style={sectionTitle(primary)}>SOURCE DES PARTICIPANTS</h2>
+      <p style={hintStyle}>
+        Choisis si tu composes les équipes manuellement ou si tu pars de tes équipes enregistrées. Ensuite, on choisit les joueurs exacts du match pour rattacher les stats à chaque profil.
+      </p>
+      {spec.kind === "team" ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Pill label="Manuel" active={sourceMode === "manual"} onClick={() => setSourceMode("manual")} primary={primary} primarySoft={primarySoft} />
+          <Pill label="Équipes enregistrées" active={sourceMode === "saved"} onClick={() => setSourceMode("saved")} primary={primary} primarySoft={primarySoft} />
+        </div>
+      ) : (
+        <div style={emptyStyle}>Ce format se joue en duel : sélection directe de 2 profils.</div>
+      )}
+    </section>
+  );
+
+  const TeamsChoice = () => (
+    <section style={cardStyle()}>
+      <h2 style={sectionTitle(primary)}>ÉQUIPES DU MATCH</h2>
+      <p style={hintStyle}>Choisis l’équipe domicile puis l’équipe extérieur. Le choix des titulaires arrive juste après.</p>
+      <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+    </section>
+  );
+
+  const TeamPlayersChoice = () => (
+    <section style={cardStyle()}>
+      <h2 style={sectionTitle(primary)}>JOUEURS DU MATCH</h2>
+      <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+    </section>
+  );
+
+  const ManualPlayersChoice = () => (
+    <section style={cardStyle()}>
+      <h2 style={sectionTitle(primary)}>PARTICIPANTS</h2>
+      <p style={hintStyle}>
+        {spec.kind === "duel"
+          ? "Sélectionne exactement 2 profils pour lancer le duel."
+          : `Sélectionne ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs au total.`}
+      </p>
+      {profiles.length === 0 ? (
+        <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
+      ) : (
+        <PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+      )}
+      <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
+    </section>
+  );
+
+  const ParamsChoice = () => (
+    <section style={cardStyle()}>
+      <h2 style={sectionTitle(primary)}>PARAMÈTRES DU MATCH</h2>
+      {spec.id === "penalty" ? (
+        <OptionGrid label="Tirs par camp" value={shoots} setValue={setShoots} options={[3, 5, 7, 10]} suffix=" tirs" />
+      ) : (
+        <div style={compactParamsGrid}>
+          <OptionSelect
+            label="Temps d’une mi-temps"
+            value={minutes}
+            setValue={setMinutes}
+            options={[3, 5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45]}
+            suffix=" min"
+          />
+          <OptionSelect
+            label="Nombre de mi-temps"
+            value={periods}
+            setValue={setPeriods}
+            options={[1, 2]}
+            suffix={periods > 1 ? " mi-temps" : " mi-temps"}
+          />
+          <OptionSelect
+            label="Pause mi-temps"
+            value={breakMinutes}
+            setValue={setBreakMinutes}
+            options={[2, 5, 7, 10, 15]}
+            suffix=" min"
+          />
+        </div>
+      )}
+    </section>
+  );
+
+  const SummaryChoice = () => {
+    const [a, b] = buildTeamSlots();
+    return (
+      <section style={cardStyle(primarySoft)}>
+        <h2 style={sectionTitle(primary)}>RÉCAPITULATIF</h2>
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={summaryLineStyle}><b>Format</b><span>{spec.label}</span></div>
+          <div style={summaryLineStyle}><b>Participants</b><span>{a.name} vs {b.name}</span></div>
+          <div style={summaryLineStyle}><b>Joueurs</b><span>{a.playerIds.length} / {b.playerIds.length}</span></div>
+          {spec.id === "penalty" ? <div style={summaryLineStyle}><b>Tirs</b><span>{shoots} par camp</span></div> : <div style={summaryLineStyle}><b>Temps</b><span>{periods} × {minutes} min · pause {breakMinutes} min</span></div>}
+        </div>
+      </section>
+    );
+  };
+
+  const FullParticipants = () => (
+    <section style={cardStyle()}>
+      <h2 style={sectionTitle(primary)}>PARTICIPANTS</h2>
+      <p style={hintStyle}>
+        {spec.kind === "duel"
+          ? "Sélectionne exactement 2 profils pour lancer le duel."
+          : `Sélectionne ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs au total, ou choisis 2 équipes enregistrées.`}
+      </p>
+
+      {spec.kind === "team" && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <Pill label="Manuel" active={sourceMode === "manual"} onClick={() => setSourceMode("manual")} primary={primary} primarySoft={primarySoft} />
+          <Pill label="Équipes enregistrées" active={sourceMode === "saved"} onClick={() => setSourceMode("saved")} primary={primary} primarySoft={primarySoft} />
+        </div>
+      )}
+
+      {sourceMode === "saved" && spec.kind === "team" ? (
+        <>
+          <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+          <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+        </>
+      ) : (
+        <>
+          {profiles.length === 0 ? (
+            <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
+          ) : (
+            <PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+          )}
+          <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
+        </>
+      )}
+    </section>
+  );
+
+  function renderGuidedStep() {
+    if (guidedStep === "source") return <SourceChoice />;
+    if (guidedStep === "teams") return <TeamsChoice />;
+    if (guidedStep === "teamPlayers") return <TeamPlayersChoice />;
+    if (guidedStep === "players") return <ManualPlayersChoice />;
+    if (guidedStep === "params") return <ParamsChoice />;
+    return <SummaryChoice />;
+  }
+
   return (
     <div style={pageStyle}>
       <div style={shellStyle}>
@@ -206,6 +393,11 @@ export default function FootConfig({ go, params, store }: Props) {
           </div>
         </header>
 
+        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+          <Pill label="Configuration guidée" active={configMode === "guided"} onClick={() => setConfigMode("guided")} primary={primary} primarySoft={primarySoft} />
+          <Pill label="Configuration complète" active={configMode === "full"} onClick={() => setConfigMode("full")} primary={primary} primarySoft={primarySoft} />
+        </div>
+
         {rulesOpen && (
           <section style={cardStyle(primarySoft)}>
             <h2 style={sectionTitle(green)}>RÈGLES DU FORMAT</h2>
@@ -213,74 +405,51 @@ export default function FootConfig({ go, params, store }: Props) {
           </section>
         )}
 
-        <section style={cardStyle()}>
-          <h2 style={sectionTitle(primary)}>PARTICIPANTS</h2>
-          <p style={hintStyle}>
-            {spec.kind === "duel"
-              ? "Sélectionne exactement 2 profils pour lancer le duel."
-              : `Sélectionne ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs au total, ou choisis 2 équipes enregistrées.`}
-          </p>
-
-          {spec.kind === "team" && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-              <Pill label="Manuel" active={sourceMode === "manual"} onClick={() => setSourceMode("manual")} primary={primary} primarySoft={primarySoft} />
-              <Pill label="Équipes enregistrées" active={sourceMode === "saved"} onClick={() => setSourceMode("saved")} primary={primary} primarySoft={primarySoft} />
-            </div>
-          )}
-
-          {sourceMode === "saved" && spec.kind === "team" ? (
-            <>
-              <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
-              <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
-            </>
-          ) : (
-            <>
-              {profiles.length === 0 ? (
-                <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
+        {configMode === "guided" ? (
+          <>
+            <GuideProgress steps={guidedSteps} active={guidedStep} complete={isStepComplete} label={stepLabel} primary={primary} primarySoft={primarySoft} />
+            {renderGuidedStep()}
+            <div style={guideNavStyle}>
+              <button type="button" onClick={() => goStep(-1)} disabled={!canGoPrev} style={navButtonStyle(canGoPrev, "neutral")}>← Retour</button>
+              {guidedStep === "summary" ? (
+                <button onClick={start} disabled={!ready} style={{ ...navButtonStyle(ready, "primary"), flex: 1 }}>
+                  {ready ? `DÉMARRER ${spec.label}` : missingLabel(spec, sourceMode, selectedIds.length, savedSelectedTeams.length, selectedTeamIds, selectedTeamPlayerIds)}
+                </button>
               ) : (
-                <PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+                <button type="button" onClick={() => goStep(1)} disabled={!isStepComplete(guidedStep) || !canGoNext} style={navButtonStyle(isStepComplete(guidedStep) && canGoNext, "primary")}>Suivant →</button>
               )}
-              <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
-            </>
-          )}
-        </section>
-
-        <section style={cardStyle()}>
-          <h2 style={sectionTitle(primary)}>PARAMÈTRES DU MATCH</h2>
-          {spec.id === "penalty" ? (
-            <OptionGrid label="Tirs par camp" value={shoots} setValue={setShoots} options={[3, 5, 7, 10]} suffix=" tirs" />
-          ) : (
-            <div style={compactParamsGrid}>
-              <OptionSelect
-                label="Temps d’une mi-temps"
-                value={minutes}
-                setValue={setMinutes}
-                options={[3, 5, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45]}
-                suffix=" min"
-              />
-              <OptionSelect
-                label="Nombre de mi-temps"
-                value={periods}
-                setValue={setPeriods}
-                options={[1, 2]}
-                suffix={periods > 1 ? " mi-temps" : " mi-temps"}
-              />
-              <OptionSelect
-                label="Pause mi-temps"
-                value={breakMinutes}
-                setValue={setBreakMinutes}
-                options={[2, 5, 7, 10, 15]}
-                suffix=" min"
-              />
             </div>
-          )}
-        </section>
-
-        <button onClick={start} disabled={!ready} style={{ ...startButton, opacity: ready ? 1 : .45, cursor: ready ? "pointer" : "not-allowed" }}>
-          {ready ? `DÉMARRER ${spec.label}` : missingLabel(spec, sourceMode, selectedIds.length, savedSelectedTeams.length, selectedTeamIds, selectedTeamPlayerIds)}
-        </button>
+          </>
+        ) : (
+          <>
+            <FullParticipants />
+            <ParamsChoice />
+            <button onClick={start} disabled={!ready} style={{ ...startButton, opacity: ready ? 1 : .45, cursor: ready ? "pointer" : "not-allowed" }}>
+              {ready ? `DÉMARRER ${spec.label}` : missingLabel(spec, sourceMode, selectedIds.length, savedSelectedTeams.length, selectedTeamIds, selectedTeamPlayerIds)}
+            </button>
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+function GuideProgress({ steps, active, complete, label, primary, primarySoft }: any) {
+  return (
+    <section style={{ ...cardStyle(), padding: 12 }}>
+      <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
+        {steps.map((step: GuidedStep, index: number) => {
+          const isActive = step === active;
+          const done = complete(step);
+          return (
+            <div key={step} style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 999, padding: "7px 10px", border: isActive ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: isActive ? primarySoft : "rgba(255,255,255,.045)", color: isActive ? "#fff" : "#aeb5d0", fontWeight: 1000, fontSize: 11, textTransform: "uppercase", letterSpacing: .55 }}>
+              <span style={{ width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", background: done ? primary : "rgba(255,255,255,.08)", color: done ? "#001019" : "#fff", fontSize: 10 }}>{done ? "✓" : index + 1}</span>
+              {label(step)}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -442,8 +611,8 @@ function Pill({ label, active, onClick, primary, primarySoft }: any) {
   return <button type="button" onClick={onClick} style={{ border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: active ? primarySoft : "rgba(255,255,255,.045)", color: active ? "#fff" : "#c9cee8", borderRadius: 999, padding: "9px 12px", fontWeight: 1000, cursor: "pointer", boxShadow: active ? `0 0 18px ${primary}2f` : "none" }}>{label}</button>;
 }
 
-const pageStyle: React.CSSProperties = { minHeight: "100vh", padding: "14px 12px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
-const shellStyle: React.CSSProperties = { maxWidth: 680, margin: "0 auto", display: "grid", gap: 14 };
+const pageStyle: React.CSSProperties = { minHeight: "100vh", padding: "14px 12px 92px", width: "100%", overflowX: "hidden", boxSizing: "border-box", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(34,230,255,.16), transparent 34%), linear-gradient(180deg, #050915, #020409 70%)" };
+const shellStyle: React.CSSProperties = { maxWidth: 680, width: "100%", minWidth: 0, margin: "0 auto", display: "grid", gap: 14, overflowX: "hidden", boxSizing: "border-box" };
 const headerStyle: React.CSSProperties = { position: "relative", minHeight: 86, borderRadius: 24, padding: "0 64px", overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(7,11,24,.92)", border: "1px solid rgba(34,230,255,.45)", boxShadow: "0 18px 42px rgba(0,0,0,.45), inset 0 0 36px rgba(34,230,255,.06)" };
 const headerTickerWrapStyle: React.CSSProperties = { position: "absolute", right: 0, top: 0, height: "100%", width: "75%", pointerEvents: "none", opacity: .28, zIndex: 0, WebkitMaskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)", maskImage: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)" };
 const headerTickerStyle: React.CSSProperties = { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", transform: "translateZ(0)", filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))" };
@@ -458,4 +627,7 @@ const selectBoxStyle = (open: boolean): React.CSSProperties => ({ width: "100%",
 const selectListStyle: React.CSSProperties = { position: "absolute", zIndex: 20, left: 0, right: 0, top: "calc(100% + 7px)", maxHeight: 210, overflowY: "auto", borderRadius: 16, padding: 6, background: "rgba(5,8,16,.98)", border: "1px solid rgba(34,230,255,.38)", boxShadow: "0 18px 34px rgba(0,0,0,.62), 0 0 22px rgba(34,230,255,.18)" };
 const selectItemStyle = (active: boolean): React.CSSProperties => ({ width: "100%", border: 0, borderRadius: 12, padding: "11px 12px", marginBottom: 4, textAlign: "left", background: active ? "rgba(34,230,255,.18)" : "transparent", color: active ? "#22e6ff" : "#fff", fontWeight: 1000 });
 const emptyStyle: React.CSSProperties = { color: "#9fa6c0", fontSize: 13, fontWeight: 800, borderRadius: 16, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" };
+const summaryLineStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderRadius: 14, padding: "10px 12px", background: "rgba(5,8,16,.62)", border: "1px solid rgba(255,255,255,.08)", color: "#fff", fontSize: 12, fontWeight: 850 };
+const guideNavStyle: React.CSSProperties = { display: "flex", gap: 10, alignItems: "stretch", width: "100%", minWidth: 0, flexWrap: "wrap" };
+const navButtonStyle = (enabled: boolean, variant: "primary" | "neutral"): React.CSSProperties => ({ flex: variant === "primary" ? 1 : "0 0 auto", border: variant === "primary" ? 0 : "1px solid rgba(255,255,255,.12)", borderRadius: 18, padding: "13px 16px", background: variant === "primary" ? "linear-gradient(135deg, #22e6ff, #127cff)" : "rgba(255,255,255,.055)", color: variant === "primary" ? "#001019" : "#fff", fontWeight: 1000, opacity: enabled ? 1 : .42, cursor: enabled ? "pointer" : "not-allowed", boxShadow: variant === "primary" && enabled ? "0 0 24px rgba(34,230,255,.30)" : "none" });
 const startButton: React.CSSProperties = { width: "100%", border: 0, borderRadius: 20, padding: "16px 18px", background: "linear-gradient(135deg, #22e6ff, #127cff)", color: "#001019", fontWeight: 1000, fontSize: 15, boxShadow: "0 0 28px rgba(34,230,255,.35)" };
