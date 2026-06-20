@@ -53,6 +53,8 @@ type Props = {
 
   /** Valide directement un total de volée (mode Keypad score de volée / Dartsmind-like). */
   onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => void;
+  /** Mode score de volée : corrige la saisie en cours ou, si elle est vide, annule la dernière volée validée. */
+  onCorrectVisitScore?: () => void;
   visitScoreFeedback?: React.ReactNode;
 
   /** Méthode choisie par l'écran de config. Prioritaire sur le localStorage. */
@@ -156,6 +158,7 @@ export default function ScoreInputHub({
   onDirectDart,
   onSetVisitDarts,
   onSubmitVisitScore,
+  onCorrectVisitScore,
   visitScoreFeedback,
   preferredMethod,
   voiceControl,
@@ -393,6 +396,7 @@ export default function ScoreInputHub({
           feedback={visitScoreFeedback}
           onSubmit={onSubmitVisitScore}
           onCancel={onCancel}
+          onCorrectEmpty={onCorrectVisitScore || onCancel}
           fitToParent={fitToParent}
           contentBoxStyle={contentBoxStyle}
           fitOuterRef={fitOuterRef}
@@ -462,6 +466,7 @@ function VisitScoreKeypad({
   feedback,
   onSubmit,
   onCancel,
+  onCorrectEmpty,
   fitToParent,
   contentBoxStyle,
   fitOuterRef,
@@ -472,6 +477,7 @@ function VisitScoreKeypad({
   feedback?: React.ReactNode;
   onSubmit: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => void;
   onCancel: () => void;
+  onCorrectEmpty: () => void;
   fitToParent: boolean;
   contentBoxStyle: React.CSSProperties;
   fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -550,7 +556,11 @@ function VisitScoreKeypad({
   const clearOne = () => {
     if (disabled) return;
     setLocalError(null);
-    setRaw((prev) => prev.slice(0, -1));
+    setRaw((prev) => {
+      if (prev.length > 0) return prev.slice(0, -1);
+      window.setTimeout(() => onCorrectEmpty(), 0);
+      return prev;
+    });
   };
 
   const submit = (score: number, source: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" = "typed") => {
@@ -634,7 +644,21 @@ function VisitScoreKeypad({
             <button type="button" style={btnBase} disabled={disabled} onClick={() => submit(0, "miss")}>MISS</button>
             <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(25, "bull25")}>BULL 25</button>
             <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(50, "bull50")}>BULL 50</button>
-            <button type="button" style={btnBase} disabled={disabled} onClick={onCancel}>ANNULER</button>
+            <button
+              type="button"
+              style={btnBase}
+              disabled={disabled}
+              onClick={() => {
+                setLocalError(null);
+                if (raw.trim().length > 0) {
+                  setRaw("");
+                  return;
+                }
+                onCancel();
+              }}
+            >
+              ANNULER
+            </button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: compactFit ? 6 : 7, marginBottom: compactFit ? 8 : 10 }}>

@@ -361,6 +361,27 @@ function sumThrow(throwDarts: UIDart[] | undefined | null): number {
   return throwDarts.reduce((s, d) => s + dartValue(d), 0);
 }
 
+function isVisitScoreDart(d: any): boolean {
+  return String(d?.source || "") === "visit_score" || String(d?.scoreInputMode || "") === "visit_score" || d?.visitScoreInput != null;
+}
+
+function isVisitScoreVisit(darts: UIDart[] | undefined | null): boolean {
+  return Array.isArray(darts) && darts.length > 0 && darts.some((d: any) => isVisitScoreDart(d));
+}
+
+function visitScoreInputFromDarts(darts: UIDart[] | undefined | null): number | "BUST" | null {
+  if (!Array.isArray(darts)) return null;
+  const tagged = (darts as any[]).find((d) => isVisitScoreDart(d) && d?.visitScoreInput != null);
+  const raw = tagged?.visitScoreInput;
+  if (raw === "BUST") return "BUST";
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function visibleDartsForUi(darts: UIDart[] | undefined | null): UIDart[] {
+  return isVisitScoreVisit(darts) ? [] : (Array.isArray(darts) ? darts : []);
+}
+
 
 // Checkout suggestion à partir de la structure V3
 function formatCheckoutFromVisit(suggestion: any): string {
@@ -387,6 +408,33 @@ function renderLastVisitChips(
   if (!darts.length) return null;
 
   const safeBustCount = Math.max(1, Number(bustCount || 0));
+  if (isVisitScoreVisit(darts)) {
+    const visitScoreInput = visitScoreInputFromDarts(darts);
+    const label = isBust || visitScoreInput === "BUST" ? `BUST ${safeBustCount}` : visitScoreInput != null ? String(visitScoreInput) : "SCORE";
+    return (
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <span
+          style={{
+            padding: "2px 10px",
+            borderRadius: 999,
+            fontSize: 10.5,
+            fontWeight: 950,
+            letterSpacing: 0.25,
+            color: isBust || visitScoreInput === "BUST" ? "#fff" : "#ffe7a8",
+            background: isBust || visitScoreInput === "BUST"
+              ? "linear-gradient(180deg, rgba(255,42,42,.96), rgba(130,0,0,.92))"
+              : "linear-gradient(180deg, rgba(255,187,51,.22), rgba(255,187,51,.10))",
+            border: isBust || visitScoreInput === "BUST" ? "1px solid rgba(255,120,120,.9)" : "1px solid rgba(255,187,51,.42)",
+            boxShadow: isBust || visitScoreInput === "BUST" ? "0 0 14px rgba(255,35,35,.55)" : "0 0 12px rgba(255,187,51,.22)",
+            textShadow: "0 0 8px rgba(0,0,0,.35)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {label}
+        </span>
+      </span>
+    );
+  }
 
   return (
     <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -1880,6 +1928,10 @@ const rebuildOnlineLastVisitsFromDarts = React.useCallback((darts: X01DartInputV
     const uiDart: UIDart = {
       v: Number((dart as any)?.segment || 0) === 25 ? 25 : Number((dart as any)?.segment || 0),
       mult: Number((dart as any)?.multiplier || 1) as any,
+      source: (dart as any)?.source,
+      scoreInputMode: (dart as any)?.scoreInputMode,
+      visitScoreInput: (dart as any)?.visitScoreInput,
+      visitScoreSource: (dart as any)?.visitScoreSource,
     } as any;
 
     if (!pid) continue;
@@ -1910,12 +1962,20 @@ const syncUiFromEngineState = React.useCallback((engineState: any) => {
       ? v.darts.map((d: any) => ({
           v: d.segment,
           mult: d.multiplier as 1 | 2 | 3,
-        }))
+          source: d?.source,
+          scoreInputMode: d?.scoreInputMode,
+          visitScoreInput: d?.visitScoreInput,
+          visitScoreSource: d?.visitScoreSource,
+        } as any))
       : v?.dartsThrown && Array.isArray(v.dartsThrown) && v.dartsThrown.length
       ? v.dartsThrown.map((d: any) => ({
           v: d.value,
           mult: d.mult as 1 | 2 | 3,
-        }))
+          source: d?.source,
+          scoreInputMode: d?.scoreInputMode,
+          visitScoreInput: d?.visitScoreInput,
+          visitScoreSource: d?.visitScoreSource,
+        } as any))
       : [];
 
   setCurrentThrow(raw);
@@ -3005,6 +3065,10 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 //    ou
 
   const checkoutText = React.useMemo(() => {
+  // Le mode SCORE VOLÉE ne doit jamais afficher de propositions S/D/T :
+  // l'utilisateur saisit uniquement un total, sans détail de fléchettes.
+  if (configuredScoreInputMethod === "visit_score") return null;
+
   // on ne propose des checkouts que pendant une partie
   if (status !== "running" && status !== "playing") return null;
 
@@ -3027,7 +3091,7 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 
   const txt = formatCheckoutFromVisit(sug);
   return txt || null;
-}, [status, currentThrow, currentScore, outMode]);
+}, [configuredScoreInputMethod, status, currentThrow, currentScore, outMode]);
   // de la saisie locale sur le keypad
 
   const currentThrowFromEngineRef = React.useRef(false);
@@ -3304,6 +3368,82 @@ const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?:
   }, 0);
 };
 
+const handleCorrectVisitScore = () => {
+  if (!onlineCanScore) return;
+  setVisitScoreFeedback(null);
+
+  // Si une volée "score total" est en cours/restaurée, on la vide entièrement :
+  // pas d'édition fléchette par fléchette en mode score de volée.
+  if (isVisitScoreVisit(currentThrow)) {
+    const editPid = undoEditingPlayerIdRef.current || activePlayerId;
+    setCurrentThrow([]);
+    setMultiplier(1);
+    if (editPid) {
+      setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => {
+        const next = { ...prev };
+        delete next[editPid];
+        return next;
+      });
+      setLastVisitIsBustByPlayer((prev) => ({ ...prev, [editPid]: false }));
+      setLastVisitBustCountByPlayer((prev) => ({ ...prev, [editPid]: 0 }));
+    }
+    return;
+  }
+
+  botUndoGuardRef.current = true;
+  try {
+    const before = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
+    const restored = splitLastCommittedReplayVisit(before as any);
+
+    if (!restored) {
+      setVisitScoreFeedback("Aucune volée à corriger.");
+      return;
+    }
+
+    const currentKey = currentReplayVisitKeyFromMeta(currentReplayLegMeta());
+    const restoredKey = replayDartVisitKey((restored.visitDarts?.[0] as any) || null);
+    const matchUsesSeveralLegs =
+      Number((config as any)?.legsPerSet ?? 1) > 1 || Number((config as any)?.setsToWin ?? 1) > 1;
+    if (matchUsesSeveralLegs && isKnownReplayVisitKey(currentKey) && isKnownReplayVisitKey(restoredKey) && currentKey !== restoredKey) {
+      setVisitScoreFeedback("Correction bloquée : impossible de revenir dans une leg précédente.");
+      return;
+    }
+
+    if (typeof rebuildFromDarts !== "function") {
+      setVisitScoreFeedback("Correction indisponible sur cette partie.");
+      return;
+    }
+
+    replayDartsRef.current = restored.nextReplay as any;
+    undoEditingPlayerIdRef.current = null;
+    rebuildFromDarts(restored.nextReplay as any, { activePlayerId: restored.playerId } as any);
+
+    suppressNextActivePlayerClearRef.current = true;
+    currentThrowFromEngineRef.current = false;
+    setCurrentThrow([]);
+    setMultiplier(1);
+
+    if (restored.playerId) {
+      setLastVisitsByPlayer((prev: Record<string, UIDart[]>) => {
+        const next = { ...prev };
+        delete next[restored.playerId];
+        return next;
+      });
+      setLastVisitIsBustByPlayer((prev) => ({ ...prev, [restored.playerId]: false }));
+      setLastVisitBustCountByPlayer((prev) => ({ ...prev, [restored.playerId]: 0 }));
+    }
+
+    window.setTimeout(() => {
+      try { persistAutosave(); } catch {}
+      publishOnlineReplayState("visit-score-correct").catch(() => {});
+    }, 0);
+  } finally {
+    window.setTimeout(() => {
+      botUndoGuardRef.current = false;
+    }, 0);
+  }
+};
+
 const handleBackspace = () => {
   if (isBustLocked || !onlineCanScore) return;
   currentThrowFromEngineRef.current = false;
@@ -3575,6 +3715,12 @@ const validateThrow = async () => {
 };
 
 const buildVisitLabelForConfirm = (darts: UIDart[]) => {
+  if (isVisitScoreVisit(darts)) {
+    const visitScoreInput = visitScoreInputFromDarts(darts);
+    if (visitScoreInput === "BUST") return "BUST";
+    if (visitScoreInput != null) return `Score saisi : ${visitScoreInput}`;
+    return "Score de volée";
+  }
   return (Array.isArray(darts) ? darts : []).map((d) => {
     const v = Number((d as any)?.v || 0);
     const m = Number((d as any)?.mult || 1);
@@ -5051,6 +5197,7 @@ if (isLandscapeTablet) {
                       onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
                       onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
                       onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
+                      onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
                       visitScoreFeedback={visitScoreFeedback}
                       preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
                       voiceControl={{
@@ -5461,6 +5608,7 @@ if (isLandscapeTablet) {
               onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
               onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
               onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
+              onCorrectVisitScore={onlineCanScore ? handleCorrectVisitScore : (() => {})}
               visitScoreFeedback={visitScoreFeedback}
               preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
               voiceControl={{
@@ -5691,6 +5839,7 @@ function HeaderBlock(props: HeaderBlockProps) {
   const setsWonTotal =
     (currentPlayer && setsWon[currentPlayer.id]) ?? 0;
 
+  const currentThrowUi = visibleDartsForUi(currentThrow);
   const remainingAfterAll = Math.max(
     currentRemaining -
       currentThrow.reduce(
@@ -5964,15 +6113,15 @@ function HeaderBlock(props: HeaderBlockProps) {
                 </div>
                 <div style={{ display: "flex", gap: 4, justifyContent: "center", width: "100%" }}>
                   {[0, 1, 2].map((i) => {
-                    const d = currentThrow[i];
+                    const d = currentThrowUi[i];
                     const wouldBust =
                       currentRemaining -
-                        currentThrow.slice(0, i + 1).reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
+                        currentThrowUi.slice(0, i + 1).reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
                       0;
                     const st = chipStyle(d, wouldBust);
                     const voiceBlink =
                       isVoiceHitPromptActiveForUi(voiceScoreEnabled, configuredScoreInputMethod, voiceScore) &&
-                      i === getVoiceExpectedHitIndexForUi(voiceScore, currentThrow.length) &&
+                      i === getVoiceExpectedHitIndexForUi(voiceScore, currentThrowUi.length) &&
                       !d;
                     return (
                       <span
@@ -6012,9 +6161,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                 <div>
                   Darts jouées : <b>{curDarts}</b>
                 </div>
-                {showThrowCounter && currentThrow.length > 0 ? (
+                {showThrowCounter && currentThrowUi.length > 0 ? (
                   <div>
-                    Volée : <b>{currentThrow.length}/3</b>
+                    Volée : <b>{currentThrowUi.length}/3</b>
                   </div>
                 ) : null}
               </div>
@@ -6086,11 +6235,11 @@ function HeaderBlock(props: HeaderBlockProps) {
             }}
           >
             {[0, 1, 2].map((i) => {
-              const d = currentThrow[i];
+              const d = currentThrowUi[i];
 
               const wouldBust =
                 currentRemaining -
-                  currentThrow
+                  currentThrowUi
                     .slice(0, i + 1)
                     .reduce(
                       (s: number, x: UIDart) => s + dartValue(x),
@@ -6101,7 +6250,7 @@ function HeaderBlock(props: HeaderBlockProps) {
               const st = chipStyle(d, wouldBust);
               const voiceBlink =
                 isVoiceHitPromptActiveForUi(voiceScoreEnabled, configuredScoreInputMethod, voiceScore) &&
-                i === getVoiceExpectedHitIndexForUi(voiceScore, currentThrow.length) &&
+                i === getVoiceExpectedHitIndexForUi(voiceScore, currentThrowUi.length) &&
                 !d;
 
               return (
@@ -6297,6 +6446,7 @@ function TeamHeaderBlock(props: {
   const legsWonThisSet = teamLegsWon?.[teamId] ?? 0;
   const setsWonTotal = teamSetsWon?.[teamId] ?? 0;
 
+  const currentThrowUi = visibleDartsForUi(currentThrow);
   const remainingAfterAll = Math.max(
     (teamScore ?? 0) -
       currentThrow.reduce((s: number, d: UIDart) => s + dartValue(d), 0),
@@ -7374,7 +7524,14 @@ function replayDartToUiDart(d: any): UIDart {
   const parsed = parseReplayDartParts(d);
   const segment = Number(parsed.segment || 0);
   const multiplier = segment <= 0 ? 1 : Number(parsed.multiplier || 1);
-  return { v: segment, mult: multiplier as any } as UIDart;
+  return {
+    v: segment,
+    mult: multiplier as any,
+    source: d?.source,
+    scoreInputMode: d?.scoreInputMode,
+    visitScoreInput: d?.visitScoreInput,
+    visitScoreSource: d?.visitScoreSource,
+  } as any as UIDart;
 }
 
 function splitLastCommittedReplayVisit(allDarts: X01DartInputV3[]): null | {

@@ -11,7 +11,6 @@ import InfoDot from "../../components/InfoDot";
 import PageHeader from "../../components/PageHeader";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import BabyFootEndGameSummary from "../../components/BabyFootEndGameSummary";
-import BabyFootSetsBar from "../../components/BabyFootSetsBar";
 import BabyFootDuelScoreCard from "../../components/babyfoot/BabyFootDuelScoreCard";
 import BabyFootLiveHeader from "../../components/babyfoot/BabyFootLiveHeader";
 import BabyFootLiveStatsCard from "../../components/babyfoot/BabyFootLiveStatsCard";
@@ -1219,17 +1218,6 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
           {activeTab === "score" ? (
             <>
-              {state.setsEnabled ? (
-                <BabyFootSetsBar
-                  setsA={state.setsA || 0}
-                  setsB={state.setsB || 0}
-                  bestOf={state.setsBestOf || 3}
-                  currentSet={state.setIndex || 1}
-                  teamAName={visualA.name}
-                  teamBName={visualB.name}
-                />
-              ) : null}
-
               <BabyFootDuelScoreCard
                 visualA={visualA}
                 visualB={visualB}
@@ -1238,6 +1226,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                 setsEnabled={state.setsEnabled}
                 setsA={state.setsA || 0}
                 setsB={state.setsB || 0}
+                setsBestOf={state.setsBestOf || 3}
                 setTarget={state.setTarget || state.target}
                 target={state.target}
                 handicapA={state.handicapA}

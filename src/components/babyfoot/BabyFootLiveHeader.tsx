@@ -24,15 +24,15 @@ function pill(accent = false): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 34,
-    padding: "0 14px",
+    minHeight: 30,
+    padding: "0 12px",
     borderRadius: 999,
     border: accent ? "1px solid rgba(199,255,38,0.34)" : "1px solid rgba(255,255,255,0.08)",
     background: accent ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
     color: accent ? "#f5ffbf" : "rgba(255,255,255,0.94)",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 1000,
-    letterSpacing: 0.35,
+    letterSpacing: 0.25,
     whiteSpace: "nowrap",
     boxShadow: accent ? "0 0 14px rgba(199,255,38,0.15)" : "none",
   };
@@ -40,8 +40,8 @@ function pill(accent = false): React.CSSProperties {
 
 function transportButton(disabled: boolean): React.CSSProperties {
   return {
-    width: 34,
-    height: 34,
+    width: 30,
+    height: 30,
     borderRadius: 999,
     border: `1px solid ${disabled ? "rgba(255,255,255,0.10)" : "rgba(199,255,38,0.26)"}`,
     background: disabled ? "rgba(255,255,255,0.04)" : "linear-gradient(180deg, rgba(199,255,38,0.14), rgba(199,255,38,0.06))",
@@ -51,6 +51,7 @@ function transportButton(disabled: boolean): React.CSSProperties {
     cursor: disabled ? "default" : "pointer",
     boxShadow: disabled ? "none" : "0 0 12px rgba(199,255,38,0.10)",
     padding: 0,
+    flex: "0 0 auto",
   };
 }
 
@@ -78,7 +79,7 @@ function tabButton(active: boolean): React.CSSProperties {
 
 function PlayIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <polygon points="8,5 19,12 8,19 8,5" fill="currentColor" stroke="none" />
     </svg>
   );
@@ -86,7 +87,7 @@ function PlayIcon() {
 
 function PauseIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" />
       <rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none" />
     </svg>
@@ -109,15 +110,15 @@ export default function BabyFootLiveHeader({
   return (
     <div
       style={{
-        borderRadius: 24,
-        padding: 12,
+        borderRadius: 22,
+        padding: 10,
         border: "1px solid rgba(120,150,255,0.14)",
         background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0, flex: "1 1 auto", overflowX: "auto", scrollbarWidth: "none" }}>
           <span style={pill(true)}>{phaseLabel}</span>
           <span style={pill()}>{modeLabel}</span>
           {secondaryLabel ? <span style={pill()}>{secondaryLabel}</span> : null}
@@ -125,46 +126,44 @@ export default function BabyFootLiveHeader({
 
         <div
           style={{
-            minWidth: 118,
-            borderRadius: 18,
-            padding: "8px 10px",
-            border: "1px solid rgba(199,255,38,0.30)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            minHeight: 36,
+            padding: "3px 6px 3px 8px",
+            borderRadius: 999,
+            border: "1px solid rgba(199,255,38,0.28)",
             background: "linear-gradient(180deg, rgba(18,22,28,0.96), rgba(10,12,20,0.98))",
-            boxShadow: "0 0 16px rgba(199,255,38,0.10)",
-            textAlign: "center",
+            boxShadow: "0 0 14px rgba(199,255,38,0.09)",
+            flex: "0 0 auto",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "#ebff86", fontSize: 11, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>◔</span>
-            <span>Chrono</span>
-          </div>
-          <div style={{ marginTop: 1, fontSize: 22, lineHeight: 1, fontWeight: 1100, color: "#fff3a3" }}>{clockLabel}</div>
-          <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 8 }}>
-            <button
-              type="button"
-              aria-label={hasStarted ? "Reprendre" : "Démarrer"}
-              title={hasStarted ? "Reprendre" : "Démarrer"}
-              onClick={onStartClock}
-              disabled={clockRunning}
-              style={transportButton(clockRunning)}
-            >
-              <PlayIcon />
-            </button>
-            <button
-              type="button"
-              aria-label="Pause"
-              title="Pause"
-              onClick={onPauseClock}
-              disabled={!clockRunning}
-              style={transportButton(!clockRunning)}
-            >
-              <PauseIcon />
-            </button>
-          </div>
+          <span style={{ color: "#ebff86", fontSize: 16, lineHeight: 1 }}>◔</span>
+          <span style={{ color: "#fff3a3", fontSize: 22, lineHeight: 1, fontWeight: 1100, minWidth: 58, textAlign: "center" }}>{clockLabel}</span>
+          <button
+            type="button"
+            aria-label={hasStarted ? "Reprendre" : "Démarrer"}
+            title={hasStarted ? "Reprendre" : "Démarrer"}
+            onClick={onStartClock}
+            disabled={clockRunning}
+            style={transportButton(clockRunning)}
+          >
+            <PlayIcon />
+          </button>
+          <button
+            type="button"
+            aria-label="Pause"
+            title="Pause"
+            onClick={onPauseClock}
+            disabled={!clockRunning}
+            style={transportButton(!clockRunning)}
+          >
+            <PauseIcon />
+          </button>
         </div>
       </div>
 
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 8 }}>
+      <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 8 }}>
         {tabs.map((tab) => (
           <button key={tab.key} type="button" onClick={() => onTabChange(tab.key)} style={tabButton(activeTab === tab.key)}>
             {tab.label}
