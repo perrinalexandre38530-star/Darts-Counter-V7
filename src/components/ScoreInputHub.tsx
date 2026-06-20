@@ -523,25 +523,29 @@ function VisitScoreKeypad({
     ...btnBase,
     height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
     borderRadius: compactFit ? 12 : 14,
-    color: "#f1d4ff",
+    color: "#ff7ac8",
     background: "linear-gradient(180deg, rgba(137,73,255,.38), rgba(62,25,126,.46))",
     border: "1px solid rgba(184,132,255,.42)",
     boxShadow: "0 8px 18px rgba(122,63,255,.16)",
+    textShadow: "0 0 10px rgba(255,82,170,.34)",
   };
   const btnQuickHigh: React.CSSProperties = {
     ...btnBase,
     height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
     borderRadius: compactFit ? 12 : 14,
-    color: "#ffe1f1",
+    color: "#b884ff",
     background: "linear-gradient(180deg, rgba(255,82,170,.36), rgba(137,25,86,.48))",
     border: "1px solid rgba(255,122,190,.44)",
     boxShadow: "0 8px 18px rgba(255,82,170,.15)",
+    textShadow: "0 0 10px rgba(137,73,255,.34)",
   };
   const btnDanger: React.CSSProperties = {
     ...btnBase,
-    background: "linear-gradient(180deg, rgba(255,85,85,.25), rgba(100,0,0,.35))",
-    color: "#ffb4b4",
-    border: "1px solid rgba(255,90,90,.34)",
+    background: "linear-gradient(180deg, #ff3b3b, #a50000)",
+    color: "#fff",
+    border: "1px solid rgba(255,95,95,.82)",
+    boxShadow: "0 10px 24px rgba(255,35,35,.28)",
+    textShadow: "0 0 10px rgba(0,0,0,.42)",
   };
 
   const pushDigit = (digit: number) => {
