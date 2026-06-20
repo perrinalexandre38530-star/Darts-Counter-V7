@@ -497,6 +497,116 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+const VISIT_SCORE_MISS_DART: UIDart = { v: 0, mult: 1 } as UIDart;
+const VISIT_SCORE_DART_OPTIONS: UIDart[] = (() => {
+  const out: UIDart[] = [];
+  // Scores forts d'abord : le détail est masqué en mode score de volée, mais cela
+  // permet de trouver rapidement les combinaisons 100/140/180.
+  for (let n = 20; n >= 1; n -= 1) out.push({ v: n, mult: 3 } as UIDart);
+  out.push({ v: 25, mult: 2 } as UIDart);
+  for (let n = 20; n >= 1; n -= 1) out.push({ v: n, mult: 2 } as UIDart);
+  out.push({ v: 25, mult: 1 } as UIDart);
+  for (let n = 20; n >= 1; n -= 1) out.push({ v: n, mult: 1 } as UIDart);
+  out.push(VISIT_SCORE_MISS_DART);
+  return out;
+})();
+
+function visitScoreDartValue(d: UIDart): number {
+  const v = Number((d as any)?.v || 0);
+  const m = Number((d as any)?.mult || 1);
+  if (!v || !m) return 0;
+  if (v === 25) return m === 2 ? 50 : 25;
+  return v * m;
+}
+
+function visitScoreFinishAllowed(d: UIDart, outMode: any): boolean {
+  const mode = String(outMode || "double").toLowerCase();
+  const v = Number((d as any)?.v || 0);
+  const m = Number((d as any)?.mult || 1);
+  if (mode === "simple" || mode === "single" || mode === "straight") return true;
+  if (mode === "master") return m === 2 || m === 3;
+  return m === 2 || (v === 25 && m === 2);
+}
+
+function visitScoreSequenceIsValid(seq: UIDart[], scoreBeforeInput: number, outMode: any): boolean {
+  let remaining = Number(scoreBeforeInput || 0);
+  for (let i = 0; i < seq.length; i += 1) {
+    const d = seq[i];
+    const tentative = remaining - visitScoreDartValue(d);
+    const isLast = i === seq.length - 1;
+    if (tentative < 0) return false;
+    if (tentative === 0) return isLast && visitScoreFinishAllowed(d, outMode);
+    if (tentative === 1 && String(outMode || "double").toLowerCase() !== "simple" && String(outMode || "double").toLowerCase() !== "single" && String(outMode || "double").toLowerCase() !== "straight") return false;
+    remaining = tentative;
+  }
+  return true;
+}
+
+function findVisitScoreDarts(totalInput: number, scoreBeforeInput: number, outMode: any): UIDart[] | null {
+  const target = Math.floor(Number(totalInput));
+  const scoreBefore = Number(scoreBeforeInput || 0);
+  if (!Number.isFinite(target) || target < 0 || target > 180) return null;
+  if (target === 0) return [{ ...VISIT_SCORE_MISS_DART }, { ...VISIT_SCORE_MISS_DART }, { ...VISIT_SCORE_MISS_DART }] as UIDart[];
+
+  const opts = VISIT_SCORE_DART_OPTIONS;
+  const candidates: UIDart[][] = [];
+
+  for (const a of opts) {
+    if (visitScoreDartValue(a) === target) candidates.push([a]);
+  }
+  for (const a of opts) for (const b of opts) {
+    if (visitScoreDartValue(a) + visitScoreDartValue(b) === target) candidates.push([a, b]);
+  }
+  for (const a of opts) for (const b of opts) for (const c of opts) {
+    if (visitScoreDartValue(a) + visitScoreDartValue(b) + visitScoreDartValue(c) === target) candidates.push([a, b, c]);
+  }
+
+  const valid = candidates.find((seq) => visitScoreSequenceIsValid(seq, scoreBefore, outMode));
+  if (!valid) return null;
+
+  // Hors checkout, on padde à 3 fléchettes pour garder un compteur de darts cohérent.
+  const endsLeg = target === scoreBefore;
+  const padded = valid.map((d) => ({ ...d } as UIDart));
+  if (!endsLeg) {
+    while (padded.length < 3) padded.push({ ...VISIT_SCORE_MISS_DART } as UIDart);
+  }
+  return padded.slice(0, 3);
+}
+
+function findVisitScoreBustDarts(scoreBeforeInput: number, outMode: any): UIDart[] | null {
+  const scoreBefore = Number(scoreBeforeInput || 0);
+  if (!Number.isFinite(scoreBefore) || scoreBefore <= 0) return null;
+  const opts = VISIT_SCORE_DART_OPTIONS.filter((d) => visitScoreDartValue(d) > 0);
+  for (const a of opts) for (const b of [VISIT_SCORE_MISS_DART, ...opts]) for (const c of [VISIT_SCORE_MISS_DART, ...opts]) {
+    const seq = [a, b, c] as UIDart[];
+    let remaining = scoreBefore;
+    for (let i = 0; i < seq.length; i += 1) {
+      const d = seq[i];
+      const tentative = remaining - visitScoreDartValue(d);
+      if (tentative < 0) return seq.slice(0, i + 1).map((x) => ({ ...x } as UIDart));
+      if (tentative === 0) {
+        if (!visitScoreFinishAllowed(d, outMode)) return seq.slice(0, i + 1).map((x) => ({ ...x } as UIDart));
+        break;
+      }
+      if (tentative === 1 && String(outMode || "double").toLowerCase() !== "simple" && String(outMode || "double").toLowerCase() !== "single" && String(outMode || "double").toLowerCase() !== "straight") {
+        return seq.slice(0, i + 1).map((x) => ({ ...x } as UIDart));
+      }
+      remaining = tentative;
+    }
+  }
+  return null;
+}
+
+function markVisitScoreDarts(darts: UIDart[], visitScoreInput: number | "BUST", source: string): UIDart[] {
+  return (Array.isArray(darts) ? darts : []).map((d) => ({
+    ...(d as any),
+    source: "visit_score",
+    scoreInputMode: "visit_score",
+    visitScoreInput,
+    visitScoreSource: source,
+  } as UIDart));
+}
+
 type BotStyle = "balanced" | "aggressive" | "safe" | "clutch";
 
 function computeBotVisit(
@@ -2844,6 +2954,7 @@ React.useEffect(() => {
 
 const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
 const [bustError, setBustError] = React.useState<string | null>(null);
+const [visitScoreFeedback, setVisitScoreFeedback] = React.useState<string | null>(null);
   // ✅ UI helpers for BUST (used by keypad cancel / validate flows)
   const [bustBanner, setBustBanner] = React.useState<boolean>(false);
   const [isBust, setIsBust] = React.useState<boolean>(false);
@@ -3125,11 +3236,11 @@ const handleSetVisitDarts = (darts: UIDart[]) => {
       const rawV = Number(d?.v ?? 0);
       const rawMult = Number(d?.mult ?? 1);
       if (!Number.isFinite(rawV) || rawV === 0 || rawMult === 0) {
-        return { v: 0, mult: 1 } as UIDart;
+        return { ...(d as any), v: 0, mult: 1 } as UIDart;
       }
       const v = rawV;
       const mult = v === 25 ? (rawMult === 2 ? 2 : 1) : rawMult === 3 ? 3 : rawMult === 2 ? 2 : 1;
-      return { v, mult } as UIDart;
+      return { ...(d as any), v, mult } as UIDart;
     });
   if (!nextThrow.length) return;
 
@@ -3149,6 +3260,48 @@ const handleSetVisitDarts = (darts: UIDart[]) => {
   } catch {
     // ignore
   }
+};
+
+const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => {
+  if (!onlineCanScore) return;
+  if (!activePlayerId) return;
+
+  const source = opts?.source || "typed";
+  const scoreBefore = Number(currentScore || 0);
+  const out = (outMode as any) || (config as any)?.outMode || "double";
+
+  let darts: UIDart[] | null = null;
+
+  if (opts?.bust) {
+    darts = findVisitScoreBustDarts(scoreBefore, out);
+    if (!darts || !darts.length) {
+      setVisitScoreFeedback("BUST impossible à ce score : il faut être à portée de bust en 3 fléchettes.");
+      return;
+    }
+    darts = markVisitScoreDarts(darts, "BUST", source);
+  } else {
+    const total = Math.floor(Number(score));
+    if (!Number.isFinite(total) || total < 0 || total > 180) {
+      setVisitScoreFeedback("Score invalide : entre un total entre 0 et 180.");
+      return;
+    }
+    darts = findVisitScoreDarts(total, scoreBefore, out);
+    if (!darts || !darts.length) {
+      setVisitScoreFeedback("Score impossible ou checkout non valide avec le mode de sortie actuel.");
+      return;
+    }
+    darts = markVisitScoreDarts(darts, total, source);
+  }
+
+  setVisitScoreFeedback(null);
+  handleSetVisitDarts(darts);
+  window.setTimeout(() => {
+    try {
+      requestValidateThrow();
+    } catch (e) {
+      console.warn("[X01PlayV3] visit score validate failed", e);
+    }
+  }, 0);
 };
 
 const handleBackspace = () => {
@@ -3362,12 +3515,16 @@ const validateThrow = async () => {
     [pid]: toSend,
   }));
 
-  const inputs: X01DartInputV3[] = toSend.map((d) => ({
+  const inputs: X01DartInputV3[] = toSend.map((d: any) => ({
     segment: d.v === 25 ? 25 : d.v,
     multiplier: d.mult as 1 | 2 | 3,
     playerId: pid,
     pid,
     profileId: pid,
+    source: d?.source,
+    scoreInputMode: d?.scoreInputMode,
+    visitScoreInput: d?.visitScoreInput,
+    visitScoreSource: d?.visitScoreSource,
   } as any));
 
   setCurrentThrow([]);
@@ -3375,7 +3532,14 @@ const validateThrow = async () => {
 
   currentThrowFromEngineRef.current = false;
 
-  const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { ...currentReplayLegMeta(), source: "manual", ts: Date.now() }));
+  const trackedInputs = inputs.map((input: any) => enrichReplayDart(input, pid, {
+    ...currentReplayLegMeta(),
+    source: input?.source || "manual",
+    scoreInputMode: input?.scoreInputMode,
+    visitScoreInput: input?.visitScoreInput,
+    visitScoreSource: input?.visitScoreSource,
+    ts: Date.now(),
+  }));
   replayDartsRef.current = replayDartsRef.current.concat(trackedInputs as any);
   debugReplayDarts("manual-visit", trackedInputs as any);
   undoEditingPlayerIdRef.current = null;
@@ -4886,6 +5050,8 @@ if (isLandscapeTablet) {
                       onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
                       onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
                       onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+                      onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
+                      visitScoreFeedback={visitScoreFeedback}
                       preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
                       voiceControl={{
                         enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
@@ -5294,6 +5460,8 @@ if (isLandscapeTablet) {
               onValidate={onlineCanScore ? requestValidateThrow : (() => {})}
               onDirectDart={onlineCanScore ? handleDirectDart : (() => {})}
               onSetVisitDarts={onlineCanScore ? handleSetVisitDarts : (() => {})}
+              onSubmitVisitScore={onlineCanScore ? handleSubmitVisitScore : (() => {})}
+              visitScoreFeedback={visitScoreFeedback}
               preferredMethod={sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod)}
               voiceControl={{
                 enabled: !!(voiceScoreEnabled && scoringSource !== "external" && !isBotTurn && onlineCanScore && !isBustLocked && voiceMatchIsLive),
@@ -7277,6 +7445,9 @@ function enrichReplayDart(input: X01DartInputV3, playerId: string | null | undef
   }
   if (extra?.legsPerSet != null) out.legsPerSet = Number(extra.legsPerSet) || extra.legsPerSet;
   if (extra?.source) out.source = extra.source;
+  if (extra?.scoreInputMode) out.scoreInputMode = extra.scoreInputMode;
+  if (extra?.visitScoreInput != null) out.visitScoreInput = extra.visitScoreInput;
+  if (extra?.visitScoreSource) out.visitScoreSource = extra.visitScoreSource;
   if (extra?.ts != null) out.ts = extra.ts;
   return out as X01DartInputV3;
 }
@@ -7666,6 +7837,12 @@ function buildReplayVisitsForX01History(
       }
     }
 
+    const visitScoreMode = currentDarts.some((raw: any) =>
+      raw?.source === "visit_score" || raw?.scoreInputMode === "visit_score"
+    );
+    const rawVisitScoreInput = currentDarts.find((raw: any) => raw?.visitScoreInput != null)?.visitScoreInput;
+    const visitScoreInput = rawVisitScoreInput != null ? rawVisitScoreInput : currentMeta?.visitScoreInput;
+
     const darts = countedDarts.map((raw) => {
       const parsed = parseReplayDartParts(raw);
       return {
@@ -7675,6 +7852,10 @@ function buildReplayVisitsForX01History(
         mult: parsed.multiplier,
         multiplier: parsed.multiplier,
         label: buildReplayDartLabel(parsed.segment, parsed.multiplier),
+        source: raw?.source,
+        scoreInputMode: raw?.scoreInputMode,
+        visitScoreInput: raw?.visitScoreInput,
+        visitScoreSource: raw?.visitScoreSource,
       };
     });
 
@@ -7698,6 +7879,8 @@ function buildReplayVisitsForX01History(
       finish,
       isFinish: finish,
       score: bust ? 0 : Math.max(0, before - after),
+      scoreInputMode: visitScoreMode ? "visit_score" : currentMeta?.scoreInputMode,
+      visitScoreInput,
     });
 
     scores[currentPid] = after;
@@ -7738,6 +7921,15 @@ function buildReplayVisitsForX01History(
         setNo: explicitSetNo(raw) || currentSetNo,
         legInSet: explicitLegInSet(raw) || currentLegInSet,
         scoreBefore: raw?.scoreBefore ?? raw?.before ?? raw?.startScore ?? scores[pid] ?? startScore,
+        scoreInputMode: raw?.source === "visit_score" || raw?.scoreInputMode === "visit_score" ? "visit_score" : raw?.scoreInputMode,
+        visitScoreInput: raw?.visitScoreInput,
+      };
+    }
+    if (raw?.source === "visit_score" || raw?.scoreInputMode === "visit_score") {
+      currentMeta = {
+        ...(currentMeta || {}),
+        scoreInputMode: "visit_score",
+        visitScoreInput: raw?.visitScoreInput ?? currentMeta?.visitScoreInput,
       };
     }
     currentDarts.push(raw);
@@ -8161,6 +8353,13 @@ function saveX01V3MatchToHistory({
     startScore: config.startScore ?? 501,
     legsPerSet: (config as any)?.legsPerSet ?? 1,
   });
+
+  const scoreInputDefaultMethodForHistory = sanitizeScoreInputMethod((config as any)?.scoreInputDefaultMethod);
+  const isVisitScoreInputForHistory =
+    scoreInputDefaultMethodForHistory === "visit_score" ||
+    (Array.isArray(replayDarts) && replayDarts.some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score")) ||
+    (Array.isArray(replayVisits) && replayVisits.some((v: any) => v?.scoreInputMode === "visit_score"));
+  const statsDetailAvailableForHistory = !isVisitScoreInputForHistory;
 
   // ✅ ONLINE/X01 safety: when the saved replay contains a single completed leg,
   // store it as a simple match even if the live online config had legsPerSet/setsToWin > 1.
@@ -8661,6 +8860,11 @@ function saveX01V3MatchToHistory({
     hitsBySector: legacyHitsBySector,
     visitHistory: replayVisits,
     visitsHistory: replayVisits,
+    scoreInputMethod: scoreInputDefaultMethodForHistory,
+    scoreInputMode: scoreInputDefaultMethodForHistory,
+    isVisitScoreInput: isVisitScoreInputForHistory,
+    statsDetailAvailable: statsDetailAvailableForHistory,
+    hideSegmentStats: isVisitScoreInputForHistory,
     // Les buckets 60+/100+/140+/180 ne sont pas reconstruits ici,
     // ils resteront à 0 faute de détail par volée (option future).
   };
@@ -8717,6 +8921,11 @@ function saveX01V3MatchToHistory({
     ...engineSummary,
 
     kind: "x01" as const,
+    scoreInputMethod: scoreInputDefaultMethodForHistory,
+    scoreInputMode: scoreInputDefaultMethodForHistory,
+    isVisitScoreInput: isVisitScoreInputForHistory,
+    statsDetailAvailable: statsDetailAvailableForHistory,
+    hideSegmentStats: isVisitScoreInputForHistory,
     matchId,
     online: isOnlineMatch,
     onlineMode: isOnlineMatch ? "x01" : undefined,
@@ -8857,6 +9066,11 @@ function saveX01V3MatchToHistory({
     mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
     variant: "x01_v3",
     game: "x01",
+    scoreInputMethod: scoreInputDefaultMethodForHistory,
+    scoreInputMode: scoreInputDefaultMethodForHistory,
+    isVisitScoreInput: isVisitScoreInputForHistory,
+    statsDetailAvailable: statsDetailAvailableForHistory,
+    hideSegmentStats: isVisitScoreInputForHistory,
     online: isOnlineMatch,
     onlineMode: isOnlineMatch ? "x01" : undefined,
     lobbyCode: onlineLobbyCode,
@@ -8905,6 +9119,11 @@ function saveX01V3MatchToHistory({
     resumeId: matchId, // pour matchLink() dans HistoryPage
     kind: "x01",
     status: "finished",
+    scoreInputMethod: scoreInputDefaultMethodForHistory,
+    scoreInputMode: scoreInputDefaultMethodForHistory,
+    isVisitScoreInput: isVisitScoreInputForHistory,
+    statsDetailAvailable: statsDetailAvailableForHistory,
+    hideSegmentStats: isVisitScoreInputForHistory,
     online: isOnlineMatch,
     onlineMode: isOnlineMatch ? "x01" : undefined,
     lobbyCode: onlineLobbyCode,
@@ -8931,6 +9150,11 @@ function saveX01V3MatchToHistory({
     payload,
     resume: {
       config: lightConfig,
+      scoreInputMethod: scoreInputDefaultMethodForHistory,
+      scoreInputMode: scoreInputDefaultMethodForHistory,
+      isVisitScoreInput: isVisitScoreInputForHistory,
+      statsDetailAvailable: statsDetailAvailableForHistory,
+      hideSegmentStats: isVisitScoreInputForHistory,
       state: finalStateForPayload,
       darts: Array.isArray(replayDarts) ? replayDarts : [],
       visitHistory: replayVisits,

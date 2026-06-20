@@ -622,6 +622,19 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   }, [teamsModeAvailable, campSource]);
 
   const guidedStepIndex = Math.max(0, guidedSteps.indexOf(guidedStep));
+  const guidedTabsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const tabs = guidedTabsRef.current;
+    if (!tabs) return;
+    const activeTab = tabs.querySelector<HTMLButtonElement>(`[data-guided-step="${guidedStep}"]`);
+    if (!activeTab) return;
+    const raf = window.requestAnimationFrame(() => {
+      activeTab.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [guidedStep, guidedSteps.length]);
+
   const goGuided = (delta: number) => {
     const next = clamp(guidedStepIndex + delta, 0, guidedSteps.length - 1);
     setGuidedStep(guidedSteps[next] || guidedSteps[0] || "playerA");
@@ -1443,10 +1456,31 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           <>
             <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
               {sectionTitle(`ÉTAPE ${guidedStepIndex + 1}/${guidedSteps.length}`, primary)}
-              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 12 }}>
+              <div
+                ref={guidedTabsRef}
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  overflowX: "auto",
+                  scrollSnapType: "x proximity",
+                  WebkitOverflowScrolling: "touch",
+                  paddingBottom: 4,
+                  marginBottom: 12,
+                }}
+              >
                 {guidedSteps.map((step, idx) => {
                   const label = step === "source" ? "Type de camps" : step === "teamA" ? (mode === "2v1" ? "Équipe 2 joueurs" : "Équipe domicile") : step === "teamB" ? "Équipe extérieur" : step === "playerA" ? "Joueurs A" : step === "playerB" ? "Joueurs B" : step === "score" ? "Score" : step === "sets" ? "Sets" : step === "timer" ? "Chrono" : step === "golden" ? "Golden Goal" : step === "advanced" ? "Autres" : "Récap";
-                  return <button key={step} type="button" onClick={() => setGuidedStep(step)} style={pillStyle(guidedStep === step, primary, primarySoft)}>{idx + 1}. {label}</button>;
+                  return (
+                    <button
+                      key={step}
+                      type="button"
+                      data-guided-step={step}
+                      onClick={() => setGuidedStep(step)}
+                      style={{ ...pillStyle(guidedStep === step, primary, primarySoft), flex: "0 0 auto", scrollSnapAlign: "center" }}
+                    >
+                      {idx + 1}. {label}
+                    </button>
+                  );
                 })}
               </div>
               <div style={{ fontSize: 18, fontWeight: 1000, marginBottom: 6 }}>

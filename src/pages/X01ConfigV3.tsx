@@ -1418,7 +1418,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- NEW : SAISIE VOCALE DES SCORES (MVP) ----
   const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState<boolean>(false);
 
-  // ---- METHODE DE SAISIE (Keypad / Cible / Presets / Voice) ----
+  // ---- METHODE DE SAISIE (Keypad détail / Score de volée / Cible / Presets / Voice) ----
   const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
     try {
       const raw = localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad";
@@ -2666,7 +2666,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
               {t(
                 "x01v3.inputMethod.desc",
-                "Choisis l’interface par défaut : keypad, cible, presets ou voix."
+                "Choisis l’interface par défaut : keypad détaillé, score de volée, cible, presets ou voix."
               )}
             </div>
 
@@ -2675,6 +2675,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 label={t("x01v3.inputMethod.keypad", "KEYPAD")}
                 active={scoreInputMethod === "keypad"}
                 onClick={() => selectScoreInputMethod("keypad")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("x01v3.inputMethod.visitScore", "SCORE VOLÉE")}
+                active={scoreInputMethod === "visit_score"}
+                onClick={() => selectScoreInputMethod("visit_score")}
                 primary={primary}
                 primarySoft={primarySoft}
                 compact
@@ -2708,6 +2716,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
               {scoreInputMethod === "dartboard"
                 ? t("x01v3.inputMethod.hintDartboard", "CIBLE : touche la cible pour saisir directement S/D/T.")
+                : scoreInputMethod === "visit_score"
+                ? t("x01v3.inputMethod.hintVisitScore", "SCORE VOLÉE : saisie directe du total avec 0-9, BUST, MISS, BULL 25/50 et raccourcis rapides. Les stats S/D/T seront masquées.")
                 : scoreInputMethod === "presets"
                 ? t("x01v3.inputMethod.hintPresets", "PRESETS : raccourcis 1 tap avec détail des fléchettes pour préserver les stats.")
                 : scoreInputMethod === "voice"

@@ -142,13 +142,48 @@ type VisitRow = {
   setNo?: number;
   legInSet?: number;
   playerId: string;
-  darts: { v: number; mult: 0 | 1 | 2 | 3 }[];
+  darts: { v: number; mult: 0 | 1 | 2 | 3; source?: string; scoreInputMode?: string; visitScoreInput?: number | string; visitScoreSource?: string }[];
   scoreBefore: number;
   scoreAfter: number;
   bust: boolean;
   finish: boolean;
   score?: number;
+  scoreInputMode?: string;
+  visitScoreInput?: number | string;
 };
+
+function isVisitScoreInputRecord(rec: any): boolean {
+  const roots = [
+    rec,
+    rec?.summary,
+    rec?.payload,
+    rec?.payload?.summary,
+    rec?.resume,
+    rec?.resume?.config,
+    rec?.payload?.config,
+    rec?.config,
+    rec?.payload?.payload,
+    rec?.payload?.payload?.summary,
+  ].filter(Boolean);
+
+  return roots.some((root: any) => {
+    const mode = String(
+      root?.scoreInputMethod ??
+        root?.scoreInputMode ??
+        root?.scoreInputDefaultMethod ??
+        root?.inputMode ??
+        ""
+    ).toLowerCase();
+    return (
+      mode === "visit_score" ||
+      mode === "score_visit" ||
+      mode === "visit-score" ||
+      root?.isVisitScoreInput === true ||
+      root?.hideSegmentStats === true ||
+      root?.statsDetailAvailable === false
+    );
+  });
+}
 
 /* ================================
    Composant principal
@@ -389,6 +424,7 @@ export default function X01End({ go, params }: Props) {
   }, [rec, matchSummary, legSummary, players, legStats]);
 
   const has = detectAvailability(M);
+  const hideDetailedHitStats = isVisitScoreInputRecord(rec);
 
   const resumeId =
     params?.resumeId ?? rec?.resumeId ?? rec?.payload?.resumeId ?? null;
@@ -906,28 +942,39 @@ export default function X01End({ go, params }: Props) {
       </CardTable>
 
       {/* ===== 4) DARTS / IMPACTS / RATES — bloc fusionné ===== */}
+      {hideDetailedHitStats ? (
+        <InfoCard>
+          <b>Mode score de volée</b> — le détail par impact n'est pas disponible. Les colonnes S/D/T, Bull détaillé et les radars par segment sont donc masqués.
+        </InfoCard>
+      ) : null}
       <CardTable title="Darts / impacts / précision">
         <TableColMajor
           columns={cols}
           rowGroups={[
             {
-              rows: [
-                { label: "Darts", get: (m) => f0(m.darts) },
-                { label: "Miss hits", get: (m) => f0(m.misses || 0) },
-                { label: "Miss %", get: (m) => pct(m.darts > 0 ? (n(m.misses) / m.darts) * 100 : undefined) },
-                { label: "Singles hits", get: (m) => f0(m.singles || 0) },
-                { label: "Singles %", get: (m) => pct(m.darts > 0 ? (n(m.singles) / m.darts) * 100 : undefined) },
-                { label: "Double hits", get: (m) => f0(m.doubles || 0) },
-                { label: "Dbl %", get: (m) => pct(m.doublePct) },
-                { label: "Triples hits", get: (m) => f0(m.triples || 0) },
-                { label: "Trpl %", get: (m) => pct(m.triplePct) },
-                { label: "Bull 25 hits", get: (m) => f0(m.bulls || 0) },
-                { label: "Bull 25 %", get: (m) => pct(m.bullPct) },
-                { label: "DBull 50 hits", get: (m) => f0(m.dbulls || 0) },
-                { label: "DBull 50 %", get: (m) => pct(m.dbullPct) },
-                { label: "Bust", get: (m) => f0(m.busts || 0) },
-                { label: "Bust %", get: (m) => pct(m.darts > 0 ? (n(m.busts) / m.darts) * 100 : undefined) },
-              ],
+              rows: hideDetailedHitStats
+                ? [
+                    { label: "Darts", get: (m) => f0(m.darts) },
+                    { label: "Bust", get: (m) => f0(m.busts || 0) },
+                    { label: "Bust %", get: (m) => pct(m.darts > 0 ? (n(m.busts) / m.darts) * 100 : undefined) },
+                  ]
+                : [
+                    { label: "Darts", get: (m) => f0(m.darts) },
+                    { label: "Miss hits", get: (m) => f0(m.misses || 0) },
+                    { label: "Miss %", get: (m) => pct(m.darts > 0 ? (n(m.misses) / m.darts) * 100 : undefined) },
+                    { label: "Singles hits", get: (m) => f0(m.singles || 0) },
+                    { label: "Singles %", get: (m) => pct(m.darts > 0 ? (n(m.singles) / m.darts) * 100 : undefined) },
+                    { label: "Double hits", get: (m) => f0(m.doubles || 0) },
+                    { label: "Dbl %", get: (m) => pct(m.doublePct) },
+                    { label: "Triples hits", get: (m) => f0(m.triples || 0) },
+                    { label: "Trpl %", get: (m) => pct(m.triplePct) },
+                    { label: "Bull 25 hits", get: (m) => f0(m.bulls || 0) },
+                    { label: "Bull 25 %", get: (m) => pct(m.bullPct) },
+                    { label: "DBull 50 hits", get: (m) => f0(m.dbulls || 0) },
+                    { label: "DBull 50 %", get: (m) => pct(m.dbullPct) },
+                    { label: "Bust", get: (m) => f0(m.busts || 0) },
+                    { label: "Bust %", get: (m) => pct(m.darts > 0 ? (n(m.busts) / m.darts) * 100 : undefined) },
+                  ],
             },
           ]}
           dataMap={M}
@@ -936,7 +983,7 @@ export default function X01End({ go, params }: Props) {
       </CardTable>
 
       {/* ===== 7) RADAR HITS "TRAINING-LIKE" ===== */}
-      {chartMetrics ? (
+      {!hideDetailedHitStats && chartMetrics ? (
         <>
           <Panel className="x-card">
             <h3
@@ -1029,7 +1076,7 @@ export default function X01End({ go, params }: Props) {
           >
             Historique des volées
           </h3>
-          <VisitsList visits={visits} playersById={playersById} />
+          <VisitsList visits={visits} playersById={playersById} hideDartDetails={hideDetailedHitStats} />
         </Panel>
       ) : null}
 
@@ -4358,6 +4405,8 @@ function buildVisitHistory(
           bust,
           finish,
           score: finish || !bust ? points : 0,
+          scoreInputMode: isVisitScoreInputRecord(rec) ? "visit_score" : undefined,
+          visitScoreInput: points,
         } as any);
 
         scores[pid] = after;
@@ -4446,7 +4495,18 @@ function buildVisitHistory(
           : Array.isArray(v.throws)
           ? v.throws
           : [];
-      const darts = dartsSrc.map((d) => parseHistoryDart(d));
+      const darts = dartsSrc.map((d) => ({
+        ...parseHistoryDart(d),
+        source: d?.source,
+        scoreInputMode: d?.scoreInputMode,
+        visitScoreInput: d?.visitScoreInput,
+        visitScoreSource: d?.visitScoreSource,
+      }));
+      const visitScoreMode =
+        v?.scoreInputMode === "visit_score" ||
+        v?.source === "visit_score" ||
+        dartsSrc.some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score") ||
+        isVisitScoreInputRecord(rec);
       const before = n(
         v.scoreBefore ?? v.before ?? v.startScore ?? v.scoreStart ?? v.remainingBefore,
         0
@@ -4493,6 +4553,8 @@ function buildVisitHistory(
         bust,
         finish,
         score: compactScore,
+        scoreInputMode: visitScoreMode ? "visit_score" : v?.scoreInputMode,
+        visitScoreInput: v?.visitScoreInput ?? (visitScoreMode ? compactScore : undefined),
       };
     });
   }
@@ -4623,6 +4685,8 @@ function buildVisitHistory(
         bust: !!(current.bust || bust),
         finish: !!(current.finish || finish),
         score: !!(current.bust || bust) ? 0 : Math.max(0, before - after),
+        scoreInputMode: current.scoreInputMode,
+        visitScoreInput: current.visitScoreInput,
       });
       scores[current.playerId] = after;
       if (finish && !(current.bust || bust)) pendingNewLeg = true;
@@ -4650,12 +4714,24 @@ function buildVisitHistory(
           scoreAfter: raw?.scoreAfter ?? raw?.after ?? raw?.endScore,
           bust: raw?.bust ?? raw?.isBust,
           finish: raw?.finish ?? raw?.isFinish,
+          scoreInputMode: raw?.source === "visit_score" || raw?.scoreInputMode === "visit_score" ? "visit_score" : raw?.scoreInputMode,
+          visitScoreInput: raw?.visitScoreInput,
           legNo: rawLegNo(raw) || currentLegNo,
           setNo: rawSetNo(raw) || currentSetNo,
           legInSet: rawLegInSet(raw) || currentLegInSet,
         };
       }
-      current.darts.push(d);
+      current.darts.push({
+        ...d,
+        source: raw?.source,
+        scoreInputMode: raw?.scoreInputMode,
+        visitScoreInput: raw?.visitScoreInput,
+        visitScoreSource: raw?.visitScoreSource,
+      });
+      if (raw?.source === "visit_score" || raw?.scoreInputMode === "visit_score") {
+        current.scoreInputMode = "visit_score";
+        current.visitScoreInput = raw?.visitScoreInput ?? current.visitScoreInput;
+      }
       if (raw?.scoreAfter != null || raw?.after != null || raw?.endScore != null) {
         current.scoreAfter = raw?.scoreAfter ?? raw?.after ?? raw?.endScore;
       }
@@ -4723,9 +4799,11 @@ function buildVisitHistory(
 function VisitsList({
   visits,
   playersById,
+  hideDartDetails = false,
 }: {
   visits: VisitRow[];
   playersById: Record<string, PlayerLite>;
+  hideDartDetails?: boolean;
 }) {
   if (!visits.length) return null;
 
@@ -4735,6 +4813,7 @@ function VisitsList({
         const p = playersById[v.playerId];
         const name = p?.name || "—";
         const visitTotal = v.bust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
+        const visitScoreMode = hideDartDetails || v.scoreInputMode === "visit_score" || (v.darts || []).some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score");
 
         return (
           <div
@@ -4850,7 +4929,21 @@ function VisitsList({
                   flexWrap: "wrap",
                 }}
               >
-                {v.darts?.length ? (
+                {visitScoreMode ? (
+                  <div
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 12,
+                      border: "1px solid color-mix(in srgb, var(--dc-accent, #f6c256) 22%, transparent)",
+                      color: THEME_ACCENT,
+                      fontSize: 11,
+                      fontWeight: 900,
+                      background: "linear-gradient(180deg, color-mix(in srgb, var(--dc-accent, #f6c256) 12%, transparent), rgba(255,255,255,.03))",
+                    }}
+                  >
+                    SCORE SAISI
+                  </div>
+                ) : v.darts?.length ? (
                   v.darts.map((d, i) => (
                     <div
                       key={`${v.idx}-${i}`}

@@ -1,7 +1,7 @@
 // ============================================
 // src/components/ScoreInputHub.tsx
 // Hub de saisie unifié
-// - Keypad et Cible restent les deux moteurs directs historiques.
+// - Keypad détail, Keypad score de volée et Cible restent les moteurs directs historiques.
 // - PRESETS n'est plus affiché en gros bloc permanent : bouton intégré au keypad + feuille flottante.
 // - VOICE est piloté par un bouton MICRO intégré au keypad.
 // - AUTO / IA retirés volontairement des méthodes produit.
@@ -50,6 +50,10 @@ type Props = {
   onDirectDart?: (d: UIDart) => void;
   /** Remplace proprement la volée affichée (utilisé par PRESETS pour éviter le clignotement/auto-validation). */
   onSetVisitDarts?: (darts: UIDart[]) => void;
+
+  /** Valide directement un total de volée (mode Keypad score de volée / Dartsmind-like). */
+  onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => void;
+  visitScoreFeedback?: React.ReactNode;
 
   /** Méthode choisie par l'écran de config. Prioritaire sur le localStorage. */
   preferredMethod?: ScoreInputMethod | string | null;
@@ -151,6 +155,8 @@ export default function ScoreInputHub({
   onValidate,
   onDirectDart,
   onSetVisitDarts,
+  onSubmitVisitScore,
+  visitScoreFeedback,
   preferredMethod,
   voiceControl,
   enablePresets = true,
@@ -381,7 +387,19 @@ export default function ScoreInputHub({
         </div>
       ) : null}
 
-      {method === "dartboard" ? (
+      {method === "visit_score" && onSubmitVisitScore ? (
+        <VisitScoreKeypad
+          disabled={disabled}
+          feedback={visitScoreFeedback}
+          onSubmit={onSubmitVisitScore}
+          onCancel={onCancel}
+          fitToParent={fitToParent}
+          contentBoxStyle={contentBoxStyle}
+          fitOuterRef={fitOuterRef}
+          fitInnerRef={fitInnerRef}
+          fitScale={fitScale}
+        />
+      ) : method === "dartboard" ? (
         <DartboardInput
           disabled={disabled}
           multiplier={multiplier}
@@ -434,6 +452,210 @@ export default function ScoreInputHub({
           onApplyPreset={applyPresetVisit}
         />
       ) : null}
+    </div>
+  );
+}
+
+
+function VisitScoreKeypad({
+  disabled,
+  feedback,
+  onSubmit,
+  onCancel,
+  fitToParent,
+  contentBoxStyle,
+  fitOuterRef,
+  fitInnerRef,
+  fitScale,
+}: {
+  disabled: boolean;
+  feedback?: React.ReactNode;
+  onSubmit: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => void;
+  onCancel: () => void;
+  fitToParent: boolean;
+  contentBoxStyle: React.CSSProperties;
+  fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
+  fitInnerRef: React.MutableRefObject<HTMLDivElement | null>;
+  fitScale: number;
+}) {
+  const [raw, setRaw] = React.useState("");
+  const [localError, setLocalError] = React.useState<string | null>(null);
+
+  const parsed = raw.trim() ? Number(raw) : NaN;
+  const canEnter = raw.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && parsed <= 180;
+  const quickScores = [26, 41, 45, 60, 81, 85, 95, 100, 121, 125, 140, 180];
+
+  const wrapCard: React.CSSProperties = {
+    background: "linear-gradient(180deg, rgba(22,22,23,.85), rgba(12,12,14,.95))",
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: 18,
+    padding: 12,
+    boxShadow: "0 10px 30px rgba(0,0,0,.35)",
+    userSelect: "none",
+  };
+  const btnBase: React.CSSProperties = {
+    height: "clamp(42px, 8.2vw, 52px)",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,.08)",
+    background: "rgba(255,255,255,.04)",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: disabled ? "not-allowed" : "pointer",
+    minWidth: 0,
+    opacity: disabled ? 0.55 : 1,
+  };
+  const btnGold: React.CSSProperties = {
+    ...btnBase,
+    background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
+    color: "#1a1a1a",
+    border: "1px solid rgba(255,180,0,.3)",
+    boxShadow: "0 10px 22px rgba(255,170,0,.24)",
+  };
+  const btnDanger: React.CSSProperties = {
+    ...btnBase,
+    background: "linear-gradient(180deg, rgba(255,85,85,.25), rgba(100,0,0,.35))",
+    color: "#ffb4b4",
+    border: "1px solid rgba(255,90,90,.34)",
+  };
+  const btnBull: React.CSSProperties = {
+    ...btnBase,
+    background: "rgba(22,92,66,.35)",
+    color: "#8be0b8",
+  };
+  const btnPreset: React.CSSProperties = {
+    ...btnBase,
+    height: "clamp(34px, 7vw, 42px)",
+    borderRadius: 14,
+    color: "#ffe7a8",
+    background: "rgba(255,187,51,.10)",
+    border: "1px solid rgba(255,187,51,.20)",
+  };
+
+  const pushDigit = (digit: number) => {
+    if (disabled) return;
+    setLocalError(null);
+    setRaw((prev) => {
+      const next = `${prev}${digit}`.replace(/^0+(?=\d)/, "").slice(0, 3);
+      const n = Number(next || "0");
+      if (n > 180) {
+        setLocalError("Maximum 180 points par volée.");
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  const clearOne = () => {
+    if (disabled) return;
+    setLocalError(null);
+    setRaw((prev) => prev.slice(0, -1));
+  };
+
+  const submit = (score: number, source: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" = "typed") => {
+    if (disabled) return;
+    const n = Math.max(0, Math.min(180, Math.floor(Number(score) || 0)));
+    setLocalError(null);
+    setRaw("");
+    onSubmit(n, { source });
+  };
+
+  const submitTyped = (source: "typed" | "next" = "typed") => {
+    if (raw.trim().length <= 0) {
+      if (source === "next") submit(0, "next");
+      else setLocalError("Saisis un score de volée ou choisis un raccourci.");
+      return;
+    }
+    if (!canEnter) {
+      setLocalError("Score invalide : entre un nombre entre 0 et 180.");
+      return;
+    }
+    submit(parsed, source);
+  };
+
+  return (
+    <div
+      ref={fitToParent ? fitOuterRef : null}
+      style={{
+        paddingBottom: 6,
+        ...contentBoxStyle,
+        ...(fitToParent ? { flex: 1, minHeight: 0, overflow: "hidden" } : {}),
+      }}
+    >
+      <div
+        ref={fitToParent ? fitInnerRef : null}
+        style={
+          fitToParent
+            ? {
+                transform: `scale(${fitScale})`,
+                transformOrigin: "top left",
+                width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+              }
+            : undefined
+        }
+      >
+        <div style={{ ...wrapCard, width: "100%", maxWidth: "100%", margin: "0 auto", paddingBottom: "calc(12px + var(--safe-bottom))" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <button type="button" style={btnDanger} disabled={disabled} onClick={() => onSubmit(0, { bust: true })}>BUST</button>
+            <div
+              aria-live="polite"
+              style={{
+                minWidth: 92,
+                minHeight: 48,
+                borderRadius: 16,
+                display: "grid",
+                placeItems: "center",
+                padding: "6px 14px",
+                background: "rgba(0,0,0,.55)",
+                border: "1px solid rgba(255,187,51,.42)",
+                color: "#ffc63a",
+                fontSize: 26,
+                lineHeight: 1,
+                fontWeight: 1000,
+                boxShadow: "0 0 22px rgba(255,170,0,.16)",
+              }}
+            >
+              {raw || "0"}
+            </div>
+            <button type="button" style={btnGold} disabled={disabled} onClick={() => submitTyped("typed")}>ENTRER</button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+            <button type="button" style={btnBase} disabled={disabled} onClick={() => submit(0, "miss")}>MISS</button>
+            <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(25, "bull25")}>BULL 25</button>
+            <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(50, "bull50")}>BULL 50</button>
+            <button type="button" style={btnBase} disabled={disabled} onClick={onCancel}>ANNULER</button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 7, marginBottom: 10 }}>
+            {quickScores.map((score) => (
+              <button key={score} type="button" style={btnPreset} disabled={disabled} onClick={() => submit(score, "quick")}>
+                {score}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+              <button key={digit} type="button" style={btnBase} disabled={disabled} onClick={() => pushDigit(digit)}>
+                {digit}
+              </button>
+            ))}
+            <button type="button" style={btnBase} disabled={disabled} onClick={clearOne}>CORRIGER</button>
+            <button type="button" style={btnBase} disabled={disabled} onClick={() => pushDigit(0)}>0</button>
+            <button type="button" style={btnGold} disabled={disabled} onClick={() => submitTyped("next")}>NEXT PLAYER</button>
+          </div>
+
+          {(localError || feedback) ? (
+            <div style={{ marginTop: 10, borderRadius: 14, padding: "8px 10px", border: "1px solid rgba(255,204,102,.34)", background: "rgba(255,174,0,.08)", color: "#ffcc66", fontSize: 11.5, fontWeight: 850, lineHeight: 1.25 }}>
+              {localError || feedback}
+            </div>
+          ) : (
+            <div style={{ marginTop: 10, color: "rgba(255,255,255,.54)", fontSize: 11.5, fontWeight: 750, textAlign: "center" }}>
+              Saisie rapide du total : les stats S/D/T seront masquées pour cette partie.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -863,6 +1085,7 @@ function MethodBar({
   return (
     <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "6px 2px 2px", WebkitOverflowScrolling: "touch" }}>
       {btn("keypad", "KEYPAD", true)}
+      {btn("visit_score", "SCORE VOLÉE", true)}
       {btn("dartboard", "CIBLE", true)}
       {btn("presets", "PRESETS", allowPresets)}
       {btn("voice", "VOICE", true)}

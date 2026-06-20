@@ -1,12 +1,13 @@
 // ============================================
 // src/lib/scoreInput/types.ts
 // Unification des méthodes de saisie X01.
-// Méthodes conservées côté produit : Keypad / Cible / Presets / Voice.
+// Méthodes conservées côté produit : Keypad détail / Keypad score de volée / Cible / Presets / Voice.
 // AUTO et IA ont été supprimés volontairement : valeurs héritées => keypad.
 // ============================================
 
 export type ScoreInputMethod =
   | "keypad"
+  | "visit_score"
   | "dartboard"
   | "presets"
   | "voice";
@@ -32,7 +33,7 @@ export type ScoreVisitPayload = {
 export const SCORE_INPUT_LS_KEY = "dc-score-input-method";
 
 export function sanitizeScoreInputMethod(value: unknown): ScoreInputMethod {
-  if (value === "keypad" || value === "dartboard" || value === "presets" || value === "voice") {
+  if (value === "keypad" || value === "visit_score" || value === "dartboard" || value === "presets" || value === "voice") {
     return value;
   }
   // Compat anciennes configs : auto / ai / camera-ai / tout inconnu => keypad.
