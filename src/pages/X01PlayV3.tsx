@@ -402,8 +402,10 @@ function renderLastVisitChips(
   pid: string,
   lastVisits: Record<string, UIDart[]>,
   isBust?: boolean,
-  bustCount?: number
+  bustCount?: number,
+  hideAll?: boolean
 ) {
+  if (hideAll) return null;
   const darts = lastVisits[pid] ?? [];
   if (!darts.length) return null;
 
@@ -5468,6 +5470,7 @@ if (isLandscapeTablet) {
                 lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
                 lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
                 avg3ByPlayer={avg3ByPlayer}
+                hideLastVisitDetails={configuredScoreInputMethod === "visit_score"}
               />
             ) : (
               <PlayersListOnly
@@ -5485,6 +5488,7 @@ if (isLandscapeTablet) {
                 lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
                 lastVisitBustCountByPlayer={lastVisitBustCountByPlayer}
                 avg3ByPlayer={avg3ByPlayer}
+                hideLastVisitDetails={configuredScoreInputMethod === "visit_score"}
               />
             )}
           </div>
@@ -6807,6 +6811,7 @@ function TeamsPlayersList(props: {
   lastVisitIsBustByPlayer: Record<string, boolean>;
   lastVisitBustCountByPlayer: Record<string, number>;
   avg3ByPlayer: Record<string, number>;
+  hideLastVisitDetails?: boolean;
 }) {
   const {
     cameraOpen,
@@ -6821,6 +6826,7 @@ function TeamsPlayersList(props: {
     lastVisitIsBustByPlayer: rawLastVisitIsBustByPlayer,
     lastVisitBustCountByPlayer: rawLastVisitBustCountByPlayer,
     avg3ByPlayer: rawAvg3ByPlayer,
+    hideLastVisitDetails = false,
   } = props;
 
   const teams = Array.isArray(rawTeams) ? rawTeams : [];
@@ -6972,7 +6978,8 @@ function TeamsPlayersList(props: {
                         p.id,
                         lastVisitsByPlayer,
                         (lastVisitIsBustByPlayer as any)?.[p.id],
-                        (lastVisitBustCountByPlayer as any)?.[p.id]
+                        (lastVisitBustCountByPlayer as any)?.[p.id],
+                        hideLastVisitDetails
                       )}
                     </div>
                     <div style={{ fontSize: 11.5, color: "#cfd1d7", marginTop: 2 }}>
@@ -7041,6 +7048,7 @@ function PlayersListOnly(props: {
   lastVisitIsBustByPlayer: Record<string, boolean>;
   lastVisitBustCountByPlayer: Record<string, number>;
   avg3ByPlayer: Record<string, number>;
+  hideLastVisitDetails?: boolean;
 }) {
   const {
     cameraOpen,
@@ -7057,6 +7065,7 @@ function PlayersListOnly(props: {
     lastVisitIsBustByPlayer: rawLastVisitIsBustByPlayer,
     lastVisitBustCountByPlayer: rawLastVisitBustCountByPlayer,
     avg3ByPlayer: rawAvg3ByPlayer,
+    hideLastVisitDetails = false,
   } = props;
 
   const players = Array.isArray(rawPlayers) ? rawPlayers : [];
@@ -7187,7 +7196,8 @@ function PlayersListOnly(props: {
                         p.id,
                         lastVisitsByPlayer,
                         (lastVisitIsBustByPlayer as any)?.[p.id],
-                        (lastVisitBustCountByPlayer as any)?.[p.id]
+                        (lastVisitBustCountByPlayer as any)?.[p.id],
+                        hideLastVisitDetails
                       )}
               </div>
               <div

@@ -475,7 +475,7 @@ function VisitScoreKeypad({
 }: {
   disabled: boolean;
   feedback?: React.ReactNode;
-  onSubmit: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => void;
+  onSubmit: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "next" | "bust" }) => void;
   onCancel: () => void;
   onCorrectEmpty: () => void;
   fitToParent: boolean;
@@ -525,12 +525,7 @@ function VisitScoreKeypad({
     color: "#ffb4b4",
     border: "1px solid rgba(255,90,90,.34)",
   };
-  const btnBull: React.CSSProperties = {
-    ...btnBase,
-    background: "rgba(22,92,66,.35)",
-    color: "#8be0b8",
-  };
-  const btnPreset: React.CSSProperties = {
+    const btnPreset: React.CSSProperties = {
     ...btnBase,
     height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
     borderRadius: compactFit ? 12 : 14,
@@ -563,7 +558,7 @@ function VisitScoreKeypad({
     });
   };
 
-  const submit = (score: number, source: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" = "typed") => {
+  const submit = (score: number, source: "typed" | "quick" | "next" | "bust" = "typed") => {
     if (disabled) return;
     const n = Math.max(0, Math.min(180, Math.floor(Number(score) || 0)));
     setLocalError(null);
@@ -616,7 +611,7 @@ function VisitScoreKeypad({
       >
         <div style={{ ...wrapCard, width: "100%", maxWidth: "100%", margin: "0 auto", paddingBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: compactFit ? 8 : 10, marginBottom: compactFit ? 8 : 10 }}>
-            <button type="button" style={btnDanger} disabled={disabled} onClick={() => onSubmit(0, { bust: true })}>BUST</button>
+            <button type="button" style={btnDanger} disabled={disabled} onClick={() => { setLocalError(null); setRaw(""); onSubmit(0, { bust: true, source: "bust" }); }}>BUST</button>
             <div
               aria-live="polite"
               style={{
@@ -637,28 +632,7 @@ function VisitScoreKeypad({
             >
               {raw || "0"}
             </div>
-            <button type="button" style={btnGold} disabled={disabled} onClick={() => submitTyped("typed")}>ENTRER</button>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: compactFit ? 6 : 8, marginBottom: compactFit ? 8 : 10 }}>
-            <button type="button" style={btnBase} disabled={disabled} onClick={() => submit(0, "miss")}>MISS</button>
-            <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(25, "bull25")}>BULL 25</button>
-            <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(50, "bull50")}>BULL 50</button>
-            <button
-              type="button"
-              style={btnBase}
-              disabled={disabled}
-              onClick={() => {
-                setLocalError(null);
-                if (raw.trim().length > 0) {
-                  setRaw("");
-                  return;
-                }
-                onCancel();
-              }}
-            >
-              ANNULER
-            </button>
+            <button type="button" style={btnBase} disabled={disabled} onClick={clearOne}>CORRIGER</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: compactFit ? 6 : 7, marginBottom: compactFit ? 8 : 10 }}>
@@ -675,9 +649,15 @@ function VisitScoreKeypad({
                 {digit}
               </button>
             ))}
-            <button type="button" style={btnBase} disabled={disabled} onClick={clearOne}>CORRIGER</button>
             <button type="button" style={btnBase} disabled={disabled} onClick={() => pushDigit(0)}>0</button>
-            <button type="button" style={btnGold} disabled={disabled} onClick={() => submitTyped("next")}>NEXT PLAYER</button>
+            <button
+              type="button"
+              style={{ ...btnGold, gridColumn: "span 2" }}
+              disabled={disabled}
+              onClick={() => submitTyped("next")}
+            >
+              NEXT PLAYER
+            </button>
           </div>
 
           {(localError || feedback) ? (
@@ -686,7 +666,7 @@ function VisitScoreKeypad({
             </div>
           ) : (
             <div style={{ marginTop: compactFit ? 8 : 10, color: "rgba(255,255,255,.54)", fontSize: compactFit ? 10.8 : 11.5, fontWeight: 750, textAlign: "center" }}>
-              Saisie rapide du total : les stats S/D/T seront masquées pour cette partie.
+              Saisie rapide du total : aucune volée détaillée ne sera affichée pour cette partie.
             </div>
           )}
         </div>
