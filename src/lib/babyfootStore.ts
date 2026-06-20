@@ -102,6 +102,8 @@ export type BabyFootState = {
   scoreA: number;
   scoreB: number;
   target: number;
+  scoreMode?: "target" | "balls10" | "chrono";
+  maxBalls?: number | null;
 
   // chrono manuel
   startedAt: number | null;
@@ -306,6 +308,8 @@ export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFoot
     scoreA: 0,
     scoreB: 0,
     target: 10,
+    scoreMode: "target",
+    maxBalls: null,
 
     startedAt: null,
     finishedAt: null,
@@ -377,6 +381,8 @@ function migrate(raw: any): BabyFootState {
     scoreA: Number.isFinite(raw.scoreA) ? raw.scoreA : 0,
     scoreB: Number.isFinite(raw.scoreB) ? raw.scoreB : 0,
     target: Number.isFinite(raw.target) ? raw.target : 10,
+    scoreMode: raw.scoreMode === "balls10" || raw.scoreMode === "chrono" ? raw.scoreMode : "target",
+    maxBalls: Number.isFinite(raw.maxBalls) ? raw.maxBalls : null,
 
     startedAt,
     finishedAt: raw.finishedAt ?? null,
@@ -712,7 +718,23 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     next = maybeWinSet(next);
     if (next.finished) return next;
 
-    if (!next.setsEnabled) {
+    if (!next.setsEnabled && next.scoreMode === "balls10") {
+      const maxBalls = Math.max(1, Math.floor(Number(next.maxBalls) || 10));
+      if ((next.scoreA + next.scoreB) >= maxBalls) {
+        const winner: BabyFootTeamId | null = next.scoreA === next.scoreB ? null : next.scoreA > next.scoreB ? "A" : "B";
+        next = {
+          ...next,
+          finished: true,
+          winner,
+          phase: "finished",
+          clockRunning: false,
+          finishedAt: now,
+          events: [...(next.events || []), { t: "finish", at: now, winner, reason: winner ? "target" : "draw" }],
+        };
+      }
+    }
+
+    if (!next.setsEnabled && next.scoreMode !== "chrono" && !next.finished) {
       const target = Math.max(1, next.target || 10);
       if (next.scoreA >= target || next.scoreB >= target) {
         const require2 = !!next.requireTwoGoalLead && !Number.isFinite(next.matchDurationSec as any);
@@ -1052,6 +1074,8 @@ export function setAdvancedOptions(
   partial: Partial<
     Pick<
       BabyFootState,
+      | "scoreMode"
+      | "maxBalls"
       | "matchDurationSec"
       | "overtimeSec"
       | "goldenGoal"
