@@ -485,16 +485,18 @@ function VisitScoreKeypad({
   const canEnter = raw.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0 && parsed <= 180;
   const quickScores = [26, 41, 45, 60, 81, 85, 95, 100, 121, 125, 140, 180];
 
+  const compactFit = fitToParent;
+
   const wrapCard: React.CSSProperties = {
     background: "linear-gradient(180deg, rgba(22,22,23,.85), rgba(12,12,14,.95))",
     border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: 18,
-    padding: 12,
+    borderRadius: compactFit ? 16 : 18,
+    padding: compactFit ? 10 : 12,
     boxShadow: "0 10px 30px rgba(0,0,0,.35)",
     userSelect: "none",
   };
   const btnBase: React.CSSProperties = {
-    height: "clamp(42px, 8.2vw, 52px)",
+    height: compactFit ? "clamp(38px, 7.2vw, 48px)" : "clamp(42px, 8.2vw, 52px)",
     borderRadius: 16,
     border: "1px solid rgba(255,255,255,.08)",
     background: "rgba(255,255,255,.04)",
@@ -524,8 +526,8 @@ function VisitScoreKeypad({
   };
   const btnPreset: React.CSSProperties = {
     ...btnBase,
-    height: "clamp(34px, 7vw, 42px)",
-    borderRadius: 14,
+    height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
+    borderRadius: compactFit ? 12 : 14,
     color: "#ffe7a8",
     background: "rgba(255,187,51,.10)",
     border: "1px solid rgba(255,187,51,.20)",
@@ -578,7 +580,16 @@ function VisitScoreKeypad({
       style={{
         paddingBottom: 6,
         ...contentBoxStyle,
-        ...(fitToParent ? { flex: 1, minHeight: 0, overflow: "hidden" } : {}),
+        ...(fitToParent
+          ? {
+              flex: 1,
+              minHeight: 0,
+              overflowX: "hidden",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              paddingBottom: "calc(10px + env(safe-area-inset-bottom))",
+            }
+          : {}),
       }}
     >
       <div
@@ -593,22 +604,22 @@ function VisitScoreKeypad({
             : undefined
         }
       >
-        <div style={{ ...wrapCard, width: "100%", maxWidth: "100%", margin: "0 auto", paddingBottom: "calc(12px + var(--safe-bottom))" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ ...wrapCard, width: "100%", maxWidth: "100%", margin: "0 auto", paddingBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: compactFit ? 8 : 10, marginBottom: compactFit ? 8 : 10 }}>
             <button type="button" style={btnDanger} disabled={disabled} onClick={() => onSubmit(0, { bust: true })}>BUST</button>
             <div
               aria-live="polite"
               style={{
-                minWidth: 92,
-                minHeight: 48,
-                borderRadius: 16,
+                minWidth: compactFit ? 84 : 92,
+                minHeight: compactFit ? 42 : 48,
+                borderRadius: compactFit ? 14 : 16,
                 display: "grid",
                 placeItems: "center",
-                padding: "6px 14px",
+                padding: compactFit ? "4px 12px" : "6px 14px",
                 background: "rgba(0,0,0,.55)",
                 border: "1px solid rgba(255,187,51,.42)",
                 color: "#ffc63a",
-                fontSize: 26,
+                fontSize: compactFit ? 24 : 26,
                 lineHeight: 1,
                 fontWeight: 1000,
                 boxShadow: "0 0 22px rgba(255,170,0,.16)",
@@ -619,14 +630,14 @@ function VisitScoreKeypad({
             <button type="button" style={btnGold} disabled={disabled} onClick={() => submitTyped("typed")}>ENTRER</button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: compactFit ? 6 : 8, marginBottom: compactFit ? 8 : 10 }}>
             <button type="button" style={btnBase} disabled={disabled} onClick={() => submit(0, "miss")}>MISS</button>
             <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(25, "bull25")}>BULL 25</button>
             <button type="button" style={btnBull} disabled={disabled} onClick={() => submit(50, "bull50")}>BULL 50</button>
             <button type="button" style={btnBase} disabled={disabled} onClick={onCancel}>ANNULER</button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 7, marginBottom: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: compactFit ? 6 : 7, marginBottom: compactFit ? 8 : 10 }}>
             {quickScores.map((score) => (
               <button key={score} type="button" style={btnPreset} disabled={disabled} onClick={() => submit(score, "quick")}>
                 {score}
@@ -634,7 +645,7 @@ function VisitScoreKeypad({
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: compactFit ? 6 : 8 }}>
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
               <button key={digit} type="button" style={btnBase} disabled={disabled} onClick={() => pushDigit(digit)}>
                 {digit}
@@ -646,11 +657,11 @@ function VisitScoreKeypad({
           </div>
 
           {(localError || feedback) ? (
-            <div style={{ marginTop: 10, borderRadius: 14, padding: "8px 10px", border: "1px solid rgba(255,204,102,.34)", background: "rgba(255,174,0,.08)", color: "#ffcc66", fontSize: 11.5, fontWeight: 850, lineHeight: 1.25 }}>
+            <div style={{ marginTop: compactFit ? 8 : 10, borderRadius: 14, padding: compactFit ? "7px 9px" : "8px 10px", border: "1px solid rgba(255,204,102,.34)", background: "rgba(255,174,0,.08)", color: "#ffcc66", fontSize: compactFit ? 10.8 : 11.5, fontWeight: 850, lineHeight: 1.25 }}>
               {localError || feedback}
             </div>
           ) : (
-            <div style={{ marginTop: 10, color: "rgba(255,255,255,.54)", fontSize: 11.5, fontWeight: 750, textAlign: "center" }}>
+            <div style={{ marginTop: compactFit ? 8 : 10, color: "rgba(255,255,255,.54)", fontSize: compactFit ? 10.8 : 11.5, fontWeight: 750, textAlign: "center" }}>
               Saisie rapide du total : les stats S/D/T seront masquées pour cette partie.
             </div>
           )}
@@ -740,7 +751,16 @@ function DartboardInput({
       style={{
         paddingBottom: 6,
         ...contentBoxStyle,
-        ...(fitToParent ? { flex: 1, minHeight: 0, overflow: "hidden" } : {}),
+        ...(fitToParent
+          ? {
+              flex: 1,
+              minHeight: 0,
+              overflowX: "hidden",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              paddingBottom: "calc(10px + env(safe-area-inset-bottom))",
+            }
+          : {}),
       }}
     >
       <div
