@@ -3068,6 +3068,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
             const key = matchLink(e) || e.id;
             const historyVisits = !inProg && isX01HistoryRecord(e) ? buildX01HistoryVisits(e) : [];
             const historyPlayersById = buildHistoryPlayersById(e, store);
+            const historyHideDartDetails = isVisitScoreHistoryRecord(e) || historyVisits.some(isVisitScoreHistoryVisit);
 
             return (
               <ScaledCard key={key} baseStyle={sportCardStyle(getModeColor(e))}>
@@ -3176,7 +3177,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                 </div>
 
                 {historyVisits.length > 0 ? (
-                  <HistoryX01VisitsBlock visits={historyVisits} playersById={historyPlayersById} />
+                  <HistoryX01VisitsBlock visits={historyVisits} playersById={historyPlayersById} hideDartDetails={historyHideDartDetails} />
                 ) : null}
               </ScaledCard>
             );
@@ -3314,9 +3315,35 @@ type HistoryVisitRow = {
   scoreAfter: number;
   bust: boolean;
   finish: boolean;
+  scoreInputMode?: string;
+  visitScoreInput?: number | string;
 };
 
 type HistoryPlayerLite = { id: string; name: string; avatarDataUrl?: string | null };
+
+function isVisitScoreHistoryRecord(e: any): boolean {
+  const roots = [
+    e,
+    e?.summary,
+    e?.payload,
+    e?.payload?.summary,
+    e?.resume,
+    e?.resume?.config,
+    e?.payload?.config,
+    e?.config,
+    e?.payload?.payload,
+    e?.payload?.payload?.summary,
+  ].filter(Boolean);
+
+  return roots.some((root: any) => {
+    const mode = String(root?.scoreInputMethod ?? root?.scoreInputMode ?? root?.scoreInputDefaultMethod ?? root?.inputMode ?? "").toLowerCase();
+    return mode === "visit_score" || mode === "score_visit" || mode === "visit-score" || root?.isVisitScoreInput === true || root?.hideSegmentStats === true || root?.statsDetailAvailable === false;
+  });
+}
+
+function isVisitScoreHistoryVisit(v: any): boolean {
+  return String(v?.scoreInputMode || "").toLowerCase() === "visit_score" || v?.visitScoreInput != null || (Array.isArray(v?.darts) && v.darts.some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score" || d?.visitScoreInput != null));
+}
 
 function isX01HistoryRecord(e: any) {
   const raw = [e?.kind, e?.mode, e?.game?.mode, e?.payload?.kind, e?.payload?.mode, e?.summary?.kind, e?.summary?.mode]
@@ -3372,6 +3399,8 @@ function buildX01HistoryVisits(e: any): HistoryVisitRow[] {
       scoreAfter: Number(v?.scoreAfter ?? v?.after ?? v?.endScore ?? 0) || 0,
       bust: !!(v?.bust ?? v?.isBust),
       finish: !!(v?.finish ?? v?.isFinish) || (!!(v?.scoreAfter === 0 || v?.after === 0) && !(v?.bust ?? v?.isBust)),
+      scoreInputMode: isVisitScoreHistoryVisit(v) ? "visit_score" : String(v?.scoreInputMode || ""),
+      visitScoreInput: v?.visitScoreInput ?? v?.score ?? v?.points ?? v?.visitScore,
     }));
   }
 
@@ -3409,7 +3438,9 @@ function buildX01HistoryVisits(e: any): HistoryVisitRow[] {
     const explicitAfter = last?.scoreAfter ?? last?.after ?? last?.endScore;
     if (explicitAfter != null && Number.isFinite(Number(explicitAfter))) after = Number(explicitAfter);
     if (after === 0) finish = true;
-    out.push({ idx: out.length + 1, legNo: Number(rawGroup[0]?.legNo ?? rawGroup[0]?.legIndex ?? 1) || 1, playerId: pid, darts, scoreBefore: before, scoreAfter: after, bust, finish });
+    const visitScoreMode = rawGroup.some((d: any) => d?.source === "visit_score" || d?.scoreInputMode === "visit_score" || d?.visitScoreInput != null);
+    const visitScoreInput = rawGroup.find((d: any) => d?.visitScoreInput != null)?.visitScoreInput;
+    out.push({ idx: out.length + 1, legNo: Number(rawGroup[0]?.legNo ?? rawGroup[0]?.legIndex ?? 1) || 1, playerId: pid, darts, scoreBefore: before, scoreAfter: after, bust, finish, scoreInputMode: visitScoreMode ? "visit_score" : undefined, visitScoreInput });
     scores[pid] = after;
   };
 
@@ -3471,11 +3502,11 @@ function historyDartLabel(d: { v: number; mult: number }) {
   return `${d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S"}${d.v}`;
 }
 
-function HistoryX01VisitsBlock({ visits, playersById }: { visits: HistoryVisitRow[]; playersById: Record<string, HistoryPlayerLite> }) {
+function HistoryX01VisitsBlock({ visits, playersById, hideDartDetails = false }: { visits: HistoryVisitRow[]; playersById: Record<string, HistoryPlayerLite>; hideDartDetails?: boolean }) {
   return (
     <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.10)" }}>
       <div style={{ fontSize: 11, fontWeight: 900, color: "var(--dc-accent, #ffcf57)", marginBottom: 6, letterSpacing: 0.2 }}>
-        Historique des volées
+        {hideDartDetails ? "Historique des scores saisis" : "Historique des volées"}
       </div>
       <div style={{ maxHeight: 340, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
         {visits.map((v) => {
@@ -3483,6 +3514,7 @@ function HistoryX01VisitsBlock({ visits, playersById }: { visits: HistoryVisitRo
           const isBust = Boolean((v as any).bust || (v as any).isBust);
           const isFinish = Boolean((v as any).finish || (v as any).isFinish || (v as any).checkout || (v as any).isCheckout || (!isBust && Number(v.scoreBefore) > 0 && Number(v.scoreAfter) === 0));
           const total = isBust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
+          const visitScoreMode = hideDartDetails || isVisitScoreHistoryVisit(v);
           return (
             <div key={`${v.idx}-${v.playerId}`} style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.18)" }}>
               <div style={{ color: "var(--dc-accent, #ffcf57)", fontSize: 11, fontWeight: 900 }}>#{v.idx}</div>
@@ -3493,10 +3525,14 @@ function HistoryX01VisitsBlock({ visits, playersById }: { visits: HistoryVisitRo
                   {isBust ? <span style={historyVisitTag("bust")}>BUST</span> : null}
                 </div>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  {v.darts.map((d, i) => {
-                    const label = historyDartLabel(d);
-                    return <span key={i} style={historyDartBadge(label)}>{label}</span>;
-                  })}
+                  {visitScoreMode ? (
+                    <span style={{ ...historyDartBadge("TOTAL"), color: "var(--dc-accent, #ffcf57)", borderColor: "rgba(255,207,87,.22)" }}>SCORE SAISI</span>
+                  ) : (
+                    v.darts.map((d, i) => {
+                      const label = historyDartLabel(d);
+                      return <span key={i} style={historyDartBadge(label)}>{label}</span>;
+                    })
+                  )}
                   <span style={{ ...historyDartBadge("TOTAL"), color: "var(--dc-accent, #ffcf57)", borderColor: "rgba(255,207,87,.22)" }}>{isBust ? "BUST" : `+${total}`}</span>
                 </div>
               </div>

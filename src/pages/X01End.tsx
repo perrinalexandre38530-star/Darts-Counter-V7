@@ -838,10 +838,10 @@ export default function X01End({ go, params }: Props) {
               rows: [
                 { label: "Avg/3D", get: (m) => f2(m.avg3) },
                 { label: "Avg/1D", get: (m) => f2(m.avg1) },
-                { label: "Best visit", get: (m) => f0(m.bestVisit) },
+                { label: hideDetailedHitStats ? "Best score" : "Best visit", get: (m) => f0(m.bestVisit) },
                 { label: "Best CO", get: (m) => f0(m.bestCO) },
                 { label: "Darts", get: (m) => f0(m.darts) },
-                { label: "Visits", get: (m) => f0(m.visits) },
+                { label: hideDetailedHitStats ? "Scores saisis" : "Visits", get: (m) => f0(m.visits) },
                 { label: "Points", get: (m) => f0(m.points) },
                 {
                   label: "Score/visit",
@@ -944,7 +944,7 @@ export default function X01End({ go, params }: Props) {
       {/* ===== 4) DARTS / IMPACTS / RATES — bloc fusionné ===== */}
       {hideDetailedHitStats ? (
         <InfoCard>
-          <b>Mode score de volée</b> — le détail par impact n'est pas disponible. Les colonnes S/D/T, Bull détaillé et les radars par segment sont donc masqués.
+          <b>Mode score saisi</b> — le détail par fléchette n'est pas disponible. Les colonnes S/D/T, Bull détaillé et les radars par segment sont donc masqués.
         </InfoCard>
       ) : null}
       <CardTable title="Darts / impacts / précision">
@@ -1074,7 +1074,7 @@ export default function X01End({ go, params }: Props) {
               color: THEME_ACCENT,
             }}
           >
-            Historique des volées
+            {hideDetailedHitStats ? "Historique des scores saisis" : "Historique des volées"}
           </h3>
           <VisitsList visits={visits} playersById={playersById} hideDartDetails={hideDetailedHitStats} />
         </Panel>
@@ -1086,6 +1086,7 @@ export default function X01End({ go, params }: Props) {
           breakdown={legBreakdown}
           players={players}
           tableStyle={tableStyle}
+          hideDartDetails={hideDetailedHitStats}
         />
       )}
 
@@ -3127,10 +3128,12 @@ function MatchLegDetails({
   breakdown,
   players,
   tableStyle,
+  hideDartDetails = false,
 }: {
   breakdown: LegBreakdown[];
   players: PlayerLite[];
   tableStyle: React.CSSProperties;
+  hideDartDetails?: boolean;
 }) {
   const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
 
@@ -3278,9 +3281,9 @@ function MatchLegDetails({
                 rows: [
                   { label: "Score restant", get: (m) => (m.remaining != null ? f0(m.remaining) : "—") },
                   { label: "Avg/3D", get: (m) => f2(m.avg3) },
-                  { label: "Best visit", get: (m) => f0(m.bestVisit) },
+                  { label: hideDartDetails ? "Best score" : "Best visit", get: (m) => f0(m.bestVisit) },
                   { label: "Darts", get: (m) => f0(m.darts) },
-                  { label: "Visits", get: (m) => f0(m.visits) },
+                  { label: hideDartDetails ? "Scores saisis" : "Visits", get: (m) => f0(m.visits) },
                   { label: "Points", get: (m) => f0(m.points) },
                   { label: "60+", get: (m) => f0(m.t60) },
                   { label: "100+", get: (m) => f0(m.t100) },
@@ -3301,6 +3304,7 @@ function MatchLegDetails({
             <VisitsList
               visits={selectedLeg.visits.map((v, idx) => ({ ...v, idx: idx + 1 }))}
               playersById={Object.fromEntries(players.map((p) => [p.id, p]))}
+              hideDartDetails={hideDartDetails}
             />
           </div>
         </Panel>

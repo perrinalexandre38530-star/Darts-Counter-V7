@@ -52,7 +52,7 @@ type Props = {
   onSetVisitDarts?: (darts: UIDart[]) => void;
 
   /** Valide directement un total de volée (mode Keypad score de volée / Dartsmind-like). */
-  onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => void;
+  onSubmitVisitScore?: (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "next" | "bust" }) => void;
   /** Mode score de volée : corrige la saisie en cours ou, si elle est vide, annule la dernière volée validée. */
   onCorrectVisitScore?: () => void;
   visitScoreFeedback?: React.ReactNode;
@@ -519,19 +519,29 @@ function VisitScoreKeypad({
     border: "1px solid rgba(255,180,0,.3)",
     boxShadow: "0 10px 22px rgba(255,170,0,.24)",
   };
+  const btnQuickLow: React.CSSProperties = {
+    ...btnBase,
+    height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
+    borderRadius: compactFit ? 12 : 14,
+    color: "#f1d4ff",
+    background: "linear-gradient(180deg, rgba(137,73,255,.38), rgba(62,25,126,.46))",
+    border: "1px solid rgba(184,132,255,.42)",
+    boxShadow: "0 8px 18px rgba(122,63,255,.16)",
+  };
+  const btnQuickHigh: React.CSSProperties = {
+    ...btnBase,
+    height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
+    borderRadius: compactFit ? 12 : 14,
+    color: "#ffe1f1",
+    background: "linear-gradient(180deg, rgba(255,82,170,.36), rgba(137,25,86,.48))",
+    border: "1px solid rgba(255,122,190,.44)",
+    boxShadow: "0 8px 18px rgba(255,82,170,.15)",
+  };
   const btnDanger: React.CSSProperties = {
     ...btnBase,
     background: "linear-gradient(180deg, rgba(255,85,85,.25), rgba(100,0,0,.35))",
     color: "#ffb4b4",
     border: "1px solid rgba(255,90,90,.34)",
-  };
-    const btnPreset: React.CSSProperties = {
-    ...btnBase,
-    height: compactFit ? "clamp(30px, 5.8vw, 36px)" : "clamp(34px, 7vw, 42px)",
-    borderRadius: compactFit ? 12 : 14,
-    color: "#ffe7a8",
-    background: "rgba(255,187,51,.10)",
-    border: "1px solid rgba(255,187,51,.20)",
   };
 
   const pushDigit = (digit: number) => {
@@ -541,7 +551,7 @@ function VisitScoreKeypad({
       const next = `${prev}${digit}`.replace(/^0+(?=\d)/, "").slice(0, 3);
       const n = Number(next || "0");
       if (n > 180) {
-        setLocalError("Maximum 180 points par volée.");
+        setLocalError("Maximum 180 points.");
         return prev;
       }
       return next;
@@ -569,14 +579,16 @@ function VisitScoreKeypad({
   const submitTyped = (source: "typed" | "next" = "typed") => {
     if (raw.trim().length <= 0) {
       if (source === "next") submit(0, "next");
-      else setLocalError("Saisis un score de volée ou choisis un raccourci.");
+      else setLocalError("Saisis un score ou choisis un raccourci.");
       return;
     }
     if (!canEnter) {
       setLocalError("Score invalide : entre un nombre entre 0 et 180.");
       return;
     }
-    submit(parsed, source);
+    // Une saisie numérique doit être traitée comme un score saisi simple.
+    // Le bouton NEXT PLAYER sert seulement de validation + passage au suivant.
+    submit(parsed, "typed");
   };
 
   return (
@@ -632,12 +644,18 @@ function VisitScoreKeypad({
             >
               {raw || "0"}
             </div>
-            <button type="button" style={btnBase} disabled={disabled} onClick={clearOne}>CORRIGER</button>
+            <button type="button" style={btnGold} disabled={disabled} onClick={clearOne}>CORRIGER</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: compactFit ? 6 : 7, marginBottom: compactFit ? 8 : 10 }}>
             {quickScores.map((score) => (
-              <button key={score} type="button" style={btnPreset} disabled={disabled} onClick={() => submit(score, "quick")}>
+              <button
+                key={score}
+                type="button"
+                style={score <= 85 ? btnQuickLow : btnQuickHigh}
+                disabled={disabled}
+                onClick={() => submit(score, "quick")}
+              >
                 {score}
               </button>
             ))}
@@ -666,7 +684,7 @@ function VisitScoreKeypad({
             </div>
           ) : (
             <div style={{ marginTop: compactFit ? 8 : 10, color: "rgba(255,255,255,.54)", fontSize: compactFit ? 10.8 : 11.5, fontWeight: 750, textAlign: "center" }}>
-              Saisie rapide du total : aucune volée détaillée ne sera affichée pour cette partie.
+              Saisie rapide du score total : aucun détail S/D/T ne sera affiché pour cette partie.
             </div>
           )}
         </div>

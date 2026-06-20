@@ -3328,7 +3328,7 @@ const handleSetVisitDarts = (darts: UIDart[]) => {
   }
 };
 
-const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "miss" | "bull25" | "bull50" | "next" }) => {
+const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?: "typed" | "quick" | "next" | "bust" }) => {
   if (!onlineCanScore) return;
   if (!activePlayerId) return;
 
@@ -3360,14 +3360,18 @@ const handleSubmitVisitScore = (score: number, opts?: { bust?: boolean; source?:
   }
 
   setVisitScoreFeedback(null);
-  handleSetVisitDarts(darts);
-  window.setTimeout(() => {
-    try {
-      requestValidateThrow();
-    } catch (e) {
-      console.warn("[X01PlayV3] visit score validate failed", e);
-    }
-  }, 0);
+
+  // Score saisi = validation directe du total, sans attendre le rendu React
+  // de currentThrow. C'est ce qui évite le double-clic sur NEXT PLAYER
+  // quand le score a été tapé au clavier 0-9.
+  currentThrowFromEngineRef.current = false;
+  setCurrentThrow(darts);
+  setMultiplier(1);
+  try {
+    validateThrow(darts, activePlayerId);
+  } catch (e) {
+    console.warn("[X01PlayV3] visit score validate failed", e);
+  }
 };
 
 const handleCorrectVisitScore = () => {
@@ -3398,7 +3402,7 @@ const handleCorrectVisitScore = () => {
     const restored = splitLastCommittedReplayVisit(before as any);
 
     if (!restored) {
-      setVisitScoreFeedback("Aucune volée à corriger.");
+      setVisitScoreFeedback("Aucun score à corriger.");
       return;
     }
 
@@ -3582,12 +3586,12 @@ const handleCancel = () => {
     }, 0);
   }
 };
-const validateThrow = async () => {
+const validateThrow = async (forcedDarts?: UIDart[] | null, forcedPlayerId?: string | null) => {
   if (isValidatingRef.current) return;
   if (effectiveOnline && !onlineCanScore) return;
   if (effectiveOnline && onlineCurrentUserId && !onlineActiveIdentitySet.has(String(onlineCurrentUserId))) return;
-  const toSend = Array.isArray(currentThrow) ? [...currentThrow] : [];
-  const pid = undoEditingPlayerIdRef.current || activePlayerId;
+  const toSend = Array.isArray(forcedDarts) ? [...forcedDarts] : (Array.isArray(currentThrow) ? [...currentThrow] : []);
+  const pid = forcedPlayerId || undoEditingPlayerIdRef.current || activePlayerId;
   if (!pid || toSend.length <= 0) return;
 
   isValidatingRef.current = true;
@@ -3721,7 +3725,7 @@ const buildVisitLabelForConfirm = (darts: UIDart[]) => {
     const visitScoreInput = visitScoreInputFromDarts(darts);
     if (visitScoreInput === "BUST") return "BUST";
     if (visitScoreInput != null) return `Score saisi : ${visitScoreInput}`;
-    return "Score de volée";
+    return "Score saisi";
   }
   return (Array.isArray(darts) ? darts : []).map((d) => {
     const v = Number((d as any)?.v || 0);
@@ -3761,6 +3765,8 @@ const requestValidateThrow = () => {
     return;
   }
 
+  const isVisitScoreConfirm = isVisitScoreVisit(darts);
+
   setPendingOnlineVisitConfirm({
     playerId: pid,
     playerName: playerForVisit?.name || activePlayer?.name || "Joueur",
@@ -3772,10 +3778,11 @@ const requestValidateThrow = () => {
     bust,
     isFinish,
     localFinishConfirm: !effectiveOnline && isFinish,
-    title: isFinish ? "Confirmer la fin" : "Confirmer la volée",
+    isVisitScoreMode: isVisitScoreConfirm,
+    title: isFinish ? "Confirmer la fin" : isVisitScoreConfirm ? "Confirmer le score" : "Confirmer la volée",
     helper: isFinish
-      ? "Vérifie la volée de victoire avant de clôturer la leg ou la partie."
-      : "Vérifie avant d'envoyer aux autres joueurs.",
+      ? (isVisitScoreConfirm ? "Vérifie le score de victoire avant de clôturer la leg ou la partie." : "Vérifie la volée de victoire avant de clôturer la leg ou la partie.")
+      : (isVisitScoreConfirm ? "Vérifie le score saisi avant d'envoyer aux autres joueurs." : "Vérifie avant d'envoyer aux autres joueurs."),
   });
 };
 
@@ -5007,7 +5014,8 @@ if (isLandscapeTablet) {
               teamSetsWon={(state as any).teamSetsWon ?? {}}
               teamId={activeTeam.id}
               checkoutText={checkoutText}
-            showThrowCounter={showThrowCounter}
+              showThrowCounter={showThrowCounter}
+              configuredScoreInputMethod={configuredScoreInputMethod}
             />
           ) : (
             <HeaderBlock
@@ -5177,7 +5185,7 @@ if (isLandscapeTablet) {
                         textShadow: "0 0 14px rgba(255,90,90,.35)",
                       }}
                     >
-                      BUST — {t("x01v3.bust.lock", "Valide ou annule la volée")}
+                      BUST — {configuredScoreInputMethod === "visit_score" ? "Valide ou corrige le score" : t("x01v3.bust.lock", "Valide ou annule la volée")}
                     </div>
                   ) : null}
 
@@ -5394,6 +5402,7 @@ if (isLandscapeTablet) {
                 unreadChatCount={onlineChatUnread}
                 countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
+              configuredScoreInputMethod={configuredScoreInputMethod}
             />
             ) : (
               <HeaderBlock
@@ -5424,7 +5433,7 @@ if (isLandscapeTablet) {
                 voiceScoreEnabled={voiceScoreEnabled}
                 configuredScoreInputMethod={configuredScoreInputMethod}
                 voiceScore={voiceScore}
-              showThrowCounter={showThrowCounter}
+                showThrowCounter={showThrowCounter}
             />
             )}
           </div>
@@ -5586,7 +5595,7 @@ if (isLandscapeTablet) {
                   textShadow: "0 0 14px rgba(255,90,90,.35)",
                 }}
               >
-                BUST — {t("x01v3.bust.lock", "Valide ou annule la volée")}
+                BUST — {configuredScoreInputMethod === "visit_score" ? "Valide ou corrige le score" : t("x01v3.bust.lock", "Valide ou annule la volée")}
               </div>
             ) : null}
 
@@ -5671,13 +5680,13 @@ if (isLandscapeTablet) {
             }}
           >
             <div style={{ color: "#ffcf57", fontWeight: 950, fontSize: 18, marginBottom: 6 }}>
-              {pendingOnlineVisitConfirm.title || "Confirmer la volée"}
+              {pendingOnlineVisitConfirm.title || (pendingOnlineVisitConfirm.isVisitScoreMode ? "Confirmer le score" : "Confirmer la volée")}
             </div>
             <div style={{ opacity: .78, fontWeight: 800, fontSize: 13, marginBottom: 14 }}>
               {pendingOnlineVisitConfirm.playerName} — {pendingOnlineVisitConfirm.helper || "vérifie avant de valider."}
             </div>
             <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.06)", padding: 12, marginBottom: 12 }}>
-              <div style={{ fontWeight: 950, fontSize: 22 }}>{pendingOnlineVisitConfirm.dartsLabel || "Volée"}</div>
+              <div style={{ fontWeight: 950, fontSize: 22 }}>{pendingOnlineVisitConfirm.dartsLabel || (pendingOnlineVisitConfirm.isVisitScoreMode ? "Score" : "Volée")}</div>
               <div style={{ marginTop: 6, fontWeight: 900, color: pendingOnlineVisitConfirm.bust ? "#ff7474" : "#8ff0a4" }}>
                 {pendingOnlineVisitConfirm.bust
                   ? `BUST — reste ${pendingOnlineVisitConfirm.scoreBefore}`
@@ -5837,6 +5846,8 @@ function HeaderBlock(props: HeaderBlockProps) {
     configuredScoreInputMethod = "buttons",
     voiceScore = null,
   } = props;
+
+  const isVisitScoreMode = configuredScoreInputMethod === "visit_score";
 
   const legsWonThisSet =
     (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
@@ -6115,6 +6126,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                 >
                   {remainingAfterAll}
                 </div>
+                {!isVisitScoreMode ? (
                 <div style={{ display: "flex", gap: 4, justifyContent: "center", width: "100%" }}>
                   {[0, 1, 2].map((i) => {
                     const d = currentThrowUi[i];
@@ -6152,12 +6164,13 @@ function HeaderBlock(props: HeaderBlockProps) {
                     );
                   })}
                 </div>
+                ) : null}
 
               </div>
             ) : (
               <div style={miniText}>
                 <div>
-                  Meilleure volée : <b>{bestVisit}</b>
+                  {isVisitScoreMode ? "Meilleur score" : "Meilleure volée"} : <b>{bestVisit}</b>
                 </div>
                 <div>
                   Moy/3D : <b>{curM3D}</b>
@@ -6165,7 +6178,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                 <div>
                   Darts jouées : <b>{curDarts}</b>
                 </div>
-                {showThrowCounter && currentThrowUi.length > 0 ? (
+                {!isVisitScoreMode && showThrowCounter && currentThrowUi.length > 0 ? (
                   <div>
                     Volée : <b>{currentThrowUi.length}/3</b>
                   </div>
@@ -6228,7 +6241,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           ) : null}
 
           {/* Pastilles live */}
-          {!onlineCameraActive ? (
+          {!onlineCameraActive && !isVisitScoreMode ? (
           <div
             style={{
               display: "flex",
@@ -6393,7 +6406,10 @@ function TeamHeaderBlock(props: {
   teamSetsWon: Record<string, number>;
   checkoutText: string | null;
   showThrowCounter?: boolean;
+  configuredScoreInputMethod?: string;
 }) {
+  const isVisitScoreMode = props.configuredScoreInputMethod === "visit_score";
+
   // =====================================================
   // Team logo (fond) — derrière le score (TEAMS only)
   // =====================================================
@@ -6626,7 +6642,7 @@ function TeamHeaderBlock(props: {
           <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
             <div style={miniText}>
               <div>
-                Meilleure volée : <b>{bestVisit}</b>
+                {isVisitScoreMode ? "Meilleur score" : "Meilleure volée"} : <b>{bestVisit}</b>
               </div>
               <div>
                 Moy/3D : <b>{curM3D}</b>
@@ -6634,7 +6650,7 @@ function TeamHeaderBlock(props: {
               <div>
                 Darts jouées : <b>{curDarts}</b>
               </div>
-              {showThrowCounter && currentThrow.length > 0 ? (
+              {!isVisitScoreMode && showThrowCounter && currentThrow.length > 0 ? (
                 <div>
                   Volée : <b>{currentThrow.length}/3</b>
                 </div>
@@ -6685,6 +6701,7 @@ function TeamHeaderBlock(props: {
             {teamName}
           </div>
 
+          {!isVisitScoreMode ? (
           <div
             style={{
               display: "flex",
@@ -6695,10 +6712,10 @@ function TeamHeaderBlock(props: {
             }}
           >
             {[0, 1, 2].map((i) => {
-              const d = currentThrow[i];
+              const d = currentThrowUi[i];
               const wouldBust =
                 (teamScore ?? 0) -
-                  currentThrow
+                  currentThrowUi
                     .slice(0, i + 1)
                     .reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
                 0;
@@ -6728,6 +6745,7 @@ function TeamHeaderBlock(props: {
               );
             })}
           </div>
+          ) : null}
 
           {checkoutText ? (
             <div style={{ marginTop: 3, display: "flex", justifyContent: "center" }}>
@@ -6998,7 +7016,7 @@ function TeamsPlayersList(props: {
                     }}
                   >
                     <div style={{ fontWeight: 900, color: teamColor }}>
-                      Volées: {Number(live?.visits ?? 0)}
+                      {hideLastVisitDetails ? "Saisies" : "Volées"}: {Number(live?.visits ?? 0)}
                     </div>
                     <div style={{ fontWeight: 800, opacity: 0.95 }}>
                       Points: {Number(live?.totalScore ?? 0)}
