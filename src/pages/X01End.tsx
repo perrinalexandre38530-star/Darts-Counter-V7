@@ -1202,6 +1202,7 @@ export default function X01End({ go, params }: Props) {
           players={players}
           tableStyle={tableStyle}
           hideDartDetails={hideDetailedHitStats}
+          teamsForOverlay={teamsForOverlay}
         />
       )}
 
@@ -3245,11 +3246,13 @@ function MatchLegDetails({
   players,
   tableStyle,
   hideDartDetails = false,
+  teamsForOverlay = null,
 }: {
   breakdown: LegBreakdown[];
   players: PlayerLite[];
   tableStyle: React.CSSProperties;
   hideDartDetails?: boolean;
+  teamsForOverlay?: any[] | null;
 }) {
   const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
 
