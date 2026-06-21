@@ -21,6 +21,7 @@ type Props = {
   handicapB?: number;
   onAddGoalA: () => void;
   onAddGoalB: () => void;
+  onAddCsc?: () => void;
   goalsDisabled?: boolean;
 };
 
@@ -153,13 +154,12 @@ export default function BabyFootDuelScoreCard({
   handicapB = 0,
   onAddGoalA,
   onAddGoalB,
+  onAddCsc,
   goalsDisabled = false,
 }: Props) {
   const green = "#c7ff26";
   const pink = "#ff59b0";
   const setsToWin = Math.max(1, Math.ceil((setsBestOf || 1) / 2));
-  const centerCaption = setsEnabled ? `BO${setsBestOf} • set ${setsA + setsB + 1}/${setsBestOf} • objectif ${setTarget}` : `Objectif ${target}`;
-
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div
@@ -199,9 +199,6 @@ export default function BabyFootDuelScoreCard({
                 <span style={{ fontSize: 23, lineHeight: 1, fontWeight: 1100, color: "rgba(255,255,255,0.92)" }}>–</span>
                 <span style={{ fontSize: 56, lineHeight: 0.95, fontWeight: 1100, color: pink, textShadow: `0 0 18px ${pink}66` }}>{scoreB}</span>
               </div>
-              <div style={{ marginTop: 6, fontSize: 11, fontWeight: 1000, color: "rgba(255,255,255,0.74)", whiteSpace: "nowrap" }}>
-                {centerCaption}
-              </div>
             </div>
 
             <SideBlock visual={visualB} accent={pink} align="right" setsEnabled={setsEnabled} setsWon={setsB} setsToWin={setsToWin} />
@@ -224,9 +221,18 @@ export default function BabyFootDuelScoreCard({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", gap: 10, alignItems: "stretch" }}>
         <button type="button" onClick={onAddGoalA} disabled={goalsDisabled} style={scoreAction(green, goalsDisabled)}>
           + BUT {visualA.name}
+        </button>
+        <button
+          type="button"
+          onClick={onAddCsc}
+          disabled={goalsDisabled || !onAddCsc}
+          style={{ ...scoreAction("#ff4f6d", goalsDisabled || !onAddCsc), width: 72, padding: "0 10px" }}
+          title="But contre son camp"
+        >
+          CSC
         </button>
         <button type="button" onClick={onAddGoalB} disabled={goalsDisabled} style={scoreAction(pink, goalsDisabled)}>
           + BUT {visualB.name}

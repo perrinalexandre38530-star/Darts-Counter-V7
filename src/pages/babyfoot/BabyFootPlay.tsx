@@ -608,6 +608,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const [pickTeam, setPickTeam] = useState<BabyFootTeamId | null>(null);
   const [pickGoalSource, setPickGoalSource] = useState<BabyFootGoalSource>("AV");
   const [cscAwardedTeam, setCscAwardedTeam] = useState<BabyFootTeamId | null>(null);
+  const [cscGlobalPicker, setCscGlobalPicker] = useState(false);
   const [activeTab, setActiveTab] = useState<PlayTab>("score");
   const leagueResultSavedRef = useRef(false);
   const historySavedMatchRef = useRef<string | null>(null);
@@ -738,7 +739,20 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     : regularLimitMs != null
     ? fmt(regularRemain ?? 0)
     : fmt(durationMs);
-  const secondaryLabel = state.setsEnabled ? `BO${state.setsBestOf || 3}` : `Target ${state.target}`;
+  const scoreRuleLabel = (() => {
+    if (state.scoreMode === "balls5") return "5 BALLS";
+    if (state.scoreMode === "balls10") return "10 BALLS";
+    if (state.scoreMode === "balls11") return "11 BALLS";
+    if (state.scoreMode === "chrono") return "CHRONO";
+    return `FIRST ${state.target || 10}`;
+  })();
+  const secondaryLabel = state.setsEnabled ? `BO${state.setsBestOf || 3}` : undefined;
+  const liveRuleLabels = [
+    scoreRuleLabel,
+    state.scoreMode === "chrono" && state.goldenGoal ? "GOLD" : null,
+    state.scoreMode === "chrono" && !state.goldenGoal && (state.overtimeSec || 0) > 0 ? "PROL." : null,
+    state.rulesPreset === "bar" ? "BAR" : "OFFICIAL",
+  ].filter((entry): entry is string => Boolean(entry));
 
   const liveContext = [
     `Leader ${leaderLabel}`,
@@ -1007,11 +1021,25 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     setPickGoalSource("AV");
     setPickTeam(null);
     setCscAwardedTeam(null);
+    setCscGlobalPicker(false);
   };
 
   const openCscPicker = (awardedTeam: BabyFootTeamId) => {
     if (state.finished || state.phase === "penalties") return;
     setCscAwardedTeam(awardedTeam);
+  };
+
+  const openGlobalCscPicker = () => {
+    if (state.finished || state.phase === "penalties") return;
+    setPickTeam(null);
+    setCscAwardedTeam(null);
+    setCscGlobalPicker(true);
+  };
+
+  const applyCscByGuilty = (guiltyTeam: BabyFootTeamId, guiltyPlayerId?: string | null) => {
+    if (state.finished || state.phase === "penalties") return;
+    setState(addSpecialScoreEvent(guiltyTeam, "csc", guiltyPlayerId ?? null, "AV"));
+    closeQuickSheet();
   };
 
   const applyCsc = (awardedTeam: BabyFootTeamId, guiltyPlayerId?: string | null) => {
@@ -1200,6 +1228,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
               modeLabel={state.mode}
               clockLabel={clockLabel}
               secondaryLabel={secondaryLabel}
+              ruleLabels={liveRuleLabels}
               clockRunning={!!state.clockRunning}
               hasStarted={hasClockStarted}
               onStartClock={() => setState(startClock())}
@@ -1233,6 +1262,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                 handicapB={state.handicapB}
                 onAddGoalA={() => openQuickSheet("A", "AV")}
                 onAddGoalB={() => openQuickSheet("B", "AV")}
+                onAddCsc={openGlobalCscPicker}
                 goalsDisabled={state.finished || state.phase === "penalties"}
               />
 
@@ -1362,6 +1392,59 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           ) : null}
         </div>
       </div>
+      {cscGlobalPicker ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.62)",
+            backdropFilter: "blur(6px)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            zIndex: 80,
+          }}
+          onClick={closeQuickSheet}
+        >
+          <div style={{ ...shellCard(), width: "100%", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 20, fontWeight: 1100 }}>CSC — joueur fautif</div>
+            <div style={{ marginTop: 8, fontSize: 14, color: "rgba(255,255,255,0.74)" }}>
+              Sélectionne le joueur qui marque contre son camp. Le point est automatiquement donné au camp adverse.
+            </div>
+            <div style={{ marginTop: 16, display: "grid", gap: 14 }}>
+              {(["A", "B"] as BabyFootTeamId[]).map((teamKey) => {
+                const ids = teamKey === "A" ? teamAIds : teamBIds;
+                const accent = teamKey === "A" ? "#c7ff26" : "#ff59b0";
+                const title = teamKey === "A" ? visualA.name : visualB.name;
+                return (
+                  <div key={teamKey} style={{ borderRadius: 18, padding: 10, border: `1px solid ${accent}40`, background: `${accent}10` }}>
+                    <div style={{ color: accent, fontSize: 12, fontWeight: 1100, textTransform: "uppercase", letterSpacing: 0.7 }}>CSC {title}</div>
+                    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                      {ids.length ? ids.map((playerId) => {
+                        const profile = getProfile(playerId);
+                        const label = profile?.name || playerId;
+                        return (
+                          <button key={playerId} type="button" onClick={() => applyCscByGuilty(teamKey, playerId)} style={{ minWidth: 0, borderRadius: 16, padding: 10, border: `1px solid ${accent}55`, background: "rgba(255,255,255,.035)", color: "#fff", display: "grid", gap: 8, justifyItems: "center", cursor: "pointer" }}>
+                            <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={46} />
+                            <span style={{ maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 12, fontWeight: 1100 }}>{label}</span>
+                          </button>
+                        );
+                      }) : (
+                        <button type="button" onClick={() => applyCscByGuilty(teamKey, null)} style={{ ...actionStyle("danger"), gridColumn: "1 / -1" }}>
+                          CSC collectif {title}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button type="button" onClick={closeQuickSheet} style={{ ...actionStyle("neutral"), marginTop: 12 }}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      ) : null}
       {pickTeam ? (
         <div
           style={{

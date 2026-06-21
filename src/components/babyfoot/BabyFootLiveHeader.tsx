@@ -10,6 +10,7 @@ type Props = {
   modeLabel: string;
   clockLabel: string;
   secondaryLabel?: string;
+  ruleLabels?: string[];
   clockRunning: boolean;
   hasStarted: boolean;
   onStartClock: () => void;
@@ -24,13 +25,13 @@ function pill(accent = false): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 30,
-    padding: "0 12px",
+    minHeight: 26,
+    padding: "0 9px",
     borderRadius: 999,
     border: accent ? "1px solid rgba(199,255,38,0.34)" : "1px solid rgba(255,255,255,0.08)",
     background: accent ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
     color: accent ? "#f5ffbf" : "rgba(255,255,255,0.94)",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 1000,
     letterSpacing: 0.25,
     whiteSpace: "nowrap",
@@ -65,7 +66,7 @@ function tabButton(active: boolean): React.CSSProperties {
     border: active ? "1px solid rgba(199,255,38,0.30)" : "1px solid rgba(255,255,255,0.08)",
     background: active ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
     color: active ? "#f5ffbf" : "rgba(255,255,255,0.92)",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 1000,
     letterSpacing: 0.35,
     textTransform: "uppercase",
@@ -99,6 +100,7 @@ export default function BabyFootLiveHeader({
   modeLabel,
   clockLabel,
   secondaryLabel,
+  ruleLabels = [],
   clockRunning,
   hasStarted,
   onStartClock,
@@ -117,11 +119,25 @@ export default function BabyFootLiveHeader({
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <div style={{ display: "flex", gap: 7, alignItems: "center", minWidth: 0, flex: "1 1 auto", overflowX: "auto", scrollbarWidth: "none" }}>
-          <span style={pill(true)}>{phaseLabel}</span>
-          <span style={pill()}>{modeLabel}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            rowGap: 5,
+            alignItems: "center",
+            minWidth: 0,
+            flexWrap: "wrap",
+            overflow: "hidden",
+            maxHeight: 58,
+          }}
+        >
+          {phaseLabel && phaseLabel !== "MATCH" ? <span style={pill(true)}>{phaseLabel}</span> : null}
+          <span style={pill(true)}>{modeLabel}</span>
           {secondaryLabel ? <span style={pill()}>{secondaryLabel}</span> : null}
+          {ruleLabels.map((label) => (
+            <span key={label} style={pill()}>{label}</span>
+          ))}
         </div>
 
         <div
