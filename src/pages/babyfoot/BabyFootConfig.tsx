@@ -604,6 +604,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const useExistingTeams = teamsModeAvailable && campSource === "existing";
   const showTeamsPicker = useExistingTeams;
   const showTeamsPickerB = useExistingTeams && mode === "2v2";
+  const isBallLimitedScore = scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11";
+  const isChronoScore = scoreMode === "chrono";
 
   type GuidedStep = "source" | "teamA" | "teamB" | "playerA" | "playerB" | "score" | "sets" | "timer" | "golden" | "advanced" | "summary";
   const firstGuidedStep: GuidedStep = teamsModeAvailable ? "source" : "playerA";
@@ -615,9 +617,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (teamsModeAvailable) steps.push("source");
     if (useExistingTeams) steps.push("teamA");
     if (useExistingTeams && mode === "2v2") steps.push("teamB");
-    steps.push("playerA", "playerB", "score", "sets", "timer", "golden", "advanced", "summary");
+    steps.push("playerA", "playerB", "score", "sets");
+    if (isChronoScore) steps.push("timer", "golden");
+    steps.push("advanced", "summary");
     return steps;
-  }, [teamsModeAvailable, useExistingTeams, mode]);
+  }, [teamsModeAvailable, useExistingTeams, mode, isChronoScore]);
 
   useEffect(() => {
     if (!guidedSteps.includes(guidedStep)) {
@@ -630,8 +634,15 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   }, [teamsModeAvailable, campSource]);
 
   useEffect(() => {
-    if (scoreMode === "chrono" && !useTimer) setUseTimer(true);
-  }, [scoreMode, useTimer]);
+    if (isChronoScore) {
+      if (!useTimer) setUseTimer(true);
+      return;
+    }
+    if (useTimer) setUseTimer(false);
+    if (goldenGoal) setGoldenGoal(false);
+    if (overtimeSec > 0) setOvertimeSec(0);
+    if (overtimeGoldenGoal) setOvertimeGoldenGoal(false);
+  }, [isChronoScore, useTimer, goldenGoal, overtimeSec, overtimeGoldenGoal]);
 
   const guidedStepIndex = Math.max(0, guidedSteps.indexOf(guidedStep));
   const guidedTabsRef = useRef<HTMLDivElement | null>(null);
@@ -1117,14 +1128,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (value === "balls5" || value === "balls10" || value === "balls11") {
       setScoreMode(value);
       setTargetUI(value === "balls5" ? 5 : value === "balls11" ? 11 : 10);
-      setSetsEnabled(false);
       setUseTimer(false);
       return;
     }
     if (value === "chrono") {
       setScoreMode("chrono");
       setTargetUI(999);
-      setSetsEnabled(false);
       setUseTimer(true);
       return;
     }
@@ -1641,7 +1650,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                         {t("bf_win_by_two", "2 buts d'écart")}
                       </div>
                     ) : null}
-                    {useTimer ? <div style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)} onClick={() => setAllowDrawOnTimeEnd((v) => !v)}>{t("bf_allow_draw", "Match nul")}</div> : null}
+                    {isChronoScore ? <div style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)} onClick={() => setAllowDrawOnTimeEnd((v) => !v)}>{t("bf_allow_draw", "Match nul")}</div> : null}
                   </div>
                 </div>
                 <div style={{ ...cardStyle(cardBg) }}>
@@ -2091,7 +2100,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               </div>
               ) : null}
 
-              {useTimer ? (
+              {isChronoScore ? (
                 <div
                   style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)}
                   onClick={() => setAllowDrawOnTimeEnd((v) => !v)}
@@ -2183,6 +2192,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           </div>
         </div>
 
+        {isChronoScore ? (
+          <>
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <div
@@ -2262,6 +2273,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             </div>
           )}
         </div>
+          </>
+        ) : null}
 
         </>
         )}
