@@ -56,7 +56,7 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
   ];
   for (const id of profileIdentityKeys(profile)) {
     const s = statsById[id];
-    statCandidates.push(s?.avg3d, s?.avg3D, s?.avg, s?.average3Darts);
+    statCandidates.push(s?.avg3, s?.avg3d, s?.avg3D, s?.avg, s?.average3Darts);
   }
   for (const raw of statCandidates) {
     const avg3d = Number(String(raw ?? "").replace(",", "."));
