@@ -102,7 +102,7 @@ export type BabyFootState = {
   scoreA: number;
   scoreB: number;
   target: number;
-  scoreMode?: "target" | "balls10" | "chrono";
+  scoreMode?: "target" | "balls5" | "balls10" | "balls11" | "chrono";
   maxBalls?: number | null;
 
   // chrono manuel
@@ -381,7 +381,7 @@ function migrate(raw: any): BabyFootState {
     scoreA: Number.isFinite(raw.scoreA) ? raw.scoreA : 0,
     scoreB: Number.isFinite(raw.scoreB) ? raw.scoreB : 0,
     target: Number.isFinite(raw.target) ? raw.target : 10,
-    scoreMode: raw.scoreMode === "balls10" || raw.scoreMode === "chrono" ? raw.scoreMode : "target",
+    scoreMode: raw.scoreMode === "balls5" || raw.scoreMode === "balls10" || raw.scoreMode === "balls11" || raw.scoreMode === "chrono" ? raw.scoreMode : "target",
     maxBalls: Number.isFinite(raw.maxBalls) ? raw.maxBalls : null,
 
     startedAt,
@@ -718,8 +718,9 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     next = maybeWinSet(next);
     if (next.finished) return next;
 
-    if (!next.setsEnabled && next.scoreMode === "balls10") {
-      const maxBalls = Math.max(1, Math.floor(Number(next.maxBalls) || 10));
+    if (!next.setsEnabled && (next.scoreMode === "balls5" || next.scoreMode === "balls10" || next.scoreMode === "balls11")) {
+      const fallbackMaxBalls = next.scoreMode === "balls5" ? 5 : next.scoreMode === "balls11" ? 11 : 10;
+      const maxBalls = Math.max(1, Math.floor(Number(next.maxBalls) || fallbackMaxBalls));
       if ((next.scoreA + next.scoreB) >= maxBalls) {
         const winner: BabyFootTeamId | null = next.scoreA === next.scoreB ? null : next.scoreA > next.scoreB ? "A" : "B";
         next = {
@@ -788,6 +789,45 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
 
   if (kind === "demi") {
     stats = bumpSpecialStats(stats, team === "A" ? "demiA" : "demiB");
+
+    // Modes à balles limitées façon bar : si un DEMI tombe sur la dernière balle,
+    // il coûte -1 point à l’équipe qui le fait et la partie se termine.
+    if (!s.setsEnabled && (s.scoreMode === "balls5" || s.scoreMode === "balls10" || s.scoreMode === "balls11")) {
+      const fallbackMaxBalls = s.scoreMode === "balls5" ? 5 : s.scoreMode === "balls11" ? 11 : 10;
+      const maxBalls = Math.max(1, Math.floor(Number(s.maxBalls) || fallbackMaxBalls));
+      if ((s.scoreA + s.scoreB) >= maxBalls - 1) {
+        const nextScoreA = Math.max(0, s.scoreA - (team === "A" ? 1 : 0));
+        const nextScoreB = Math.max(0, s.scoreB - (team === "B" ? 1 : 0));
+        const winner: BabyFootTeamId | null = nextScoreA === nextScoreB ? null : nextScoreA > nextScoreB ? "A" : "B";
+        const next: BabyFootState = {
+          ...s,
+          undo,
+          scoreA: nextScoreA,
+          scoreB: nextScoreB,
+          finished: true,
+          winner,
+          phase: "finished",
+          clockRunning: false,
+          finishedAt: now,
+          specialStats: stats,
+          events: [
+            ...(s.events || []),
+            {
+              t: "demi",
+              at: now,
+              team,
+              scorerId: scorerId ?? null,
+              phase: s.phase,
+              sourceLine: sourceLine ?? "MIL",
+            },
+            { t: "finish", at: now, winner, reason: winner ? "target" : "draw" },
+          ],
+          updatedAt: now,
+        };
+        return persist(next);
+      }
+    }
+
     if (s.demiRule === "forbidden") {
       const next: BabyFootState = {
         ...s,

@@ -487,8 +487,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const [teamBRefId, setTeamBRefId] = useState<string>("");
 
   const [target, setTargetUI] = useState<number>(presetTarget ?? saved.target ?? 10);
-  const [scoreMode, setScoreMode] = useState<"target" | "balls10" | "chrono">(
-    (saved as any).scoreMode === "balls10" || (saved as any).scoreMode === "chrono"
+  const [scoreMode, setScoreMode] = useState<"target" | "balls5" | "balls10" | "balls11" | "chrono">(
+    (saved as any).scoreMode === "balls5" ||
+    (saved as any).scoreMode === "balls10" ||
+    (saved as any).scoreMode === "balls11" ||
+    (saved as any).scoreMode === "chrono"
       ? (saved as any).scoreMode
       : "target"
   );
@@ -628,7 +631,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   useEffect(() => {
     if (scoreMode === "chrono" && !useTimer) setUseTimer(true);
-    if (scoreMode === "balls10" && setsEnabled) setSetsEnabled(false);
+    if ((scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11") && setsEnabled) setSetsEnabled(false);
   }, [scoreMode, useTimer, setsEnabled]);
 
   const guidedStepIndex = Math.max(0, guidedSteps.indexOf(guidedStep));
@@ -1103,16 +1106,18 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const scoreOptions = [
     { value: "target5", label: t("bf_score5", "Premier à 5") },
     { value: "target10", label: t("bf_score10", "Premier à 10") },
+    { value: "balls5", label: "5 balles jouées" },
     { value: "balls10", label: "10 balles jouées" },
+    { value: "balls11", label: "11 balles jouées" },
     { value: "chrono", label: "Chrono" },
   ] as const;
 
-  const scoreSelectValue = scoreMode === "balls10" || scoreMode === "chrono" ? scoreMode : target === 5 ? "target5" : "target10";
+  const scoreSelectValue = scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11" || scoreMode === "chrono" ? scoreMode : target === 5 ? "target5" : "target10";
 
   const applyScoreSelect = (value: string) => {
-    if (value === "balls10") {
-      setScoreMode("balls10");
-      setTargetUI(10);
+    if (value === "balls5" || value === "balls10" || value === "balls11") {
+      setScoreMode(value);
+      setTargetUI(value === "balls5" ? 5 : value === "balls11" ? 11 : 10);
       setSetsEnabled(false);
       setUseTimer(false);
       return;
@@ -1143,7 +1148,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   ];
 
   const scoreLabel = (value: number) => {
+    if (scoreMode === "balls5") return "5 balles jouées";
     if (scoreMode === "balls10") return "10 balles jouées";
+    if (scoreMode === "balls11") return "11 balles jouées";
     if (scoreMode === "chrono") return "Chrono";
     return value === 5 ? t("bf_score5", "Premier à 5") : value === 10 ? t("bf_score10", "Premier à 10") : `Premier à ${value}`;
   };
@@ -1257,12 +1264,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     } as any);
 
     setTeamsProfiles(selA, selB);
-    const effectiveTarget = scoreMode === "chrono" ? 999 : scoreMode === "balls10" ? 10 : target;
+    const effectiveTarget = scoreMode === "chrono" ? 999 : scoreMode === "balls5" ? 5 : scoreMode === "balls10" ? 10 : scoreMode === "balls11" ? 11 : target;
     storeSetTarget(effectiveTarget);
 
     (setAdvancedOptions as any)({
       scoreMode,
-      maxBalls: scoreMode === "balls10" ? 10 : null,
+      maxBalls: scoreMode === "balls5" ? 5 : scoreMode === "balls10" ? 10 : scoreMode === "balls11" ? 11 : null,
       matchDurationSec: useTimer ? durationSec : null,
       overtimeSec: useTimer ? overtimeSec : 0,
       goldenGoal,
@@ -1616,8 +1623,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                       {scoreOptions.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
                     </select>
                     <div style={{ marginTop: 8, fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>
-                      {scoreMode === "balls10"
-                        ? "La partie s’arrête après 10 balles jouées, comme les anciennes parties de bar."
+                      {(scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11")
+                        ? `La partie s’arrête après ${scoreMode === "balls5" ? 5 : scoreMode === "balls11" ? 11 : 10} balles jouées. Demi sur la dernière balle = -1 point.`
                         : scoreMode === "chrono"
                         ? "La partie s’arrête quand le chrono arrive à zéro, sauf prolongation ou Golden Goal selon les réglages suivants."
                         : "La partie s’arrête dès qu’un camp atteint le score cible."}
@@ -1648,7 +1655,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 {sectionTitle("SETS", primary)}
                 {scoreMode !== "target" ? (
                   <div style={{ marginBottom: 12, fontSize: 12, opacity: 0.74, lineHeight: 1.35 }}>
-                    Les sets sont désactivés avec le mode {scoreMode === "balls10" ? "10 balles jouées" : "Chrono"}.
+                    Les sets sont désactivés avec le mode {scoreMode === "balls5" ? "5 balles jouées" : scoreMode === "balls10" ? "10 balles jouées" : scoreMode === "balls11" ? "11 balles jouées" : "Chrono"}.
                   </div>
                 ) : null}
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -1763,7 +1770,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                   <div><b style={{ color: primary }}>Camp B :</b> {campBName} · {selB.length}/{capB} joueur{capB > 1 ? "s" : ""}</div>
                   <div><b style={{ color: primary }}>Mode score :</b> {setsEnabled ? `Sets BO${setsBestOf}` : "Score simple"}</div>
                   <div><b style={{ color: primary }}>Mode score :</b> {scoreLabel(target)}</div>
-                  {scoreMode === "balls10" ? <div><b style={{ color: primary }}>Limite :</b> 10 balles jouées</div> : null}
+                  {scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11" ? <div><b style={{ color: primary }}>Limite :</b> {scoreMode === "balls5" ? 5 : scoreMode === "balls11" ? 11 : 10} balles jouées • demi dernière balle = -1</div> : null}
                   {scoreMode === "target" ? <div><b style={{ color: primary }}>Score cible :</b> {setsEnabled ? `${scoreLabel(setTargetValue)} par set` : scoreLabel(target)}</div> : null}
                   <div><b style={{ color: primary }}>2 buts d’écart :</b> {requireTwoGoalLead ? "ON" : "OFF"}</div>
                   <div><b style={{ color: primary }}>Handicap :</b> A +{handicapA} / B +{handicapB}</div>
@@ -2019,8 +2026,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 ))}
               </select>
               <div style={{ marginTop: 8, fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>
-                {scoreMode === "balls10"
-                  ? "La partie s’arrête après 10 balles jouées."
+                {(scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11")
+                  ? `La partie s’arrête après ${scoreMode === "balls5" ? 5 : scoreMode === "balls11" ? 11 : 10} balles jouées. Demi sur la dernière balle = -1 point.`
                   : scoreMode === "chrono"
                   ? "La partie s’arrête au chrono choisi plus bas, sauf prolongation ou Golden Goal."
                   : "La partie s’arrête au score cible."}
@@ -2052,7 +2059,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 </div>
               </div>
             ) : scoreMode !== "target" ? (
-              <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>Les sets sont désactivés avec le mode {scoreMode === "balls10" ? "10 balles jouées" : "Chrono"}.</div>
+              <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>Les sets sont désactivés avec le mode {scoreMode === "balls5" ? "5 balles jouées" : scoreMode === "balls10" ? "10 balles jouées" : scoreMode === "balls11" ? "11 balles jouées" : "Chrono"}.</div>
             ) : null}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
