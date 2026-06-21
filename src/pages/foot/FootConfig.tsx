@@ -286,7 +286,7 @@ export default function FootConfig({ go, params, store }: Props) {
       {profiles.length === 0 ? (
         <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
       ) : (
-        <PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+        <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
       )}
       <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
     </section>
@@ -366,7 +366,7 @@ export default function FootConfig({ go, params, store }: Props) {
           {profiles.length === 0 ? (
             <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
           ) : (
-            <PlayerPagedSelector profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+            <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
           )}
           <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
         </>

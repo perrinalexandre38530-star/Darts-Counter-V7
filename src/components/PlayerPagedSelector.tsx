@@ -226,6 +226,7 @@ export default function PlayerPagedSelector({
   renderAvatarOverlay,
   closeOnSelect = false,
   onAfterToggle,
+  showProfileStarring = true,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -247,6 +248,10 @@ export default function PlayerPagedSelector({
 
   React.useEffect(() => {
     let cancelled = false;
+    if (!showProfileStarring) {
+      setStatsById({});
+      return;
+    }
     const ids = Array.from(new Set((profiles || []).flatMap((p: any) => profileIdentityKeys(p))));
     if (!ids.length) {
       setStatsById({});
@@ -274,7 +279,7 @@ export default function PlayerPagedSelector({
       if (!cancelled) setStatsById({});
     });
     return () => { cancelled = true; };
-  }, [profiles]);
+  }, [profiles, showProfileStarring]);
 
   // Le scan historique est déclenché par la page X01ConfigV3, puis propagé ici
   // via dc-x01-player-usage-updated. On évite ainsi un double History.list()
@@ -363,7 +368,7 @@ export default function PlayerPagedSelector({
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-            {selected.map((p: any) => <SelectedCard key={p.id} p={p} statsById={statsById} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
+            {selected.map((p: any) => <SelectedCard key={p.id} p={p} statsById={statsById} showProfileStarring={showProfileStarring} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
           </div>
         </div>
       ) : null}
@@ -382,7 +387,7 @@ export default function PlayerPagedSelector({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {pageItems.map((p: any) => {
                   const active = selectedIdSet.has(String(p.id));
-                  const star = profileStarData(p, statsById);
+                  const star = showProfileStarring ? profileStarData(p, statsById) : null;
                   return (
                     <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
@@ -413,8 +418,8 @@ export default function PlayerPagedSelector({
   );
 }
 
-const SelectedCard = React.memo(function SelectedCard({ p, statsById, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
-  const star = profileStarData(p, statsById);
+const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfileStarring, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
+  const star = showProfileStarring ? profileStarData(p, statsById) : null;
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>

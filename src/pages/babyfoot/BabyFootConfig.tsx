@@ -1608,7 +1608,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {guidedStep === "playerA" ? (
               <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
                 {sectionTitle(`JOUEURS ${campAName}`, primary)}
-                <PlayerPagedSelector profiles={profilesForA} selectedIds={selA} onToggle={(id: string) => togglePlayer("A", id)} onAfterToggle={(id: string) => advanceAfterPlayerPick("A", id)} closeOnSelect={capA <= 1 || selA.length >= capA - 1} accent={primary} pageSize={9} modalTitle={`${campAName} · ${capA} joueur${capA > 1 ? "s" : ""}`} />
+                <PlayerPagedSelector showProfileStarring={false} profiles={profilesForA} selectedIds={selA} onToggle={(id: string) => togglePlayer("A", id)} onAfterToggle={(id: string) => advanceAfterPlayerPick("A", id)} closeOnSelect={capA <= 1 || selA.length >= capA - 1} accent={primary} pageSize={9} modalTitle={`${campAName} · ${capA} joueur${capA > 1 ? "s" : ""}`} />
                 <div style={{ marginTop: 12 }}><SelectedPlayersStrip ids={selA} onEdit={() => setGuidedStep("playerA")} /></div>
               </div>
             ) : null}
@@ -1616,7 +1616,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {guidedStep === "playerB" ? (
               <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
                 {sectionTitle(`JOUEURS ${campBName}`, primary)}
-                <PlayerPagedSelector profiles={profilesForB} selectedIds={selB} onToggle={(id: string) => togglePlayer("B", id)} onAfterToggle={(id: string) => advanceAfterPlayerPick("B", id)} closeOnSelect={capB <= 1 || selB.length >= capB - 1} accent={primary} pageSize={9} modalTitle={`${campBName} · ${capB} joueur${capB > 1 ? "s" : ""}`} />
+                <PlayerPagedSelector showProfileStarring={false} profiles={profilesForB} selectedIds={selB} onToggle={(id: string) => togglePlayer("B", id)} onAfterToggle={(id: string) => advanceAfterPlayerPick("B", id)} closeOnSelect={capB <= 1 || selB.length >= capB - 1} accent={primary} pageSize={9} modalTitle={`${campBName} · ${capB} joueur${capB > 1 ? "s" : ""}`} />
                 <div style={{ marginTop: 12 }}><SelectedPlayersStrip ids={selB} onEdit={() => setGuidedStep("playerB")} /></div>
               </div>
             ) : null}
@@ -1976,6 +1976,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {campAName}
           </div>
           <PlayerPagedSelector
+            showProfileStarring={false}
             profiles={profilesForA}
             selectedIds={selA}
             onToggle={(id: string) => togglePlayer("A", id)}
@@ -1992,6 +1993,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {campBName}
           </div>
           <PlayerPagedSelector
+            showProfileStarring={false}
             profiles={profilesForB}
             selectedIds={selB}
             onToggle={(id: string) => togglePlayer("B", id)}
