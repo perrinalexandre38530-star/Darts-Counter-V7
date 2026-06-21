@@ -5258,6 +5258,7 @@ if (isLandscapeTablet) {
         open={summaryOpen && !!summaryLegStats}
         result={summaryLegStats}
         playersById={summaryPlayersById}
+        teams={isTeamsMode ? (teamsView as any) : null}
         visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, (Array.isArray(players) ? players : []).map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
         onClose={() => setSummaryOpen(false)}
         onReplay={handleReplaySameConfig}
@@ -5807,6 +5808,7 @@ if (isLandscapeTablet) {
         open={summaryOpen && !!summaryLegStats}
         result={summaryLegStats}
         playersById={summaryPlayersById}
+        teams={isTeamsMode ? (teamsView as any) : null}
         visitHistory={buildReplayVisitsForX01History(replayDartsRef.current, (Array.isArray(players) ? players : []).map((p: any) => String(p.id)), config.startScore ?? 501, (config as any).outMode ?? (config as any).checkoutMode ?? "double")}
         onClose={() => setSummaryOpen(false)}
         onReplay={handleReplaySameConfig}
@@ -9015,6 +9017,36 @@ function saveX01V3MatchToHistory({
     });
   }
 
+  const teamsForHistory = Array.isArray((config as any)?.teams) ? ((config as any).teams as any[]) : [];
+  const isTeamsHistoryMode = teamsForHistory.length >= 2;
+  const teamSummaries = isTeamsHistoryMode
+    ? teamsForHistory.map((team: any) => {
+        const ids: string[] = Array.isArray(team?.players) ? team.players.map(String) : [];
+        const remainingValues = ids
+          .map((pid: string) => Number(legacyRemaining?.[pid]))
+          .filter((v: number) => Number.isFinite(v));
+        const score = remainingValues.length ? Math.min(...remainingValues) : Number(team?.score ?? 0);
+        const points = ids.reduce((sum: number, pid: string) => sum + Number(legacyPoints?.[pid] || 0), 0);
+        const darts = ids.reduce((sum: number, pid: string) => sum + Number(legacyDarts?.[pid] || 0), 0);
+        return {
+          id: String(team?.id || team?.name || ""),
+          name: String(team?.name || "Équipe"),
+          color: team?.color || null,
+          logoDataUrl: team?.logoDataUrl || team?.avatarUrl || null,
+          avatarUrl: team?.avatarUrl || team?.logoDataUrl || null,
+          playerIds: ids,
+          score: Math.max(0, Math.round(Number(score) || 0)),
+          points,
+          darts,
+          avg3: darts > 0 ? (points / darts) * 3 : 0,
+          isWinner: winnerId ? ids.includes(String(winnerId)) : false,
+        };
+      })
+    : [];
+  const winningTeamSummary = teamSummaries.find((t: any) => !!t.isWinner) || null;
+  const teamWinnerName = winningTeamSummary?.name || null;
+  const teamScores = Object.fromEntries(teamSummaries.map((t: any) => [t.id, t.score]));
+
   // -------------------------
   // Objet legacy compatible avec l'ancien écran détaillé X01
   // -------------------------
@@ -9127,6 +9159,10 @@ function saveX01V3MatchToHistory({
     rankings,
     winnerId,
     winnerName,
+    teamWinnerName,
+    winnerLabel: teamWinnerName || winnerName,
+    teams: teamSummaries,
+    teamScores,
     finalScores: finalScoresForHistory,
     remainingScores: finalScoresForHistory,
     scores: finalScoresForHistory,

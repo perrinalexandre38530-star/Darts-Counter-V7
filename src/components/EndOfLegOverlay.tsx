@@ -28,6 +28,17 @@ import type { LegStats } from "../lib/stats";
 // --- Types légers (compat) ---
 type PlayerMini = { id: string; name: string; avatarDataUrl?: string | null };
 
+type TeamMini = {
+  id: string;
+  name: string;
+  color?: string | null;
+  avatarUrl?: string | null;
+  logoDataUrl?: string | null;
+  playerIds?: string[];
+  players?: Array<{ id?: string; name?: string; avatar?: string | null }>;
+  score?: number;
+};
+
 type OverlayVisitRow = {
   idx: number;
   legNo?: number;
@@ -87,6 +98,7 @@ type Props = {
   onReplay?: () => void;
   onSave?: (res: LegacyLegResult | LegStats) => void;
   visitHistory?: OverlayVisitRow[];
+  teams?: TeamMini[] | null;
 };
 
 // ---------- Utils ----------
@@ -777,6 +789,7 @@ export default function EndOfLegOverlay({
   onReplay,
   onSave,
   visitHistory: rawVisitHistory = [],
+  teams = null,
 }: Props) {
   if (!open || !result) return null;
 
@@ -802,6 +815,7 @@ export default function EndOfLegOverlay({
       onReplay={onReplay}
       onSave={onSave}
       safeVisitHistory={safeVisitHistory}
+      teams={teams}
     />
   );
 }
@@ -813,6 +827,7 @@ function Inner({
   onReplay,
   onSave,
   safeVisitHistory,
+  teams,
 }: {
   result: LegacyLegResult | LegStats;
   playersById: Record<string, PlayerMini>;
@@ -820,6 +835,7 @@ function Inner({
   onReplay?: () => void;
   onSave?: (res: LegacyLegResult | LegStats) => void;
   safeVisitHistory: OverlayVisitRow[];
+  teams?: TeamMini[] | null;
 }) {
   const nameOf = React.useCallback(
     (id?: string | null) => playersById[id || ""]?.name ?? (id || "—"),
@@ -879,6 +895,32 @@ function Inner({
     copy.unshift(winnerRow);
     return copy;
   }, [rowsRaw, winnerId]);
+
+
+  const teamRows = React.useMemo(() => {
+    const list = Array.isArray(teams) ? teams : [];
+    if (!list.length) return [];
+    return list
+      .map((team: any) => {
+        const playerIds = Array.isArray(team.playerIds) && team.playerIds.length
+          ? team.playerIds.map(String)
+          : Array.isArray(team.players)
+          ? team.players.map((p: any) => String(p?.id || "")).filter(Boolean)
+          : [];
+        const members = playerIds.map((pid: string) => rows.find((r: any) => String(r.pid) === pid)).filter(Boolean);
+        const score = members.length
+          ? Math.min(...members.map((m: any) => Number(m.remaining ?? 999999)).filter((v: number) => Number.isFinite(v)))
+          : Number(team.score ?? 0);
+        const points = members.reduce((sum: number, m: any) => sum + Number(m.points || 0), 0);
+        const darts = members.reduce((sum: number, m: any) => sum + Number(m.darts || 0), 0);
+        const avg3 = darts > 0 ? (points / darts) * 3 : 0;
+        const isWinnerTeam = winnerId ? playerIds.includes(String(winnerId)) : score === 0;
+        return { ...team, playerIds, members, score: Math.max(0, Math.round(score || 0)), points, darts, avg3, isWinnerTeam };
+      })
+      .sort((a: any, b: any) => (b.isWinnerTeam ? 1 : 0) - (a.isWinnerTeam ? 1 : 0) || a.score - b.score);
+  }, [teams, rows, winnerId]);
+
+  const isTeamsSummary = teamRows.length >= 2;
 
   // --- Best-of pour le résumé ---
   const minDarts = Math.min(
@@ -1244,7 +1286,46 @@ function Inner({
 
         {/* Corps */}
         <div style={{ padding: 10, paddingTop: 8 }}>
-          {/* Classement (liste joueurs) */}
+          {/* Classement : équipes en X01 TEAMS, joueurs détaillés sous chaque équipe */}
+          {isTeamsSummary ? (
+            <div style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,.07)", background: "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))", marginBottom: 10, overflow: "hidden" }}>
+              {teamRows.map((team: any, idx: number) => {
+                const teamLogo = team.logoDataUrl || team.avatarUrl || null;
+                const color = team.color || (team.isWinnerTeam ? "#7fe2a9" : "var(--dc-accent, #ffcf57)");
+                return (
+                  <div key={team.id || team.name || idx} style={{ borderBottom: "1px solid rgba(255,255,255,.08)", background: team.isWinnerTeam ? "radial-gradient(circle at 0% 0%, rgba(127,226,169,.24), transparent 58%)" : "transparent", boxShadow: team.isWinnerTeam ? "0 0 22px rgba(127,226,169,.28)" : "none" }}>
+                    <div style={{ padding: "8px", display: "grid", gridTemplateColumns: "26px 42px 1fr auto", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(255,255,255,.07)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color }}>{idx + 1}</div>
+                      <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}`, background: "rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {teamLogo ? <img src={teamLogo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontWeight: 900, color }}>{String(team.name || "T").slice(0, 2).toUpperCase()}</span>}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 950, color, fontSize: 14 }}>{team.name || "Équipe"}</div>
+                        <div style={{ opacity: .72, fontSize: 10, fontWeight: 800 }}>Score collectif</div>
+                      </div>
+                      <div style={{ fontWeight: 1000, fontSize: 16, color }}>{team.score}</div>
+                    </div>
+                    <div style={{ padding: "0 8px 8px 76px", display: "grid", gap: 4 }}>
+                      {team.members.map((r: any, mIdx: number) => {
+                        const avatar = avatarOf(r.pid);
+                        const memberColor = barColors[mIdx % barColors.length];
+                        const playerPoints = Number(r.points || 0);
+                        return (
+                          <div key={r.pid} style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", alignItems: "center", gap: 7, padding: "4px 6px", borderRadius: 8, background: "rgba(255,255,255,.035)" }}>
+                            <div style={{ width: 24, height: 24, borderRadius: "50%", overflow: "hidden", border: `1px solid ${memberColor}`, background: "rgba(255,255,255,.08)" }}>
+                              {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                            </div>
+                            <div style={{ fontWeight: 900, color: memberColor }}>{r.name}</div>
+                            <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,.78)" }}>{playerPoints} pts</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
 <div
   style={{
     borderRadius: 10,
@@ -1257,124 +1338,22 @@ function Inner({
   {rows.map((r, idx) => {
     const avatar = avatarOf(r.pid);
     const isWinner = r.pid === winnerId;
-
-    // 👉 valeur brute "remaining" venant du moteur si dispo
-    const remainingRaw =
-      typeof (r as any).remainingRaw === "number" &&
-      isFinite((r as any).remainingRaw)
-        ? (r as any).remainingRaw
-        : null;
-
-    // 👉 valeur calculée de secours si rien de brut
-    const remainingComputed =
-      typeof r.remaining === "number" && isFinite(r.remaining)
-        ? r.remaining
-        : 0;
-
-    // 👉 on affiche en priorité la valeur brute, sinon le calcul
-    const remainingForDisplay =
-      remainingRaw !== null ? remainingRaw : remainingComputed;
-
-    // 👉 vainqueur = 0, les autres = points restants arrondis
-    const displayScore = isWinner
-      ? 0
-      : Math.max(0, Math.round(remainingForDisplay));
+    const remainingRaw = typeof (r as any).remainingRaw === "number" && isFinite((r as any).remainingRaw) ? (r as any).remainingRaw : null;
+    const remainingComputed = typeof r.remaining === "number" && isFinite(r.remaining) ? r.remaining : 0;
+    const remainingForDisplay = remainingRaw !== null ? remainingRaw : remainingComputed;
+    const displayScore = isWinner ? 0 : Math.max(0, Math.round(remainingForDisplay));
 
     return (
-      <div
-        key={r.pid}
-        style={{
-          padding: "6px 8px",
-          display: "grid",
-          gridTemplateColumns: "26px 36px 1fr auto",
-          alignItems: "center",
-          gap: 8,
-          borderBottom: "1px solid rgba(255,255,255,.06)",
-          background: isWinner
-            ? "radial-gradient(circle at 0% 0%, rgba(127,226,169,.28), transparent 55%)"
-            : "transparent",
-          boxShadow: isWinner
-            ? "0 0 22px rgba(127,226,169,.35)"
-            : "0 0 0 rgba(0,0,0,0)",
-          transition: "background .18s, box-shadow .18s",
-        }}
-      >
-        <div
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: 6,
-            background: "rgba(255,255,255,.06)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 800,
-            color: "var(--dc-accent, #ffcf57)",
-            fontSize: 12,
-          }}
-        >
-          {idx + 1}
-        </div>
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            overflow: "hidden",
-            background: "rgba(255,255,255,.08)",
-          }}
-        >
-          {avatar ? (
-            <img
-              src={avatar}
-              alt=""
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#999",
-                fontWeight: 700,
-              }}
-            >
-              ?
-            </div>
-          )}
-        </div>
-        <div
-          style={{
-            fontWeight: 800,
-            color: isWinner
-              ? "#7fe2a9"
-              : "var(--dc-accent, #ffcf57)",
-            fontSize: 13,
-          }}
-        >
-          {r.name}
-        </div>
-        <div
-          style={{
-            fontWeight: 900,
-            color: isWinner
-              ? "#7fe2a9"
-              : "var(--dc-accent, #ffcf57)",
-          }}
-        >
-          {displayScore}
-        </div>
+      <div key={r.pid} style={{ padding: "6px 8px", display: "grid", gridTemplateColumns: "26px 36px 1fr auto", alignItems: "center", gap: 8, borderBottom: "1px solid rgba(255,255,255,.06)", background: isWinner ? "radial-gradient(circle at 0% 0%, rgba(127,226,169,.28), transparent 55%)" : "transparent", boxShadow: isWinner ? "0 0 22px rgba(127,226,169,.35)" : "0 0 0 rgba(0,0,0,0)", transition: "background .18s, box-shadow .18s" }}>
+        <div style={{ width: 22, height: 22, borderRadius: 6, background: "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "var(--dc-accent, #ffcf57)", fontSize: 12 }}>{idx + 1}</div>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", overflow: "hidden", background: "rgba(255,255,255,.08)" }}>{avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#999", fontWeight: 700 }}>?</div>}</div>
+        <div style={{ fontWeight: 800, color: isWinner ? "#7fe2a9" : "var(--dc-accent, #ffcf57)", fontSize: 13 }}>{r.name}</div>
+        <div style={{ fontWeight: 900, color: isWinner ? "#7fe2a9" : "var(--dc-accent, #ffcf57)" }}>{displayScore}</div>
       </div>
     );
   })}
 </div>
+          )}
 
           {/* Résumé en KPI */}
           <Accordion title="Résumé de la manche" defaultOpen>

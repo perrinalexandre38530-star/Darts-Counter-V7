@@ -1124,7 +1124,7 @@ function deriveHistoryWinnerName(e: SavedEntry): string {
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
-  const direct = cleanName(anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName);
+  const direct = cleanName(anyE.teamWinnerName || data.teamWinnerName || result.teamWinnerName || anyE.payload?.summary?.teamWinnerName || anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName);
   if (direct) return direct;
 
   const winnerId =
