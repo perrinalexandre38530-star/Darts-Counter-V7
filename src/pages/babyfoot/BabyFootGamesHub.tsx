@@ -126,7 +126,7 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         color: theme.text,
       }}
     >
-      <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
+      <div style={{ position: "relative", width: "100%", marginBottom: 10, overflow: "hidden", borderRadius: 14 }}>
         <img
           src={getTicker("babyfoot_games") || logoBabyFoot}
           alt="Baby-Foot — Games"
@@ -192,12 +192,21 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
                 alt={c.title}
                 style={{
                   width: "100%",
-                  height: 86,
+                  height: 76,
                   display: "block",
                   objectFit: "cover",
                   objectPosition: "center",
                 }}
                 draggable={false}
+              />
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  background: "linear-gradient(90deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.00) 16%, rgba(0,0,0,0.00) 84%, rgba(0,0,0,0.38) 100%)",
+                }}
               />
               <div
                 style={{

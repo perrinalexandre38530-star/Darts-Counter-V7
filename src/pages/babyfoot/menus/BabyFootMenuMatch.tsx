@@ -260,11 +260,11 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
     });
   }
 
-  const cardHeight = 86;
+  const cardHeight = 76;
 
   // panneau ticker à droite ≈ 3/4 (style Games)
-  const tickerPanelW = "112%"; // ticker volontairement plus large : une partie sort à droite
-  const tickerPanelRight = "-30%"; // ≈ 1/3 du visuel hors carte à droite
+  const tickerPanelW = "100%"; // le ticker reste strictement dans la carte
+  const tickerPanelRight = "0"; // aucune sortie visuelle hors bloc
   const leftFade =
     "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.88) 28%, rgba(10,10,14,0.62) 52%, rgba(10,10,14,0.00) 100%)";
   const tickerLeftEdgeFade =
@@ -354,7 +354,7 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
             >
               {/* Hauteur carte */}
               <div style={{ position: "relative", height: cardHeight, width: "100%" }}>
-                {/* panneau ticker à droite (hauteur = carte) */}
+                {/* panneau ticker à droite (hauteur = carte, toujours clipsé dans le bloc) */}
                 <div
                   style={{
                     position: "absolute",
@@ -381,7 +381,7 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
                     }}
                     draggable={false}
                   />
-                  {/* dégradé sur le bord GAUCHE du ticker */}
+                  {/* dégradé sur les bords du ticker */}
                   <div
                     aria-hidden
                     style={{
@@ -391,6 +391,17 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
                       height: "100%",
                       width: "42%",
                       background: tickerLeftEdgeFade,
+                    }}
+                  />
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: 0,
+                      height: "100%",
+                      width: "26%",
+                      background: "linear-gradient(270deg, rgba(10,10,14,0.70) 0%, rgba(10,10,14,0.20) 62%, rgba(10,10,14,0.00) 100%)",
                     }}
                   />
                 </div>

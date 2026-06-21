@@ -25,15 +25,18 @@ function pill(accent = false): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 26,
-    padding: "0 9px",
+    minHeight: 22,
+    padding: "0 7px",
     borderRadius: 999,
     border: accent ? "1px solid rgba(199,255,38,0.34)" : "1px solid rgba(255,255,255,0.08)",
     background: accent ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
     color: accent ? "#f5ffbf" : "rgba(255,255,255,0.94)",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 1000,
-    letterSpacing: 0.25,
+    letterSpacing: 0.15,
+    maxWidth: 82,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     boxShadow: accent ? "0 0 14px rgba(199,255,38,0.15)" : "none",
   };
@@ -113,7 +116,7 @@ export default function BabyFootLiveHeader({
     <div
       style={{
         borderRadius: 22,
-        padding: 10,
+        padding: 8,
         border: "1px solid rgba(120,150,255,0.14)",
         background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
@@ -123,13 +126,14 @@ export default function BabyFootLiveHeader({
         <div
           style={{
             display: "flex",
-            gap: 6,
-            rowGap: 5,
+            gap: 5,
+            rowGap: 4,
             alignItems: "center",
+            alignContent: "center",
             minWidth: 0,
             flexWrap: "wrap",
             overflow: "hidden",
-            maxHeight: 58,
+            maxHeight: 48,
           }}
         >
           {phaseLabel && phaseLabel !== "MATCH" ? <span style={pill(true)}>{phaseLabel}</span> : null}
@@ -145,8 +149,8 @@ export default function BabyFootLiveHeader({
             display: "inline-flex",
             alignItems: "center",
             gap: 7,
-            minHeight: 36,
-            padding: "3px 6px 3px 8px",
+            minHeight: 46,
+            padding: "4px 7px",
             borderRadius: 999,
             border: "1px solid rgba(199,255,38,0.28)",
             background: "linear-gradient(180deg, rgba(18,22,28,0.96), rgba(10,12,20,0.98))",
@@ -154,8 +158,8 @@ export default function BabyFootLiveHeader({
             flex: "0 0 auto",
           }}
         >
-          <span style={{ color: "#ebff86", fontSize: 16, lineHeight: 1 }}>◔</span>
-          <span style={{ color: "#fff3a3", fontSize: 22, lineHeight: 1, fontWeight: 1100, minWidth: 58, textAlign: "center" }}>{clockLabel}</span>
+          <span style={{ color: "#ebff86", fontSize: 14, lineHeight: 1 }}>◔</span>
+          <span style={{ color: "#fff3a3", fontSize: 20, lineHeight: 1, fontWeight: 1100, minWidth: 54, textAlign: "center" }}>{clockLabel}</span>
           <button
             type="button"
             aria-label={hasStarted ? "Reprendre" : "Démarrer"}

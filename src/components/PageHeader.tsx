@@ -53,7 +53,10 @@ export default function PageHeader(props: {
           style={{
             position: "relative",
             width: "100%",
+            height: tickerHeight,
             paddingTop: "env(safe-area-inset-top)",
+            overflow: "hidden",
+            background: "rgba(0,0,0,0.35)",
           }}
         >
           <img
@@ -63,8 +66,19 @@ export default function PageHeader(props: {
             style={{
               display: "block",
               width: "100%",
-              height: tickerHeight,
+              height: "100%",
               objectFit: "cover",
+              objectPosition: "center",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.00) 13%, rgba(0,0,0,0.00) 87%, rgba(0,0,0,0.45) 100%)",
             }}
           />
 

@@ -1447,32 +1447,31 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   return (
     <div style={{ minHeight: "100vh", background: screenBg, color: "rgba(255,255,255,0.94)" }}>
       <div style={{ padding: "10px 12px 0" }}>
-        <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
+        <div style={{ position: "relative", marginLeft: -12, marginRight: -12, height: 118, overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, boxShadow: "0 18px 40px rgba(0,0,0,0.45)", background: "rgba(255,255,255,0.06)" }}>
           {headerTicker ? (
-            <img
-              src={headerTicker}
-              alt="ticker"
-              style={{
-                width: "100%",
-                height: 118,
-                objectFit: "cover",
-                display: "block",
-                borderBottomLeftRadius: 16,
-                borderBottomRightRadius: 16,
-                boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                height: 118,
-                borderBottomLeftRadius: 16,
-                borderBottomRightRadius: 16,
-                background: "rgba(255,255,255,0.06)",
-                boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
-              }}
-            />
-          )}
+            <>
+              <img
+                src={headerTicker}
+                alt="ticker"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  objectPosition: "center",
+                  display: "block",
+                }}
+              />
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  background: "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.00) 14%, rgba(0,0,0,0.00) 86%, rgba(0,0,0,0.42) 100%)",
+                }}
+              />
+            </>
+          ) : null}
 
           <div style={{ position: "absolute", left: 10, top: 10 }}>
             <BackDot onClick={() => go(backTo)} />
