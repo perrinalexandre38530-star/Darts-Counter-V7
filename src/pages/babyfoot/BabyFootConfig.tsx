@@ -763,6 +763,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   const teamsReady = !useExistingTeams || (mode === "2v1" ? !!teamARefId : !!teamARefId && !!teamBRefId);
   const canStart = teamsReady && selA.length === capA && selB.length === capB && confirmA && confirmB;
+  const showStartButton = configMode === "full" || guidedStep === "summary";
 
   useEffect(() => {
     // Changement de format = vraie nouvelle sélection.
@@ -2317,31 +2318,33 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {t("reset", "Reset")}
           </button>
 
-          <button
-            onClick={applyAndStart}
-            disabled={!canStart}
-            style={{
-              flex: 1,
-              borderRadius: 14,
-              padding: "12px 14px",
-              background: !canStart
-                ? "rgba(255,255,255,0.08)"
-                : `linear-gradient(180deg, ${primary} 0%, ${primary}cc 100%)`,
-              border: !canStart
-                ? "1px solid rgba(255,255,255,0.10)"
-                : `1px solid ${primary}aa`,
-              color: !canStart ? "rgba(255,255,255,0.55)" : "#081018",
-              fontWeight: 1000,
-              letterSpacing: 0.4,
-              boxShadow: !canStart
-                ? "none"
-                : `0 16px 40px rgba(0,0,0,0.45), 0 0 0 3px ${primary}18`,
-              cursor: !canStart ? "not-allowed" : "pointer",
-            }}
-            title={!canStart ? t("bf_need_players", "Sélectionne les joueurs requis") : ""}
-          >
-            {t("start", "Démarrer")}
-          </button>
+          {showStartButton ? (
+            <button
+              onClick={applyAndStart}
+              disabled={!canStart}
+              style={{
+                flex: 1,
+                borderRadius: 14,
+                padding: "12px 14px",
+                background: !canStart
+                  ? "rgba(255,255,255,0.08)"
+                  : `linear-gradient(180deg, ${primary} 0%, ${primary}cc 100%)`,
+                border: !canStart
+                  ? "1px solid rgba(255,255,255,0.10)"
+                  : `1px solid ${primary}aa`,
+                color: !canStart ? "rgba(255,255,255,0.55)" : "#081018",
+                fontWeight: 1000,
+                letterSpacing: 0.4,
+                boxShadow: !canStart
+                  ? "none"
+                  : `0 16px 40px rgba(0,0,0,0.45), 0 0 0 3px ${primary}18`,
+                cursor: !canStart ? "not-allowed" : "pointer",
+              }}
+              title={!canStart ? t("bf_need_players", "Sélectionne les joueurs requis") : ""}
+            >
+              {t("start", "Démarrer")}
+            </button>
+          ) : null}
         </div>
       </div>
 

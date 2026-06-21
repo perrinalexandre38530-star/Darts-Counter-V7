@@ -1393,7 +1393,7 @@ function handleStart() {
                             transition: "filter 0.2s ease, opacity 0.2s ease",
                           }}
                         >
-                          <ProfileAvatar profile={p} size={78} />
+                          <ProfileAvatar profile={p} size={78} showStars={false} />
                         </div>
                       </div>
 
@@ -1637,7 +1637,7 @@ function handleStart() {
                 return (
                   <div key={pid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <ProfileAvatar profile={p} size={26} />
+                      <ProfileAvatar profile={p} size={26} showStars={false} />
                       <span style={{ fontSize: 12, fontWeight: 800 }}>{name}</span>
                     </div>
 
@@ -1751,7 +1751,7 @@ function handleStart() {
 
                         return (
                           <div key={pid} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <ProfileAvatar profile={p} size={26} />
+                            <ProfileAvatar profile={p} size={26} showStars={false} />
                             <span style={{ fontSize: 12, fontWeight: 700, color: "#e9ecff" }}>{name}</span>
 
                             <span

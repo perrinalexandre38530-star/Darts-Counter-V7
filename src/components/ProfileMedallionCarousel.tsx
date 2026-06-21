@@ -27,6 +27,9 @@ export type ProfileMedallionCarouselProps = {
 
   /** Optional: custom left padding (Territories uses 8) */
   padLeft?: number;
+
+  /** Affiche les étoiles darts au-dessus des avatars. Par défaut: false pour les sports non-fléchettes. */
+  showStars?: boolean;
 };
 
 /**
@@ -47,6 +50,7 @@ export default function ProfileMedallionCarousel(props: ProfileMedallionCarousel
     onTogglePending,
     grayscaleInactive = true,
     padLeft = 8,
+    showStars = false,
   } = props;
 
   return (
@@ -110,7 +114,7 @@ export default function ProfileMedallionCarousel(props: ProfileMedallionCarousel
                   transition: "filter .2s ease, opacity .2s ease",
                 }}
               >
-                <ProfileAvatar profile={it.profile as any} size={78} />
+                <ProfileAvatar profile={it.profile as any} size={78} showStars={showStars} />
               </div>
             </div>
 

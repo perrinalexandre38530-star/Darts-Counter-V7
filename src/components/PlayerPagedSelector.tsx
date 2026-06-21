@@ -85,6 +85,37 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
   return null;
 }
 
+
+function isDartsSportContextForProfileStarring(): boolean {
+  if (typeof window === "undefined") return true;
+  const normalize = (v: any) => String(v ?? "").trim().toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+
+  // SPORT = fléchettes. Les jeux Cricket/Killer/Golf/Shanghai/etc. restent dans ce sport.
+  // Les sports séparés (pétanque, ping-pong, mölkky, baby-foot, foot, dés, etc.) ne doivent jamais
+  // afficher le niveau darts dans leurs sélecteurs de joueurs.
+  const keys = [
+    "dc-start-game",
+    "dc-active-sport",
+    "dc:sport",
+    "activeSport",
+    "selectedSport",
+    "sport",
+  ];
+  for (const key of keys) {
+    try {
+      const raw = window.localStorage?.getItem(key);
+      const val = normalize(raw);
+      if (!val) continue;
+      if (val === "darts" || val === "dart" || val === "flechettes" || val === "flechette") return true;
+      return false;
+    } catch {}
+  }
+  return true;
+}
+
 function renderProfileStars(star: ProfileStarData | null, anchorSize: number, starSize: number, gapPx = -5) {
   if (!star) return null;
   if (star.kind === "avg3d") return <ProfileStarRing avg3d={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
@@ -226,13 +257,14 @@ export default function PlayerPagedSelector({
   renderAvatarOverlay,
   closeOnSelect = false,
   onAfterToggle,
-  showProfileStarring = true,
+  showProfileStarring,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [listOpen, setListOpen] = React.useState(false);
   const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>(() => readX01PlayerUsageCounts());
   const [statsById, setStatsById] = React.useState<Record<string, any>>({});
+  const effectiveShowProfileStarring = showProfileStarring === undefined ? isDartsSportContextForProfileStarring() : Boolean(showProfileStarring);
 
   React.useEffect(() => {
     const refresh = () => setHistoryUsageById((prev) => ({ ...prev, ...readX01PlayerUsageCounts() }));
@@ -248,7 +280,7 @@ export default function PlayerPagedSelector({
 
   React.useEffect(() => {
     let cancelled = false;
-    if (!showProfileStarring) {
+    if (!effectiveShowProfileStarring) {
       setStatsById({});
       return;
     }
@@ -279,7 +311,7 @@ export default function PlayerPagedSelector({
       if (!cancelled) setStatsById({});
     });
     return () => { cancelled = true; };
-  }, [profiles, showProfileStarring]);
+  }, [profiles, effectiveShowProfileStarring]);
 
   // Le scan historique est déclenché par la page X01ConfigV3, puis propagé ici
   // via dc-x01-player-usage-updated. On évite ainsi un double History.list()
@@ -356,7 +388,7 @@ export default function PlayerPagedSelector({
             return (
               <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
                 <span style={{ color: active ? accent : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
-                <ProfileAvatar profile={p} size={34} />
+                <ProfileAvatar profile={p} size={34} showStars={effectiveShowProfileStarring} />
                 <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
               </button>
             );
@@ -368,7 +400,7 @@ export default function PlayerPagedSelector({
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-            {selected.map((p: any) => <SelectedCard key={p.id} p={p} statsById={statsById} showProfileStarring={showProfileStarring} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
+            {selected.map((p: any) => <SelectedCard key={p.id} p={p} statsById={statsById} showProfileStarring={effectiveShowProfileStarring} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
           </div>
         </div>
       ) : null}
@@ -387,14 +419,14 @@ export default function PlayerPagedSelector({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {pageItems.map((p: any) => {
                   const active = selectedIdSet.has(String(p.id));
-                  const star = showProfileStarring ? profileStarData(p, statsById) : null;
+                  const star = effectiveShowProfileStarring ? profileStarData(p, statsById) : null;
                   return (
                     <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
                         {renderProfileStars(star, 88, 12, -5)}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                           <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
-                            <ProfileAvatar profile={p} size={76} noFrame />
+                            <ProfileAvatar profile={p} size={76} noFrame showStars={false} />
                           </div>
                         </div>
                         {active ? renderAvatarOverlay?.(p) : null}
@@ -426,7 +458,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
         {renderProfileStars(star, 72, 10, -5)}
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
           <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
-            <ProfileAvatar profile={p} size={60} noFrame />
+            <ProfileAvatar profile={p} size={60} noFrame showStars={false} />
           </div>
         </div>
         {renderAvatarOverlay?.(p)}
