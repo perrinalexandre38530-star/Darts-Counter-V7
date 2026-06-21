@@ -1157,7 +1157,8 @@ function historyTeamRowsForX01(e: SavedEntry): any[] {
         const stat = players.find((p: any) => normHistoryName(p.name) === normHistoryName(name)) || playerByName.get(normHistoryName(name));
         const points = Number(stat?.points ?? raw?.points ?? raw?.score ?? 0) || 0;
         return { id: pid, name, remaining: stat?.remaining ?? historyScoreNumber(x01RemainingForRow(e, raw), "0"), points };
-      }).filter((m: any) => cleanName(m.name));
+      }).filter((m: any) => cleanName(m.name))
+        .sort((a: any, b: any) => Number(b.points || 0) - Number(a.points || 0));
       const score = Number(legWins[teamKey] || 0);
       const winner = maxWins > 0 && score === maxWins;
       return { ...t, members, score, matchScore: score, winner };

@@ -504,8 +504,9 @@ export default function X01End({ go, params }: Props) {
       const teamKey = String(t.id || t.name);
       const members = t.playerIds.map((pid: string) => {
         const p = playerById[pid];
-        return p ? { id: p.id, name: p.name, avatar: p.avatarDataUrl || p.avatarUrl || null } : { id: pid, name: pid };
-      });
+        const pts = Number((M as any)?.[pid]?.points || 0);
+        return p ? { id: p.id, name: p.name, avatar: p.avatarDataUrl || p.avatarUrl || null, points: pts } : { id: pid, name: pid, points: pts };
+      }).sort((a: any, b: any) => Number(b.points || 0) - Number(a.points || 0));
       const score = Number(t.matchScore ?? t.legsWon ?? legWins[teamKey] ?? 0) || 0;
       return { ...t, players: members, avatarUrl: x01EndTeamLogo(t), score, matchScore: score, legsWon: score };
     }).sort((a:any,b:any)=>Number(b.score||0)-Number(a.score||0));
@@ -899,7 +900,7 @@ export default function X01End({ go, params }: Props) {
       {summaryTab === "summary" ? (
         <>
       {teamsForOverlay && teamsForOverlay.length >= 2 ? (
-        <Panel title="Score collectif équipes">
+        <Panel title="Score collectif équipes — legs gagnés">
           <div style={{ display: "grid", gap: 8 }}>
             {teamsForOverlay.map((t: any, idx: number) => {
               const color = t.color || (Number(t.score) === 0 ? "#7fe2a9" : THEME_ACCENT);
@@ -917,7 +918,7 @@ export default function X01End({ go, params }: Props) {
                     {(t.players || []).map((m: any) => {
                       const mm = (M as any)?.[m.id] || {};
                       const pts = Number(mm.points || 0);
-                      return <span key={m.id} style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,.86)" }}>{m.name} <span style={{ color }}>+{Math.round(pts)}</span></span>;
+                      return <span key={m.id} style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,.86)" }}>{m.name} <span style={{ color }}>+{Math.round(pts)} pts</span></span>;
                     })}
                   </div>
                 </div>

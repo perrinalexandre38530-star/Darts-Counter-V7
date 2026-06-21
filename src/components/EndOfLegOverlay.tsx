@@ -907,7 +907,10 @@ function Inner({
         : Array.isArray(team.players)
         ? team.players.map((p: any) => String(typeof p === "string" ? p : (p?.id || p?.playerId || p?.profileId || p?.pid || ""))).filter(Boolean)
         : [];
-      const members = playerIds.map((pid: string) => rows.find((r: any) => String(r.pid) === pid)).filter(Boolean);
+      const members = playerIds
+        .map((pid: string) => rows.find((r: any) => String(r.pid) === pid))
+        .filter(Boolean)
+        .sort((a: any, b: any) => Number(b.points || 0) - Number(a.points || 0));
       const points = members.reduce((sum: number, m: any) => sum + Number(m.points || 0), 0);
       const darts = members.reduce((sum: number, m: any) => sum + Number(m.darts || 0), 0);
       const avg3 = darts > 0 ? (points / darts) * 3 : 0;
@@ -1302,7 +1305,7 @@ function Inner({
                       </div>
                       <div>
                         <div style={{ fontWeight: 950, color, fontSize: 14 }}>{team.name || "Équipe"}</div>
-                        <div style={{ opacity: .72, fontSize: 10, fontWeight: 800 }}>Score collectif</div>
+                        <div style={{ opacity: .72, fontSize: 10, fontWeight: 800 }}>Score collectif — legs gagnés</div>
                       </div>
                       <div style={{ fontWeight: 1000, fontSize: 16, color }}>{team.score}</div>
                     </div>
@@ -1317,7 +1320,7 @@ function Inner({
                               {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
                             </div>
                             <div style={{ fontWeight: 900, color: memberColor }}>{r.name}</div>
-                            <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,.78)" }}>{playerPoints} pts</div>
+                            <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,.78)" }}>+{playerPoints} pts</div>
                           </div>
                         );
                       })}
