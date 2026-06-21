@@ -1655,11 +1655,11 @@ function metricLabel(m: MetricKey, sport?: string) {
     case "setWinRate":
       return "% Sets";
     case "avg3":
-      return sport === "molkky" || sport === "dicegame" || sport === "babyfoot" || sport === "pingpong" ? "Moy. score" : "Avg3D";
+      return sport === "molkky" || sport === "dicegame" || sport === "babyfoot" || sport === "pingpong" ? "Moy. score" : "AVG3D";
     case "avg1":
       return "Avg1D";
     case "bestAvg3":
-      return "Best Avg3D";
+      return "Best AVG3D";
     case "bestVisit":
       return sport === "molkky" || sport === "babyfoot" || sport === "pingpong" ? "Meilleur score" : "Best visit";
     case "bestCheckout":

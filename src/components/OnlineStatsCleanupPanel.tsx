@@ -352,7 +352,7 @@ export default function OnlineStatsCleanupPanel() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, marginTop: 9 }}>
                   <SmallMetric label="Darts" value={session.darts || "—"} />
-                  <SmallMetric label="Moy.3D" value={session.avg3 ? session.avg3.toFixed(1) : "—"} />
+                  <SmallMetric label="AVG3D" value={session.avg3 ? session.avg3.toFixed(1) : "—"} />
                   <SmallMetric label="Hits %" value={session.hitPct ? `${session.hitPct.toFixed(1)}%` : "—"} />
                   <SmallMetric label="BV" value={session.bestVisit || "—"} />
                   <SmallMetric label="CO" value={session.bestCheckout || "—"} />

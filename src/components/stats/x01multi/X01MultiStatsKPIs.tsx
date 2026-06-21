@@ -122,7 +122,7 @@ export default function X01MultiStatsKPIs({ matches }: Props) {
           <div style={{ ...label, color: "#FF6FB5" }}>Moyennes</div>
 
           <KPI
-            label="Moy.3D"
+            label="AVG3D"
             value={globalAvg3.toFixed(1)}
             color="#FFB8DE"
           />

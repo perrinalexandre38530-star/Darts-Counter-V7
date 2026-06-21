@@ -89,7 +89,7 @@ export default function HistorySimple() {
                     <div style={{ fontWeight: 800, color: "#ffcf57" }}>
                       {p.name || p.id}
                     </div>
-                    <Stat label="Moy/3D" value={fmt(s.avg3ByPlayer[p.id])} />
+                    <Stat label="AVG3D" value={fmt(s.avg3ByPlayer[p.id])} />
                     <Stat label="Darts" value={fmtInt(s.dartsByPlayer[p.id])} />
                     <Stat label="Best" value={fmtInt(s.bestVisitByPlayer[p.id])} />
                     <Stat label="Best CO" value={fmtInt(s.bestCheckoutByPlayer[p.id])} />

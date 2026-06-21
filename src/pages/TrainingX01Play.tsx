@@ -902,7 +902,7 @@ function TrainingStatsTable({
     >
       {/* Moy.3D */}
       <div style={rowStyle}>
-        <span style={labelStyle}>Moy.3D</span>
+        <span style={labelStyle}>AVG3D</span>
         <span style={valueStyle}>{avg3D}</span>
       </div>
       <div style={sepStyle} />

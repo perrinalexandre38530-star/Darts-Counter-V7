@@ -554,7 +554,7 @@ function SessionDetailModal({ session, onClose }: SessionDetailModalProps) {
               Détails session Training X01
             </div>
             <div style={{ fontSize: 12, color: T.text70 }}>
-              {date.toLocaleDateString()} — {session.startScore} — {session.darts} darts — Moy.3D{" "}
+              {date.toLocaleDateString()} — {session.startScore} — {session.darts} darts — AVG3D{" "}
               {session.avg3.toFixed(2)}
             </div>
           </div>
@@ -582,7 +582,7 @@ function SessionDetailModal({ session, onClose }: SessionDetailModalProps) {
           }}
         >
           <MiniStat label="Darts" value={session.darts.toString()} />
-          <MiniStat label="Moy.3D" value={session.avg3.toFixed(2)} />
+          <MiniStat label="AVG3D" value={session.avg3.toFixed(2)} />
           <MiniStat label="Best Visit" value={session.bestVisit.toString()} />
           {session.bestCheckout ? (
             <MiniStat label="Best Checkout" value={session.bestCheckout.toString()} />
@@ -752,7 +752,7 @@ function TrainingX01StatsPanelInner({ sessions }: TrainingX01StatsPanelInnerProp
     averages && nbSessions
       ? [
           {
-            label: "Moy.3D (global)",
+            label: "AVG3D (global)",
             value: averages.avg3Global.toFixed(2),
           },
           {
@@ -1153,7 +1153,7 @@ function TrainingX01StatsPanelInner({ sessions }: TrainingX01StatsPanelInnerProp
                     {s.startScore} — {s.darts} darts
                   </div>
                   <div style={{ flex: 1, fontSize: 12, color: T.text70 }}>
-                    Moy.3D <span style={{ color: T.text }}>{s.avg3.toFixed(2)}</span>
+                    AVG3D <span style={{ color: T.text }}>{s.avg3.toFixed(2)}</span>
                   </div>
                   <div style={{ flex: 1, fontSize: 12, color: T.text70 }}>
                     BV <span style={{ color: T.text }}>{s.bestVisit}</span>

@@ -84,7 +84,7 @@ export default function StatsTrainingSummary({ profile }: Props) {
             value: fmtNum(trainingHitsTotal, 0),
           },
           {
-            label: t("stats.training.avg3d", "moy. 3d"),
+            label: t("stats.training.avg3d", "AVG3D"),
             value: fmtNum(trainingAvg3D, 2),
           },
           {

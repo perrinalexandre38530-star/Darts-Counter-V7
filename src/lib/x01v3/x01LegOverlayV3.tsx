@@ -358,7 +358,7 @@ export default function X01LegOverlayV3({
               }}
             >
               <Mini
-                label="Moy.3D"
+                label="AVG3D"
                 win={wAvg3}
                 lose={opponent ? oAvg3 : "-"}
               />

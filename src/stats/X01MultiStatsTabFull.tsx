@@ -2328,7 +2328,7 @@ const pctSetsWinX01 =
   const pinkItems = finalizeKpiItems([
     {
       kind: "num",
-      label: "Moy.3D (période)",
+      label: "AVG3D (période)",
       raw: totalSessions > 0 ? globalAvg3D : null,
       format: (v) => v.toFixed(1),
     },
@@ -2478,7 +2478,7 @@ const pctSetsWinX01 =
     },
     {
       kind: "num",
-      label: "Moy.3D (période)",
+      label: "AVG3D (période)",
       raw: totalSessions > 0 ? globalAvg3D : null,
       format: (v) => v.toFixed(1),
     },
@@ -3515,7 +3515,7 @@ return (
                             color: T.text70,
                           }}
                         >
-                          Moy.3D
+                          AVG3D
                         </div>
                         <div
                           style={{
@@ -3535,7 +3535,7 @@ return (
                             color: T.text70,
                           }}
                         >
-                          Best Moy.3D
+                          Best AVG3D
                         </div>
                         <div
                           style={{
@@ -4656,7 +4656,7 @@ return (
                     }}
                   >
                     {m === "darts" && "Darts"}
-                    {m === "avg3D" && "Moy.3D"}
+                    {m === "avg3D" && "AVG3D"}
                     {m === "pctS" && "%S"}
                     {m === "pctD" && "%D"}
                     {m === "pctT" && "%T"}
@@ -5146,7 +5146,7 @@ return (
             fontWeight: 700,
           }}
         >
-          {s.avg3D.toFixed(1)} de moy. 3D
+          {s.avg3D.toFixed(1)} AVG3D
         </div>
       </div>
 
@@ -5403,7 +5403,7 @@ return (
                 marginBottom: 8,
               }}
             >
-              Moyenne 3D :{" "}
+              AVG3D :{" "}
               <span style={{ color: T.gold, fontWeight: 700 }}>
                 {selected.avg3D.toFixed(1)}
               </span>{" "}

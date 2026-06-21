@@ -130,7 +130,7 @@ export default function X01MultiStatsMatchModal({ match, onClose }: Props) {
         {/* Résumé haut */}
         <div style={{ fontSize: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 4 }}>
           <div>
-            Moyenne 3D :{" "}
+            AVG3D :{" "}
             <span style={{ color: T.gold, fontWeight: 700 }}>
               {match.avg3.toFixed(1)}
             </span>

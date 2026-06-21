@@ -177,7 +177,7 @@ export default function X01PlayOnline({
                   </div>
                   <div>
                     <div style={{ fontWeight: 900, letterSpacing: 0.2 }}>{p.name || "Joueur"}</div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 800 }}>Avg3: {avg3.toFixed(1)}</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 800 }}>AVG3D: {avg3.toFixed(1)}</div>
                   </div>
                 </div>
 

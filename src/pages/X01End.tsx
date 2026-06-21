@@ -836,7 +836,7 @@ export default function X01End({ go, params }: Props) {
           rowGroups={[
             {
               rows: [
-                { label: "Avg/3D", get: (m) => f2(m.avg3) },
+                { label: "AVG3D", get: (m) => f2(m.avg3) },
                 { label: "Avg/1D", get: (m) => f2(m.avg1) },
                 { label: hideDetailedHitStats ? "Best score" : "Best visit", get: (m) => f0(m.bestVisit) },
                 { label: "Best CO", get: (m) => f0(m.bestCO) },
@@ -3280,7 +3280,7 @@ function MatchLegDetails({
               {
                 rows: [
                   { label: "Score restant", get: (m) => (m.remaining != null ? f0(m.remaining) : "—") },
-                  { label: "Avg/3D", get: (m) => f2(m.avg3) },
+                  { label: "AVG3D", get: (m) => f2(m.avg3) },
                   { label: hideDartDetails ? "Best score" : "Best visit", get: (m) => f0(m.bestVisit) },
                   { label: "Darts", get: (m) => f0(m.darts) },
                   { label: hideDartDetails ? "Scores saisis" : "Visits", get: (m) => f0(m.visits) },

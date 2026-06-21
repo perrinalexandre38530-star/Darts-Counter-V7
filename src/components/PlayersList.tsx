@@ -256,7 +256,7 @@ export default function PlayersList({
                   <span>Set : {p.sets ?? 0}</span>
                   <span>Leg : {p.legs ?? 0}</span>
                   <span>Darts : {p.dartsCount ?? 0}</span>
-                  <span>Moy/3D : {(p.avg3d ?? 0).toFixed(2)}</span>
+                  <span>AVG3D : {(p.avg3d ?? 0).toFixed(2)}</span>
                 </div>
               </div>
 

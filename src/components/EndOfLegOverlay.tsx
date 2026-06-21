@@ -1399,7 +1399,7 @@ function Inner({
                     <TH>Joueur</TH>
                     <TH>Volées</TH>
                     <TH>Darts</TH>
-                    <TH>Moy./3D</TH>
+                    <TH>AVG3D</TH>
                     <TH>60+</TH>
                     <TH>100+</TH>
                     <TH>140+</TH>
@@ -1479,7 +1479,7 @@ function Inner({
                   <tr>
                     <TH>#</TH>
                     <TH>Joueur</TH>
-                    <TH>Moy./3D</TH>
+                    <TH>AVG3D</TH>
                     <TH>Pts Max</TH>
                     <TH>Darts</TH>
                     <TH>%S</TH>
@@ -1607,7 +1607,7 @@ function Inner({
                     textAlign: "center",
                   }}
                 >
-                  Moyenne 3 darts par joueur
+                  AVG3D par joueur
                 </div>
                 {barData.length ? (
                   <>
@@ -1646,8 +1646,7 @@ function Inner({
                         textAlign: "center",
                       }}
                     >
-                      Hauteur de la barre = Moyenne de points par volée
-                      (Moy./3D)
+                      Hauteur de la barre = AVG3D
                     </div>
                   </>
                 ) : (
@@ -1752,7 +1751,7 @@ function SummaryRows({
       />
 
       <KPIBlock
-        label="Best Moy./3D"
+        label="Best AVG3D"
         color="blue"
         playerName={bestAvgRow?.name || "—"}
         stat={bestAvgRow ? fmt2(bestAvgRow.avg3) : "—"}

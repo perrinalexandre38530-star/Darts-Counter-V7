@@ -2315,7 +2315,7 @@ const maxStackHits = HITS_SEGMENTS.reduce(
     const pinkItems = finalizeKpiItems([
       {
         kind: "num",
-        label: "Moy.3D (période)",
+        label: "AVG3D (période)",
         raw: totalSessions > 0 ? globalAvg3D : null,
         format: (v) => v.toFixed(1),
       },
@@ -2470,7 +2470,7 @@ const maxStackHits = HITS_SEGMENTS.reduce(
       },
       {
         kind: "num",
-        label: "Moy.3D (période)",
+        label: "AVG3D (période)",
         raw: totalSessions > 0 ? globalAvg3D : null,
         format: (v) => v.toFixed(1),
       },
@@ -2607,15 +2607,15 @@ const maxStackHits = HITS_SEGMENTS.reduce(
           // 1) Scoring global (Moy.3D)
           if (globalAvg3D >= 70) {
             summaryLines.push(
-              "Très gros scoring global, moyenne 3D élevée sur la période."
+              "Très gros scoring global, avec un AVG3D élevé sur la période."
             );
           } else if (globalAvg3D >= 60) {
             summaryLines.push(
-              "Scoring solide avec une moyenne 3D correcte et régulière."
+              "Scoring solide avec un AVG3D correct et régulier."
             );
           } else if (globalAvg3D >= 50) {
             summaryLines.push(
-              "Scoring en progression, objectif : stabiliser au-dessus de 60 de moyenne 3D."
+              "Scoring en progression, objectif : stabiliser l’AVG3D au-dessus de 60."
             );
           } else {
             summaryLines.push(
@@ -3183,7 +3183,7 @@ const maxStackHits = HITS_SEGMENTS.reduce(
 
     <div>
       <div style={{ fontSize: 11, color: T.text70, marginBottom: 2 }}>
-        Moy.3D
+        AVG3D
       </div>
       <div
         style={{
@@ -3799,7 +3799,7 @@ const maxStackHits = HITS_SEGMENTS.reduce(
             >
               <span>{formatShortDate(s.date)}</span>
               <span style={{ fontWeight: 700 }}>
-                {s.avg3D.toFixed(1)} Moy.3D
+                {s.avg3D.toFixed(1)} AVG3D
               </span>
             </div>
 
@@ -3984,7 +3984,7 @@ const maxStackHits = HITS_SEGMENTS.reduce(
             {/* Stats principales */}
             <div>
               <div style={statRowBox}>
-                <span>Moy.3D</span>
+                <span>AVG3D</span>
                 <span>{selected.avg3D.toFixed(1)}</span>
               </div>
               <div style={statRowBox}>
@@ -8178,7 +8178,7 @@ return (
                               <div style={value}>{games ? `${Math.round(winRate * 100)}%` : "—"}</div>
                             </div>
                             <div style={box}>
-                              <div style={label}>Avg 3</div>
+                              <div style={label}>AVG3D</div>
                               <div style={value}>{avg3 ? Math.round(avg3 * 10) / 10 : "—"}</div>
                             </div>
 

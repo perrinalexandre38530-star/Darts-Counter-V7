@@ -53,7 +53,7 @@ export default function ActiveProfileStats() {
         <div style={{ fontWeight: 900 }}>Profil actif</div>
         <div style={{ opacity: 0.8 }}>· {pid}</div>
         <div style={{ marginLeft: "auto", color: "#ffd700", fontWeight: 900 }}>
-          Moy/3: {s.avg3.toFixed(2)}
+          AVG3D: {s.avg3.toFixed(2)}
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>

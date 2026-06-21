@@ -4569,7 +4569,7 @@ function FriendsMergedBlock({ friends, loading = false, error = null, onRefresh 
                       >
                         {t(
                           "profiles.friends.stats",
-                          "Moy/3 : {avg} · Best : {best} · Win : {win}%"
+                          "AVG3D : {avg} · Best : {best} · Win : {win}%"
                         )
                           .replace(
                             "{avg}",
@@ -5992,7 +5992,7 @@ function LocalProfilesRefonte({
                 }}
               >
                 <KpiPill
-                  label={t("home.stats.avg3", "Moy/3D")}
+                  label={t("home.stats.avg3", "AVG3D")}
                   value={(Math.round(avg3 * 10) / 10).toFixed(1)}
                 />
                 <KpiPill
@@ -6943,7 +6943,7 @@ function GoldMiniStats({ profileId, profileName }: { profileId: string; profileN
         }}
       >
         <GoldStatItem
-          label={t("home.stats.avg3", "Moy/3")}
+          label={t("home.stats.avg3", "AVG3D")}
           value={(Math.round(avg3 * 10) / 10).toFixed(1)}
           width={pillW}
         />

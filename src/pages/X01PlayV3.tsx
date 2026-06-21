@@ -6173,7 +6173,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                   {isVisitScoreMode ? "Meilleur score" : "Meilleure volée"} : <b>{bestVisit}</b>
                 </div>
                 <div>
-                  Moy/3D : <b>{curM3D}</b>
+                  AVG3D : <b>{curM3D}</b>
                 </div>
                 <div>
                   Darts jouées : <b>{curDarts}</b>
@@ -6645,7 +6645,7 @@ function TeamHeaderBlock(props: {
                 {isVisitScoreMode ? "Meilleur score" : "Meilleure volée"} : <b>{bestVisit}</b>
               </div>
               <div>
-                Moy/3D : <b>{curM3D}</b>
+                AVG3D : <b>{curM3D}</b>
               </div>
               <div>
                 Darts jouées : <b>{curDarts}</b>
@@ -7001,7 +7001,7 @@ function TeamsPlayersList(props: {
                       )}
                     </div>
                     <div style={{ fontSize: 11.5, color: "#cfd1d7", marginTop: 2 }}>
-                      Darts: {dCount} • Moy/3D: {a3d}
+                      Darts: {dCount} • AVG3D: {a3d}
                     </div>
                   </div>
 
@@ -7225,7 +7225,7 @@ function PlayersListOnly(props: {
                   marginTop: 2,
                 }}
               >
-                Darts: {dCount} • Moy/3D: {a3d}
+                Darts: {dCount} • AVG3D: {a3d}
               </div>
               {null}
 

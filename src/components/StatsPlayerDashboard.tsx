@@ -478,7 +478,7 @@ function LineChart({
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <BlockTitle text="Évolution des performances" accent={accent} accentSoft={accentSoft} style={{ fontSize: 12, marginBottom: 2 }} />
-          <div style={{ fontSize: 12, color: T.text60 }}>Sparkline X01Multi · moyenne / 3 flèches</div>
+          <div style={{ fontSize: 12, color: T.text60 }}>Sparkline X01Multi · AVG3D</div>
         </div>
       </div>
 
@@ -818,7 +818,7 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
   const dashboardSubtitle = "";
   const favoriteLabel = isMolkkySport ? "Mode de jeu préféré" : "Mode de jeu préféré";
   const topModesLabel = isMolkkySport ? "Top modes" : "Top modes";
-  const avgLabel = isMolkkySport ? "Moyenne / lancer" : "Moyenne / 3 flèches";
+  const avgLabel = isMolkkySport ? "Moyenne / lancer" : "AVG3D";
   const avgSub = isMolkkySport ? "Points moyens" : "Visites moyennes";
   const bestLabel = isMolkkySport ? "Meilleur score" : "Meilleure volée";
   const bestSub = isMolkkySport ? "Record personnel" : "Record personnel";

@@ -182,7 +182,7 @@ export default function X01MultiStatsHistory({ matches, onSelectMatch }: Props) 
                     </div>
 
                     <div>
-                      Moy. 3D :{" "}
+                      AVG3D :{" "}
                       <span
                         style={{
                           color: "#FFB8DE",

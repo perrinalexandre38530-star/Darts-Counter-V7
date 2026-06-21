@@ -103,7 +103,7 @@ export function HeaderBlock(props: {
           <div style={{ ...miniCard, width: 180, height: 86, padding: 8 }}>
             <div style={miniText}>
               <div>Meilleure volée : <b>{Math.max(0, bestVisit)}</b></div>
-              <div>Moy/3D : <b>{curM3D}</b></div>
+              <div>AVG3D : <b>{curM3D}</b></div>
               <div>Darts jouées : <b>{curDarts}</b></div>
               <div>Volée : <b>{Math.min(currentThrow.length, 3)}/3</b></div>
             </div>
@@ -299,7 +299,7 @@ export function PlayersBlock(props: {
                     <div style={{ fontWeight: 800, color: "#ffcf57" }}>{p.name}</div>
                   </div>
                   <div style={{ marginTop: 3, fontSize: 11.5, color: "#cfd1d7" }}>
-                    Darts: {dCount} • Moy/3D: {a3d}
+                    Darts: {dCount} • AVG3D: {a3d}
                   </div>
                 </div>
                 <div style={{ fontWeight: 900, color: (scoresByPlayer[p.id] ?? start) === 0 ? "#7fe2a9" : "#ffcf57" }}>

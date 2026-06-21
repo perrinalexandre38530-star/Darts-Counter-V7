@@ -111,7 +111,7 @@ export default function StatsPage() {
           }}
         >
           <HeadCell>Joueur</HeadCell>
-          <HeadCell>Moy/3D</HeadCell>
+          <HeadCell>AVG3D</HeadCell>
           <HeadCell>Darts</HeadCell>
           <HeadCell>Games</HeadCell>
           <HeadCell>Win%</HeadCell>

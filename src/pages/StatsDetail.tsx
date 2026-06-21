@@ -542,7 +542,7 @@ export default function StatsDetail({
                   ) : "—"
                 }
               />
-              <KpiLine label="Best Moy./3D" value={vm.resume.bestAvg3} side={vm.resume.bestAvg3Side} />
+              <KpiLine label="Best AVG3D" value={vm.resume.bestAvg3} side={vm.resume.bestAvg3Side} />
               <KpiLine label="Best %DB" value={vm.resume.bestDbPct} side={vm.resume.bestDbPctSide} suffix="%" />
               <KpiLine label="Best BULL" value={vm.resume.bestBull} side={vm.resume.bestBullSide} />
             </div>
@@ -566,7 +566,7 @@ export default function StatsDetail({
                 <th style={{ ...thtd, width: 140 }}>Joueur</th>
                 <th style={thtd}>Volées</th>
                 <th style={thtd}>Darts</th>
-                <th style={thtd}>Moy./3D</th>
+                <th style={thtd}>AVG3D</th>
                 <th style={thtd}>CO</th>
                 <th style={thtd}>60+</th>
                 <th style={thtd}>100+</th>
@@ -629,7 +629,7 @@ export default function StatsDetail({
               <tr>
                 <th style={{ ...thtd, width: 140 }}>Joueur</th>
                 <th style={thtd}>Moy./1D</th>
-                <th style={thtd}>Moy./3D</th>
+                <th style={thtd}>AVG3D</th>
                 <th style={thtd}>%DB</th>
                 <th style={thtd}>%TP</th>
                 <th style={thtd}>Win%</th>

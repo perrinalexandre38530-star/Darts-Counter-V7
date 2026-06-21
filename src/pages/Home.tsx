@@ -1252,7 +1252,7 @@ function buildTickerDetailRows(
       }
       if (snap.bestAvg > 0) {
         rows.push({
-          label: t("home.detail.bestAvg3d", "best avg 3d"),
+          label: t("home.detail.bestAvg3d", "Best AVG3D"),
           value: fmtNumHome(snap.bestAvg, 2),
         });
       }
@@ -1278,7 +1278,7 @@ function buildTickerDetailRows(
             value: fmtPctHome01(s.x01MultiWinrate ?? 0),
           },
           {
-            label: t("home.detail.localAvg3d", "moy. 3d"),
+            label: t("home.detail.localAvg3d", "AVG3D"),
             value: fmtNumHome(s.x01MultiAvg3D, 2),
           },
           {
@@ -1315,7 +1315,7 @@ function buildTickerDetailRows(
             value: fmtNumHome(trainingHitsTotal, 0),
           },
           {
-            label: t("home.detail.trainingAvg3d", "moy. 3d"),
+            label: t("home.detail.trainingAvg3d", "AVG3D"),
             value: fmtNumHome(s.trainingAvg3D ?? 0, 2),
           },
           {
@@ -1383,7 +1383,7 @@ function buildTickerDetailRows(
             value: fmtPctHome01(s.winrateGlobal ?? 0),
           },
           {
-            label: t("home.detail.globalAvg3d", "moy. 3d"),
+            label: t("home.detail.globalAvg3d", "AVG3D"),
             value: fmtNumHome(s.avg3DGlobal ?? 0, 2),
           },
           {

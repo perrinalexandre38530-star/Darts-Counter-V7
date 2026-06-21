@@ -3228,7 +3228,7 @@ function HeaderBlock(props: {
                 Meilleure volée : <b>{bestVisit}</b>
               </div>
               <div>
-                Moy/3D : <b>{curM3D}</b>
+                AVG3D : <b>{curM3D}</b>
               </div>
               <div>
                 Darts jouées : <b>{curDarts}</b>
@@ -3539,7 +3539,7 @@ function PlayersListOnly(props: {
                   marginTop: 2,
                 }}
               >
-                Darts: {dCount} • Moy/3D: {a3d}
+                Darts: {dCount} • AVG3D: {a3d}
               </div>
               <div
                 style={{

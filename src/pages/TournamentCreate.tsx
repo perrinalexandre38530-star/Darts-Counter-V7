@@ -1976,7 +1976,7 @@ const petanqueTeamsReady = React.useMemo(() => {
       : "Sélectionne des profils humains et/ou des BOTS IA. Minimum 2 joueurs pour créer.",
     botsSelect: "Sélection BOTS : bots PRO (assets) + bots créés via Profiles → bots.",
     bestOf: "Best-of = nombre de manches à gagner. BO3 = 2 manches gagnantes, BO5 = 3, etc.",
-    seedMode: "Têtes de série : Aléatoire mélange au départ. Par niveau trie par avg3D (du meilleur au moins bon).",
+    seedMode: "Têtes de série : Aléatoire mélange au départ. Par niveau trie par AVG3D (du meilleur au moins bon).",
     repechage: "Repêchage : ajoute une phase de consolation si possible (selon format / engine).",
     maxPlayers: "Optionnel : si tu as énormément de profils, tu peux fixer un max. Vide = illimité.",
     rrRounds: "Nombre de tours en Championnat / Poules : 1 = chacun rencontre chacun une fois (dans sa poule).",
@@ -5809,7 +5809,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <NeonPill active={seedMode === "random"} label="Aléatoire" onClick={() => setSeedMode("random")} primary={primary} />
-                <NeonPill active={seedMode === "byLevel"} label="Par niveau (avg3D)" onClick={() => setSeedMode("byLevel")} primary={primary} />
+                <NeonPill active={seedMode === "byLevel"} label="Par niveau (AVG3D)" onClick={() => setSeedMode("byLevel")} primary={primary} />
               </div>
               <InfoIconButton onClick={() => openInfo("seed")} />
             </div>

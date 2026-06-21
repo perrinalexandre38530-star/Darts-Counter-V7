@@ -42,7 +42,7 @@ export default function StatsTrainingPage() {
             }}
           >
             <h2>Session du {new Date(s.createdAt).toLocaleString()}</h2>
-            <p>Moyenne 3D : {avg3.toFixed(1)}</p>
+            <p>AVG3D : {avg3.toFixed(1)}</p>
             <p>Meilleure volée : {best}</p>
             <p>Nb fléchettes : {darts.length}</p>
             <p>Score final : {s.finalScore ?? "—"}</p>

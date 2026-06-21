@@ -281,7 +281,7 @@ function computeX01Multi(
     },
     {
       id: "x01_multi_avg3d",
-      label: "Moyenne 3D",
+      label: "AVG3D",
       value: avg3d.toFixed(1),
       subLabel: "Sur toutes les sessions multi",
     },

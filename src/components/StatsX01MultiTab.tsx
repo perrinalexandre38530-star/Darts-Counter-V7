@@ -310,7 +310,7 @@ export default function StatsX01MultiTab({ store }: Props) {
           hint={t("stats.x01multi.losses_hint", "Matches perdus")}
         />
         <KpiCard
-          label={t("stats.x01multi.avg3", "Moy. 3 darts")}
+          label={t("stats.x01multi.avg3", "AVG3D")}
           value={avg3.toFixed(2)}
           hint={t("stats.x01multi.avg3_hint", "Sur tous les X01")}
         />

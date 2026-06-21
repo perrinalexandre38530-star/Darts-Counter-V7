@@ -29,7 +29,7 @@ type Props = {
 export default function X01MultiStatsSparkline({ matches }: Props) {
   // ---------- Liste des métriques disponibles ----------
   const metricList = [
-    { key: "avg3", label: "Moy.3D" },
+    { key: "avg3", label: "AVG3D" },
     { key: "bv", label: "Best Visit" },
     { key: "bco", label: "Checkout" },
     { key: "pctHits", label: "%Hits" },

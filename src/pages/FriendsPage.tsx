@@ -819,7 +819,7 @@ function ShareDetailsModal({
     ? [
         ["Joueur", payload?.playerName || owner],
         ["Matchs semaine", Number(payload?.weekMatchesCount || 0)],
-        ["Avg 3D", Number(payload?.avg3DWeek || 0) > 0 ? fmt1(Number(payload.avg3DWeek)) : "—"],
+        ["AVG3D", Number(payload?.avg3DWeek || 0) > 0 ? fmt1(Number(payload.avg3DWeek)) : "—"],
         ["Checkout", Number(payload?.checkoutPctWeek || 0) > 0 ? `${fmt1(Number(payload.checkoutPctWeek))}%` : "—"],
       ]
     : [
@@ -1557,10 +1557,10 @@ function officialContinentFlag(country?: string | null) {
 
 function getOfficialLeagueTier(rating: number) {
   const value = Number.isFinite(rating) ? rating : 0;
-  if (value >= 70) return { id: "elite", name: "Élite", range: "70+ Avg3D" };
-  if (value >= 55) return { id: "gold", name: "Or", range: "55–69 Avg3D" };
-  if (value >= 40) return { id: "silver", name: "Argent", range: "40–54 Avg3D" };
-  return { id: "bronze", name: "Bronze", range: "0–39 Avg3D" };
+  if (value >= 70) return { id: "elite", name: "Élite", range: "70+ AVG3D" };
+  if (value >= 55) return { id: "gold", name: "Or", range: "55–69 AVG3D" };
+  if (value >= 40) return { id: "silver", name: "Argent", range: "40–54 AVG3D" };
+  return { id: "bronze", name: "Bronze", range: "0–39 AVG3D" };
 }
 
 const OFFICIAL_LEAGUE_QUEUE_KEY = "dc_online_official_league_registrations_v2";
@@ -1722,7 +1722,7 @@ function OfficialCompetitionsPanel({
                 {isRegistered ? `Tu es inscrit en ${meta.badgeFlagLabel}` : `Placement proposé : ${meta.badgeFlagLabel}`}
               </div>
               <div style={{ marginTop: 5, fontSize: 12, opacity: 0.84, lineHeight: 1.35 }}>
-                Avg3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). {rules.matchFormat}.
+                AVG3D Online {rating ? rating.toFixed(1) : "—"} · {matches} match(s). {rules.matchFormat}.
               </div>
             </div>
           </div>
@@ -1858,7 +1858,7 @@ function OfficialLeaguePlayerMiniCard({
           <span style={{ borderRadius: 999, padding: "3px 8px", border: "1px solid rgba(72,255,164,.35)", background: "rgba(72,255,164,.12)", color: "#91ffc2", fontSize: 10, fontWeight: 900 }}>{status}</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, marginTop: 8, fontSize: 10.5 }}>
-          <span><b style={{ color: "var(--online-accent)" }}>Avg3D</b><br />{avg3 > 0 ? avg3.toFixed(1) : "—"}</span>
+          <span><b style={{ color: "var(--online-accent)" }}>AVG3D</b><br />{avg3 > 0 ? avg3.toFixed(1) : "—"}</span>
           <span><b style={{ color: "var(--online-accent)" }}>Rating</b><br />{rating > 0 ? rating.toFixed(1) : "—"}</span>
           <span><b style={{ color: "var(--online-accent)" }}>Pts</b><br />0</span>
         </div>
@@ -2050,7 +2050,7 @@ function OfficialLeagueFullScreen({
                 <div style={{ gridColumn: "1 / -1" }}><RuleChip title="Points" value="Barème par score" /><div style={{ marginTop: 7 }}><OfficialPointsGrid /></div></div>
                 <RuleChip title="Retard / forfait" value="5 min = forfait automatique · 3 forfaits = radiation" />
                 <RuleChip title="Montée / descente" value={`Top ${rules.promote} monte · Bottom ${rules.relegate} descend`} />
-                <RuleChip title="Départage" value="Legs gagnés, Avg3D, checkout %, puis confrontation directe." />
+                <RuleChip title="Départage" value="Legs gagnés, AVG3D, checkout %, puis confrontation directe." />
               </div>
             )}
           />
@@ -2185,7 +2185,7 @@ function OfficialLeagueFullScreen({
                 fontSize: 11.5,
               }}
             >
-              {["#", "Joueur", "MJ", "V", "Pts", "Avg3D"].map((h) => (
+              {["#", "Joueur", "MJ", "V", "Pts", "AVG3D"].map((h) => (
                 <div key={h} style={{ padding: "8px 7px", background: "rgba(var(--online-accent-rgb),.14)", color: "var(--online-accent)", fontWeight: 1000, borderRight: "1px solid rgba(var(--online-accent-rgb),.16)" }}>{h}</div>
               ))}
               {ranking.map((r) => (
@@ -3395,7 +3395,7 @@ const doLogout = React.useCallback(async () => {
     }
 
     items.push({ text: `Cette semaine : ${weekMatchesCount} match(s)`, tone: "green" });
-    if (avg3DWeek > 0) items.push({ text: `Avg 3D (semaine) : ${fmt1(avg3DWeek)}`, tone: "gold" });
+    if (avg3DWeek > 0) items.push({ text: `AVG3D (semaine) : ${fmt1(avg3DWeek)}`, tone: "gold" });
     if (checkoutPctWeek > 0) items.push({ text: `Checkout% (semaine) : ${fmt1(checkoutPctWeek)}%`, tone: "blue" });
 
     const count = Object.keys(presenceMap || {}).length;
@@ -3704,7 +3704,7 @@ const doLogout = React.useCallback(async () => {
                   placeItems: "center",
                   filter: "drop-shadow(0 0 22px rgba(var(--online-accent-rgb),.48))",
                 }}
-                title={`Niveau basé sur l'Avg 3D Online : ${onlineRatingValue || 0}`}
+                title={`Niveau basé sur l'AVG3D Online : ${onlineRatingValue || 0}`}
               >
                 <ProfileAvatar
                   profile={activeProfile as any}
@@ -3769,7 +3769,7 @@ const doLogout = React.useCallback(async () => {
               </div>
 
               <div
-                title="Moyenne globale Online Avg3D"
+                title="AVG3D global Online"
                 style={{
                   position: "absolute",
                   left: "50%",
@@ -4361,7 +4361,7 @@ const doLogout = React.useCallback(async () => {
             </div>
 
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>Avg 3D</div>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>AVG3D</div>
               <div style={{ fontSize: 18, fontWeight: 1000, color: "var(--online-accent)" }}>
                 {avg3DWeek > 0 ? fmt1(avg3DWeek) : "—"}
               </div>

@@ -296,7 +296,7 @@ function ActiveProfileCard({
           : [
               { label: t("home.stats?.rating", "rating"), value: fmtNum(s.ratingGlobal, 1) },
               { label: t("home.stats?.winrateGlobal", "win%"), value: fmtPct(s.winrateGlobal) },
-              { label: t("home.stats?.avg3dGlobal", "moy.3d"), value: fmtNum(s.avg3DGlobal, 2) },
+              { label: t("home.stats?.avg3dGlobal", "AVG3D"), value: fmtNum(s.avg3DGlobal, 2) },
               { label: t("home.stats?.sessionsGlobal", "sessions"), value: fmtNum(s.sessionsGlobal, 0) },
               { label: t("home.stats?.favoriteNumber", "numéro favori"), value: s.favoriteNumberLabel ?? "—" },
             ],
@@ -333,7 +333,7 @@ function ActiveProfileCard({
           { label: t("home.stats?.bestVisitX01", "best visit"), value: fmtNum(s.recordBestVisitX01, 0) },
           { label: t("home.stats?.bestCOX01", "best co"), value: fmtNum(s.recordBestCOX01, 0) },
           { label: t("home.stats?.minDarts501", "min darts 501"), value: fmtNum(s.recordMinDarts501, 0) },
-          { label: t("home.stats?.bestAvg3DX01", "best moy.3d"), value: fmtNum(s.recordBestAvg3DX01, 2) },
+          { label: t("home.stats?.bestAvg3DX01", "Best AVG3D"), value: fmtNum(s.recordBestAvg3DX01, 2) },
           { label: t("home.stats?.bestStreak", "meilleure série"), value: fmtNum(s.recordBestStreak, 0) },
           { label: t("home.stats?.bestCricketScore", "best cricket"), value: fmtNum(s.recordBestCricketScore, 0) },
         ],
@@ -348,7 +348,7 @@ function ActiveProfileCard({
         rows: [
           { label: t("home.stats?.onlineMatches", "matchs"), value: fmtNum(s.onlineMatches, 0) },
           { label: t("home.stats?.onlineWinrate", "win%"), value: fmtPct(s.onlineWinrate) },
-          { label: t("home.stats?.onlineAvg3D", "moy.3d"), value: fmtNum(s.onlineAvg3D, 2) },
+          { label: t("home.stats?.onlineAvg3D", "AVG3D"), value: fmtNum(s.onlineAvg3D, 2) },
           { label: t("home.stats?.onlineBestVisit", "best visit"), value: fmtNum(s.onlineBestVisit, 0) },
           { label: t("home.stats?.onlineBestCO", "best co"), value: fmtNum(s.onlineBestCO, 0) },
           {
@@ -370,7 +370,7 @@ function ActiveProfileCard({
         id: "x01multi",
         title: t("home.stats?.x01multi", "x01 multi"),
         rows: [
-          { label: t("home.stats?.avg3d", "moy.3d"), value: fmtNum(s.x01MultiAvg3D, 2) },
+          { label: t("home.stats?.avg3d", "AVG3D"), value: fmtNum(s.x01MultiAvg3D, 2) },
           { label: t("home.stats?.sessions", "sessions"), value: fmtNum(s.x01MultiSessions, 0) },
           { label: t("home.stats?.winrate", "win%"), value: fmtPct(s.x01MultiWinrate) },
           { label: t("home.stats?.bestVisit", "best visit"), value: fmtNum(s.x01MultiBestVisit, 0) },
@@ -402,7 +402,7 @@ function ActiveProfileCard({
         id: "trainingx01",
         title: t("home.stats?.trainingX01", "training x01"),
         rows: [
-          { label: t("home.stats?.avg3dTraining", "moy.3d"), value: fmtNum(s.trainingAvg3D, 2) },
+          { label: t("home.stats?.avg3dTraining", "AVG3D"), value: fmtNum(s.trainingAvg3D, 2) },
           { label: t("home.stats?.hitsS", "hits s"), value: fmtNum(s.trainingHitsS, 0) },
           { label: t("home.stats?.hitsD", "hits d"), value: fmtNum(s.trainingHitsD, 0) },
           { label: t("home.stats?.hitsT", "hits t"), value: fmtNum(s.trainingHitsT, 0) },

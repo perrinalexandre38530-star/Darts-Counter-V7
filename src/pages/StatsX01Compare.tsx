@@ -1254,7 +1254,7 @@ const ROWS: RowDef[] = [
       return (s.matchesWon / den) * 100;
     },
   },
-  { section: "RECORDS", label: "AVG 3 darts", kind: "num1", get: (s) => s.avg3 },
+  { section: "RECORDS", label: "AVG3D", kind: "num1", get: (s) => s.avg3 },
   {
     section: "RECORDS",
     label: "AVG 1 dart",
@@ -2090,7 +2090,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     marginBottom: 4,
                   }}
                 >
-                  Évolution AVG 3 darts
+                  Évolution AVG3D
                 </div>
                 <div style={{ width: "100%", height: 110 }}>
                   <ResponsiveContainer>

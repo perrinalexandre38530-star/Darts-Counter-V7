@@ -746,7 +746,7 @@ const bestCo = filteredMatches.reduce((m, x) => (x.bco > m ? x.bco : m), 0);
   ];
 
   const kpiItemsMoy = [
-    { label: "Moy.3D (globale)", value: avg3Global.toFixed(1) },
+    { label: "AVG3D (globale)", value: avg3Global.toFixed(1) },
     { label: "Winrate", value: winRate.toFixed(1) + "%" },
     {
       label: "Hits / match",
@@ -1094,7 +1094,7 @@ const bestCo = filteredMatches.reduce((m, x) => (x.bco > m ? x.bco : m), 0);
               </div>
             </div>
             <div>
-              <div style={{ color: T.text70 }}>Moy.3D</div>
+              <div style={{ color: T.text70 }}>AVG3D</div>
               <div
                 style={{
                   color: "#FF90D0",
@@ -1811,7 +1811,7 @@ const allMatches = React.useMemo(() => {
   // ============================================================
 
   const metricList = [
-    { key: "avg3", label: "Moy.3D" },
+    { key: "avg3", label: "AVG3D" },
     { key: "bv", label: "Best Visit" },
     { key: "bco", label: "Checkout" },
     { key: "pctHits", label: "%Hits" },

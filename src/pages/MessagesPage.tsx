@@ -2580,7 +2580,7 @@ export default function MessagesPage({ store, update, go }: Props) {
             {conversationPanel.type === "stats" ? (
               <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                 {[
-                  ["AVG X01", userStatNumber(store?.activeProfile || store?.profile || {}, ["avg3d", "avg3", "average3"], 0), userStatNumber(selectedThread?.user || {}, ["avg3d", "avg3", "average3"], 0)],
+                  ["AVG3D X01", userStatNumber(store?.activeProfile || store?.profile || {}, ["avg3d", "avg3", "average3"], 0), userStatNumber(selectedThread?.user || {}, ["avg3d", "avg3", "average3"], 0)],
                   ["CO %", userStatNumber(store?.activeProfile || store?.profile || {}, ["checkoutRate", "coPercent", "checkoutPercent"], 0), userStatNumber(selectedThread?.user || {}, ["checkoutRate", "coPercent", "checkoutPercent"], 0)],
                   ["Cricket MPR", userStatNumber(store?.activeProfile || store?.profile || {}, ["mpr", "cricketMpr"], 0), userStatNumber(selectedThread?.user || {}, ["mpr", "cricketMpr"], 0)],
                   ["Victoires", userStatNumber(store?.activeProfile || store?.profile || {}, ["wins", "victories", "totalWins"], 0), userStatNumber(selectedThread?.user || {}, ["wins", "victories", "totalWins"], 0)],

@@ -294,7 +294,7 @@ export default function TournamentRoadmap({ go }: Props) {
             />
             <Row
               title="STATS TOURNOI"
-              desc="Top AVG/3D, best visit, checkout %, MVP…"
+              desc="Top AVG3D, best visit, checkout %, MVP…"
               tone="pink"
               status="BIENTÔT"
             />

@@ -74,7 +74,7 @@ export default function MiniStatsGold({ profileId, seed, compact = true }: Props
         whiteSpace: "nowrap",
       }}
     >
-      <Cell label="Moy/3" value={avg3} />
+      <Cell label="AVG3D" value={avg3} />
       <Cell label="Best" value={best} />
       <Cell label="CO" value={co} />
       <Cell label="Win%" value={winPct} alignEnd />

@@ -953,7 +953,7 @@ export default function StatsOnline() {
               labelTop={t("stats_online.kpi.avg.label", "MOYENNES")}
               labelBottom={t(
                 "stats_online.kpi.avg.sub",
-                "Moy.3D (période)"
+                "AVG3D (période)"
               )}
               value={agg.avg3.toFixed(1)}
               color="#ff77c8"
@@ -1165,7 +1165,7 @@ export default function StatsOnline() {
                   </div>
                 </div>
                 <div>
-                  <div>{t("stats_online.avg.moy3d", "Moy.3D")}</div>
+                  <div>{t("stats_online.avg.moy3d", "AVG3D")}</div>
                   <div
                     style={{
                       fontWeight: 800,
@@ -1375,7 +1375,7 @@ export default function StatsOnline() {
                           }}
                         >
                           {p.matches} matchs · {p.wins} victoires ·{" "}
-                          {p.avg3.toFixed(1)} Moy.3D
+                          {p.avg3.toFixed(1)} AVG3D
                         </div>
                       </div>
                     </div>
@@ -1478,7 +1478,7 @@ export default function StatsOnline() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {s.avg3.toFixed(1)} Moy.3D
+                      {s.avg3.toFixed(1)} AVG3D
                     </div>
                   </div>
                 ))}

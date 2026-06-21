@@ -799,7 +799,7 @@ function renderStandardSnapshot(payload) {
             <div class="active-bottom">
               ${graphHtml(players, colorById)}
               <div class="stats-grid">
-                ${statCell("Avg 3D", ps.avg3d, activeColor)}
+                ${statCell("AVG3D", ps.avg3d, activeColor)}
                 ${statCell("Best volée", ps.bestVisit, activeColor)}
                 ${statCell("Hits", ps.hits, activeColor)}
                 ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`, activeColor)}

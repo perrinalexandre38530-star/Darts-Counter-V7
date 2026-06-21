@@ -735,7 +735,7 @@ export default function TrainingX01StatsTabFull() {
   const pinkItems = finalizeKpiItems([
     {
       kind: "num",
-      label: "Moy.3D (période)",
+      label: "AVG3D (période)",
       raw: totalSessions > 0 ? globalAvg3D : null,
       format: (v) => v.toFixed(1),
     },
@@ -885,7 +885,7 @@ export default function TrainingX01StatsTabFull() {
     },
     {
       kind: "num",
-      label: "Moy.3D (période)",
+      label: "AVG3D (période)",
       raw: totalSessions > 0 ? globalAvg3D : null,
       format: (v) => v.toFixed(1),
     },
@@ -1007,15 +1007,15 @@ export default function TrainingX01StatsTabFull() {
   } else {
     if (globalAvg3D >= 70) {
       summaryLines.push(
-        "Très gros scoring global, moyenne 3D élevée sur la période."
+        "Très gros scoring global, avec un AVG3D élevé sur la période."
       );
     } else if (globalAvg3D >= 60) {
       summaryLines.push(
-        "Scoring solide avec une moyenne 3D correcte et régulière."
+        "Scoring solide avec un AVG3D correct et régulier."
       );
     } else if (globalAvg3D >= 50) {
       summaryLines.push(
-        "Scoring en progression, objectif : stabiliser au-dessus de 60 de moyenne 3D."
+        "Scoring en progression, objectif : stabiliser l’AVG3D au-dessus de 60."
       );
     } else {
       summaryLines.push(
@@ -1358,7 +1358,7 @@ export default function TrainingX01StatsTabFull() {
                     }}
                   >
                     {m === "darts" && "Darts"}
-                    {m === "avg3D" && "Moy.3D"}
+                    {m === "avg3D" && "AVG3D"}
                     {m === "pctS" && "%S"}
                     {m === "pctD" && "%D"}
                     {m === "pctT" && "%T"}
@@ -1800,7 +1800,7 @@ export default function TrainingX01StatsTabFull() {
                           fontWeight: 700,
                         }}
                       >
-                        {s.avg3D.toFixed(1)} de moy. 3D
+                        {s.avg3D.toFixed(1)} AVG3D
                       </div>
                     </div>
 
@@ -1969,7 +1969,7 @@ export default function TrainingX01StatsTabFull() {
                 marginBottom: 8,
               }}
             >
-              Moyenne 3D :{" "}
+              AVG3D :{" "}
               <span style={{ color: T.gold, fontWeight: 700 }}>
                 {selected.avg3D.toFixed(1)}
               </span>{" "}

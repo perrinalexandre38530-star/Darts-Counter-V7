@@ -623,7 +623,7 @@ const StatsX01MultiDashboard: React.FC<Props> = ({
               "0 0 0 1px rgba(255,184,222,.16), 0 0 12px rgba(255,184,222,.55)",
           }}
         >
-          <div style={kpiLabel}>Moy.3D (période)</div>
+          <div style={kpiLabel}>AVG3D (période)</div>
           <div
             style={{
               ...kpiValueMain,
@@ -712,7 +712,7 @@ const StatsX01MultiDashboard: React.FC<Props> = ({
             marginBottom: 6,
           }}
         >
-          Progression X01 (Moy.3D par match)
+          Progression X01 (AVG3D par match)
         </div>
 
         {sparkPoints.length ? (
@@ -784,7 +784,7 @@ const StatsX01MultiDashboard: React.FC<Props> = ({
                   }}
                 >
                   <span>
-                    Moy.3D : <b>{p.avg3.toFixed(1)}</b>
+                    AVG3D : <b>{p.avg3.toFixed(1)}</b>
                   </span>
                   <span>
                     Winrate : <b>{p.winRate.toFixed(1)}%</b>
@@ -866,7 +866,7 @@ const StatsX01MultiDashboard: React.FC<Props> = ({
                             : T.gold,
                       }}
                     >
-                      {m.avg3.toFixed(1)} Moy.3D ·{" "}
+                      {m.avg3.toFixed(1)} AVG3D ·{" "}
                       {m.result === "W"
                         ? "Victoire"
                         : m.result === "L"

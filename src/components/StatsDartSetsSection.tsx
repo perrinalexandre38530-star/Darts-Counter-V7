@@ -1563,7 +1563,7 @@ type CompareItem = {
 };
 
 const COMPARE_METRICS: Array<{ key: CompareMetricKey; label: string; short: string; suffix?: string; lowerIsBetter?: boolean }> = [
-  { key: "avg3", label: "Avg 3D", short: "AVG" },
+  { key: "avg3", label: "AVG3D", short: "AVG" },
   { key: "first9", label: "First 9", short: "F9" },
   { key: "checkoutPct", label: "Checkout %", short: "CO", suffix: "%" },
   { key: "p100", label: "100+ / match", short: "100+" },
@@ -1942,7 +1942,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
               </div>
             </div>
 
-            <NeonKPIButton accent={accent} label={"AVG/3D"} value={fmt1(pickNum(top, "avg3") ?? 0)} />
+            <NeonKPIButton accent={accent} label={"AVG3D"} value={fmt1(pickNum(top, "avg3") ?? 0)} />
           </div>
         </div>
       )}
@@ -2180,7 +2180,7 @@ function DartSetsComparator(props: {
             item={bestAvg}
             title="Meilleur set actuel"
             value={bestAvg ? fmtCompareValue("avg3", bestAvg.values.avg3) : "—"}
-            subtitle={bestCheckout && bestCheckout.id === bestAvg?.id ? "Meilleure moyenne / meilleur checkout" : "Meilleure moyenne AVG/3D"}
+            subtitle={bestCheckout && bestCheckout.id === bestAvg?.id ? "Meilleure moyenne / meilleur checkout" : "Meilleure moyenne AVG3D"}
           />
           <InsightRow
             color={regular?.it?.color || "#FF4FD8"}
@@ -2188,7 +2188,7 @@ function DartSetsComparator(props: {
             item={regular?.it || null}
             title="Set le plus régulier"
             value={regular ? `σ ${fmt1(regular.score)}` : "—"}
-            subtitle={regular ? "Écart-type AVG/3D le plus faible" : "Pas assez de matchs pour mesurer la régularité"}
+            subtitle={regular ? "Écart-type AVG3D le plus faible" : "Pas assez de matchs pour mesurer la régularité"}
           />
         </div>
         <div style={{ marginTop: 9, fontSize: 10.8, lineHeight: 1.35, color: "rgba(255,255,255,.52)", fontWeight: 800 }}>
@@ -2255,7 +2255,7 @@ function CompareRadarCard(props: { items: CompareItem[]; accent: string }) {
 function RadarCompareSvg(props: { items: CompareItem[] }) {
   const items = props.items || [];
   const metrics: CompareMetricKey[] = ["avg3", "first9", "checkoutPct", "p100", "p140", "p180", "bustPerMatch", "winPct"];
-  const labels = ["Avg 3D", "First 9", "CO %", "100+", "140+", "180", "Busts", "Win %"];
+  const labels = ["AVG3D", "First 9", "CO %", "100+", "140+", "180", "Busts", "Win %"];
   const cx = 160;
   const cy = 134;
   const maxR = 92;
@@ -2701,7 +2701,7 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
             alignItems: "stretch",
           }}
         >
-          <NeonKPIButton accent="#F6C256" label="AVG/3D" value={fmt1(avg3v)} />
+          <NeonKPIButton accent="#F6C256" label="AVG3D" value={fmt1(avg3v)} />
           <NeonKPIButton accent="#FF4FD8" label="Sessions" value={fmt0(N(r.matches, 0))} />
           <NeonKPIButton accent="#7FE2A9" label="Hits" value={fmt0(N(r.darts, 0))} />
         </div>
@@ -2728,7 +2728,7 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <BlockTitle title={t("stats.dartSets.spark", "Sparkline AVG/3D")} />
+        <BlockTitle title={t("stats.dartSets.spark", "Sparkline AVG3D")} />
         <div style={wideBoxStyle()}>
           {(sparkVals.length >= 1) ? <Sparkline values={sparkVals} accent={accent} height={116} /> : <EmptySmall text={t("common.na", "—")} />}
         </div>
