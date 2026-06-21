@@ -13,16 +13,54 @@ export type BotPagedSelectorItem = {
   level?: string | number | null;
 };
 
-function resolveLevel(raw: any): number {
-  if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(0, Math.min(5, Math.round(raw * 2) / 2));
+function resolveLevelValue(raw: any): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    // Les anciens objets peuvent stocker soit un niveau /5, soit une note /100.
+    const normalized = raw > 5 ? raw / 20 : raw;
+    return Math.max(0, Math.min(5, Math.round(normalized * 2) / 2));
+  }
   const s = String(raw ?? "").trim().toLowerCase().replace(",", ".");
+  if (!s) return 0;
+  const fraction = s.match(/(\d+(?:\.\d+)?)\s*\/\s*5/);
+  if (fraction) {
+    const n = Number(fraction[1]);
+    if (Number.isFinite(n) && n > 0) return Math.max(0, Math.min(5, Math.round(n * 2) / 2));
+  }
   const n = Number((s.match(/\d+(?:\.5)?/) || [""])[0]);
-  if (Number.isFinite(n) && n > 0) return Math.max(0, Math.min(5, Math.round(n * 2) / 2));
-  if (s.includes("elite") || s.includes("legend") || s.includes("légende")) return 5;
+  if (Number.isFinite(n) && n > 0) {
+    const normalized = n > 5 ? n / 20 : n;
+    return Math.max(0, Math.min(5, Math.round(normalized * 2) / 2));
+  }
+  if (s.includes("elite") || s.includes("legend") || s.includes("légende") || s.includes("legende")) return 5;
   if (s.includes("pro")) return 4.5;
   if (s.includes("challenger")) return 4;
   if (s.includes("mixte") || s.includes("mix")) return 3.5;
   if (s.includes("rising")) return 3;
+  if (s.includes("strong") || s.includes("fort") || s.includes("hard") || s.includes("difficile")) return 3;
+  if (s.includes("medium") || s.includes("standard") || s.includes("normal") || s.includes("moyen")) return 2;
+  if (s.includes("easy") || s.includes("facile") || s.includes("beginner") || s.includes("debutant") || s.includes("débutant") || s.includes("rookie")) return 1;
+  return 0;
+}
+
+function resolveLevel(bot: any): number {
+  const candidates = [
+    bot?.profileStarring,
+    bot?.starring,
+    bot?.stars,
+    bot?.botLevel,
+    bot?.level,
+    bot?.difficulty,
+    bot?.skill,
+    bot?.rating,
+    bot?.avg3D,
+    bot?.avg3d,
+    bot?.stats?.avg3D,
+    bot?.stats?.avg3d,
+  ];
+  for (const raw of candidates) {
+    const level = resolveLevelValue(raw);
+    if (level > 0) return level;
+  }
   return 0;
 }
 
@@ -45,7 +83,7 @@ function avatarOf(item: any): string | null {
 function itemGroup(item: any): string {
   if (item?.groupLabel) return item.groupLabel;
   if (item?.isUserBot || item?.source === "cpu" || item?.source === "home") return "CPU Home";
-  return groupLabel(resolveLevel(item?.botLevel ?? item?.level));
+  return groupLabel(resolveLevel(item));
 }
 
 const GROUP_ORDER = ["Elite", "Pro", "Challenger", "Mixte", "Rising", "CPU Home"];
@@ -78,8 +116,8 @@ export default function BotPagedSelector({
       const ga = GROUP_ORDER.indexOf(itemGroup(a));
       const gb = GROUP_ORDER.indexOf(itemGroup(b));
       if (ga !== gb) return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb);
-      const lb = resolveLevel(b.botLevel ?? b.level);
-      const la = resolveLevel(a.botLevel ?? a.level);
+      const lb = resolveLevel(b);
+      const la = resolveLevel(a);
       if (lb !== la) return lb - la;
       return String(a.name || "").localeCompare(String(b.name || ""));
     });
@@ -134,7 +172,7 @@ export default function BotPagedSelector({
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>BOTS sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))", gap: 10 }}>
             {selectedBots.map((bot) => {
-              const level = resolveLevel(bot.botLevel ?? bot.level);
+              const level = resolveLevel(bot);
               const src = avatarOf(bot);
               return (
                 <div key={bot.id} style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
@@ -207,7 +245,7 @@ export default function BotPagedSelector({
               >
                 {pageBots.map((bot) => {
                   const active = selectedIds.includes(bot.id);
-                  const level = resolveLevel(bot.botLevel ?? bot.level);
+                  const level = resolveLevel(bot);
                   const src = avatarOf(bot);
                   return (
                     <button

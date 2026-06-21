@@ -3,12 +3,62 @@ import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
 
+function profileLevelValue(raw: any): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const normalized = raw > 5 ? raw / 20 : raw;
+    return Math.max(0, Math.min(5, Math.round(normalized * 2) / 2));
+  }
+  const text = String(raw ?? "").trim().toLowerCase().replace(",", ".");
+  if (!text) return 0;
+  const fraction = text.match(/(\d+(?:\.\d+)?)\s*\/\s*5/);
+  if (fraction) {
+    const n = Number(fraction[1]);
+    if (Number.isFinite(n) && n > 0) return Math.max(0, Math.min(5, Math.round(n * 2) / 2));
+  }
+  const n = Number((text.match(/\d+(?:\.5)?/) || [""])[0]);
+  if (Number.isFinite(n) && n > 0) {
+    const normalized = n > 5 ? n / 20 : n;
+    return Math.max(0, Math.min(5, Math.round(normalized * 2) / 2));
+  }
+  if (text.includes("legend") || text.includes("légende") || text.includes("legende") || text.includes("elite")) return 5;
+  if (text.includes("pro")) return 4.5;
+  if (text.includes("challenger")) return 4;
+  if (text.includes("mixte") || text.includes("mix")) return 3.5;
+  if (text.includes("strong") || text.includes("fort") || text.includes("hard") || text.includes("difficile")) return 3;
+  if (text.includes("medium") || text.includes("standard") || text.includes("normal") || text.includes("moyen")) return 2;
+  if (text.includes("easy") || text.includes("facile") || text.includes("beginner") || text.includes("debutant") || text.includes("débutant") || text.includes("rookie")) return 1;
+  return 0;
+}
+
 function profileLevel(profile: any): number {
-  const raw = profile?.profileStarring ?? profile?.starring ?? profile?.stars ?? profile?.botLevel ?? profile?.level ?? profile?.avg3d ?? profile?.avg3D ?? profile?.score;
-  const n = Number(String(raw ?? "").replace(",", ".").match(/\d+(?:\.5)?/)?.[0] ?? raw);
-  if (Number.isFinite(n)) {
-    if (n > 5) return Math.max(0, Math.min(5, Math.round((n / 20) * 2) / 2));
-    return Math.max(0, Math.min(5, Math.round(n * 2) / 2));
+  const candidates = [
+    profile?.profileStarring,
+    profile?.profileStars,
+    profile?.profileStarRating,
+    profile?.starring,
+    profile?.stars,
+    profile?.levelStars,
+    profile?.botLevel,
+    profile?.level,
+    profile?.rating,
+    profile?.avg3d,
+    profile?.avg3D,
+    profile?.avg,
+    profile?.score,
+    profile?.stats?.profileStarring,
+    profile?.stats?.stars,
+    profile?.stats?.level,
+    profile?.stats?.avg3d,
+    profile?.stats?.avg3D,
+    profile?.stats?.average3Darts,
+    profile?.stats?.x01?.avg3d,
+    profile?.stats?.x01?.avg3D,
+    profile?.x01?.avg3d,
+    profile?.x01?.avg3D,
+  ];
+  for (const raw of candidates) {
+    const level = profileLevelValue(raw);
+    if (level > 0) return level;
   }
   return 0;
 }
