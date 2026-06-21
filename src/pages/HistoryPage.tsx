@@ -34,6 +34,7 @@ import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoBabyfoot from "../assets/games/logo-babyfoot.png";
 import victoryCup from "../assets/victory.webp";
+import { getTeamAvatarUrl } from "../assets/teamAvatars";
 
 
 /* ---------- Icônes ---------- */
@@ -1059,7 +1060,14 @@ function x01HistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
 
 
 function historyTeamLogo(t: any): string | null {
-  return t?.logoDataUrl || t?.avatarUrl || t?.avatar || t?.logo || t?.imageUrl || null;
+  const explicit = t?.logoDataUrl || t?.avatarUrl || t?.avatar || t?.logo || t?.imageUrl || null;
+  if (explicit) return explicit;
+  const key = String(t?.id || t?.name || "").toLowerCase();
+  if (key.includes("pink") || key.includes("rose")) return getTeamAvatarUrl("pink");
+  if (key.includes("gold") || key.includes("or")) return getTeamAvatarUrl("gold");
+  if (key.includes("blue") || key.includes("bleu")) return getTeamAvatarUrl("blue");
+  if (key.includes("green") || key.includes("vert")) return getTeamAvatarUrl("green");
+  return null;
 }
 
 function historyTeamPlayerIds(t: any): string[] {
@@ -1095,6 +1103,38 @@ function historyX01Teams(e: SavedEntry): any[] {
     .filter((t: any) => t.playerIds.length > 0);
 }
 
+
+function historyX01TeamLegWins(e: SavedEntry, teams: any[]): Record<string, number> {
+  const anyE: any = e as any;
+  const darts = anyE?.darts || anyE?.payload?.darts || anyE?.decoded?.darts || anyE?.resume?.darts || [];
+  const start = Number(anyE?.startScore || anyE?.summary?.game?.startScore || anyE?.payload?.config?.startScore || anyE?.payload?.summary?.game?.startScore || 301) || 301;
+  const byPlayer = new Map<string, string>();
+  teams.forEach((t: any) => (t.playerIds || []).forEach((pid: string) => byPlayer.set(String(pid), String(t.id || t.name))));
+  const wins: Record<string, number> = {};
+  teams.forEach((t: any) => { wins[String(t.id || t.name)] = 0; });
+  if (!Array.isArray(darts) || !darts.length) return wins;
+  const grouped = new Map<number, any[]>();
+  darts.forEach((d: any) => {
+    const leg = Number(d?.legNo ?? d?.matchLegNo ?? d?.currentLeg ?? d?.legIndex ?? 1) || 1;
+    if (!grouped.has(leg)) grouped.set(leg, []);
+    grouped.get(leg)!.push(d);
+  });
+  [...grouped.entries()].sort((a,b) => a[0]-b[0]).forEach(([, list]) => {
+    const remaining: Record<string, number> = {};
+    teams.forEach((t: any) => { remaining[String(t.id || t.name)] = start; });
+    let winnerKey = "";
+    for (const d of list) {
+      const pid = String(d?.playerId || d?.pid || d?.p || d?.profileId || "");
+      const tk = byPlayer.get(pid);
+      if (!tk || winnerKey) continue;
+      remaining[tk] = (remaining[tk] ?? start) - (Number(d?.score ?? d?.v ?? 0) || 0);
+      if (remaining[tk] <= 0) winnerKey = tk;
+    }
+    if (winnerKey) wins[winnerKey] = (wins[winnerKey] || 0) + 1;
+  });
+  return wins;
+}
+
 function historyTeamRowsForX01(e: SavedEntry): any[] {
   const teams = historyX01Teams(e);
   if (teams.length < 2) return [];
@@ -1106,20 +1146,23 @@ function historyTeamRowsForX01(e: SavedEntry): any[] {
     if (id) byId.set(id, { ...r, _rank: idx + 1 });
   });
   const playerByName = new Map(players.map((p: any) => [normHistoryName(p.name), p]));
+  const legWins = historyX01TeamLegWins(e, teams);
+  const maxWins = Math.max(0, ...Object.values(legWins).map((v: any) => Number(v) || 0));
   return teams
     .map((t: any) => {
+      const teamKey = String(t.id || t.name);
       const members = t.playerIds.map((pid: string) => {
         const raw = byId.get(pid) || {};
         const name = historyScoreName(e, raw) || historyPlayerNameById(e, pid) || pid;
         const stat = players.find((p: any) => normHistoryName(p.name) === normHistoryName(name)) || playerByName.get(normHistoryName(name));
-        return { id: pid, name, remaining: stat?.remaining ?? historyScoreNumber(x01RemainingForRow(e, raw), "0"), points: stat?.points ?? undefined };
+        const points = Number(stat?.points ?? raw?.points ?? raw?.score ?? 0) || 0;
+        return { id: pid, name, remaining: stat?.remaining ?? historyScoreNumber(x01RemainingForRow(e, raw), "0"), points };
       }).filter((m: any) => cleanName(m.name));
-      const nums = members.map((m: any) => Number(m.remaining)).filter((v: number) => Number.isFinite(v));
-      const score = nums.length ? Math.min(...nums) : Number(t.score ?? 0);
-      const winner = score === 0 || members.some((m: any) => Number(m.remaining) === 0);
-      return { ...t, members, score: Math.max(0, Math.round(score || 0)), winner };
+      const score = Number(legWins[teamKey] || 0);
+      const winner = maxWins > 0 && score === maxWins;
+      return { ...t, members, score, matchScore: score, winner };
     })
-    .sort((a: any, b: any) => (b.winner ? 1 : 0) - (a.winner ? 1 : 0) || a.score - b.score || a._idx - b._idx);
+    .sort((a: any, b: any) => (b.winner ? 1 : 0) - (a.winner ? 1 : 0) || b.score - a.score || a._idx - b._idx);
 }
 
 function genericHistoryRankScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
@@ -1183,7 +1226,7 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 11, opacity: .95 }}>
           {teamRows.flatMap((t: any, ti: number) => t.members.map((m: any, mi: number) => (
             <span key={`${t.id || ti}-${m.id || mi}`} style={{ color: t.color || "rgba(255,255,255,.92)", fontWeight: 850 }}>
-              {m.name} <span style={scoreStyle}>{m.remaining}</span>
+              {m.name} <span style={scoreStyle}>+{Math.round(Number(m.points) || 0)}</span>
             </span>
           )))}
         </div>

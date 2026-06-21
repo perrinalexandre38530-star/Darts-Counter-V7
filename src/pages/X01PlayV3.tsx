@@ -2402,10 +2402,13 @@ const teamsView = React.useMemo(() => {
         playerIds: ids,
         players: members,
         score,
+        matchScore: Number((state as any)?.teamLegsWon?.[String(t.id)] ?? 0) || 0,
+        setsWon: Number((state as any)?.teamSetsWon?.[String(t.id)] ?? 0) || 0,
+        legsWon: Number((state as any)?.teamLegsWon?.[String(t.id)] ?? 0) || 0,
       };
     })
     .filter((t: any) => t.players.length > 0);
-}, [isTeamsMode, configTeams, players, profileById, scores, activePlayerId]);
+}, [isTeamsMode, configTeams, players, profileById, scores, activePlayerId, (state as any)?.teamLegsWon, (state as any)?.teamSetsWon]);
 
 const activeTeam = React.useMemo(() => {
   if (!teamsView || !activePlayerId) return null;
@@ -9026,10 +9029,9 @@ function saveX01V3MatchToHistory({
   const teamSummaries = isTeamsHistoryMode
     ? teamsForHistory.map((team: any) => {
         const ids: string[] = Array.isArray(team?.players) ? team.players.map(String) : [];
-        const remainingValues = ids
-          .map((pid: string) => Number(legacyRemaining?.[pid]))
-          .filter((v: number) => Number.isFinite(v));
-        const score = remainingValues.length ? Math.min(...remainingValues) : Number(team?.score ?? 0);
+        const legScore = Number((state as any)?.teamLegsWon?.[String(team?.id || team?.name || "")] ?? 0) || 0;
+        const setScore = Number((state as any)?.teamSetsWon?.[String(team?.id || team?.name || "")] ?? 0) || 0;
+        const score = setScore > 0 ? setScore : legScore;
         const points = ids.reduce((sum: number, pid: string) => sum + Number(legacyPoints?.[pid] || 0), 0);
         const darts = ids.reduce((sum: number, pid: string) => sum + Number(legacyDarts?.[pid] || 0), 0);
         return {
@@ -9040,6 +9042,9 @@ function saveX01V3MatchToHistory({
           avatarUrl: team?.avatarUrl || team?.logoDataUrl || null,
           playerIds: ids,
           score: Math.max(0, Math.round(Number(score) || 0)),
+          matchScore: Math.max(0, Math.round(Number(score) || 0)),
+          legsWon: legScore,
+          setsWon: setScore,
           points,
           darts,
           avg3: darts > 0 ? (points / darts) * 3 : 0,

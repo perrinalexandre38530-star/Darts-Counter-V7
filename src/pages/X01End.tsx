@@ -22,6 +22,7 @@ import {
 } from "../lib/stats";
 import { exportSharedMatchPack } from "../lib/backup/sharedMatch";
 import { shareOrDownload } from "../lib/backup/fileExport";
+import { getTeamAvatarUrl } from "../assets/teamAvatars";
 
 /* ================================
    Types basiques
@@ -192,7 +193,45 @@ function x01EndTeamPlayerIds(t: any): string[] {
 }
 
 function x01EndTeamLogo(t: any): string | null {
-  return t?.logoDataUrl || t?.avatarUrl || t?.avatar || t?.logo || t?.imageUrl || null;
+  const explicit = t?.logoDataUrl || t?.avatarUrl || t?.avatar || t?.logo || t?.imageUrl || null;
+  if (explicit) return explicit;
+  const key = String(t?.id || t?.name || "").toLowerCase();
+  if (key.includes("pink") || key.includes("rose")) return getTeamAvatarUrl("pink");
+  if (key.includes("gold") || key.includes("or")) return getTeamAvatarUrl("gold");
+  if (key.includes("blue") || key.includes("bleu")) return getTeamAvatarUrl("blue");
+  if (key.includes("green") || key.includes("vert")) return getTeamAvatarUrl("green");
+  return null;
+}
+
+
+function x01EndTeamLegWins(rec: any, teams: any[]): Record<string, number> {
+  const darts = rec?.darts || rec?.payload?.darts || rec?.decoded?.darts || rec?.resume?.darts || [];
+  const start = Number(rec?.startScore || rec?.summary?.game?.startScore || rec?.payload?.config?.startScore || rec?.payload?.summary?.game?.startScore || 301) || 301;
+  const byPlayer = new Map<string, string>();
+  teams.forEach((t: any) => (t.playerIds || []).forEach((pid: string) => byPlayer.set(String(pid), String(t.id || t.name))));
+  const wins: Record<string, number> = {};
+  teams.forEach((t: any) => { wins[String(t.id || t.name)] = 0; });
+  if (!Array.isArray(darts) || !darts.length) return wins;
+  const grouped = new Map<number, any[]>();
+  darts.forEach((d: any) => {
+    const leg = Number(d?.legNo ?? d?.matchLegNo ?? d?.currentLeg ?? d?.legIndex ?? 1) || 1;
+    if (!grouped.has(leg)) grouped.set(leg, []);
+    grouped.get(leg)!.push(d);
+  });
+  [...grouped.entries()].sort((a,b) => a[0]-b[0]).forEach(([, list]) => {
+    const remaining: Record<string, number> = {};
+    teams.forEach((t: any) => { remaining[String(t.id || t.name)] = start; });
+    let winnerKey = "";
+    for (const d of list) {
+      const pid = String(d?.playerId || d?.pid || d?.p || d?.profileId || "");
+      const tk = byPlayer.get(pid);
+      if (!tk || winnerKey) continue;
+      remaining[tk] = (remaining[tk] ?? start) - (Number(d?.score ?? d?.v ?? 0) || 0);
+      if (remaining[tk] <= 0) winnerKey = tk;
+    }
+    if (winnerKey) wins[winnerKey] = (wins[winnerKey] || 0) + 1;
+  });
+  return wins;
 }
 
 function x01EndRawTeams(rec: any): any[] {
@@ -459,16 +498,17 @@ export default function X01End({ go, params }: Props) {
   const teamsForOverlay = React.useMemo(() => {
     const rawTeams = x01EndRawTeams(rec);
     if (rawTeams.length < 2) return null;
+    const legWins = x01EndTeamLegWins(rec, rawTeams);
     const playerById = Object.fromEntries(players.map((p: any) => [String(p.id), p]));
     return rawTeams.map((t: any) => {
+      const teamKey = String(t.id || t.name);
       const members = t.playerIds.map((pid: string) => {
         const p = playerById[pid];
         return p ? { id: p.id, name: p.name, avatar: p.avatarDataUrl || p.avatarUrl || null } : { id: pid, name: pid };
       });
-      const remainings = t.playerIds.map((pid: string) => Number((M as any)?.[pid]?.remaining)).filter((v: number) => Number.isFinite(v));
-      const score = remainings.length ? Math.min(...remainings) : Number(t.score ?? 0);
-      return { ...t, players: members, avatarUrl: x01EndTeamLogo(t), score };
-    });
+      const score = Number(t.matchScore ?? t.legsWon ?? legWins[teamKey] ?? 0) || 0;
+      return { ...t, players: members, avatarUrl: x01EndTeamLogo(t), score, matchScore: score, legsWon: score };
+    }).sort((a:any,b:any)=>Number(b.score||0)-Number(a.score||0));
   }, [rec, players, M]);
 
   const resumeId =
@@ -887,7 +927,7 @@ export default function X01End({ go, params }: Props) {
         </Panel>
       ) : null}
 
-      <CardTable title="Score du match">
+      <CardTable title={teamsForOverlay && teamsForOverlay.length >= 2 ? "Stats joueurs — score restant individuel" : "Score du match"}>
         <TableColMajor
           columns={cols}
           rowGroups={[{ rows: [
@@ -3309,6 +3349,31 @@ function MatchLegDetails({
           </div>
         </div>
       </Panel>
+
+      {teamsForOverlay && teamsForOverlay.length >= 2 ? (
+        <Panel title="Match équipes" className="x-card" style={{ padding: D.cardPad }}>
+          <div style={{ display: "grid", gap: 8 }}>
+            {teamsForOverlay.map((t: any, idx: number) => {
+              const color = t.color || THEME_ACCENT;
+              const logo = x01EndTeamLogo(t);
+              return (
+                <div key={t.id || t.name || idx} style={{ display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 8, border: `1px solid ${color}66`, borderRadius: 14, padding: 8, background: "rgba(255,255,255,.035)" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}`, display: "grid", placeItems: "center", background: "rgba(255,255,255,.08)", fontWeight: 1000, color }}>
+                    {logo ? <img src={logo} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : String(t.name || "T").slice(0,2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 1000, color }}>{t.name}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 11, fontWeight: 900 }}>
+                      {(t.players || []).map((m:any) => <span key={m.id} style={{ color }}>{m.name}</span>)}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 1000, color, fontSize: 18 }}>{Math.round(Number(t.score)||0)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      ) : null}
 
       {selectedLeg ? (
         <Panel key={selectedLeg.key} className="x-card" style={{ padding: D.cardPad }}>

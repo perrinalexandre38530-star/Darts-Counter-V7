@@ -131,11 +131,6 @@ const DEFIS: DefiDef[] = [
   },
 ];
 
-const TICKER_Y: Partial<Record<DefiId, number>> = {
-  classic9: 50,
-  glutch3: 50,
-  endurance: 50,
-};
 
 export default function BabyFootMenuDefis({ onBack, go }: Props) {
   const { theme } = useTheme();
@@ -172,12 +167,9 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
     });
   }
 
-  const cardHeight = 86;
-  const tickerPanelW = "76%";
-  const leftFade =
-    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.86) 35%, rgba(10,10,14,0.55) 60%, rgba(10,10,14,0.00) 100%)";
-  const tickerLeftEdgeFade =
-    "linear-gradient(90deg, rgba(10,10,14,0.92) 0%, rgba(10,10,14,0.72) 38%, rgba(10,10,14,0.25) 70%, rgba(10,10,14,0.00) 100%)";
+  const cardAspect = "800 / 200";
+  const cardOverlay =
+    "linear-gradient(90deg, rgba(5,7,12,0.00) 0%, rgba(5,7,12,0.00) 38%, rgba(5,7,12,0.10) 48%, rgba(5,7,12,0.34) 60%, rgba(5,7,12,0.68) 74%, rgba(5,7,12,0.92) 88%, rgba(5,7,12,0.99) 100%)";
 
   return (
     <div
@@ -189,19 +181,31 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
         color: theme.text,
       }}
     >
-      <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
+      <div style={{ position: "relative", width: "100%", marginBottom: 10, overflow: "hidden", borderRadius: 14, aspectRatio: "800 / 200", background: theme.card, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`, boxShadow: "0 10px 26px rgba(0,0,0,0.35)" }}>
         <img
           src={getTicker("babyfoot_defis") || logoBabyFoot}
           alt="Baby-Foot — Défis"
           style={{
+            position: "absolute",
+            inset: 0,
             width: "100%",
-            height: 90,
+            height: "100%",
             objectFit: "contain",
-            borderRadius: 14,
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-            boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
+            objectPosition: "center",
+            display: "block",
+            transform: "translateZ(0)",
           }}
           draggable={false}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background:
+              "linear-gradient(90deg, rgba(5,7,12,0.82) 0%, rgba(5,7,12,0.10) 18%, rgba(5,7,12,0.00) 45%, rgba(5,7,12,0.18) 68%, rgba(5,7,12,0.62) 84%, rgba(5,7,12,0.92) 100%)",
+          }}
         />
         <div
           style={{
@@ -236,7 +240,6 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
           const src = getTicker(m.tickerId) || logoBabyFoot;
-          const y = TICKER_Y[m.id] ?? 50;
 
           return (
             <button
@@ -256,14 +259,11 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
                 overflow: "hidden",
               }}
             >
-              <div style={{ position: "relative", height: cardHeight, width: "100%" }}>
+              <div style={{ position: "relative", aspectRatio: cardAspect, width: "100%", overflow: "hidden" }}>
                 <div
                   style={{
                     position: "absolute",
-                    right: 0,
-                    top: 0,
-                    height: "100%",
-                    width: tickerPanelW,
+                    inset: 0,
                     overflow: "hidden",
                     pointerEvents: "none",
                   }}
@@ -273,26 +273,17 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
                     alt={title}
                     style={{
                       position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      objectPosition: "center",
-                      opacity: 0.95,
-                      transform: "translateZ(0)",
-                    }}
-                    draggable={false}
-                  />
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "absolute",
                       left: 0,
                       top: 0,
                       height: "100%",
-                      width: "42%",
-                      background: tickerLeftEdgeFade,
+                      width: "auto",
+                      maxWidth: "none",
+                      objectFit: "contain",
+                      objectPosition: "left center",
+                      opacity: 0.98,
+                      transform: "translateZ(0)",
                     }}
+                    draggable={false}
                   />
                 </div>
 
@@ -303,40 +294,11 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
                     left: 0,
                     top: 0,
                     height: "100%",
-                    width: "64%",
-                    background: leftFade,
+                    width: "100%",
+                    background: cardOverlay,
                     pointerEvents: "none",
                   }}
                 />
-
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    zIndex: 2,
-                    maxWidth: "44%",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 1000,
-                      letterSpacing: 0.9,
-                      color: theme.primary,
-                      textTransform: "uppercase",
-                      textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
-                      lineHeight: 1.05,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {title}
-                  </div>
-                </div>
 
                 <div
                   style={{

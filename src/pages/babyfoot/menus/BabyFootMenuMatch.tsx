@@ -199,14 +199,6 @@ const MODES: ModeDef[] = [
 
 // ✅ Recadrage vertical du ticker (pour recentrer le texte intégré dans l'image)
 // Valeur = pourcentage Y de object-position (0 = haut, 50 = centre, 100 = bas)
-const TICKER_Y: Partial<Record<ModeId, number>> = {
-  match_1v1: 50,
-  match_2v2: 50,
-  match_2v1: 50,
-  training: 50,
-  tournament: 50,
-  league: 50,
-};
 
 export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLeague }: Props) {
   const { theme } = useTheme();
@@ -260,15 +252,11 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
     });
   }
 
-  const cardHeight = 76;
+  const cardAspect = "800 / 200";
 
   // panneau ticker à droite ≈ 3/4 (style Games)
-  const tickerPanelW = "100%"; // le ticker reste strictement dans la carte
-  const tickerPanelRight = "0"; // aucune sortie visuelle hors bloc
-  const leftFade =
-    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.88) 28%, rgba(10,10,14,0.62) 52%, rgba(10,10,14,0.00) 100%)";
-  const tickerLeftEdgeFade =
-    "linear-gradient(90deg, rgba(10,10,14,0.92) 0%, rgba(10,10,14,0.72) 38%, rgba(10,10,14,0.25) 70%, rgba(10,10,14,0.00) 100%)";
+  const cardOverlay =
+    "linear-gradient(90deg, rgba(5,7,12,0.00) 0%, rgba(5,7,12,0.00) 38%, rgba(5,7,12,0.10) 48%, rgba(5,7,12,0.34) 60%, rgba(5,7,12,0.68) 74%, rgba(5,7,12,0.92) 88%, rgba(5,7,12,0.99) 100%)";
 
   return (
     <div
@@ -281,19 +269,31 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
       }}
     >
       {/* HEADER TICKER */}
-      <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
+      <div style={{ position: "relative", width: "100%", marginBottom: 10, overflow: "hidden", borderRadius: 14, aspectRatio: "800 / 200", background: theme.card, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`, boxShadow: "0 10px 26px rgba(0,0,0,0.35)" }}>
         <img
           src={getTicker("babyfoot_match") || logoBabyFoot}
           alt="Baby-Foot — Match"
           style={{
+            position: "absolute",
+            inset: 0,
             width: "100%",
-            height: 90,
+            height: "100%",
             objectFit: "contain",
-            borderRadius: 14,
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-            boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
+            objectPosition: "center",
+            display: "block",
+            transform: "translateZ(0)",
           }}
           draggable={false}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background:
+              "linear-gradient(90deg, rgba(5,7,12,0.82) 0%, rgba(5,7,12,0.10) 18%, rgba(5,7,12,0.00) 45%, rgba(5,7,12,0.18) 68%, rgba(5,7,12,0.62) 84%, rgba(5,7,12,0.92) 100%)",
+          }}
         />
 
         {/* BackDot à droite */}
@@ -332,7 +332,6 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
           const src = getTicker(m.tickerId) || logoBabyFoot;
-          const y = TICKER_Y[m.id] ?? 50;
 
           return (
             <button
@@ -353,15 +352,11 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
               }}
             >
               {/* Hauteur carte */}
-              <div style={{ position: "relative", height: cardHeight, width: "100%" }}>
-                {/* panneau ticker à droite (hauteur = carte, toujours clipsé dans le bloc) */}
+              <div style={{ position: "relative", aspectRatio: cardAspect, width: "100%", overflow: "hidden" }}>
                 <div
                   style={{
                     position: "absolute",
-                    right: tickerPanelRight,
-                    top: 0,
-                    height: "100%",
-                    width: tickerPanelW,
+                    inset: 0,
                     overflow: "hidden",
                     pointerEvents: "none",
                   }}
@@ -371,42 +366,20 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
                     alt={title}
                     style={{
                       position: "absolute",
-                      inset: 0,
-                      width: "100%",
+                      left: 0,
+                      top: 0,
                       height: "100%",
+                      width: "auto",
+                      maxWidth: "none",
                       objectFit: "contain",
-                      objectPosition: "center",
-                      opacity: 0.95,
+                      objectPosition: "left center",
+                      opacity: 0.98,
                       transform: "translateZ(0)",
                     }}
                     draggable={false}
                   />
-                  {/* dégradé sur les bords du ticker */}
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      height: "100%",
-                      width: "42%",
-                      background: tickerLeftEdgeFade,
-                    }}
-                  />
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: 0,
-                      height: "100%",
-                      width: "26%",
-                      background: "linear-gradient(270deg, rgba(10,10,14,0.70) 0%, rgba(10,10,14,0.20) 62%, rgba(10,10,14,0.00) 100%)",
-                    }}
-                  />
                 </div>
 
-                {/* fade global depuis la gauche (style Games) */}
                 <div
                   aria-hidden
                   style={{
@@ -414,41 +387,11 @@ export default function BabyFootMenuMatch({ onBack, go, onOpenTraining, onOpenLe
                     left: 0,
                     top: 0,
                     height: "100%",
-                    width: "64%",
-                    background: leftFade,
+                    width: "100%",
+                    background: cardOverlay,
                     pointerEvents: "none",
                   }}
                 />
-
-                {/* Titre à gauche (couleur thème) */}
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    zIndex: 2,
-                    maxWidth: "44%",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 1000,
-                      letterSpacing: 0.9,
-                      color: theme.primary,
-                      textTransform: "uppercase",
-                      textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
-                      lineHeight: 1.05,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {title}
-                  </div>
-                </div>
 
                 {/* InfoDot (tout le détail est dedans) */}
                 <div

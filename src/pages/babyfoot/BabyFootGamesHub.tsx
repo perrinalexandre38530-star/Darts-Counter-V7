@@ -102,6 +102,10 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
   const { theme } = useTheme();
   const [info, setInfo] = React.useState<CardDef | null>(null);
 
+  const cardAspect = "800 / 200";
+  const cardOverlay =
+    "linear-gradient(90deg, rgba(5,7,12,0.00) 0%, rgba(5,7,12,0.00) 38%, rgba(5,7,12,0.10) 48%, rgba(5,7,12,0.34) 60%, rgba(5,7,12,0.68) 74%, rgba(5,7,12,0.92) 88%, rgba(5,7,12,0.99) 100%)";
+
   function goHome() {
     try {
       onBack?.();
@@ -126,19 +130,31 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         color: theme.text,
       }}
     >
-      <div style={{ position: "relative", width: "100%", marginBottom: 10, overflow: "hidden", borderRadius: 14 }}>
+      <div style={{ position: "relative", width: "100%", marginBottom: 10, overflow: "hidden", borderRadius: 14, aspectRatio: "800 / 200", background: theme.card, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`, boxShadow: "0 10px 26px rgba(0,0,0,0.35)" }}>
         <img
           src={getTicker("babyfoot_games") || logoBabyFoot}
           alt="Baby-Foot — Games"
           style={{
+            position: "absolute",
+            inset: 0,
             width: "100%",
-            height: 90,
+            height: "100%",
             objectFit: "contain",
-            borderRadius: 14,
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-            boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
+            objectPosition: "center",
+            display: "block",
+            transform: "translateZ(0)",
           }}
           draggable={false}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background:
+              "linear-gradient(90deg, rgba(5,7,12,0.82) 0%, rgba(5,7,12,0.10) 18%, rgba(5,7,12,0.00) 45%, rgba(5,7,12,0.18) 68%, rgba(5,7,12,0.62) 84%, rgba(5,7,12,0.92) 100%)",
+          }}
         />
         <div
           style={{
@@ -187,27 +203,43 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
                 overflow: "hidden",
               }}
             >
-              <img
-                src={src}
-                alt={c.title}
-                style={{
-                  width: "100%",
-                  height: 76,
-                  display: "block",
-                  objectFit: "contain",
-                  objectPosition: "center",
-                }}
-                draggable={false}
-              />
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  pointerEvents: "none",
-                  background: "linear-gradient(90deg, rgba(0,0,0,0.38) 0%, rgba(0,0,0,0.00) 16%, rgba(0,0,0,0.00) 84%, rgba(0,0,0,0.38) 100%)",
-                }}
-              />
+              <div style={{ position: "relative", aspectRatio: cardAspect, width: "100%", overflow: "hidden" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    overflow: "hidden",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <img
+                    src={src}
+                    alt={c.title}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      height: "100%",
+                      width: "auto",
+                      maxWidth: "none",
+                      objectFit: "contain",
+                      objectPosition: "left center",
+                      display: "block",
+                      opacity: 0.96,
+                    }}
+                    draggable={false}
+                  />
+                </div>
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    pointerEvents: "none",
+                    background: cardOverlay,
+                  }}
+                />
+              </div>
               <div
                 style={{
                   position: "absolute",

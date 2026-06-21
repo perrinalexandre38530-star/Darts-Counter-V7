@@ -24,6 +24,7 @@ import {
 } from "recharts";
 
 import type { LegStats } from "../lib/stats";
+import { getTeamAvatarUrl } from "../assets/teamAvatars";
 
 // --- Types légers (compat) ---
 type PlayerMini = { id: string; name: string; avatarDataUrl?: string | null };
@@ -900,24 +901,24 @@ function Inner({
   const teamRows = React.useMemo(() => {
     const list = Array.isArray(teams) ? teams : [];
     if (!list.length) return [];
-    return list
-      .map((team: any) => {
-        const playerIds = Array.isArray(team.playerIds) && team.playerIds.length
-          ? team.playerIds.map(String)
-          : Array.isArray(team.players)
-          ? team.players.map((p: any) => String(p?.id || "")).filter(Boolean)
-          : [];
-        const members = playerIds.map((pid: string) => rows.find((r: any) => String(r.pid) === pid)).filter(Boolean);
-        const score = members.length
-          ? Math.min(...members.map((m: any) => Number(m.remaining ?? 999999)).filter((v: number) => Number.isFinite(v)))
-          : Number(team.score ?? 0);
-        const points = members.reduce((sum: number, m: any) => sum + Number(m.points || 0), 0);
-        const darts = members.reduce((sum: number, m: any) => sum + Number(m.darts || 0), 0);
-        const avg3 = darts > 0 ? (points / darts) * 3 : 0;
-        const isWinnerTeam = winnerId ? playerIds.includes(String(winnerId)) : score === 0;
-        return { ...team, playerIds, members, score: Math.max(0, Math.round(score || 0)), points, darts, avg3, isWinnerTeam };
-      })
-      .sort((a: any, b: any) => (b.isWinnerTeam ? 1 : 0) - (a.isWinnerTeam ? 1 : 0) || a.score - b.score);
+    const normalized = list.map((team: any) => {
+      const playerIds = Array.isArray(team.playerIds) && team.playerIds.length
+        ? team.playerIds.map(String)
+        : Array.isArray(team.players)
+        ? team.players.map((p: any) => String(typeof p === "string" ? p : (p?.id || p?.playerId || p?.profileId || p?.pid || ""))).filter(Boolean)
+        : [];
+      const members = playerIds.map((pid: string) => rows.find((r: any) => String(r.pid) === pid)).filter(Boolean);
+      const points = members.reduce((sum: number, m: any) => sum + Number(m.points || 0), 0);
+      const darts = members.reduce((sum: number, m: any) => sum + Number(m.darts || 0), 0);
+      const avg3 = darts > 0 ? (points / darts) * 3 : 0;
+      const explicitScore = Number(team.matchScore ?? team.legsWon ?? team.score ?? 0) || 0;
+      const isWinnerTeam = winnerId ? playerIds.includes(String(winnerId)) : explicitScore > 0;
+      return { ...team, playerIds, members, score: Math.max(0, Math.round(explicitScore)), points, darts, avg3, isWinnerTeam };
+    });
+    const maxScore = Math.max(0, ...normalized.map((t: any) => Number(t.score) || 0));
+    return normalized
+      .map((t: any) => ({ ...t, isWinnerTeam: maxScore > 0 ? Number(t.score) === maxScore : t.isWinnerTeam }))
+      .sort((a: any, b: any) => (b.isWinnerTeam ? 1 : 0) - (a.isWinnerTeam ? 1 : 0) || b.score - a.score);
   }, [teams, rows, winnerId]);
 
   const isTeamsSummary = teamRows.length >= 2;
@@ -1290,7 +1291,7 @@ function Inner({
           {isTeamsSummary ? (
             <div style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,.07)", background: "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))", marginBottom: 10, overflow: "hidden" }}>
               {teamRows.map((team: any, idx: number) => {
-                const teamLogo = team.logoDataUrl || team.avatarUrl || null;
+                const teamLogo = team.logoDataUrl || team.avatarUrl || team.avatar || team.logo || team.imageUrl || (() => { const k = String(team.id || team.name || "").toLowerCase(); if (k.includes("pink") || k.includes("rose")) return getTeamAvatarUrl("pink"); if (k.includes("gold") || k.includes("or")) return getTeamAvatarUrl("gold"); if (k.includes("blue") || k.includes("bleu")) return getTeamAvatarUrl("blue"); if (k.includes("green") || k.includes("vert")) return getTeamAvatarUrl("green"); return null; })();
                 const color = team.color || (team.isWinnerTeam ? "#7fe2a9" : "var(--dc-accent, #ffcf57)");
                 return (
                   <div key={team.id || team.name || idx} style={{ borderBottom: "1px solid rgba(255,255,255,.08)", background: team.isWinnerTeam ? "radial-gradient(circle at 0% 0%, rgba(127,226,169,.24), transparent 58%)" : "transparent", boxShadow: team.isWinnerTeam ? "0 0 22px rgba(127,226,169,.28)" : "none" }}>
@@ -1308,7 +1309,7 @@ function Inner({
                     <div style={{ padding: "0 8px 8px 76px", display: "grid", gap: 4 }}>
                       {team.members.map((r: any, mIdx: number) => {
                         const avatar = avatarOf(r.pid);
-                        const memberColor = barColors[mIdx % barColors.length];
+                        const memberColor = color;
                         const playerPoints = Number(r.points || 0);
                         return (
                           <div key={r.pid} style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", alignItems: "center", gap: 7, padding: "4px 6px", borderRadius: 8, background: "rgba(255,255,255,.035)" }}>
@@ -1358,7 +1359,7 @@ function Inner({
           {/* Résumé en KPI */}
           <Accordion title="Résumé de la manche" defaultOpen>
             <SummaryRows
-              winnerName={nameOf(winnerId || "")}
+              winnerName={isTeamsSummary ? (teamRows.find((t:any) => t.isWinnerTeam)?.name || "Équipe gagnante") : nameOf(winnerId || "")}
               minDartsRow={minDartsRow}
               bestAvgRow={bestAvgRow}
               bestVolRow={bestVolRow}
