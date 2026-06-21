@@ -631,8 +631,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   useEffect(() => {
     if (scoreMode === "chrono" && !useTimer) setUseTimer(true);
-    if ((scoreMode === "balls5" || scoreMode === "balls10" || scoreMode === "balls11") && setsEnabled) setSetsEnabled(false);
-  }, [scoreMode, useTimer, setsEnabled]);
+  }, [scoreMode, useTimer]);
 
   const guidedStepIndex = Math.max(0, guidedSteps.indexOf(guidedStep));
   const guidedTabsRef = useRef<HTMLDivElement | null>(null);
@@ -1276,13 +1275,19 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       overtimeGoldenGoal: false,
       handicapA,
       handicapB,
-      setsEnabled: scoreMode === "target" ? setsEnabled : false,
+      setsEnabled,
       setsBestOf,
       setTarget:
         setsEnabled
-          ? setTargetValue === 5 || setTargetValue === 10
-            ? setTargetValue
-            : 5
+          ? scoreMode === "balls5"
+            ? 5
+            : scoreMode === "balls10"
+              ? 10
+              : scoreMode === "balls11"
+                ? 11
+                : setTargetValue === 5 || setTargetValue === 10
+                  ? setTargetValue
+                  : 5
           : setTargetValue,
       allowDrawOnTimeEnd: useTimer ? !!allowDrawOnTimeEnd : false,
       requireTwoGoalLead: !!requireTwoGoalLead,
@@ -1655,14 +1660,14 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 {sectionTitle("SETS", primary)}
                 {scoreMode !== "target" ? (
                   <div style={{ marginBottom: 12, fontSize: 12, opacity: 0.74, lineHeight: 1.35 }}>
-                    Les sets sont désactivés avec le mode {scoreMode === "balls5" ? "5 balles jouées" : scoreMode === "balls10" ? "10 balles jouées" : scoreMode === "balls11" ? "11 balles jouées" : "Chrono"}.
+                    Les sets restent disponibles : chaque set reprend le mode de score choisi ({scoreMode === "balls5" ? "5 balles" : scoreMode === "balls10" ? "10 balles" : scoreMode === "balls11" ? "11 balles" : "chrono"}).
                   </div>
                 ) : null}
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1.1 }}>JOUER EN SETS</div>
                   <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
                     <div style={pillStyle(!setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(false)}>OFF</div>
-                    <div style={pillStyle(setsEnabled && scoreMode === "target", primary, primarySoft)} onClick={() => scoreMode === "target" && setSetsEnabled(true)}>ON</div>
+                    <div style={pillStyle(setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(true)}>ON</div>
                   </div>
                 </div>
                 {setsEnabled ? (
@@ -1673,12 +1678,19 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                         {[1, 3, 5].map((bo) => <div key={bo} style={pillStyle(setsBestOf === bo, primary, primarySoft)} onClick={() => setSetsBestOf(bo as any)}>BO{bo}</div>)}
                       </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Score cible par set</div>
-                      <select value={setTargetValue === 5 || setTargetValue === 10 ? setTargetValue : 5} onChange={(e) => setSetTargetValue(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                        {scoreOptions.map((o) => <option key={o.value} value={o.value} style={{ color: "#111" }}>{o.label}</option>)}
-                      </select>
-                    </div>
+                    {scoreMode === "target" ? (
+                      <div>
+                        <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Score cible par set</div>
+                        <select value={setTargetValue === 5 || setTargetValue === 10 ? setTargetValue : 5} onChange={(e) => setSetTargetValue(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                          <option value={5} style={{ color: "#111" }}>Premier à 5</option>
+                          <option value={10} style={{ color: "#111" }}>Premier à 10</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, opacity: 0.76, lineHeight: 1.45, fontWeight: 850 }}>
+                        Chaque set utilise la règle choisie dans Score : {scoreMode === "balls5" ? "5 balles" : scoreMode === "balls10" ? "10 balles" : scoreMode === "balls11" ? "11 balles" : "chrono"}.
+                      </div>
+                    )}
                   </div>
                 ) : <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.45, fontWeight: 850 }}>Sets désactivés : la partie se joue en score simple.</div>}
               </div>
@@ -1993,7 +2005,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               <div style={pillStyle(!setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(false)}>
                 OFF
               </div>
-              <div style={pillStyle(setsEnabled && scoreMode === "target", primary, primarySoft)} onClick={() => scoreMode === "target" && setSetsEnabled(true)}>
+              <div style={pillStyle(setsEnabled, primary, primarySoft)} onClick={() => setSetsEnabled(true)}>
                 ON
               </div>
             </div>
@@ -2034,7 +2046,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               </div>
             </div>
 
-            {setsEnabled && scoreMode === "target" ? (
+            {setsEnabled ? (
               <div>
                 <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
                   {t("bf_bestof", "Best Of")}
@@ -2050,16 +2062,22 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Score cible par set</div>
-                  <select value={setTargetValue === 5 || setTargetValue === 10 ? setTargetValue : 5} onChange={(e) => setSetTargetValue(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
-                    <option value={5} style={{ color: "#111" }}>Premier à 5</option>
-                    <option value={10} style={{ color: "#111" }}>Premier à 10</option>
-                  </select>
-                </div>
+                {scoreMode === "target" ? (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>Score cible par set</div>
+                    <select value={setTargetValue === 5 || setTargetValue === 10 ? setTargetValue : 5} onChange={(e) => setSetTargetValue(Number(e.target.value))} style={{ width: "100%", borderRadius: 14, padding: "12px 12px", background: "rgba(255,255,255,0.06)", border: `1px solid ${primary}22`, color: "rgba(255,255,255,0.92)", outline: "none", fontWeight: 950 }}>
+                      <option value={5} style={{ color: "#111" }}>Premier à 5</option>
+                      <option value={10} style={{ color: "#111" }}>Premier à 10</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 10, fontSize: 12, opacity: 0.76, lineHeight: 1.45, fontWeight: 850 }}>
+                    Chaque set utilise la règle choisie dans Score : {scoreMode === "balls5" ? "5 balles" : scoreMode === "balls10" ? "10 balles" : scoreMode === "balls11" ? "11 balles" : "chrono"}.
+                  </div>
+                )}
               </div>
             ) : scoreMode !== "target" ? (
-              <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>Les sets sont désactivés avec le mode {scoreMode === "balls5" ? "5 balles jouées" : scoreMode === "balls10" ? "10 balles jouées" : scoreMode === "balls11" ? "11 balles jouées" : "Chrono"}.</div>
+              <div style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.35 }}>Les sets peuvent aussi être activés avec ce mode : chaque set reprend la règle {scoreMode === "balls5" ? "5 balles" : scoreMode === "balls10" ? "10 balles" : scoreMode === "balls11" ? "11 balles" : "chrono"}.</div>
             ) : null}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>

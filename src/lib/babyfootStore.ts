@@ -644,6 +644,54 @@ function maybeWinSet(s: BabyFootState) {
   return persist(next);
 }
 
+
+function maybeWinLimitedBallsSet(s: BabyFootState) {
+  if (!s.setsEnabled) return s;
+  if (s.scoreMode !== "balls5" && s.scoreMode !== "balls10" && s.scoreMode !== "balls11") return s;
+
+  const fallbackMaxBalls = s.scoreMode === "balls5" ? 5 : s.scoreMode === "balls11" ? 11 : 10;
+  const maxBalls = Math.max(1, Math.floor(Number(s.maxBalls) || fallbackMaxBalls));
+  if ((s.scoreA + s.scoreB) < maxBalls) return s;
+
+  // En sets + balles limitées, le set se termine à la limite de balles si un camp mène.
+  // En cas d'égalité, on laisse jouer la balle suivante pour éviter un set sans vainqueur.
+  if (s.scoreA === s.scoreB) return s;
+
+  const now = Date.now();
+  const winner: BabyFootTeamId = s.scoreA > s.scoreB ? "A" : "B";
+  const setsA = s.setsA + (winner === "A" ? 1 : 0);
+  const setsB = s.setsB + (winner === "B" ? 1 : 0);
+  const bestOf = normalizeBestOf(s.setsBestOf);
+  const needed = Math.floor(bestOf / 2) + 1;
+
+  let next: BabyFootState = {
+    ...s,
+    undo: pushUndo(s),
+    setsA,
+    setsB,
+    setIndex: s.setIndex + 1,
+    scoreA: Math.max(0, s.handicapB || 0),
+    scoreB: Math.max(0, s.handicapA || 0),
+    pendingDemiBonus: 0,
+    events: [...(s.events || []), { t: "set_win", at: now, team: winner, setIndex: s.setIndex }],
+    updatedAt: now,
+  };
+
+  if (setsA >= needed || setsB >= needed) {
+    next = {
+      ...next,
+      finished: true,
+      winner: setsA >= needed ? "A" : "B",
+      phase: "finished",
+      clockRunning: false,
+      finishedAt: now,
+      events: [...(next.events || []), { t: "finish", at: now, winner: setsA >= needed ? "A" : "B", reason: "sets" }],
+    };
+  }
+
+  return persist(next);
+}
+
 function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, scorerId?: string | null, sourceLine?: BabyFootGoalSource) {
   let s = startIfNeeded();
   if (s.finished || s.phase === "penalties") return s;
@@ -716,6 +764,9 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     }
 
     next = maybeWinSet(next);
+    if (next.finished) return next;
+
+    next = maybeWinLimitedBallsSet(next);
     if (next.finished) return next;
 
     if (!next.setsEnabled && (next.scoreMode === "balls5" || next.scoreMode === "balls10" || next.scoreMode === "balls11")) {

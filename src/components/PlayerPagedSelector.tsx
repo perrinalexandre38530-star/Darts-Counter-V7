@@ -2,6 +2,9 @@
 import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
+import { StatsBridge } from "../lib/statsBridge";
+
+type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
 
 function profileLevelValue(raw: any): number {
   if (typeof raw === "number" && Number.isFinite(raw)) {
@@ -30,8 +33,37 @@ function profileLevelValue(raw: any): number {
   return 0;
 }
 
-function profileLevel(profile: any): number {
-  const candidates = [
+function profileIdentityKeys(profile: any): string[] {
+  const keys = [profile?.id, profile?.profileId, profile?.playerId, profile?.localProfileId, profile?.uid, profile?.uuid]
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(keys));
+}
+
+function profileStarData(profile: any, statsById: Record<string, any> = {}): ProfileStarData | null {
+  const statCandidates: any[] = [
+    profile?.avg3d,
+    profile?.avg3D,
+    profile?.avg,
+    profile?.average3Darts,
+    profile?.stats?.avg3d,
+    profile?.stats?.avg3D,
+    profile?.stats?.average3Darts,
+    profile?.stats?.x01?.avg3d,
+    profile?.stats?.x01?.avg3D,
+    profile?.x01?.avg3d,
+    profile?.x01?.avg3D,
+  ];
+  for (const id of profileIdentityKeys(profile)) {
+    const s = statsById[id];
+    statCandidates.push(s?.avg3d, s?.avg3D, s?.avg, s?.average3Darts);
+  }
+  for (const raw of statCandidates) {
+    const avg3d = Number(String(raw ?? "").replace(",", "."));
+    if (Number.isFinite(avg3d) && avg3d > 0) return { kind: "avg3d", value: Math.max(0, Math.min(180, avg3d)) };
+  }
+
+  const levelCandidates = [
     profile?.profileStarring,
     profile?.profileStars,
     profile?.profileStarRating,
@@ -41,26 +73,22 @@ function profileLevel(profile: any): number {
     profile?.botLevel,
     profile?.level,
     profile?.rating,
-    profile?.avg3d,
-    profile?.avg3D,
-    profile?.avg,
     profile?.score,
     profile?.stats?.profileStarring,
     profile?.stats?.stars,
     profile?.stats?.level,
-    profile?.stats?.avg3d,
-    profile?.stats?.avg3D,
-    profile?.stats?.average3Darts,
-    profile?.stats?.x01?.avg3d,
-    profile?.stats?.x01?.avg3D,
-    profile?.x01?.avg3d,
-    profile?.x01?.avg3D,
   ];
-  for (const raw of candidates) {
+  for (const raw of levelCandidates) {
     const level = profileLevelValue(raw);
-    if (level > 0) return level;
+    if (level > 0) return { kind: "level", value: level };
   }
-  return 0;
+  return null;
+}
+
+function renderProfileStars(star: ProfileStarData | null, anchorSize: number, starSize: number, gapPx = -5) {
+  if (!star) return null;
+  if (star.kind === "avg3d") return <ProfileStarRing avg3d={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
+  return <ProfileStarRing botLevel={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
 }
 
 function usageKeyOf(value: any): string {
@@ -203,6 +231,7 @@ export default function PlayerPagedSelector({
   const [page, setPage] = React.useState(0);
   const [listOpen, setListOpen] = React.useState(false);
   const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>(() => readX01PlayerUsageCounts());
+  const [statsById, setStatsById] = React.useState<Record<string, any>>({});
 
   React.useEffect(() => {
     const refresh = () => setHistoryUsageById((prev) => ({ ...prev, ...readX01PlayerUsageCounts() }));
@@ -215,6 +244,37 @@ export default function PlayerPagedSelector({
       window.removeEventListener("dc-x01-player-usage-updated", refresh as any);
     };
   }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const ids = Array.from(new Set((profiles || []).flatMap((p: any) => profileIdentityKeys(p))));
+    if (!ids.length) {
+      setStatsById({});
+      return;
+    }
+    Promise.all(ids.map(async (id) => {
+      try {
+        const stats = await StatsBridge.getBasicProfileStatsAsync(id);
+        return [id, stats] as const;
+      } catch {
+        try {
+          return [id, StatsBridge.getBasicProfileStats(id)] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      }
+    })).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, any> = {};
+      for (const [id, stats] of entries) {
+        if (stats && (Number(stats.avg3) > 0 || Number(stats.avg3d) > 0 || Number(stats.games) > 0 || Number(stats.darts) > 0)) next[id] = stats;
+      }
+      setStatsById(next);
+    }).catch(() => {
+      if (!cancelled) setStatsById({});
+    });
+    return () => { cancelled = true; };
+  }, [profiles]);
 
   // Le scan historique est déclenché par la page X01ConfigV3, puis propagé ici
   // via dc-x01-player-usage-updated. On évite ainsi un double History.list()
@@ -303,7 +363,7 @@ export default function PlayerPagedSelector({
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-            {selected.map((p: any) => <SelectedCard key={p.id} p={p} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
+            {selected.map((p: any) => <SelectedCard key={p.id} p={p} statsById={statsById} accent={accent} renderActions={renderActions} renderAvatarOverlay={renderAvatarOverlay} onRemove={() => onToggle(p.id)} />)}
           </div>
         </div>
       ) : null}
@@ -322,11 +382,11 @@ export default function PlayerPagedSelector({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {pageItems.map((p: any) => {
                   const active = selectedIdSet.has(String(p.id));
-                  const lvl = profileLevel(p);
+                  const star = profileStarData(p, statsById);
                   return (
                     <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
-                        {lvl > 0 ? <ProfileStarRing botLevel={lvl} anchorSize={88} starSize={12} gapPx={-5} /> : null}
+                        {renderProfileStars(star, 88, 12, -5)}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                           <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
                             <ProfileAvatar profile={p} size={76} noFrame />
@@ -353,12 +413,12 @@ export default function PlayerPagedSelector({
   );
 }
 
-const SelectedCard = React.memo(function SelectedCard({ p, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
-  const lvl = profileLevel(p);
+const SelectedCard = React.memo(function SelectedCard({ p, statsById, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
+  const star = profileStarData(p, statsById);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
-        {lvl > 0 ? <ProfileStarRing botLevel={lvl} anchorSize={72} starSize={10} gapPx={-5} /> : null}
+        {renderProfileStars(star, 72, 10, -5)}
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
           <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
             <ProfileAvatar profile={p} size={60} noFrame />
