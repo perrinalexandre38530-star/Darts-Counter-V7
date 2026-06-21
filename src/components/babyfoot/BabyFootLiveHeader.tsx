@@ -25,16 +25,16 @@ function pill(accent = false): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 22,
-    padding: "0 7px",
+    minHeight: 18,
+    padding: "0 6px",
     borderRadius: 999,
     border: accent ? "1px solid rgba(199,255,38,0.34)" : "1px solid rgba(255,255,255,0.08)",
     background: accent ? "linear-gradient(180deg, rgba(199,255,38,0.18), rgba(199,255,38,0.07))" : "rgba(255,255,255,0.04)",
     color: accent ? "#f5ffbf" : "rgba(255,255,255,0.94)",
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: 1000,
     letterSpacing: 0.15,
-    maxWidth: 82,
+    maxWidth: 72,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -44,8 +44,8 @@ function pill(accent = false): React.CSSProperties {
 
 function transportButton(disabled: boolean): React.CSSProperties {
   return {
-    width: 30,
-    height: 30,
+    width: 26,
+    height: 26,
     borderRadius: 999,
     border: `1px solid ${disabled ? "rgba(255,255,255,0.10)" : "rgba(199,255,38,0.26)"}`,
     background: disabled ? "rgba(255,255,255,0.04)" : "linear-gradient(180deg, rgba(199,255,38,0.14), rgba(199,255,38,0.06))",
@@ -115,8 +115,8 @@ export default function BabyFootLiveHeader({
   return (
     <div
       style={{
-        borderRadius: 22,
-        padding: 8,
+        borderRadius: 20,
+        padding: 7,
         border: "1px solid rgba(120,150,255,0.14)",
         background: "linear-gradient(180deg, rgba(14,18,36,0.96), rgba(8,10,24,0.98))",
         boxShadow: "0 18px 42px rgba(0,0,0,0.34)",
@@ -126,14 +126,14 @@ export default function BabyFootLiveHeader({
         <div
           style={{
             display: "flex",
-            gap: 5,
-            rowGap: 4,
+            gap: 4,
+            rowGap: 3,
             alignItems: "center",
             alignContent: "center",
             minWidth: 0,
             flexWrap: "wrap",
             overflow: "hidden",
-            maxHeight: 48,
+            maxHeight: 42,
           }}
         >
           {phaseLabel && phaseLabel !== "MATCH" ? <span style={pill(true)}>{phaseLabel}</span> : null}
@@ -148,9 +148,9 @@ export default function BabyFootLiveHeader({
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 7,
-            minHeight: 46,
-            padding: "4px 7px",
+            gap: 5,
+            minHeight: 40,
+            padding: "3px 6px",
             borderRadius: 999,
             border: "1px solid rgba(199,255,38,0.28)",
             background: "linear-gradient(180deg, rgba(18,22,28,0.96), rgba(10,12,20,0.98))",
@@ -159,7 +159,7 @@ export default function BabyFootLiveHeader({
           }}
         >
           <span style={{ color: "#ebff86", fontSize: 14, lineHeight: 1 }}>◔</span>
-          <span style={{ color: "#fff3a3", fontSize: 20, lineHeight: 1, fontWeight: 1100, minWidth: 54, textAlign: "center" }}>{clockLabel}</span>
+          <span style={{ color: "#fff3a3", fontSize: 18, lineHeight: 1, fontWeight: 1100, minWidth: 50, textAlign: "center" }}>{clockLabel}</span>
           <button
             type="button"
             aria-label={hasStarted ? "Reprendre" : "Démarrer"}
@@ -183,7 +183,7 @@ export default function BabyFootLiveHeader({
         </div>
       </div>
 
-      <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 8 }}>
+      <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 8 }}>
         {tabs.map((tab) => (
           <button key={tab.key} type="button" onClick={() => onTabChange(tab.key)} style={tabButton(activeTab === tab.key)}>
             {tab.label}

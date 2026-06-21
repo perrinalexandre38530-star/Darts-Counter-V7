@@ -2355,15 +2355,19 @@ const isBotTurn = React.useMemo(() => {
   // ---------------- Avatars (depuis config.players) ----------------
 
   // Backward-compat: anciens builds stockaient `matchMode`.
+  const configTeams = Array.isArray((config as any).teams) ? ((config as any).teams as any[]) : [];
   const isTeamsMode =
-    ((config as any).gameMode === "teams" || (config as any).matchMode === "teams") &&
-    Array.isArray((config as any).teams) &&
-    ((config as any).teams?.length ?? 0) >= 2;
+    configTeams.length >= 2 &&
+    (
+      (config as any).gameMode === "teams" ||
+      (config as any).matchMode === "teams" ||
+      configTeams.some((t: any) => Array.isArray(t?.players) && t.players.length > 0)
+    );
 
 const teamsView = React.useMemo(() => {
   if (!isTeamsMode) return null;
 
-  const teams = ((config as any).teams as any[]) || [];
+  const teams = configTeams;
   const teamMetaById: Record<string, { name?: string; color?: string }> = Object.fromEntries(
     teams.map((t: any) => [String(t.id), { name: t.name, color: t.color || (String(t.name||"").toLowerCase().includes("pink") ? "#ff4fd8" : String(t.name||"").toLowerCase().includes("rose") ? "#ff4fd8" : String(t.name||"").toLowerCase().includes("gold") ? "#ffcf57" : undefined) }])
   );
@@ -2401,7 +2405,7 @@ const teamsView = React.useMemo(() => {
       };
     })
     .filter((t: any) => t.players.length > 0);
-}, [isTeamsMode, (config as any).teams, players, profileById, scores, activePlayerId]);
+}, [isTeamsMode, configTeams, players, profileById, scores, activePlayerId]);
 
 const activeTeam = React.useMemo(() => {
   if (!teamsView || !activePlayerId) return null;

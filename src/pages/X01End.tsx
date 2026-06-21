@@ -185,6 +185,36 @@ function isVisitScoreInputRecord(rec: any): boolean {
   });
 }
 
+
+function x01EndTeamPlayerIds(t: any): string[] {
+  const raw = Array.isArray(t?.playerIds) ? t.playerIds : Array.isArray(t?.players) ? t.players : [];
+  return raw.map((p: any) => String(typeof p === "string" ? p : (p?.id || p?.playerId || p?.profileId || p?.pid || ""))).filter(Boolean);
+}
+
+function x01EndTeamLogo(t: any): string | null {
+  return t?.logoDataUrl || t?.avatarUrl || t?.avatar || t?.logo || t?.imageUrl || null;
+}
+
+function x01EndRawTeams(rec: any): any[] {
+  const pools = [
+    rec?.teams,
+    rec?.game?.teams,
+    rec?.summary?.teams,
+    rec?.summary?.game?.teams,
+    rec?.summary?.config?.teams,
+    rec?.payload?.teams,
+    rec?.payload?.summary?.teams,
+    rec?.payload?.summary?.game?.teams,
+    rec?.payload?.config?.teams,
+    rec?.payload?.state?.teams,
+    rec?.resume?.config?.teams,
+    rec?.resume?.summary?.teams,
+    rec?.decoded?.config?.teams,
+  ];
+  const found = pools.find((x) => Array.isArray(x) && x.length >= 2);
+  return Array.isArray(found) ? found.map((t: any, idx: number) => ({ ...t, _idx: idx, playerIds: x01EndTeamPlayerIds(t) })).filter((t: any) => t.playerIds.length) : [];
+}
+
 /* ================================
    Composant principal
 ================================ */
@@ -425,6 +455,21 @@ export default function X01End({ go, params }: Props) {
 
   const has = detectAvailability(M);
   const hideDetailedHitStats = isVisitScoreInputRecord(rec);
+
+  const teamsForOverlay = React.useMemo(() => {
+    const rawTeams = x01EndRawTeams(rec);
+    if (rawTeams.length < 2) return null;
+    const playerById = Object.fromEntries(players.map((p: any) => [String(p.id), p]));
+    return rawTeams.map((t: any) => {
+      const members = t.playerIds.map((pid: string) => {
+        const p = playerById[pid];
+        return p ? { id: p.id, name: p.name, avatar: p.avatarDataUrl || p.avatarUrl || null } : { id: pid, name: pid };
+      });
+      const remainings = t.playerIds.map((pid: string) => Number((M as any)?.[pid]?.remaining)).filter((v: number) => Number.isFinite(v));
+      const score = remainings.length ? Math.min(...remainings) : Number(t.score ?? 0);
+      return { ...t, players: members, avatarUrl: x01EndTeamLogo(t), score };
+    });
+  }, [rec, players, M]);
 
   const resumeId =
     params?.resumeId ?? rec?.resumeId ?? rec?.payload?.resumeId ?? null;
@@ -813,6 +858,35 @@ export default function X01End({ go, params }: Props) {
 
       {summaryTab === "summary" ? (
         <>
+      {teamsForOverlay && teamsForOverlay.length >= 2 ? (
+        <Panel title="Score collectif équipes">
+          <div style={{ display: "grid", gap: 8 }}>
+            {teamsForOverlay.map((t: any, idx: number) => {
+              const color = t.color || (Number(t.score) === 0 ? "#7fe2a9" : THEME_ACCENT);
+              const logo = x01EndTeamLogo(t);
+              return (
+                <div key={t.id || t.name || idx} style={{ border: `1px solid ${color}66`, borderRadius: 14, padding: 8, background: Number(t.score) === 0 ? "radial-gradient(circle at 0% 0%, rgba(127,226,169,.18), rgba(255,255,255,.035))" : "rgba(255,255,255,.035)" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "34px 1fr auto", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}`, display: "grid", placeItems: "center", background: "rgba(255,255,255,.08)", fontWeight: 1000, color }}>
+                      {logo ? <img src={logo} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : String(t.name || "T").slice(0,2).toUpperCase()}
+                    </div>
+                    <div style={{ fontWeight: 1000, color }}>{t.name || `Équipe ${idx + 1}`}</div>
+                    <div style={{ fontWeight: 1000, color, fontSize: 18 }}>{Math.round(Number(t.score) || 0)}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7, paddingLeft: 42 }}>
+                    {(t.players || []).map((m: any) => {
+                      const mm = (M as any)?.[m.id] || {};
+                      const pts = Number(mm.points || 0);
+                      return <span key={m.id} style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,.86)" }}>{m.name} <span style={{ color }}>+{Math.round(pts)}</span></span>;
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      ) : null}
+
       <CardTable title="Score du match">
         <TableColMajor
           columns={cols}
@@ -1097,6 +1171,7 @@ export default function X01End({ go, params }: Props) {
             open={overlayOpen}
             result={overlayResult}
             playersById={playersById}
+            teams={teamsForOverlay as any}
             visitHistory={visits}
             onClose={() => setOverlayOpen(false)}
             onReplay={() => setOverlayOpen(false)}

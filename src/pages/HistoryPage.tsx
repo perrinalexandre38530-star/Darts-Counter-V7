@@ -526,7 +526,8 @@ function modeLabel(e: SavedEntry) {
     const isOnline = isOnlineRecord(e);
     const playerCount = getAllEntryPlayers(e).length || Number((e as any)?.summary?.playersCount || 0) || 0;
     const hasSetsLegs = Number((e as any)?.summary?.game?.legsPerSet || (e as any)?.payload?.summary?.game?.legsPerSet || (e as any)?.payload?.config?.legsPerSet || 0) > 1;
-    const prefix = isTraining ? "TRAINING X01" : isOnline ? "X01 ONLINE" : playerCount > 2 ? "X01 MULTI" : playerCount === 2 || hasSetsLegs ? "X01 DUO" : "X01";
+    const hasTeams = historyX01Teams(e).length >= 2;
+    const prefix = isTraining ? "TRAINING X01" : isOnline ? "X01 ONLINE" : hasTeams ? "X01 TEAMS" : playerCount > 2 ? "X01 MULTI" : playerCount === 2 || hasSetsLegs ? "X01 DUO" : "X01";
     return `${prefix} · ${sc}`;
   }
   return m.toUpperCase();
@@ -1056,6 +1057,71 @@ function x01HistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
   }).filter((x: any) => x.name);
 }
 
+
+function historyTeamLogo(t: any): string | null {
+  return t?.logoDataUrl || t?.avatarUrl || t?.avatar || t?.logo || t?.imageUrl || null;
+}
+
+function historyTeamPlayerIds(t: any): string[] {
+  const raw = Array.isArray(t?.playerIds) ? t.playerIds : Array.isArray(t?.players) ? t.players : [];
+  return raw.map((p: any) => String(typeof p === "string" ? p : (p?.id || p?.playerId || p?.profileId || p?.pid || ""))).filter(Boolean);
+}
+
+function historyX01Teams(e: SavedEntry): any[] {
+  const anyE: any = e as any;
+  const { data, result } = getHistoryDataBundle(e);
+  const pools = [
+    anyE.teams,
+    anyE.game?.teams,
+    anyE.summary?.teams,
+    anyE.summary?.game?.teams,
+    anyE.summary?.config?.teams,
+    anyE.payload?.teams,
+    anyE.payload?.summary?.teams,
+    anyE.payload?.summary?.game?.teams,
+    anyE.payload?.config?.teams,
+    anyE.payload?.state?.teams,
+    anyE.resume?.config?.teams,
+    anyE.resume?.summary?.teams,
+    anyE.decoded?.config?.teams,
+    data.teams,
+    data.game?.teams,
+    result.teams,
+  ];
+  const found = pools.find((x) => Array.isArray(x) && x.length >= 2);
+  if (!Array.isArray(found)) return [];
+  return found
+    .map((t: any, idx: number) => ({ ...t, _idx: idx, playerIds: historyTeamPlayerIds(t) }))
+    .filter((t: any) => t.playerIds.length > 0);
+}
+
+function historyTeamRowsForX01(e: SavedEntry): any[] {
+  const teams = historyX01Teams(e);
+  if (teams.length < 2) return [];
+  const players = x01HistoryScorePlayers(e);
+  const byId = new Map<string, any>();
+  const allRows = x01FinalSortedRows(e);
+  allRows.forEach((r: any, idx: number) => {
+    const id = historyRowKey(r);
+    if (id) byId.set(id, { ...r, _rank: idx + 1 });
+  });
+  const playerByName = new Map(players.map((p: any) => [normHistoryName(p.name), p]));
+  return teams
+    .map((t: any) => {
+      const members = t.playerIds.map((pid: string) => {
+        const raw = byId.get(pid) || {};
+        const name = historyScoreName(e, raw) || historyPlayerNameById(e, pid) || pid;
+        const stat = players.find((p: any) => normHistoryName(p.name) === normHistoryName(name)) || playerByName.get(normHistoryName(name));
+        return { id: pid, name, remaining: stat?.remaining ?? historyScoreNumber(x01RemainingForRow(e, raw), "0"), points: stat?.points ?? undefined };
+      }).filter((m: any) => cleanName(m.name));
+      const nums = members.map((m: any) => Number(m.remaining)).filter((v: number) => Number.isFinite(v));
+      const score = nums.length ? Math.min(...nums) : Number(t.score ?? 0);
+      const winner = score === 0 || members.some((m: any) => Number(m.remaining) === 0);
+      return { ...t, members, score: Math.max(0, Math.round(score || 0)), winner };
+    })
+    .sort((a: any, b: any) => (b.winner ? 1 : 0) - (a.winner ? 1 : 0) || a.score - b.score || a._idx - b._idx);
+}
+
 function genericHistoryRankScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
@@ -1093,6 +1159,37 @@ function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore
 }
 
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  const teamRows = isX01Entry(e) ? historyTeamRowsForX01(e) : [];
+  if (teamRows.length >= 2) {
+    const scoreStyle = { color: theme.primary, fontWeight: 950, textShadow: `0 0 9px ${theme.primary}55` };
+    return (
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {teamRows.map((t: any, idx: number) => {
+            const logo = historyTeamLogo(t);
+            const color = t.color || (t.winner ? "#7fe2a9" : theme.primary);
+            return (
+              <span key={t.id || t.name || idx} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 950, color }}>
+                <span style={{ width: 20, height: 20, borderRadius: "50%", overflow: "hidden", border: `1px solid ${color}`, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,.08)" }}>
+                  {logo ? <img src={logo} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 8 }}>{String(t.name || "T").slice(0,2).toUpperCase()}</span>}
+                </span>
+                <span>{t.name || `Équipe ${idx + 1}`}</span>
+                <span style={scoreStyle}>{t.score}</span>
+                {idx < teamRows.length - 1 ? <span style={{ color: "rgba(255,255,255,.45)" }}>—</span> : null}
+              </span>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 11, opacity: .95 }}>
+          {teamRows.flatMap((t: any, ti: number) => t.members.map((m: any, mi: number) => (
+            <span key={`${t.id || ti}-${m.id || mi}`} style={{ color: t.color || "rgba(255,255,255,.92)", fontWeight: 850 }}>
+              {m.name} <span style={scoreStyle}>{m.remaining}</span>
+            </span>
+          )))}
+        </div>
+      </div>
+    );
+  }
   if (!isX01Entry(e)) {
     const ranked = genericHistoryRankScorePlayers(e);
     if (ranked.length > 1) return renderRankScoreLine(ranked, theme, (p: any) => p.main || "0");
@@ -1124,6 +1221,8 @@ function deriveHistoryWinnerName(e: SavedEntry): string {
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
+  const teamWinner = historyTeamRowsForX01(e).find((t: any) => t.winner);
+  if (teamWinner?.name) return cleanName(teamWinner.name) || String(teamWinner.name);
   const direct = cleanName(anyE.teamWinnerName || data.teamWinnerName || result.teamWinnerName || anyE.payload?.summary?.teamWinnerName || anyE.winnerName || data.winnerName || result.winnerName || anyE.payload?.summary?.winnerName);
   if (direct) return direct;
 

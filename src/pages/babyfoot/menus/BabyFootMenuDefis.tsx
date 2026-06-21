@@ -196,7 +196,7 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
           style={{
             width: "100%",
             height: 90,
-            objectFit: "cover",
+            objectFit: "contain",
             borderRadius: 14,
             border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
             boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
@@ -276,8 +276,8 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
                       inset: 0,
                       width: "100%",
                       height: "100%",
-                      objectFit: "cover",
-                      objectPosition: `50% ${y}%`,
+                      objectFit: "contain",
+                      objectPosition: "center",
                       opacity: 0.95,
                       transform: "translateZ(0)",
                     }}

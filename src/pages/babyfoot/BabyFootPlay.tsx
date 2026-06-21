@@ -656,14 +656,17 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   const durationMs = computeDurationMs(state);
   const hasClockStarted = !!state.startedAt;
+  const timerNow = !state.clockRunning && state.pausedAt ? state.pausedAt : now;
+  const pausedTotalMs = Math.max(0, Number(state.pausedTotalMs) || 0);
   const regularStart = state.startedAt ?? state.createdAt;
   const regularLimitMs = state.matchDurationSec ? state.matchDurationSec * 1000 : null;
-  const regularElapsed = hasClockStarted ? Math.max(0, now - regularStart) : 0;
+  const regularElapsed = hasClockStarted ? Math.max(0, timerNow - regularStart - pausedTotalMs) : 0;
   const regularRemain = regularLimitMs != null ? (hasClockStarted ? Math.max(0, regularLimitMs - regularElapsed) : regularLimitMs) : null;
 
   const otStart = lastPhaseAt(state, "overtime") ?? regularStart;
   const otLimitMs = state.overtimeSec != null ? Math.max(0, state.overtimeSec) * 1000 : null;
-  const otRemain = otLimitMs != null ? (hasClockStarted ? Math.max(0, otLimitMs - Math.max(0, now - otStart)) : otLimitMs) : null;
+  const otElapsed = hasClockStarted ? Math.max(0, timerNow - otStart) : 0;
+  const otRemain = otLimitMs != null ? (hasClockStarted ? Math.max(0, otLimitMs - otElapsed) : otLimitMs) : null;
 
   const canUndo = !state.finished && Array.isArray(state.events) && state.events.length > 0;
   const goalEvents = useMemo(() => getGoalEvents(state.events || []), [state.events]);
