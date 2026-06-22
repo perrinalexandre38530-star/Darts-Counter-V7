@@ -219,6 +219,112 @@ async function protectProfilesAgainstEmptyOverwrite<T extends Store>(store: T, r
   return next;
 }
 
+
+function pickBestStoreWithProfilesFromSnapshot(dump: any): { store: any; profiles: any[]; label: string } | null {
+  const candidates: Array<{ store: any; profiles: any[]; label: string; score: number }> = [];
+
+  const addCandidate = (storeLike: any, label: string, bonus = 0) => {
+    try {
+      if (!storeLike || typeof storeLike !== "object") return;
+      const profiles = validProfileList((storeLike as any).profiles);
+      if (profiles.length <= 0) return;
+      const active = String((storeLike as any).activeProfileId || "");
+      const activeBonus = active && profiles.some((p) => String(p?.id || "") === active) ? 25 : 0;
+      candidates.push({ store: storeLike, profiles, label, score: profiles.length * 100 + activeBonus + bonus });
+    } catch {}
+  };
+
+  try { addCandidate((dump as any)?.store, "dump.store", 5); } catch {}
+  try { addCandidate((dump as any)?.data?.store, "dump.data.store", 5); } catch {}
+
+  try {
+    const extracted = extractStoreObjectFromSnapshot(dump)?.store;
+    addCandidate(extracted, "extractStoreObjectFromSnapshot", 10);
+  } catch {}
+
+  try {
+    const idb = (dump as any)?.idb;
+    if (idb && typeof idb === "object") {
+      const currentKey = scopedStorageKey(STORE_KEY);
+      for (const [rawKey, value] of Object.entries(idb)) {
+        const key = String(rawKey || "");
+        const isStoreKey = key === STORE_KEY || key === currentKey || key.startsWith(`${STORE_KEY}:`) || /(^|[:/])store(?::[^:/]+)?$/.test(key);
+        if (!isStoreKey) continue;
+        addCandidate(value, `idb.${key}`, key === currentKey ? 50 : key === STORE_KEY ? 20 : 0);
+      }
+    }
+  } catch {}
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0] || null;
+}
+
+async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reason: string): Promise<boolean> {
+  try {
+    const best = pickBestStoreWithProfilesFromSnapshot(dump);
+    if (!best?.profiles?.length) return false;
+
+    const key = scopedStorageKey(STORE_KEY);
+    let currentStore: any = {};
+    try {
+      const raw = await idbGet<any>(key);
+      if (raw != null) {
+        const json = await decompressGzip(raw as any);
+        currentStore = safeJsonParse<any>(json, {}) || {};
+      }
+    } catch {
+      currentStore = {};
+    }
+
+    const incomingStore = best.store || {};
+    const incomingProfiles = validProfileList(best.profiles);
+    const currentProfiles = validProfileList(currentStore?.profiles);
+    const profiles = mergeProfilesForSafety(incomingProfiles, currentProfiles);
+
+    if (!profiles.length) return false;
+
+    const incomingActive = String(incomingStore?.activeProfileId || "").trim();
+    const currentActive = String(currentStore?.activeProfileId || "").trim();
+    const activeProfileId =
+      (incomingActive && profiles.some((p) => String(p?.id || "") === incomingActive) ? incomingActive : "") ||
+      (currentActive && profiles.some((p) => String(p?.id || "") === currentActive) ? currentActive : "") ||
+      String(profiles[0]?.id || "") ||
+      null;
+
+    const nextStore = guardStoreShape({
+      ...currentStore,
+      ...incomingStore,
+      profiles,
+      activeProfileId,
+      friends: Array.isArray(incomingStore?.friends) ? incomingStore.friends : (Array.isArray(currentStore?.friends) ? currentStore.friends : []),
+      dartSets: Array.isArray(incomingStore?.dartSets) ? incomingStore.dartSets : (Array.isArray(currentStore?.dartSets) ? currentStore.dartSets : getAllDartSets()),
+      bots: Array.isArray(incomingStore?.bots) ? incomingStore.bots : (Array.isArray(currentStore?.bots) ? currentStore.bots : loadStoredBots()),
+      teams: Array.isArray(incomingStore?.teams) ? incomingStore.teams : (Array.isArray(currentStore?.teams) ? currentStore.teams : loadStoredTeams()),
+    } as any);
+
+    const json = safeJsonStringify(nextStore);
+    await idbSet(key, await persistPayloadForKey(key, json));
+    lastSavedStoreJsonByScope.set(key, json);
+    writeProfilesSafetyCache(nextStore);
+
+    try {
+      console.warn("[storage] profils locaux restaurés explicitement depuis snapshot", {
+        reason,
+        source: best.label,
+        profiles: profiles.length,
+        activeProfileId,
+        key,
+      });
+    } catch {}
+
+    return true;
+  } catch (e) {
+    console.warn("[storage] forceRestoreProfilesFromSnapshotIntoCurrentStore failed", e);
+    return false;
+  }
+}
+
 function guardStoreShape<T extends Store>(store: T | null | undefined): T {
   const base: any = store && typeof store === "object" ? { ...(store as any) } : {};
   if (!Array.isArray(base.profiles)) base.profiles = [];
@@ -1318,15 +1424,17 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
       if (norm.changed) {
         try {
-          const payload = await compressGzip(safeJsonStringify(norm.store));
+          const storeScopeKey = scopedStorageKey(STORE_KEY);
+          const normJson = safeJsonStringify(norm.store);
+          const payload = await persistPayloadForKey(storeScopeKey, normJson);
           await idbSet(storeScopeKey, payload);
-    lastSavedStoreJsonByScope.set(storeScopeKey, json);
+          lastSavedStoreJsonByScope.set(storeScopeKey, normJson);
 
-    try {
-      emitCloudChange(scopedCloudChangeReason("idb:set:store"));
-    } catch (e) {
-      console.warn("emitCloudChange failed", e);
-    }
+          try {
+            emitCloudChange(scopedCloudChangeReason("idb:set:store"));
+          } catch (e) {
+            console.warn("emitCloudChange failed", e);
+          }
         } catch {}
       }
 
@@ -1846,6 +1954,17 @@ export async function importAll(dump: any): Promise<void> {
 
     // 2) restore localStorage (dc_* + dc-*)
     importLocalStorageDc(lsDump);
+
+    // 2.0) ✅ RESTORE PROFILS LOCAUX PRIORITAIRE
+    // Certains snapshots NAS affichent bien "46 profils", mais l'app relit ensuite
+    // une clé de store scopée différente ou un store partiel. On force donc la
+    // réécriture du meilleur bloc profiles trouvé dans le snapshot vers la clé
+    // courante `store:<userId>` AVANT le reload React.
+    try {
+      await forceRestoreProfilesFromSnapshotIntoCurrentStore(dump, "importAll:explicit-profiles-restore");
+    } catch (e) {
+      console.warn("[storage] importAll explicit profiles restore failed", e);
+    }
 
     // 2.1) 🛡️ Protection profils locaux : si le snapshot NAS/cloud a restauré
     // un store partiel avec profiles: [], on réinjecte les profils connus avant

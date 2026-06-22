@@ -2,7 +2,7 @@ import * as React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, readNasAccessToken } from "../lib/apiClient";
-import { exportCloudSnapshot, importCloudSnapshot, setStorageUser } from "../lib/storage";
+import { exportCloudSnapshot, importCloudSnapshot, loadStore, setStorageUser } from "../lib/storage";
 import {
   createLocalMemorySlot,
   createNasVersionedSnapshot,
@@ -1037,6 +1037,19 @@ export default function StorageVaultPage({ go }: Props) {
     await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
     await importCloudSnapshot(snapshot, { mode: "replace" });
     restoreAuth();
+
+    // ✅ Important : la restauration IDB est faite, mais le state React courant
+    // peut encore contenir `profiles: []` jusqu'au reload. On remplace tout de
+    // suite le store vivant avec le store relu depuis la clé restaurée.
+    try {
+      const restoredStore = await loadStore<any>();
+      if (restoredStore && typeof (window as any).__replaceLocalStoreNow === "function") {
+        await (window as any).__replaceLocalStoreNow(restoredStore, reason);
+      }
+    } catch (e) {
+      console.warn("[StorageVault] live store refresh after restore failed", e);
+    }
+
     await afterRestoreHousekeeping(reason);
     await pushSnapshotToAccount(snapshot, reason);
     setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
