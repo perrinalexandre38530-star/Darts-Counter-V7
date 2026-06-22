@@ -3161,6 +3161,8 @@ const detailRelationRows = Object.entries(perPersonStats)
   .map(([id, st]) => ({
     id,
     name: playerNameMap[id] ?? id,
+    profileId: playerProfileIdMap[id] ?? id,
+    avatarDataUrl: playerAvatarMap[id] ?? null,
     opponent: {
       matches: st.vsMatches,
       legsWon: st.legsWon,
@@ -4710,18 +4712,18 @@ return (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.35fr repeat(4, 0.78fr) repeat(4, 0.78fr)",
-            columnGap: 5,
-            rowGap: 4,
+            gridTemplateColumns: "repeat(4, minmax(28px, 0.72fr)) minmax(54px, 0.9fr) repeat(4, minmax(28px, 0.72fr))",
+            columnGap: 4,
+            rowGap: 5,
             fontSize: 9,
             overflowX: "auto",
             paddingBottom: 2,
+            alignItems: "center",
           }}
         >
-          <div />
           <div
             style={{
-              gridColumn: "2 / span 4",
+              gridColumn: "1 / span 4",
               textAlign: "center",
               color: "#FF9B45",
               fontWeight: 900,
@@ -4734,6 +4736,7 @@ return (
           >
             Adversaire
           </div>
+          <div />
           <div
             style={{
               gridColumn: "6 / span 4",
@@ -4750,14 +4753,14 @@ return (
             Coéquipier
           </div>
 
-          <div style={{ fontWeight: 800, color: T.text70 }}>Joueur</div>
           {["M", "S/L", "W/L", "Best"].map((h) => (
-            <div key={`opp-h-${h}`} style={{ textAlign: "right", fontWeight: 800, color: "#FFB06A" }}>
+            <div key={`opp-h-${h}`} style={{ textAlign: "center", fontWeight: 800, color: "#FFB06A" }}>
               {h}
             </div>
           ))}
+          <div style={{ textAlign: "center", fontWeight: 800, color: T.text70 }}>Joueur</div>
           {["M", "S/L", "W/L", "Best"].map((h) => (
-            <div key={`team-h-${h}`} style={{ textAlign: "right", fontWeight: 800, color: "#9DFFB3" }}>
+            <div key={`team-h-${h}`} style={{ textAlign: "center", fontWeight: 800, color: "#9DFFB3" }}>
               {h}
             </div>
           ))}
@@ -4772,16 +4775,73 @@ return (
               matches > 0 ? `${wins}/${Math.max(0, matches - wins)}` : "-";
             return (
               <React.Fragment key={row.id}>
-                <div style={{ color: T.text, fontWeight: 800 }}>{row.name}</div>
-                <div style={{ textAlign: "right", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.matches)}</div>
-                <div style={{ textAlign: "right", color: opp.setsWon > 0 || opp.legsWon > 0 ? "#FFB06A" : T.text50 }}>{showSetLeg(opp.setsWon, opp.legsWon)}</div>
-                <div style={{ textAlign: "right", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showWinLoss(opp.wins, opp.matches)}</div>
-                <div style={{ textAlign: "right", color: opp.bestScore ? "#FFB06A" : T.text50 }}>{opp.bestScore ?? "-"}</div>
+                <div style={{ textAlign: "center", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.matches)}</div>
+                <div style={{ textAlign: "center", color: opp.setsWon > 0 || opp.legsWon > 0 ? "#FFB06A" : T.text50 }}>{showSetLeg(opp.setsWon, opp.legsWon)}</div>
+                <div style={{ textAlign: "center", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showWinLoss(opp.wins, opp.matches)}</div>
+                <div style={{ textAlign: "center", color: opp.bestScore ? "#FFB06A" : T.text50 }}>{opp.bestScore ?? "-"}</div>
 
-                <div style={{ textAlign: "right", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.matches)}</div>
-                <div style={{ textAlign: "right", color: mate.setsWon > 0 || mate.legsWon > 0 ? "#7CFF9A" : T.text50 }}>{showSetLeg(mate.setsWon, mate.legsWon)}</div>
-                <div style={{ textAlign: "right", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showWinLoss(mate.wins, mate.matches)}</div>
-                <div style={{ textAlign: "right", color: mate.bestScore ? "#7CFF9A" : T.text50 }}>{mate.bestScore ?? "-"}</div>
+                <div
+                  style={{
+                    minWidth: 54,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 2,
+                    padding: "2px 0",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "1px solid rgba(255,255,255,.22)",
+                      boxShadow:
+                        mate.matches > 0
+                          ? "0 0 8px rgba(124,255,154,.45)"
+                          : opp.matches > 0
+                            ? "0 0 8px rgba(255,155,69,.38)"
+                            : "none",
+                    }}
+                  >
+                    <ProfileAvatar
+                      profile={{
+                        id: row.profileId || row.id,
+                        name: row.name,
+                        avatarDataUrl: row.avatarDataUrl || undefined,
+                      }}
+                      size={28}
+                      showStars={false}
+                      noFrame
+                    />
+                  </div>
+                  <div
+                    style={{
+                      maxWidth: 58,
+                      textAlign: "center",
+                      color: T.text,
+                      fontWeight: 800,
+                      fontSize: 8,
+                      lineHeight: 1.05,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={row.name}
+                  >
+                    {row.name}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: "center", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.matches)}</div>
+                <div style={{ textAlign: "center", color: mate.setsWon > 0 || mate.legsWon > 0 ? "#7CFF9A" : T.text50 }}>{showSetLeg(mate.setsWon, mate.legsWon)}</div>
+                <div style={{ textAlign: "center", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showWinLoss(mate.wins, mate.matches)}</div>
+                <div style={{ textAlign: "center", color: mate.bestScore ? "#7CFF9A" : T.text50 }}>{mate.bestScore ?? "-"}</div>
               </React.Fragment>
             );
           })}
