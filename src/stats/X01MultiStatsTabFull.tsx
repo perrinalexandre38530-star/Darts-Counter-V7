@@ -3154,23 +3154,43 @@ const pctSetsWinDisplay =
   setsPlayedX01 > 0 ? `${pctSetsWinX01.toFixed(1)}%` : "0.0%";
 
 // LIGNES POUR LE TABLEAU "DÉTAILS ADVERSAIRES / COÉQUIPIERS"
-const detailsRows = Object.entries(perPersonStats)
-  .map(([id, st]) => {
-    const teamBestIsBetter = st.teamBestScoreMargin > st.bestScoreMargin;
-    const totalMatches = st.vsMatches + st.teamMatches;
-    return {
-      id,
-      name: playerNameMap[id] ?? id,
-      matches: totalMatches,
-      legsWon: st.legsWon + st.teamLegsWon,
-      setsWon: st.setsWon + st.teamSetsWon,
-      wins: st.vsWins + st.teamWins,
-      bestScore: teamBestIsBetter ? st.teamBestScoreLabel : st.bestScoreLabel,
-      teams: st.teamMatches,
-    };
-  })
-  // tri : ceux qu'on a le plus joués en haut, puis coéquipiers/adversaires team utiles
-  .sort((a, b) => b.matches - a.matches || b.teams - a.teams || a.name.localeCompare(b.name));
+// IMPORTANT : on ne fusionne plus adversaires et coéquipiers dans une même ligne.
+// Un même joueur peut apparaître dans les deux blocs s’il a déjà été adversaire ET coéquipier.
+const detailOpponentRows = Object.entries(perPersonStats)
+  .filter(([, st]) => st.vsMatches > 0)
+  .map(([id, st]) => ({
+    id: `opp:${id}`,
+    rawId: id,
+    kind: "Adversaire" as const,
+    accent: "#4DB2FF",
+    name: playerNameMap[id] ?? id,
+    matches: st.vsMatches,
+    legsWon: st.legsWon,
+    setsWon: st.setsWon,
+    wins: st.vsWins,
+    bestScore: st.bestScoreLabel,
+    teams: null as number | null,
+  }))
+  .sort((a, b) => b.matches - a.matches || b.wins - a.wins || a.name.localeCompare(b.name));
+
+const detailTeammateRows = Object.entries(perPersonStats)
+  .filter(([, st]) => st.teamMatches > 0)
+  .map(([id, st]) => ({
+    id: `team:${id}`,
+    rawId: id,
+    kind: "Coéquipier" as const,
+    accent: "#F6C256",
+    name: playerNameMap[id] ?? id,
+    matches: st.teamMatches,
+    legsWon: st.teamLegsWon,
+    setsWon: st.teamSetsWon,
+    wins: st.teamWins,
+    bestScore: st.teamBestScoreLabel,
+    teams: st.teamMatches,
+  }))
+  .sort((a, b) => b.matches - a.matches || b.wins - a.wins || a.name.localeCompare(b.name));
+
+const detailsRows = [...detailOpponentRows, ...detailTeammateRows];
 
 // ------------------- RENDER -------------------
 return (
@@ -4371,23 +4391,16 @@ return (
               "radial-gradient(circle at 30% 10%, rgba(255,255,255,.4), #080910 60%)",
           }}
         >
-          {favOpponentAvatarUrl ? (
-            <img
-              src={favOpponentAvatarUrl}
-              alt={favOpponentName ?? ""}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <span
-              style={{
-                color: "#E5F2FF",
-                fontWeight: 800,
-                fontSize: 18,
-              }}
-            >
-              {(favOpponentName || "?").trim().charAt(0) || "?"}
-            </span>
-          )}
+          <ProfileAvatar
+            profile={{
+              id: favOpponentProfileId || favOpponentId || undefined,
+              name: favOpponentName || undefined,
+              avatarDataUrl: favOpponentAvatarUrl || undefined,
+            }}
+            size={44}
+            showStars={false}
+            noFrame
+          />
         </div>
       </div>
 
@@ -4492,23 +4505,16 @@ return (
               "radial-gradient(circle at 30% 10%, rgba(255,255,255,.4), #080910 60%)",
           }}
         >
-          {maxWinVsAvatarUrl ? (
-            <img
-              src={maxWinVsAvatarUrl}
-              alt={maxWinVsName ?? ""}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <span
-              style={{
-                color: "#E5FFEF",
-                fontWeight: 800,
-                fontSize: 18,
-              }}
-            >
-              {(maxWinVsName || "?").trim().charAt(0) || "?"}
-            </span>
-          )}
+          <ProfileAvatar
+            profile={{
+              id: maxWinVsProfileId || maxWinVsId || undefined,
+              name: maxWinVsName || undefined,
+              avatarDataUrl: maxWinVsAvatarUrl || undefined,
+            }}
+            size={44}
+            showStars={false}
+            noFrame
+          />
         </div>
       </div>
 
@@ -4611,23 +4617,16 @@ return (
               "radial-gradient(circle at 30% 10%, rgba(255,255,255,.4), #080910 60%)",
           }}
         >
-          {favTeammateAvatarUrl ? (
-            <img
-              src={favTeammateAvatarUrl}
-              alt={favTeammateName ?? ""}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <span
-              style={{
-                color: "#FFF3D9",
-                fontWeight: 800,
-                fontSize: 18,
-              }}
-            >
-              {(favTeammateName || "?").trim().charAt(0) || "?"}
-            </span>
-          )}
+          <ProfileAvatar
+            profile={{
+              id: favTeammateProfileId || favTeammateId || undefined,
+              name: favTeammateName || undefined,
+              avatarDataUrl: favTeammateAvatarUrl || undefined,
+            }}
+            size={44}
+            showStars={false}
+            noFrame
+          />
         </div>
       </div>
 
@@ -4719,13 +4718,14 @@ return (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "2fr 0.7fr 0.7fr 0.7fr 0.7fr 0.9fr 0.7fr",
+            gridTemplateColumns: "1.05fr 1.55fr 0.7fr 0.7fr 0.7fr 0.7fr 0.9fr",
             columnGap: 6,
             rowGap: 4,
             fontSize: 10,
           }}
         >
           {/* En-têtes */}
+          <div style={{ fontWeight: 700, color: T.text70 }}>Type</div>
           <div style={{ fontWeight: 700, color: T.text70 }}>Joueur</div>
           <div
             style={{
@@ -4772,39 +4772,37 @@ return (
           >
             Meilleur score
           </div>
-          <div
-            style={{
-              textAlign: "right",
-              fontWeight: 700,
-              color: T.text70,
-            }}
-          >
-            Teams
-          </div>
-
           {/* Lignes */}
           {detailsRows.map((row) => (
-  <React.Fragment key={row.id}>
-    <div>{row.name}</div>
-    <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-      {row.matches}
-    </div>
-    <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-  {typeof row.legsWon === "number" ? row.legsWon : "-"}
-</div>
-<div style={{ textAlign: "right", color: "#E5FFEF" }}>
-  {typeof row.setsWon === "number" ? row.setsWon : "-"}
-</div>
-    <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-      {row.wins || "-"}
-    </div>
-    <div style={{ textAlign: "right", color: "#7CFF9A" }}>
-      {row.bestScore ?? "-"}
-    </div>
-    <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-      {row.teams || "-"}
-    </div>
-  </React.Fragment>
+            <React.Fragment key={row.id}>
+              <div
+                style={{
+                  color: row.accent,
+                  fontWeight: 800,
+                  fontSize: 9,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.3,
+                }}
+              >
+                {row.kind}
+              </div>
+              <div style={{ color: row.accent, fontWeight: 800 }}>{row.name}</div>
+              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
+                {row.matches}
+              </div>
+              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
+                {typeof row.legsWon === "number" ? row.legsWon : "-"}
+              </div>
+              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
+                {typeof row.setsWon === "number" ? row.setsWon : "-"}
+              </div>
+              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
+                {row.wins || "-"}
+              </div>
+              <div style={{ textAlign: "right", color: "#7CFF9A" }}>
+                {row.bestScore ?? "-"}
+              </div>
+            </React.Fragment>
           ))}
         </div>
       </div>
