@@ -4710,7 +4710,7 @@ return (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.45fr repeat(5, 0.72fr) repeat(5, 0.72fr)",
+            gridTemplateColumns: "1.35fr repeat(4, 0.78fr) repeat(4, 0.78fr)",
             columnGap: 5,
             rowGap: 4,
             fontSize: 9,
@@ -4721,36 +4721,42 @@ return (
           <div />
           <div
             style={{
-              gridColumn: "2 / span 5",
+              gridColumn: "2 / span 4",
               textAlign: "center",
               color: "#FF9B45",
               fontWeight: 900,
               textTransform: "uppercase",
               letterSpacing: 0.4,
+              background: "rgba(255,155,69,.08)",
+              borderRadius: 8,
+              padding: "2px 0",
             }}
           >
             Adversaire
           </div>
           <div
             style={{
-              gridColumn: "7 / span 5",
+              gridColumn: "6 / span 4",
               textAlign: "center",
               color: "#7CFF9A",
               fontWeight: 900,
               textTransform: "uppercase",
               letterSpacing: 0.4,
+              background: "rgba(124,255,154,.08)",
+              borderRadius: 8,
+              padding: "2px 0",
             }}
           >
             Coéquipier
           </div>
 
           <div style={{ fontWeight: 800, color: T.text70 }}>Joueur</div>
-          {["M", "Legs", "Sets", "Win", "Best"].map((h) => (
+          {["M", "S/L", "W/L", "Best"].map((h) => (
             <div key={`opp-h-${h}`} style={{ textAlign: "right", fontWeight: 800, color: "#FFB06A" }}>
               {h}
             </div>
           ))}
-          {["M", "Legs", "Sets", "Win", "Best"].map((h) => (
+          {["M", "S/L", "W/L", "Best"].map((h) => (
             <div key={`team-h-${h}`} style={{ textAlign: "right", fontWeight: 800, color: "#9DFFB3" }}>
               {h}
             </div>
@@ -4760,19 +4766,21 @@ return (
             const opp = row.opponent;
             const mate = row.teammate;
             const showNum = (n: number) => (n > 0 ? n : "-");
+            const showSetLeg = (sets: number, legs: number) =>
+              sets > 0 || legs > 0 ? `${sets}/${legs}` : "-";
+            const showWinLoss = (wins: number, matches: number) =>
+              matches > 0 ? `${wins}/${Math.max(0, matches - wins)}` : "-";
             return (
               <React.Fragment key={row.id}>
                 <div style={{ color: T.text, fontWeight: 800 }}>{row.name}</div>
                 <div style={{ textAlign: "right", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.matches)}</div>
-                <div style={{ textAlign: "right", color: opp.legsWon > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.legsWon)}</div>
-                <div style={{ textAlign: "right", color: opp.setsWon > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.setsWon)}</div>
-                <div style={{ textAlign: "right", color: opp.wins > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.wins)}</div>
+                <div style={{ textAlign: "right", color: opp.setsWon > 0 || opp.legsWon > 0 ? "#FFB06A" : T.text50 }}>{showSetLeg(opp.setsWon, opp.legsWon)}</div>
+                <div style={{ textAlign: "right", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showWinLoss(opp.wins, opp.matches)}</div>
                 <div style={{ textAlign: "right", color: opp.bestScore ? "#FFB06A" : T.text50 }}>{opp.bestScore ?? "-"}</div>
 
                 <div style={{ textAlign: "right", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.matches)}</div>
-                <div style={{ textAlign: "right", color: mate.legsWon > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.legsWon)}</div>
-                <div style={{ textAlign: "right", color: mate.setsWon > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.setsWon)}</div>
-                <div style={{ textAlign: "right", color: mate.wins > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.wins)}</div>
+                <div style={{ textAlign: "right", color: mate.setsWon > 0 || mate.legsWon > 0 ? "#7CFF9A" : T.text50 }}>{showSetLeg(mate.setsWon, mate.legsWon)}</div>
+                <div style={{ textAlign: "right", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showWinLoss(mate.wins, mate.matches)}</div>
                 <div style={{ textAlign: "right", color: mate.bestScore ? "#7CFF9A" : T.text50 }}>{mate.bestScore ?? "-"}</div>
               </React.Fragment>
             );
