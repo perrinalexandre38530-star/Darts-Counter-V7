@@ -304,8 +304,15 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
     } as any);
 
     const json = safeJsonStringify(nextStore);
-    await idbSet(key, await persistPayloadForKey(key, json));
+    const payload = await persistPayloadForKey(key, json);
+    await idbSet(key, payload);
+    // Miroir non scopé indispensable : après restore/reload, si l'identité
+    // online n'est pas encore détectée, loadStore() lit d'abord "store".
+    // Sans ce miroir, les 46 profils sont bien restaurés dans store:<uid>,
+    // mais la page Profils repart sur un store vide/non scopé.
+    try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, json)); } catch {}
     lastSavedStoreJsonByScope.set(key, json);
+    lastSavedStoreJsonByScope.set(STORE_KEY, json);
     writeProfilesSafetyCache(nextStore);
 
     try {
@@ -322,6 +329,66 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
   } catch (e) {
     console.warn("[storage] forceRestoreProfilesFromSnapshotIntoCurrentStore failed", e);
     return false;
+  }
+}
+
+
+
+function unwrapNasSnapshotPayload(input: any): any {
+  try {
+    let cur = input;
+    for (let i = 0; i < 4; i++) {
+      if (!cur || typeof cur !== "object") break;
+      if ((cur._v === 1 || cur._v === 2) && cur.idb) return cur;
+      if (cur.payload && typeof cur.payload === "object") {
+        cur = cur.payload;
+        continue;
+      }
+      if (cur.data && typeof cur.data === "object" && ((cur.data._v === 1 || cur.data._v === 2) && cur.data.idb)) {
+        cur = cur.data;
+        continue;
+      }
+      break;
+    }
+    return cur;
+  } catch {
+    return input;
+  }
+}
+
+async function readStoreFromRawPayload(raw: any): Promise<any | null> {
+  try {
+    if (raw == null) return null;
+    const json = await decompressGzip(raw as any);
+    const parsed = safeJsonParse<any>(json, null);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findBestPersistedStoreAcrossKeys(): Promise<{ key: string; store: any; profiles: any[] } | null> {
+  try {
+    const keys = await idbKeys();
+    const candidates: Array<{ key: string; store: any; profiles: any[]; score: number }> = [];
+    for (const rawKey of keys) {
+      const key = String(rawKey || "");
+      if (!(key === STORE_KEY || key === scopedStorageKey(STORE_KEY) || key.startsWith(`${STORE_KEY}:`) || /(^|[:/])store(?::[^:/]+)?$/.test(key))) continue;
+      const raw = await idbGet<any>(rawKey);
+      const store = await readStoreFromRawPayload(raw);
+      const profiles = validProfileList(store?.profiles);
+      if (!store || profiles.length <= 0) continue;
+      const active = String(store?.activeProfileId || "");
+      const activeBonus = active && profiles.some((p) => String(p?.id || "") === active) ? 25 : 0;
+      const scopedBonus = key === scopedStorageKey(STORE_KEY) ? 100 : key === STORE_KEY ? 50 : 0;
+      candidates.push({ key, store, profiles, score: profiles.length * 100 + scopedBonus + activeBonus });
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    return { key: best.key, store: best.store, profiles: best.profiles };
+  } catch {
+    return null;
   }
 }
 
@@ -1411,7 +1478,29 @@ function attachAuthoritativeDartSetsToStore<T extends any>(store: T): T {
 export async function loadStore<T extends Store>(): Promise<T | null> {
   try {
     await migrateLegacyStoreIfNeeded();
-    const raw = (await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY))) ?? null;
+    let raw = (await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY))) ?? null;
+
+    // ✅ RESTORE NAS ROBUSTE : si l'utilisateur courant n'est pas encore connu
+    // au boot, ou si le restore a écrit store:<uid> alors que la page lit store,
+    // on récupère automatiquement le meilleur store existant avec profils.
+    if (raw == null) {
+      const best = await findBestPersistedStoreAcrossKeys();
+      if (best?.store && best.profiles.length > 0) {
+        const targetKey = scopedStorageKey(STORE_KEY);
+        const repaired = guardStoreShape(best.store);
+        const repairedJson = safeJsonStringify(repaired);
+        try {
+          const repairedPayload = await persistPayloadForKey(targetKey, repairedJson);
+          await idbSet(targetKey, repairedPayload);
+          try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, repairedJson)); } catch {}
+          lastSavedStoreJsonByScope.set(targetKey, repairedJson);
+          lastSavedStoreJsonByScope.set(STORE_KEY, repairedJson);
+          writeProfilesSafetyCache(repaired);
+          console.warn("[storage] store profils récupéré depuis une autre clé", { from: best.key, to: targetKey, profiles: best.profiles.length });
+        } catch {}
+        raw = await idbGet<ArrayBuffer | Uint8Array | string>(targetKey) ?? await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY) ?? null;
+      }
+    }
 
     if (raw != null) {
       const json = await decompressGzip(raw as any);
@@ -1721,6 +1810,7 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
 
   const targets = new Set<string>();
   targets.add(key);
+  if (isStoreLikeKey) targets.add(STORE_KEY);
 
   // ✅ Compat snapshots legacy/non-namespacés:
   // si la clé importée n'est pas déjà scoped pour l'utilisateur courant,
@@ -1920,6 +2010,7 @@ function buildSyntheticHistoryDumpFromStatsIndex(idx: any): any | null {
 }
 
 export async function importAll(dump: any): Promise<void> {
+  dump = unwrapNasSnapshotPayload(dump);
   if (!dump) return;
 
   // ✅ Support snapshots structurés (v1 et v2)
@@ -2320,6 +2411,7 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
 }
 
 export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<void> {
+  dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
 
   if (mode === "replace") {
