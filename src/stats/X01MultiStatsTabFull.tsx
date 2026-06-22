@@ -1430,21 +1430,9 @@ export async function loadX01MultiSessions(
       const base = buildSessionFromSummary(match, pid);
       if (!base) continue;
 
-      const isTeam =
-        ["team", "teams"].some((w) =>
-          String(
-            match.gameMode ||
-              match.mode ||
-              match.variant ||
-              match?.payload?.gameMode ||
-              match?.payload?.mode ||
-              match?.payload?.variant
-          )
-            .toLowerCase()
-            .includes(w)
-        ) || !!(player as any).teamId;
+      const isTeam = x01IsTeamsMatch(match) || !!(player as any).teamId;
 
-      const teamId = (player as any).teamId ?? null;
+      const teamId = isTeam ? x01TeamIdForPlayer(match, player, pid) : ((player as any).teamId ?? null);
 
       const playerName =
         player.name ||
@@ -1455,6 +1443,16 @@ export async function loadX01MultiSessions(
         "Player";
 
       const scorePatch = x01ScorePatchForPlayer(match, player, pid);
+      const teamPatch = isTeam ? x01DeriveTeamScore(match) : null;
+      const myTeamScore = teamPatch && teamId ? Number(teamPatch.scores[String(teamId)] || 0) : 0;
+      const myTeamSets = teamPatch && teamId ? Number(teamPatch.sets[String(teamId)] || 0) : 0;
+      const otherTeamBest = teamPatch
+        ? Math.max(0, ...Object.entries(teamPatch.scores).filter(([tid]) => String(tid) !== String(teamId)).map(([, v]) => Number(v) || 0))
+        : 0;
+      const otherTeamSetsBest = teamPatch
+        ? Math.max(0, ...Object.entries(teamPatch.sets).filter(([tid]) => String(tid) !== String(teamId)).map(([, v]) => Number(v) || 0))
+        : 0;
+      const teamWon = !!(isTeam && teamId && teamPatch?.winnerTeamId && String(teamPatch.winnerTeamId) === String(teamId));
       out.push({
         id: `${matchId}:${pid}`,
         matchId,
@@ -1467,14 +1465,18 @@ export async function loadX01MultiSessions(
         avatarDataUrl: player.avatarDataUrl ?? null,
         isTeam,
         teamId,
+        teamName: isTeam ? x01TeamNameById(match, teamId) : null,
         ...base,
+        isWin: isTeam && teamPatch && teamPatch.played > 0 ? teamWon : base.isWin,
         // Score final réel du match, prioritaire sur les anciens fallbacks 1-0.
-        legsWon: scorePatch.legsPlayed > 0 ? scorePatch.legsWon : base.legsWon,
-        legsPlayed: scorePatch.legsPlayed > 0 ? scorePatch.legsPlayed : base.legsPlayed,
-        setsWon: scorePatch.setsPlayed > 0 ? scorePatch.setsWon : base.setsWon,
-        setsPlayed: scorePatch.setsPlayed > 0 ? scorePatch.setsPlayed : base.setsPlayed,
-        scoreLabel: scorePatch.scoreLabel,
-        scoreUnit: scorePatch.scoreUnit,
+        legsWon: isTeam && teamPatch && teamPatch.played > 0 ? myTeamScore : (scorePatch.legsPlayed > 0 ? scorePatch.legsWon : base.legsWon),
+        legsPlayed: isTeam && teamPatch && teamPatch.played > 0 ? teamPatch.played : (scorePatch.legsPlayed > 0 ? scorePatch.legsPlayed : base.legsPlayed),
+        setsWon: isTeam && teamPatch && teamPatch.setsPlayed > 0 ? myTeamSets : (scorePatch.setsPlayed > 0 ? scorePatch.setsWon : base.setsWon),
+        setsPlayed: isTeam && teamPatch && teamPatch.setsPlayed > 0 ? teamPatch.setsPlayed : (scorePatch.setsPlayed > 0 ? scorePatch.setsPlayed : base.setsPlayed),
+        scoreLabel: isTeam && teamPatch && teamPatch.played > 0 ? `${myTeamScore}-${otherTeamBest}` : scorePatch.scoreLabel,
+        scoreUnit: isTeam ? "legs" : scorePatch.scoreUnit,
+        teamScoreLabel: isTeam && teamPatch && teamPatch.played > 0 ? `${myTeamScore}-${otherTeamBest}` : null,
+        teamSetsScoreLabel: isTeam && teamPatch && teamPatch.setsPlayed > 0 ? `${myTeamSets}-${otherTeamSetsBest}` : null,
         finalScore: Number.isFinite(Number(scorePatch.finalScore)) ? Number(scorePatch.finalScore) : null,
         remaining: Number.isFinite(Number(scorePatch.remaining)) ? Number(scorePatch.remaining) : null,
         rank: scorePatch.rank ?? base.rank ?? null,
@@ -1533,6 +1535,162 @@ export async function loadX01MultiSessions(
 }
 
 // Normalisation d’un dart pour le radar
+
+
+// ============================================================
+// X01 TEAMS — extraction robuste équipe + score collectif
+// ============================================================
+function x01GetConfigRoot(match: any): any {
+  return (
+    match?.config ||
+    match?.payload?.config ||
+    match?.payload?.payload?.config ||
+    match?.summary?.config ||
+    match?.payload?.summary?.config ||
+    {}
+  );
+}
+
+function x01IsTeamsMatch(match: any): boolean {
+  const cfg = x01GetConfigRoot(match);
+  const values = [
+    match?.gameMode,
+    match?.matchMode,
+    match?.mode,
+    match?.variant,
+    match?.payload?.gameMode,
+    match?.payload?.matchMode,
+    match?.payload?.mode,
+    match?.payload?.variant,
+    match?.payload?.payload?.gameMode,
+    match?.payload?.payload?.matchMode,
+    cfg?.gameMode,
+    cfg?.matchMode,
+    cfg?.mode,
+    cfg?.variant,
+  ];
+  if (values.some((v) => String(v ?? '').toLowerCase().includes('team'))) return true;
+  return Array.isArray(cfg?.teams) && cfg.teams.length > 0;
+}
+
+function x01GetTeams(match: any): any[] {
+  const cfg = x01GetConfigRoot(match);
+  const teams = Array.isArray(cfg?.teams)
+    ? cfg.teams
+    : Array.isArray(match?.teams)
+    ? match.teams
+    : Array.isArray(match?.payload?.teams)
+    ? match.payload.teams
+    : [];
+  return teams.filter(Boolean);
+}
+
+function x01TeamIdForPlayer(match: any, player: any, pid: any): string | null {
+  const direct = player?.teamId ?? player?.team ?? player?.teamKey ?? player?.team_id ?? null;
+  if (direct != null && String(direct).trim()) return String(direct);
+  const wanted = playerKeysFromLike(player, pid);
+  for (const team of x01GetTeams(match)) {
+    const members = Array.isArray(team?.players)
+      ? team.players
+      : Array.isArray(team?.playerIds)
+      ? team.playerIds
+      : Array.isArray(team?.members)
+      ? team.members
+      : [];
+    const found = members.some((m: any) => {
+      const ids = typeof m === 'object' ? playerKeysFromLike(m, m?.id ?? m?.playerId ?? m?.profileId) : [String(m)];
+      return ids.some((id) => wanted.some((w) => sameId(id, w) || id === w));
+    });
+    if (found) return String(team?.id ?? team?.teamId ?? team?.key ?? team?.name ?? 'team');
+  }
+  return null;
+}
+
+function x01TeamNameById(match: any, teamId: string | null): string {
+  if (!teamId) return 'Équipe';
+  const t = x01GetTeams(match).find((x) => String(x?.id ?? x?.teamId ?? x?.key ?? x?.name) === String(teamId));
+  return String(t?.name ?? t?.label ?? teamId);
+}
+
+function x01DeriveTeamScore(match: any): { scores: Record<string, number>; played: number; sets: Record<string, number>; setsPlayed: number; winnerTeamId: string | null } {
+  const teams = x01GetTeams(match);
+  const scores: Record<string, number> = {};
+  const sets: Record<string, number> = {};
+  for (const t of teams) {
+    const id = String(t?.id ?? t?.teamId ?? t?.key ?? t?.name ?? 'team');
+    scores[id] = 0;
+    sets[id] = 0;
+  }
+  if (!teams.length) return { scores, played: 0, sets, setsPlayed: 0, winnerTeamId: null };
+
+  const cfg = x01GetConfigRoot(match);
+  const legsPerSet = Math.max(1, Number(cfg?.legsPerSet ?? match?.game?.legsPerSet ?? match?.summary?.game?.legsPerSet ?? 1) || 1);
+  const memberToTeam: Record<string, string> = {};
+  for (const t of teams) {
+    const tid = String(t?.id ?? t?.teamId ?? t?.key ?? t?.name ?? 'team');
+    const members = Array.isArray(t?.players) ? t.players : Array.isArray(t?.playerIds) ? t.playerIds : Array.isArray(t?.members) ? t.members : [];
+    for (const m of members) {
+      if (typeof m === 'object') {
+        for (const id of playerKeysFromLike(m, m?.id ?? m?.playerId ?? m?.profileId)) memberToTeam[String(id)] = tid;
+      } else if (m != null) memberToTeam[String(m)] = tid;
+    }
+  }
+
+  const visits =
+    match?.summary?.legacy?.visitHistory ||
+    match?.summary?.legacy?.visitsHistory ||
+    match?.payload?.summary?.legacy?.visitHistory ||
+    match?.payload?.payload?.summary?.legacy?.visitHistory ||
+    match?.legacy?.visitHistory ||
+    [];
+  if (!Array.isArray(visits) || !visits.length) {
+    return { scores, played: 0, sets, setsPlayed: 0, winnerTeamId: null };
+  }
+
+  const byLeg = new Map<string, any[]>();
+  for (const v of visits) {
+    const setNo = Number(v?.setNo ?? v?.setIndex ?? 1) || 1;
+    const legNo = Number(v?.legInSet ?? v?.legNo ?? v?.legIndex ?? v?.matchLegNo ?? 1) || 1;
+    const key = `${setNo}:${legNo}`;
+    const arr = byLeg.get(key) || [];
+    arr.push(v);
+    byLeg.set(key, arr);
+  }
+
+  const legWinsBySet: Record<string, Record<string, number>> = {};
+  for (const [key, rows] of byLeg.entries()) {
+    const [setNoRaw] = key.split(':');
+    const teamRemaining: Record<string, number> = {};
+    for (const row of rows) {
+      const pid = String(row?.playerId ?? row?.pid ?? row?.profileId ?? '');
+      const tid = Object.entries(memberToTeam).find(([id]) => sameId(id, pid) || id === pid)?.[1];
+      if (!tid) continue;
+      const after = Number(row?.scoreAfter ?? row?.after);
+      if (!Number.isFinite(after)) continue;
+      teamRemaining[tid] = Math.min(teamRemaining[tid] ?? Infinity, after);
+    }
+    const ranked = Object.entries(teamRemaining).sort((a, b) => a[1] - b[1]);
+    if (ranked.length < 2) continue;
+    if (ranked[0][1] === ranked[1][1]) continue;
+    const winnerTid = ranked[0][0];
+    scores[winnerTid] = (scores[winnerTid] || 0) + 1;
+    const setKey = String(setNoRaw || '1');
+    legWinsBySet[setKey] = legWinsBySet[setKey] || {};
+    legWinsBySet[setKey][winnerTid] = (legWinsBySet[setKey][winnerTid] || 0) + 1;
+  }
+
+  for (const legMap of Object.values(legWinsBySet)) {
+    const ranked = Object.entries(legMap).sort((a, b) => b[1] - a[1]);
+    if (!ranked.length) continue;
+    const [tid, won] = ranked[0];
+    if (won >= Math.ceil(legsPerSet / 2)) sets[tid] = (sets[tid] || 0) + 1;
+  }
+  const played = Object.values(scores).reduce((a, b) => a + (Number(b) || 0), 0);
+  const setsPlayed = Object.values(sets).reduce((a, b) => a + (Number(b) || 0), 0);
+  const winnerTeamId = Object.entries(scores).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return { scores, played, sets, setsPlayed, winnerTeamId };
+}
+
 function normalizeX01Dart(v: number, mult: number): UIDart | null {
   if (!Number.isFinite(v) || !Number.isFinite(mult)) return null;
   if (v < 0 || mult < 0) return null;
@@ -1736,6 +1894,11 @@ export default function X01MultiStatsTabFull({
 
     const groupLegsTotal = group.reduce((sum, x) => sum + Number(x.legsWon || 0), 0);
     const groupSetsTotal = group.reduce((sum, x) => sum + Number(x.setsWon || 0), 0);
+
+    // En TEAMS, chaque ligne joueur porte déjà le score collectif de SON équipe
+    // et le total de legs/sets du match. Ne surtout pas sommer toutes les lignes,
+    // sinon un 2-0 en 2v2 devient artificiellement 4 legs joués.
+    if (isTeam) return { legsPlayed, legsWon, setsPlayed, setsWon };
 
     // Source prioritaire : score final réellement stocké par joueur.
     // Évite les anciens fallbacks 1-0 quand le match était en réalité 2-0 / 2-1.
