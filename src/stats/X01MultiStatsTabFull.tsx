@@ -3154,43 +3154,35 @@ const pctSetsWinDisplay =
   setsPlayedX01 > 0 ? `${pctSetsWinX01.toFixed(1)}%` : "0.0%";
 
 // LIGNES POUR LE TABLEAU "DÉTAILS ADVERSAIRES / COÉQUIPIERS"
-// IMPORTANT : on ne fusionne plus adversaires et coéquipiers dans une même ligne.
-// Un même joueur peut apparaître dans les deux blocs s’il a déjà été adversaire ET coéquipier.
-const detailOpponentRows = Object.entries(perPersonStats)
-  .filter(([, st]) => st.vsMatches > 0)
+// Une seule ligne par personne : un joueur peut avoir des chiffres côté adversaire
+// ET côté coéquipier selon les matchs. On garde les deux colonnes côte à côte.
+const detailRelationRows = Object.entries(perPersonStats)
+  .filter(([, st]) => st.vsMatches > 0 || st.teamMatches > 0)
   .map(([id, st]) => ({
-    id: `opp:${id}`,
-    rawId: id,
-    kind: "Adversaire" as const,
-    accent: "#4DB2FF",
+    id,
     name: playerNameMap[id] ?? id,
-    matches: st.vsMatches,
-    legsWon: st.legsWon,
-    setsWon: st.setsWon,
-    wins: st.vsWins,
-    bestScore: st.bestScoreLabel,
-    teams: null as number | null,
+    opponent: {
+      matches: st.vsMatches,
+      legsWon: st.legsWon,
+      setsWon: st.setsWon,
+      wins: st.vsWins,
+      bestScore: st.bestScoreLabel,
+    },
+    teammate: {
+      matches: st.teamMatches,
+      legsWon: st.teamLegsWon,
+      setsWon: st.teamSetsWon,
+      wins: st.teamWins,
+      bestScore: st.teamBestScoreLabel,
+    },
   }))
-  .sort((a, b) => b.matches - a.matches || b.wins - a.wins || a.name.localeCompare(b.name));
-
-const detailTeammateRows = Object.entries(perPersonStats)
-  .filter(([, st]) => st.teamMatches > 0)
-  .map(([id, st]) => ({
-    id: `team:${id}`,
-    rawId: id,
-    kind: "Coéquipier" as const,
-    accent: "#F6C256",
-    name: playerNameMap[id] ?? id,
-    matches: st.teamMatches,
-    legsWon: st.teamLegsWon,
-    setsWon: st.teamSetsWon,
-    wins: st.teamWins,
-    bestScore: st.teamBestScoreLabel,
-    teams: st.teamMatches,
-  }))
-  .sort((a, b) => b.matches - a.matches || b.wins - a.wins || a.name.localeCompare(b.name));
-
-const detailsRows = [...detailOpponentRows, ...detailTeammateRows];
+  .sort((a, b) => {
+    const aTotal = a.opponent.matches + a.teammate.matches;
+    const bTotal = b.opponent.matches + b.teammate.matches;
+    const aWins = a.opponent.wins + a.teammate.wins;
+    const bWins = b.opponent.wins + b.teammate.wins;
+    return bTotal - aTotal || bWins - aWins || a.name.localeCompare(b.name);
+  });
 
 // ------------------- RENDER -------------------
 return (
@@ -4695,7 +4687,7 @@ return (
 </div>
 
     {/* DÉTAILS ADVERSAIRES / COÉQUIPIERS */}
-    {detailsRows.length > 0 && (
+    {detailRelationRows.length > 0 && (
       <div
         style={{
           marginTop: 10,
@@ -4718,92 +4710,73 @@ return (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.05fr 1.55fr 0.7fr 0.7fr 0.7fr 0.7fr 0.9fr",
-            columnGap: 6,
+            gridTemplateColumns: "1.45fr repeat(5, 0.72fr) repeat(5, 0.72fr)",
+            columnGap: 5,
             rowGap: 4,
-            fontSize: 10,
+            fontSize: 9,
+            overflowX: "auto",
+            paddingBottom: 2,
           }}
         >
-          {/* En-têtes */}
-          <div style={{ fontWeight: 700, color: T.text70 }}>Type</div>
-          <div style={{ fontWeight: 700, color: T.text70 }}>Joueur</div>
+          <div />
           <div
             style={{
-              textAlign: "right",
-              fontWeight: 700,
-              color: T.text70,
+              gridColumn: "2 / span 5",
+              textAlign: "center",
+              color: "#FF9B45",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: 0.4,
             }}
           >
-            Matchs
+            Adversaire
           </div>
           <div
             style={{
-              textAlign: "right",
-              fontWeight: 700,
-              color: T.text70,
+              gridColumn: "7 / span 5",
+              textAlign: "center",
+              color: "#7CFF9A",
+              fontWeight: 900,
+              textTransform: "uppercase",
+              letterSpacing: 0.4,
             }}
           >
-            Legs Win
+            Coéquipier
           </div>
-          <div
-            style={{
-              textAlign: "right",
-              fontWeight: 700,
-              color: T.text70,
-            }}
-          >
-            Sets Win
-          </div>
-          <div
-            style={{
-              textAlign: "right",
-              fontWeight: 700,
-              color: T.text70,
-            }}
-          >
-            Win
-          </div>
-          <div
-            style={{
-              textAlign: "right",
-              fontWeight: 700,
-              color: T.text70,
-            }}
-          >
-            Meilleur score
-          </div>
-          {/* Lignes */}
-          {detailsRows.map((row) => (
-            <React.Fragment key={row.id}>
-              <div
-                style={{
-                  color: row.accent,
-                  fontWeight: 800,
-                  fontSize: 9,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.3,
-                }}
-              >
-                {row.kind}
-              </div>
-              <div style={{ color: row.accent, fontWeight: 800 }}>{row.name}</div>
-              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-                {row.matches}
-              </div>
-              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-                {typeof row.legsWon === "number" ? row.legsWon : "-"}
-              </div>
-              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-                {typeof row.setsWon === "number" ? row.setsWon : "-"}
-              </div>
-              <div style={{ textAlign: "right", color: "#E5FFEF" }}>
-                {row.wins || "-"}
-              </div>
-              <div style={{ textAlign: "right", color: "#7CFF9A" }}>
-                {row.bestScore ?? "-"}
-              </div>
-            </React.Fragment>
+
+          <div style={{ fontWeight: 800, color: T.text70 }}>Joueur</div>
+          {["M", "Legs", "Sets", "Win", "Best"].map((h) => (
+            <div key={`opp-h-${h}`} style={{ textAlign: "right", fontWeight: 800, color: "#FFB06A" }}>
+              {h}
+            </div>
           ))}
+          {["M", "Legs", "Sets", "Win", "Best"].map((h) => (
+            <div key={`team-h-${h}`} style={{ textAlign: "right", fontWeight: 800, color: "#9DFFB3" }}>
+              {h}
+            </div>
+          ))}
+
+          {detailRelationRows.map((row) => {
+            const opp = row.opponent;
+            const mate = row.teammate;
+            const showNum = (n: number) => (n > 0 ? n : "-");
+            return (
+              <React.Fragment key={row.id}>
+                <div style={{ color: T.text, fontWeight: 800 }}>{row.name}</div>
+                <div style={{ textAlign: "right", color: opp.matches > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.matches)}</div>
+                <div style={{ textAlign: "right", color: opp.legsWon > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.legsWon)}</div>
+                <div style={{ textAlign: "right", color: opp.setsWon > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.setsWon)}</div>
+                <div style={{ textAlign: "right", color: opp.wins > 0 ? "#FFB06A" : T.text50 }}>{showNum(opp.wins)}</div>
+                <div style={{ textAlign: "right", color: opp.bestScore ? "#FFB06A" : T.text50 }}>{opp.bestScore ?? "-"}</div>
+
+                <div style={{ textAlign: "right", color: mate.matches > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.matches)}</div>
+                <div style={{ textAlign: "right", color: mate.legsWon > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.legsWon)}</div>
+                <div style={{ textAlign: "right", color: mate.setsWon > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.setsWon)}</div>
+                <div style={{ textAlign: "right", color: mate.wins > 0 ? "#7CFF9A" : T.text50 }}>{showNum(mate.wins)}</div>
+                <div style={{ textAlign: "right", color: mate.bestScore ? "#7CFF9A" : T.text50 }}>{mate.bestScore ?? "-"}</div>
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
     )}
