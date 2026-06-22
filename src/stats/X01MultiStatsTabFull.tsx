@@ -2799,16 +2799,24 @@ for (const matchId in groupedByMatch) {
     computeLegsSetsForLine(myLine, arr);
 
   // Détection teammates / opponents
+  // DUO/MULTI : tous les autres joueurs sont des adversaires.
+  // TEAMS : les joueurs du même teamId sont coéquipiers, les autres sont adversaires.
+  const myTeamId = isTeamMatch ? String((myLine as any).teamId ?? "") : "";
+
   const teammates = arr
-    .filter(
-      (s) => s.isTeam === true && s.selectedPlayerId !== myLine.selectedPlayerId
-    )
+    .filter((s) => {
+      if (String(s.selectedPlayerId) === String(myLine.selectedPlayerId)) return false;
+      if (!isTeamMatch) return false;
+      return String((s as any).teamId ?? "") === myTeamId;
+    })
     .map((s) => s.selectedPlayerId);
 
   const opponents = arr
-    .filter(
-      (s) => s.selectedPlayerId !== myLine.selectedPlayerId && s.isTeam !== true
-    )
+    .filter((s) => {
+      if (String(s.selectedPlayerId) === String(myLine.selectedPlayerId)) return false;
+      if (!isTeamMatch) return true;
+      return String((s as any).teamId ?? "") !== myTeamId;
+    })
     .map((s) => s.selectedPlayerId);
 
   // Calcul marge + score affichable.
@@ -2910,6 +2918,11 @@ type VersusStats = {
   bestScoreLabel: string | null; // meilleur score "3-0", "2-1" vs ce joueur
   bestScoreMargin: number; // marge associée (pour comparer)
   teamMatches: number; // matchs joués AVEC lui en équipe
+  teamWins: number; // matchs gagnés AVEC lui en équipe
+  teamLegsWon: number; // legs gagnés AVEC lui en équipe
+  teamSetsWon: number; // sets gagnés AVEC lui en équipe
+  teamBestScoreLabel: string | null; // meilleur score d'équipe avec lui
+  teamBestScoreMargin: number;
 };
 
 const perPersonStats: Record<string, VersusStats> = {};
@@ -2924,6 +2937,11 @@ const ensurePerson = (id: string): VersusStats => {
       bestScoreLabel: null,
       bestScoreMargin: -Infinity,
       teamMatches: 0,
+      teamWins: 0,
+      teamLegsWon: 0,
+      teamSetsWon: 0,
+      teamBestScoreLabel: null,
+      teamBestScoreMargin: -Infinity,
     };
   }
   return perPersonStats[id];
@@ -2931,21 +2949,43 @@ const ensurePerson = (id: string): VersusStats => {
 
 // on remplit pour chaque match
 for (const oc of outcomes) {
-  // on ne fait les stats adversaires détaillées QUE pour les matchs DUO non-team
-  const isDuo = !oc.isTeam && oc.players.length === 2;
-  if (!isDuo) {
-    // mais on garde quand même les coéquipiers (TEAM)
-    if (oc.isTeam) {
-      for (const tm of oc.teammates) {
-        const st = ensurePerson(tm);
-        st.teamMatches++;
+  const legsWonThis = oc.legsWon ?? 0;
+  const setsWonThis = oc.setsWon ?? 0;
+
+  if (oc.isTeam) {
+    // Match TEAM :
+    // - les joueurs du même teamId remplissent la partie coéquipier,
+    // - les joueurs des autres équipes remplissent aussi la partie adversaire.
+    // On évite ainsi les lignes à 0 alors que le match TEAM a bien été comptabilisé.
+    for (const tm of oc.teammates) {
+      const st = ensurePerson(tm);
+      st.teamMatches++;
+      if (oc.won) st.teamWins++;
+      st.teamLegsWon += legsWonThis;
+      st.teamSetsWon += setsWonThis;
+      if (oc.margin != null && oc.scoreLabel && oc.margin > st.teamBestScoreMargin) {
+        st.teamBestScoreMargin = oc.margin;
+        st.teamBestScoreLabel = oc.scoreLabel;
+      }
+    }
+
+    for (const opp of oc.opponents) {
+      const st = ensurePerson(opp);
+      st.vsMatches++;
+      if (oc.won) st.vsWins++;
+      st.legsWon += legsWonThis;
+      st.setsWon += setsWonThis;
+      if (oc.margin != null && oc.scoreLabel && oc.margin > st.bestScoreMargin) {
+        st.bestScoreMargin = oc.margin;
+        st.bestScoreLabel = oc.scoreLabel;
       }
     }
     continue;
   }
 
-  const legsWonThis = oc.legsWon ?? 0;
-  const setsWonThis = oc.setsWon ?? 0;
+  // En individuel, le détail adversaires reste volontairement limité au DUO.
+  const isDuo = oc.players.length === 2;
+  if (!isDuo) continue;
 
   // adversaires (joués contre)
   for (const opp of oc.opponents) {
@@ -2963,14 +3003,6 @@ for (const oc of outcomes) {
         st.bestScoreMargin = oc.margin;
         st.bestScoreLabel = oc.scoreLabel;
       }
-    }
-  }
-
-  // coéquipiers (joués avec, en team) → déjà géré plus haut, mais on garde pour sécurité
-  if (oc.isTeam) {
-    for (const tm of oc.teammates) {
-      const st = ensurePerson(tm);
-      st.teamMatches++;
     }
   }
 }
@@ -3123,18 +3155,22 @@ const pctSetsWinDisplay =
 
 // LIGNES POUR LE TABLEAU "DÉTAILS ADVERSAIRES / COÉQUIPIERS"
 const detailsRows = Object.entries(perPersonStats)
-  .map(([id, st]) => ({
-    id,
-    name: playerNameMap[id] ?? id,
-    matches: st.vsMatches,
-    legsWon: st.legsWon,
-    setsWon: st.setsWon,
-    wins: st.vsWins,
-    bestScore: st.bestScoreLabel,
-    teams: st.teamMatches,
-  }))
-  // tri : ceux qu'on a le plus joués en haut
-  .sort((a, b) => b.matches - a.matches);
+  .map(([id, st]) => {
+    const teamBestIsBetter = st.teamBestScoreMargin > st.bestScoreMargin;
+    const totalMatches = st.vsMatches + st.teamMatches;
+    return {
+      id,
+      name: playerNameMap[id] ?? id,
+      matches: totalMatches,
+      legsWon: st.legsWon + st.teamLegsWon,
+      setsWon: st.setsWon + st.teamSetsWon,
+      wins: st.vsWins + st.teamWins,
+      bestScore: teamBestIsBetter ? st.teamBestScoreLabel : st.bestScoreLabel,
+      teams: st.teamMatches,
+    };
+  })
+  // tri : ceux qu'on a le plus joués en haut, puis coéquipiers/adversaires team utiles
+  .sort((a, b) => b.matches - a.matches || b.teams - a.teams || a.name.localeCompare(b.name));
 
 // ------------------- RENDER -------------------
 return (
