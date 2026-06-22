@@ -1104,35 +1104,84 @@ function historyX01Teams(e: SavedEntry): any[] {
 }
 
 
+function historyVisitRows(e: SavedEntry): any[] {
+  const anyE: any = e as any;
+  const pools = [
+    anyE?.summary?.legacy?.visitHistory,
+    anyE?.summary?.legacy?.visitsHistory,
+    anyE?.payload?.summary?.legacy?.visitHistory,
+    anyE?.payload?.summary?.legacy?.visitsHistory,
+    anyE?.visitHistory,
+    anyE?.visitsHistory,
+    anyE?.payload?.visitHistory,
+    anyE?.payload?.visitsHistory,
+  ];
+  const found = pools.find((x) => Array.isArray(x) && x.length);
+  return Array.isArray(found) ? found : [];
+}
+
+function historyTeamExplicitMap(e: SavedEntry, key: "teamLegsWon" | "teamSetsWon"): Record<string, number> {
+  const anyE: any = e as any;
+  const pools = [
+    anyE?.[key],
+    anyE?.state?.[key],
+    anyE?.summary?.[key],
+    anyE?.payload?.[key],
+    anyE?.payload?.state?.[key],
+    anyE?.payload?.summary?.[key],
+    anyE?.payload?.summary?.state?.[key],
+    anyE?.resume?.state?.[key],
+  ];
+  const found = pools.find((x) => x && typeof x === "object" && !Array.isArray(x));
+  if (!found) return {};
+  return Object.fromEntries(Object.entries(found).map(([k, v]) => [String(k), Number(v) || 0]));
+}
+
 function historyX01TeamLegWins(e: SavedEntry, teams: any[]): Record<string, number> {
   const anyE: any = e as any;
+  const explicit = historyTeamExplicitMap(e, "teamLegsWon");
+  const wins: Record<string, number> = {};
+  teams.forEach((t: any) => { wins[String(t.id || t.name)] = Number(explicit[String(t.id || t.name)] || 0) || 0; });
+  if (Object.values(wins).some((v) => Number(v) > 0)) return wins;
+
+  const visits = historyVisitRows(e);
   const darts = anyE?.darts || anyE?.payload?.darts || anyE?.decoded?.darts || anyE?.resume?.darts || [];
   const start = Number(anyE?.startScore || anyE?.summary?.game?.startScore || anyE?.payload?.config?.startScore || anyE?.payload?.summary?.game?.startScore || 301) || 301;
-  const byPlayer = new Map<string, string>();
-  teams.forEach((t: any) => (t.playerIds || []).forEach((pid: string) => byPlayer.set(String(pid), String(t.id || t.name))));
-  const wins: Record<string, number> = {};
-  teams.forEach((t: any) => { wins[String(t.id || t.name)] = 0; });
-  if (!Array.isArray(darts) || !darts.length) return wins;
+  const source = Array.isArray(visits) && visits.length ? visits : (Array.isArray(darts) ? darts : []);
   const grouped = new Map<number, any[]>();
-  darts.forEach((d: any) => {
-    const leg = Number(d?.legNo ?? d?.matchLegNo ?? d?.currentLeg ?? d?.legIndex ?? 1) || 1;
+  source.forEach((row: any) => {
+    const leg = Number(row?.matchLegNo ?? row?.legNo ?? row?.currentLeg ?? row?.legIndex ?? 1) || 1;
     if (!grouped.has(leg)) grouped.set(leg, []);
-    grouped.get(leg)!.push(d);
+    grouped.get(leg)!.push(row);
   });
-  [...grouped.entries()].sort((a,b) => a[0]-b[0]).forEach(([, list]) => {
-    const remaining: Record<string, number> = {};
-    teams.forEach((t: any) => { remaining[String(t.id || t.name)] = start; });
-    let winnerKey = "";
-    for (const d of list) {
-      const pid = String(d?.playerId || d?.pid || d?.p || d?.profileId || "");
-      const tk = byPlayer.get(pid);
-      if (!tk || winnerKey) continue;
-      remaining[tk] = (remaining[tk] ?? start) - (Number(d?.score ?? d?.v ?? 0) || 0);
-      if (remaining[tk] <= 0) winnerKey = tk;
-    }
-    if (winnerKey) wins[winnerKey] = (wins[winnerKey] || 0) + 1;
+  [...grouped.entries()].sort((a,b) => a[0]-b[0]).forEach(([, rows]) => {
+    const remainingByPlayer: Record<string, number> = {};
+    rows.forEach((r: any) => {
+      const pid = String(r?.playerId || r?.pid || r?.p || r?.profileId || "");
+      if (!pid) return;
+      const after = Number(r?.scoreAfter ?? r?.after ?? r?.remaining ?? r?.scoreRemaining);
+      if (Number.isFinite(after)) remainingByPlayer[pid] = after;
+      else {
+        const before = Number(r?.scoreBefore ?? r?.before ?? start) || start;
+        const score = Number(r?.score ?? r?.visitScoreInput ?? r?.v ?? 0) || 0;
+        remainingByPlayer[pid] = Math.max(0, before - score);
+      }
+    });
+    const teamTotals = teams.map((t: any) => {
+      const key = String(t.id || t.name);
+      const sum = (t.playerIds || []).reduce((acc: number, pid: string) => acc + (Number.isFinite(remainingByPlayer[String(pid)]) ? remainingByPlayer[String(pid)] : start), 0);
+      return { key, sum };
+    }).sort((a: any, b: any) => a.sum - b.sum);
+    if (teamTotals.length && Number.isFinite(teamTotals[0].sum)) wins[teamTotals[0].key] = (wins[teamTotals[0].key] || 0) + 1;
   });
   return wins;
+}
+
+function historyX01TeamSetsWon(e: SavedEntry, teams: any[]): Record<string, number> {
+  const explicit = historyTeamExplicitMap(e, "teamSetsWon");
+  const out: Record<string, number> = {};
+  teams.forEach((t: any) => { out[String(t.id || t.name)] = Number(explicit[String(t.id || t.name)] || 0) || 0; });
+  return out;
 }
 
 function historyTeamRowsForX01(e: SavedEntry): any[] {
@@ -1147,6 +1196,7 @@ function historyTeamRowsForX01(e: SavedEntry): any[] {
   });
   const playerByName = new Map(players.map((p: any) => [normHistoryName(p.name), p]));
   const legWins = historyX01TeamLegWins(e, teams);
+  const setWins = historyX01TeamSetsWon(e, teams);
   const maxWins = Math.max(0, ...Object.values(legWins).map((v: any) => Number(v) || 0));
   return teams
     .map((t: any) => {
@@ -1160,8 +1210,10 @@ function historyTeamRowsForX01(e: SavedEntry): any[] {
       }).filter((m: any) => cleanName(m.name))
         .sort((a: any, b: any) => Number(b.points || 0) - Number(a.points || 0));
       const score = Number(legWins[teamKey] || 0);
+      const setsWon = Number(setWins[teamKey] || 0);
+      const totalPoints = members.reduce((acc: number, m: any) => acc + (Number(m.points) || 0), 0);
       const winner = maxWins > 0 && score === maxWins;
-      return { ...t, members, score, matchScore: score, winner };
+      return { ...t, members, score, matchScore: score, legsWon: score, setsWon, totalPoints, winner };
     })
     .sort((a: any, b: any) => (b.winner ? 1 : 0) - (a.winner ? 1 : 0) || b.score - a.score || a._idx - b._idx);
 }

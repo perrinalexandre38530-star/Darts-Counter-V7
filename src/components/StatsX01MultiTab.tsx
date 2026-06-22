@@ -574,12 +574,27 @@ function computeX01MultiMeta(
       (r as any).state?.winnerId ??
       null;
 
-    const isWin =
-      winnerId === selfPid || winnerId === pidTarget;
-
     const cfg = (r as any).config ?? (r as any).payload?.config ?? {};
-    const hasTeams = !!cfg.teams || cfg.matchMode === "teams";
+    const hasTeams = !!cfg.teams || cfg.matchMode === "teams" || cfg.gameMode === "teams";
     const nbPlayers = players.length;
+
+    let isWin = winnerId === selfPid || winnerId === pidTarget;
+
+    if (hasTeams && Array.isArray(cfg.teams)) {
+      const myTeam = cfg.teams.find((t: any) => {
+        const raw = Array.isArray(t?.players) ? t.players : Array.isArray(t?.playerIds) ? t.playerIds : [];
+        return raw.map((x: any) => String(typeof x === "string" ? x : (x?.id || x?.playerId || x?.profileId || ""))).includes(String(selfPid));
+      });
+      const myTeamId = myTeam ? String(myTeam.id || myTeam.name || "") : "";
+      const teamWinnerId = String((r as any).winnerTeamId || (r as any).teamWinnerId || (r as any).summary?.winnerTeamId || (r as any).payload?.summary?.winnerTeamId || "");
+      const teamWins = (r as any).teamLegsWon || (r as any).state?.teamLegsWon || (r as any).summary?.teamLegsWon || (r as any).payload?.state?.teamLegsWon || (r as any).payload?.summary?.teamLegsWon || null;
+      if (teamWinnerId) {
+        isWin = myTeamId && teamWinnerId === myTeamId;
+      } else if (teamWins && myTeamId) {
+        const maxWins = Math.max(0, ...Object.values(teamWins).map((v: any) => Number(v) || 0));
+        isWin = maxWins > 0 && Number((teamWins as any)[myTeamId] || 0) === maxWins;
+      }
+    }
 
     meta.totalGames += 1;
     if (isWin) meta.totalWins += 1;

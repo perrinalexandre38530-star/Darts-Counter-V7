@@ -1710,11 +1710,12 @@ export function computeX01MultiLegsSetsForProfileFromMatches(profileId: string, 
     if (!m || safeLower((m as any).kind) !== "x01") continue;
 
     const payload: any = (m as any).payload || {};
-    const mode: string = payload.mode || payload.gameMode || "";
+    const cfg: any = payload.config || (m as any).config || {};
+    const mode: string = payload.mode || payload.gameMode || cfg.gameMode || cfg.matchMode || "";
 
-    if (!mode || mode === "x01_solo") continue;
+    if (!mode || mode === "x01_solo" || mode === "solo") continue;
 
-    const players: any[] = (payload.config && payload.config.players) || (m as any).players || [];
+    const players: any[] = (cfg && cfg.players) || (m as any).players || [];
     if (!players.length) continue;
 
     const me = players.find((p) => String(p.profileId || p.id || "") === String(profileId));
@@ -1741,32 +1742,46 @@ export function computeX01MultiLegsSetsForProfileFromMatches(profileId: string, 
         }
       }
     } else {
-      const legsMap: any = summary.legsWon || payload.legsWon || (payload.state && payload.state.legsWon);
-      const setsMap: any = summary.setsWon || payload.setsWon || (payload.state && payload.state.setsWon);
+      let legsMap: any = summary.legsWon || payload.legsWon || (payload.state && payload.state.legsWon);
+      let setsMap: any = summary.setsWon || payload.setsWon || (payload.state && payload.state.setsWon);
+
+      const isTeamsMode = mode === "x01_teams" || mode === "teams" || cfg.gameMode === "teams" || cfg.matchMode === "teams";
+      let myTeamId = "";
+      if (isTeamsMode && Array.isArray(cfg.teams)) {
+        const myTeam = cfg.teams.find((t: any) => {
+          const raw = Array.isArray(t?.players) ? t.players : Array.isArray(t?.playerIds) ? t.playerIds : [];
+          return raw.map((x: any) => String(typeof x === "string" ? x : (x?.id || x?.playerId || x?.profileId || ""))).includes(String(pid));
+        });
+        myTeamId = myTeam ? String(myTeam.id || myTeam.name || "") : "";
+        legsMap = summary.teamLegsWon || payload.teamLegsWon || (payload.state && payload.state.teamLegsWon) || legsMap;
+        setsMap = summary.teamSetsWon || payload.teamSetsWon || (payload.state && payload.state.teamSetsWon) || setsMap;
+      }
 
       if (legsMap && typeof legsMap === "object") {
         for (const [k, v] of Object.entries(legsMap)) {
           const val = Number(v) || 0;
           totalLegs += val;
-          if (String(k) === pid) myLegs = val;
+          if (String(k) === (myTeamId || pid)) myLegs = val;
         }
       }
       if (setsMap && typeof setsMap === "object") {
         for (const [k, v] of Object.entries(setsMap)) {
           const val = Number(v) || 0;
           totalSets += val;
-          if (String(k) === pid) mySets = val;
+          if (String(k) === (myTeamId || pid)) mySets = val;
         }
       }
     }
 
     let bucketKey: keyof X01MultiLegsSets;
-    if (mode === "x01_teams") bucketKey = "team";
+    if (mode === "x01_teams" || mode === "teams" || cfg.gameMode === "teams" || cfg.matchMode === "teams") bucketKey = "team";
     else bucketKey = players.length <= 2 ? "duo" : "multi";
 
     const bucket = out[bucketKey];
     bucket.matchesTotal += 1;
-    if ((m as any).winnerId && String((m as any).winnerId) === pid) bucket.matchesWin += 1;
+    if (bucketKey === "team") {
+      bucket.matchesWin += myLegs > 0 || mySets > 0 ? 1 : 0;
+    } else if ((m as any).winnerId && String((m as any).winnerId) === pid) bucket.matchesWin += 1;
 
     bucket.legsWin += myLegs;
     bucket.legsTotal += totalLegs;

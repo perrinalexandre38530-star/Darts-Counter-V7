@@ -9052,9 +9052,16 @@ function saveX01V3MatchToHistory({
         };
       })
     : [];
+  const maxTeamScore = teamSummaries.length ? Math.max(0, ...teamSummaries.map((t: any) => Number(t.score) || 0)) : 0;
+  for (const t of teamSummaries as any[]) {
+    if (!t.isWinner && maxTeamScore > 0 && Number(t.score || 0) === maxTeamScore) t.isWinner = true;
+  }
   const winningTeamSummary = teamSummaries.find((t: any) => !!t.isWinner) || null;
   const teamWinnerName = winningTeamSummary?.name || null;
   const teamScores = Object.fromEntries(teamSummaries.map((t: any) => [t.id, t.score]));
+  const teamLegsWon = Object.fromEntries(teamSummaries.map((t: any) => [t.id, Number(t.legsWon || 0)]));
+  const teamSetsWon = Object.fromEntries(teamSummaries.map((t: any) => [t.id, Number(t.setsWon || 0)]));
+  const teamWinnerId = winningTeamSummary?.id || null;
 
   // -------------------------
   // Objet legacy compatible avec l'ancien écran détaillé X01
@@ -9168,10 +9175,14 @@ function saveX01V3MatchToHistory({
     rankings,
     winnerId,
     winnerName,
+    teamWinnerId,
+    winnerTeamId: teamWinnerId,
     teamWinnerName,
     winnerLabel: teamWinnerName || winnerName,
     teams: teamSummaries,
     teamScores,
+    teamLegsWon,
+    teamSetsWon,
     finalScores: finalScoresForHistory,
     remainingScores: finalScoresForHistory,
     scores: finalScoresForHistory,
@@ -9312,6 +9323,13 @@ function saveX01V3MatchToHistory({
     players: lightPlayers,
     summary,
     state: finalStateForPayload,
+    teamWinnerId,
+    winnerTeamId: teamWinnerId,
+    teamWinnerName,
+    teams: teamSummaries,
+    teamScores,
+    teamLegsWon,
+    teamSetsWon,
     finalScores: finalScoresForHistory,
     remaining: finalScoresForHistory,
     remainingScores: finalScoresForHistory,
@@ -9371,6 +9389,13 @@ function saveX01V3MatchToHistory({
       dartPresetId: p.dartPresetId ?? null,
     })),
     winnerId,
+    teamWinnerId,
+    winnerTeamId: teamWinnerId,
+    teamWinnerName,
+    teams: teamSummaries,
+    teamScores,
+    teamLegsWon,
+    teamSetsWon,
     finalScores: finalScoresForHistory,
     remaining: finalScoresForHistory,
     remainingScores: finalScoresForHistory,
