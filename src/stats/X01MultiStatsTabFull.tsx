@@ -3066,7 +3066,21 @@ const getProfileIdFromSession = (s: any): string | undefined => {
     (s.player_profile_id && String(s.player_profile_id)) ||
     undefined
   );
- };
+};
+
+const getAvatarFromSession = (s: any): string | null => {
+  const raw =
+    s?.avatarDataUrl ??
+    s?.avatarUrl ??
+    s?.avatarURL ??
+    s?.avatar ??
+    s?.photoDataUrl ??
+    s?.photoUrl ??
+    s?.image ??
+    s?.picture ??
+    null;
+  return typeof raw === "string" && raw.trim() ? raw : null;
+};
 
 // Mapping id (selectedPlayerId) -> nom + profileId + avatar
 const playerNameMap: Record<string, string> = {};
@@ -3089,9 +3103,25 @@ for (const s of filtered) {
     }
   }
 
-  // 🔥 avatar récupéré depuis X01MultiSession.avatarDataUrl (si dispo)
-  if (playerAvatarMap[key] === undefined) {
-    playerAvatarMap[key] = (s as any).avatarDataUrl ?? null;
+  // 🔥 avatar récupéré depuis X01MultiSession avec tous les champs connus
+  const av = getAvatarFromSession(s as any);
+  if (playerAvatarMap[key] === undefined || (!playerAvatarMap[key] && av)) {
+    playerAvatarMap[key] = av;
+  }
+}
+
+// Second passage : si une même personne apparaît avec un autre id mais le même nom,
+// on réutilise l'avatar trouvé ailleurs au lieu de retomber sur l'initiale.
+const avatarByName: Record<string, string> = {};
+for (const s of filtered) {
+  const nm = String((s as any).playerName || "").trim().toLowerCase();
+  const av = getAvatarFromSession(s as any);
+  if (nm && av && !avatarByName[nm]) avatarByName[nm] = av;
+}
+for (const id in playerNameMap) {
+  const nm = String(playerNameMap[id] || "").trim().toLowerCase();
+  if (nm && !playerAvatarMap[id] && avatarByName[nm]) {
+    playerAvatarMap[id] = avatarByName[nm];
   }
 }
 
@@ -4758,7 +4788,7 @@ return (
               {h}
             </div>
           ))}
-          <div style={{ textAlign: "center", fontWeight: 800, color: T.text70 }}>Joueur</div>
+          <div style={{ textAlign: "center", fontWeight: 800, color: T.text70 }}>Avatar</div>
           {["M", "S/L", "W/L", "Best"].map((h) => (
             <div key={`team-h-${h}`} style={{ textAlign: "center", fontWeight: 800, color: "#9DFFB3" }}>
               {h}
@@ -4781,20 +4811,19 @@ return (
                 <div style={{ textAlign: "center", color: opp.bestScore ? "#FFB06A" : T.text50 }}>{opp.bestScore ?? "-"}</div>
 
                 <div
+                  title={row.name}
                   style={{
-                    minWidth: 54,
+                    minWidth: 42,
                     display: "flex",
-                    flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 2,
                     padding: "2px 0",
                   }}
                 >
                   <div
                     style={{
-                      width: 28,
-                      height: 28,
+                      width: 30,
+                      height: 30,
                       borderRadius: "50%",
                       overflow: "hidden",
                       display: "flex",
@@ -4815,26 +4844,10 @@ return (
                         name: row.name,
                         avatarDataUrl: row.avatarDataUrl || undefined,
                       }}
-                      size={28}
+                      size={30}
                       showStars={false}
                       noFrame
                     />
-                  </div>
-                  <div
-                    style={{
-                      maxWidth: 58,
-                      textAlign: "center",
-                      color: T.text,
-                      fontWeight: 800,
-                      fontSize: 8,
-                      lineHeight: 1.05,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={row.name}
-                  >
-                    {row.name}
                   </div>
                 </div>
 
