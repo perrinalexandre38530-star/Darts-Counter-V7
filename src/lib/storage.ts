@@ -89,6 +89,136 @@ function estimateObjectSizeBytes(obj: any): number {
   }
 }
 
+
+
+/* ============================================================
+   🛡️ PROFILS LOCAUX — garde-fou anti-disparition
+   ------------------------------------------------------------
+   Plusieurs flux peuvent réécrire le store (boot, cloud/NAS, cache,
+   imports). Un snapshot partiel avec profiles: [] ne doit jamais effacer
+   silencieusement des profils locaux déjà connus. La suppression volontaire
+   reste possible via l'écran Profils, car le cache est rafraîchi à chaque
+   sauvegarde contenant au moins 1 profil.
+============================================================ */
+const PROFILE_SAFETY_CACHE_KEY = "dc_profiles_safety_cache_v1";
+
+type ProfileSafetyCache = {
+  _v: 1;
+  scopedStoreKey: string;
+  userId: string | null;
+  updatedAt: number;
+  profiles: any[];
+  activeProfileId: string | null;
+};
+
+function profileSafetyCacheKey() {
+  try {
+    return `${PROFILE_SAFETY_CACHE_KEY}:${scopedStorageKey(STORE_KEY)}`;
+  } catch {
+    return PROFILE_SAFETY_CACHE_KEY;
+  }
+}
+
+function validProfileList(value: any): any[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((p) => p && typeof p === "object" && String(p.id || "").trim() && String(p.name || "").trim());
+}
+
+function mergeProfilesForSafety(primary: any[], fallback: any[]): any[] {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  for (const p of [...validProfileList(primary), ...validProfileList(fallback)]) {
+    const id = String(p.id || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(p);
+  }
+  return out;
+}
+
+function readProfilesSafetyCache(): ProfileSafetyCache | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(profileSafetyCacheKey());
+    if (!raw) return null;
+    const parsed = safeJsonParse<ProfileSafetyCache | null>(raw, null);
+    const profiles = validProfileList(parsed?.profiles);
+    if (!parsed || profiles.length <= 0) return null;
+    return { ...parsed, profiles };
+  } catch {
+    return null;
+  }
+}
+
+function writeProfilesSafetyCache(store: any) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const profiles = validProfileList(store?.profiles);
+    if (profiles.length <= 0) return;
+    const payload: ProfileSafetyCache = {
+      _v: 1,
+      scopedStoreKey: scopedStorageKey(STORE_KEY),
+      userId: getStorageUser(),
+      updatedAt: Date.now(),
+      profiles,
+      activeProfileId: store?.activeProfileId ? String(store.activeProfileId) : null,
+    };
+    localStorage.setItem(profileSafetyCacheKey(), safeJsonStringify(payload));
+  } catch {}
+}
+
+export function getCachedLocalProfilesForSafety(): { profiles: any[]; activeProfileId: string | null } | null {
+  const cache = readProfilesSafetyCache();
+  if (!cache?.profiles?.length) return null;
+  return { profiles: cache.profiles, activeProfileId: cache.activeProfileId ?? null };
+}
+
+async function getPersistedStoreProfilesForSafety(): Promise<{ profiles: any[]; activeProfileId: string | null } | null> {
+  try {
+    const raw = (await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY))) ?? null;
+    if (raw == null) return null;
+    const json = await decompressGzip(raw as any);
+    const parsed = safeJsonParse<any>(json, null);
+    const profiles = validProfileList(parsed?.profiles);
+    if (!profiles.length) return null;
+    return { profiles, activeProfileId: parsed?.activeProfileId ? String(parsed.activeProfileId) : null };
+  } catch {
+    return null;
+  }
+}
+
+async function protectProfilesAgainstEmptyOverwrite<T extends Store>(store: T, reason: string): Promise<T> {
+  const currentProfiles = validProfileList((store as any)?.profiles);
+  if (currentProfiles.length > 0) {
+    writeProfilesSafetyCache(store as any);
+    return { ...(store as any), profiles: currentProfiles } as T;
+  }
+
+  const persisted = await getPersistedStoreProfilesForSafety();
+  const cached = getCachedLocalProfilesForSafety();
+  const recovered = mergeProfilesForSafety(persisted?.profiles || [], cached?.profiles || []);
+  if (recovered.length <= 0) return store;
+
+  const activeProfileId =
+    (store as any)?.activeProfileId ||
+    persisted?.activeProfileId ||
+    cached?.activeProfileId ||
+    recovered[0]?.id ||
+    null;
+
+  try {
+    console.warn("[storage] profils locaux protégés contre écrasement vide", {
+      reason,
+      recovered: recovered.length,
+      activeProfileId,
+    });
+  } catch {}
+
+  const next = { ...(store as any), profiles: recovered, activeProfileId } as T;
+  writeProfilesSafetyCache(next as any);
+  return next;
+}
+
 function guardStoreShape<T extends Store>(store: T | null | undefined): T {
   const base: any = store && typeof store === "object" ? { ...(store as any) } : {};
   if (!Array.isArray(base.profiles)) base.profiles = [];
@@ -1183,7 +1313,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
       if (!parsed) return null;
 
-      const guarded = guardStoreShape(parsed);
+      const guarded = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(parsed), "loadStore:idb");
       const norm = await normalizeStoreAll(guarded);
 
       if (norm.changed) {
@@ -1208,7 +1338,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
       const parsed = safeJsonParse<T | null>(legacy, null);
       if (!parsed) return null;
 
-      const guarded = guardStoreShape(parsed);
+      const guarded = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(parsed), "loadStore:idb");
       const norm = await normalizeStoreAll(guarded);
 
       await saveStore(norm.store);
@@ -1231,7 +1361,7 @@ type SaveOpts = {
 };
 
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
-  const guardedInput = guardStoreShape(store);
+  const guardedInput = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(store), "saveStore");
   const startedAt = storageNowMs();
 
   try {
@@ -1716,6 +1846,26 @@ export async function importAll(dump: any): Promise<void> {
 
     // 2) restore localStorage (dc_* + dc-*)
     importLocalStorageDc(lsDump);
+
+    // 2.1) 🛡️ Protection profils locaux : si le snapshot NAS/cloud a restauré
+    // un store partiel avec profiles: [], on réinjecte les profils connus avant
+    // que l'app ne recharge l'état React.
+    try {
+      const key = scopedStorageKey(STORE_KEY);
+      const raw = await idbGet<any>(key);
+      if (raw != null) {
+        const json = await decompressGzip(raw as any);
+        const parsedStore = safeJsonParse<any>(json, null);
+        if (parsedStore && typeof parsedStore === "object") {
+          const protectedStore = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(parsedStore), "importAll:snapshot");
+          const protectedJson = safeJsonStringify(protectedStore);
+          await idbSet(key, await persistPayloadForKey(key, protectedJson));
+          lastSavedStoreJsonByScope.set(key, protectedJson);
+        }
+      }
+    } catch (e) {
+      console.warn("[storage] importAll profile safety failed", e);
+    }
 
     // 2bis) ✅ NAS BACKUP TEAMS : restore Profiles > Teams depuis le champ
     // explicite du snapshot ou depuis le store injecté. Ça couvre aussi les cas

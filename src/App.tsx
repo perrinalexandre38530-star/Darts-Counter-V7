@@ -95,7 +95,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, exportCloudSnapshot, importCloudSnapshot, installLocalStorageDcHook, setStorageUser, getStorageUser } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, importCloudSnapshot, installLocalStorageDcHook, setStorageUser, getStorageUser, getCachedLocalProfilesForSafety } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
 import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
 import { safeArray } from "./utils/safeArray";
@@ -1584,6 +1584,26 @@ useEffect(() => {
   }, []);
 
   const [store, setStore] = React.useState<Store>(initialStore);
+
+  // 🛡️ Garde-fou UI anti-disparition profils locaux.
+  // Si un flux asynchrone injecte provisoirement profiles: [], on restaure
+  // immédiatement le dernier cache sûr au lieu de laisser l'écran Profils à 0.
+  React.useEffect(() => {
+    try {
+      if ((store?.profiles?.length || 0) > 0) return;
+      const cached = getCachedLocalProfilesForSafety();
+      if (!cached?.profiles?.length) return;
+      setStore((prev: any) => {
+        if ((prev?.profiles?.length || 0) > 0) return prev;
+        return {
+          ...prev,
+          profiles: cached.profiles,
+          activeProfileId: prev?.activeProfileId || cached.activeProfileId || cached.profiles[0]?.id || null,
+        } as any;
+      });
+    } catch {}
+  }, [(store?.profiles?.length || 0), (store as any)?.activeProfileId]);
+
   const hasMeaningfulLocalCloudData = React.useMemo(() => {
     return (
       (store?.profiles?.length || 0) > 0 ||
@@ -2248,7 +2268,12 @@ useEffect(() => {
         const normalized: Store = {
           ...initialStore,
           ...(nextStore as any),
-          profiles: Array.isArray((nextStore as any).profiles) ? (nextStore as any).profiles : [],
+          profiles: (() => {
+            const incoming = Array.isArray((nextStore as any).profiles) ? (nextStore as any).profiles : [];
+            if (incoming.length > 0) return incoming;
+            const cached = getCachedLocalProfilesForSafety();
+            return cached?.profiles?.length ? cached.profiles : [];
+          })(),
           friends: Array.isArray((nextStore as any).friends) ? (nextStore as any).friends : [],
           history: Array.isArray((nextStore as any).history) ? (nextStore as any).history : [],
           dartSets: Array.isArray((nextStore as any).dartSets) ? (nextStore as any).dartSets : getAllDartSets(),
