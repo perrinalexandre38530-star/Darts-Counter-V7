@@ -76,6 +76,29 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   const rosterA = React.useMemo(() => buildRoster(cfg.teamAPlayerIds, cfg.playersA, cfg.playersAVisuals), [cfg.teamAPlayerIds, cfg.playersA, cfg.playersAVisuals]);
   const rosterB = React.useMemo(() => buildRoster(cfg.teamBPlayerIds, cfg.playersB, cfg.playersBVisuals), [cfg.teamBPlayerIds, cfg.playersB, cfg.playersBVisuals]);
 
+  const lineupSize = Math.max(1, Number(spec.playersPerSide || 1));
+  const [lineupA, setLineupA] = React.useState<string[]>(() => rosterA.slice(0, lineupSize).map((p: any) => String(p.id)));
+  const [lineupB, setLineupB] = React.useState<string[]>(() => rosterB.slice(0, lineupSize).map((p: any) => String(p.id)));
+  const initialLineupsRef = React.useRef<{ a: string[]; b: string[] } | null>(null);
+
+  React.useEffect(() => {
+    const next = rosterA.slice(0, lineupSize).map((p: any) => String(p.id));
+    setLineupA(next);
+    initialLineupsRef.current = null;
+  }, [rosterA.map((p: any) => p.id).join("|"), lineupSize]);
+
+  React.useEffect(() => {
+    const next = rosterB.slice(0, lineupSize).map((p: any) => String(p.id));
+    setLineupB(next);
+    initialLineupsRef.current = null;
+  }, [rosterB.map((p: any) => p.id).join("|"), lineupSize]);
+
+  React.useEffect(() => {
+    if (!initialLineupsRef.current && (lineupA.length || lineupB.length)) {
+      initialLineupsRef.current = { a: [...lineupA], b: [...lineupB] };
+    }
+  }, [lineupA.join("|"), lineupB.join("|")]);
+
   const addEvent = (team: 0 | 1, type: EventType, player?: any, extra?: any) => {
     const ev = {
       id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -163,7 +186,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       setScore(([a, b]) => scoringTeam === 0 ? [a + 1, b] : [a, b + 1]);
     } else {
       if (meta?.autoSubOut) {
-        confirmSubstitution(meta.autoSubOut, player);
+        performSubstitution(playerPickModal.team, playerPickModal.teamName, meta.autoSubOut, player);
       }
       const isGoalAction = playerPickModal.actionType === "goal" || playerPickModal.actionType === "penalty_scored";
       if (isGoalAction) {
@@ -199,13 +222,23 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   };
 
 
-  const confirmSubstitution = (outPlayer?: any, inPlayer?: any) => {
-    if (!substitutionModal || !outPlayer || !inPlayer) return;
+  const performSubstitution = (team: 0 | 1, teamName: string, outPlayer?: any, inPlayer?: any) => {
+    if (!outPlayer || !inPlayer || String(outPlayer.id) === String(inPlayer.id)) return;
+    const setter = team === 0 ? setLineupA : setLineupB;
+    setter((prev) => {
+      const next = [...prev];
+      const outIndex = next.findIndex((id) => String(id) === String(outPlayer.id));
+      const inIndex = next.findIndex((id) => String(id) === String(inPlayer.id));
+      if (outIndex < 0) return prev;
+      if (inIndex >= 0) next[inIndex] = String(outPlayer.id);
+      next[outIndex] = String(inPlayer.id);
+      return next;
+    });
     const ev = {
       id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       at: new Date().toISOString(),
-      team: substitutionModal.team,
-      teamName: substitutionModal.teamName,
+      team,
+      teamName,
       type: "substitution" as EventType,
       label: "Remplacement",
       icon: icons.substitution,
@@ -223,6 +256,11 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       scoreBAfter: score[1],
     };
     setEvents((prev) => [ev, ...prev]);
+  };
+
+  const confirmSubstitution = (outPlayer?: any, inPlayer?: any) => {
+    if (!substitutionModal || !outPlayer || !inPlayer) return;
+    performSubstitution(substitutionModal.team, substitutionModal.teamName, outPlayer, inPlayer);
     setSubstitutionModal(null);
   };
 
@@ -367,8 +405,8 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         </div>
 
         {activeTab === "timeline" && <TimelineTab events={events} />}
-        {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} rosterA={rosterA} rosterB={rosterB} />}
-        {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} />}
+        {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} rosterA={rosterA} rosterB={rosterB} initialLineups={initialLineupsRef.current || { a: lineupA, b: lineupB }} elapsedSeconds={getCurrentMatchElapsedSeconds(currentPeriod, periodSeconds, remainingSeconds)} />}
+        {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} lineupA={lineupA} lineupB={lineupB} setLineupA={setLineupA} setLineupB={setLineupB} onSubstitute={performSubstitution} />}
         {activeTab === "ranking" && <EmptyTab title="CLASSEMENT" text="Le classement lié à cette ligue ou ce tournoi sera affiché ici." />}
       </div>
       {actionModal && (
@@ -385,6 +423,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           roster={playerPickModal.team === 0 ? rosterA : rosterB}
           fallbackName={playerPickModal.teamName}
           playersPerSide={spec.playersPerSide}
+          activeIds={playerPickModal.team === 0 ? lineupA : lineupB}
           onClose={() => setPlayerPickModal(null)}
           onSelect={confirmPlayerAction}
         />
@@ -393,6 +432,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         <AssistModal
           data={assistModal}
           roster={assistModal.team === 0 ? rosterA : rosterB}
+          activeIds={assistModal.team === 0 ? lineupA : lineupB}
           onClose={() => setAssistModal(null)}
           onSelect={confirmAssist}
         />
@@ -401,6 +441,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         <SubstitutionModal
           data={substitutionModal}
           roster={substitutionModal.team === 0 ? rosterA : rosterB}
+          activeIds={substitutionModal.team === 0 ? lineupA : lineupB}
           onClose={() => setSubstitutionModal(null)}
           onConfirm={confirmSubstitution}
         />
@@ -654,9 +695,28 @@ function getEventMinute(ev: any) {
   const elapsed = (period - 1) * periodSeconds + Math.max(0, periodSeconds - remaining);
   return Math.max(1, Math.ceil(elapsed / 60));
 }
+function getCurrentMatchElapsedSeconds(period: number, periodSeconds: number, remainingSeconds: number) {
+  const p = Math.max(1, Number(period || 1));
+  const ps = Math.max(60, Number(periodSeconds || 60));
+  const rem = Math.max(0, Number(remainingSeconds || 0));
+  return (p - 1) * ps + Math.max(0, ps - rem);
+}
 
-function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisual, rosterA, rosterB }: any) {
-  const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots, rosterA, rosterB), [events, teamA, teamB, score, shoots, rosterA, rosterB]);
+function getEventElapsedSeconds(ev: any) {
+  const period = Math.max(1, Number(ev.period || 1));
+  const periodSeconds = Math.max(60, Number(ev.periodSeconds || 60));
+  const remaining = Math.max(0, Number(ev.clockRemaining || 0));
+  return (period - 1) * periodSeconds + Math.max(0, periodSeconds - remaining);
+}
+
+function formatTimePlayed(seconds: number) {
+  const m = Math.max(0, Math.floor(Number(seconds || 0) / 60));
+  return `${m}'`;
+}
+
+function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisual, rosterA, rosterB, initialLineups, elapsedSeconds }: any) {
+  const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots, rosterA, rosterB, initialLineups, elapsedSeconds), [events, teamA, teamB, score, shoots, rosterA, rosterB, initialLineups, elapsedSeconds]);
+  const [view, setView] = React.useState<"match" | "players">("match");
 
   const rows = [
     { label: "Score", left: `${score[0]}`, right: `${score[1]}` },
@@ -680,59 +740,64 @@ function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisua
 
   return (
     <section style={tabPanelStyle}>
-      <h2 style={tabTitleStyle}>STATS DU MATCH</h2>
-      <FootStatsCard leftName={teamA} rightName={teamB} leftVisual={teamAVisual} rightVisual={teamBVisual} rows={rows} />
-
-      <h2 style={{ ...tabTitleStyle, marginTop: 16 }}>STATS JOUEURS</h2>
-      <PlayerStatsSplitCard leftName={teamA} rightName={teamB} leftPlayers={teamStats.players[0]} rightPlayers={teamStats.players[1]} />
+      <StatsViewCarousel view={view} setView={setView} />
+      {view === "match" ? (
+        <FootStatsCard leftName={teamA} rightName={teamB} leftVisual={teamAVisual} rightVisual={teamBVisual} rows={rows} />
+      ) : (
+        <PlayerStatsTables leftName={teamA} rightName={teamB} leftPlayers={teamStats.players[0]} rightPlayers={teamStats.players[1]} />
+      )}
     </section>
   );
 }
 
-function PlayerStatsSplitCard({ leftName, rightName, leftPlayers, rightPlayers }: any) {
-  const rows = Array.from({ length: Math.max(leftPlayers?.length || 0, rightPlayers?.length || 0) });
-  const cols = ["B", "PD", "TC", "TNC", "F", "CJ/CR"];
+function StatsViewCarousel({ view, setView }: { view: "match" | "players"; setView: (v: "match" | "players") => void }) {
+  const isMatch = view === "match";
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 44px", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <button type="button" onClick={() => setView(isMatch ? "players" : "match")} style={carouselArrowBtn}>‹</button>
+      <h2 style={{ ...tabTitleStyle, margin: 0 }}>{isMatch ? "STATS DU MATCH" : "STATS INDIVIDUELLES"}</h2>
+      <button type="button" onClick={() => setView(isMatch ? "players" : "match")} style={carouselArrowBtn}>›</button>
+    </div>
+  );
+}
+
+function PlayerStatsTables({ leftName, rightName, leftPlayers, rightPlayers }: any) {
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <PlayerStatsTeamTable teamName={leftName} players={leftPlayers} />
+      <PlayerStatsTeamTable teamName={rightName} players={rightPlayers} />
+    </div>
+  );
+}
+
+function PlayerStatsTeamTable({ teamName, players }: any) {
+  const cols = ["B", "PD", "TC", "TNC", "F", "CJ/CR", "TJ"];
   const valueFor = (player: any, col: string) => {
-    if (!player) return "";
+    if (!player) return "0";
     if (col === "B") return player.goals || 0;
     if (col === "PD") return player.assist || 0;
     if (col === "TC") return player.shot_on || 0;
     if (col === "TNC") return player.shotsOffTotal || 0;
     if (col === "F") return player.foul || 0;
     if (col === "CJ/CR") return `${player.yellow || 0}/${player.red || 0}`;
+    if (col === "TJ") return formatTimePlayed(player.timePlayedSeconds || 0);
     return 0;
   };
-  const renderSide = (player: any, align: "left" | "right") => {
-    if (!player) return (
-      <div style={{ opacity: .22, fontWeight: 1000, minHeight: 42, display: "grid", placeItems: align === "left" ? "center start" : "center end" }}>—</div>
-    );
-    return (
-      <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-        <div style={{ fontWeight: 1000, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: align }}>{player.name}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 0, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
-          {cols.map((col) => (
-            <div key={col} style={{ textAlign: "center", padding: "4px 2px", fontSize: 10, fontWeight: 1000, borderRight: col === "CJ/CR" ? 0 : "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.035)" }}>
-              <div style={{ color: THEME, fontSize: 9, opacity: .9 }}>{col}</div>
-              <div style={{ color: "#fff" }}>{valueFor(player, col)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  const safePlayers = Array.isArray(players) ? players : [];
   return (
     <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", background: THEME_08, borderBottom: `1px solid ${THEME_22}` }}>
-        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, overflowWrap: "anywhere", lineHeight: 1.05 }}>{leftName}</div>
-        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, textAlign: "right", overflowWrap: "anywhere", lineHeight: 1.05 }}>{rightName}</div>
+      <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, background: THEME_08, borderBottom: `1px solid ${THEME_22}`, overflowWrap: "anywhere", textAlign: "center" }}>{teamName}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, minmax(0, 1fr))", alignItems: "center", background: "rgba(255,255,255,.06)", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <div />
+        {cols.map((col) => <div key={col} style={playerTableHeaderCell}>{col}</div>)}
       </div>
-      {rows.length ? rows.map((_, idx) => (
-        <div key={idx} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 0, borderTop: idx ? "1px solid rgba(255,255,255,.08)" : 0 }}>
-          <div style={{ padding: "10px 10px", borderRight: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>{renderSide(leftPlayers?.[idx], "left")}</div>
-          <div style={{ padding: "10px 10px", minWidth: 0 }}>{renderSide(rightPlayers?.[idx], "right")}</div>
+      {safePlayers.length ? safePlayers.map((player: any) => (
+        <div key={player.id || player.name} style={{ display: "grid", gridTemplateColumns: "48px repeat(7, minmax(0, 1fr))", alignItems: "center", minHeight: 50, borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+          <div style={{ display: "grid", placeItems: "center", padding: 6 }} title={player.name}><PlayerAvatarMini player={player} /></div>
+          {cols.map((col) => <div key={col} style={playerTableValueCell}>{valueFor(player, col)}</div>)}
         </div>
-      )) : <div style={{ padding: 12, opacity: .65, fontWeight: 800 }}>Aucune stat joueur.</div>}
-      <div style={{ padding: "8px 12px", opacity: .65, fontSize: 10, fontWeight: 850 }}>B = but · PD = passe décisive · TC = tir cadré · TNC = tir non cadré · F = faute · CJ/CR = cartons</div>
+      )) : <div style={{ padding: 12, opacity: .65, fontWeight: 800 }}>Aucun joueur.</div>}
+      <div style={{ padding: "8px 12px", opacity: .65, fontSize: 10, fontWeight: 850 }}>B = but · PD = passe décisive · TC = tir cadré · TNC = tir non cadré · F = faute · CJ/CR = cartons · TJ = temps joué</div>
     </div>
   );
 }
@@ -789,17 +854,18 @@ function StatsHeaderGhost({ src, side }: { src?: string | null; side: "left" | "
   );
 }
 
-function buildFootStats(events: any[], teamA: string, teamB: string, score: [number, number], shoots: [number, number], rosterA?: any[], rosterB?: any[]) {
+function buildFootStats(events: any[], teamA: string, teamB: string, score: [number, number], shoots: [number, number], rosterA?: any[], rosterB?: any[], initialLineups?: { a?: string[]; b?: string[] }, elapsedSeconds?: number) {
   const emptyTeam = () => ({
     score: 0, period1: 0, period2: 0, shotsTotal: 0, shotsOffTotal: 0,
     goal: 0, penalty_scored: 0, penalty_missed: 0, own_goal: 0, foul: 0, yellow: 0, red: 0,
     shot_on: 0, shot_off: 0, post: 0, crossbar: 0,
     right_foot: 0, left_foot: 0, header: 0, free_kick: 0, assist: 0,
   });
-  const emptyPlayer = (name: string, id: string) => ({
+  const emptyPlayer = (name: string, id: string, visual?: string | null) => ({
     key: id || name,
     id,
     name,
+    visual: visual || null,
     goals: 0,
     shotsTotal: 0,
     shotsOffTotal: 0,
@@ -818,16 +884,20 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
     header: 0,
     free_kick: 0,
     assist: 0,
+    timePlayedSeconds: 0,
   });
 
   const teams = [emptyTeam(), emptyTeam()];
   const players: any[] = [new Map(), new Map()];
+  const visualByTeam: any[] = [new Map(), new Map()];
   const seedRoster = (team: number, roster?: any[]) => {
     if (!Array.isArray(roster)) return;
     roster.forEach((p: any) => {
       const name = String(p?.name || p?.displayName || "Joueur");
       const id = String(p?.id || name);
-      if (!players[team].has(id)) players[team].set(id, emptyPlayer(name, id));
+      const visual = p?.visual || p?.avatar || p?.avatarUrl || p?.avatarDataUrl || null;
+      visualByTeam[team].set(id, visual);
+      if (!players[team].has(id)) players[team].set(id, emptyPlayer(name, id, visual));
     });
   };
   seedRoster(0, rosterA);
@@ -837,7 +907,7 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
     const name = ev.playerName || ev.awardedToPlayerName;
     const id = ev.playerId || ev.awardedToPlayerId || name;
     if (!name) return null;
-    if (!players[team].has(String(id))) players[team].set(String(id), emptyPlayer(String(name), String(id)));
+    if (!players[team].has(String(id))) players[team].set(String(id), emptyPlayer(String(name), String(id), visualByTeam[team].get(String(id)) || null));
     return players[team].get(String(id));
   };
 
@@ -862,8 +932,6 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
       ts.shotsOffTotal += 1;
     }
     if (ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") {
-      // Cohérence FOOT : tout but marqué compte aussi comme un tir total + un tir cadré.
-      // Pour un CSC adverse, la stat est attribuée à l’équipe bénéficiaire.
       ts.shotsTotal += 1;
       ts.shot_on += 1;
     }
@@ -873,8 +941,6 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
     if (ps) {
       if (ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") ps.goals += 1;
       if (ev.type === "shot_on" || ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") {
-        // Cohérence joueur : un but compte comme tir cadré, y compris le CSC adverse
-        // attribué au joueur bénéficiaire sélectionné.
         ps.shotsTotal += 1;
         ps.shot_on += 1;
       }
@@ -889,18 +955,56 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
       if ((ev.type === "goal" || ev.type === "penalty_scored") && ev.assistPlayerName) {
         const assistId = ev.assistPlayerId || ev.assistPlayerName;
         const assistName = String(ev.assistPlayerName);
-        if (!players[statTeam].has(String(assistId))) players[statTeam].set(String(assistId), emptyPlayer(assistName, String(assistId)));
+        if (!players[statTeam].has(String(assistId))) players[statTeam].set(String(assistId), emptyPlayer(assistName, String(assistId), visualByTeam[statTeam].get(String(assistId)) || null));
         players[statTeam].get(String(assistId)).assist += 1;
       }
     }
   });
+
+  // Temps de jeu : démarre avec les joueurs titulaires, puis applique les événements de remplacement.
+  const currentElapsed = Math.max(0, Number(elapsedSeconds || 0));
+  const computeTime = (team: 0 | 1, initialIds: string[]) => {
+    const intervals = new Map<string, { start: number | null; total: number }>();
+    const ensure = (id: string) => {
+      if (!intervals.has(id)) intervals.set(id, { start: null, total: 0 });
+      return intervals.get(id)!;
+    };
+    (initialIds || []).forEach((id) => { ensure(String(id)).start = 0; });
+    const subs = events
+      .filter((ev: any) => ev.type === "substitution" && Number(ev.team) === team)
+      .slice()
+      .sort((a: any, b: any) => getEventElapsedSeconds(a) - getEventElapsedSeconds(b));
+    subs.forEach((ev: any) => {
+      const t = Math.max(0, getEventElapsedSeconds(ev));
+      const outId = String(ev.outPlayerId || "");
+      const inId = String(ev.inPlayerId || ev.playerId || "");
+      if (outId) {
+        const out = ensure(outId);
+        if (out.start != null) {
+          out.total += Math.max(0, t - out.start);
+          out.start = null;
+        }
+      }
+      if (inId) {
+        const inside = ensure(inId);
+        if (inside.start == null) inside.start = t;
+      }
+    });
+    intervals.forEach((interval, id) => {
+      const total = interval.total + (interval.start != null ? Math.max(0, currentElapsed - interval.start) : 0);
+      const p = players[team].get(id);
+      if (p) p.timePlayedSeconds = total;
+    });
+  };
+  computeTime(0, (initialLineups?.a || []).map(String));
+  computeTime(1, (initialLineups?.b || []).map(String));
 
   teams[0].score = score[0];
   teams[1].score = score[1];
   return { teams, players: [Array.from(players[0].values()), Array.from(players[1].values())] };
 }
 
-function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
+function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide, lineupA, lineupB, setLineupA, setLineupB, onSubstitute }: any) {
   const [side, setSide] = React.useState<0 | 1>(0);
   const [pickSpot, setPickSpot] = React.useState<number | null>(null);
   const count = Number(playersPerSide || 0);
@@ -909,21 +1013,12 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
   const safeRosterB = Array.isArray(rosterB) ? rosterB : [];
   const pitchRef = React.useRef<HTMLDivElement | null>(null);
   const dragRef = React.useRef<null | { index: number; side: 0 | 1; startX: number; startY: number; moved: boolean }>(null);
-  const [lineupA, setLineupA] = React.useState<string[]>(() => safeRosterA.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
-  const [lineupB, setLineupB] = React.useState<string[]>(() => safeRosterB.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
   const [spotsA, setSpotsA] = React.useState<Array<{ x: number; y: number }>>(() => defaultSpots);
   const [spotsB, setSpotsB] = React.useState<Array<{ x: number; y: number }>>(() => defaultSpots);
   const [selectedSubId, setSelectedSubId] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    setLineupA(safeRosterA.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
-    setSpotsA(defaultSpots);
-  }, [safeRosterA.map((p: any) => p.id).join("|"), defaultSpots.length]);
-
-  React.useEffect(() => {
-    setLineupB(safeRosterB.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
-    setSpotsB(defaultSpots);
-  }, [safeRosterB.map((p: any) => p.id).join("|"), defaultSpots.length]);
+  React.useEffect(() => { setSpotsA(defaultSpots); }, [defaultSpots.length]);
+  React.useEffect(() => { setSpotsB(defaultSpots); }, [defaultSpots.length]);
 
   const roster = side === 0 ? safeRosterA : safeRosterB;
   const lineup = side === 0 ? lineupA : lineupB;
@@ -932,18 +1027,23 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
   const setSpots = side === 0 ? setSpotsA : setSpotsB;
   const title = side === 0 ? teamA : teamB;
   const getPlayer = (id?: string) => roster.find((p: any) => String(p.id) === String(id));
-  const placed = lineup.map((id) => getPlayer(id));
+  const placed = (Array.isArray(lineup) ? lineup : []).map((id: string) => getPlayer(id));
 
   const replaceSpotWithBench = (index: number) => {
     if (!selectedSubId) return false;
-    setLineup((prev) => {
-      const next = [...prev];
-      const oldAtSpot = next[index] || "";
-      const subAlreadyOnPitch = next.findIndex((id) => String(id) === String(selectedSubId));
-      if (subAlreadyOnPitch >= 0) next[subAlreadyOnPitch] = oldAtSpot;
-      next[index] = selectedSubId;
-      return next;
-    });
+    const oldAtSpot = lineup[index] || "";
+    const outPlayer = getPlayer(oldAtSpot);
+    const inPlayer = getPlayer(selectedSubId);
+    if (outPlayer && inPlayer) onSubstitute?.(side, title, outPlayer, inPlayer);
+    else {
+      setLineup((prev: string[]) => {
+        const next = [...prev];
+        const subAlreadyOnPitch = next.findIndex((id) => String(id) === String(selectedSubId));
+        if (subAlreadyOnPitch >= 0) next[subAlreadyOnPitch] = oldAtSpot;
+        next[index] = selectedSubId;
+        return next;
+      });
+    }
     setSelectedSubId(null);
     setPickSpot(null);
     return true;
@@ -951,7 +1051,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
 
   const choosePlayerForSpot = (playerId: string) => {
     if (pickSpot === null) return;
-    setLineup((prev) => {
+    setLineup((prev: string[]) => {
       const next = [...prev];
       const previousIndex = next.findIndex((id, idx) => id === playerId && idx !== pickSpot);
       if (previousIndex >= 0) next[previousIndex] = next[pickSpot] || "";
@@ -966,7 +1066,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
     if (!rect) return;
     const x = Math.max(7, Math.min(93, ((event.clientX - rect.left) / rect.width) * 100));
     const y = Math.max(7, Math.min(93, ((event.clientY - rect.top) / rect.height) * 100));
-    setSpots((prev) => prev.map((spot, i) => i === index ? { x, y } : spot));
+    setSpots((prev: any[]) => prev.map((spot, i) => i === index ? { x, y } : spot));
   };
 
   const onSpotPointerDown = (event: React.PointerEvent, index: number) => {
@@ -1007,98 +1107,29 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
       <div style={{ color: THEME, fontWeight: 1000, margin: "0 0 6px", textAlign: "center", textShadow: `0 0 12px ${THEME_44}` }}>{title}</div>
       <div style={{ opacity: .72, fontSize: 12, fontWeight: 850, textAlign: "center", marginBottom: 8 }}>Déplace les médaillons au doigt. Pour remplacer : sélectionne un remplaçant puis clique le titulaire.</div>
 
-      <div
-        ref={pitchRef}
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "0.66 / 1",
-          minHeight: 560,
-          maxHeight: "min(78vh, 820px)",
-          borderRadius: 22,
-          overflow: "hidden",
-          border: `1px solid ${THEME_33}`,
-          background: "#07160c",
-          boxShadow: `inset 0 0 28px ${THEME_12}`,
-          touchAction: "none",
-        }}
-      >
+      <div ref={pitchRef} style={{ position: "relative", width: "100%", aspectRatio: "0.66 / 1", minHeight: 560, maxHeight: "min(78vh, 820px)", borderRadius: 22, overflow: "hidden", border: `1px solid ${THEME_33}`, background: "#07160c", boxShadow: `inset 0 0 28px ${THEME_12}`, touchAction: "none" }}>
         <img src={footPitchBg} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", opacity: .95, filter: "saturate(1.15) contrast(1.08)" }} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.18))" }} />
-
         {spots.map((spot, index) => {
           const player = placed[index];
           const initial = String(player?.name || "?").trim().charAt(0).toUpperCase() || "?";
           return (
-            <button
-              type="button"
-              key={`${side}-${index}`}
-              onPointerDown={(e) => onSpotPointerDown(e, index)}
-              onPointerMove={(e) => onSpotPointerMove(e, index)}
-              onPointerUp={(e) => onSpotPointerUp(e, index)}
-              style={{
-                position: "absolute",
-                left: `${spot.x}%`,
-                top: `${spot.y}%`,
-                transform: "translate(-50%, -50%)",
-                display: "grid",
-                justifyItems: "center",
-                gap: 4,
-                width: 92,
-                maxWidth: "24%",
-                border: 0,
-                background: "transparent",
-                padding: 0,
-                cursor: "grab",
-                color: "#fff",
-                touchAction: "none",
-                userSelect: "none",
-              }}
-            >
-              <div
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 999,
-                  display: "grid",
-                  placeItems: "center",
-                  overflow: "hidden",
-                  border: `2px solid ${THEME}`,
-                  background: `radial-gradient(circle, ${THEME_28}, rgba(0,0,0,.82))`,
-                  boxShadow: `0 0 18px ${THEME_44}`,
-                  color: "#fff",
-                  fontWeight: 1000,
-                  fontSize: 18,
-                }}
-              >
-                {player?.visual ? (
-                  <img src={player.visual} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }} />
-                ) : (
-                  initial
-                )}
+            <button type="button" key={`${side}-${index}`} onPointerDown={(e) => onSpotPointerDown(e, index)} onPointerMove={(e) => onSpotPointerMove(e, index)} onPointerUp={(e) => onSpotPointerUp(e, index)} style={{ position: "absolute", left: `${spot.x}%`, top: `${spot.y}%`, transform: "translate(-50%, -50%)", display: "grid", justifyItems: "center", gap: 4, width: 92, maxWidth: "24%", border: 0, background: "transparent", padding: 0, cursor: "grab", color: "#fff", touchAction: "none", userSelect: "none" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 999, display: "grid", placeItems: "center", overflow: "hidden", border: `2px solid ${THEME}`, background: `radial-gradient(circle, ${THEME_28}, rgba(0,0,0,.82))`, boxShadow: `0 0 18px ${THEME_44}`, color: "#fff", fontWeight: 1000, fontSize: 18 }}>
+                {player?.visual ? <img src={player.visual} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }} /> : initial}
               </div>
-              <div style={{ maxWidth: "100%", padding: "3px 7px", borderRadius: 999, background: "rgba(0,0,0,.62)", color: "#fff", fontSize: 10, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {player?.name || `Poste ${index + 1}`}
-              </div>
+              <div style={{ maxWidth: "100%", padding: "3px 7px", borderRadius: 999, background: "rgba(0,0,0,.62)", color: "#fff", fontSize: 10, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player?.name || `Poste ${index + 1}`}</div>
             </button>
           );
         })}
       </div>
 
       <div style={{ marginTop: 10 }}>
-        <BenchList title={selectedSubId ? "Remplaçant sélectionné : clique le joueur à sortir" : "Banc des remplaçants"} roster={roster.filter((p: any) => !lineup.includes(String(p.id)))} onPick={(playerId: string) => setSelectedSubId(playerId)} />
+        <BenchList title={selectedSubId ? "Remplaçant sélectionné : clique le joueur à sortir" : "Banc des remplaçants"} roster={roster.filter((p: any) => !(lineup || []).includes(String(p.id)))} onPick={(playerId: string) => setSelectedSubId(playerId)} />
         <RosterList title={title} roster={roster} />
       </div>
 
-      {pickSpot !== null && (
-        <LineupPlayerPicker
-          title={title}
-          spot={pickSpot}
-          roster={roster}
-          onClose={() => setPickSpot(null)}
-          onSelect={choosePlayerForSpot}
-        />
-      )}
+      {pickSpot !== null && <LineupPlayerPicker title={title} spot={pickSpot} roster={roster} onClose={() => setPickSpot(null)} onSelect={choosePlayerForSpot} />}
     </section>
   );
 }
@@ -1196,22 +1227,30 @@ function RulesModal({ title, rules, onClose }: { title: string; rules: string[];
   );
 }
 
-function PlayerPickModal({ data, roster, fallbackName, playersPerSide, onClose, onSelect }: any) {
+function PlayerPickModal({ data, roster, fallbackName, playersPerSide, activeIds, onClose, onSelect }: any) {
   const safeRoster = Array.isArray(roster) && roster.length ? roster : [{ id: `team_${fallbackName}`, name: fallbackName }];
-  const onPitchCount = Math.max(1, Number(playersPerSide || safeRoster.length));
-  const onPitchIds = new Set(safeRoster.slice(0, onPitchCount).map((p: any) => String(p.id)));
+  const activeSet = new Set((Array.isArray(activeIds) && activeIds.length ? activeIds : safeRoster.slice(0, Math.max(1, Number(playersPerSide || safeRoster.length))).map((id: any) => String(id))));
   const actionLabel = data.goalLabel || labels[data.actionType as EventType] || "Action";
   const [benchCandidate, setBenchCandidate] = React.useState<any | null>(null);
-  const starters = safeRoster.filter((p: any) => onPitchIds.has(String(p.id)));
+  const starters = safeRoster.filter((p: any) => activeSet.has(String(p.id)));
+  const bench = safeRoster.filter((p: any) => !activeSet.has(String(p.id)));
 
   const choose = (player: any) => {
     if (!player) return;
-    if (!onPitchIds.has(String(player.id)) && starters.length) {
+    if (!activeSet.has(String(player.id)) && starters.length) {
       setBenchCandidate(player);
       return;
     }
     onSelect(player);
   };
+
+  const renderPlayerButton = (p: any, isOnPitch: boolean) => (
+    <button key={p.id} type="button" onClick={() => choose(p)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 10, background: isOnPitch ? THEME_10 : "rgba(255,255,255,.045)", color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
+      <PlayerAvatarMini player={p} />
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+      <span style={{ borderRadius: 999, padding: "4px 7px", background: isOnPitch ? THEME_18 : "rgba(255,255,255,.08)", color: isOnPitch ? THEME : "rgba(255,255,255,.7)", fontSize: 10, fontWeight: 1000 }}>{isOnPitch ? "Terrain" : "Rempl."}</span>
+    </button>
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
@@ -1228,7 +1267,7 @@ function PlayerPickModal({ data, roster, fallbackName, playersPerSide, onClose, 
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ borderRadius: 16, padding: 12, background: THEME_10, border: `1px solid ${THEME_28}`, fontWeight: 900 }}>
               <span style={{ color: THEME }}>Remplaçant sélectionné :</span> {benchCandidate.name}<br />
-              <span style={{ opacity: .75, fontSize: 12 }}>Choisis le titulaire qu’il remplace, puis la stat sera ajoutée automatiquement.</span>
+              <span style={{ opacity: .75, fontSize: 12 }}>Choisis le joueur qu’il remplace. Le remplacement sera appliqué puis la stat sera ajoutée.</span>
             </div>
             {starters.map((p: any) => (
               <button key={p.id} type="button" onClick={() => onSelect(benchCandidate, { autoSubOut: p })} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 10, background: THEME_10, color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
@@ -1240,17 +1279,17 @@ function PlayerPickModal({ data, roster, fallbackName, playersPerSide, onClose, 
             <button type="button" onClick={() => setBenchCandidate(null)} style={{ ...modalBtn, background: "rgba(255,255,255,.06)" }}>← Retour</button>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            {safeRoster.map((p: any) => {
-              const isOnPitch = onPitchIds.has(String(p.id));
-              return (
-                <button key={p.id} type="button" onClick={() => choose(p)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 10, background: isOnPitch ? THEME_10 : "rgba(255,255,255,.045)", color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
-                  <PlayerAvatarMini player={p} />
-                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                  <span style={{ borderRadius: 999, padding: "4px 7px", background: isOnPitch ? THEME_18 : "rgba(255,255,255,.08)", color: isOnPitch ? THEME : "rgba(255,255,255,.7)", fontSize: 10, fontWeight: 1000 }}>{isOnPitch ? "Terrain" : "Rempl."}</span>
-                </button>
-              );
-            })}
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ color: THEME, fontWeight: 1000, fontSize: 13 }}>Joueurs sur le terrain</div>
+              {starters.map((p: any) => renderPlayerButton(p, true))}
+            </div>
+            {bench.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ color: "rgba(255,255,255,.72)", fontWeight: 1000, fontSize: 13 }}>Remplaçants — sélection possible avec remplacement immédiat</div>
+                {bench.map((p: any) => renderPlayerButton(p, false))}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -1258,8 +1297,9 @@ function PlayerPickModal({ data, roster, fallbackName, playersPerSide, onClose, 
   );
 }
 
-function AssistModal({ data, roster, onClose, onSelect }: any) {
-  const safeRoster = Array.isArray(roster) ? roster.filter((p: any) => String(p.id) !== String(data.scorer?.id)) : [];
+function AssistModal({ data, roster, activeIds, onClose, onSelect }: any) {
+  const activeSet = new Set((Array.isArray(activeIds) ? activeIds : []).map((id: any) => String(id)));
+  const safeRoster = Array.isArray(roster) ? roster.filter((p: any) => String(p.id) !== String(data.scorer?.id) && (!activeSet.size || activeSet.has(String(p.id)))) : [];
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 10000, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
       <div style={{ width: "min(440px, 100%)", maxHeight: "82vh", overflowY: "auto", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,20,24,.98), rgba(5,8,10,.98))", border: `1px solid ${THEME_28}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
@@ -1288,8 +1328,11 @@ function AssistModal({ data, roster, onClose, onSelect }: any) {
 }
 
 
-function SubstitutionModal({ data, roster, onClose, onConfirm }: any) {
+function SubstitutionModal({ data, roster, activeIds, onClose, onConfirm }: any) {
   const safeRoster = Array.isArray(roster) ? roster : [];
+  const activeSet = new Set((Array.isArray(activeIds) ? activeIds : []).map((id: any) => String(id)));
+  const starters = safeRoster.filter((p: any) => activeSet.has(String(p.id)));
+  const bench = safeRoster.filter((p: any) => !activeSet.has(String(p.id)));
   const [outId, setOutId] = React.useState<string>("");
   const [inId, setInId] = React.useState<string>("");
   const outPlayer = safeRoster.find((p: any) => String(p.id) === String(outId));
@@ -1304,8 +1347,8 @@ function SubstitutionModal({ data, roster, onClose, onConfirm }: any) {
           </div>
           <button type="button" onClick={onClose} style={{ border: `1px solid ${THEME_33}`, borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
         </div>
-        <SubPick title="Joueur qui sort" roster={safeRoster} selectedId={outId} onSelect={setOutId} />
-        <SubPick title="Joueur qui entre" roster={safeRoster} selectedId={inId} onSelect={setInId} />
+        <SubPick title="Joueur qui sort" roster={starters.length ? starters : safeRoster} selectedId={outId} onSelect={setOutId} />
+        <SubPick title="Joueur qui entre" roster={bench.length ? bench : safeRoster} selectedId={inId} onSelect={setInId} />
         <button type="button" disabled={!outPlayer || !inPlayer || outId === inId} onClick={() => onConfirm(outPlayer, inPlayer)} style={{ ...primaryBtn, width: "100%", marginTop: 12, opacity: !outPlayer || !inPlayer || outId === inId ? .45 : 1 }}>VALIDER LE REMPLACEMENT</button>
       </div>
     </div>
@@ -1392,6 +1435,9 @@ function playFootBuzzer() {
     window.setTimeout(() => ctx.close().catch(() => {}), 1200);
   } catch {}
 }
+const carouselArrowBtn: React.CSSProperties = { width: 40, height: 36, border: `1px solid ${THEME_33}`, borderRadius: 12, background: THEME_10, color: THEME, fontWeight: 1000, fontSize: 22, cursor: "pointer" };
+const playerTableHeaderCell: React.CSSProperties = { textAlign: "center", color: THEME, fontSize: 10, fontWeight: 1000, padding: "7px 2px", borderLeft: "1px solid rgba(255,255,255,.06)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const playerTableValueCell: React.CSSProperties = { textAlign: "center", color: "#fff", fontSize: 12, fontWeight: 1000, padding: "7px 2px", borderLeft: "1px solid rgba(255,255,255,.06)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const clockIconBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ width: 46, height: 38, border: `1px solid ${THEME_33}`, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, fontSize: 18, cursor: "pointer", boxShadow: tone === "neutral" ? "none" : `0 0 18px ${THEME_24}` });
 const modalBtn: React.CSSProperties = { border: `1px solid ${THEME_33}`, borderRadius: 14, padding: "12px 10px", background: `${THEME_12}`, color: "#fff", fontWeight: 1000, cursor: "pointer", minHeight: 48 };
 const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME_35}`, borderRadius: 10, padding: "9px 8px", background: `${THEME_12}`, color: "#fff", fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `inset 0 0 18px ${THEME_08}` };
