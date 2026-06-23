@@ -395,7 +395,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
     buzzerPlayedRef.current = false;
   };
 
-  const [activeTab, setActiveTab] = React.useState<FootPlayTab>("score");
+  const [activeTab, setActiveTab] = React.useState<FootPlayTab>(showLineup ? "lineup" : "score");
   React.useEffect(() => {
     if (!showLineup && activeTab === "lineup") setActiveTab("score");
   }, [showLineup, activeTab]);
@@ -529,8 +529,8 @@ function TeamScore({ name, score, extra }: any) {
 function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right" }) {
   if (!src) return null;
   const fadeMask = side === "left"
-    ? "linear-gradient(90deg, #000 0%, #000 34%, rgba(0,0,0,.65) 52%, transparent 82%, transparent 100%)"
-    : "linear-gradient(270deg, #000 0%, #000 34%, rgba(0,0,0,.65) 52%, transparent 82%, transparent 100%)";
+    ? "linear-gradient(90deg, #000 0%, #000 52%, rgba(0,0,0,.82) 70%, rgba(0,0,0,.38) 88%, transparent 100%)"
+    : "linear-gradient(270deg, #000 0%, #000 52%, rgba(0,0,0,.82) 70%, rgba(0,0,0,.38) 88%, transparent 100%)";
   return (
     <div
       style={{
@@ -546,7 +546,7 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
         overflow: "hidden",
         background: "radial-gradient(circle, rgba(255,255,255,.10), rgba(0,0,0,.18) 62%, rgba(0,0,0,0) 74%)",
         boxShadow: `0 0 42px ${THEME_22}`,
-        opacity: .98,
+        opacity: 1,
         pointerEvents: "none",
         WebkitMaskImage: fadeMask,
         maskImage: fadeMask,
@@ -565,13 +565,13 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
           objectPosition: "center",
           borderRadius: "999px",
           transform: "scale(1.12)",
-          opacity: .96,
-          filter: "saturate(1.28) contrast(1.10)",
+          opacity: 1,
+          filter: "saturate(1.18) contrast(1.05)",
         }}
       />
       <div style={{ position: "absolute", inset: 0, borderRadius: "999px", background: side === "left"
-        ? "linear-gradient(90deg, rgba(0,0,0,.00), rgba(0,0,0,.12) 36%, rgba(0,0,0,.92) 100%)"
-        : "linear-gradient(270deg, rgba(0,0,0,.00), rgba(0,0,0,.12) 36%, rgba(0,0,0,.92) 100%)" }} />
+        ? "linear-gradient(90deg, rgba(0,0,0,.00), rgba(0,0,0,.04) 42%, rgba(0,0,0,.46) 100%)"
+        : "linear-gradient(270deg, rgba(0,0,0,.00), rgba(0,0,0,.04) 42%, rgba(0,0,0,.46) 100%)" }} />
       <div style={{ position: "absolute", inset: 0, borderRadius: "999px", boxShadow: `inset 0 0 34px rgba(0,0,0,.34), inset 0 0 0 2px ${THEME_18}` }} />
     </div>
   );
@@ -823,7 +823,7 @@ function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisua
       {view === "match" ? (
         <FootStatsCard leftName={teamA} rightName={teamB} leftVisual={teamAVisual} rightVisual={teamBVisual} rows={rows} />
       ) : (
-        <PlayerStatsTables leftName={teamA} rightName={teamB} leftPlayers={teamStats.players[0]} rightPlayers={teamStats.players[1]} />
+        <PlayerStatsTables leftName={teamA} rightName={teamB} leftVisual={teamAVisual} rightVisual={teamBVisual} leftPlayers={teamStats.players[0]} rightPlayers={teamStats.players[1]} />
       )}
     </section>
   );
@@ -840,10 +840,11 @@ function StatsViewCarousel({ view, setView }: { view: "match" | "players"; setVi
   );
 }
 
-function PlayerStatsTables({ leftName, rightName, leftPlayers, rightPlayers }: any) {
+function PlayerStatsTables({ leftName, rightName, leftVisual, rightVisual, leftPlayers, rightPlayers }: any) {
   const [teamIndex, setTeamIndex] = React.useState<0 | 1>(0);
   const teamName = teamIndex === 0 ? leftName : rightName;
   const players = teamIndex === 0 ? leftPlayers : rightPlayers;
+  const visual = teamIndex === 0 ? leftVisual : rightVisual;
   const toggle = () => setTeamIndex((v) => (v === 0 ? 1 : 0));
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -852,12 +853,12 @@ function PlayerStatsTables({ leftName, rightName, leftPlayers, rightPlayers }: a
         <div style={{ textAlign: "center", color: THEME, fontWeight: 1000, textShadow: `0 0 12px ${THEME_44}`, overflowWrap: "anywhere" }}>{teamName}</div>
         <button type="button" onClick={toggle} style={carouselArrowBtn}>›</button>
       </div>
-      <PlayerStatsTeamTable teamName={teamName} players={players} hideTitle />
+      <PlayerStatsTeamTable teamName={teamName} visual={visual} players={players} hideTitle={false} />
     </div>
   );
 }
 
-function PlayerStatsTeamTable({ teamName, players, hideTitle }: any) {
+function PlayerStatsTeamTable({ teamName, visual, players, hideTitle }: any) {
   const cols = ["B", "PD", "TC", "TNC", "F", "CJ/CR", "TJ"];
   const valueFor = (player: any, col: string) => {
     if (!player) return "0";
@@ -873,7 +874,12 @@ function PlayerStatsTeamTable({ teamName, players, hideTitle }: any) {
   const safePlayers = Array.isArray(players) ? players : [];
   return (
     <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-      {!hideTitle && <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, background: THEME_08, borderBottom: `1px solid ${THEME_22}`, overflowWrap: "anywhere", textAlign: "center" }}>{teamName}</div>}
+      {!hideTitle && (
+        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, background: THEME_08, borderBottom: `1px solid ${THEME_22}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0 }}>
+          {visual ? <img src={visual} alt="" draggable={false} style={{ width: 30, height: 30, borderRadius: 999, objectFit: "cover", boxShadow: `0 0 12px ${THEME_33}` }} /> : null}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{teamName}</span>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, minmax(0, 1fr))", alignItems: "center", background: "rgba(255,255,255,.06)", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
         <div />
         {cols.map((col) => <div key={col} style={playerTableHeaderCell}>{col}</div>)}
@@ -1213,7 +1219,6 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide, lineupA, li
 
       <div style={{ marginTop: 10 }}>
         <BenchList title={selectedSubId ? "Remplaçant sélectionné : clique le joueur à sortir" : "Banc des remplaçants"} roster={roster.filter((p: any) => !(lineup || []).includes(String(p.id)))} onPick={(playerId: string) => setSelectedSubId(playerId)} />
-        <RosterList title={title} roster={roster} />
       </div>
 
       {pickSpot !== null && <LineupPlayerPicker title={title} spot={pickSpot} roster={roster} onClose={() => setPickSpot(null)} onSelect={choosePlayerForSpot} />}
