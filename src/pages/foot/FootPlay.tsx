@@ -52,6 +52,7 @@ const statOptions: Array<{ type: EventType; label: string; icon: string }> = [
   { type: "shot_off", label: "Tir non cadré", icon: "↗️" },
   { type: "post", label: "Poteau", icon: "🥅" },
   { type: "crossbar", label: "Transversale", icon: "📏" },
+  { type: "penalty_missed", label: "Penalty loupé", icon: "❌" },
 ];
 
 export default function FootPlay({ go, params, onFinish }: Props) {
@@ -77,6 +78,8 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       type,
       label: labels[type],
       icon: icons[type],
+      period: currentPeriod,
+      clockRemaining: remainingSeconds,
       format: spec.id,
       playerId: player?.id || null,
       playerName: player?.name || null,
@@ -129,6 +132,8 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         type: "own_goal",
         label: "CSC adverse",
         icon: icons.own_goal,
+        period: currentPeriod,
+        clockRemaining: remainingSeconds,
         format: spec.id,
         playerId: null,
         playerName: null,
@@ -257,9 +262,9 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           <ScoreGhost src={teamBVisual} side="right" />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.10), rgba(0,0,0,.42) 42%, rgba(0,0,0,.42) 58%, rgba(0,0,0,.10))", zIndex: 1, pointerEvents: "none" }} />
           <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", textAlign: "center" }}>
-            <TeamScore name={teamA} score={score[0]} extra={isPenalty ? `${shoots[0]} tir(s)` : spec.kind === "team" ? `${rosterA.length || spec.playersPerSide} joueurs` : ""} />
+            <TeamScore name={teamA} score={score[0]} extra={isPenalty ? `${shoots[0]} tir(s)` : ""} />
             <div style={{ fontSize: 28, fontWeight: 1000, color: THEME, opacity: .7 }}>-</div>
-            <TeamScore name={teamB} score={score[1]} extra={isPenalty ? `${shoots[1]} tir(s)` : spec.kind === "team" ? `${rosterB.length || spec.playersPerSide} joueurs` : ""} />
+            <TeamScore name={teamB} score={score[1]} extra={isPenalty ? `${shoots[1]} tir(s)` : ""} />
           </div>
         </div>
 
@@ -314,24 +319,24 @@ function TeamScore({ name, score, extra }: any) {
 function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right" }) {
   if (!src) return null;
   const fadeMask = side === "left"
-    ? "linear-gradient(90deg, #000 0%, #000 48%, rgba(0,0,0,.72) 64%, transparent 100%)"
-    : "linear-gradient(270deg, #000 0%, #000 48%, rgba(0,0,0,.72) 64%, transparent 100%)";
+    ? "linear-gradient(90deg, #000 0%, #000 38%, rgba(0,0,0,.62) 56%, transparent 88%, transparent 100%)"
+    : "linear-gradient(270deg, #000 0%, #000 38%, rgba(0,0,0,.62) 56%, transparent 88%, transparent 100%)";
   return (
     <div
       style={{
         position: "absolute",
         zIndex: 0,
         top: "50%",
-        [side]: "-9%",
-        width: "48%",
-        maxWidth: 300,
+        [side]: "-10%",
+        width: "50%",
+        maxWidth: 320,
         aspectRatio: "1 / 1",
-        transform: `translateY(-50%) ${side === "right" ? "scaleX(-1)" : ""}`,
+        transform: `translateY(-50%)`,
         borderRadius: "999px",
         overflow: "hidden",
         background: "radial-gradient(circle, rgba(255,255,255,.10), rgba(0,0,0,.18) 62%, rgba(0,0,0,0) 74%)",
         boxShadow: `0 0 42px ${THEME_22}`,
-        opacity: .95,
+        opacity: .98,
         pointerEvents: "none",
         WebkitMaskImage: fadeMask,
         maskImage: fadeMask,
@@ -350,11 +355,14 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
           objectPosition: "center",
           borderRadius: "999px",
           transform: "scale(1.12)",
-          opacity: .92,
-          filter: "saturate(1.24) contrast(1.08)",
+          opacity: .96,
+          filter: "saturate(1.28) contrast(1.10)",
         }}
       />
-      <div style={{ position: "absolute", inset: 0, borderRadius: "999px", boxShadow: `inset 0 0 34px rgba(0,0,0,.40), inset 0 0 0 2px ${THEME_18}` }} />
+      <div style={{ position: "absolute", inset: 0, borderRadius: "999px", background: side === "left"
+        ? "linear-gradient(90deg, rgba(0,0,0,.02), rgba(0,0,0,.18) 46%, rgba(0,0,0,.86) 100%)"
+        : "linear-gradient(270deg, rgba(0,0,0,.02), rgba(0,0,0,.18) 46%, rgba(0,0,0,.86) 100%)" }} />
+      <div style={{ position: "absolute", inset: 0, borderRadius: "999px", boxShadow: `inset 0 0 34px rgba(0,0,0,.34), inset 0 0 0 2px ${THEME_18}` }} />
     </div>
   );
 }
@@ -504,9 +512,162 @@ function TimelineTab({ events }: { events: any[] }) {
 }
 
 function StatsTab({ score, shoots, events, teamA, teamB }: any) {
-  const goals = events.filter((ev: any) => ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal").length;
-  const cards = events.filter((ev: any) => ev.type === "yellow" || ev.type === "red").length;
-  return <EmptyTab title="STATS" text={`${teamA} ${score[0]} - ${score[1]} ${teamB} · ${goals} but(s) · ${cards} carton(s) · tirs au but ${shoots[0]}-${shoots[1]}`} />;
+  const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots), [events, teamA, teamB, score, shoots]);
+
+  const rows = [
+    { label: "SCORE FINAL", left: `${score[0]}`, right: `${score[1]}` },
+    { label: "Score 2ème M-T", left: teamStats.teams[0].period2, right: teamStats.teams[1].period2 },
+    { label: "Score 1ère M-T", left: teamStats.teams[0].period1, right: teamStats.teams[1].period1 },
+    { label: "Nombre de tirs", left: teamStats.teams[0].shotsTotal, right: teamStats.teams[1].shotsTotal },
+    { label: "Tirs cadrés", left: teamStats.teams[0].shot_on, right: teamStats.teams[1].shot_on },
+    { label: "Tirs non cadrés", left: teamStats.teams[0].shotsOffTotal, right: teamStats.teams[1].shotsOffTotal },
+    { label: "Fautes", left: teamStats.teams[0].foul, right: teamStats.teams[1].foul },
+    { label: "CJ", left: teamStats.teams[0].yellow, right: teamStats.teams[1].yellow },
+    { label: "CR", left: teamStats.teams[0].red, right: teamStats.teams[1].red },
+    { label: "Penaltys transformés", left: teamStats.teams[0].penalty_scored, right: teamStats.teams[1].penalty_scored },
+    { label: "Penaltys loupés", left: teamStats.teams[0].penalty_missed, right: teamStats.teams[1].penalty_missed },
+    { label: "CF Direct", left: teamStats.teams[0].free_kick, right: teamStats.teams[1].free_kick },
+    { label: "Buts de la tête", left: teamStats.teams[0].header, right: teamStats.teams[1].header },
+    { label: "Buts pied gauche", left: teamStats.teams[0].left_foot, right: teamStats.teams[1].left_foot },
+    { label: "Buts pied droit", left: teamStats.teams[0].right_foot, right: teamStats.teams[1].right_foot },
+    { label: "CSC", left: teamStats.teams[0].own_goal, right: teamStats.teams[1].own_goal },
+  ];
+
+  return (
+    <section style={tabPanelStyle}>
+      <h2 style={tabTitleStyle}>STATS DU MATCH</h2>
+      <FootStatsCard leftName={teamA} rightName={teamB} rows={rows} />
+
+      <h2 style={{ ...tabTitleStyle, marginTop: 16 }}>STATS JOUEURS</h2>
+      <div style={{ display: "grid", gap: 12 }}>
+        {[0, 1].map((teamIndex) => (
+          <div key={teamIndex} style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
+            <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, background: THEME_08 }}>{teamIndex === 0 ? teamA : teamB}</div>
+            {teamStats.players[teamIndex].length ? teamStats.players[teamIndex].map((p: any) => (
+              <div key={p.key} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: "10px 12px", borderTop: "1px solid rgba(255,255,255,.08)", alignItems: "center" }}>
+                <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                <div style={{ opacity: .86, fontWeight: 900, fontSize: 12, textAlign: "right" }}>
+                  {p.goals} but · {p.shotsTotal} tirs · {p.foul} fautes · {p.yellow} CJ · {p.red} CR
+                </div>
+              </div>
+            )) : <div style={{ padding: 12, opacity: .65, fontWeight: 800 }}>Aucune stat joueur.</div>}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FootStatsCard({ leftName, rightName, rows }: any) {
+  return (
+    <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr", alignItems: "center", padding: "12px 14px", background: "linear-gradient(90deg, rgba(255,255,255,.08), rgba(255,255,255,.035), rgba(255,255,255,.08))" }}>
+        <div style={{ color: THEME, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leftName}</div>
+        <div style={{ color: THEME, fontWeight: 1000, textAlign: "center", fontSize: 18 }}>Stat</div>
+        <div style={{ color: "#fff", fontWeight: 1000, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rightName}</div>
+      </div>
+      {rows.map((row: any) => (
+        <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr 1fr", alignItems: "center", minHeight: 34, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+          <div style={{ padding: "7px 12px", color: THEME, fontWeight: 1000, borderBottom: `2px solid ${THEME_55}`, background: `linear-gradient(90deg, ${THEME_12}, transparent)` }}>{row.left}</div>
+          <div style={{ padding: "7px 8px", textAlign: "center", fontWeight: 950, opacity: .92 }}>{row.label}</div>
+          <div style={{ padding: "7px 12px", textAlign: "right", color: "#fff", fontWeight: 1000, borderBottom: "2px solid rgba(255,255,255,.55)", background: "linear-gradient(270deg, rgba(255,255,255,.08), transparent)" }}>{row.right}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function buildFootStats(events: any[], teamA: string, teamB: string, score: [number, number], shoots: [number, number]) {
+  const emptyTeam = () => ({
+    score: 0, period1: 0, period2: 0, shotsTotal: 0, shotsOffTotal: 0,
+    goal: 0, penalty_scored: 0, penalty_missed: 0, own_goal: 0, foul: 0, yellow: 0, red: 0,
+    shot_on: 0, shot_off: 0, post: 0, crossbar: 0,
+    right_foot: 0, left_foot: 0, header: 0, free_kick: 0,
+  });
+  const emptyPlayer = (name: string, id: string) => ({
+    key: id || name,
+    id,
+    name,
+    goals: 0,
+    shotsTotal: 0,
+    shotsOffTotal: 0,
+    foul: 0,
+    yellow: 0,
+    red: 0,
+    shot_on: 0,
+    shot_off: 0,
+    post: 0,
+    crossbar: 0,
+    penalty_scored: 0,
+    penalty_missed: 0,
+    own_goal: 0,
+    right_foot: 0,
+    left_foot: 0,
+    header: 0,
+    free_kick: 0,
+  });
+
+  const teams = [emptyTeam(), emptyTeam()];
+  const players: any[] = [new Map(), new Map()];
+
+  const ensurePlayer = (team: number, ev: any) => {
+    const name = ev.playerName || ev.awardedToPlayerName;
+    const id = ev.playerId || ev.awardedToPlayerId || name;
+    if (!name) return null;
+    if (!players[team].has(String(id))) players[team].set(String(id), emptyPlayer(String(name), String(id)));
+    return players[team].get(String(id));
+  };
+
+  events.forEach((ev: any) => {
+    const team = typeof ev.scoringTeam === "number" ? ev.scoringTeam : Number(ev.team || 0);
+    const eventTeam = Number(ev.team || 0);
+    const statTeam = ev.type === "own_goal" && typeof ev.scoringTeam === "number" ? ev.scoringTeam : eventTeam;
+    if (team === 0 || team === 1) {
+      if (ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") {
+        teams[team].score += 1;
+        if (Number(ev.period || 1) <= 1) teams[team].period1 += 1;
+        else teams[team].period2 += 1;
+      }
+    }
+    if (statTeam !== 0 && statTeam !== 1) return;
+    const ts = teams[statTeam];
+    if (ev.type in ts) ts[ev.type as keyof typeof ts] += 1;
+    if (ev.type === "shot_on") ts.shotsTotal += 1;
+    if (ev.type === "shot_off" || ev.type === "post" || ev.type === "crossbar" || ev.type === "penalty_missed") {
+      ts.shotsTotal += 1;
+      ts.shotsOffTotal += 1;
+    }
+    if (ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") {
+      // Cohérence FOOT : tout but marqué compte aussi comme un tir total + un tir cadré.
+      // Pour un CSC adverse, la stat est attribuée à l’équipe bénéficiaire.
+      ts.shotsTotal += 1;
+      ts.shot_on += 1;
+    }
+    if (ev.goalKind && ev.goalKind in ts) ts[ev.goalKind as keyof typeof ts] += 1;
+
+    const ps = ensurePlayer(statTeam, ev);
+    if (ps) {
+      if (ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") ps.goals += 1;
+      if (ev.type === "shot_on" || ev.type === "goal" || ev.type === "penalty_scored" || ev.type === "own_goal") {
+        // Cohérence joueur : un but compte comme tir cadré, y compris le CSC adverse
+        // attribué au joueur bénéficiaire sélectionné.
+        ps.shotsTotal += 1;
+        ps.shot_on += 1;
+      }
+      if (ev.type === "shot_off" || ev.type === "post" || ev.type === "crossbar" || ev.type === "penalty_missed") {
+        ps.shotsTotal += 1;
+        ps.shotsOffTotal += 1;
+      }
+      ["foul", "yellow", "red", "penalty_scored", "penalty_missed", "own_goal"].forEach((k) => {
+        if (ev.type === k) ps[k] += 1;
+      });
+      if (ev.goalKind && ev.goalKind in ps) ps[ev.goalKind] += 1;
+    }
+  });
+
+  teams[0].score = score[0];
+  teams[1].score = score[1];
+  return { teams, players: [Array.from(players[0].values()), Array.from(players[1].values())] };
 }
 
 function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
