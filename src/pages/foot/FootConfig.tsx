@@ -16,6 +16,7 @@ type TeamSlot = {
   name: string;
   playerIds: string[];
   logoDataUrl?: string | null;
+  avatarDataUrl?: string | null;
   teamId?: string | null;
 };
 
@@ -29,6 +30,10 @@ function isBotProfile(p: any) {
 
 function teamLogo(team: any) {
   return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || null;
+}
+
+function profileAvatar(profile: any) {
+  return profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar || profile?.photoUrl || profile?.imageUrl || profile?.picture || null;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -198,8 +203,8 @@ export default function FootConfig({ go, params, store }: Props) {
       const a = selectedProfiles[0];
       const b = selectedProfiles[1];
       return [
-        { name: profileName(a) || "Joueur A", playerIds: a?.id ? [String(a.id)] : [] },
-        { name: profileName(b) || "Joueur B", playerIds: b?.id ? [String(b.id)] : [] },
+        { name: profileName(a) || "Joueur A", playerIds: a?.id ? [String(a.id)] : [], avatarDataUrl: profileAvatar(a) },
+        { name: profileName(b) || "Joueur B", playerIds: b?.id ? [String(b.id)] : [], avatarDataUrl: profileAvatar(b) },
       ];
     }
     if (sourceMode === "saved" && savedSelectedTeams.length >= 2) {
@@ -211,8 +216,8 @@ export default function FootConfig({ go, params, store }: Props) {
       ];
     }
     return [
-      { name: "Équipe A", playerIds: manualA.map((p: any) => String(p.id)) },
-      { name: "Équipe B", playerIds: manualB.map((p: any) => String(p.id)) },
+      { name: "Équipe A", playerIds: manualA.map((p: any) => String(p.id)), avatarDataUrl: profileAvatar(manualA[0]) },
+      { name: "Équipe B", playerIds: manualB.map((p: any) => String(p.id)), avatarDataUrl: profileAvatar(manualB[0]) },
     ];
   };
 
@@ -229,8 +234,10 @@ export default function FootConfig({ go, params, store }: Props) {
         sourceMode,
         teamA: a.name,
         teamB: b.name,
-        teamALogo: a.logoDataUrl || null,
-        teamBLogo: b.logoDataUrl || null,
+        teamALogo: a.logoDataUrl || a.avatarDataUrl || null,
+        teamBLogo: b.logoDataUrl || b.avatarDataUrl || null,
+        teamAVisual: a.logoDataUrl || a.avatarDataUrl || null,
+        teamBVisual: b.logoDataUrl || b.avatarDataUrl || null,
         teamAPlayerIds: a.playerIds,
         teamBPlayerIds: b.playerIds,
         playersA: a.playerIds.map((id) => profileName(profileById.get(id)) || id),

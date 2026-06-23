@@ -52,6 +52,39 @@ export default function FootPlay({ go, params, onFinish }: Props) {
 
   const isPenalty = spec.id === "penalty";
   const tickerSrc = getFootGameTicker(spec.id);
+  const teamAVisual = cfg.teamAVisual || cfg.teamALogo || null;
+  const teamBVisual = cfg.teamBVisual || cfg.teamBLogo || null;
+  const periodCount = Math.max(1, Number(cfg.periods || spec.periods || 1));
+  const periodSeconds = Math.max(1, Number(cfg.minutes || spec.minutesPerPeriod || 1)) * 60;
+  const [clockRunning, setClockRunning] = React.useState(false);
+  const [currentPeriod, setCurrentPeriod] = React.useState(1);
+  const [remainingSeconds, setRemainingSeconds] = React.useState(periodSeconds);
+
+  React.useEffect(() => {
+    setClockRunning(false);
+    setCurrentPeriod(1);
+    setRemainingSeconds(periodSeconds);
+  }, [periodSeconds, spec.id]);
+
+  React.useEffect(() => {
+    if (!clockRunning || isPenalty) return;
+    const timer = window.setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev > 1) return prev - 1;
+        window.clearInterval(timer);
+        setClockRunning(false);
+        return 0;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [clockRunning, isPenalty]);
+
+  const nextPeriod = () => {
+    if (isPenalty) return;
+    setClockRunning(false);
+    setCurrentPeriod((prev) => Math.min(periodCount, prev + 1));
+    setRemainingSeconds(periodSeconds);
+  };
 
   return (
     <div style={{ minHeight: "100vh", padding: "18px 14px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(40,180,90,.25), transparent 38%), linear-gradient(180deg, #06140b, #020604)" }}>
@@ -66,8 +99,22 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         <h1 style={{ textAlign: "center", margin: "6px 0 4px", fontSize: 30 }}>{spec.label}</h1>
         <p style={{ textAlign: "center", margin: "0 0 14px", opacity: .72, fontWeight: 800 }}>{isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}</p>
 
-        <div style={{ borderRadius: 26, padding: 18, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", boxShadow: "0 18px 44px rgba(0,0,0,.35)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", textAlign: "center" }}>
+        {!isPenalty && (
+          <ClockBar
+            running={clockRunning}
+            period={currentPeriod}
+            periodCount={periodCount}
+            remaining={remainingSeconds}
+            onToggle={() => setClockRunning((v) => !v)}
+            onReset={() => { setClockRunning(false); setRemainingSeconds(periodSeconds); }}
+            onNextPeriod={nextPeriod}
+          />
+        )}
+
+        <div style={{ position: "relative", borderRadius: 26, padding: 18, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", boxShadow: "0 18px 44px rgba(0,0,0,.35)", overflow: "hidden" }}>
+          <ScoreGhost src={teamAVisual} side="left" />
+          <ScoreGhost src={teamBVisual} side="right" />
+          <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center", textAlign: "center" }}>
             <TeamScore name={teamA} score={score[0]} extra={isPenalty ? `${shoots[0]} tir(s)` : spec.kind === "team" ? `${rosterA.length || spec.playersPerSide} joueurs` : "duel"} />
             <div style={{ fontSize: 28, fontWeight: 1000, opacity: .6 }}>-</div>
             <TeamScore name={teamB} score={score[1]} extra={isPenalty ? `${shoots[1]} tir(s)` : spec.kind === "team" ? `${rosterB.length || spec.playersPerSide} joueurs` : "duel"} />
@@ -97,7 +144,59 @@ export default function FootPlay({ go, params, onFinish }: Props) {
     </div>
   );
 }
-function TeamScore({ name, score, extra }: any) { return <div><div style={{ fontSize: 13, opacity: .78, fontWeight: 900, minHeight: 34 }}>{name}</div><div style={{ fontSize: 58, fontWeight: 1000, lineHeight: 1 }}>{score}</div><div style={{ fontSize: 11, opacity: .6, fontWeight: 800 }}>{extra}</div></div>; }
+function TeamScore({ name, score, extra }: any) {
+  return (
+    <div style={{ position: "relative", zIndex: 3, minWidth: 0 }}>
+      <div style={{ fontSize: 13, opacity: .86, fontWeight: 1000, minHeight: 34, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+      <div style={{ fontSize: 58, fontWeight: 1000, lineHeight: 1, textShadow: "0 4px 18px rgba(0,0,0,.65)" }}>{score}</div>
+      <div style={{ fontSize: 11, opacity: .7, fontWeight: 900 }}>{extra}</div>
+    </div>
+  );
+}
+
+function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right" }) {
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      style={{
+        position: "absolute",
+        zIndex: 1,
+        top: "50%",
+        [side]: "-9%",
+        width: "46%",
+        maxWidth: 260,
+        height: "150%",
+        objectFit: "cover",
+        transform: `translateY(-50%) ${side === "right" ? "scaleX(-1)" : ""}`,
+        opacity: .16,
+        filter: "saturate(1.15) contrast(1.15) drop-shadow(0 0 22px rgba(57,240,131,.28))",
+        pointerEvents: "none",
+        borderRadius: 28,
+      } as React.CSSProperties}
+    />
+  );
+}
+
+function ClockBar({ running, period, periodCount, remaining, onToggle, onReset, onNextPeriod }: any) {
+  const mm = Math.floor(Number(remaining || 0) / 60);
+  const ss = Number(remaining || 0) % 60;
+  const label = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  const canNext = period < periodCount;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center", margin: "0 0 14px", padding: 10, borderRadius: 18, background: "rgba(255,255,255,.055)", border: "1px solid rgba(255,255,255,.12)" }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: "#39f083", fontWeight: 1000, fontSize: 12 }}>CHRONO</div>
+        <div style={{ fontWeight: 1000, fontSize: 22, lineHeight: 1.05 }}>{label}</div>
+        <div style={{ opacity: .68, fontSize: 11, fontWeight: 850 }}>Période {period}/{periodCount}</div>
+      </div>
+      <button type="button" onClick={onToggle} style={clockBtn(running ? "pause" : "play")}>{running ? "⏸ Pause" : "▶ Lancer"}</button>
+      <button type="button" onClick={remaining === 0 && canNext ? onNextPeriod : onReset} style={clockBtn("neutral")}>{remaining === 0 && canNext ? "Période +" : "↺"}</button>
+    </div>
+  );
+}
 function buildRoster(idsRaw: any, namesRaw: any) {
   const ids = Array.isArray(idsRaw) ? idsRaw.map(String) : [];
   const names = Array.isArray(namesRaw) ? namesRaw.map(String) : [];
@@ -128,6 +227,7 @@ function EventPanel({ team, roster, on, penalty }: any) {
     </div>
   );
 }
+const clockBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, padding: "10px 12px", background: tone === "play" ? "linear-gradient(135deg, #35d86f, #087535)" : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" });
 const eventBtn: React.CSSProperties = { border: "1px solid rgba(255,255,255,.12)", borderRadius: 13, padding: "10px 8px", background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 900, cursor: "pointer" };
 const miniEventBtn: React.CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 10, padding: "7px 5px", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 11, fontWeight: 900, cursor: "pointer" };
 const secondaryBtn: React.CSSProperties = { flex: 1, border: "1px solid rgba(255,255,255,.14)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer" };
