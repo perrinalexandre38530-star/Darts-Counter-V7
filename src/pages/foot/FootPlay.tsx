@@ -473,7 +473,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           <button onClick={finish} disabled={!matchFinished} title={matchFinished ? "Enregistrer le match" : "Le match doit être terminé pour enregistrer"} style={{ ...primaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: matchFinished ? 1 : .38, filter: matchFinished ? "none" : "grayscale(.65)", cursor: matchFinished ? "pointer" : "not-allowed", boxShadow: matchFinished ? undefined : "none" }}><span style={{ display: "inline-grid", placeItems: "center", opacity: matchFinished ? 1 : .75 }}><FootLineIcon name="save" size={22} /></span><span>TERMINER</span></button>
         </div>
 
-        {activeTab === "timeline" && <TimelineTab events={events} />}
+        {activeTab === "timeline" && <TimelineTab events={events} teamA={teamA} teamB={teamB} score={score} />}
         {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} rosterA={rosterA} rosterB={rosterB} initialLineups={initialLineupsRef.current || { a: lineupA, b: lineupB }} elapsedSeconds={getCurrentMatchElapsedSeconds(currentPeriod, periodSeconds, remainingSeconds)} />}
         {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} lineupA={lineupA} lineupB={lineupB} setLineupA={setLineupA} setLineupB={setLineupB} onSubstitute={performSubstitution} />}
         {activeTab === "ranking" && <EmptyTab title="CLASSEMENT" text="Le classement lié à cette ligue ou ce tournoi sera affiché ici." />}
@@ -730,14 +730,98 @@ function FootPlayTabs({
   );
 }
 
-function TimelineTab({ events }: { events: any[] }) {
+function TimelineTab({ events, teamA, teamB, score }: { events: any[]; teamA: string; teamB: string; score: [number, number] }) {
   return (
     <section style={tabPanelStyle}>
       <h2 style={tabTitleStyle}>FIL DU MATCH</h2>
+      <GoalScorersBoard events={events} teamA={teamA} teamB={teamB} score={score} />
       <div style={{ display: "grid", gap: 8 }}>
         {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: `1px solid ${THEME_22}`, fontWeight: 850 }}>{formatFootEventSentence(ev)}</div>)}
       </div>
     </section>
+  );
+}
+
+function GoalScorersBoard({ events, teamA, teamB, score }: { events: any[]; teamA: string; teamB: string; score: [number, number] }) {
+  const goals = React.useMemo(() => {
+    const sorted = [...events].reverse();
+    const left: any[] = [];
+    const right: any[] = [];
+    sorted.forEach((ev) => {
+      if (!["goal", "penalty_scored", "own_goal"].includes(String(ev.type))) return;
+      const scoringTeam = typeof ev.scoringTeam === "number" ? Number(ev.scoringTeam) : Number(ev.team);
+      const scorerName = ev.type === "own_goal"
+        ? (ev.awardedToPlayerName || ev.playerName || "CSC")
+        : (ev.playerName || ev.awardedToPlayerName || "Buteur");
+      const minute = getEventMinute(ev);
+      const item = { ...ev, scorerName, minute };
+      if (scoringTeam === 0) left.push(item);
+      else right.push(item);
+    });
+    return { left, right };
+  }, [events]);
+
+  const renderScorers = (items: any[], align: "left" | "right") => (
+    <div style={{ display: "grid", gap: 5, alignContent: "center", minWidth: 0, textAlign: align }}>
+      {items.length === 0 ? (
+        <div style={{ opacity: .34, fontWeight: 900, fontSize: 12 }}>—</div>
+      ) : items.map((goal, index) => (
+        <div
+          key={`${goal.id || index}_scorer`}
+          style={{
+            display: "flex",
+            flexDirection: align === "right" ? "row-reverse" : "row",
+            alignItems: "center",
+            gap: 5,
+            minWidth: 0,
+            color: "rgba(255,255,255,.92)",
+            fontWeight: 950,
+            fontSize: "clamp(10px, 2.4vw, 12px)",
+            lineHeight: 1.15,
+          }}
+        >
+          <span style={{ flex: "0 0 auto", color: THEME, filter: `drop-shadow(0 0 7px ${THEME_55})` }}>⚽</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{goal.scorerName}</span>
+          <span style={{ flex: "0 0 auto", color: THEME, opacity: .9 }}>{goal.minute}'</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        margin: "0 0 12px",
+        borderRadius: 18,
+        padding: "10px 11px",
+        background: `linear-gradient(180deg, ${THEME_10}, rgba(255,255,255,.035))`,
+        border: `1px solid ${THEME_28}`,
+        boxShadow: `inset 0 0 28px ${THEME_08}`,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+          gap: 9,
+          alignItems: "center",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: THEME, fontSize: "clamp(11px, 2.8vw, 14px)", fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: `0 0 10px ${THEME_55}` }}>{teamA}</div>
+          {renderScorers(goals.left, "left")}
+        </div>
+        <div style={{ display: "grid", placeItems: "center", minWidth: 74 }}>
+          <div style={{ fontSize: "clamp(34px, 8vw, 48px)", fontWeight: 1000, lineHeight: 1, color: "#fff", textShadow: "0 4px 18px rgba(0,0,0,.72)" }}>{score[0]} - {score[1]}</div>
+        </div>
+        <div style={{ minWidth: 0, textAlign: "right" }}>
+          <div style={{ color: THEME, fontSize: "clamp(11px, 2.8vw, 14px)", fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: `0 0 10px ${THEME_55}` }}>{teamB}</div>
+          {renderScorers(goals.right, "right")}
+        </div>
+      </div>
+    </div>
   );
 }
 
