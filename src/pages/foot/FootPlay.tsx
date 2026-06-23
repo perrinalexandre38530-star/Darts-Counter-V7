@@ -372,7 +372,10 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       setClockRunning(true);
       return;
     }
-    if (clockPhase === "warmup") setClockPhase("playing");
+    if (clockPhase === "warmup") {
+      initialLineupsRef.current = { a: [...lineupA], b: [...lineupB] };
+      setClockPhase("playing");
+    }
     setClockRunning((v) => !v);
   };
 
@@ -473,7 +476,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           <button onClick={finish} disabled={!matchFinished} title={matchFinished ? "Enregistrer le match" : "Le match doit être terminé pour enregistrer"} style={{ ...primaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: matchFinished ? 1 : .38, filter: matchFinished ? "none" : "grayscale(.65)", cursor: matchFinished ? "pointer" : "not-allowed", boxShadow: matchFinished ? undefined : "none" }}><span style={{ display: "inline-grid", placeItems: "center", opacity: matchFinished ? 1 : .75 }}><FootLineIcon name="save" size={22} /></span><span>TERMINER</span></button>
         </div>
 
-        {activeTab === "timeline" && <TimelineTab events={events} teamA={teamA} teamB={teamB} score={score} />}
+        {activeTab === "timeline" && <TimelineTab events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} score={score} />}
         {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} rosterA={rosterA} rosterB={rosterB} initialLineups={initialLineupsRef.current || { a: lineupA, b: lineupB }} elapsedSeconds={getCurrentMatchElapsedSeconds(currentPeriod, periodSeconds, remainingSeconds)} />}
         {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} lineupA={lineupA} lineupB={lineupB} setLineupA={setLineupA} setLineupB={setLineupB} onSubstitute={performSubstitution} />}
         {activeTab === "ranking" && <EmptyTab title="CLASSEMENT" text="Le classement lié à cette ligue ou ce tournoi sera affiché ici." />}
@@ -730,19 +733,92 @@ function FootPlayTabs({
   );
 }
 
-function TimelineTab({ events, teamA, teamB, score }: { events: any[]; teamA: string; teamB: string; score: [number, number] }) {
+function TimelineTab({ events, teamA, teamB, teamAVisual, teamBVisual, score }: { events: any[]; teamA: string; teamB: string; teamAVisual?: string | null; teamBVisual?: string | null; score: [number, number] }) {
   return (
     <section style={tabPanelStyle}>
       <h2 style={tabTitleStyle}>FIL DU MATCH</h2>
-      <GoalScorersBoard events={events} teamA={teamA} teamB={teamB} score={score} />
+      <GoalScorersBoard events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} score={score} />
       <div style={{ display: "grid", gap: 8 }}>
-        {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: `1px solid ${THEME_22}`, fontWeight: 850 }}>{formatFootEventSentence(ev)}</div>)}
+        {events.length === 0 ? (
+          <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div>
+        ) : events.map((ev) => (
+          <TimelineEventRow
+            key={ev.id}
+            ev={ev}
+            teamAVisual={teamAVisual}
+            teamBVisual={teamBVisual}
+          />
+        ))}
       </div>
     </section>
   );
 }
 
-function GoalScorersBoard({ events, teamA, teamB, score }: { events: any[]; teamA: string; teamB: string; score: [number, number] }) {
+function TimelineEventRow({ ev, teamAVisual, teamBVisual }: { ev: any; teamAVisual?: string | null; teamBVisual?: string | null }) {
+  const eventTeam = typeof ev.scoringTeam === "number" ? Number(ev.scoringTeam) : Number(ev.team || 0);
+  const logo = eventTeam === 0 ? teamAVisual : teamBVisual;
+  const minute = getEventMinute(ev);
+  return (
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 14,
+        padding: "10px 12px 10px 58px",
+        minHeight: 54,
+        background: "linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.045))",
+        border: `1px solid ${THEME_22}`,
+        fontWeight: 850,
+      }}
+    >
+      {logo ? (
+        <img
+          src={logo}
+          alt=""
+          draggable={false}
+          style={{
+            position: "absolute",
+            left: 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            objectFit: "cover",
+            boxShadow: `0 0 12px ${THEME_44}`,
+            border: `1px solid ${THEME_55}`,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            left: 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            display: "grid",
+            placeItems: "center",
+            color: THEME,
+            border: `1px solid ${THEME_44}`,
+            background: THEME_08,
+            fontWeight: 1000,
+          }}
+        >
+          {eventTeam === 0 ? "D" : "E"}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+        <span style={{ flex: "0 0 auto", color: THEME, fontWeight: 1000, textShadow: `0 0 10px ${THEME_55}` }}>{minute}'</span>
+        <span style={{ minWidth: 0 }}>{formatFootEventSentence(ev)}</span>
+      </div>
+    </div>
+  );
+}
+
+function GoalScorersBoard({ events, teamA, teamB, teamAVisual, teamBVisual, score }: { events: any[]; teamA: string; teamB: string; teamAVisual?: string | null; teamBVisual?: string | null; score: [number, number] }) {
   const goals = React.useMemo(() => {
     const sorted = [...events].reverse();
     const left: any[] = [];
@@ -795,14 +871,22 @@ function GoalScorersBoard({ events, teamA, teamB, score }: { events: any[]; team
         margin: "0 0 12px",
         borderRadius: 18,
         padding: "10px 11px",
-        background: `linear-gradient(180deg, ${THEME_10}, rgba(255,255,255,.035))`,
+        background: `linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.035))`,
         border: `1px solid ${THEME_28}`,
         boxShadow: `inset 0 0 28px ${THEME_08}`,
         overflow: "hidden",
       }}
     >
+      {teamAVisual ? (
+        <img src={teamAVisual} alt="" draggable={false} style={{ position: "absolute", left: -26, top: -24, width: "38%", height: "150%", objectFit: "cover", opacity: .18, filter: "saturate(1.15) contrast(1.05)", maskImage: "linear-gradient(90deg, #000 0%, rgba(0,0,0,.82) 42%, transparent 100%)", WebkitMaskImage: "linear-gradient(90deg, #000 0%, rgba(0,0,0,.82) 42%, transparent 100%)" }} />
+      ) : null}
+      {teamBVisual ? (
+        <img src={teamBVisual} alt="" draggable={false} style={{ position: "absolute", right: -26, top: -24, width: "38%", height: "150%", objectFit: "cover", opacity: .18, filter: "saturate(1.15) contrast(1.05)", maskImage: "linear-gradient(270deg, #000 0%, rgba(0,0,0,.82) 42%, transparent 100%)", WebkitMaskImage: "linear-gradient(270deg, #000 0%, rgba(0,0,0,.82) 42%, transparent 100%)" }} />
+      ) : null}
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
           gap: 9,
