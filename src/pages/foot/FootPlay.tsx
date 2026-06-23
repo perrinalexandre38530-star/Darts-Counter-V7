@@ -56,6 +56,7 @@ const statOptions: Array<{ type: EventType; label: string; icon: string }> = [
   { type: "post", label: "Poteau", icon: "🥅" },
   { type: "crossbar", label: "Transversale", icon: "📏" },
   { type: "penalty_missed", label: "Penalty loupé", icon: "❌" },
+  { type: "assist", label: "Passe décisive", icon: "🎯" },
   { type: "substitution", label: "Remplacement", icon: "🔁" },
 ];
 
@@ -69,6 +70,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   const [shoots, setShoots] = React.useState<[number, number]>([0, 0]);
   const [actionModal, setActionModal] = React.useState<null | { kind: "goal" | "more"; team: 0 | 1; teamName: string }>(null);
   const [playerPickModal, setPlayerPickModal] = React.useState<null | { team: 0 | 1; teamName: string; actionType: EventType; goalKind?: GoalKind; goalLabel?: string; statOnly?: boolean; awardedCsc?: boolean }>(null);
+  const [assistModal, setAssistModal] = React.useState<null | { team: 0 | 1; teamName: string; scorer: any; actionType: EventType; goalKind?: GoalKind; goalLabel?: string; autoSubOut?: any }>(null);
   const [substitutionModal, setSubstitutionModal] = React.useState<null | { team: 0 | 1; teamName: string }>(null);
   const buzzerPlayedRef = React.useRef(false);
   const rosterA = React.useMemo(() => buildRoster(cfg.teamAPlayerIds, cfg.playersA, cfg.playersAVisuals), [cfg.teamAPlayerIds, cfg.playersA, cfg.playersAVisuals]);
@@ -129,7 +131,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
     setActionModal(null);
   };
 
-  const confirmPlayerAction = (player?: any) => {
+  const confirmPlayerAction = (player?: any, meta?: any) => {
     if (!playerPickModal) return;
     if (playerPickModal.awardedCsc) {
       const scoringTeam = playerPickModal.team;
@@ -160,13 +162,40 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       setEvents((prev) => [ev, ...prev]);
       setScore(([a, b]) => scoringTeam === 0 ? [a + 1, b] : [a, b + 1]);
     } else {
-      addEvent(playerPickModal.team, playerPickModal.actionType, player, {
-        goalKind: playerPickModal.goalKind,
-        goalLabel: playerPickModal.goalLabel,
-        statOnly: playerPickModal.statOnly,
-      });
+      if (meta?.autoSubOut) {
+        confirmSubstitution(meta.autoSubOut, player);
+      }
+      const isGoalAction = playerPickModal.actionType === "goal" || playerPickModal.actionType === "penalty_scored";
+      if (isGoalAction) {
+        setAssistModal({
+          team: playerPickModal.team,
+          teamName: playerPickModal.teamName,
+          scorer: player,
+          actionType: playerPickModal.actionType,
+          goalKind: playerPickModal.goalKind,
+          goalLabel: playerPickModal.goalLabel,
+          autoSubOut: meta?.autoSubOut || null,
+        });
+      } else {
+        addEvent(playerPickModal.team, playerPickModal.actionType, player, {
+          goalKind: playerPickModal.goalKind,
+          goalLabel: playerPickModal.goalLabel,
+          statOnly: playerPickModal.statOnly,
+        });
+      }
     }
     setPlayerPickModal(null);
+  };
+
+  const confirmAssist = (assistPlayer?: any | null) => {
+    if (!assistModal) return;
+    addEvent(assistModal.team, assistModal.actionType, assistModal.scorer, {
+      goalKind: assistModal.goalKind,
+      goalLabel: assistModal.goalLabel,
+      assistPlayerId: assistPlayer?.id || null,
+      assistPlayerName: assistPlayer?.name || null,
+    });
+    setAssistModal(null);
   };
 
 
@@ -355,8 +384,17 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           data={playerPickModal}
           roster={playerPickModal.team === 0 ? rosterA : rosterB}
           fallbackName={playerPickModal.teamName}
+          playersPerSide={spec.playersPerSide}
           onClose={() => setPlayerPickModal(null)}
           onSelect={confirmPlayerAction}
+        />
+      )}
+      {assistModal && (
+        <AssistModal
+          data={assistModal}
+          roster={assistModal.team === 0 ? rosterA : rosterB}
+          onClose={() => setAssistModal(null)}
+          onSelect={confirmAssist}
         />
       )}
       {substitutionModal && (
@@ -590,10 +628,12 @@ function formatFootEventSentence(ev: any) {
     if (ev.goalKind === "header") return `⚽ ${player} ouvre le score de la tête à la ${minute}e minute de jeu${scoreTxt}.`;
     if (ev.goalKind === "left_foot") return `⚽ ${player} marque du pied gauche à la ${minute}e minute de jeu${scoreTxt}.`;
     if (ev.goalKind === "right_foot") return `⚽ ${player} marque du pied droit à la ${minute}e minute de jeu${scoreTxt}.`;
-    if (ev.goalKind === "free_kick") return `⚽ Coup-franc direct transformé par ${player} à la ${minute}e minute de jeu${scoreTxt}.`;
-    return `⚽ But pour ${team} par ${player} à la ${minute}e minute de jeu${scoreTxt}.`;
+    const assistTxt = ev.assistPlayerName ? `, passe décisive de ${ev.assistPlayerName}` : "";
+    if (ev.goalKind === "free_kick") return `⚽ Coup-franc direct transformé par ${player} à la ${minute}e minute de jeu${assistTxt}${scoreTxt}.`;
+    return `⚽ But pour ${team} par ${player} à la ${minute}e minute de jeu${assistTxt}${scoreTxt}.`;
   }
   if (ev.type === "penalty_scored") return `🎯 Penalty transformé par ${player} à la ${minute}e minute de jeu${scoreTxt}.`;
+  if (ev.type === "assist") return `🎯 Passe décisive de ${player} à la ${minute}e minute de jeu.`;
   if (ev.type === "penalty_missed") return `❌ Penalty manqué pour ${player} à la ${minute}e minute de jeu.`;
   if (ev.type === "own_goal") return `🥅 CSC provoqué à la ${minute}e minute : but accordé à ${ev.scoringTeamName || team}${scoreTxt}.`;
   if (ev.type === "shot_on") return `🎯 Tir cadré de ${player} à la ${minute}e minute de jeu.`;
@@ -619,21 +659,22 @@ function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisua
   const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots), [events, teamA, teamB, score, shoots]);
 
   const rows = [
-    { label: "SCORE FINAL", left: `${score[0]}`, right: `${score[1]}` },
-    { label: "Score 2ème M-T", left: teamStats.teams[0].period2, right: teamStats.teams[1].period2 },
-    { label: "Score 1ère M-T", left: teamStats.teams[0].period1, right: teamStats.teams[1].period1 },
-    { label: "Nombre de tirs", left: teamStats.teams[0].shotsTotal, right: teamStats.teams[1].shotsTotal },
+    { label: "Score", left: `${score[0]}`, right: `${score[1]}` },
+    { label: "2ème M-T", left: teamStats.teams[0].period2, right: teamStats.teams[1].period2 },
+    { label: "1ère M-T", left: teamStats.teams[0].period1, right: teamStats.teams[1].period1 },
+    { label: "Tirs", left: teamStats.teams[0].shotsTotal, right: teamStats.teams[1].shotsTotal },
     { label: "Tirs cadrés", left: teamStats.teams[0].shot_on, right: teamStats.teams[1].shot_on },
     { label: "Tirs non cadrés", left: teamStats.teams[0].shotsOffTotal, right: teamStats.teams[1].shotsOffTotal },
     { label: "Fautes", left: teamStats.teams[0].foul, right: teamStats.teams[1].foul },
     { label: "CJ", left: teamStats.teams[0].yellow, right: teamStats.teams[1].yellow },
     { label: "CR", left: teamStats.teams[0].red, right: teamStats.teams[1].red },
-    { label: "Penaltys transformés", left: teamStats.teams[0].penalty_scored, right: teamStats.teams[1].penalty_scored },
-    { label: "Penaltys loupés", left: teamStats.teams[0].penalty_missed, right: teamStats.teams[1].penalty_missed },
+    { label: "TAB Réussi(s)", left: teamStats.teams[0].penalty_scored, right: teamStats.teams[1].penalty_scored },
+    { label: "TAB raté(s)", left: teamStats.teams[0].penalty_missed, right: teamStats.teams[1].penalty_missed },
     { label: "CF Direct", left: teamStats.teams[0].free_kick, right: teamStats.teams[1].free_kick },
-    { label: "Buts de la tête", left: teamStats.teams[0].header, right: teamStats.teams[1].header },
-    { label: "Buts pied gauche", left: teamStats.teams[0].left_foot, right: teamStats.teams[1].left_foot },
-    { label: "Buts pied droit", left: teamStats.teams[0].right_foot, right: teamStats.teams[1].right_foot },
+    { label: "But(s) Tête", left: teamStats.teams[0].header, right: teamStats.teams[1].header },
+    { label: "But(s) Pied G", left: teamStats.teams[0].left_foot, right: teamStats.teams[1].left_foot },
+    { label: "But(s) Pied D", left: teamStats.teams[0].right_foot, right: teamStats.teams[1].right_foot },
+    { label: "Passes déc.", left: teamStats.teams[0].assist, right: teamStats.teams[1].assist },
     { label: "CSC", left: teamStats.teams[0].own_goal, right: teamStats.teams[1].own_goal },
   ];
 
@@ -643,22 +684,42 @@ function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisua
       <FootStatsCard leftName={teamA} rightName={teamB} leftVisual={teamAVisual} rightVisual={teamBVisual} rows={rows} />
 
       <h2 style={{ ...tabTitleStyle, marginTop: 16 }}>STATS JOUEURS</h2>
-      <div style={{ display: "grid", gap: 12 }}>
-        {[0, 1].map((teamIndex) => (
-          <div key={teamIndex} style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-            <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, background: THEME_08 }}>{teamIndex === 0 ? teamA : teamB}</div>
-            {teamStats.players[teamIndex].length ? teamStats.players[teamIndex].map((p: any) => (
-              <div key={p.key} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: "10px 12px", borderTop: "1px solid rgba(255,255,255,.08)", alignItems: "center" }}>
-                <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
-                <div style={{ opacity: .86, fontWeight: 900, fontSize: 12, textAlign: "right" }}>
-                  {p.goals} but · {p.shotsTotal} tirs · {p.foul} fautes · {p.yellow} CJ · {p.red} CR
-                </div>
-              </div>
-            )) : <div style={{ padding: 12, opacity: .65, fontWeight: 800 }}>Aucune stat joueur.</div>}
-          </div>
-        ))}
-      </div>
+      <PlayerStatsSplitCard leftName={teamA} rightName={teamB} leftPlayers={teamStats.players[0]} rightPlayers={teamStats.players[1]} />
     </section>
+  );
+}
+
+function PlayerStatsSplitCard({ leftName, rightName, leftPlayers, rightPlayers }: any) {
+  const rows = Array.from({ length: Math.max(leftPlayers?.length || 0, rightPlayers?.length || 0) });
+  const renderPlayer = (player: any, align: "left" | "right") => {
+    if (!player) return <div style={{ opacity: .28, fontWeight: 900 }}>—</div>;
+    return (
+      <div style={{ display: "grid", gap: 4, textAlign: align }}>
+        <div style={{ fontWeight: 1000, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 3, fontSize: 10, fontWeight: 950, opacity: .9 }}>
+          <span>{player.goals} B</span>
+          <span>{player.assist} PD</span>
+          <span>{player.shotsTotal} T</span>
+          <span>{player.foul} F</span>
+          <span>{player.yellow}/{player.red}</span>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", background: THEME_08, borderBottom: `1px solid ${THEME_22}` }}>
+        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leftName}</div>
+        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rightName}</div>
+      </div>
+      {rows.length ? rows.map((_, idx) => (
+        <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, borderTop: idx ? "1px solid rgba(255,255,255,.08)" : 0 }}>
+          <div style={{ padding: "10px 12px", borderRight: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>{renderPlayer(leftPlayers?.[idx], "left")}</div>
+          <div style={{ padding: "10px 12px", minWidth: 0 }}>{renderPlayer(rightPlayers?.[idx], "right")}</div>
+        </div>
+      )) : <div style={{ padding: 12, opacity: .65, fontWeight: 800 }}>Aucune stat joueur.</div>}
+      <div style={{ padding: "8px 12px", opacity: .55, fontSize: 10, fontWeight: 850 }}>B = buts · PD = passes déc. · T = tirs · F = fautes · CJ/CR</div>
+    </div>
   );
 }
 
@@ -680,7 +741,7 @@ function FootStatsCard({ leftName, rightName, leftVisual, rightVisual, rows }: a
         return (
           <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr 1fr", alignItems: "center", minHeight: 34, borderTop: "1px solid rgba(255,255,255,.08)" }}>
             <div style={{ padding: "7px 12px", color: leftBest ? THEME : "#fff", fontWeight: 1000, borderBottom: `2px solid ${leftBest ? THEME_55 : "rgba(255,255,255,.55)"}`, background: leftBest ? `linear-gradient(90deg, ${THEME_12}, transparent)` : "linear-gradient(90deg, rgba(255,255,255,.08), transparent)" }}>{row.left}</div>
-            <div style={{ padding: "7px 8px", textAlign: "center", fontWeight: 950, opacity: .92 }}>{row.label}</div>
+            <div style={{ padding: "7px 6px", textAlign: "center", fontWeight: 950, opacity: .92, fontSize: "clamp(10px, 2.55vw, 13px)", lineHeight: 1.08 }}>{row.label}</div>
             <div style={{ padding: "7px 12px", textAlign: "right", color: rightBest ? THEME : "#fff", fontWeight: 1000, borderBottom: `2px solid ${rightBest ? THEME_55 : "rgba(255,255,255,.55)"}`, background: rightBest ? `linear-gradient(270deg, ${THEME_12}, transparent)` : "linear-gradient(270deg, rgba(255,255,255,.08), transparent)" }}>{row.right}</div>
           </div>
         );
@@ -720,7 +781,7 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
     score: 0, period1: 0, period2: 0, shotsTotal: 0, shotsOffTotal: 0,
     goal: 0, penalty_scored: 0, penalty_missed: 0, own_goal: 0, foul: 0, yellow: 0, red: 0,
     shot_on: 0, shot_off: 0, post: 0, crossbar: 0,
-    right_foot: 0, left_foot: 0, header: 0, free_kick: 0,
+    right_foot: 0, left_foot: 0, header: 0, free_kick: 0, assist: 0,
   });
   const emptyPlayer = (name: string, id: string) => ({
     key: id || name,
@@ -743,6 +804,7 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
     left_foot: 0,
     header: 0,
     free_kick: 0,
+    assist: 0,
   });
 
   const teams = [emptyTeam(), emptyTeam()];
@@ -770,6 +832,7 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
     if (statTeam !== 0 && statTeam !== 1) return;
     const ts = teams[statTeam];
     if (ev.type in ts) ts[ev.type as keyof typeof ts] += 1;
+    if ((ev.type === "goal" || ev.type === "penalty_scored") && ev.assistPlayerName) ts.assist += 1;
     if (ev.type === "shot_on") ts.shotsTotal += 1;
     if (ev.type === "shot_off" || ev.type === "post" || ev.type === "crossbar" || ev.type === "penalty_missed") {
       ts.shotsTotal += 1;
@@ -800,6 +863,12 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
         if (ev.type === k) ps[k] += 1;
       });
       if (ev.goalKind && ev.goalKind in ps) ps[ev.goalKind] += 1;
+      if ((ev.type === "goal" || ev.type === "penalty_scored") && ev.assistPlayerName) {
+        const assistId = ev.assistPlayerId || ev.assistPlayerName;
+        const assistName = String(ev.assistPlayerName);
+        if (!players[statTeam].has(String(assistId))) players[statTeam].set(String(assistId), emptyPlayer(assistName, String(assistId)));
+        players[statTeam].get(String(assistId)).assist += 1;
+      }
     }
   });
 
@@ -1104,12 +1173,26 @@ function RulesModal({ title, rules, onClose }: { title: string; rules: string[];
   );
 }
 
-function PlayerPickModal({ data, roster, fallbackName, onClose, onSelect }: any) {
+function PlayerPickModal({ data, roster, fallbackName, playersPerSide, onClose, onSelect }: any) {
   const safeRoster = Array.isArray(roster) && roster.length ? roster : [{ id: `team_${fallbackName}`, name: fallbackName }];
+  const onPitchCount = Math.max(1, Number(playersPerSide || safeRoster.length));
+  const onPitchIds = new Set(safeRoster.slice(0, onPitchCount).map((p: any) => String(p.id)));
   const actionLabel = data.goalLabel || labels[data.actionType as EventType] || "Action";
+  const [benchCandidate, setBenchCandidate] = React.useState<any | null>(null);
+  const starters = safeRoster.filter((p: any) => onPitchIds.has(String(p.id)));
+
+  const choose = (player: any) => {
+    if (!player) return;
+    if (!onPitchIds.has(String(player.id)) && starters.length) {
+      setBenchCandidate(player);
+      return;
+    }
+    onSelect(player);
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
-      <div style={{ width: "min(420px, 100%)", maxHeight: "82vh", overflowY: "auto", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,20,24,.98), rgba(5,8,10,.98))", border: `1px solid ${THEME_28}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: "min(440px, 100%)", maxHeight: "82vh", overflowY: "auto", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,20,24,.98), rgba(5,8,10,.98))", border: `1px solid ${THEME_28}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
           <div>
             <div style={{ color: THEME, fontWeight: 1000, fontSize: 20 }}>Choisir le joueur</div>
@@ -1117,7 +1200,58 @@ function PlayerPickModal({ data, roster, fallbackName, onClose, onSelect }: any)
           </div>
           <button type="button" onClick={onClose} style={{ border: `1px solid ${THEME_33}`, borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
         </div>
+
+        {benchCandidate ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ borderRadius: 16, padding: 12, background: THEME_10, border: `1px solid ${THEME_28}`, fontWeight: 900 }}>
+              <span style={{ color: THEME }}>Remplaçant sélectionné :</span> {benchCandidate.name}<br />
+              <span style={{ opacity: .75, fontSize: 12 }}>Choisis le titulaire qu’il remplace, puis la stat sera ajoutée automatiquement.</span>
+            </div>
+            {starters.map((p: any) => (
+              <button key={p.id} type="button" onClick={() => onSelect(benchCandidate, { autoSubOut: p })} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 10, background: THEME_10, color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
+                <PlayerAvatarMini player={p} />
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                <span style={{ opacity: .7, fontSize: 11 }}>sort</span>
+              </button>
+            ))}
+            <button type="button" onClick={() => setBenchCandidate(null)} style={{ ...modalBtn, background: "rgba(255,255,255,.06)" }}>← Retour</button>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {safeRoster.map((p: any) => {
+              const isOnPitch = onPitchIds.has(String(p.id));
+              return (
+                <button key={p.id} type="button" onClick={() => choose(p)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 10, background: isOnPitch ? THEME_10 : "rgba(255,255,255,.045)", color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
+                  <PlayerAvatarMini player={p} />
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                  <span style={{ borderRadius: 999, padding: "4px 7px", background: isOnPitch ? THEME_18 : "rgba(255,255,255,.08)", color: isOnPitch ? THEME : "rgba(255,255,255,.7)", fontSize: 10, fontWeight: 1000 }}>{isOnPitch ? "Terrain" : "Rempl."}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AssistModal({ data, roster, onClose, onSelect }: any) {
+  const safeRoster = Array.isArray(roster) ? roster.filter((p: any) => String(p.id) !== String(data.scorer?.id)) : [];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 10000, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
+      <div style={{ width: "min(440px, 100%)", maxHeight: "82vh", overflowY: "auto", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,20,24,.98), rgba(5,8,10,.98))", border: `1px solid ${THEME_28}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={{ color: THEME, fontWeight: 1000, fontSize: 20 }}>Passe décisive ?</div>
+            <div style={{ opacity: .72, fontWeight: 850, fontSize: 13 }}>{data.teamName} · Buteur : {data.scorer?.name || "Joueur"}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ border: `1px solid ${THEME_33}`, borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
+        </div>
         <div style={{ display: "grid", gap: 8 }}>
+          <button type="button" onClick={() => onSelect(null)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 12, background: "rgba(255,255,255,.055)", color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
+            <span style={{ width: 38, height: 38, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(255,255,255,.08)" }}>—</span>
+            Aucune
+          </button>
           {safeRoster.map((p: any) => (
             <button key={p.id} type="button" onClick={() => onSelect(p)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${THEME_28}`, borderRadius: 16, padding: 10, background: THEME_10, color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
               <PlayerAvatarMini player={p} />
