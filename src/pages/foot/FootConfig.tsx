@@ -103,14 +103,14 @@ export default function FootConfig({ go, params, store }: Props) {
     setSelectedIds((prev) => {
       const exists = prev.map(String).includes(id);
       if (exists) return prev.filter((x) => String(x) !== id);
-      if (prev.length >= requiredPlayers) return prev;
+      if (spec.kind === "duel" && prev.length >= requiredPlayers) return prev;
       return [...prev, id];
     });
   }
 
   function defaultPlayersForTeam(teamId: string) {
     const team: any = savedTeams.find((t: any) => String(t.id) === String(teamId));
-    return (Array.isArray(team?.playerIds) ? team.playerIds : []).map(String).filter(Boolean).slice(0, spec.playersPerSide);
+    return (Array.isArray(team?.playerIds) ? team.playerIds : []).map(String).filter(Boolean);
   }
 
   function toggleTeam(idRaw: any) {
@@ -139,7 +139,7 @@ export default function FootConfig({ go, params, store }: Props) {
     setSelectedTeamPlayerIds((prev) => {
       const current = (prev[teamId] || []).map(String);
       const exists = current.includes(playerId);
-      const nextIds = exists ? current.filter((id) => id !== playerId) : current.length >= spec.playersPerSide ? current : [...current, playerId];
+      const nextIds = exists ? current.filter((id) => id !== playerId) : [...current, playerId];
       return { ...prev, [teamId]: nextIds };
     });
   }
@@ -148,9 +148,9 @@ export default function FootConfig({ go, params, store }: Props) {
   const manualA = selectedProfiles.slice(0, spec.playersPerSide);
   const manualB = selectedProfiles.slice(spec.playersPerSide, spec.playersPerSide * 2);
   const savedSelectedTeams = selectedTeamIds.map((id) => savedTeams.find((t: any) => String(t.id) === String(id))).filter(Boolean) as TeamEntity[];
-  const savedTeamsReady = savedSelectedTeams.length === 2 && selectedTeamIds.every((id) => (selectedTeamPlayerIds[String(id)] || []).length === spec.playersPerSide);
+  const savedTeamsReady = savedSelectedTeams.length === 2 && selectedTeamIds.every((id) => (selectedTeamPlayerIds[String(id)] || []).length >= spec.playersPerSide);
 
-  const ready = spec.kind === "duel" ? selectedIds.length === 2 : sourceMode === "saved" ? savedTeamsReady : selectedIds.length === requiredPlayers;
+  const ready = spec.kind === "duel" ? selectedIds.length === 2 : sourceMode === "saved" ? savedTeamsReady : selectedIds.length >= requiredPlayers;
 
   const guidedSteps = React.useMemo<GuidedStep[]>(() => {
     const steps: GuidedStep[] = [];
@@ -176,7 +176,7 @@ export default function FootConfig({ go, params, store }: Props) {
     if (step === "source") return spec.kind !== "team" || sourceMode === "manual" || sourceMode === "saved";
     if (step === "teams") return selectedTeamIds.length === 2;
     if (step === "teamPlayers") return savedTeamsReady;
-    if (step === "players") return spec.kind === "duel" ? selectedIds.length === 2 : selectedIds.length === requiredPlayers;
+    if (step === "players") return spec.kind === "duel" ? selectedIds.length === 2 : selectedIds.length >= requiredPlayers;
     if (step === "params") return spec.id === "penalty" ? shoots > 0 : minutes > 0 && periods > 0;
     if (step === "summary") return ready;
     return true;
@@ -211,8 +211,8 @@ export default function FootConfig({ go, params, store }: Props) {
       const a: any = savedSelectedTeams[0];
       const b: any = savedSelectedTeams[1];
       return [
-        { name: String(a?.name || "Équipe A"), playerIds: (selectedTeamPlayerIds[String(a?.id || "")] || []).map(String).slice(0, spec.playersPerSide), logoDataUrl: teamLogo(a), teamId: String(a?.id || "") },
-        { name: String(b?.name || "Équipe B"), playerIds: (selectedTeamPlayerIds[String(b?.id || "")] || []).map(String).slice(0, spec.playersPerSide), logoDataUrl: teamLogo(b), teamId: String(b?.id || "") },
+        { name: String(a?.name || "Équipe A"), playerIds: (selectedTeamPlayerIds[String(a?.id || "")] || []).map(String), logoDataUrl: teamLogo(a), teamId: String(a?.id || "") },
+        { name: String(b?.name || "Équipe B"), playerIds: (selectedTeamPlayerIds[String(b?.id || "")] || []).map(String), logoDataUrl: teamLogo(b), teamId: String(b?.id || "") },
       ];
     }
     return [
@@ -290,12 +290,12 @@ export default function FootConfig({ go, params, store }: Props) {
       <p style={hintStyle}>
         {spec.kind === "duel"
           ? "Sélectionne exactement 2 profils pour lancer le duel."
-          : `Sélectionne ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs au total.`}
+          : `Sélectionne au moins ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs minimum. Tu peux en ajouter plus pour avoir un banc.`}
       </p>
       {profiles.length === 0 ? (
         <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
       ) : (
-        <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+        <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir au moins ${requiredPlayers} joueurs`} />
       )}
       <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
     </section>
@@ -355,7 +355,7 @@ export default function FootConfig({ go, params, store }: Props) {
       <p style={hintStyle}>
         {spec.kind === "duel"
           ? "Sélectionne exactement 2 profils pour lancer le duel."
-          : `Sélectionne ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs au total, ou choisis 2 équipes enregistrées.`}
+          : `Sélectionne au moins ${spec.playersPerSide} joueurs par équipe, soit ${requiredPlayers} joueurs minimum, ou choisis 2 équipes enregistrées avec un banc possible.`}
       </p>
 
       {spec.kind === "team" && (
@@ -375,7 +375,7 @@ export default function FootConfig({ go, params, store }: Props) {
           {profiles.length === 0 ? (
             <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
           ) : (
-            <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir ${requiredPlayers} joueurs`} />
+            <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir au moins ${requiredPlayers} joueurs`} />
           )}
           <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
         </>

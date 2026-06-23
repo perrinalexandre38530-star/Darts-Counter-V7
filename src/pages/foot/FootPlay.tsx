@@ -1,5 +1,6 @@
 import React from "react";
 import BackDot from "../../components/BackDot";
+import InfoDot from "../../components/InfoDot";
 import { getFootFormat } from "./footFormats";
 import { getFootGameTicker } from "./footTickers";
 import footPitchBg from "../../assets/foot-pitch.webp";
@@ -80,9 +81,12 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       icon: icons[type],
       period: currentPeriod,
       clockRemaining: remainingSeconds,
+      periodSeconds,
       format: spec.id,
       playerId: player?.id || null,
       playerName: player?.name || null,
+      scoreAAfter: (type === "goal" || type === "penalty_scored") && team === 0 ? score[0] + 1 : type === "own_goal" && team === 1 ? score[0] + 1 : score[0],
+      scoreBAfter: (type === "goal" || type === "penalty_scored") && team === 1 ? score[1] + 1 : type === "own_goal" && team === 0 ? score[1] + 1 : score[1],
       ...extra,
     };
     setEvents((prev) => [ev, ...prev]);
@@ -134,11 +138,14 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         icon: icons.own_goal,
         period: currentPeriod,
         clockRemaining: remainingSeconds,
+        periodSeconds,
         format: spec.id,
         playerId: null,
         playerName: null,
         awardedToPlayerId: player?.id || null,
         awardedToPlayerName: player?.name || null,
+        scoreAAfter: scoringTeam === 0 ? score[0] + 1 : score[0],
+        scoreBAfter: scoringTeam === 1 ? score[1] + 1 : score[1],
         goalKind: playerPickModal.goalKind,
       };
       setEvents((prev) => [ev, ...prev]);
@@ -231,16 +238,28 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   return (
     <div style={{ minHeight: "100vh", padding: "18px 14px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--dc-accent, #22e6ff) 18%, transparent), transparent 38%), linear-gradient(180deg, var(--dc-bg, #061424), #020408)" }}>
       <div style={{ maxWidth: 620, margin: "0 auto" }}>
-        <div style={{ position: "relative", height: 96, marginBottom: 12, borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,.14)", boxShadow: "0 16px 38px rgba(0,0,0,.45)" }}>
+        <div style={{ position: "relative", height: 112, marginBottom: 12, borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,.14)", boxShadow: "0 16px 38px rgba(0,0,0,.45)" }}>
           <img src={tickerSrc} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", filter: "saturate(1.05) contrast(1.05)" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.62), rgba(0,0,0,.12), rgba(0,0,0,.62))" }} />
-          <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.68), rgba(0,0,0,.18), rgba(0,0,0,.68))" }} />
+          <div style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
             <BackDot onClick={() => go("foot_config", { format: spec.id, config: cfg })} />
           </div>
-          <button type="button" aria-label="Règles" onClick={() => setRulesOpen(true)} style={infoDotBtn}>ⓘ</button>
+          <div style={{ position: "absolute", inset: 0, zIndex: 2, display: "grid", placeItems: "center", pointerEvents: "none" }}>
+            <div style={{ padding: "4px 14px", borderRadius: 999, color: THEME, fontSize: 38, fontWeight: 1000, letterSpacing: ".04em", textShadow: `0 0 20px ${THEME_66}, 0 4px 14px rgba(0,0,0,.8)` }}>{spec.label}</div>
+          </div>
+          <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+            <InfoDot
+              title={`Règles ${spec.label}`}
+              size={52}
+              content={
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ color: THEME, fontWeight: 1000 }}>{spec.label}</div>
+                  {spec.rules.map((r: string) => <div key={r} style={{ opacity: .88, fontWeight: 850 }}>• {r}</div>)}
+                </div>
+              }
+            />
+          </div>
         </div>
-        <h1 style={{ textAlign: "center", margin: "6px 0 4px", fontSize: 34, color: THEME, textShadow: `0 0 18px ${THEME_66}` }}>{spec.label}</h1>
-        <p style={{ textAlign: "center", margin: "0 0 14px", color: THEME, opacity: .9, fontWeight: 1000 }}>{isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}</p>
 
         {!isPenalty && (
           <ClockBar
@@ -251,6 +270,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
             onToggle={() => { if (!clockRunning && remainingSeconds === 0) buzzerPlayedRef.current = false; setClockRunning((v) => !v); }}
             onReset={() => { setClockRunning(false); setRemainingSeconds(periodSeconds); buzzerPlayedRef.current = false; }}
             onNextPeriod={nextPeriod}
+            configLabel={isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}
           />
         )}
 
@@ -281,11 +301,10 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         </div>
 
         {activeTab === "timeline" && <TimelineTab events={events} />}
-        {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} />}
+        {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} />}
         {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} />}
         {activeTab === "ranking" && <EmptyTab title="CLASSEMENT" text="Le classement lié à cette ligue ou ce tournoi sera affiché ici." />}
       </div>
-      {rulesOpen && <RulesModal title={`Règles ${spec.label}`} rules={spec.rules} onClose={() => setRulesOpen(false)} />}
       {actionModal && (
         <ActionModal
           data={actionModal}
@@ -319,8 +338,8 @@ function TeamScore({ name, score, extra }: any) {
 function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right" }) {
   if (!src) return null;
   const fadeMask = side === "left"
-    ? "linear-gradient(90deg, #000 0%, #000 38%, rgba(0,0,0,.62) 56%, transparent 88%, transparent 100%)"
-    : "linear-gradient(270deg, #000 0%, #000 38%, rgba(0,0,0,.62) 56%, transparent 88%, transparent 100%)";
+    ? "linear-gradient(90deg, #000 0%, #000 34%, rgba(0,0,0,.65) 52%, transparent 82%, transparent 100%)"
+    : "linear-gradient(270deg, #000 0%, #000 34%, rgba(0,0,0,.65) 52%, transparent 82%, transparent 100%)";
   return (
     <div
       style={{
@@ -360,37 +379,43 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
         }}
       />
       <div style={{ position: "absolute", inset: 0, borderRadius: "999px", background: side === "left"
-        ? "linear-gradient(90deg, rgba(0,0,0,.02), rgba(0,0,0,.18) 46%, rgba(0,0,0,.86) 100%)"
-        : "linear-gradient(270deg, rgba(0,0,0,.02), rgba(0,0,0,.18) 46%, rgba(0,0,0,.86) 100%)" }} />
+        ? "linear-gradient(90deg, rgba(0,0,0,.00), rgba(0,0,0,.12) 36%, rgba(0,0,0,.92) 100%)"
+        : "linear-gradient(270deg, rgba(0,0,0,.00), rgba(0,0,0,.12) 36%, rgba(0,0,0,.92) 100%)" }} />
       <div style={{ position: "absolute", inset: 0, borderRadius: "999px", boxShadow: `inset 0 0 34px rgba(0,0,0,.34), inset 0 0 0 2px ${THEME_18}` }} />
     </div>
   );
 }
 
-function ClockBar({ running, period, periodCount, remaining, onToggle, onReset, onNextPeriod }: any) {
+function ClockBar({ running, period, periodCount, remaining, onToggle, onReset, onNextPeriod, configLabel }: any) {
   const mm = Math.floor(Number(remaining || 0) / 60);
   const ss = Number(remaining || 0) % 60;
   const label = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
   const canNext = period < periodCount;
   return (
-    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", margin: "0 0 10px", padding: 12, minHeight: 68, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
+    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", margin: "0 0 10px", padding: "34px 12px 12px", minHeight: 82, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
+      <div style={{ position: "absolute", left: 12, right: 12, top: 8, display: "flex", alignItems: "center", justifyContent: "center", color: THEME, fontWeight: 1000, fontSize: 13, opacity: .95, textShadow: `0 0 12px ${THEME_44}` }}>{configLabel}</div>
       <div style={{ minWidth: 0, position: "relative", zIndex: 2 }}>
         <div style={{ color: THEME, fontWeight: 1000, fontSize: 12 }}>CHRONO</div>
         <div style={{ opacity: .78, fontSize: 11, fontWeight: 900 }}>Période {period}/{periodCount}</div>
       </div>
-      <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", fontWeight: 1000, fontSize: 30, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME_44}`, pointerEvents: "none" }}>{label}</div>
-      <div style={{ display: "flex", gap: 8, justifyContent: "end", position: "relative", zIndex: 2 }}>
-        <button type="button" onClick={onToggle} style={clockBtn(running ? "pause" : "play")}>{running ? "⏸ Pause" : "▶ Lancer"}</button>
-        <button type="button" onClick={remaining === 0 && canNext ? onNextPeriod : onReset} style={clockBtn("neutral")}>{remaining === 0 && canNext ? "Période +" : "↺"}</button>
+      <div style={{ position: "absolute", left: "50%", top: "60%", transform: "translate(-50%, -50%)", fontWeight: 1000, fontSize: 30, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME_44}`, pointerEvents: "none" }}>{label}</div>
+      <div style={{ display: "grid", gap: 7, justifyContent: "end", position: "relative", zIndex: 2 }}>
+        <button type="button" aria-label={running ? "Pause" : "Lancer"} title={running ? "Pause" : "Lancer"} onClick={onToggle} style={clockIconBtn(running ? "pause" : "play")}>{running ? "Ⅱ" : "▶"}</button>
+        <button type="button" aria-label={remaining === 0 && canNext ? "Période suivante" : "Réinitialiser"} title={remaining === 0 && canNext ? "Période suivante" : "Réinitialiser"} onClick={remaining === 0 && canNext ? onNextPeriod : onReset} style={clockIconBtn("neutral")}>{remaining === 0 && canNext ? "+" : "↺"}</button>
       </div>
     </div>
   );
 }
 function buildRoster(idsRaw: any, namesRaw: any, visualsRaw?: any) {
   const ids = Array.isArray(idsRaw) ? idsRaw.map(String) : [];
-  const names = Array.isArray(namesRaw) ? namesRaw.map(String) : [];
+  const names = Array.isArray(namesRaw) ? namesRaw : [];
   const visuals = Array.isArray(visualsRaw) ? visualsRaw.map((v) => String(v || "")) : [];
-  return ids.map((id, index) => ({ id, name: names[index] || `Joueur ${index + 1}`, visual: visuals[index] || null })).filter((p) => p.id);
+  return ids.map((id, index) => {
+    const raw: any = names[index];
+    const name = typeof raw === "string" ? raw : String(raw?.name || raw?.displayName || `Joueur ${index + 1}`);
+    const visual = visuals[index] || raw?.visual || raw?.avatar || raw?.avatarUrl || raw?.avatarDataUrl || raw?.photoUrl || raw?.image || null;
+    return { id, name, visual };
+  }).filter((p) => p.id);
 }
 function firstRosterVisual(roster: any[]) {
   return Array.isArray(roster) ? roster.find((p) => p?.visual)?.visual || null : null;
@@ -505,13 +530,46 @@ function TimelineTab({ events }: { events: any[] }) {
     <section style={tabPanelStyle}>
       <h2 style={tabTitleStyle}>FIL DU MATCH</h2>
       <div style={{ display: "grid", gap: 8 }}>
-        {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: `1px solid ${THEME_22}`, fontWeight: 850 }}>{ev.icon} {ev.scoringTeamName || ev.teamName} · {ev.goalLabel || ev.label}{ev.playerName ? ` · ${ev.playerName}` : ev.awardedToPlayerName ? ` · pour ${ev.awardedToPlayerName}` : ""}</div>)}
+        {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: `1px solid ${THEME_22}`, fontWeight: 850 }}>{formatFootEventSentence(ev)}</div>)}
       </div>
     </section>
   );
 }
 
-function StatsTab({ score, shoots, events, teamA, teamB }: any) {
+function formatFootEventSentence(ev: any) {
+  const minute = getEventMinute(ev);
+  const player = ev.playerName || ev.awardedToPlayerName || "Un joueur";
+  const team = ev.scoringTeamName || ev.teamName || "son équipe";
+  const scoreTxt = typeof ev.scoreAAfter === "number" && typeof ev.scoreBAfter === "number" ? ` : ${ev.scoreAAfter} à ${ev.scoreBAfter} pour ${team}` : "";
+  if (ev.type === "goal") {
+    if (ev.goalKind === "header") return `⚽ ${player} ouvre le score de la tête à la ${minute}e minute de jeu${scoreTxt}.`;
+    if (ev.goalKind === "left_foot") return `⚽ ${player} marque du pied gauche à la ${minute}e minute de jeu${scoreTxt}.`;
+    if (ev.goalKind === "right_foot") return `⚽ ${player} marque du pied droit à la ${minute}e minute de jeu${scoreTxt}.`;
+    if (ev.goalKind === "free_kick") return `⚽ Coup-franc direct transformé par ${player} à la ${minute}e minute de jeu${scoreTxt}.`;
+    return `⚽ But pour ${team} par ${player} à la ${minute}e minute de jeu${scoreTxt}.`;
+  }
+  if (ev.type === "penalty_scored") return `🎯 Penalty transformé par ${player} à la ${minute}e minute de jeu${scoreTxt}.`;
+  if (ev.type === "penalty_missed") return `❌ Penalty manqué pour ${player} à la ${minute}e minute de jeu.`;
+  if (ev.type === "own_goal") return `🥅 CSC provoqué à la ${minute}e minute : but accordé à ${ev.scoringTeamName || team}${scoreTxt}.`;
+  if (ev.type === "shot_on") return `🎯 Tir cadré de ${player} à la ${minute}e minute de jeu.`;
+  if (ev.type === "shot_off") return `↗️ Tir non cadré de ${player} à la ${minute}e minute de jeu.`;
+  if (ev.type === "post") return `🥅 ${player} trouve le poteau à la ${minute}e minute de jeu.`;
+  if (ev.type === "crossbar") return `📏 ${player} trouve la transversale à la ${minute}e minute de jeu.`;
+  if (ev.type === "foul") return `🧱 Faute de ${player} à la ${minute}e minute de jeu.`;
+  if (ev.type === "yellow") return `🟨 Carton jaune pour ${player} à la ${minute}e minute de jeu.`;
+  if (ev.type === "red") return `🟥 Carton rouge pour ${player} à la ${minute}e minute de jeu.`;
+  return `${ev.icon || "•"} ${player} · ${ev.label || "Action"} · ${minute}e minute.`;
+}
+
+function getEventMinute(ev: any) {
+  const period = Math.max(1, Number(ev.period || 1));
+  const periodSeconds = Math.max(60, Number(ev.periodSeconds || 60));
+  const remaining = Math.max(0, Number(ev.clockRemaining || 0));
+  const elapsed = (period - 1) * periodSeconds + Math.max(0, periodSeconds - remaining);
+  return Math.max(1, Math.ceil(elapsed / 60));
+}
+
+function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisual }: any) {
   const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots), [events, teamA, teamB, score, shoots]);
 
   const rows = [
@@ -536,7 +594,7 @@ function StatsTab({ score, shoots, events, teamA, teamB }: any) {
   return (
     <section style={tabPanelStyle}>
       <h2 style={tabTitleStyle}>STATS DU MATCH</h2>
-      <FootStatsCard leftName={teamA} rightName={teamB} rows={rows} />
+      <FootStatsCard leftName={teamA} rightName={teamB} leftVisual={teamAVisual} rightVisual={teamBVisual} rows={rows} />
 
       <h2 style={{ ...tabTitleStyle, marginTop: 16 }}>STATS JOUEURS</h2>
       <div style={{ display: "grid", gap: 12 }}>
@@ -558,22 +616,56 @@ function StatsTab({ score, shoots, events, teamA, teamB }: any) {
   );
 }
 
-function FootStatsCard({ leftName, rightName, rows }: any) {
+function FootStatsCard({ leftName, rightName, leftVisual, rightVisual, rows }: any) {
   return (
     <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr", alignItems: "center", padding: "12px 14px", background: "linear-gradient(90deg, rgba(255,255,255,.08), rgba(255,255,255,.035), rgba(255,255,255,.08))" }}>
-        <div style={{ color: THEME, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leftName}</div>
-        <div style={{ color: THEME, fontWeight: 1000, textAlign: "center", fontSize: 18 }}>Stat</div>
-        <div style={{ color: "#fff", fontWeight: 1000, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rightName}</div>
+      <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr", alignItems: "center", padding: "12px 14px", minHeight: 66, background: "linear-gradient(90deg, rgba(255,255,255,.08), rgba(255,255,255,.035), rgba(255,255,255,.08))", overflow: "hidden" }}>
+        <StatsHeaderGhost src={leftVisual} side="left" />
+        <StatsHeaderGhost src={rightVisual} side="right" />
+        <div style={{ position: "relative", zIndex: 2, color: THEME, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leftName}</div>
+        <div style={{ position: "relative", zIndex: 2, color: THEME, fontWeight: 1000, textAlign: "center", fontSize: 18 }}>Stat</div>
+        <div style={{ position: "relative", zIndex: 2, color: "#fff", fontWeight: 1000, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rightName}</div>
       </div>
-      {rows.map((row: any) => (
-        <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr 1fr", alignItems: "center", minHeight: 34, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-          <div style={{ padding: "7px 12px", color: THEME, fontWeight: 1000, borderBottom: `2px solid ${THEME_55}`, background: `linear-gradient(90deg, ${THEME_12}, transparent)` }}>{row.left}</div>
-          <div style={{ padding: "7px 8px", textAlign: "center", fontWeight: 950, opacity: .92 }}>{row.label}</div>
-          <div style={{ padding: "7px 12px", textAlign: "right", color: "#fff", fontWeight: 1000, borderBottom: "2px solid rgba(255,255,255,.55)", background: "linear-gradient(270deg, rgba(255,255,255,.08), transparent)" }}>{row.right}</div>
-        </div>
-      ))}
+      {rows.map((row: any) => {
+        const leftNum = Number(row.left || 0);
+        const rightNum = Number(row.right || 0);
+        const leftBest = leftNum > rightNum;
+        const rightBest = rightNum > leftNum;
+        return (
+          <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1fr 1.35fr 1fr", alignItems: "center", minHeight: 34, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+            <div style={{ padding: "7px 12px", color: leftBest ? THEME : "#fff", fontWeight: 1000, borderBottom: `2px solid ${leftBest ? THEME_55 : "rgba(255,255,255,.55)"}`, background: leftBest ? `linear-gradient(90deg, ${THEME_12}, transparent)` : "linear-gradient(90deg, rgba(255,255,255,.08), transparent)" }}>{row.left}</div>
+            <div style={{ padding: "7px 8px", textAlign: "center", fontWeight: 950, opacity: .92 }}>{row.label}</div>
+            <div style={{ padding: "7px 12px", textAlign: "right", color: rightBest ? THEME : "#fff", fontWeight: 1000, borderBottom: `2px solid ${rightBest ? THEME_55 : "rgba(255,255,255,.55)"}`, background: rightBest ? `linear-gradient(270deg, ${THEME_12}, transparent)` : "linear-gradient(270deg, rgba(255,255,255,.08), transparent)" }}>{row.right}</div>
+          </div>
+        );
+      })}
     </div>
+  );
+}
+
+function StatsHeaderGhost({ src, side }: { src?: string | null; side: "left" | "right" }) {
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      style={{
+        position: "absolute",
+        zIndex: 1,
+        top: "50%",
+        [side]: -18,
+        width: 110,
+        height: 110,
+        borderRadius: 999,
+        objectFit: "cover",
+        transform: "translateY(-50%) scale(1.15)",
+        opacity: .20,
+        filter: "saturate(1.2) contrast(1.12)",
+        WebkitMaskImage: side === "left" ? "linear-gradient(90deg, #000 0%, #000 44%, transparent 100%)" : "linear-gradient(270deg, #000 0%, #000 44%, transparent 100%)",
+        maskImage: side === "left" ? "linear-gradient(90deg, #000 0%, #000 44%, transparent 100%)" : "linear-gradient(270deg, #000 0%, #000 44%, transparent 100%)",
+      } as React.CSSProperties}
+    />
   );
 }
 
@@ -840,6 +932,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
       </div>
 
       <div style={{ marginTop: 10 }}>
+        <BenchList title="Banc des remplaçants" roster={roster.filter((p: any) => !lineup.includes(String(p.id)))} onPick={(playerId: string) => setPickSpot((prev) => prev === null ? 0 : prev)} />
         <RosterList title={title} roster={roster} />
       </div>
 
@@ -906,6 +999,25 @@ function lineupSwitchBtn(active: boolean): React.CSSProperties {
     cursor: "pointer",
     minWidth: 0,
   };
+}
+
+function BenchList({ title, roster, onPick }: any) {
+  const safe = Array.isArray(roster) ? roster : [];
+  return (
+    <div style={{ marginTop: 10, marginBottom: 10 }}>
+      <div style={{ color: THEME, fontWeight: 1000, marginBottom: 8 }}>{title}</div>
+      {safe.length ? (
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {safe.map((p: any) => (
+            <div key={p.id} title="Clique sur un médaillon du terrain pour remplacer par ce joueur" style={{ display: "grid", justifyItems: "center", gap: 4, minWidth: 62 }}>
+              <PlayerAvatarMini player={p} />
+              <div style={{ maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: 900, opacity: .82 }}>{p.name}</div>
+            </div>
+          ))}
+        </div>
+      ) : <div style={{ opacity: .62, fontWeight: 800, fontSize: 12 }}>Aucun remplaçant disponible.</div>}
+    </div>
+  );
 }
 
 function RosterList({ title, roster }: any) {
@@ -1017,11 +1129,11 @@ function playFootBuzzer() {
     window.setTimeout(() => ctx.close().catch(() => {}), 1200);
   } catch {}
 }
-const clockBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, padding: "10px 12px", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" });
+const clockIconBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ width: 46, height: 38, border: `1px solid ${THEME_33}`, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, fontSize: 18, cursor: "pointer", boxShadow: tone === "neutral" ? "none" : `0 0 18px ${THEME_24}` });
 const modalBtn: React.CSSProperties = { border: `1px solid ${THEME_33}`, borderRadius: 14, padding: "12px 10px", background: `${THEME_12}`, color: "#fff", fontWeight: 1000, cursor: "pointer", minHeight: 48 };
 const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME_35}`, borderRadius: 10, padding: "9px 8px", background: `${THEME_12}`, color: "#fff", fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `inset 0 0 18px ${THEME_08}` };
 const infoDotBtn: React.CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 54, height: 54, borderRadius: 999, border: `1px solid ${THEME_55}`, background: "rgba(0,0,0,.35)", color: THEME, fontSize: 24, fontWeight: 1000, boxShadow: `0 0 22px ${THEME_33}`, cursor: "pointer" };
 const tabPanelStyle: React.CSSProperties = { borderRadius: 18, padding: 13, marginTop: 12, background: "rgba(255,255,255,.045)", border: `1px solid ${THEME_22}` };
-const tabTitleStyle: React.CSSProperties = { margin: "0 0 10px", color: THEME, fontSize: 18, fontWeight: 1000 };
+const tabTitleStyle: React.CSSProperties = { margin: "0 0 10px", color: THEME, fontSize: 18, fontWeight: 1000, textAlign: "center" };
 const secondaryBtn: React.CSSProperties = { flex: 1, border: "1px solid rgba(255,255,255,.14)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer" };
 const primaryBtn: React.CSSProperties = { flex: 1.4, border: 0, borderRadius: 16, padding: 12, background: THEME_GRAD, color: "#fff", fontWeight: 1000, cursor: "pointer" };
