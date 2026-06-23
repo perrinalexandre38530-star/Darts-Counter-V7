@@ -6,7 +6,7 @@ import { getFootGameTicker } from "./footTickers";
 import footPitchBg from "../../assets/foot-pitch.webp";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => void };
-type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_scored" | "penalty_missed" | "foul" | "shot_on" | "shot_off" | "post" | "crossbar";
+type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_scored" | "penalty_missed" | "foul" | "shot_on" | "shot_off" | "post" | "crossbar" | "substitution";
 type GoalKind = "right_foot" | "left_foot" | "header" | "penalty" | "free_kick" | "own_goal_awarded";
 
 const labels: Record<EventType, string> = {
@@ -22,6 +22,7 @@ const labels: Record<EventType, string> = {
   shot_off: "Tir non cadré",
   post: "Poteau",
   crossbar: "Transversale",
+  substitution: "Remplacement",
 };
 const icons: Record<EventType, string> = {
   goal: "⚽",
@@ -36,6 +37,7 @@ const icons: Record<EventType, string> = {
   shot_off: "↗️",
   post: "🥅",
   crossbar: "📏",
+  substitution: "🔁",
 };
 const goalOptions: Array<{ key: GoalKind; label: string; icon: string }> = [
   { key: "right_foot", label: "Pied droit", icon: "🦶" },
@@ -54,6 +56,7 @@ const statOptions: Array<{ type: EventType; label: string; icon: string }> = [
   { type: "post", label: "Poteau", icon: "🥅" },
   { type: "crossbar", label: "Transversale", icon: "📏" },
   { type: "penalty_missed", label: "Penalty loupé", icon: "❌" },
+  { type: "substitution", label: "Remplacement", icon: "🔁" },
 ];
 
 export default function FootPlay({ go, params, onFinish }: Props) {
@@ -66,6 +69,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   const [shoots, setShoots] = React.useState<[number, number]>([0, 0]);
   const [actionModal, setActionModal] = React.useState<null | { kind: "goal" | "more"; team: 0 | 1; teamName: string }>(null);
   const [playerPickModal, setPlayerPickModal] = React.useState<null | { team: 0 | 1; teamName: string; actionType: EventType; goalKind?: GoalKind; goalLabel?: string; statOnly?: boolean; awardedCsc?: boolean }>(null);
+  const [substitutionModal, setSubstitutionModal] = React.useState<null | { team: 0 | 1; teamName: string }>(null);
   const buzzerPlayedRef = React.useRef(false);
   const rosterA = React.useMemo(() => buildRoster(cfg.teamAPlayerIds, cfg.playersA, cfg.playersAVisuals), [cfg.teamAPlayerIds, cfg.playersA, cfg.playersAVisuals]);
   const rosterB = React.useMemo(() => buildRoster(cfg.teamBPlayerIds, cfg.playersB, cfg.playersBVisuals), [cfg.teamBPlayerIds, cfg.playersB, cfg.playersBVisuals]);
@@ -111,6 +115,11 @@ export default function FootPlay({ go, params, onFinish }: Props) {
 
   const addStatDetail = (type: EventType) => {
     if (!actionModal) return;
+    if (type === "substitution") {
+      setSubstitutionModal({ team: actionModal.team, teamName: actionModal.teamName });
+      setActionModal(null);
+      return;
+    }
     setPlayerPickModal({
       team: actionModal.team,
       teamName: actionModal.teamName,
@@ -158,6 +167,34 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       });
     }
     setPlayerPickModal(null);
+  };
+
+
+  const confirmSubstitution = (outPlayer?: any, inPlayer?: any) => {
+    if (!substitutionModal || !outPlayer || !inPlayer) return;
+    const ev = {
+      id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      at: new Date().toISOString(),
+      team: substitutionModal.team,
+      teamName: substitutionModal.teamName,
+      type: "substitution" as EventType,
+      label: "Remplacement",
+      icon: icons.substitution,
+      period: currentPeriod,
+      clockRemaining: remainingSeconds,
+      periodSeconds,
+      format: spec.id,
+      playerId: inPlayer?.id || null,
+      playerName: inPlayer?.name || null,
+      outPlayerId: outPlayer?.id || null,
+      outPlayerName: outPlayer?.name || null,
+      inPlayerId: inPlayer?.id || null,
+      inPlayerName: inPlayer?.name || null,
+      scoreAAfter: score[0],
+      scoreBAfter: score[1],
+    };
+    setEvents((prev) => [ev, ...prev]);
+    setSubstitutionModal(null);
   };
 
   const undo = () => {
@@ -322,6 +359,14 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           onSelect={confirmPlayerAction}
         />
       )}
+      {substitutionModal && (
+        <SubstitutionModal
+          data={substitutionModal}
+          roster={substitutionModal.team === 0 ? rosterA : rosterB}
+          onClose={() => setSubstitutionModal(null)}
+          onConfirm={confirmSubstitution}
+        />
+      )}
     </div>
   );
 }
@@ -392,13 +437,13 @@ function ClockBar({ running, period, periodCount, remaining, onToggle, onReset, 
   const label = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
   const canNext = period < periodCount;
   return (
-    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", margin: "0 0 10px", padding: "34px 12px 12px", minHeight: 82, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
-      <div style={{ position: "absolute", left: 12, right: 12, top: 8, display: "flex", alignItems: "center", justifyContent: "center", color: THEME, fontWeight: 1000, fontSize: 13, opacity: .95, textShadow: `0 0 12px ${THEME_44}` }}>{configLabel}</div>
+    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", margin: "0 0 10px", padding: "24px 10px 10px", minHeight: 64, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
+      <div style={{ position: "absolute", left: 12, right: 12, top: 6, display: "flex", alignItems: "center", justifyContent: "center", color: THEME, fontWeight: 1000, fontSize: 13, opacity: .95, textShadow: `0 0 12px ${THEME_44}` }}>{configLabel}</div>
       <div style={{ minWidth: 0, position: "relative", zIndex: 2 }}>
         <div style={{ color: THEME, fontWeight: 1000, fontSize: 12 }}>CHRONO</div>
         <div style={{ opacity: .78, fontSize: 11, fontWeight: 900 }}>Période {period}/{periodCount}</div>
       </div>
-      <div style={{ position: "absolute", left: "50%", top: "60%", transform: "translate(-50%, -50%)", fontWeight: 1000, fontSize: 30, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME_44}`, pointerEvents: "none" }}>{label}</div>
+      <div style={{ position: "absolute", left: "50%", top: "58%", transform: "translate(-50%, -50%)", fontWeight: 1000, fontSize: 28, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME_44}`, pointerEvents: "none" }}>{label}</div>
       <div style={{ display: "grid", gap: 7, justifyContent: "end", position: "relative", zIndex: 2 }}>
         <button type="button" aria-label={running ? "Pause" : "Lancer"} title={running ? "Pause" : "Lancer"} onClick={onToggle} style={clockIconBtn(running ? "pause" : "play")}>{running ? "Ⅱ" : "▶"}</button>
         <button type="button" aria-label={remaining === 0 && canNext ? "Période suivante" : "Réinitialiser"} title={remaining === 0 && canNext ? "Période suivante" : "Réinitialiser"} onClick={remaining === 0 && canNext ? onNextPeriod : onReset} style={clockIconBtn("neutral")}>{remaining === 0 && canNext ? "+" : "↺"}</button>
@@ -558,6 +603,7 @@ function formatFootEventSentence(ev: any) {
   if (ev.type === "foul") return `🧱 Faute de ${player} à la ${minute}e minute de jeu.`;
   if (ev.type === "yellow") return `🟨 Carton jaune pour ${player} à la ${minute}e minute de jeu.`;
   if (ev.type === "red") return `🟥 Carton rouge pour ${player} à la ${minute}e minute de jeu.`;
+  if (ev.type === "substitution") return `🔁 Remplacement pour ${team} à la ${minute}e minute : ${ev.inPlayerName || player} entre à la place de ${ev.outPlayerName || "un joueur"}.`;
   return `${ev.icon || "•"} ${player} · ${ev.label || "Action"} · ${minute}e minute.`;
 }
 
@@ -775,6 +821,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
   const [lineupB, setLineupB] = React.useState<string[]>(() => safeRosterB.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
   const [spotsA, setSpotsA] = React.useState<Array<{ x: number; y: number }>>(() => defaultSpots);
   const [spotsB, setSpotsB] = React.useState<Array<{ x: number; y: number }>>(() => defaultSpots);
+  const [selectedSubId, setSelectedSubId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setLineupA(safeRosterA.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
@@ -794,6 +841,21 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
   const title = side === 0 ? teamA : teamB;
   const getPlayer = (id?: string) => roster.find((p: any) => String(p.id) === String(id));
   const placed = lineup.map((id) => getPlayer(id));
+
+  const replaceSpotWithBench = (index: number) => {
+    if (!selectedSubId) return false;
+    setLineup((prev) => {
+      const next = [...prev];
+      const oldAtSpot = next[index] || "";
+      const subAlreadyOnPitch = next.findIndex((id) => String(id) === String(selectedSubId));
+      if (subAlreadyOnPitch >= 0) next[subAlreadyOnPitch] = oldAtSpot;
+      next[index] = selectedSubId;
+      return next;
+    });
+    setSelectedSubId(null);
+    setPickSpot(null);
+    return true;
+  };
 
   const choosePlayerForSpot = (playerId: string) => {
     if (pickSpot === null) return;
@@ -836,7 +898,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag || drag.index !== index || drag.side !== side || !drag.moved) {
-      setPickSpot(index);
+      if (!replaceSpotWithBench(index)) setPickSpot(index);
     }
   };
 
@@ -845,13 +907,13 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
         <h2 style={{ ...tabTitleStyle, margin: 0 }}>COMPO</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, border: `1px solid ${THEME_33}`, borderRadius: 14, overflow: "hidden", minWidth: 180 }}>
-          <button type="button" onClick={() => { setSide(0); setPickSpot(null); }} style={lineupSwitchBtn(side === 0)}>Domicile</button>
-          <button type="button" onClick={() => { setSide(1); setPickSpot(null); }} style={lineupSwitchBtn(side === 1)}>Extérieur</button>
+          <button type="button" onClick={() => { setSide(0); setPickSpot(null); setSelectedSubId(null); }} style={lineupSwitchBtn(side === 0)}>Domicile</button>
+          <button type="button" onClick={() => { setSide(1); setPickSpot(null); setSelectedSubId(null); }} style={lineupSwitchBtn(side === 1)}>Extérieur</button>
         </div>
       </div>
 
       <div style={{ color: THEME, fontWeight: 1000, margin: "0 0 6px", textAlign: "center", textShadow: `0 0 12px ${THEME_44}` }}>{title}</div>
-      <div style={{ opacity: .72, fontSize: 12, fontWeight: 850, textAlign: "center", marginBottom: 8 }}>Déplace les médaillons au doigt ou clique pour choisir / permuter un joueur.</div>
+      <div style={{ opacity: .72, fontSize: 12, fontWeight: 850, textAlign: "center", marginBottom: 8 }}>Déplace les médaillons au doigt. Pour remplacer : sélectionne un remplaçant puis clique le titulaire.</div>
 
       <div
         ref={pitchRef}
@@ -932,7 +994,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
       </div>
 
       <div style={{ marginTop: 10 }}>
-        <BenchList title="Banc des remplaçants" roster={roster.filter((p: any) => !lineup.includes(String(p.id)))} onPick={(playerId: string) => setPickSpot((prev) => prev === null ? 0 : prev)} />
+        <BenchList title={selectedSubId ? "Remplaçant sélectionné : clique le joueur à sortir" : "Banc des remplaçants"} roster={roster.filter((p: any) => !lineup.includes(String(p.id)))} onPick={(playerId: string) => setSelectedSubId(playerId)} />
         <RosterList title={title} roster={roster} />
       </div>
 
@@ -1009,10 +1071,10 @@ function BenchList({ title, roster, onPick }: any) {
       {safe.length ? (
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
           {safe.map((p: any) => (
-            <div key={p.id} title="Clique sur un médaillon du terrain pour remplacer par ce joueur" style={{ display: "grid", justifyItems: "center", gap: 4, minWidth: 62 }}>
+            <button key={p.id} type="button" onClick={() => onPick?.(String(p.id))} title="Sélectionne ce remplaçant puis clique le joueur à remplacer sur le terrain" style={{ display: "grid", justifyItems: "center", gap: 4, minWidth: 62, border: 0, background: "transparent", color: "#fff", cursor: "pointer", padding: 0 }}>
               <PlayerAvatarMini player={p} />
               <div style={{ maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: 900, opacity: .82 }}>{p.name}</div>
-            </div>
+            </button>
           ))}
         </div>
       ) : <div style={{ opacity: .62, fontWeight: 800, fontSize: 12 }}>Aucun remplaçant disponible.</div>}
@@ -1063,6 +1125,50 @@ function PlayerPickModal({ data, roster, fallbackName, onClose, onSelect }: any)
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function SubstitutionModal({ data, roster, onClose, onConfirm }: any) {
+  const safeRoster = Array.isArray(roster) ? roster : [];
+  const [outId, setOutId] = React.useState<string>("");
+  const [inId, setInId] = React.useState<string>("");
+  const outPlayer = safeRoster.find((p: any) => String(p.id) === String(outId));
+  const inPlayer = safeRoster.find((p: any) => String(p.id) === String(inId));
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
+      <div style={{ width: "min(460px, 100%)", maxHeight: "84vh", overflowY: "auto", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,25,17,.98), rgba(5,10,8,.98))", border: `1px solid ${THEME_28}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={{ color: THEME, fontWeight: 1000, fontSize: 20 }}>Remplacement</div>
+            <div style={{ opacity: .72, fontWeight: 850, fontSize: 13 }}>{data.teamName}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ border: `1px solid ${THEME_33}`, borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
+        </div>
+        <SubPick title="Joueur qui sort" roster={safeRoster} selectedId={outId} onSelect={setOutId} />
+        <SubPick title="Joueur qui entre" roster={safeRoster} selectedId={inId} onSelect={setInId} />
+        <button type="button" disabled={!outPlayer || !inPlayer || outId === inId} onClick={() => onConfirm(outPlayer, inPlayer)} style={{ ...primaryBtn, width: "100%", marginTop: 12, opacity: !outPlayer || !inPlayer || outId === inId ? .45 : 1 }}>VALIDER LE REMPLACEMENT</button>
+      </div>
+    </div>
+  );
+}
+
+function SubPick({ title, roster, selectedId, onSelect }: any) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ color: THEME, fontWeight: 1000, marginBottom: 8 }}>{title}</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {roster.map((p: any) => {
+          const active = String(selectedId) === String(p.id);
+          return (
+            <button key={p.id} type="button" onClick={() => onSelect(String(p.id))} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${active ? THEME : THEME_28}`, borderRadius: 16, padding: 10, background: active ? THEME_22 : THEME_10, color: "#fff", fontWeight: 1000, cursor: "pointer", textAlign: "left" }}>
+              <PlayerAvatarMini player={p} />
+              <span>{p.name}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

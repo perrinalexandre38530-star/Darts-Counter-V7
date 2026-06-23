@@ -77,6 +77,8 @@ export default function FootConfig({ go, params, store }: Props) {
   const [periods, setPeriods] = React.useState(spec.periods);
   const [breakMinutes, setBreakMinutes] = React.useState(5);
   const [shoots, setShoots] = React.useState(5);
+  const [subsAllowed, setSubsAllowed] = React.useState<any>("illimité");
+  const [matchVisibility, setMatchVisibility] = React.useState<"public" | "private">("public");
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [configMode, setConfigMode] = React.useState<ConfigMode>("guided");
   const [guidedStep, setGuidedStep] = React.useState<GuidedStep>(spec.kind === "team" ? "source" : "players");
@@ -86,6 +88,8 @@ export default function FootConfig({ go, params, store }: Props) {
     setPeriods(spec.periods);
     setBreakMinutes(spec.id === "penalty" ? 0 : 5);
     setShoots(5);
+    setSubsAllowed("illimité");
+    setMatchVisibility("public");
     setSelectedIds([]);
     setSelectedTeamIds([]);
     setSelectedTeamPlayerIds({});
@@ -248,6 +252,10 @@ export default function FootConfig({ go, params, store }: Props) {
         periods,
         breakMinutes,
         shoots,
+        substitutionsAllowed: subsAllowed,
+        matchVisibility,
+        publicMatch: matchVisibility === "public",
+        privateMatch: matchVisibility === "private",
       },
     });
   };
@@ -329,6 +337,14 @@ export default function FootConfig({ go, params, store }: Props) {
             options={[2, 5, 7, 10, 15]}
             suffix=" min"
           />
+          <OptionSelect
+            label="Remplacements"
+            value={subsAllowed}
+            setValue={setSubsAllowed}
+            options={[0, 3, 5, "illimité"]}
+            suffix=""
+          />
+          <VisibilityChoice value={matchVisibility} setValue={setMatchVisibility} primary={primary} primarySoft={primarySoft} />
         </div>
       )}
     </section>
@@ -344,6 +360,8 @@ export default function FootConfig({ go, params, store }: Props) {
           <div style={summaryLineStyle}><b>Participants</b><span>{a.name} vs {b.name}</span></div>
           <div style={summaryLineStyle}><b>Joueurs</b><span>{a.playerIds.length} / {b.playerIds.length}</span></div>
           {spec.id === "penalty" ? <div style={summaryLineStyle}><b>Tirs</b><span>{shoots} par camp</span></div> : <div style={summaryLineStyle}><b>Temps</b><span>{periods} × {minutes} min · pause {breakMinutes} min</span></div>}
+          {spec.id !== "penalty" && <div style={summaryLineStyle}><b>Remplacements</b><span>{String(subsAllowed)}</span></div>}
+          <div style={summaryLineStyle}><b>Suivi distant</b><span>{matchVisibility === "public" ? "Public / Roommate" : "Privé"}</span></div>
         </div>
       </section>
     );
@@ -614,6 +632,20 @@ function SavedTeamPlayersStep({ teams, selectedTeamPlayerIds, onTogglePlayer, pr
           </div>
         );
       })}
+    </div>
+  );
+}
+
+
+function VisibilityChoice({ value, setValue, primary, primarySoft }: any) {
+  return (
+    <div>
+      <label style={{ display: "block", marginBottom: 6, color: "rgba(255,255,255,.72)", fontWeight: 1000, fontSize: 12, letterSpacing: ".04em", textTransform: "uppercase" }}>Suivi distant</label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <button type="button" onClick={() => setValue("public")} style={{ border: `1px solid ${value === "public" ? primary : "rgba(255,255,255,.14)"}`, borderRadius: 14, padding: "12px 8px", background: value === "public" ? primarySoft : "rgba(255,255,255,.04)", color: "#fff", fontWeight: 1000, cursor: "pointer" }}>Public</button>
+        <button type="button" onClick={() => setValue("private")} style={{ border: `1px solid ${value === "private" ? primary : "rgba(255,255,255,.14)"}`, borderRadius: 14, padding: "12px 8px", background: value === "private" ? primarySoft : "rgba(255,255,255,.04)", color: "#fff", fontWeight: 1000, cursor: "pointer" }}>Privé</button>
+      </div>
+      <div style={{ marginTop: 6, opacity: .65, fontSize: 11, fontWeight: 800 }}>{value === "public" ? "Roommate possible : score live visible à distance." : "Match privé : accès direct bloqué, seul le score peut être partagé."}</div>
     </div>
   );
 }
