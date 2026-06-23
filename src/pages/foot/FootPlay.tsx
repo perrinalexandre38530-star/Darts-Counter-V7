@@ -10,6 +10,21 @@ type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_sc
 type GoalKind = "right_foot" | "left_foot" | "header" | "penalty" | "free_kick" | "own_goal_awarded";
 type ClockPhase = "warmup" | "playing" | "overtime" | "halftime" | "finished";
 
+function FootLineIcon({ name, size = 22 }: { name: string; size?: number }) {
+  const st = { fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  if (name === "timer") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...st} cx="12" cy="13" r="7"/><path {...st} d="M9 2h6"/><path {...st} d="M12 6V2"/><path {...st} d="M12 13l3-3"/></svg>;
+  if (name === "warmup") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M13 3c.5 3-2.5 4.5-1 7"/><path {...st} d="M8 10c-2 2-3 4-3 6a7 7 0 0 0 14 0c0-3-2-5-4-7 .2 2-1 3.2-2.5 3.6"/><path {...st} d="M10 20c-1.2-1.4-1-3.6 1-5.5 0 1.7 2 2.3 2 4.2 0 .6-.2 1.1-.5 1.6"/></svg>;
+  if (name === "play") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M8 5v14l11-7Z"/></svg>;
+  if (name === "pause") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M9 5v14"/><path {...st} d="M15 5v14"/></svg>;
+  if (name === "stop") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...st} x="7" y="7" width="10" height="10" rx="1.5"/></svg>;
+  if (name === "reset") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M20 12a8 8 0 1 1-2.4-5.7"/><path {...st} d="M20 4v6h-6"/></svg>;
+  if (name === "ball") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...st} cx="12" cy="12" r="8"/><path {...st} d="m12 7 3 2v4l-3 2-3-2V9Z"/><path {...st} d="M12 7V4"/><path {...st} d="M15 9l3-1"/><path {...st} d="M15 13l2 3"/><path {...st} d="M9 13l-2 3"/><path {...st} d="M9 9 6 8"/></svg>;
+  if (name === "plus") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M12 5v14"/><path {...st} d="M5 12h14"/></svg>;
+  if (name === "undo") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M9 7H4v5"/><path {...st} d="M4 12a8 8 0 1 0 2.3-5.7L4 7"/></svg>;
+  if (name === "save") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...st} d="M5 4h12l2 2v14H5Z"/><path {...st} d="M8 4v6h8V4"/><path {...st} d="M8 20v-6h8v6"/></svg>;
+  return null;
+}
+
 const labels: Record<EventType, string> = {
   goal: "But",
   assist: "Passe déc.",
@@ -452,8 +467,8 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         </>}
 
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button onClick={undo} style={{ ...secondaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><span style={{ color: "#ff4d5e", fontSize: 22, textShadow: "0 0 14px rgba(255,77,94,.75)" }}>↩</span><span>ANNULER</span></button>
-          <button onClick={finish} disabled={!matchFinished} title={matchFinished ? "Enregistrer le match" : "Le match doit être terminé pour enregistrer"} style={{ ...primaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: matchFinished ? 1 : .38, filter: matchFinished ? "none" : "grayscale(.65)", cursor: matchFinished ? "pointer" : "not-allowed", boxShadow: matchFinished ? undefined : "none" }}><span style={{ fontSize: 21 }}>💾</span><span>TERMINER</span></button>
+          <button onClick={undo} style={{ ...secondaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><span style={{ color: "#ff4d5e", display: "inline-grid", placeItems: "center", filter: "drop-shadow(0 0 8px rgba(255,77,94,.75))" }}><FootLineIcon name="undo" size={23} /></span><span>ANNULER</span></button>
+          <button onClick={finish} disabled={!matchFinished} title={matchFinished ? "Enregistrer le match" : "Le match doit être terminé pour enregistrer"} style={{ ...primaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: matchFinished ? 1 : .38, filter: matchFinished ? "none" : "grayscale(.65)", cursor: matchFinished ? "pointer" : "not-allowed", boxShadow: matchFinished ? undefined : "none" }}><span style={{ display: "inline-grid", placeItems: "center", opacity: matchFinished ? 1 : .75 }}><FootLineIcon name="save" size={22} /></span><span>TERMINER</span></button>
         </div>
 
         {activeTab === "timeline" && <TimelineTab events={events} />}
@@ -569,26 +584,27 @@ function ClockBar({ running, period, periodCount, remaining, phase, periodSecond
   const mm = Math.floor(abs / 60);
   const ss = abs % 60;
   const label = `${isOvertime ? "+" : ""}${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
-  const periodBadge = phase === "warmup" ? "🔥" : phase === "halftime" ? "MT" : phase === "finished" ? "FIN" : `MT${period}`;
+  const periodBadge = phase === "halftime" ? "MT" : phase === "finished" ? "FIN" : `MT${period}`;
+  const periodIcon = phase === "warmup" ? <FootLineIcon name="warmup" size={20} /> : <span style={{ fontSize: 13, lineHeight: 1 }}>{periodBadge}</span>;
   const timeColor = isOvertime ? "#ff4d5e" : phase === "halftime" ? "#74ff7a" : "#fff";
   const addIcon = isOvertime ? "⏳" : "";
   const canStop = phase === "playing" || phase === "overtime";
   return (
     <div style={{ position: "relative", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center", margin: "0 0 10px", padding: "9px 10px", minHeight: 66, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
       <div style={{ display: "grid", gap: 7, justifyContent: "start", position: "relative", zIndex: 2 }}>
-        <div title="Chrono" style={clockSideIcon}>⏱</div>
-        <div title={phase === "warmup" ? "Échauffement" : phase === "halftime" ? "Mi-temps" : `Mi-temps ${period}`} style={clockSideIcon}>{periodBadge}</div>
+        <div title="Chrono" style={clockSideIcon}><FootLineIcon name="timer" size={19} /></div>
+        <div title={phase === "warmup" ? "Échauffement" : phase === "halftime" ? "Mi-temps" : `Mi-temps ${period}`} style={clockSideIcon}>{periodIcon}</div>
       </div>
       <div style={{ display: "grid", placeItems: "center", minWidth: 0, position: "relative", zIndex: 2 }}>
         <div style={{ fontWeight: 1000, fontSize: 29, lineHeight: 1, color: timeColor, textShadow: isOvertime ? "0 0 18px rgba(255,77,94,.55)" : phase === "halftime" ? "0 0 18px rgba(116,255,122,.45)" : `0 0 18px ${THEME_44}` }}>{addIcon ? `${addIcon} ${label}` : label}</div>
         <div style={{ opacity: .82, fontSize: 11, fontWeight: 950, marginTop: 4, color: THEME }}>{configLabel}</div>
       </div>
       <div style={{ display: "grid", gap: 7, justifyContent: "end", position: "relative", zIndex: 2 }}>
-        <button type="button" aria-label={running ? "Pause" : "Lancer"} title={running ? "Pause" : "Lancer"} onClick={onToggle} style={clockIconBtn(running ? "pause" : "play")}>{running ? "Ⅱ" : "▶"}</button>
+        <button type="button" aria-label={running ? "Pause" : "Lancer"} title={running ? "Pause" : "Lancer"} onClick={onToggle} style={clockIconBtn(running ? "pause" : "play")}><FootLineIcon name={running ? "pause" : "play"} size={22} /></button>
         {canStop ? (
-          <button type="button" aria-label="Stop période" title="Stop période" onClick={onStop} style={clockIconBtn("stop")}>■</button>
+          <button type="button" aria-label="Stop période" title="Stop période" onClick={onStop} style={clockIconBtn("stop")}><FootLineIcon name="stop" size={21} /></button>
         ) : (
-          <button type="button" aria-label="Réinitialiser" title="Réinitialiser" onClick={onReset} style={clockIconBtn("neutral")}>↺</button>
+          <button type="button" aria-label="Réinitialiser" title="Réinitialiser" onClick={onReset} style={clockIconBtn("neutral")}><FootLineIcon name="reset" size={21} /></button>
         )}
       </div>
     </div>
@@ -618,8 +634,8 @@ function EventPanel({ team, onGoal, onMore, onPenalty, penalty }: any) {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-          <button onClick={onGoal} aria-label="But" title="But" style={{ ...miniEventBtn, minHeight: 52, fontSize: 23, display: "grid", placeItems: "center", color: THEME, textShadow: `0 0 16px ${THEME_66}` }}>⚽</button>
-          <button onClick={onMore} aria-label="Autres stats" title="Autres stats" style={{ ...miniEventBtn, minWidth: 56, minHeight: 52, fontSize: 28, lineHeight: 1, display: "grid", placeItems: "center", color: THEME, textShadow: `0 0 16px ${THEME_66}` }}>＋</button>
+          <button onClick={onGoal} aria-label="But" title="But" style={{ ...miniEventBtn, minHeight: 52, fontSize: 23, display: "grid", placeItems: "center", color: THEME, textShadow: `0 0 16px ${THEME_66}` }}><FootLineIcon name="ball" size={24} /></button>
+          <button onClick={onMore} aria-label="Autres stats" title="Autres stats" style={{ ...miniEventBtn, minWidth: 56, minHeight: 52, fontSize: 28, lineHeight: 1, display: "grid", placeItems: "center", color: THEME, textShadow: `0 0 16px ${THEME_66}` }}><FootLineIcon name="plus" size={25} /></button>
         </div>
       )}
     </div>
@@ -1509,10 +1525,10 @@ function playFootBuzzer() {
 const carouselArrowBtn: React.CSSProperties = { width: 40, height: 36, border: `1px solid ${THEME_33}`, borderRadius: 12, background: THEME_10, color: THEME, fontWeight: 1000, fontSize: 22, cursor: "pointer" };
 const playerTableHeaderCell: React.CSSProperties = { textAlign: "center", color: THEME, fontSize: 10, fontWeight: 1000, padding: "7px 2px", borderLeft: "1px solid rgba(255,255,255,.06)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const playerTableValueCell: React.CSSProperties = { textAlign: "center", color: "#fff", fontSize: 12, fontWeight: 1000, padding: "7px 2px", borderLeft: "1px solid rgba(255,255,255,.06)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const clockSideIcon: React.CSSProperties = { width: 46, height: 32, border: `1px solid ${THEME_33}`, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(255,255,255,.055)", color: THEME, fontWeight: 1000, fontSize: 13, boxShadow: `inset 0 0 14px ${THEME_08}` };
-const clockIconBtn = (tone: "play" | "pause" | "neutral" | "stop"): React.CSSProperties => ({ width: 46, height: 38, border: `1px solid ${THEME_33}`, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : tone === "stop" ? "linear-gradient(135deg, #ff4d5e, #9b1020)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, fontSize: 18, cursor: "pointer", boxShadow: tone === "neutral" ? "none" : `0 0 18px ${THEME_24}` });
+const clockSideIcon: React.CSSProperties = { width: 46, height: 32, border: `1px solid ${THEME_33}`, borderRadius: 12, display: "grid", placeItems: "center", background: THEME_10, color: THEME, fontWeight: 1000, fontSize: 13, boxShadow: `0 0 18px ${THEME_18}, inset 0 0 14px ${THEME_08}` };
+const clockIconBtn = (tone: "play" | "pause" | "neutral" | "stop"): React.CSSProperties => ({ width: 46, height: 38, border: `1px solid ${tone === "stop" ? "rgba(255,77,94,.55)" : THEME_33}`, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: tone === "stop" ? "rgba(255,77,94,.10)" : THEME_10, color: tone === "stop" ? "#ff4d5e" : THEME, fontWeight: 1000, cursor: "pointer", boxShadow: tone === "stop" ? "0 0 18px rgba(255,77,94,.22), inset 0 0 18px rgba(255,77,94,.08)" : `0 0 18px ${THEME_24}, inset 0 0 18px ${THEME_08}` });
 const modalBtn: React.CSSProperties = { border: `1px solid ${THEME_33}`, borderRadius: 14, padding: "12px 10px", background: `${THEME_12}`, color: "#fff", fontWeight: 1000, cursor: "pointer", minHeight: 48 };
-const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME_35}`, borderRadius: 10, padding: "9px 8px", background: `${THEME_12}`, color: "#fff", fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `inset 0 0 18px ${THEME_08}` };
+const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME_35}`, borderRadius: 10, padding: "9px 8px", background: `${THEME_12}`, color: THEME, fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 18px ${THEME_18}, inset 0 0 18px ${THEME_08}` };
 const infoDotBtn: React.CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 54, height: 54, borderRadius: 999, border: `1px solid ${THEME_55}`, background: "rgba(0,0,0,.35)", color: THEME, fontSize: 24, fontWeight: 1000, boxShadow: `0 0 22px ${THEME_33}`, cursor: "pointer" };
 const tabPanelStyle: React.CSSProperties = { borderRadius: 18, padding: 13, marginTop: 12, background: "rgba(255,255,255,.045)", border: `1px solid ${THEME_22}` };
 const tabTitleStyle: React.CSSProperties = { margin: "0 0 10px", color: THEME, fontSize: 18, fontWeight: 1000, textAlign: "center" };
