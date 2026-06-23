@@ -367,7 +367,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         </div>
 
         {activeTab === "timeline" && <TimelineTab events={events} />}
-        {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} />}
+        {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} teamAVisual={teamAVisual} teamBVisual={teamBVisual} rosterA={rosterA} rosterB={rosterB} />}
         {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} />}
         {activeTab === "ranking" && <EmptyTab title="CLASSEMENT" text="Le classement lié à cette ligue ou ce tournoi sera affiché ici." />}
       </div>
@@ -655,14 +655,14 @@ function getEventMinute(ev: any) {
   return Math.max(1, Math.ceil(elapsed / 60));
 }
 
-function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisual }: any) {
-  const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots), [events, teamA, teamB, score, shoots]);
+function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisual, rosterA, rosterB }: any) {
+  const teamStats = React.useMemo(() => buildFootStats(events, teamA, teamB, score, shoots, rosterA, rosterB), [events, teamA, teamB, score, shoots, rosterA, rosterB]);
 
   const rows = [
     { label: "Score", left: `${score[0]}`, right: `${score[1]}` },
     { label: "2ème M-T", left: teamStats.teams[0].period2, right: teamStats.teams[1].period2 },
     { label: "1ère M-T", left: teamStats.teams[0].period1, right: teamStats.teams[1].period1 },
-    { label: "Tirs", left: teamStats.teams[0].shotsTotal, right: teamStats.teams[1].shotsTotal },
+    { label: "Nombre de tirs", left: teamStats.teams[0].shotsTotal, right: teamStats.teams[1].shotsTotal },
     { label: "Tirs cadrés", left: teamStats.teams[0].shot_on, right: teamStats.teams[1].shot_on },
     { label: "Tirs non cadrés", left: teamStats.teams[0].shotsOffTotal, right: teamStats.teams[1].shotsOffTotal },
     { label: "Fautes", left: teamStats.teams[0].foul, right: teamStats.teams[1].foul },
@@ -691,34 +691,48 @@ function StatsTab({ score, shoots, events, teamA, teamB, teamAVisual, teamBVisua
 
 function PlayerStatsSplitCard({ leftName, rightName, leftPlayers, rightPlayers }: any) {
   const rows = Array.from({ length: Math.max(leftPlayers?.length || 0, rightPlayers?.length || 0) });
-  const renderPlayer = (player: any, align: "left" | "right") => {
-    if (!player) return <div style={{ opacity: .28, fontWeight: 900 }}>—</div>;
+  const cols = ["B", "PD", "TC", "TNC", "F", "CJ/CR"];
+  const valueFor = (player: any, col: string) => {
+    if (!player) return "";
+    if (col === "B") return player.goals || 0;
+    if (col === "PD") return player.assist || 0;
+    if (col === "TC") return player.shot_on || 0;
+    if (col === "TNC") return player.shotsOffTotal || 0;
+    if (col === "F") return player.foul || 0;
+    if (col === "CJ/CR") return `${player.yellow || 0}/${player.red || 0}`;
+    return 0;
+  };
+  const renderSide = (player: any, align: "left" | "right") => {
+    if (!player) return (
+      <div style={{ opacity: .22, fontWeight: 1000, minHeight: 42, display: "grid", placeItems: align === "left" ? "center start" : "center end" }}>—</div>
+    );
     return (
-      <div style={{ display: "grid", gap: 4, textAlign: align }}>
-        <div style={{ fontWeight: 1000, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 3, fontSize: 10, fontWeight: 950, opacity: .9 }}>
-          <span>{player.goals} B</span>
-          <span>{player.assist} PD</span>
-          <span>{player.shotsTotal} T</span>
-          <span>{player.foul} F</span>
-          <span>{player.yellow}/{player.red}</span>
+      <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+        <div style={{ fontWeight: 1000, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: align }}>{player.name}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 0, border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
+          {cols.map((col) => (
+            <div key={col} style={{ textAlign: "center", padding: "4px 2px", fontSize: 10, fontWeight: 1000, borderRight: col === "CJ/CR" ? 0 : "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.035)" }}>
+              <div style={{ color: THEME, fontSize: 9, opacity: .9 }}>{col}</div>
+              <div style={{ color: "#fff" }}>{valueFor(player, col)}</div>
+            </div>
+          ))}
         </div>
       </div>
     );
   };
   return (
     <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", background: THEME_08, borderBottom: `1px solid ${THEME_22}` }}>
-        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leftName}</div>
-        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rightName}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", background: THEME_08, borderBottom: `1px solid ${THEME_22}` }}>
+        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, overflowWrap: "anywhere", lineHeight: 1.05 }}>{leftName}</div>
+        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, textAlign: "right", overflowWrap: "anywhere", lineHeight: 1.05 }}>{rightName}</div>
       </div>
       {rows.length ? rows.map((_, idx) => (
-        <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, borderTop: idx ? "1px solid rgba(255,255,255,.08)" : 0 }}>
-          <div style={{ padding: "10px 12px", borderRight: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>{renderPlayer(leftPlayers?.[idx], "left")}</div>
-          <div style={{ padding: "10px 12px", minWidth: 0 }}>{renderPlayer(rightPlayers?.[idx], "right")}</div>
+        <div key={idx} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 0, borderTop: idx ? "1px solid rgba(255,255,255,.08)" : 0 }}>
+          <div style={{ padding: "10px 10px", borderRight: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>{renderSide(leftPlayers?.[idx], "left")}</div>
+          <div style={{ padding: "10px 10px", minWidth: 0 }}>{renderSide(rightPlayers?.[idx], "right")}</div>
         </div>
       )) : <div style={{ padding: 12, opacity: .65, fontWeight: 800 }}>Aucune stat joueur.</div>}
-      <div style={{ padding: "8px 12px", opacity: .55, fontSize: 10, fontWeight: 850 }}>B = buts · PD = passes déc. · T = tirs · F = fautes · CJ/CR</div>
+      <div style={{ padding: "8px 12px", opacity: .65, fontSize: 10, fontWeight: 850 }}>B = but · PD = passe décisive · TC = tir cadré · TNC = tir non cadré · F = faute · CJ/CR = cartons</div>
     </div>
   );
 }
@@ -726,12 +740,11 @@ function PlayerStatsSplitCard({ leftName, rightName, leftPlayers, rightPlayers }
 function FootStatsCard({ leftName, rightName, leftVisual, rightVisual, rows }: any) {
   return (
     <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-      <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr", alignItems: "center", padding: "12px 14px", minHeight: 66, background: "linear-gradient(90deg, rgba(255,255,255,.08), rgba(255,255,255,.035), rgba(255,255,255,.08))", overflow: "hidden" }}>
+      <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", alignItems: "center", gap: 12, padding: "12px 14px", minHeight: 66, background: "linear-gradient(90deg, rgba(255,255,255,.08), rgba(255,255,255,.035), rgba(255,255,255,.08))", overflow: "hidden" }}>
         <StatsHeaderGhost src={leftVisual} side="left" />
         <StatsHeaderGhost src={rightVisual} side="right" />
-        <div style={{ position: "relative", zIndex: 2, color: THEME, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leftName}</div>
-        <div style={{ position: "relative", zIndex: 2, color: THEME, fontWeight: 1000, textAlign: "center", fontSize: 18 }}>Stat</div>
-        <div style={{ position: "relative", zIndex: 2, color: "#fff", fontWeight: 1000, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rightName}</div>
+        <div style={{ position: "relative", zIndex: 2, color: THEME, fontWeight: 1000, overflowWrap: "anywhere", lineHeight: 1.05, fontSize: "clamp(13px, 3.3vw, 18px)", textShadow: `0 0 12px ${THEME_44}` }}>{leftName}</div>
+        <div style={{ position: "relative", zIndex: 2, color: THEME, fontWeight: 1000, textAlign: "right", overflowWrap: "anywhere", lineHeight: 1.05, fontSize: "clamp(13px, 3.3vw, 18px)", textShadow: `0 0 12px ${THEME_44}` }}>{rightName}</div>
       </div>
       {rows.map((row: any) => {
         const leftNum = Number(row.left || 0);
@@ -776,7 +789,7 @@ function StatsHeaderGhost({ src, side }: { src?: string | null; side: "left" | "
   );
 }
 
-function buildFootStats(events: any[], teamA: string, teamB: string, score: [number, number], shoots: [number, number]) {
+function buildFootStats(events: any[], teamA: string, teamB: string, score: [number, number], shoots: [number, number], rosterA?: any[], rosterB?: any[]) {
   const emptyTeam = () => ({
     score: 0, period1: 0, period2: 0, shotsTotal: 0, shotsOffTotal: 0,
     goal: 0, penalty_scored: 0, penalty_missed: 0, own_goal: 0, foul: 0, yellow: 0, red: 0,
@@ -809,6 +822,16 @@ function buildFootStats(events: any[], teamA: string, teamB: string, score: [num
 
   const teams = [emptyTeam(), emptyTeam()];
   const players: any[] = [new Map(), new Map()];
+  const seedRoster = (team: number, roster?: any[]) => {
+    if (!Array.isArray(roster)) return;
+    roster.forEach((p: any) => {
+      const name = String(p?.name || p?.displayName || "Joueur");
+      const id = String(p?.id || name);
+      if (!players[team].has(id)) players[team].set(id, emptyPlayer(name, id));
+    });
+  };
+  seedRoster(0, rosterA);
+  seedRoster(1, rosterB);
 
   const ensurePlayer = (team: number, ev: any) => {
     const name = ev.playerName || ev.awardedToPlayerName;
