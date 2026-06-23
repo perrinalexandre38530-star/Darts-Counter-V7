@@ -238,7 +238,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   };
 
 
-  const performSubstitution = (team: 0 | 1, teamName: string, outPlayer?: any, inPlayer?: any) => {
+  const performSubstitution = (team: 0 | 1, teamName: string, outPlayer?: any, inPlayer?: any, recordEvent = clockPhase !== "warmup") => {
     if (!outPlayer || !inPlayer || String(outPlayer.id) === String(inPlayer.id)) return;
     const setter = team === 0 ? setLineupA : setLineupB;
     setter((prev) => {
@@ -250,28 +250,30 @@ export default function FootPlay({ go, params, onFinish }: Props) {
       next[outIndex] = String(inPlayer.id);
       return next;
     });
-    const ev = {
-      id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      at: new Date().toISOString(),
-      team,
-      teamName,
-      type: "substitution" as EventType,
-      label: "Remplacement",
-      icon: icons.substitution,
-      period: currentPeriod,
-      clockRemaining: remainingSeconds,
-      periodSeconds,
-      format: spec.id,
-      playerId: inPlayer?.id || null,
-      playerName: inPlayer?.name || null,
-      outPlayerId: outPlayer?.id || null,
-      outPlayerName: outPlayer?.name || null,
-      inPlayerId: inPlayer?.id || null,
-      inPlayerName: inPlayer?.name || null,
-      scoreAAfter: score[0],
-      scoreBAfter: score[1],
-    };
-    setEvents((prev) => [ev, ...prev]);
+    if (recordEvent) {
+      const ev = {
+        id: `foot_ev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        at: new Date().toISOString(),
+        team,
+        teamName,
+        type: "substitution" as EventType,
+        label: "Remplacement",
+        icon: icons.substitution,
+        period: currentPeriod,
+        clockRemaining: remainingSeconds,
+        periodSeconds,
+        format: spec.id,
+        playerId: inPlayer?.id || null,
+        playerName: inPlayer?.name || null,
+        outPlayerId: outPlayer?.id || null,
+        outPlayerName: outPlayer?.name || null,
+        inPlayerId: inPlayer?.id || null,
+        inPlayerName: inPlayer?.name || null,
+        scoreAAfter: score[0],
+        scoreBAfter: score[1],
+      };
+      setEvents((prev) => [ev, ...prev]);
+    }
   };
 
   const confirmSubstitution = (outPlayer?: any, inPlayer?: any) => {
@@ -848,17 +850,18 @@ function PlayerStatsTables({ leftName, rightName, leftVisual, rightVisual, leftP
   const toggle = () => setTeamIndex((v) => (v === 0 ? 1 : 0));
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "38px 1fr 38px", alignItems: "center", gap: 8 }}>
-        <button type="button" onClick={toggle} style={carouselArrowBtn}>‹</button>
-        <div style={{ textAlign: "center", color: THEME, fontWeight: 1000, textShadow: `0 0 12px ${THEME_44}`, overflowWrap: "anywhere" }}>{teamName}</div>
-        <button type="button" onClick={toggle} style={carouselArrowBtn}>›</button>
-      </div>
-      <PlayerStatsTeamTable teamName={teamName} visual={visual} players={players} hideTitle={false} />
+      <PlayerStatsTeamTable
+        teamName={teamName}
+        visual={visual}
+        players={players}
+        onPrev={toggle}
+        onNext={toggle}
+      />
     </div>
   );
 }
 
-function PlayerStatsTeamTable({ teamName, visual, players, hideTitle }: any) {
+function PlayerStatsTeamTable({ teamName, visual, players, onPrev, onNext }: any) {
   const cols = ["B", "PD", "TC", "TNC", "F", "CJ/CR", "TJ"];
   const valueFor = (player: any, col: string) => {
     if (!player) return "0";
@@ -874,12 +877,14 @@ function PlayerStatsTeamTable({ teamName, visual, players, hideTitle }: any) {
   const safePlayers = Array.isArray(players) ? players : [];
   return (
     <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${THEME_22}`, background: "rgba(255,255,255,.035)" }}>
-      {!hideTitle && (
-        <div style={{ padding: "10px 12px", color: THEME, fontWeight: 1000, background: THEME_08, borderBottom: `1px solid ${THEME_22}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0 }}>
-          {visual ? <img src={visual} alt="" draggable={false} style={{ width: 30, height: 30, borderRadius: 999, objectFit: "cover", boxShadow: `0 0 12px ${THEME_33}` }} /> : null}
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{teamName}</span>
+      <div style={{ padding: "10px 10px", color: THEME, fontWeight: 1000, background: THEME_08, borderBottom: `1px solid ${THEME_22}`, display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) 38px", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <button type="button" onClick={onPrev} style={{ ...carouselArrowBtn, width: 38, height: 38 }}>‹</button>
+        <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          {visual ? <img src={visual} alt="" draggable={false} style={{ width: 30, height: 30, borderRadius: 999, objectFit: "cover", boxShadow: `0 0 12px ${THEME_33}`, flex: "0 0 auto" }} /> : null}
+          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center", textShadow: `0 0 12px ${THEME_44}` }}>{teamName}</span>
         </div>
-      )}
+        <button type="button" onClick={onNext} style={{ ...carouselArrowBtn, width: 38, height: 38 }}>›</button>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "48px repeat(7, minmax(0, 1fr))", alignItems: "center", background: "rgba(255,255,255,.06)", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
         <div />
         {cols.map((col) => <div key={col} style={playerTableHeaderCell}>{col}</div>)}
