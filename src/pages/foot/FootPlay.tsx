@@ -8,6 +8,7 @@ import footPitchBg from "../../assets/foot-pitch.webp";
 type Props = { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => void };
 type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_scored" | "penalty_missed" | "foul" | "shot_on" | "shot_off" | "post" | "crossbar" | "substitution";
 type GoalKind = "right_foot" | "left_foot" | "header" | "penalty" | "free_kick" | "own_goal_awarded";
+type ClockPhase = "warmup" | "playing" | "overtime" | "halftime" | "finished";
 
 const labels: Record<EventType, string> = {
   goal: "But",
@@ -310,12 +311,15 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   const [clockRunning, setClockRunning] = React.useState(false);
   const [currentPeriod, setCurrentPeriod] = React.useState(1);
   const [remainingSeconds, setRemainingSeconds] = React.useState(periodSeconds);
-  const matchFinished = isPenalty ? true : currentPeriod >= periodCount && remainingSeconds <= 0;
+  const [clockPhase, setClockPhase] = React.useState<ClockPhase>("warmup");
+  const halftimeSeconds = Math.max(0, Number(cfg.pauseMinutes || cfg.breakMinutes || cfg.pause || 0)) * 60;
+  const matchFinished = isPenalty ? true : clockPhase === "finished";
 
   React.useEffect(() => {
     setClockRunning(false);
     setCurrentPeriod(1);
     setRemainingSeconds(periodSeconds);
+    setClockPhase("warmup");
     buzzerPlayedRef.current = false;
   }, [periodSeconds, spec.id]);
 
@@ -323,24 +327,56 @@ export default function FootPlay({ go, params, onFinish }: Props) {
     if (!clockRunning || isPenalty) return;
     const timer = window.setInterval(() => {
       setRemainingSeconds((prev) => {
-        if (prev > 1) return prev - 1;
-        window.clearInterval(timer);
-        setClockRunning(false);
-        if (!buzzerPlayedRef.current) {
+        if (clockPhase === "halftime") {
+          if (prev > 1) return prev - 1;
+          window.clearInterval(timer);
+          setClockRunning(false);
+          return 0;
+        }
+        const next = prev - 1;
+        if (next <= 0 && !buzzerPlayedRef.current) {
           buzzerPlayedRef.current = true;
+          setClockPhase("overtime");
           playFootBuzzer();
         }
-        return 0;
+        return next;
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [clockRunning, isPenalty]);
+  }, [clockRunning, isPenalty, clockPhase]);
 
-  const nextPeriod = () => {
+  const startOrPauseClock = () => {
+    if (isPenalty || clockPhase === "finished") return;
+    if (clockPhase === "halftime" && !clockRunning && remainingSeconds <= 0 && currentPeriod < periodCount) {
+      setCurrentPeriod((prev) => Math.min(periodCount, prev + 1));
+      setRemainingSeconds(periodSeconds);
+      setClockPhase("playing");
+      buzzerPlayedRef.current = false;
+      setClockRunning(true);
+      return;
+    }
+    if (clockPhase === "warmup") setClockPhase("playing");
+    setClockRunning((v) => !v);
+  };
+
+  const stopPeriod = () => {
     if (isPenalty) return;
     setClockRunning(false);
-    setCurrentPeriod((prev) => Math.min(periodCount, prev + 1));
-    setRemainingSeconds(periodSeconds);
+    if (currentPeriod >= periodCount) {
+      setClockPhase("finished");
+      return;
+    }
+    setClockPhase("halftime");
+    setRemainingSeconds(halftimeSeconds);
+    buzzerPlayedRef.current = false;
+    if (halftimeSeconds > 0) setClockRunning(true);
+  };
+
+  const resetCurrentClock = () => {
+    setClockRunning(false);
+    if (clockPhase === "halftime") setRemainingSeconds(halftimeSeconds);
+    else setRemainingSeconds(periodSeconds);
+    if (clockPhase === "finished") setClockPhase("playing");
     buzzerPlayedRef.current = false;
   };
 
@@ -382,10 +418,12 @@ export default function FootPlay({ go, params, onFinish }: Props) {
             period={currentPeriod}
             periodCount={periodCount}
             remaining={remainingSeconds}
-            onToggle={() => { if (!clockRunning && remainingSeconds === 0) buzzerPlayedRef.current = false; setClockRunning((v) => !v); }}
-            onReset={() => { setClockRunning(false); setRemainingSeconds(periodSeconds); buzzerPlayedRef.current = false; }}
-            onNextPeriod={nextPeriod}
-            configLabel={isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : ""}
+            phase={clockPhase}
+            periodSeconds={periodSeconds}
+            onToggle={startOrPauseClock}
+            onStop={stopPeriod}
+            onReset={resetCurrentClock}
+            configLabel={isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}
           />
         )}
 
@@ -394,7 +432,6 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         {activeTab === "score" && <>
         <div style={{ margin: "10px 0 8px", textAlign: "center" }}>
           <div style={{ color: THEME, fontWeight: 1000, fontSize: 13, textTransform: "uppercase", letterSpacing: ".04em", textShadow: `0 0 12px ${THEME_44}` }}>{cfg.matchNature || cfg.matchTypeLabel || cfg.competitionName || "Match amical"}</div>
-          <div style={{ opacity: .78, fontWeight: 950, fontSize: 12 }}>{isPenalty ? `${cfg.shoots || 5} tirs par camp` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}</div>
         </div>
         <div style={{ position: "relative", borderRadius: 26, padding: 18, border: `1px solid ${THEME_33}`, background: "linear-gradient(90deg, rgba(0,0,0,.58), rgba(8,14,20,.46), rgba(0,0,0,.58))", boxShadow: `0 18px 44px rgba(0,0,0,.35), inset 0 0 38px ${THEME_08}`, overflow: "hidden" }}>
           <ScoreGhost src={teamAVisual} side="left" />
@@ -415,8 +452,8 @@ export default function FootPlay({ go, params, onFinish }: Props) {
         </>}
 
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button onClick={undo} style={secondaryBtn}>ANNULER DERNIER</button>
-          <button onClick={finish} disabled={!matchFinished} title={matchFinished ? "Enregistrer le match" : "Le match doit être terminé pour enregistrer"} style={{ ...primaryBtn, opacity: matchFinished ? 1 : .38, filter: matchFinished ? "none" : "grayscale(.65)", cursor: matchFinished ? "pointer" : "not-allowed", boxShadow: matchFinished ? undefined : "none" }}>TERMINER / ENREGISTRER</button>
+          <button onClick={undo} style={{ ...secondaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}><span style={{ color: "#ff4d5e", fontSize: 22, textShadow: "0 0 14px rgba(255,77,94,.75)" }}>↩</span><span>ANNULER</span></button>
+          <button onClick={finish} disabled={!matchFinished} title={matchFinished ? "Enregistrer le match" : "Le match doit être terminé pour enregistrer"} style={{ ...primaryBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: matchFinished ? 1 : .38, filter: matchFinished ? "none" : "grayscale(.65)", cursor: matchFinished ? "pointer" : "not-allowed", boxShadow: matchFinished ? undefined : "none" }}><span style={{ fontSize: 21 }}>💾</span><span>TERMINER</span></button>
         </div>
 
         {activeTab === "timeline" && <TimelineTab events={events} />}
@@ -525,25 +562,34 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
   );
 }
 
-function ClockBar({ running, period, periodCount, remaining, onToggle, onReset, onNextPeriod, configLabel }: any) {
-  const mm = Math.floor(Number(remaining || 0) / 60);
-  const ss = Number(remaining || 0) % 60;
-  const label = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
-  const canNext = period < periodCount;
-  const periodBadge = running || remaining > 0 ? `MT${period}` : "ÉCH";
+function ClockBar({ running, period, periodCount, remaining, phase, periodSeconds, onToggle, onReset, onStop, configLabel }: any) {
+  const raw = Number(remaining || 0);
+  const isOvertime = raw < 0;
+  const abs = Math.abs(raw);
+  const mm = Math.floor(abs / 60);
+  const ss = abs % 60;
+  const label = `${isOvertime ? "+" : ""}${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  const periodBadge = phase === "warmup" ? "🔥" : phase === "halftime" ? "MT" : phase === "finished" ? "FIN" : `MT${period}`;
+  const timeColor = isOvertime ? "#ff4d5e" : phase === "halftime" ? "#74ff7a" : "#fff";
+  const addIcon = isOvertime ? "⏳" : "";
+  const canStop = phase === "playing" || phase === "overtime";
   return (
-    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center", margin: "0 0 10px", padding: "10px", minHeight: 72, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
+    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center", margin: "0 0 10px", padding: "9px 10px", minHeight: 66, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
       <div style={{ display: "grid", gap: 7, justifyContent: "start", position: "relative", zIndex: 2 }}>
         <div title="Chrono" style={clockSideIcon}>⏱</div>
-        <div title={running || remaining > 0 ? `Mi-temps ${period}` : "Échauffement"} style={clockSideIcon}>{periodBadge}</div>
+        <div title={phase === "warmup" ? "Échauffement" : phase === "halftime" ? "Mi-temps" : `Mi-temps ${period}`} style={clockSideIcon}>{periodBadge}</div>
       </div>
       <div style={{ display: "grid", placeItems: "center", minWidth: 0, position: "relative", zIndex: 2 }}>
-        <div style={{ fontWeight: 1000, fontSize: 28, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME_44}` }}>{label}</div>
-        <div style={{ opacity: .72, fontSize: 11, fontWeight: 900, marginTop: 4 }}>Période {period}/{periodCount}</div>
+        <div style={{ fontWeight: 1000, fontSize: 29, lineHeight: 1, color: timeColor, textShadow: isOvertime ? "0 0 18px rgba(255,77,94,.55)" : phase === "halftime" ? "0 0 18px rgba(116,255,122,.45)" : `0 0 18px ${THEME_44}` }}>{addIcon ? `${addIcon} ${label}` : label}</div>
+        <div style={{ opacity: .82, fontSize: 11, fontWeight: 950, marginTop: 4, color: THEME }}>{configLabel}</div>
       </div>
       <div style={{ display: "grid", gap: 7, justifyContent: "end", position: "relative", zIndex: 2 }}>
         <button type="button" aria-label={running ? "Pause" : "Lancer"} title={running ? "Pause" : "Lancer"} onClick={onToggle} style={clockIconBtn(running ? "pause" : "play")}>{running ? "Ⅱ" : "▶"}</button>
-        <button type="button" aria-label={remaining === 0 && canNext ? "Période suivante" : "Réinitialiser"} title={remaining === 0 && canNext ? "Période suivante" : "Réinitialiser"} onClick={remaining === 0 && canNext ? onNextPeriod : onReset} style={clockIconBtn("neutral")}>{remaining === 0 && canNext ? "+" : "↺"}</button>
+        {canStop ? (
+          <button type="button" aria-label="Stop période" title="Stop période" onClick={onStop} style={clockIconBtn("stop")}>■</button>
+        ) : (
+          <button type="button" aria-label="Réinitialiser" title="Réinitialiser" onClick={onReset} style={clockIconBtn("neutral")}>↺</button>
+        )}
       </div>
     </div>
   );
@@ -572,8 +618,8 @@ function EventPanel({ team, onGoal, onMore, onPenalty, penalty }: any) {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-          <button onClick={onGoal} style={{ ...miniEventBtn, minHeight: 52, fontSize: 15 }}>⚽ BUT</button>
-          <button onClick={onMore} style={{ ...miniEventBtn, minWidth: 56, minHeight: 52, fontSize: 24, lineHeight: 1 }}>+</button>
+          <button onClick={onGoal} aria-label="But" title="But" style={{ ...miniEventBtn, minHeight: 52, fontSize: 23, display: "grid", placeItems: "center", color: THEME, textShadow: `0 0 16px ${THEME_66}` }}>⚽</button>
+          <button onClick={onMore} aria-label="Autres stats" title="Autres stats" style={{ ...miniEventBtn, minWidth: 56, minHeight: 52, fontSize: 28, lineHeight: 1, display: "grid", placeItems: "center", color: THEME, textShadow: `0 0 16px ${THEME_66}` }}>＋</button>
         </div>
       )}
     </div>
@@ -1464,7 +1510,7 @@ const carouselArrowBtn: React.CSSProperties = { width: 40, height: 36, border: `
 const playerTableHeaderCell: React.CSSProperties = { textAlign: "center", color: THEME, fontSize: 10, fontWeight: 1000, padding: "7px 2px", borderLeft: "1px solid rgba(255,255,255,.06)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const playerTableValueCell: React.CSSProperties = { textAlign: "center", color: "#fff", fontSize: 12, fontWeight: 1000, padding: "7px 2px", borderLeft: "1px solid rgba(255,255,255,.06)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const clockSideIcon: React.CSSProperties = { width: 46, height: 32, border: `1px solid ${THEME_33}`, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(255,255,255,.055)", color: THEME, fontWeight: 1000, fontSize: 13, boxShadow: `inset 0 0 14px ${THEME_08}` };
-const clockIconBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ width: 46, height: 38, border: `1px solid ${THEME_33}`, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, fontSize: 18, cursor: "pointer", boxShadow: tone === "neutral" ? "none" : `0 0 18px ${THEME_24}` });
+const clockIconBtn = (tone: "play" | "pause" | "neutral" | "stop"): React.CSSProperties => ({ width: 46, height: 38, border: `1px solid ${THEME_33}`, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : tone === "stop" ? "linear-gradient(135deg, #ff4d5e, #9b1020)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, fontSize: 18, cursor: "pointer", boxShadow: tone === "neutral" ? "none" : `0 0 18px ${THEME_24}` });
 const modalBtn: React.CSSProperties = { border: `1px solid ${THEME_33}`, borderRadius: 14, padding: "12px 10px", background: `${THEME_12}`, color: "#fff", fontWeight: 1000, cursor: "pointer", minHeight: 48 };
 const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME_35}`, borderRadius: 10, padding: "9px 8px", background: `${THEME_12}`, color: "#fff", fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `inset 0 0 18px ${THEME_08}` };
 const infoDotBtn: React.CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 54, height: 54, borderRadius: 999, border: `1px solid ${THEME_55}`, background: "rgba(0,0,0,.35)", color: THEME, fontSize: 24, fontWeight: 1000, boxShadow: `0 0 22px ${THEME_33}`, cursor: "pointer" };
