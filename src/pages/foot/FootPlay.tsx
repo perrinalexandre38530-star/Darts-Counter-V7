@@ -313,23 +313,28 @@ function TeamScore({ name, score, extra }: any) {
 
 function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right" }) {
   if (!src) return null;
+  const fadeMask = side === "left"
+    ? "linear-gradient(90deg, #000 0%, #000 48%, rgba(0,0,0,.72) 64%, transparent 100%)"
+    : "linear-gradient(270deg, #000 0%, #000 48%, rgba(0,0,0,.72) 64%, transparent 100%)";
   return (
     <div
       style={{
         position: "absolute",
         zIndex: 0,
         top: "50%",
-        [side]: "-8%",
-        width: "42%",
-        maxWidth: 260,
+        [side]: "-9%",
+        width: "48%",
+        maxWidth: 300,
         aspectRatio: "1 / 1",
         transform: `translateY(-50%) ${side === "right" ? "scaleX(-1)" : ""}`,
         borderRadius: "999px",
         overflow: "hidden",
-        background: "radial-gradient(circle, rgba(255,255,255,.10), rgba(0,0,0,.72) 62%, rgba(0,0,0,0) 72%)",
-        boxShadow: `0 0 38px ${THEME_22}`,
-        opacity: .82,
+        background: "radial-gradient(circle, rgba(255,255,255,.10), rgba(0,0,0,.18) 62%, rgba(0,0,0,0) 74%)",
+        boxShadow: `0 0 42px ${THEME_22}`,
+        opacity: .95,
         pointerEvents: "none",
+        WebkitMaskImage: fadeMask,
+        maskImage: fadeMask,
       } as React.CSSProperties}
     >
       <img
@@ -338,19 +343,18 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
         draggable={false}
         style={{
           position: "absolute",
-          inset: "6%",
-          width: "88%",
-          height: "88%",
+          inset: "3%",
+          width: "94%",
+          height: "94%",
           objectFit: "cover",
           objectPosition: "center",
           borderRadius: "999px",
-          transform: "scale(1.18)",
-          opacity: .74,
-          filter: "saturate(1.18) contrast(1.12)",
+          transform: "scale(1.12)",
+          opacity: .92,
+          filter: "saturate(1.24) contrast(1.08)",
         }}
       />
-      <div style={{ position: "absolute", inset: 0, borderRadius: "999px", boxShadow: "inset 0 0 0 999px rgba(0,0,0,.10)" }} />
-      <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${side === "left" ? "90deg" : "270deg"}, rgba(0,0,0,0), rgba(0,0,0,.52) 86%)` }} />
+      <div style={{ position: "absolute", inset: 0, borderRadius: "999px", boxShadow: `inset 0 0 34px rgba(0,0,0,.40), inset 0 0 0 2px ${THEME_18}` }} />
     </div>
   );
 }
@@ -509,23 +513,31 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
   const [side, setSide] = React.useState<0 | 1>(0);
   const [pickSpot, setPickSpot] = React.useState<number | null>(null);
   const count = Number(playersPerSide || 0);
-  const spots = getLineupSpots(count);
+  const defaultSpots = React.useMemo(() => getLineupSpots(count), [count]);
   const safeRosterA = Array.isArray(rosterA) ? rosterA : [];
   const safeRosterB = Array.isArray(rosterB) ? rosterB : [];
-  const [lineupA, setLineupA] = React.useState<string[]>(() => safeRosterA.slice(0, spots.length).map((p: any) => String(p.id)));
-  const [lineupB, setLineupB] = React.useState<string[]>(() => safeRosterB.slice(0, spots.length).map((p: any) => String(p.id)));
+  const pitchRef = React.useRef<HTMLDivElement | null>(null);
+  const dragRef = React.useRef<null | { index: number; side: 0 | 1; startX: number; startY: number; moved: boolean }>(null);
+  const [lineupA, setLineupA] = React.useState<string[]>(() => safeRosterA.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
+  const [lineupB, setLineupB] = React.useState<string[]>(() => safeRosterB.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
+  const [spotsA, setSpotsA] = React.useState<Array<{ x: number; y: number }>>(() => defaultSpots);
+  const [spotsB, setSpotsB] = React.useState<Array<{ x: number; y: number }>>(() => defaultSpots);
 
   React.useEffect(() => {
-    setLineupA(safeRosterA.slice(0, spots.length).map((p: any) => String(p.id)));
-  }, [safeRosterA.map((p: any) => p.id).join("|"), spots.length]);
+    setLineupA(safeRosterA.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
+    setSpotsA(defaultSpots);
+  }, [safeRosterA.map((p: any) => p.id).join("|"), defaultSpots.length]);
 
   React.useEffect(() => {
-    setLineupB(safeRosterB.slice(0, spots.length).map((p: any) => String(p.id)));
-  }, [safeRosterB.map((p: any) => p.id).join("|"), spots.length]);
+    setLineupB(safeRosterB.slice(0, defaultSpots.length).map((p: any) => String(p.id)));
+    setSpotsB(defaultSpots);
+  }, [safeRosterB.map((p: any) => p.id).join("|"), defaultSpots.length]);
 
   const roster = side === 0 ? safeRosterA : safeRosterB;
   const lineup = side === 0 ? lineupA : lineupB;
   const setLineup = side === 0 ? setLineupA : setLineupB;
+  const spots = side === 0 ? spotsA : spotsB;
+  const setSpots = side === 0 ? setSpotsA : setSpotsB;
   const title = side === 0 ? teamA : teamB;
   const getPlayer = (id?: string) => roster.find((p: any) => String(p.id) === String(id));
   const placed = lineup.map((id) => getPlayer(id));
@@ -542,6 +554,39 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
     setPickSpot(null);
   };
 
+  const moveSpotFromPointer = (event: React.PointerEvent | PointerEvent, index: number) => {
+    const rect = pitchRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.max(7, Math.min(93, ((event.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(7, Math.min(93, ((event.clientY - rect.top) / rect.height) * 100));
+    setSpots((prev) => prev.map((spot, i) => i === index ? { x, y } : spot));
+  };
+
+  const onSpotPointerDown = (event: React.PointerEvent, index: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current = { index, side, startX: event.clientX, startY: event.clientY, moved: false };
+    try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); } catch {}
+  };
+
+  const onSpotPointerMove = (event: React.PointerEvent, index: number) => {
+    const drag = dragRef.current;
+    if (!drag || drag.index !== index || drag.side !== side) return;
+    const dist = Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY);
+    if (dist > 5) drag.moved = true;
+    if (drag.moved) moveSpotFromPointer(event, index);
+  };
+
+  const onSpotPointerUp = (event: React.PointerEvent, index: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || drag.index !== index || drag.side !== side || !drag.moved) {
+      setPickSpot(index);
+    }
+  };
+
   return (
     <section style={tabPanelStyle}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
@@ -553,9 +598,10 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
       </div>
 
       <div style={{ color: THEME, fontWeight: 1000, margin: "0 0 6px", textAlign: "center", textShadow: `0 0 12px ${THEME_44}` }}>{title}</div>
-      <div style={{ opacity: .72, fontSize: 12, fontWeight: 850, textAlign: "center", marginBottom: 8 }}>Appuie sur un médaillon pour choisir ou permuter un joueur.</div>
+      <div style={{ opacity: .72, fontSize: 12, fontWeight: 850, textAlign: "center", marginBottom: 8 }}>Déplace les médaillons au doigt ou clique pour choisir / permuter un joueur.</div>
 
       <div
+        ref={pitchRef}
         style={{
           position: "relative",
           width: "100%",
@@ -567,9 +613,10 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
           border: `1px solid ${THEME_33}`,
           background: "#07160c",
           boxShadow: `inset 0 0 28px ${THEME_12}`,
+          touchAction: "none",
         }}
       >
-        <img src={footPitchBg} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", opacity: .95, filter: "saturate(1.15) contrast(1.08)" }} />
+        <img src={footPitchBg} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", opacity: .95, filter: "saturate(1.15) contrast(1.08)" }} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.18))" }} />
 
         {spots.map((spot, index) => {
@@ -579,7 +626,9 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
             <button
               type="button"
               key={`${side}-${index}`}
-              onClick={() => setPickSpot(index)}
+              onPointerDown={(e) => onSpotPointerDown(e, index)}
+              onPointerMove={(e) => onSpotPointerMove(e, index)}
+              onPointerUp={(e) => onSpotPointerUp(e, index)}
               style={{
                 position: "absolute",
                 left: `${spot.x}%`,
@@ -593,14 +642,16 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
                 border: 0,
                 background: "transparent",
                 padding: 0,
-                cursor: "pointer",
+                cursor: "grab",
                 color: "#fff",
+                touchAction: "none",
+                userSelect: "none",
               }}
             >
               <div
                 style={{
-                  width: 54,
-                  height: 54,
+                  width: 56,
+                  height: 56,
                   borderRadius: 999,
                   display: "grid",
                   placeItems: "center",
@@ -614,7 +665,7 @@ function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
                 }}
               >
                 {player?.visual ? (
-                  <img src={player.visual} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={player.visual} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }} />
                 ) : (
                   initial
                 )}

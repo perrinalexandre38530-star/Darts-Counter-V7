@@ -242,6 +242,8 @@ export default function FootConfig({ go, params, store }: Props) {
         teamBPlayerIds: b.playerIds,
         playersA: a.playerIds.map((id) => profileName(profileById.get(id)) || id),
         playersB: b.playerIds.map((id) => profileName(profileById.get(id)) || id),
+        playersAVisuals: a.playerIds.map((id) => profileAvatar(profileById.get(id)) || null),
+        playersBVisuals: b.playerIds.map((id) => profileAvatar(profileById.get(id)) || null),
         minutes,
         periods,
         breakMinutes,
