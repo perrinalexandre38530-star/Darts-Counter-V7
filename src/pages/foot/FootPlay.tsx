@@ -2,6 +2,7 @@ import React from "react";
 import BackDot from "../../components/BackDot";
 import { getFootFormat } from "./footFormats";
 import { getFootGameTicker } from "./footTickers";
+import footPitchBg from "../../assets/foot-pitch.webp";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => void };
 type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_scored" | "penalty_missed" | "foul" | "shot_on" | "shot_off" | "post" | "crossbar";
@@ -150,6 +151,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   };
 
   const isPenalty = spec.id === "penalty";
+  const showLineup = spec.playersPerSide >= 3;
   const tickerSrc = getFootGameTicker(spec.id);
   const teamAVisual = cfg.teamAVisual || cfg.teamALogo || firstRosterVisual(rosterA) || null;
   const teamBVisual = cfg.teamBVisual || cfg.teamBLogo || firstRosterVisual(rosterB) || null;
@@ -192,10 +194,13 @@ export default function FootPlay({ go, params, onFinish }: Props) {
   };
 
   const [activeTab, setActiveTab] = React.useState<FootPlayTab>("score");
+  React.useEffect(() => {
+    if (!showLineup && activeTab === "lineup") setActiveTab("score");
+  }, [showLineup, activeTab]);
   const [rulesOpen, setRulesOpen] = React.useState(false);
 
   return (
-    <div style={{ minHeight: "100vh", padding: "18px 14px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, rgba(40,180,90,.25), transparent 38%), linear-gradient(180deg, #06140b, #020604)" }}>
+    <div style={{ minHeight: "100vh", padding: "18px 14px 92px", color: "#fff", background: "radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--dc-accent, #22e6ff) 18%, transparent), transparent 38%), linear-gradient(180deg, var(--dc-bg, #061424), #020408)" }}>
       <div style={{ maxWidth: 620, margin: "0 auto" }}>
         <div style={{ position: "relative", height: 96, marginBottom: 12, borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,.14)", boxShadow: "0 16px 38px rgba(0,0,0,.45)" }}>
           <img src={tickerSrc} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", filter: "saturate(1.05) contrast(1.05)" }} />
@@ -205,7 +210,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           </div>
           <button type="button" aria-label="Règles" onClick={() => setRulesOpen(true)} style={infoDotBtn}>ⓘ</button>
         </div>
-        <h1 style={{ textAlign: "center", margin: "6px 0 4px", fontSize: 34, color: THEME, textShadow: `0 0 18px ${THEME}66` }}>{spec.label}</h1>
+        <h1 style={{ textAlign: "center", margin: "6px 0 4px", fontSize: 34, color: THEME, textShadow: `0 0 18px ${THEME_66}` }}>{spec.label}</h1>
         <p style={{ textAlign: "center", margin: "0 0 14px", color: THEME, opacity: .9, fontWeight: 1000 }}>{isPenalty ? `${cfg.shoots || 5} tirs par camp · mort subite possible` : `${cfg.periods || spec.periods} période(s) · ${cfg.minutes || spec.minutesPerPeriod} min`}</p>
 
         {!isPenalty && (
@@ -220,7 +225,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
           />
         )}
 
-        <FootPlayTabs active={activeTab} onChange={setActiveTab} showRanking={Boolean(cfg.competitionId || cfg.leagueId || cfg.tournamentId)} />
+        <FootPlayTabs active={activeTab} onChange={setActiveTab} showRanking={Boolean(cfg.competitionId || cfg.leagueId || cfg.tournamentId)} showLineup={showLineup} />
 
         {activeTab === "score" && <>
         <div style={{ position: "relative", borderRadius: 26, padding: 18, border: "1px solid rgba(255,255,255,.14)", background: "linear-gradient(90deg, rgba(10,35,18,.86), rgba(13,46,24,.76), rgba(10,35,18,.86))", boxShadow: "0 18px 44px rgba(0,0,0,.35)", overflow: "hidden" }}>
@@ -248,7 +253,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
 
         {activeTab === "timeline" && <TimelineTab events={events} />}
         {activeTab === "stats" && <StatsTab score={score} shoots={shoots} events={events} teamA={teamA} teamB={teamB} />}
-        {activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} />}
+        {showLineup && activeTab === "lineup" && <LineupTab teamA={teamA} teamB={teamB} rosterA={rosterA} rosterB={rosterB} playersPerSide={spec.playersPerSide} />}
         {activeTab === "ranking" && <EmptyTab title="CLASSEMENT" text="Le classement lié à cette ligue ou ce tournoi sera affiché ici." />}
       </div>
       {rulesOpen && <RulesModal title={`Règles ${spec.label}`} rules={spec.rules} onClose={() => setRulesOpen(false)} />}
@@ -266,7 +271,7 @@ export default function FootPlay({ go, params, onFinish }: Props) {
 function TeamScore({ name, score, extra }: any) {
   return (
     <div style={{ position: "relative", zIndex: 3, minWidth: 0 }}>
-      <div style={{ fontSize: 16, color: THEME, fontWeight: 1000, minHeight: 28, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: `0 0 12px ${THEME}55` }}>{name}</div>
+      <div style={{ fontSize: 16, color: THEME, fontWeight: 1000, minHeight: 28, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: `0 0 12px ${THEME_55}` }}>{name}</div>
       <div style={{ fontSize: 62, fontWeight: 1000, lineHeight: 1, textShadow: "0 4px 18px rgba(0,0,0,.65)" }}>{score}</div>
       {extra ? <div style={{ fontSize: 11, opacity: .75, fontWeight: 900 }}>{extra}</div> : null}
     </div>
@@ -288,8 +293,8 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
         transform: `translateY(-50%) ${side === "right" ? "scaleX(-1)" : ""}`,
         borderRadius: "999px",
         overflow: "hidden",
-        background: "radial-gradient(circle, rgba(57,240,131,.18), rgba(0,0,0,.82) 66%, rgba(0,0,0,0) 70%)",
-        boxShadow: "0 0 44px rgba(57,240,131,.18)",
+        background: `radial-gradient(circle, ${THEME_18}, rgba(0,0,0,.82) 66%, rgba(0,0,0,0) 70%)`,
+        boxShadow: `0 0 44px ${THEME_18}`,
         opacity: .5,
         pointerEvents: "none",
       } as React.CSSProperties}
@@ -308,7 +313,7 @@ function ScoreGhost({ src, side }: { src?: string | null; side: "left" | "right"
           borderRadius: "999px",
           transform: "scale(1.38)",
           opacity: .42,
-          filter: "saturate(1.2) contrast(1.12) drop-shadow(0 0 18px rgba(57,240,131,.25))",
+          filter: "saturate(1.2) contrast(1.12) drop-shadow(0 0 18px color-mix(in srgb, var(--dc-accent, #22e6ff) 25%, transparent))",
         }}
       />
       <div style={{ position: "absolute", inset: 0, background: `linear-gradient(${side === "left" ? "90deg" : "270deg"}, rgba(0,0,0,.05), rgba(0,0,0,.78) 78%)` }} />
@@ -322,12 +327,12 @@ function ClockBar({ running, period, periodCount, remaining, onToggle, onReset, 
   const label = `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
   const canNext = period < periodCount;
   return (
-    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", margin: "0 0 10px", padding: 12, minHeight: 68, borderRadius: 18, background: "rgba(57,240,131,.075)", border: `1px solid ${THEME}33`, overflow: "hidden" }}>
+    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", margin: "0 0 10px", padding: 12, minHeight: 68, borderRadius: 18, background: THEME_08, border: `1px solid ${THEME_33}`, overflow: "hidden" }}>
       <div style={{ minWidth: 0, position: "relative", zIndex: 2 }}>
         <div style={{ color: THEME, fontWeight: 1000, fontSize: 12 }}>CHRONO</div>
         <div style={{ opacity: .78, fontSize: 11, fontWeight: 900 }}>Période {period}/{periodCount}</div>
       </div>
-      <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", fontWeight: 1000, fontSize: 30, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME}44`, pointerEvents: "none" }}>{label}</div>
+      <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", fontWeight: 1000, fontSize: 30, lineHeight: 1, color: "#fff", textShadow: `0 0 18px ${THEME_44}`, pointerEvents: "none" }}>{label}</div>
       <div style={{ display: "flex", gap: 8, justifyContent: "end", position: "relative", zIndex: 2 }}>
         <button type="button" onClick={onToggle} style={clockBtn(running ? "pause" : "play")}>{running ? "⏸ Pause" : "▶ Lancer"}</button>
         <button type="button" onClick={remaining === 0 && canNext ? onNextPeriod : onReset} style={clockBtn("neutral")}>{remaining === 0 && canNext ? "Période +" : "↺"}</button>
@@ -348,11 +353,11 @@ function EventPanel({ team, roster, onGoal, onMore, onPenalty, penalty }: any) {
   const safeRoster = Array.isArray(roster) && roster.length ? roster : [{ id: `team_${team}`, name: team }];
   const hidePlayerName = safeRoster.length === 1 && String(safeRoster[0]?.name || "").trim() === String(team || "").trim();
   return (
-    <div style={{ borderRadius: 20, padding: 12, background: `linear-gradient(180deg, ${THEME}10, rgba(255,255,255,.035))`, border: `1px solid ${THEME}33`, boxShadow: `0 0 24px ${THEME}12` }}>
-      <div style={{ color: THEME, fontWeight: 1000, marginBottom: 9, textAlign: "center", fontSize: 17, textShadow: `0 0 12px ${THEME}55` }}>{team}</div>
+    <div style={{ borderRadius: 20, padding: 12, background: `linear-gradient(180deg, ${THEME_10}, rgba(255,255,255,.035))`, border: `1px solid ${THEME_33}`, boxShadow: `0 0 24px ${THEME_12}` }}>
+      <div style={{ color: THEME, fontWeight: 1000, marginBottom: 9, textAlign: "center", fontSize: 17, textShadow: `0 0 12px ${THEME_55}` }}>{team}</div>
       <div style={{ display: "grid", gap: 8 }}>
         {safeRoster.map((player: any) => (
-          <div key={player.id} style={{ borderRadius: 14, padding: 8, background: "rgba(0,0,0,.20)", border: `1px solid ${THEME}24` }}>
+          <div key={player.id} style={{ borderRadius: 14, padding: 8, background: "rgba(0,0,0,.20)", border: `1px solid ${THEME_24}` }}>
             {!hidePlayerName ? <div style={{ color: THEME, fontSize: 12, fontWeight: 1000, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</div> : null}
             {penalty ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
@@ -372,21 +377,87 @@ function EventPanel({ team, roster, onGoal, onMore, onPenalty, penalty }: any) {
   );
 }
 type FootPlayTab = "score" | "timeline" | "stats" | "lineup" | "ranking";
-const THEME = "#39f083";
+const THEME = "var(--dc-accent, #22e6ff)";
+const THEME_08 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 8%, transparent)";
+const THEME_10 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 10%, transparent)";
+const THEME_12 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 12%, transparent)";
+const THEME_18 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 18%, transparent)";
+const THEME_22 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 22%, transparent)";
+const THEME_24 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 24%, transparent)";
+const THEME_28 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 28%, transparent)";
+const THEME_33 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 33%, transparent)";
+const THEME_35 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 35%, transparent)";
+const THEME_44 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 44%, transparent)";
+const THEME_55 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 55%, transparent)";
+const THEME_66 = "color-mix(in srgb, var(--dc-accent, #22e6ff) 66%, transparent)";
+const THEME_GRAD = "linear-gradient(135deg, var(--dc-accent, #22e6ff), color-mix(in srgb, var(--dc-accent, #22e6ff) 55%, #000))";
 
-function FootPlayTabs({ active, onChange, showRanking }: { active: FootPlayTab; onChange: (tab: FootPlayTab) => void; showRanking: boolean }) {
+function FootPlayTabs({
+  active,
+  onChange,
+  showRanking,
+  showLineup,
+}: {
+  active: FootPlayTab;
+  onChange: (tab: FootPlayTab) => void;
+  showRanking: boolean;
+  showLineup: boolean;
+}) {
   const tabs: Array<{ key: FootPlayTab; label: string }> = [
     { key: "score", label: "SCORE" },
-    { key: "timeline", label: "FIL DU MATCH" },
+    { key: "timeline", label: "FIL" },
     { key: "stats", label: "STATS" },
-    { key: "lineup", label: "COMPO" },
   ];
-  if (showRanking) tabs.push({ key: "ranking", label: "CLASSEMENT" });
+  if (showLineup) tabs.push({ key: "lineup", label: "COMPO" });
+  if (showRanking) tabs.push({ key: "ranking", label: "CLASS." });
+
   return (
-    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "2px 0 10px", margin: "0 0 2px", scrollbarWidth: "none" }}>
-      {tabs.map((tab) => (
-        <button key={tab.key} type="button" onClick={() => onChange(tab.key)} style={{ border: `1px solid ${active === tab.key ? THEME : "rgba(255,255,255,.12)"}`, borderRadius: 999, padding: "10px 12px", background: active === tab.key ? `${THEME}22` : "rgba(255,255,255,.055)", color: active === tab.key ? THEME : "#fff", fontWeight: 1000, whiteSpace: "nowrap", boxShadow: active === tab.key ? `0 0 18px ${THEME}22` : "none" }}>{tab.label}</button>
-      ))}
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        display: "grid",
+        gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
+        gap: 0,
+        margin: "0 0 12px",
+        borderRadius: 0,
+        overflow: "hidden",
+        borderTop: `1px solid ${THEME_33}`,
+        borderBottom: `1px solid ${THEME_33}`,
+        background: "rgba(255,255,255,.035)",
+        boxShadow: `inset 0 0 24px ${THEME_08}`,
+      }}
+    >
+      {tabs.map((tab) => {
+        const selected = active === tab.key;
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => onChange(tab.key)}
+            style={{
+              minWidth: 0,
+              height: 44,
+              border: 0,
+              borderRight: `1px solid ${THEME_22}`,
+              borderRadius: 0,
+              padding: "0 4px",
+              background: selected ? THEME_18 : "transparent",
+              color: selected ? THEME : "rgba(255,255,255,.82)",
+              fontWeight: 1000,
+              fontSize: "clamp(10px, 2.5vw, 13px)",
+              letterSpacing: ".02em",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              textShadow: selected ? `0 0 12px ${THEME_44}` : "none",
+            }}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -396,7 +467,7 @@ function TimelineTab({ events }: { events: any[] }) {
     <section style={tabPanelStyle}>
       <h2 style={tabTitleStyle}>FIL DU MATCH</h2>
       <div style={{ display: "grid", gap: 8 }}>
-        {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: `1px solid ${THEME}22`, fontWeight: 850 }}>{ev.icon} {ev.scoringTeamName || ev.teamName} · {ev.goalLabel || ev.label}{ev.playerName ? ` · ${ev.playerName}` : ev.awardedToPlayerName ? ` · pour ${ev.awardedToPlayerName}` : ""}</div>)}
+        {events.length === 0 ? <div style={{ opacity: .65, fontWeight: 800 }}>Aucun événement pour le moment.</div> : events.map((ev) => <div key={ev.id} style={{ borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,.06)", border: `1px solid ${THEME_22}`, fontWeight: 850 }}>{ev.icon} {ev.scoringTeamName || ev.teamName} · {ev.goalLabel || ev.label}{ev.playerName ? ` · ${ev.playerName}` : ev.awardedToPlayerName ? ` · pour ${ev.awardedToPlayerName}` : ""}</div>)}
       </div>
     </section>
   );
@@ -408,29 +479,137 @@ function StatsTab({ score, shoots, events, teamA, teamB }: any) {
   return <EmptyTab title="STATS" text={`${teamA} ${score[0]} - ${score[1]} ${teamB} · ${goals} but(s) · ${cards} carton(s) · tirs au but ${shoots[0]}-${shoots[1]}`} />;
 }
 
-function LineupTab({ teamA, teamB, rosterA, rosterB }: any) {
+function LineupTab({ teamA, teamB, rosterA, rosterB, playersPerSide }: any) {
+  const [side, setSide] = React.useState<0 | 1>(0);
+  const roster = side === 0 ? rosterA : rosterB;
+  const title = side === 0 ? teamA : teamB;
+  const spots = getLineupSpots(Number(playersPerSide || 0));
+  const safeRoster = Array.isArray(roster) ? roster : [];
+
   return (
     <section style={tabPanelStyle}>
-      <h2 style={tabTitleStyle}>COMPO</h2>
-      <RosterList title={teamA} roster={rosterA} />
-      <RosterList title={teamB} roster={rosterB} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+        <h2 style={{ ...tabTitleStyle, margin: 0 }}>COMPO</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, border: `1px solid ${THEME_33}`, borderRadius: 14, overflow: "hidden", minWidth: 180 }}>
+          <button type="button" onClick={() => setSide(0)} style={lineupSwitchBtn(side === 0)}>Domicile</button>
+          <button type="button" onClick={() => setSide(1)} style={lineupSwitchBtn(side === 1)}>Extérieur</button>
+        </div>
+      </div>
+
+      <div style={{ color: THEME, fontWeight: 1000, margin: "0 0 8px", textAlign: "center" }}>{title}</div>
+
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          minHeight: 430,
+          borderRadius: 22,
+          overflow: "hidden",
+          border: `1px solid ${THEME_33}`,
+          background: "#0b2513",
+          boxShadow: `inset 0 0 28px ${THEME_12}`,
+        }}
+      >
+        <img src={footPitchBg} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .78, filter: "saturate(1.15) contrast(1.08)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.28))" }} />
+
+        {spots.map((spot, index) => {
+          const player = safeRoster[index];
+          const initial = String(player?.name || "?").trim().charAt(0).toUpperCase() || "?";
+          return (
+            <div
+              key={`${side}-${index}`}
+              style={{
+                position: "absolute",
+                left: `${spot.x}%`,
+                top: `${spot.y}%`,
+                transform: "translate(-50%, -50%)",
+                display: "grid",
+                justifyItems: "center",
+                gap: 4,
+                width: 82,
+                maxWidth: "22%",
+              }}
+            >
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 999,
+                  display: "grid",
+                  placeItems: "center",
+                  overflow: "hidden",
+                  border: `2px solid ${THEME}`,
+                  background: `radial-gradient(circle, ${THEME_28}, rgba(0,0,0,.82))`,
+                  boxShadow: `0 0 18px ${THEME_44}`,
+                  color: "#fff",
+                  fontWeight: 1000,
+                  fontSize: 18,
+                }}
+              >
+                {player?.visual ? (
+                  <img src={player.visual} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  initial
+                )}
+              </div>
+              <div style={{ maxWidth: "100%", padding: "3px 7px", borderRadius: 999, background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 10, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {player?.name || `Joueur ${index + 1}`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <RosterList title={title} roster={safeRoster} />
+      </div>
     </section>
   );
 }
+
+function getLineupSpots(count: number): Array<{ x: number; y: number }> {
+  const layouts: Record<number, Array<{ x: number; y: number }>> = {
+    3: [{ x: 50, y: 84 }, { x: 34, y: 48 }, { x: 66, y: 48 }],
+    5: [{ x: 50, y: 88 }, { x: 30, y: 62 }, { x: 70, y: 62 }, { x: 38, y: 34 }, { x: 62, y: 34 }],
+    7: [{ x: 50, y: 90 }, { x: 26, y: 68 }, { x: 50, y: 68 }, { x: 74, y: 68 }, { x: 30, y: 38 }, { x: 70, y: 38 }, { x: 50, y: 22 }],
+    8: [{ x: 50, y: 90 }, { x: 24, y: 70 }, { x: 50, y: 70 }, { x: 76, y: 70 }, { x: 32, y: 48 }, { x: 68, y: 48 }, { x: 38, y: 24 }, { x: 62, y: 24 }],
+    11: [{ x: 50, y: 92 }, { x: 18, y: 76 }, { x: 38, y: 76 }, { x: 62, y: 76 }, { x: 82, y: 76 }, { x: 26, y: 54 }, { x: 50, y: 54 }, { x: 74, y: 54 }, { x: 26, y: 30 }, { x: 74, y: 30 }, { x: 50, y: 16 }],
+  };
+  if (layouts[count]) return layouts[count];
+  return Array.from({ length: Math.max(3, count || 3) }, (_, i) => ({
+    x: 20 + (i % 4) * 20,
+    y: 84 - Math.floor(i / 4) * 22,
+  }));
+}
+
+function lineupSwitchBtn(active: boolean): React.CSSProperties {
+  return {
+    border: 0,
+    padding: "8px 10px",
+    background: active ? THEME_22 : "rgba(255,255,255,.045)",
+    color: active ? THEME : "#fff",
+    fontWeight: 1000,
+    cursor: "pointer",
+    minWidth: 0,
+  };
+}
+
 function RosterList({ title, roster }: any) {
   const safe = Array.isArray(roster) && roster.length ? roster : [];
   return <div style={{ marginTop: 10 }}><div style={{ color: THEME, fontWeight: 1000, marginBottom: 6 }}>{title}</div>{safe.length ? safe.map((p: any) => <div key={p.id} style={{ opacity: .82, fontWeight: 850 }}>• {p.name}</div>) : <div style={{ opacity: .6, fontWeight: 800 }}>Aucun joueur détaillé.</div>}</div>;
 }
+
 function EmptyTab({ title, text }: { title: string; text: string }) {
   return <section style={tabPanelStyle}><h2 style={tabTitleStyle}>{title}</h2><div style={{ opacity: .76, fontWeight: 850 }}>{text}</div></section>;
 }
 function RulesModal({ title, rules, onClose }: { title: string; rules: string[]; onClose: () => void }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9998, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
-      <div style={{ width: "min(420px, 100%)", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,25,17,.98), rgba(5,10,8,.98))", border: `1px solid ${THEME}44`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: "min(420px, 100%)", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,25,17,.98), rgba(5,10,8,.98))", border: `1px solid ${THEME_44}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 10 }}>
           <div style={{ color: THEME, fontWeight: 1000, fontSize: 20 }}>{title}</div>
-          <button type="button" onClick={onClose} style={{ border: `1px solid ${THEME}33`, borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
+          <button type="button" onClick={onClose} style={{ border: `1px solid ${THEME_33}`, borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
         </div>
         <div style={{ display: "grid", gap: 8 }}>{rules.map((r) => <div key={r} style={{ opacity: .82, fontWeight: 850 }}>• {r}</div>)}</div>
       </div>
@@ -443,10 +622,10 @@ function ActionModal({ data, onClose, onGoal, onStat }: any) {
   const subtitle = `${data.teamName}${data.player?.name ? ` · ${data.player.name}` : ""}`;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "grid", placeItems: "center", padding: 16, background: "rgba(0,0,0,.66)", backdropFilter: "blur(7px)" }} onClick={onClose}>
-      <div style={{ width: "min(420px, 100%)", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,25,17,.98), rgba(5,10,8,.98))", border: "1px solid rgba(57,240,131,.28)", boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ width: "min(420px, 100%)", borderRadius: 24, padding: 16, background: "linear-gradient(180deg, rgba(8,25,17,.98), rgba(5,10,8,.98))", border: `1px solid ${THEME_28}`, boxShadow: "0 22px 80px rgba(0,0,0,.55)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
           <div>
-            <div style={{ color: "#39f083", fontWeight: 1000, fontSize: 20 }}>{title}</div>
+            <div style={{ color: THEME, fontWeight: 1000, fontSize: 20 }}>{title}</div>
             <div style={{ opacity: .72, fontWeight: 850, fontSize: 13 }}>{subtitle}</div>
           </div>
           <button type="button" onClick={onClose} style={{ border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, background: "rgba(255,255,255,.06)", color: "#fff", width: 38, height: 38, fontWeight: 1000 }}>×</button>
@@ -490,11 +669,11 @@ function playFootBuzzer() {
     window.setTimeout(() => ctx.close().catch(() => {}), 1200);
   } catch {}
 }
-const clockBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, padding: "10px 12px", background: tone === "play" ? "linear-gradient(135deg, #35d86f, #087535)" : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" });
-const modalBtn: React.CSSProperties = { border: `1px solid ${THEME}33`, borderRadius: 14, padding: "12px 10px", background: `${THEME}12`, color: "#fff", fontWeight: 1000, cursor: "pointer", minHeight: 48 };
-const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME}35`, borderRadius: 10, padding: "9px 8px", background: `${THEME}12`, color: "#fff", fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `inset 0 0 18px ${THEME}08` };
-const infoDotBtn: React.CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 54, height: 54, borderRadius: 999, border: `1px solid ${THEME}55`, background: "rgba(0,0,0,.35)", color: THEME, fontSize: 24, fontWeight: 1000, boxShadow: `0 0 22px ${THEME}33`, cursor: "pointer" };
-const tabPanelStyle: React.CSSProperties = { borderRadius: 18, padding: 13, marginTop: 12, background: "rgba(255,255,255,.045)", border: `1px solid ${THEME}22` };
+const clockBtn = (tone: "play" | "pause" | "neutral"): React.CSSProperties => ({ border: "1px solid rgba(255,255,255,.14)", borderRadius: 14, padding: "10px 12px", background: tone === "play" ? THEME_GRAD : tone === "pause" ? "linear-gradient(135deg, #ffbd3a, #ff7b1a)" : "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" });
+const modalBtn: React.CSSProperties = { border: `1px solid ${THEME_33}`, borderRadius: 14, padding: "12px 10px", background: `${THEME_12}`, color: "#fff", fontWeight: 1000, cursor: "pointer", minHeight: 48 };
+const miniEventBtn: React.CSSProperties = { border: `1px solid ${THEME_35}`, borderRadius: 10, padding: "9px 8px", background: `${THEME_12}`, color: "#fff", fontSize: 12, fontWeight: 1000, cursor: "pointer", boxShadow: `inset 0 0 18px ${THEME_08}` };
+const infoDotBtn: React.CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", zIndex: 2, width: 54, height: 54, borderRadius: 999, border: `1px solid ${THEME_55}`, background: "rgba(0,0,0,.35)", color: THEME, fontSize: 24, fontWeight: 1000, boxShadow: `0 0 22px ${THEME_33}`, cursor: "pointer" };
+const tabPanelStyle: React.CSSProperties = { borderRadius: 18, padding: 13, marginTop: 12, background: "rgba(255,255,255,.045)", border: `1px solid ${THEME_22}` };
 const tabTitleStyle: React.CSSProperties = { margin: "0 0 10px", color: THEME, fontSize: 18, fontWeight: 1000 };
 const secondaryBtn: React.CSSProperties = { flex: 1, border: "1px solid rgba(255,255,255,.14)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 1000, cursor: "pointer" };
-const primaryBtn: React.CSSProperties = { flex: 1.4, border: 0, borderRadius: 16, padding: 12, background: "linear-gradient(135deg, #35d86f, #087535)", color: "#fff", fontWeight: 1000, cursor: "pointer" };
+const primaryBtn: React.CSSProperties = { flex: 1.4, border: 0, borderRadius: 16, padding: 12, background: THEME_GRAD, color: "#fff", fontWeight: 1000, cursor: "pointer" };
