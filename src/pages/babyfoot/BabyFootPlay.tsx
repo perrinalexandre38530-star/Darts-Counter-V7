@@ -560,10 +560,11 @@ function buildBabyFootPlayerStatsForHistory(input: {
       const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
       if (scorer) {
         scorer.goals += pts;
+        scorer.demiBonus += Math.max(0, Number(anyEv.demiBonusApplied || 0) || 0);
         if (anyEv.kind === "gamelle") scorer.gamelle += 1;
         if (anyEv.kind === "peche") { scorer.peche += 1; scorer.pecheOff += 1; }
         if (anyEv.kind === "pissette") { scorer.pissette += 1; scorer.pissetteValid += 1; }
-        bumpLine(scorer, anyEv.sourceLine, pts);
+        bumpLine(scorer, anyEv.sourceLine, 1);
       }
       const own = ensure(anyEv.ownGoalById, { team: anyEv.ownGoalTeam });
       if (own) { own.ownGoals += 1; own.csc += 1; }
@@ -823,11 +824,28 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     if (state.phase === "overtime" && otLimitMs != null && otRemain === 0) setState(finishByTime());
   }, [otLimitMs, otRemain, regularLimitMs, regularRemain, state.finished, state.phase]);
 
+  const currentWinnerTeam: BabyFootTeamId | null =
+    (state.winner as BabyFootTeamId | null) ||
+    (displayedScore.scoreA > displayedScore.scoreB ? "A" : displayedScore.scoreB > displayedScore.scoreA ? "B" : null);
+
+  const finishedPlayerStats = useMemo(() => buildBabyFootPlayerStatsForHistory({
+    players: players.map((player) => ({
+      id: String(player.id),
+      name: player.name,
+      team: teamAIds.includes(String(player.id)) ? "A" : teamBIds.includes(String(player.id)) ? "B" : undefined,
+    })) as any,
+    events: state.events || [],
+    teamAIds,
+    teamBIds,
+    winnerTeam: currentWinnerTeam,
+  }), [players, state.events, teamAIds.join("|"), teamBIds.join("|"), currentWinnerTeam]);
+
   useEffect(() => {
     if (!state.finished) return;
 
-    const winnerTeam: BabyFootTeamId =
-      (state.winner as BabyFootTeamId | null) || (displayedScore.scoreA >= displayedScore.scoreB ? "A" : "B");
+    const winnerTeam: BabyFootTeamId | null = currentWinnerTeam;
+    const winnerName = winnerTeam === "A" ? state.teamA : winnerTeam === "B" ? state.teamB : "Match nul";
+    const scoreLine = `${state.teamA} : ${displayedScore.scoreA} • ${state.teamB} : ${displayedScore.scoreB}`;
     const winnerId = winnerTeam === "A" ? teamAIds[0] || null : teamBIds[0] || null;
 
     const payload = {
@@ -836,9 +854,14 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       matchId: state.matchId,
       id: state.matchId,
       createdAt: state.createdAt,
+      startedAt: state.startedAt ?? state.createdAt,
       finishedAt: state.finishedAt ?? Date.now(),
+      durationMs,
       winnerId,
       winnerTeam,
+      winnerName,
+      teamWinnerName: winnerName,
+      scoreLine,
       teamA: state.teamA,
       teamB: state.teamB,
       teamARefId: state.teamARefId ?? null,
@@ -870,7 +893,17 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         teamIndex: teamAIds.includes(String(player.id)) ? 0 : teamBIds.includes(String(player.id)) ? 1 : undefined,
         team: teamAIds.includes(String(player.id)) ? "A" : teamBIds.includes(String(player.id)) ? "B" : undefined,
       })),
+      stats: richStats,
+      specialStats: state.specialStats,
+      playerStats: finishedPlayerStats,
       summary: {
+        finished: true,
+        finishedAt: state.finishedAt ?? Date.now(),
+        startedAt: state.startedAt ?? state.createdAt,
+        winnerTeam,
+        winnerName,
+        teamWinnerName: winnerName,
+        scoreLine,
         teamA: state.teamA,
         teamB: state.teamB,
         teamARefId: state.teamARefId ?? null,
@@ -898,6 +931,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         pecheDefRule: state.pecheDefRule,
         specialStats: state.specialStats,
         stats: richStats,
+        playerStats: finishedPlayerStats,
+        events: state.events || [],
       },
       events: state.events || [],
       leagueId: (params as any)?.leagueId || null,
@@ -962,13 +997,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
     if (historySavedMatchRef.current !== state.matchId) {
       historySavedMatchRef.current = state.matchId;
-      const playerStats = buildBabyFootPlayerStatsForHistory({
-        players: payload.players as any,
-        events: state.events || [],
-        teamAIds,
-        teamBIds,
-        winnerTeam: state.winner || (displayedScore.scoreA > displayedScore.scoreB ? "A" : displayedScore.scoreB > displayedScore.scoreA ? "B" : null),
-      });
+      const playerStats = finishedPlayerStats;
       const historyPayload = {
         ...payload,
         playerStats,
@@ -987,6 +1016,9 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         game: { mode: "babyfoot", babyfootMode: state.mode },
         players: payload.players as any,
         winnerId,
+        winnerName,
+        teamWinnerName: winnerName,
+        scoreLine,
         createdAt: Number(state.createdAt || Date.now()),
         updatedAt: Number(state.finishedAt || Date.now()),
         finishedAt: Number(state.finishedAt || Date.now()),
@@ -1006,7 +1038,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
     onFinish?.(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayedScore.scoreA, displayedScore.scoreB, durationMs, players, state.finished]);
+  }, [displayedScore.scoreA, displayedScore.scoreB, durationMs, players, state.finished, finishedPlayerStats, currentWinnerTeam]);
 
   const headerTicker = useMemo(
     () => pickTicker(`babyfoot_${state.mode}`) || pickTicker("babyfoot_match") || pickTicker("babyfoot_games"),
@@ -1122,14 +1154,21 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
 
   const winnerLabel = state.winner === "A" ? visualA.name : state.winner === "B" ? visualB.name : "Match nul";
   const detailsLine = [finishReasonLabel, `Durée ${fmt(durationMs)}`, state.mode].filter(Boolean).join(" • ");
+  const endWinnerTeam = currentWinnerTeam || "D";
+  const endWinnerName = endWinnerTeam === "A" ? state.teamA : endWinnerTeam === "B" ? state.teamB : "Match nul";
+  const endScoreLine = `${state.teamA} : ${displayedScore.scoreA} • ${state.teamB} : ${displayedScore.scoreB}`;
   const finishedEndPayload = {
     kind: "babyfoot",
     sport: "babyfoot",
     matchId: state.matchId,
     id: state.matchId,
     createdAt: state.createdAt,
+    startedAt: state.startedAt ?? state.createdAt,
     finishedAt: state.finishedAt ?? Date.now(),
-    winnerTeam: state.winner || (displayedScore.scoreA > displayedScore.scoreB ? "A" : displayedScore.scoreB > displayedScore.scoreA ? "B" : "D"),
+    winnerTeam: endWinnerTeam,
+    winnerName: endWinnerName,
+    teamWinnerName: endWinnerName,
+    scoreLine: endScoreLine,
     teamA: state.teamA,
     teamB: state.teamB,
     teamAProfileIds: [...(state.teamAProfileIds || [])],
@@ -1146,7 +1185,17 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       teamIndex: teamAIds.includes(String(player.id)) ? 0 : teamBIds.includes(String(player.id)) ? 1 : undefined,
       team: teamAIds.includes(String(player.id)) ? "A" : teamBIds.includes(String(player.id)) ? "B" : undefined,
     })),
+    stats: richStats,
+    specialStats: state.specialStats,
+    playerStats: finishedPlayerStats,
     summary: {
+      finished: true,
+      finishedAt: state.finishedAt ?? Date.now(),
+      startedAt: state.startedAt ?? state.createdAt,
+      winnerTeam: endWinnerTeam,
+      winnerName: endWinnerName,
+      teamWinnerName: endWinnerName,
+      scoreLine: endScoreLine,
       teamA: state.teamA,
       teamB: state.teamB,
       scoreA: displayedScore.scoreA,
@@ -1155,6 +1204,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       mode: state.mode,
       stats: richStats,
       specialStats: state.specialStats,
+      playerStats: finishedPlayerStats,
+      events: state.events || [],
       target: state.target,
       setsEnabled: state.setsEnabled,
       setsA: state.setsA,

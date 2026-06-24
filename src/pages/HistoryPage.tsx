@@ -271,6 +271,36 @@ function isBabyFootEntry(e: SavedEntry) {
   return sport.includes("babyfoot") || sport.includes("baby-foot") || kind.includes("babyfoot") || kind.includes("baby-foot") || m.includes("babyfoot") || m.includes("baby-foot") || pm.includes("babyfoot") || pm.includes("baby-foot");
 }
 
+function babyFootNumber(value: any, fallback = 0): number {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function babyFootHistoryData(e: SavedEntry) {
+  const anyE: any = e as any;
+  const payload = anyE?.payload && typeof anyE.payload === "object" && !Array.isArray(anyE.payload) ? anyE.payload : {};
+  const summary = {
+    ...(payload?.summary && typeof payload.summary === "object" ? payload.summary : {}),
+    ...(anyE?.summary && typeof anyE.summary === "object" ? anyE.summary : {}),
+  };
+  const stats = summary?.stats || payload?.stats || {};
+  const special = summary?.specialStats || payload?.specialStats || {};
+  const sideA = stats?.teamA || {};
+  const sideB = stats?.teamB || {};
+  const teamA = String(summary?.teamA || payload?.teamA || sideA?.name || anyE?.teamA || "TEAM A");
+  const teamB = String(summary?.teamB || payload?.teamB || sideB?.name || anyE?.teamB || "TEAM B");
+  const scoreA = babyFootNumber(summary?.scoreA ?? payload?.scoreA ?? sideA?.score ?? anyE?.scoreA);
+  const scoreB = babyFootNumber(summary?.scoreB ?? payload?.scoreB ?? sideB?.score ?? anyE?.scoreB);
+  const setsA = babyFootNumber(summary?.setsA ?? payload?.setsA ?? sideA?.sets);
+  const setsB = babyFootNumber(summary?.setsB ?? payload?.setsB ?? sideB?.sets);
+  const totalDemi = babyFootNumber(stats?.totalDemi, babyFootNumber(sideA?.demi, babyFootNumber(special?.demiA)) + babyFootNumber(sideB?.demi, babyFootNumber(special?.demiB)));
+  const totalGamelle = babyFootNumber(stats?.totalGamelle, babyFootNumber(sideA?.gamelle, babyFootNumber(special?.gamelleA)) + babyFootNumber(sideB?.gamelle, babyFootNumber(special?.gamelleB)));
+  const totalPeche = babyFootNumber(stats?.totalPeche, babyFootNumber(sideA?.peche, babyFootNumber(special?.pecheOffA) + babyFootNumber(special?.pecheDefA)) + babyFootNumber(sideB?.peche, babyFootNumber(special?.pecheOffB) + babyFootNumber(special?.pecheDefB)));
+  const totalPissette = babyFootNumber(stats?.totalPissette, babyFootNumber(sideA?.pissette, babyFootNumber(special?.pissetteA)) + babyFootNumber(sideB?.pissette, babyFootNumber(special?.pissetteB)));
+  const winnerTeam = String(summary?.winnerTeam || payload?.winnerTeam || anyE?.winnerTeam || "").toUpperCase();
+  return { payload, summary, stats, teamA, teamB, scoreA, scoreB, setsA, setsB, totalDemi, totalGamelle, totalPeche, totalPissette, winnerTeam };
+}
+
 
 
 type GameFilterKey = "all" | string;
@@ -1255,6 +1285,26 @@ function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore
 }
 
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  if (isBabyFootEntry(e)) {
+    const d = babyFootHistoryData(e);
+    const hasSets = d.setsA > 0 || d.setsB > 0;
+    const hasDetails = d.totalDemi > 0 || d.totalGamelle > 0 || d.totalPeche > 0 || d.totalPissette > 0;
+    return (
+      <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
+          <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 900 }}>{d.teamA}</span>
+          <span style={{ color: theme.primary, fontWeight: 1100, textShadow: `0 0 9px ${theme.primary}55` }}>{d.scoreA} - {d.scoreB}</span>
+          <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 900 }}>{d.teamB}</span>
+          {hasSets ? <span style={{ color: "rgba(255,255,255,.62)", fontWeight: 850 }}>• Sets {d.setsA}-{d.setsB}</span> : null}
+        </div>
+        {hasDetails ? (
+          <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850, lineHeight: 1.2 }}>
+            Demis {d.totalDemi} • Gamelles {d.totalGamelle} • Pêches {d.totalPeche} • Pissettes {d.totalPissette}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   const teamRows = isX01Entry(e) ? historyTeamRowsForX01(e) : [];
   if (teamRows.length >= 2) {
     const scoreStyle = { color: theme.primary, fontWeight: 950, textShadow: `0 0 9px ${theme.primary}55` };
@@ -1314,6 +1364,14 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
 }
 
 function deriveHistoryWinnerName(e: SavedEntry): string {
+  if (isBabyFootEntry(e)) {
+    const d = babyFootHistoryData(e);
+    if (d.winnerTeam === "A") return d.teamA;
+    if (d.winnerTeam === "B") return d.teamB;
+    if (d.scoreA > d.scoreB) return d.teamA;
+    if (d.scoreB > d.scoreA) return d.teamB;
+    return "Match nul";
+  }
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
   const result = data.result || {};
@@ -1457,6 +1515,35 @@ function mergeHistoryRowsFast(rowsLocal: SavedEntry[], linkedRows: SavedEntry[] 
   return Array.from(byId.values());
 }
 
+async function hydrateBabyFootHistoryRows(rows: SavedEntry[]): Promise<SavedEntry[]> {
+  return Promise.all(rows.map(async (row, index) => {
+    if (!isBabyFootEntry(row) || index > 80) return row;
+    const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
+    if (!id) return row;
+    try {
+      const full: any = await History.get(id);
+      if (!full) return row;
+      const rowPayload = (row as any)?.payload && typeof (row as any).payload === "object" ? (row as any).payload : {};
+      const fullPayload = full?.payload && typeof full.payload === "object" ? full.payload : {};
+      const payload = { ...rowPayload, ...fullPayload };
+      const summary = {
+        ...((row as any)?.summary || {}),
+        ...(full?.summary || {}),
+        ...(payload?.summary || {}),
+      };
+      payload.summary = summary;
+      const players = Array.isArray(payload?.players) && payload.players.length
+        ? payload.players
+        : Array.isArray(full?.players) && full.players.length
+          ? full.players
+          : (row as any)?.players;
+      return normalizeSavedEntry({ ...(row as any), ...full, payload, summary, players } as SavedEntry);
+    } catch {
+      return row;
+    }
+  }));
+}
+
 function readCachedLinkedHistoryRows(): SavedEntry[] {
   try {
     if (typeof localStorage === "undefined") return [];
@@ -1510,7 +1597,8 @@ const HistoryAPI = {
       // ✅ PERF: l’historique ne doit plus attendre le NAS / profils liés.
       // On affiche immédiatement l’IDB local + cache éventuel, puis on rafraîchit en arrière-plan.
       const cachedLinkedRows = readCachedLinkedHistoryRows();
-      const rows = mergeHistoryRowsFast(rowsLocal, cachedLinkedRows);
+      const mergedRows = mergeHistoryRowsFast(rowsLocal, cachedLinkedRows);
+      const rows = await hydrateBabyFootHistoryRows(mergedRows);
       kickLinkedProjectionRefresh(localProfiles);
 
       const enhanced: SavedEntry[] = [];
