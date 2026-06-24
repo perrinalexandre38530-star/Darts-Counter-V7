@@ -310,12 +310,12 @@ export default function FootConfig({ go, params, store }: Props) {
   );
 
   const ParamsChoice = () => (
-    <section style={cardStyle()}>
+    <section style={{ ...cardStyle(), overflow: "visible", position: "relative", zIndex: 8 }} className="foot-config-params-card">
       <h2 style={sectionTitle(primary)}>PARAMÈTRES DU MATCH</h2>
       {spec.id === "penalty" ? (
         <OptionGrid label="Tirs par camp" value={shoots} setValue={setShoots} options={[3, 5, 7, 10]} suffix=" tirs" />
       ) : (
-        <div style={compactParamsGrid}>
+        <div style={{ ...compactParamsGrid, overflow: "visible", position: "relative", zIndex: 9 }}>
           <OptionSelect
             label="Temps d’une mi-temps"
             value={minutes}
@@ -427,6 +427,10 @@ export default function FootConfig({ go, params, store }: Props) {
           overflow-y: auto !important;
           overscroll-behavior-x: none !important;
         }
+
+        .foot-config-steps-carousel::-webkit-scrollbar { display: none; }
+        .foot-config-params-card { overflow: visible !important; }
+        .foot-config-params-card * { overflow: visible; }
         .foot-config-page button,
         .foot-config-page section,
         .foot-config-page div {
@@ -512,32 +516,76 @@ export default function FootConfig({ go, params, store }: Props) {
 }
 
 function GuideProgress({ steps, active, complete, label, primary, primarySoft }: any) {
+  const scrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const itemRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+
+  React.useEffect(() => {
+    const scroller = scrollerRef.current;
+    const item = itemRefs.current[String(active)];
+    if (!scroller || !item) return;
+    const left = item.offsetLeft - (scroller.clientWidth / 2) + (item.clientWidth / 2);
+    scroller.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+  }, [active, steps.length]);
+
   return (
-    <section style={{ ...cardStyle(), padding: 12 }}>
-      <div className="foot-config-steps" style={{ display: "flex", flexWrap: "wrap", gap: 7, overflowX: "hidden", overflowY: "visible", maxWidth: "100%", width: "100%", minWidth: 0, paddingBottom: 2, WebkitOverflowScrolling: "touch", boxSizing: "border-box" }}>
+    <section style={{ ...cardStyle(), padding: 10, overflow: "hidden" }}>
+      <div
+        ref={scrollerRef}
+        className="foot-config-steps-carousel"
+        style={{
+          display: "flex",
+          gap: 8,
+          overflowX: "auto",
+          overflowY: "hidden",
+          maxWidth: "100%",
+          width: "100%",
+          minWidth: 0,
+          padding: "2px 2px 8px",
+          WebkitOverflowScrolling: "touch",
+          scrollSnapType: "x mandatory",
+          scrollbarWidth: "none",
+          boxSizing: "border-box",
+        }}
+      >
         {steps.map((step: GuidedStep, index: number) => {
           const isActive = step === active;
           const done = complete(step);
           return (
-            <div key={step} style={{ flex: "0 0 auto", maxWidth: "calc(100vw - 48px)", display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 999, padding: "7px 10px", border: isActive ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: isActive ? primarySoft : "rgba(255,255,255,.045)", color: isActive ? "#fff" : "#aeb5d0", fontWeight: 1000, fontSize: 11, textTransform: "uppercase", letterSpacing: .55, boxSizing: "border-box" }}>
-              <span style={{ width: 20, height: 20, flex: "0 0 20px", borderRadius: 999, display: "grid", placeItems: "center", background: done ? primary : "rgba(255,255,255,.08)", color: done ? "#001019" : "#fff", fontSize: 10 }}>{done ? "✓" : index + 1}</span>
+            <button
+              key={step}
+              ref={(node) => { itemRefs.current[String(step)] = node; }}
+              type="button"
+              disabled={!done && !isActive}
+              style={{
+                flex: "0 0 clamp(132px, 44%, 190px)",
+                minWidth: 0,
+                scrollSnapAlign: "center",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 999,
+                padding: "9px 12px",
+                border: isActive ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)",
+                background: isActive ? primarySoft : "rgba(255,255,255,.045)",
+                color: isActive ? "#fff" : "#aeb5d0",
+                fontWeight: 1000,
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: .55,
+                boxSizing: "border-box",
+                boxShadow: isActive ? `0 0 18px ${primary}28` : "none",
+                opacity: done || isActive ? 1 : .55,
+                cursor: "default",
+              }}
+            >
+              <span style={{ width: 23, height: 23, flex: "0 0 23px", borderRadius: 999, display: "grid", placeItems: "center", background: done ? primary : "rgba(255,255,255,.08)", color: done ? "#001019" : "#fff", fontSize: 11 }}>{done ? "✓" : index + 1}</span>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label(step)}</span>
-            </div>
+            </button>
           );
         })}
       </div>
     </section>
   );
-}
-
-function missingLabel(spec: any, sourceMode: SourceMode, selectedCount: number, teamCount: number, teamIds: string[] = [], teamPlayerIds: Record<string, string[]> = {}) {
-  if (spec.kind === "duel") return `SÉLECTIONNE ${Math.max(0, 2 - selectedCount)} JOUEUR(S)`;
-  if (sourceMode === "saved") {
-    if (teamCount < 2) return `SÉLECTIONNE ${Math.max(0, 2 - teamCount)} ÉQUIPE(S)`;
-    const missing = teamIds.reduce((sum, id) => sum + Math.max(0, spec.playersPerSide - ((teamPlayerIds[String(id)] || []).length)), 0);
-    return `CHOISIS ${missing} JOUEUR(S) D'ÉQUIPE`;
-  }
-  return `SÉLECTIONNE ${Math.max(0, spec.playersPerSide * 2 - selectedCount)} JOUEUR(S)`;
 }
 
 function SelectedPreview({ title, leftTitle, rightTitle, left, right, primary }: any) {
@@ -668,7 +716,7 @@ function OptionSelect({ label, value, setValue, options, suffix = "" }: any) {
   }, [open]);
 
   return (
-    <div ref={wrapRef} style={{ position: "relative", minWidth: 0 }}>
+    <div ref={wrapRef} style={{ position: "relative", minWidth: 0, zIndex: open ? 999 : 1, overflow: "visible" }}>
       <div style={selectLabelStyle}>{label}</div>
       <button type="button" onClick={() => setOpen((v) => !v)} style={selectBoxStyle(open)}>
         <span>{value}{suffix}</span>
@@ -740,7 +788,7 @@ const hintLine: React.CSSProperties = { color: "#d5d9ec", fontSize: 13, fontWeig
 const compactParamsGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 10 };
 const selectLabelStyle: React.CSSProperties = { fontSize: 11, color: "#9da3c0", fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, marginBottom: 7 };
 const selectBoxStyle = (open: boolean): React.CSSProperties => ({ width: "100%", minHeight: 48, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderRadius: 16, border: open ? "1px solid #22e6ff" : "1px solid rgba(255,255,255,.10)", background: open ? "rgba(34,230,255,.14)" : "rgba(255,255,255,.055)", color: "#fff", padding: "0 13px", fontWeight: 1000, boxShadow: open ? "0 0 22px rgba(34,230,255,.24)" : "none" });
-const selectListStyle: React.CSSProperties = { position: "absolute", zIndex: 20, left: 0, right: 0, top: "calc(100% + 7px)", maxHeight: 210, overflowY: "auto", borderRadius: 16, padding: 6, background: "rgba(5,8,16,.98)", border: "1px solid rgba(34,230,255,.38)", boxShadow: "0 18px 34px rgba(0,0,0,.62), 0 0 22px rgba(34,230,255,.18)" };
+const selectListStyle: React.CSSProperties = { position: "absolute", zIndex: 9999, left: 0, right: 0, top: "calc(100% + 7px)", maxHeight: 210, overflowY: "auto", borderRadius: 16, padding: 6, background: "rgba(5,8,16,.98)", border: "1px solid rgba(34,230,255,.38)", boxShadow: "0 18px 34px rgba(0,0,0,.62), 0 0 22px rgba(34,230,255,.18)" };
 const selectItemStyle = (active: boolean): React.CSSProperties => ({ width: "100%", border: 0, borderRadius: 12, padding: "11px 12px", marginBottom: 4, textAlign: "left", background: active ? "rgba(34,230,255,.18)" : "transparent", color: active ? "#22e6ff" : "#fff", fontWeight: 1000 });
 const emptyStyle: React.CSSProperties = { color: "#9fa6c0", fontSize: 13, fontWeight: 800, borderRadius: 16, padding: 12, background: "rgba(255,255,255,.045)", border: "1px solid rgba(255,255,255,.08)" };
 const summaryLineStyle: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minWidth: 0, maxWidth: "100%", borderRadius: 14, padding: "10px 12px", background: "rgba(5,8,16,.62)", border: "1px solid rgba(255,255,255,.08)", color: "#fff", fontSize: 12, fontWeight: 850, boxSizing: "border-box" };
