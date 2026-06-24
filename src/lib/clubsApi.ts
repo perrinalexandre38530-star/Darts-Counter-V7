@@ -32,6 +32,38 @@ export type ClubTeam = {
   updatedAt?: string;
 };
 
+
+export type ClubMember = {
+  id: string;
+  clubId: string;
+  userId?: string | null;
+  displayName: string;
+  nickname?: string | null;
+  avatarUrl?: string | null;
+  role?: ClubRole;
+  status?: string;
+  createdAt?: string;
+};
+
+export type ClubPost = {
+  id: string;
+  clubId: string;
+  type: string;
+  title?: string | null;
+  body?: string | null;
+  payload?: any;
+  authorName?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ClubDetail = {
+  club: Club;
+  teams: ClubTeam[];
+  members: ClubMember[];
+  posts: ClubPost[];
+};
+
 export type ClubInvite = {
   id: string;
   clubId: string;
@@ -102,4 +134,30 @@ export async function inviteUserToClub(input: {
 }) {
   const res = await apiPost(`/online/clubs/${qs(input.clubId)}/invitations`, input);
   return res?.invitation ?? res;
+}
+
+
+export async function getClubDetail(clubId: string): Promise<ClubDetail> {
+  const res = await apiGet(`/online/clubs/${qs(clubId)}`);
+  return {
+    club: res?.club,
+    teams: Array.isArray(res?.teams) ? res.teams : [],
+    members: Array.isArray(res?.members) ? res.members : [],
+    posts: Array.isArray(res?.posts) ? res.posts : [],
+  };
+}
+
+export async function listClubMembers(clubId: string): Promise<ClubMember[]> {
+  const res = await apiGet(`/online/clubs/${qs(clubId)}/members`);
+  return Array.isArray(res?.members) ? res.members : [];
+}
+
+export async function listClubPosts(clubId: string): Promise<ClubPost[]> {
+  const res = await apiGet(`/online/clubs/${qs(clubId)}/posts`);
+  return Array.isArray(res?.posts) ? res.posts : [];
+}
+
+export async function createClubPost(input: { clubId: string; title?: string; body: string; type?: string; payload?: any }): Promise<ClubPost> {
+  const res = await apiPost(`/online/clubs/${qs(input.clubId)}/posts`, { title: input.title, body: input.body, type: input.type || "post", payload: input.payload || {} });
+  return res?.post ?? res;
 }
