@@ -52,6 +52,14 @@ export type TeamEntity = {
   description?: string;
   playerIds?: string[]; // ids de profiles locaux
 
+  /** Type d’équipe : loisir = local/privé, club = synchronisable Online/Club. */
+  teamKind?: "leisure" | "club";
+  clubId?: string | null;
+  clubName?: string | null;
+  clubRole?: string | null;
+  clubVisibility?: "private" | "members" | "public" | string | null;
+  syncedClubTeamId?: string | null;
+
   createdAt: number;
   updatedAt: number;
 };
@@ -78,6 +86,12 @@ export type PetanqueTeam = {
   logoDataUrl?: string | null;
   logoUrl?: string | null;
   logoAssetId?: string | null;
+  teamKind?: "leisure" | "club";
+  clubId?: string | null;
+  clubName?: string | null;
+  clubRole?: string | null;
+  clubVisibility?: "private" | "members" | "public" | string | null;
+  syncedClubTeamId?: string | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -182,6 +196,7 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const slogan = typeof t.slogan === "string" ? t.slogan : undefined;
   const description = typeof t.description === "string" ? t.description : undefined;
   const playerIds = Array.isArray(t.playerIds) ? t.playerIds.filter((x: any) => typeof x === "string") : undefined;
+  const teamKind = String(t.teamKind || t.kind || t.scope || "leisure").toLowerCase() === "club" ? "club" : "leisure";
 
   return {
     id,
@@ -214,6 +229,12 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
     slogan,
     description,
     playerIds,
+    teamKind,
+    clubId: normalizeTextField(t.clubId) ?? null,
+    clubName: normalizeTextField(t.clubName) ?? null,
+    clubRole: normalizeTextField(t.clubRole) ?? null,
+    clubVisibility: normalizeTextField(t.clubVisibility || "members") ?? "members",
+    syncedClubTeamId: normalizeTextField(t.syncedClubTeamId || t.clubTeamId) ?? null,
     createdAt,
     updatedAt,
   };
@@ -326,6 +347,12 @@ export function upsertTeam(team: TeamEntity) {
     slogan: typeof (team as any).slogan === "string" ? (team as any).slogan : (team as any).slogan,
     description: typeof (team as any).description === "string" ? (team as any).description : (team as any).description,
     playerIds: Array.isArray((team as any).playerIds) ? (team as any).playerIds.filter((x: any) => typeof x === "string") : (team as any).playerIds,
+    teamKind: String((team as any).teamKind || "leisure").toLowerCase() === "club" ? "club" : "leisure",
+    clubId: normalizeTextField((team as any).clubId) ?? null,
+    clubName: normalizeTextField((team as any).clubName) ?? null,
+    clubRole: normalizeTextField((team as any).clubRole) ?? null,
+    clubVisibility: normalizeTextField((team as any).clubVisibility || "members") ?? "members",
+    syncedClubTeamId: normalizeTextField((team as any).syncedClubTeamId || (team as any).clubTeamId) ?? null,
   };
 
   // Ne pas réinjecter "Team" ici : pendant l'édition, un champ nom vide doit rester vide
@@ -339,7 +366,7 @@ export function upsertTeam(team: TeamEntity) {
   return next;
 }
 
-export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?: string | null; allSports?: boolean; sportIds?: TeamSport[] }): TeamEntity {
+export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?: string | null; allSports?: boolean; sportIds?: TeamSport[]; teamKind?: "leisure" | "club"; clubName?: string | null; clubId?: string | null }): TeamEntity {
   const ts = now();
   const t: TeamEntity = {
     id: makeTeamId(input.sport),
@@ -348,6 +375,10 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
     sportIds: normalizeSportIds(input.sportIds, input.sport),
     name: (input.name ?? "").trim(),
     logoDataUrl: normalizeImageRef(input.logoDataUrl),
+    teamKind: input.teamKind === "club" ? "club" : "leisure",
+    clubName: normalizeTextField(input.clubName) ?? null,
+    clubId: normalizeTextField(input.clubId) ?? null,
+    clubVisibility: "members",
     createdAt: ts,
     updatedAt: ts,
   };
@@ -579,6 +610,12 @@ export type BabyFootTeam = {
   logoDataUrl?: string | null;
   logoUrl?: string | null;
   logoAssetId?: string | null;
+  teamKind?: "leisure" | "club";
+  clubId?: string | null;
+  clubName?: string | null;
+  clubRole?: string | null;
+  clubVisibility?: "private" | "members" | "public" | string | null;
+  syncedClubTeamId?: string | null;
   createdAt: number;
   updatedAt: number;
 };

@@ -178,6 +178,7 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
   // UI state
   const logoInputRef = React.useRef<HTMLInputElement | null>(null);
   const [playerSearch, setPlayerSearch] = React.useState("");
+  const teamKind = String((team as any).teamKind || "leisure") === "club" ? "club" : "leisure";
 
   // modal création profil
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
@@ -236,6 +237,12 @@ const availableProfiles = React.useMemo(() => {
       slogan: clamp50(next.slogan || ""),
       description: next.description || "",
       playerIds: Array.isArray(next.playerIds) ? next.playerIds : [],
+      teamKind: String((next as any).teamKind || "leisure") === "club" ? "club" : "leisure",
+      clubId: typeof (next as any).clubId === "string" ? (next as any).clubId : null,
+      clubName: typeof (next as any).clubName === "string" ? (next as any).clubName.trim() : "",
+      clubRole: typeof (next as any).clubRole === "string" ? (next as any).clubRole : "player",
+      clubVisibility: typeof (next as any).clubVisibility === "string" ? (next as any).clubVisibility : "members",
+      syncedClubTeamId: typeof (next as any).syncedClubTeamId === "string" ? (next as any).syncedClubTeamId : null,
       updatedAt: Date.now(),
     };
     setTeam(fixed);
@@ -737,6 +744,66 @@ const availableProfiles = React.useMemo(() => {
                   />
                 )}
               </div>
+            </div>
+
+            <div style={{ height: 14 }} />
+
+            {/* Type d’équipe */}
+            <div>
+              <label style={label(theme)}>Type d’équipe</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[
+                  { id: "leisure", title: "Équipe loisir", sub: "Locale / privée" },
+                  { id: "club", title: "Équipe club", sub: "Online / membres" },
+                ].map((opt) => {
+                  const active = teamKind === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => save({ ...(team as any), teamKind: opt.id, clubVisibility: opt.id === "club" ? ((team as any).clubVisibility || "members") : "private" } as any)}
+                      style={{
+                        borderRadius: 16,
+                        padding: "12px 10px",
+                        border: `1px solid ${active ? theme?.primary || "#28eaff" : theme?.borderSoft || "rgba(255,255,255,.14)"}`,
+                        background: active ? "rgba(40,234,255,.14)" : "rgba(255,255,255,.045)",
+                        color: theme?.text || "#fff",
+                        textAlign: "left",
+                        boxShadow: active ? `0 0 18px ${theme?.primary || "#28eaff"}33` : "none",
+                      }}
+                    >
+                      <div style={{ fontWeight: 1000, fontSize: 13 }}>{opt.title}</div>
+                      <div style={{ marginTop: 3, fontSize: 11, opacity: 0.68 }}>{opt.sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {teamKind === "club" ? (
+                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                  <input
+                    value={(team as any).clubName || ""}
+                    onChange={(e) => save({ ...(team as any), clubName: e.target.value, teamKind: "club" } as any)}
+                    style={input(theme)}
+                    placeholder="Nom du club (ex : CHAPAFOOT)"
+                  />
+                  <select
+                    value={(team as any).clubVisibility || "members"}
+                    onChange={(e) => save({ ...(team as any), clubVisibility: e.target.value, teamKind: "club" } as any)}
+                    style={select(theme) as any}
+                  >
+                    <option value="members">Visible aux membres du club</option>
+                    <option value="private">Club privé</option>
+                    <option value="public">Club public</option>
+                  </select>
+                  <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.35 }}>
+                    Une équipe club est destinée à être synchronisée Online : effectif partagé, invitations, matchs, convocations et actualités.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 8, fontSize: 11, opacity: 0.68 }}>
+                  Une équipe loisir reste locale et privée, comme les teams actuelles.
+                </div>
+              )}
             </div>
 
             <div style={{ height: 14 }} />

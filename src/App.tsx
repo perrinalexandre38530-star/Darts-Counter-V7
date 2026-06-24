@@ -3892,7 +3892,11 @@ case "babyfoot_team_edit":
         break;
 
       case "online":
-        page = <FriendsPage store={store} update={update} go={go} />;
+        page = <FriendsPage store={store} update={update} go={go} initialOnlineTab={routeParams?.tab as any} />;
+        break;
+
+      case "online_clubs":
+        page = <FriendsPage store={store} update={update} go={go} initialOnlineTab="clubs" />;
         break;
 
       case "messages":

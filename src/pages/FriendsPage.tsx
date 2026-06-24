@@ -67,6 +67,7 @@ import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 import { History } from "../lib/history";
 import { loadOnlineX01SamplesForActiveProfile, loadAllOnlineX01Samples, aggregateX01Samples } from "../lib/x01StatsSource";
 import { getTicker } from "../lib/tickers";
+import OnlineClubsPanel from "../components/OnlineClubsPanel";
 import {
   filterOnlineStatsHardDeleted,
   listOnlineStatsCleanupSessions,
@@ -956,7 +957,7 @@ function ShareDetailsModal({
    Objectif: conserver la page historique et restructurer l'affichage
    sans supprimer les blocs existants.
 --------------------------------------------------*/
-type OnlineMainTab = "hub" | "friends" | "requests" | "shares" | "play" | "activity" | "official";
+type OnlineMainTab = "hub" | "friends" | "requests" | "shares" | "play" | "activity" | "official" | "clubs";
 
 type OnlineTabSpec = {
   id: OnlineMainTab;
@@ -3497,6 +3498,14 @@ const doLogout = React.useCallback(async () => {
         tone: "green",
       },
       {
+        id: "clubs",
+        label: "Clubs",
+        icon: "🏟️",
+        hint: "",
+        badge: "Teams",
+        tone: "blue",
+      },
+      {
         id: "requests",
         label: "Demandes",
         icon: "📨",
@@ -3540,6 +3549,7 @@ const doLogout = React.useCallback(async () => {
   const showPlayTab = activeOnlineTab === "play";
   const showActivityTab = activeOnlineTab === "activity";
   const showOfficialTab = activeOnlineTab === "official";
+  const showClubsTab = activeOnlineTab === "clubs";
 
   if (showOfficialLeaguePage) {
     return (
@@ -3998,6 +4008,19 @@ const doLogout = React.useCallback(async () => {
           onRegister={registerOfficialLeague}
           goPlay={() => setShowOfficialLeaguePage(true)}
         />
+      ) : null}
+
+      {showClubsTab ? (
+        <>
+          <SectionTitle
+            title="Clubs"
+            subtitle="Clubs et équipes que tu as rejoints dans le mode Online"
+            right={<Pill label="MULTISPORTS" tone="blue" />}
+          />
+          <div style={{ marginTop: 10 }}>
+            <OnlineClubsPanel signedIn={isSignedIn} accent={onlineAccent} />
+          </div>
+        </>
       ) : null}
 
       {/* ================= AMIS / PARTAGE ================= */}
