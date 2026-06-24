@@ -57,11 +57,61 @@ export type ClubPost = {
   updatedAt?: string;
 };
 
+export type ClubEvent = {
+  id: string;
+  clubId: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  location?: string | null;
+  startsAt?: string | null;
+  payload?: any;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ClubMatch = {
+  id: string;
+  clubId: string;
+  clubTeamId?: string | null;
+  teamName?: string | null;
+  sport?: string | null;
+  title: string;
+  opponent?: string | null;
+  startsAt?: string | null;
+  location?: string | null;
+  status?: string;
+  scoreFor?: number | null;
+  scoreAgainst?: number | null;
+  payload?: any;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ClubConvocation = {
+  id: string;
+  clubId: string;
+  clubMatchId: string;
+  userId?: string | null;
+  clubTeamMemberId?: string | null;
+  displayName: string;
+  avatarUrl?: string | null;
+  status: "pending" | "present" | "absent" | "uncertain" | string;
+  comment?: string | null;
+  respondedAt?: string | null;
+  matchTitle?: string | null;
+  startsAt?: string | null;
+  teamName?: string | null;
+};
+
 export type ClubDetail = {
   club: Club;
   teams: ClubTeam[];
   members: ClubMember[];
   posts: ClubPost[];
+  events?: ClubEvent[];
+  matches?: ClubMatch[];
+  convocations?: ClubConvocation[];
 };
 
 export type ClubInvite = {
@@ -144,6 +194,9 @@ export async function getClubDetail(clubId: string): Promise<ClubDetail> {
     teams: Array.isArray(res?.teams) ? res.teams : [],
     members: Array.isArray(res?.members) ? res.members : [],
     posts: Array.isArray(res?.posts) ? res.posts : [],
+    events: Array.isArray(res?.events) ? res.events : [],
+    matches: Array.isArray(res?.matches) ? res.matches : [],
+    convocations: Array.isArray(res?.convocations) ? res.convocations : [],
   };
 }
 
@@ -160,4 +213,36 @@ export async function listClubPosts(clubId: string): Promise<ClubPost[]> {
 export async function createClubPost(input: { clubId: string; title?: string; body: string; type?: string; payload?: any }): Promise<ClubPost> {
   const res = await apiPost(`/online/clubs/${qs(input.clubId)}/posts`, { title: input.title, body: input.body, type: input.type || "post", payload: input.payload || {} });
   return res?.post ?? res;
+}
+
+
+export async function listClubEvents(clubId: string): Promise<ClubEvent[]> {
+  const res = await apiGet(`/online/clubs/${qs(clubId)}/events`);
+  return Array.isArray(res?.events) ? res.events : [];
+}
+
+export async function createClubEvent(input: { clubId: string; type?: string; title: string; body?: string; location?: string; startsAt?: string | null; payload?: any }): Promise<ClubEvent> {
+  const res = await apiPost(`/online/clubs/${qs(input.clubId)}/events`, input);
+  return res?.event ?? res;
+}
+
+export async function listClubMatches(clubId: string): Promise<ClubMatch[]> {
+  const res = await apiGet(`/online/clubs/${qs(clubId)}/matches`);
+  return Array.isArray(res?.matches) ? res.matches : [];
+}
+
+export async function createClubMatch(input: { clubId: string; clubTeamId?: string | null; title?: string; opponent?: string; sport?: string; startsAt?: string | null; location?: string; status?: string; payload?: any }): Promise<ClubMatch> {
+  const res = await apiPost(`/online/clubs/${qs(input.clubId)}/matches`, input);
+  return res?.match ?? res;
+}
+
+export async function listClubConvocations(clubId: string, matchId?: string): Promise<ClubConvocation[]> {
+  const suffix = matchId ? `?matchId=${qs(matchId)}` : "";
+  const res = await apiGet(`/online/clubs/${qs(clubId)}/convocations${suffix}`);
+  return Array.isArray(res?.convocations) ? res.convocations : [];
+}
+
+export async function respondClubConvocation(input: { clubId: string; convocationId: string; status: "present" | "absent" | "uncertain"; comment?: string }): Promise<ClubConvocation> {
+  const res = await apiPost(`/online/clubs/${qs(input.clubId)}/convocations/${qs(input.convocationId)}/respond`, { status: input.status, comment: input.comment || "" });
+  return res?.convocation ?? res;
 }
