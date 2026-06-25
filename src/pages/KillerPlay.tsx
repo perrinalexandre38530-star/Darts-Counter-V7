@@ -2932,12 +2932,26 @@ React.useEffect(() => {
         createdAt: startedAt,
         updatedAt,
         winnerId: null,
+        // L'en-tête Historique doit contenir l'état vivant de chaque joueur.
+        // History.list() lit principalement cet en-tête : sans ces champs, la carte
+        // "En cours" ne voyait que les identités et affichait des initiales sans score.
+        gameId: historyGameId,
+        variantId: progressiveMode ? "progressive" : "classic",
+        game: { mode: historyGameId },
         players: (players || []).map((p: any) => ({
           id: p.id,
+          playerId: p.id,
+          profileId: p.id,
           name: p.name,
           avatarDataUrl: p.avatarDataUrl ?? null,
           isBot: !!p.isBot,
           botLevel: p.botLevel ?? "",
+          number: Number(p.number || 0),
+          lives: Number(p.lives ?? 0),
+          isKiller: !!p.isKiller,
+          killerPhase: p.killerPhase,
+          eliminated: !!p.eliminated,
+          kills: Number(p.kills || 0),
         })),
         summary: {
           mode: "killer",

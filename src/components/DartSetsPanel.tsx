@@ -29,6 +29,8 @@ import {
   createDartSet,
   deleteDartSet,
   updateDartSet,
+  setFavoriteDartSet,
+  isDartSetFavoriteForProfile,
   getDartSetMainImageSrc,
   getDartSetThumbImageSrc,
 } from "../lib/dartSetsStore";
@@ -492,6 +494,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       const sig = JSON.stringify((all || []).map((s: any) => [
         s?.id,
         s?.profileId,
+        s?.scope || "private",
+        s?.name || "",
+        s?.brand || "",
+        s?.weightGrams || 0,
+        Array.isArray(s?.favoriteProfileIds) ? s.favoriteProfileIds.join(",") : "",
         s?.updatedAt || 0,
         s?.lastUsedAt || 0,
         !!s?.isFavorite,
@@ -519,6 +526,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               const prevSig = JSON.stringify(prev.map((x: any) => [
                 x?.id,
                 x?.profileId,
+                x?.scope || "private",
+                x?.name || "",
+                x?.brand || "",
+                x?.weightGrams || 0,
+                Array.isArray(x?.favoriteProfileIds) ? x.favoriteProfileIds.join(",") : "",
                 x?.updatedAt || 0,
                 x?.lastUsedAt || 0,
                 !!x?.isFavorite,
@@ -548,8 +560,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     return list
       .slice()
       .sort((a, b) => {
-        const favA = a.isFavorite ? 1 : 0;
-        const favB = b.isFavorite ? 1 : 0;
+        const favA = isDartSetFavoriteForProfile(a, String(profile?.id || "")) ? 1 : 0;
+        const favB = isDartSetFavoriteForProfile(b, String(profile?.id || "")) ? 1 : 0;
         if (favA !== favB) return favB - favA;
         const luA = a.lastUsedAt || 0;
         const luB = b.lastUsedAt || 0;
@@ -884,8 +896,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     // Important : on garde ce même set affiché après le tri, même s'il remonte
     // au début de la liste des favoris.
     keepActiveDartSetIdRef.current = String(set.id);
-    dartSetDiag("favorite:click", { id: set.id, name: set.name, from: !!set.isFavorite, to: !set.isFavorite });
-    const ok = updateDartSet(set.id, { isFavorite: !set.isFavorite } as any);
+    const wasFavorite = isDartSetFavoriteForProfile(set, String(profile.id));
+    dartSetDiag("favorite:click", { id: set.id, name: set.name, profileId: String(profile.id), from: wasFavorite, to: !wasFavorite });
+    const ok = setFavoriteDartSet(String(profile.id), set.id);
     dartSetDiag("favorite:after", { id: set.id, ok });
 
     if (!ok) {
@@ -1136,7 +1149,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               label: labelFav,
               iconName: "fav" as const,
               tone: primary,
-              active: !!activeSet?.isFavorite,
+              active: !!activeSet && isDartSetFavoriteForProfile(activeSet, String(profile?.id || "")),
               disabled: !activeSet,
               onClick: () => handleToggleFavorite(activeSet),
             },
@@ -1875,7 +1888,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                   </div>
                 ) : null}
 
-                {activeSet.isFavorite && (
+                {isDartSetFavoriteForProfile(activeSet, String(profile?.id || "")) && (
                   <div
                     style={{
                       position: "absolute",

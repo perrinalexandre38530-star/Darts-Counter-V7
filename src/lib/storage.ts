@@ -2433,8 +2433,9 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   // ✅ CRITIQUE : restaurer les DartSets / Bots exactement là où l’UI lit réellement
   const { dartSets, activeId } = extractDartSetsFromSnapshot(dump);
   if (dartSets) {
+    // Une seule écriture via le store officiel. L'ancien double appel pouvait
+    // relancer immédiatement une fusion avec une autre copie du snapshot.
     writeDartSetsToLocalStorage(dartSets);
-    try { replaceAllDartSets(Array.isArray(dartSets) ? dartSets : []); } catch {}
   }
   if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
 

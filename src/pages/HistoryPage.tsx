@@ -221,18 +221,48 @@ function getAvatarUrl(store: Store, v: any): string | null {
 
 /* ---------- Mode / status ---------- */
 
+function historyModeTokens(e: SavedEntry): string[] {
+  const anyE: any = e as any;
+  return [
+    anyE?.kind,
+    anyE?.mode,
+    anyE?.variant,
+    anyE?.gameId,
+    anyE?.variantId,
+    anyE?.game?.mode,
+    anyE?.game?.gameId,
+    anyE?.summary?.mode,
+    anyE?.summary?.gameId,
+    anyE?.summary?.variantId,
+    anyE?.summary?.game?.mode,
+    anyE?.payload?.mode,
+    anyE?.payload?.gameId,
+    anyE?.payload?.variantId,
+    anyE?.payload?.config?.gameId,
+    anyE?.payload?.config?.variantId,
+    anyE?.payload?.resumeConfig?.gameId,
+    anyE?.payload?.resumeConfig?.variantId,
+    anyE?.payload?.state?.resumeConfig?.gameId,
+    anyE?.payload?.state?.resumeConfig?.variantId,
+  ]
+    .filter((value) => value !== undefined && value !== null && String(value).trim() !== "")
+    .map((value) => String(value).trim().toLowerCase());
+}
+
 function baseMode(e: SavedEntry) {
-  const k = (e.kind || "").toLowerCase();
-  const m = (e.game?.mode || "").toLowerCase();
+  const tokens = historyModeTokens(e);
+  if (tokens.some((token) => token.includes("killer_progressive") || token.includes("killer-progressive") || token === "progressive")) {
+    return "killer_progressive";
+  }
+
+  const k = String((e as any)?.kind || "").trim().toLowerCase();
+  const m = String((e as any)?.game?.mode || (e as any)?.gameId || "").trim().toLowerCase();
   if (k === "leg") return m || "x01";
-  return k || m || "x01";
+  return k || m || tokens[0] || "x01";
 }
 
 function isKillerEntry(e: SavedEntry) {
-  const m = baseMode(e);
-  const s1 = String((e as any)?.summary?.mode || "");
-  const s2 = String((e as any)?.payload?.mode || "");
-  return m.includes("killer") || s1.toLowerCase().includes("killer") || s2.toLowerCase().includes("killer");
+  return historyModeTokens(e).some((token) => token.includes("killer")) || baseMode(e).includes("killer");
 }
 
 function isShanghaiEntry(e: SavedEntry) {
@@ -734,8 +764,8 @@ const modeColor: Record<string, string> = {
 
 function getModeColor(e: SavedEntry) {
   const m = baseMode(e);
-  // Toutes les déclinaisons Killer doivent garder la même identité visuelle orange.
-  if (m.includes("killer")) return modeColor.killer;
+  // Toutes les déclinaisons Killer doivent garder exactement l'identité visuelle orange du Killer classique.
+  if (isKillerEntry(e) || isProgressiveKillerEntry(e) || m.includes("killer")) return modeColor.killer;
   return modeColor[m] || modeColor.default;
 }
 
@@ -1031,24 +1061,9 @@ function historyRankingRows(e: SavedEntry): any[] {
 }
 
 function isProgressiveKillerEntry(e: SavedEntry): boolean {
-  const anyE: any = e as any;
-  const raw = [
-    anyE?.kind,
-    anyE?.gameId,
-    anyE?.variantId,
-    anyE?.summary?.gameId,
-    anyE?.summary?.variantId,
-    anyE?.payload?.gameId,
-    anyE?.payload?.variantId,
-    anyE?.payload?.config?.gameId,
-    anyE?.payload?.config?.variantId,
-    anyE?.payload?.resumeConfig?.gameId,
-    anyE?.payload?.resumeConfig?.variantId,
-  ]
-    .filter(Boolean)
-    .map((x: any) => String(x).trim().toLowerCase())
-    .join("|");
-  return raw.includes("killer_progressive") || raw.includes("killer-progressive") || raw.includes("progressive");
+  return historyModeTokens(e).some(
+    (token) => token.includes("killer_progressive") || token.includes("killer-progressive") || token === "progressive"
+  );
 }
 
 function killerLivePlayerRows(e: SavedEntry): any[] {
@@ -1056,10 +1071,16 @@ function killerLivePlayerRows(e: SavedEntry): any[] {
   const pools = [
     anyE?.players,
     anyE?.summary?.players,
+    anyE?.summary?.result?.players,
+    anyE?.payload?.summary?.players,
     anyE?.payload?.config?.players,
     anyE?.payload?.players,
+    anyE?.resume?.players,
     anyE?.resume?.state?.players,
+    anyE?.payload?.resume?.state?.players,
+    anyE?.decoded?.players,
     anyE?.decoded?.state?.players,
+    anyE?.decoded?.payload?.state?.players,
     anyE?.payload?.state?.players,
   ];
   const order: string[] = [];
@@ -1371,26 +1392,52 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
       </div>
     );
   }
-  if (isKillerEntry(e) && statusOf(e) === "in_progress") {
+  if ((isProgressiveKillerEntry(e) || isKillerEntry(e)) && statusOf(e) === "in_progress") {
     const rows = killerLivePlayerRows(e);
     const progressive = isProgressiveKillerEntry(e);
     if (rows.length) {
       return (
-        <span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
           {rows.map((row: any, idx: number) => {
-            const name = historyScoreName(e, row);
-            const lives = Number(row?.lives ?? row?.score ?? 0);
-            const isDead = row?.eliminated === true || lives < 0;
-            const isKillerNow = !isDead && (row?.isKiller === true || String(row?.killerPhase || "").toUpperCase() === "ACTIVE" || (progressive && lives === 5));
+            const name = historyScoreName(e, row) || getName(row) || `Joueur ${idx + 1}`;
+            const rawLives = row?.lives ?? row?.hearts ?? row?.progress ?? row?.marks ?? row?.score ?? 0;
+            const livesNumber = Number(rawLives);
+            const lives = Number.isFinite(livesNumber) ? livesNumber : 0;
+            const isDead = row?.eliminated === true || row?.isEliminated === true || lives < 0;
+            const isKillerNow = !isDead && (
+              row?.isKiller === true ||
+              String(row?.killerPhase || row?.phase || "").toUpperCase() === "ACTIVE" ||
+              (progressive && lives === 5)
+            );
             const value = isDead ? "ÉLIM." : progressive ? `${lives}/5` : String(Math.max(0, lives));
             return (
               <React.Fragment key={`${historyRowKey(row) || name}-${idx}`}>
-                {idx > 0 ? <span style={{ color: "rgba(255,255,255,.52)" }}> • </span> : null}
-                <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{name}</span>{" "}
-                <span style={{ color: isDead ? theme.danger : theme.primary, fontWeight: 950, textShadow: `0 0 9px ${isDead ? theme.danger : theme.primary}55` }}>
+                {idx > 0 ? <span style={{ color: "rgba(255,255,255,.45)" }}>•</span> : null}
+                <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{name}</span>
+                <span style={{ color: isDead ? theme.danger : theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${isDead ? theme.danger : theme.primary}55` }}>
                   {value}{!isDead ? " ♥" : ""}
                 </span>
-                {isKillerNow ? <span style={{ color: "#ffd76a", fontWeight: 1000 }}> K</span> : null}
+                {isKillerNow ? (
+                  <span
+                    title="Killer actif"
+                    style={{
+                      display: "inline-grid",
+                      placeItems: "center",
+                      minWidth: 18,
+                      height: 18,
+                      padding: "0 4px",
+                      borderRadius: 999,
+                      border: "1px solid #ffd76a",
+                      background: "rgba(255,180,0,.18)",
+                      color: "#ffd76a",
+                      fontSize: 10,
+                      fontWeight: 1000,
+                      boxShadow: "0 0 8px rgba(255,190,40,.35)",
+                    }}
+                  >
+                    K
+                  </span>
+                ) : null}
               </React.Fragment>
             );
           })}
@@ -1654,12 +1701,16 @@ async function hydrateInProgressKillerRows(rows: SavedEntry[]): Promise<SavedEnt
         ...(full?.summary || {}),
         ...(payload?.summary || {}),
       };
-      const players = Array.isArray(full?.players) && full.players.length
-        ? full.players
+      const mergedRecord: any = { ...(row as any), ...full, payload, summary };
+      const livePlayers = killerLivePlayerRows(mergedRecord);
+      const players = livePlayers.length
+        ? livePlayers
         : Array.isArray(payload?.state?.players) && payload.state.players.length
           ? payload.state.players
-          : (row as any)?.players;
-      return normalizeSavedEntry({ ...(row as any), ...full, payload, summary, players } as SavedEntry);
+          : Array.isArray(full?.players) && full.players.length
+            ? full.players
+            : (row as any)?.players;
+      return normalizeSavedEntry({ ...mergedRecord, players } as SavedEntry);
     } catch {
       return row;
     }

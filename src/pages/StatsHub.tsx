@@ -7030,7 +7030,7 @@ if (tab === "history") {
         {isMolkkySport ? (
           <MolkkyStatsHistoryPage store={store as any} go={go} />
         ) : (
-          <HistoryPage go={go} />
+          <HistoryPage store={store as any} go={go} />
         )}
       </div>
     </div>
@@ -8331,7 +8331,7 @@ return (
                 {isMolkkySport ? (
                   <MolkkyStatsHistoryPage store={store as any} go={go} />
                 ) : (
-                  <HistoryPage go={go} />
+                  <HistoryPage store={store as any} go={go} />
                 )}
               </div>
             )}

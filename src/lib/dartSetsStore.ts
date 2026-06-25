@@ -45,6 +45,8 @@ export interface DartSet {
   presetId?: string;
 
   isFavorite?: boolean;
+  // Favoris par profil. Un set public peut être favori pour Ninja sans le devenir pour tous.
+  favoriteProfileIds?: string[];
   usageCount?: number;
   lastUsedAt?: number;
 
@@ -85,6 +87,7 @@ type DartSetMutationLock = {
     scope?: "private" | "public";
     profileId?: string;
     isFavorite?: boolean;
+    favoriteProfileIds?: string[];
     name?: string;
     brand?: string | undefined;
     weightGrams?: number | undefined;
@@ -145,6 +148,32 @@ function normalizeText(value: any): string {
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+function readFavoriteProfileIds(raw: any): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const direct = uniqStrings([
+    ...(Array.isArray(raw.favoriteProfileIds) ? raw.favoriteProfileIds : []),
+    ...(Array.isArray(raw.favouriteProfileIds) ? raw.favouriteProfileIds : []),
+    ...(Array.isArray(raw.favoriteForProfileIds) ? raw.favoriteForProfileIds : []),
+    ...(Array.isArray(raw.favoriteProfiles) ? raw.favoriteProfiles : []),
+    raw.favoriteProfileId,
+    raw.favouriteProfileId,
+    raw.lastFavoriteProfileId,
+    raw.favoritedByProfileId,
+  ]).filter((id) => !isPublicOwnerProfileId(id));
+  if (direct.length) return direct;
+
+  // Migration legacy : l'ancien booléen global est fiable uniquement pour un
+  // set privé (son propriétaire est connu). Pour un public, on ne peut pas savoir
+  // quel profil l'avait mis en favori : on le remet donc neutre au lieu de créer
+  // un favori automatique sur le profil actif.
+  if (raw.isFavorite === true || raw.favorite === true || raw.fav === true || raw.starred === true) {
+    const scope = effectiveDartSetScope(raw);
+    const owner = readOwnerProfileId(raw);
+    if (scope === "private" && owner && !isPublicOwnerProfileId(owner)) return [owner];
+  }
+  return [];
 }
 
 
@@ -539,6 +568,27 @@ function imageIdentity(set: any): string {
   return `url:${url.split("?")[0]}`;
 }
 
+function dartSetIdentityIds(set: any): string[] {
+  return uniqStrings([
+    set?.id,
+    set?.linkedSourceDartSetId,
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
+  ]);
+}
+
+function exactDuplicateKey(set: any): string {
+  if (!set || typeof set !== "object") return "";
+  const visual = imageIdentity(set);
+  // Sans identité visuelle, deux sets portant le même nom peuvent être réellement différents.
+  // On ne les fusionne donc jamais automatiquement.
+  if (!visual) return "";
+  const scope = effectiveDartSetScope(set);
+  const owner = scope === "public" ? "public" : selectableOwnerKey(set);
+  const name = normalizeText(set?.name || set?.label || set?.title || "");
+  return `exact|${scope}|${owner}|name:${name}|visual:${visual}`;
+}
+
 function normalizeDartSetArray(value: any): any[] {
   if (Array.isArray(value)) return value.filter((item) => item && typeof item === "object");
   if (!value) return [];
@@ -597,7 +647,7 @@ function writeMeta(meta: DartSetsMeta) {
 
 function cleanupDeletedKeys(meta: DartSetsMeta): DartSetsMeta {
   const now = Date.now();
-  const keepMs = 1000 * 60 * 60 * 24 * 14;
+  const keepMs = 1000 * 60 * 60 * 24 * 365;
   const next: Record<string, number> = {};
   for (const [key, ts] of Object.entries(meta.deletedKeys || {})) {
     if (now - Number(ts || 0) <= keepMs) next[key] = Number(ts || now);
@@ -801,12 +851,10 @@ function selectableOwnerKey(set: any): string {
 }
 
 function canonicalKeyForSet(set: any): string {
-  const scope = effectiveDartSetScope(set);
-  const owner = scope === "public" ? "public" : selectableOwnerKey(set);
-  const name = normalizeText(set?.name || set?.label || set?.title || "");
-  if (name) return `${scope}|${owner}|name:${name}`;
-  const visual = imageIdentity(set) || normalizeText(set?.presetId || set?.kind || set?.id || "plain");
-  return `${scope}|${owner}|visual:${visual}`;
+  const exact = exactDuplicateKey(set);
+  if (exact) return exact;
+  const id = s(set?.id || set?.linkedSourceDartSetId || "");
+  return id ? `identity|${id}` : "";
 }
 
 function visibleDartSetKey(set: any): string {
@@ -814,12 +862,11 @@ function visibleDartSetKey(set: any): string {
   const owner = scope === "public" ? "public" : selectableOwnerKey(set);
   const name = normalizeText(set?.name || set?.label || set?.title || "");
   const visual = imageIdentity(set);
-  // CRITICAL X01 : la clé visible doit inclure scope + propriétaire.
-  // Sinon un vieux doublon public et un privé du même nom/image se fusionnent,
-  // puis le sélecteur réaffiche un privé chez les mauvais joueurs.
+  // Même nom ne signifie pas même set. Sans visuel commun, l'id reste distinct.
   if (name && visual) return `visible|${scope}|${owner}|name:${name}|visual:${visual}`;
-  if (name) return `visible|${scope}|${owner}|name:${name}`;
-  return `visible|${scope}|${owner}|visual:${visual || normalizeText(set?.presetId || set?.id || "")}`;
+  const id = s(set?.id || set?.linkedSourceDartSetId || "");
+  if (name) return `visible|${scope}|${owner}|name:${name}|id:${id}`;
+  return `visible|${scope}|${owner}|visual:${visual || id}`;
 }
 
 function scoreDartSetForCanonical(set: any): number {
@@ -832,7 +879,6 @@ function scoreDartSetForCanonical(set: any): number {
     (hasDataImage ? 100_000_000 : 0) +
     (hasAsset ? 50_000_000 : 0) +
     (hasImage ? 10_000_000 : 0) +
-    (set?.isFavorite ? 1_000_000 : 0) +
     n(set?.usageCount, 0) * 1_000 +
     n(set?.lastUsedAt, 0) / 1_000_000 +
     n(set?.updatedAt, 0) / 10_000_000
@@ -883,6 +929,7 @@ function normalizeDartSetForRuntime(raw: any, opts?: { allowDeleted?: boolean })
     kind: normalizeKind(raw.kind) || (presetId ? "preset" : mainImageUrl || thumbImageUrl ? "photo" : "plain"),
     presetId,
     isFavorite: Boolean(raw.isFavorite),
+    favoriteProfileIds: readFavoriteProfileIds(raw),
     usageCount: n(raw.usageCount, 0),
     lastUsedAt: n(raw.lastUsedAt, 0),
     scope,
@@ -920,6 +967,18 @@ function sanitizeDartSetForStorage(raw: any): any {
   next.scope = effectiveDartSetScope(next);
   next.name = s(next.name) || "Mes fléchettes";
 
+  let favoriteProfileIds = uniqStrings([
+    ...(Array.isArray(next.favoriteProfileIds) ? next.favoriteProfileIds : []),
+    ...(Array.isArray(next.favouriteProfileIds) ? next.favouriteProfileIds : []),
+  ]).filter((id) => !isPublicOwnerProfileId(id));
+  if (!favoriteProfileIds.length && next.isFavorite === true) {
+    const legacyOwner = readOwnerProfileId(next);
+    if (next.scope === "private" && legacyOwner && !isPublicOwnerProfileId(legacyOwner)) {
+      favoriteProfileIds = [legacyOwner];
+    }
+  }
+  next.favoriteProfileIds = favoriteProfileIds;
+
   // IMPORTANT : un set PUBLIC ne doit jamais rester rattaché à un profil local.
   // Sinon l'UI affiche l'avatar propriétaire et, à la prochaine édition, l'ancien
   // profil peut faire rebasculer le set en PRIVÉ via les vieux champs legacy.
@@ -933,6 +992,8 @@ function sanitizeDartSetForStorage(raw: any): any {
     next.shared = true;
     next.isPrivate = false;
     next.private = false;
+    // Un public n'a plus de favori global : le statut vit dans favoriteProfileIds.
+    next.isFavorite = false;
   } else {
     next.profileId = s(next.profileId || next.linkedTargetLocalProfileId || next.ownerProfileId || next.localProfileId || "global");
     next.isPublic = false;
@@ -940,6 +1001,8 @@ function sanitizeDartSetForStorage(raw: any): any {
     next.shared = false;
     next.isPrivate = true;
     next.private = true;
+    const ownerId = s(next.profileId);
+    next.isFavorite = !!ownerId && favoriteProfileIds.includes(ownerId);
   }
 
   next.id = s(next.id) || `dartset_recovered_${hashString(`${next.profileId}|${next.name}|${Date.now()}`)}`;
@@ -962,6 +1025,7 @@ function sanitizeDartSetForStorage(raw: any): any {
 function mergePrimaryDuplicates(list: any[]): DartSet[] {
   const byKey = new Map<string, DartSet>();
   const order: string[] = [];
+  const idToKey = new Map<string, string>();
 
   const pickMetadataWinner = (a: DartSet, b: DartSet): DartSet => {
     const au = n(a?.updatedAt, 0);
@@ -973,29 +1037,31 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
     return scoreDartSetForCanonical(a) >= scoreDartSetForCanonical(b) ? a : b;
   };
 
-  const pickImageWinner = (a: DartSet, b: DartSet): DartSet => {
-    return scoreDartSetForCanonical(a) >= scoreDartSetForCanonical(b) ? a : b;
-  };
+  const pickImageWinner = (a: DartSet, b: DartSet): DartSet =>
+    scoreDartSetForCanonical(a) >= scoreDartSetForCanonical(b) ? a : b;
 
   for (const raw of Array.isArray(list) ? list : []) {
     const normalized = normalizeDartSetForRuntime(raw);
     if (!normalized) continue;
-    const key = canonicalKeyForSet(normalized);
+
+    const ids = dartSetIdentityIds(normalized);
+    let key = ids.map((id) => idToKey.get(id)).find(Boolean) || "";
+    if (!key) {
+      const exact = exactDuplicateKey(normalized);
+      key = exact || `id:${normalized.id}`;
+    }
+
     const old = byKey.get(key);
     if (!old) {
       byKey.set(key, normalized);
       order.push(key);
+      for (const id of ids) idToKey.set(id, key);
       continue;
     }
 
-    // IMPORTANT : les champs éditables (favori, scope, propriétaire, nom, poids)
-    // doivent venir de la version la plus récente. Avant, isFavorite faisait
-    // un OR avec les anciens doublons, donc un favori supprimé revenait au refresh.
-    // Les images, elles, peuvent venir du doublon le plus riche.
     const winner = pickMetadataWinner(normalized, old);
     const loser = winner === normalized ? old : normalized;
     const imageSource = pickImageWinner(normalized, old);
-
     const merged: DartSet = applyMutationLockToSet(sanitizeDartSetForStorage({
       ...winner,
       brand: winner.brand || loser.brand,
@@ -1013,7 +1079,7 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
       mainImageAssetId: winner.mainImageAssetId || imageSource.mainImageAssetId || loser.mainImageAssetId || null,
       thumbImageAssetId: winner.thumbImageAssetId || imageSource.thumbImageAssetId || loser.thumbImageAssetId || null,
       photoAssetId: winner.photoAssetId || imageSource.photoAssetId || loser.photoAssetId || null,
-      isFavorite: Boolean(winner.isFavorite),
+      favoriteProfileIds: Array.isArray(winner.favoriteProfileIds) ? winner.favoriteProfileIds : [],
       usageCount: Math.max(n(winner.usageCount, 0), n(loser.usageCount, 0)),
       lastUsedAt: Math.max(n(winner.lastUsedAt, 0), n(loser.lastUsedAt, 0)),
       createdAt: Math.min(n(winner.createdAt, Date.now()), n(loser.createdAt, Date.now())),
@@ -1021,29 +1087,23 @@ function mergePrimaryDuplicates(list: any[]): DartSet[] {
       duplicateIds: uniqStrings([winner.id, loser.id, winner.linkedSourceDartSetId, loser.linkedSourceDartSetId, ...(winner.duplicateIds || []), ...(loser.duplicateIds || []), ...(winner.aliasIds || []), ...(loser.aliasIds || [])]).filter((id) => id !== winner.id),
       aliasIds: uniqStrings([...(winner.aliasIds || []), ...(loser.aliasIds || []), winner.id, loser.id]).filter((id) => id !== winner.id),
     }) as DartSet, [winner, loser, normalized, old]);
+
     byKey.set(key, merged);
+    for (const id of dartSetIdentityIds(merged)) idToKey.set(id, key);
   }
 
   return order.map((key) => byKey.get(key)).filter(Boolean) as DartSet[];
 }
 
-function recoveryKeyStrict(set: any): string {
-  return canonicalKeyForSet(set);
-}
-
-function recoveryKeyLoose(set: any): string {
-  const name = normalizeText(set?.name || set?.label || set?.title || "");
-  return name ? `name:${name}` : imageIdentity(set) ? `visual:${imageIdentity(set)}` : "";
+function recoveryKeysStrict(set: any): string[] {
+  const ids = dartSetIdentityIds(set).map((id) => `id:${id}`);
+  const exact = exactDuplicateKey(set);
+  return uniqStrings([...ids, exact ? `exact:${exact}` : ""]);
 }
 
 function imageBankKeysForSet(set: any): string[] {
-  const name = normalizeText(set?.name || set?.label || set?.title || "");
   return uniqStrings([
-    s(set?.id) ? `id:${s(set?.id)}` : "",
-    s(set?.linkedSourceDartSetId) ? `id:${s(set?.linkedSourceDartSetId)}` : "",
-    name ? `name:${name}` : "",
-    canonicalKeyForSet(set) ? `canon:${canonicalKeyForSet(set)}` : "",
-    recoveryKeyLoose(set) ? `loose:${recoveryKeyLoose(set)}` : "",
+    ...recoveryKeysStrict(set),
     imageIdentity(set) ? `visual:${imageIdentity(set)}` : "",
   ]);
 }
@@ -1102,35 +1162,33 @@ function rememberImagesForSets(rawList: any[]) {
   }
 }
 
+function bestRecoveryCandidate(indexes: { strict: Map<string, DartSet[]> }, set: any): DartSet | null {
+  const candidates: DartSet[] = [];
+  for (const key of recoveryKeysStrict(set)) candidates.push(...(indexes.strict.get(key) || []));
+  return candidates.sort((a, b) => scoreDartSetForCanonical(b) - scoreDartSetForCanonical(a))[0] || null;
+}
+
 function recoverImageForSet(set: any): DartSet | null {
   if (!set) return null;
   const candidates = readImageRecoveryRaw();
   if (!candidates.length) return null;
-  const indexes = buildRecoveryIndexes(candidates);
-  const strictList = indexes.strict.get(recoveryKeyStrict(set)) || [];
-  const looseList = indexes.loose.get(recoveryKeyLoose(set)) || [];
-  return strictList[0] || looseList[0] || null;
+  return bestRecoveryCandidate(buildRecoveryIndexes(candidates), set);
 }
 
 function buildRecoveryIndexes(rawRecovery: any[]) {
   const strict = new Map<string, DartSet[]>();
-  const loose = new Map<string, DartSet[]>();
   const meta = cleanupDeletedKeys(readMeta());
 
   for (const raw of rawRecovery || []) {
     if (isDeletedByMeta(raw, meta)) continue;
     const ds = normalizeDartSetForRuntime(raw, { allowDeleted: true });
     if (!ds) continue;
-    const sk = recoveryKeyStrict(ds);
-    const lk = recoveryKeyLoose(ds);
-    if (sk) strict.set(sk, [...(strict.get(sk) || []), ds]);
-    if (lk) loose.set(lk, [...(loose.get(lk) || []), ds]);
+    for (const key of recoveryKeysStrict(ds)) strict.set(key, [...(strict.get(key) || []), ds]);
   }
 
   const sort = (arr: DartSet[]) => arr.slice().sort((a, b) => scoreDartSetForCanonical(b) - scoreDartSetForCanonical(a));
   for (const [k, v] of Array.from(strict.entries())) strict.set(k, sort(v));
-  for (const [k, v] of Array.from(loose.entries())) loose.set(k, sort(v));
-  return { strict, loose };
+  return { strict };
 }
 
 function enrichImagesFromRecovery(primary: DartSet[], recoveryRaw: any[]): DartSet[] {
@@ -1138,9 +1196,7 @@ function enrichImagesFromRecovery(primary: DartSet[], recoveryRaw: any[]): DartS
   const indexes = buildRecoveryIndexes(recoveryRaw);
 
   return primary.map((item) => {
-    const strictList = indexes.strict.get(recoveryKeyStrict(item)) || [];
-    const looseList = indexes.loose.get(recoveryKeyLoose(item)) || [];
-    const candidate = strictList[0] || looseList[0] || null;
+    const candidate = bestRecoveryCandidate(indexes, item);
     if (!candidate) return item;
 
     const hasMain = !!readMainImage(item);
@@ -1506,11 +1562,20 @@ function dedupeVisibleDartSets(list: DartSet[]): DartSet[] {
       order.push(key);
       continue;
     }
-    const winner = scoreDartSetForCanonical(set) > scoreDartSetForCanonical(old) ? set : old;
+    const winner = n(set.updatedAt, 0) > n(old.updatedAt, 0)
+      ? set
+      : n(set.updatedAt, 0) < n(old.updatedAt, 0)
+      ? old
+      : scoreDartSetForCanonical(set) > scoreDartSetForCanonical(old)
+      ? set
+      : old;
     const loser = winner === set ? old : set;
     byKey.set(key, sanitizeDartSetForStorage({
       ...winner,
-      // Visible merge : garder surtout la version avec image, mais additionner les aliases.
+      favoriteProfileIds: Array.isArray(winner.favoriteProfileIds) ? winner.favoriteProfileIds : [],
+      // Visible merge : métadonnées les plus récentes, image la plus riche, aliases réunis.
+      mainImageUrl: winner.mainImageUrl || loser.mainImageUrl || "",
+      thumbImageUrl: winner.thumbImageUrl || loser.thumbImageUrl,
       duplicateIds: uniqStrings([winner.id, loser.id, winner.linkedSourceDartSetId, loser.linkedSourceDartSetId, ...(winner.duplicateIds || []), ...(loser.duplicateIds || []), ...(winner.aliasIds || []), ...(loser.aliasIds || [])]).filter((id) => id !== winner.id),
       aliasIds: uniqStrings([...(winner.aliasIds || []), ...(loser.aliasIds || []), winner.id, loser.id]).filter((id) => id !== winner.id),
     }) as DartSet);
@@ -1526,12 +1591,11 @@ function findDartSetByIdIn(list: DartSet[], id: any): DartSet | undefined {
 
 function deletionKeysForSet(set: any): string[] {
   if (!set) return [];
+  const exact = exactDuplicateKey(set);
   return uniqStrings([
-    `id:${set.id}`,
-    `canon:${canonicalKeyForSet(set)}`,
-    `source:${set.linkedSourceDartSetId}`,
-    ...(Array.isArray(set.duplicateIds) ? set.duplicateIds.map((id: string) => `id:${id}`) : []),
-    ...(Array.isArray(set.aliasIds) ? set.aliasIds.map((id: string) => `id:${id}`) : []),
+    ...dartSetIdentityIds(set).map((id) => `id:${id}`),
+    s(set.linkedSourceDartSetId) ? `source:${s(set.linkedSourceDartSetId)}` : "",
+    exact ? `exact:${exact}` : "",
   ]);
 }
 
@@ -1545,12 +1609,8 @@ function markDeleted(set: DartSet) {
 function mutationLockKeysForSet(set: any): string[] {
   if (!set) return [];
   return uniqStrings([
-    s(set?.id) ? `id:${s(set.id)}` : "",
-    s(set?.linkedSourceDartSetId) ? `id:${s(set.linkedSourceDartSetId)}` : "",
+    ...dartSetIdentityIds(set).map((id) => `id:${id}`),
     s(set?.linkedSourceDartSetId) ? `source:${s(set.linkedSourceDartSetId)}` : "",
-    canonicalKeyForSet(set) ? `canon:${canonicalKeyForSet(set)}` : "",
-    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds.map((id: string) => `id:${id}`) : []),
-    ...(Array.isArray(set?.aliasIds) ? set.aliasIds.map((id: string) => `id:${id}`) : []),
   ]);
 }
 
@@ -1560,6 +1620,7 @@ function editableLockValues(set: any): DartSetMutationLock["values"] {
     scope,
     profileId: scope === "public" ? "global" : s(set?.profileId || set?.privateProfileId || set?.ownerProfileId || set?.localProfileId || "global"),
     isFavorite: Boolean(set?.isFavorite),
+    favoriteProfileIds: readFavoriteProfileIds(set),
     name: s(set?.name) || "Mes fléchettes",
     brand: s(set?.brand) || undefined,
     weightGrams: Number.isFinite(Number(set?.weightGrams)) ? Number(set.weightGrams) : undefined,
@@ -1673,54 +1734,44 @@ function mergeIncomingWithCurrentPrimary(incomingRaw: any[], reason: string): Da
 
   if (!primaryExists || current.length === 0) return incoming;
 
-  const currentById = new Map<string, DartSet>();
   const out: DartSet[] = [];
-  for (const cur of current) {
-    currentById.set(String(cur.id), cur);
-    out.push(cur);
-  }
+  for (const cur of current) out.push(cur);
 
-  const added: DartSet[] = [];
   let keptLocal = 0;
-  let acceptedIncoming = 0;
 
   for (const inc of incoming) {
     const same = findSameIdentitySet(out, inc);
     if (same) {
-      const incomingIsNewer = n(inc.updatedAt, 0) > n(same.updatedAt, 0) + 250;
-      const merged = applyMutationLockToSet(
-        incomingIsNewer ? mergeImageFieldsKeepMetadata(inc, same) : mergeImageFieldsKeepMetadata(same, inc),
-        [same, inc]
-      );
+      // dc_dart_sets_v1 reste autoritaire. Une copie IDB/NAS/appStore ne peut plus
+      // réinjecter un ancien scope, propriétaire ou favori. Elle peut seulement
+      // compléter une image manquante.
+      const merged = applyMutationLockToSet(mergeImageFieldsKeepMetadata(same, inc), [same, inc]);
       const idx = out.findIndex((x) => String(x.id) === String(same.id));
       if (idx >= 0) out[idx] = merged;
-      if (incomingIsNewer) acceptedIncoming += 1;
-      else keptLocal += 1;
+      keptLocal += 1;
       continue;
     }
 
-    const sameCanonical = out.find((cur) => canonicalKeyForSet(cur) === canonicalKeyForSet(inc));
-    if (sameCanonical) {
-      const incomingIsNewer = n(inc.updatedAt, 0) > n(sameCanonical.updatedAt, 0) + 250;
-      const merged = applyMutationLockToSet(
-        incomingIsNewer ? mergeImageFieldsKeepMetadata(inc, sameCanonical) : mergeImageFieldsKeepMetadata(sameCanonical, inc),
-        [sameCanonical, inc]
-      );
-      const idx = out.findIndex((x) => String(x.id) === String(sameCanonical.id));
+    const incExact = exactDuplicateKey(inc);
+    const sameExact = incExact ? out.find((cur) => exactDuplicateKey(cur) === incExact) : undefined;
+    if (sameExact) {
+      const merged = applyMutationLockToSet(mergeImageFieldsKeepMetadata(sameExact, inc), [sameExact, inc]);
+      const idx = out.findIndex((x) => String(x.id) === String(sameExact.id));
       if (idx >= 0) out[idx] = merged;
-      if (incomingIsNewer) acceptedIncoming += 1;
-      else keptLocal += 1;
+      keptLocal += 1;
       continue;
     }
 
-    // Nouveau set réellement absent : on l'accepte. Les sets supprimés sont déjà
-    // filtrés par normalizeDartSetForRuntime/isDeletedByMeta dans mergePrimaryDuplicates.
-    added.push(inc);
-    acceptedIncoming += 1;
+    // Une clé primaire existe déjà : une copie appStore / IDB / NAS absente de
+    // dc_dart_sets_v1 est considérée comme obsolète. On ne la réinjecte jamais.
+    // Les vraies créations passent directement par createDartSet() et écrivent la
+    // source officielle. Une restauration complète fonctionne toujours car elle
+    // efface d'abord la source locale avant d'importer le snapshot.
+    keptLocal += 1;
   }
 
-  const merged = mergePrimaryDuplicates([...out, ...added]);
-  diag("replaceAll:merge-current", { reason, current: current.length, incoming: incoming.length, result: merged.length, keptLocal, acceptedIncoming, added: added.length });
+  const merged = mergePrimaryDuplicates(out);
+  diag("replaceAll:primary-authoritative", { reason, current: current.length, incoming: incoming.length, result: merged.length, keptLocal });
   return merged;
 }
 
@@ -1819,6 +1870,15 @@ function withSelectorPublicFallback(visible: DartSet[], _all: DartSet[], reason:
 // -------------------------------------------------------------
 // API publique
 // -------------------------------------------------------------
+
+export function isDartSetFavoriteForProfile(set: any, profileId: string): boolean {
+  const pid = s(profileId);
+  if (!set || !pid) return false;
+  const favorites = new Set(readFavoriteProfileIds(set));
+  if (!favorites.size) return false;
+  const aliases = collectStrictProfileIds(pid);
+  return Array.from(aliases).some((id) => favorites.has(id));
+}
 
 export function getAllDartSets(): DartSet[] {
   return loadAll();
@@ -1986,7 +2046,8 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
     // matche le profil demandé. Aucun fallback global, aucun privé des autres.
     return pid ? profileCanSeeDartSet(set, pid) : false;
   });
-  const result = withSelectorPublicFallback([...publics, ...privateForOwner], all, `profile:${pid || "none"}`);
+  const result = withSelectorPublicFallback([...publics, ...privateForOwner], all, `profile:${pid || "none"}`)
+    .map((set) => ({ ...set, isFavorite: isDartSetFavoriteForProfile(set, pid) } as DartSet));
   try {
     diag("selector:profile-result", {
       profileId: pid,
@@ -2110,32 +2171,18 @@ export function createDartSet(input: {
   }));
   if (!payload) return undefined;
 
-  const existing = all.find((set) => canonicalKeyForSet(set) === canonicalKeyForSet(payload));
-  if (existing) {
-    diag("create:dedupe-update", { existing: existing.id, name: payload.name, profileId: payload.profileId, scope: payload.scope });
-    return updateDartSet(existing.id, {
-      name: payload.name,
-      brand: payload.brand,
-      weightGrams: payload.weightGrams,
-      notes: payload.notes,
-      mainImageUrl: payload.mainImageUrl || existing.mainImageUrl || "",
-      thumbImageUrl: payload.thumbImageUrl || existing.thumbImageUrl,
-      bgColor: payload.bgColor || existing.bgColor,
-      photoDataUrl: payload.photoDataUrl || existing.photoDataUrl,
-      imageDataUrl: payload.imageDataUrl || existing.imageDataUrl,
-      mainImageDataUrl: payload.mainImageDataUrl || existing.mainImageDataUrl,
-      dartSetImageDataUrl: payload.dartSetImageDataUrl || existing.dartSetImageDataUrl,
-      photoThumbDataUrl: payload.photoThumbDataUrl || existing.photoThumbDataUrl,
-      thumbDataUrl: payload.thumbDataUrl || existing.thumbDataUrl,
-      thumbImageDataUrl: payload.thumbImageDataUrl || existing.thumbImageDataUrl,
-      kind: payload.kind,
-      presetId: payload.presetId,
-      scope: payload.scope,
-      profileId: payload.profileId,
-    } as any);
+  // Aucun remplacement implicite par nom : deux sets portant le même nom peuvent
+  // être différents. On bloque uniquement un double-clic créant exactement le
+  // même visuel dans les cinq secondes.
+  const exact = exactDuplicateKey(payload);
+  const rapidDuplicate = exact
+    ? all.find((set) => exactDuplicateKey(set) === exact && now - n(set.createdAt, 0) < 5_000)
+    : undefined;
+  if (rapidDuplicate) {
+    diag("create:rapid-duplicate-ignored", { existing: rapidDuplicate.id, name: payload.name });
+    return rapidDuplicate;
   }
 
-  if (all.filter((set) => String(set.profileId) === String(payload.profileId)).length === 0) payload.isFavorite = true;
   const next = [...all, payload];
   if (!savePrimary(next, "create")) return undefined;
   diag("create:ok", { id: payload.id, name: payload.name, profileId: payload.profileId, scope: payload.scope });
@@ -2187,17 +2234,14 @@ export function deleteDartSet(id: DartSetId): boolean {
   }
 
   markDeleted(target);
-  const targetCanonical = canonicalKeyForSet(target);
-  const targetImage = imageIdentity(target);
-  const targetName = normalizeText(target.name);
+  const targetExact = exactDuplicateKey(target);
   const targetAliases = new Set(uniqStrings([target.id, target.linkedSourceDartSetId, ...(target.duplicateIds || []), ...(target.aliasIds || []), id]));
 
   const filtered = all.filter((set) => {
     if (dartSetMatchesAnyId(set, id)) return false;
     if (targetAliases.has(set.id) || targetAliases.has(s(set.linkedSourceDartSetId))) return false;
-    if (canonicalKeyForSet(set) === targetCanonical) return false;
-    // Cas doublons anciens : même nom + même image, mais propriétaire/scope corrompus.
-    if (targetName && normalizeText(set.name) === targetName && targetImage && imageIdentity(set) === targetImage) return false;
+    // On supprime les vrais doublons exacts, jamais un autre set ayant seulement le même nom.
+    if (targetExact && exactDuplicateKey(set) === targetExact) return false;
     return true;
   });
 
@@ -2207,10 +2251,23 @@ export function deleteDartSet(id: DartSetId): boolean {
 }
 
 export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
+  const pid = s(profileId);
   const set = getDartSetById(dartSetId);
-  if (!set) return false;
-  if (!profileCanSeeDartSet(set, profileId)) return false;
-  return !!updateDartSet(set.id, { isFavorite: !set.isFavorite } as any);
+  if (!set || !pid) return false;
+  if (!profileCanSeeDartSet(set, pid)) return false;
+
+  const aliases = collectStrictProfileIds(pid);
+  const current = readFavoriteProfileIds(set);
+  const alreadyFavorite = current.some((id) => aliases.has(id));
+  const nextFavorites = alreadyFavorite
+    ? current.filter((id) => !aliases.has(id))
+    : uniqStrings([...current, pid]);
+
+  return !!updateDartSet(set.id, {
+    favoriteProfileIds: nextFavorites,
+    // Compat : privé = booléen du propriétaire ; public = jamais global.
+    isFavorite: effectiveDartSetScope(set) === "private" && nextFavorites.includes(s(set.profileId)),
+  } as any);
 }
 
 export function bumpDartSetUsage(dartSetId: DartSetId) {
@@ -2223,8 +2280,8 @@ export function bumpDartSetUsage(dartSetId: DartSetId) {
 export function getFavoriteDartSetForProfile(profileId: string): DartSet | undefined {
   const visible = getDartSetsForProfile(profileId);
   const byPriority = (a: DartSet, b: DartSet) => {
-    const favA = a.isFavorite ? 1 : 0;
-    const favB = b.isFavorite ? 1 : 0;
+    const favA = isDartSetFavoriteForProfile(a, profileId) ? 1 : 0;
+    const favB = isDartSetFavoriteForProfile(b, profileId) ? 1 : 0;
     if (favA !== favB) return favB - favA;
     const usageA = Number(a.usageCount || 0);
     const usageB = Number(b.usageCount || 0);
@@ -2234,7 +2291,9 @@ export function getFavoriteDartSetForProfile(profileId: string): DartSet | undef
 
   const aliases = collectProfileAliasIds(profileId);
   const own = (set: DartSet) => effectiveDartSetScope(set) !== "public" && collectSelectableOwnerIds(set).some((id) => aliases.has(id));
-  return visible.filter((set) => own(set) && set.isFavorite).sort(byPriority)[0] || visible.filter(own).sort(byPriority)[0] || visible.slice().sort(byPriority)[0];
+  return visible.filter((set) => isDartSetFavoriteForProfile(set, profileId)).sort(byPriority)[0]
+    || visible.filter(own).sort(byPriority)[0]
+    || visible.slice().sort(byPriority)[0];
 }
 
 export function replaceAllDartSets(list: DartSet[]) {
