@@ -12,14 +12,21 @@
 // =============================================================
 
 import React from "react";
+import BackDot from "../../components/BackDot";
+import { getTeamAvatarUrl } from "../../assets/teamAvatars";
+import botTeamEliteLogo from "../../assets/ui/competition_bot_team_elite.webp";
+import botTeamProLogo from "../../assets/ui/competition_bot_team_pro.webp";
+import botTeamChallengerLogo from "../../assets/ui/competition_bot_team_challenger.webp";
+import botTeamMixLogo from "../../assets/ui/competition_bot_team_mix.webp";
+import botTeamRisingLogo from "../../assets/ui/competition_bot_team_rising.webp";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useStore } from "../../contexts/StoreContext";
 import {
   loadTeamsBySport,
   upsertTeam,
-  createTeam,
   fileToDataUrl as fileToCompressedTeamLogoDataUrl,
+  makeTeamId,
   type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
 
@@ -47,6 +54,107 @@ const TEAM_SPORT_OPTIONS = [
   { id: "molkky", label: "Mölkky" },
   { id: "dicegame", label: "Dés" },
 ];
+
+const TEAM_LOGO_TEMPLATES: Array<{ id: string; label: string; src: string }> = [
+  { id: "gold", label: "Gold", src: getTeamAvatarUrl("gold") },
+  { id: "pink", label: "Pink", src: getTeamAvatarUrl("pink") },
+  { id: "blue", label: "Blue", src: getTeamAvatarUrl("blue") },
+  { id: "green", label: "Green", src: getTeamAvatarUrl("green") },
+  { id: "bot-elite", label: "BOT Élite", src: botTeamEliteLogo },
+  { id: "bot-pro", label: "BOT Pro", src: botTeamProLogo },
+  { id: "bot-challenger", label: "BOT Challenger", src: botTeamChallengerLogo },
+  { id: "bot-mix", label: "BOT Mixte", src: botTeamMixLogo },
+  { id: "bot-rising", label: "BOT Rising", src: botTeamRisingLogo },
+];
+
+function createDraftTeam(activeSport: string): TeamEntity {
+  const ts = Date.now();
+  return {
+    id: makeTeamId(activeSport || "team"),
+    sport: activeSport || "darts",
+    allSports: false,
+    sportIds: [activeSport || "darts"],
+    name: "",
+    logoDataUrl: null,
+    countryCode: "FR",
+    countryName: "France",
+    regionCode: "FR-ARA",
+    regionName: "Auvergne-Rhône-Alpes",
+    slogan: "",
+    description: "",
+    playerIds: [],
+    teamKind: "leisure",
+    clubVisibility: "private",
+    createdAt: ts,
+    updatedAt: ts,
+  } as any;
+}
+
+function normalizeReturnTarget(value: any, activeSport: string) {
+  const raw = String(value || "").trim();
+  if (raw) return raw;
+  if (activeSport === "babyfoot") return "babyfoot_teams";
+  return "petanque_teams";
+}
+
+function SaveDiskIcon({ color = "currentColor" }: { color?: string }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ display: "block" }}>
+      <path d="M5 3h12.2L21 6.8V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M7 3v6h10V3" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M7 21v-7h10v7" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M9 6h5" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function normalizeDisplayLogo(team: any): string | null {
+  return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || null;
+}
+
+function LogoCarouselModal({ theme, onClose, onPick }: { theme: any; onClose: () => void; onPick: (src: string) => void }) {
+  return (
+    <div style={modalOverlay} onMouseDown={onClose}>
+      <div style={modalCard(theme)} onMouseDown={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>LOGOS D’ÉQUIPE</div>
+            <div style={{ fontSize: 12, opacity: 0.68, marginTop: 3 }}>Choisis un logo prêt à intégrer.</div>
+          </div>
+          <button type="button" style={btnGhost(theme)} onClick={onClose}>Fermer</button>
+        </div>
+        <div style={{ height: 14 }} />
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 2px 10px", scrollSnapType: "x mandatory" }}>
+          {TEAM_LOGO_TEMPLATES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onPick(item.src)}
+              style={{
+                flex: "0 0 104px",
+                scrollSnapAlign: "start",
+                borderRadius: 18,
+                border: `1px solid ${theme?.borderSoft || "rgba(255,255,255,.14)"}`,
+                background: "rgba(255,255,255,.055)",
+                color: theme?.text || "#fff",
+                padding: 10,
+                cursor: "pointer",
+                display: "grid",
+                gap: 8,
+                justifyItems: "center",
+              }}
+            >
+              <span style={{ width: 74, height: 74, borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${theme?.primary || "#28eaff"}55`, background: "rgba(0,0,0,.22)" }}>
+                <img src={item.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.86, textAlign: "center" }}>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function normalizeTeamSportIds(value: any, fallbackSport: string): string[] {
   const raw = Array.isArray(value) ? value : [];
@@ -148,7 +256,7 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
   const { store, update } = useStore() as any;
 
   const activeSport = normalizeTeamSport(params?.sport || params?.forceMode || "petanque");
-  const returnTo = String(params?.returnTo || "petanque_teams");
+  const returnTo = normalizeReturnTarget(params?.returnTo, activeSport);
   const teamId = params?.teamId as string | undefined;
   const existing = React.useMemo(() => {
     if (!teamId) return null;
@@ -156,7 +264,7 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
   }, [teamId, activeSport]);
 
   const [team, setTeam] = React.useState<PetanqueTeam>(() =>
-    existing ?? createTeam({ sport: activeSport, name: "Nouvelle équipe" })
+    existing ?? createDraftTeam(activeSport)
   );
 
   React.useEffect(() => {
@@ -178,6 +286,7 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
   // UI state
   const logoInputRef = React.useRef<HTMLInputElement | null>(null);
   const [playerSearch, setPlayerSearch] = React.useState("");
+  const [logoLibraryOpen, setLogoLibraryOpen] = React.useState(false);
   const teamKind = String((team as any).teamKind || "leisure") === "club" ? "club" : "leisure";
 
   // modal création profil
@@ -214,26 +323,20 @@ const availableProfiles = React.useMemo(() => {
   return filteredProfiles.filter((p) => !picked.has(String(p.id)));
 }, [filteredProfiles, team.playerIds]);
 
-  function save(next: PetanqueTeam) {
+  function buildCleanTeam(next: PetanqueTeam, opts?: { final?: boolean }) {
     const selectedSports = normalizeTeamSportIds((next as any).sportIds, activeSport);
+    const finalName = String(next.name || "").trim();
     const fixed: PetanqueTeam = {
       sport: selectedSports[0] || activeSport,
       ...next,
       allSports: (next as any).allSports === true,
       sportIds: selectedSports,
-      name: (next.name || "").trim() || "Équipe",
-      countryCode: String(next.countryCode || "FR")
-        .toUpperCase()
-        .slice(0, 2),
+      name: opts?.final ? (finalName || "Équipe") : String(next.name ?? ""),
+      logoDataUrl: normalizeDisplayLogo(next),
+      countryCode: String(next.countryCode || "FR").toUpperCase().slice(0, 2),
       countryName: String(next.countryName || country.label || ""),
-      regionCode:
-        String(next.countryCode || "FR").toUpperCase() === "FR"
-          ? next.regionCode || "FR-IDF"
-          : "",
-      regionName:
-        String(next.countryCode || "FR").toUpperCase() === "FR"
-          ? next.regionName || region?.label || ""
-          : next.regionName || "",
+      regionCode: String(next.countryCode || "FR").toUpperCase() === "FR" ? next.regionCode || "FR-IDF" : "",
+      regionName: String(next.countryCode || "FR").toUpperCase() === "FR" ? next.regionName || region?.label || "" : next.regionName || "",
       slogan: clamp50(next.slogan || ""),
       description: next.description || "",
       playerIds: Array.isArray(next.playerIds) ? next.playerIds : [],
@@ -245,8 +348,32 @@ const availableProfiles = React.useMemo(() => {
       syncedClubTeamId: typeof (next as any).syncedClubTeamId === "string" ? (next as any).syncedClubTeamId : null,
       updatedAt: Date.now(),
     };
+    return fixed;
+  }
+
+  function save(next: PetanqueTeam) {
+    const fixed = buildCleanTeam(next);
     setTeam(fixed);
     upsertTeam(fixed as any);
+  }
+
+  function saveAndReturn() {
+    const finalName = String(team.name || "").trim();
+    if (!finalName) {
+      alert("Nom d’équipe requis.");
+      return;
+    }
+    const fixed = buildCleanTeam({ ...team, name: finalName } as any, { final: true });
+    setTeam(fixed);
+    upsertTeam(fixed as any);
+    go(returnTo as any, { sport: activeSport, returnTo: "profiles" });
+  }
+
+  function pickLibraryLogo(src: string) {
+    const logo = String(src || "").trim();
+    if (!logo) return;
+    save({ ...team, logoDataUrl: logo, logoUrl: logo } as any);
+    setLogoLibraryOpen(false);
   }
 
   async function onPickTeamLogo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -422,12 +549,12 @@ const availableProfiles = React.useMemo(() => {
           }`,
         }}
       >
-        <button
+        <BackDot
+          size={44}
+          title={t("common.back", "Retour")}
+          color={theme?.primary || "#28eaff"}
           onClick={() => go(returnTo as any, { sport: activeSport, returnTo: "profiles" })}
-          style={btnGhost(theme)}
-        >
-          ← {t("common.back", "Retour")}
-        </button>
+        />
 
         <div
           style={{
@@ -442,10 +569,13 @@ const availableProfiles = React.useMemo(() => {
         </div>
 
         <button
-          onClick={() => (save(team), alert(t("common.saved", "Équipe enregistrée.")))}
-          style={btnPrimary(theme)}
+          type="button"
+          onClick={saveAndReturn}
+          title={t("common.save", "Enregistrer")}
+          aria-label={t("common.save", "Enregistrer")}
+          style={saveDot(theme)}
         >
-          {t("common.save", "Enregistrer")}
+          <SaveDiskIcon color={theme?.primary || "#28eaff"} />
         </button>
       </div>
 
@@ -471,10 +601,10 @@ const availableProfiles = React.useMemo(() => {
                   flex: "0 0 auto",
                 }}
               >
-                <div style={logoWrap(theme)}>
-                  {team.logoDataUrl ? (
+                <div style={{ ...logoWrap(theme), cursor: "pointer" }} onClick={() => logoInputRef.current?.click()} title={t("teams.logo.import", "Importer un logo")}>
+                  {normalizeDisplayLogo(team) ? (
                     <img
-                      src={team.logoDataUrl}
+                      src={normalizeDisplayLogo(team) || ""}
                       alt=""
                       style={{
                         width: "100%",
@@ -502,15 +632,15 @@ const availableProfiles = React.useMemo(() => {
                 {/* + */}
                 <button
                   type="button"
-                  onClick={() => logoInputRef.current?.click()}
-                  title={t("teams.logo.add", "Ajouter / changer le logo")}
+                  onClick={() => setLogoLibraryOpen(true)}
+                  title={t("teams.logo.library", "Choisir un logo prêt à intégrer")}
                   style={logoPlusBtn(theme)}
                 >
                   +
                 </button>
 
                 {/* remove */}
-                {team.logoDataUrl ? (
+                {normalizeDisplayLogo(team) ? (
                   <button
                     type="button"
                     onClick={removeLogo}
@@ -1044,6 +1174,10 @@ const availableProfiles = React.useMemo(() => {
         </div>
       </div>
 
+      {logoLibraryOpen ? (
+        <LogoCarouselModal theme={theme} onClose={() => setLogoLibraryOpen(false)} onPick={pickLibraryLogo} />
+      ) : null}
+
       {/* Modal création profil */}
       {profileModalOpen ? (
         <div style={modalOverlay} onMouseDown={() => setProfileModalOpen(false)}>
@@ -1247,6 +1381,23 @@ function logoRemoveBtn(theme: any): React.CSSProperties {
     fontWeight: 900,
     cursor: "pointer",
     backdropFilter: "blur(8px)",
+  };
+}
+
+function saveDot(theme: any): React.CSSProperties {
+  const primary = theme?.primary || "#28eaff";
+  return {
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    border: `2px solid ${theme?.borderSoft || "rgba(255,255,255,.18)"}`,
+    background: "rgba(0,0,0,0.48)",
+    color: primary,
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 22px ${primary}77, 0 0 44px ${primary}55`,
+    flex: "0 0 auto",
   };
 }
 

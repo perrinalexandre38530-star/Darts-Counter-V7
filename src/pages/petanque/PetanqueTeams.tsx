@@ -76,9 +76,9 @@ export default function PetanqueTeams({ go, params }: Props) {
   }
 
   function handleCreate() {
-    const team = createTeam({ sport: activeSport, name: "Nouvelle équipe" });
-    upsertTeam(team);
-    go("petanque_team_edit" as any, { teamId: team.id, sport: activeSport, returnTo });
+    // Ne pré-crée plus une équipe "Nouvelle équipe" : l'écran d'édition démarre vide
+    // et l'équipe n'est vraiment enregistrée qu'au clic sur la disquette.
+    go("petanque_team_edit" as any, { sport: activeSport, returnTo });
   }
 
   function handleDelete(teamId: string) {

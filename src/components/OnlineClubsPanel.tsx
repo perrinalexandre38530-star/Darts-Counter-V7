@@ -128,6 +128,25 @@ function StatTile({ value, label, accent }: { value: React.ReactNode; label: str
   return <div style={{ ...card(accent), textAlign: "center", padding: 10 }}><div style={{ fontSize: 22, fontWeight: 1000 }}>{value}</div><div style={{ fontSize: 10.5, opacity: .72, marginTop: 2 }}>{label}</div></div>;
 }
 
+function MetaChip({ children, accent }: { children: React.ReactNode; accent: string }) {
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 999, border: `1px solid ${alpha(accent, "55")}`, background: `linear-gradient(135deg, ${alpha(accent, "24")}, rgba(255,255,255,.045))`, color: "#fff", padding: "6px 9px", fontSize: 11, fontWeight: 950, boxShadow: `0 0 14px ${alpha(accent, "18")}` }}>{children}</span>;
+}
+
+function EmptyState({ title, body, accent }: { title: string; body: string; accent: string }) {
+  return <div style={{ ...card(accent), minHeight: 92, display: "grid", alignContent: "center", textAlign: "center" }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>{title}</div><div style={{ marginTop: 7, fontSize: 12, opacity: .72, lineHeight: 1.35 }}>{body}</div></div>;
+}
+
+function ClubActionCard({ title, subtitle, icon, accent, onClick }: { title: string; subtitle: string; icon: string; accent: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 104, position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", right: -18, top: -22, fontSize: 68, opacity: .11 }}>{icon}</div>
+      <div style={{ width: 40, height: 40, borderRadius: 16, display: "grid", placeItems: "center", color: accent, border: `1px solid ${alpha(accent, "55")}`, background: `radial-gradient(circle, ${alpha(accent, "28")}, rgba(0,0,0,.18))`, boxShadow: `0 0 18px ${alpha(accent, "20")}`, fontWeight: 1000 }}>{icon}</div>
+      <div style={{ marginTop: 10, color: accent, fontWeight: 1000, fontSize: 16 }}>{title}</div>
+      <div style={{ marginTop: 5, fontSize: 11.5, opacity: .75, lineHeight: 1.25 }}>{subtitle}</div>
+    </button>
+  );
+}
+
 export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }: Props) {
   const [clubs, setClubs] = React.useState<Club[]>([]);
   const [teamsByClub, setTeamsByClub] = React.useState<Record<string, ClubTeam[]>>({});
@@ -353,16 +372,16 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
   }
 
   if (selectedClub && selectedClubId) {
-    const tabs: { id: ClubTab; label: string }[] = [
-      { id: "accueil", label: "Accueil" },
-      { id: "actu", label: "Actu" },
-      { id: "matchs", label: "Matchs" },
-      { id: "convocations", label: "Convocs" },
-      { id: "calendrier", label: "Agenda" },
-      { id: "membres", label: "Effectif" },
-      { id: "equipes", label: "Équipes" },
-      { id: "invitations", label: "Inviter" },
-      { id: "reglages", label: "Réglages" },
+    const tabs: { id: ClubTab; label: string; icon: string }[] = [
+      { id: "accueil", label: "Accueil", icon: "⌂" },
+      { id: "actu", label: "Actu", icon: "•" },
+      { id: "matchs", label: "Matchs", icon: "⚔" },
+      { id: "convocations", label: "Convocs", icon: "✓" },
+      { id: "calendrier", label: "Agenda", icon: "□" },
+      { id: "membres", label: "Effectif", icon: "◌" },
+      { id: "equipes", label: "Équipes", icon: "◇" },
+      { id: "invitations", label: "Inviter", icon: "+" },
+      { id: "reglages", label: "Réglages", icon: "⚙" },
     ];
     const selectedTeam = clubTeams.find((t) => t.id === matchTeamId) || clubTeams[0] || null;
     const heroLogo = selectedClub.logoUrl || clubTeams[0]?.logoDataUrl || clubTeams[0]?.logoUrl || null;
@@ -371,13 +390,13 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
       inset: 0,
       zIndex: 9999,
       color: "#fff",
-      background: `radial-gradient(circle at 50% -10%, ${alpha(accent, "36")}, transparent 30%), linear-gradient(180deg, #071622 0%, #02060d 74%)`,
+      background: `radial-gradient(circle at 18% -8%, ${alpha(accent, "40")}, transparent 34%), radial-gradient(circle at 88% 0%, rgba(255,255,255,.10), transparent 30%), linear-gradient(180deg, #071725 0%, #02050b 78%)`,
       overflowY: "auto",
       WebkitOverflowScrolling: "touch",
       padding: "18px clamp(12px, 4vw, 28px) 96px",
       boxSizing: "border-box",
     };
-    const pageShell: React.CSSProperties = { maxWidth: 820, margin: "0 auto", display: "grid", gap: 12 };
+    const pageShell: React.CSSProperties = { maxWidth: 880, margin: "0 auto", display: "grid", gap: 14 };
     const dotButton: React.CSSProperties = {
       width: 54,
       height: 54,
@@ -398,10 +417,10 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
       display: "flex",
       gap: 8,
       overflowX: "auto",
-      padding: "10px 2px 12px",
-      margin: "0 -2px",
+      padding: "12px 3px 14px",
+      margin: "0 -3px",
       scrollbarWidth: "none",
-      background: `linear-gradient(180deg, rgba(4,13,21,.96), rgba(4,13,21,.82))`,
+      background: `linear-gradient(180deg, rgba(4,13,21,.98), rgba(4,13,21,.86), rgba(4,13,21,.70))`,
       backdropFilter: "blur(12px)",
     };
     const panelTitle = tabs.find((t) => t.id === clubTab)?.label || "Club";
@@ -409,9 +428,9 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
     return (
       <div style={overlay}>
         <div style={pageShell}>
-          <div style={{ position: "relative", minHeight: 184, borderRadius: 26, overflow: "hidden", border: `1px solid ${alpha(accent, "5e")}`, boxShadow: `0 0 28px ${alpha(accent, "20")}` }}>
-            <div style={{ position: "absolute", inset: 0, background: selectedClub.coverUrl ? `linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.76)), url(${selectedClub.coverUrl}) center/cover` : `radial-gradient(circle at 52% 16%, ${alpha(accent, "3c")}, transparent 36%), linear-gradient(135deg, ${alpha(accent, "18")}, rgba(255,255,255,.035))` }} />
-            {heroLogo ? <img src={heroLogo} alt="" style={{ position: "absolute", right: -28, bottom: -38, width: 170, height: 170, objectFit: "cover", opacity: .16, filter: "blur(.2px)", borderRadius: 999 }} /> : null}
+          <div style={{ position: "relative", minHeight: 242, borderRadius: 30, overflow: "hidden", border: `1px solid ${alpha(accent, "5e")}`, boxShadow: `0 0 28px ${alpha(accent, "20")}` }}>
+            <div style={{ position: "absolute", inset: 0, background: selectedClub.coverUrl ? `linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.78)), url(${selectedClub.coverUrl}) center/cover` : `radial-gradient(circle at 20% 10%, ${alpha(accent, "40")}, transparent 34%), radial-gradient(circle at 78% 30%, rgba(255,255,255,.12), transparent 28%), linear-gradient(135deg, ${alpha(accent, "22")}, rgba(255,255,255,.035))` }} />
+            {heroLogo ? <img src={heroLogo} alt="" style={{ position: "absolute", right: -28, bottom: -38, width: 170, height: 170, objectFit: "cover", opacity: .22, filter: "blur(.2px)", borderRadius: 999 }} /> : null}
             <div style={{ position: "relative", zIndex: 1, padding: 16, display: "grid", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                 <button type="button" onClick={() => { setSelectedClubId(null); setSelectedClub(null); setShowClubInfo(false); reload(); }} style={dotButton} aria-label="Retour">←</button>
@@ -420,11 +439,11 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <Logo src={heroLogo} name={selectedClub.name} accent={accent} size={72} round={999} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 30, lineHeight: .95, color: accent, fontWeight: 1000, letterSpacing: .6, overflowWrap: "anywhere", textShadow: `0 0 18px ${alpha(accent, "55")}` }}>{selectedClub.name}</div>
-                  <div style={{ marginTop: 7, fontSize: 12.5, opacity: .86 }}>{selectedClub.membersCount || clubMembers.length} membre(s) • {clubTeams.length} équipe(s) • rôle {roleLabel(selectedClub.role)}</div>
+                  <div style={{ fontSize: "clamp(28px, 8vw, 44px)", lineHeight: .92, color: accent, fontWeight: 1000, letterSpacing: .6, overflowWrap: "anywhere", textShadow: `0 0 18px ${alpha(accent, "55")}` }}>{selectedClub.name}</div>
+                  <div style={{ marginTop: 7, fontSize: 12.5, opacity: .86 }}>{selectedClub.membersCount || clubMembers.length} membre(s) • {clubTeams.length} équipe(s) • rôle {roleLabel(selectedClub.role)}</div><div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}><MetaChip accent={accent}>{selectedClub.visibility || "members"}</MetaChip><MetaChip accent={accent}>{(selectedClub.sports || []).join(" • ") || "MULTISPORTS"}</MetaChip></div>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(70px, 1fr))", gap: 8 }}>
                 <StatTile accent={accent} value={clubMembers.length} label="Effectif" />
                 <StatTile accent={accent} value={clubTeams.length} label="Équipes" />
                 <StatTile accent={accent} value={nextMatches.length} label="Matchs" />
@@ -434,7 +453,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
           </div>
 
           <div style={tabBar}>
-            {tabs.map((t) => <button key={t.id} type="button" onClick={() => setClubTab(t.id)} style={{ ...tinyButton(accent, clubTab === t.id), flex: "0 0 auto", minWidth: 104, borderRadius: 18 }}>{t.label}</button>)}
+            {tabs.map((t) => <button key={t.id} type="button" onClick={() => setClubTab(t.id)} style={{ ...tinyButton(accent, clubTab === t.id), flex: "0 0 auto", minWidth: 112, borderRadius: 20, display: "grid", gridTemplateColumns: "24px 1fr", gap: 7, alignItems: "center" }}><span style={{ display: "grid", placeItems: "center", width: 24, height: 24, borderRadius: 999, background: clubTab === t.id ? alpha(accent, "22") : "rgba(255,255,255,.05)" }}>{t.icon}</span><span>{t.label}</span></button>)}
           </div>
 
           {error ? <div style={{ ...card("#ff5a6f"), color: "#ffd9df", fontSize: 12 }}>{error}</div> : null}
@@ -442,16 +461,24 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
           {clubTab !== "accueil" ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><SectionTitle accent={accent}>{panelTitle}</SectionTitle><button type="button" onClick={() => openClub(selectedClubId, clubTab)} disabled={busy} style={tinyButton(accent)}>↻</button></div> : null}
 
           {clubTab === "accueil" ? (
-            <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                <button type="button" onClick={() => setClubTab("matchs")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Prochains matchs</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{nextMatches.length ? `${nextMatches.length} match(s) planifié(s)` : "Aucun match"}</div></button>
-                <button type="button" onClick={() => setClubTab("convocations")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Convocations</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{pendingConvocations.length ? `${pendingConvocations.length} réponse(s) attendue(s)` : "Tout est à jour"}</div></button>
-                <button type="button" onClick={() => setClubTab("actu")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Fil d’actu</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{clubPosts.length ? `${clubPosts.length} publication(s)` : "Publie la première actu"}</div></button>
-                <button type="button" onClick={() => setClubTab("membres")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Effectif</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{clubMembers.length} membre(s)</div></button>
+                <ClubActionCard accent={accent} icon="⚔" title="Matchs" subtitle={nextMatches.length ? `${nextMatches.length} match(s) à préparer` : "Planifie le prochain match"} onClick={() => setClubTab("matchs")} />
+                <ClubActionCard accent={accent} icon="✓" title="Convocations" subtitle={pendingConvocations.length ? `${pendingConvocations.length} réponse(s) attendue(s)` : "Présents, absents, incertains"} onClick={() => setClubTab("convocations")} />
+                <ClubActionCard accent={accent} icon="•" title="Actualités" subtitle={clubPosts.length ? `${clubPosts.length} publication(s)` : "Annonce, photo, info coach"} onClick={() => setClubTab("actu")} />
+                <ClubActionCard accent={accent} icon="◌" title="Effectif" subtitle={`${clubMembers.length} membre(s) dans le club`} onClick={() => setClubTab("membres")} />
               </div>
-              <div style={card(accent)}>
-                <SectionTitle accent={accent}>À la une</SectionTitle>
-                {nextMatches[0] ? <button type="button" onClick={() => setClubTab("matchs")} style={{ marginTop: 12, width: "100%", border: 0, color: "#fff", textAlign: "left", borderRadius: 18, padding: 12, background: "rgba(255,255,255,.055)", display: "flex", gap: 12, alignItems: "center" }}><Logo src={clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoDataUrl || clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoUrl} name={nextMatches[0].teamName || selectedClub.name} accent={accent} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere" }}>{nextMatches[0].title}</div><div style={{ fontSize: 12, opacity: .76, marginTop: 3 }}>{formatDateTime(nextMatches[0].startsAt)}{nextMatches[0].location ? ` • ${nextMatches[0].location}` : ""}</div></div></button> : <div style={{ marginTop: 8, opacity: .72 }}>Aucun match planifié pour l’instant.</div>}
+              <div style={{ ...card(accent), padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <SectionTitle accent={accent}>À la une du club</SectionTitle>
+                  <MetaChip accent={accent}>LIVE CLUB</MetaChip>
+                </div>
+                {nextMatches[0] ? <button type="button" onClick={() => setClubTab("matchs")} style={{ marginTop: 12, width: "100%", border: `1px solid ${alpha(accent, "34")}`, color: "#fff", textAlign: "left", borderRadius: 22, padding: 12, background: `linear-gradient(135deg, ${alpha(accent, "1e")}, rgba(255,255,255,.055))`, display: "flex", gap: 12, alignItems: "center" }}><Logo src={clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoDataUrl || clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoUrl} name={nextMatches[0].teamName || selectedClub.name} accent={accent} size={54} round={18} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere", fontSize: 16 }}>{nextMatches[0].title}</div><div style={{ fontSize: 12, opacity: .76, marginTop: 4 }}>{formatDateTime(nextMatches[0].startsAt)}{nextMatches[0].location ? ` • ${nextMatches[0].location}` : ""}</div></div><span style={{ color: accent, fontWeight: 1000 }}>Voir</span></button> : <EmptyState accent={accent} title="Aucun match planifié" body="Crée un match pour afficher les convocations et préparer l’équipe." />}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                <button type="button" onClick={() => setClubTab("calendrier")} style={{ ...tinyButton(accent), minHeight: 54 }}>Agenda</button>
+                <button type="button" onClick={() => setClubTab("equipes")} style={{ ...tinyButton(accent), minHeight: 54 }}>Équipes</button>
+                <button type="button" onClick={() => setClubTab("invitations")} style={{ ...tinyButton(accent), minHeight: 54 }}>Inviter</button>
               </div>
             </div>
           ) : null}
