@@ -121,12 +121,13 @@ function LogoCarouselModal({
   const [category, setCategory] = React.useState<TeamLogoCategory | "all">("all");
   const [query, setQuery] = React.useState("");
   const [page, setPage] = React.useState(0);
-  const PAGE_SIZE = 12;
+  const PAGE_SIZE = 6;
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return TEAM_LOGO_LIBRARY.filter((logo) => {
-      const categoryOk = category === "all" || logo.category === category || (category === "popular" && logo.category === "popular");
+      const categoryOk = category === "all"
+        || (category === "popular" ? (logo.tags || []).includes("popular") : logo.category === category);
       if (!categoryOk) return false;
       if (!q) return true;
       const blob = `${logo.label} ${logo.category} ${(logo.tags || []).join(" ")}`.toLowerCase();
@@ -221,7 +222,7 @@ function LogoCarouselModal({
               type="button"
               onClick={() => onPick(item.src)}
               style={{
-                aspectRatio: "1 / 1.24",
+                aspectRatio: "1 / 1",
                 borderRadius: 18,
                 border: `1px solid ${theme?.borderSoft || "rgba(255,255,255,.14)"}`,
                 background: "rgba(255,255,255,.055)",
@@ -229,7 +230,7 @@ function LogoCarouselModal({
                 padding: 8,
                 cursor: "pointer",
                 display: "grid",
-                gap: 6,
+                gap: 0,
                 justifyItems: "center",
                 alignContent: "center",
                 minWidth: 0,
@@ -238,7 +239,6 @@ function LogoCarouselModal({
               <span style={{ width: "min(74px, 100%)", aspectRatio: "1 / 1", borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${theme?.primary || "#28eaff"}55`, background: "rgba(0,0,0,.22)" }}>
                 <img src={item.src} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
               </span>
-              <span style={{ fontSize: 10.5, fontWeight: 900, opacity: 0.86, textAlign: "center", lineHeight: 1.1 }}>{item.label}</span>
             </button>
           ))}
         </div>
@@ -774,7 +774,7 @@ const availableProfiles = React.useMemo(() => {
                   <div
                     style={{
                       display: "flex",
-                      gap: 6,
+                      gap: 0,
                       flexWrap: "wrap",
                       marginTop: 8,
                     }}
@@ -875,7 +875,7 @@ const availableProfiles = React.useMemo(() => {
                     style={{
                       display: "flex",
                       flexWrap: "wrap",
-                      gap: 6,
+                      gap: 0,
                       alignItems: "center",
                       opacity: 0.85,
                     }}
