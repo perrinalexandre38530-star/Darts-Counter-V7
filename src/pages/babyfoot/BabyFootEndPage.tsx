@@ -238,8 +238,9 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   }, [requestedId]);
 
   const match = React.useMemo(() => mergeHistoryMatch(routeMatch, idbMatch), [routeMatch, idbMatch]);
-  const payload = getPayload(match);
-  const summary = getSummary(match, payload);
+  const resolvedMatch = React.useMemo(() => resolveBabyFootRecord(match), [match]);
+  const payload = resolvedMatch;
+  const summary = getSummary(resolvedMatch, resolvedMatch);
   const players = allPlayers(match, payload);
   const events = getEventsFrom(payload, summary, match);
   const scoreA = n(summary?.scoreA ?? payload?.scoreA ?? match?.scoreA ?? params?.scoreA);
@@ -385,7 +386,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
         <div style={sectionTitle(theme)}>Navigation</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <button style={primaryBtn(theme)} onClick={() => go("babyfoot_stats_history" as any, { focusMatchId: matchId })}>HISTORIQUE</button>
-          <button style={ghostBtn(theme)} onClick={() => go("babyfoot_stats_center" as any, { mode: data.mode || data.summary?.mode || "all" })}>STATS BABY</button>
+          <button style={ghostBtn(theme)} onClick={() => go("babyfoot_stats_center" as any, { mode: summary?.mode || payload?.mode || "all", focusMatchId: matchId })}>STATS BABY</button>
           {backToLeague ? <button style={{ ...ghostBtn(theme), gridColumn: "1 / -1" }} onClick={() => go("babyfoot_league" as any, leagueParams)}>RETOUR LIGUE</button> : null}
         </div>
       </section>

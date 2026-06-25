@@ -14,9 +14,10 @@ import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
+import victoryCup from "../../assets/victory.webp";
 import { History } from "../../lib/history";
 import { buildMatchSharePacket } from "../../lib/matchShare";
-import { resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
+import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 
 import { computeDecisiveGoals, computeMomentum, computePenaltyImpact, computeShotConversion } from "../../lib/babyfootQualityStats";
 import { computeBabyFootRichStats, formatBabyFootAvg } from "../../lib/babyfootRichStats";
@@ -1245,8 +1246,12 @@ function HistoryCardsView({
             const players = ids.length
               ? ids.map((id: string) => profilesById[id] || { id, name: id.slice(0, 6) })
               : (Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : []);
-            const summaryLine = `${teamA} : ${scoreA} • ${teamB} : ${scoreB}`;
+            const summaryLine = `${teamA} ${scoreA} — ${scoreB} ${teamB}`;
             const statusLabel = h?.status === "in_progress" || h?.status === "running" ? "En cours" : "Terminé";
+            const perPlayerRows = extractBabyFootPlayerStatsRows(payload).filter((row: any) => !row?.collective);
+            const perPlayerA = perPlayerRows.filter((row: any) => row.team === "A");
+            const perPlayerB = perPlayerRows.filter((row: any) => row.team === "B");
+            const individualLine = [...perPlayerA, ...perPlayerB].map((row: any) => `${row.name} +${safeNum(row.points ?? row.goals, 0)}`);
 
             return (
               <div key={h.id} ref={isFocus ? focusRef : null} style={historyMatchCard(theme, isFocus)}>
@@ -1261,11 +1266,20 @@ function HistoryCardsView({
                 </div>
 
                 <div style={historyPreviewLine}>
-                  {summaryLine}
-                  {rich.setsEnabled ? ` • Sets ${rich.teamA.sets}-${rich.teamB.sets}` : ""}
-                  {rich.totalLegs ? ` • Legs ${rich.teamA.legs}-${rich.teamB.legs}` : ""}
-                  {winner ? ` • Vainqueur ${winner === "A" ? teamA : teamB}` : ""}
+                  <span style={{ color: theme?.primary ?? "#42e9ff" }}>{teamA} {scoreA}</span>
+                  <span style={{ opacity: .58 }}> — </span>
+                  <span style={{ color: "#ff59b0" }}>{teamB} {scoreB}</span>
+                  {rich.setsEnabled ? <span style={{ opacity: .72 }}>{` • Sets ${rich.teamA.sets}-${rich.teamB.sets}`}</span> : null}
+                  {rich.totalLegs ? <span style={{ opacity: .72 }}>{` • Legs ${rich.teamA.legs}-${rich.teamB.legs}`}</span> : null}
                 </div>
+                {individualLine.length ? (
+                  <div style={historyIndividualLine}>
+                    {individualLine.map((label: string, index: number) => {
+                      const isTeamB = index >= perPlayerA.length;
+                      return <span key={`${label}-${index}`} style={{ color: isTeamB ? "#ff59b0" : (theme?.primary ?? "#42e9ff") }}>{label}</span>;
+                    })}
+                  </div>
+                ) : null}
 
                 <div style={{ ...historyRowBetween, marginTop: 10 }}>
                   <div style={historyAvatars}>
@@ -1277,8 +1291,9 @@ function HistoryCardsView({
                   </div>
 
                   {winner ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: theme?.primary ?? "#c7ff26", fontWeight: 900 }}>
-                      <HistIcon.Trophy /> {winner === "A" ? teamA : teamB}
+                    <div style={historyWinnerBlock}>
+                      <img src={victoryCup} alt="Victoire" style={historyWinnerCup} />
+                      <div style={historyWinnerName}>{winner === "A" ? teamA : teamB}</div>
                     </div>
                   ) : null}
                 </div>
@@ -1643,11 +1658,51 @@ const historyDate = (theme: any): React.CSSProperties => ({
 
 const historyPreviewLine: React.CSSProperties = {
   marginTop: 8,
-  fontSize: 12,
-  color: "rgba(255,255,255,0.9)",
-  fontWeight: 800,
+  fontSize: 13,
+  color: "rgba(255,255,255,0.92)",
+  fontWeight: 1000,
   position: "relative",
   zIndex: 1,
+  lineHeight: 1.25,
+};
+
+const historyIndividualLine: React.CSSProperties = {
+  marginTop: 6,
+  display: "flex",
+  gap: "4px 10px",
+  alignItems: "center",
+  flexWrap: "wrap",
+  fontSize: 11,
+  fontWeight: 950,
+  position: "relative",
+  zIndex: 1,
+};
+
+const historyWinnerBlock: React.CSSProperties = {
+  display: "grid",
+  justifyItems: "center",
+  gap: 1,
+  minWidth: 86,
+};
+
+const historyWinnerCup: React.CSSProperties = {
+  width: 48,
+  height: 38,
+  objectFit: "contain",
+  filter: "drop-shadow(0 0 8px rgba(255,210,80,.62))",
+};
+
+const historyWinnerName: React.CSSProperties = {
+  fontSize: 10,
+  lineHeight: 1,
+  fontWeight: 1000,
+  color: "#ffd76a",
+  textAlign: "center",
+  maxWidth: 96,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  textShadow: "0 0 5px rgba(255,214,106,.95), 0 0 12px rgba(255,176,0,.45)",
 };
 
 const historyAvatars: React.CSSProperties = { display: "flex", position: "relative", zIndex: 1 };

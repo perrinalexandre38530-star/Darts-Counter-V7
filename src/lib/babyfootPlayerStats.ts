@@ -69,6 +69,167 @@ function avatarOf(p: any): string | null {
   return p?.avatarUrl || p?.avatar_url || p?.avatar || p?.avatarDataUrl || p?.avatar_data_url || null;
 }
 
+
+function firstObject(...values: any[]): Record<string, any> {
+  for (const value of values) {
+    if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  }
+  return {};
+}
+
+function compactRootOf(...values: any[]): Record<string, any> {
+  for (const value of values) {
+    const direct = obj(value);
+    if (direct.__compact === "match.v1") return direct;
+    const nested = obj(direct.compact);
+    if (nested.__compact === "match.v1") return nested;
+  }
+  return {};
+}
+
+function compactValue(source: any, camel: string, compact: string, fallback?: any): any {
+  if (source && source[camel] !== undefined) return source[camel];
+  if (source && source[compact] !== undefined) return source[compact];
+  return fallback;
+}
+
+function normalizeCompactBabyFootEvent(raw: any): any {
+  const ev = obj(raw);
+  if (!Object.keys(ev).length) return raw;
+  return {
+    ...ev,
+    t: compactValue(ev, "t", "t", compactValue(ev, "type", "type", "event")),
+    at: num(compactValue(ev, "at", "at", compactValue(ev, "timestamp", "timestamp", 0)), 0),
+    team: compactValue(ev, "team", "team", null),
+    scorerId: compactValue(ev, "scorerId", "scorerid", compactValue(ev, "playerId", "playerid", null)),
+    ownGoalById: compactValue(ev, "ownGoalById", "owngoalbyid", null),
+    ownGoalTeam: compactValue(ev, "ownGoalTeam", "owngoalteam", null),
+    phase: compactValue(ev, "phase", "phase", null),
+    kind: compactValue(ev, "kind", "kind", null),
+    points: num(compactValue(ev, "points", "pts", 1), 1),
+    demiBonusApplied: num(compactValue(ev, "demiBonusApplied", "demibonusapplied", 0), 0),
+    sourceLine: compactValue(ev, "sourceLine", "sourceline", null),
+    counted: compactValue(ev, "counted", "counted", undefined),
+    scoreDeltaA: num(compactValue(ev, "scoreDeltaA", "scoredeltaa", 0), 0),
+    scoreDeltaB: num(compactValue(ev, "scoreDeltaB", "scoredeltab", 0), 0),
+    scored: compactValue(ev, "scored", "scored", undefined),
+    winner: compactValue(ev, "winner", "winner", null),
+    reason: compactValue(ev, "reason", "reason", null),
+  };
+}
+
+function normalizeCompactTeamStats(raw: any): any {
+  const side = obj(raw);
+  if (!Object.keys(side).length) return {};
+  return {
+    ...side,
+    name: compactValue(side, "name", "name", ""),
+    score: num(compactValue(side, "score", "sc", 0), 0),
+    sets: num(compactValue(side, "sets", "sets", 0), 0),
+    legs: num(compactValue(side, "legs", "legs", 0), 0),
+    goals: num(compactValue(side, "goals", "goals", 0), 0),
+    goalsConceded: num(compactValue(side, "goalsConceded", "goalsconceded", 0), 0),
+    avgGoalsPerLeg: num(compactValue(side, "avgGoalsPerLeg", "avggoalsperleg", 0), 0),
+    goalDiff: num(compactValue(side, "goalDiff", "goaldiff", 0), 0),
+    gamelle: num(compactValue(side, "gamelle", "gamelle", 0), 0),
+    peche: num(compactValue(side, "peche", "peche", 0), 0),
+    pecheOff: num(compactValue(side, "pecheOff", "pecheoff", 0), 0),
+    pecheDef: num(compactValue(side, "pecheDef", "pechedef", 0), 0),
+    demi: num(compactValue(side, "demi", "demi", 0), 0),
+    pissette: num(compactValue(side, "pissette", "pissette", 0), 0),
+    pissetteValid: num(compactValue(side, "pissetteValid", "pissettevalid", 0), 0),
+    pissetteRefused: num(compactValue(side, "pissetteRefused", "pissetterefused", 0), 0),
+    csc: num(compactValue(side, "csc", "csc", 0), 0),
+    demiBonus: num(compactValue(side, "demiBonus", "demibonus", 0), 0),
+    goalAv: num(compactValue(side, "goalAv", "goalav", 0), 0),
+    goalDef: num(compactValue(side, "goalDef", "goaldef", 0), 0),
+    goalGb: num(compactValue(side, "goalGb", "goalgb", 0), 0),
+    penalties: num(compactValue(side, "penalties", "penalties", 0), 0),
+    handicap: num(compactValue(side, "handicap", "handicap", 0), 0),
+    goalsConcededAv: num(compactValue(side, "goalsConcededAv", "goalsconcededav", 0), 0),
+    goalsConcededDef: num(compactValue(side, "goalsConcededDef", "goalsconcededdef", 0), 0),
+    goalsConcededGb: num(compactValue(side, "goalsConcededGb", "goalsconcededgb", 0), 0),
+    equalizations: num(compactValue(side, "equalizations", "equalizations", 0), 0),
+    leadChanges: num(compactValue(side, "leadChanges", "leadchanges", 0), 0),
+    longestRun: num(compactValue(side, "longestRun", "longestrun", 0), 0),
+  };
+}
+
+function normalizeCompactSpecialStats(raw: any): any {
+  const s = obj(raw);
+  if (!Object.keys(s).length) return {};
+  const keys = [
+    ["demiA", "demia"], ["demiB", "demib"], ["gamelleA", "gamellea"], ["gamelleB", "gamelleb"],
+    ["pissetteA", "pissettea"], ["pissetteB", "pissetteb"], ["pissetteValidA", "pissettevalida"], ["pissetteValidB", "pissettevalidb"],
+    ["pissetteRefusedA", "pissetterefuseda"], ["pissetteRefusedB", "pissetterefusedb"], ["pecheOffA", "pecheoffa"], ["pecheOffB", "pecheoffb"],
+    ["pecheDefA", "pechedefa"], ["pecheDefB", "pechedefb"], ["demiBonusAppliedA", "demibonusapplieda"], ["demiBonusAppliedB", "demibonusappliedb"],
+    ["goalAvA", "goalava"], ["goalAvB", "goalavb"], ["goalDefA", "goaldefa"], ["goalDefB", "goaldefb"],
+    ["goalGbA", "goalgba"], ["goalGbB", "goalgbb"], ["cscA", "csca"], ["cscB", "cscb"],
+  ];
+  const out: any = { ...s };
+  for (const [camel, compact] of keys) out[camel] = num(compactValue(s, camel, compact, 0), 0);
+  return out;
+}
+
+function decodeCompactBabyFootSummary(compact: any): any {
+  const root = obj(compact);
+  const state = obj(root?.d?.s);
+  if (!Object.keys(state).length) return {};
+  const rawStats = obj(compactValue(state, "stats", "stats", {}));
+  const teamAStats = normalizeCompactTeamStats(firstObject(rawStats.teamA, rawStats.teama));
+  const teamBStats = normalizeCompactTeamStats(firstObject(rawStats.teamB, rawStats.teamb));
+  return {
+    ...state,
+    teamA: compactValue(state, "teamA", "teama", "Équipe A"),
+    teamB: compactValue(state, "teamB", "teamb", "Équipe B"),
+    teamARefId: compactValue(state, "teamARefId", "teamarefid", null),
+    teamBRefId: compactValue(state, "teamBRefId", "teambrefid", null),
+    teamAProfileIds: arr(compactValue(state, "teamAProfileIds", "teamaprofileids", [])).map(String),
+    teamBProfileIds: arr(compactValue(state, "teamBProfileIds", "teambprofileids", [])).map(String),
+    scoreA: num(compactValue(state, "scoreA", "scorea", 0), 0),
+    scoreB: num(compactValue(state, "scoreB", "scoreb", 0), 0),
+    setsEnabled: Boolean(compactValue(state, "setsEnabled", "setsenabled", false)),
+    setsA: num(compactValue(state, "setsA", "setsa", 0), 0),
+    setsB: num(compactValue(state, "setsB", "setsb", 0), 0),
+    penalties: compactValue(state, "penalties", "penalties", null),
+    durationMs: num(compactValue(state, "durationMs", "dur", 0), 0),
+    mode: compactValue(state, "mode", "mode", root?.o?.mode || "babyfoot"),
+    target: num(compactValue(state, "target", "target", 0), 0),
+    setTarget: num(compactValue(state, "setTarget", "settarget", 0), 0),
+    setsBestOf: num(compactValue(state, "setsBestOf", "setsbestof", 0), 0),
+    handicapA: num(compactValue(state, "handicapA", "handicapa", 0), 0),
+    handicapB: num(compactValue(state, "handicapB", "handicapb", 0), 0),
+    rulesPreset: compactValue(state, "rulesPreset", "rulespreset", null),
+    demiRule: compactValue(state, "demiRule", "demirule", null),
+    pissetteRule: compactValue(state, "pissetteRule", "pissetterule", null),
+    gamelleRule: compactValue(state, "gamelleRule", "gamellerule", null),
+    pecheOffRule: compactValue(state, "pecheOffRule", "pecheoffrule", null),
+    pecheDefRule: compactValue(state, "pecheDefRule", "pechedefrule", null),
+    specialStats: normalizeCompactSpecialStats(firstObject(state.specialStats, state.specialstats)),
+    stats: {
+      ...rawStats,
+      ...(Object.keys(teamAStats).length ? { teamA: teamAStats } : {}),
+      ...(Object.keys(teamBStats).length ? { teamB: teamBStats } : {}),
+      setsEnabled: Boolean(compactValue(rawStats, "setsEnabled", "setsenabled", false)),
+      totalLegs: num(compactValue(rawStats, "totalLegs", "totallegs", 0), 0),
+      totalGoals: num(compactValue(rawStats, "totalGoals", "totalgoals", 0), 0),
+      totalGamelle: num(compactValue(rawStats, "totalGamelle", "totalgamelle", 0), 0),
+      totalPeche: num(compactValue(rawStats, "totalPeche", "totalpeche", 0), 0),
+      totalDemi: num(compactValue(rawStats, "totalDemi", "totaldemi", 0), 0),
+      totalPissette: num(compactValue(rawStats, "totalPissette", "totalpissette", 0), 0),
+    },
+  };
+}
+
+export function extractCompactBabyFootEvents(record: any): any[] {
+  const outer = obj(record);
+  const p0 = obj(outer.payload);
+  const p1 = obj(p0.payload);
+  const compact = compactRootOf(outer, p0, p1);
+  const raw = arr(compact?.d?.e);
+  return raw.map(normalizeCompactBabyFootEvent).filter((event) => event && typeof event === "object");
+}
+
 function firstArray(...values: any[]): any[] {
   for (const value of values) if (Array.isArray(value) && value.length) return value;
   return [];
@@ -79,29 +240,64 @@ export function resolveBabyFootRecord(record: any): any {
   const p0 = obj(outer.payload);
   const p1 = obj(p0.payload);
   const payload = Object.keys(p1).length ? p1 : p0;
+  const compact = compactRootOf(outer, p0, payload);
+  const compactSummary = decodeCompactBabyFootSummary(compact);
   const summary = {
+    ...compactSummary,
     ...obj(outer.summary),
     ...obj(p0.summary),
     ...obj(payload.summary),
   };
   const players = firstArray(payload.players, p0.players, outer.players, summary.players);
-  const events = firstArray(payload.events, p0.events, summary.events, outer.events);
+  const compactEvents = extractCompactBabyFootEvents({ ...outer, payload: { ...p0, ...payload, compact } });
+  const events = firstArray(payload.events, p0.events, summary.events, outer.events, compactEvents)
+    .map(normalizeCompactBabyFootEvent)
+    .filter((event) => event && typeof event === "object");
+
+  const teamAIds = arr(payload.teamAProfileIds ?? p0.teamAProfileIds ?? outer.teamAProfileIds ?? summary.teamAProfileIds).map(String);
+  const teamBIds = arr(payload.teamBProfileIds ?? p0.teamBProfileIds ?? outer.teamBProfileIds ?? summary.teamBProfileIds).map(String);
+  const winnerRaw = String(payload.winnerTeam ?? p0.winnerTeam ?? outer.winnerTeam ?? summary.winnerTeam ?? summary.winner ?? "").toUpperCase();
+  const winnerTeam = winnerRaw === "A" || winnerRaw === "B" ? winnerRaw as BabyFootTeamIdLike : null;
+
+  const rawPlayerStats = mergePlayerStatsSources(
+    outer.playerStats,
+    outer?.summary?.playerStats,
+    p0.playerStats,
+    p0?.summary?.playerStats,
+    payload.playerStats,
+    payload?.summary?.playerStats,
+  );
+  const eventPlayerStats = buildBabyFootPlayerStatsMap({
+    players,
+    events,
+    teamAIds,
+    teamBIds,
+    teamAName: payload.teamA ?? p0.teamA ?? outer.teamA ?? summary.teamA,
+    teamBName: payload.teamB ?? p0.teamB ?? outer.teamB ?? summary.teamB,
+    winnerTeam,
+    pissetteRule: payload.pissetteRule ?? p0.pissetteRule ?? outer.pissetteRule ?? summary.pissetteRule,
+  });
+  const playerStats = mergePlayerStatsSources(rawPlayerStats, eventPlayerStats);
 
   return {
     ...outer,
     ...p0,
     ...payload,
-    summary,
+    compact: Object.keys(compact).length ? compact : (payload.compact || p0.compact || outer.compact),
+    summary: { ...summary, events, playerStats },
     players,
     events,
-    playerStats: mergePlayerStatsSources(
-      outer.playerStats,
-      outer?.summary?.playerStats,
-      p0.playerStats,
-      p0?.summary?.playerStats,
-      payload.playerStats,
-      payload?.summary?.playerStats,
-    ),
+    playerStats,
+    teamAProfileIds: teamAIds,
+    teamBProfileIds: teamBIds,
+    teamA: payload.teamA ?? p0.teamA ?? outer.teamA ?? summary.teamA,
+    teamB: payload.teamB ?? p0.teamB ?? outer.teamB ?? summary.teamB,
+    scoreA: payload.scoreA ?? p0.scoreA ?? outer.scoreA ?? summary.scoreA,
+    scoreB: payload.scoreB ?? p0.scoreB ?? outer.scoreB ?? summary.scoreB,
+    mode: payload.mode ?? p0.mode ?? outer.mode ?? summary.mode ?? compact?.o?.mode ?? compact?.m,
+    durationMs: payload.durationMs ?? p0.durationMs ?? outer.durationMs ?? summary.durationMs,
+    specialStats: payload.specialStats ?? p0.specialStats ?? outer.specialStats ?? summary.specialStats,
+    stats: payload.stats ?? p0.stats ?? outer.stats ?? summary.stats,
   };
 }
 
@@ -238,6 +434,7 @@ export function buildBabyFootPlayerStatsMap(input: {
   teamAName?: string;
   teamBName?: string;
   winnerTeam?: BabyFootTeamIdLike | null;
+  pissetteRule?: string | null;
 }): Record<string, BabyFootPlayerStatRow> {
   const players = arr(input.players);
   const teamAIds = arr(input.teamAIds).map(String);
@@ -320,7 +517,9 @@ export function buildBabyFootPlayerStatsMap(input: {
       if (ev.kind === "peche_def") { scorer.peche += 1; scorer.pecheDef += 1; }
       if (ev.kind === "pissette") {
         scorer.pissette += 1;
-        if (ev.counted) scorer.pissetteValid += 1;
+        const rule = String(input.pissetteRule || "").toLowerCase();
+        const scoresPoint = rule === "point" || num(ev.scoreDeltaA, 0) !== 0 || num(ev.scoreDeltaB, 0) !== 0;
+        if (scoresPoint) scorer.pissetteValid += 1;
         else scorer.pissetteRefused += 1;
       }
       if (ev.kind === "csc") { scorer.csc += 1; scorer.ownGoals += 1; }
@@ -363,6 +562,7 @@ export function extractBabyFootPlayerStatsRows(record: any): BabyFootPlayerStatR
     teamAName: data.teamA ?? data.summary?.teamA,
     teamBName: data.teamB ?? data.summary?.teamB,
     winnerTeam,
+    pissetteRule: data.pissetteRule ?? data.summary?.pissetteRule,
   });
 
   const ids = new Set<string>([...Object.keys(rawMap), ...Object.keys(eventMap)]);

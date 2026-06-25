@@ -504,6 +504,7 @@ function buildBabyFootPlayerStatsForHistory(input: {
   winnerTeam: BabyFootTeamId | null;
   teamAName?: string;
   teamBName?: string;
+  pissetteRule?: string | null;
 }) {
   return buildBabyFootPlayerStatsMap({
     players: input.players,
@@ -513,6 +514,7 @@ function buildBabyFootPlayerStatsForHistory(input: {
     teamAName: input.teamAName,
     teamBName: input.teamBName,
     winnerTeam: input.winnerTeam,
+    pissetteRule: input.pissetteRule,
   });
 }
 
@@ -757,7 +759,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     teamAName: state.teamA,
     teamBName: state.teamB,
     winnerTeam: currentWinnerTeam,
-  }), [players, state.events, teamAIds.join("|"), teamBIds.join("|"), currentWinnerTeam, state.teamA, state.teamB]);
+    pissetteRule: state.pissetteRule,
+  }), [players, state.events, teamAIds.join("|"), teamBIds.join("|"), currentWinnerTeam, state.teamA, state.teamB, state.pissetteRule]);
 
   useEffect(() => {
     if (!state.finished) return;
