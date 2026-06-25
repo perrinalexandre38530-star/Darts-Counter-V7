@@ -6918,7 +6918,7 @@ function TeamsPlayersList(props: {
 
             {(team.players || []).map((p: any) => {
               const prof = profileById[p.id];
-              const avatarSrc = prof?.avatarDataUrl ?? null;
+              const avatarSrc = prof?.avatarDataUrl ?? p?.avatarDataUrl ?? p?.avatarUrl ?? p?.photoUrl ?? p?.avatar ?? null;
               const live = liveStatsByPlayer[p.id];
 
               const dCount: number = live?.dartsThrown ?? 0;
@@ -7121,7 +7121,7 @@ function PlayersListOnly(props: {
     >
       {players.map((p: any) => {
         const prof = profileById[p.id];
-        const avatarSrc = prof?.avatarDataUrl ?? null;
+        const avatarSrc = prof?.avatarDataUrl ?? p?.avatarDataUrl ?? p?.avatarUrl ?? p?.photoUrl ?? p?.avatar ?? null;
         const live = liveStatsByPlayer[p.id];
 
         const dCount: number = live?.dartsThrown ?? 0;
