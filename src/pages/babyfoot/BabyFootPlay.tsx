@@ -16,6 +16,7 @@ import BabyFootLiveHeader from "../../components/babyfoot/BabyFootLiveHeader";
 import BabyFootLiveStatsCard from "../../components/babyfoot/BabyFootLiveStatsCard";
 import BabyFootPhasePanel from "../../components/babyfoot/BabyFootPhasePanel";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
+import { buildBabyFootPlayerStatsMap } from "../../lib/babyfootPlayerStats";
 import {
   addBabyFootLeagueManualMatch,
   loadBabyFootLeagues,
@@ -501,103 +502,18 @@ function buildBabyFootPlayerStatsForHistory(input: {
   teamAIds: string[];
   teamBIds: string[];
   winnerTeam: BabyFootTeamId | null;
+  teamAName?: string;
+  teamBName?: string;
 }) {
-  const byId: Record<string, any> = {};
-  const ensure = (id: any, fallback?: any) => {
-    const pid = String(id || "").trim();
-    if (!pid) return null;
-    if (!byId[pid]) {
-      const p = input.players.find((row) => String(row?.id || "") === pid) || null;
-      const team: BabyFootTeamId | null = input.teamAIds.includes(pid) ? "A" : input.teamBIds.includes(pid) ? "B" : (fallback?.team || null);
-      byId[pid] = {
-        id: pid,
-        playerId: pid,
-        profileId: pid,
-        name: p?.name || fallback?.name || pid,
-        team,
-        matches: 1,
-        wins: input.winnerTeam && team === input.winnerTeam ? 1 : 0,
-        losses: input.winnerTeam && team && team !== input.winnerTeam ? 1 : 0,
-        goals: 0,
-        goalsConceded: 0,
-        goalAv: 0,
-        goalDef: 0,
-        goalGb: 0,
-        goalMil: 0,
-        gamelle: 0,
-        peche: 0,
-        pecheOff: 0,
-        pecheDef: 0,
-        demi: 0,
-        demiBonus: 0,
-        pissette: 0,
-        pissetteValid: 0,
-        pissetteRefused: 0,
-        csc: 0,
-        ownGoals: 0,
-        penalties: 0,
-        penaltyGoals: 0,
-        penaltyMisses: 0,
-      };
-    }
-    return byId[pid];
-  };
-
-  for (const p of input.players || []) ensure(p?.id, p);
-
-  const bumpLine = (row: any, line: any, amount = 1) => {
-    const src = String(line || "AV").toUpperCase();
-    if (src === "DEF") row.goalDef += amount;
-    else if (src === "GB") row.goalGb += amount;
-    else if (src === "MIL") row.goalMil += amount;
-    else row.goalAv += amount;
-  };
-
-  for (const ev of input.events || []) {
-    const anyEv: any = ev as any;
-    if (anyEv?.t === "goal") {
-      const pts = Math.max(1, Number(anyEv.points || 1) || 1);
-      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
-      if (scorer) {
-        scorer.goals += pts;
-        scorer.demiBonus += Math.max(0, Number(anyEv.demiBonusApplied || 0) || 0);
-        if (anyEv.kind === "gamelle") scorer.gamelle += 1;
-        if (anyEv.kind === "peche") { scorer.peche += 1; scorer.pecheOff += 1; }
-        if (anyEv.kind === "pissette") { scorer.pissette += 1; scorer.pissetteValid += 1; }
-        bumpLine(scorer, anyEv.sourceLine, 1);
-      }
-      const own = ensure(anyEv.ownGoalById, { team: anyEv.ownGoalTeam });
-      if (own) { own.ownGoals += 1; own.csc += 1; }
-    } else if (anyEv?.t === "demi") {
-      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
-      if (scorer) scorer.demi += 1;
-    } else if (anyEv?.t === "special") {
-      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
-      if (!scorer) continue;
-      if (anyEv.kind === "gamelle") scorer.gamelle += 1;
-      if (anyEv.kind === "peche_off") { scorer.peche += 1; scorer.pecheOff += 1; }
-      if (anyEv.kind === "peche_def") { scorer.peche += 1; scorer.pecheDef += 1; }
-      if (anyEv.kind === "pissette") { scorer.pissette += 1; if (anyEv.counted) scorer.pissetteValid += 1; else scorer.pissetteRefused += 1; }
-      if (anyEv.kind === "csc") { scorer.csc += 1; scorer.ownGoals += 1; }
-      scorer.demiBonus += Math.max(0, Number(anyEv.demiBonusApplied || 0) || 0);
-    } else if (anyEv?.t === "pen_shot") {
-      const scorer = ensure(anyEv.scorerId, { team: anyEv.team });
-      if (scorer) {
-        scorer.penalties += 1;
-        if (anyEv.scored) scorer.penaltyGoals += 1;
-        else scorer.penaltyMisses += 1;
-      }
-    }
-  }
-
-  for (const row of Object.values(byId)) {
-    const oppIds = row.team === "A" ? input.teamBIds : row.team === "B" ? input.teamAIds : [];
-    const oppGoals = Object.values(byId).filter((r: any) => oppIds.includes(String((r as any).id))).reduce((sum: number, r: any) => sum + (Number(r.goals || 0) || 0), 0);
-    row.goalsConceded = oppGoals;
-    row.goalDiff = (Number(row.goals || 0) || 0) - oppGoals;
-  }
-
-  return byId;
+  return buildBabyFootPlayerStatsMap({
+    players: input.players,
+    events: input.events,
+    teamAIds: input.teamAIds,
+    teamBIds: input.teamBIds,
+    teamAName: input.teamAName,
+    teamBName: input.teamBName,
+    winnerTeam: input.winnerTeam,
+  });
 }
 
 export default function BabyFootPlay({ go, onFinish, params }: Props) {
@@ -611,6 +527,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const [cscAwardedTeam, setCscAwardedTeam] = useState<BabyFootTeamId | null>(null);
   const [cscGlobalPicker, setCscGlobalPicker] = useState(false);
   const [activeTab, setActiveTab] = useState<PlayTab>("score");
+  const [pendingPenalty, setPendingPenalty] = useState<{ team: BabyFootTeamId; scored: boolean } | null>(null);
   const leagueResultSavedRef = useRef(false);
   const historySavedMatchRef = useRef<string | null>(null);
   const [leagueSaveChoice, setLeagueSaveChoice] = useState("");
@@ -837,8 +754,10 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     events: state.events || [],
     teamAIds,
     teamBIds,
+    teamAName: state.teamA,
+    teamBName: state.teamB,
     winnerTeam: currentWinnerTeam,
-  }), [players, state.events, teamAIds.join("|"), teamBIds.join("|"), currentWinnerTeam]);
+  }), [players, state.events, teamAIds.join("|"), teamBIds.join("|"), currentWinnerTeam, state.teamA, state.teamB]);
 
   useEffect(() => {
     if (!state.finished) return;
@@ -1090,9 +1009,28 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       openCscPicker(team);
       return;
     }
-    if (action === "goal") setState(addGoal(team, playerId ?? null, source));
-    else setState(addSpecialScoreEvent(team, action as any, playerId ?? null, action === "demi" ? "MIL" : source));
+    const ids = team === "A" ? teamAIds : teamBIds;
+    const resolvedPlayerId = playerId ?? (ids.length === 1 ? ids[0] : null);
+    // En équipe, une action ne doit jamais être enregistrée silencieusement sans joueur.
+    // Le bloc de saisie impose donc le choix du profil ; le collectif ne reste qu'un fallback
+    // pour les anciennes compositions sans profils.
+    if (ids.length > 1 && !resolvedPlayerId) return;
+    if (action === "goal") setState(addGoal(team, resolvedPlayerId, source));
+    else setState(addSpecialScoreEvent(team, action as any, resolvedPlayerId, action === "demi" ? "MIL" : source));
     closeQuickSheet();
+  };
+
+  const recordPenaltyShot = (team: BabyFootTeamId, scored: boolean) => {
+    const ids = team === "A" ? teamAIds : teamBIds;
+    if (ids.length === 1) {
+      setState(addPenaltyShot(team, scored, ids[0]));
+      return;
+    }
+    if (ids.length > 1) {
+      setPendingPenalty({ team, scored });
+      return;
+    }
+    setState(addPenaltyShot(team, scored, null));
   };
 
   const teamAProfile = teamAIds[0] ? getProfile(teamAIds[0]) : null;
@@ -1415,7 +1353,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                 state={state}
                 lastGoalLabel={lastGoalLabel}
                 liveContext={liveContext}
-                onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
+                onPenaltyShot={recordPenaltyShot}
               />
 
               <div style={shellCard()}>
@@ -1432,7 +1370,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                   <button type="button" onClick={() => setState(startMatch())} style={actionStyle("primary")}>
                     Nouvelle partie
                   </button>
-                  <button type="button" onClick={() => go("babyfoot_stats_center")} style={actionStyle("neutral")}>
+                  <button type="button" onClick={() => go("babyfoot_stats_center", { mode: state.mode })} style={actionStyle("neutral")}>
                     Stats
                   </button>
                   <div style={{ gridColumn: "1 / -1" }}>
@@ -1496,6 +1434,34 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             <button type="button" onClick={closeQuickSheet} style={{ ...actionStyle("neutral"), marginTop: 12 }}>
               Fermer
             </button>
+          </div>
+        </div>
+      ) : null}
+      {pendingPenalty ? (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.68)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 16, zIndex: 86 }}
+          onClick={() => setPendingPenalty(null)}
+        >
+          <div style={{ ...shellCard(), width: "100%", maxWidth: 430 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 20, fontWeight: 1100 }}>Penalty {pendingPenalty.scored ? "marqué" : "raté"}</div>
+            <div style={{ marginTop: 7, color: "rgba(255,255,255,.68)", fontSize: 13 }}>Choisis le tireur pour enregistrer sa statistique individuelle.</div>
+            <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+              {(pendingPenalty.team === "A" ? teamAIds : teamBIds).map((playerId) => {
+                const profile = getProfile(playerId);
+                return (
+                  <button
+                    key={playerId}
+                    type="button"
+                    onClick={() => { setState(addPenaltyShot(pendingPenalty.team, pendingPenalty.scored, playerId)); setPendingPenalty(null); }}
+                    style={{ borderRadius: 18, padding: 12, border: "1px solid rgba(255,255,255,.12)", background: "linear-gradient(180deg,rgba(26,31,55,.96),rgba(10,13,28,.98))", color: "#fff", display: "grid", justifyItems: "center", gap: 8, cursor: "pointer" }}
+                  >
+                    <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={58} />
+                    <span style={{ fontWeight: 1000, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile?.name || playerId}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" onClick={() => setPendingPenalty(null)} style={{ ...actionStyle("neutral"), marginTop: 12 }}>Annuler</button>
           </div>
         </div>
       ) : null}

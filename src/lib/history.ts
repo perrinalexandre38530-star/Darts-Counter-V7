@@ -448,8 +448,10 @@ function sanitizeRecord(record: any) {
     try {
       p = { ...p };
 
-      delete p.stats;
-      delete p.liveStatsByPlayer;
+      const sportKey = String(r?.kind || r?.sport || p?.kind || p?.sport || "").toLowerCase();
+      const keepDetailedStats = sportKey.includes("babyfoot") || sportKey.includes("baby-foot");
+      if (!keepDetailedStats) delete p.stats;
+      if (!keepDetailedStats) delete p.liveStatsByPlayer;
       delete p.history;
       delete p.tempState;
 

@@ -15,6 +15,8 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
 import { History } from "../../lib/history";
+import { buildMatchSharePacket } from "../../lib/matchShare";
+import { resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 
 import { computeDecisiveGoals, computeMomentum, computePenaltyImpact, computeShotConversion } from "../../lib/babyfootQualityStats";
 import { computeBabyFootRichStats, formatBabyFootAvg } from "../../lib/babyfootRichStats";
@@ -44,10 +46,34 @@ function clamp01(x: number) {
 }
 
 function getPayload(h: any) {
-  // history record may be { payload: state } or { payload: { payload: state } }
-  const p0 = h?.payload ?? {};
-  const p1 = p0?.payload ?? p0;
-  return p1 ?? {};
+  return resolveBabyFootRecord(h);
+}
+
+function safeJson(value: any) {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, current) => {
+    if (typeof current === "bigint") return String(current);
+    if (current && typeof current === "object") {
+      if (seen.has(current)) return undefined;
+      seen.add(current);
+    }
+    return current;
+  }, 2);
+}
+
+function downloadJsonFile(json: string, fileName: string) {
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  window.setTimeout(() => {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, 1500);
 }
 
 function historyRowId(row: any) {
@@ -1072,25 +1098,32 @@ function HistoryCardsView({
   const focusRef = React.useRef<HTMLDivElement | null>(null);
 
   const shareMatch = React.useCallback(async (h: any) => {
+    const id = String(h?.id || h?.matchId || Date.now()).trim();
     try {
-      const json = JSON.stringify(h, null, 2);
-      const fileName = `babyfoot-match-${String(h?.id || h?.matchId || Date.now())}.json`;
-      const blob = new Blob([json], { type: "application/json" });
-      const file = new File([blob], fileName, { type: "application/json" });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Match Baby-Foot" });
-        return;
+      const full = id && typeof (History as any).get === "function"
+        ? ((await (History as any).get(id).catch(() => null)) || h)
+        : h;
+      const packet = buildMatchSharePacket(resolveBabyFootRecord(full));
+      const json = safeJson(packet);
+      const fileName = `babyfoot-match-${id || Date.now()}.json`;
+      const nav: any = navigator as any;
+
+      if (typeof File !== "undefined" && typeof nav?.share === "function") {
+        const file = new File([json], fileName, { type: "application/json" });
+        if (typeof nav?.canShare !== "function" || nav.canShare({ files: [file] })) {
+          try {
+            await nav.share({ files: [file], title: "Match Baby-Foot", text: packet.summary?.scoreLine || "" });
+            return;
+          } catch (error: any) {
+            if (error?.name === "AbortError") return;
+          }
+        }
       }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-    } catch {
-      window.alert("Partage impossible pour cette partie.");
+
+      downloadJsonFile(json, fileName);
+    } catch (error) {
+      console.error("[BabyFootStatsHistory] export match failed", error);
+      window.alert("Export JSON impossible pour cette partie.");
     }
   }, []);
 

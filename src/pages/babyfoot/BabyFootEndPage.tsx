@@ -6,6 +6,7 @@ import InfoDot from "../../components/InfoDot";
 import tickerBabyFootLigue from "../../assets/tickers/ticker_babyfoot_ligue.png";
 import { History } from "../../lib/history";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
+import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 
 type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any };
 type AnyMatch = Record<string, any>;
@@ -136,110 +137,18 @@ function teamForPlayer(players: any[], payload: any, summary: any, pid: string):
 }
 
 function buildIndividualRows(match: any, payload: any, summary: any, events: any[], winnerTeam: string) {
-  const players = allPlayers(match, payload);
-  const rawStats = objectOrEmpty(payload?.playerStats || summary?.playerStats || match?.playerStats);
-  const byId = new Map<string, any>();
-
-  const ensure = (id: any, teamHint?: TeamId | null, nameHint?: string) => {
-    const pid = String(id || "").trim();
-    if (!pid) return null;
-    if (!byId.has(pid)) {
-      const p = players.find((row) => playerId(row) === pid) || {};
-      const team = teamForPlayer(players, payload, summary, pid) || teamHint || "A";
-      byId.set(pid, {
-        id: pid,
-        name: nameHint || playerName(p),
-        avatar: avatarOf(p),
-        team,
-        matches: 1,
-        wins: winnerTeam === team ? 1 : 0,
-        losses: winnerTeam && winnerTeam !== "D" && winnerTeam !== team ? 1 : 0,
-        goals: 0,
-        goalsConceded: 0,
-        goalAv: 0,
-        goalDef: 0,
-        goalGb: 0,
-        goalMil: 0,
-        demi: 0,
-        demiBonus: 0,
-        gamelle: 0,
-        peche: 0,
-        pecheOff: 0,
-        pecheDef: 0,
-        pissette: 0,
-        pissetteValid: 0,
-        pissetteRefused: 0,
-        csc: 0,
-        penalties: 0,
-        penaltyGoals: 0,
-        penaltyMisses: 0,
-      });
-    }
-    return byId.get(pid);
-  };
-
-  players.forEach((p: any) => ensure(playerId(p), teamForPlayer(players, payload, summary, playerId(p)), playerName(p)));
-
-  const rawEntries = Object.entries(rawStats);
-  if (rawEntries.length) {
-    rawEntries.forEach(([id, row]: [string, any]) => {
-      const target = ensure(id, row?.team, row?.name);
-      if (!target) return;
-      Object.assign(target, {
-        ...target,
-        ...objectOrEmpty(row),
-        id,
-        name: row?.name || target.name,
-        avatar: target.avatar,
-        team: row?.team || target.team,
-      });
-    });
-  } else {
-    const ensureCollective = (team: TeamId) => ensure(`${team}-collectif`, team, team === "A" ? `${summary?.teamA || payload?.teamA || "Équipe A"} · collectif` : `${summary?.teamB || payload?.teamB || "Équipe B"} · collectif`);
-    for (const ev of events) {
-      const team = ev?.team === "B" ? "B" : "A";
-      if (ev?.t === "goal" && ev?.kind === "csc") {
-        const guiltyTeam = ev?.ownGoalTeam || (team === "A" ? "B" : "A");
-        const own = ev?.ownGoalById ? ensure(ev.ownGoalById, guiltyTeam) : ensureCollective(guiltyTeam);
-        if (own) own.csc += 1;
-        const awarded = ev?.scorerId ? ensure(ev.scorerId, team) : ensureCollective(team);
-        if (awarded) awarded.goals += Math.max(1, n(ev?.points, 1));
-        continue;
-      }
-      const row = ev?.scorerId ? ensure(ev.scorerId, team) : ensureCollective(team);
-      if (!row) continue;
-      if (ev?.t === "goal") {
-        row.goals += Math.max(1, n(ev?.points, 1));
-        row.demiBonus += Math.max(0, n(ev?.demiBonusApplied));
-        const line = String(ev?.sourceLine || "AV").toUpperCase();
-        if (line === "DEF") row.goalDef += 1;
-        else if (line === "GB") row.goalGb += 1;
-        else if (line === "MIL") row.goalMil += 1;
-        else row.goalAv += 1;
-        if (ev?.kind === "gamelle") row.gamelle += 1;
-        if (ev?.kind === "peche") { row.peche += 1; row.pecheOff += 1; }
-        if (ev?.kind === "pissette") { row.pissette += 1; row.pissetteValid += 1; }
-      } else if (ev?.t === "demi") {
-        row.demi += 1;
-      } else if (ev?.t === "special") {
-        if (ev?.kind === "gamelle") row.gamelle += 1;
-        if (ev?.kind === "peche_off") { row.peche += 1; row.pecheOff += 1; }
-        if (ev?.kind === "peche_def") { row.peche += 1; row.pecheDef += 1; }
-        if (ev?.kind === "pissette") {
-          row.pissette += 1;
-          if (ev?.counted) row.pissetteValid += 1;
-          else row.pissetteRefused += 1;
-        }
-        if (ev?.kind === "csc") row.csc += 1;
-      } else if (ev?.t === "pen_shot") {
-        row.penalties += 1;
-        if (ev?.scored) row.penaltyGoals += 1;
-        else row.penaltyMisses += 1;
-      }
-    }
-  }
-
-  return Array.from(byId.values()).sort((a, b) => a.team.localeCompare(b.team) || String(a.name).localeCompare(String(b.name), "fr"));
+  const winner = winnerTeam === "A" || winnerTeam === "B" ? winnerTeam : null;
+  const record = resolveBabyFootRecord({
+    ...objectOrEmpty(match),
+    summary: { ...objectOrEmpty(match?.summary), ...objectOrEmpty(summary), winnerTeam: winner ?? summary?.winnerTeam },
+    payload: {
+      ...objectOrEmpty(match?.payload),
+      ...objectOrEmpty(payload),
+      summary: { ...objectOrEmpty(match?.payload?.summary), ...objectOrEmpty(summary), winnerTeam: winner ?? summary?.winnerTeam },
+      events: Array.isArray(events) ? events : [],
+    },
+  });
+  return extractBabyFootPlayerStatsRows(record);
 }
 
 function playerNameFromPayload(payload: any, match: any, id: any) {
@@ -476,7 +385,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
         <div style={sectionTitle(theme)}>Navigation</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <button style={primaryBtn(theme)} onClick={() => go("babyfoot_stats_history" as any, { focusMatchId: matchId })}>HISTORIQUE</button>
-          <button style={ghostBtn(theme)} onClick={() => go("babyfoot_stats_center" as any)}>STATS BABY</button>
+          <button style={ghostBtn(theme)} onClick={() => go("babyfoot_stats_center" as any, { mode: data.mode || data.summary?.mode || "all" })}>STATS BABY</button>
           {backToLeague ? <button style={{ ...ghostBtn(theme), gridColumn: "1 / -1" }} onClick={() => go("babyfoot_league" as any, leagueParams)}>RETOUR LIGUE</button> : null}
         </div>
       </section>
@@ -606,14 +515,14 @@ function IndividualStatsView({ theme, team, setTeam, teamA, teamB, rows }: any) 
       ) : (
         <div style={{ ...small(theme), padding: 12 }}>Aucune statistique individuelle n’a été attribuée aux joueurs de cette équipe.</div>
       )}
-      <div style={{ marginTop: 10, ...small(theme) }}>Les actions saisies sans choisir de joueur apparaissent sous une ligne « collectif » afin de ne perdre aucune statistique.</div>
+      <div style={{ marginTop: 10, ...small(theme) }}>Les nouvelles actions sont enregistrées avec le joueur choisi. Une ligne « non attribué » n’apparaît que pour une ancienne partie ou une composition sans profil exploitable.</div>
     </div>
   );
 }
 
 function PlayerStatsCard({ theme, row, accent }: any) {
   const stats = [
-    ["Points", n(row.goals)],
+    ["Points", n(row.points ?? row.goals)],
     ["AV", n(row.goalAv ?? row.av)],
     ["DEF", n(row.goalDef ?? row.def)],
     ["GB", n(row.goalGb ?? row.gb)],
@@ -634,7 +543,7 @@ function PlayerStatsCard({ theme, row, accent }: any) {
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ color: accent, fontWeight: 1100, fontSize: 15, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{row.name}</div>
-          <div style={{ marginTop: 3, fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>{n(row.wins) ? "VICTOIRE" : n(row.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
+          <div style={{ marginTop: 3, fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>{row.collective ? "ANCIENNE PARTIE · NON ATTRIBUÉ" : n(row.wins) ? "VICTOIRE" : n(row.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
         </div>
       </div>
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>

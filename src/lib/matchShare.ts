@@ -38,6 +38,19 @@ export function isMatchSharePacketV1(x: any): x is MatchSharePacketV1 {
   );
 }
 
+
+function safeJsonStringify(value: any) {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_key, current) => {
+    if (typeof current === "bigint") return String(current);
+    if (current && typeof current === "object") {
+      if (seen.has(current)) return undefined;
+      seen.add(current);
+    }
+    return current;
+  }, 2);
+}
+
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -95,15 +108,14 @@ function downloadBlob(content: string, filename: string, mime: string) {
 }
 
 export async function shareMatchPacket(packet: MatchSharePacketV1) {
-  const json = JSON.stringify(packet, null, 2);
+  const json = safeJsonStringify(packet);
   const fileName = `match_${packet.kind}_${packet.matchId}.json`;
-  const file = new File([json], fileName, { type: "application/json" });
-
   const nav: any = navigator as any;
-  const canShareFiles = !!nav?.canShare?.({ files: [file] });
+  const file = typeof File !== "undefined" ? new File([json], fileName, { type: "application/json" }) : null;
+  const canShareFiles = !!file && !!nav?.share && (typeof nav?.canShare !== "function" || !!nav.canShare({ files: [file] }));
 
   try {
-    if (nav?.share && canShareFiles) {
+    if (nav?.share && canShareFiles && file) {
       await nav.share({
         title: packet.summary.title,
         text: (packet.summary.scoreLine || "").trim(),
@@ -123,8 +135,14 @@ export async function shareMatchPacket(packet: MatchSharePacketV1) {
     }
     downloadBlob(json, fileName, "application/json");
     return { ok: true, fallback: "clipboard+download" };
-  } catch (e) {
-    return { ok: false, error: e };
+  } catch (e: any) {
+    if (e?.name === "AbortError") return { ok: true, cancelled: true };
+    try {
+      downloadBlob(json, fileName, "application/json");
+      return { ok: true, fallback: "download-after-share-error" };
+    } catch {
+      return { ok: false, error: e };
+    }
   }
 }
 
