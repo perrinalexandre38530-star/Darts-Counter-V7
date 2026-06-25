@@ -13,12 +13,12 @@
 
 import React from "react";
 import BackDot from "../../components/BackDot";
-import { getTeamAvatarUrl } from "../../assets/teamAvatars";
-import botTeamEliteLogo from "../../assets/ui/competition_bot_team_elite.webp";
-import botTeamProLogo from "../../assets/ui/competition_bot_team_pro.webp";
-import botTeamChallengerLogo from "../../assets/ui/competition_bot_team_challenger.webp";
-import botTeamMixLogo from "../../assets/ui/competition_bot_team_mix.webp";
-import botTeamRisingLogo from "../../assets/ui/competition_bot_team_rising.webp";
+import {
+  TEAM_LOGO_CATEGORIES,
+  TEAM_LOGO_LIBRARY,
+  getRandomTeamLogo,
+  type TeamLogoCategory,
+} from "../../assets/teamLogoLibrary";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useStore } from "../../contexts/StoreContext";
@@ -53,18 +53,6 @@ const TEAM_SPORT_OPTIONS = [
   { id: "pingpong", label: "Ping-pong" },
   { id: "molkky", label: "Mölkky" },
   { id: "dicegame", label: "Dés" },
-];
-
-const TEAM_LOGO_TEMPLATES: Array<{ id: string; label: string; src: string }> = [
-  { id: "gold", label: "Gold", src: getTeamAvatarUrl("gold") },
-  { id: "pink", label: "Pink", src: getTeamAvatarUrl("pink") },
-  { id: "blue", label: "Blue", src: getTeamAvatarUrl("blue") },
-  { id: "green", label: "Green", src: getTeamAvatarUrl("green") },
-  { id: "bot-elite", label: "BOT Élite", src: botTeamEliteLogo },
-  { id: "bot-pro", label: "BOT Pro", src: botTeamProLogo },
-  { id: "bot-challenger", label: "BOT Challenger", src: botTeamChallengerLogo },
-  { id: "bot-mix", label: "BOT Mixte", src: botTeamMixLogo },
-  { id: "bot-rising", label: "BOT Rising", src: botTeamRisingLogo },
 ];
 
 function createDraftTeam(activeSport: string): TeamEntity {
@@ -112,44 +100,155 @@ function normalizeDisplayLogo(team: any): string | null {
   return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || null;
 }
 
-function LogoCarouselModal({ theme, onClose, onPick }: { theme: any; onClose: () => void; onPick: (src: string) => void }) {
+function dataUrlToFile(dataUrl: string, filename = "team-logo.svg"): File {
+  const [header, payload] = String(dataUrl || "").split(",");
+  const mime = (header.match(/^data:([^;]+)/)?.[1] || "image/svg+xml").trim();
+  const decoded = decodeURIComponent(payload || "");
+  return new File([decoded], filename, { type: mime });
+}
+
+function LogoCarouselModal({
+  theme,
+  onClose,
+  onPick,
+  onImport,
+}: {
+  theme: any;
+  onClose: () => void;
+  onPick: (src: string) => void;
+  onImport: () => void;
+}) {
+  const [category, setCategory] = React.useState<TeamLogoCategory | "all">("all");
+  const [query, setQuery] = React.useState("");
+  const [page, setPage] = React.useState(0);
+  const PAGE_SIZE = 12;
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return TEAM_LOGO_LIBRARY.filter((logo) => {
+      const categoryOk = category === "all" || logo.category === category || (category === "popular" && logo.category === "popular");
+      if (!categoryOk) return false;
+      if (!q) return true;
+      const blob = `${logo.label} ${logo.category} ${(logo.tags || []).join(" ")}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [category, query]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 0), totalPages - 1);
+  const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  React.useEffect(() => setPage(0), [category, query]);
+  React.useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function pickRandom() {
+    const logo = getRandomTeamLogo(category);
+    if (logo?.src) onPick(logo.src);
+  }
+
   return (
     <div style={modalOverlay} onMouseDown={onClose}>
       <div style={modalCard(theme)} onMouseDown={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>LOGOS D’ÉQUIPE</div>
-            <div style={{ fontSize: 12, opacity: 0.68, marginTop: 3 }}>Choisis un logo prêt à intégrer.</div>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.8, color: theme?.primary || "#28eaff" }}>LOGOS D’ÉQUIPE</div>
+            <div style={{ fontSize: 12, opacity: 0.68, marginTop: 3 }}>Choisis un logo intégré ou importe ton image.</div>
           </div>
           <button type="button" style={btnGhost(theme)} onClick={onClose}>Fermer</button>
         </div>
-        <div style={{ height: 14 }} />
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 2px 10px", scrollSnapType: "x mandatory" }}>
-          {TEAM_LOGO_TEMPLATES.map((item) => (
+
+        <div style={{ height: 12 }} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={input(theme)}
+            placeholder="Rechercher : skull, foot, cible, dragon..."
+          />
+          <button type="button" style={btnGhost(theme)} onClick={pickRandom}>🎲</button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 2px 8px" }}>
+          {TEAM_LOGO_CATEGORIES.map((cat) => {
+            const active = cat.id === category;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategory(cat.id as any)}
+                style={{
+                  flex: "0 0 auto",
+                  borderRadius: 999,
+                  border: `1px solid ${active ? theme?.primary || "#28eaff" : theme?.borderSoft || "rgba(255,255,255,.14)"}`,
+                  background: active ? "rgba(40,234,255,.18)" : "rgba(255,255,255,.055)",
+                  color: theme?.text || "#fff",
+                  padding: "8px 11px",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          style={{ ...btnPrimary(theme), width: "100%", justifyContent: "center", marginBottom: 10 } as any}
+          onClick={onImport}
+        >
+          📁 Importer une image depuis la galerie
+        </button>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+            maxHeight: "48vh",
+            overflowY: "auto",
+            paddingRight: 2,
+          }}
+        >
+          {pageItems.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => onPick(item.src)}
               style={{
-                flex: "0 0 104px",
-                scrollSnapAlign: "start",
+                aspectRatio: "1 / 1.24",
                 borderRadius: 18,
                 border: `1px solid ${theme?.borderSoft || "rgba(255,255,255,.14)"}`,
                 background: "rgba(255,255,255,.055)",
                 color: theme?.text || "#fff",
-                padding: 10,
+                padding: 8,
                 cursor: "pointer",
                 display: "grid",
-                gap: 8,
+                gap: 6,
                 justifyItems: "center",
+                alignContent: "center",
+                minWidth: 0,
               }}
             >
-              <span style={{ width: 74, height: 74, borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${theme?.primary || "#28eaff"}55`, background: "rgba(0,0,0,.22)" }}>
-                <img src={item.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <span style={{ width: "min(74px, 100%)", aspectRatio: "1 / 1", borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${theme?.primary || "#28eaff"}55`, background: "rgba(0,0,0,.22)" }}>
+                <img src={item.src} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
               </span>
-              <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.86, textAlign: "center" }}>{item.label}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 900, opacity: 0.86, textAlign: "center", lineHeight: 1.1 }}>{item.label}</span>
             </button>
           ))}
+        </div>
+
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <button type="button" style={btnGhost(theme)} disabled={safePage <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>←</button>
+          <div style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
+            Page {safePage + 1}/{totalPages} • {filtered.length} logos
+          </div>
+          <button type="button" style={btnGhost(theme)} disabled={safePage >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>→</button>
         </div>
       </div>
     </div>
@@ -372,7 +471,7 @@ const availableProfiles = React.useMemo(() => {
   function pickLibraryLogo(src: string) {
     const logo = String(src || "").trim();
     if (!logo) return;
-    save({ ...team, logoDataUrl: logo, logoUrl: logo } as any);
+    save({ ...team, logoDataUrl: logo, logoUrl: undefined } as any);
     setLogoLibraryOpen(false);
   }
 
@@ -609,7 +708,7 @@ const availableProfiles = React.useMemo(() => {
                       style={{
                         width: "100%",
                         height: "100%",
-                        objectFit: "cover",
+                        objectFit: "contain",
                         display: "block",
                       }}
                     />
@@ -1175,7 +1274,15 @@ const availableProfiles = React.useMemo(() => {
       </div>
 
       {logoLibraryOpen ? (
-        <LogoCarouselModal theme={theme} onClose={() => setLogoLibraryOpen(false)} onPick={pickLibraryLogo} />
+        <LogoCarouselModal
+          theme={theme}
+          onClose={() => setLogoLibraryOpen(false)}
+          onPick={pickLibraryLogo}
+          onImport={() => {
+            setLogoLibraryOpen(false);
+            setTimeout(() => logoInputRef.current?.click(), 0);
+          }}
+        />
       ) : null}
 
       {/* Modal création profil */}

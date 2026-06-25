@@ -11,6 +11,7 @@
 
 import React from "react";
 import BackDot from "../../components/BackDot";
+import PlusDot from "../../components/PlusDot";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useStore } from "../../contexts/StoreContext";
@@ -104,22 +105,38 @@ export default function PetanqueTeams({ go, params }: Props) {
 
   return (
     <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "52px 1fr 52px", alignItems: "center", gap: 8, marginBottom: 14 }}>
         <BackDot
-          size={44}
+          size={46}
           title={t("common.back", "Retour")}
           color={theme?.primary || "#28eaff"}
           onClick={() => go(returnTo as any, { sport: activeSport })}
         />
 
-        <button onClick={handleCreate} style={btnCreate(theme)}>
-          + {t("teams.create", "Créer")}
-        </button>
-      </div>
+        <h1
+          style={{
+            margin: 0,
+            textAlign: "center",
+            color: theme.primary,
+            textTransform: "uppercase",
+            letterSpacing: 1.8,
+            fontSize: "clamp(24px, 8vw, 42px)",
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {activeSport === "darts" ? "DARTS TEAMS" : `${sportLabel} TEAMS`}
+        </h1>
 
-      <h1 style={{ margin: 0, textAlign: "center", color: theme.primary, textTransform: "uppercase", letterSpacing: 2 }}>
-        {t("teams.title", "Teams")} {sportLabel}
-      </h1>
+        <PlusDot
+          size={46}
+          title={t("teams.create", "Créer une équipe")}
+          color={theme?.primary || "#28eaff"}
+          onClick={handleCreate}
+        />
+      </div>
 
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         {teams.length === 0 ? (
@@ -150,7 +167,7 @@ export default function PetanqueTeams({ go, params }: Props) {
                   <div style={logoRing(theme)} />
                   <div style={logoBox(theme)}>
                     {tm.logoDataUrl ? (
-                      <img src={tm.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      <img src={tm.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                     ) : (
                       <span style={{ fontWeight: 1000, color: theme.primary, letterSpacing: 1 }}>
                         {(tm.name || "TEAM").slice(0, 2).toUpperCase()}
@@ -186,7 +203,7 @@ export default function PetanqueTeams({ go, params }: Props) {
                           return (
                             <div key={String(p?.id)} title={p?.name || ""} style={avatarDot(theme, idx)}>
                               {src ? (
-                                <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                               ) : (
                                 <span style={{ fontSize: 11, fontWeight: 900 }}>{letter}</span>
                               )}
