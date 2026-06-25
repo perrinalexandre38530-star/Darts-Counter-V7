@@ -2935,6 +2935,7 @@ React.useEffect(() => {
         players: (players || []).map((p: any) => ({
           id: p.id,
           name: p.name,
+          avatarDataUrl: p.avatarDataUrl ?? null,
           isBot: !!p.isBot,
           botLevel: p.botLevel ?? "",
         })),
@@ -2943,6 +2944,19 @@ React.useEffect(() => {
           gameId: historyGameId,
           variantId: progressiveMode ? "progressive" : "classic",
           progressiveTarget: progressiveMode ? progressiveTarget : undefined,
+          players: (players || []).map((p: any) => ({
+            id: p.id,
+            playerId: p.id,
+            profileId: p.id,
+            name: p.name,
+            avatarDataUrl: p.avatarDataUrl ?? null,
+            number: Number(p.number || 0),
+            lives: Number(p.lives ?? 0),
+            isKiller: !!p.isKiller,
+            killerPhase: p.killerPhase,
+            eliminated: !!p.eliminated,
+            kills: Number(p.kills || 0),
+          })),
         },
         payload: {
           mode: "killer",
@@ -2957,7 +2971,7 @@ React.useEffect(() => {
             resumeConfig,
             players: (players || []).map((p: any) => ({
               ...p,
-              avatarDataUrl: undefined,
+              avatarDataUrl: p.avatarDataUrl ?? null,
             })),
             turnIndex,
             dartsLeft,

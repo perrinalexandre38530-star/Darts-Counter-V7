@@ -35,6 +35,7 @@ import logoPetanque from "../assets/games/logo-petanque.png";
 import logoBabyfoot from "../assets/games/logo-babyfoot.png";
 import victoryCup from "../assets/victory.webp";
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 
 /* ---------- Icônes ---------- */
@@ -546,6 +547,9 @@ function statusOf(e: SavedEntry): "finished" | "in_progress" {
 
 function modeLabel(e: SavedEntry) {
   const m = baseMode(e);
+  if (m === "killer_progressive" || m === "killer-progressive" || m === "killerprogressive") {
+    return "KILLER PROGRESSIF";
+  }
   if (m === "x01") {
     const sc = getStartScore(e);
     const raw = [
@@ -730,6 +734,8 @@ const modeColor: Record<string, string> = {
 
 function getModeColor(e: SavedEntry) {
   const m = baseMode(e);
+  // Toutes les déclinaisons Killer doivent garder la même identité visuelle orange.
+  if (m.includes("killer")) return modeColor.killer;
   return modeColor[m] || modeColor.default;
 }
 
@@ -1024,8 +1030,68 @@ function historyRankingRows(e: SavedEntry): any[] {
   return Array.isArray(rankings) ? rankings : [];
 }
 
+function isProgressiveKillerEntry(e: SavedEntry): boolean {
+  const anyE: any = e as any;
+  const raw = [
+    anyE?.kind,
+    anyE?.gameId,
+    anyE?.variantId,
+    anyE?.summary?.gameId,
+    anyE?.summary?.variantId,
+    anyE?.payload?.gameId,
+    anyE?.payload?.variantId,
+    anyE?.payload?.config?.gameId,
+    anyE?.payload?.config?.variantId,
+    anyE?.payload?.resumeConfig?.gameId,
+    anyE?.payload?.resumeConfig?.variantId,
+  ]
+    .filter(Boolean)
+    .map((x: any) => String(x).trim().toLowerCase())
+    .join("|");
+  return raw.includes("killer_progressive") || raw.includes("killer-progressive") || raw.includes("progressive");
+}
+
+function killerLivePlayerRows(e: SavedEntry): any[] {
+  const anyE: any = e as any;
+  const pools = [
+    anyE?.players,
+    anyE?.summary?.players,
+    anyE?.payload?.config?.players,
+    anyE?.payload?.players,
+    anyE?.resume?.state?.players,
+    anyE?.decoded?.state?.players,
+    anyE?.payload?.state?.players,
+  ];
+  const order: string[] = [];
+  const byKey = new Map<string, any>();
+  for (const pool of pools) {
+    if (!Array.isArray(pool)) continue;
+    for (const row of pool) {
+      const key = historyRowKey(row) || historyRowName(row).toLowerCase();
+      if (!key) continue;
+      if (!byKey.has(key)) order.push(key);
+      const prev = byKey.get(key) || {};
+      const avatar =
+        row?.avatarDataUrl || row?.avatarUrl || row?.avatar_url || row?.avatar ||
+        prev?.avatarDataUrl || prev?.avatarUrl || prev?.avatar_url || prev?.avatar || null;
+      byKey.set(key, {
+        ...prev,
+        ...(row || {}),
+        id: historyRowKey(row) || historyRowKey(prev),
+        name: historyRowName(row) || historyRowName(prev),
+        ...(avatar ? { avatarDataUrl: avatar } : {}),
+      });
+    }
+  }
+  return order.map((key) => byKey.get(key)).filter(Boolean);
+}
+
 
 function getHistoryAvatarPlayersInFinalOrder(e: SavedEntry): any[] {
+  if (isKillerEntry(e) && statusOf(e) === "in_progress") {
+    const liveRows = killerLivePlayerRows(e);
+    if (liveRows.length) return liveRows;
+  }
   if (historyIsX01Like(e)) {
     const rows = x01FinalSortedRows(e);
     return rows.length ? rows : getAllEntryPlayers(e);
@@ -1305,6 +1371,34 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
       </div>
     );
   }
+  if (isKillerEntry(e) && statusOf(e) === "in_progress") {
+    const rows = killerLivePlayerRows(e);
+    const progressive = isProgressiveKillerEntry(e);
+    if (rows.length) {
+      return (
+        <span>
+          {rows.map((row: any, idx: number) => {
+            const name = historyScoreName(e, row);
+            const lives = Number(row?.lives ?? row?.score ?? 0);
+            const isDead = row?.eliminated === true || lives < 0;
+            const isKillerNow = !isDead && (row?.isKiller === true || String(row?.killerPhase || "").toUpperCase() === "ACTIVE" || (progressive && lives === 5));
+            const value = isDead ? "ÉLIM." : progressive ? `${lives}/5` : String(Math.max(0, lives));
+            return (
+              <React.Fragment key={`${historyRowKey(row) || name}-${idx}`}>
+                {idx > 0 ? <span style={{ color: "rgba(255,255,255,.52)" }}> • </span> : null}
+                <span style={{ color: "rgba(255,255,255,.92)", fontWeight: 850 }}>{name}</span>{" "}
+                <span style={{ color: isDead ? theme.danger : theme.primary, fontWeight: 950, textShadow: `0 0 9px ${isDead ? theme.danger : theme.primary}55` }}>
+                  {value}{!isDead ? " ♥" : ""}
+                </span>
+                {isKillerNow ? <span style={{ color: "#ffd76a", fontWeight: 1000 }}> K</span> : null}
+              </React.Fragment>
+            );
+          })}
+        </span>
+      );
+    }
+  }
+
   const teamRows = isX01Entry(e) ? historyTeamRowsForX01(e) : [];
   if (teamRows.length >= 2) {
     const scoreStyle = { color: theme.primary, fontWeight: 950, textShadow: `0 0 9px ${theme.primary}55` };
@@ -1544,6 +1638,34 @@ async function hydrateBabyFootHistoryRows(rows: SavedEntry[]): Promise<SavedEntr
   }));
 }
 
+async function hydrateInProgressKillerRows(rows: SavedEntry[]): Promise<SavedEntry[]> {
+  return Promise.all(rows.map(async (row, index) => {
+    if (!isKillerEntry(row) || statusOf(row) !== "in_progress" || index > 80) return row;
+    const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
+    if (!id) return row;
+    try {
+      const full: any = await History.get(id);
+      if (!full) return row;
+      const rowPayload = (row as any)?.payload && typeof (row as any).payload === "object" ? (row as any).payload : {};
+      const fullPayload = full?.payload && typeof full.payload === "object" ? full.payload : {};
+      const payload = { ...rowPayload, ...fullPayload };
+      const summary = {
+        ...((row as any)?.summary || {}),
+        ...(full?.summary || {}),
+        ...(payload?.summary || {}),
+      };
+      const players = Array.isArray(full?.players) && full.players.length
+        ? full.players
+        : Array.isArray(payload?.state?.players) && payload.state.players.length
+          ? payload.state.players
+          : (row as any)?.players;
+      return normalizeSavedEntry({ ...(row as any), ...full, payload, summary, players } as SavedEntry);
+    } catch {
+      return row;
+    }
+  }));
+}
+
 function readCachedLinkedHistoryRows(): SavedEntry[] {
   try {
     if (typeof localStorage === "undefined") return [];
@@ -1598,7 +1720,8 @@ const HistoryAPI = {
       // On affiche immédiatement l’IDB local + cache éventuel, puis on rafraîchit en arrière-plan.
       const cachedLinkedRows = readCachedLinkedHistoryRows();
       const mergedRows = mergeHistoryRowsFast(rowsLocal, cachedLinkedRows);
-      const rows = await hydrateBabyFootHistoryRows(mergedRows);
+      const babyFootRows = await hydrateBabyFootHistoryRows(mergedRows);
+      const rows = await hydrateInProgressKillerRows(babyFootRows);
       kickLinkedProjectionRefresh(localProfiles);
 
       const enhanced: SavedEntry[] = [];
@@ -3407,7 +3530,12 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                           {url ? (
                             <img src={url} style={S.avImg} />
                           ) : (
-                            <div style={S.avFallback}>{nm ? nm.slice(0, 2) : "?"}</div>
+                            <ProfileAvatar
+                              profile={{ ...(p || {}), id: getId(p), name: nm }}
+                              size={42}
+                              showStars={false}
+                              noFrame
+                            />
                           )}
                         </div>
                       );
