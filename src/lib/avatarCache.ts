@@ -2,7 +2,7 @@ import { sanitizeAvatarDataUrl } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
 
 const KEY = "dc_avatar_cache_v1";
-const MAX_CACHE_ENTRIES = 80;
+const MAX_CACHE_ENTRIES = 40;
 
 export type AvatarCacheEntry = {
   profileId: string;
@@ -44,7 +44,10 @@ function sanitizeEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheE
   };
 }
 
-function readAll(): Record<string, AvatarCacheEntry> {
+let memoryCache: Record<string, AvatarCacheEntry> | null = null;
+let writeTimer: number | null = null;
+
+function loadAllFromStorage(): Record<string, AvatarCacheEntry> {
   const raw = safeLocalStorageGetJson<Record<string, AvatarCacheEntry>>(KEY, {});
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, AvatarCacheEntry> = {};
@@ -53,6 +56,39 @@ function readAll(): Record<string, AvatarCacheEntry> {
     if (safe) out[profileId] = safe;
   }
   return out;
+}
+
+function readAll(): Record<string, AvatarCacheEntry> {
+  if (memoryCache) return memoryCache;
+  memoryCache = loadAllFromStorage();
+  return memoryCache;
+}
+
+function flushAvatarCacheSoon() {
+  if (typeof window === "undefined") return;
+  if (writeTimer != null) {
+    window.clearTimeout(writeTimer);
+  }
+
+  // Écriture différée : la compression LZ + JSON.stringify de toutes les images
+  // peut bloquer l'UI sur mobile/Chrome quand on modifie un profil.
+  writeTimer = window.setTimeout(() => {
+    writeTimer = null;
+    try {
+      const all = memoryCache || {};
+      const trimmed = Object.values(all)
+        .sort((a, b) => Number(b.avatarUpdatedAt || 0) - Number(a.avatarUpdatedAt || 0))
+        .slice(0, MAX_CACHE_ENTRIES);
+
+      const next = Object.fromEntries(trimmed.map((item) => [item.profileId, item]));
+      memoryCache = next;
+      safeLocalStorageSetJson(KEY, next, {
+        sanitizeImages: true,
+        imageMaxChars: 280_000,
+        compressAboveChars: 50_000,
+      });
+    } catch {}
+  }, 900);
 }
 
 export function getAvatarCache(profileId: string): AvatarCacheEntry | null {
@@ -71,16 +107,8 @@ export function setAvatarCache(entry: AvatarCacheEntry) {
 
     const all = readAll();
     all[safe.profileId] = safe;
+    memoryCache = all;
 
-    const trimmed = Object.values(all)
-      .sort((a, b) => Number(b.avatarUpdatedAt || 0) - Number(a.avatarUpdatedAt || 0))
-      .slice(0, MAX_CACHE_ENTRIES);
-
-    const next = Object.fromEntries(trimmed.map((item) => [item.profileId, item]));
-    safeLocalStorageSetJson(KEY, next, {
-      sanitizeImages: true,
-      imageMaxChars: 380_000,
-      compressAboveChars: 8_000,
-    });
+    flushAvatarCacheSoon();
   } catch {}
 }

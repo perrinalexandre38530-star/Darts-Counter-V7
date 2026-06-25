@@ -32,7 +32,7 @@ import type { ThemeId } from "../theme/themePresets";
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
-import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
+import { fileToAvatarVariants, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 
@@ -1741,18 +1741,15 @@ export default function Profiles({
 
   async function changeAvatar(id: string, file: File) {
     const now = Date.now() + Math.floor(Math.random() * 1000);
-    const objectUrl = URL.createObjectURL(file);
-    setProfilesSafe((arr) =>
-      arr.map((p) =>
-        p.id === id
-          ? { ...p, avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: objectUrl, avatarUpdatedAt: now }
-          : p
-      )
-    );
-    const safeDataUrl = await fileToSafeAvatarDataUrl(file);
-    const thumbDataUrl = safeDataUrl;
-    const fullDataUrl = safeDataUrl;
-    const castDataUrl = safeDataUrl;
+
+    // IMPORTANT PERF :
+    // Ne jamais injecter l'URL blob / l'image pleine taille directement dans la liste des profils.
+    // Sinon chaque avatar déclenche un re-render massif + une persistance localStorage lourde.
+    // On garde la preview dans le state local du composant, et on stocke seulement une vignette légère.
+    const variants = await fileToAvatarVariants(file);
+    const thumbDataUrl = variants.thumbDataUrl;
+    const fullDataUrl = variants.fullDataUrl;
+    const castDataUrl = variants.castDataUrl;
     let finalAvatarUrl: string | undefined = undefined;
     let finalAvatarPath: string | undefined = undefined;
     const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
@@ -1879,7 +1876,6 @@ export default function Profiles({
     try {
       window.dispatchEvent(new CustomEvent("dc:profile-avatar-updated", { detail: { profileId: id, avatarUpdatedAt: now } }));
     } catch {}
-    try { URL.revokeObjectURL(objectUrl); } catch {}
   }
 
   async function delProfile(id: string) {
