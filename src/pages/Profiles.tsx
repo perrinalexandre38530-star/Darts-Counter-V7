@@ -3893,7 +3893,7 @@ function ActiveProfileBlock({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.bmp,.heic,.heif"
         style={{ display: "none" }}
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
@@ -5114,7 +5114,7 @@ function UnifiedAuthBlock({
           >
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.bmp,.heic,.heif"
               style={{ display: "none" }}
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
@@ -5380,6 +5380,8 @@ function LocalProfilesRefonte({
   const [editCountry, setEditCountry] = React.useState("");
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
+  // Cache-bust local pour éviter qu'un ancien avatar reste affiché après remplacement.
+  const [avatarRefreshKey, setAvatarRefreshKey] = React.useState(0);
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const [linkedStatsSyncBusy, setLinkedStatsSyncBusy] = React.useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
@@ -5488,7 +5490,10 @@ function LocalProfilesRefonte({
 
     if (trimmedName) await onRename(current.id, trimmedName);
     await onPatchPrivateInfo(current.id, { country: trimmedCountry || "" });
-    if (editFile) await onAvatar(current.id, editFile);
+    if (editFile) {
+      await onAvatar(current.id, editFile);
+      setAvatarRefreshKey(Date.now());
+    }
 
     setIsEditing(false);
     setEditFile(null);
@@ -6223,7 +6228,7 @@ function LocalProfilesRefonte({
                     >
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.bmp,.heic,.heif"
                         style={{ display: "none" }}
                         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
@@ -6430,7 +6435,7 @@ function AvatarChoiceModal({
           <input
             ref={importRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.bmp,.heic,.heif"
             style={{ display: "none" }}
             onChange={async (e) => {
               const file = e.target.files?.[0] || null;
@@ -6841,7 +6846,7 @@ function EditInline({
       >
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,.png,.jpg,.jpeg,.jfif,.webp,.gif,.avif,.bmp,.heic,.heif"
           style={{ display: "none" }}
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
