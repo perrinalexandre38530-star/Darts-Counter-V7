@@ -10,6 +10,7 @@
 // =============================================================
 
 import React from "react";
+import BackDot from "../../components/BackDot";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useStore } from "../../contexts/StoreContext";
@@ -30,6 +31,13 @@ function normalizeTeamSport(value: any): string {
   if (raw === "ping-pong" || raw === "tabletennis" || raw === "table_tennis") return "pingpong";
   if (raw === "dice" || raw === "dice_game") return "dicegame";
   return raw || "darts";
+}
+
+function normalizeReturnTarget(value: any, activeSport: string) {
+  const raw = String(value || "").trim();
+  if (raw) return raw;
+  if (activeSport === "babyfoot") return "babyfoot_teams";
+  return "profiles";
 }
 
 function teamSportLabel(value: any): string {
@@ -58,7 +66,7 @@ export default function PetanqueTeams({ go, params }: Props) {
 
   const activeSport = normalizeTeamSport(params?.sport || params?.forceMode || "petanque");
   const sportLabel = teamSportLabel(activeSport);
-  const returnTo = String(params?.returnTo || "profiles");
+  const returnTo = normalizeReturnTarget(params?.returnTo, activeSport);
 
   const [teams, setTeams] = React.useState<TeamEntity[]>(() => loadTeamsBySport(activeSport));
 
@@ -97,9 +105,12 @@ export default function PetanqueTeams({ go, params }: Props) {
   return (
     <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <button onClick={() => go(returnTo as any, { sport: activeSport })} style={btnBack(theme)}>
-          ← {t("common.back", "Retour")}
-        </button>
+        <BackDot
+          size={44}
+          title={t("common.back", "Retour")}
+          color={theme?.primary || "#28eaff"}
+          onClick={() => go(returnTo as any, { sport: activeSport })}
+        />
 
         <button onClick={handleCreate} style={btnCreate(theme)}>
           + {t("teams.create", "Créer")}
