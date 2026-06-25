@@ -80,6 +80,11 @@ export type KillerConfig = {
   mode: "killer";
   createdAt: number;
 
+  // Variante autonome du menu Games. Absent = Killer classique.
+  variantId?: "classic" | "progressive" | string;
+  gameId?: "killer" | "killer_progressive" | string;
+  progressiveTarget?: number;
+
   lives: number;
   becomeRule: KillerBecomeRule;
   damageRule: KillerDamageRule;
@@ -121,6 +126,7 @@ type Props = {
   onStart?: (cfg: KillerConfig) => void;
   onStartGame?: (cfg: KillerConfig) => void;
   onPlay?: (cfg: KillerConfig) => void;
+  params?: any;
 };
 
 type BotLite = {
@@ -403,6 +409,12 @@ function isVariantDisabled(k: VariantKey, state: Record<VariantKey, boolean> & R
 export default function KillerConfigPage(props: Props) {
   const { store, go, onBack } = props;
 
+  const requestedVariant = String(
+    props?.params?.variantId || props?.params?.gameId || ""
+  ).toLowerCase();
+  const isProgressive =
+    requestedVariant === "progressive" || requestedVariant === "killer_progressive";
+
   const startCb =
     (typeof (props as any).onStart === "function" && (props as any).onStart) ||
     (typeof (props as any).onStartGame === "function" && (props as any).onStartGame) ||
@@ -527,11 +539,11 @@ export default function KillerConfigPage(props: Props) {
   }, [userBots]);
 
   // ------------------ state config ------------------
-  const [lives, setLives] = React.useState<number>(3);
+  const [lives, setLives] = React.useState<number>(isProgressive ? 5 : 3);
   const [becomeRule, setBecomeRule] = React.useState<KillerBecomeRule>("single");
-  const [damageRule, setDamageRule] = React.useState<KillerDamageRule>("one");
+  const [damageRule, setDamageRule] = React.useState<KillerDamageRule>(isProgressive ? "multiplier" : "one");
 
-  const [numberAssignMode, setNumberAssignMode] = React.useState<KillerNumberAssignMode>("random");
+  const [numberAssignMode, setNumberAssignMode] = React.useState<KillerNumberAssignMode>(isProgressive ? "throw" : "random");
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(false);
 
   // ✅ variantes
@@ -557,6 +569,29 @@ export default function KillerConfigPage(props: Props) {
   // ✅ Résurrection
   const [resurrectionMode, setResurrectionMode] = React.useState<KillerResurrectionMode>("off");
   const [resurrectionLives, setResurrectionLives] = React.useState<number>(1);
+
+  // Le mode progressif possède des règles fixes et isolées.
+  // On neutralise les variantes du Killer classique même en cas de navigation réutilisant le composant.
+  React.useEffect(() => {
+    if (!isProgressive) return;
+    setLives(5);
+    setBecomeRule("single");
+    setDamageRule("multiplier");
+    setNumberAssignMode("throw");
+    setSelfHitWhileKiller(false);
+    setSelfHitUsesMultiplier(false);
+    setLifeSteal(false);
+    setBlindKiller(false);
+    setBullSplash(false);
+    setBullHeal(false);
+    setBullRotate(false);
+    setShieldOnDBull(false);
+    setDisarmOnDBull(false);
+    setDbullRotate(false);
+    setSelectBonusShield(false);
+    setMissAutoHit(false);
+    setResurrectionMode("off");
+  }, [isProgressive]);
 
   // ✅ bouton "i" (règles / variantes)
   const [infoOpen, setInfoOpen] = React.useState<boolean>(false);
@@ -800,6 +835,8 @@ export default function KillerConfigPage(props: Props) {
       return;
     }
 
+    const effectiveNumberAssignMode: KillerNumberAssignMode = isProgressive ? "throw" : numberAssignMode;
+
     const players: KillerConfigPlayer[] = selectedIds
       .map((id) => {
         const base = resolvePlayer(id);
@@ -811,12 +848,12 @@ export default function KillerConfigPage(props: Props) {
           avatarDataUrl: base.avatarDataUrl ?? null,
           isBot: !!base.isBot,
           botLevel: base.botLevel,
-          number: numberAssignMode === "throw" ? 0 : clampInt(killerNumberById[id], 1, 20, 20),
+          number: effectiveNumberAssignMode === "throw" ? 0 : clampInt(killerNumberById[id], 1, 20, 20),
         };
       })
       .filter(Boolean) as any[];
 
-    if (numberAssignMode !== "throw") {
+    if (effectiveNumberAssignMode !== "throw") {
       const used = new Set<number>();
       for (const p of players) {
         let n = clampInt(p.number, 1, 20, 20);
@@ -832,38 +869,41 @@ export default function KillerConfigPage(props: Props) {
     const finalPlayers = randomStartOrder ? shuffleArray(players) : players;
 
     const cfg: KillerConfig = {
-      id: `killer-${Date.now()}`,
+      id: `${isProgressive ? "killer-progressive" : "killer"}-${Date.now()}`,
       mode: "killer",
       createdAt: Date.now(),
+      variantId: isProgressive ? "progressive" : "classic",
+      gameId: isProgressive ? "killer_progressive" : "killer",
+      progressiveTarget: isProgressive ? 5 : undefined,
 
-      lives: clampInt(lives, 1, 9, 3),
-      becomeRule,
-      damageRule,
+      lives: isProgressive ? 5 : clampInt(lives, 1, 9, 3),
+      becomeRule: isProgressive ? "single" : becomeRule,
+      damageRule: isProgressive ? "multiplier" : damageRule,
 
-      numberAssignMode,
+      numberAssignMode: effectiveNumberAssignMode,
       randomStartOrder,
 
-      selfHitWhileKiller,
-      selfHitUsesMultiplier,
-      lifeSteal,
-      blindKiller,
+      selfHitWhileKiller: isProgressive ? false : selfHitWhileKiller,
+      selfHitUsesMultiplier: isProgressive ? false : selfHitUsesMultiplier,
+      lifeSteal: isProgressive ? false : lifeSteal,
+      blindKiller: isProgressive ? false : blindKiller,
 
-      bullSplash,
-      bullHeal,
-      bullHealLives: clampInt(bullHealLives, 1, 3, 1),
-      bullRotate,
+      bullSplash: isProgressive ? false : bullSplash,
+      bullHeal: isProgressive ? false : bullHeal,
+      bullHealLives: isProgressive ? 1 : clampInt(bullHealLives, 1, 3, 1),
+      bullRotate: isProgressive ? false : bullRotate,
 
-      shieldOnDBull,
-      disarmOnDBull,
-      dbullRotate,
-      shieldTurns: clampInt(shieldTurns, 1, 5, 1),
-      selectBonusShield,
-      missAutoHit,
+      shieldOnDBull: isProgressive ? false : shieldOnDBull,
+      disarmOnDBull: isProgressive ? false : disarmOnDBull,
+      dbullRotate: isProgressive ? false : dbullRotate,
+      shieldTurns: isProgressive ? 1 : clampInt(shieldTurns, 1, 5, 1),
+      selectBonusShield: isProgressive ? false : selectBonusShield,
+      missAutoHit: isProgressive ? false : missAutoHit,
 
-      resurrectionMode,
-      resurrectionEnabled: resurrectionMode !== "off",
-      resurrection: resurrectionMode !== "off",
-      resurrectionLives: clampInt(resurrectionLives, 1, 6, 1),
+      resurrectionMode: isProgressive ? "off" : resurrectionMode,
+      resurrectionEnabled: isProgressive ? false : resurrectionMode !== "off",
+      resurrection: isProgressive ? false : resurrectionMode !== "off",
+      resurrectionLives: isProgressive ? 1 : clampInt(resurrectionLives, 1, 6, 1),
 
       players: finalPlayers,
     };
@@ -910,7 +950,7 @@ export default function KillerConfigPage(props: Props) {
   <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
     <img
       src={tickerKiller as any}
-      alt="Killer"
+      alt={isProgressive ? "Killer Progressif" : "Killer"}
       draggable={false}
       style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
     />
@@ -949,6 +989,26 @@ export default function KillerConfigPage(props: Props) {
 
       {/* CONTENT */}
       <div ref={contentRef as any} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        {isProgressive && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "12px 14px",
+              borderRadius: 16,
+              border: `1px solid ${primary}66`,
+              background: `${primary}14`,
+              boxShadow: `0 0 18px ${primary}22`,
+            }}
+          >
+            <div style={{ color: primary, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase" }}>
+              Killer Progressif
+            </div>
+            <div style={{ marginTop: 5, fontSize: 12, color: "#d7daf0", lineHeight: 1.35 }}>
+              Règles fixes : 0 → 5 cœurs pour devenir KILLER, perte du statut sous 5 et élimination uniquement sous 0.
+            </div>
+          </div>
+        )}
+
         {/* JOUEURS LOCAUX */}
         <section
           style={{
@@ -1137,6 +1197,29 @@ export default function KillerConfigPage(props: Props) {
             </div>
           </div>
 
+          {isProgressive ? (
+            <div
+              style={{
+                borderRadius: 16,
+                border: `1px solid ${primary}55`,
+                background: "rgba(0,0,0,.28)",
+                padding: 13,
+                lineHeight: 1.4,
+              }}
+            >
+              <div style={{ fontWeight: 1000, color: primary, marginBottom: 8 }}>Règles verrouillées</div>
+              <div style={{ fontSize: 12, color: "#d7daf0" }}>
+                🎯 Le numéro est attribué au premier lancer, effectué physiquement avec la main opposée. Les doublons sont refusés.
+              </div>
+              <div style={{ fontSize: 12, color: "#d7daf0", marginTop: 6 }}>
+                ❤️ Chaque joueur commence à 0. Sur son numéro : simple +1, double +2, triple +3, maximum 5.
+              </div>
+              <div style={{ fontSize: 12, color: "#d7daf0", marginTop: 6 }}>
+                ☠️ À 5, le logo KILLER apparaît. Sous 5, il disparaît. À 0 le joueur vit encore ; sous 0 il est éliminé.
+              </div>
+            </div>
+          ) : (
+          <div>
           {/* attribution numéros */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Attribution des numéros</div>
@@ -1683,6 +1766,8 @@ Active uniquement parmi les fonctions cochées ci-dessus.
               Astuce : certaines variantes sont <b>exclusives</b> pour garder un gameplay lisible (ex : BULL dégâts vs BULL soins).
             </div>
           </div>
+          </div>
+          )}
         </section>
 
       </div>
@@ -1711,7 +1796,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
             }}
             title={canStart ? "Démarrer la partie" : "Ajoute au moins 2 joueurs"}
           >
-            Lancer la partie
+            {isProgressive ? "Lancer Killer Progressif" : "Lancer la partie"}
           </button>
 
           {!canStart && (
@@ -1760,7 +1845,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
               }}
             >
               <div style={{ fontWeight: 1000, color: primary, letterSpacing: 0.8, textTransform: "uppercase" }}>
-                Règles — Killer
+                {isProgressive ? "Règles — Killer Progressif" : "Règles — Killer"}
               </div>
               <button
                 type="button"
@@ -1780,6 +1865,36 @@ Active uniquement parmi les fonctions cochées ci-dessus.
             </div>
 
             <div style={{ padding: 14, overflowY: "auto", maxHeight: "calc(min(78vh, 620px) - 52px)" }}>
+              {isProgressive ? (
+                <div style={{ fontSize: 13, color: "#d7daf0", lineHeight: 1.4 }}>
+                  <div style={{ fontWeight: 1000, color: primary, marginBottom: 8 }}>Objectif</div>
+                  <div style={{ marginBottom: 13 }}>Être le dernier joueur encore vivant.</div>
+
+                  <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>1. Attribution des numéros</div>
+                  <div style={{ marginBottom: 13 }}>
+                    Chaque joueur lance une fléchette avec sa <b>main opposée</b>, puis saisit le résultat réel. Chaque numéro doit être unique : un numéro déjà pris doit être relancé.
+                  </div>
+
+                  <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>2. Monter jusqu’à 5 cœurs</div>
+                  <div style={{ marginBottom: 13 }}>
+                    Tous commencent à <b>0 cœur</b>. En touchant son propre numéro : simple = +1, double = +2, triple = +3. Le total est plafonné à 5.
+                  </div>
+
+                  <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>3. Statut KILLER</div>
+                  <div style={{ marginBottom: 13 }}>
+                    À <b>5 cœurs exactement</b>, le petit logo KILLER existant apparaît et le joueur peut attaquer. Dès qu’il redescend à 4 ou moins, le logo disparaît et il doit revenir à 5 pour redevenir KILLER.
+                  </div>
+
+                  <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>4. Attaques et élimination</div>
+                  <div style={{ marginBottom: 13 }}>
+                    Seul un KILLER peut retirer des cœurs en touchant le numéro d’un adversaire : simple = −1, double = −2, triple = −3. À <b>0</b>, le joueur reste vivant. Il est éliminé uniquement lorsque son total passe <b>sous 0</b>.
+                  </div>
+
+                  <div style={{ fontSize: 11, color: "#9aa0c4" }}>
+                    Le statut est recalculé après chaque fléchette : atteindre 5 avec la première fléchette permet donc d’attaquer dès la suivante.
+                  </div>
+                </div>
+              ) : (
               <div style={{ fontSize: 13, color: "#d7daf0", lineHeight: 1.35 }}>
                 <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Objectif</div>
                 <div style={{ marginBottom: 12 }}>
@@ -1908,6 +2023,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                   explication. Les fonctions BULL et DBULL sont regroupées pour une lecture plus claire ; une seule fonction peut être active par case, sauf si la rotation est activée.
                 </div>
               </div>
+              )}
             </div>
           </div>
         </div>

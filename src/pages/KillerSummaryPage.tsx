@@ -228,7 +228,7 @@ function normalizeRow(p: any) {
 
 export default function KillerSummaryPage({ store, go, params }: Props) {
   const recFromParams = params?.record || params?.match || params?.rec || null;
-  const recordId = params?.recordId ? String(params.recordId) : "";
+  const recordId = params?.recordId || params?.matchId ? String(params?.recordId || params?.matchId) : "";
 
   const rec = React.useMemo(() => {
     if (recFromParams) return recFromParams;
@@ -241,6 +241,11 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
     const createdAt = rec?.createdAt || rec?.updatedAt || rec?.ts || null;
     const winnerId = String(rec?.winnerId || "");
     const cfg = rec?.summary || rec?.payload?.config || rec?.payload?.payload?.config || rec?.payload?.config || null;
+    const variantId = String(
+      rec?.summary?.variantId || rec?.payload?.variantId || cfg?.variantId || cfg?.gameId || params?.variantId || params?.gameId || ""
+    ).toLowerCase();
+    const isProgressive = rec?.kind === "killer_progressive" || variantId === "progressive" || variantId === "killer_progressive";
+    const progressiveTarget = clampInt(rec?.summary?.progressiveTarget ?? rec?.payload?.progressiveTarget ?? cfg?.progressiveTarget, 1, 9, 5);
 
     // Variantes (robustes)
     const selfPenaltyOn = truthy(
@@ -258,12 +263,17 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
       cfg?.bullHeal ?? cfg?.bull_heal ?? cfg?.variants?.bullHeal ?? cfg?.variants?.bull_heal
     );
 
-    const livesStart = clampInt(rec?.summary?.livesStart ?? cfg?.lives, 1, 99, 3);
+    const livesStart = isProgressive ? 0 : clampInt(rec?.summary?.livesStart ?? cfg?.lives, 1, 99, 3);
     const becomeRule = rec?.summary?.becomeRule ?? cfg?.becomeRule ?? "single";
     const damageRule = rec?.summary?.damageRule ?? cfg?.damageRule ?? "multiplier";
 
-    return { mode, createdAt, winnerId, livesStart, becomeRule, damageRule, selfPenaltyOn, lifeStealOn, bullHealOn };
-  }, [rec]);
+    return { mode, createdAt, winnerId, livesStart, becomeRule, damageRule, selfPenaltyOn, lifeStealOn, bullHealOn, isProgressive, progressiveTarget };
+  }, [rec, params?.variantId, params?.gameId]);
+
+  const replayParams = meta.isProgressive
+    ? { gameId: "killer_progressive", variantId: "progressive" }
+    : undefined;
+  const summaryTitle = meta.isProgressive ? "Résumé KILLER PROGRESSIF" : "Résumé KILLER";
 
   const rows = React.useMemo(() => {
     const per = extractPerPlayer(rec);
@@ -300,7 +310,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
       <div style={{ minHeight: "100vh", background: pageBg, color: "#fff", padding: 14 }}>
         <div style={{ ...card, padding: 14 }}>
           <div style={{ fontWeight: 1000, color: gold, letterSpacing: 1.2, textTransform: "uppercase" }}>
-            Résumé KILLER
+            {summaryTitle}
           </div>
           <div style={{ marginTop: 10, opacity: 0.9 }}>
             Aucun record KILLER trouvé (params manquants ou historique non chargé).
@@ -325,7 +335,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => go("killer_config")}
+              onClick={() => go("killer_config", replayParams)}
               style={{
                 height: 42,
                 padding: "0 14px",
@@ -378,17 +388,18 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
 
         <div style={{ textAlign: "center", lineHeight: 1 }}>
           <div style={{ fontWeight: 1000, color: gold, letterSpacing: 1.6, textTransform: "uppercase" }}>
-            Résumé KILLER
+            {summaryTitle}
           </div>
           <div style={{ marginTop: 4, fontSize: 11, opacity: 0.8 }}>
-            {fmtDate(meta.createdAt)} · vies {meta.livesStart} · become {String(meta.becomeRule)} · damage{" "}
-            {String(meta.damageRule)}
+            {meta.isProgressive
+              ? `${fmtDate(meta.createdAt)} · progression 0 → ${meta.progressiveTarget} · élimination sous 0`
+              : `${fmtDate(meta.createdAt)} · vies ${meta.livesStart} · become ${String(meta.becomeRule)} · damage ${String(meta.damageRule)}`}
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => go("killer_config")}
+          onClick={() => go("killer_config", replayParams)}
           style={{
             height: 34,
             padding: "0 12px",
@@ -575,7 +586,7 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
 
         <button
           type="button"
-          onClick={() => go("killer_config")}
+          onClick={() => go("killer_config", replayParams)}
           style={{
             height: 44,
             padding: "0 16px",

@@ -4464,7 +4464,7 @@ case "babyfoot_team_edit":
 
       case "killer":
       case "killer_config":
-        page = <KillerConfig store={store} go={go} />;
+        page = <KillerConfig key={`killer-config-${String(routeParams?.variantId || routeParams?.gameId || "classic")}`} store={store} go={go} params={routeParams} />;
         break;
 
       case "killer_play": {
@@ -5161,7 +5161,10 @@ function KillerPlayRoute({
             id: `killer-resume-${resumeId}`,
             mode: "killer",
             createdAt: rec?.createdAt || Date.now(),
-            lives: Number(payload?.summary?.livesStart || rec?.summary?.livesStart || state.players?.[0]?.lives || 3) || 3,
+            variantId: savedResumeCfg?.variantId || payload?.variantId || payload?.summary?.variantId || rec?.summary?.variantId || undefined,
+            gameId: savedResumeCfg?.gameId || payload?.gameId || payload?.summary?.gameId || rec?.summary?.gameId || undefined,
+            progressiveTarget: Number(savedResumeCfg?.progressiveTarget || payload?.progressiveTarget || payload?.summary?.progressiveTarget || rec?.summary?.progressiveTarget || 5) || 5,
+            lives: Number(payload?.summary?.livesStart ?? rec?.summary?.livesStart ?? state.players?.[0]?.lives ?? 3),
             becomeRule: savedResumeCfg?.becomeRule || payload?.summary?.becomeRule || rec?.summary?.becomeRule || "single",
             damageRule: savedResumeCfg?.damageRule || payload?.summary?.damageRule || rec?.summary?.damageRule || "multiplier",
             numberAssignMode: savedResumeCfg?.numberAssignMode || "throw",

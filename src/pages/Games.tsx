@@ -61,9 +61,13 @@ function findTickerById(id: string): string | null {
   const raw = String(id || "");
   if (!raw) return null;
 
+  // Killer Progressif réutilise volontairement le ticker du Killer existant.
+  // Aucun nouvel asset n'est requis et l'identité visuelle reste uniforme.
+  const requested = raw.trim().toLowerCase() === "killer_progressive" ? "killer" : raw;
+
   // Accepte plusieurs conventions de nommage (underscore, tiret, espaces)
   // pour éviter les "missing ticker" lorsqu'un id diffère du nom de fichier.
-  const norm = raw.trim().toLowerCase();
+  const norm = requested.trim().toLowerCase();
   const candidates = Array.from(
     new Set([
       norm,
@@ -124,6 +128,22 @@ function territoriesTickerKeyForLang(langCode: any): string {
 // ✅ derive a “count key” from history records for a given game def
 function matchRecordToGameId(rec: any, gameId: string): boolean {
   const k = String(rec?.kind || "");
+  const variantId = String(
+    rec?.variantId ||
+      rec?.summary?.variantId ||
+      rec?.payload?.variantId ||
+      rec?.payload?.config?.variantId ||
+      rec?.payload?.config?.gameId ||
+      ""
+  ).toLowerCase();
+  const isProgressiveKiller = variantId === "progressive" || variantId === "killer_progressive";
+
+  if (gameId === "killer_progressive") {
+    return k === "killer_progressive" || isProgressiveKiller;
+  }
+  if (gameId === "killer" && (k === "killer_progressive" || isProgressiveKiller)) {
+    return false;
+  }
   if (k && k === gameId) return true;
 
   const m1 = String(rec?.game?.mode || "");
@@ -220,6 +240,9 @@ export default function Games({ setTab }: Props) {
     const variantId = String(g?.variantId || "");
     if ((baseGame || g?.tab) === "cricket" && variantId) {
       return `tab:cricket?variantId=${encodeURIComponent(variantId)}`;
+    }
+    if (g?.tab === "killer_config" && variantId) {
+      return `tab:killer_config?gameId=${encodeURIComponent(String(g?.id || "killer_progressive"))}&variantId=${encodeURIComponent(variantId)}`;
     }
 
     const tab = String(g?.tab || "");

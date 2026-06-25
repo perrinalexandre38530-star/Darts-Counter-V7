@@ -113,7 +113,7 @@ type KillerPlayerState = {
   botLevel?: string;
 
   number: number; // 0..20
-  lives: number; // >=0
+  lives: number; // Killer classique >=0 ; progressif peut finir sous 0
   isKiller: boolean;
   eliminated: boolean;
 
@@ -489,6 +489,19 @@ function decideBotThrow(
 
   const bullRate = Math.min(0.12, bullBase + bullBoost);
 
+  // Killer Progressif : l'attribution simule le lancer main opposée du BOT,
+  // mais garantit un numéro 1..20 unique afin de ne jamais bloquer le tour SELECT.
+  if (assignActive && me.killerPhase === "SELECT" && isProgressiveKillerConfig(config)) {
+    const used = new Set(
+      all
+        .filter((p) => p.id !== me.id && !p.eliminated)
+        .map((p) => Number(p.number || 0))
+        .filter((n) => n >= 1 && n <= 20)
+    );
+    const available = Array.from({ length: 20 }, (_, i) => i + 1).filter((n) => !used.has(n));
+    return { target: available.length ? available[randInt(0, available.length - 1)] : randInt(1, 20), mult: 1 };
+  }
+
   const r = rand01();
   if (r < missRate) return { target: 0, mult: 1 };
   if (r < missRate + bullRate)
@@ -744,7 +757,23 @@ function chipStyleVisit(d?: UIDart) {
 }
 
 
+function isProgressiveKillerConfig(config: any) {
+  const variant = String(config?.variantId || config?.gameId || "").toLowerCase();
+  return variant === "progressive" || variant === "killer_progressive";
+}
+
 function rulesText(config: KillerConfig) {
+  if (isProgressiveKillerConfig(config)) {
+    const target = clampInt((config as any)?.progressiveTarget, 1, 9, 5);
+    return [
+      { title: "Objectif", body: "Être le dernier joueur vivant. Un joueur n'est éliminé que lorsque son nombre de cœurs passe sous 0." },
+      { title: "Attribution", body: "Chaque joueur lance avec sa main opposée puis saisit le numéro obtenu. Les numéros doivent être uniques." },
+      { title: "Progression", body: `Tous commencent à 0 cœur. Sur son propre numéro : simple +1, double +2, triple +3, avec un maximum de ${target}.` },
+      { title: "Statut KILLER", body: `À ${target} cœurs, le petit logo KILLER apparaît et le joueur peut attaquer. Dès qu'il redescend sous ${target}, il perd immédiatement ce statut et doit revenir à ${target}.` },
+      { title: "Attaques", body: "Seul un KILLER peut toucher le numéro d'un adversaire : simple −1, double −2, triple −3. À 0 le joueur reste vivant ; sous 0 il est éliminé." },
+    ];
+  }
+
   const lives = clampInt((config as any)?.lives, 1, 9, 3);
 
   const numberAssignMode: "none" | "throw" | "random" =
@@ -2190,6 +2219,7 @@ function AssignOverlay({
   takenNumbers,
   selectBonusShieldOn,
   pendingChoiceNumber,
+  progressiveMode = false,
   onPickThrow,
   onPickFreeNumber,
 }: {
@@ -2200,6 +2230,7 @@ function AssignOverlay({
   takenNumbers: Set<number>;
   selectBonusShieldOn: boolean;
   pendingChoiceNumber: PendingChoiceNumber | null;
+  progressiveMode?: boolean;
   onPickThrow: (thr: Throw) => void;
   onPickFreeNumber: (n: number) => void;
 }) {
@@ -2356,9 +2387,10 @@ function AssignOverlay({
             ) : (
               <>
                 <div style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.25 }}>
-                  <b>Sélectionne le résultat réel du lancer</b>
+                  <b>{progressiveMode ? "Lance avec ta main opposée puis sélectionne le numéro obtenu" : "Sélectionne le résultat réel du lancer"}</b>
                 </div>
 
+                {!progressiveMode && (
                 <div style={{ display: "grid", gap: 8 }}>
                   <div
                     style={{
@@ -2382,8 +2414,9 @@ function AssignOverlay({
                     <button type="button" onClick={() => setPickMode("dbull")} style={pickModeBtn(pickMode === "dbull")}>DBULL</button>
                   </div>
                 </div>
+                )}
 
-                {(pickMode === "double" || pickMode === "triple" || pickMode === "bull" || pickMode === "dbull") && selectBonusShieldOn && (
+                {(pickMode === "double" || pickMode === "triple" || pickMode === "bull" || pickMode === "dbull") && selectBonusShieldOn && !progressiveMode && (
                   <div style={{ fontSize: 11, opacity: 0.82, textAlign: "center", color: "rgba(255,214,102,.95)" }}>
                     {pickMode === "double" && "DOUBLE → numéro choisi + bouclier 2 tours"}
                     {pickMode === "triple" && "TRIPLE → numéro choisi + bouclier 3 tours"}
@@ -2392,7 +2425,7 @@ function AssignOverlay({
                   </div>
                 )}
 
-                {(pickMode === "single" || pickMode === "double" || pickMode === "triple") && (
+                {(progressiveMode || pickMode === "single" || pickMode === "double" || pickMode === "triple") && (
                   <div
                     style={{
                       display: "grid",
@@ -2402,7 +2435,7 @@ function AssignOverlay({
                   >
                     {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
                       const isTaken = takenNumbers?.has(n);
-                      const mult = pickMode === "triple" ? 3 : pickMode === "double" ? 2 : 1;
+                      const mult = progressiveMode ? 1 : pickMode === "triple" ? 3 : pickMode === "double" ? 2 : 1;
                       return (
                         <button
                           key={n}
@@ -2435,7 +2468,7 @@ function AssignOverlay({
                   </div>
                 )}
 
-                {(pickMode === "bull" || pickMode === "dbull") && (
+                {!progressiveMode && (pickMode === "bull" || pickMode === "dbull") && (
                   <div
                     style={{
                       display: "grid",
@@ -2500,8 +2533,11 @@ export default function KillerPlay({ store, go, config, onFinish }: Props) {
   const [castStatusTick, setCastStatusTick] = React.useState(0);
   React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const startedAt = React.useMemo(() => Date.now(), []);
+  const progressiveMode = isProgressiveKillerConfig(config);
+  const progressiveTarget = clampInt((config as any)?.progressiveTarget, 1, 9, 5);
+  const historyGameId = progressiveMode ? "killer_progressive" : "killer";
   const matchIdRef = React.useRef<string>(
-    (config as any)?.matchId ?? `killer-${startedAt}-${Math.random().toString(36).slice(2, 8)}`
+    (config as any)?.matchId ?? `${historyGameId}-${startedAt}-${Math.random().toString(36).slice(2, 8)}`
   );
   const finishedRef = React.useRef(false);
   const elimOrderRef = React.useRef<string[]>([]);
@@ -2665,7 +2701,7 @@ React.useEffect(() => {
   }, [profileAvatarById]);
 
   const initialPlayers: KillerPlayerState[] = React.useMemo(() => {
-    const lives = clampInt(config?.lives, 1, 9, 3);
+    const lives = progressiveMode ? 0 : clampInt(config?.lives, 1, 9, 3);
 
     const base = (config?.players || []).map((p) => {
       const phase: KillerPhase = inNumberAssignRound ? "SELECT" : "ARMING";
@@ -2740,7 +2776,7 @@ React.useEffect(() => {
     }
 
     return base;
-  }, [config, inNumberAssignRound, numberAssignMode, hydrateAvatarForPlayer]);
+  }, [config, inNumberAssignRound, numberAssignMode, hydrateAvatarForPlayer, progressiveMode]);
 
   const [players, setPlayers] = React.useState<KillerPlayerState[]>(() => {
     const resumed = resumeState?.players;
@@ -2753,7 +2789,9 @@ React.useEffect(() => {
         ...(rp || {}),
         avatarDataUrl: hydrateAvatarForPlayer(rp, base?.avatarDataUrl ?? null),
         number: clampInt((rp as any)?.number ?? (base as any)?.number, 0, 20, 0),
-        lives: Math.max(0, Number((rp as any)?.lives ?? (base as any)?.lives ?? 0) || 0),
+        lives: progressiveMode
+          ? Math.max(-3, Number((rp as any)?.lives ?? (base as any)?.lives ?? 0) || 0)
+          : Math.max(0, Number((rp as any)?.lives ?? (base as any)?.lives ?? 0) || 0),
         shieldTurnsLeft: Math.max(0, Number((rp as any)?.shieldTurnsLeft ?? 0) || 0),
         shieldStrength: Math.max(0, Math.min(1, Number((rp as any)?.shieldStrength ?? ((rp as any)?.shieldTurnsLeft ? 1 : 0)) || 0)),
         resurrected: !!((rp as any)?.resurrected),
@@ -2772,7 +2810,12 @@ React.useEffect(() => {
         hitsByNumber: { ...((base as any)?.hitsByNumber || {}), ...((rp as any)?.hitsByNumber || {}) },
         lastVisit: Array.isArray(rp?.lastVisit) ? rp.lastVisit.map((t: any) => ({ ...(t || {}) })) : ((base as any)?.lastVisit || null),
       };
-      if (merged.isKiller && merged.killerPhase !== "ACTIVE") merged.killerPhase = "ACTIVE";
+      if (progressiveMode && !merged.eliminated) {
+        merged.isKiller = Number(merged.lives) === progressiveTarget;
+        merged.killerPhase = merged.isKiller ? "ACTIVE" : "ARMING";
+      } else if (merged.isKiller && merged.killerPhase !== "ACTIVE") {
+        merged.killerPhase = "ACTIVE";
+      }
       return merged as KillerPlayerState;
     });
   });
@@ -2836,7 +2879,10 @@ React.useEffect(() => {
   );
 
   const resumeConfig = React.useMemo(() => ({
-    lives: clampInt((config as any)?.lives, 1, 9, 3),
+    variantId: progressiveMode ? "progressive" : ((config as any)?.variantId ?? "classic"),
+    gameId: historyGameId,
+    progressiveTarget: progressiveMode ? progressiveTarget : undefined,
+    lives: progressiveMode ? 5 : clampInt((config as any)?.lives, 1, 9, 3),
     becomeRule: (config as any)?.becomeRule ?? "single",
     damageRule: (config as any)?.damageRule ?? "multiplier",
     numberAssignMode: (config as any)?.numberAssignMode ?? "random",
@@ -2853,7 +2899,7 @@ React.useEffect(() => {
     missAutoHit: truthy((config as any)?.missAutoHit ?? (config as any)?.miss_auto_hit),
     resurrectionMode,
     resurrectionLives,
-  }), [config, resurrectionMode, resurrectionLives]);
+  }), [config, resurrectionMode, resurrectionLives, progressiveMode, progressiveTarget, historyGameId]);
 
   const saveInProgress = React.useCallback(() => {
     try {
@@ -2881,7 +2927,7 @@ React.useEffect(() => {
       }));
       const rec: any = {
         id: matchIdRef.current,
-        kind: "killer",
+        kind: historyGameId,
         status: "in_progress",
         createdAt: startedAt,
         updatedAt,
@@ -2892,9 +2938,17 @@ React.useEffect(() => {
           isBot: !!p.isBot,
           botLevel: p.botLevel ?? "",
         })),
-        summary: { mode: "killer" },
+        summary: {
+          mode: "killer",
+          gameId: historyGameId,
+          variantId: progressiveMode ? "progressive" : "classic",
+          progressiveTarget: progressiveMode ? progressiveTarget : undefined,
+        },
         payload: {
           mode: "killer",
+          gameId: historyGameId,
+          variantId: progressiveMode ? "progressive" : "classic",
+          progressiveTarget: progressiveMode ? progressiveTarget : undefined,
           config,
           resumeConfig,
           resumeId: (config as any)?.resumeId ?? null,
@@ -2919,7 +2973,7 @@ React.useEffect(() => {
       };
       void History.upsert(rec as any);
     } catch {}
-  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig]);
+  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig, historyGameId, progressiveMode, progressiveTarget]);
 
   React.useEffect(() => {
     // ✅ AUTOSAVE in_progress pour reprise (debounce léger après changement d'état)
@@ -3427,8 +3481,9 @@ React.useEffect(() => {
         botLevel: p.botLevel ?? "",
         number: p.number,
         eliminated: !!p.eliminated,
-        isKiller: p.killerPhase === "ACTIVE",
+        isKiller: isActiveKiller(p),
         killerPhase: p.killerPhase,
+        lives: p.lives,
         kills: p.kills,
         autoKills: p.autoKills ?? 0,
         autoHits: p.autoHits ?? 0,
@@ -3514,10 +3569,15 @@ React.useEffect(() => {
     const unifiedStats: any = {
       sport: "darts",
       mode: "killer",
+      gameId: historyGameId,
+      variantId: progressiveMode ? "progressive" : "classic",
       createdAt: startedAt,
       finishedAt,
       meta: {
-        livesStart: config.lives,
+        livesStart: progressiveMode ? 0 : config.lives,
+        progressiveTarget: progressiveMode ? progressiveTarget : undefined,
+        gameId: historyGameId,
+        variantId: progressiveMode ? "progressive" : "classic",
         becomeRule: config.becomeRule,
         damageRule: config.damageRule,
         bullSplash: !!bullSplashOn,
@@ -3568,7 +3628,7 @@ React.useEffect(() => {
     const rec: any = {
       id,
       resumeId,
-      kind: "killer",
+      kind: historyGameId,
       status: "finished",
       createdAt: startedAt,
       updatedAt: finishedAt,
@@ -3582,8 +3642,11 @@ React.useEffect(() => {
       })),
       summary: {
         mode: "killer",
+        gameId: historyGameId,
+        variantId: progressiveMode ? "progressive" : "classic",
+        progressiveTarget: progressiveMode ? progressiveTarget : undefined,
         winnerId,
-        livesStart: config.lives,
+        livesStart: progressiveMode ? 0 : config.lives,
         becomeRule: config.becomeRule,
         damageRule: config.damageRule,
         playerCount: finalPlayersRaw.length,
@@ -3598,10 +3661,13 @@ React.useEffect(() => {
       },
       payload: {
         mode: "killer",
-        meta: { dartSetId, dartSetIdsByPlayer },
+        gameId: historyGameId,
+        variantId: progressiveMode ? "progressive" : "classic",
+        progressiveTarget: progressiveMode ? progressiveTarget : undefined,
+        meta: { dartSetId, dartSetIdsByPlayer, gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic" },
         config,
         resumeId,
-        summary: { mode: "killer", winnerId, detailedByPlayer, perPlayer, perPlayerMap, ranking, rankings, hitsBySegmentByPlayer, hitsByNumberByPlayer },
+        summary: { mode: "killer", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, winnerId, detailedByPlayer, perPlayer, perPlayerMap, ranking, rankings, hitsBySegmentByPlayer, hitsByNumberByPlayer },
         // ✅ Bloc unifié pour StatsHub
         stats: unifiedStats as any,
       },
@@ -3757,6 +3823,157 @@ function pickRotatingFunction(keys: string[], rotationOn: boolean, idx: number):
 const resGlobalUsedRef = React.useRef<boolean>(false); // Mode "1 Joueur (1x)" : UNE SEULE résurrection totale dans toute la partie
 const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
 
+  // Branche entièrement isolée du Killer classique.
+  // Elle réutilise les mêmes états/visuels (cœur + logo KILLER), mais applique
+  // uniquement la progression 0..5 et l'élimination sous zéro.
+  function applyProgressiveThrowToState(
+    next: KillerPlayerState[],
+    actorIndex: number,
+    thr: ThrowInput,
+    bot = false
+  ): boolean {
+    if (!progressiveMode) return false;
+    const me = next[actorIndex];
+    if (!me || me.eliminated || me.killerPhase === "SELECT") return false;
+
+    const wasKiller = Number(me.lives) === progressiveTarget && isActiveKiller(me);
+    me.isKiller = Number(me.lives) === progressiveTarget;
+    me.killerPhase = me.isKiller ? "ACTIVE" : "ARMING";
+
+    // Sur son propre numéro : progression vers 5. Une fois à 5, la touche
+    // n'ajoute rien et ne provoque aucune auto-pénalité.
+    if (me.number && thr.target === me.number) {
+      me.hitsOnSelf = Number(me.hitsOnSelf || 0) + 1;
+      const before = Number(me.lives || 0);
+
+      if (before < progressiveTarget) {
+        const after = Math.min(progressiveTarget, before + thr.mult);
+        const gained = Math.max(0, after - before);
+        me.lives = after;
+        me.isKiller = after === progressiveTarget;
+        me.killerPhase = me.isKiller ? "ACTIVE" : "ARMING";
+
+        if (me.isKiller) {
+          if (!me.becameAtThrow) me.becameAtThrow = Math.max(1, me.throwsToBecomeKiller || me.totalThrows);
+          pushLog(`🟡 ${me.name} atteint ${progressiveTarget}/${progressiveTarget} et devient KILLER (${fmtThrow(thr)})`);
+          pushEvent({
+            t: Date.now(),
+            type: "PROGRESSIVE_BECOME_KILLER",
+            actorId: me.id,
+            before,
+            after,
+            gained,
+            throw: thr,
+            bot,
+          });
+          try { sfx.become?.(); } catch {}
+        } else {
+          pushLog(`❤️ ${me.name} progresse : ${before} → ${after}/${progressiveTarget} (${fmtThrow(thr)})`);
+          pushEvent({
+            t: Date.now(),
+            type: "PROGRESSIVE_GAIN",
+            actorId: me.id,
+            before,
+            after,
+            gained,
+            throw: thr,
+            bot,
+          });
+        }
+      } else {
+        me.uselessHits += 1;
+        pushLog(`🎯 ${me.name} est déjà KILLER : ${fmtThrow(thr)} sur son numéro n'a aucun effet`);
+        pushEvent({ t: Date.now(), type: "PROGRESSIVE_SELF_NO_EFFECT", actorId: me.id, throw: thr, bot });
+      }
+      return true;
+    }
+
+    // Un joueur sous 5 n'a pas le droit d'attaquer.
+    if (!wasKiller) {
+      me.uselessHits += 1;
+      pushLog(`🎯 ${me.name} : ${fmtThrow(thr)} (pas encore KILLER)`);
+      pushEvent({ t: Date.now(), type: "PROGRESSIVE_THROW", actorId: me.id, throw: thr, bot });
+      return true;
+    }
+
+    const victimIdx = next.findIndex(
+      (p, idx) => idx !== actorIndex && !p.eliminated && playerNumberMatchesTarget(p, thr.target)
+    );
+    if (victimIdx < 0) {
+      me.uselessHits += 1;
+      pushLog(`🎯 ${me.name} : ${fmtThrow(thr)}`);
+      pushEvent({ t: Date.now(), type: "PROGRESSIVE_THROW", actorId: me.id, throw: thr, bot });
+      return true;
+    }
+
+    const victim = next[victimIdx];
+    const before = Number(victim.lives || 0);
+    const dmg = thr.mult;
+    const after = before - dmg;
+    const victimWasKiller = before === progressiveTarget && isActiveKiller(victim);
+
+    victim.lives = after;
+    victim.livesLost += dmg;
+    me.offensiveThrows += 1;
+    me.killerHits += 1;
+    me.livesTaken += dmg;
+
+    victim.isKiller = after === progressiveTarget;
+    victim.killerPhase = victim.isKiller ? "ACTIVE" : "ARMING";
+
+    pendingSfxRef.current = { kind: "kill", mult: thr.mult };
+    pendingVoiceRef.current = { kind: "kill", killer: me.name, victim: victim.name };
+
+    pushEvent({
+      t: Date.now(),
+      type: "PROGRESSIVE_HIT",
+      actorId: me.id,
+      targetId: victim.id,
+      targetNumber: victim.number,
+      before,
+      after,
+      dmg,
+      throw: thr,
+      bot,
+    });
+
+    if (after < 0) {
+      victim.eliminated = true;
+      victim.isKiller = false;
+      victim.killerPhase = "ARMING";
+      victim.resurrected = false;
+      victim.resurrectShield = false;
+      victim.shieldTurnsLeft = 0;
+      victim.shieldJustGranted = false;
+      victim.shieldStrength = 0;
+      victim.eliminatedAt = Date.now();
+      me.kills += 1;
+
+      if (!elimOrderRef.current.includes(victim.id)) {
+        elimOrderRef.current = [...(elimOrderRef.current || []), victim.id];
+      }
+
+      pushLog(`💀 ${me.name} élimine ${victim.name} : ${before} → ${after} (${fmtThrow(thr)})`);
+      pushEvent({
+        t: Date.now(),
+        type: "PROGRESSIVE_KILL",
+        actorId: me.id,
+        targetId: victim.id,
+        targetNumber: victim.number,
+        before,
+        after,
+        throw: thr,
+        bot,
+      });
+      pendingDeathAfterRef.current = true;
+    } else if (victimWasKiller && after < progressiveTarget) {
+      pushLog(`🔻 ${me.name} touche ${victim.name} : ${before} → ${after}. ${victim.name} perd son statut KILLER.`);
+    } else {
+      pushLog(`🔻 ${me.name} touche ${victim.name} : ${before} → ${after} (${fmtThrow(thr)})`);
+    }
+
+    return true;
+  }
 
 
   function applyThrow(t: ThrowInput) {
@@ -4129,6 +4346,10 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
           setTimeout(() => finishAssignIfReady(), 0);
         }, 0);
   
+        return next;
+      }
+
+      if (applyProgressiveThrowToState(next, turnIndex, thr, false)) {
         return next;
       }
   
@@ -4543,8 +4764,8 @@ if (isActiveKiller(me)) {
           }
         })();
         rec = {
-          id: `killer-${Date.now()}`,
-          kind: "killer",
+          id: `${historyGameId}-${Date.now()}`,
+          kind: historyGameId,
           status: "finished",
           createdAt: startedAt,
           updatedAt: Date.now(),
@@ -4554,8 +4775,8 @@ if (isActiveKiller(me)) {
             name: p.name,
             avatarDataUrl: p.avatarDataUrl ?? null,
           })),
-          summary: { mode: "killer", ranking: [] },
-          payload: { mode: "killer", config, meta: { dartSetId, dartSetIdsByPlayer } },
+          summary: { mode: "killer", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, ranking: [] },
+          payload: { mode: "killer", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, config, meta: { dartSetId, dartSetIdsByPlayer } },
         };
       }
 
@@ -4967,6 +5188,10 @@ React.useEffect(() => {
           setTimeout(() => finishAssignIfReady(), 0);
         }, 0);
 
+        return next;
+      }
+
+      if (applyProgressiveThrowToState(next, activeTurnIndex, thrSafe, true)) {
         return next;
       }
 
@@ -5404,7 +5629,7 @@ function saveAndGoSummary(rec: any) {
   } catch {}
 
   const matchId = rec?.id || rec?.matchId || rec?.payload?.matchId || null;
-  if (matchId) go("killer_summary", { matchId });
+  if (matchId) go("killer_summary", { matchId, recordId: matchId, record: rec });
   else go("statsHub", { tab: "history", mode: "killer" });
 }
 
@@ -5446,6 +5671,7 @@ if (assignOnlyMode) {
         takenNumbers={takenNumbers}
         selectBonusShieldOn={selectBonusShieldOn}
         pendingChoiceNumber={pendingChoiceNumber}
+        progressiveMode={progressiveMode}
         onPickThrow={(thr) => {
           applyThrow(thr);
         }}
@@ -5508,6 +5734,7 @@ return (
       takenNumbers={takenNumbers}
       selectBonusShieldOn={selectBonusShieldOn}
       pendingChoiceNumber={pendingChoiceNumber}
+      progressiveMode={progressiveMode}
       onPickThrow={(thr) => {
         applyThrow(thr);
       }}
