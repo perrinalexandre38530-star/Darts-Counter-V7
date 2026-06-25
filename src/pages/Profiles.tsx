@@ -32,7 +32,7 @@ import type { ThemeId } from "../theme/themePresets";
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
-import { fileToAvatarVariants, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
+import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 
@@ -1940,7 +1940,8 @@ export default function Profiles({
     if (!cleanName) return;
   
     const now = Date.now();
-    const avatarDataUrl = file ? await fileToSafeAvatarDataUrl(file) : null;
+    const avatarVariants = file ? await fileToAvatarVariants(file) : null;
+    const avatarDataUrl = avatarVariants?.thumbDataUrl || null;
   
     const p: Profile = {
       id:
@@ -1957,9 +1958,9 @@ export default function Profiles({
     if (avatarDataUrl) {
       writeAvatarCache(p.id, {
         avatarDataUrl: avatarDataUrl,
-        avatarThumbDataUrl: avatarDataUrl,
-        avatarFullDataUrl: avatarDataUrl,
-        avatarCastDataUrl: avatarDataUrl,
+        avatarThumbDataUrl: avatarVariants?.thumbDataUrl || avatarDataUrl,
+        avatarFullDataUrl: avatarVariants?.fullDataUrl || avatarDataUrl,
+        avatarCastDataUrl: avatarVariants?.castDataUrl || avatarDataUrl,
         avatarUpdatedAt: now,
       });
       try {
@@ -5367,7 +5368,51 @@ function LocalProfilesRefonte({
     });
   }, [profiles, activeProfileId, onboardingMode]);
 
+  const localsAvatarCacheKey = React.useMemo(
+    () => locals.map((p: any) => `${String(p?.id || "")}:${Number((p as any)?.avatarUpdatedAt || 0)}`).join("|"),
+    [locals]
+  );
+
+  const avatarCacheById = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const p of locals as any[]) {
+      const id = String(p?.id || "");
+      if (!id) continue;
+      const cached = getAvatarCacheLib(id);
+      if (cached) map.set(id, cached);
+    }
+    return map;
+  }, [localsAvatarCacheKey]);
+
   const [index, setIndex] = React.useState(0);
+  const navTimerRef = React.useRef<number | null>(null);
+  const [localNavBusy, setLocalNavBusy] = React.useState(false);
+  const goToLocalIndex = React.useCallback((next: number | ((current: number) => number)) => {
+    setLocalNavBusy(true);
+    setIndex((currentIndex) => {
+      const raw = typeof next === "function" ? (next as any)(currentIndex) : next;
+      const max = Math.max(0, locals.length - 1);
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return currentIndex;
+      return Math.max(0, Math.min(max, Math.round(n)));
+    });
+    if (typeof window !== "undefined") {
+      if (navTimerRef.current != null) window.clearTimeout(navTimerRef.current);
+      navTimerRef.current = window.setTimeout(() => {
+        setLocalNavBusy(false);
+        navTimerRef.current = null;
+      }, 180);
+    }
+  }, [locals.length]);
+
+  React.useEffect(() => {
+    return () => {
+      if (navTimerRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(navTimerRef.current);
+      }
+    };
+  }, []);
+
   const prevLocalsIdsRef = React.useRef<string[]>([]);
   const prevLocalsCountRef = React.useRef(0);
   const [profilesListOpen, setProfilesListOpen] = React.useState(false);
@@ -5413,6 +5458,10 @@ function LocalProfilesRefonte({
   }, [locals, locals.length, index]);
   const current = locals[index] || null;
   const renderedCurrent = current;
+  const currentAvatarCache = React.useMemo(
+    () => current?.id ? (avatarCacheById.get(String((current as any).id || "")) || null) : null,
+    [avatarCacheById, current?.id]
+  );
   const linkedFriendUserId = String((current as any)?.linkedFriendUserId || (current as any)?.linkedUserId || (current as any)?.privateInfo?.linkedFriendUserId || (current as any)?.privateInfo?.linkedUserId || "").trim();
   const linkedFriend = linkedFriendUserId ? (onlineFriends || []).find((f: any) => String(f?.userId || f?.id || "") === linkedFriendUserId) : null;
   const linkedFriendName = String((linkedFriend as any)?.displayName || (linkedFriend as any)?.nickname || (current as any)?.privateInfo?.linkedFriendName || (current as any)?.linkedFriendName || "").trim();
@@ -5445,7 +5494,11 @@ function LocalProfilesRefonte({
 
 
   // stats du profil courant
-  const bs = useBasicStats(!deferHeavy && current?.id ? current?.id : null, !deferHeavy && !!current?.id, current?.name);
+  const bs = useBasicStats(
+    !deferHeavy && !localNavBusy && current?.id ? current?.id : null,
+    !deferHeavy && !localNavBusy && !!current?.id,
+    current?.name
+  );
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -5712,7 +5765,7 @@ function LocalProfilesRefonte({
                       key={String(p?.id || i)}
                       type="button"
                       onClick={() => {
-                        setIndex(i);
+                        goToLocalIndex(i);
                         setProfilesListOpen(false);
                       }}
                       style={{
@@ -5734,7 +5787,7 @@ function LocalProfilesRefonte({
                         src={buildAvatarSrc({
                           avatarUrl: p?.avatarUrl || null,
                           avatarDataUrl: p?.avatarDataUrl || null,
-                          avatarFullDataUrl: p?.avatarUrl ? null : ((getAvatarCacheLib(String(p?.id || "")) as any)?.avatarFullDataUrl || null),
+                          avatarFullDataUrl: p?.avatarUrl ? null : ((avatarCacheById.get(String(p?.id || "")) as any)?.avatarThumbDataUrl || (avatarCacheById.get(String(p?.id || "")) as any)?.avatarDataUrl || null),
                           avatarUpdatedAt: p?.avatarUpdatedAt ?? null,
                         })}
                         label={String(p?.name || "?").charAt(0).toUpperCase() || "?"}
@@ -5799,7 +5852,7 @@ function LocalProfilesRefonte({
             <button
               className="btn sm"
               onClick={() =>
-                setIndex((i) => (i <= 0 ? locals.length - 1 : i - 1))
+                goToLocalIndex((i) => (i <= 0 ? locals.length - 1 : i - 1))
               }
               disabled={locals.length <= 1}
               style={{ minWidth: 36, opacity: locals.length <= 1 ? 0.4 : 1 }}
@@ -5828,7 +5881,7 @@ function LocalProfilesRefonte({
             <button
               className="btn sm"
               onClick={() =>
-                setIndex((i) => (i >= locals.length - 1 ? 0 : i + 1))
+                goToLocalIndex((i) => (i >= locals.length - 1 ? 0 : i + 1))
               }
               disabled={locals.length <= 1}
               style={{ minWidth: 36, opacity: locals.length <= 1 ? 0.4 : 1 }}
@@ -5876,7 +5929,7 @@ function LocalProfilesRefonte({
                       starSize={STAR}
                       stepDeg={10}
                       rotationDeg={0}
-                      animateGlow={true}
+                      animateGlow={!localNavBusy}
                     />
                   </div>
 
@@ -5899,7 +5952,7 @@ function LocalProfilesRefonte({
                       src={buildAvatarSrc({
                         avatarUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl || null,
                         avatarDataUrl: linkedFriendAvatarUrl ? null : ((renderedCurrent as any)?.avatarDataUrl || null),
-                        avatarFullDataUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl ? null : ((getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null),
+                        avatarFullDataUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl ? null : ((currentAvatarCache as any)?.avatarThumbDataUrl || (currentAvatarCache as any)?.avatarDataUrl || null),
                         avatarUpdatedAt: linkedFriendAvatarUrl
                           ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || Date.now())
                           : ((renderedCurrent as any)?.avatarUpdatedAt ?? null),
