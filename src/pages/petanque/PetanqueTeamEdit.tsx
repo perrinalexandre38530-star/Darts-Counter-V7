@@ -55,101 +55,248 @@ const TEAM_SPORT_OPTIONS = [
   { id: "dicegame", label: "Dés" },
 ];
 
-const TEAM_LOGO_TEMPLATES: Array<{ id: string; label: string; src: string }> = [
-  { id: "gold", label: "Gold", src: getTeamAvatarUrl("gold") },
-  { id: "pink", label: "Pink", src: getTeamAvatarUrl("pink") },
-  { id: "blue", label: "Blue", src: getTeamAvatarUrl("blue") },
-  { id: "green", label: "Green", src: getTeamAvatarUrl("green") },
-  { id: "bot-elite", label: "BOT Élite", src: botTeamEliteLogo },
-  { id: "bot-pro", label: "BOT Pro", src: botTeamProLogo },
-  { id: "bot-challenger", label: "BOT Challenger", src: botTeamChallengerLogo },
-  { id: "bot-mix", label: "BOT Mixte", src: botTeamMixLogo },
-  { id: "bot-rising", label: "BOT Rising", src: botTeamRisingLogo },
+
+type TeamLogoTemplate = { id: string; label: string; category: string; tags: string; src: string };
+
+type TeamLogoCategory = { id: string; label: string };
+
+const TEAM_LOGO_CATEGORIES: TeamLogoCategory[] = [
+  { id: "popular", label: "⭐ Populaires" },
+  { id: "darts", label: "🎯 Fléchettes" },
+  { id: "foot", label: "⚽ Foot" },
+  { id: "petanque", label: "🥌 Pétanque" },
+  { id: "babyfoot", label: "🎱 Baby-foot" },
+  { id: "pingpong", label: "🏓 Ping-pong" },
+  { id: "molkky", label: "🪵 Mölkky" },
+  { id: "dicegame", label: "🎲 Dés" },
+  { id: "multisport", label: "🌍 Multisports" },
 ];
 
-function createDraftTeam(activeSport: string): TeamEntity {
-  const ts = Date.now();
-  return {
-    id: makeTeamId(activeSport || "team"),
-    sport: activeSport || "darts",
-    allSports: false,
-    sportIds: [activeSport || "darts"],
-    name: "",
-    logoDataUrl: null,
-    countryCode: "FR",
-    countryName: "France",
-    regionCode: "FR-ARA",
-    regionName: "Auvergne-Rhône-Alpes",
-    slogan: "",
-    description: "",
-    playerIds: [],
-    teamKind: "leisure",
-    clubVisibility: "private",
-    createdAt: ts,
-    updatedAt: ts,
-  } as any;
+const TEAM_LOGO_SYMBOLS: Record<string, string> = {
+  skull: "☠", wolf: "🐺", eagle: "🦅", dragon: "🐉", crown: "♛", target: "◎", fire: "🔥", lightning: "⚡",
+  pirate: "⚓", spartan: "Λ", samurai: "刀", scorpion: "♏", cobra: "🐍", lion: "🦁", bull: "♉", ghost: "👻",
+  bomb: "💣", toxic: "☣", ice: "❄", storm: "🌪", boot: "⚽", shield: "🛡", star: "★", comet: "☄",
+  jack: "J", king: "K", queen: "Q", ace: "A", dart: "➶", triple: "T", boule: "●", mallet: "T",
+  paddle: "◐", dice: "⚂", trophy: "🏆", club: "◆", phoenix: "Φ", viking: "ᚱ", panther: "●", bear: "🐻",
+};
+
+const TEAM_LOGO_COLORS: Record<string, [string, string, string]> = {
+  cyan: ["#21e8ff", "#09627b", "#d8fbff"],
+  gold: ["#ffd86a", "#7b3f00", "#fff1bb"],
+  red: ["#ff4f6d", "#6c0718", "#ffe0e6"],
+  green: ["#55ffa1", "#08643a", "#ddffec"],
+  purple: ["#b884ff", "#3b126c", "#f0e2ff"],
+  orange: ["#ff9b37", "#743300", "#ffe7ca"],
+  ice: ["#a9f7ff", "#31567a", "#ffffff"],
+  pink: ["#ff7adf", "#71145c", "#ffe4f7"],
+};
+
+function makeTeamLogoDataUrl(symbolKey: string, colorKey: keyof typeof TEAM_LOGO_COLORS, label: string) {
+  const [main, dark, light] = TEAM_LOGO_COLORS[colorKey] || TEAM_LOGO_COLORS.cyan;
+  const symbol = TEAM_LOGO_SYMBOLS[symbolKey] || "★";
+  const initials = String(label || "TEAM").replace(/[^a-zA-Z0-9À-ÿ]/g, "").slice(0, 2).toUpperCase() || "T";
+  const useInitials = symbol.length > 2 || /[\u{1F300}-\u{1FAFF}]/u.test(symbol);
+  const center = useInitials ? initials : symbol;
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+    <defs>
+      <radialGradient id="bg" cx="50%" cy="36%" r="70%">
+        <stop offset="0" stop-color="${main}" stop-opacity="0.95"/>
+        <stop offset="0.45" stop-color="${dark}" stop-opacity="0.95"/>
+        <stop offset="1" stop-color="#050914" stop-opacity="1"/>
+      </radialGradient>
+      <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="${light}"/>
+        <stop offset="0.5" stop-color="${main}"/>
+        <stop offset="1" stop-color="${dark}"/>
+      </linearGradient>
+      <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="6" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+        <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity="0.55"/>
+      </filter>
+    </defs>
+    <rect width="256" height="256" fill="none"/>
+    <circle cx="128" cy="128" r="114" fill="url(#bg)" stroke="url(#rim)" stroke-width="9" filter="url(#shadow)"/>
+    <circle cx="128" cy="128" r="94" fill="none" stroke="${main}" stroke-opacity="0.35" stroke-width="3"/>
+    <path d="M53 134c25-34 50-51 75-51s50 17 75 51c-25 32-50 48-75 48s-50-16-75-48Z" fill="#000" opacity="0.20"/>
+    <text x="128" y="146" text-anchor="middle" font-family="Arial Black, Impact, system-ui, sans-serif" font-size="${useInitials ? 70 : 102}" font-weight="900" fill="${light}" stroke="#02040a" stroke-width="7" paint-order="stroke" filter="url(#glow)">${center}</text>
+    <text x="128" y="216" text-anchor="middle" font-family="Arial Black, system-ui, sans-serif" font-size="18" letter-spacing="2" fill="${light}" opacity="0.9">TEAM</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function normalizeReturnTarget(value: any, activeSport: string) {
-  const raw = String(value || "").trim();
-  if (raw) return raw;
-  if (activeSport === "babyfoot") return "babyfoot_teams";
-  return "petanque_teams";
+function logo(id: string, label: string, category: string, symbol: string, color: keyof typeof TEAM_LOGO_COLORS, tags = ""): TeamLogoTemplate {
+  return { id, label, category, tags: `${label} ${category} ${symbol} ${tags}`.toLowerCase(), src: makeTeamLogoDataUrl(symbol, color, label) };
 }
 
-function SaveDiskIcon({ color = "currentColor" }: { color?: string }) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false" style={{ display: "block" }}>
-      <path d="M5 3h12.2L21 6.8V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      <path d="M7 3v6h10V3" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      <path d="M7 21v-7h10v7" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-      <path d="M9 6h5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
+const GENERATED_TEAM_LOGO_TEMPLATES: TeamLogoTemplate[] = [
+  logo("skull-cyan", "Skull Cyan", "darts", "skull", "cyan", "squelette crane fléchettes"),
+  logo("target-gold", "Target Gold", "darts", "target", "gold", "cible bull darts"),
+  logo("dragon-red", "Dragon Red", "darts", "dragon", "red", "feu"),
+  logo("wolf-ice", "Wolf Ice", "darts", "wolf", "ice", "loup"),
+  logo("eagle-gold", "Eagle Gold", "darts", "eagle", "gold", "aigle"),
+  logo("cobra-green", "Cobra", "darts", "cobra", "green", "serpent"),
+  logo("bull-orange", "Bull", "darts", "bull", "orange", "taureau"),
+  logo("pirate-purple", "Pirate", "darts", "pirate", "purple", "corsaire"),
+  logo("spartan-red", "Spartan", "darts", "spartan", "red", "guerrier"),
+  logo("samurai-pink", "Samurai", "darts", "samurai", "pink", "katana"),
+  logo("fire-orange", "Fire", "darts", "fire", "orange", "flamme"),
+  logo("lightning-cyan", "Lightning", "darts", "lightning", "cyan", "éclair"),
 
-function normalizeDisplayLogo(team: any): string | null {
-  return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || null;
-}
+  logo("foot-boot", "Boot", "foot", "boot", "green", "football ballon crampons"),
+  logo("foot-crown", "Royal Foot", "foot", "crown", "gold", "club"),
+  logo("foot-shield", "Shield FC", "foot", "shield", "cyan", "ecusson"),
+  logo("foot-lion", "Lion FC", "foot", "lion", "orange", "football"),
+  logo("foot-eagle", "Eagles FC", "foot", "eagle", "ice", "football"),
+  logo("foot-star", "All Stars", "foot", "star", "gold", "football"),
+
+  logo("petanque-boule", "Boule Club", "petanque", "boule", "cyan", "pétanque cochonnet"),
+  logo("petanque-crown", "Crown Boules", "petanque", "crown", "gold", "pétanque"),
+  logo("petanque-fire", "Fire Boules", "petanque", "fire", "orange", "pétanque"),
+  logo("petanque-ice", "Ice Boules", "petanque", "ice", "ice", "pétanque"),
+  logo("petanque-wolf", "Loups Boules", "petanque", "wolf", "purple", "pétanque"),
+  logo("petanque-trophy", "Trophée", "petanque", "trophy", "gold", "pétanque"),
+
+  logo("baby-ace", "Ace Baby", "babyfoot", "ace", "red", "baby-foot babyfoot"),
+  logo("baby-king", "King Baby", "babyfoot", "king", "gold", "baby-foot babyfoot"),
+  logo("baby-queen", "Queen Baby", "babyfoot", "queen", "pink", "baby-foot babyfoot"),
+  logo("baby-jack", "Jack Baby", "babyfoot", "jack", "cyan", "baby-foot babyfoot"),
+  logo("baby-trophy", "Baby Trophy", "babyfoot", "trophy", "orange", "baby-foot babyfoot"),
+  logo("baby-club", "Club Baby", "babyfoot", "club", "purple", "baby-foot babyfoot"),
+
+  logo("ping-paddle", "Paddle", "pingpong", "paddle", "cyan", "ping-pong raquette"),
+  logo("ping-fire", "Smash Fire", "pingpong", "fire", "orange", "ping-pong"),
+  logo("ping-ice", "Ice Smash", "pingpong", "ice", "ice", "ping-pong"),
+  logo("ping-lightning", "Fast Spin", "pingpong", "lightning", "gold", "ping-pong"),
+
+  logo("molkky-mallet", "Mallet", "molkky", "mallet", "gold", "mölkky quilles bois"),
+  logo("molkky-viking", "Viking", "molkky", "viking", "purple", "mölkky"),
+  logo("molkky-bear", "Bear", "molkky", "bear", "orange", "mölkky"),
+  logo("molkky-storm", "Storm", "molkky", "storm", "ice", "mölkky"),
+
+  logo("dice-ace", "Dice Ace", "dicegame", "ace", "red", "dés dice"),
+  logo("dice-dice", "Dice", "dicegame", "dice", "cyan", "dés dice"),
+  logo("dice-king", "Dice King", "dicegame", "king", "gold", "dés dice"),
+  logo("dice-toxic", "Toxic Dice", "dicegame", "toxic", "green", "dés dice"),
+
+  logo("multi-trophy", "Trophy", "multisport", "trophy", "gold", "multisports"),
+  logo("multi-phoenix", "Phoenix", "multisport", "phoenix", "orange", "multisports"),
+  logo("multi-comet", "Comet", "multisport", "comet", "purple", "multisports"),
+  logo("multi-crown", "Crown", "multisport", "crown", "gold", "multisports"),
+  logo("multi-ghost", "Ghost", "multisport", "ghost", "ice", "multisports"),
+  logo("multi-bomb", "Bomb", "multisport", "bomb", "red", "multisports"),
+];
+
+const TEAM_LOGO_TEMPLATES: TeamLogoTemplate[] = [
+  ...GENERATED_TEAM_LOGO_TEMPLATES,
+  { id: "frame-gold", label: "Cadre Gold", category: "popular", tags: "gold cadre populaire", src: getTeamAvatarUrl("gold") },
+  { id: "frame-pink", label: "Cadre Pink", category: "popular", tags: "pink cadre populaire", src: getTeamAvatarUrl("pink") },
+  { id: "frame-blue", label: "Cadre Blue", category: "popular", tags: "blue cadre populaire", src: getTeamAvatarUrl("blue") },
+  { id: "frame-green", label: "Cadre Green", category: "popular", tags: "green cadre populaire", src: getTeamAvatarUrl("green") },
+  { id: "bot-elite", label: "BOT Élite", category: "popular", tags: "bot elite ia", src: botTeamEliteLogo },
+  { id: "bot-pro", label: "BOT Pro", category: "popular", tags: "bot pro ia", src: botTeamProLogo },
+  { id: "bot-challenger", label: "BOT Challenger", category: "popular", tags: "bot challenger ia", src: botTeamChallengerLogo },
+  { id: "bot-mix", label: "BOT Mixte", category: "popular", tags: "bot mixte ia", src: botTeamMixLogo },
+  { id: "bot-rising", label: "BOT Rising", category: "popular", tags: "bot rising ia", src: botTeamRisingLogo },
+];
 
 function LogoCarouselModal({ theme, onClose, onPick }: { theme: any; onClose: () => void; onPick: (src: string) => void }) {
+  const [category, setCategory] = React.useState("popular");
+  const [query, setQuery] = React.useState("");
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return TEAM_LOGO_TEMPLATES.filter((item) => {
+      const catOk = category === "popular"
+        ? item.category === "popular" || ["skull-cyan", "target-gold", "dragon-red", "foot-boot", "petanque-boule", "baby-ace", "multi-trophy"].includes(item.id)
+        : item.category === category;
+      const qOk = !q || item.tags.includes(q) || item.label.toLowerCase().includes(q);
+      return catOk && qOk;
+    });
+  }, [category, query]);
+
+  const randomPick = () => {
+    const list = filtered.length ? filtered : TEAM_LOGO_TEMPLATES;
+    const item = list[Math.floor(Math.random() * list.length)];
+    if (item?.src) onPick(item.src);
+  };
+
   return (
     <div style={modalOverlay} onMouseDown={onClose}>
-      <div style={modalCard(theme)} onMouseDown={(e) => e.stopPropagation()}>
+      <div style={{ ...modalCard(theme), maxHeight: "82dvh", overflow: "hidden", display: "flex", flexDirection: "column" }} onMouseDown={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div>
-            <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>LOGOS D’ÉQUIPE</div>
-            <div style={{ fontSize: 12, opacity: 0.68, marginTop: 3 }}>Choisis un logo prêt à intégrer.</div>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.8, color: theme?.primary || "#28eaff" }}>LOGOS D’ÉQUIPE</div>
+            <div style={{ fontSize: 12, opacity: 0.68, marginTop: 3 }}>Bibliothèque intégrée : choisis, recherche ou prends un logo aléatoire.</div>
           </div>
           <button type="button" style={btnGhost(theme)} onClick={onClose}>Fermer</button>
         </div>
-        <div style={{ height: 14 }} />
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 2px 10px", scrollSnapType: "x mandatory" }}>
-          {TEAM_LOGO_TEMPLATES.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onPick(item.src)}
-              style={{
-                flex: "0 0 104px",
-                scrollSnapAlign: "start",
-                borderRadius: 18,
-                border: `1px solid ${theme?.borderSoft || "rgba(255,255,255,.14)"}`,
-                background: "rgba(255,255,255,.055)",
-                color: theme?.text || "#fff",
-                padding: 10,
-                cursor: "pointer",
-                display: "grid",
-                gap: 8,
-                justifyItems: "center",
-              }}
-            >
-              <span style={{ width: 74, height: 74, borderRadius: 18, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${theme?.primary || "#28eaff"}55`, background: "rgba(0,0,0,.22)" }}>
-                <img src={item.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              </span>
-              <span style={{ fontSize: 11, fontWeight: 900, opacity: 0.86, textAlign: "center" }}>{item.label}</span>
-            </button>
-          ))}
+        <div style={{ height: 12 }} />
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher : skull, foot, dragon..."
+            style={{ ...input(theme), height: 42, flex: 1, fontSize: 14 }}
+          />
+          <button type="button" onClick={randomPick} style={{ ...btnGhost(theme), height: 42, whiteSpace: "nowrap" }}>🎲</button>
+        </div>
+        <div style={{ height: 10 }} />
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "2px 2px 10px", flex: "0 0 auto" }}>
+          {TEAM_LOGO_CATEGORIES.map((cat) => {
+            const active = cat.id === category;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategory(cat.id)}
+                style={{
+                  border: `1px solid ${active ? (theme?.primary || "#28eaff") : (theme?.borderSoft || "rgba(255,255,255,.14)")}`,
+                  background: active ? `linear-gradient(135deg, ${theme?.primary || "#28eaff"}33, rgba(255,255,255,.06))` : "rgba(255,255,255,.045)",
+                  color: theme?.text || "#fff",
+                  borderRadius: 999,
+                  padding: "9px 12px",
+                  fontWeight: 950,
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                }}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ overflowY: "auto", paddingRight: 2 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+            {filtered.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onPick(item.src)}
+                style={{
+                  borderRadius: 18,
+                  border: `1px solid ${theme?.borderSoft || "rgba(255,255,255,.14)"}`,
+                  background: "rgba(255,255,255,.055)",
+                  color: theme?.text || "#fff",
+                  padding: 9,
+                  cursor: "pointer",
+                  display: "grid",
+                  gap: 7,
+                  justifyItems: "center",
+                  minWidth: 0,
+                }}
+              >
+                <span style={{ width: 74, height: 74, borderRadius: 20, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${theme?.primary || "#28eaff"}55`, background: "rgba(0,0,0,.22)" }}>
+                  <img src={item.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </span>
+                <span style={{ fontSize: 10.5, fontWeight: 950, opacity: 0.9, textAlign: "center", lineHeight: 1.1 }}>{item.label}</span>
+              </button>
+            ))}
+          </div>
+          {!filtered.length ? <div style={{ opacity: 0.7, padding: 18, textAlign: "center" }}>Aucun logo trouvé.</div> : null}
         </div>
       </div>
     </div>
