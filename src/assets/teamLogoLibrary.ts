@@ -12,6 +12,12 @@ import teamLogo003 from "./team_logos/team_logo_003.webp";
 import teamLogo004 from "./team_logos/team_logo_004.webp";
 import teamLogo005 from "./team_logos/team_logo_005.webp";
 import teamLogo006 from "./team_logos/team_logo_006.webp";
+import teamLogo007 from "./team_logos/team_logo_007.webp";
+import teamLogo008 from "./team_logos/team_logo_008.webp";
+import teamLogo009 from "./team_logos/team_logo_009.webp";
+import teamLogo010 from "./team_logos/team_logo_010.webp";
+import teamLogo011 from "./team_logos/team_logo_011.webp";
+import teamLogo012 from "./team_logos/team_logo_012.webp";
 
 export type TeamLogoCategory =
   | "popular"
@@ -94,6 +100,54 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     category: "multisport",
     tags: ["popular", "phoenix", "fire", "feu", "flamme", "orange", "esport"],
     src: teamLogo006,
+  },
+  {
+    id: "team_logo_007",
+    fileName: "team_logo_007.webp",
+    label: "Logo 007",
+    category: "multisport",
+    tags: ["popular", "skull", "crane", "crâne", "violet", "purple", "darts", "fléchettes", "flechettes", "esport"],
+    src: teamLogo007,
+  },
+  {
+    id: "team_logo_008",
+    fileName: "team_logo_008.webp",
+    label: "Logo 008",
+    category: "multisport",
+    tags: ["popular", "cobra", "snake", "serpent", "green", "vert", "animal", "esport"],
+    src: teamLogo008,
+  },
+  {
+    id: "team_logo_009",
+    fileName: "team_logo_009.webp",
+    label: "Logo 009",
+    category: "darts",
+    tags: ["popular", "pirate", "skull", "crane", "crâne", "darts", "fléchettes", "flechettes", "red", "rouge", "esport"],
+    src: teamLogo009,
+  },
+  {
+    id: "team_logo_010",
+    fileName: "team_logo_010.webp",
+    label: "Logo 010",
+    category: "multisport",
+    tags: ["popular", "thunder", "lightning", "éclair", "eclair", "blue", "bleu", "electric", "esport"],
+    src: teamLogo010,
+  },
+  {
+    id: "team_logo_011",
+    fileName: "team_logo_011.webp",
+    label: "Logo 011",
+    category: "multisport",
+    tags: ["popular", "spartan", "spartiate", "helmet", "casque", "warrior", "guerrier", "red", "rouge", "gold", "or", "esport"],
+    src: teamLogo011,
+  },
+  {
+    id: "team_logo_012",
+    fileName: "team_logo_012.webp",
+    label: "Logo 012",
+    category: "multisport",
+    tags: ["popular", "dragon", "red", "rouge", "fire", "feu", "fantasy", "animal", "esport"],
+    src: teamLogo012,
   },
 ];
 
