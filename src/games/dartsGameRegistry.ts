@@ -1110,6 +1110,7 @@ const READY_IDS = new Set<string>([
   "tour_horloge",
   "cricket",
   "killer",
+  "killer_progressive",
   "shanghai",
   "golf",
   "departements",
