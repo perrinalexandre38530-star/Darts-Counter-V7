@@ -146,6 +146,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
   const [clubMatches, setClubMatches] = React.useState<ClubMatch[]>([]);
   const [clubConvocations, setClubConvocations] = React.useState<ClubConvocation[]>([]);
   const [clubTab, setClubTab] = React.useState<ClubTab>("accueil");
+  const [showClubInfo, setShowClubInfo] = React.useState(false);
 
   const [postText, setPostText] = React.useState("");
   const [inviteQuery, setInviteQuery] = React.useState("");
@@ -355,123 +356,176 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
     const tabs: { id: ClubTab; label: string }[] = [
       { id: "accueil", label: "Accueil" },
       { id: "actu", label: "Actu" },
-      { id: "equipes", label: "Équipes" },
-      { id: "membres", label: "Membres" },
       { id: "matchs", label: "Matchs" },
       { id: "convocations", label: "Convocs" },
       { id: "calendrier", label: "Agenda" },
+      { id: "membres", label: "Effectif" },
+      { id: "equipes", label: "Équipes" },
       { id: "invitations", label: "Inviter" },
       { id: "reglages", label: "Réglages" },
     ];
+    const selectedTeam = clubTeams.find((t) => t.id === matchTeamId) || clubTeams[0] || null;
+    const heroLogo = selectedClub.logoUrl || clubTeams[0]?.logoDataUrl || clubTeams[0]?.logoUrl || null;
+    const overlay: React.CSSProperties = {
+      position: "fixed",
+      inset: 0,
+      zIndex: 9999,
+      color: "#fff",
+      background: `radial-gradient(circle at 50% -10%, ${alpha(accent, "36")}, transparent 30%), linear-gradient(180deg, #071622 0%, #02060d 74%)`,
+      overflowY: "auto",
+      WebkitOverflowScrolling: "touch",
+      padding: "18px clamp(12px, 4vw, 28px) 96px",
+      boxSizing: "border-box",
+    };
+    const pageShell: React.CSSProperties = { maxWidth: 820, margin: "0 auto", display: "grid", gap: 12 };
+    const dotButton: React.CSSProperties = {
+      width: 54,
+      height: 54,
+      borderRadius: 999,
+      border: `1px solid ${alpha(accent, "aa")}`,
+      background: "rgba(0,0,0,.46)",
+      color: accent,
+      fontSize: 25,
+      fontWeight: 1000,
+      display: "grid",
+      placeItems: "center",
+      boxShadow: `0 0 20px ${alpha(accent, "35")}`,
+    };
+    const tabBar: React.CSSProperties = {
+      position: "sticky",
+      top: 0,
+      zIndex: 5,
+      display: "flex",
+      gap: 8,
+      overflowX: "auto",
+      padding: "10px 2px 12px",
+      margin: "0 -2px",
+      scrollbarWidth: "none",
+      background: `linear-gradient(180deg, rgba(4,13,21,.96), rgba(4,13,21,.82))`,
+      backdropFilter: "blur(12px)",
+    };
+    const panelTitle = tabs.find((t) => t.id === clubTab)?.label || "Club";
 
     return (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button type="button" onClick={() => { setSelectedClubId(null); setSelectedClub(null); reload(); }} style={tinyButton(accent)}>←</button>
-          <Logo src={selectedClub.logoUrl} name={selectedClub.name} accent={accent} size={48} round={999} />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 22, color: accent, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedClub.name}</div>
-            <div style={{ fontSize: 11.5, opacity: .75 }}>{selectedClub.membersCount || clubMembers.length} membre(s) • {clubTeams.length} équipe(s) • rôle {roleLabel(selectedClub.role)}</div>
-          </div>
-          <button type="button" onClick={() => openClub(selectedClubId, clubTab)} disabled={busy} style={tinyButton(accent)}>↻</button>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, scrollbarWidth: "none" }}>
-          {tabs.map((t) => <button key={t.id} type="button" onClick={() => setClubTab(t.id)} style={{ ...tinyButton(accent, clubTab === t.id), flex: "0 0 auto" }}>{t.label}</button>)}
-        </div>
-
-        {error ? <div style={{ ...card("#ff5a6f"), color: "#ffd9df", fontSize: 12 }}>{error}</div> : null}
-
-        {clubTab === "accueil" ? (
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={card(accent)}>
-              <SectionTitle accent={accent}>Tableau de bord club</SectionTitle>
-              <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.35, opacity: .82 }}>Espace partagé du club : actualités, effectif, équipes, matchs, convocations et calendrier. Cette base reste multisports.</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
-                <StatTile accent={accent} value={clubMembers.length} label="Membres" />
+      <div style={overlay}>
+        <div style={pageShell}>
+          <div style={{ position: "relative", minHeight: 184, borderRadius: 26, overflow: "hidden", border: `1px solid ${alpha(accent, "5e")}`, boxShadow: `0 0 28px ${alpha(accent, "20")}` }}>
+            <div style={{ position: "absolute", inset: 0, background: selectedClub.coverUrl ? `linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.76)), url(${selectedClub.coverUrl}) center/cover` : `radial-gradient(circle at 52% 16%, ${alpha(accent, "3c")}, transparent 36%), linear-gradient(135deg, ${alpha(accent, "18")}, rgba(255,255,255,.035))` }} />
+            {heroLogo ? <img src={heroLogo} alt="" style={{ position: "absolute", right: -28, bottom: -38, width: 170, height: 170, objectFit: "cover", opacity: .16, filter: "blur(.2px)", borderRadius: 999 }} /> : null}
+            <div style={{ position: "relative", zIndex: 1, padding: 16, display: "grid", gap: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <button type="button" onClick={() => { setSelectedClubId(null); setSelectedClub(null); setShowClubInfo(false); reload(); }} style={dotButton} aria-label="Retour">←</button>
+                <button type="button" onClick={() => setShowClubInfo(true)} style={dotButton} aria-label="Infos">i</button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <Logo src={heroLogo} name={selectedClub.name} accent={accent} size={72} round={999} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 30, lineHeight: .95, color: accent, fontWeight: 1000, letterSpacing: .6, overflowWrap: "anywhere", textShadow: `0 0 18px ${alpha(accent, "55")}` }}>{selectedClub.name}</div>
+                  <div style={{ marginTop: 7, fontSize: 12.5, opacity: .86 }}>{selectedClub.membersCount || clubMembers.length} membre(s) • {clubTeams.length} équipe(s) • rôle {roleLabel(selectedClub.role)}</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+                <StatTile accent={accent} value={clubMembers.length} label="Effectif" />
                 <StatTile accent={accent} value={clubTeams.length} label="Équipes" />
                 <StatTile accent={accent} value={nextMatches.length} label="Matchs" />
-                <StatTile accent={accent} value={pendingConvocations.length} label="À répondre" />
+                <StatTile accent={accent} value={pendingConvocations.length} label="Réponses" />
               </div>
             </div>
-            <div style={card(accent)}>
-              <SectionTitle accent={accent}>Prochain match</SectionTitle>
-              {nextMatches[0] ? <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center" }}><Logo src={clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoDataUrl || clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoUrl} name={nextMatches[0].teamName || selectedClub.name} accent={accent} /><div><div style={{ fontWeight: 1000 }}>{nextMatches[0].title}</div><div style={{ fontSize: 12, opacity: .76 }}>{formatDateTime(nextMatches[0].startsAt)}{nextMatches[0].location ? ` • ${nextMatches[0].location}` : ""}</div></div></div> : <div style={{ marginTop: 8, opacity: .72 }}>Aucun match planifié pour l’instant.</div>}
-            </div>
-            <div style={card(accent)}>
-              <SectionTitle accent={accent}>Dernières actus</SectionTitle>
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>{clubPosts.slice(0, 3).map((p) => <div key={p.id} style={{ borderRadius: 14, background: "rgba(255,255,255,.055)", padding: 10 }}><div style={{ fontWeight: 950 }}>{p.title || "Actualité"}</div><div style={{ fontSize: 12.5, opacity: .85, marginTop: 4 }}>{p.body}</div></div>)}{clubPosts.length === 0 ? <div style={{ opacity: .72 }}>Aucune actualité.</div> : null}</div>
-            </div>
           </div>
-        ) : null}
 
-        {clubTab === "actu" ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Publier une actualité</SectionTitle><textarea value={postText} onChange={(e) => setPostText(e.target.value)} placeholder="Message pour les membres du club..." style={{ ...inputStyle(accent), minHeight: 86, marginTop: 10 }} /><button type="button" onClick={publishPost} disabled={!postText.trim() || busy} style={{ ...tinyButton(accent, true), width: "100%", marginTop: 8 }}>Publier</button></div> : null}
-            {clubPosts.length ? clubPosts.map((p) => <div key={p.id} style={card(accent)}><div style={{ fontWeight: 1000 }}>{p.title || "Actualité"}</div><div style={{ marginTop: 5, fontSize: 13, lineHeight: 1.35 }}>{p.body}</div><div style={{ marginTop: 8, fontSize: 10.5, opacity: .65 }}>{p.authorName || "Club"} • {p.createdAt ? new Date(p.createdAt).toLocaleString("fr-FR") : ""}</div></div>) : <div style={card(accent)}>Aucune actualité pour l’instant.</div>}
+          <div style={tabBar}>
+            {tabs.map((t) => <button key={t.id} type="button" onClick={() => setClubTab(t.id)} style={{ ...tinyButton(accent, clubTab === t.id), flex: "0 0 auto", minWidth: 104, borderRadius: 18 }}>{t.label}</button>)}
           </div>
-        ) : null}
 
-        {clubTab === "equipes" ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {clubTeams.length ? clubTeams.map((team) => <div key={team.id} style={card(accent)}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><Logo src={team.logoDataUrl || team.logoUrl} name={team.name} accent={accent} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.name}</div><div style={{ fontSize: 11, opacity: .7 }}>{String(team.sport || "sport").toUpperCase()} • {team.membersCount || 0} membre(s)</div></div></div></div>) : <div style={card(accent)}>Aucune équipe synchronisée.</div>}
-          </div>
-        ) : null}
+          {error ? <div style={{ ...card("#ff5a6f"), color: "#ffd9df", fontSize: 12 }}>{error}</div> : null}
 
-        {clubTab === "membres" ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            {clubMembers.length ? clubMembers.map((m) => <div key={m.id} style={{ ...card(accent), display: "flex", gap: 10, alignItems: "center" }}><Logo src={m.avatarUrl} name={m.displayName} accent={accent} size={38} round={999} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000 }}>{m.displayName}</div><div style={{ fontSize: 11, opacity: .7 }}>{roleLabel(m.role)} • {m.status || "active"}</div></div></div>) : <div style={card(accent)}>Aucun membre.</div>}
-          </div>
-        ) : null}
+          {clubTab !== "accueil" ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><SectionTitle accent={accent}>{panelTitle}</SectionTitle><button type="button" onClick={() => openClub(selectedClubId, clubTab)} disabled={busy} style={tinyButton(accent)}>↻</button></div> : null}
 
-        {clubTab === "matchs" ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {canManage ? <div style={card(accent)}>
-              <SectionTitle accent={accent}>Créer un match</SectionTitle>
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                <select value={matchTeamId} onChange={(e) => setMatchTeamId(e.target.value)} style={inputStyle(accent)}>{clubTeams.map(t => <option key={t.id} value={t.id}>{t.name} • {t.sport}</option>)}</select>
-                <input value={matchOpponent} onChange={(e) => setMatchOpponent(e.target.value)} placeholder="Adversaire" style={inputStyle(accent)} />
-                <input value={matchDate} onChange={(e) => setMatchDate(e.target.value)} type="datetime-local" style={inputStyle(accent)} />
-                <input value={matchLocation} onChange={(e) => setMatchLocation(e.target.value)} placeholder="Lieu / terrain" style={inputStyle(accent)} />
-                <button type="button" onClick={createMatch} disabled={!matchOpponent.trim() || busy} style={{ ...tinyButton(accent, true), width: "100%" }}>Créer + convoquer l’effectif</button>
+          {clubTab === "accueil" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                <button type="button" onClick={() => setClubTab("matchs")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Prochains matchs</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{nextMatches.length ? `${nextMatches.length} match(s) planifié(s)` : "Aucun match"}</div></button>
+                <button type="button" onClick={() => setClubTab("convocations")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Convocations</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{pendingConvocations.length ? `${pendingConvocations.length} réponse(s) attendue(s)` : "Tout est à jour"}</div></button>
+                <button type="button" onClick={() => setClubTab("actu")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Fil d’actu</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{clubPosts.length ? `${clubPosts.length} publication(s)` : "Publie la première actu"}</div></button>
+                <button type="button" onClick={() => setClubTab("membres")} style={{ ...card(accent), color: "#fff", textAlign: "left", minHeight: 92 }}><div style={{ color: accent, fontWeight: 1000, fontSize: 17 }}>Effectif</div><div style={{ marginTop: 6, fontSize: 12, opacity: .75 }}>{clubMembers.length} membre(s)</div></button>
               </div>
-            </div> : null}
-            {clubMatches.length ? clubMatches.map((m) => <div key={m.id} style={card(accent)}><div style={{ display: "flex", gap: 10, alignItems: "center" }}><Logo src={clubTeams.find(t => t.id === m.clubTeamId)?.logoDataUrl || clubTeams.find(t => t.id === m.clubTeamId)?.logoUrl} name={m.teamName || selectedClub.name} accent={accent} size={40} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000 }}>{m.title}</div><div style={{ fontSize: 12, opacity: .76 }}>{formatDateTime(m.startsAt)}{m.location ? ` • ${m.location}` : ""}</div><div style={{ marginTop: 4, fontSize: 11, color: accent }}>{m.teamName || "Club"} • {String(m.status || "scheduled")}</div></div></div></div>) : <div style={card(accent)}>Aucun match planifié.</div>}
-          </div>
-        ) : null}
+              <div style={card(accent)}>
+                <SectionTitle accent={accent}>À la une</SectionTitle>
+                {nextMatches[0] ? <button type="button" onClick={() => setClubTab("matchs")} style={{ marginTop: 12, width: "100%", border: 0, color: "#fff", textAlign: "left", borderRadius: 18, padding: 12, background: "rgba(255,255,255,.055)", display: "flex", gap: 12, alignItems: "center" }}><Logo src={clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoDataUrl || clubTeams.find(t => t.id === nextMatches[0].clubTeamId)?.logoUrl} name={nextMatches[0].teamName || selectedClub.name} accent={accent} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere" }}>{nextMatches[0].title}</div><div style={{ fontSize: 12, opacity: .76, marginTop: 3 }}>{formatDateTime(nextMatches[0].startsAt)}{nextMatches[0].location ? ` • ${nextMatches[0].location}` : ""}</div></div></button> : <div style={{ marginTop: 8, opacity: .72 }}>Aucun match planifié pour l’instant.</div>}
+              </div>
+            </div>
+          ) : null}
 
-        {clubTab === "convocations" ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {clubMatches.length === 0 ? <div style={card(accent)}>Crée d’abord un match pour générer les convocations.</div> : null}
-            {clubMatches.map((match) => {
-              const rows = clubConvocations.filter(c => c.clubMatchId === match.id);
-              const counts = rows.reduce<Record<string, number>>((acc, c) => { acc[String(c.status || "pending")] = (acc[String(c.status || "pending")] || 0) + 1; return acc; }, {});
-              return <div key={match.id} style={card(accent)}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{match.title}</div><div style={{ fontSize: 11.5, opacity: .75 }}>{formatDateTime(match.startsAt)} • Présents {counts.present || 0} / Absents {counts.absent || 0} / Incertains {counts.uncertain || 0}</div></div></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{rows.map((c) => { const st = statusLabel(c.status); return <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 13, background: "rgba(255,255,255,.045)", padding: 8 }}><Logo src={c.avatarUrl} name={c.displayName} accent={accent} size={32} round={999} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 950 }}>{c.displayName}</div><div style={{ fontSize: 10.5, color: st.color }}>{st.label}</div></div><button type="button" onClick={() => answerConvocation(c, "present")} style={tinyButton("#45ff8c", c.status === "present")}>✓</button><button type="button" onClick={() => answerConvocation(c, "uncertain")} style={tinyButton("#ffc857", c.status === "uncertain")}>?</button><button type="button" onClick={() => answerConvocation(c, "absent")} style={tinyButton("#ff5a6f", c.status === "absent")}>×</button></div>})}</div></div>;
-            })}
-          </div>
-        ) : null}
+          {clubTab === "actu" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Nouvelle publication</SectionTitle><textarea value={postText} onChange={(e) => setPostText(e.target.value)} placeholder="Annonce, résultat, info entraînement, message du coach..." style={{ ...inputStyle(accent), minHeight: 112, marginTop: 10, resize: "vertical" }} /><button type="button" onClick={publishPost} disabled={!postText.trim() || busy} style={{ ...tinyButton(accent, true), width: "100%", marginTop: 8 }}>Publier dans l’actu</button></div> : null}
+              {clubPosts.length ? clubPosts.map((p) => <div key={p.id} style={{ ...card(accent), padding: 14 }}><div style={{ display: "flex", gap: 10, alignItems: "center" }}><Logo src={selectedClub.logoUrl} name={selectedClub.name} accent={accent} size={38} round={999} /><div><div style={{ fontWeight: 1000 }}>{p.title || "Actualité du club"}</div><div style={{ fontSize: 10.5, opacity: .65 }}>{p.authorName || "Club"} • {p.createdAt ? new Date(p.createdAt).toLocaleString("fr-FR") : ""}</div></div></div><div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.42 }}>{p.body}</div></div>) : <div style={card(accent)}>Aucune actualité pour l’instant.</div>}
+            </div>
+          ) : null}
 
-        {clubTab === "calendrier" ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Ajouter un évènement</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 10 }}><input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Entraînement, réunion, tournoi..." style={inputStyle(accent)} /><input value={eventDate} onChange={(e) => setEventDate(e.target.value)} type="datetime-local" style={inputStyle(accent)} /><input value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder="Lieu" style={inputStyle(accent)} /><button type="button" onClick={createEvent} disabled={!eventTitle.trim() || busy} style={{ ...tinyButton(accent, true), width: "100%" }}>Ajouter au calendrier</button></div></div> : null}
-            {[...clubMatches.map(m => ({ id: `m-${m.id}`, title: m.title, type: "match", startsAt: m.startsAt, location: m.location })), ...clubEvents.map(e => ({ id: `e-${e.id}`, title: e.title, type: e.type, startsAt: e.startsAt, location: e.location }))].sort((a,b) => String(a.startsAt || "9999").localeCompare(String(b.startsAt || "9999"))).map((it) => <div key={it.id} style={card(accent)}><div style={{ fontWeight: 1000 }}>{it.type === "match" ? "🏟️ " : "📅 "}{it.title}</div><div style={{ fontSize: 12, opacity: .76, marginTop: 4 }}>{formatDateTime(it.startsAt)}{it.location ? ` • ${it.location}` : ""}</div></div>)}
-          </div>
-        ) : null}
+          {clubTab === "equipes" ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {clubTeams.length ? clubTeams.map((team) => <button key={team.id} type="button" style={{ ...card(accent), color: "#fff", textAlign: "left", padding: 14 }}><div style={{ display: "flex", alignItems: "center", gap: 12 }}><Logo src={team.logoDataUrl || team.logoUrl} name={team.name} accent={accent} size={56} round={18} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000, fontSize: 18, overflowWrap: "anywhere" }}>{team.name}</div><div style={{ fontSize: 11.5, opacity: .72 }}>{String(team.sport || "sport").toUpperCase()} • {team.membersCount || 0} membre(s)</div></div><div style={{ color: accent, fontWeight: 1000 }}>›</div></div></button>) : <div style={card(accent)}>Aucune équipe synchronisée.</div>}
+            </div>
+          ) : null}
 
-        {clubTab === "invitations" ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {!canManage ? <div style={card(accent)}>Seuls les responsables du club peuvent inviter des membres.</div> : <div style={card(accent)}>
-              <SectionTitle accent={accent}>Inviter un joueur Online</SectionTitle>
-              <select value={selectedInviteTeam} onChange={(e) => setSelectedInviteTeam(e.target.value)} style={{ ...inputStyle(accent), marginTop: 10 }}><option value="">Club complet</option>{clubTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}><input value={inviteQuery} onChange={(e) => setInviteQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") runUserSearch(); }} placeholder="Pseudo ou email" style={inputStyle(accent)} /><button type="button" onClick={runUserSearch} style={tinyButton(accent, true)}>OK</button></div>
-              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>{inviteResults.map((u) => <button key={u.id} type="button" onClick={() => sendClubInvite(u)} style={{ ...card(accent), color: "#fff", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}><Logo src={u.avatarUrl} name={u.displayName || u.nickname || "Joueur"} accent={accent} size={34} round={999} /><span style={{ fontWeight: 950 }}>{u.displayName || u.nickname}</span><span style={{ marginLeft: "auto", color: accent, fontWeight: 1000 }}>Inviter</span></button>)}</div>
-            </div>}
-          </div>
-        ) : null}
+          {clubTab === "membres" ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {clubMembers.length ? clubMembers.map((m) => <div key={m.id} style={{ ...card(accent), display: "flex", gap: 10, alignItems: "center", padding: 11 }}><Logo src={m.avatarUrl} name={m.displayName} accent={accent} size={46} round={999} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000, fontSize: 15, overflowWrap: "anywhere" }}>{m.displayName}</div><div style={{ fontSize: 11, opacity: .7 }}>{roleLabel(m.role)} • {m.status || "active"}</div></div><span style={{ borderRadius: 999, padding: "5px 8px", color: accent, border: `1px solid ${alpha(accent, "44")}`, fontWeight: 900, fontSize: 10 }}>{roleLabel(m.role)}</span></div>) : <div style={card(accent)}>Aucun membre.</div>}
+            </div>
+          ) : null}
 
-        {clubTab === "reglages" ? (
-          <div style={card(accent)}><SectionTitle accent={accent}>Réglages club</SectionTitle><div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, opacity: .82 }}>Visibilité : <b>{selectedClub.visibility || "members"}</b><br />Sports : <b>{(selectedClub.sports || []).join(", ") || "multisports"}</b><br />Les droits fins, rôles modifiables, bannière/logo et paramètres avancés seront branchés sur cette base.</div></div>
-        ) : null}
+          {clubTab === "matchs" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {canManage ? <div style={card(accent)}>
+                <SectionTitle accent={accent}>Programmer un match</SectionTitle>
+                <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+                  <select value={matchTeamId} onChange={(e) => setMatchTeamId(e.target.value)} style={inputStyle(accent)}>{clubTeams.map(t => <option key={t.id} value={t.id}>{t.name} • {t.sport}</option>)}</select>
+                  <input value={matchOpponent} onChange={(e) => setMatchOpponent(e.target.value)} placeholder="Adversaire" style={inputStyle(accent)} />
+                  <input value={matchDate} onChange={(e) => setMatchDate(e.target.value)} type="datetime-local" style={inputStyle(accent)} />
+                  <input value={matchLocation} onChange={(e) => setMatchLocation(e.target.value)} placeholder="Lieu / terrain" style={inputStyle(accent)} />
+                  <button type="button" onClick={createMatch} disabled={!matchOpponent.trim() || busy} style={{ ...tinyButton(accent, true), width: "100%" }}>Créer le match + convoquer</button>
+                </div>
+              </div> : null}
+              {clubMatches.length ? clubMatches.map((m) => <div key={m.id} style={{ ...card(accent), padding: 0, overflow: "hidden" }}><div style={{ padding: 14, background: `linear-gradient(90deg, ${alpha(accent, "22")}, rgba(255,255,255,.03))` }}><div style={{ display: "flex", gap: 12, alignItems: "center" }}><Logo src={clubTeams.find(t => t.id === m.clubTeamId)?.logoDataUrl || clubTeams.find(t => t.id === m.clubTeamId)?.logoUrl} name={m.teamName || selectedClub.name} accent={accent} size={48} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000, fontSize: 17, overflowWrap: "anywhere" }}>{m.title}</div><div style={{ fontSize: 12, opacity: .76, marginTop: 3 }}>{formatDateTime(m.startsAt)}{m.location ? ` • ${m.location}` : ""}</div></div></div></div><div style={{ padding: 12, display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, opacity: .8 }}><span>{m.teamName || selectedClub.name}</span><span style={{ color: accent, fontWeight: 1000 }}>{String(m.status || "scheduled")}</span></div></div>) : <div style={card(accent)}>Aucun match planifié.</div>}
+            </div>
+          ) : null}
+
+          {clubTab === "convocations" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {clubMatches.length === 0 ? <div style={card(accent)}>Crée d’abord un match pour générer les convocations.</div> : null}
+              {clubMatches.map((match) => {
+                const rows = clubConvocations.filter(c => c.clubMatchId === match.id);
+                const counts = rows.reduce<Record<string, number>>((acc, c) => { acc[String(c.status || "pending")] = (acc[String(c.status || "pending")] || 0) + 1; return acc; }, {});
+                return <div key={match.id} style={card(accent)}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 1000, fontSize: 16, overflowWrap: "anywhere" }}>{match.title}</div><div style={{ fontSize: 11.5, opacity: .75, marginTop: 3 }}>{formatDateTime(match.startsAt)}</div></div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 7, marginTop: 10 }}><StatTile accent="#45ff8c" value={counts.present || 0} label="Présents" /><StatTile accent="#ffc857" value={counts.uncertain || 0} label="Incertains" /><StatTile accent="#ff5a6f" value={counts.absent || 0} label="Absents" /></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{rows.map((c) => { const st = statusLabel(c.status); return <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 15, background: "rgba(255,255,255,.045)", padding: 8 }}><Logo src={c.avatarUrl} name={c.displayName} accent={accent} size={34} round={999} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 950, overflowWrap: "anywhere" }}>{c.displayName}</div><div style={{ fontSize: 10.5, color: st.color }}>{st.label}</div></div><button type="button" onClick={() => answerConvocation(c, "present")} style={tinyButton("#45ff8c", c.status === "present")}>✓</button><button type="button" onClick={() => answerConvocation(c, "uncertain")} style={tinyButton("#ffc857", c.status === "uncertain")}>?</button><button type="button" onClick={() => answerConvocation(c, "absent")} style={tinyButton("#ff5a6f", c.status === "absent")}>×</button></div>})}</div></div>;
+              })}
+            </div>
+          ) : null}
+
+          {clubTab === "calendrier" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Ajouter un évènement</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 10 }}><input value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} placeholder="Entraînement, réunion, tournoi..." style={inputStyle(accent)} /><input value={eventDate} onChange={(e) => setEventDate(e.target.value)} type="datetime-local" style={inputStyle(accent)} /><input value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} placeholder="Lieu" style={inputStyle(accent)} /><button type="button" onClick={createEvent} disabled={!eventTitle.trim() || busy} style={{ ...tinyButton(accent, true), width: "100%" }}>Ajouter au calendrier</button></div></div> : null}
+              {[...clubMatches.map(m => ({ id: `m-${m.id}`, title: m.title, type: "match", startsAt: m.startsAt, location: m.location })), ...clubEvents.map(e => ({ id: `e-${e.id}`, title: e.title, type: e.type, startsAt: e.startsAt, location: e.location }))].sort((a,b) => String(a.startsAt || "9999").localeCompare(String(b.startsAt || "9999"))).map((it) => <div key={it.id} style={{ ...card(accent), display: "flex", gap: 10, alignItems: "center" }}><div style={{ width: 50, height: 50, borderRadius: 18, background: `linear-gradient(135deg, ${alpha(accent, "32")}, rgba(255,255,255,.04))`, display: "grid", placeItems: "center", color: accent, fontWeight: 1000 }}>{it.type === "match" ? "M" : "A"}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere" }}>{it.title}</div><div style={{ fontSize: 12, opacity: .76, marginTop: 4 }}>{formatDateTime(it.startsAt)}{it.location ? ` • ${it.location}` : ""}</div></div></div>)}
+            </div>
+          ) : null}
+
+          {clubTab === "invitations" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {!canManage ? <div style={card(accent)}>Seuls les responsables du club peuvent inviter des membres.</div> : <div style={card(accent)}>
+                <SectionTitle accent={accent}>Inviter un joueur Online</SectionTitle>
+                <select value={selectedInviteTeam} onChange={(e) => setSelectedInviteTeam(e.target.value)} style={{ ...inputStyle(accent), marginTop: 10 }}><option value="">Club complet</option>{clubTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}><input value={inviteQuery} onChange={(e) => setInviteQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") runUserSearch(); }} placeholder="Pseudo ou email" style={inputStyle(accent)} /><button type="button" onClick={runUserSearch} style={tinyButton(accent, true)}>OK</button></div>
+                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>{inviteResults.map((u) => <button key={u.id} type="button" onClick={() => sendClubInvite(u)} style={{ ...card(accent), color: "#fff", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}><Logo src={u.avatarUrl} name={u.displayName || u.nickname || "Joueur"} accent={accent} size={34} round={999} /><span style={{ fontWeight: 950 }}>{u.displayName || u.nickname}</span><span style={{ marginLeft: "auto", color: accent, fontWeight: 1000 }}>Inviter</span></button>)}</div>
+              </div>}
+            </div>
+          ) : null}
+
+          {clubTab === "reglages" ? (
+            <div style={card(accent)}><SectionTitle accent={accent}>Réglages club</SectionTitle><div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, opacity: .82 }}>Visibilité : <b>{selectedClub.visibility || "members"}</b><br />Sports : <b>{(selectedClub.sports || []).join(", ") || "multisports"}</b><br />Prochaine étape : modifier les rôles, le logo, la bannière, les permissions et les sports du club.</div></div>
+          ) : null}
+        </div>
+
+        {showClubInfo ? <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.72)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setShowClubInfo(false)}><div style={{ ...card(accent), maxWidth: 440, width: "100%" }} onClick={(e) => e.stopPropagation()}><SectionTitle accent={accent}>Infos club</SectionTitle><div style={{ marginTop: 10, lineHeight: 1.45, fontSize: 13.5 }}>Cet espace centralise la vie du club : actualités, équipes, effectif, matchs, convocations, agenda et réglages. Les onglets s’ouvrent en plein écran pour éviter l’effet formulaire compact.</div><button type="button" onClick={() => setShowClubInfo(false)} style={{ ...tinyButton(accent, true), width: "100%", marginTop: 14 }}>Fermer</button></div></div> : null}
       </div>
     );
   }
