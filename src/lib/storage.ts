@@ -921,9 +921,23 @@ async function migrateLegacyStoreIfNeeded() {
    ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
 // ✅ IMPORTANT : ton app a des clés en dc_ ET en dc- selon les versions
-const LS_PREFIXES = ["dc_", "dc-"] as const;
+const LS_PREFIXES = ["dc_", "dc-", "dc:"] as const;
+const USER_CREATED_APP_KEYS = new Set<string>([
+  // Clés historiques sans préfixe dc_* mais contenant des données créées par l'utilisateur.
+  "babyfoot_league_store_v1",
+  "settings_x01",
+  "cloudStatsEnabled",
+]);
+const USER_CREATED_APP_PREFIXES = [
+  "babyfoot_",
+  "settings_",
+] as const;
 function isDcKey(k: string) {
   return LS_PREFIXES.some((p) => k.startsWith(p));
+}
+function isAppUserCreatedLocalStorageKey(k: string) {
+  const key = String(k || "");
+  return isDcKey(key) || USER_CREATED_APP_KEYS.has(key) || USER_CREATED_APP_PREFIXES.some((p) => key.startsWith(p));
 }
 
 const LS_EXCLUDE = new Set<string>([
@@ -941,6 +955,15 @@ const LS_EXCLUDE = new Set<string>([
   // divers flags techniques (optionnel)
   "dc_sw_purge_once",
   "dc_last_crash",
+  "dc_last_runtime_error_v1",
+  "dc_safe_mode_v1",
+  "dc_force_purge_sw",
+  "dc_sw_purge_once",
+  "dc_nas_access_token_v1",
+  "dc_nas_refresh_token_v1",
+  "dc_nas_profile_onboarding_uid",
+  "dc_user_id",
+  "dc_storage_user_id_v1",
 
   // historique / caches legacy désormais gérés hors localStorage
   "dc-history-v1",
@@ -958,6 +981,8 @@ const LS_LARGE_PAYLOAD_KEYS = new Set<string>([
   "dc-lite-dartsets-v1",
   "dc_bots_avatars_v1",
   "dc-teams-v1",
+  "babyfoot_league_store_v1",
+  "settings_x01",
 ]);
 
 function maxLocalStorageExportLenForKey(key: string): number {
@@ -1172,7 +1197,7 @@ export async function storageEstimate() {
 }
 
 function shouldExportLocalStorageDcKey(key: string, value: string | null): boolean {
-  if (!key || !isDcKey(key) || LS_EXCLUDE.has(key)) return false;
+  if (!key || !isAppUserCreatedLocalStorageKey(key) || LS_EXCLUDE.has(key)) return false;
   const lower = key.toLowerCase();
   if (
     lower.includes("history") ||
@@ -1217,6 +1242,10 @@ function importLocalStorageDc(map: Record<string, string>) {
       if (LS_DARTSETS_KEYS.includes(k as any) || LS_ACTIVE_DARTSET_KEYS.includes(k as any)) restoredDartSets = true;
       if (k === "dc_bots_v1" || k === "dc_bots_avatars_v1") restoredBots = true;
       if (k === "dc-teams-v1") restoredTeams = true;
+      if (k === "babyfoot_league_store_v1") {
+        try { window.dispatchEvent(new Event("babyfoot-leagues-updated")); } catch {}
+        try { window.dispatchEvent(new Event("dc:babyfoot-leagues-updated")); } catch {}
+      }
     } catch {}
   }
 

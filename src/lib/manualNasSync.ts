@@ -5,6 +5,8 @@ async function getStorage() {
 import * as mediaSync from "./mediaSync";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
+import { exportLocalTournamentsSnapshot } from "./tournaments/storeLocal";
+import { loadBabyFootLeagues } from "./babyfootLeagueStore";
 
 async function getOnlineApi() {
   const mod = await import("./onlineApi");
@@ -228,6 +230,83 @@ function countMediaUrls(value: any): number {
   return count;
 }
 
+function countCompetitionsInLocalStorageDump(map: any): number {
+  try {
+    if (!map || typeof map !== "object") return 0;
+    let count = 0;
+    const seen = new Set<string>();
+    const addArray = (arr: any[], prefix: string) => {
+      for (const item of arr) {
+        const id = String(item?.id || item?.leagueId || item?.tournamentId || `${prefix}:${count}`).trim();
+        if (!seen.has(id)) { seen.add(id); count += 1; }
+      }
+    };
+    for (const [key, raw] of Object.entries(map)) {
+      const k = String(key || "").toLowerCase();
+      if (!/(league|ligue|tournament|tournoi|competition|championnat|babyfoot)/.test(k)) continue;
+      let parsed: any = raw;
+      if (typeof raw === "string") {
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
+      }
+      if (Array.isArray(parsed)) addArray(parsed, key);
+      else if (parsed && typeof parsed === "object") {
+        if (Array.isArray(parsed.tournaments)) addArray(parsed.tournaments, `${key}:tournaments`);
+        if (Array.isArray(parsed.leagues)) addArray(parsed.leagues, `${key}:leagues`);
+        if (Array.isArray(parsed.competitions)) addArray(parsed.competitions, `${key}:competitions`);
+      }
+    }
+    return count;
+  } catch { return 0; }
+}
+
+function countCompetitionsInStore(store: any): number {
+  try {
+    if (!store || typeof store !== "object") return 0;
+    const candidates = [
+      store.competitions, store.tournaments, store.leagues, store.championships,
+      store.localCompetitions, store.localTournaments, store.localLeagues,
+      store.footCompetitions, store.babyfootCompetitions, store.petanqueCompetitions,
+    ];
+    let max = 0;
+    for (const value of candidates) {
+      if (Array.isArray(value)) max = Math.max(max, value.length);
+      else if (value && typeof value === "object") max = Math.max(max, Object.keys(value).length);
+    }
+    return max;
+  } catch { return 0; }
+}
+
+async function getExplicitLocalCompetitionsSummary() {
+  try {
+    const tournaments = await exportLocalTournamentsSnapshot().catch(() => null as any);
+    const babyfootLeagues = (() => { try { return loadBabyFootLeagues(); } catch { return []; } })();
+    return {
+      tournaments: Number(tournaments?.counts?.tournaments || (Array.isArray(tournaments?.tournaments) ? tournaments.tournaments.length : 0) || 0),
+      tournamentMatches: Number(tournaments?.counts?.matches || 0),
+      babyfootLeagues: Array.isArray(babyfootLeagues) ? babyfootLeagues.length : 0,
+      total: Number(tournaments?.counts?.tournaments || (Array.isArray(tournaments?.tournaments) ? tournaments.tournaments.length : 0) || 0) + (Array.isArray(babyfootLeagues) ? babyfootLeagues.length : 0),
+    };
+  } catch {
+    return { tournaments: 0, tournamentMatches: 0, babyfootLeagues: 0, total: 0 };
+  }
+}
+
+function countCompetitionsInSnapshot(payload: any): number {
+  try {
+    let total = 0;
+    if (Array.isArray(payload?.tournaments?.tournaments)) total += payload.tournaments.tournaments.length;
+    else if (Array.isArray(payload?.competitions?.tournaments)) total += payload.competitions.tournaments.length;
+    if (Array.isArray(payload?.localStorage?.babyfoot_league_store_v1)) total += payload.localStorage.babyfoot_league_store_v1.length;
+    total += countCompetitionsInLocalStorageDump(payload?.localStorage);
+    const idb = payload?.idb && typeof payload.idb === "object" ? payload.idb : {};
+    let storeMax = 0;
+    for (const [key, value] of Object.entries(idb)) {
+      if (isStoreLikeSnapshotKey(String(key))) storeMax = Math.max(storeMax, countCompetitionsInStore(value));
+    }
+    return Math.max(total, storeMax);
+  } catch { return 0; }
+}
+
 function summarizeStore(store: any) {
   return {
     profiles: countArray(store?.profiles),
@@ -238,6 +317,7 @@ function summarizeStore(store: any) {
     bots: countArray(store?.bots) || countArray(store?.cpuBots) || countArray(store?.botPlayers),
     dartSets: countArray(store?.dartSets),
     teams: countArray(store?.teams),
+    competitions: countCompetitionsInStore(store),
     dataImageFields: countDataImageFields(store),
     mediaUrls: countMediaUrls(store),
     storeBytes: byteLengthOfJson(store),
@@ -412,7 +492,8 @@ export async function pushNasAccountSnapshot() {
     try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
   }
 
-  const beforeSummary = summarizeStore(currentStore);
+  const explicitCompetitionsBefore = await getExplicitLocalCompetitionsSummary();
+  const beforeSummary = { ...summarizeStore(currentStore), explicitCompetitions: explicitCompetitionsBefore, competitions: Math.max(summarizeStore(currentStore).competitions || 0, explicitCompetitionsBefore.total || 0) };
 
   // Vérification explicite du backend média avant de promettre une synchro complète.
   // Si le NAS n'a pas le bon server.js déployé, on stoppe ici avec un message clair.
@@ -466,8 +547,10 @@ export async function pushNasAccountSnapshot() {
   const payloadBytes = byteLengthOfJson(payload);
   const mediaSummary = typeof mediaSync.getLastMediaSyncSummary === "function" ? mediaSync.getLastMediaSyncSummary() : null;
   const afterStore: any = await loadStore().catch(() => hydratedStore || currentStore);
-  const afterSummary = summarizeStore(afterStore);
-  const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2);
+  const explicitCompetitionsAfter = await getExplicitLocalCompetitionsSummary();
+  const afterBaseSummary = summarizeStore(afterStore);
+  const afterSummary = { ...afterBaseSummary, explicitCompetitions: explicitCompetitionsAfter, competitions: Math.max(afterBaseSummary.competitions || 0, explicitCompetitionsAfter.total || 0, countCompetitionsInSnapshot(payload)) };
+  const res = await api.pushStoreSnapshot(payload as any, (payload as any)?._v ?? (payload as any)?.v ?? 2, { force: true, reason: "manual-nas-backup" });
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   const durationMs = Date.now() - startedAt;
@@ -481,6 +564,7 @@ export async function pushNasAccountSnapshot() {
       payloadBytes,
       payloadProfiles: countProfilesInSnapshot(payload),
       payloadTeams: countTeamsInSnapshot(payload),
+      payloadCompetitions: countCompetitionsInSnapshot(payload),
       runtimeProfiles: profileCountOfStore(runtimeStore),
       persistedProfiles: profileCountOfStore(persistedStore),
       durationMs,
