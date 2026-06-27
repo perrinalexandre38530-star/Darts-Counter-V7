@@ -834,14 +834,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (!id) return;
 
     if (side === "A") {
-      setTeamBRefId((prev) => (String(prev) === id ? "" : prev));
       setTeamARefId((prev) => (String(prev) === id ? "" : id));
       setSelA([]);
       setConfirmA(false);
       return;
     }
 
-    setTeamARefId((prev) => (String(prev) === id ? "" : prev));
     setTeamBRefId((prev) => (String(prev) === id ? "" : id));
     setSelB([]);
     setConfirmB(false);
@@ -1242,12 +1240,14 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     const manualCampA = mode === "2v1" ? "TEAM GOLD" : "TEAM GOLD";
     const manualCampB = mode === "2v1" ? String(playerB?.name || "JOUEUR SOLO") : "TEAM PINK";
 
-    const sameSourceTeam = useExistingTeams && mode === "2v2" && teamAObj && teamBObj && teamBaseId(teamAObj) === teamBaseId(teamBObj);
+    const sameSourceTeam = useExistingTeams && mode === "2v2" && teamAObj && teamBObj && String(teamAObj?.id || "") === String(teamBObj?.id || "");
+    // Même club autorisé des deux côtés si les joueurs choisis sont différents.
+    // Le suffixe A/B/C est uniquement une notion de sélection, jamais un renommage de match.
     const nameA =
       mode === "1v1"
         ? String(playerA?.name || "JOUEUR A")
         : useExistingTeams
-        ? `${teamAObj?.name || "TEAM A"}${sameSourceTeam ? ` ${teamInstanceSuffix(0)}` : ""}`
+        ? String(teamAObj?.name || "TEAM A")
         : manualCampA;
 
     const nameB =
@@ -1256,7 +1256,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         : mode === "2v1"
         ? manualCampB
         : useExistingTeams
-        ? `${teamBObj?.name || "TEAM B"}${sameSourceTeam ? ` ${teamInstanceSuffix(1)}` : ""}`
+        ? String(teamBObj?.name || "TEAM B")
         : "TEAM PINK";
 
     setTeams(nameA, nameB, {
@@ -1592,7 +1592,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {guidedStep === "teamA" && showTeamsPicker ? (
               <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
                 {sectionTitle(mode === "2v1" ? "ÉQUIPE À 2 JOUEURS" : "ÉQUIPE DOMICILE", primary)}
-                <TeamPagedSelector teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamBRefId || ""))} selectedIds={teamARefId ? [teamARefId] : []} onToggle={(id: string) => selectTeam("A", id)} onAfterToggle={() => advanceAfterTeamPick("A")} closeOnSelect accent={primary} pageSize={9} modalTitle={mode === "2v1" ? "Équipe à 2 joueurs" : "Équipe domicile"} chooseLabel="Choisir équipe" listLabel="Liste équipes" />
+                <TeamPagedSelector teams={teamsCatalog} selectedIds={teamARefId ? [teamARefId] : []} onToggle={(id: string) => selectTeam("A", id)} onAfterToggle={() => advanceAfterTeamPick("A")} closeOnSelect accent={primary} pageSize={9} modalTitle={mode === "2v1" ? "Équipe à 2 joueurs" : "Équipe domicile"} chooseLabel="Choisir équipe" listLabel="Liste équipes" />
                 {teamARefId ? <div style={{ marginTop: 12 }}><SelectedTeamStrip team={teamAObj} onClear={() => { setTeamARefId(""); setSelA([]); }} /></div> : null}
               </div>
             ) : null}
@@ -1600,7 +1600,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {guidedStep === "teamB" && showTeamsPickerB ? (
               <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
                 {sectionTitle("ÉQUIPE EXTÉRIEUR", primary)}
-                <TeamPagedSelector teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamARefId || ""))} selectedIds={teamBRefId ? [teamBRefId] : []} onToggle={(id: string) => selectTeam("B", id)} onAfterToggle={() => advanceAfterTeamPick("B")} closeOnSelect accent={primary} pageSize={9} modalTitle="Équipe extérieur" chooseLabel="Choisir équipe" listLabel="Liste équipes" />
+                <TeamPagedSelector teams={teamsCatalog} selectedIds={teamBRefId ? [teamBRefId] : []} onToggle={(id: string) => selectTeam("B", id)} onAfterToggle={() => advanceAfterTeamPick("B")} closeOnSelect accent={primary} pageSize={9} modalTitle="Équipe extérieur" chooseLabel="Choisir équipe" listLabel="Liste équipes" />
                 {teamBRefId ? <div style={{ marginTop: 12 }}><SelectedTeamStrip team={teamBObj} onClear={() => { setTeamBRefId(""); setSelB([]); }} /></div> : null}
               </div>
             ) : null}
@@ -1897,7 +1897,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                     : t("bf_team_a", "Équipe A")}
                 </div>
                 <TeamPagedSelector
-                  teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamBRefId || ""))}
+                  teams={teamsCatalog}
                   selectedIds={teamARefId ? [teamARefId] : []}
                   onToggle={(id: string) => selectTeam("A", id)}
                   onAfterToggle={() => advanceAfterTeamPick("A")}
@@ -1921,7 +1921,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                       {t("bf_team_b", "Équipe B")}
                     </div>
                     <TeamPagedSelector
-                      teams={teamsCatalog.filter((tm) => String(tm?.id || "") !== String(teamARefId || ""))}
+                      teams={teamsCatalog}
                       selectedIds={teamBRefId ? [teamBRefId] : []}
                       onToggle={(id: string) => selectTeam("B", id)}
                       onAfterToggle={() => advanceAfterTeamPick("B")}

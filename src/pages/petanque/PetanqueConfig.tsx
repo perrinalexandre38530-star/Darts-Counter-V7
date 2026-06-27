@@ -36,7 +36,7 @@ import {
   fileToDataUrl,
   type TeamEntity,
 } from "../../lib/teamsStore";
-import { teamBaseId, teamInstanceSuffix } from "../../lib/teamSelectionInstances";
+import { teamBaseId } from "../../lib/teamSelectionInstances";
 
 // ✅ Tickers (même logique que Games — DartsCounter)
 const tickerImports = import.meta.glob("../../assets/tickers/*.png", {
@@ -672,8 +672,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     }
 
     const sameSourceTeam = teamAObj && teamBObj && teamBaseId(teamAObj) === teamBaseId(teamBObj);
-    const aName = teamAObj?.name?.trim() ? `${teamAObj.name.trim()}${sameSourceTeam ? ` ${teamInstanceSuffix(0)}` : ""}` : TEAM_LABELS.A;
-    const bName = teamBObj?.name?.trim() ? `${teamBObj.name.trim()}${sameSourceTeam ? ` ${teamInstanceSuffix(1)}` : ""}` : TEAM_LABELS.B;
+    // Même club autorisé des deux côtés si les joueurs sont différents.
+    // Le suffixe A/B/C reste une info interne de sélection : le nom affiché reste le nom réel.
+    const aName = teamAObj?.name?.trim() ? teamAObj.name.trim() : TEAM_LABELS.A;
+    const bName = teamBObj?.name?.trim() ? teamBObj.name.trim() : TEAM_LABELS.B;
 
     return [
       {

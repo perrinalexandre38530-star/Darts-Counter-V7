@@ -19,6 +19,13 @@ function countPlayers(team: any) {
   return ids.length;
 }
 
+function baseTeamId(value: any) {
+  const raw = typeof value === "object" && value
+    ? String(value.baseTeamId || value.sourceTeamId || value.teamRefId || value.id || "")
+    : String(value || "");
+  return raw.split("__slot_")[0];
+}
+
 export default function TeamPagedSelector({
   teams,
   selectedIds,
@@ -42,7 +49,15 @@ export default function TeamPagedSelector({
   }, [teams]);
 
   const selectedIdSet = React.useMemo(() => new Set((selectedIds || []).map((x: any) => String(x))), [selectedIds]);
-  const selected = React.useMemo(() => ordered.filter((t: any) => selectedIdSet.has(String(t.id))), [ordered, selectedIdSet]);
+  const selectedBaseCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const id of selectedIds || []) {
+      const base = baseTeamId(id);
+      if (base) counts[base] = (counts[base] || 0) + 1;
+    }
+    return counts;
+  }, [selectedIds]);
+  const selected = React.useMemo(() => ordered.filter((t: any) => selectedBaseCounts[baseTeamId(t)] > 0), [ordered, selectedBaseCounts]);
   const pages = Math.max(1, Math.ceil(ordered.length / pageSize));
   const safePage = Math.min(Math.max(page, 0), pages - 1);
   const pageItems = React.useMemo(() => ordered.slice(safePage * pageSize, safePage * pageSize + pageSize), [ordered, safePage, pageSize]);
@@ -70,7 +85,7 @@ export default function TeamPagedSelector({
       {listOpen ? (
         <div className="dc-scroll-thin" style={{ maxHeight: 220, overflowY: "auto", borderRadius: 16, border: `1px solid ${accent}44`, background: "rgba(0,0,0,.24)", padding: 8 }}>
           {ordered.map((team: any) => {
-            const active = selectedIdSet.has(String(team.id));
+            const active = (selectedBaseCounts[baseTeamId(team)] || 0) > 0;
             return (
               <button key={team.id} type="button" onClick={() => handlePick(team.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr auto", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
                 <span style={{ color: active ? accent : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
@@ -105,7 +120,7 @@ export default function TeamPagedSelector({
             <div style={{ padding: 14, overflowY: "auto" }} className="dc-scroll-thin">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {pageItems.map((team: any) => {
-                  const active = selectedIdSet.has(String(team.id));
+                  const active = (selectedBaseCounts[baseTeamId(team)] || 0) > 0;
                   return (
                     <button key={team.id} type="button" onClick={() => handlePick(team.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <TeamMedallion team={team} accent={accent} size={86} active={active} />

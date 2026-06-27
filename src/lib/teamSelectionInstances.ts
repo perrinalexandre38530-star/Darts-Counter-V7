@@ -116,8 +116,12 @@ export function buildTeamInstance<T extends TeamLike>(
     baseTeamId: base,
     sourceTeamId: base,
     teamRefId: base,
+    teamSlotLabel: suffix,
     originalName,
-    name: `${originalName} ${suffix}`,
+    // IMPORTANT :
+    // Le suffixe A/B/C sert uniquement d'identifiant technique de sélection.
+    // Il ne doit jamais modifier le nom affiché dans les matchs, historiques ou stats.
+    name: originalName,
     playerIds: selectedIds,
   };
 }
