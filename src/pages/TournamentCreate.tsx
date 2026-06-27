@@ -1755,7 +1755,7 @@ const togglePlayer = (id: string) => {
     const pickedPlayers = free.length ? free.slice(0, size) : allPlayerIds;
     const suffix = teamInstanceSuffix(instanceIndex);
     const baseName = String(team?.name || "Équipe").trim() || "Équipe";
-    const name = instanceIndex > 0 ? `${baseName} ${suffix}` : baseName;
+    const name = `${baseName} ${suffix}`;
     return {
       id: instanceIndex > 0 ? `${baseId}__slot_${suffix}` : baseId,
       baseTeamId: baseId,

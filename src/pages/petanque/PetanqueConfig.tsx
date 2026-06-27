@@ -36,6 +36,7 @@ import {
   fileToDataUrl,
   type TeamEntity,
 } from "../../lib/teamsStore";
+import { teamBaseId, teamInstanceSuffix } from "../../lib/teamSelectionInstances";
 
 // ✅ Tickers (même logique que Games — DartsCounter)
 const tickerImports = import.meta.glob("../../assets/tickers/*.png", {
@@ -670,8 +671,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       ballsB = defaultBallsForMode(effectiveMode, bCount);
     }
 
-    const aName = teamAObj?.name?.trim() ? teamAObj.name.trim() : TEAM_LABELS.A;
-    const bName = teamBObj?.name?.trim() ? teamBObj.name.trim() : TEAM_LABELS.B;
+    const sameSourceTeam = teamAObj && teamBObj && teamBaseId(teamAObj) === teamBaseId(teamBObj);
+    const aName = teamAObj?.name?.trim() ? `${teamAObj.name.trim()}${sameSourceTeam ? ` ${teamInstanceSuffix(0)}` : ""}` : TEAM_LABELS.A;
+    const bName = teamBObj?.name?.trim() ? `${teamBObj.name.trim()}${sameSourceTeam ? ` ${teamInstanceSuffix(1)}` : ""}` : TEAM_LABELS.B;
 
     return [
       {

@@ -4,6 +4,14 @@ import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
 import { loadTeamsBySport, type TeamEntity } from "../../lib/petanqueTeamsStore";
+import {
+  buildTeamInstance,
+  canAddTeamInstance,
+  nextTeamInstanceId,
+  pickAvailableTeamPlayers,
+  resolveTeamInstances,
+  teamBaseId,
+} from "../../lib/teamSelectionInstances";
 import { getFootFormat } from "./footFormats";
 import { getFootGameTicker } from "./footTickers";
 
@@ -99,6 +107,14 @@ export default function FootConfig({ go, params, store }: Props) {
   const requiredPlayers = spec.kind === "duel" ? 2 : spec.playersPerSide * 2;
   const selectedSet = React.useMemo(() => new Set(selectedIds.map(String)), [selectedIds]);
   const selectedTeamSet = React.useMemo(() => new Set(selectedTeamIds.map(String)), [selectedTeamIds]);
+  const selectedTeamBaseCounts = React.useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const id of selectedTeamIds || []) {
+      const base = teamBaseId(id);
+      if (base) out[base] = (out[base] || 0) + 1;
+    }
+    return out;
+  }, [selectedTeamIds]);
   const profileById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
 
   function togglePlayer(idRaw: any) {
@@ -112,27 +128,37 @@ export default function FootConfig({ go, params, store }: Props) {
     });
   }
 
-  function defaultPlayersForTeam(teamId: string) {
-    const team: any = savedTeams.find((t: any) => String(t.id) === String(teamId));
-    return (Array.isArray(team?.playerIds) ? team.playerIds : []).map(String).filter(Boolean);
+  function defaultPlayersForTeam(teamId: string, selectedIdsSnapshot: string[] = selectedTeamIds, selectionsSnapshot: Record<string, string[]> = selectedTeamPlayerIds) {
+    const base = teamBaseId(teamId);
+    const team: any = savedTeams.find((t: any) => teamBaseId(t) === base);
+    return pickAvailableTeamPlayers(team, selectedIdsSnapshot, selectionsSnapshot, spec.playersPerSide, teamId);
   }
 
   function toggleTeam(idRaw: any) {
-    const id = String(idRaw || "");
-    if (!id) return;
+    const baseId = teamBaseId(idRaw);
+    if (!baseId) return;
     setSelectedTeamIds((prev) => {
-      const exists = prev.map(String).includes(id);
-      if (exists) {
+      const arr = (Array.isArray(prev) ? prev : []).map(String);
+      const exactId = String(idRaw || "");
+      if (arr.includes(exactId)) {
         setSelectedTeamPlayerIds((cur) => {
           const next = { ...cur };
-          delete next[id];
+          delete next[exactId];
           return next;
         });
-        return prev.filter((x) => String(x) !== id);
+        return arr.filter((x) => String(x) !== exactId);
       }
-      if (prev.length >= 2) return prev;
-      setSelectedTeamPlayerIds((cur) => ({ ...cur, [id]: cur[id]?.length ? cur[id] : defaultPlayersForTeam(id) }));
-      return [...prev, id];
+      if (arr.length >= 2) return arr;
+
+      const team: any = savedTeams.find((t: any) => teamBaseId(t) === baseId);
+      if (!team || !canAddTeamInstance(team, arr, selectedTeamPlayerIds, spec.playersPerSide)) return arr;
+
+      const instanceId = nextTeamInstanceId(team, arr);
+      const playerIds = defaultPlayersForTeam(instanceId, arr, selectedTeamPlayerIds);
+      if (playerIds.length < spec.playersPerSide) return arr;
+
+      setSelectedTeamPlayerIds((cur) => ({ ...cur, [instanceId]: playerIds }));
+      return [...arr, instanceId];
     });
   }
 
@@ -151,7 +177,7 @@ export default function FootConfig({ go, params, store }: Props) {
   const selectedProfiles = React.useMemo(() => selectedIds.map((id) => profileById.get(String(id))).filter(Boolean), [selectedIds, profileById]);
   const manualA = selectedProfiles.slice(0, spec.playersPerSide);
   const manualB = selectedProfiles.slice(spec.playersPerSide, spec.playersPerSide * 2);
-  const savedSelectedTeams = selectedTeamIds.map((id) => savedTeams.find((t: any) => String(t.id) === String(id))).filter(Boolean) as TeamEntity[];
+  const savedSelectedTeams = resolveTeamInstances(savedTeams as any[], selectedTeamIds, selectedTeamPlayerIds, spec.playersPerSide) as TeamEntity[];
   const savedTeamsReady = savedSelectedTeams.length === 2 && selectedTeamIds.every((id) => (selectedTeamPlayerIds[String(id)] || []).length >= spec.playersPerSide);
 
   const ready = spec.kind === "duel" ? selectedIds.length === 2 : sourceMode === "saved" ? savedTeamsReady : selectedIds.length >= requiredPlayers;
@@ -385,7 +411,7 @@ export default function FootConfig({ go, params, store }: Props) {
 
       {sourceMode === "saved" && spec.kind === "team" ? (
         <>
-          <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+          <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} selectedBaseCounts={selectedTeamBaseCounts} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
           <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
         </>
       ) : (
@@ -616,17 +642,20 @@ function RosterCard({ title, players, primary }: any) {
   );
 }
 
-function SavedTeamsPicker({ teams, selectedSet, onToggle, profilesById, primary, primarySoft, maxPlayers }: any) {
+function SavedTeamsPicker({ teams, selectedSet, selectedBaseCounts = {}, selectedTeamIds = [], selectedTeamPlayerIds = {}, onToggle, profilesById, primary, primarySoft, maxPlayers }: any) {
   if (!teams.length) return <div style={emptyStyle}>Aucune équipe FOOT enregistrée pour l’instant. Passe en Manuel ou crée tes équipes depuis Profils.</div>;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 10, minWidth: 0, maxWidth: "100%" }}>
       {teams.map((team: any) => {
-        const active = selectedSet.has(String(team.id));
+        const baseId = teamBaseId(team);
+        const activeCount = Number(selectedBaseCounts[baseId] || 0);
+        const active = activeCount > 0;
+        const canAdd = canAddTeamInstance(team, selectedTeamIds, selectedTeamPlayerIds, maxPlayers);
         const ids = (Array.isArray(team.playerIds) ? team.playerIds : []).map(String).slice(0, maxPlayers);
         const members = ids.map((id: string) => profilesById.get(id)).filter(Boolean);
         const logo = teamLogo(team);
         return (
-          <button key={team.id} type="button" onClick={() => onToggle(team.id)} style={{ textAlign: "left", borderRadius: 18, padding: 11, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.09)", background: active ? primarySoft : "rgba(5,8,16,.78)", color: "#fff", boxShadow: active ? `0 0 20px ${primary}33` : "none" }}>
+          <button key={team.id} type="button" disabled={!canAdd} onClick={() => canAdd && onToggle(team.id)} style={{ textAlign: "left", borderRadius: 18, padding: 11, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.09)", background: active ? primarySoft : "rgba(5,8,16,.78)", color: "#fff", boxShadow: active ? `0 0 20px ${primary}33` : "none", opacity: canAdd ? 1 : 0.46, cursor: canAdd ? "pointer" : "not-allowed" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 46, height: 46, borderRadius: 15, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${active ? primary : "rgba(255,255,255,.12)"}`, background: "rgba(255,255,255,.06)", flex: "0 0 auto" }}>
                 {logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: primary, fontWeight: 1000 }}>{String(team.name || "EQ").slice(0, 2).toUpperCase()}</span>}
@@ -634,6 +663,9 @@ function SavedTeamsPicker({ teams, selectedSet, onToggle, profilesById, primary,
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 1000, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.name || "Équipe"}</div>
                 <div style={{ color: "#9da3c0", fontSize: 11, fontWeight: 800 }}>{members.length || ids.length} joueur(s)</div>
+                <div style={{ color: active ? primary : "#9da3c0", fontSize: 10, fontWeight: 1000, marginTop: 4 }}>
+                  {active ? `Sélectionnée ×${activeCount}` : canAdd ? "Choisir" : "Plus assez de joueurs libres"}
+                </div>
               </div>
             </div>
           </button>
@@ -669,7 +701,7 @@ function SavedTeamPlayersStep({ teams, selectedTeamPlayerIds, onTogglePlayer, pr
                 const profile: any = profilesById.get(id);
                 const active = selected.has(id);
                 return (
-                  <button key={id} type="button" onClick={() => onTogglePlayer(teamId, id)} style={{ display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%", borderRadius: 999, padding: "7px 10px 7px 7px", border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.12)", background: active ? primarySoft : "rgba(255,255,255,.055)", color: "#fff", fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 0 14px ${primary}2f` : "none" }}>
+                  <button key={id} type="button" onClick={() => onTogglePlayer(teamId, id)} style={{ display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%", borderRadius: 999, padding: "7px 10px 7px 7px", border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.12)", background: active ? primarySoft : "rgba(255,255,255,.055)", color: "#fff", fontWeight: 950, cursor: canAdd ? "pointer" : "not-allowed", boxShadow: active ? `0 0 14px ${primary}2f` : "none" }}>
                     <ProfileAvatar profile={profile || { name: id }} size={26} />
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{profileName(profile) || id}</span>
                     {active && <span style={{ color: primary, fontWeight: 1000 }}>✓</span>}

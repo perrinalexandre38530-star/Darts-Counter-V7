@@ -742,13 +742,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   // Pas de sélection automatique des équipes : cela évite de relancer
   // une ancienne composition ou une équipe par défaut sans action utilisateur.
 
+  // Règle globale équipes A/B/C :
+  // on autorise volontairement la même équipe enregistrée sur A et B.
+  // Les joueurs déjà choisis côté A sont masqués côté B, donc Familia peut devenir
+  // Familia A / Familia B tant qu'il reste assez de joueurs libres.
   useEffect(() => {
-    if (!showTeamsPicker) return;
-    if (mode !== "2v2") return;
-    if (!teamARefId || !teamBRefId) return;
-    if (teamARefId !== teamBRefId) return;
-    const nextB = teamsCatalog.find((t) => t?.id && t.id !== teamARefId);
-    if (nextB?.id) setTeamBRefId(String(nextB.id));
+    // Plus de remplacement automatique quand teamARefId === teamBRefId.
   }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
 
   useEffect(() => {
@@ -1243,11 +1242,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     const manualCampA = mode === "2v1" ? "TEAM GOLD" : "TEAM GOLD";
     const manualCampB = mode === "2v1" ? String(playerB?.name || "JOUEUR SOLO") : "TEAM PINK";
 
+    const sameSourceTeam = useExistingTeams && mode === "2v2" && teamAObj && teamBObj && teamBaseId(teamAObj) === teamBaseId(teamBObj);
     const nameA =
       mode === "1v1"
         ? String(playerA?.name || "JOUEUR A")
         : useExistingTeams
-        ? teamAObj?.name || "TEAM A"
+        ? `${teamAObj?.name || "TEAM A"}${sameSourceTeam ? ` ${teamInstanceSuffix(0)}` : ""}`
         : manualCampA;
 
     const nameB =
@@ -1256,7 +1256,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         : mode === "2v1"
         ? manualCampB
         : useExistingTeams
-        ? teamBObj?.name || "TEAM B"
+        ? `${teamBObj?.name || "TEAM B"}${sameSourceTeam ? ` ${teamInstanceSuffix(1)}` : ""}`
         : "TEAM PINK";
 
     setTeams(nameA, nameB, {

@@ -1651,7 +1651,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const team = storedDartsTeams.find((t: any) => String(t.id) === baseId);
       if (!team) return null;
       const suffix = x01TeamSuffix(occurrence);
-      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, name: occurrence > 0 ? `${String(team.name || "Équipe")} ${suffix}` : team.name };
+      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, name: `${String(team.name || "Équipe")} ${suffix}` };
     }).filter(Boolean);
   }, [storedDartsTeams, selectedStoredTeamIds]);
 
@@ -1663,7 +1663,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const team = botDartsTeams.find((t: any) => String(t.id) === baseId);
       if (!team) return null;
       const suffix = x01TeamSuffix(occurrence);
-      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, name: occurrence > 0 ? `${String(team.name || "BOT Team")} ${suffix}` : team.name };
+      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, name: `${String(team.name || "BOT Team")} ${suffix}` };
     }).filter(Boolean);
   }, [botDartsTeams, selectedBotTeamIds, botTeamsPanelEnabled]);
 
