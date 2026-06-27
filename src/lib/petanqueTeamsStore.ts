@@ -9,6 +9,7 @@
 // =============================================================
 
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
+import { getTeamLogoTemplateBySrc, resolveTeamLogoSrc } from "../assets/teamLogoLibrary";
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
 
 export type TeamSport = string;
@@ -23,6 +24,8 @@ export type TeamEntity = {
   logoDataUrl?: string | null; // dataURL local ou URL média NAS (compat UI)
   logoUrl?: string | null;
   logoAssetId?: string | null;
+  logoLibraryId?: string | null;
+  logoLibraryFileName?: string | null;
   logoMediaAssetId?: string | null;
   teamLogoAssetId?: string | null;
   avatarUrl?: string | null;
@@ -30,6 +33,9 @@ export type TeamEntity = {
   imageUrl?: string | null;
   imageAssetId?: string | null;
   logoSha256?: string | null;
+  /** Logo choisi dans la bibliothèque interne: stable entre builds/appareils/NAS. */
+  logoLibraryId?: string | null;
+  logoLibraryFileName?: string | null;
 
   // ---------------------------
   // Champs étendus (optionnels)
@@ -86,6 +92,8 @@ export type PetanqueTeam = {
   logoDataUrl?: string | null;
   logoUrl?: string | null;
   logoAssetId?: string | null;
+  logoLibraryId?: string | null;
+  logoLibraryFileName?: string | null;
   teamKind?: "leisure" | "club";
   clubId?: string | null;
   clubName?: string | null;
@@ -186,7 +194,13 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const countryName = typeof t.countryName === "string" ? t.countryName : undefined;
   const regionCode = typeof t.regionCode === "string" ? t.regionCode : undefined;
   const regionName = typeof t.regionName === "string" ? t.regionName : undefined;
-  const logoUrl = normalizeTextField(t.logoUrl || t.avatarUrl || t.imageUrl || t.logo);
+  const inputLogoLibraryId = normalizeTextField(t.logoLibraryId || t.logoTemplateId || t.libraryLogoId || t.logoId);
+  const inputLogoLibraryFileName = normalizeTextField(t.logoLibraryFileName || t.logoFileName || t.fileName);
+  const libraryFromSrc = getTeamLogoTemplateBySrc(t.logoDataUrl || t.logoUrl || t.avatarUrl || t.imageUrl || t.logo);
+  const logoLibraryId = inputLogoLibraryId || libraryFromSrc?.id || null;
+  const logoLibraryFileName = inputLogoLibraryFileName || libraryFromSrc?.fileName || null;
+  const libraryLogoSrc = resolveTeamLogoSrc(logoLibraryId || logoLibraryFileName || null);
+  const logoUrl = normalizeTextField(libraryLogoSrc || t.logoUrl || t.avatarUrl || t.imageUrl || t.logo);
   const logoAssetId = normalizeTextField(t.logoAssetId || t.logoMediaAssetId || t.teamLogoAssetId || t.avatarAssetId || t.imageAssetId);
   const regionLogoUrl = normalizeTextField(t.regionLogoUrl);
   const regionLogoAssetId = normalizeTextField(t.regionLogoAssetId);
@@ -204,8 +218,10 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
     allSports: t.allSports === true,
     sportIds: normalizeSportIds(t.sportIds, t.sport),
     name,
-    logoDataUrl: normalizeImageRef(t.logoDataUrl, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo),
+    logoDataUrl: normalizeImageRef(t.logoDataUrl, libraryLogoSrc, t.logoUrl, t.avatarUrl, t.imageUrl, t.logo),
     logoUrl: logoUrl ?? null,
+    logoLibraryId,
+    logoLibraryFileName,
     logoAssetId: logoAssetId ?? null,
     logoMediaAssetId: normalizeTextField(t.logoMediaAssetId || logoAssetId) ?? null,
     teamLogoAssetId: normalizeTextField(t.teamLogoAssetId || logoAssetId) ?? null,
@@ -320,14 +336,21 @@ export function upsertTeam(team: TeamEntity) {
   const idx = list.findIndex((t) => t.id === team.id);
 
   const ts = now();
+  const libraryFromSrc = getTeamLogoTemplateBySrc((team as any).logoDataUrl || (team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl || (team as any).logo);
+  const logoLibraryId = normalizeTextField((team as any).logoLibraryId || (team as any).logoTemplateId || libraryFromSrc?.id) ?? null;
+  const logoLibraryFileName = normalizeTextField((team as any).logoLibraryFileName || (team as any).logoFileName || libraryFromSrc?.fileName) ?? null;
+  const libraryLogoSrc = resolveTeamLogoSrc(logoLibraryId || logoLibraryFileName || null);
+
   const next: TeamEntity = {
     ...team,
     id: String(team.id || makeTeamId(team.sport || "team")),
     name: (team.name ?? "").trim(),
     updatedAt: ts,
     createdAt: Number(team.createdAt ?? 0) || ts,
-    logoDataUrl: normalizeImageRef(team.logoDataUrl, (team as any).logoUrl, (team as any).avatarUrl, (team as any).imageUrl),
-    logoUrl: normalizeTextField((team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl) ?? null,
+    logoDataUrl: normalizeImageRef(team.logoDataUrl, libraryLogoSrc, (team as any).logoUrl, (team as any).avatarUrl, (team as any).imageUrl),
+    logoUrl: normalizeTextField(libraryLogoSrc || (team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl) ?? null,
+    logoLibraryId,
+    logoLibraryFileName,
     logoAssetId: normalizeTextField((team as any).logoAssetId || (team as any).logoMediaAssetId || (team as any).teamLogoAssetId || (team as any).avatarAssetId || (team as any).imageAssetId) ?? null,
     sport: normalizeSport(team.sport),
     allSports: (team as any).allSports === true,
@@ -375,6 +398,8 @@ export function createTeam(input: { sport: TeamSport; name: string; logoDataUrl?
     sportIds: normalizeSportIds(input.sportIds, input.sport),
     name: (input.name ?? "").trim(),
     logoDataUrl: normalizeImageRef(input.logoDataUrl),
+    logoLibraryId: getTeamLogoTemplateBySrc(input.logoDataUrl)?.id ?? null,
+    logoLibraryFileName: getTeamLogoTemplateBySrc(input.logoDataUrl)?.fileName ?? null,
     teamKind: input.teamKind === "club" ? "club" : "leisure",
     clubName: normalizeTextField(input.clubName) ?? null,
     clubId: normalizeTextField(input.clubId) ?? null,
@@ -404,7 +429,9 @@ export function updateTeam(
     sport: normalizeSport(patch.sport ?? prev.sport),
     allSports: patch.allSports ?? prev.allSports,
     sportIds: normalizeSportIds(patch.sportIds ?? prev.sportIds, patch.sport ?? prev.sport),
-    logoDataUrl: normalizeImageRef(patch.logoDataUrl ?? prev.logoDataUrl, (patch as any).logoUrl ?? (prev as any).logoUrl),
+    logoDataUrl: normalizeImageRef(patch.logoDataUrl ?? prev.logoDataUrl, resolveTeamLogoSrc((patch as any).logoLibraryId || (prev as any).logoLibraryId || null), (patch as any).logoUrl ?? (prev as any).logoUrl),
+    logoLibraryId: (patch as any).logoLibraryId ?? (prev as any).logoLibraryId ?? getTeamLogoTemplateBySrc(patch.logoDataUrl ?? prev.logoDataUrl)?.id ?? null,
+    logoLibraryFileName: (patch as any).logoLibraryFileName ?? (prev as any).logoLibraryFileName ?? getTeamLogoTemplateBySrc(patch.logoDataUrl ?? prev.logoDataUrl)?.fileName ?? null,
     updatedAt: now(),
   };
 
@@ -610,6 +637,8 @@ export type BabyFootTeam = {
   logoDataUrl?: string | null;
   logoUrl?: string | null;
   logoAssetId?: string | null;
+  logoLibraryId?: string | null;
+  logoLibraryFileName?: string | null;
   teamKind?: "leisure" | "club";
   clubId?: string | null;
   clubName?: string | null;

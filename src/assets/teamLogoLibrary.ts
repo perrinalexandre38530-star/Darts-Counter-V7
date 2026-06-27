@@ -639,3 +639,26 @@ export function getRandomTeamLogo(category?: TeamLogoCategory | "all") {
   const pool = filtered.length ? filtered : TEAM_LOGO_LIBRARY;
   return pool[Math.floor(Math.random() * pool.length)] || TEAM_LOGO_LIBRARY[0];
 }
+
+
+export function getTeamLogoTemplateById(idOrFileName: string | null | undefined): TeamLogoTemplate | null {
+  const raw = String(idOrFileName || "").trim();
+  if (!raw) return null;
+  return TEAM_LOGO_LIBRARY.find((logo) => logo.id === raw || logo.fileName === raw) || null;
+}
+
+export function getTeamLogoTemplateBySrc(src: string | null | undefined): TeamLogoTemplate | null {
+  const raw = String(src || "").trim();
+  if (!raw) return null;
+  return TEAM_LOGO_LIBRARY.find((logo) => logo.src === raw || raw.includes(logo.fileName) || raw.includes(logo.id)) || null;
+}
+
+export function resolveTeamLogoSrc(idOrFileNameOrSrc: string | null | undefined): string | null {
+  const raw = String(idOrFileNameOrSrc || "").trim();
+  if (!raw) return null;
+  const byId = getTeamLogoTemplateById(raw);
+  if (byId?.src) return byId.src;
+  const bySrc = getTeamLogoTemplateBySrc(raw);
+  if (bySrc?.src) return bySrc.src;
+  return raw;
+}

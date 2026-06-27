@@ -1733,6 +1733,48 @@ const togglePlayer = (id: string) => {
     setTeamCreateQuery("");
   }, [teamCreateName, teamCreateLogo, teamCreateRoster, teamsInput, makeTeamId, forceMode, reloadStoredTeams]);
 
+
+  function teamBaseId(team: any): string {
+    return String(team?.baseTeamId || team?.sourceTeamId || team?.id || "").split("__slot_")[0];
+  }
+
+  function teamInstanceSuffix(index: number): string {
+    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    if (index < letters.length) return letters[index];
+    return `#${index + 1}`;
+  }
+
+  function buildTeamInstanceFromCatalog(team: any, instanceIndex: number, alreadyUsedPlayers: string[]) {
+    const baseId = String(team?.id || "");
+    const allPlayerIds = (Array.isArray(team?.playerIds) ? team.playerIds : Array.isArray(team?.players) ? team.players : [])
+      .map((x: any) => String(x || ""))
+      .filter(Boolean);
+    const used = new Set((alreadyUsedPlayers || []).map(String));
+    const free = allPlayerIds.filter((id: string) => !used.has(id));
+    const size = Math.max(2, Number((typeof petanqueTeamSize !== "undefined" ? petanqueTeamSize : 2) || 2));
+    const pickedPlayers = free.length ? free.slice(0, size) : allPlayerIds;
+    const suffix = teamInstanceSuffix(instanceIndex);
+    const baseName = String(team?.name || "Équipe").trim() || "Équipe";
+    const name = instanceIndex > 0 ? `${baseName} ${suffix}` : baseName;
+    return {
+      id: instanceIndex > 0 ? `${baseId}__slot_${suffix}` : baseId,
+      baseTeamId: baseId,
+      sourceTeamId: baseId,
+      name,
+      players: pickedPlayers,
+      playerIds: pickedPlayers,
+      logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || team?.avatarUrl || null,
+      logoUrl: team?.logoUrl || team?.logoDataUrl || team?.avatarDataUrl || team?.avatarUrl || null,
+      logoLibraryId: team?.logoLibraryId || null,
+      logoLibraryFileName: team?.logoLibraryFileName || null,
+      isBotTeam: !!team?.isBotTeam,
+      botTeamLevel: team?.botTeamLevel ?? null,
+      avg3D: Number(team?.avg3D || 0) || 0,
+      stars: Number(team?.stars || 0) || 0,
+      members: Array.isArray(team?.members) ? team.members : [],
+    };
+  }
+
   const toggleStoredTeam = React.useCallback((team: any) => {
     if (!team) return;
     const id = String(team?.id || "");
@@ -4670,7 +4712,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                   className="dc-scroll-thin"
                 >
                   {(storedTeams || []).map((t: any, idx: number) => {
-                    const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(t?.id || ""));
+                    const active = (teamsInput || []).some((x: any) => teamBaseId(x) === String(t?.id || ""));
                     return (
                       <TeamCarouselTile
                         key={String(t.id || idx)}
@@ -4719,7 +4761,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                             <>
                               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gridTemplateRows: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
                                 {pageItems.map((team: any, idx: number) => {
-                                  const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(team?.id || ""));
+                                  const active = (teamsInput || []).some((x: any) => teamBaseId(x) === String(team?.id || ""));
                                   const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
                                   const level = Number(team?.botTeamLevel || team?.level || 0);
                                   const name = String(team?.name || `BOT Team ${idx + 1}`);
@@ -4751,7 +4793,7 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                 {participantsDropdownOpen ? (
                   <div style={{ maxHeight: 230, overflowY: "auto", borderRadius: 16, border: "1px solid rgba(255,255,255,.10)", background: "rgba(0,0,0,.22)", padding: 8 }} className="dc-scroll-thin">
                     {[...(storedTeams || []), ...(includeBotTeamsInTeamList === true ? botTeamsCatalog : [])].map((t: any, idx: number) => {
-                      const active = (teamsInput || []).some((x: any) => String(x?.id || "") === String(t?.id || ""));
+                      const active = (teamsInput || []).some((x: any) => teamBaseId(x) === String(t?.id || ""));
                       const logo = t?.logoDataUrl || t?.logoUrl || t?.avatarDataUrl || null;
                       const name = String(t?.name || `Équipe ${idx + 1}`);
                       return (

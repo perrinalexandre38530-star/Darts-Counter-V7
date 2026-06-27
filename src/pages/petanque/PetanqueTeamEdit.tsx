@@ -17,7 +17,9 @@ import {
   TEAM_LOGO_CATEGORIES,
   TEAM_LOGO_LIBRARY,
   getRandomTeamLogo,
+  getTeamLogoTemplateBySrc,
   type TeamLogoCategory,
+  type TeamLogoTemplate,
 } from "../../assets/teamLogoLibrary";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -115,7 +117,7 @@ function LogoCarouselModal({
 }: {
   theme: any;
   onClose: () => void;
-  onPick: (src: string) => void;
+  onPick: (logo: TeamLogoTemplate | string) => void;
   onImport: () => void;
 }) {
   const [category, setCategory] = React.useState<TeamLogoCategory | "all">("all");
@@ -146,7 +148,7 @@ function LogoCarouselModal({
 
   function pickRandom() {
     const logo = getRandomTeamLogo(category);
-    if (logo?.src) onPick(logo.src);
+    if (logo?.src) onPick(logo);
   }
 
   return (
@@ -220,7 +222,7 @@ function LogoCarouselModal({
             <button
               key={item.id}
               type="button"
-              onClick={() => onPick(item.src)}
+              onClick={() => onPick(item)}
               style={{
                 aspectRatio: "1 / 1",
                 borderRadius: 18,
@@ -468,10 +470,21 @@ const availableProfiles = React.useMemo(() => {
     go(returnTo as any, { sport: activeSport, returnTo: "profiles" });
   }
 
-  function pickLibraryLogo(src: string) {
-    const logo = String(src || "").trim();
+  function pickLibraryLogo(picked: TeamLogoTemplate | string) {
+    const template = typeof picked === "string" ? getTeamLogoTemplateBySrc(picked) : picked;
+    const logo = String((template as any)?.src || picked || "").trim();
     if (!logo) return;
-    save({ ...team, logoDataUrl: logo, logoUrl: undefined } as any);
+    // On garde l'id/fichier du logo intégré: c'est stable en sauvegarde NAS,
+    // même si Vite change le chemin /assets/...hash.webp après rebuild ou sur un autre appareil.
+    save({
+      ...team,
+      logoDataUrl: logo,
+      logoUrl: logo,
+      avatarUrl: logo,
+      imageUrl: logo,
+      logoLibraryId: (template as any)?.id || getTeamLogoTemplateBySrc(logo)?.id || null,
+      logoLibraryFileName: (template as any)?.fileName || getTeamLogoTemplateBySrc(logo)?.fileName || null,
+    } as any);
     setLogoLibraryOpen(false);
   }
 

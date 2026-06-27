@@ -2393,11 +2393,11 @@ function sanitizeStoreForCloud(store: any) {
   if (Array.isArray((clone as any).teams)) {
     (clone as any).teams = (clone as any).teams.map((team: any) => {
       const out: any = { ...(team || {}) };
-      delete out.logoDataUrl;
-      delete out.avatarDataUrl;
-      delete out.imageDataUrl;
-      delete out.regionLogoDataUrl;
-      delete out.coverDataUrl;
+      // Ne jamais retirer les logos de bibliothèque (/assets/team_logo_XXX.webp) du snapshot NAS.
+      // On supprime uniquement le base64 inline, trop lourd pour la sauvegarde.
+      for (const key of ["logoDataUrl", "avatarDataUrl", "imageDataUrl", "regionLogoDataUrl", "coverDataUrl"]) {
+        if (typeof out[key] === "string" && out[key].startsWith("data:")) delete out[key];
+      }
       if (typeof out.logoUrl === "string" && out.logoUrl.startsWith("data:")) delete out.logoUrl;
       if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:")) delete out.avatarUrl;
       if (typeof out.imageUrl === "string" && out.imageUrl.startsWith("data:")) delete out.imageUrl;

@@ -416,6 +416,8 @@ function countTeamsInSnapshot(payload: any): number {
 
 function stripDataImagesAndSecrets(value: any): any {
   const seen = new WeakSet<object>();
+  const sensitiveKeys = new Set(["password", "passwordHash", "confirmPassword"]);
+  const imageKeys = new Set(["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "logoDataUrl", "regionLogoDataUrl", "coverDataUrl"]);
   const walk = (node: any): any => {
     if (node == null) return node;
     if (typeof node === "string") return node.startsWith("data:image/") ? undefined : node;
@@ -425,7 +427,10 @@ function stripDataImagesAndSecrets(value: any): any {
     if (Array.isArray(node)) return node.map(walk).filter((v) => v !== undefined);
     const out: any = {};
     for (const [k, v] of Object.entries(node)) {
-      if (["avatarDataUrl", "avatarThumbDataUrl", "avatarFullDataUrl", "avatarCastDataUrl", "photoDataUrl", "imageDataUrl", "mainImageDataUrl", "dartSetImageDataUrl", "logoDataUrl", "regionLogoDataUrl", "coverDataUrl", "password", "passwordHash", "confirmPassword"].includes(k)) continue;
+      if (sensitiveKeys.has(k)) continue;
+      // Important: ne pas supprimer logoDataUrl/logoUrl quand il s'agit d'un logo de bibliothèque
+      // (/assets/team_logo_XXX.webp) ou d'une URL média. On retire seulement le base64.
+      if (imageKeys.has(k) && typeof v === "string" && v.startsWith("data:image/")) continue;
       const next = walk(v);
       if (next !== undefined) out[k] = next;
     }

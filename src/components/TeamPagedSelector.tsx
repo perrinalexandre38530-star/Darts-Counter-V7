@@ -2,7 +2,7 @@
 import React from "react";
 
 function teamLogo(team: any): string | null {
-  return team?.logoDataUrl || team?.regionLogoDataUrl || team?.avatarDataUrl || team?.coverDataUrl || null;
+  return team?.logoDataUrl || team?.logoUrl || team?.avatarUrl || team?.imageUrl || team?.regionLogoDataUrl || team?.regionLogoUrl || team?.avatarDataUrl || team?.coverDataUrl || team?.coverUrl || null;
 }
 
 function initialsOf(name: string) {
