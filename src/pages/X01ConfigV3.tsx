@@ -1651,7 +1651,16 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const team = storedDartsTeams.find((t: any) => String(t.id) === baseId);
       if (!team) return null;
       const suffix = x01TeamSuffix(occurrence);
-      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, name: `${String(team.name || "Équipe")} ${suffix}` };
+      return {
+        ...team,
+        id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId,
+        baseTeamId: baseId,
+        sourceTeamId: baseId,
+        teamSlotLabel: suffix,
+        // IMPORTANT : le suffixe A/B/C sert uniquement à distinguer les sélections internes.
+        // Le nom réel de l'équipe ne doit pas être renommé dans le match, l'historique ou les stats.
+        name: team.name,
+      };
     }).filter(Boolean);
   }, [storedDartsTeams, selectedStoredTeamIds]);
 
@@ -1663,7 +1672,16 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const team = botDartsTeams.find((t: any) => String(t.id) === baseId);
       if (!team) return null;
       const suffix = x01TeamSuffix(occurrence);
-      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, name: `${String(team.name || "BOT Team")} ${suffix}` };
+      return {
+        ...team,
+        id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId,
+        baseTeamId: baseId,
+        sourceTeamId: baseId,
+        teamSlotLabel: suffix,
+        // IMPORTANT : le suffixe A/B/C sert uniquement à distinguer les sélections internes.
+        // Le nom réel de l'équipe ne doit pas être renommé dans le match, l'historique ou les stats.
+        name: team.name,
+      };
     }).filter(Boolean);
   }, [botDartsTeams, selectedBotTeamIds, botTeamsPanelEnabled]);
 
@@ -1749,7 +1767,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   function toggleSavedTeamMember(teamId: string, playerId: string) {
     setSavedTeamMemberSelections((prev) => {
       const tid = String(teamId || "");
-      const team = selectableDartsTeams.find((t: any) => String(t.id) === tid);
+      const baseTid = x01TeamBaseId(tid);
+      const team = selectableDartsTeams.find((t: any) => String(t.id) === baseTid);
       const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
       const current = Array.isArray(prev[tid]) ? prev[tid] : allIds;
       const pid = String(playerId || "");
@@ -1761,7 +1780,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   function ensureSavedTeamMembersInitialized(tid: string, teamList: any[]) {
     setSavedTeamMemberSelections((prev) => {
       if (prev[tid]) return prev;
-      const team = teamList.find((t: any) => String(t.id) === tid);
+      const baseTid = x01TeamBaseId(tid);
+      const team = teamList.find((t: any) => String(t.id) === baseTid);
       const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
       return { ...prev, [tid]: allIds };
     });
@@ -1779,7 +1799,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         const chosen = savedTeamMemberSelections[String(raw)] || savedTeamMemberSelections[tid] || [];
         for (const pid of (Array.isArray(chosen) ? chosen : [])) used.add(String(pid));
       }
-      if (same.length > 0 && allIds.length > 0 && allIds.filter((pid: string) => !used.has(pid)).length < 2) return arr;
+      if (same.length > 0 && allIds.length > 0 && allIds.filter((pid: string) => !used.has(pid)).length < 1) return arr;
       const nextId = same.length > 0 ? `${tid}__slot_${x01TeamSuffix(same.length)}` : tid;
       return [...arr, nextId];
     });

@@ -1751,15 +1751,19 @@ const togglePlayer = (id: string) => {
       .filter(Boolean);
     const used = new Set((alreadyUsedPlayers || []).map(String));
     const free = allPlayerIds.filter((id: string) => !used.has(id));
-    const size = Math.max(2, Number((typeof petanqueTeamSize !== "undefined" ? petanqueTeamSize : 2) || 2));
+    // Une même équipe/club peut être sélectionnée plusieurs fois tant qu'il reste au moins
+    // un joueur disponible. On ne force pas 2 joueurs : en tournoi, un seul joueur peut
+    // représenter son équipe.
+    const size = Math.max(1, Number((typeof petanqueTeamSize !== "undefined" ? petanqueTeamSize : 1) || 1));
     const pickedPlayers = free.length ? free.slice(0, size) : allPlayerIds;
     const suffix = teamInstanceSuffix(instanceIndex);
     const baseName = String(team?.name || "Équipe").trim() || "Équipe";
-    const name = `${baseName} ${suffix}`;
+    const name = baseName;
     return {
       id: instanceIndex > 0 ? `${baseId}__slot_${suffix}` : baseId,
       baseTeamId: baseId,
       sourceTeamId: baseId,
+      teamSlotLabel: suffix,
       name,
       players: pickedPlayers,
       playerIds: pickedPlayers,
@@ -1779,28 +1783,28 @@ const togglePlayer = (id: string) => {
     if (!team) return;
     const id = String(team?.id || "");
     if (!id) return;
+
     setTeamsInput((prev) => {
       const arr = Array.isArray(prev) ? prev : [];
-      const exists = arr.some((t: any) => String(t?.id || "") === id);
-      if (exists) return arr.filter((t: any) => String(t?.id || "") !== id);
-      return [
-        ...arr,
-        {
-          id,
-          name: String(team?.name || "Équipe"),
-          players: Array.isArray(team?.playerIds) ? team.playerIds : [],
-          playerIds: Array.isArray(team?.playerIds) ? team.playerIds : [],
-          logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null,
-          logoUrl: team?.logoUrl || team?.logoDataUrl || team?.avatarDataUrl || null,
-          isBotTeam: !!team?.isBotTeam,
-          botTeamLevel: team?.botTeamLevel ?? null,
-          avg3D: Number(team?.avg3D || 0) || 0,
-          stars: Number(team?.stars || 0) || 0,
-          members: Array.isArray(team?.members) ? team.members : [],
-        },
-      ];
+      const sameBase = arr.filter((t: any) => teamBaseId(t) === id);
+      const alreadyUsedPlayers = sameBase
+        .flatMap((t: any) => Array.isArray(t?.playerIds) ? t.playerIds : Array.isArray(t?.players) ? t.players : [])
+        .map((x: any) => String(x || ""))
+        .filter(Boolean);
+      const allPlayerIds = (Array.isArray(team?.playerIds) ? team.playerIds : Array.isArray(team?.players) ? team.players : [])
+        .map((x: any) => String(x || ""))
+        .filter(Boolean);
+      const used = new Set(alreadyUsedPlayers);
+      const remaining = allPlayerIds.filter((pid: string) => !used.has(pid));
+
+      // Règle correcte : on peut sélectionner plusieurs fois le même club/team
+      // tant qu'il reste AU MOINS 1 joueur disponible. On ne renomme pas l'équipe.
+      if (sameBase.length > 0 && allPlayerIds.length > 0 && remaining.length < 1) return arr;
+
+      const nextTeam = buildTeamInstanceFromCatalog(team, sameBase.length, alreadyUsedPlayers);
+      return [...arr, nextTeam];
     });
-  }, []);
+  }, [petanqueTeamSize]);
 
   const parseTeamsImportText = React.useCallback(
     (text: string) => {
