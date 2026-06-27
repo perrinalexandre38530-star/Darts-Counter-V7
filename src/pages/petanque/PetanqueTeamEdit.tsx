@@ -18,6 +18,7 @@ import {
   TEAM_LOGO_LIBRARY,
   getRandomTeamLogo,
   getTeamLogoTemplateBySrc,
+  teamLogoMatchesCategory,
   type TeamLogoCategory,
   type TeamLogoTemplate,
 } from "../../assets/teamLogoLibrary";
@@ -128,8 +129,7 @@ function LogoCarouselModal({
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return TEAM_LOGO_LIBRARY.filter((logo) => {
-      const categoryOk = category === "all"
-        || (category === "popular" ? (logo.tags || []).includes("popular") : logo.category === category);
+      const categoryOk = teamLogoMatchesCategory(logo, category);
       if (!categoryOk) return false;
       if (!q) return true;
       const blob = `${logo.label} ${logo.category} ${(logo.tags || []).join(" ")}`.toLowerCase();
@@ -169,7 +169,7 @@ function LogoCarouselModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={input(theme)}
-            placeholder="Rechercher : skull, foot, cible, dragon..."
+            placeholder="Rechercher : cible, skull, dragon, feu..."
           />
           <button type="button" style={btnGhost(theme)} onClick={pickRandom}>🎲</button>
         </div>
