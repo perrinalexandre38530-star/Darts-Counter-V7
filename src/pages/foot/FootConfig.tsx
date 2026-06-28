@@ -3,6 +3,8 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import PlayerPagedSelector from "../../components/PlayerPagedSelector";
+import TeamSelectorV2 from "../../components/TeamSelectorV2";
+import SelectionStickyBanner from "../../components/SelectionStickyBanner";
 import { loadTeamsBySport, type TeamEntity } from "../../lib/petanqueTeamsStore";
 import {
   buildTeamInstance,
@@ -333,7 +335,7 @@ export default function FootConfig({ go, params, store }: Props) {
     <section style={cardStyle()}>
       <h2 style={sectionTitle(primary)}>ÉQUIPES DU MATCH</h2>
       <p style={hintStyle}>Choisis l’équipe domicile puis l’équipe extérieur. Le choix des titulaires arrive juste après.</p>
-      <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onToggle={toggleTeam} onAdd={addSavedTeamSelection} onRemove={removeSavedTeamSelection} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+      <TeamSelectorV2 teams={savedTeams} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onAdd={addSavedTeamSelection} onRemove={removeSavedTeamSelection} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} maxSelections={2} />
     </section>
   );
 
@@ -437,7 +439,7 @@ export default function FootConfig({ go, params, store }: Props) {
 
       {sourceMode === "saved" && spec.kind === "team" ? (
         <>
-          <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} selectedBaseCounts={selectedTeamBaseCounts} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onToggle={toggleTeam} onAdd={addSavedTeamSelection} onRemove={removeSavedTeamSelection} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+          <TeamSelectorV2 teams={savedTeams} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onAdd={addSavedTeamSelection} onRemove={removeSavedTeamSelection} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} maxSelections={2} />
           <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
         </>
       ) : (

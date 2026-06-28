@@ -17,6 +17,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import SelectionStickyBanner from "../components/SelectionStickyBanner";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
@@ -2214,6 +2215,33 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               primarySoft={primarySoft}
             />
           </div>
+
+          {participantMode === "teams" && (selectedSavedTeams || []).length > 0 ? (
+            <SelectionStickyBanner
+              title="Équipes / joueurs sélectionnés"
+              accent={primary}
+              items={(selectedSavedTeams || []).map((team: any) => {
+                const tid = String(team?.id || "");
+                const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid] : (Array.isArray(team?.playerIds) ? team.playerIds : []);
+                const names = chosen.map((id: any) => teamProfiles.find((p: any) => String(p?.id) === String(id))?.name).filter(Boolean).join(", ");
+                return {
+                  id: tid,
+                  name: team?.name || "Équipe",
+                  logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null,
+                  subtitle: names || `${chosen.length || 0} joueur`,
+                };
+              })}
+            />
+          ) : participantMode === "players" && selectedIds.length > 0 ? (
+            <SelectionStickyBanner
+              title="Joueurs sélectionnés"
+              accent={primary}
+              items={selectedIds.map((id: any) => {
+                const p = humanProfiles.find((profile: any) => String(profile?.id) === String(id));
+                return { id: String(id), name: p?.name || p?.displayName || "Joueur", profile: p };
+              })}
+            />
+          ) : null}
 
           {participantMode === "players" ? (
             humanProfiles.length === 0 ? (
