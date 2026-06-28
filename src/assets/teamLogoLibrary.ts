@@ -71,10 +71,45 @@ import teamLogo063 from "./team_logos/team_logo_063.webp";
 import teamLogo064 from "./team_logos/team_logo_064.webp";
 import teamLogo065 from "./team_logos/team_logo_065.webp";
 import teamLogo066 from "./team_logos/team_logo_066.webp";
+import teamLogo067 from "./team_logos/team_logo_067.webp";
+import teamLogo068 from "./team_logos/team_logo_068.webp";
+import teamLogo069 from "./team_logos/team_logo_069.webp";
+import teamLogo070 from "./team_logos/team_logo_070.webp";
+import teamLogo071 from "./team_logos/team_logo_071.webp";
+import teamLogo072 from "./team_logos/team_logo_072.webp";
+import teamLogo073 from "./team_logos/team_logo_073.webp";
+import teamLogo074 from "./team_logos/team_logo_074.webp";
+import teamLogo075 from "./team_logos/team_logo_075.webp";
+import teamLogo076 from "./team_logos/team_logo_076.webp";
+import teamLogo077 from "./team_logos/team_logo_077.webp";
+import teamLogo078 from "./team_logos/team_logo_078.webp";
+import teamLogo079 from "./team_logos/team_logo_079.webp";
+import teamLogo080 from "./team_logos/team_logo_080.webp";
+import teamLogo081 from "./team_logos/team_logo_081.webp";
+import teamLogo082 from "./team_logos/team_logo_082.webp";
+import teamLogo083 from "./team_logos/team_logo_083.webp";
+import teamLogo084 from "./team_logos/team_logo_084.webp";
+import teamLogo085 from "./team_logos/team_logo_085.webp";
+import teamLogo086 from "./team_logos/team_logo_086.webp";
+import teamLogo087 from "./team_logos/team_logo_087.webp";
+import teamLogo088 from "./team_logos/team_logo_088.webp";
+import teamLogo089 from "./team_logos/team_logo_089.webp";
+import teamLogo090 from "./team_logos/team_logo_090.webp";
+import teamLogo091 from "./team_logos/team_logo_091.webp";
+import teamLogo092 from "./team_logos/team_logo_092.webp";
+import teamLogo093 from "./team_logos/team_logo_093.webp";
+import teamLogo094 from "./team_logos/team_logo_094.webp";
+import teamLogo095 from "./team_logos/team_logo_095.webp";
+import teamLogo096 from "./team_logos/team_logo_096.webp";
+import teamLogo097 from "./team_logos/team_logo_097.webp";
+import teamLogo098 from "./team_logos/team_logo_098.webp";
+import teamLogo099 from "./team_logos/team_logo_099.webp";
+import teamLogo100 from "./team_logos/team_logo_100.webp";
 
 export type TeamLogoCategory =
   | "popular"
   | "darts"
+  | "petanque"
   | "skulls"
   | "creatures"
   | "warriors"
@@ -94,6 +129,7 @@ export const TEAM_LOGO_CATEGORIES: Array<{ id: TeamLogoCategory | "all"; label: 
   { id: "all", label: "Tous" },
   { id: "popular", label: "Populaires" },
   { id: "darts", label: "Fléchettes" },
+  { id: "petanque", label: "Pétanque" },
   { id: "skulls", label: "Crânes" },
   { id: "creatures", label: "Créatures" },
   { id: "warriors", label: "Guerriers" },
@@ -107,7 +143,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_001.webp",
     label: "Crâne bleu",
     category: "skulls",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo001', 'popular', 'skulls', 'skull', 'crane', 'flamme', 'bleu'],
+    tags: ['team', 'logo', 'club', 'logo001', 'darts', 'fléchettes', 'flechettes', 'skulls', 'skull', 'crane', 'popular'],
     src: teamLogo001,
   },
   {
@@ -115,7 +151,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_002.webp",
     label: "Cible rouge",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo002', 'popular', 'cible', 'target', 'bullseye'],
+    tags: ['team', 'logo', 'club', 'logo002', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo002,
   },
   {
@@ -123,7 +159,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_003.webp",
     label: "Loup",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo003', 'popular', 'creatures', 'loup', 'wolf', 'animal'],
+    tags: ['team', 'logo', 'club', 'logo003', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature', 'popular'],
     src: teamLogo003,
   },
   {
@@ -131,7 +167,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_004.webp",
     label: "Aigle",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo004', 'popular', 'creatures', 'aigle', 'eagle', 'animal'],
+    tags: ['team', 'logo', 'club', 'logo004', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature', 'popular'],
     src: teamLogo004,
   },
   {
@@ -139,7 +175,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_005.webp",
     label: "Dragon violet",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo005', 'popular', 'creatures', 'dragon', 'violet', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo005', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature', 'popular'],
     src: teamLogo005,
   },
   {
@@ -147,7 +183,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_006.webp",
     label: "Phénix",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo006', 'popular', 'creatures', 'phenix', 'phoenix', 'feu'],
+    tags: ['team', 'logo', 'club', 'logo006', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature', 'popular'],
     src: teamLogo006,
   },
   {
@@ -155,7 +191,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_007.webp",
     label: "Crâne violet",
     category: "skulls",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo007', 'popular', 'skulls', 'skull', 'crane', 'violet'],
+    tags: ['team', 'logo', 'club', 'logo007', 'darts', 'fléchettes', 'flechettes', 'skulls', 'skull', 'crane', 'popular'],
     src: teamLogo007,
   },
   {
@@ -163,7 +199,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_008.webp",
     label: "Cobra",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo008', 'popular', 'creatures', 'cobra', 'serpent', 'snake', 'animal'],
+    tags: ['team', 'logo', 'club', 'logo008', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature', 'popular'],
     src: teamLogo008,
   },
   {
@@ -171,7 +207,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_009.webp",
     label: "Pirate",
     category: "skulls",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo009', 'popular', 'skulls', 'pirate', 'skull', 'crane'],
+    tags: ['team', 'logo', 'club', 'logo009', 'darts', 'fléchettes', 'flechettes', 'skulls', 'skull', 'crane', 'popular'],
     src: teamLogo009,
   },
   {
@@ -179,7 +215,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_010.webp",
     label: "Éclair",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo010', 'popular', 'elements', 'eclair', 'lightning', 'thunder', 'bleu'],
+    tags: ['team', 'logo', 'club', 'logo010', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair', 'popular'],
     src: teamLogo010,
   },
   {
@@ -187,7 +223,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_011.webp",
     label: "Spartiate",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo011', 'popular', 'warriors', 'spartan', 'guerrier', 'casque'],
+    tags: ['team', 'logo', 'club', 'logo011', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque', 'popular'],
     src: teamLogo011,
   },
   {
@@ -195,7 +231,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_012.webp",
     label: "Dragon rouge",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo012', 'popular', 'creatures', 'dragon', 'rouge', 'feu'],
+    tags: ['team', 'logo', 'club', 'logo012', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature', 'popular'],
     src: teamLogo012,
   },
   {
@@ -203,7 +239,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_013.webp",
     label: "Logo 013",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo013', 'popular', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo013', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo013,
   },
   {
@@ -211,7 +247,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_014.webp",
     label: "Logo 014",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo014', 'popular', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo014', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo014,
   },
   {
@@ -219,7 +255,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_015.webp",
     label: "Logo 015",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo015', 'popular', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo015', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo015,
   },
   {
@@ -227,7 +263,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_016.webp",
     label: "Logo 016",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo016', 'popular', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo016', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo016,
   },
   {
@@ -235,7 +271,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_017.webp",
     label: "Logo 017",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo017', 'popular', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo017', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo017,
   },
   {
@@ -243,7 +279,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_018.webp",
     label: "Logo 018",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo018', 'popular', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo018', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo018,
   },
   {
@@ -251,7 +287,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_019.webp",
     label: "Logo 019",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo019', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo019', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo019,
   },
   {
@@ -259,7 +295,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_020.webp",
     label: "Logo 020",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo020', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo020', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo020,
   },
   {
@@ -267,7 +303,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_021.webp",
     label: "Logo 021",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo021', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo021', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo021,
   },
   {
@@ -275,7 +311,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_022.webp",
     label: "Logo 022",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo022', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo022', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo022,
   },
   {
@@ -283,7 +319,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_023.webp",
     label: "Logo 023",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo023', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo023', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo023,
   },
   {
@@ -291,7 +327,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_024.webp",
     label: "Logo 024",
     category: "creatures",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo024', 'creatures', 'animal', 'mascotte', 'creature'],
+    tags: ['team', 'logo', 'club', 'logo024', 'darts', 'fléchettes', 'flechettes', 'creatures', 'animal', 'mascotte', 'creature'],
     src: teamLogo024,
   },
   {
@@ -299,7 +335,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_025.webp",
     label: "Logo 025",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo025', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo025', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo025,
   },
   {
@@ -307,7 +343,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_026.webp",
     label: "Logo 026",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo026', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo026', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo026,
   },
   {
@@ -315,7 +351,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_027.webp",
     label: "Logo 027",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo027', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo027', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo027,
   },
   {
@@ -323,7 +359,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_028.webp",
     label: "Logo 028",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo028', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo028', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo028,
   },
   {
@@ -331,7 +367,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_029.webp",
     label: "Logo 029",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo029', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo029', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo029,
   },
   {
@@ -339,7 +375,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_030.webp",
     label: "Logo 030",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo030', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo030', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo030,
   },
   {
@@ -347,7 +383,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_031.webp",
     label: "Logo 031",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo031', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo031', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo031,
   },
   {
@@ -355,7 +391,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_032.webp",
     label: "Logo 032",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo032', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo032', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo032,
   },
   {
@@ -363,7 +399,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_033.webp",
     label: "Logo 033",
     category: "warriors",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo033', 'warriors', 'guerrier', 'warrior', 'mascotte'],
+    tags: ['team', 'logo', 'club', 'logo033', 'darts', 'fléchettes', 'flechettes', 'warriors', 'guerrier', 'casque'],
     src: teamLogo033,
   },
   {
@@ -371,7 +407,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_035.webp",
     label: "Logo 035",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo035', 'popular', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo035', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo035,
   },
   {
@@ -379,7 +415,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_036.webp",
     label: "Logo 036",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo036', 'popular', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo036', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo036,
   },
   {
@@ -387,7 +423,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_037.webp",
     label: "Logo 037",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo037', 'popular', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo037', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo037,
   },
   {
@@ -395,7 +431,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_038.webp",
     label: "Logo 038",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo038', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo038', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo038,
   },
   {
@@ -403,7 +439,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_039.webp",
     label: "Logo 039",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo039', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo039', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo039,
   },
   {
@@ -411,7 +447,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_040.webp",
     label: "Logo 040",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo040', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo040', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo040,
   },
   {
@@ -419,7 +455,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_041.webp",
     label: "Logo 041",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo041', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo041', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo041,
   },
   {
@@ -427,7 +463,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_042.webp",
     label: "Logo 042",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo042', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo042', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo042,
   },
   {
@@ -435,7 +471,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_043.webp",
     label: "Logo 043",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo043', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo043', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo043,
   },
   {
@@ -443,7 +479,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_044.webp",
     label: "Logo 044",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo044', 'cible', 'target'],
+    tags: ['team', 'logo', 'club', 'logo044', 'darts', 'fléchettes', 'flechettes', 'cible', 'target'],
     src: teamLogo044,
   },
   {
@@ -451,7 +487,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_045.webp",
     label: "Logo 045",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo045', 'popular', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo045', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo045,
   },
   {
@@ -459,7 +495,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_046.webp",
     label: "Logo 046",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo046', 'popular', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo046', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo046,
   },
   {
@@ -467,7 +503,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_047.webp",
     label: "Logo 047",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo047', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo047', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo047,
   },
   {
@@ -475,7 +511,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_048.webp",
     label: "Logo 048",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo048', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo048', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo048,
   },
   {
@@ -483,7 +519,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_049.webp",
     label: "Logo 049",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo049', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo049', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo049,
   },
   {
@@ -491,7 +527,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_050.webp",
     label: "Logo 050",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo050', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo050', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo050,
   },
   {
@@ -499,7 +535,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_051.webp",
     label: "Logo 051",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo051', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo051', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo051,
   },
   {
@@ -507,7 +543,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_052.webp",
     label: "Logo 052",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo052', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo052', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo052,
   },
   {
@@ -515,7 +551,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_053.webp",
     label: "Logo 053",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo053', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo053', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo053,
   },
   {
@@ -523,7 +559,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_054.webp",
     label: "Logo 054",
     category: "elements",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo054', 'elements', 'feu', 'glace', 'foudre', 'element', 'energie'],
+    tags: ['team', 'logo', 'club', 'logo054', 'darts', 'fléchettes', 'flechettes', 'elements', 'energie', 'feu', 'glace', 'eclair'],
     src: teamLogo054,
   },
   {
@@ -531,7 +567,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_055.webp",
     label: "Logo 055",
     category: "crests",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo055', 'popular', 'crests', 'blason', 'shield', 'couronne', 'laurier', 'embleme'],
+    tags: ['team', 'logo', 'club', 'logo055', 'darts', 'fléchettes', 'flechettes', 'crests', 'blason', 'bouclier', 'embleme'],
     src: teamLogo055,
   },
   {
@@ -539,7 +575,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_056.webp",
     label: "Logo 056",
     category: "crests",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo056', 'popular', 'crests', 'blason', 'shield', 'couronne', 'laurier', 'embleme'],
+    tags: ['team', 'logo', 'club', 'logo056', 'darts', 'fléchettes', 'flechettes', 'crests', 'blason', 'bouclier', 'embleme'],
     src: teamLogo056,
   },
   {
@@ -547,7 +583,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_057.webp",
     label: "Logo 057",
     category: "crests",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo057', 'crests', 'blason', 'shield', 'couronne', 'laurier', 'embleme'],
+    tags: ['team', 'logo', 'club', 'logo057', 'darts', 'fléchettes', 'flechettes', 'crests', 'blason', 'bouclier', 'embleme'],
     src: teamLogo057,
   },
   {
@@ -555,7 +591,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_058.webp",
     label: "Logo 058",
     category: "crests",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo058', 'crests', 'blason', 'shield', 'couronne', 'laurier', 'embleme'],
+    tags: ['team', 'logo', 'club', 'logo058', 'darts', 'fléchettes', 'flechettes', 'crests', 'blason', 'bouclier', 'embleme'],
     src: teamLogo058,
   },
   {
@@ -563,7 +599,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_059.webp",
     label: "Logo 059",
     category: "crests",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo059', 'crests', 'blason', 'shield', 'couronne', 'laurier', 'embleme'],
+    tags: ['team', 'logo', 'club', 'logo059', 'darts', 'fléchettes', 'flechettes', 'crests', 'blason', 'bouclier', 'embleme'],
     src: teamLogo059,
   },
   {
@@ -571,7 +607,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_060.webp",
     label: "Logo 060",
     category: "crests",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo060', 'crests', 'blason', 'shield', 'couronne', 'laurier', 'embleme'],
+    tags: ['team', 'logo', 'club', 'logo060', 'darts', 'fléchettes', 'flechettes', 'crests', 'blason', 'bouclier', 'embleme'],
     src: teamLogo060,
   },
   {
@@ -579,7 +615,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_061.webp",
     label: "Logo 061",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo061', 'cible'],
+    tags: ['team', 'logo', 'club', 'logo061', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo061,
   },
   {
@@ -587,7 +623,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_062.webp",
     label: "Logo 062",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo062', 'cible'],
+    tags: ['team', 'logo', 'club', 'logo062', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo062,
   },
   {
@@ -595,7 +631,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_063.webp",
     label: "Logo 063",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo063', 'cible'],
+    tags: ['team', 'logo', 'club', 'logo063', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo063,
   },
   {
@@ -603,7 +639,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_064.webp",
     label: "Logo 064",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo064', 'cible'],
+    tags: ['team', 'logo', 'club', 'logo064', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo064,
   },
   {
@@ -611,7 +647,7 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_065.webp",
     label: "Logo 065",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo065', 'cible'],
+    tags: ['team', 'logo', 'club', 'logo065', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo065,
   },
   {
@@ -619,9 +655,281 @@ export const TEAM_LOGO_LIBRARY: TeamLogoTemplate[] = [
     fileName: "team_logo_066.webp",
     label: "Logo 066",
     category: "darts",
-    tags: ['team', 'logo', 'club', 'darts', 'fléchettes', 'flechettes', 'logo066', 'cible'],
+    tags: ['team', 'logo', 'club', 'logo066', 'darts', 'fléchettes', 'flechettes', 'cible', 'target', 'popular'],
     src: teamLogo066,
   },
+  {
+    id: "team_logo_067",
+    fileName: "team_logo_067.webp",
+    label: "Pétanque 067",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo067', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'couronne', 'laurier', 'premium'],
+    src: teamLogo067,
+  },
+  {
+    id: "team_logo_068",
+    fileName: "team_logo_068.webp",
+    label: "Pétanque 068",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo068', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'couronne', 'laurier', 'premium'],
+    src: teamLogo068,
+  },
+  {
+    id: "team_logo_069",
+    fileName: "team_logo_069.webp",
+    label: "Pétanque 069",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo069', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'couronne', 'laurier', 'premium'],
+    src: teamLogo069,
+  },
+  {
+    id: "team_logo_070",
+    fileName: "team_logo_070.webp",
+    label: "Pétanque 070",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo070', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'cercle'],
+    src: teamLogo070,
+  },
+  {
+    id: "team_logo_071",
+    fileName: "team_logo_071.webp",
+    label: "Pétanque 071",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo071', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'badge'],
+    src: teamLogo071,
+  },
+  {
+    id: "team_logo_072",
+    fileName: "team_logo_072.webp",
+    label: "Pétanque 072",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo072', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'couronne', 'laurier', 'premium'],
+    src: teamLogo072,
+  },
+  {
+    id: "team_logo_073",
+    fileName: "team_logo_073.webp",
+    label: "Pétanque 073",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo073', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'cercle'],
+    src: teamLogo073,
+  },
+  {
+    id: "team_logo_074",
+    fileName: "team_logo_074.webp",
+    label: "Pétanque 074",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo074', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'badge'],
+    src: teamLogo074,
+  },
+  {
+    id: "team_logo_075",
+    fileName: "team_logo_075.webp",
+    label: "Pétanque 075",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo075', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'popular', 'couronne', 'laurier', 'premium'],
+    src: teamLogo075,
+  },
+  {
+    id: "team_logo_076",
+    fileName: "team_logo_076.webp",
+    label: "Pétanque 076",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo076', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo076,
+  },
+  {
+    id: "team_logo_077",
+    fileName: "team_logo_077.webp",
+    label: "Pétanque 077",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo077', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo077,
+  },
+  {
+    id: "team_logo_078",
+    fileName: "team_logo_078.webp",
+    label: "Pétanque 078",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo078', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo078,
+  },
+  {
+    id: "team_logo_079",
+    fileName: "team_logo_079.webp",
+    label: "Pétanque 079",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo079', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo079,
+  },
+  {
+    id: "team_logo_080",
+    fileName: "team_logo_080.webp",
+    label: "Pétanque 080",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo080', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo080,
+  },
+  {
+    id: "team_logo_081",
+    fileName: "team_logo_081.webp",
+    label: "Pétanque 081",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo081', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo081,
+  },
+  {
+    id: "team_logo_082",
+    fileName: "team_logo_082.webp",
+    label: "Pétanque 082",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo082', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo082,
+  },
+  {
+    id: "team_logo_083",
+    fileName: "team_logo_083.webp",
+    label: "Pétanque 083",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo083', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo083,
+  },
+  {
+    id: "team_logo_084",
+    fileName: "team_logo_084.webp",
+    label: "Pétanque 084",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo084', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo084,
+  },
+  {
+    id: "team_logo_085",
+    fileName: "team_logo_085.webp",
+    label: "Pétanque 085",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo085', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo085,
+  },
+  {
+    id: "team_logo_086",
+    fileName: "team_logo_086.webp",
+    label: "Pétanque 086",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo086', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo086,
+  },
+  {
+    id: "team_logo_087",
+    fileName: "team_logo_087.webp",
+    label: "Pétanque 087",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo087', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo087,
+  },
+  {
+    id: "team_logo_088",
+    fileName: "team_logo_088.webp",
+    label: "Pétanque 088",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo088', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo088,
+  },
+  {
+    id: "team_logo_089",
+    fileName: "team_logo_089.webp",
+    label: "Pétanque 089",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo089', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo089,
+  },
+  {
+    id: "team_logo_090",
+    fileName: "team_logo_090.webp",
+    label: "Pétanque 090",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo090', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo090,
+  },
+  {
+    id: "team_logo_091",
+    fileName: "team_logo_091.webp",
+    label: "Pétanque 091",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo091', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo091,
+  },
+  {
+    id: "team_logo_092",
+    fileName: "team_logo_092.webp",
+    label: "Pétanque 092",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo092', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo092,
+  },
+  {
+    id: "team_logo_093",
+    fileName: "team_logo_093.webp",
+    label: "Pétanque 093",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo093', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo093,
+  },
+  {
+    id: "team_logo_094",
+    fileName: "team_logo_094.webp",
+    label: "Pétanque 094",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo094', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo094,
+  },
+  {
+    id: "team_logo_095",
+    fileName: "team_logo_095.webp",
+    label: "Pétanque 095",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo095', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo095,
+  },
+  {
+    id: "team_logo_096",
+    fileName: "team_logo_096.webp",
+    label: "Pétanque 096",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo096', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo096,
+  },
+  {
+    id: "team_logo_097",
+    fileName: "team_logo_097.webp",
+    label: "Pétanque 097",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo097', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo097,
+  },
+  {
+    id: "team_logo_098",
+    fileName: "team_logo_098.webp",
+    label: "Pétanque 098",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo098', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'badge'],
+    src: teamLogo098,
+  },
+  {
+    id: "team_logo_099",
+    fileName: "team_logo_099.webp",
+    label: "Pétanque 099",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo099', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'couronne', 'laurier', 'premium'],
+    src: teamLogo099,
+  },
+  {
+    id: "team_logo_100",
+    fileName: "team_logo_100.webp",
+    label: "Pétanque 100",
+    category: "petanque",
+    tags: ['team', 'logo', 'club', 'logo100', 'petanque', 'pétanque', 'boules', 'boule', 'cochonnet', 'terrain', 'metal', 'acier', 'embleme', 'blason', 'cercle'],
+    src: teamLogo100,
+  }
 ];
 
 export function teamLogoMatchesCategory(logo: TeamLogoTemplate, category?: TeamLogoCategory | "all") {
