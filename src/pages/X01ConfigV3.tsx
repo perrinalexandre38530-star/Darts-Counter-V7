@@ -1047,7 +1047,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                       background: selected ? `radial-gradient(circle at 50% 0%, ${primary}30, rgba(12,13,23,.98))` : "rgba(255,255,255,.04)",
                       color: "#fff",
                       padding: 8,
-                      cursor: "pointer",
+                      cursor: remaining > 0 ? "pointer" : "not-allowed",
                       boxShadow: selected ? `0 0 18px ${primary}55` : "0 10px 22px rgba(0,0,0,.35)",
                       display: "flex",
                       flexDirection: "column",
@@ -1831,15 +1831,35 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     ensureSavedTeamMembersInitialized(tid, storedDartsTeams as any[]);
   }
 
-  function toggleBotTeam(teamId: string) {
+  function addBotTeamSelection(teamId: string, playerIds: string[]) {
     const tid = String(teamId || "");
+    const picked = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean)));
+    if (!tid || picked.length <= 0) return;
     setSelectedBotTeamIds((prev) => {
       const arr = Array.isArray(prev) ? prev : [];
       const same = arr.filter((id: any) => x01TeamBaseId(id) === tid);
       const nextId = same.length > 0 ? `${tid}__slot_${x01TeamSuffix(same.length)}` : tid;
+      setSavedTeamMemberSelections((old) => ({ ...old, [nextId]: picked }));
       return [...arr, nextId];
     });
-    ensureSavedTeamMembersInitialized(tid, botDartsTeams as any[]);
+  }
+
+  function removeBotTeamSelection(instanceId: string) {
+    const tid = String(instanceId || "");
+    if (!tid) return;
+    setSelectedBotTeamIds((prev) => (Array.isArray(prev) ? prev.filter((id) => String(id) !== tid) : []));
+    setSavedTeamMemberSelections((prev) => {
+      const next = { ...(prev || {}) };
+      delete next[tid];
+      return next;
+    });
+  }
+
+  function toggleBotTeam(teamId: string) {
+    const tid = String(teamId || "");
+    const team = (botDartsTeams as any[]).find((t: any) => String(t.id) === tid);
+    const allIds = (Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+    addBotTeamSelection(tid, allIds.length ? [allIds[0]] : []);
   }
 
   function buildExternalTeamConfigs(teamList: any[]) {
@@ -2264,6 +2284,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             botTeams={botDartsTeams}
             selectedBotTeamIds={selectedBotTeamIds}
             toggleBotTeam={toggleBotTeam}
+            addBotTeamSelection={addBotTeamSelection}
+            removeBotTeamSelection={removeBotTeamSelection}
             botTeamsPanelEnabled={botTeamsPanelEnabled}
             setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
             profiles={teamProfiles}
@@ -3345,6 +3367,8 @@ type TeamsSectionProps = {
   setBotTeamsPanelEnabled?: React.Dispatch<React.SetStateAction<boolean>>;
   selectedBotTeamIds?: string[];
   toggleBotTeam?: (teamId: string) => void;
+  addBotTeamSelection?: (teamId: string, playerIds: string[]) => void;
+  removeBotTeamSelection?: (instanceId: string) => void;
   savedTeamMemberSelections?: Record<string, string[]>;
   toggleSavedTeamMember?: (teamId: string, playerId: string) => void;
   primary: string;
@@ -3355,6 +3379,8 @@ function BotTeamsSection({
   botTeams = [],
   selectedBotTeamIds = [],
   toggleBotTeam,
+  addBotTeamSelection,
+  removeBotTeamSelection,
   botTeamsPanelEnabled = true,
   setBotTeamsPanelEnabled,
   profiles = [],
@@ -3369,6 +3395,45 @@ function BotTeamsSection({
     for (const p of profiles || []) m.set(String(p?.id || ""), p);
     return m;
   }, [profiles]);
+  const [botTeamPicker, setBotTeamPicker] = React.useState<any | null>(null);
+  const [botTeamPickerPlayerIds, setBotTeamPickerPlayerIds] = React.useState<string[]>([]);
+  const selectedBotInstances = React.useMemo(() => {
+    return (selectedBotTeamIds || []).map((instanceId: any) => {
+      const raw = String(instanceId || "");
+      const baseId = raw.split("__slot_")[0];
+      const team = (botTeams || []).find((t: any) => String(t?.id || "") === baseId);
+      if (!team) return null;
+      const chosen = Array.isArray(savedTeamMemberSelections?.[raw]) ? savedTeamMemberSelections[raw].map(String) : [];
+      return { instanceId: raw, baseId, team, chosen };
+    }).filter(Boolean) as any[];
+  }, [selectedBotTeamIds, botTeams, savedTeamMemberSelections]);
+  const usedBotPlayersByBase = React.useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    for (const item of selectedBotInstances) {
+      const base = String(item.baseId || "");
+      if (!out[base]) out[base] = new Set<string>();
+      for (const id of item.chosen || []) out[base].add(String(id));
+    }
+    return out;
+  }, [selectedBotInstances]);
+  const openBotTeamPicker = (team: any) => {
+    const baseId = String(team?.id || "");
+    const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+    const used = usedBotPlayersByBase[baseId] || new Set<string>();
+    const available = ids.filter((id: string) => !used.has(id));
+    if (available.length <= 0) return;
+    setBotTeamPicker(team);
+    setBotTeamPickerPlayerIds(available.slice(0, 1));
+  };
+  const validateBotTeamPicker = () => {
+    const teamId = String(botTeamPicker?.id || "");
+    const ids = (botTeamPickerPlayerIds || []).map(String).filter(Boolean);
+    if (!teamId || ids.length <= 0) return;
+    if (addBotTeamSelection) addBotTeamSelection(teamId, ids);
+    else toggleBotTeam && toggleBotTeam(teamId);
+    setBotTeamPicker(null);
+    setBotTeamPickerPlayerIds([]);
+  };
 
   return (
     <section
@@ -3411,6 +3476,28 @@ function BotTeamsSection({
         </button>
       </div>
 
+      {botTeamsPanelEnabled && selectedBotInstances.length > 0 ? (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Équipes BOTS validées</div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+            {selectedBotInstances.map((item: any) => {
+              const logo = item.team?.logoDataUrl || item.team?.logoUrl || item.team?.avatarUrl || undefined;
+              const names = (item.chosen || []).map((id: string) => profileById.get(String(id))?.name).filter(Boolean).join(", ");
+              return (
+                <div key={item.instanceId} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "6px 8px", border: `1px solid ${primary}66`, background: `${primary}12`, color: "#fff", maxWidth: 260 }}>
+                  <ProfileAvatar name={item.team?.name || "BOT IA"} dataUrl={logo} size={30} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.team?.name || "BOT IA"}</div>
+                    <div style={{ fontSize: 10, color: "#9da3c0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names || `${item.chosen?.length || 0} joueur`}</div>
+                  </div>
+                  <button type="button" onClick={() => removeBotTeamSelection && removeBotTeamSelection(item.instanceId)} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#ff7aa8", borderRadius: 999, width: 26, height: 26, cursor: "pointer", fontWeight: 950 }}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {botTeamsPanelEnabled ? (
         botTeams.length === 0 ? (
           <div style={{ color: "#8f94b2", fontSize: 12, lineHeight: 1.35 }}>Aucune équipe BOT IA disponible.</div>
@@ -3430,19 +3517,22 @@ function BotTeamsSection({
           >
             {botTeams.map((team: any, index: number) => {
               const tid = String(team?.id || `bot-team-${index}`);
-              const active = selected.has(tid);
+              const used = usedBotPlayersByBase[tid] || new Set<string>();
+              const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
+              const remaining = ids.filter((id: string) => !used.has(id)).length;
+              const active = remaining <= 0;
               const name = String(team?.name || "Équipe BOT IA");
               const logo = team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null;
               const level = Number(team?.botTeamLevel || parseFloat(String(team?.botLevel || "0")) || 0);
-              const ids = (Array.isArray(team?.playerIds) ? team.playerIds : []).map((x: any) => String(x || "")).filter(Boolean);
-              const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid].map(String) : ids;
+              const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid].map(String) : [];
               const members = ids.map((id: string) => profileById.get(id)).filter(Boolean);
 
               return (
                 <button
                   key={tid}
                   type="button"
-                  onClick={() => toggleBotTeam && toggleBotTeam(tid)}
+                  disabled={remaining <= 0}
+                  onClick={() => openBotTeamPicker(team)}
                   style={{
                     textAlign: "center",
                     borderRadius: 20,
@@ -3489,50 +3579,45 @@ function BotTeamsSection({
                     </div>
                   </div>
 
-                  {active && members.length > 0 ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        marginTop: 12,
-                        flexWrap: "wrap",
-                        justifyContent: "center",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {members.map((p: any) => {
-                        const checked = chosen.includes(String(p.id));
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => toggleSavedTeamMember && toggleSavedTeamMember(tid, String(p.id))}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                              borderRadius: 999,
-                              padding: "4px 7px",
-                              border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)",
-                              background: checked ? `${primary}18` : "rgba(255,255,255,0.04)",
-                              color: "#fff",
-                              fontSize: 10,
-                              fontWeight: 900,
-                              cursor: "pointer",
-                            }}
-                          >
-                            <ProfileAvatar profile={p} size={20} />
-                            <span>{p.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                  <div style={{ marginTop: 8, color: remaining > 0 ? "#9da3c0" : "#656a82", fontSize: 11, fontWeight: 850 }}>
+                    {remaining} BOT{remaining > 1 ? "S" : ""} disponible{remaining > 1 ? "s" : ""}
+                  </div>
                 </button>
               );
             })}
           </div>
         )
+      ) : null}
+
+      {botTeamPicker ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setBotTeamPicker(null)}>
+          <div style={{ width: "min(560px, 96vw)", maxHeight: "82vh", overflow: "auto", borderRadius: 24, background: "rgba(8,10,20,0.98)", border: `1px solid ${primary}66`, boxShadow: `0 0 40px ${primary}33`, padding: 16 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <ProfileAvatar name={botTeamPicker?.name || "BOT IA"} dataUrl={botTeamPicker?.logoDataUrl || botTeamPicker?.logoUrl || undefined} size={46} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8, fontSize: 13 }}>Choisir les BOTS</div>
+                <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{botTeamPicker?.name || "Équipe BOT IA"}</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", gap: 8 }}>
+              {(Array.isArray(botTeamPicker?.playerIds) ? botTeamPicker.playerIds : []).map((pid: any) => String(pid || "")).filter((pid: string) => !(usedBotPlayersByBase[String(botTeamPicker?.id || "")] || new Set<string>()).has(pid)).map((pid: string) => {
+                const p = profileById.get(pid);
+                if (!p) return null;
+                const checked = botTeamPickerPlayerIds.includes(pid);
+                return (
+                  <button key={pid} type="button" onClick={() => setBotTeamPickerPlayerIds((prev) => checked ? prev.filter((id) => id !== pid) : [...prev, pid])} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 16, padding: 8, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)", background: checked ? `${primary}18` : "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0 }}>
+                    <ProfileAvatar profile={p} size={34} />
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setBotTeamPicker(null)} style={{ borderRadius: 999, padding: "9px 14px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
+              <button type="button" disabled={botTeamPickerPlayerIds.length <= 0} onClick={validateBotTeamPicker} style={{ borderRadius: 999, padding: "9px 16px", border: `1px solid ${primary}`, background: botTeamPickerPlayerIds.length > 0 ? `${primary}22` : "rgba(255,255,255,0.04)", color: botTeamPickerPlayerIds.length > 0 ? primary : "#777", fontWeight: 950, cursor: botTeamPickerPlayerIds.length > 0 ? "pointer" : "not-allowed" }}>Valider</button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );

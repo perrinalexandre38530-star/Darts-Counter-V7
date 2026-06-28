@@ -162,6 +162,32 @@ export default function FootConfig({ go, params, store }: Props) {
     });
   }
 
+  function addSavedTeamSelection(teamIdRaw: any, playerIdsRaw: any[]) {
+    const baseId = teamBaseId(teamIdRaw);
+    const picked = Array.from(new Set((playerIdsRaw || []).map((id: any) => String(id || "").trim()).filter(Boolean)));
+    if (!baseId || picked.length <= 0) return;
+    setSelectedTeamIds((prev) => {
+      const arr = (Array.isArray(prev) ? prev : []).map(String);
+      if (arr.length >= 2) return arr;
+      const team: any = savedTeams.find((t: any) => teamBaseId(t) === baseId);
+      if (!team) return arr;
+      const instanceId = nextTeamInstanceId(team, arr);
+      setSelectedTeamPlayerIds((cur) => ({ ...cur, [instanceId]: picked }));
+      return [...arr, instanceId];
+    });
+  }
+
+  function removeSavedTeamSelection(instanceIdRaw: any) {
+    const instanceId = String(instanceIdRaw || "");
+    if (!instanceId) return;
+    setSelectedTeamIds((prev) => (Array.isArray(prev) ? prev.filter((id) => String(id) !== instanceId) : []));
+    setSelectedTeamPlayerIds((cur) => {
+      const next = { ...cur };
+      delete next[instanceId];
+      return next;
+    });
+  }
+
   function toggleTeamPlayer(teamIdRaw: any, playerIdRaw: any) {
     const teamId = String(teamIdRaw || "");
     const playerId = String(playerIdRaw || "");
@@ -307,7 +333,7 @@ export default function FootConfig({ go, params, store }: Props) {
     <section style={cardStyle()}>
       <h2 style={sectionTitle(primary)}>ÉQUIPES DU MATCH</h2>
       <p style={hintStyle}>Choisis l’équipe domicile puis l’équipe extérieur. Le choix des titulaires arrive juste après.</p>
-      <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+      <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onToggle={toggleTeam} onAdd={addSavedTeamSelection} onRemove={removeSavedTeamSelection} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
     </section>
   );
 
@@ -411,7 +437,7 @@ export default function FootConfig({ go, params, store }: Props) {
 
       {sourceMode === "saved" && spec.kind === "team" ? (
         <>
-          <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} selectedBaseCounts={selectedTeamBaseCounts} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onToggle={toggleTeam} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
+          <SavedTeamsPicker teams={savedTeams} selectedSet={selectedTeamSet} selectedBaseCounts={selectedTeamBaseCounts} selectedTeamIds={selectedTeamIds} selectedTeamPlayerIds={selectedTeamPlayerIds} onToggle={toggleTeam} onAdd={addSavedTeamSelection} onRemove={removeSavedTeamSelection} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
           <SavedTeamPlayersStep teams={savedSelectedTeams} selectedTeamPlayerIds={selectedTeamPlayerIds} onTogglePlayer={toggleTeamPlayer} profilesById={profileById} primary={primary} primarySoft={primarySoft} maxPlayers={spec.playersPerSide} />
         </>
       ) : (
@@ -642,35 +668,122 @@ function RosterCard({ title, players, primary }: any) {
   );
 }
 
-function SavedTeamsPicker({ teams, selectedSet, selectedBaseCounts = {}, selectedTeamIds = [], selectedTeamPlayerIds = {}, onToggle, profilesById, primary, primarySoft, maxPlayers }: any) {
+function SavedTeamsPicker({ teams, selectedSet, selectedBaseCounts = {}, selectedTeamIds = [], selectedTeamPlayerIds = {}, onToggle, onAdd, onRemove, profilesById, primary, primarySoft, maxPlayers }: any) {
+  const [teamPicker, setTeamPicker] = React.useState<any | null>(null);
+  const [teamPickerPlayerIds, setTeamPickerPlayerIds] = React.useState<string[]>([]);
+  const selectedInstances = React.useMemo(() => {
+    return (selectedTeamIds || []).map((instanceId: any) => {
+      const raw = String(instanceId || "");
+      const baseId = teamBaseId(raw);
+      const team = (teams || []).find((t: any) => teamBaseId(t) === baseId);
+      if (!team) return null;
+      const chosen = Array.isArray(selectedTeamPlayerIds?.[raw]) ? selectedTeamPlayerIds[raw].map(String) : [];
+      return { instanceId: raw, baseId, team, chosen };
+    }).filter(Boolean) as any[];
+  }, [selectedTeamIds, selectedTeamPlayerIds, teams]);
+  const usedPlayersByBase = React.useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    for (const item of selectedInstances) {
+      const base = String(item.baseId || "");
+      if (!out[base]) out[base] = new Set<string>();
+      for (const id of item.chosen || []) out[base].add(String(id));
+    }
+    return out;
+  }, [selectedInstances]);
+
   if (!teams.length) return <div style={emptyStyle}>Aucune équipe FOOT enregistrée pour l’instant. Passe en Manuel ou crée tes équipes depuis Profils.</div>;
+
+  const openTeamPicker = (team: any) => {
+    const baseId = teamBaseId(team);
+    const ids = (Array.isArray(team.playerIds) ? team.playerIds : []).map(String).filter(Boolean);
+    const used = usedPlayersByBase[baseId] || new Set<string>();
+    const available = ids.filter((id: string) => !used.has(id));
+    if (available.length <= 0) return;
+    setTeamPicker(team);
+    setTeamPickerPlayerIds(available.slice(0, Math.max(1, maxPlayers || 1)));
+  };
+  const validateTeamPicker = () => {
+    const ids = (teamPickerPlayerIds || []).map(String).filter(Boolean);
+    if (!teamPicker || ids.length <= 0) return;
+    if (onAdd) onAdd(teamPicker.id, ids);
+    else onToggle && onToggle(teamPicker.id);
+    setTeamPicker(null);
+    setTeamPickerPlayerIds([]);
+  };
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 10, minWidth: 0, maxWidth: "100%" }}>
-      {teams.map((team: any) => {
-        const baseId = teamBaseId(team);
-        const activeCount = Number(selectedBaseCounts[baseId] || 0);
-        const active = activeCount > 0;
-        const canAdd = canAddTeamInstance(team, selectedTeamIds, selectedTeamPlayerIds, maxPlayers);
-        const ids = (Array.isArray(team.playerIds) ? team.playerIds : []).map(String).slice(0, maxPlayers);
-        const members = ids.map((id: string) => profilesById.get(id)).filter(Boolean);
-        const logo = teamLogo(team);
-        return (
-          <button key={team.id} type="button" disabled={!canAdd} onClick={() => canAdd && onToggle(team.id)} style={{ textAlign: "left", borderRadius: 18, padding: 11, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.09)", background: active ? primarySoft : "rgba(5,8,16,.78)", color: "#fff", boxShadow: active ? `0 0 20px ${primary}33` : "none", opacity: canAdd ? 1 : 0.46, cursor: canAdd ? "pointer" : "not-allowed" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 15, overflow: "hidden", display: "grid", placeItems: "center", border: `1px solid ${active ? primary : "rgba(255,255,255,.12)"}`, background: "rgba(255,255,255,.06)", flex: "0 0 auto" }}>
-                {logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: primary, fontWeight: 1000 }}>{String(team.name || "EQ").slice(0, 2).toUpperCase()}</span>}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 1000, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.name || "Équipe"}</div>
-                <div style={{ color: "#9da3c0", fontSize: 11, fontWeight: 800 }}>{members.length || ids.length} joueur(s)</div>
-                <div style={{ color: active ? primary : "#9da3c0", fontSize: 10, fontWeight: 1000, marginTop: 4 }}>
-                  {active ? `Sélectionnée ×${activeCount}` : canAdd ? "Choisir" : "Plus assez de joueurs libres"}
+    <div style={{ display: "grid", gap: 12 }}>
+      {selectedInstances.length > 0 ? (
+        <div>
+          <div style={{ fontSize: 11, color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, marginBottom: 8 }}>Équipes validées</div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+            {selectedInstances.map((item: any) => {
+              const logo = teamLogo(item.team);
+              const names = (item.chosen || []).map((id: string) => profileName(profilesById.get(id))).filter(Boolean).join(", ");
+              return (
+                <div key={item.instanceId} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "6px 8px", border: `1px solid ${primary}66`, background: `${primary}12`, color: "#fff", maxWidth: 280 }}>
+                  <ProfileAvatar name={item.team?.name || "Équipe"} dataUrl={logo || undefined} size={30} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.team?.name || "Équipe"}</div>
+                    <div style={{ fontSize: 10, color: "#9da3c0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names || `${item.chosen?.length || 0} joueur`}</div>
+                  </div>
+                  <button type="button" onClick={() => onRemove && onRemove(item.instanceId)} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#ff7aa8", borderRadius: 999, width: 26, height: 26, cursor: "pointer", fontWeight: 950 }}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", gap: 12, overflowX: "auto", overflowY: "hidden", padding: "2px 4px 12px", margin: "0 -4px", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>
+        {teams.map((team: any) => {
+          const baseId = teamBaseId(team);
+          const ids = (Array.isArray(team.playerIds) ? team.playerIds : []).map(String).filter(Boolean);
+          const used = usedPlayersByBase[baseId] || new Set<string>();
+          const remaining = ids.filter((id: string) => !used.has(id)).length;
+          const canAdd = remaining > 0 && (selectedTeamIds || []).length < 2;
+          const activeCount = selectedInstances.filter((it: any) => it.baseId === baseId).length;
+          const logo = teamLogo(team);
+          return (
+            <button key={team.id} type="button" disabled={!canAdd} onClick={() => canAdd && openTeamPicker(team)} style={{ textAlign: "center", borderRadius: 20, padding: "14px 12px 12px", border: canAdd ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,.06)", background: canAdd ? "rgba(5,8,16,.90)" : "rgba(255,255,255,.025)", color: canAdd ? "#fff" : "#656a82", opacity: 1, cursor: canAdd ? "pointer" : "not-allowed", flex: "0 0 min(68vw, 230px)", minHeight: 174, scrollSnapAlign: "start" }}>
+              <div style={{ display: "grid", justifyItems: "center", gap: 8, minWidth: 0 }}>
+                <ProfileAvatar name={team.name || "Équipe"} dataUrl={logo || undefined} size={66} />
+                <div style={{ width: "100%", minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.name || "Équipe"}</div>
+                  <div style={{ color: "#9da3c0", fontSize: 11, marginTop: 2 }}>{remaining} joueur{remaining > 1 ? "s" : ""} disponible{remaining > 1 ? "s" : ""}</div>
+                  {activeCount > 0 ? <div style={{ color: primary, fontSize: 10, fontWeight: 1000, marginTop: 4 }}>Déjà validée ×{activeCount}</div> : null}
                 </div>
               </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {teamPicker ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setTeamPicker(null)}>
+          <div style={{ width: "min(560px, 96vw)", maxHeight: "82vh", overflow: "auto", borderRadius: 24, background: "rgba(8,10,20,0.98)", border: `1px solid ${primary}66`, boxShadow: `0 0 40px ${primary}33`, padding: 16 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <ProfileAvatar name={teamPicker?.name || "Équipe"} dataUrl={teamLogo(teamPicker) || undefined} size={46} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, fontSize: 13 }}>Choisir les joueurs</div>
+                <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamPicker?.name || "Équipe"}</div>
+              </div>
             </div>
-          </button>
-        );
-      })}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", gap: 8 }}>
+              {(Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : []).map((pid: any) => String(pid || "")).filter((pid: string) => !(usedPlayersByBase[teamBaseId(teamPicker)] || new Set<string>()).has(pid)).map((pid: string) => {
+                const p = profilesById.get(pid);
+                if (!p) return null;
+                const checked = teamPickerPlayerIds.includes(pid);
+                return <button key={pid} type="button" onClick={() => setTeamPickerPlayerIds((prev) => checked ? prev.filter((id) => id !== pid) : [...prev, pid])} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 16, padding: 8, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: checked ? `${primary}18` : "rgba(255,255,255,.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0 }}><ProfileAvatar profile={p} size={34} /><span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profileName(p)}</span></button>;
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setTeamPicker(null)} style={{ borderRadius: 999, padding: "9px 14px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
+              <button type="button" disabled={teamPickerPlayerIds.length <= 0} onClick={validateTeamPicker} style={{ borderRadius: 999, padding: "9px 16px", border: `1px solid ${primary}`, background: teamPickerPlayerIds.length > 0 ? `${primary}22` : "rgba(255,255,255,.04)", color: teamPickerPlayerIds.length > 0 ? primary : "#777", fontWeight: 950, cursor: teamPickerPlayerIds.length > 0 ? "pointer" : "not-allowed" }}>Valider</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
