@@ -5,6 +5,11 @@
 // =============================================================
 import React from "react";
 import InfoDot from "../../components/InfoDot";
+import TeamSelectorV2 from "../../components/TeamSelectorV2";
+import SelectionStickyBanner from "../../components/SelectionStickyBanner";
+import { loadTeamsBySport } from "../../lib/petanqueTeamsStore";
+import { BOT_PRO_TEAMS } from "../../lib/botTeams";
+import { nextTeamInstanceId, teamBaseId } from "../../lib/teamSelectionInstances";
 import { getModeById } from "../../lib/dartsModesCatalog";
 
 const TERRITORIES_MAPS: { id: string; label: string }[] = [
@@ -54,6 +59,12 @@ export default function DartsModeConfig({ store, go, gameId }) {
   const [dartsPerRound, setDartsPerRound] = React.useState(savedCfg?.dartsPerRound ?? mode?.defaultDarts ?? 3);
   const [targetScore, setTargetScore] = React.useState(savedCfg?.targetScore ?? mode?.targetScore ?? "");
 
+  const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(() => savedCfg?.participantMode === "teams" ? "teams" : "players");
+  const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>(() => Array.isArray(savedCfg?.selectedTeamIds) ? savedCfg.selectedTeamIds.map(String) : []);
+  const [selectedTeamPlayerIds, setSelectedTeamPlayerIds] = React.useState<Record<string, string[]>>(() => savedCfg?.selectedTeamPlayerIds && typeof savedCfg.selectedTeamPlayerIds === "object" ? savedCfg.selectedTeamPlayerIds : {});
+  const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>(() => Array.isArray(savedCfg?.selectedBotTeamIds) ? savedCfg.selectedBotTeamIds.map(String) : []);
+  const [selectedBotTeamPlayerIds, setSelectedBotTeamPlayerIds] = React.useState<Record<string, string[]>>(() => savedCfg?.selectedBotTeamPlayerIds && typeof savedCfg.selectedBotTeamPlayerIds === "object" ? savedCfg.selectedBotTeamPlayerIds : {});
+
   // TERRITORIES (departements) — map selection
   const isTerritories = gameId === "departements";
   const [mapId, setMapId] = React.useState(() => {
@@ -65,6 +76,24 @@ export default function DartsModeConfig({ store, go, gameId }) {
     const botsAsProfiles = bots.map(b => ({ id: b.id, name: b.name, avatarDataUrl: null }));
     return [...profiles, ...botsAsProfiles];
   }, [profiles, bots]);
+
+  const profileById = React.useMemo(() => new Map(allPlayers.map((p: any) => [String(p?.id || ""), p])), [allPlayers]);
+  const savedTeams = React.useMemo(() => {
+    try { return loadTeamsBySport("darts").filter((t: any) => Array.isArray(t?.playerIds) && t.playerIds.length > 0); } catch { return []; }
+  }, []);
+  const botProfilesById = React.useMemo(() => {
+    const m = new Map<string, any>();
+    BOT_PRO_TEAMS.forEach((t: any) => (t.members || []).forEach((b: any) => m.set(String(b.id), { ...b, id: b.id, name: b.name, botLevel: b.botLevel })));
+    return m;
+  }, []);
+  const botTeams = React.useMemo(() => BOT_PRO_TEAMS.map((t: any) => ({
+    id: `botteam_${t.key}`,
+    name: t.name,
+    botLevel: t.botLevel,
+    botTeamLevel: t.botLevel,
+    playerIds: (t.members || []).map((m: any) => m.id),
+    members: t.members || [],
+  })), []);
 
   const selectedPlayers = React.useMemo(() => {
     const map = new Map(allPlayers.map(p => [p.id, p]));
@@ -82,6 +111,46 @@ export default function DartsModeConfig({ store, go, gameId }) {
     setSelectedIds(prev => [...prev, id]);
   }
 
+  function addSavedTeam(baseTeamId: string, playerIds: string[]) {
+    const instanceId = nextTeamInstanceId(selectedTeamIds, baseTeamId);
+    setSelectedTeamIds((prev) => [...prev, instanceId]);
+    setSelectedTeamPlayerIds((prev) => ({ ...prev, [instanceId]: playerIds.map(String) }));
+  }
+  function removeSavedTeam(instanceId: string) {
+    setSelectedTeamIds((prev) => prev.filter((id) => id !== instanceId));
+    setSelectedTeamPlayerIds((prev) => { const next = { ...prev }; delete next[instanceId]; return next; });
+  }
+  function addBotTeam(baseTeamId: string, playerIds: string[]) {
+    const instanceId = nextTeamInstanceId(selectedBotTeamIds, baseTeamId);
+    setSelectedBotTeamIds((prev) => [...prev, instanceId]);
+    setSelectedBotTeamPlayerIds((prev) => ({ ...prev, [instanceId]: playerIds.map(String) }));
+  }
+  function removeBotTeam(instanceId: string) {
+    setSelectedBotTeamIds((prev) => prev.filter((id) => id !== instanceId));
+    setSelectedBotTeamPlayerIds((prev) => { const next = { ...prev }; delete next[instanceId]; return next; });
+  }
+
+  function buildTeamConfigs() {
+    const build = (ids: string[], selectedMap: Record<string, string[]>, catalog: any[], bot = false) => ids.map((instanceId) => {
+      const base = teamBaseId(instanceId);
+      const team = catalog.find((t: any) => teamBaseId(t) === base) || {};
+      const playerIds = (selectedMap[instanceId] || []).map(String).filter(Boolean);
+      return {
+        id: instanceId,
+        baseTeamId: base,
+        name: team.name || "Équipe",
+        logoDataUrl: team.logoDataUrl || team.logoUrl || team.avatarDataUrl || team.avatarUrl || null,
+        playerIds,
+        players: playerIds.map((id) => {
+          const p = bot ? botProfilesById.get(id) : profileById.get(id);
+          return { id, name: p?.name || p?.displayName || id, avatarDataUrl: p?.avatarDataUrl || p?.avatar_data_url || p?.avatar || p?.avatarUrl || null, botLevel: p?.botLevel || null };
+        }),
+        isBotTeam: bot,
+      };
+    }).filter((t: any) => t.playerIds.length > 0);
+    return [...build(selectedTeamIds, selectedTeamPlayerIds, savedTeams, false), ...build(selectedBotTeamIds, selectedBotTeamPlayerIds, botTeams, true)];
+  }
+
   function start() {
     const cfg = {
       modeId: gameId,
@@ -89,7 +158,13 @@ export default function DartsModeConfig({ store, go, gameId }) {
       dartsPerRound: Math.max(1, Math.min(3, Number(dartsPerRound) || 3)),
       targetScore: targetScore === "" ? null : Number(targetScore) || null,
       ...(isTerritories ? { mapId } : {}),
-      players: selectedPlayers.map(p => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
+      participantMode,
+      players: participantMode === "teams" ? [] : selectedPlayers.map(p => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
+      teams: participantMode === "teams" ? buildTeamConfigs() : [],
+      selectedTeamIds,
+      selectedTeamPlayerIds,
+      selectedBotTeamIds,
+      selectedBotTeamPlayerIds,
     };
     try { localStorage.setItem(`dc_modecfg_${gameId}`, JSON.stringify(cfg)); } catch {}
     go("darts_mode_play", { gameId, config: cfg });
@@ -134,59 +209,110 @@ export default function DartsModeConfig({ store, go, gameId }) {
         </div>
       </div>
 
-      {/* Joueurs */}
+      <SelectionStickyBanner
+        title={participantMode === "teams" ? "Équipes sélectionnées" : "Joueurs sélectionnés"}
+        accent={T.accent}
+        items={participantMode === "teams" ? buildTeamConfigs().map((team: any) => ({
+          id: team.id,
+          name: team.name,
+          subtitle: (team.players || []).map((p: any) => p.name).join(", "),
+          logoDataUrl: team.logoDataUrl,
+        })) : selectedPlayers.map((p: any) => ({
+          id: p.id, name: p.name || p.displayName || "Joueur", subtitle: "Profil sélectionné", profile: p, avatarDataUrl: p.avatarDataUrl || p.avatar || p.avatarUrl || null,
+        }))}
+      />
+
       <div style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
-        <div style={{ fontWeight:900, marginBottom:10 }}>Joueurs</div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-          {allPlayers.map(p => {
-            const sel = selectedIds.includes(p.id);
-            const isBot = String(p.id).startsWith("bot_");
-            return (
-              <div key={p.id} onClick={() => toggle(p.id)} style={{
-                cursor:"pointer",
-                borderRadius:14,
-                border:"1px solid "+(sel ? "rgba(243,199,106,0.55)" : T.border),
-                background: sel ? "rgba(243,199,106,0.10)" : T.card2,
-                padding:10,
-                display:"flex",
-                alignItems:"center",
-                justifyContent:"space-between",
-                gap:10,
-              }}>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontWeight:900, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                    {p.name ?? "Joueur"}
-                  </div>
-                  <div style={{ fontSize:12, color:T.sub }}>
-                    {sel ? "Selectionne" : "—"}{isBot ? " • BOT" : ""}
-                  </div>
-                </div>
-                <div style={{
-                  width:28, height:28, borderRadius:999,
-                  border:"1px solid "+(sel ? "rgba(243,199,106,0.65)" : T.border),
-                  background: sel ? "rgba(243,199,106,0.12)" : "rgba(0,0,0,0.25)",
-                }} />
-              </div>
-            );
-          })}
+        <div style={{ fontWeight:900, marginBottom:10 }}>Participants</div>
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <button type="button" onClick={() => setParticipantMode("players")} style={{ border:"1px solid "+(participantMode === "players" ? T.accent : T.border), background: participantMode === "players" ? "rgba(243,199,106,.14)" : "rgba(255,255,255,.04)", color:"#fff", borderRadius:999, padding:"9px 14px", fontWeight:900 }}>Joueurs</button>
+          <button type="button" onClick={() => setParticipantMode("teams")} style={{ border:"1px solid "+(participantMode === "teams" ? T.accent : T.border), background: participantMode === "teams" ? "rgba(243,199,106,.14)" : "rgba(255,255,255,.04)", color:"#fff", borderRadius:999, padding:"9px 14px", fontWeight:900 }}>Équipes</button>
         </div>
 
-        <div style={{ display:"flex", gap:10, marginTop:10 }}>
-          <button onClick={addBot} style={{
-            border:"1px solid "+T.border,
-            background:"rgba(255,255,255,0.06)",
-            color:"#fff",
-            borderRadius:12,
-            padding:"10px 12px",
-            fontWeight:900,
-          }}>+ BOT</button>
-
-          <div style={{ flex:1 }} />
-          <div style={{ fontSize:12, color:T.sub, alignSelf:"center" }}>
-            {selectedPlayers.length} selectionne(s)
+        {participantMode === "teams" ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <TeamSelectorV2
+              teams={savedTeams}
+              selectedTeamIds={selectedTeamIds}
+              selectedTeamPlayerIds={selectedTeamPlayerIds}
+              profilesById={profileById}
+              onAdd={addSavedTeam}
+              onRemove={removeSavedTeam}
+              maxPlayers={1}
+              primary={T.accent}
+              primarySoft="rgba(243,199,106,.14)"
+              validatedTitle="Équipes enregistrées validées"
+              selectorTitle="Équipes enregistrées"
+              emptyLabel="Aucune équipe darts enregistrée."
+            />
+            <TeamSelectorV2
+              teams={botTeams}
+              selectedTeamIds={selectedBotTeamIds}
+              selectedTeamPlayerIds={selectedBotTeamPlayerIds}
+              profilesById={botProfilesById}
+              onAdd={addBotTeam}
+              onRemove={removeBotTeam}
+              maxPlayers={1}
+              primary={T.accent}
+              primarySoft="rgba(243,199,106,.14)"
+              botMode
+              validatedTitle="Équipes BOTS IA validées"
+              selectorTitle="Équipes BOTS IA"
+            />
           </div>
-        </div>
+        ) : (
+          <>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              {allPlayers.map(p => {
+                const sel = selectedIds.includes(p.id);
+                const isBot = String(p.id).startsWith("bot_");
+                return (
+                  <div key={p.id} onClick={() => toggle(p.id)} style={{
+                    cursor:"pointer",
+                    borderRadius:14,
+                    border:"1px solid "+(sel ? "rgba(243,199,106,0.55)" : T.border),
+                    background: sel ? "rgba(243,199,106,0.10)" : T.card2,
+                    padding:10,
+                    display:"flex",
+                    alignItems:"center",
+                    justifyContent:"space-between",
+                    gap:10,
+                  }}>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontWeight:900, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                        {p.name ?? "Joueur"}
+                      </div>
+                      <div style={{ fontSize:12, color:T.sub }}>
+                        {sel ? "Sélectionné" : "—"}{isBot ? " • BOT" : ""}
+                      </div>
+                    </div>
+                    <div style={{
+                      width:28, height:28, borderRadius:999,
+                      border:"1px solid "+(sel ? "rgba(243,199,106,0.65)" : T.border),
+                      background: sel ? "rgba(243,199,106,0.12)" : "rgba(0,0,0,0.25)",
+                    }} />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display:"flex", gap:10, marginTop:10 }}>
+              <button onClick={addBot} style={{
+                border:"1px solid "+T.border,
+                background:"rgba(255,255,255,0.06)",
+                color:"#fff",
+                borderRadius:12,
+                padding:"10px 12px",
+                fontWeight:900,
+              }}>+ BOT</button>
+
+              <div style={{ flex:1 }} />
+              <div style={{ fontSize:12, color:T.sub, alignSelf:"center" }}>
+                {selectedPlayers.length} sélectionné(s)
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* TERRITORIES — Map */}

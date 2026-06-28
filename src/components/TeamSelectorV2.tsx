@@ -109,7 +109,7 @@ export default function TeamSelectorV2({
     <div style={{ display: "grid", gap: 14 }}>
       {title ? <div style={{ color: primary, fontSize: 13, fontWeight: 950, textTransform: "uppercase", letterSpacing: .9 }}>{title}</div> : null}
 
-      <section style={{ borderRadius: 22, padding: 12, border: `1px solid ${primary}33`, background: "rgba(6,9,20,.72)" }}>
+      <section style={{ position: "sticky", top: 0, zIndex: 70, borderRadius: 22, padding: 12, border: `1px solid ${primary}66`, background: "linear-gradient(180deg, rgba(6,9,20,.98), rgba(6,9,20,.90))", boxShadow: `0 12px 34px rgba(0,0,0,.55), 0 0 22px ${primary}22`, backdropFilter: "blur(14px)" }}>
         <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8, marginBottom: 10 }}>{validatedTitle}</div>
         {selectedItems.length ? (
           <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x mandatory" }}>
