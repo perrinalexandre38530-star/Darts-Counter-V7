@@ -378,6 +378,78 @@ function visitScoreInputFromDarts(darts: UIDart[] | undefined | null): number | 
   return Number.isFinite(n) ? n : null;
 }
 
+
+function createMissingMissDart(): UIDart {
+  return {
+    v: 0,
+    mult: 1,
+    source: "missing_dart_miss",
+    autoFilled: true,
+    missingAsMiss: true,
+  } as any;
+}
+
+function normalizeManualX01Dart(d: any): UIDart {
+  const rawV = Number(d?.v ?? d?.segment ?? d?.value ?? 0);
+  const rawMult = Number(d?.mult ?? d?.multiplier ?? d?.m ?? 1);
+
+  if (!Number.isFinite(rawV) || rawV <= 0 || !Number.isFinite(rawMult) || rawMult <= 0) {
+    return { ...(d || {}), v: 0, mult: 1 } as any;
+  }
+
+  if (rawV === 25) {
+    return { ...(d || {}), v: 25, mult: rawMult === 2 ? 2 : 1 } as any;
+  }
+
+  if (rawV < 1 || rawV > 20) {
+    return { ...(d || {}), v: 0, mult: 1 } as any;
+  }
+
+  const mult = rawMult === 3 ? 3 : rawMult === 2 ? 2 : 1;
+  return { ...(d || {}), v: Math.floor(rawV), mult } as any;
+}
+
+function normalizeManualX01VisitDarts(darts: UIDart[] | undefined | null): UIDart[] {
+  return (Array.isArray(darts) ? darts : []).slice(0, 3).map(normalizeManualX01Dart);
+}
+
+function padManualX01VisitWithMisses(darts: UIDart[] | undefined | null): UIDart[] {
+  const out = normalizeManualX01VisitDarts(darts);
+  while (out.length < 3) out.push(createMissingMissDart());
+  return out.slice(0, 3);
+}
+
+function getManualX01VisitPreview(dartsInput: UIDart[] | undefined | null, scoreBeforeInput: number, outModeInput: any) {
+  const darts = normalizeManualX01VisitDarts(dartsInput);
+  const scoreBefore = Number(scoreBeforeInput || 0);
+  const visitScore = darts.reduce((sum, d: any) => sum + dartValue(d as UIDart), 0);
+  const remaining = scoreBefore - visitScore;
+  const out = String(outModeInput || "double").toLowerCase();
+  const bust = remaining < 0 || ((out === "double" || out === "master") && remaining === 1);
+  const last = darts[darts.length - 1] as any;
+  const lastMult = Number(last?.mult || 1);
+  const lastV = Number(last?.v || 0);
+  const lastIsDouble = !!last && (lastMult === 2 || (lastV === 25 && lastMult === 2));
+  const lastIsTriple = !!last && lastMult === 3;
+  const lastIsFinisher = out === "double" ? lastIsDouble : out === "master" ? (lastIsDouble || lastIsTriple) : true;
+  const isFinish = !bust && remaining === 0 && lastIsFinisher;
+
+  return {
+    darts,
+    visitScore,
+    remaining,
+    bust,
+    isFinish,
+    terminal: bust || isFinish || darts.length >= 3,
+  };
+}
+
+function shouldAskForMissingDarts(dartsInput: UIDart[] | undefined | null, scoreBeforeInput: number, outModeInput: any): boolean {
+  if (isVisitScoreVisit(dartsInput)) return false;
+  const preview = getManualX01VisitPreview(dartsInput, scoreBeforeInput, outModeInput);
+  return preview.darts.length > 0 && preview.darts.length < 3 && !preview.terminal;
+}
+
 function visibleDartsForUi(darts: UIDart[] | undefined | null): UIDart[] {
   return isVisitScoreVisit(darts) ? [] : (Array.isArray(darts) ? darts : []);
 }
@@ -3597,7 +3669,9 @@ const validateThrow = async (forcedDarts?: UIDart[] | null, forcedPlayerId?: str
   if (isValidatingRef.current) return;
   if (effectiveOnline && !onlineCanScore) return;
   if (effectiveOnline && onlineCurrentUserId && !onlineActiveIdentitySet.has(String(onlineCurrentUserId))) return;
-  const toSend = Array.isArray(forcedDarts) ? [...forcedDarts] : (Array.isArray(currentThrow) ? [...currentThrow] : []);
+  let toSend = normalizeManualX01VisitDarts(
+    Array.isArray(forcedDarts) ? forcedDarts : (Array.isArray(currentThrow) ? currentThrow : [])
+  );
   const pid = forcedPlayerId || undoEditingPlayerIdRef.current || activePlayerId;
   if (!pid || toSend.length <= 0) return;
 
@@ -3614,6 +3688,14 @@ const validateThrow = async (forcedDarts?: UIDart[] | null, forcedPlayerId?: str
   const freshEngineForVisit: any = typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null;
   let visitPlayerName = visitPlayer?.name || activePlayer?.name || "Joueur";
   let visitScoreBefore = Number(freshEngineForVisit?.scores?.[pid] ?? scores[pid] ?? config.startScore);
+
+  // Sécurité anti-blocage : une volée manuelle non terminale doit toujours
+  // envoyer 3 fléchettes au moteur. Sinon le moteur garde une visite partielle
+  // invisible et le X01 multi reste bloqué sur le même joueur.
+  if (shouldAskForMissingDarts(toSend, visitScoreBefore, outMode)) {
+    toSend = padManualX01VisitWithMisses(toSend);
+  }
+
   let visitScore = toSend.reduce(
     (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
     0
@@ -3753,16 +3835,37 @@ const requestValidateThrow = () => {
   if (!darts.length || !pid) return;
 
   const playerForVisit = safePlayersForOnline.find((p: any) => String(p?.id) === String(pid)) || activePlayer;
-  const scoreBefore = Number(scores?.[pid] ?? config.startScore ?? 501);
-  const visitScore = darts.reduce((sum, d) => sum + (Number((d as any).v) === 25 && Number((d as any).mult) === 2 ? 50 : Number((d as any).v || 0) * Number((d as any).mult || 1)), 0);
-  const remaining = scoreBefore - visitScore;
-  const bust = remaining < 0 || ((outMode === "double" || outMode === "master") && remaining === 1);
-  const last = darts[darts.length - 1] as any;
-  const lastMult = Number(last?.mult || 1);
-  const lastIsDouble = !!last && (lastMult === 2 || (Number(last?.v) === 25 && lastMult === 2));
-  const lastIsTriple = !!last && lastMult === 3;
-  const lastIsFinisher = outMode === "double" ? lastIsDouble : outMode === "master" ? (lastIsDouble || lastIsTriple) : true;
-  const isFinish = !bust && remaining === 0 && lastIsFinisher;
+  const freshEngineForRequest: any = typeof getCurrentEngineState === "function" ? getCurrentEngineState() : null;
+  const scoreBefore = Number(freshEngineForRequest?.scores?.[pid] ?? scores?.[pid] ?? config.startScore ?? 501);
+  const preview = getManualX01VisitPreview(darts, scoreBefore, outMode);
+  const visitScore = preview.visitScore;
+  const remaining = preview.remaining;
+  const bust = preview.bust;
+  const isFinish = preview.isFinish;
+
+  if (shouldAskForMissingDarts(darts, scoreBefore, outMode)) {
+    const missing = Math.max(1, 3 - normalizeManualX01VisitDarts(darts).length);
+    const completedDarts = padManualX01VisitWithMisses(darts);
+    const completedPreview = getManualX01VisitPreview(completedDarts, scoreBefore, outMode);
+    setPendingOnlineVisitConfirm({
+      playerId: pid,
+      playerName: playerForVisit?.name || activePlayer?.name || "Joueur",
+      darts: completedDarts,
+      dartsLabel: buildVisitLabelForConfirm(completedDarts),
+      scoreBefore,
+      visitScore: completedPreview.visitScore,
+      remaining: completedPreview.remaining,
+      bust: completedPreview.bust,
+      isFinish: completedPreview.isFinish,
+      missingDarts: missing,
+      isVisitScoreMode: false,
+      title: "Volée incomplète",
+      helper: missing === 1
+        ? "Il manque 1 fléchette. Complète la volée ou compte la fléchette manquante comme MISS."
+        : `Il manque ${missing} fléchettes. Complète la volée ou compte les fléchettes manquantes comme MISS.`,
+    });
+    return;
+  }
 
   // En local, on ne confirme que les fins de leg/partie : ça laisse une chance
   // de corriger une fausse victoire avec ANNULER avant que le moteur clôture la manche.
@@ -3802,8 +3905,12 @@ const confirmOnlineVisit = () => {
     setPendingOnlineVisitConfirm(null);
     return;
   }
+  const pending = pendingOnlineVisitConfirm;
   setPendingOnlineVisitConfirm(null);
-  validateThrow();
+  validateThrow(
+    Array.isArray(pending?.darts) ? pending.darts : null,
+    pending?.playerId || null
+  );
 };
 
 // =====================================================
@@ -5707,14 +5814,14 @@ if (isLandscapeTablet) {
                 onClick={() => setPendingOnlineVisitConfirm(null)}
                 style={{ height: 48, borderRadius: 16, border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 950 }}
               >
-                Modifier
+                {pendingOnlineVisitConfirm.missingDarts ? "Compléter" : "Modifier"}
               </button>
               <button
                 type="button"
                 onClick={confirmOnlineVisit}
                 style={{ height: 48, borderRadius: 16, border: 0, background: "linear-gradient(180deg,#ffd65c,#ffb51e)", color: "#111", fontWeight: 950, boxShadow: "0 0 22px rgba(255,190,40,.28)" }}
               >
-                {pendingOnlineVisitConfirm.isFinish ? "Valider la fin" : "Valider"}
+                {pendingOnlineVisitConfirm.missingDarts ? "Compter MISS" : pendingOnlineVisitConfirm.isFinish ? "Valider la fin" : "Valider"}
               </button>
             </div>
           </div>
