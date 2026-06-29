@@ -589,10 +589,20 @@ function modeLabel(e: SavedEntry) {
     ].filter(Boolean).map((x: any) => String(x).toLowerCase()).join("|");
     const isTraining = raw.includes("training_x01") || raw.includes("training-x01") || raw.includes("training");
     const isOnline = isOnlineRecord(e);
-    const playerCount = getAllEntryPlayers(e).length || Number((e as any)?.summary?.playersCount || 0) || 0;
+    const playerCount = Math.max(
+      getAllEntryPlayers(e).length || 0,
+      Number((e as any)?.playersCount || 0),
+      Number((e as any)?.summary?.playersCount || 0),
+      Array.isArray((e as any)?.payload?.config?.players) ? (e as any).payload.config.players.length : 0,
+      Array.isArray((e as any)?.payload?.summary?.players) ? (e as any).payload.summary.players.length : 0,
+      Array.isArray((e as any)?.payload?.summary?.ranking) ? (e as any).payload.summary.ranking.length : 0,
+      Array.isArray((e as any)?.ranking) ? (e as any).ranking.length : 0,
+      Array.isArray((e as any)?.finalRanking) ? (e as any).finalRanking.length : 0
+    );
     const hasSetsLegs = Number((e as any)?.summary?.game?.legsPerSet || (e as any)?.payload?.summary?.game?.legsPerSet || (e as any)?.payload?.config?.legsPerSet || 0) > 1;
     const hasTeams = historyX01Teams(e).length >= 2;
-    const prefix = isTraining ? "TRAINING X01" : isOnline ? "X01 ONLINE" : hasTeams ? "X01 TEAMS" : playerCount > 2 ? "X01 MULTI" : playerCount === 2 || hasSetsLegs ? "X01 DUO" : "X01";
+    const explicitMulti = /multi/.test(raw) || String((e as any)?.payload?.config?.matchMode || "").toLowerCase() === "multi" || String((e as any)?.payload?.config?.gameMode || "").toLowerCase() === "multi";
+    const prefix = isTraining ? "TRAINING X01" : isOnline ? "X01 ONLINE" : hasTeams ? "X01 TEAMS" : explicitMulti || playerCount > 2 ? "X01 MULTI" : playerCount === 2 || hasSetsLegs ? "X01 DUO" : "X01";
     return `${prefix} · ${sc}`;
   }
   return m.toUpperCase();

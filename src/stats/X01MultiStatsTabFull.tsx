@@ -911,6 +911,238 @@ function x01ScorePatchForPlayer(match: any, player: any, pid: any) {
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// PATCH IMPORT X01 MULTI 2026-06
+// Certains exports/restaurations ne contiennent que payload.darts + players,
+// sans summary.detailedByPlayer/perPlayer. Avant ce patch, le fallback central
+// reconstruisait seulement la ligne du profil actif : les AVG remontaient, mais
+// les groupes de match n'avaient plus qu'un joueur => Matchs multi / classements
+// et hits par segment restaient à 0. On reconstruit donc une ligne par joueur
+// directement depuis les darts bruts, sans dépendre des champs résumés.
+// ---------------------------------------------------------------------------
+function x01TimestampMs(raw: any): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 1e12 ? Math.floor(n * 1000) : Math.floor(n);
+}
+
+function x01PlayedAtMs(match: any): number {
+  const candidates = [
+    match?.playedAt,
+    match?.finishedAt,
+    match?.endedAt,
+    match?.completedAt,
+    match?.startedAt,
+    match?.createdAt,
+    match?.summary?.playedAt,
+    match?.summary?.finishedAt,
+    match?.summary?.endedAt,
+    match?.summary?.completedAt,
+    match?.summary?.startedAt,
+    match?.payload?.playedAt,
+    match?.payload?.finishedAt,
+    match?.payload?.endedAt,
+    match?.payload?.completedAt,
+    match?.payload?.startedAt,
+    match?.payload?.createdAt,
+    match?.payload?.summary?.playedAt,
+    match?.payload?.summary?.finishedAt,
+    match?.payload?.summary?.endedAt,
+    match?.payload?.summary?.completedAt,
+    match?.payload?.summary?.startedAt,
+    match?.payload?.config?.createdAt,
+  ];
+  for (const c of candidates) {
+    const ms = x01TimestampMs(c);
+    if (ms) return ms;
+  }
+  return 0;
+}
+
+function x01RawDarts(match: any): any[] {
+  const pools = [
+    match?.darts,
+    match?.payload?.darts,
+    match?.payload?.payload?.darts,
+    match?.engineState?.darts,
+    match?.payload?.engineState?.darts,
+    match?.summary?.darts,
+    match?.payload?.summary?.darts,
+  ];
+  for (const pool of pools) {
+    if (Array.isArray(pool) && pool.length) return pool;
+  }
+  return [];
+}
+
+function x01DartPid(d: any): string {
+  return String(d?.playerId ?? d?.selectedPlayerId ?? d?.profileId ?? d?.pid ?? d?.p ?? d?.id ?? "");
+}
+
+function x01DartScore(raw: any): { v: number; mult: number; score: number; label: string; miss: boolean } {
+  const label = String(raw?.label ?? raw?.segmentLabel ?? raw?.type ?? "").toUpperCase();
+  const v = Number(raw?.v ?? raw?.segment ?? raw?.number ?? raw?.value ?? raw?.bed ?? raw?.target ?? 0) || 0;
+  let mult = Number(raw?.mult ?? raw?.multiplier ?? raw?.m ?? 0) || 0;
+  if (!mult && label.startsWith("S")) mult = 1;
+  if (!mult && label.startsWith("D")) mult = 2;
+  if (!mult && label.startsWith("T")) mult = 3;
+  if (!mult && v > 0) mult = 1;
+  const score = Number.isFinite(Number(raw?.score)) ? Number(raw?.score) : (v > 0 && mult > 0 ? v * mult : 0);
+  const miss = v <= 0 || score <= 0 || label === "MISS" || label === "M";
+  return { v, mult, score, label, miss };
+}
+
+function x01MapForPlayerValue(map: any, player: any, pid: string): number | null {
+  if (!map || typeof map !== "object") return null;
+  const keys = playerKeysFromLike(player, pid);
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      const n = Number(map[key]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  for (const [k, v] of Object.entries(map)) {
+    if (keys.some((id) => sameId(k, id) || String(k) === String(id))) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+function x01RemainingForPlayerFromMatch(match: any, player: any, pid: string, fallback: number): number {
+  const maps = collectScoreMaps(match, [
+    "finalScores",
+    "remainingScores",
+    "remainingByPlayer",
+    "scoreRemainingByPlayer",
+    "scoreAfterByPlayer",
+    "scores",
+  ]);
+  for (const map of maps) {
+    const v = x01MapForPlayerValue(map, player, pid);
+    if (v !== null) return v;
+  }
+  return fallback;
+}
+
+function buildSessionFromRawDarts(
+  match: any,
+  pid: string
+): Omit<
+  X01MultiSession,
+  "id" | "matchId" | "date" | "selectedPlayerId" | "playerName"
+> | null {
+  const all = x01RawDarts(match);
+  if (!all.length || !pid) return null;
+
+  const playerDarts = all.filter((d) => sameId(x01DartPid(d), pid) || x01DartPid(d) === String(pid));
+  if (!playerDarts.length) return null;
+
+  const startScore =
+    numOr0(
+      match?.payload?.config?.startScore,
+      match?.config?.startScore,
+      match?.summary?.game?.startScore,
+      match?.payload?.summary?.game?.startScore,
+      301
+    ) || 301;
+
+  const bySegmentS: Record<string, number> = {};
+  const bySegmentD: Record<string, number> = {};
+  const bySegmentT: Record<string, number> = {};
+  let darts = 0;
+  let totalScore = 0;
+  let hitsS = 0;
+  let hitsD = 0;
+  let hitsT = 0;
+  let miss = 0;
+  let bull = 0;
+  let dBull = 0;
+  let bust = 0;
+  let bestVisit = 0;
+  let bestCheckout = 0;
+  let cumulative = 0;
+
+  for (let i = 0; i < playerDarts.length; i += 3) {
+    const visit = playerDarts.slice(i, i + 3);
+    let visitScore = 0;
+    for (const raw of visit) {
+      const d = x01DartScore(raw);
+      darts += 1;
+      visitScore += d.score;
+      totalScore += d.score;
+
+      if (d.miss) {
+        miss += 1;
+        continue;
+      }
+
+      if (d.v === 25 && d.mult === 1) bull += 1;
+      else if (d.v === 25 && d.mult === 2) dBull += 1;
+      else if (d.mult === 1) {
+        hitsS += 1;
+        bySegmentS[String(d.v)] = (bySegmentS[String(d.v)] || 0) + 1;
+      } else if (d.mult === 2) {
+        hitsD += 1;
+        bySegmentD[String(d.v)] = (bySegmentD[String(d.v)] || 0) + 1;
+      } else if (d.mult === 3) {
+        hitsT += 1;
+        bySegmentT[String(d.v)] = (bySegmentT[String(d.v)] || 0) + 1;
+      }
+    }
+    bestVisit = Math.max(bestVisit, visitScore);
+    cumulative += visitScore;
+    if (!bestCheckout && cumulative >= startScore) bestCheckout = visitScore;
+  }
+
+  const rawRemaining = Math.max(0, startScore - totalScore);
+  const playerLike = { id: pid, playerId: pid, profileId: pid };
+  const remaining = x01RemainingForPlayerFromMatch(match, playerLike, pid, rawRemaining);
+  const rank = getRobustRankForPlayer(match, playerLike, pid);
+  const winnerId = String(
+    match?.winnerId ??
+      match?.summary?.winnerId ??
+      match?.payload?.summary?.winnerId ??
+      match?.payload?.winnerId ??
+      match?.winner?.id ??
+      match?.summary?.winner?.id ??
+      match?.payload?.summary?.winner?.id ??
+      ""
+  );
+  const isWin = (rank === 1) || (!!winnerId && sameId(winnerId, pid)) || remaining === 0;
+  const avg3D = darts > 0 ? (totalScore / darts) * 3 : 0;
+
+  return {
+    playerId: String(pid),
+    darts,
+    avg3D,
+    avg1D: darts > 0 ? totalScore / darts : 0,
+    bestVisit,
+    bestCheckout: bestCheckout || (isWin ? bestVisit : 0),
+    hitsS,
+    hitsD,
+    hitsT,
+    miss,
+    bull,
+    dBull,
+    bust,
+    bySegmentS,
+    bySegmentD,
+    bySegmentT,
+    isWin,
+    legsPlayed: 1,
+    legsWon: isWin ? 1 : 0,
+    setsPlayed: 0,
+    setsWon: 0,
+    finishes: isWin ? 1 : 0,
+    rank,
+    finalScore: remaining,
+    remaining,
+  };
+}
+
 /**
  * Détail summary => X01MultiSession partiel (sans meta)
  * Utilise en priorité :
@@ -951,8 +1183,12 @@ function buildSessionFromSummary(
   // Détail V3 (lookup exact + lookup loose : certains historiques gardent profileId/id mélangés)
   const detail: any = getLooseObjectValue(detailedByPlayer, [pid, row.playerId, row.selectedPlayerId, row.profileId, row.id, row.pid]) || {};
 
+  // Fallback import/restauration : si aucun résumé par joueur n'existe,
+  // on reconstruit tout depuis payload.darts.
+  const dartFallback = buildSessionFromRawDarts(match, pidStr);
+
   // ---------- Darts ----------
-  let darts = numOr0(detail.darts, row.darts);
+  let darts = numOr0(detail.darts, row.darts, dartFallback?.darts);
   if (!darts) {
     darts =
       numOr0(detail.hitsS, detail.hitsD, detail.hitsT, detail.miss) ||
@@ -965,19 +1201,21 @@ function buildSessionFromSummary(
     detail.avg3,
     detail.avg3D,
     row.avg3,
-    row.avg3D
+    row.avg3D,
+    dartFallback?.avg3D
   );
 
   const avg1D =
     darts > 0 && avg3D > 0
       ? avg3D / 3
-      : numOr0(detail.avg1D, row.avg1D);
+      : numOr0(detail.avg1D, row.avg1D, dartFallback?.avg1D);
 
   // ---------- Records BV ----------
   const bestVisit = numOr0(
     summary.bestVisitByPlayer?.[pidStr],
     detail.bestVisit,
-    row.bestVisit
+    row.bestVisit,
+    dartFallback?.bestVisit
   );
 
   // ===== CO (Checkout) — version ultra tolérante =====
@@ -1015,6 +1253,8 @@ function buildSessionFromSummary(
     match?.bestCheckout ??
     match?.bestCo ??
     match?.bestFinish ??
+    // fallback depuis payload.darts
+    dartFallback?.bestCheckout ??
     null;
 
   let bestCheckout = 0;
@@ -1064,7 +1304,8 @@ function buildSessionFromSummary(
     splitCombined(detail.bySegment, "S"),
     splitCombined(detail.hitsBySegment, "S"),
     splitCombined(row.bySegment, "S"),
-    splitCombined(row.hitsBySegment, "S")
+    splitCombined(row.hitsBySegment, "S"),
+    dartFallback?.bySegmentS
   );
 
   const bySegmentD: Record<string, number> = firstMapWithValues(
@@ -1075,7 +1316,8 @@ function buildSessionFromSummary(
     splitCombined(detail.bySegment, "D"),
     splitCombined(detail.hitsBySegment, "D"),
     splitCombined(row.bySegment, "D"),
-    splitCombined(row.hitsBySegment, "D")
+    splitCombined(row.hitsBySegment, "D"),
+    dartFallback?.bySegmentD
   );
 
   const bySegmentT: Record<string, number> = firstMapWithValues(
@@ -1086,28 +1328,31 @@ function buildSessionFromSummary(
     splitCombined(detail.bySegment, "T"),
     splitCombined(detail.hitsBySegment, "T"),
     splitCombined(row.bySegment, "T"),
-    splitCombined(row.hitsBySegment, "T")
+    splitCombined(row.hitsBySegment, "T"),
+    dartFallback?.bySegmentT
   );
 
   // ---------- Hits / Miss / Bust (hors Bull) ----------
   // numOr0 renvoie aussi les zéros explicites. Ici on veut tomber sur les maps
   // si les anciens champs hitsS/hitsD/hitsT ont été écrits à 0 par erreur.
-  const hitsS = numOr0(detail.hitsS, row.hitsS, row.hits?.S, row.hits?.single) || sumMap(bySegmentS);
-  const hitsD = numOr0(detail.hitsD, row.hitsD, row.hits?.D, row.hits?.double) || sumMap(bySegmentD);
-  const hitsT = numOr0(detail.hitsT, row.hitsT, row.hits?.T, row.hits?.triple) || sumMap(bySegmentT);
-  const miss = numOr0(detail.miss, row.miss, row.hits?.M, row.hits?.miss, row.misses);
-  const bust = numOr0(detail.bust, row.bust, row.busts);
+  const hitsS = numOr0(detail.hitsS, row.hitsS, row.hits?.S, row.hits?.single, dartFallback?.hitsS) || sumMap(bySegmentS);
+  const hitsD = numOr0(detail.hitsD, row.hitsD, row.hits?.D, row.hits?.double, dartFallback?.hitsD) || sumMap(bySegmentD);
+  const hitsT = numOr0(detail.hitsT, row.hitsT, row.hits?.T, row.hits?.triple, dartFallback?.hitsT) || sumMap(bySegmentT);
+  const miss = numOr0(detail.miss, row.miss, row.hits?.M, row.hits?.miss, row.misses, dartFallback?.miss);
+  const bust = numOr0(detail.bust, row.bust, row.busts, dartFallback?.bust);
 
   // ---------- Bull / DBull (d’abord champs, puis fallback segments 25) ----------
   const bull = numOr0(
     detail.bull,
     row.bull,
+    dartFallback?.bull,
     (bySegmentS && (bySegmentS["25"] ?? (bySegmentS as any)[25])) ?? 0
   );
 
   const dBull = numOr0(
     detail.dBull,
     row.dBull,
+    dartFallback?.dBull,
     (bySegmentD && (bySegmentD["25"] ?? (bySegmentD as any)[25])) ?? 0
   );
 
@@ -1125,7 +1370,7 @@ function buildSessionFromSummary(
     (typeof row.rank === "number" && row.rank === 1) ||
     (typeof row.position === "number" && row.position === 1);
 
-  const isWin = isWinExplicit || isWinHeuristic;
+  const isWin = isWinExplicit || isWinHeuristic || dartFallback?.isWin === true;
 
   // 🔥 On essaye d'être ULTRA tolérant sur l'endroit où sont stockés les legs/sets
 
@@ -1207,6 +1452,7 @@ function buildSessionFromSummary(
     detail.legsWonTotal,
     detail.legsWon,
     row.legsWon,
+    dartFallback?.legsWon,
     rankingRow?.legsWon,
     rankingRow?.lw,
     rankingRow?.legs,
@@ -1216,13 +1462,15 @@ function buildSessionFromSummary(
   let legsPlayed = numOr0(
     detail.legsPlayedTotal,
     detail.legsPlayed,
-    row.legsPlayed
+    row.legsPlayed,
+    dartFallback?.legsPlayed
   );
 
   let setsWon = numOr0(
     detail.setsWonTotal,
     detail.setsWon,
     row.setsWon,
+    dartFallback?.setsWon,
     rankingRow?.setsWon,
     rankingRow?.sw,
     rankingRow?.sets,
@@ -1232,7 +1480,8 @@ function buildSessionFromSummary(
   let setsPlayed = numOr0(
     detail.setsPlayedTotal,
     detail.setsPlayed,
-    row.setsPlayed
+    row.setsPlayed,
+    dartFallback?.setsPlayed
   );
 
   // 2) si on n'a toujours rien, on va chercher dans les maps summary.*
@@ -1259,7 +1508,8 @@ function buildSessionFromSummary(
     (row as any).finishes,
     (row as any).finishCount,
     (detail as any).finishes,
-    (detail as any).finishCount
+    (detail as any).finishCount,
+    dartFallback?.finishes
   );
 
   // ---------- Rang multi ----------
@@ -1277,6 +1527,7 @@ function buildSessionFromSummary(
     rankingRow?.place ??
     rankingRow?.position ??
     rankingRow?.standing ??
+    dartFallback?.rank ??
     null;
 
   let rank: number | null = null;
@@ -1289,8 +1540,9 @@ function buildSessionFromSummary(
   }
   if (!rank) rank = getRankFromRows(match, pidStr, row?.name || row?.playerName);
 
-  // Si vraiment rien → on ignore ce match
-  if (!darts && !hitsS && !hitsD && !hitsT && !miss) return null;
+  // Si vraiment rien dans les résumés mais que les darts bruts ont permis
+  // une reconstruction, on utilise cette ligne.
+  if (!darts && !hitsS && !hitsD && !hitsT && !miss) return dartFallback || null;
 
   return {
     playerId: pidStr,          // 🔥 OBLIGATOIRE sinon toutes les stats se mélangent !
@@ -1316,6 +1568,8 @@ function buildSessionFromSummary(
     setsWon,
     finishes,
     rank,
+    finalScore: dartFallback?.finalScore ?? null,
+    remaining: dartFallback?.remaining ?? null,
   };
 }
 
@@ -1382,8 +1636,9 @@ export async function loadX01MultiSessions(
     if (!isX01) continue;
 
     // --------- 2) méta (id + date) ----------
-    const matchId = match.id || match.matchId || "";
+    const matchId = match.id || match.matchId || match?.payload?.summary?.matchId || match?.payload?.matchId || "";
     const createdAt =
+      x01PlayedAtMs(match) ||
       Number(match.updatedAt) ||
       Number(match.createdAt) ||
       Number(match?.payload?.updatedAt) ||
@@ -1402,6 +1657,14 @@ export async function loadX01MultiSessions(
         ? match.payload.config.players
         : Array.isArray(match?.payload?.payload?.players) && match.payload.payload.players.length
         ? match.payload.payload.players
+        : Array.isArray(match?.payload?.summary?.players) && match.payload.summary.players.length
+        ? match.payload.summary.players
+        : Array.isArray(match?.payload?.summary?.ranking) && match.payload.summary.ranking.length
+        ? match.payload.summary.ranking
+        : Array.isArray(match?.ranking) && match.ranking.length
+        ? match.ranking
+        : Array.isArray(match?.finalRanking) && match.finalRanking.length
+        ? match.finalRanking
         : Array.isArray(match?.payload?.payload?.config?.players)
         ? match.payload.payload.config.players
         : []) || [];
