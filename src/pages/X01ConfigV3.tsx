@@ -514,6 +514,8 @@ type PlayerDartBadgeProps = {
   onChange: (id: string | null) => void;
   compact?: boolean;
   allProfiles?: any[];
+  autoOpenKey?: number | string | null;
+  hiddenButton?: boolean;
 };
 
 function x01IsFavoriteDartSet(set: any): boolean {
@@ -796,12 +798,73 @@ function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []):
   return x01DartSetPickerCache.byProfile[pid] || [];
 }
 
+const X01_PLAYER_DARTSET_USAGE_LS_KEY = "dc_x01_player_dartset_usage_v1";
+
+function x01ReadPlayerDartSetUsage(): Record<string, Record<string, number>> {
+  try {
+    if (typeof window === "undefined") return {};
+    const raw = window.localStorage.getItem(X01_PLAYER_DARTSET_USAGE_LS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch { return {}; }
+}
+
+function x01RememberPlayerDartSet(profileId: string, dartSetId: string | null) {
+  const pid = String(profileId || "").trim();
+  const sid = String(dartSetId || "").trim();
+  if (!pid || !sid) return;
+  try {
+    if (typeof window === "undefined") return;
+    const current = x01ReadPlayerDartSetUsage();
+    const bucket = current[pid] && typeof current[pid] === "object" ? current[pid] : {};
+    bucket[sid] = Number(bucket[sid] || 0) + 1;
+    current[pid] = bucket;
+    window.localStorage.setItem(X01_PLAYER_DARTSET_USAGE_LS_KEY, JSON.stringify(current));
+    try { (window as any).__markNasSyncDirty?.("x01_player_dartset_usage"); } catch {}
+  } catch {}
+}
+
+function x01GetMostUsedDartSetIdForProfile(profileId: string, allProfiles: any[] = []): string | null {
+  const pid = String(profileId || "").trim();
+  if (!pid) return null;
+  const visible = x01GetCachedPickerDartSets(pid, allProfiles);
+  const valid = new Set(visible.map((s: any) => String(s?.id || "")).filter(Boolean));
+  const bucket = x01ReadPlayerDartSetUsage()[pid] || {};
+  let bestId: string | null = null;
+  let bestCount = -1;
+  for (const [sid, countRaw] of Object.entries(bucket)) {
+    const count = Number(countRaw || 0);
+    if (!valid.has(String(sid)) || count <= bestCount) continue;
+    bestId = String(sid);
+    bestCount = count;
+  }
+  return bestId;
+}
+
+function x01GetPreferredDartSetIdForProfile(profileId: string, allProfiles: any[] = []): string | null {
+  const pid = String(profileId || "").trim();
+  if (!pid) return null;
+  const mostUsed = x01GetMostUsedDartSetIdForProfile(pid, allProfiles);
+  if (mostUsed) return mostUsed;
+  try {
+    const fav = getFavoriteDartSetForProfile(pid) as any;
+    if (fav?.id) {
+      const visible = x01GetCachedPickerDartSets(pid, allProfiles);
+      if (visible.some((s: any) => String(s?.id || "") === String(fav.id))) return String(fav.id);
+    }
+  } catch {}
+  const first = sortDartSetsForProfilePicker(x01GetCachedPickerDartSets(pid, allProfiles))[0] as any;
+  return first?.id ? String(first.id) : null;
+}
+
 const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   profileId,
   dartSetId,
   onChange,
   compact = false,
   allProfiles = [],
+  autoOpenKey = null,
+  hiddenButton = false,
 }) => {
   const { theme, palette } = useTheme() as any;
   const { lang } = useLang() as any;
@@ -854,6 +917,12 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     return () => window.removeEventListener("dc-dartsets-updated", onUpdated);
   }, [reloadSets]);
 
+  React.useEffect(() => {
+    if (autoOpenKey == null || !profileId) return;
+    reloadSets();
+    setOpen(true);
+  }, [autoOpenKey, profileId, reloadSets]);
+
   const hasProfile = !!profileId;
   const noneLabel = lang === "fr" ? "Aucun set" : "No set";
   const chooseLabel = lang === "fr" ? "Choix SET" : "SET choice";
@@ -875,6 +944,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 
   return (
     <>
+      {!hiddenButton ? (
       <button
         type="button"
         onClick={(e) => {
@@ -941,6 +1011,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         )}
         {compact ? null : <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedSet ? "SET" : chooseLabel}</span>}
       </button>
+      ) : null}
 
       {open ? (
         <div
@@ -1225,10 +1296,16 @@ function SelectedParticipantsCompactBlock({
   items,
   accent,
   onRemove,
+  playerDartSets = {},
+  onChangeDartSet,
+  allProfiles = [],
 }: {
   items: any[];
   accent: string;
   onRemove: (id: string) => void;
+  playerDartSets?: Record<string, string | null>;
+  onChangeDartSet?: (profileId: string, dartSetId: string | null) => void;
+  allProfiles?: any[];
 }) {
   const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!safeItems.length) return null;
@@ -1299,6 +1376,15 @@ function SelectedParticipantsCompactBlock({
                 ×
               </button>
               <ProfileAvatar profile={profile} size={78} showStars={item.kind !== "bot"} />
+              {item.kind !== "bot" && onChangeDartSet ? (
+                <PlayerDartBadge
+                  profileId={id}
+                  dartSetId={(playerDartSets || {})[id] ?? null}
+                  onChange={(setId) => onChangeDartSet(id, setId)}
+                  compact
+                  allProfiles={allProfiles}
+                />
+              ) : null}
               <div
                 style={{
                   width: "100%",
@@ -1683,7 +1769,34 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
   const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(true);
 
+  const [dartSetPickerRequest, setDartSetPickerRequest] = React.useState<{ profileId: string; token: number } | null>(null);
+
+  const openDartSetPickerForPlayer = React.useCallback((profileId: string) => {
+    const pid = String(profileId || "").trim();
+    if (!pid) return;
+    setDartSetPickerRequest({ profileId: pid, token: Date.now() + Math.random() });
+  }, []);
+
+  const ensurePreferredDartSetForPlayer = React.useCallback((profileId: string) => {
+    const pid = String(profileId || "").trim();
+    if (!pid) return;
+    setPlayerDartSets((prev) => {
+      if (prev && prev[pid]) return prev;
+      const preferred = x01GetPreferredDartSetIdForProfile(pid, humanProfiles);
+      if (!preferred) return prev;
+      return { ...(prev || {}), [pid]: preferred };
+    });
+  }, [humanProfiles]);
+
+  const promptDartSetForPlayer = React.useCallback((profileId: string) => {
+    const pid = String(profileId || "").trim();
+    if (!pid) return;
+    ensurePreferredDartSetForPlayer(pid);
+    window.setTimeout(() => openDartSetPickerForPlayer(pid), 0);
+  }, [ensurePreferredDartSetForPlayer, openDartSetPickerForPlayer]);
+
   const handleChangePlayerDartSet = (profileId: string, dartSetId: string | null) => {
+    x01RememberPlayerDartSet(profileId, dartSetId);
     setPlayerDartSets((prev) => ({ ...prev, [profileId]: dartSetId }));
   };
 
@@ -1701,6 +1814,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         delete clone[id];
         return clone;
       });
+
+      if (!exists) {
+        window.setTimeout(() => promptDartSetForPlayer(id), 0);
+      }
 
       return next;
     });
@@ -1932,6 +2049,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       const same = arr.filter((id: any) => x01TeamBaseId(id) === tid);
       const nextId = same.length > 0 ? `${tid}__slot_${x01TeamSuffix(same.length)}` : tid;
       setSavedTeamMemberSelections((old) => ({ ...old, [nextId]: picked }));
+      picked.forEach((pid) => ensurePreferredDartSetForPlayer(pid));
+      window.setTimeout(() => { if (picked[0]) openDartSetPickerForPlayer(picked[0]); }, 0);
       return [...arr, nextId];
     });
   }
@@ -2382,6 +2501,9 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   items={selectedParticipantProfiles}
                   accent={primary}
                   onRemove={(id: string) => togglePlayer(id)}
+                  playerDartSets={playerDartSets}
+                  onChangeDartSet={handleChangePlayerDartSet}
+                  allProfiles={humanProfiles}
                 />
 
                 <PlayerPagedSelector
@@ -2418,6 +2540,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               togglePlayer={togglePlayer}
               playerDartSets={playerDartSets}
               handleChangePlayerDartSet={handleChangePlayerDartSet}
+              promptDartSetForPlayer={promptDartSetForPlayer}
               allProfiles={humanProfiles}
               sourceMode={teamsSourceMode}
               setSourceMode={setTeamsSourceMode}
@@ -2455,6 +2578,18 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             primarySoft={primarySoft}
           />
         )}
+
+        {dartSetPickerRequest?.profileId ? (
+          <PlayerDartBadge
+            profileId={dartSetPickerRequest.profileId}
+            dartSetId={playerDartSets[dartSetPickerRequest.profileId] ?? null}
+            onChange={(id) => handleChangePlayerDartSet(dartSetPickerRequest.profileId, id)}
+            compact
+            hiddenButton
+            autoOpenKey={dartSetPickerRequest.token}
+            allProfiles={humanProfiles}
+          />
+        ) : null}
 
         {participantMode === "players" && (
           <>
@@ -3515,6 +3650,7 @@ type TeamsSectionProps = {
   togglePlayer?: (id: string) => void;
   playerDartSets?: Record<string, string | null>;
   handleChangePlayerDartSet?: (profileId: string, dartSetId: string | null) => void;
+  promptDartSetForPlayer?: (profileId: string) => void;
   allProfiles?: Profile[];
   sourceMode: TeamsSourceMode;
   setSourceMode: (mode: TeamsSourceMode) => void;
@@ -4083,7 +4219,11 @@ function TeamsSection({
                     if (!p) return null;
                     const checked = teamPickerPlayerIds.includes(pid);
                     return (
-                      <button key={pid} type="button" onClick={() => setTeamPickerPlayerIds((prev) => checked ? prev.filter((id) => id !== pid) : [...prev, pid])} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 16, padding: 8, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)", background: checked ? `${primary}18` : "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0 }}>
+                      <button key={pid} type="button" onClick={() => setTeamPickerPlayerIds((prev) => {
+                        const next = checked ? prev.filter((id) => id !== pid) : [...prev, pid];
+                        if (!checked && promptDartSetForPlayer) window.setTimeout(() => promptDartSetForPlayer(pid), 0);
+                        return next;
+                      })} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 16, padding: 8, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)", background: checked ? `${primary}18` : "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0 }}>
                         <ProfileAvatar profile={p} size={34} />
                         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                       </button>
