@@ -711,6 +711,16 @@ function x01ProfileStarValue(profile: any): number {
     profile?.profile?.stats?.stars,
     profile?.profile?.privateInfo?.profileStarring,
     profile?.profile?.private_info?.profileStarring,
+    profile?.x01ProfileStarring,
+    profile?.dartsProfileStarring,
+    profile?.stats?.darts?.profileStarring,
+    profile?.stats?.darts?.stars,
+    profile?.x01Stats?.profileStarring,
+    profile?.x01Stats?.stars,
+    profile?.privateInfo?.x01ProfileStarring,
+    profile?.privateInfo?.dartsProfileStarring,
+    profile?.private_info?.x01ProfileStarring,
+    profile?.preferences?.x01ProfileStarring,
   ];
   for (const raw of candidates) {
     const value = parseX01BotLevelValue(raw, 0);
@@ -724,6 +734,53 @@ function x01ProfileIdentityKeysForStars(profile: any): string[] {
     .map((v) => String(v ?? "").trim())
     .filter(Boolean);
   return Array.from(new Set(keys));
+}
+
+function x01ProfileStatsQuality(stats: any): number {
+  if (!stats || typeof stats !== "object") return 0;
+  return (
+    Number(stats.avg3 ?? stats.avg3d ?? stats.avg3D ?? 0) +
+    Number(stats.games ?? stats.matches ?? stats.sessions ?? 0) * 3 +
+    Number(stats.darts ?? stats.totalDarts ?? 0) / 20 +
+    Number(stats.bestVisit ?? stats.best_visit ?? 0) / 10 +
+    Number(stats.bestCheckout ?? stats.bestCO ?? stats.best_checkout ?? 0) / 10
+  );
+}
+
+function x01PickBestProfileStats(...items: any[]) {
+  let best: any = null;
+  let bestQuality = -1;
+  for (const item of items) {
+    const q = x01ProfileStatsQuality(item);
+    if (q > bestQuality) {
+      best = item;
+      bestQuality = q;
+    }
+  }
+  return bestQuality > 0 ? best : null;
+}
+
+function x01ReadQuickStatsFromLocalStorage(profile: any): any | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage?.getItem("dc-quick-stats");
+    if (!raw) return null;
+    const bag = JSON.parse(raw);
+    for (const id of x01ProfileIdentityKeysForStars(profile)) {
+      if (bag?.[id]) return bag[id];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function x01LoadBestProfileStatsForStars(id: string, profile?: any) {
+  let syncStats: any = null;
+  let asyncStats: any = null;
+  try { syncStats = StatsBridge.getBasicProfileStats(id); } catch {}
+  try { asyncStats = await StatsBridge.getBasicProfileStatsAsync(id); } catch {}
+  return x01PickBestProfileStats(syncStats, asyncStats, profile ? x01ReadQuickStatsFromLocalStorage(profile) : null);
 }
 
 function x01NumberFromAny(value: any): number {
@@ -744,7 +801,30 @@ function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> =
     profile?.stats?.x01?.avg3D,
     profile?.x01?.avg3d,
     profile?.x01?.avg3D,
+    profile?.x01Stats?.avg3,
+    profile?.x01Stats?.avg3d,
+    profile?.x01Stats?.avg3D,
+    profile?.darts?.avg3,
+    profile?.darts?.avg3d,
+    profile?.darts?.avg3D,
+    profile?.stats?.darts?.avg3,
+    profile?.stats?.darts?.avg3d,
+    profile?.stats?.darts?.avg3D,
+    profile?.privateInfo?.avg3,
+    profile?.privateInfo?.avg3d,
+    profile?.privateInfo?.avg3D,
+    profile?.privateInfo?.x01Avg3,
+    profile?.privateInfo?.x01Avg3D,
+    profile?.private_info?.avg3,
+    profile?.private_info?.avg3d,
+    profile?.private_info?.avg3D,
+    profile?.preferences?.avg3,
+    profile?.preferences?.avg3d,
+    profile?.preferences?.avg3D,
   ];
+  const quickStats = x01ReadQuickStatsFromLocalStorage(profile);
+  if (quickStats) avgCandidates.push(quickStats?.avg3, quickStats?.avg3d, quickStats?.avg3D, quickStats?.avg, quickStats?.average3Darts);
+
   for (const id of x01ProfileIdentityKeysForStars(profile)) {
     const s = statsById[id] || {};
     avgCandidates.push(
@@ -1481,16 +1561,14 @@ function SelectedParticipantsCompactBlock({
       setSelectedStatsById({});
       return () => { cancelled = true; };
     }
+    const profileByKey = new Map<string, any>();
+    for (const item of safeItems || []) {
+      const profile = item?.profile || item;
+      for (const key of x01ProfileIdentityKeysForStars(profile)) profileByKey.set(key, profile);
+    }
     Promise.all(ids.map(async (id) => {
-      try {
-        return [id, await StatsBridge.getBasicProfileStatsAsync(id)] as const;
-      } catch {
-        try {
-          return [id, StatsBridge.getBasicProfileStats(id)] as const;
-        } catch {
-          return [id, null] as const;
-        }
-      }
+      const stats = await x01LoadBestProfileStatsForStars(id, profileByKey.get(id));
+      return [id, stats] as const;
     })).then((entries) => {
       if (cancelled) return;
       const next: Record<string, any> = {};
@@ -4180,6 +4258,7 @@ function TeamsSection({
   const teamByPlayer = React.useMemo(() => new Map((profiles || []).map((p: any) => [String(p.id), p])), [profiles]);
   const [teamPicker, setTeamPicker] = React.useState<any | null>(null);
   const [teamPickerPlayerIds, setTeamPickerPlayerIds] = React.useState<string[]>([]);
+  const [teamPickerStatsById, setTeamPickerStatsById] = React.useState<Record<string, any>>({});
 
   const selectedStoredInstances = React.useMemo(() => {
     return (selectedStoredTeamIds || []).map((instanceId) => {
@@ -4213,6 +4292,28 @@ function TeamsSection({
     setTeamPicker(team);
     setTeamPickerPlayerIds(available.slice(0, 1));
   };
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const ids = (Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : [])
+      .map((pid: any) => String(pid || ""))
+      .filter((pid: string) => pid && !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid));
+    if (!teamPicker || ids.length <= 0) {
+      setTeamPickerStatsById({});
+      return () => { cancelled = true; };
+    }
+    Promise.all(ids.map(async (pid: string) => {
+      const profile = teamByPlayer.get(pid);
+      const stats = await x01LoadBestProfileStatsForStars(pid, profile);
+      return [pid, stats] as const;
+    })).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, any> = {};
+      for (const [pid, stats] of entries) if (stats) next[pid] = stats;
+      setTeamPickerStatsById(next);
+    }).catch(() => { if (!cancelled) setTeamPickerStatsById({}); });
+    return () => { cancelled = true; };
+  }, [teamPicker?.id, teamPicker?.playerIds, usedStoredPlayersByBase, teamByPlayer]);
 
   const validateStoredTeamPicker = () => {
     const teamId = String(teamPicker?.id || "");
@@ -4428,54 +4529,100 @@ function TeamsSection({
           </div>
 
           {teamPicker ? (
-            <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 18 }} onClick={() => setTeamPicker(null)}>
-              <div style={{ width: "min(560px, 96vw)", maxHeight: "82vh", overflow: "auto", borderRadius: 24, background: "rgba(8,10,20,0.98)", border: `1px solid ${primary}66`, boxShadow: `0 0 40px ${primary}33`, padding: 16 }} onClick={(e) => e.stopPropagation()}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <ProfileAvatar name={teamPicker?.name || "Équipe"} dataUrl={teamPicker?.logoDataUrl || teamPicker?.logoUrl || teamPicker?.avatarDataUrl || undefined} size={46} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8, fontSize: 13 }}>Choisir les joueurs</div>
-                    <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamPicker?.name || "Équipe"}</div>
+            <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 12 }} onClick={() => setTeamPicker(null)}>
+              <div style={{ width: "min(680px, 96vw)", maxHeight: "90vh", overflow: "hidden", borderRadius: 24, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", border: `1px solid ${primary}88`, boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${primary}44`, display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${primary}44`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <ProfileAvatar name={teamPicker?.name || "Équipe"} dataUrl={teamPicker?.logoDataUrl || teamPicker?.logoUrl || teamPicker?.avatarDataUrl || undefined} size={46} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1.1, fontSize: 13 }}>Choisir les joueurs</div>
+                      <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamPicker?.name || "Équipe"}</div>
+                    </div>
                   </div>
+                  <button type="button" onClick={() => setTeamPicker(null)} style={{ width: 40, height: 40, borderRadius: 14, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 18 }}>×</button>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", gap: 8 }}>
-                  {(Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : []).map((pid: any) => String(pid || "")).filter((pid: string) => !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid)).map((pid: string) => {
-                    const p = teamByPlayer.get(pid);
-                    if (!p) return null;
-                    const checked = teamPickerPlayerIds.includes(pid);
-                    return (
-                      <button key={pid} type="button" onClick={() => {
-                        setTeamPickerPlayerIds((prev) => {
-                          const wasChecked = prev.includes(pid);
-                          const next = wasChecked ? prev.filter((id) => id !== pid) : [...prev, pid];
-                          if (!wasChecked) {
-                            const preferred = x01MostUsedDartSetIdForProfile(pid, allProfiles || profiles);
-                            if (handleChangePlayerDartSet && preferred && !((playerDartSets || {})[pid])) handleChangePlayerDartSet(pid, preferred);
-                            if (setAutoDartSetPicker) setAutoDartSetPicker({ profileId: pid, seq: Date.now() + Math.random() });
-                          }
-                          return next;
-                        });
-                      }} style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 16, padding: 8, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.10)", background: checked ? `${primary}18` : "rgba(255,255,255,0.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0, position: "relative" }}>
-                        <span style={{ position: "relative", width: 42, height: 42, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
-                          <ProfileAvatar profile={p} size={38} />
-                          {checked && handleChangePlayerDartSet ? (
-                            <PlayerDartBadge
-                              profileId={pid}
-                              dartSetId={(playerDartSets || {})[pid] ?? null}
-                              onChange={(id) => handleChangePlayerDartSet(pid, id)}
-                              compact
-                              allProfiles={allProfiles || profiles}
-                              autoOpenToken={autoDartSetPicker?.profileId === pid ? autoDartSetPicker.seq : null}
-                            />
-                          ) : null}
-                        </span>
-                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
-                  <button type="button" onClick={() => setTeamPicker(null)} style={{ borderRadius: 999, padding: "9px 14px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
-                  <button type="button" disabled={teamPickerPlayerIds.length <= 0} onClick={validateStoredTeamPicker} style={{ borderRadius: 999, padding: "9px 16px", border: `1px solid ${primary}`, background: teamPickerPlayerIds.length > 0 ? `${primary}22` : "rgba(255,255,255,0.04)", color: teamPickerPlayerIds.length > 0 ? primary : "#777", fontWeight: 950, cursor: teamPickerPlayerIds.length > 0 ? "pointer" : "not-allowed" }}>Valider</button>
+                <div className="dc-scroll-thin" style={{ padding: 14, overflowY: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                    {(Array.isArray(teamPicker?.playerIds) ? teamPicker.playerIds : [])
+                      .map((pid: any) => String(pid || ""))
+                      .filter((pid: string) => !(usedStoredPlayersByBase[String(teamPicker?.id || "")] || new Set<string>()).has(pid))
+                      .map((pid: string) => {
+                        const p = teamByPlayer.get(pid);
+                        if (!p) return null;
+                        const checked = teamPickerPlayerIds.includes(pid);
+                        const countryRaw = x01GetProfileCountryRaw(p);
+                        const flag = x01GetProfileCountryFlag(p);
+                        const starData = x01ProfileStarRenderData(p, teamPickerStatsById);
+                        return (
+                          <button
+                            key={pid}
+                            type="button"
+                            onClick={() => {
+                              setTeamPickerPlayerIds((prev) => {
+                                const wasChecked = prev.includes(pid);
+                                const next = wasChecked ? prev.filter((id) => id !== pid) : [...prev, pid];
+                                if (!wasChecked) {
+                                  const preferred = x01MostUsedDartSetIdForProfile(pid, allProfiles || profiles);
+                                  if (handleChangePlayerDartSet && preferred && !((playerDartSets || {})[pid])) handleChangePlayerDartSet(pid, preferred);
+                                  if (setAutoDartSetPicker) setAutoDartSetPicker({ profileId: pid, seq: Date.now() + Math.random() });
+                                }
+                                return next;
+                              });
+                            }}
+                            style={{
+                              minWidth: 0,
+                              borderRadius: 18,
+                              padding: "10px 6px",
+                              background: checked ? `${primary}22` : "rgba(255,255,255,.035)",
+                              border: checked ? `1px solid ${primary}` : `1px solid ${primary}33`,
+                              boxShadow: checked ? `0 0 22px ${primary}66` : "inset 0 0 16px rgba(255,255,255,.03)",
+                              cursor: "pointer",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 7,
+                              color: "#fff",
+                            }}
+                          >
+                            <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
+                              {starData ? (
+                                <ProfileStarRing
+                                  {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
+                                  anchorSize={88}
+                                  starSize={12}
+                                  gapPx={4}
+                                />
+                              ) : null}
+                              <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${checked ? primary : `${primary}88`}`, boxShadow: `0 0 16px ${primary}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
+                                <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
+                                  <ProfileAvatar profile={p} size={76} noFrame showStars={false} />
+                                </div>
+                              </div>
+                              {checked && handleChangePlayerDartSet ? (
+                                <PlayerDartBadge
+                                  profileId={pid}
+                                  dartSetId={(playerDartSets || {})[pid] ?? null}
+                                  onChange={(id) => handleChangePlayerDartSet(pid, id)}
+                                  compact
+                                  allProfiles={allProfiles || profiles}
+                                  autoOpenToken={autoDartSetPicker?.profileId === pid ? autoDartSetPicker.seq : null}
+                                />
+                              ) : null}
+                              {flag ? (
+                                <span title={countryRaw} style={{ position: "absolute", right: -1, bottom: 2, zIndex: 7, minWidth: 24, height: 24, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.94)", border: `1px solid ${primary}99`, boxShadow: `0 0 10px ${primary}55`, color: "#fff", fontSize: 11, fontWeight: 950, lineHeight: 1 }}>
+                                  {flag}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div style={{ color: checked ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name || p.displayName || "Joueur"}</div>
+                          </button>
+                        );
+                      })}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+                    <button type="button" onClick={() => setTeamPicker(null)} style={{ borderRadius: 999, padding: "10px 15px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
+                    <button type="button" disabled={teamPickerPlayerIds.length <= 0} onClick={validateStoredTeamPicker} style={{ borderRadius: 999, padding: "10px 18px", border: `1px solid ${primary}`, background: teamPickerPlayerIds.length > 0 ? `${primary}22` : "rgba(255,255,255,.04)", color: teamPickerPlayerIds.length > 0 ? primary : "#777", fontWeight: 950, cursor: teamPickerPlayerIds.length > 0 ? "pointer" : "not-allowed" }}>Valider</button>
+                  </div>
                 </div>
               </div>
             </div>

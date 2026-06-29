@@ -41,6 +41,54 @@ function profileIdentityKeys(profile: any): string[] {
   return Array.from(new Set(keys));
 }
 
+function profileStatsQuality(stats: any): number {
+  if (!stats || typeof stats !== "object") return 0;
+  return (
+    Number(stats.avg3 ?? stats.avg3d ?? stats.avg3D ?? 0) +
+    Number(stats.games ?? stats.matches ?? stats.sessions ?? 0) * 3 +
+    Number(stats.darts ?? stats.totalDarts ?? 0) / 20 +
+    Number(stats.bestVisit ?? stats.best_visit ?? 0) / 10 +
+    Number(stats.bestCheckout ?? stats.bestCO ?? stats.best_checkout ?? 0) / 10
+  );
+}
+
+function pickBestProfileStats(...items: any[]) {
+  let best: any = null;
+  let bestQuality = -1;
+  for (const item of items) {
+    const q = profileStatsQuality(item);
+    if (q > bestQuality) {
+      best = item;
+      bestQuality = q;
+    }
+  }
+  return bestQuality > 0 ? best : null;
+}
+
+function readQuickStatsFromLocalStorage(profile: any): any | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage?.getItem("dc-quick-stats");
+    if (!raw) return null;
+    const bag = JSON.parse(raw);
+    const ids = profileIdentityKeys(profile);
+    for (const id of ids) {
+      if (bag?.[id]) return bag[id];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadBestProfileStatsForStars(id: string, profile?: any) {
+  let asyncStats: any = null;
+  let syncStats: any = null;
+  try { syncStats = StatsBridge.getBasicProfileStats(id); } catch {}
+  try { asyncStats = await StatsBridge.getBasicProfileStatsAsync(id); } catch {}
+  return pickBestProfileStats(syncStats, asyncStats, profile ? readQuickStatsFromLocalStorage(profile) : null);
+}
+
 function profileCountryRaw(profile: any): string {
   const candidates = [
     profile?.countryCode,
@@ -95,7 +143,31 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
     profile?.stats?.x01?.avg3D,
     profile?.x01?.avg3d,
     profile?.x01?.avg3D,
+    profile?.x01Stats?.avg3,
+    profile?.x01Stats?.avg3d,
+    profile?.x01Stats?.avg3D,
+    profile?.darts?.avg3,
+    profile?.darts?.avg3d,
+    profile?.darts?.avg3D,
+    profile?.stats?.darts?.avg3,
+    profile?.stats?.darts?.avg3d,
+    profile?.stats?.darts?.avg3D,
+    profile?.privateInfo?.avg3,
+    profile?.privateInfo?.avg3d,
+    profile?.privateInfo?.avg3D,
+    profile?.privateInfo?.x01Avg3,
+    profile?.privateInfo?.x01Avg3D,
+    profile?.private_info?.avg3,
+    profile?.private_info?.avg3d,
+    profile?.private_info?.avg3D,
+    profile?.preferences?.avg3,
+    profile?.preferences?.avg3d,
+    profile?.preferences?.avg3D,
   ];
+  const quickStats = readQuickStatsFromLocalStorage(profile);
+  if (quickStats) {
+    statCandidates.push(quickStats?.avg3, quickStats?.avg3d, quickStats?.avg3D, quickStats?.avg, quickStats?.average3Darts);
+  }
   for (const id of profileIdentityKeys(profile)) {
     const s = statsById[id] || {};
     statCandidates.push(
@@ -157,6 +229,16 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
     profile?.profile?.stats?.stars,
     profile?.profile?.privateInfo?.profileStarring,
     profile?.profile?.private_info?.profileStarring,
+    profile?.x01ProfileStarring,
+    profile?.dartsProfileStarring,
+    profile?.stats?.darts?.profileStarring,
+    profile?.stats?.darts?.stars,
+    profile?.x01Stats?.profileStarring,
+    profile?.x01Stats?.stars,
+    profile?.privateInfo?.x01ProfileStarring,
+    profile?.privateInfo?.dartsProfileStarring,
+    profile?.private_info?.x01ProfileStarring,
+    profile?.preferences?.x01ProfileStarring,
   ];
   for (const raw of levelCandidates) {
     const level = profileLevelValue(raw);
@@ -370,17 +452,13 @@ export default function PlayerPagedSelector({
       setStatsById({});
       return;
     }
+    const profileByKey = new Map<string, any>();
+    for (const p of profiles || []) {
+      for (const key of profileIdentityKeys(p)) profileByKey.set(key, p);
+    }
     Promise.all(ids.map(async (id) => {
-      try {
-        const stats = await StatsBridge.getBasicProfileStatsAsync(id);
-        return [id, stats] as const;
-      } catch {
-        try {
-          return [id, StatsBridge.getBasicProfileStats(id)] as const;
-        } catch {
-          return [id, null] as const;
-        }
-      }
+      const stats = await loadBestProfileStatsForStars(id, profileByKey.get(id));
+      return [id, stats] as const;
     })).then((entries) => {
       if (cancelled) return;
       const next: Record<string, any> = {};
