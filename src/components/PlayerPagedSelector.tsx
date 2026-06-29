@@ -97,8 +97,22 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
     profile?.x01?.avg3D,
   ];
   for (const id of profileIdentityKeys(profile)) {
-    const s = statsById[id];
-    statCandidates.push(s?.avg3, s?.avg3d, s?.avg3D, s?.avg, s?.average3Darts);
+    const s = statsById[id] || {};
+    statCandidates.push(
+      s?.avg3,
+      s?.avg3d,
+      s?.avg3D,
+      s?.avg,
+      s?.average3Darts,
+      s?.average3D,
+      s?.x01?.avg3,
+      s?.x01?.avg3d,
+      s?.x01?.avg3D,
+      s?.summary?.avg3,
+      s?.summary?.avg3d,
+      s?.stats?.avg3,
+      s?.stats?.avg3d,
+    );
   }
   for (const raw of statCandidates) {
     const avg3d = Number(String(raw ?? "").replace(",", "."));
@@ -117,8 +131,32 @@ function profileStarData(profile: any, statsById: Record<string, any> = {}): Pro
     profile?.rating,
     profile?.score,
     profile?.stats?.profileStarring,
+    profile?.stats?.profileStars,
     profile?.stats?.stars,
+    profile?.stats?.levelStars,
     profile?.stats?.level,
+    profile?.stats?.x01?.profileStarring,
+    profile?.stats?.x01?.stars,
+    profile?.x01?.profileStarring,
+    profile?.x01?.stars,
+    profile?.privateInfo?.profileStarring,
+    profile?.privateInfo?.profileStars,
+    profile?.privateInfo?.stars,
+    profile?.privateInfo?.levelStars,
+    profile?.private_info?.profileStarring,
+    profile?.private_info?.profileStars,
+    profile?.private_info?.stars,
+    profile?.private_info?.levelStars,
+    profile?.preferences?.profileStarring,
+    profile?.preferences?.profileStars,
+    profile?.preferences?.stars,
+    profile?.profile?.profileStarring,
+    profile?.profile?.profileStars,
+    profile?.profile?.stars,
+    profile?.profile?.stats?.profileStarring,
+    profile?.profile?.stats?.stars,
+    profile?.profile?.privateInfo?.profileStarring,
+    profile?.profile?.private_info?.profileStarring,
   ];
   for (const raw of levelCandidates) {
     const level = profileLevelValue(raw);
@@ -466,7 +504,7 @@ export default function PlayerPagedSelector({
                   return (
                     <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
-                        {renderProfileStars(star, 88, 12, -5)}
+                        {renderProfileStars(star, 88, 12, 4)}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                           <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
                             <ProfileAvatar profile={p} size={76} noFrame showStars={false} />
@@ -474,7 +512,7 @@ export default function PlayerPagedSelector({
                         </div>
                         {active ? renderAvatarOverlay?.(p) : null}
                         {profileCountryFlag(p) ? (
-                          <span title={profileCountryRaw(p)} style={{ position: "absolute", right: 4, bottom: 5, zIndex: 7, minWidth: 24, height: 24, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.94)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, color: "#fff", fontSize: 11, fontWeight: 950, lineHeight: 1 }}>
+                          <span title={profileCountryRaw(p)} style={{ position: "absolute", right: -1, bottom: 2, zIndex: 7, minWidth: 24, height: 24, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.94)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, color: "#fff", fontSize: 11, fontWeight: 950, lineHeight: 1 }}>
                             {profileCountryFlag(p)}
                           </span>
                         ) : null}
@@ -504,7 +542,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
-        {renderProfileStars(star, 72, 10, -5)}
+        {renderProfileStars(star, 72, 10, 3)}
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
           <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
             <ProfileAvatar profile={p} size={60} noFrame showStars={false} />
@@ -516,8 +554,8 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
             title={profileCountryRaw(p)}
             style={{
               position: "absolute",
-              right: -5,
-              bottom: 7,
+              right: -8,
+              bottom: 3,
               zIndex: 6,
               minWidth: 22,
               height: 22,

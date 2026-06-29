@@ -673,9 +673,50 @@ function x01GetProfileCountryFlag(profile: any): string {
 }
 
 function x01ProfileStarValue(profile: any): number {
-  const raw = profile?.profileStarring ?? profile?.profileStars ?? profile?.profileStarRating ?? profile?.starring ?? profile?.stars ?? profile?.levelStars ?? profile?.botLevel ?? profile?.level ?? profile?.rating ?? profile?.stats?.profileStarring ?? profile?.stats?.stars ?? profile?.stats?.level;
-  const value = parseX01BotLevelValue(raw, 0);
-  return Number.isFinite(value) && value > 0 ? value : 0;
+  const candidates = [
+    profile?.profileStarring,
+    profile?.profileStars,
+    profile?.profileStarRating,
+    profile?.starring,
+    profile?.stars,
+    profile?.levelStars,
+    profile?.botLevel,
+    profile?.level,
+    profile?.rating,
+    profile?.score,
+    profile?.stats?.profileStarring,
+    profile?.stats?.profileStars,
+    profile?.stats?.stars,
+    profile?.stats?.levelStars,
+    profile?.stats?.level,
+    profile?.stats?.x01?.profileStarring,
+    profile?.stats?.x01?.stars,
+    profile?.x01?.profileStarring,
+    profile?.x01?.stars,
+    profile?.privateInfo?.profileStarring,
+    profile?.privateInfo?.profileStars,
+    profile?.privateInfo?.stars,
+    profile?.privateInfo?.levelStars,
+    profile?.private_info?.profileStarring,
+    profile?.private_info?.profileStars,
+    profile?.private_info?.stars,
+    profile?.private_info?.levelStars,
+    profile?.preferences?.profileStarring,
+    profile?.preferences?.profileStars,
+    profile?.preferences?.stars,
+    profile?.profile?.profileStarring,
+    profile?.profile?.profileStars,
+    profile?.profile?.stars,
+    profile?.profile?.stats?.profileStarring,
+    profile?.profile?.stats?.stars,
+    profile?.profile?.privateInfo?.profileStarring,
+    profile?.profile?.private_info?.profileStarring,
+  ];
+  for (const raw of candidates) {
+    const value = parseX01BotLevelValue(raw, 0);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return 0;
 }
 
 function x01ProfileIdentityKeysForStars(profile: any): string[] {
@@ -706,8 +747,38 @@ function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> =
   ];
   for (const id of x01ProfileIdentityKeysForStars(profile)) {
     const s = statsById[id] || {};
-    avgCandidates.push(s?.avg3, s?.avg3d, s?.avg3D, s?.avg, s?.average3Darts);
+    avgCandidates.push(
+      s?.avg3,
+      s?.avg3d,
+      s?.avg3D,
+      s?.avg,
+      s?.average3Darts,
+      s?.average3D,
+      s?.x01?.avg3,
+      s?.x01?.avg3d,
+      s?.x01?.avg3D,
+      s?.summary?.avg3,
+      s?.summary?.avg3d,
+      s?.stats?.avg3,
+      s?.stats?.avg3d,
+    );
   }
+
+  // Certaines stats X01 remontent avec une clé de profil différente selon
+  // l'écran (profil local, profil online associé, alias legacy). Si les IDs
+  // directs ne matchent pas, on tente un rapprochement souple par nom avant
+  // de conclure qu'il n'y a pas de niveau à afficher.
+  const normalizedName = x01NormText(profile?.name || profile?.displayName || profile?.nickname || profile?.playerName);
+  if (normalizedName) {
+    for (const row of Object.values(statsById || {})) {
+      const r: any = row || {};
+      const rowName = x01NormText(r?.name || r?.displayName || r?.nickname || r?.playerName || r?.profileName);
+      if (rowName && rowName === normalizedName) {
+        avgCandidates.push(r?.avg3, r?.avg3d, r?.avg3D, r?.avg, r?.average3Darts, r?.x01?.avg3, r?.x01?.avg3d);
+      }
+    }
+  }
+
   for (const raw of avgCandidates) {
     const avg3d = x01NumberFromAny(raw);
     if (avg3d > 0) return { avg3d: Math.max(0, Math.min(180, avg3d)) };
@@ -1513,7 +1584,7 @@ function SelectedParticipantsCompactBlock({
                     {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                     anchorSize={82}
                     starSize={11}
-                    gapPx={-5}
+                    gapPx={4}
                   />
                 ) : null}
                 <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 16px ${accent}66`, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center" }}>
@@ -1522,7 +1593,7 @@ function SelectedParticipantsCompactBlock({
                   </div>
                 </div>
                 {flag ? (
-                  <span title={countryRaw} style={{ position: "absolute", right: 6, bottom: 7, zIndex: 7, minWidth: 25, height: 25, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.96)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
+                  <span title={countryRaw} style={{ position: "absolute", right: -1, bottom: 4, zIndex: 7, minWidth: 25, height: 25, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.96)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
                     {flag}
                   </span>
                 ) : null}
