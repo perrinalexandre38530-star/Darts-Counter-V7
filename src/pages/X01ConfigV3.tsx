@@ -631,8 +631,40 @@ function x01GetDartSetByIdLoose(id: any): any | null {
   }
 }
 
+function x01GetProfileCountryRaw(profile: any): string {
+  const candidates = [
+    profile?.countryCode,
+    profile?.country_code,
+    profile?.country,
+    profile?.countryName,
+    profile?.nation,
+    profile?.nationality,
+    profile?.privateInfo?.countryCode,
+    profile?.privateInfo?.country_code,
+    profile?.privateInfo?.country,
+    profile?.privateInfo?.countryName,
+    profile?.private_info?.countryCode,
+    profile?.private_info?.country_code,
+    profile?.private_info?.country,
+    profile?.private_info?.countryName,
+    profile?.preferences?.countryCode,
+    profile?.preferences?.country_code,
+    profile?.preferences?.country,
+    profile?.profile?.countryCode,
+    profile?.profile?.country_code,
+    profile?.profile?.country,
+    profile?.profile?.privateInfo?.country,
+    profile?.profile?.private_info?.country,
+  ];
+  for (const value of candidates) {
+    const raw = String(value || "").trim();
+    if (raw) return raw;
+  }
+  return "";
+}
+
 function x01GetProfileCountryFlag(profile: any): string {
-  const raw = profile?.countryCode || profile?.country_code || profile?.country || profile?.nation || profile?.nationality || "";
+  const raw = x01GetProfileCountryRaw(profile);
   try {
     return getCountryFlag(String(raw || ""));
   } catch {
@@ -1431,10 +1463,13 @@ function SelectedParticipantsCompactBlock({
         {safeItems.map((item: any) => {
           const profile = item.profile || item;
           const id = String(item.id || profile?.id || "");
-          const name = String(item.name || profile?.name || profile?.displayName || "Joueur");
-          const isBot = item.kind === "bot" || profile?.isBot === true;
-          const flag = !isBot ? x01GetProfileCountryFlag(profile) : "";
-          const starData = x01ProfileStarRenderData(profile, selectedStatsById);
+          const fullProfile = (Array.isArray(allProfiles) ? allProfiles : []).find((p: any) => String(p?.id || p?.profileId || p?.localProfileId || "") === id) || null;
+          const mergedProfile = fullProfile ? { ...fullProfile, ...profile, privateInfo: { ...(fullProfile as any)?.privateInfo, ...(profile as any)?.privateInfo }, private_info: { ...(fullProfile as any)?.private_info, ...(profile as any)?.private_info }, preferences: { ...(fullProfile as any)?.preferences, ...(profile as any)?.preferences } } : profile;
+          const name = String(item.name || mergedProfile?.name || mergedProfile?.displayName || "Joueur");
+          const isBot = item.kind === "bot" || mergedProfile?.isBot === true;
+          const countryRaw = !isBot ? x01GetProfileCountryRaw(mergedProfile) : "";
+          const flag = !isBot ? x01GetProfileCountryFlag(mergedProfile) : "";
+          const starData = x01ProfileStarRenderData(mergedProfile, selectedStatsById);
           const dartSetId = playerDartSets?.[id] ?? null;
           return (
             <div
@@ -1483,11 +1518,11 @@ function SelectedParticipantsCompactBlock({
                 ) : null}
                 <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 16px ${accent}66`, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center" }}>
                   <div style={{ width: 70, height: 70, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
-                    <ProfileAvatar profile={profile} size={70} noFrame showStars={false} />
+                    <ProfileAvatar profile={mergedProfile} size={70} noFrame showStars={false} />
                   </div>
                 </div>
                 {flag ? (
-                  <span title={String(profile?.countryCode || profile?.country || "")} style={{ position: "absolute", right: 3, bottom: 15, zIndex: 6, minWidth: 25, height: 25, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.96)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
+                  <span title={countryRaw} style={{ position: "absolute", right: 6, bottom: 7, zIndex: 7, minWidth: 25, height: 25, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.96)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
                     {flag}
                   </span>
                 ) : null}

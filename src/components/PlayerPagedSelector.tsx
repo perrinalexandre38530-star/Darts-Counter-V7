@@ -41,8 +41,40 @@ function profileIdentityKeys(profile: any): string[] {
   return Array.from(new Set(keys));
 }
 
+function profileCountryRaw(profile: any): string {
+  const candidates = [
+    profile?.countryCode,
+    profile?.country_code,
+    profile?.country,
+    profile?.countryName,
+    profile?.nation,
+    profile?.nationality,
+    profile?.privateInfo?.countryCode,
+    profile?.privateInfo?.country_code,
+    profile?.privateInfo?.country,
+    profile?.privateInfo?.countryName,
+    profile?.private_info?.countryCode,
+    profile?.private_info?.country_code,
+    profile?.private_info?.country,
+    profile?.private_info?.countryName,
+    profile?.preferences?.countryCode,
+    profile?.preferences?.country_code,
+    profile?.preferences?.country,
+    profile?.profile?.countryCode,
+    profile?.profile?.country_code,
+    profile?.profile?.country,
+    profile?.profile?.privateInfo?.country,
+    profile?.profile?.private_info?.country,
+  ];
+  for (const value of candidates) {
+    const raw = String(value || "").trim();
+    if (raw) return raw;
+  }
+  return "";
+}
+
 function profileCountryFlag(profile: any): string {
-  const raw = profile?.countryCode || profile?.country_code || profile?.country || profile?.nation || profile?.nationality || "";
+  const raw = profileCountryRaw(profile);
   try {
     return getCountryFlag(String(raw || ""));
   } catch {
@@ -441,6 +473,11 @@ export default function PlayerPagedSelector({
                           </div>
                         </div>
                         {active ? renderAvatarOverlay?.(p) : null}
+                        {profileCountryFlag(p) ? (
+                          <span title={profileCountryRaw(p)} style={{ position: "absolute", right: 4, bottom: 5, zIndex: 7, minWidth: 24, height: 24, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.94)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, color: "#fff", fontSize: 11, fontWeight: 950, lineHeight: 1 }}>
+                            {profileCountryFlag(p)}
+                          </span>
+                        ) : null}
                       </div>
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", display: "flex", justifyContent: "center" }}>{renderActions?.(p)}</div>
@@ -476,7 +513,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
         {renderAvatarOverlay?.(p)}
         {flag ? (
           <span
-            title={String(p?.countryCode || p?.country || "")}
+            title={profileCountryRaw(p)}
             style={{
               position: "absolute",
               right: -5,
