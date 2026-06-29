@@ -39,6 +39,7 @@ import { useCurrentProfile } from "../contexts/StoreContext";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { getCountryFlag } from "../lib/countryNames";
+import { StatsBridge } from "../lib/statsBridge";
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
 import botTeamChallengerLogo from "../assets/ui/competition_bot_team_challenger.webp";
@@ -643,6 +644,44 @@ function x01ProfileStarValue(profile: any): number {
   const raw = profile?.profileStarring ?? profile?.profileStars ?? profile?.profileStarRating ?? profile?.starring ?? profile?.stars ?? profile?.levelStars ?? profile?.botLevel ?? profile?.level ?? profile?.rating ?? profile?.stats?.profileStarring ?? profile?.stats?.stars ?? profile?.stats?.level;
   const value = parseX01BotLevelValue(raw, 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function x01ProfileIdentityKeysForStars(profile: any): string[] {
+  const keys = [profile?.id, profile?.profileId, profile?.playerId, profile?.localProfileId, profile?.uid, profile?.uuid]
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(keys));
+}
+
+function x01NumberFromAny(value: any): number {
+  const n = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> = {}): { avg3d?: number; level?: number } | null {
+  const avgCandidates: any[] = [
+    profile?.avg3d,
+    profile?.avg3D,
+    profile?.avg,
+    profile?.average3Darts,
+    profile?.stats?.avg3d,
+    profile?.stats?.avg3D,
+    profile?.stats?.average3Darts,
+    profile?.stats?.x01?.avg3d,
+    profile?.stats?.x01?.avg3D,
+    profile?.x01?.avg3d,
+    profile?.x01?.avg3D,
+  ];
+  for (const id of x01ProfileIdentityKeysForStars(profile)) {
+    const s = statsById[id] || {};
+    avgCandidates.push(s?.avg3, s?.avg3d, s?.avg3D, s?.avg, s?.average3Darts);
+  }
+  for (const raw of avgCandidates) {
+    const avg3d = x01NumberFromAny(raw);
+    if (avg3d > 0) return { avg3d: Math.max(0, Math.min(180, avg3d)) };
+  }
+  const level = x01ProfileStarValue(profile);
+  return level > 0 ? { level } : null;
 }
 
 function x01NormId(value: any): string {
@@ -1327,6 +1366,41 @@ function SelectedParticipantsCompactBlock({
   allProfiles?: any[];
 }) {
   const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  const [selectedStatsById, setSelectedStatsById] = React.useState<Record<string, any>>({});
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const profilesToLoad = safeItems
+      .map((item: any) => item?.profile || item)
+      .filter((profile: any) => profile && profile.isBot !== true);
+    const ids = Array.from(new Set(profilesToLoad.flatMap((profile: any) => x01ProfileIdentityKeysForStars(profile))));
+    if (!ids.length) {
+      setSelectedStatsById({});
+      return () => { cancelled = true; };
+    }
+    Promise.all(ids.map(async (id) => {
+      try {
+        return [id, await StatsBridge.getBasicProfileStatsAsync(id)] as const;
+      } catch {
+        try {
+          return [id, StatsBridge.getBasicProfileStats(id)] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      }
+    })).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, any> = {};
+      for (const [id, stats] of entries) {
+        if (stats) next[id] = stats;
+      }
+      setSelectedStatsById(next);
+    }).catch(() => {
+      if (!cancelled) setSelectedStatsById({});
+    });
+    return () => { cancelled = true; };
+  }, [safeItems.map((item: any) => String(item?.id || item?.profile?.id || "")).join("|")]);
+
   if (!safeItems.length) return null;
   return (
     <div
@@ -1360,7 +1434,7 @@ function SelectedParticipantsCompactBlock({
           const name = String(item.name || profile?.name || profile?.displayName || "Joueur");
           const isBot = item.kind === "bot" || profile?.isBot === true;
           const flag = !isBot ? x01GetProfileCountryFlag(profile) : "";
-          const starValue = !isBot ? x01ProfileStarValue(profile) : x01ProfileStarValue(profile);
+          const starData = x01ProfileStarRenderData(profile, selectedStatsById);
           const dartSetId = playerDartSets?.[id] ?? null;
           return (
             <div
@@ -1398,15 +1472,22 @@ function SelectedParticipantsCompactBlock({
               >
                 ×
               </button>
-              <div style={{ position: "relative", width: 92, height: 92, display: "grid", placeItems: "center", overflow: "visible" }}>
-                {starValue > 0 ? <ProfileStarRing botLevel={starValue} anchorSize={82} starSize={11} gapPx={-5} /> : null}
+              <div style={{ position: "relative", width: 96, height: 102, display: "grid", placeItems: "center", overflow: "visible" }}>
+                {starData ? (
+                  <ProfileStarRing
+                    {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
+                    anchorSize={82}
+                    starSize={11}
+                    gapPx={-5}
+                  />
+                ) : null}
                 <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 16px ${accent}66`, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center" }}>
                   <div style={{ width: 70, height: 70, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
                     <ProfileAvatar profile={profile} size={70} noFrame showStars={false} />
                   </div>
                 </div>
                 {flag ? (
-                  <span title={String(profile?.countryCode || profile?.country || "")} style={{ position: "absolute", left: 0, top: 6, zIndex: 5, width: 25, height: 25, borderRadius: "50%", display: "grid", placeItems: "center", background: "rgba(3,8,18,.92)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 15 }}>
+                  <span title={String(profile?.countryCode || profile?.country || "")} style={{ position: "absolute", right: 3, bottom: 15, zIndex: 6, minWidth: 25, height: 25, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.96)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
                     {flag}
                   </span>
                 ) : null}

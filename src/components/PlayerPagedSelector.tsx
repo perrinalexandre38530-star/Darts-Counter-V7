@@ -3,6 +3,7 @@ import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
 import { StatsBridge } from "../lib/statsBridge";
+import { getCountryFlag } from "../lib/countryNames";
 
 type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
 
@@ -38,6 +39,15 @@ function profileIdentityKeys(profile: any): string[] {
     .map((v) => String(v ?? "").trim())
     .filter(Boolean);
   return Array.from(new Set(keys));
+}
+
+function profileCountryFlag(profile: any): string {
+  const raw = profile?.countryCode || profile?.country_code || profile?.country || profile?.nation || profile?.nationality || "";
+  try {
+    return getCountryFlag(String(raw || ""));
+  } catch {
+    return "";
+  }
 }
 
 function profileStarData(profile: any, statsById: Record<string, any> = {}): ProfileStarData | null {
@@ -453,6 +463,7 @@ export default function PlayerPagedSelector({
 
 const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfileStarring, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
   const star = showProfileStarring ? profileStarData(p, statsById) : null;
+  const flag = profileCountryFlag(p);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
@@ -463,6 +474,32 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
           </div>
         </div>
         {renderAvatarOverlay?.(p)}
+        {flag ? (
+          <span
+            title={String(p?.countryCode || p?.country || "")}
+            style={{
+              position: "absolute",
+              right: -5,
+              bottom: 7,
+              zIndex: 6,
+              minWidth: 22,
+              height: 22,
+              padding: "0 4px",
+              borderRadius: 999,
+              display: "grid",
+              placeItems: "center",
+              background: "rgba(3,8,18,.94)",
+              border: `1px solid ${accent}99`,
+              boxShadow: `0 0 10px ${accent}55`,
+              color: "#fff",
+              fontSize: 11,
+              fontWeight: 950,
+              lineHeight: 1,
+            }}
+          >
+            {flag}
+          </span>
+        ) : null}
         <button type="button" onClick={onRemove} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ color: "#fff", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
