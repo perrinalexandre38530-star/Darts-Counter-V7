@@ -3,6 +3,7 @@ import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
 import { StatsBridge } from "../lib/statsBridge";
+import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import { getCountryFlag } from "../lib/countryNames";
 
 type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
@@ -35,10 +36,7 @@ function profileLevelValue(raw: any): number {
 }
 
 function profileIdentityKeys(profile: any): string[] {
-  const keys = [profile?.id, profile?.profileId, profile?.playerId, profile?.localProfileId, profile?.uid, profile?.uuid]
-    .map((v) => String(v ?? "").trim())
-    .filter(Boolean);
-  return Array.from(new Set(keys));
+  return sharedX01ProfileIdentityKeys(profile);
 }
 
 function profileStatsQuality(stats: any): number {
@@ -82,11 +80,7 @@ function readQuickStatsFromLocalStorage(profile: any): any | null {
 }
 
 async function loadBestProfileStatsForStars(id: string, profile?: any) {
-  let asyncStats: any = null;
-  let syncStats: any = null;
-  try { syncStats = StatsBridge.getBasicProfileStats(id); } catch {}
-  try { asyncStats = await StatsBridge.getBasicProfileStatsAsync(id); } catch {}
-  return pickBestProfileStats(syncStats, asyncStats, profile ? readQuickStatsFromLocalStorage(profile) : null);
+  return loadX01ProfileStatsForStarring(id, profile);
 }
 
 function profileCountryRaw(profile: any): string {
@@ -131,6 +125,8 @@ function profileCountryFlag(profile: any): string {
 }
 
 function profileStarData(profile: any, statsById: Record<string, any> = {}): ProfileStarData | null {
+  const sharedStar = getX01ProfileStarData(profile, statsById);
+  if (sharedStar) return sharedStar as ProfileStarData;
   const statCandidates: any[] = [
     profile?.avg3d,
     profile?.avg3D,
@@ -582,7 +578,7 @@ export default function PlayerPagedSelector({
                   return (
                     <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
-                        {renderProfileStars(star, 88, 12, 4)}
+                        {renderProfileStars(star, 88, 12, 2)}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                           <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
                             <ProfileAvatar profile={p} size={76} noFrame showStars={false} />
@@ -620,7 +616,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
-        {renderProfileStars(star, 72, 10, 3)}
+        {renderProfileStars(star, 72, 10, 1)}
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
           <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
             <ProfileAvatar profile={p} size={60} noFrame showStars={false} />

@@ -40,6 +40,7 @@ import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { getCountryFlag } from "../lib/countryNames";
 import { StatsBridge } from "../lib/statsBridge";
+import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
 import botTeamProLogo from "../assets/ui/competition_bot_team_pro.webp";
 import botTeamChallengerLogo from "../assets/ui/competition_bot_team_challenger.webp";
@@ -730,10 +731,7 @@ function x01ProfileStarValue(profile: any): number {
 }
 
 function x01ProfileIdentityKeysForStars(profile: any): string[] {
-  const keys = [profile?.id, profile?.profileId, profile?.playerId, profile?.localProfileId, profile?.uid, profile?.uuid]
-    .map((v) => String(v ?? "").trim())
-    .filter(Boolean);
-  return Array.from(new Set(keys));
+  return sharedX01ProfileIdentityKeys(profile);
 }
 
 function x01ProfileStatsQuality(stats: any): number {
@@ -776,11 +774,7 @@ function x01ReadQuickStatsFromLocalStorage(profile: any): any | null {
 }
 
 async function x01LoadBestProfileStatsForStars(id: string, profile?: any) {
-  let syncStats: any = null;
-  let asyncStats: any = null;
-  try { syncStats = StatsBridge.getBasicProfileStats(id); } catch {}
-  try { asyncStats = await StatsBridge.getBasicProfileStatsAsync(id); } catch {}
-  return x01PickBestProfileStats(syncStats, asyncStats, profile ? x01ReadQuickStatsFromLocalStorage(profile) : null);
+  return loadX01ProfileStatsForStarring(id, profile);
 }
 
 function x01NumberFromAny(value: any): number {
@@ -789,6 +783,9 @@ function x01NumberFromAny(value: any): number {
 }
 
 function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> = {}): { avg3d?: number; level?: number } | null {
+  const sharedStar = getX01ProfileStarData(profile, statsById);
+  if (sharedStar?.kind === "avg3d") return { avg3d: sharedStar.value };
+  if (sharedStar?.kind === "level") return { level: sharedStar.value };
   const avgCandidates: any[] = [
     profile?.avg3d,
     profile?.avg3D,
@@ -1184,6 +1181,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   };
 
   if (!hasProfile) return null;
+  const compactEmpty = compact && !selectedSet;
 
   return (
     <>
@@ -1223,7 +1221,9 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           minWidth: compact ? 30 : 98,
           maxWidth: compact ? 30 : 108,
           overflow: "hidden",
-          cursor: "pointer",
+          cursor: compactEmpty ? "default" : "pointer",
+          pointerEvents: compactEmpty ? "none" : undefined,
+          opacity: compactEmpty ? 0 : 1,
           boxShadow: selectedSet ? `0 0 14px ${primary}55` : "0 0 10px rgba(0,0,0,.55)",
         }}
       >
@@ -1248,7 +1248,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
               <span style={{ fontSize: 13, lineHeight: 1 }}>🎯</span>
             )}
           </span>
-        ) : (
+        ) : compact ? null : (
           <span style={{ fontSize: 13, lineHeight: 1 }}>+</span>
         )}
         {compact ? null : <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedSet ? "SET" : chooseLabel}</span>}
@@ -1662,7 +1662,7 @@ function SelectedParticipantsCompactBlock({
                     {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                     anchorSize={82}
                     starSize={11}
-                    gapPx={4}
+                    gapPx={2}
                   />
                 ) : null}
                 <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 16px ${accent}66`, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center" }}>
@@ -4590,7 +4590,7 @@ function TeamsSection({
                                   {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                                   anchorSize={88}
                                   starSize={12}
-                                  gapPx={4}
+                                  gapPx={2}
                                 />
                               ) : null}
                               <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${checked ? primary : `${primary}88`}`, boxShadow: `0 0 16px ${primary}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
