@@ -1249,51 +1249,74 @@ function SelectedParticipantsCompactBlock({
       <div style={{ color: accent, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1.1, marginBottom: 10 }}>
         Profils sélectionnés
       </div>
-      <div className="dc-scroll-thin" style={{ display: "flex", gap: 10, overflowX: "auto", overflowY: "hidden", paddingBottom: 4, maxWidth: "100%" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))",
+          gap: 14,
+          alignItems: "start",
+          maxWidth: "100%",
+        }}
+      >
         {safeItems.map((item: any) => {
           const profile = item.profile || item;
           const id = String(item.id || profile?.id || "");
           const name = String(item.name || profile?.name || profile?.displayName || "Joueur");
-          const kindLabel = item.kind === "bot" ? "BOT IA" : "Joueur";
           return (
             <div
               key={`${item.kind || "player"}_${id}`}
               style={{
-                flex: "0 0 min(220px, 82vw)",
+                position: "relative",
                 minWidth: 0,
-                borderRadius: 18,
-                border: `1px solid ${accent}55`,
-                background: "rgba(5,10,22,.58)",
-                padding: "10px 12px",
-                display: "grid",
-                gridTemplateColumns: "56px minmax(0, 1fr) 28px",
-                gap: 10,
+                display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
+                gap: 7,
+                padding: "4px 2px 2px",
               }}
             >
-              <ProfileAvatar profile={profile} size={54} showStars={item.kind !== "bot"} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: "#fff", fontSize: 15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
-                <div style={{ color: "#aab0cc", fontSize: 11, fontWeight: 800, marginTop: 2 }}>{kindLabel}</div>
-              </div>
               <button
                 type="button"
                 onClick={() => onRemove(id)}
                 title="Retirer"
                 style={{
-                  width: 28,
-                  height: 28,
+                  position: "absolute",
+                  top: -2,
+                  right: "calc(50% - 45px)",
+                  zIndex: 2,
+                  width: 26,
+                  height: 26,
                   borderRadius: "50%",
-                  border: `1px solid ${accent}88`,
-                  background: "rgba(0,0,0,.42)",
+                  border: `2px solid ${accent}`,
+                  background: "rgba(2,8,18,.96)",
                   color: accent,
                   fontWeight: 1000,
                   cursor: "pointer",
                   lineHeight: 1,
+                  boxShadow: `0 0 12px ${accent}55`,
                 }}
               >
                 ×
               </button>
+              <ProfileAvatar profile={profile} size={78} showStars={item.kind !== "bot"} />
+              <div
+                style={{
+                  width: "100%",
+                  minWidth: 0,
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 950,
+                  textAlign: "center",
+                  lineHeight: 1.15,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                {name}
+              </div>
             </div>
           );
         })}
