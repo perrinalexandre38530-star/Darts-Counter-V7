@@ -2,7 +2,6 @@
 import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
-import SelectionStickyBanner from "./SelectionStickyBanner";
 import { StatsBridge } from "../lib/statsBridge";
 
 type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
@@ -375,22 +374,8 @@ export default function PlayerPagedSelector({
     }
   }, [onToggle, onAfterToggle, closeOnSelect]);
 
-  const stickyItems = React.useMemo(() => selected.map((p: any) => ({
-    id: String(p?.id || p?.profileId || p?.localProfileId || p?.playerId || ""),
-    name: String(p?.name || p?.displayName || p?.nickname || "Joueur"),
-    subtitle: "Profil sélectionné",
-    profile: p,
-    avatarDataUrl: p?.avatarDataUrl || p?.avatar_data_url || p?.avatar || p?.avatarUrl || null,
-  })), [selected]);
-
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <SelectionStickyBanner
-        title="Joueurs sélectionnés"
-        items={stickyItems}
-        accent={accent}
-        emptyLabel="Aucun joueur sélectionné"
-      />
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={() => setOpen(true)} style={pill(accent, true)}>Choisir joueurs {selected.length ? `(${selected.length})` : ""}</button>
         <button type="button" onClick={() => setListOpen((v) => !v)} style={pill(accent, listOpen)}>Liste profils</button>
