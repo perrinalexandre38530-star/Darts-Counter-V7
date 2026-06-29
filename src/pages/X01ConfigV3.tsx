@@ -1220,6 +1220,88 @@ const BOT_TEAM_OPTIONS: any[] = [
   },
 ];
 
+
+function SelectedParticipantsCompactBlock({
+  items,
+  accent,
+  onRemove,
+}: {
+  items: any[];
+  accent: string;
+  onRemove: (id: string) => void;
+}) {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!safeItems.length) return null;
+  return (
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        borderRadius: 18,
+        border: `1px solid ${accent}66`,
+        background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.18))",
+        padding: 12,
+        marginBottom: 14,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ color: accent, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1.1, marginBottom: 10 }}>
+        Profils sélectionnés
+      </div>
+      <div className="dc-scroll-thin" style={{ display: "flex", gap: 10, overflowX: "auto", overflowY: "hidden", paddingBottom: 4, maxWidth: "100%" }}>
+        {safeItems.map((item: any) => {
+          const profile = item.profile || item;
+          const id = String(item.id || profile?.id || "");
+          const name = String(item.name || profile?.name || profile?.displayName || "Joueur");
+          const kindLabel = item.kind === "bot" ? "BOT IA" : "Joueur";
+          return (
+            <div
+              key={`${item.kind || "player"}_${id}`}
+              style={{
+                flex: "0 0 min(220px, 82vw)",
+                minWidth: 0,
+                borderRadius: 18,
+                border: `1px solid ${accent}55`,
+                background: "rgba(5,10,22,.58)",
+                padding: "10px 12px",
+                display: "grid",
+                gridTemplateColumns: "56px minmax(0, 1fr) 28px",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              <ProfileAvatar profile={profile} size={54} showStars={item.kind !== "bot"} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: "#fff", fontSize: 15, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+                <div style={{ color: "#aab0cc", fontSize: 11, fontWeight: 800, marginTop: 2 }}>{kindLabel}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(id)}
+                title="Retirer"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  border: `1px solid ${accent}88`,
+                  background: "rgba(0,0,0,.42)",
+                  color: accent,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
@@ -1501,6 +1583,35 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     if (playersTouchedRef.current) return;
     setSelectedIds(buildLastOrDefaultSelectedIds(preferredHumanProfiles, activeProfileId));
   }, [preferredHumanProfiles, activeProfileId]);
+
+  const selectedParticipantProfiles = React.useMemo(() => {
+    const humansById = new Map((humanProfiles || []).map((p: any) => [String(p?.id), p]));
+    const botsById = new Map((botProfiles || []).map((b: any) => [String(b?.id), b]));
+    return (selectedIds || []).map((rawId: any) => {
+      const id = String(rawId || "");
+      const human = humansById.get(id);
+      if (human) return { id, kind: "player", name: human?.name || human?.displayName || "Joueur", profile: human };
+      const bot = botsById.get(id);
+      if (bot) {
+        return {
+          id,
+          kind: "bot",
+          name: bot?.name || "BOT IA",
+          profile: {
+            ...bot,
+            id,
+            name: bot?.name || "BOT IA",
+            displayName: bot?.name || "BOT IA",
+            avatarDataUrl: bot?.avatarDataUrl ?? bot?.avatarUrl ?? bot?.avatar ?? null,
+            avatarUrl: bot?.avatarUrl ?? bot?.avatar ?? bot?.avatarDataUrl ?? null,
+            avatar: bot?.avatar ?? bot?.avatarUrl ?? bot?.avatarDataUrl ?? null,
+            isBot: true,
+          },
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  }, [selectedIds, humanProfiles, botProfiles]);
 
   const prefProfile = React.useMemo(() => {
     const forcedActiveId =
@@ -2232,15 +2343,6 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 };
               })}
             />
-          ) : participantMode === "players" && selectedIds.length > 0 ? (
-            <SelectionStickyBanner
-              title="Joueurs sélectionnés"
-              accent={primary}
-              items={selectedIds.map((id: any) => {
-                const p = humanProfiles.find((profile: any) => String(profile?.id) === String(id));
-                return { id: String(id), name: p?.name || p?.displayName || "Joueur", profile: p };
-              })}
-            />
           ) : null}
 
           {participantMode === "players" ? (
@@ -2253,6 +2355,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               </p>
             ) : (
               <>
+                <SelectedParticipantsCompactBlock
+                  items={selectedParticipantProfiles}
+                  accent={primary}
+                  onRemove={(id: string) => togglePlayer(id)}
+                />
+
                 <PlayerPagedSelector
                   profiles={preferredHumanProfiles}
                   selectedIds={selectedIds}
@@ -2269,6 +2377,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                       allProfiles={humanProfiles}
                     />
                   )}
+                  showSelectedSummary={false}
                 />
 
                 <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
@@ -2392,6 +2501,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               accent={primary}
               label="BOTS IA"
               showCheckbox={false}
+              showSelectedSummary={false}
             />
           ) : null}
         </section>

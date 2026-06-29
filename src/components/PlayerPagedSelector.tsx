@@ -258,6 +258,7 @@ export default function PlayerPagedSelector({
   closeOnSelect = false,
   onAfterToggle,
   showProfileStarring,
+  showSelectedSummary = true,
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
@@ -396,7 +397,7 @@ export default function PlayerPagedSelector({
         </div>
       ) : null}
 
-      {selected.length ? (
+      {showSelectedSummary && selected.length ? (
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>

@@ -97,6 +97,7 @@ export default function BotPagedSelector({
   showCheckbox = true,
   label = "BOTS IA",
   modalTitle = "Choisir des BOTS IA",
+  showSelectedSummary = true,
 }: {
   bots: BotPagedSelectorItem[];
   selectedIds: string[];
@@ -106,6 +107,7 @@ export default function BotPagedSelector({
   showCheckbox?: boolean;
   label?: string;
   modalTitle?: string;
+  showSelectedSummary?: boolean;
 }) {
   const [enabled, setEnabled] = React.useState(true);
   const [open, setOpen] = React.useState(false);
@@ -167,7 +169,7 @@ export default function BotPagedSelector({
         ) : null}
       </div>
 
-      {enabled && selectedCount ? (
+      {enabled && showSelectedSummary && selectedCount ? (
         <div style={{ marginTop: 10, borderRadius: 16, border: `1px solid ${accent}33`, background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>BOTS sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))", gap: 10 }}>
