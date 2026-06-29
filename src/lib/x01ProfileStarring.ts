@@ -299,18 +299,37 @@ export function x01ProfileLevelValue(raw: any): number {
 
 export function getX01ProfileStarData(profile: any, statsById: Record<string, any> = {}): X01ProfileStarData | null {
   const avgKeys = new Set([
-    "avg3", "avg3d", "avg3D", "avg", "avg3Overall", "average3Darts", "average3D", "moy3", "moy3d", "moyenne3",
+    "avg3", "avg3d", "avg3D", "avg3Overall", "average3Darts", "average3D", "moy3d", "moyenne3",
   ]);
   const levelKeys = new Set([
-    "profileStarring", "profileStars", "profileStarRating", "starring", "stars", "levelStars", "botLevel", "rating", "x01ProfileStarring", "dartsProfileStarring",
+    "profileStarring", "profileStars", "profileStarRating", "starring", "stars", "levelStars", "botLevel", "x01ProfileStarring", "dartsProfileStarring",
   ]);
 
+  // Important : ne pas lire les champs génériques `avg` / `stats.avg*` directement
+  // sur le profil local. Certains profils y stockent autre chose ou une valeur transitoire
+  // et cela provoquait l'affichage d'une demi-étoile avant la vraie note de la page Profils.
+  const quickStatsForStars = readQuickStatsFromLocalStorage(profile);
+  const linkedStatsForStars = readLinkedStatsOverride(profile);
   const avgCandidates: any[] = [
-    ...collectNumbersByKeys(profile, avgKeys, 4),
-    readQuickStatsFromLocalStorage(profile)?.avg3,
-    readQuickStatsFromLocalStorage(profile)?.avg3d,
-    readLinkedStatsOverride(profile)?.avg3,
-    readLinkedStatsOverride(profile)?.avg3d,
+    profile?.stats?.x01?.avg3,
+    profile?.stats?.x01?.avg3d,
+    profile?.stats?.x01?.avg3D,
+    profile?.x01?.avg3,
+    profile?.x01?.avg3d,
+    profile?.x01?.avg3D,
+    profile?.x01Stats?.avg3,
+    profile?.x01Stats?.avg3d,
+    profile?.x01Stats?.avg3D,
+    profile?.darts?.avg3,
+    profile?.darts?.avg3d,
+    profile?.darts?.avg3D,
+    profile?.stats?.darts?.avg3,
+    profile?.stats?.darts?.avg3d,
+    profile?.stats?.darts?.avg3D,
+    quickStatsForStars?.avg3,
+    quickStatsForStars?.avg3d,
+    linkedStatsForStars?.avg3,
+    linkedStatsForStars?.avg3d,
   ];
 
   for (const id of x01ProfileIdentityKeys(profile)) {
@@ -327,9 +346,13 @@ export function getX01ProfileStarData(profile: any, statsById: Record<string, an
     }
   }
 
-  for (const raw of avgCandidates) {
-    const avg3d = numberFromAny(raw);
-    if (avg3d > 0) return { kind: "avg3d", value: Math.max(0, Math.min(180, avg3d)) };
+  const avgValues = avgCandidates
+    .map((raw) => numberFromAny(raw))
+    .filter((avg3d) => Number.isFinite(avg3d) && avg3d > 0 && avg3d <= 180);
+  if (avgValues.length) {
+    // On garde la valeur la plus forte disponible pour éviter qu'un vieux mini-cache
+    // plus faible masque la vraie moyenne X01 recalculée comme sur la page Profils.
+    return { kind: "avg3d", value: Math.max(...avgValues) };
   }
 
   const levelCandidates: any[] = collectNumbersByKeys(profile, levelKeys, 5);

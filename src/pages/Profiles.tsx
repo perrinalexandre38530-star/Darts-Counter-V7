@@ -2361,15 +2361,23 @@ React.useEffect(() => {
     }
   }, [active, lang, themeId, setLang, setThemeId]);
 
+  // Source unique pour la carte du profil actif : le StarRing et les mini-stats
+  // doivent lire la même agrégation que la page Profils / StatsHub.
+  // Avant, la couronne utilisait getBasicProfileStats() en lecture sync
+  // alors que le bloc AVG3D utilisait useBasicStats() puis l'agrégat async :
+  // résultat possible = mini-stats à 38.8 mais StarRing bloqué sur une vieille valeur
+  // de cache (~5/6), donc une seule demi-étoile.
+  const activeMiniStats = useBasicStats(
+    active?.id ? String(active.id) : null,
+    !!active?.id,
+    active?.name
+  );
+
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
-    try {
-      const bs: any = getBasicProfileStats(active.id) || {};
-      return Number.isFinite(bs?.avg3) ? Number(bs.avg3) : 0;
-    } catch {
-      return 0;
-    }
-  }, [active?.id]);
+    const avg = Number(activeMiniStats?.avg3 ?? 0);
+    return Number.isFinite(avg) ? Math.max(0, avg) : 0;
+  }, [active?.id, activeMiniStats?.avg3]);
 
   const openAvatarCreator = React.useCallback(() => {
     go?.("avatar");
@@ -2761,6 +2769,7 @@ React.useEffect(() => {
       selfStatus={onlineStatusForUi}
       active={active}
       activeAvg3D={activeAvg3D}
+      activeStats={activeMiniStats}
       onToggleAway={() => {
         if (auth.status !== "signed_in") return;
         update((s) => ({
@@ -3665,6 +3674,7 @@ function Card({
 function ActiveProfileBlock({
   active,
   activeAvg3D,
+  activeStats,
   selfStatus,
   onToggleAway,
   onQuit, // gardé pour compat mais pas utilisé ici
@@ -3676,6 +3686,7 @@ function ActiveProfileBlock({
 }: {
   active: Profile;
   activeAvg3D: number | null;
+  activeStats?: ProfileMiniStats | null;
   selfStatus: "online" | "away" | "offline";
   onToggleAway: () => void;
   onQuit: () => void;
@@ -4028,7 +4039,7 @@ function ActiveProfileBlock({
 
         {active?.id && (
           <div style={{ marginTop: 8 }}>
-            <GoldMiniStats profileId={active.id} profileName={active.name} />
+            <GoldMiniStats profileId={active.id} profileName={active.name} seed={activeStats} />
           </div>
         )}
 
@@ -6955,8 +6966,17 @@ function EditInline({
 
 /* ------ Gold mini-stats (lecture SYNC cache) ------ */
 
-function GoldMiniStats({ profileId, profileName }: { profileId: string; profileName?: string }) {
-  const bs = useBasicStats(profileId, true, profileName);
+function GoldMiniStats({
+  profileId,
+  profileName,
+  seed,
+}: {
+  profileId: string;
+  profileName?: string;
+  seed?: ProfileMiniStats | null;
+}) {
+  const hookStats = useBasicStats(profileId, !seed, profileName);
+  const bs = seed || hookStats;
   const { theme } = useTheme();
 
   const { sport } = useSport();
@@ -7186,7 +7206,11 @@ const MemoActiveProfileBlock = React.memo(ActiveProfileBlock, (prev, next) => {
     firstStringChunk((prev.active as any)?.avatarUrl, 80) === firstStringChunk((next.active as any)?.avatarUrl, 80) &&
     firstStringChunk((prev.active as any)?.avatarDataUrl, 80) === firstStringChunk((next.active as any)?.avatarDataUrl, 80) &&
     prev.selfStatus === next.selfStatus &&
-    prev.activeAvg3D === next.activeAvg3D
+    prev.activeAvg3D === next.activeAvg3D &&
+    Number((prev.activeStats as any)?.bestVisit ?? 0) === Number((next.activeStats as any)?.bestVisit ?? 0) &&
+    Number((prev.activeStats as any)?.bestCheckout ?? 0) === Number((next.activeStats as any)?.bestCheckout ?? 0) &&
+    Number((prev.activeStats as any)?.winRate ?? 0) === Number((next.activeStats as any)?.winRate ?? 0) &&
+    Number((prev.activeStats as any)?.games ?? 0) === Number((next.activeStats as any)?.games ?? 0)
   );
 });
 

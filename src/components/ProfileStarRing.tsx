@@ -95,30 +95,38 @@ function Star({
   const path =
     "M50 5 L61 36 L94 38 L68 57 L77 88 L50 71 L23 88 L32 57 L6 38 L39 36 Z";
 
+  // Chaque étoile doit avoir ses propres IDs SVG.
+  // Les IDs fixes (#psrGlow / #halfClip) entraient en collision quand plusieurs
+  // ProfileStarRing étaient affichés sur la même page, ce qui pouvait rendre les
+  // demi-étoiles/filters instables selon l'ordre de rendu du DOM.
+  const safeId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const glowId = `psrGlow-${safeId}`;
+  const halfClipId = `halfClip-${safeId}`;
+
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 100 100"
       className={cls}
-      style={{ filter: "url(#psrGlow)" }}
+      style={{ filter: `url(#${glowId})` }}
     >
       <defs>
-        <filter id="psrGlow">
+        <filter id={glowId}>
           <feGaussianBlur in="SourceGraphic" stdDeviation="1.4" result="b" />
           <feMerge>
             <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        <clipPath id="halfClip">
+        <clipPath id={halfClipId}>
           <rect x="0" y="0" width="50" height="100" />
         </clipPath>
       </defs>
       {half ? (
         <>
           <path d={path} fill="rgba(255,255,255,0.15)" />
-          <g clipPath="url(#halfClip)">
+          <g clipPath={`url(#${halfClipId})`}>
             <path d={path} fill={color} />
           </g>
         </>

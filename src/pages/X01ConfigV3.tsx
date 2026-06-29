@@ -682,14 +682,10 @@ function x01ProfileStarValue(profile: any): number {
     profile?.stars,
     profile?.levelStars,
     profile?.botLevel,
-    profile?.level,
-    profile?.rating,
-    profile?.score,
     profile?.stats?.profileStarring,
     profile?.stats?.profileStars,
     profile?.stats?.stars,
     profile?.stats?.levelStars,
-    profile?.stats?.level,
     profile?.stats?.x01?.profileStarring,
     profile?.stats?.x01?.stars,
     profile?.x01?.profileStarring,
@@ -787,13 +783,6 @@ function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> =
   if (sharedStar?.kind === "avg3d") return { avg3d: sharedStar.value };
   if (sharedStar?.kind === "level") return { level: sharedStar.value };
   const avgCandidates: any[] = [
-    profile?.avg3d,
-    profile?.avg3D,
-    profile?.avg,
-    profile?.average3Darts,
-    profile?.stats?.avg3d,
-    profile?.stats?.avg3D,
-    profile?.stats?.average3Darts,
     profile?.stats?.x01?.avg3d,
     profile?.stats?.x01?.avg3D,
     profile?.x01?.avg3d,
@@ -807,20 +796,9 @@ function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> =
     profile?.stats?.darts?.avg3,
     profile?.stats?.darts?.avg3d,
     profile?.stats?.darts?.avg3D,
-    profile?.privateInfo?.avg3,
-    profile?.privateInfo?.avg3d,
-    profile?.privateInfo?.avg3D,
-    profile?.privateInfo?.x01Avg3,
-    profile?.privateInfo?.x01Avg3D,
-    profile?.private_info?.avg3,
-    profile?.private_info?.avg3d,
-    profile?.private_info?.avg3D,
-    profile?.preferences?.avg3,
-    profile?.preferences?.avg3d,
-    profile?.preferences?.avg3D,
   ];
   const quickStats = x01ReadQuickStatsFromLocalStorage(profile);
-  if (quickStats) avgCandidates.push(quickStats?.avg3, quickStats?.avg3d, quickStats?.avg3D, quickStats?.avg, quickStats?.average3Darts);
+  if (quickStats) avgCandidates.push(quickStats?.avg3, quickStats?.avg3d, quickStats?.avg3D, quickStats?.average3Darts);
 
   for (const id of x01ProfileIdentityKeysForStars(profile)) {
     const s = statsById[id] || {};
@@ -828,7 +806,6 @@ function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> =
       s?.avg3,
       s?.avg3d,
       s?.avg3D,
-      s?.avg,
       s?.average3Darts,
       s?.average3D,
       s?.x01?.avg3,
@@ -851,15 +828,15 @@ function x01ProfileStarRenderData(profile: any, statsById: Record<string, any> =
       const r: any = row || {};
       const rowName = x01NormText(r?.name || r?.displayName || r?.nickname || r?.playerName || r?.profileName);
       if (rowName && rowName === normalizedName) {
-        avgCandidates.push(r?.avg3, r?.avg3d, r?.avg3D, r?.avg, r?.average3Darts, r?.x01?.avg3, r?.x01?.avg3d);
+        avgCandidates.push(r?.avg3, r?.avg3d, r?.avg3D, r?.average3Darts, r?.x01?.avg3, r?.x01?.avg3d);
       }
     }
   }
 
-  for (const raw of avgCandidates) {
-    const avg3d = x01NumberFromAny(raw);
-    if (avg3d > 0) return { avg3d: Math.max(0, Math.min(180, avg3d)) };
-  }
+  const avgValues = avgCandidates
+    .map((raw) => x01NumberFromAny(raw))
+    .filter((avg3d) => Number.isFinite(avg3d) && avg3d > 0 && avg3d <= 180);
+  if (avgValues.length) return { avg3d: Math.max(...avgValues) };
   const level = x01ProfileStarValue(profile);
   return level > 0 ? { level } : null;
 }
@@ -1662,7 +1639,7 @@ function SelectedParticipantsCompactBlock({
                     {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                     anchorSize={82}
                     starSize={11}
-                    gapPx={2}
+                    gapPx={0}
                   />
                 ) : null}
                 <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 16px ${accent}66`, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center" }}>
@@ -4590,7 +4567,7 @@ function TeamsSection({
                                   {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                                   anchorSize={88}
                                   starSize={12}
-                                  gapPx={2}
+                                  gapPx={0}
                                 />
                               ) : null}
                               <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${checked ? primary : `${primary}88`}`, boxShadow: `0 0 16px ${primary}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
