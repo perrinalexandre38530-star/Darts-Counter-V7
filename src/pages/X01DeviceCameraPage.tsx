@@ -66,6 +66,42 @@ function rotateCalibration(cal: any, deltaRad: number) {
   return { ...cal, a20: Number(cal.a20 || 0) + deltaRad, updatedAt: Date.now() };
 }
 
+function normalizeCalibrationPatch(cal: any) {
+  if (!cal) return null;
+  const base = { ...cal, updatedAt: Date.now() };
+  if (base.v === 2) {
+    const rx = Math.max(0.0001, Number(base.rx || base.r || 0.0001));
+    const ry = Math.max(0.0001, Number(base.ry || base.r || 0.0001));
+    return { ...base, rx, ry, r: Math.max(0.0001, (rx + ry) / 2) };
+  }
+  return { ...base, r: Math.max(0.0001, Number(base.r || 0.0001)) };
+}
+
+function shiftCalibration(cal: any, dx: number, dy: number) {
+  const next = normalizeCalibrationPatch(cal);
+  if (!next) return null;
+  return { ...next, cx: Math.max(0, Math.min(1, Number(next.cx || 0) + dx)), cy: Math.max(0, Math.min(1, Number(next.cy || 0) + dy)), updatedAt: Date.now() };
+}
+
+function scaleCalibration(cal: any, fx: number, fy = fx) {
+  const next = normalizeCalibrationPatch(cal);
+  if (!next) return null;
+  if (next.v === 2) {
+    const rx = Math.max(0.02, Math.min(0.75, Number(next.rx || next.r || 0) * fx));
+    const ry = Math.max(0.02, Math.min(0.75, Number(next.ry || next.r || 0) * fy));
+    return { ...next, rx, ry, r: Math.max(0.0001, (rx + ry) / 2), updatedAt: Date.now() };
+  }
+  const r = Math.max(0.02, Math.min(0.75, Number(next.r || 0) * fx));
+  return { ...next, r, updatedAt: Date.now() };
+}
+
+function forceOfficialRings(cal: any) {
+  const next = normalizeCalibrationPatch(cal);
+  if (!next) return null;
+  if (next.v !== 2) return next;
+  return { ...next, rings: DEFAULT_CAMERA_BOARD_RINGS, method: "auto-photo-zones", updatedAt: Date.now() };
+}
+
 function getCalRadii(cal: any) {
   if (!cal) return { rx: 0, ry: 0 };
   if (cal.v === 2) return { rx: Number(cal.rx || cal.r || 0), ry: Number(cal.ry || cal.r || 0) };
@@ -323,6 +359,31 @@ export default function X01DeviceCameraPage({ params }: Props) {
     setMessage("Mode manuel secours : tape centre bull, bord extérieur cible, centre du 20. La photo zones reste recommandée.");
   }
 
+  function saveAdjustedCalibration(next: any, msg: string) {
+    if (!next) {
+      setMessage("Aucune calibration à ajuster.");
+      return;
+    }
+    saveCameraCalibration(next);
+    const stored = loadCameraCalibration() || next;
+    setPreviewCal(stored);
+    setAutoConfidence(stored?.confidence);
+    setCalibrated(true);
+    setMessage(msg);
+    if (sessionId) {
+      updateX01DeviceStatus(sessionId, {
+        calibrated: true,
+        linked: true,
+        connected: true,
+        calibrationMethod: stored?.method || "manual",
+        calibrationConfidence: stored?.confidence ?? null,
+        zoneConfidence: stored?.zoneConfidence ?? null,
+        message: "Calibration ajustée",
+        lastSeenAt: Date.now(),
+      }).catch(() => {});
+    }
+  }
+
   function adjustOrientation(deltaDeg: number) {
     const current = loadCameraCalibration() || previewCal;
     if (!current) {
@@ -330,9 +391,29 @@ export default function X01DeviceCameraPage({ params }: Props) {
       return;
     }
     const next = rotateCalibration(current, (deltaDeg * Math.PI) / 180);
-    saveCameraCalibration(next);
-    setPreviewCal(loadCameraCalibration() || next);
-    setMessage(`Orientation du 20 ajustée de ${deltaDeg > 0 ? "+" : ""}${deltaDeg}°.`);
+    saveAdjustedCalibration(next, `Orientation du 20 ajustée de ${deltaDeg > 0 ? "+" : ""}${deltaDeg}°.`);
+  }
+
+  function adjustCenter(dx: number, dy: number) {
+    const current = loadCameraCalibration() || previewCal;
+    saveAdjustedCalibration(shiftCalibration(current, dx, dy), `Centre ajusté (${dx ? (dx > 0 ? "droite" : "gauche") : dy > 0 ? "bas" : "haut"}).`);
+  }
+
+  function adjustSize(factor: number) {
+    const current = loadCameraCalibration() || previewCal;
+    const pct = Math.round((factor - 1) * 100);
+    saveAdjustedCalibration(scaleCalibration(current, factor), `Taille cible ajustée de ${pct > 0 ? "+" : ""}${pct}%.`);
+  }
+
+  function adjustAxis(axis: "x" | "y", factor: number) {
+    const current = loadCameraCalibration() || previewCal;
+    const next = axis === "x" ? scaleCalibration(current, factor, 1) : scaleCalibration(current, 1, factor);
+    saveAdjustedCalibration(next, `${axis === "x" ? "Largeur" : "Hauteur"} ajustée.`);
+  }
+
+  function resetOfficialRings() {
+    const current = loadCameraCalibration() || previewCal;
+    saveAdjustedCalibration(forceOfficialRings(current), "Ratios officiels réappliqués : double/triple/bull recalés sur les dimensions standard.");
   }
 
   function getNormPoint(ev: any): TapPoint | null {
@@ -481,7 +562,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div style={{ position: "absolute", left: 10, right: 10, top: 118, padding: 12, borderRadius: 16, background: "rgba(5,7,14,.88)", border: "1px solid rgba(255,255,255,.18)", boxShadow: "0 18px 40px rgba(0,0,0,.45)", pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
             <div style={{ color: CYAN, fontWeight: 1000, marginBottom: 5 }}>Comment vérifier la calibration</div>
             <div style={{ fontSize: 12, lineHeight: 1.45, color: "rgba(244,247,255,.84)" }}>
-              L'overlay doit épouser la cible : cercle extérieur sur le double, anneaux rouges sur les triples, anneau vert sur le bull et les doubles. Si le 20 n'est pas en haut, ajuste avec les boutons 20 ±1° / ±5°. Ensuite seulement tu tapes l'impact de la fléchette.
+              L'overlay doit épouser exactement la cible : le contour cyan sur le bord extérieur du double, le triple au milieu de la cible, le bull au centre. Si le cercle est trop grand/petit, utilise Taille. Si le centre est décalé, utilise les flèches. Si la perspective étire l'image, ajuste Largeur/Hauteur. Les doubles/triples/bulls utilisent des ratios officiels pour éviter qu'une couleur mal détectée décale les anneaux.
             </div>
           </div>
         )}
@@ -492,6 +573,17 @@ export default function X01DeviceCameraPage({ params }: Props) {
             <button type="button" onClick={() => adjustOrientation(-1)} style={smallBtn()}>-1°</button>
             <button type="button" onClick={() => adjustOrientation(1)} style={smallBtn()}>+1°</button>
             <button type="button" onClick={() => adjustOrientation(5)} style={smallBtn()}>20 ↷ +5°</button>
+            <button type="button" onClick={() => adjustSize(0.985)} style={smallBtn()}>Taille -</button>
+            <button type="button" onClick={() => adjustSize(1.015)} style={smallBtn()}>Taille +</button>
+            <button type="button" onClick={() => adjustCenter(0, -0.004)} style={smallBtn()}>↑</button>
+            <button type="button" onClick={() => adjustCenter(0, 0.004)} style={smallBtn()}>↓</button>
+            <button type="button" onClick={() => adjustCenter(-0.004, 0)} style={smallBtn()}>←</button>
+            <button type="button" onClick={() => adjustCenter(0.004, 0)} style={smallBtn()}>→</button>
+            <button type="button" onClick={() => adjustAxis("x", 0.99)} style={smallBtn()}>Largeur -</button>
+            <button type="button" onClick={() => adjustAxis("x", 1.01)} style={smallBtn()}>Largeur +</button>
+            <button type="button" onClick={() => adjustAxis("y", 0.99)} style={smallBtn()}>Hauteur -</button>
+            <button type="button" onClick={() => adjustAxis("y", 1.01)} style={smallBtn()}>Hauteur +</button>
+            <button type="button" onClick={resetOfficialRings} style={smallBtn()}>Zones standard</button>
           </div>
         )}
 

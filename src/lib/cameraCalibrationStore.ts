@@ -20,9 +20,9 @@ export const DEFAULT_CAMERA_BOARD_RINGS: CameraBoardRingRatios = {
   // Dimensions proches cible type bristle : 6.35 / 170, 15.9 / 170, etc.
   innerBullOuter: 0.037,
   outerBullOuter: 0.094,
-  tripleInner: 0.58,
-  tripleOuter: 0.64,
-  doubleInner: 0.94,
+  tripleInner: 0.582,
+  tripleOuter: 0.629,
+  doubleInner: 0.941,
   doubleOuter: 1.0,
 };
 
