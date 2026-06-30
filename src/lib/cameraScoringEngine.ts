@@ -1,11 +1,11 @@
 // ============================================
 // src/lib/cameraScoringEngine.ts
-// Caméra assistée (tap-to-score) — mapping tap -> (segment, multiplier)
-// - Nécessite calibration v1 (centre, rayon, orientation 20)
-// - V1: pas de correction perspective (homographie) -> suffisante si cadrage correct
+// Caméra assistée X01 — mapping tap -> (segment, multiplier)
+// - V1 : cercle simple
+// - V2 : ellipse issue de la calibration photo automatique
 // ============================================
 
-import type { CameraCalibrationV1 } from "./cameraCalibrationStore";
+import type { CameraCalibration } from "./cameraCalibrationStore";
 
 export type CameraScoredDart = {
   segment: number | 25;
@@ -20,11 +20,9 @@ const BOARD_NUMBERS: number[] = [
   11, 14, 9, 12, 5,
 ];
 
-// Ratios approximatifs (board standard) en proportion du rayon extérieur
-// Note: ce sont des valeurs pratiques, pas des mesures officielles au millimètre.
-// Les transitions (simple/triple/double) sont suffisamment robustes pour un tap.
-const RATIO_BULL_OUTER = 0.060; // bull (25) jusqu'au bord bull
-const RATIO_25_OUTER = 0.160;   // outer bull (25)
+// Ratios pratiques en proportion du rayon extérieur.
+const RATIO_BULL_OUTER = 0.060;
+const RATIO_25_OUTER = 0.160;
 const RATIO_TRIPLE_INNER = 0.540;
 const RATIO_TRIPLE_OUTER = 0.610;
 const RATIO_DOUBLE_INNER = 0.930;
@@ -36,58 +34,82 @@ function normAngle(a: number): number {
   return x;
 }
 
-export function scoreTap(
-  cal: CameraCalibrationV1,
-  xNorm: number,
-  yNorm: number
-): CameraScoredDart {
-  // vecteur depuis centre
+function getNormalizedVector(cal: CameraCalibration, xNorm: number, yNorm: number) {
   const dx = xNorm - cal.cx;
   const dy = yNorm - cal.cy;
 
-  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (cal.v === 2) {
+    const rx = Math.max(0.0001, Number(cal.rx || cal.r || 0.0001));
+    const ry = Math.max(0.0001, Number(cal.ry || cal.r || 0.0001));
+    return {
+      nx: dx / rx,
+      ny: dy / ry,
+      dist: Math.sqrt((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)),
+    };
+  }
 
-  // dehors
-  if (dist > cal.r * 1.05) {
+  const r = Math.max(0.0001, Number(cal.r || 0.0001));
+  return {
+    nx: dx / r,
+    ny: dy / r,
+    dist: Math.sqrt((dx / r) * (dx / r) + (dy / r) * (dy / r)),
+  };
+}
+
+export function scoreTap(
+  cal: CameraCalibration,
+  xNorm: number,
+  yNorm: number
+): CameraScoredDart {
+  const { nx, ny, dist } = getNormalizedVector(cal, xNorm, yNorm);
+
+  if (dist > 1.05) {
     return { segment: 0, multiplier: 0 };
   }
 
-  // angle tap (0 à droite, PI/2 en bas)
-  const aTap = Math.atan2(dy, dx);
-
-  // Convertit en angle "board" où 20 est en haut.
-  // Notre a20 est l'angle où se trouve le centre du segment 20.
-  // On veut un angle relatif à 20.
-  // Découpage en 20 secteurs égaux.
+  const aTap = Math.atan2(ny, nx);
   const rel = normAngle(aTap - cal.a20);
-
-  // Sur un board, le 20 est en haut.
-  // Ici, a20 pointe le centre du 20, donc rel=0 => centre 20.
-  // Chaque secteur = 2PI/20.
   const sectorSize = (Math.PI * 2) / 20;
   const idx = Math.floor((rel + sectorSize / 2) / sectorSize) % 20;
   const segment = BOARD_NUMBERS[idx] as number;
 
-  const rr = dist / cal.r; // ratio 0..1+
+  const rr = dist;
 
-  // Bulls
   if (rr <= RATIO_BULL_OUTER) {
-    return { segment: 25, multiplier: 2 }; // DBULL
+    return { segment: 25, multiplier: 2 };
   }
   if (rr <= RATIO_25_OUTER) {
-    return { segment: 25, multiplier: 1 }; // BULL
+    return { segment: 25, multiplier: 1 };
   }
-
-  // Double ring
   if (rr >= RATIO_DOUBLE_INNER && rr <= 1.02) {
     return { segment, multiplier: 2 };
   }
-
-  // Triple ring
   if (rr >= RATIO_TRIPLE_INNER && rr <= RATIO_TRIPLE_OUTER) {
     return { segment, multiplier: 3 };
   }
 
-  // Simple
   return { segment, multiplier: 1 };
+}
+
+// Compat anciens composants CameraTapScorer.tsx.
+export type CameraTap = { x: number; y: number };
+export type CameraDart = CameraScoredDart;
+
+export function buildCalibrationFromTaps(bull: CameraTap, outer: CameraTap, top20: CameraTap) {
+  const dx = outer.x - bull.x;
+  const dy = outer.y - bull.y;
+  const r = Math.sqrt(dx * dx + dy * dy);
+  return {
+    v: 1 as const,
+    cx: bull.x,
+    cy: bull.y,
+    r: Math.max(0.0001, r),
+    a20: Math.atan2(top20.y - bull.y, top20.x - bull.x),
+    updatedAt: Date.now(),
+  };
+}
+
+export function mapTapToDart(cal: CameraCalibration | null | undefined, tap: CameraTap | null | undefined): CameraDart | null {
+  if (!cal || !tap) return null;
+  return scoreTap(cal, tap.x, tap.y);
 }
