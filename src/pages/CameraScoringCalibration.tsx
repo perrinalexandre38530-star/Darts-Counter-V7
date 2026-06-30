@@ -11,8 +11,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import type { CameraCalibrationV1 } from "../types/cameraScoring";
-import { saveCameraCalibration, loadCameraCalibration } from "../lib/cameraCalibrationStore";
+import { saveCameraCalibration, loadCameraCalibration, type CameraCalibrationV1 } from "../lib/cameraCalibrationStore";
 
 type Props = {
   go: (tab: any, params?: any) => void;
@@ -41,9 +40,9 @@ export default function CameraScoringCalibration({ go, params }: Props) {
   React.useEffect(() => {
     const existing = loadCameraCalibration();
     if (existing) {
-      setCenter(existing.center);
-      setRadiusOuter(existing.radiusOuter);
-      setAngleDeg20(existing.angleDeg20);
+      setCenter({ x: existing.cx, y: existing.cy });
+      setRadiusOuter(existing.r);
+      setAngleDeg20(normDeg(toDeg(existing.a20)));
     }
   }, []);
 
@@ -120,10 +119,11 @@ export default function CameraScoringCalibration({ go, params }: Props) {
   function save() {
     if (!canSave) return;
     const cal: CameraCalibrationV1 = {
-      version: 1,
-      center: center!,
-      radiusOuter: radiusOuter!,
-      angleDeg20: angleDeg20!,
+      v: 1,
+      cx: center!.x,
+      cy: center!.y,
+      r: Math.max(0.0001, radiusOuter!),
+      a20: (angleDeg20! * Math.PI) / 180,
       updatedAt: Date.now(),
     };
     saveCameraCalibration(cal);

@@ -596,10 +596,12 @@ function normalizeExternalDart(input: any): X01DartInputV3 | null {
   const sOK = seg === 0 || seg === 25 || (seg >= 1 && seg <= 20);
   if (!sOK) return null;
 
-  // multiplier: 1..3
-  const mOK = mult === 1 || mult === 2 || mult === 3;
+  // multiplier: 0..3 (0 accepté uniquement pour MISS)
+  const mOK = mult === 0 || mult === 1 || mult === 2 || mult === 3;
   if (!mOK) return null;
 
+  if (seg === 0) return { segment: 0 as any, multiplier: 0 as any };
+  if (mult === 0) return null;
   return { segment: seg, multiplier: mult as 1 | 2 | 3 };
 }
 
@@ -2234,11 +2236,30 @@ const isBotTurn = React.useMemo(() => {
     ((config as any)?.scoringSource as ScoringSource) ||
     (((config as any)?.externalScoring ? "external" : "manual") as ScoringSource);
 
-  const externalProvider: "bridge" | "camera_assisted" =
-    (((config as any)?.externalProvider as any) || "bridge") === "camera_assisted" ? "camera_assisted" : "bridge";
+  const externalProviderRaw =
+    String((config as any)?.externalDeviceMode || (config as any)?.externalProvider || ((config as any)?.externalScoring ? "websocket_bridge" : "local_events"));
+  const externalProvider =
+    externalProviderRaw === "camera" || externalProviderRaw === "camera_assisted"
+      ? "camera_assisted"
+      : externalProviderRaw === "bridge"
+      ? "websocket_bridge"
+      : externalProviderRaw === "scolia" || externalProviderRaw === "grandarts" || externalProviderRaw === "bluetooth" || externalProviderRaw === "local_events"
+      ? externalProviderRaw
+      : "websocket_bridge";
+
+  const externalBridgeUrl = String((config as any)?.externalBridgeUrl || "ws://localhost:8765").trim();
+  const externalPollingUrl = String((config as any)?.externalPollingUrl || "").trim();
+  const externalBluetoothServiceUuid = String((config as any)?.externalBluetoothServiceUuid || "").trim();
+  const externalBluetoothCharacteristicUuid = String((config as any)?.externalBluetoothCharacteristicUuid || "").trim();
 
   const canUseCameraAssisted = scoringSource === "external" && externalProvider === "camera_assisted";
+  const canUseBluetoothExternal = scoringSource === "external" && externalProvider === "bluetooth";
   const [cameraOpen, setCameraOpen] = React.useState(false);
+  const [externalDeviceState, setExternalDeviceState] = React.useState<{ status: string; label: string }>({
+    status: "idle",
+    label: "En attente",
+  });
+  const externalBluetoothDisconnectRef = React.useRef<null | (() => void)>(null);
 
 
   // =====================================================
@@ -3913,6 +3934,263 @@ const confirmOnlineVisit = () => {
   );
 };
 
+const dispatchExternalDartEvent = React.useCallback((dart: any, source = "device") => {
+  try {
+    if (typeof window === "undefined") return;
+    const normalized = normalizeExternalDart(dart);
+    if (!normalized) return;
+    window.dispatchEvent(new CustomEvent(EXTERNAL_DART_EVENT, { detail: { ...normalized, source } }));
+  } catch (e) {
+    console.warn("[X01PlayV3] dispatch external dart failed", e);
+  }
+}, []);
+
+const dispatchExternalVisitEvent = React.useCallback((darts: any[], source = "device") => {
+  try {
+    if (typeof window === "undefined") return;
+    const normalized = (Array.isArray(darts) ? darts : []).map((d) => normalizeExternalDart(d)).filter(Boolean).slice(0, 3);
+    if (!normalized.length) return;
+    window.dispatchEvent(new CustomEvent(EXTERNAL_VISIT_EVENT, { detail: { darts: normalized, source } }));
+  } catch (e) {
+    console.warn("[X01PlayV3] dispatch external visit failed", e);
+  }
+}, []);
+
+const parseExternalPayloadObject = React.useCallback((raw: any): any[] => {
+  if (raw == null) return [];
+  if (typeof raw === "string") {
+    const txt = raw.trim();
+    if (!txt) return [];
+    const lines = txt.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    if (lines.length > 1) return lines.flatMap((line) => parseExternalPayloadObject(line));
+    try {
+      return [JSON.parse(txt)];
+    } catch {
+      // Compat bridges très simples: "T20", "D16", "S5", "MISS", "180"
+      const m = txt.toUpperCase().match(/^(S|D|T)?\s*(25|BULL|DBULL|MISS|[0-9]{1,3})$/);
+      if (!m) return [{ raw: txt }];
+      const prefix = m[1] || "S";
+      const value = m[2];
+      if (value === "MISS") return [{ segment: 0, multiplier: 0 }];
+      if (value === "BULL") return [{ segment: 25, multiplier: 1 }];
+      if (value === "DBULL") return [{ segment: 25, multiplier: 2 }];
+      const n = Number(value);
+      if (prefix === "S" && n > 25) return [{ score: n }];
+      return [{ segment: n, multiplier: prefix === "T" ? 3 : prefix === "D" ? 2 : 1 }];
+    }
+  }
+  if (Array.isArray(raw)) return [{ darts: raw }];
+  return [raw];
+}, []);
+
+const emitExternalPayload = React.useCallback((raw: any, source = "device") => {
+  const payloads = parseExternalPayloadObject(raw);
+  for (const payload of payloads) {
+    try {
+      if (!payload) continue;
+      const type = String(payload.type || payload.kind || "").toLowerCase();
+
+      const visitCandidates = [payload.darts, payload.visit?.darts, payload.visit, payload.payload?.darts, payload.data?.darts];
+      for (const candidate of visitCandidates) {
+        if (!Array.isArray(candidate)) continue;
+        const visit = normalizeExternalVisit({ darts: candidate });
+        if (visit.length) {
+          dispatchExternalVisitEvent(visit, source);
+          continue;
+        }
+      }
+
+      const dartCandidate = payload.dart || payload.hit || payload.lastDart || payload.payload?.dart || payload.data?.dart || payload;
+      const dart = normalizeExternalDart(dartCandidate);
+      if (dart && type !== "visit" && type !== "score" && type !== "visit_score") {
+        dispatchExternalDartEvent(dart, source);
+        continue;
+      }
+
+      const scoreRaw =
+        payload.score ??
+        payload.visitScore ??
+        payload.visit_score ??
+        payload.points ??
+        payload.total ??
+        payload.payload?.score ??
+        payload.data?.score;
+
+      if (String(scoreRaw).toUpperCase() === "BUST" || payload.bust === true) {
+        const pid = String(activePlayerId || "");
+        const before = Number(scores?.[pid] ?? config.startScore);
+        const bustDarts = findVisitScoreBustDarts(before, outMode);
+        if (bustDarts?.length) {
+          dispatchExternalVisitEvent(
+            bustDarts.map((d: any) => ({ segment: Number(d.v || 0), multiplier: Number(d.mult ?? 1) })),
+            source
+          );
+        }
+        continue;
+      }
+
+      const score = Number(scoreRaw);
+      if (Number.isFinite(score) && score >= 0 && score <= 180) {
+        const pid = String(activePlayerId || "");
+        const before = Number(scores?.[pid] ?? config.startScore);
+        const seq = findVisitScoreDarts(score, before, outMode);
+        if (seq?.length) {
+          dispatchExternalVisitEvent(
+            seq.map((d: any) => ({ segment: Number(d.v || 0), multiplier: Number(d.mult ?? 1) })),
+            source
+          );
+          continue;
+        }
+      }
+    } catch (e) {
+      console.warn("[X01PlayV3] external payload ignored", e);
+    }
+  }
+}, [
+  activePlayerId,
+  scores,
+  config.startScore,
+  outMode,
+  parseExternalPayloadObject,
+  dispatchExternalDartEvent,
+  dispatchExternalVisitEvent,
+]);
+
+React.useEffect(() => {
+  if (scoringSource !== "external") {
+    setExternalDeviceState({ status: "idle", label: "Keypad manuel" });
+    return;
+  }
+  if (externalProvider === "camera_assisted") {
+    setExternalDeviceState({ status: "ready", label: "Caméra prête : ouvre la caméra pendant le tour" });
+    return;
+  }
+  if (externalProvider === "bluetooth") {
+    setExternalDeviceState({ status: "idle", label: "Bluetooth : appuie sur Connecter" });
+    return;
+  }
+  if (externalProvider === "local_events") {
+    setExternalDeviceState({ status: "ready", label: "Events navigateur actifs" });
+  }
+}, [scoringSource, externalProvider]);
+
+React.useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (scoringSource !== "external") return;
+  if (!["websocket_bridge", "scolia", "grandarts"].includes(String(externalProvider))) return;
+  if (!externalBridgeUrl) {
+    setExternalDeviceState({ status: "error", label: "URL bridge manquante" });
+    return;
+  }
+
+  let closed = false;
+  let ws: WebSocket | null = null;
+  try {
+    setExternalDeviceState({ status: "connecting", label: `Connexion ${externalBridgeUrl}…` });
+    ws = new WebSocket(externalBridgeUrl);
+    ws.onopen = () => {
+      if (!closed) setExternalDeviceState({ status: "connected", label: `Connecté : ${externalBridgeUrl}` });
+    };
+    ws.onmessage = (ev) => {
+      emitExternalPayload(ev.data, externalProvider);
+    };
+    ws.onerror = () => {
+      if (!closed) setExternalDeviceState({ status: "error", label: "Erreur bridge / appareil" });
+    };
+    ws.onclose = () => {
+      if (!closed) setExternalDeviceState({ status: "closed", label: "Bridge déconnecté" });
+    };
+  } catch (e: any) {
+    setExternalDeviceState({ status: "error", label: e?.message || "Connexion bridge impossible" });
+  }
+
+  return () => {
+    closed = true;
+    try { ws?.close(); } catch {}
+  };
+}, [scoringSource, externalProvider, externalBridgeUrl, emitExternalPayload]);
+
+React.useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (scoringSource !== "external") return;
+  if (!externalPollingUrl) return;
+
+  let stopped = false;
+  let lastId = "";
+  const tick = async () => {
+    try {
+      const res = await fetch(externalPollingUrl, { cache: "no-store" });
+      if (!res.ok) return;
+      const text = await res.text();
+      if (stopped || !text.trim()) return;
+      try {
+        const obj = JSON.parse(text);
+        const id = String(obj?.id ?? obj?.eventId ?? obj?.ts ?? text);
+        if (id && id === lastId) return;
+        lastId = id;
+        emitExternalPayload(obj, "http_poll");
+      } catch {
+        if (text === lastId) return;
+        lastId = text;
+        emitExternalPayload(text, "http_poll");
+      }
+    } catch {}
+  };
+  setExternalDeviceState({ status: "polling", label: `Polling actif : ${externalPollingUrl}` });
+  const id = window.setInterval(tick, 900);
+  tick();
+  return () => {
+    stopped = true;
+    window.clearInterval(id);
+  };
+}, [scoringSource, externalPollingUrl, emitExternalPayload]);
+
+const connectExternalBluetooth = React.useCallback(async () => {
+  try {
+    const nav: any = navigator as any;
+    if (!nav?.bluetooth?.requestDevice) {
+      setExternalDeviceState({ status: "error", label: "Web Bluetooth non disponible sur ce navigateur" });
+      return;
+    }
+    if (!externalBluetoothServiceUuid || !externalBluetoothCharacteristicUuid) {
+      setExternalDeviceState({ status: "error", label: "Renseigne l'UUID service + caractéristique Bluetooth" });
+      return;
+    }
+
+    setExternalDeviceState({ status: "connecting", label: "Sélection Bluetooth…" });
+    const device = await nav.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [externalBluetoothServiceUuid],
+    });
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(externalBluetoothServiceUuid);
+    const characteristic = await service.getCharacteristic(externalBluetoothCharacteristicUuid);
+    const decoder = new TextDecoder();
+    const onValue = (ev: any) => {
+      const value = ev?.target?.value;
+      if (!value) return;
+      emitExternalPayload(decoder.decode(value), "bluetooth");
+    };
+    characteristic.addEventListener("characteristicvaluechanged", onValue);
+    await characteristic.startNotifications();
+    externalBluetoothDisconnectRef.current = () => {
+      try { characteristic.removeEventListener("characteristicvaluechanged", onValue); } catch {}
+      try { characteristic.stopNotifications?.(); } catch {}
+      try { device.gatt?.disconnect?.(); } catch {}
+    };
+    setExternalDeviceState({ status: "connected", label: `Bluetooth connecté : ${device?.name || "appareil"}` });
+  } catch (e: any) {
+    setExternalDeviceState({ status: "error", label: e?.message || "Connexion Bluetooth impossible" });
+  }
+}, [externalBluetoothServiceUuid, externalBluetoothCharacteristicUuid, emitExternalPayload]);
+
+React.useEffect(() => {
+  return () => {
+    try { externalBluetoothDisconnectRef.current?.(); } catch {}
+    externalBluetoothDisconnectRef.current = null;
+  };
+}, []);
+
 // =====================================================
 // 🎥 EXTERNAL SCORER (Scolia-ready) — AJOUT UNIQUEMENT
 // - En mode "external", on écoute des événements window et on pousse des darts dans le moteur.
@@ -5250,9 +5528,35 @@ if (isLandscapeTablet) {
                   <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
                     {t(
                       "x01v3.external.hint",
-                      "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
+                      "Les fléchettes sont injectées automatiquement depuis l'appareil configuré."
                     )}
                   </div>
+
+                  <div style={{ marginTop: 8, padding: "7px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)", fontSize: 11.5, fontWeight: 850, color: externalDeviceState.status === "error" ? "#ffb4b4" : externalDeviceState.status === "connected" ? "#a7ffd1" : "#dfe2ff" }}>
+                    {externalDeviceState.label}
+                  </div>
+
+                  {canUseBluetoothExternal && (
+                    <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                      <button
+                        type="button"
+                        onClick={connectExternalBluetooth}
+                        style={{
+                          height: 40,
+                          borderRadius: 14,
+                          padding: "0 14px",
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
+                          color: "#fff",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+                        }}
+                      >
+                        Connecter Bluetooth
+                      </button>
+                    </div>
+                  )}
 
                   {canUseCameraAssisted && (
                     <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
@@ -5643,7 +5947,7 @@ if (isLandscapeTablet) {
             🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
             {t("x01v3.bot.playing", "joue son tour...")}
           </div>
-        ) : scoringSource === "external" ? (
+         ) : scoringSource === "external" ? (
           <div
             style={{
               padding: 14,
@@ -5661,8 +5965,19 @@ if (isLandscapeTablet) {
             <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
               {t(
                 "x01v3.external.hint",
-                "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
+                "Les fléchettes sont injectées automatiquement depuis l'appareil configuré."
               )}
+            </div>
+            <div style={{ marginTop: 8, padding: "7px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)", fontSize: 11.5, fontWeight: 850, color: externalDeviceState.status === "error" ? "#ffb4b4" : externalDeviceState.status === "connected" ? "#a7ffd1" : "#dfe2ff" }}>
+              {externalDeviceState.label}
+            </div>
+            {canUseBluetoothExternal && (
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                <button type="button" onClick={connectExternalBluetooth} style={{ height: 40, borderRadius: 14, padding: "0 14px", border: `1px solid rgba(255,255,255,0.14)`, background: `linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))`, color: "#fff", fontWeight: 900, cursor: "pointer", boxShadow: `0 10px 24px rgba(0,0,0,.5)` }}>
+                  Connecter Bluetooth
+                </button>
+              </div>
+            )}
             {canUseCameraAssisted && (
               <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
                 <button
@@ -5684,8 +5999,6 @@ if (isLandscapeTablet) {
                 </button>
               </div>
             )}
-
-            </div>
           </div>
         ) : (
           <div

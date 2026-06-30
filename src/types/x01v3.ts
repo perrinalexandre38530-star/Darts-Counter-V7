@@ -71,9 +71,35 @@ export interface X01ConfigV3 {
   scoringSource?: "manual" | "external";
 
   // Provider quand scoringSource = "external"
-  // - "bridge" : événements externes (PC/bridge)
-  // - "camera" : caméra assistée (tap-to-score sur overlay vidéo)
-  externalProvider?: "bridge" | "camera" | "camera_assisted";
+  // - "local_events" : événements window déjà présents (debug / intégration interne)
+  // - "websocket_bridge" / "bridge" : bridge réseau local ou PC/Raspberry
+  // - "scolia" / "grandarts" : appareils externes via bridge compatible JSON/WebSocket
+  // - "bluetooth" : périphérique Web Bluetooth compatible GATT/notifications texte JSON
+  // - "camera" / "camera_assisted" : caméra locale/téléphone en mode assisté
+  externalProvider?:
+    | "local_events"
+    | "bridge"
+    | "websocket_bridge"
+    | "scolia"
+    | "grandarts"
+    | "bluetooth"
+    | "camera"
+    | "camera_assisted";
+
+  // Paramètres de connexion quand scoringSource = "external"
+  externalDeviceMode?:
+    | "local_events"
+    | "websocket_bridge"
+    | "scolia"
+    | "grandarts"
+    | "bluetooth"
+    | "camera_assisted";
+  externalBridgeUrl?: string;
+  externalPollingUrl?: string;
+  externalBluetoothServiceUuid?: string;
+  externalBluetoothCharacteristicUuid?: string;
+  externalDeviceName?: string;
+  externalAutoConnect?: boolean;
 
 
   // -------------------------------------------------

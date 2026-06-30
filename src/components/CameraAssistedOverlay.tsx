@@ -104,7 +104,7 @@ export default function CameraAssistedOverlay({ open, onClose, onDart }: Props) 
       const x = (ev.clientX - r.left) / r.width;
       const y = (ev.clientY - r.top) / r.height;
 
-      const hit = scoreTap({ x, y }, calib);
+      const hit = scoreTap(calib, x, y);
       if (!hit) return;
 
       onDart(hit);

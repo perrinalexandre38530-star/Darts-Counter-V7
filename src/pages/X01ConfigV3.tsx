@@ -1962,8 +1962,75 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [voiceId, setVoiceId] = React.useState<string>("default");
   const [profileSfxVolume, setProfileSfxVolume] = React.useState<number>(0.8);
 
-  // ---- NEW : COMPTAGE EXTERNE ----
+  // ---- NEW : COMPTAGE EXTERNE / APPAREILS ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);
+  const EXTERNAL_DEVICE_LS = "dc:x01v3:external-device:v1";
+  const readExternalDevicePrefs = React.useCallback(() => {
+    try {
+      const raw = window.localStorage.getItem(EXTERNAL_DEVICE_LS);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }, []);
+  const [externalDeviceMode, setExternalDeviceModeState] = React.useState<string>(() => {
+    const p = readExternalDevicePrefs();
+    return p?.mode || p?.externalDeviceMode || "websocket_bridge";
+  });
+  const [externalBridgeUrl, setExternalBridgeUrlState] = React.useState<string>(() => {
+    const p = readExternalDevicePrefs();
+    return p?.bridgeUrl || p?.externalBridgeUrl || "ws://localhost:8765";
+  });
+  const [externalPollingUrl, setExternalPollingUrlState] = React.useState<string>(() => {
+    const p = readExternalDevicePrefs();
+    return p?.pollingUrl || p?.externalPollingUrl || "";
+  });
+  const [externalBluetoothServiceUuid, setExternalBluetoothServiceUuidState] = React.useState<string>(() => {
+    const p = readExternalDevicePrefs();
+    return p?.bluetoothServiceUuid || p?.externalBluetoothServiceUuid || "";
+  });
+  const [externalBluetoothCharacteristicUuid, setExternalBluetoothCharacteristicUuidState] = React.useState<string>(() => {
+    const p = readExternalDevicePrefs();
+    return p?.bluetoothCharacteristicUuid || p?.externalBluetoothCharacteristicUuid || "";
+  });
+
+  const persistExternalDevicePrefs = React.useCallback((patch: any) => {
+    try {
+      const current = readExternalDevicePrefs();
+      const next = {
+        ...current,
+        mode: externalDeviceMode,
+        bridgeUrl: externalBridgeUrl,
+        pollingUrl: externalPollingUrl,
+        bluetoothServiceUuid: externalBluetoothServiceUuid,
+        bluetoothCharacteristicUuid: externalBluetoothCharacteristicUuid,
+        ...patch,
+      };
+      window.localStorage.setItem(EXTERNAL_DEVICE_LS, JSON.stringify(next));
+    } catch {}
+  }, [readExternalDevicePrefs, externalDeviceMode, externalBridgeUrl, externalPollingUrl, externalBluetoothServiceUuid, externalBluetoothCharacteristicUuid]);
+
+  const setExternalDeviceMode = React.useCallback((mode: string) => {
+    setExternalDeviceModeState(mode);
+    persistExternalDevicePrefs({ mode });
+  }, [persistExternalDevicePrefs]);
+  const setExternalBridgeUrl = React.useCallback((value: string) => {
+    setExternalBridgeUrlState(value);
+    persistExternalDevicePrefs({ bridgeUrl: value });
+  }, [persistExternalDevicePrefs]);
+  const setExternalPollingUrl = React.useCallback((value: string) => {
+    setExternalPollingUrlState(value);
+    persistExternalDevicePrefs({ pollingUrl: value });
+  }, [persistExternalDevicePrefs]);
+  const setExternalBluetoothServiceUuid = React.useCallback((value: string) => {
+    setExternalBluetoothServiceUuidState(value);
+    persistExternalDevicePrefs({ bluetoothServiceUuid: value });
+  }, [persistExternalDevicePrefs]);
+  const setExternalBluetoothCharacteristicUuid = React.useCallback((value: string) => {
+    setExternalBluetoothCharacteristicUuidState(value);
+    persistExternalDevicePrefs({ bluetoothCharacteristicUuid: value });
+  }, [persistExternalDevicePrefs]);
+
   // ---- NEW : SAISIE VOCALE DES SCORES (MVP) ----
   const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState<boolean>(false);
 
@@ -2736,8 +2803,15 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       players,
       createdAt: Date.now(),
 
-      // ✅ source de scoring (keypad vs externe)
+      // ✅ source de scoring (keypad vs appareils externes)
       scoringSource: externalScoringEnabled ? "external" : "manual",
+      externalScoring: externalScoringEnabled,
+      externalProvider: externalScoringEnabled ? externalDeviceMode : undefined,
+      externalDeviceMode: externalScoringEnabled ? externalDeviceMode : undefined,
+      externalBridgeUrl: externalScoringEnabled ? String(externalBridgeUrl || "").trim() : undefined,
+      externalPollingUrl: externalScoringEnabled ? String(externalPollingUrl || "").trim() : undefined,
+      externalBluetoothServiceUuid: externalScoringEnabled ? String(externalBluetoothServiceUuid || "").trim() : undefined,
+      externalBluetoothCharacteristicUuid: externalScoringEnabled ? String(externalBluetoothCharacteristicUuid || "").trim() : undefined,
 
       // ✅ saisie vocale scores (3 fléchettes + confirmation oui/non)
       // (ignorée automatiquement si scoringSource=external)
@@ -3162,7 +3236,26 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                     <PillButton label="OFF" active={!externalScoringEnabled} onClick={() => setExternalScoringEnabled(false)} primary={primary} primarySoft={primarySoft} compact />
                     <PillButton label="ON" active={externalScoringEnabled} onClick={() => { setExternalScoringEnabled(true); setVoiceScoreEnabled(false); }} primary={primary} primarySoft={primarySoft} compact />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 11, color: "#8f94b5" }}>Les réglages avancés de voix, volume et tests vidéo restent dans la configuration complète.</div>
+                  {externalScoringEnabled && (
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <PillButton label="TÉL/CAMÉRA" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
+                        <PillButton label="BRIDGE" active={externalDeviceMode === "websocket_bridge"} onClick={() => setExternalDeviceMode("websocket_bridge")} primary={primary} primarySoft={primarySoft} compact />
+                        <PillButton label="SCOLIA" active={externalDeviceMode === "scolia"} onClick={() => setExternalDeviceMode("scolia")} primary={primary} primarySoft={primarySoft} compact />
+                        <PillButton label="GRANDARTS" active={externalDeviceMode === "grandarts"} onClick={() => setExternalDeviceMode("grandarts")} primary={primary} primarySoft={primarySoft} compact />
+                        <PillButton label="BLUETOOTH" active={externalDeviceMode === "bluetooth"} onClick={() => setExternalDeviceMode("bluetooth")} primary={primary} primarySoft={primarySoft} compact />
+                      </div>
+                      {externalDeviceMode !== "camera_assisted" && externalDeviceMode !== "bluetooth" && (
+                        <input
+                          value={externalBridgeUrl}
+                          onChange={(e) => setExternalBridgeUrl(e.target.value)}
+                          placeholder="ws://IP_DU_BRIDGE:8765"
+                          style={{ height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.30)", color: "#fff", padding: "0 10px", fontWeight: 800 }}
+                        />
+                      )}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#8f94b5" }}>En guidée, choisis l'appareil ici. Les réglages détaillés restent dans la configuration complète.</div>
                 </div>
               </section>
             )}
@@ -4033,9 +4126,64 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
               {externalScoringEnabled
-                ? t("x01v3.external.onHint", "ON : le match écoute les volées externes vidéo/bridge et les applique au même moteur de score.")
+                ? t("x01v3.external.onHint", "ON : l'application se connecte à l'appareil choisi et applique ses fléchettes au moteur X01.")
                 : t("x01v3.external.offHint", "OFF : mode normal au keypad.")}
             </div>
+
+            {externalScoringEnabled && (
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, color: primary }}>Appareil / source de comptage</div>
+
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  <PillButton label="TÉLÉPHONE / CAMÉRA" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="BRIDGE RÉSEAU" active={externalDeviceMode === "websocket_bridge"} onClick={() => setExternalDeviceMode("websocket_bridge")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="SCOLIA" active={externalDeviceMode === "scolia"} onClick={() => setExternalDeviceMode("scolia")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="GRANDARTS" active={externalDeviceMode === "grandarts"} onClick={() => setExternalDeviceMode("grandarts")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="BLUETOOTH" active={externalDeviceMode === "bluetooth"} onClick={() => setExternalDeviceMode("bluetooth")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="EVENTS DEBUG" active={externalDeviceMode === "local_events"} onClick={() => setExternalDeviceMode("local_events")} primary={primary} primarySoft={primarySoft} compact />
+                </div>
+
+                {externalDeviceMode === "camera_assisted" && (
+                  <div style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)", color: "#dfe2ff", fontSize: 12, lineHeight: 1.35 }}>
+                    <b>Mode téléphone / caméra :</b> l'application demande l'accès caméra pendant la partie. Tu fixes le téléphone face à la cible, puis tu tapes l'impact pour envoyer automatiquement S/D/T/Bull/Miss au score.
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "8px 10px", border: `1px solid ${primary}55`, background: `${primary}22`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>Configurer / calibrer</button>
+                    </div>
+                  </div>
+                )}
+
+                {(externalDeviceMode === "websocket_bridge" || externalDeviceMode === "scolia" || externalDeviceMode === "grandarts") && (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label style={{ fontSize: 11, color: "#9fa4c4", fontWeight: 900 }}>URL WebSocket du bridge/appareil</label>
+                    <input
+                      value={externalBridgeUrl}
+                      onChange={(e) => setExternalBridgeUrl(e.target.value)}
+                      placeholder="ws://192.168.1.50:8765"
+                      style={{ height: 40, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.30)", color: "#fff", padding: "0 10px", fontWeight: 800 }}
+                    />
+                    <div style={{ fontSize: 11, color: "#8f94b5", lineHeight: 1.35 }}>
+                      Compatible avec un bridge local Scolia / Grandarts / autre qui envoie du JSON : <b>{'{'}segment,multiplier{'}'}</b>, <b>{'{'}darts:[...]{'}'}</b> ou <b>{'{'}score:180{'}'}</b>.
+                    </div>
+                  </div>
+                )}
+
+                {externalDeviceMode === "bluetooth" && (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ fontSize: 12, color: "#dfe2ff", lineHeight: 1.35 }}>
+                      <b>Bluetooth :</b> utilisé pour les périphériques compatibles Web Bluetooth qui publient les tirs en notifications GATT texte/JSON. Le navigateur demandera l'appairage au lancement de la partie.
+                    </div>
+                    <input value={externalBluetoothServiceUuid} onChange={(e) => setExternalBluetoothServiceUuid(e.target.value)} placeholder="UUID service Bluetooth (optionnel)" style={{ height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.30)", color: "#fff", padding: "0 10px", fontWeight: 800 }} />
+                    <input value={externalBluetoothCharacteristicUuid} onChange={(e) => setExternalBluetoothCharacteristicUuid(e.target.value)} placeholder="UUID caractéristique notifications (optionnel)" style={{ height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.30)", color: "#fff", padding: "0 10px", fontWeight: 800 }} />
+                  </div>
+                )}
+
+                {externalDeviceMode === "local_events" && (
+                  <div style={{ fontSize: 11, color: "#8f94b5", lineHeight: 1.35 }}>
+                    Mode debug/intégration interne : l'application écoute uniquement les événements navigateur <b>dc:x01v3:dart</b> et <b>dc:x01v3:visit</b>.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ✅ MODAL FLOTTANT : tuto + pages + scroll interne + tests */}

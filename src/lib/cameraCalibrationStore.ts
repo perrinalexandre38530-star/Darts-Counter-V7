@@ -19,24 +19,55 @@ export type CameraCalibrationV1 = {
 
 const LS_KEY = "dc:camera:calibration:v1";
 
+function normalizeCameraCalibration(obj: any): CameraCalibrationV1 | null {
+  if (!obj || typeof obj !== "object") return null;
+
+  // Format actuel utilisé par CameraAssistedOverlay/Engine
+  if (obj.v === 1) {
+    if (typeof obj.cx !== "number" || typeof obj.cy !== "number" || typeof obj.r !== "number" || typeof obj.a20 !== "number") {
+      return null;
+    }
+    return {
+      v: 1,
+      cx: obj.cx,
+      cy: obj.cy,
+      r: Math.max(0.0001, obj.r),
+      a20: obj.a20,
+      updatedAt: Number(obj.updatedAt || Date.now()),
+    };
+  }
+
+  // Compat ancien écran CameraScoringCalibration.tsx
+  if (obj.version === 1 && obj.center && typeof obj.center.x === "number" && typeof obj.center.y === "number") {
+    const deg = Number(obj.angleDeg20 || 0);
+    return {
+      v: 1,
+      cx: obj.center.x,
+      cy: obj.center.y,
+      r: Math.max(0.0001, Number(obj.radiusOuter || 0)),
+      a20: (deg * Math.PI) / 180,
+      updatedAt: Number(obj.updatedAt || Date.now()),
+    };
+  }
+
+  return null;
+}
+
 export function loadCameraCalibration(): CameraCalibrationV1 | null {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
-    const obj = JSON.parse(raw);
-    if (!obj || obj.v !== 1) return null;
-    if (typeof obj.cx !== "number" || typeof obj.cy !== "number" || typeof obj.r !== "number" || typeof obj.a20 !== "number") {
-      return null;
-    }
-    return obj as CameraCalibrationV1;
+    return normalizeCameraCalibration(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-export function saveCameraCalibration(cal: CameraCalibrationV1): void {
+export function saveCameraCalibration(cal: CameraCalibrationV1 | any): void {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(cal));
+    const normalized = normalizeCameraCalibration(cal);
+    if (!normalized) return;
+    localStorage.setItem(LS_KEY, JSON.stringify(normalized));
   } catch {
     // ignore
   }

@@ -208,6 +208,8 @@ import TournamentMatchResult from "./pages/TournamentMatchResult";
 // X01 V3
 import X01ConfigV3 from "./pages/X01ConfigV3";
 import X01PlayV3 from "./pages/X01PlayV3";
+import CameraScoringSetup from "./pages/CameraScoringSetup";
+import CameraScoringCalibration from "./pages/CameraScoringCalibration";
 
 // 🌟 Nouveau : SYNC / Partage stats locales
 
@@ -852,6 +854,8 @@ type Tab =
   | "avatar"
   | "x01_config_v3"
   | "x01_play_v3"
+  | "camera_scoring_setup"
+  | "camera_scoring_calibration"
   | "sync_center"
   | "auth_callback"
   | "darts_mode_config"
@@ -4447,6 +4451,13 @@ case "babyfoot_team_edit":
         );
         break;
       }
+      case "camera_scoring_setup":
+        page = <CameraScoringSetup go={go} params={routeParams} />;
+        break;
+
+      case "camera_scoring_calibration":
+        page = <CameraScoringCalibration go={go} params={routeParams} />;
+        break;
 
       case "x01_end":
         page = <X01End go={go} params={routeParams} />;
