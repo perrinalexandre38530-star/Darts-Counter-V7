@@ -75,7 +75,8 @@ export interface X01ConfigV3 {
   // - "websocket_bridge" / "bridge" : bridge réseau local ou PC/Raspberry
   // - "scolia" / "grandarts" : appareils externes via bridge compatible JSON/WebSocket
   // - "bluetooth" : périphérique Web Bluetooth compatible GATT/notifications texte JSON
-  // - "camera" / "camera_assisted" : caméra locale/téléphone en mode assisté
+  // - "phone_companion" : téléphone relié par QR code/session API
+  // - "camera" / "camera_assisted" : caméra locale en mode assisté
   externalProvider?:
     | "local_events"
     | "bridge"
@@ -83,6 +84,7 @@ export interface X01ConfigV3 {
     | "scolia"
     | "grandarts"
     | "bluetooth"
+    | "phone_companion"
     | "camera"
     | "camera_assisted";
 
@@ -93,6 +95,7 @@ export interface X01ConfigV3 {
     | "scolia"
     | "grandarts"
     | "bluetooth"
+    | "phone_companion"
     | "camera_assisted";
   externalBridgeUrl?: string;
   externalPollingUrl?: string;

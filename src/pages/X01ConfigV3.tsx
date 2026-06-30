@@ -1975,7 +1975,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   }, []);
   const [externalDeviceMode, setExternalDeviceModeState] = React.useState<string>(() => {
     const p = readExternalDevicePrefs();
-    return p?.mode || p?.externalDeviceMode || "websocket_bridge";
+    return p?.mode || p?.externalDeviceMode || "phone_companion";
   });
   const [externalBridgeUrl, setExternalBridgeUrlState] = React.useState<string>(() => {
     const p = readExternalDevicePrefs();
@@ -2012,6 +2012,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   const setExternalDeviceMode = React.useCallback((mode: string) => {
     setExternalDeviceModeState(mode);
+    if (mode !== "phone_companion") {
+      setExternalPollingUrlState("");
+      persistExternalDevicePrefs({ mode, pollingUrl: "", externalPollingUrl: "" });
+      return;
+    }
     persistExternalDevicePrefs({ mode });
   }, [persistExternalDevicePrefs]);
   const setExternalBridgeUrl = React.useCallback((value: string) => {
@@ -3239,13 +3244,17 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   {externalScoringEnabled && (
                     <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <PillButton label="TÉL/CAMÉRA" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
+                        <PillButton label="TÉLÉPHONE" active={externalDeviceMode === "phone_companion"} onClick={() => setExternalDeviceMode("phone_companion")} primary={primary} primarySoft={primarySoft} compact />
+                        <PillButton label="CAMÉRA LOCALE" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
                         <PillButton label="BRIDGE" active={externalDeviceMode === "websocket_bridge"} onClick={() => setExternalDeviceMode("websocket_bridge")} primary={primary} primarySoft={primarySoft} compact />
                         <PillButton label="SCOLIA" active={externalDeviceMode === "scolia"} onClick={() => setExternalDeviceMode("scolia")} primary={primary} primarySoft={primarySoft} compact />
                         <PillButton label="GRANDARTS" active={externalDeviceMode === "grandarts"} onClick={() => setExternalDeviceMode("grandarts")} primary={primary} primarySoft={primarySoft} compact />
                         <PillButton label="BLUETOOTH" active={externalDeviceMode === "bluetooth"} onClick={() => setExternalDeviceMode("bluetooth")} primary={primary} primarySoft={primarySoft} compact />
                       </div>
-                      {externalDeviceMode !== "camera_assisted" && externalDeviceMode !== "bluetooth" && (
+                      {externalDeviceMode === "phone_companion" && (
+                        <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "9px 11px", border: `1px solid ${primary}55`, background: `${primary}22`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>Relier / calibrer le téléphone</button>
+                      )}
+                      {(externalDeviceMode === "websocket_bridge" || externalDeviceMode === "scolia" || externalDeviceMode === "grandarts") && (
                         <input
                           value={externalBridgeUrl}
                           onChange={(e) => setExternalBridgeUrl(e.target.value)}
@@ -4135,7 +4144,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 <div style={{ fontSize: 12, fontWeight: 900, color: primary }}>Appareil / source de comptage</div>
 
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  <PillButton label="TÉLÉPHONE / CAMÉRA" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="TÉLÉPHONE" active={externalDeviceMode === "phone_companion"} onClick={() => setExternalDeviceMode("phone_companion")} primary={primary} primarySoft={primarySoft} compact />
+                  <PillButton label="CAMÉRA LOCALE" active={externalDeviceMode === "camera_assisted"} onClick={() => setExternalDeviceMode("camera_assisted")} primary={primary} primarySoft={primarySoft} compact />
                   <PillButton label="BRIDGE RÉSEAU" active={externalDeviceMode === "websocket_bridge"} onClick={() => setExternalDeviceMode("websocket_bridge")} primary={primary} primarySoft={primarySoft} compact />
                   <PillButton label="SCOLIA" active={externalDeviceMode === "scolia"} onClick={() => setExternalDeviceMode("scolia")} primary={primary} primarySoft={primarySoft} compact />
                   <PillButton label="GRANDARTS" active={externalDeviceMode === "grandarts"} onClick={() => setExternalDeviceMode("grandarts")} primary={primary} primarySoft={primarySoft} compact />
@@ -4143,9 +4153,19 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   <PillButton label="EVENTS DEBUG" active={externalDeviceMode === "local_events"} onClick={() => setExternalDeviceMode("local_events")} primary={primary} primarySoft={primarySoft} compact />
                 </div>
 
+                {externalDeviceMode === "phone_companion" && (
+                  <div style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)", color: "#dfe2ff", fontSize: 12, lineHeight: 1.35 }}>
+                    <b>Mode téléphone :</b> tu relies d'abord un téléphone par QR code. La caméra et la calibration se font sur ce téléphone, puis les impacts sont envoyés au moteur X01 par la session de comptage.
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "8px 10px", border: `1px solid ${primary}55`, background: `${primary}22`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>Relier / calibrer téléphone</button>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#9fa4c4" }}>Important : ne lance la partie qu'après liaison + calibration sur le téléphone.</div>
+                  </div>
+                )}
+
                 {externalDeviceMode === "camera_assisted" && (
                   <div style={{ borderRadius: 14, padding: 10, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.045)", color: "#dfe2ff", fontSize: 12, lineHeight: 1.35 }}>
-                    <b>Mode téléphone / caméra :</b> l'application demande l'accès caméra pendant la partie. Tu fixes le téléphone face à la cible, puis tu tapes l'impact pour envoyer automatiquement S/D/T/Bull/Miss au score.
+                    <b>Mode caméra locale :</b> l'application demande l'accès caméra sur cet appareil pendant la partie. À utiliser uniquement si cet appareil filme lui-même la cible.
                     <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button type="button" onClick={() => go?.("camera_scoring_setup", { returnTab: "x01_config_v3" })} style={{ borderRadius: 12, padding: "8px 10px", border: `1px solid ${primary}55`, background: `${primary}22`, color: "#fff", fontWeight: 900, cursor: "pointer" }}>Configurer / calibrer</button>
                     </div>

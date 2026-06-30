@@ -210,6 +210,7 @@ import X01ConfigV3 from "./pages/X01ConfigV3";
 import X01PlayV3 from "./pages/X01PlayV3";
 import CameraScoringSetup from "./pages/CameraScoringSetup";
 import CameraScoringCalibration from "./pages/CameraScoringCalibration";
+import X01DeviceCameraPage from "./pages/X01DeviceCameraPage";
 
 // 🌟 Nouveau : SYNC / Partage stats locales
 
@@ -856,6 +857,7 @@ type Tab =
   | "x01_play_v3"
   | "camera_scoring_setup"
   | "camera_scoring_calibration"
+  | "x01_device_camera"
   | "sync_center"
   | "auth_callback"
   | "darts_mode_config"
@@ -2043,6 +2045,13 @@ useEffect(() => {
         setTab("spectator");
         return;
       }
+      if (h.startsWith("#/x01-device/")) {
+        const sessionId = h.replace(/^#\/x01-device\//, "").split(/[?#]/)[0] || null;
+        setShowSplash(false);
+        setRouteParams(sessionId ? { sessionId } : null);
+        setTab("x01_device_camera");
+        return;
+      }
       if (h === "#/cast" || h === "#/cast/" || h === "#/screens" || h === "#/screens/") {
         setRouteParams(null);
         setTab("cast_host");
@@ -2161,6 +2170,7 @@ useEffect(() => {
       else if (next === "viewer_host") window.location.hash = "#/viewer";
       else if (next === "viewer_join") window.location.hash = "#/viewer/join";
       else if (next === "viewer_display") window.location.hash = `#/viewer/${params?.sessionId || routeParams?.sessionId || ""}`;
+      else if (next === "x01_device_camera") window.location.hash = `#/x01-device/${params?.sessionId || routeParams?.sessionId || ""}`;
       else {
         const h = String(window.location.hash || "");
         if (
@@ -2169,7 +2179,8 @@ useEffect(() => {
           h.startsWith("#/messages") ||
           h.startsWith("#/spectator") ||
           h.startsWith("#/cast") ||
-          h.startsWith("#/viewer")
+          h.startsWith("#/viewer") ||
+          h.startsWith("#/x01-device")
         )
           window.location.hash = "#/";
       }
@@ -4459,6 +4470,10 @@ case "babyfoot_team_edit":
         page = <CameraScoringCalibration go={go} params={routeParams} />;
         break;
 
+      case "x01_device_camera":
+        page = <X01DeviceCameraPage go={go} params={routeParams} />;
+        break;
+
       case "x01_end":
         page = <X01End go={go} params={routeParams} />;
         break;
@@ -4969,6 +4984,7 @@ case "babyfoot_team_edit":
     // Darts (play)
     "x01",
     "x01_play_v3",
+    "x01_device_camera",
     "cricket",
     "killer_play",
     "shanghai_play",

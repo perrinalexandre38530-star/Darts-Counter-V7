@@ -55,6 +55,162 @@ type Room = {
 // roomId → room
 const rooms = new Map<string, Room>();
 
+
+// --------- X01 device sessions (téléphone compagnon) en mémoire ---------
+type X01DeviceSession = {
+  code: string;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+  seq: number;
+  events: Array<{ id: number; seq: number; ts: number; payload: any }>;
+  status: Record<string, any>;
+};
+
+const X01_DEVICE_TTL_MS = 8 * 60 * 60 * 1000;
+const x01DeviceSessions = new Map<string, X01DeviceSession>();
+
+function x01DeviceCleanCode(input: any): string {
+  return String(input || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 24);
+}
+
+function x01DeviceRandomCode(len = 6): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < len; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
+}
+
+function x01DeviceCleanup() {
+  const now = Date.now();
+  for (const [code, session] of x01DeviceSessions.entries()) {
+    if (!session || session.expiresAt <= now) x01DeviceSessions.delete(code);
+  }
+}
+
+function x01DeviceGet(code: string): X01DeviceSession | null {
+  x01DeviceCleanup();
+  const clean = x01DeviceCleanCode(code);
+  if (!clean) return null;
+  const session = x01DeviceSessions.get(clean) || null;
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    x01DeviceSessions.delete(clean);
+    return null;
+  }
+  return session;
+}
+
+function x01DeviceStatus(session: X01DeviceSession) {
+  const st = session.status || {};
+  return {
+    ok: true,
+    sessionId: session.code,
+    code: session.code,
+    connected: !!st.connected,
+    linked: !!st.linked,
+    calibrated: !!st.calibrated,
+    deviceLabel: st.deviceLabel || "",
+    deviceKind: st.deviceKind || "",
+    message: st.message || "",
+    lastSeenAt: st.lastSeenAt || null,
+    updatedAt: session.updatedAt,
+    expiresAt: session.expiresAt,
+    eventSeq: session.seq || 0,
+  };
+}
+
+async function handleX01DeviceCreate(request: Request): Promise<Response> {
+  x01DeviceCleanup();
+  let code = "";
+  for (let i = 0; i < 20; i += 1) {
+    const candidate = x01DeviceRandomCode(6);
+    if (!x01DeviceSessions.has(candidate)) { code = candidate; break; }
+  }
+  if (!code) return jsonError("x01_device_session_create_failed", 500);
+  let body: any = {};
+  try { body = await request.json(); } catch {}
+  const now = Date.now();
+  const session: X01DeviceSession = {
+    code,
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: now + X01_DEVICE_TTL_MS,
+    seq: 0,
+    events: [],
+    status: {
+      linked: false,
+      connected: false,
+      calibrated: false,
+      deviceLabel: "",
+      deviceKind: String(body?.kind || "x01_device"),
+      message: "Session créée",
+      lastSeenAt: null,
+    },
+  };
+  x01DeviceSessions.set(code, session);
+  return jsonResponse({ ok: true, sessionId: code, code, expiresInSeconds: Math.floor(X01_DEVICE_TTL_MS / 1000), provider: "worker-memory" }, 201);
+}
+
+async function handleX01DeviceStatusGet(_request: Request, code: string): Promise<Response> {
+  const session = x01DeviceGet(code);
+  if (!session) return jsonError("Session téléphone introuvable", 404);
+  return jsonResponse(x01DeviceStatus(session));
+}
+
+async function handleX01DeviceStatusPost(request: Request, code: string): Promise<Response> {
+  const session = x01DeviceGet(code);
+  if (!session) return jsonError("Session téléphone introuvable", 404);
+  let body: any = {};
+  try { body = await request.json(); } catch {}
+  const now = Date.now();
+  session.status = {
+    ...(session.status || {}),
+    linked: body.linked !== undefined ? !!body.linked : !!session.status?.linked,
+    connected: body.connected !== undefined ? !!body.connected : !!session.status?.connected,
+    calibrated: body.calibrated !== undefined ? !!body.calibrated : !!session.status?.calibrated,
+    deviceLabel: String(body.deviceLabel || session.status?.deviceLabel || "").slice(0, 80),
+    deviceKind: String(body.deviceKind || session.status?.deviceKind || "phone_camera").slice(0, 80),
+    message: String(body.message || session.status?.message || "").slice(0, 180),
+    lastSeenAt: Number(body.lastSeenAt || now) || now,
+  };
+  session.updatedAt = now;
+  session.expiresAt = now + X01_DEVICE_TTL_MS;
+  x01DeviceSessions.set(session.code, session);
+  return jsonResponse(x01DeviceStatus(session));
+}
+
+async function handleX01DeviceEventPost(request: Request, code: string): Promise<Response> {
+  const session = x01DeviceGet(code);
+  if (!session) return jsonError("Session téléphone introuvable", 404);
+  let body: any = {};
+  try { body = await request.json(); } catch {}
+  const now = Date.now();
+  const id = Number(session.seq || 0) + 1;
+  session.seq = id;
+  session.updatedAt = now;
+  session.expiresAt = now + X01_DEVICE_TTL_MS;
+  session.status = { ...(session.status || {}), linked: true, connected: true, lastSeenAt: now, message: "Impact reçu" };
+  session.events = [...(session.events || []), { id, seq: id, ts: now, payload: body }].slice(-80);
+  x01DeviceSessions.set(session.code, session);
+  return jsonResponse({ ok: true, id, seq: id }, 201);
+}
+
+async function handleX01DeviceEventsGet(request: Request, code: string): Promise<Response> {
+  const session = x01DeviceGet(code);
+  if (!session) return jsonError("Session téléphone introuvable", 404);
+  const url = new URL(request.url);
+  const after = Number(url.searchParams.get("after") || 0) || 0;
+  const events = (session.events || []).filter((ev) => Number(ev.id || ev.seq || 0) > after);
+  return jsonResponse({ ok: true, sessionId: session.code, code: session.code, rev: session.seq || 0, events });
+}
+
+async function handleX01DeviceDelete(_request: Request, code: string): Promise<Response> {
+  const clean = x01DeviceCleanCode(code);
+  if (clean) x01DeviceSessions.delete(clean);
+  return jsonResponse({ ok: true });
+}
+
 // Envoi JSON sécurisé
 function wsSend(ws: WebSocket, obj: any) {
   try {
@@ -593,6 +749,27 @@ const worker = {
 
     if (url.pathname === "/api/sync/download" && request.method === "GET") {
       const res = await handleDownload(request, env);
+      return withCors(env, request, res);
+    }
+
+
+    // ------- X01 téléphone compagnon : /x01-device/session -------
+    if ((url.pathname === "/x01-device/session" || url.pathname === "/api/x01-device/session") && request.method === "POST") {
+      const res = await handleX01DeviceCreate(request);
+      return withCors(env, request, res);
+    }
+
+    const x01DeviceMatch = url.pathname.match(/^\/(?:api\/)?x01-device\/session\/([^/]+)(?:\/(status|event|events))?$/);
+    if (x01DeviceMatch) {
+      const sessionId = x01DeviceMatch[1];
+      const sub = x01DeviceMatch[2] || "";
+      let res: Response;
+      if (sub === "status" && request.method === "GET") res = await handleX01DeviceStatusGet(request, sessionId);
+      else if (sub === "status" && request.method === "POST") res = await handleX01DeviceStatusPost(request, sessionId);
+      else if (sub === "event" && request.method === "POST") res = await handleX01DeviceEventPost(request, sessionId);
+      else if (sub === "events" && request.method === "GET") res = await handleX01DeviceEventsGet(request, sessionId);
+      else if (!sub && request.method === "DELETE") res = await handleX01DeviceDelete(request, sessionId);
+      else res = jsonError("Unsupported X01 device method", 405);
       return withCors(env, request, res);
     }
 

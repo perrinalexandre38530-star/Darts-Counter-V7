@@ -2241,6 +2241,8 @@ const isBotTurn = React.useMemo(() => {
   const externalProvider =
     externalProviderRaw === "camera" || externalProviderRaw === "camera_assisted"
       ? "camera_assisted"
+      : externalProviderRaw === "phone" || externalProviderRaw === "phone_companion"
+      ? "phone_companion"
       : externalProviderRaw === "bridge"
       ? "websocket_bridge"
       : externalProviderRaw === "scolia" || externalProviderRaw === "grandarts" || externalProviderRaw === "bluetooth" || externalProviderRaw === "local_events"
@@ -4062,7 +4064,11 @@ React.useEffect(() => {
     return;
   }
   if (externalProvider === "camera_assisted") {
-    setExternalDeviceState({ status: "ready", label: "Caméra prête : ouvre la caméra pendant le tour" });
+    setExternalDeviceState({ status: "ready", label: "Caméra locale prête : ouvre la caméra pendant le tour" });
+    return;
+  }
+  if (externalProvider === "phone_companion") {
+    setExternalDeviceState({ status: externalPollingUrl ? "polling" : "idle", label: externalPollingUrl ? "Téléphone relié : écoute des impacts active" : "Téléphone : liaison/polling manquant" });
     return;
   }
   if (externalProvider === "bluetooth") {
@@ -4072,7 +4078,7 @@ React.useEffect(() => {
   if (externalProvider === "local_events") {
     setExternalDeviceState({ status: "ready", label: "Events navigateur actifs" });
   }
-}, [scoringSource, externalProvider]);
+}, [scoringSource, externalProvider, externalPollingUrl]);
 
 React.useEffect(() => {
   if (typeof window === "undefined") return;
@@ -4117,18 +4123,44 @@ React.useEffect(() => {
 
   let stopped = false;
   let lastId = "";
+  let lastSeq = 0;
   const tick = async () => {
     try {
-      const res = await fetch(externalPollingUrl, { cache: "no-store" });
+      const pollUrl = (() => {
+        try {
+          const u = new URL(externalPollingUrl, window.location.href);
+          if (lastSeq > 0 && /x01-device\/session\/[^/]+\/events/i.test(u.pathname)) u.searchParams.set("after", String(lastSeq));
+          return u.toString();
+        } catch {
+          return externalPollingUrl;
+        }
+      })();
+      const res = await fetch(pollUrl, { cache: "no-store" });
       if (!res.ok) return;
       const text = await res.text();
       if (stopped || !text.trim()) return;
       try {
         const obj = JSON.parse(text);
-        const id = String(obj?.id ?? obj?.eventId ?? obj?.ts ?? text);
+        const events = Array.isArray(obj?.events) ? obj.events : Array.isArray(obj?.items) ? obj.items : null;
+        if (events) {
+          for (const item of events) {
+            const eventNum = Number(item?.id ?? item?.seq ?? 0) || 0;
+            const eventId = String(item?.id ?? item?.seq ?? item?.eventId ?? item?.ts ?? JSON.stringify(item));
+            if (eventNum > 0) {
+              if (eventNum <= lastSeq) continue;
+              lastSeq = eventNum;
+            } else if (!eventId || eventId === lastId) {
+              continue;
+            }
+            lastId = eventId;
+            emitExternalPayload(item?.payload ?? item?.data ?? item, "http_poll");
+          }
+          return;
+        }
+        const id = String(obj?.id ?? obj?.eventId ?? obj?.seq ?? obj?.ts ?? text);
         if (id && id === lastId) return;
         lastId = id;
-        emitExternalPayload(obj, "http_poll");
+        emitExternalPayload(obj?.payload ?? obj?.data ?? obj, "http_poll");
       } catch {
         if (text === lastId) return;
         lastId = text;
