@@ -357,6 +357,19 @@ import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallo
 import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
 
+// ✅ ROUTES PUBLIQUES STANDALONE
+// Le téléphone compagnon X01 est ouvert depuis un QR code.
+// Il ne doit jamais être redirigé vers login / account_start / gameSelect :
+// il sert uniquement de caméra + calibration + envoi d'impacts à une session déjà créée.
+function isX01DevicePublicHash(hash: string): boolean {
+  const h = String(hash || "");
+  return h === "#/x01-device" || h === "#/x01-device/" || h.startsWith("#/x01-device/");
+}
+
+function isStandalonePublicHash(hash: string): boolean {
+  return isX01DevicePublicHash(hash);
+}
+
 // ============================================================
 // ONLINE V10 — propagation sécurisée du contexte salon
 // Objectif: quand un joueur lance un mode depuis Online > Jouer,
@@ -1717,10 +1730,11 @@ useEffect(() => {
 
       // Si on est encore sur un écran de démarrage auth/profil, on bascule vers l'app
       if (
-        tab === "account_start" ||
-        tab === "auth_start" ||
-        tab === "auth_v7_login" ||
-        tab === "auth_v7_signup"
+        (tab === "account_start" ||
+          tab === "auth_start" ||
+          tab === "auth_v7_login" ||
+          tab === "auth_v7_signup") &&
+        !isStandalonePublicHash(String(window.location.hash || ""))
       ) {
         setRouteParams(null);
         setTab("gameSelect");
@@ -1950,7 +1964,8 @@ useEffect(() => {
     h.startsWith("#/auth/reset") ||
     h.startsWith("#/auth/forgot") ||
     h.startsWith("#/auth/login") ||
-    h.startsWith("#/auth/signup");
+    h.startsWith("#/auth/signup") ||
+    isStandalonePublicHash(h);
     return !isAuthFlow;
   });
 
@@ -2346,7 +2361,8 @@ useEffect(() => {
            h.startsWith("#/auth/reset") ||
            h.startsWith("#/auth/forgot") ||
            h.startsWith("#/auth/login") ||
-           h.startsWith("#/auth/signup");
+           h.startsWith("#/auth/signup") ||
+           isStandalonePublicHash(h);
 
           if (!isAuthFlow) {
             if (!hasProfiles || !hasActive) {
@@ -2362,8 +2378,10 @@ useEffect(() => {
       } catch {
         if (mounted) {
           setStore(initialStore);
-          setRouteParams(null);
-          setTab("account_start");
+          if (!isStandalonePublicHash(String(window.location.hash || ""))) {
+            setRouteParams(null);
+            setTab("account_start");
+          }
         }
       } finally {
         bootStoreLoadedRef.current = true;
@@ -2562,7 +2580,10 @@ useEffect(() => {
 
                 const hh = String(window.location.hash || "");
                 const isAuthFlow =
-                  hh.startsWith("#/auth/callback") || hh.startsWith("#/auth/reset") || hh.startsWith("#/auth/forgot");
+                  hh.startsWith("#/auth/callback") ||
+                  hh.startsWith("#/auth/reset") ||
+                  hh.startsWith("#/auth/forgot") ||
+                  isStandalonePublicHash(hh);
 
                 if (!isAuthFlow && hasProfiles && hasActive) {
                   setRouteParams(null);
@@ -5093,7 +5114,8 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     tab === "auth_start" ||
     tab === "account_start" ||
     tab === "auth_v7_login" ||
-    tab === "auth_v7_signup";
+    tab === "auth_v7_signup" ||
+    tab === "x01_device_camera";
 
   // ✅ Ne jamais bloquer les onglets locaux à cause du provider online.
   if (!needsSession || isAuthFlow) {

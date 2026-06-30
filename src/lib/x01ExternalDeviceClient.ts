@@ -34,6 +34,8 @@ export type X01DeviceStatus = {
   [key: string]: any;
 };
 
+const DEVICE_API_OVERRIDE_KEY = "dc:x01-device-api-url:v1";
+
 function cleanCode(input: any): string {
   return String(input || "")
     .trim()
@@ -42,8 +44,43 @@ function cleanCode(input: any): string {
     .slice(0, 24);
 }
 
+function cleanApiUrl(input: any): string {
+  const raw = String(input || "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(raw)) return "";
+  return raw;
+}
+
+function readApiOverrideFromUrl(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const searchApi = cleanApiUrl(new URLSearchParams(window.location.search || "").get("api"));
+    if (searchApi) return searchApi;
+  } catch {}
+  try {
+    const hash = String(window.location.hash || "");
+    const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const hashApi = cleanApiUrl(new URLSearchParams(query).get("api"));
+    if (hashApi) return hashApi;
+  } catch {}
+  return "";
+}
+
+function readStoredApiOverride(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return cleanApiUrl(window.localStorage.getItem(DEVICE_API_OVERRIDE_KEY) || "");
+  } catch {
+    return "";
+  }
+}
+
 function apiBase(): string {
-  return String(getApiUrl() || "").replace(/\/+$/, "");
+  const fromUrl = readApiOverrideFromUrl();
+  if (fromUrl) {
+    try { window.localStorage.setItem(DEVICE_API_OVERRIDE_KEY, fromUrl); } catch {}
+    return fromUrl;
+  }
+  return String(readStoredApiOverride() || getApiUrl() || "").replace(/\/+$/, "");
 }
 
 function publicBase(): string {
@@ -51,32 +88,30 @@ function publicBase(): string {
   return `${window.location.origin}${window.location.pathname}`;
 }
 
-function appendQuery(url: string, params: Record<string, string>): string {
-  try {
-    const u = new URL(url);
-    Object.entries(params).forEach(([k, v]) => {
-      if (v) u.searchParams.set(k, v);
-    });
-    return u.toString();
-  } catch {
-    const qs = new URLSearchParams(params).toString();
-    return `${url}${url.includes("?") ? "&" : "?"}${qs}`;
-  }
+function buildDeviceApiUrl(path: string): string {
+  const base = apiBase();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (!base) return buildApiUrl(normalizedPath);
+  return `${base}${normalizedPath}`;
 }
 
 export function buildX01DeviceJoinUrl(sessionId: string): string {
   const code = cleanCode(sessionId);
   const base = publicBase();
-  const url = `${base}#/x01-device/${encodeURIComponent(code)}`;
-  return appendQuery(url, { api: apiBase() });
+  const api = apiBase();
+  const query = api ? `?api=${encodeURIComponent(api)}` : "";
+  // Important : le paramètre api est volontairement dans le hash.
+  // Ainsi le téléphone ouvre directement la route publique de calibration SPA,
+  // sans passer par login ni perdre le code session.
+  return `${base}#/x01-device/${encodeURIComponent(code)}${query}`;
 }
 
 export function buildX01DevicePollingUrl(sessionId: string): string {
-  return buildApiUrl(`/x01-device/session/${encodeURIComponent(cleanCode(sessionId))}/events`);
+  return buildDeviceApiUrl(`/x01-device/session/${encodeURIComponent(cleanCode(sessionId))}/events`);
 }
 
 export function buildX01DeviceStatusUrl(sessionId: string): string {
-  return buildApiUrl(`/x01-device/session/${encodeURIComponent(cleanCode(sessionId))}/status`);
+  return buildDeviceApiUrl(`/x01-device/session/${encodeURIComponent(cleanCode(sessionId))}/status`);
 }
 
 async function rawJson(url: string, init?: RequestInit) {
@@ -101,7 +136,7 @@ async function rawJson(url: string, init?: RequestInit) {
 }
 
 export async function createX01DeviceSession(): Promise<X01DeviceSession> {
-  const json = await rawJson(buildApiUrl("/x01-device/session"), {
+  const json = await rawJson(buildDeviceApiUrl("/x01-device/session"), {
     method: "POST",
     body: JSON.stringify({ kind: "x01_phone_companion_v1" }),
   });
@@ -136,7 +171,7 @@ export async function updateX01DeviceStatus(sessionId: string, patch: Partial<X0
 export async function postX01DeviceEvent(sessionId: string, payload: any): Promise<{ ok: boolean; id?: number }> {
   const code = cleanCode(sessionId);
   if (!code) throw new Error("Code session manquant.");
-  const json = await rawJson(buildApiUrl(`/x01-device/session/${encodeURIComponent(code)}/event`), {
+  const json = await rawJson(buildDeviceApiUrl(`/x01-device/session/${encodeURIComponent(code)}/event`), {
     method: "POST",
     body: JSON.stringify(payload || {}),
   });
@@ -147,7 +182,7 @@ export async function closeX01DeviceSession(sessionId: string): Promise<void> {
   const code = cleanCode(sessionId);
   if (!code) return;
   try {
-    await rawJson(buildApiUrl(`/x01-device/session/${encodeURIComponent(code)}`), { method: "DELETE" });
+    await rawJson(buildDeviceApiUrl(`/x01-device/session/${encodeURIComponent(code)}`), { method: "DELETE" });
   } catch {}
 }
 
