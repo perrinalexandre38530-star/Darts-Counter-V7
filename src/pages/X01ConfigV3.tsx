@@ -3194,9 +3194,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               <button type="button" onClick={guidedPrev} disabled={guidedStep <= 0} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)", color: guidedStep <= 0 ? "#565b76" : "#fff", fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}>
                 ← Précédent
               </button>
-              <button type="button" onClick={guidedStep >= guidedMaxStep ? handleStart : guidedNext} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: guidedStep >= guidedMaxStep ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : primarySoft, color: guidedStep >= guidedMaxStep ? "#151515" : primary, fontWeight: 950, cursor: "pointer" }}>
-                {guidedStep >= guidedMaxStep ? "Lancer" : "Suivant →"}
-              </button>
+              {guidedStep < guidedMaxStep ? (
+                <button type="button" onClick={guidedNext} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: primary, fontWeight: 950, cursor: "pointer" }}>
+                  Suivant →
+                </button>
+              ) : (
+                <div style={{ flex: "1 1 0" }} />
+              )}
             </div>
           </>
         ) : (
@@ -4301,33 +4305,36 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
         <div style={{ height: 96 }} />
       </div>
 
-      {/* CTA collée au-dessus de la barre de nav */}
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
-        <div style={{ pointerEvents: "auto" }}>
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={!canStart}
-            style={{
-              width: "100%",
-              height: 46,
-              borderRadius: 999,
-              border: "none",
-              fontWeight: 800,
-              fontSize: 14,
-              letterSpacing: 1,
-              textTransform: "uppercase",
-              background: canStart ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
-              color: canStart ? "#151515" : "#2b2b52",
-              boxShadow: canStart ? "0 0 18px rgba(255, 207, 120, 0.65)" : "none",
-              opacity: canStart ? 1 : 0.6,
-              cursor: canStart ? "pointer" : "default",
-            }}
-          >
-            {t("x01v3.start", "Lancer la partie")}
-          </button>
+      {/* CTA collée au-dessus de la barre de nav.
+          En mode guidé, elle n'apparaît qu'à l'étape récapitulative finale. */}
+      {(configViewMode === "complete" || guidedStep >= guidedMaxStep) && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto" }}>
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={!canStart}
+              style={{
+                width: "100%",
+                height: 46,
+                borderRadius: 999,
+                border: "none",
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                background: canStart ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
+                color: canStart ? "#151515" : "#2b2b52",
+                boxShadow: canStart ? "0 0 18px rgba(255, 207, 120, 0.65)" : "none",
+                opacity: canStart ? 1 : 0.6,
+                cursor: canStart ? "pointer" : "default",
+              }}
+            >
+              {t("x01v3.start", "Lancer la partie")}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* RULES OVERLAY */}
       {rulesOpen && (
