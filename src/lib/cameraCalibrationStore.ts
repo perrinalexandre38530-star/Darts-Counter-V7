@@ -2,8 +2,29 @@
 // src/lib/cameraCalibrationStore.ts
 // Caméra assistée X01 — calibration persistée côté téléphone
 // - V1 : calibration manuelle 3 points (centre, rayon, orientation 20)
-// - V2 : calibration photo automatique avec ellipse (centre, rx, ry, orientation 20)
+// - V2 : calibration photo automatique avec ellipse + zones avancées
 // ============================================
+
+export type CameraBoardRingRatios = {
+  // Ratios normalisés par rapport au rayon extérieur de la zone de score.
+  // Ces valeurs permettent de distinguer proprement DBULL / BULL / TRIPLE / DOUBLE.
+  innerBullOuter: number;
+  outerBullOuter: number;
+  tripleInner: number;
+  tripleOuter: number;
+  doubleInner: number;
+  doubleOuter: number;
+};
+
+export const DEFAULT_CAMERA_BOARD_RINGS: CameraBoardRingRatios = {
+  // Dimensions proches cible type bristle : 6.35 / 170, 15.9 / 170, etc.
+  innerBullOuter: 0.037,
+  outerBullOuter: 0.094,
+  tripleInner: 0.58,
+  tripleOuter: 0.64,
+  doubleInner: 0.94,
+  doubleOuter: 1.0,
+};
 
 export type CameraCalibrationV1 = {
   v: 1;
@@ -14,6 +35,7 @@ export type CameraCalibrationV1 = {
   // orientation: angle (radians) où se trouve le centre du segment 20
   // angle 0 = vers la droite, PI/2 = vers le bas, -PI/2 = vers le haut
   a20: number;
+  method?: "manual" | string;
   updatedAt: number;
 };
 
@@ -28,8 +50,10 @@ export type CameraCalibrationV2 = {
   // rayon moyen conservé pour compat UI / anciens calculs
   r: number;
   a20: number;
-  method?: "auto-photo" | "manual" | string;
+  method?: "auto-photo" | "auto-photo-zones" | "manual" | string;
   confidence?: number;
+  zoneConfidence?: number;
+  rings?: CameraBoardRingRatios;
   updatedAt: number;
 };
 
@@ -42,10 +66,31 @@ function finiteNumber(value: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeRings(raw: any): CameraBoardRingRatios {
+  const base = DEFAULT_CAMERA_BOARD_RINGS;
+  const innerBullOuter = clamp(finiteNumber(raw?.innerBullOuter) ?? base.innerBullOuter, 0.015, 0.07);
+  const outerBullOuter = clamp(finiteNumber(raw?.outerBullOuter) ?? base.outerBullOuter, innerBullOuter + 0.015, 0.18);
+  const tripleInner = clamp(finiteNumber(raw?.tripleInner) ?? base.tripleInner, 0.45, 0.72);
+  const tripleOuter = clamp(finiteNumber(raw?.tripleOuter) ?? base.tripleOuter, tripleInner + 0.012, 0.78);
+  const doubleInner = clamp(finiteNumber(raw?.doubleInner) ?? base.doubleInner, 0.82, 0.995);
+  const doubleOuter = clamp(finiteNumber(raw?.doubleOuter) ?? base.doubleOuter, Math.max(doubleInner + 0.008, 0.96), 1.06);
+  return { innerBullOuter, outerBullOuter, tripleInner, tripleOuter, doubleInner, doubleOuter };
+}
+
+export function getCameraCalibrationRings(cal?: CameraCalibration | null): CameraBoardRingRatios {
+  if (!cal || cal.v !== 2) return DEFAULT_CAMERA_BOARD_RINGS;
+  return normalizeRings(cal.rings);
+}
+
 function normalizeCameraCalibration(obj: any): CameraCalibration | null {
   if (!obj || typeof obj !== "object") return null;
 
-  // Format V2 : photo auto / ellipse.
+  // Format V2 : photo auto / ellipse / zones avancées.
   if (obj.v === 2) {
     const cx = finiteNumber(obj.cx);
     const cy = finiteNumber(obj.cy);
@@ -65,6 +110,8 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
       a20,
       method: obj.method ? String(obj.method) : "auto-photo",
       confidence: finiteNumber(obj.confidence) ?? undefined,
+      zoneConfidence: finiteNumber(obj.zoneConfidence) ?? undefined,
+      rings: normalizeRings(obj.rings),
       updatedAt: Number(obj.updatedAt || Date.now()),
     };
   }
@@ -82,6 +129,7 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
       cy,
       r: Math.max(0.0001, r),
       a20,
+      method: obj.method ? String(obj.method) : "manual",
       updatedAt: Number(obj.updatedAt || Date.now()),
     };
   }
@@ -95,6 +143,7 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
       cy: obj.center.y,
       r: Math.max(0.0001, Number(obj.radiusOuter || 0)),
       a20: (deg * Math.PI) / 180,
+      method: "manual",
       updatedAt: Number(obj.updatedAt || Date.now()),
     };
   }

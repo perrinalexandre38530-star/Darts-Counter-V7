@@ -2,9 +2,10 @@
 // src/lib/cameraScoringEngine.ts
 // Caméra assistée X01 — mapping tap -> (segment, multiplier)
 // - V1 : cercle simple
-// - V2 : ellipse issue de la calibration photo automatique
+// - V2 : ellipse + ratios anneaux issus de la calibration photo avancée
 // ============================================
 
+import { getCameraCalibrationRings } from "./cameraCalibrationStore";
 import type { CameraCalibration } from "./cameraCalibrationStore";
 
 export type CameraScoredDart = {
@@ -19,13 +20,6 @@ const BOARD_NUMBERS: number[] = [
   3, 19, 7, 16, 8,
   11, 14, 9, 12, 5,
 ];
-
-// Ratios pratiques en proportion du rayon extérieur.
-const RATIO_BULL_OUTER = 0.060;
-const RATIO_25_OUTER = 0.160;
-const RATIO_TRIPLE_INNER = 0.540;
-const RATIO_TRIPLE_OUTER = 0.610;
-const RATIO_DOUBLE_INNER = 0.930;
 
 function normAngle(a: number): number {
   const twopi = Math.PI * 2;
@@ -62,8 +56,9 @@ export function scoreTap(
   yNorm: number
 ): CameraScoredDart {
   const { nx, ny, dist } = getNormalizedVector(cal, xNorm, yNorm);
+  const rings = getCameraCalibrationRings(cal);
 
-  if (dist > 1.05) {
+  if (dist > Math.max(1.035, rings.doubleOuter + 0.035)) {
     return { segment: 0, multiplier: 0 };
   }
 
@@ -75,16 +70,19 @@ export function scoreTap(
 
   const rr = dist;
 
-  if (rr <= RATIO_BULL_OUTER) {
+  // Bull / double bull : ratios calibrés ou standard cible bristle.
+  if (rr <= rings.innerBullOuter) {
     return { segment: 25, multiplier: 2 };
   }
-  if (rr <= RATIO_25_OUTER) {
+  if (rr <= rings.outerBullOuter) {
     return { segment: 25, multiplier: 1 };
   }
-  if (rr >= RATIO_DOUBLE_INNER && rr <= 1.02) {
+
+  // Double et triple : priorité aux anneaux calibrés par photo/couleur.
+  if (rr >= rings.doubleInner && rr <= Math.max(rings.doubleOuter, 1.0) + 0.018) {
     return { segment, multiplier: 2 };
   }
-  if (rr >= RATIO_TRIPLE_INNER && rr <= RATIO_TRIPLE_OUTER) {
+  if (rr >= rings.tripleInner && rr <= rings.tripleOuter) {
     return { segment, multiplier: 3 };
   }
 
@@ -105,6 +103,7 @@ export function buildCalibrationFromTaps(bull: CameraTap, outer: CameraTap, top2
     cy: bull.y,
     r: Math.max(0.0001, r),
     a20: Math.atan2(top20.y - bull.y, top20.x - bull.x),
+    method: "manual",
     updatedAt: Date.now(),
   };
 }

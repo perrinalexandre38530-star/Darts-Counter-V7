@@ -4,12 +4,18 @@
 // Téléphone compagnon X01 — caméra + tap-to-score
 // - Ouvert depuis QR code : /#/x01-device/:sessionId
 // - Calibration stockée SUR LE TÉLÉPHONE
-// - Calibration photo automatique + fallback manuel précis
+// - Calibration photo automatique avancée : ellipse + anneaux + secteurs
 // - Envoie les impacts au match via session API
 // ============================================
 
 import React from "react";
-import { loadCameraCalibration, saveCameraCalibration, clearCameraCalibration } from "../lib/cameraCalibrationStore";
+import {
+  DEFAULT_CAMERA_BOARD_RINGS,
+  getCameraCalibrationRings,
+  loadCameraCalibration,
+  saveCameraCalibration,
+  clearCameraCalibration,
+} from "../lib/cameraCalibrationStore";
 import { scoreTap } from "../lib/cameraScoringEngine";
 import { captureVisibleVideoFrame, detectDartboardCalibrationFromImageData } from "../lib/cameraAutoCalibration";
 import { postX01DeviceEvent, updateX01DeviceStatus } from "../lib/x01ExternalDeviceClient";
@@ -24,6 +30,16 @@ type TapPoint = { x: number; y: number };
 
 const CYAN = "#20e7ff";
 const GOLD = "#ffe66d";
+const RED = "#ff5d6c";
+const GREEN = "#35ff9a";
+const BLUE = "#8db4ff";
+
+const BOARD_NUMBERS = [
+  20, 1, 18, 4, 13,
+  6, 10, 15, 2, 17,
+  3, 19, 7, 16, 8,
+  11, 14, 9, 12, 5,
+];
 
 function normalizeCode(raw: any) {
   return String(raw || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
@@ -64,6 +80,81 @@ function confidenceLabel(confidence?: number) {
   return `${pct}% fragile`;
 }
 
+function pct(n: number) {
+  return `${n * 100}%`;
+}
+
+function AdvancedBoardOverlay({ cal }: { cal: any }) {
+  if (!cal) return null;
+  const { rx, ry } = getCalRadii(cal);
+  if (!rx || !ry) return null;
+  const rings = cal?.v === 2 ? getCameraCalibrationRings(cal) : DEFAULT_CAMERA_BOARD_RINGS;
+  const cx = Number(cal.cx || 0) * 1000;
+  const cy = Number(cal.cy || 0) * 1000;
+  const sx = rx * 1000;
+  const sy = ry * 1000;
+  const a20 = Number(cal.a20 ?? -Math.PI / 2);
+  const sectorSize = (Math.PI * 2) / 20;
+  const boundaryStart = a20 - sectorSize / 2;
+
+  const lineForAngle = (angle: number, ratio = 1) => ({
+    x2: cx + Math.cos(angle) * sx * ratio,
+    y2: cy + Math.sin(angle) * sy * ratio,
+  });
+
+  const centerForRatio = (angle: number, ratio: number) => ({
+    x: cx + Math.cos(angle) * sx * ratio,
+    y: cy + Math.sin(angle) * sy * ratio,
+  });
+
+  const ringStroke = (color: string, width = 2) => ({ fill: "none", stroke: color, strokeWidth: width, vectorEffect: "non-scaling-stroke" as any });
+
+  return (
+    <svg
+      viewBox="0 0 1000 1000"
+      preserveAspectRatio="none"
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", filter: "drop-shadow(0 0 10px rgba(32,231,255,.35))" }}
+    >
+      <ellipse cx={cx} cy={cy} rx={sx * rings.doubleOuter} ry={sy * rings.doubleOuter} {...ringStroke(CYAN, 2.5)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.doubleInner} ry={sy * rings.doubleInner} {...ringStroke(GREEN, 2)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.tripleOuter} ry={sy * rings.tripleOuter} {...ringStroke(RED, 2)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.tripleInner} ry={sy * rings.tripleInner} {...ringStroke(RED, 2)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.outerBullOuter} ry={sy * rings.outerBullOuter} {...ringStroke(GREEN, 2.2)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.innerBullOuter} ry={sy * rings.innerBullOuter} {...ringStroke(RED, 2.4)} />
+
+      {Array.from({ length: 20 }).map((_, i) => {
+        const a = boundaryStart + i * sectorSize;
+        const p = lineForAngle(a, rings.doubleOuter);
+        return <line key={`b-${i}`} x1={cx} y1={cy} x2={p.x2} y2={p.y2} stroke="rgba(255,255,255,.58)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />;
+      })}
+
+      {BOARD_NUMBERS.map((n, i) => {
+        const p = centerForRatio(a20 + i * sectorSize, 1.08);
+        return (
+          <text
+            key={`n-${n}-${i}`}
+            x={p.x}
+            y={p.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill={i === 0 ? GOLD : "rgba(255,255,255,.86)"}
+            fontSize="22"
+            fontWeight="900"
+            style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}
+          >
+            {n}
+          </text>
+        );
+      })}
+
+      <text x={cx + sx * 0.70} y={cy - sy * rings.tripleOuter - 8} fill={RED} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>TRIPLE</text>
+      <text x={cx + sx * 0.70} y={cy - sy * rings.doubleOuter - 8} fill={GREEN} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>DOUBLE</text>
+      <text x={cx} y={cy - sy * rings.outerBullOuter - 12} fill={GOLD} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>BULL</text>
+      <circle cx={cx} cy={cy} r="4" fill={GOLD} />
+    </svg>
+  );
+}
+
 export default function X01DeviceCameraPage({ params }: Props) {
   const sessionId = normalizeCode(params?.sessionId || "");
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -80,6 +171,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
   const [calibrated, setCalibrated] = React.useState<boolean>(() => !!loadCameraCalibration());
   const [previewCal, setPreviewCal] = React.useState<any | null>(() => loadCameraCalibration());
   const [autoConfidence, setAutoConfidence] = React.useState<number | undefined>(() => loadCameraCalibration()?.confidence);
+  const [showHelp, setShowHelp] = React.useState(false);
 
   const [calStep, setCalStep] = React.useState<0 | 1 | 2>(0);
   const [center, setCenter] = React.useState<TapPoint | null>(null);
@@ -136,12 +228,16 @@ export default function X01DeviceCameraPage({ params }: Props) {
 
     const ping = async () => {
       try {
+        const currentCal = loadCameraCalibration();
         await updateX01DeviceStatus(sessionId, {
           linked: true,
           connected: true,
-          calibrated: !!loadCameraCalibration(),
+          calibrated: !!currentCal,
           deviceLabel: label,
           deviceKind: "phone_camera",
+          calibrationMethod: currentCal?.method || null,
+          calibrationConfidence: currentCal?.confidence ?? null,
+          zoneConfidence: currentCal?.zoneConfidence ?? null,
           message: "Téléphone relié",
           lastSeenAt: Date.now(),
         });
@@ -161,7 +257,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
 
   function persistCalibration(cal: any, msg: string) {
     saveCameraCalibration(cal);
-    setPreviewCal(cal);
+    setPreviewCal(loadCameraCalibration() || cal);
     setAutoConfidence(cal?.confidence);
     setCalibrated(true);
     setMode("score");
@@ -178,6 +274,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
         connected: true,
         calibrationMethod: cal?.method || "manual",
         calibrationConfidence: cal?.confidence ?? null,
+        zoneConfidence: cal?.zoneConfidence ?? null,
         message: "Téléphone calibré",
         lastSeenAt: Date.now(),
       }).catch(() => {});
@@ -194,8 +291,8 @@ export default function X01DeviceCameraPage({ params }: Props) {
     try {
       setBusy(true);
       setError(null);
-      setMessage("Photo en cours… garde la cible entière dans le cadre, avec le 20 en haut.");
-      const image = captureVisibleVideoFrame(video, wrap, 760);
+      setMessage("Photo zones en cours… cible entière visible, téléphone fixe, évite les reflets.");
+      const image = captureVisibleVideoFrame(video, wrap, 860);
       if (!image) {
         setMessage("Impossible de capturer la photo caméra. Réessaie dans une seconde.");
         return;
@@ -207,10 +304,10 @@ export default function X01DeviceCameraPage({ params }: Props) {
       }
       persistCalibration(
         result.calibration,
-        `${result.message} Calibration photo enregistrée (${confidenceLabel(result.confidence)}).`
+        `${result.message} Calibration zones enregistrée (${confidenceLabel(result.calibration.confidence)}).`
       );
     } catch (e: any) {
-      setMessage(e?.message || "Erreur pendant la calibration photo.");
+      setMessage(e?.message || "Erreur pendant la calibration photo zones.");
     } finally {
       setBusy(false);
     }
@@ -223,7 +320,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
     setCenter(null);
     setOuter(null);
     setTop20(null);
-    setMessage("Mode manuel : pose le téléphone bien fixe, puis tape les 3 repères demandés. Utilise le bout de l'ongle/stylet si possible.");
+    setMessage("Mode manuel secours : tape centre bull, bord extérieur cible, centre du 20. La photo zones reste recommandée.");
   }
 
   function adjustOrientation(deltaDeg: number) {
@@ -234,7 +331,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
     }
     const next = rotateCalibration(current, (deltaDeg * Math.PI) / 180);
     saveCameraCalibration(next);
-    setPreviewCal(next);
+    setPreviewCal(loadCameraCalibration() || next);
     setMessage(`Orientation du 20 ajustée de ${deltaDeg > 0 ? "+" : ""}${deltaDeg}°.`);
   }
 
@@ -282,7 +379,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
 
     if (mode === "calibrate") {
       if (!manualActive) {
-        setMessage("Utilise d'abord Photo auto. Le mode manuel 3 points reste disponible avec le bouton Manuel.");
+        setMessage("Utilise d'abord Photo zones. Le mode manuel 3 points reste en secours avec le bouton Manuel.");
         return;
       }
       if (calStep === 0) {
@@ -313,7 +410,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
     const cal = loadCameraCalibration();
     if (!cal) {
       setMode("calibrate");
-      setMessage("Calibration manquante. Lance Photo auto ou le mode manuel avant de scorer.");
+      setMessage("Calibration manquante. Lance Photo zones ou le mode manuel avant de scorer.");
       return;
     }
     const dart = scoreTap(cal, p.x, p.y);
@@ -327,25 +424,30 @@ export default function X01DeviceCameraPage({ params }: Props) {
         : calStep === 1
         ? "Manuel 2/3 — Tape le bord extérieur de la cible"
         : "Manuel 3/3 — Tape le centre du 20 en haut"
-      : "Calibration recommandée — prends une photo, l'app détecte la cible automatiquement"
+      : "Calibration recommandée — Photo zones détecte anneaux, bull, doubles et triples"
     : "Tape l'impact de la fléchette pour l'envoyer au match X01";
 
-  const { rx, ry } = getCalRadii(previewCal);
-  const a20 = Number(previewCal?.a20 ?? -Math.PI / 2);
-  const x20 = previewCal ? previewCal.cx + Math.cos(a20) * rx * 0.92 : 0;
-  const y20 = previewCal ? previewCal.cy + Math.sin(a20) * ry * 0.92 : 0;
+  const rings = previewCal?.v === 2 ? getCameraCalibrationRings(previewCal) : DEFAULT_CAMERA_BOARD_RINGS;
+  const methodLabel = previewCal?.method === "auto-photo-zones"
+    ? "Photo zones"
+    : previewCal?.method === "auto-photo"
+    ? "Photo auto"
+    : previewCal?.method === "manual"
+    ? "Manuel"
+    : "—";
 
   return (
     <div style={{ minHeight: "100vh", background: "#03050b", color: "#f4f7ff", display: "flex", flexDirection: "column", touchAction: "none" }}>
       <header style={{ padding: "10px 10px", borderBottom: "1px solid rgba(255,255,255,.10)", background: "linear-gradient(180deg, rgba(18,22,38,.98), rgba(6,8,16,.96))", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ minWidth: 86 }}>
+        <div style={{ minWidth: 92 }}>
           <div style={{ color: CYAN, fontWeight: 1000, letterSpacing: .5 }}>Téléphone X01</div>
           <div style={{ fontSize: 11, color: "rgba(244,247,255,.68)", marginTop: 2 }}>Session {sessionId || "absente"}</div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button type="button" disabled={!ready || busy} onClick={runAutoPhotoCalibration} style={btn(true, !ready || busy)}>Photo auto</button>
+          <button type="button" disabled={!ready || busy} onClick={runAutoPhotoCalibration} style={btn(true, !ready || busy)}>Photo zones</button>
           <button type="button" onClick={startManualCalibration} style={btn(false)}>Manuel</button>
           <button type="button" disabled={!calibrated} onClick={() => setMode("score")} style={btn(false, !calibrated)}>Scorer</button>
+          <button type="button" onClick={() => setShowHelp((v) => !v)} style={btn(false)}>?</button>
         </div>
       </header>
 
@@ -354,32 +456,41 @@ export default function X01DeviceCameraPage({ params }: Props) {
 
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(circle at center, transparent 0 58%, rgba(0,0,0,.28) 100%)" }} />
 
-        {previewCal && rx > 0 && ry > 0 && (
-          <>
-            <div style={{ position: "absolute", left: `${previewCal.cx * 100}%`, top: `${previewCal.cy * 100}%`, width: `${rx * 200}%`, height: `${ry * 200}%`, borderRadius: "50%", transform: "translate(-50%,-50%)", border: `2px solid ${CYAN}`, boxShadow: `0 0 24px ${CYAN}`, pointerEvents: "none" }} />
-            <div style={{ position: "absolute", left: `${previewCal.cx * 100}%`, top: `${previewCal.cy * 100}%`, width: 16, height: 16, borderRadius: 999, transform: "translate(-50%,-50%)", border: `2px solid ${GOLD}`, background: "rgba(0,0,0,.35)", boxShadow: `0 0 16px ${GOLD}`, pointerEvents: "none" }} />
-            <div style={{ position: "absolute", left: `${x20 * 100}%`, top: `${y20 * 100}%`, width: 30, height: 30, borderRadius: 999, transform: "translate(-50%,-50%)", border: `2px solid ${GOLD}`, background: "rgba(0,0,0,.35)", color: GOLD, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 1000, pointerEvents: "none" }}>20</div>
-          </>
-        )}
+        {previewCal && <AdvancedBoardOverlay cal={previewCal} />}
 
         {[center, outer, top20].filter(Boolean).map((p: any, i) => (
-          <div key={i} style={{ position: "absolute", left: `${p.x * 100}%`, top: `${p.y * 100}%`, width: 20, height: 20, borderRadius: 999, transform: "translate(-50%,-50%)", border: `2px solid ${CYAN}`, background: "rgba(0,0,0,.22)", boxShadow: `0 0 18px ${CYAN}`, pointerEvents: "none" }} />
+          <div key={i} style={{ position: "absolute", left: pct(p.x), top: pct(p.y), width: 20, height: 20, borderRadius: 999, transform: "translate(-50%,-50%)", border: `2px solid ${CYAN}`, background: "rgba(0,0,0,.22)", boxShadow: `0 0 18px ${CYAN}`, pointerEvents: "none" }} />
         ))}
 
-        <div style={{ position: "absolute", left: 10, right: 10, top: 10, padding: 12, borderRadius: 16, background: "rgba(0,0,0,.68)", border: `1px solid ${CYAN}44`, boxShadow: `0 0 28px ${CYAN}22`, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", left: 10, right: 10, top: 10, padding: 12, borderRadius: 16, background: "rgba(0,0,0,.70)", border: `1px solid ${CYAN}44`, boxShadow: `0 0 28px ${CYAN}22`, pointerEvents: "none" }}>
           <div style={{ color: CYAN, fontWeight: 1000, marginBottom: 4 }}>{mode === "calibrate" ? "Calibration téléphone" : "Comptage téléphone"}</div>
           <div style={{ fontWeight: 900 }}>{hint}</div>
           <div style={{ marginTop: 6, fontSize: 12, color: "rgba(244,247,255,.80)", lineHeight: 1.35 }}>{message}</div>
-          {previewCal?.method === "auto-photo" && (
-            <div style={{ marginTop: 7, fontSize: 12, color: GOLD, fontWeight: 1000 }}>Photo auto : {confidenceLabel(autoConfidence)}</div>
+          {previewCal && (
+            <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", fontSize: 11, fontWeight: 1000 }}>
+              <span style={pill(CYAN)}>Méthode : {methodLabel}</span>
+              <span style={pill(GOLD)}>Global : {confidenceLabel(autoConfidence)}</span>
+              {previewCal?.v === 2 && <span style={pill(GREEN)}>Zones : {confidenceLabel(previewCal.zoneConfidence)}</span>}
+            </div>
           )}
           {!ready && !error && <div style={{ marginTop: 6, fontSize: 12, color: GOLD, fontWeight: 900 }}>Ouverture caméra…</div>}
           {error && <div style={{ marginTop: 6, fontSize: 12, color: "#ff9aa9", fontWeight: 900 }}>Erreur : {error}</div>}
         </div>
 
+        {showHelp && (
+          <div style={{ position: "absolute", left: 10, right: 10, top: 118, padding: 12, borderRadius: 16, background: "rgba(5,7,14,.88)", border: "1px solid rgba(255,255,255,.18)", boxShadow: "0 18px 40px rgba(0,0,0,.45)", pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+            <div style={{ color: CYAN, fontWeight: 1000, marginBottom: 5 }}>Comment vérifier la calibration</div>
+            <div style={{ fontSize: 12, lineHeight: 1.45, color: "rgba(244,247,255,.84)" }}>
+              L'overlay doit épouser la cible : cercle extérieur sur le double, anneaux rouges sur les triples, anneau vert sur le bull et les doubles. Si le 20 n'est pas en haut, ajuste avec les boutons 20 ±1° / ±5°. Ensuite seulement tu tapes l'impact de la fléchette.
+            </div>
+          </div>
+        )}
+
         {calibrated && (
-          <div style={{ position: "absolute", left: 10, right: 10, bottom: 106, display: "flex", justifyContent: "center", gap: 8, pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+          <div style={{ position: "absolute", left: 10, right: 10, bottom: 116, display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => adjustOrientation(-5)} style={smallBtn()}>20 ↶ -5°</button>
+            <button type="button" onClick={() => adjustOrientation(-1)} style={smallBtn()}>-1°</button>
+            <button type="button" onClick={() => adjustOrientation(1)} style={smallBtn()}>+1°</button>
             <button type="button" onClick={() => adjustOrientation(5)} style={smallBtn()}>20 ↷ +5°</button>
           </div>
         )}
@@ -389,7 +500,12 @@ export default function X01DeviceCameraPage({ params }: Props) {
             <div style={{ fontSize: 11, color: "rgba(244,247,255,.66)", fontWeight: 900 }}>Dernier impact</div>
             <div style={{ color: CYAN, fontWeight: 1000, fontSize: 22 }}>{lastDart ? dartLabel(lastDart) : "—"}</div>
           </div>
-          <button type="button" onClick={(e) => { e.stopPropagation(); clearCameraCalibration(); setPreviewCal(null); setAutoConfidence(undefined); setCalibrated(false); setMode("calibrate"); setManualActive(false); setCalStep(0); setCenter(null); setOuter(null); setTop20(null); setMessage("Calibration effacée. Reprends une Photo auto ou passe en Manuel."); updateX01DeviceStatus(sessionId, { calibrated: false, message: "Calibration effacée" }).catch(() => {}); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer calibration</button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,.70)", fontWeight: 800, textAlign: "right" }}>
+              D {Math.round(rings.doubleInner * 100)}% · T {Math.round(rings.tripleInner * 100)}-{Math.round(rings.tripleOuter * 100)}% · Bull {Math.round(rings.outerBullOuter * 100)}%
+            </div>
+            <button type="button" onClick={(e) => { e.stopPropagation(); clearCameraCalibration(); setPreviewCal(null); setAutoConfidence(undefined); setCalibrated(false); setMode("calibrate"); setManualActive(false); setCalStep(0); setCenter(null); setOuter(null); setTop20(null); setMessage("Calibration effacée. Reprends une Photo zones ou passe en Manuel."); updateX01DeviceStatus(sessionId, { calibrated: false, message: "Calibration effacée" }).catch(() => {}); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer calibration</button>
+          </div>
         </div>
       </main>
     </div>
@@ -416,8 +532,20 @@ function smallBtn(): React.CSSProperties {
     background: "rgba(0,0,0,.62)",
     color: GOLD,
     fontWeight: 1000,
-    padding: "8px 12px",
+    padding: "8px 10px",
     boxShadow: `0 0 18px ${GOLD}22`,
     cursor: "pointer",
+  };
+}
+
+function pill(color: string): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    padding: "3px 7px",
+    border: `1px solid ${color}77`,
+    color,
+    background: "rgba(0,0,0,.34)",
   };
 }
