@@ -87,6 +87,7 @@ type ServiceModeV3 = "random" | "alternate";
 type TeamId = "gold" | "pink" | "blue" | "green";
 type TeamsSourceMode = "manual" | "saved";
 type ParticipantMode = "players" | "teams";
+type ConfigViewMode = "guided" | "complete";
 
 type Props = {
   profiles: Profile[];
@@ -2024,7 +2025,25 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const voiceTouchedRef = React.useRef(false);
 
   // Source principale de participants : joueurs classiques ou équipes fléchettes enregistrées/manuelles.
+  const [configViewMode, setConfigViewMode] = React.useState<ConfigViewMode>(() => {
+    try {
+      const raw = String(window.localStorage.getItem("dc_x01_v3_config_view_mode") || "guided");
+      return raw === "complete" ? "complete" : "guided";
+    } catch {
+      return "guided";
+    }
+  });
+  const [guidedStep, setGuidedStep] = React.useState<number>(0);
   const [participantMode, setParticipantMode] = React.useState<ParticipantMode>("players");
+
+  const selectConfigViewMode = React.useCallback((mode: ConfigViewMode) => {
+    setConfigViewMode(mode);
+    try { window.localStorage.setItem("dc_x01_v3_config_view_mode", mode); } catch {}
+    try {
+      const el = contentRef.current;
+      if (el) el.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    } catch {}
+  }, []);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
     buildLastOrDefaultSelectedIds(preferredHumanProfiles, activeProfileId)
@@ -2357,6 +2376,35 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     if (matchMode === "multi") return totalPlayers >= 2;
     return totalPlayers >= 4; // équipes manuelles legacy
   }, [participantMode, totalPlayers, matchMode, teamsSourceMode, selectedSavedTeamsCount, savedTeamPlayerIds.length, selectedBotTeamsCount, manualAssignedTeamsCount]);
+
+  const guidedSteps = React.useMemo(() => (
+    participantMode === "teams"
+      ? ["Mode", "Équipes", "Score", "Format", "Saisie", "Récap"]
+      : ["Mode", "Joueurs", "Score", "Format", "Saisie", "Récap"]
+  ), [participantMode]);
+  const guidedMaxStep = Math.max(0, guidedSteps.length - 1);
+  React.useEffect(() => {
+    setGuidedStep((step) => Math.max(0, Math.min(step, guidedMaxStep)));
+  }, [guidedMaxStep]);
+
+  const guidedNext = React.useCallback(() => {
+    setGuidedStep((step) => Math.min(guidedMaxStep, step + 1));
+    try { contentRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }); } catch {}
+  }, [guidedMaxStep]);
+
+  const guidedPrev = React.useCallback(() => {
+    setGuidedStep((step) => Math.max(0, step - 1));
+    try { contentRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }); } catch {}
+  }, []);
+
+  const guidedSelectionLabel = React.useMemo(() => {
+    if (participantMode === "teams") {
+      const teamCount = teamsSourceMode === "saved" ? selectedSavedTeamsCount : manualAssignedTeamsCount + selectedBotTeamsCount;
+      const playerCount = teamsSourceMode === "saved" ? savedTeamPlayerIds.length : totalPlayers + botTeamPlayerIds.length;
+      return `${teamCount} équipe${teamCount > 1 ? "s" : ""} • ${playerCount} joueur${playerCount > 1 ? "s" : ""}`;
+    }
+    return `${totalPlayers} profil${totalPlayers > 1 ? "s" : ""}`;
+  }, [participantMode, teamsSourceMode, selectedSavedTeamsCount, manualAssignedTeamsCount, selectedBotTeamsCount, savedTeamPlayerIds.length, totalPlayers, botTeamPlayerIds.length]);
 
   // ---- désactivation visuelle des modes impossibles ----
   const soloDisabled = totalPlayers !== 2;
@@ -2790,6 +2838,369 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
       {/* CONTENU SCROLLABLE */}
       <div ref={contentRef} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        <section
+          style={{
+            background: "rgba(10,12,24,0.94)",
+            borderRadius: 18,
+            padding: 12,
+            marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            border: `1px solid ${primary}33`,
+          }}
+        >
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary, marginBottom: 8 }}>
+            Configuration X01
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PillButton
+              label="Guidée"
+              active={configViewMode === "guided"}
+              onClick={() => selectConfigViewMode("guided")}
+              primary={primary}
+              primarySoft={primarySoft}
+            />
+            <PillButton
+              label="Complète"
+              active={configViewMode === "complete"}
+              onClick={() => selectConfigViewMode("complete")}
+              primary={primary}
+              primarySoft={primarySoft}
+            />
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: "#9298bb", lineHeight: 1.35 }}>
+            La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.
+          </div>
+        </section>
+
+        {configViewMode === "guided" ? (
+          <>
+            <section
+              style={{
+                background: cardBg,
+                borderRadius: 18,
+                padding: 12,
+                marginBottom: 14,
+                boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+                border: `1px solid ${primary}33`,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary }}>
+                    Configuration guidée
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: "#9298bb" }}>
+                    Étape {guidedStep + 1}/{guidedSteps.length} • {guidedSteps[guidedStep]} • {guidedSelectionLabel}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+                  {guidedSteps.map((label, idx) => (
+                    <button
+                      key={`${label}-${idx}`}
+                      type="button"
+                      onClick={() => setGuidedStep(idx)}
+                      style={{
+                        minWidth: 26,
+                        height: 26,
+                        borderRadius: 999,
+                        border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,0.10)"}`,
+                        background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+                        color: idx === guidedStep ? primary : "#b7bbd6",
+                        fontSize: 10,
+                        fontWeight: 950,
+                        cursor: "pointer",
+                      }}
+                      title={label}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${((guidedStep + 1) / Math.max(1, guidedSteps.length)) * 100}%`,
+                    borderRadius: 999,
+                    background: `linear-gradient(90deg, ${primary}, #ffe9a3)`,
+                    transition: "width .2s ease",
+                  }}
+                />
+              </div>
+            </section>
+
+            {guidedStep === 0 && (
+              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>1. Type de partie</h3>
+                <p style={{ fontSize: 12, color: "#aeb2d3", lineHeight: 1.35, margin: "0 0 12px" }}>
+                  Commence par choisir si tu joues avec des profils individuels ou avec des équipes.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+                  <button type="button" onClick={() => { setParticipantMode("players"); if (matchMode === "teams") setMatchMode(totalPlayers >= 3 ? "multi" : "solo"); }} style={{ borderRadius: 18, border: `1px solid ${participantMode === "players" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "players" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
+                    <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Joueurs</div>
+                    <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>Duel 1v1 ou multi-joueurs.</div>
+                  </button>
+                  <button type="button" onClick={() => { setParticipantMode("teams"); setMatchMode("teams"); }} style={{ borderRadius: 18, border: `1px solid ${participantMode === "teams" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "teams" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
+                    <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Équipes</div>
+                    <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>Teams manuelles ou équipes enregistrées.</div>
+                  </button>
+                </div>
+
+                {participantMode === "players" ? (
+                  <div>
+                    <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format joueurs</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <PillButton label="Duel 1v1" active={matchMode === "solo"} onClick={() => setMatchMode("solo")} primary={primary} primarySoft={primarySoft} />
+                      <PillButton label="Multi" active={matchMode === "multi"} onClick={() => setMatchMode("multi")} primary={primary} primarySoft={primarySoft} />
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>Duel = exactement 2 joueurs. Multi = 2 joueurs ou plus.</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Source des équipes</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <PillButton label="Manuel" active={teamsSourceMode === "manual"} onClick={() => setTeamsSourceMode("manual")} primary={primary} primarySoft={primarySoft} />
+                      <PillButton label="Équipes enregistrées" active={teamsSourceMode === "saved"} onClick={() => setTeamsSourceMode("saved")} primary={primary} primarySoft={primarySoft} />
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>Tu peux sélectionner plusieurs fois la même équipe enregistrée tant qu’il reste des joueurs disponibles.</div>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {guidedStep === 1 && participantMode === "players" && (
+              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>2. Joueurs</h3>
+                <SelectedParticipantsCompactBlock
+                  items={selectedParticipantProfiles}
+                  accent={primary}
+                  onRemove={(id: string) => togglePlayer(id)}
+                  playerDartSets={playerDartSets}
+                  onDartSetChange={handleChangePlayerDartSet}
+                  allProfiles={humanProfiles}
+                />
+                <PlayerPagedSelector
+                  profiles={preferredHumanProfiles}
+                  selectedIds={selectedIds}
+                  onToggle={togglePlayer}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle="Choisir des joueurs"
+                  renderAvatarOverlay={(p: any) => (
+                    <PlayerDartBadge
+                      profileId={p.id}
+                      dartSetId={playerDartSets[p.id] ?? null}
+                      onChange={(id) => handleChangePlayerDartSet(p.id, id)}
+                      compact
+                      allProfiles={humanProfiles}
+                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
+                    />
+                  )}
+                  showSelectedSummary={false}
+                />
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>Bots IA</div>
+                    <PillButton label={botsPanelEnabled ? "ON" : "OFF"} active={botsPanelEnabled} onClick={() => setBotsPanelEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
+                  </div>
+                  {botsPanelEnabled ? (
+                    <BotPagedSelector
+                      bots={botProfiles}
+                      selectedIds={selectedIds}
+                      onToggle={togglePlayer}
+                      accent={primary}
+                      label="BOTS IA"
+                      showCheckbox={false}
+                      showSelectedSummary={false}
+                    />
+                  ) : null}
+                </div>
+              </section>
+            )}
+
+            {guidedStep === 1 && participantMode === "teams" && (
+              <>
+                <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                  <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>2. Équipes</h3>
+                  {selectedSavedTeams.length > 0 ? (
+                    <SelectionStickyBanner
+                      title="Équipes / joueurs sélectionnés"
+                      accent={primary}
+                      items={(selectedSavedTeams || []).map((team: any) => {
+                        const tid = String(team?.id || "");
+                        const chosen = Array.isArray(savedTeamMemberSelections?.[tid]) ? savedTeamMemberSelections[tid] : (Array.isArray(team?.playerIds) ? team.playerIds : []);
+                        const names = chosen.map((id: any) => teamProfiles.find((p: any) => String(p?.id) === String(id))?.name).filter(Boolean).join(", ");
+                        return { id: tid, name: team?.name || "Équipe", logoDataUrl: team?.logoDataUrl || team?.logoUrl || team?.avatarDataUrl || null, subtitle: names || `${chosen.length || 0} joueur` };
+                      })}
+                    />
+                  ) : null}
+                  <TeamsSection
+                    profiles={teamProfiles}
+                    selectableProfiles={preferredHumanProfiles}
+                    selectedIds={selectedIds}
+                    teamAssignments={teamAssignments}
+                    setPlayerTeam={setPlayerTeam}
+                    togglePlayer={togglePlayer}
+                    playerDartSets={playerDartSets}
+                    handleChangePlayerDartSet={handleChangePlayerDartSet}
+                    autoDartSetPicker={autoDartSetPicker}
+                    setAutoDartSetPicker={setAutoDartSetPicker}
+                    allProfiles={humanProfiles}
+                    sourceMode={teamsSourceMode}
+                    setSourceMode={setTeamsSourceMode}
+                    storedTeams={storedDartsTeams}
+                    selectedStoredTeamIds={selectedStoredTeamIds}
+                    toggleStoredTeam={toggleStoredTeam}
+                    removeStoredTeamSelection={removeStoredTeamSelection}
+                    addStoredTeamSelection={addStoredTeamSelection}
+                    botTeams={botDartsTeams}
+                    botTeamsPanelEnabled={botTeamsPanelEnabled}
+                    setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
+                    selectedBotTeamIds={selectedBotTeamIds}
+                    toggleBotTeam={toggleBotTeam}
+                    savedTeamMemberSelections={savedTeamMemberSelections}
+                    toggleSavedTeamMember={toggleSavedTeamMember}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                  />
+                </section>
+                <BotTeamsSection
+                  botTeams={botDartsTeams}
+                  selectedBotTeamIds={selectedBotTeamIds}
+                  toggleBotTeam={toggleBotTeam}
+                  addBotTeamSelection={addBotTeamSelection}
+                  removeBotTeamSelection={removeBotTeamSelection}
+                  botTeamsPanelEnabled={botTeamsPanelEnabled}
+                  setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
+                  profiles={teamProfiles}
+                  savedTeamMemberSelections={savedTeamMemberSelections}
+                  toggleSavedTeamMember={toggleSavedTeamMember}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+              </>
+            )}
+
+            {guidedStep === 2 && (
+              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>3. Score et sortie</h3>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Score de départ</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {START_SCORES.map((s) => <PillButton key={s} label={String(s)} active={startScore === s} onClick={() => { startTouchedRef.current = true; setStartScore(s); }} primary={primary} primarySoft={primarySoft} />)}
+                  </div>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Mode d’entrée</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <PillButton label="Simple IN" active={inMode === "simple"} onClick={() => setInMode("simple")} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Double IN" active={inMode === "double"} onClick={() => setInMode("double")} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Master IN" active={inMode === "master"} onClick={() => setInMode("master")} primary={primary} primarySoft={primarySoft} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Mode de sortie</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <PillButton label="Simple OUT" active={outMode === "simple"} onClick={() => { outTouchedRef.current = true; setOutMode("simple"); }} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Double OUT" active={outMode === "double"} onClick={() => { outTouchedRef.current = true; setOutMode("double"); }} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Master OUT" active={outMode === "master"} onClick={() => { outTouchedRef.current = true; setOutMode("master"); }} primary={primary} primarySoft={primarySoft} />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {guidedStep === 3 && (
+              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>4. Format</h3>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Manches par set</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {LEGS_OPTIONS.map((n) => <PillButton key={n} label={String(n)} active={legsPerSet === n} onClick={() => setLegsPerSet(n)} primary={primary} primarySoft={primarySoft} compact />)}
+                  </div>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Sets à gagner</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {SETS_OPTIONS.map((n) => <PillButton key={n} label={String(n)} active={setsToWin === n} onClick={() => setSetsToWin(n)} primary={primary} primarySoft={primarySoft} compact />)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Ordre de départ</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <PillButton label="Alterné" active={serveMode === "alternate"} onClick={() => setServeMode("alternate")} primary={primary} primarySoft={primarySoft} />
+                    <PillButton label="Aléatoire" active={serveMode === "random"} onClick={() => setServeMode("random")} primary={primary} primarySoft={primarySoft} />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {guidedStep === 4 && (
+              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: "1px solid rgba(255,255,255,0.05)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>5. Saisie et audio</h3>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Méthode de saisie</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => selectScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => selectScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => selectScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label="PRESETS" active={scoreInputMethod === "presets"} onClick={() => selectScoreInputMethod("presets")} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label="VOICE" active={scoreInputMethod === "voice"} onClick={() => selectScoreInputMethod("voice")} primary={primary} primarySoft={primarySoft} compact />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Audio</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <PillButton label={`Arcade ${arcadeEnabled ? "ON" : "OFF"}`} active={arcadeEnabled} onClick={() => setArcadeEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label={`Bruitages ${hitEnabled ? "ON" : "OFF"}`} active={hitEnabled} onClick={() => setHitEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label={`Voix ${voiceEnabled ? "ON" : "OFF"}`} active={voiceEnabled} onClick={() => setVoiceEnabled((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Comptage externe vidéo</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <PillButton label="OFF" active={!externalScoringEnabled} onClick={() => setExternalScoringEnabled(false)} primary={primary} primarySoft={primarySoft} compact />
+                    <PillButton label="ON" active={externalScoringEnabled} onClick={() => { setExternalScoringEnabled(true); setVoiceScoreEnabled(false); }} primary={primary} primarySoft={primarySoft} compact />
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#8f94b5" }}>Les réglages avancés de voix, volume et tests vidéo restent dans la configuration complète.</div>
+                </div>
+              </section>
+            )}
+
+            {guidedStep === 5 && (
+              <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${canStart ? primary + "66" : "rgba(255,255,255,0.08)"}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+                <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 10px" }}>6. Récapitulatif</h3>
+                <div style={{ display: "grid", gap: 8, fontSize: 12, color: "#dfe2ff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Participants</span><b>{participantMode === "teams" ? "Équipes" : matchMode === "multi" ? "Multi" : "Duel 1v1"}</b></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Sélection</span><b>{guidedSelectionLabel}</b></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Score</span><b>{startScore} • {inMode.toUpperCase()} IN • {outMode.toUpperCase()} OUT</b></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Format</span><b>{setsToWin} set{setsToWin > 1 ? "s" : ""} à gagner • {legsPerSet} manche{legsPerSet > 1 ? "s" : ""}/set</b></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#9298bb" }}>Saisie</span><b>{scoreInputMethod}</b></div>
+                </div>
+                {!canStart && (
+                  <div style={{ marginTop: 12, borderRadius: 14, padding: 10, background: "rgba(255,90,90,0.10)", border: "1px solid rgba(255,90,90,0.25)", color: "#ffc9c9", fontSize: 12, fontWeight: 800 }}>
+                    La configuration n’est pas encore complète. Reviens aux étapes précédentes pour sélectionner les participants nécessaires.
+                  </div>
+                )}
+                {canStart && (
+                  <div style={{ marginTop: 12, borderRadius: 14, padding: 10, background: `${primary}18`, border: `1px solid ${primary}44`, color: "#fff4ce", fontSize: 12, fontWeight: 800 }}>
+                    Tout est prêt. Tu peux lancer la partie avec le bouton en bas.
+                  </div>
+                )}
+              </section>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, margin: "0 0 18px" }}>
+              <button type="button" onClick={guidedPrev} disabled={guidedStep <= 0} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)", color: guidedStep <= 0 ? "#565b76" : "#fff", fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}>
+                ← Précédent
+              </button>
+              <button type="button" onClick={guidedStep >= guidedMaxStep ? handleStart : guidedNext} style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: guidedStep >= guidedMaxStep ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : primarySoft, color: guidedStep >= guidedMaxStep ? "#151515" : primary, fontWeight: 950, cursor: "pointer" }}>
+                {guidedStep >= guidedMaxStep ? "Lancer" : "Suivant →"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
         {/* --------- BLOC PARTICIPANTS : JOUEURS / ÉQUIPES --------- */}
         <section
           style={{
@@ -3883,6 +4294,9 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
             </div>
           )}
         </section>
+
+          </>
+        )}
 
         <div style={{ height: 96 }} />
       </div>
