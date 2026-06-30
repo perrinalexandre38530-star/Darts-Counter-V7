@@ -4,7 +4,8 @@ import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
 import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
-import { getCountryFlag } from "../lib/countryNames";
+import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
+import { getCountryFlagSrc } from "../lib/geoAssets";
 
 type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
 
@@ -115,6 +116,46 @@ function profileCountryRaw(profile: any): string {
   return "";
 }
 
+function profileCountryCode(profile: any): string {
+  const raw = profileCountryRaw(profile);
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper)) return upper === "UK" ? "GB" : upper;
+
+  const chars = Array.from(raw);
+  if (chars.length === 2) {
+    const a = chars[0].codePointAt(0) || 0;
+    const b = chars[1].codePointAt(0) || 0;
+    if (a >= 0x1f1e6 && a <= 0x1f1ff && b >= 0x1f1e6 && b <= 0x1f1ff) {
+      return String.fromCharCode(65 + a - 0x1f1e6, 65 + b - 0x1f1e6);
+    }
+  }
+
+  const key = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  const mapped = (COUNTRY_NAME_TO_CODE as any)?.[key];
+  if (mapped) return String(mapped).toUpperCase().slice(0, 2);
+
+  try {
+    const emoji = getCountryFlag(raw);
+    if (emoji && emoji !== raw) {
+      const parts = Array.from(emoji);
+      if (parts.length === 2) {
+        const a = parts[0].codePointAt(0) || 0;
+        const b = parts[1].codePointAt(0) || 0;
+        if (a >= 0x1f1e6 && a <= 0x1f1ff && b >= 0x1f1e6 && b <= 0x1f1ff) {
+          return String.fromCharCode(65 + a - 0x1f1e6, 65 + b - 0x1f1e6);
+        }
+      }
+    }
+  } catch {}
+
+  return "";
+}
+
 function profileCountryFlag(profile: any): string {
   const raw = profileCountryRaw(profile);
   try {
@@ -122,6 +163,54 @@ function profileCountryFlag(profile: any): string {
   } catch {
     return "";
   }
+}
+
+function profileCountryFlagSrc(profile: any): string {
+  const code = profileCountryCode(profile);
+  try {
+    return code ? (getCountryFlagSrc(code) || "") : "";
+  } catch {
+    return "";
+  }
+}
+
+function CountryFlagBadge({ profile, accent, size = 30, style = {} }: { profile: any; accent: string; size?: number; style?: React.CSSProperties }) {
+  const raw = profileCountryRaw(profile);
+  const src = profileCountryFlagSrc(profile);
+  const fallback = profileCountryFlag(profile);
+  if (!src && !fallback) return null;
+  return (
+    <span
+      title={raw || undefined}
+      aria-label="Pays du joueur"
+      style={{
+        position: "absolute",
+        right: 8,
+        bottom: 6,
+        zIndex: 7,
+        width: size,
+        height: size,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(3,8,18,.96)",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 10px ${accent}66, 0 8px 18px rgba(0,0,0,.42)`,
+        overflow: "hidden",
+        color: "#fff",
+        fontSize: Math.max(10, Math.round(size * 0.42)),
+        fontWeight: 950,
+        lineHeight: 1,
+        ...style,
+      }}
+    >
+      {src ? (
+        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <span style={{ lineHeight: 1 }}>{fallback}</span>
+      )}
+    </span>
+  );
 }
 
 function profileStarData(profile: any, statsById: Record<string, any> = {}): ProfileStarData | null {
@@ -562,11 +651,7 @@ export default function PlayerPagedSelector({
                           </div>
                         </div>
                         {active ? renderAvatarOverlay?.(p) : null}
-                        {profileCountryFlag(p) ? (
-                          <span title={profileCountryRaw(p)} style={{ position: "absolute", right: -1, bottom: 2, zIndex: 7, minWidth: 24, height: 24, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.94)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, color: "#fff", fontSize: 11, fontWeight: 950, lineHeight: 1 }}>
-                            {profileCountryFlag(p)}
-                          </span>
-                        ) : null}
+                        <CountryFlagBadge profile={p} accent={accent} size={30} />
                       </div>
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
                       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", display: "flex", justifyContent: "center" }}>{renderActions?.(p)}</div>
@@ -589,7 +674,6 @@ export default function PlayerPagedSelector({
 
 const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfileStarring, accent, renderActions, renderAvatarOverlay, onRemove }: any) {
   const star = showProfileStarring ? profileStarData(p, statsById) : null;
-  const flag = profileCountryFlag(p);
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
@@ -600,32 +684,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
           </div>
         </div>
         {renderAvatarOverlay?.(p)}
-        {flag ? (
-          <span
-            title={profileCountryRaw(p)}
-            style={{
-              position: "absolute",
-              right: -8,
-              bottom: 3,
-              zIndex: 6,
-              minWidth: 22,
-              height: 22,
-              padding: "0 4px",
-              borderRadius: 999,
-              display: "grid",
-              placeItems: "center",
-              background: "rgba(3,8,18,.94)",
-              border: `1px solid ${accent}99`,
-              boxShadow: `0 0 10px ${accent}55`,
-              color: "#fff",
-              fontSize: 11,
-              fontWeight: 950,
-              lineHeight: 1,
-            }}
-          >
-            {flag}
-          </span>
-        ) : null}
+        <CountryFlagBadge profile={p} accent={accent} size={28} style={{ right: -6, bottom: 2 }} />
         <button type="button" onClick={onRemove} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ color: "#fff", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>

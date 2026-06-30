@@ -38,7 +38,8 @@ import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
-import { getCountryFlag } from "../lib/countryNames";
+import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
+import { getCountryFlagSrc } from "../lib/geoAssets";
 import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
@@ -664,6 +665,42 @@ function x01GetProfileCountryRaw(profile: any): string {
   return "";
 }
 
+function x01CountryRawToIso2(value: any): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const upper = raw.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper)) return upper === "UK" ? "GB" : upper;
+
+  const chars = Array.from(raw);
+  if (chars.length === 2) {
+    const a = chars[0].codePointAt(0) || 0;
+    const b = chars[1].codePointAt(0) || 0;
+    if (a >= 0x1f1e6 && a <= 0x1f1ff && b >= 0x1f1e6 && b <= 0x1f1ff) {
+      return String.fromCharCode(65 + a - 0x1f1e6, 65 + b - 0x1f1e6);
+    }
+  }
+
+  const key = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  const mapped = (COUNTRY_NAME_TO_CODE as any)?.[key];
+  if (mapped) return String(mapped).toUpperCase().slice(0, 2);
+
+  try {
+    const emoji = getCountryFlag(raw);
+    return x01CountryRawToIso2(emoji);
+  } catch {
+    return "";
+  }
+}
+
+function x01GetProfileCountryCode(profile: any): string {
+  return x01CountryRawToIso2(x01GetProfileCountryRaw(profile));
+}
+
 function x01GetProfileCountryFlag(profile: any): string {
   const raw = x01GetProfileCountryRaw(profile);
   try {
@@ -671,6 +708,54 @@ function x01GetProfileCountryFlag(profile: any): string {
   } catch {
     return "";
   }
+}
+
+function x01GetProfileCountryFlagSrc(profile: any): string {
+  const code = x01GetProfileCountryCode(profile);
+  try {
+    return code ? (getCountryFlagSrc(code) || "") : "";
+  } catch {
+    return "";
+  }
+}
+
+function X01CountryFlagBadge({ profile, accent, size = 30, style = {} }: { profile: any; accent: string; size?: number; style?: React.CSSProperties }) {
+  const raw = x01GetProfileCountryRaw(profile);
+  const src = x01GetProfileCountryFlagSrc(profile);
+  const fallback = x01GetProfileCountryFlag(profile);
+  if (!src && !fallback) return null;
+  return (
+    <span
+      title={raw || undefined}
+      aria-label="Pays du joueur"
+      style={{
+        position: "absolute",
+        right: 8,
+        bottom: 6,
+        zIndex: 7,
+        width: size,
+        height: size,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(3,8,18,.96)",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 10px ${accent}66, 0 8px 18px rgba(0,0,0,.42)`,
+        overflow: "hidden",
+        color: "#fff",
+        fontSize: Math.max(10, Math.round(size * 0.42)),
+        fontWeight: 950,
+        lineHeight: 1,
+        ...style,
+      }}
+    >
+      {src ? (
+        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <span style={{ lineHeight: 1 }}>{fallback}</span>
+      )}
+    </span>
+  );
 }
 
 function x01ProfileStarValue(profile: any): number {
@@ -1593,8 +1678,6 @@ function SelectedParticipantsCompactBlock({
           const mergedProfile = fullProfile ? { ...fullProfile, ...profile, privateInfo: { ...(fullProfile as any)?.privateInfo, ...(profile as any)?.privateInfo }, private_info: { ...(fullProfile as any)?.private_info, ...(profile as any)?.private_info }, preferences: { ...(fullProfile as any)?.preferences, ...(profile as any)?.preferences } } : profile;
           const name = String(item.name || mergedProfile?.name || mergedProfile?.displayName || "Joueur");
           const isBot = item.kind === "bot" || mergedProfile?.isBot === true;
-          const countryRaw = !isBot ? x01GetProfileCountryRaw(mergedProfile) : "";
-          const flag = !isBot ? x01GetProfileCountryFlag(mergedProfile) : "";
           const starData = x01ProfileStarRenderData(mergedProfile, selectedStatsById);
           const dartSetId = playerDartSets?.[id] ?? null;
           return (
@@ -1647,11 +1730,7 @@ function SelectedParticipantsCompactBlock({
                     <ProfileAvatar profile={mergedProfile} size={70} noFrame showStars={false} />
                   </div>
                 </div>
-                {flag ? (
-                  <span title={countryRaw} style={{ position: "absolute", right: -1, bottom: 4, zIndex: 7, minWidth: 25, height: 25, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.96)", border: `1px solid ${accent}99`, boxShadow: `0 0 10px ${accent}55`, fontSize: 12, fontWeight: 950, lineHeight: 1 }}>
-                    {flag}
-                  </span>
-                ) : null}
+                {!isBot ? <X01CountryFlagBadge profile={mergedProfile} accent={accent} size={30} /> : null}
                 {!isBot && onDartSetChange ? (
                   <PlayerDartBadge
                     profileId={id}
@@ -4527,8 +4606,6 @@ function TeamsSection({
                         const p = teamByPlayer.get(pid);
                         if (!p) return null;
                         const checked = teamPickerPlayerIds.includes(pid);
-                        const countryRaw = x01GetProfileCountryRaw(p);
-                        const flag = x01GetProfileCountryFlag(p);
                         const starData = x01ProfileStarRenderData(p, teamPickerStatsById);
                         return (
                           <button
@@ -4585,11 +4662,7 @@ function TeamsSection({
                                   autoOpenToken={autoDartSetPicker?.profileId === pid ? autoDartSetPicker.seq : null}
                                 />
                               ) : null}
-                              {flag ? (
-                                <span title={countryRaw} style={{ position: "absolute", right: -1, bottom: 2, zIndex: 7, minWidth: 24, height: 24, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(3,8,18,.94)", border: `1px solid ${primary}99`, boxShadow: `0 0 10px ${primary}55`, color: "#fff", fontSize: 11, fontWeight: 950, lineHeight: 1 }}>
-                                  {flag}
-                                </span>
-                              ) : null}
+                              <X01CountryFlagBadge profile={p} accent={primary} size={30} style={{ right: 8, bottom: 8 }} />
                             </div>
                             <div style={{ color: checked ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name || p.displayName || "Joueur"}</div>
                           </button>
