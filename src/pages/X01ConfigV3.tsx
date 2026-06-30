@@ -1639,7 +1639,7 @@ function SelectedParticipantsCompactBlock({
                     {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                     anchorSize={82}
                     starSize={11}
-                    gapPx={0}
+                    gapPx={-2}
                   />
                 ) : null}
                 <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 16px ${accent}66`, background: "rgba(0,0,0,.58)", display: "grid", placeItems: "center" }}>
@@ -4567,7 +4567,7 @@ function TeamsSection({
                                   {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })}
                                   anchorSize={88}
                                   starSize={12}
-                                  gapPx={0}
+                                  gapPx={-2}
                                 />
                               ) : null}
                               <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${checked ? primary : `${primary}88`}`, boxShadow: `0 0 16px ${primary}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>

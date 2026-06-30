@@ -251,7 +251,7 @@ function isDartsSportContextForProfileStarring(): boolean {
   return true;
 }
 
-function renderProfileStars(star: ProfileStarData | null, anchorSize: number, starSize: number, gapPx = -5) {
+function renderProfileStars(star: ProfileStarData | null, anchorSize: number, starSize: number, gapPx = -6) {
   if (!star) return null;
   if (star.kind === "avg3d") return <ProfileStarRing avg3d={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
   return <ProfileStarRing botLevel={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
@@ -555,7 +555,7 @@ export default function PlayerPagedSelector({
                   return (
                     <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ minWidth: 0, borderRadius: 18, padding: "10px 6px", background: active ? `${accent}22` : "rgba(255,255,255,.035)", border: active ? `1px solid ${accent}` : `1px solid ${accent}33`, boxShadow: active ? `0 0 22px ${accent}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
-                        {renderProfileStars(star, 88, 12, 0)}
+                        {renderProfileStars(star, 88, 12, -2)}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                           <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
                             <ProfileAvatar profile={p} size={76} noFrame showStars={false} />
@@ -593,7 +593,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
   return (
     <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
       <div style={{ position: "relative", width: 82, height: 82, display: "grid", placeItems: "center", overflow: "visible" }}>
-        {renderProfileStars(star, 72, 10, 0)}
+        {renderProfileStars(star, 72, 10, -2)}
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
           <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
             <ProfileAvatar profile={p} size={60} noFrame showStars={false} />

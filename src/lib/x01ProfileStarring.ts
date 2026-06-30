@@ -174,7 +174,11 @@ async function computeStatsLikeProfilesPage(profileId: string, profile?: any): P
     normalizedStats = dashboardStatsFromAny(dash);
   } catch {}
 
-  if (normalizedStats && Number(normalizedStats.avg3 ?? normalizedStats.avg3d ?? 0) > 0) return normalizedStats;
+  // Ne jamais retourner trop tôt avec l’index normalisé seul.
+  // Sur certains profils locaux (ex: Jems), cet index peut contenir une vieille
+  // moyenne très basse quelques millisecondes avant que la page Profils reconstruise
+  // les vraies stats depuis les payloads X01 complets. La page Profils consolide
+  // toujours avec computeX01MultiAgg ; le sélecteur X01 doit faire pareil.
 
   try {
     const rows = await getFullHistoryRowsOnce();
@@ -308,8 +312,36 @@ export function getX01ProfileStarData(profile: any, statsById: Record<string, an
   // Important : ne pas lire les champs génériques `avg` / `stats.avg*` directement
   // sur le profil local. Certains profils y stockent autre chose ou une valeur transitoire
   // et cela provoquait l'affichage d'une demi-étoile avant la vraie note de la page Profils.
-  const quickStatsForStars = readQuickStatsFromLocalStorage(profile);
-  const linkedStatsForStars = readLinkedStatsOverride(profile);
+  const asyncAvgCandidates: any[] = [];
+
+  // Priorité absolue aux stats chargées par loadX01ProfileStatsForStarring(),
+  // c.-à-d. la même reconstruction que la page Profils. Cela évite qu’un vieux
+  // mini-cache local affiche une fausse demi-étoile sur certains profils.
+  for (const id of x01ProfileIdentityKeys(profile)) {
+    const s = statsById?.[id] || {};
+    asyncAvgCandidates.push(...collectNumbersByKeys(s, avgKeys, 4));
+  }
+
+  const normalizedName = x01StarringNormText(getProfileName(profile));
+  if (normalizedName) {
+    for (const row of Object.values(statsById || {})) {
+      const r: any = row || {};
+      const rowName = x01StarringNormText(r?.name || r?.displayName || r?.nickname || r?.playerName || r?.profileName);
+      if (rowName && rowName === normalizedName) asyncAvgCandidates.push(...collectNumbersByKeys(r, avgKeys, 4));
+    }
+  }
+
+  const asyncAvgValues = asyncAvgCandidates
+    .map((raw) => numberFromAny(raw))
+    .filter((avg3d) => Number.isFinite(avg3d) && avg3d > 0 && avg3d <= 180);
+  if (asyncAvgValues.length) {
+    return { kind: "avg3d", value: Math.max(...asyncAvgValues) };
+  }
+
+  // Fallback uniquement sur les champs X01/Darts explicitement stockés sur le
+  // profil. On ne lit plus dc-quick-stats / linked override ici : ces sources
+  // passent déjà par le chargement asynchrone ci-dessus, et peuvent sinon créer
+  // un affichage transitoire faux.
   const avgCandidates: any[] = [
     profile?.stats?.x01?.avg3,
     profile?.stats?.x01?.avg3d,
@@ -326,32 +358,12 @@ export function getX01ProfileStarData(profile: any, statsById: Record<string, an
     profile?.stats?.darts?.avg3,
     profile?.stats?.darts?.avg3d,
     profile?.stats?.darts?.avg3D,
-    quickStatsForStars?.avg3,
-    quickStatsForStars?.avg3d,
-    linkedStatsForStars?.avg3,
-    linkedStatsForStars?.avg3d,
   ];
-
-  for (const id of x01ProfileIdentityKeys(profile)) {
-    const s = statsById?.[id] || {};
-    avgCandidates.push(...collectNumbersByKeys(s, avgKeys, 4));
-  }
-
-  const normalizedName = x01StarringNormText(getProfileName(profile));
-  if (normalizedName) {
-    for (const row of Object.values(statsById || {})) {
-      const r: any = row || {};
-      const rowName = x01StarringNormText(r?.name || r?.displayName || r?.nickname || r?.playerName || r?.profileName);
-      if (rowName && rowName === normalizedName) avgCandidates.push(...collectNumbersByKeys(r, avgKeys, 4));
-    }
-  }
 
   const avgValues = avgCandidates
     .map((raw) => numberFromAny(raw))
     .filter((avg3d) => Number.isFinite(avg3d) && avg3d > 0 && avg3d <= 180);
   if (avgValues.length) {
-    // On garde la valeur la plus forte disponible pour éviter qu'un vieux mini-cache
-    // plus faible masque la vraie moyenne X01 recalculée comme sur la page Profils.
     return { kind: "avg3d", value: Math.max(...avgValues) };
   }
 
