@@ -66,6 +66,13 @@ function rotateCalibration(cal: any, deltaRad: number) {
   return { ...cal, a20: Number(cal.a20 || 0) + deltaRad, updatedAt: Date.now() };
 }
 
+function rotateEllipseCalibration(cal: any, deltaRad: number) {
+  if (!cal) return null;
+  const next = normalizeCalibrationPatch(cal);
+  if (!next || next.v !== 2) return next;
+  return { ...next, phi: Number(next.phi || 0) + deltaRad, updatedAt: Date.now() };
+}
+
 function normalizeCalibrationPatch(cal: any) {
   if (!cal) return null;
   const base = { ...cal, updatedAt: Date.now() };
@@ -129,20 +136,20 @@ function AdvancedBoardOverlay({ cal }: { cal: any }) {
   const cy = Number(cal.cy || 0) * 1000;
   const sx = rx * 1000;
   const sy = ry * 1000;
+  const phi = Number(cal?.v === 2 ? (cal.phi || 0) : 0);
+  const phiDeg = (phi * 180) / Math.PI;
   const a20 = Number(cal.a20 ?? -Math.PI / 2);
   const sectorSize = (Math.PI * 2) / 20;
   const boundaryStart = a20 - sectorSize / 2;
+  const ellipseTransform = phi ? `rotate(${phiDeg} ${cx} ${cy})` : undefined;
 
-  const lineForAngle = (angle: number, ratio = 1) => ({
-    x2: cx + Math.cos(angle) * sx * ratio,
-    y2: cy + Math.sin(angle) * sy * ratio,
+  const rotateLocal = (u: number, v: number) => ({
+    x: cx + Math.cos(phi) * u - Math.sin(phi) * v,
+    y: cy + Math.sin(phi) * u + Math.cos(phi) * v,
   });
 
-  const centerForRatio = (angle: number, ratio: number) => ({
-    x: cx + Math.cos(angle) * sx * ratio,
-    y: cy + Math.sin(angle) * sy * ratio,
-  });
-
+  const pointFor = (angle: number, ratio: number) => rotateLocal(Math.cos(angle) * sx * ratio, Math.sin(angle) * sy * ratio);
+  const lineForAngle = (angle: number, ratio = 1) => pointFor(angle, ratio);
   const ringStroke = (color: string, width = 2) => ({ fill: "none", stroke: color, strokeWidth: width, vectorEffect: "non-scaling-stroke" as any });
 
   return (
@@ -151,21 +158,24 @@ function AdvancedBoardOverlay({ cal }: { cal: any }) {
       preserveAspectRatio="none"
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", filter: "drop-shadow(0 0 10px rgba(32,231,255,.35))" }}
     >
-      <ellipse cx={cx} cy={cy} rx={sx * rings.doubleOuter} ry={sy * rings.doubleOuter} {...ringStroke(CYAN, 2.5)} />
-      <ellipse cx={cx} cy={cy} rx={sx * rings.doubleInner} ry={sy * rings.doubleInner} {...ringStroke(GREEN, 2)} />
-      <ellipse cx={cx} cy={cy} rx={sx * rings.tripleOuter} ry={sy * rings.tripleOuter} {...ringStroke(RED, 2)} />
-      <ellipse cx={cx} cy={cy} rx={sx * rings.tripleInner} ry={sy * rings.tripleInner} {...ringStroke(RED, 2)} />
-      <ellipse cx={cx} cy={cy} rx={sx * rings.outerBullOuter} ry={sy * rings.outerBullOuter} {...ringStroke(GREEN, 2.2)} />
-      <ellipse cx={cx} cy={cy} rx={sx * rings.innerBullOuter} ry={sy * rings.innerBullOuter} {...ringStroke(RED, 2.4)} />
+      <ellipse cx={cx} cy={cy} rx={sx * 1.105} ry={sy * 1.105} transform={ellipseTransform} stroke="rgba(255,255,255,.38)" strokeWidth="1.4" strokeDasharray="5 5" fill="none" vectorEffect="non-scaling-stroke" />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.doubleOuter} ry={sy * rings.doubleOuter} transform={ellipseTransform} {...ringStroke(CYAN, 3)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.doubleInner} ry={sy * rings.doubleInner} transform={ellipseTransform} {...ringStroke(GREEN, 2.4)} />
+      <ellipse cx={cx} cy={cy} rx={sx * ((rings.doubleOuter + rings.doubleInner) / 2)} ry={sy * ((rings.doubleOuter + rings.doubleInner) / 2)} transform={ellipseTransform} stroke="rgba(53,255,154,.55)" strokeWidth="8" fill="none" vectorEffect="non-scaling-stroke" />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.tripleOuter} ry={sy * rings.tripleOuter} transform={ellipseTransform} {...ringStroke(RED, 2.4)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.tripleInner} ry={sy * rings.tripleInner} transform={ellipseTransform} {...ringStroke(RED, 2.4)} />
+      <ellipse cx={cx} cy={cy} rx={sx * ((rings.tripleOuter + rings.tripleInner) / 2)} ry={sy * ((rings.tripleOuter + rings.tripleInner) / 2)} transform={ellipseTransform} stroke="rgba(255,93,108,.58)" strokeWidth="8" fill="none" vectorEffect="non-scaling-stroke" />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.outerBullOuter} ry={sy * rings.outerBullOuter} transform={ellipseTransform} {...ringStroke(GREEN, 2.4)} />
+      <ellipse cx={cx} cy={cy} rx={sx * rings.innerBullOuter} ry={sy * rings.innerBullOuter} transform={ellipseTransform} {...ringStroke(RED, 2.8)} />
 
       {Array.from({ length: 20 }).map((_, i) => {
         const a = boundaryStart + i * sectorSize;
         const p = lineForAngle(a, rings.doubleOuter);
-        return <line key={`b-${i}`} x1={cx} y1={cy} x2={p.x2} y2={p.y2} stroke="rgba(255,255,255,.58)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />;
+        return <line key={`b-${i}`} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(255,255,255,.62)" strokeWidth="1.15" vectorEffect="non-scaling-stroke" />;
       })}
 
       {BOARD_NUMBERS.map((n, i) => {
-        const p = centerForRatio(a20 + i * sectorSize, 1.08);
+        const p = pointFor(a20 + i * sectorSize, 1.085);
         return (
           <text
             key={`n-${n}-${i}`}
@@ -173,18 +183,18 @@ function AdvancedBoardOverlay({ cal }: { cal: any }) {
             y={p.y}
             textAnchor="middle"
             dominantBaseline="central"
-            fill={i === 0 ? GOLD : "rgba(255,255,255,.86)"}
+            fill={i === 0 ? GOLD : "rgba(255,255,255,.90)"}
             fontSize="22"
             fontWeight="900"
-            style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}
+            style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.88)", strokeWidth: 4 }}
           >
             {n}
           </text>
         );
       })}
 
-      <text x={cx + sx * 0.70} y={cy - sy * rings.tripleOuter - 8} fill={RED} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>TRIPLE</text>
-      <text x={cx + sx * 0.70} y={cy - sy * rings.doubleOuter - 8} fill={GREEN} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>DOUBLE</text>
+      <text x={pointFor(a20 + sectorSize * 4.5, rings.tripleOuter + 0.035).x} y={pointFor(a20 + sectorSize * 4.5, rings.tripleOuter + 0.035).y} fill={RED} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>TRIPLE</text>
+      <text x={pointFor(a20 + sectorSize * 3.5, rings.doubleOuter + 0.035).x} y={pointFor(a20 + sectorSize * 3.5, rings.doubleOuter + 0.035).y} fill={GREEN} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>DOUBLE</text>
       <text x={cx} y={cy - sy * rings.outerBullOuter - 12} fill={GOLD} fontSize="18" fontWeight="900" textAnchor="middle" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.85)", strokeWidth: 4 }}>BULL</text>
       <circle cx={cx} cy={cy} r="4" fill={GOLD} />
     </svg>
@@ -327,23 +337,23 @@ export default function X01DeviceCameraPage({ params }: Props) {
     try {
       setBusy(true);
       setError(null);
-      setMessage("Photo zones en cours… cible entière visible, téléphone fixe, évite les reflets.");
-      const image = captureVisibleVideoFrame(video, wrap, 860);
+      setMessage("Photo couleurs en cours… cible entière visible avec les chiffres autour, téléphone fixe, évite les reflets.");
+      const image = captureVisibleVideoFrame(video, wrap, 1100);
       if (!image) {
         setMessage("Impossible de capturer la photo caméra. Réessaie dans une seconde.");
         return;
       }
       const result = detectDartboardCalibrationFromImageData(image);
       if (!result.ok || !result.calibration) {
-        setMessage(result.message || "Détection impossible. Essaie avec plus de lumière et la cible complète dans le cadre.");
+        setMessage(result.message || "Détection impossible. Cadre la cible complète avec l’anneau des chiffres visible et une lumière homogène.");
         return;
       }
       persistCalibration(
         result.calibration,
-        `${result.message} Calibration zones enregistrée (${confidenceLabel(result.calibration.confidence)}).`
+        `${result.message} Calibration couleur enregistrée (${confidenceLabel(result.calibration.confidence)}).`
       );
     } catch (e: any) {
-      setMessage(e?.message || "Erreur pendant la calibration photo zones.");
+      setMessage(e?.message || "Erreur pendant la calibration photo couleurs.");
     } finally {
       setBusy(false);
     }
@@ -356,7 +366,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
     setCenter(null);
     setOuter(null);
     setTop20(null);
-    setMessage("Mode manuel secours : tape centre bull, bord extérieur cible, centre du 20. La photo zones reste recommandée.");
+    setMessage("Mode manuel secours : tape centre bull, bord extérieur du double, centre du 20. La Photo couleurs reste recommandée.");
   }
 
   function saveAdjustedCalibration(next: any, msg: string) {
@@ -411,9 +421,15 @@ export default function X01DeviceCameraPage({ params }: Props) {
     saveAdjustedCalibration(next, `${axis === "x" ? "Largeur" : "Hauteur"} ajustée.`);
   }
 
+  function adjustEllipseRotation(deltaDeg: number) {
+    const current = loadCameraCalibration() || previewCal;
+    const next = rotateEllipseCalibration(current, (deltaDeg * Math.PI) / 180);
+    saveAdjustedCalibration(next, `Inclinaison ellipse ajustée de ${deltaDeg > 0 ? "+" : ""}${deltaDeg}°.`);
+  }
+
   function resetOfficialRings() {
     const current = loadCameraCalibration() || previewCal;
-    saveAdjustedCalibration(forceOfficialRings(current), "Ratios officiels réappliqués : double/triple/bull recalés sur les dimensions standard.");
+    saveAdjustedCalibration(forceOfficialRings(current), "Zones standard réappliquées. Utilise Photo couleurs pour revenir aux anneaux visibles sur la photo.");
   }
 
   function getNormPoint(ev: any): TapPoint | null {
@@ -491,7 +507,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
     const cal = loadCameraCalibration();
     if (!cal) {
       setMode("calibrate");
-      setMessage("Calibration manquante. Lance Photo zones ou le mode manuel avant de scorer.");
+      setMessage("Calibration manquante. Lance Photo couleurs ou le mode manuel avant de scorer.");
       return;
     }
     const dart = scoreTap(cal, p.x, p.y);
@@ -505,11 +521,13 @@ export default function X01DeviceCameraPage({ params }: Props) {
         : calStep === 1
         ? "Manuel 2/3 — Tape le bord extérieur de la cible"
         : "Manuel 3/3 — Tape le centre du 20 en haut"
-      : "Calibration recommandée — Photo zones détecte anneaux, bull, doubles et triples"
+      : "Calibration recommandée — Photo couleurs détecte cible, doubles, triples, bull et chiffres"
     : "Tape l'impact de la fléchette pour l'envoyer au match X01";
 
   const rings = previewCal?.v === 2 ? getCameraCalibrationRings(previewCal) : DEFAULT_CAMERA_BOARD_RINGS;
-  const methodLabel = previewCal?.method === "auto-photo-zones"
+  const methodLabel = previewCal?.method === "auto-photo-couleurs-v3"
+    ? "Photo couleurs"
+    : previewCal?.method === "auto-photo-zones"
     ? "Photo zones"
     : previewCal?.method === "auto-photo"
     ? "Photo auto"
@@ -525,7 +543,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div style={{ fontSize: 11, color: "rgba(244,247,255,.68)", marginTop: 2 }}>Session {sessionId || "absente"}</div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button type="button" disabled={!ready || busy} onClick={runAutoPhotoCalibration} style={btn(true, !ready || busy)}>Photo zones</button>
+          <button type="button" disabled={!ready || busy} onClick={runAutoPhotoCalibration} style={btn(true, !ready || busy)}>Photo couleurs</button>
           <button type="button" onClick={startManualCalibration} style={btn(false)}>Manuel</button>
           <button type="button" disabled={!calibrated} onClick={() => setMode("score")} style={btn(false, !calibrated)}>Scorer</button>
           <button type="button" onClick={() => setShowHelp((v) => !v)} style={btn(false)}>?</button>
@@ -562,7 +580,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div style={{ position: "absolute", left: 10, right: 10, top: 118, padding: 12, borderRadius: 16, background: "rgba(5,7,14,.88)", border: "1px solid rgba(255,255,255,.18)", boxShadow: "0 18px 40px rgba(0,0,0,.45)", pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
             <div style={{ color: CYAN, fontWeight: 1000, marginBottom: 5 }}>Comment vérifier la calibration</div>
             <div style={{ fontSize: 12, lineHeight: 1.45, color: "rgba(244,247,255,.84)" }}>
-              L'overlay doit épouser exactement la cible : le contour cyan sur le bord extérieur du double, le triple au milieu de la cible, le bull au centre. Si le cercle est trop grand/petit, utilise Taille. Si le centre est décalé, utilise les flèches. Si la perspective étire l'image, ajuste Largeur/Hauteur. Les doubles/triples/bulls utilisent des ratios officiels pour éviter qu'une couleur mal détectée décale les anneaux.
+              L'overlay doit épouser exactement la photo : contour cyan sur le bord extérieur du double, bande verte sur le double, bande rouge sur le triple, bull au centre, chiffres juste à l'extérieur. La Photo couleurs utilise les zones rouge/vert visibles pour placer les anneaux. Si ça ne colle pas, ajuste Centre/Taille/Largeur/Hauteur ou Inclinaison ellipse, puis corrige le 20 avec ±1°.
             </div>
           </div>
         )}
@@ -583,6 +601,8 @@ export default function X01DeviceCameraPage({ params }: Props) {
             <button type="button" onClick={() => adjustAxis("x", 1.01)} style={smallBtn()}>Largeur +</button>
             <button type="button" onClick={() => adjustAxis("y", 0.99)} style={smallBtn()}>Hauteur -</button>
             <button type="button" onClick={() => adjustAxis("y", 1.01)} style={smallBtn()}>Hauteur +</button>
+            <button type="button" onClick={() => adjustEllipseRotation(-1)} style={smallBtn()}>Ellipse ↶</button>
+            <button type="button" onClick={() => adjustEllipseRotation(1)} style={smallBtn()}>Ellipse ↷</button>
             <button type="button" onClick={resetOfficialRings} style={smallBtn()}>Zones standard</button>
           </div>
         )}
@@ -596,7 +616,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
             <div style={{ fontSize: 10, color: "rgba(255,255,255,.70)", fontWeight: 800, textAlign: "right" }}>
               D {Math.round(rings.doubleInner * 100)}% · T {Math.round(rings.tripleInner * 100)}-{Math.round(rings.tripleOuter * 100)}% · Bull {Math.round(rings.outerBullOuter * 100)}%
             </div>
-            <button type="button" onClick={(e) => { e.stopPropagation(); clearCameraCalibration(); setPreviewCal(null); setAutoConfidence(undefined); setCalibrated(false); setMode("calibrate"); setManualActive(false); setCalStep(0); setCenter(null); setOuter(null); setTop20(null); setMessage("Calibration effacée. Reprends une Photo zones ou passe en Manuel."); updateX01DeviceStatus(sessionId, { calibrated: false, message: "Calibration effacée" }).catch(() => {}); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer calibration</button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); clearCameraCalibration(); setPreviewCal(null); setAutoConfidence(undefined); setCalibrated(false); setMode("calibrate"); setManualActive(false); setCalStep(0); setCenter(null); setOuter(null); setTop20(null); setMessage("Calibration effacée. Reprends une Photo couleurs ou passe en Manuel."); updateX01DeviceStatus(sessionId, { calibrated: false, message: "Calibration effacée" }).catch(() => {}); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer calibration</button>
           </div>
         </div>
       </main>

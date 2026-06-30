@@ -35,10 +35,17 @@ function getNormalizedVector(cal: CameraCalibration, xNorm: number, yNorm: numbe
   if (cal.v === 2) {
     const rx = Math.max(0.0001, Number(cal.rx || cal.r || 0.0001));
     const ry = Math.max(0.0001, Number(cal.ry || cal.r || 0.0001));
+    const phi = Number((cal as any).phi || 0);
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+    // Inverse la rotation de l’ellipse détectée sur la photo : scoring stable même si
+    // le téléphone voit la cible légèrement inclinée ou tournée.
+    const ux = dx * cos + dy * sin;
+    const uy = -dx * sin + dy * cos;
     return {
-      nx: dx / rx,
-      ny: dy / ry,
-      dist: Math.sqrt((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)),
+      nx: ux / rx,
+      ny: uy / ry,
+      dist: Math.sqrt((ux / rx) * (ux / rx) + (uy / ry) * (uy / ry)),
     };
   }
 

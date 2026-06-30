@@ -50,7 +50,9 @@ export type CameraCalibrationV2 = {
   // rayon moyen conservé pour compat UI / anciens calculs
   r: number;
   a20: number;
-  method?: "auto-photo" | "auto-photo-zones" | "manual" | string;
+  // Rotation de l’ellipse dans la photo, en radians. 0 = axes écran.
+  phi?: number;
+  method?: "auto-photo" | "auto-photo-zones" | "auto-photo-couleurs-v3" | "manual" | string;
   confidence?: number;
   zoneConfidence?: number;
   rings?: CameraBoardRingRatios;
@@ -108,6 +110,7 @@ function normalizeCameraCalibration(obj: any): CameraCalibration | null {
       ry: safeRy,
       r: Math.max(0.0001, finiteNumber(obj.r) ?? (safeRx + safeRy) / 2),
       a20,
+      phi: finiteNumber(obj.phi) ?? 0,
       method: obj.method ? String(obj.method) : "auto-photo",
       confidence: finiteNumber(obj.confidence) ?? undefined,
       zoneConfidence: finiteNumber(obj.zoneConfidence) ?? undefined,

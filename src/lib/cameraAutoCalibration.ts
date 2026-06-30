@@ -1,12 +1,12 @@
 // ============================================
 // src/lib/cameraAutoCalibration.ts
 // X01 — calibration photo automatique côté navigateur.
-// Version précision : détection robuste du bord extérieur par couleur + gradient,
-// puis anneaux officiels normalisés pour éviter les doubles/triples incohérents.
+// V3 précision : segmentation rouge/vert + composant cible + ellipse orientée,
+// puis détection des anneaux visibles par profil radial de couleur.
 // ============================================
 
 import { DEFAULT_CAMERA_BOARD_RINGS } from "./cameraCalibrationStore";
-import type { CameraCalibrationV2 } from "./cameraCalibrationStore";
+import type { CameraBoardRingRatios, CameraCalibrationV2 } from "./cameraCalibrationStore";
 
 export type AutoCalibrationResult = {
   ok: boolean;
@@ -16,25 +16,31 @@ export type AutoCalibrationResult = {
   debug?: any;
 };
 
-type SamplePoint = {
+type ColorSample = {
   x: number;
   y: number;
   color: number;
-  edge: number;
+  red: number;
+  green: number;
   weight: number;
+  cell: number;
 };
 
-type Bounds = {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
-  count: number;
-  source: "color" | "edge" | "mixed";
+type EllipseFit = {
+  cxPx: number;
+  cyPx: number;
+  rxPx: number;
+  ryPx: number;
+  phi: number;
+  confidence: number;
+};
+
+type Profiles = {
+  color: number[];
+  red: number[];
+  green: number[];
+  counts: number[];
+  bins: number;
 };
 
 function clamp(v: number, min: number, max: number): number {
@@ -49,252 +55,434 @@ function clamp01(v: number): number {
 function percentile(values: number[], p: number): number {
   if (!values.length) return 0;
   const copy = values.slice().sort((a, b) => a - b);
-  const idx = Math.max(0, Math.min(copy.length - 1, Math.round((copy.length - 1) * p)));
+  const idx = clamp(Math.round((copy.length - 1) * p), 0, copy.length - 1);
   return copy[idx] || 0;
 }
 
-function luminance(data: Uint8ClampedArray, idx: number): number {
-  return data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+function weightedMean(values: Array<{ value: number; weight: number }>): number {
+  let sum = 0;
+  let weight = 0;
+  for (const item of values) {
+    const w = Math.max(0.0001, item.weight || 0);
+    sum += item.value * w;
+    weight += w;
+  }
+  return weight > 0 ? sum / weight : 0;
 }
 
-function colorZoneScore(data: Uint8ClampedArray, idx: number): number {
+function weightedPercentile(values: Array<{ value: number; weight: number }>, p: number): number {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a.value - b.value);
+  const total = sorted.reduce((s, v) => s + Math.max(0.0001, v.weight || 0), 0);
+  const target = total * p;
+  let acc = 0;
+  for (const item of sorted) {
+    acc += Math.max(0.0001, item.weight || 0);
+    if (acc >= target) return item.value;
+  }
+  return sorted[sorted.length - 1].value;
+}
+
+function colorScores(data: Uint8ClampedArray, idx: number) {
   const r = data[idx] || 0;
   const g = data[idx + 1] || 0;
   const b = data[idx + 2] || 0;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  const sat = max <= 0 ? 0 : (max - min) / max;
-  const red = Math.max(0, r - Math.max(g, b) * 0.82) / 255;
-  const green = Math.max(0, g - Math.max(r, b) * 0.82) / 255;
-  const rgDominance = Math.max(red, green);
-  const contrast = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b)) / 255;
-  const brightnessPenalty = max < 26 ? 0.35 : 0;
-  return clamp(sat * 0.55 + rgDominance * 0.82 + contrast * 0.18 - brightnessPenalty, 0, 1);
+  const sat = max <= 1 ? 0 : (max - min) / max;
+  const lum = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+
+  // Les zones utiles d'une cible classique sont rouge/vert. On exige une vraie saturation,
+  // mais on garde assez de tolérance pour les cibles usées ou éclairées jaune.
+  const redDominance = Math.max(0, r - Math.max(g * 0.92, b * 0.88)) / 255;
+  const greenDominance = Math.max(0, g - Math.max(r * 0.84, b * 0.82)) / 255;
+  const red = clamp(redDominance * 1.75 + sat * 0.18 - Math.max(0, lum - 0.86) * 0.18, 0, 1);
+  const green = clamp(greenDominance * 1.65 + sat * 0.16 - Math.max(0, lum - 0.86) * 0.18, 0, 1);
+  const chroma = (max - min) / 255;
+  const color = clamp(Math.max(red, green) * 0.82 + sat * 0.22 + chroma * 0.16, 0, 1);
+  return { red, green, color };
 }
 
-function edgeMagnitude(data: Uint8ClampedArray, width: number, height: number, x: number, y: number, step: number): number {
-  const xl = Math.max(0, x - step);
-  const xr = Math.min(width - 1, x + step);
-  const yu = Math.max(0, y - step);
-  const yd = Math.min(height - 1, y + step);
-  const il = (y * width + xl) * 4;
-  const ir = (y * width + xr) * 4;
-  const iu = (yu * width + x) * 4;
-  const id = (yd * width + x) * 4;
-  const gx = Math.abs(luminance(data, ir) - luminance(data, il));
-  const gy = Math.abs(luminance(data, id) - luminance(data, iu));
-  return gx + gy;
-}
-
-function weightedPercentile(points: SamplePoint[], axis: "x" | "y", p: number): number {
-  if (!points.length) return 0;
-  const sorted = points.slice().sort((a, b) => a[axis] - b[axis]);
-  const total = sorted.reduce((s, pt) => s + Math.max(0.0001, pt.weight || 0), 0);
-  const target = total * p;
-  let acc = 0;
-  for (const pt of sorted) {
-    acc += Math.max(0.0001, pt.weight || 0);
-    if (acc >= target) return pt[axis];
+function smooth(values: number[], radius = 2): number[] {
+  const out = new Array(values.length).fill(0);
+  for (let i = 0; i < values.length; i += 1) {
+    let sum = 0;
+    let count = 0;
+    for (let d = -radius; d <= radius; d += 1) {
+      const j = i + d;
+      if (j < 0 || j >= values.length) continue;
+      const k = radius + 1 - Math.abs(d);
+      sum += values[j] * k;
+      count += k;
+    }
+    out[i] = count ? sum / count : values[i];
   }
-  return sorted[sorted.length - 1][axis];
+  return out;
 }
 
-function boundsFromPoints(points: SamplePoint[], width: number, height: number, source: Bounds["source"]): Bounds | null {
-  if (points.length < 45) return null;
-
-  // On rogne les extrêmes pour ignorer reflets, meubles, bords de meuble ou scoreboards.
-  const minX = weightedPercentile(points, "x", 0.015);
-  const maxX = weightedPercentile(points, "x", 0.985);
-  const minY = weightedPercentile(points, "y", 0.015);
-  const maxY = weightedPercentile(points, "y", 0.985);
-  const w = Math.max(1, maxX - minX);
-  const h = Math.max(1, maxY - minY);
-
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const rx = w / 2;
-  const ry = h / 2;
-
-  if (rx < width * 0.10 || ry < height * 0.10 || rx > width * 0.58 || ry > height * 0.58) return null;
-
-  return { minX, maxX, minY, maxY, cx, cy, rx, ry, count: points.length, source };
-}
-
-function collectBoardSamples(image: ImageData) {
+function collectColorSamples(image: ImageData): { samples: ColorSample[]; threshold: number; gridSize: number; cellWeights: number[] } {
   const { width, height, data } = image;
-  const step = Math.max(2, Math.round(Math.max(width, height) / 430));
-  const colors: number[] = [];
-  const edges: number[] = [];
-  const raw: SamplePoint[] = [];
+  const step = Math.max(2, Math.round(Math.max(width, height) / 620));
+  const scores: number[] = [];
+  const raw: Omit<ColorSample, "cell">[] = [];
+  const gridSize = 56;
+  const cellWeights = new Array(gridSize * gridSize).fill(0);
 
-  const minX = Math.floor(width * 0.025);
-  const maxX = Math.floor(width * 0.975);
-  const minY = Math.floor(height * 0.025);
-  const maxY = Math.floor(height * 0.975);
+  const x0 = Math.floor(width * 0.015);
+  const x1 = Math.ceil(width * 0.985);
+  const y0 = Math.floor(height * 0.015);
+  const y1 = Math.ceil(height * 0.985);
 
-  for (let y = minY + step; y < maxY - step; y += step) {
-    for (let x = minX + step; x < maxX - step; x += step) {
+  for (let y = y0; y < y1; y += step) {
+    for (let x = x0; x < x1; x += step) {
       const idx = (y * width + x) * 4;
-      const color = colorZoneScore(data, idx);
-      const edge = edgeMagnitude(data, width, height, x, y, step);
-      colors.push(color);
-      edges.push(edge);
-      raw.push({ x, y, color, edge, weight: 1 });
+      const { red, green, color } = colorScores(data, idx);
+      scores.push(color);
+      if (color > 0.055) raw.push({ x, y, red, green, color, weight: 1 + color * 4 + Math.max(red, green) * 3 });
     }
   }
 
-  const c70 = percentile(colors, 0.70);
-  const c90 = percentile(colors, 0.90);
-  const c96 = percentile(colors, 0.96);
-  const e72 = percentile(edges, 0.72);
-  const e90 = percentile(edges, 0.90);
-  const e96 = percentile(edges, 0.96);
-  const colorThreshold = Math.max(0.145, c70 + (c90 - c70) * 0.30, c96 * 0.44);
-  const edgeThreshold = Math.max(20, e72 + (e90 - e72) * 0.38, e96 * 0.44);
+  const p80 = percentile(scores, 0.80);
+  const p92 = percentile(scores, 0.92);
+  const p97 = percentile(scores, 0.97);
+  const threshold = Math.max(0.105, p80 + (p92 - p80) * 0.25, p97 * 0.38);
 
-  const colorPoints: SamplePoint[] = [];
-  const edgePoints: SamplePoint[] = [];
-  const mixedPoints: SamplePoint[] = [];
-
+  const samples: ColorSample[] = [];
   for (const pt of raw) {
-    if (pt.color >= colorThreshold) {
-      colorPoints.push({ ...pt, weight: 1 + pt.color * 3.2 });
+    if (pt.color < threshold) continue;
+    const gx = clamp(Math.floor((pt.x / Math.max(1, width)) * gridSize), 0, gridSize - 1);
+    const gy = clamp(Math.floor((pt.y / Math.max(1, height)) * gridSize), 0, gridSize - 1);
+    const cell = gy * gridSize + gx;
+    const sample = { ...pt, cell };
+    samples.push(sample);
+    cellWeights[cell] += sample.weight;
+  }
+
+  return { samples, threshold, gridSize, cellWeights };
+}
+
+function pickBoardComponent(samples: ColorSample[], gridSize: number, cellWeights: number[], width: number, height: number): ColorSample[] {
+  if (samples.length < 70) return [];
+
+  const nonZero = cellWeights.filter((v) => v > 0).sort((a, b) => a - b);
+  const cellThreshold = Math.max(0.8, percentile(nonZero, 0.34) * 0.55, percentile(nonZero, 0.70) * 0.18);
+  const active = cellWeights.map((v) => v >= cellThreshold);
+  const visited = new Array(active.length).fill(false);
+  const components: Array<{ cells: Set<number>; weight: number; count: number; cx: number; cy: number }> = [];
+
+  const neigh = [-1, 0, 1];
+  for (let cell = 0; cell < active.length; cell += 1) {
+    if (!active[cell] || visited[cell]) continue;
+    const q = [cell];
+    const cells = new Set<number>();
+    let weight = 0;
+    let sx = 0;
+    let sy = 0;
+    visited[cell] = true;
+    while (q.length) {
+      const c = q.shift()!;
+      cells.add(c);
+      const gx = c % gridSize;
+      const gy = Math.floor(c / gridSize);
+      const w = cellWeights[c] || 0;
+      weight += w;
+      sx += (gx + 0.5) * w;
+      sy += (gy + 0.5) * w;
+      for (const dy of neigh) {
+        for (const dx of neigh) {
+          if (!dx && !dy) continue;
+          const nx = gx + dx;
+          const ny = gy + dy;
+          if (nx < 0 || ny < 0 || nx >= gridSize || ny >= gridSize) continue;
+          const ni = ny * gridSize + nx;
+          if (!active[ni] || visited[ni]) continue;
+          visited[ni] = true;
+          q.push(ni);
+        }
+      }
     }
-    if (pt.edge >= edgeThreshold) {
-      edgePoints.push({ ...pt, weight: 1 + Math.min(4, pt.edge / Math.max(1, edgeThreshold)) });
-    }
-    if (pt.color >= colorThreshold * 0.72 || pt.edge >= edgeThreshold * 1.08) {
-      mixedPoints.push({ ...pt, weight: 1 + pt.color * 2.4 + Math.min(2.5, pt.edge / Math.max(1, edgeThreshold)) });
+    if (cells.size >= 3) {
+      components.push({ cells, weight, count: cells.size, cx: weight ? sx / weight / gridSize : 0.5, cy: weight ? sy / weight / gridSize : 0.5 });
     }
   }
 
-  return { raw, colorPoints, edgePoints, mixedPoints, colorThreshold, edgeThreshold, step };
-}
+  if (!components.length) return samples;
 
-function chooseInitialBounds(image: ImageData): Bounds | null {
-  const { width, height } = image;
-  const samples = collectBoardSamples(image);
-  const colorBounds = boundsFromPoints(samples.colorPoints, width, height, "color");
-  const edgeBounds = boundsFromPoints(samples.edgePoints, width, height, "edge");
-  const mixedBounds = boundsFromPoints(samples.mixedPoints, width, height, "mixed");
+  const chosen = components.sort((a, b) => {
+    const ac = 1 - clamp(Math.hypot(a.cx - 0.5, a.cy - 0.5) * 1.35, 0, 0.9);
+    const bc = 1 - clamp(Math.hypot(b.cx - 0.5, b.cy - 0.5) * 1.35, 0, 0.9);
+    return (b.weight * (1 + Math.sqrt(b.count) * 0.08) * bc) - (a.weight * (1 + Math.sqrt(a.count) * 0.08) * ac);
+  })[0];
 
-  const candidates = [colorBounds, mixedBounds, edgeBounds].filter(Boolean) as Bounds[];
-  if (!candidates.length) return null;
-
-  const scoreBounds = (b: Bounds) => {
-    const widthRatio = (b.rx * 2) / width;
-    const heightRatio = (b.ry * 2) / height;
-    const ellipseRatio = Math.min(b.rx / width, b.ry / height) / Math.max(b.rx / width, b.ry / height);
-    const areaScore = clamp(Math.min(widthRatio, heightRatio), 0, 1);
-    const centerScore = 1 - clamp(Math.hypot(b.cx / width - 0.5, b.cy / height - 0.5) * 1.4, 0, 1);
-    const sourceBonus = b.source === "color" ? 0.22 : b.source === "mixed" ? 0.12 : 0;
-    return sourceBonus + areaScore * 0.50 + ellipseRatio * 0.22 + centerScore * 0.18 + Math.min(0.12, b.count / 2000);
-  };
-
-  return candidates.sort((a, b) => scoreBounds(b) - scoreBounds(a))[0] || null;
-}
-
-function sampleScoreAt(image: ImageData, x: number, y: number, step = 2): { color: number; edge: number; score: number } | null {
-  const { width, height, data } = image;
-  const px = Math.round(x);
-  const py = Math.round(y);
-  if (px < step || px >= width - step || py < step || py >= height - step) return null;
-  const idx = (py * width + px) * 4;
-  const color = colorZoneScore(data, idx);
-  const edge = edgeMagnitude(data, width, height, px, py, step);
-  return { color, edge, score: color * 1.35 + Math.min(1.15, edge / 115) };
-}
-
-function median(values: number[]): number {
-  if (!values.length) return 0;
-  return percentile(values, 0.5);
-}
-
-function refineOuterEllipseByRays(image: ImageData, initial: Bounds) {
-  const { width, height } = image;
-  const goodRadii: number[] = [];
-  const edgeRadii: number[] = [];
-  const samplesByAngle: Array<{ angle: number; rr: number; score: number }> = [];
-
-  const angleCount = 144;
-  for (let i = 0; i < angleCount; i += 1) {
-    const a = (i / angleCount) * Math.PI * 2;
-    let bestOuter: { rr: number; score: number } | null = null;
-    let bestAny: { rr: number; score: number } | null = null;
-
-    // On cherche le bord extérieur du double, donc surtout la zone 0.88..1.12.
-    for (let rr = 0.70; rr <= 1.16; rr += 0.01) {
-      const x = initial.cx + Math.cos(a) * initial.rx * rr;
-      const y = initial.cy + Math.sin(a) * initial.ry * rr;
-      const sample = sampleScoreAt(image, x, y, 2);
-      if (!sample) continue;
-      const score = sample.score;
-      const item = { rr, score };
-      if (!bestAny || score > bestAny.score) bestAny = item;
-      if (rr >= 0.86 && (!bestOuter || score > bestOuter.score)) bestOuter = item;
-    }
-
-    const chosen = bestOuter && bestOuter.score >= 0.18 ? bestOuter : bestAny;
-    if (chosen && chosen.score >= 0.16) {
-      samplesByAngle.push({ angle: a, rr: chosen.rr, score: chosen.score });
-      if (chosen.rr >= 0.78 && chosen.rr <= 1.16) goodRadii.push(chosen.rr);
-      if (chosen.rr >= 0.88 && chosen.rr <= 1.14) edgeRadii.push(chosen.rr);
+  const expanded = new Set<number>();
+  for (const c of chosen.cells) {
+    const gx = c % gridSize;
+    const gy = Math.floor(c / gridSize);
+    for (let dy = -2; dy <= 2; dy += 1) {
+      for (let dx = -2; dx <= 2; dx += 1) {
+        const nx = gx + dx;
+        const ny = gy + dy;
+        if (nx < 0 || ny < 0 || nx >= gridSize || ny >= gridSize) continue;
+        expanded.add(ny * gridSize + nx);
+      }
     }
   }
 
-  const usable = edgeRadii.length >= 24 ? edgeRadii : goodRadii;
-  const rawScale = usable.length ? median(usable) : 1;
-  // Garde-fou : on ne laisse jamais une détection couleur agrandir brutalement le board.
-  // Les erreurs vues par l'utilisateur étaient surtout des overlays trop grands / hors cible.
-  const scale = clamp(rawScale, 0.84, 1.045);
-  const confidence = clamp(usable.length / angleCount, 0, 1);
-  return {
-    cx: initial.cx / width,
-    cy: initial.cy / height,
-    rx: (initial.rx * scale) / width,
-    ry: (initial.ry * scale) / height,
-    scale,
-    rawScale,
-    confidence,
-    rayHits: usable.length,
-    samplesByAngle: samplesByAngle.slice(0, 20),
-  };
+  const filtered = samples.filter((pt) => expanded.has(pt.cell));
+  // Garde-fou : si le composant choisi est trop maigre, on revient au nuage complet.
+  if (filtered.length < Math.max(60, samples.length * 0.22)) return samples;
+
+  // Si le composant touche presque toute l'image, il s'agit probablement d'un bruit de fond : on rogne autour du centre pondéré.
+  const xs = filtered.map((p) => p.x);
+  const ys = filtered.map((p) => p.y);
+  const w = percentile(xs, 0.98) - percentile(xs, 0.02);
+  const h = percentile(ys, 0.98) - percentile(ys, 0.02);
+  if (w > width * 0.86 || h > height * 0.86) {
+    const cx = weightedMean(filtered.map((p) => ({ value: p.x, weight: p.weight })));
+    const cy = weightedMean(filtered.map((p) => ({ value: p.y, weight: p.weight })));
+    return filtered.filter((p) => Math.hypot((p.x - cx) / width, (p.y - cy) / height) < 0.48);
+  }
+
+  return filtered;
 }
 
-function estimateBullCenter(image: ImageData, cal: { cx: number; cy: number; rx: number; ry: number }) {
-  const { width, height, data } = image;
-  const cx = cal.cx * width;
-  const cy = cal.cy * height;
-  const rx = cal.rx * width;
-  const ry = cal.ry * height;
-  let sum = 0;
-  let sx = 0;
-  let sy = 0;
-  const step = Math.max(1, Math.round(Math.max(width, height) / 650));
+function fitEllipseFromColorSamples(samples: ColorSample[], width: number, height: number): EllipseFit | null {
+  if (samples.length < 70) return null;
 
-  for (let y = Math.max(1, Math.floor(cy - ry * 0.18)); y <= Math.min(height - 2, Math.ceil(cy + ry * 0.18)); y += step) {
-    for (let x = Math.max(1, Math.floor(cx - rx * 0.18)); x <= Math.min(width - 2, Math.ceil(cx + rx * 0.18)); x += step) {
-      const nx = (x - cx) / Math.max(1, rx);
-      const ny = (y - cy) / Math.max(1, ry);
-      const d = Math.sqrt(nx * nx + ny * ny);
-      if (d > 0.18) continue;
+  let cx = weightedMean(samples.map((p) => ({ value: p.x, weight: p.weight })));
+  let cy = weightedMean(samples.map((p) => ({ value: p.y, weight: p.weight })));
+
+  // Première covariance pour retrouver l'inclinaison de la cible dans la photo.
+  let wSum = 0;
+  let xx = 0;
+  let yy = 0;
+  let xy = 0;
+  for (const p of samples) {
+    const w = Math.max(0.0001, p.weight || 0);
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    xx += dx * dx * w;
+    yy += dy * dy * w;
+    xy += dx * dy * w;
+    wSum += w;
+  }
+  xx /= Math.max(1, wSum);
+  yy /= Math.max(1, wSum);
+  xy /= Math.max(1, wSum);
+  let phi = 0.5 * Math.atan2(2 * xy, xx - yy);
+
+  // Projection sur les axes de l'ellipse, avec percentiles robustes.
+  const cos = Math.cos(phi);
+  const sin = Math.sin(phi);
+  const projected = samples.map((p) => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const u = dx * cos + dy * sin;
+    const v = -dx * sin + dy * cos;
+    return { u, v, weight: p.weight };
+  });
+
+  const uMin = weightedPercentile(projected.map((p) => ({ value: p.u, weight: p.weight })), 0.006);
+  const uMax = weightedPercentile(projected.map((p) => ({ value: p.u, weight: p.weight })), 0.994);
+  const vMin = weightedPercentile(projected.map((p) => ({ value: p.v, weight: p.weight })), 0.006);
+  const vMax = weightedPercentile(projected.map((p) => ({ value: p.v, weight: p.weight })), 0.994);
+  const uMid = (uMin + uMax) / 2;
+  const vMid = (vMin + vMax) / 2;
+
+  cx += uMid * cos - vMid * sin;
+  cy += uMid * sin + vMid * cos;
+
+  let rx = Math.max(1, (uMax - uMin) / 2);
+  let ry = Math.max(1, (vMax - vMin) / 2);
+
+  // Normalise la taille sur les points rouges/verts les plus externes : cela colle l'ellipse au double extérieur.
+  const rhos: number[] = [];
+  for (const p of samples) {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const u = dx * cos + dy * sin;
+    const v = -dx * sin + dy * cos;
+    const rho = Math.sqrt((u / rx) ** 2 + (v / ry) ** 2);
+    if (Number.isFinite(rho) && rho > 0.05 && rho < 1.45) rhos.push(rho);
+  }
+  const outer = percentile(rhos, 0.993) || 1;
+  rx *= clamp(outer, 0.82, 1.18);
+  ry *= clamp(outer, 0.82, 1.18);
+
+  const size = Math.min((rx * 2) / width, (ry * 2) / height);
+  const aspect = Math.min(rx, ry) / Math.max(rx, ry);
+  const centerPenalty = Math.hypot(cx / width - 0.5, cy / height - 0.5);
+  if (rx < width * 0.11 || ry < height * 0.11 || rx > width * 0.64 || ry > height * 0.64) return null;
+
+  const confidence = clamp(0.30 + size * 0.55 + aspect * 0.18 - centerPenalty * 0.28 + Math.min(0.12, samples.length / 4500), 0.10, 0.92);
+  return { cxPx: cx, cyPx: cy, rxPx: rx, ryPx: ry, phi, confidence };
+}
+
+function ellipseCoords(x: number, y: number, fit: EllipseFit) {
+  const cos = Math.cos(fit.phi);
+  const sin = Math.sin(fit.phi);
+  const dx = x - fit.cxPx;
+  const dy = y - fit.cyPx;
+  const u = dx * cos + dy * sin;
+  const v = -dx * sin + dy * cos;
+  const rho = Math.sqrt((u / Math.max(1, fit.rxPx)) ** 2 + (v / Math.max(1, fit.ryPx)) ** 2);
+  const angle = Math.atan2(v / Math.max(1, fit.ryPx), u / Math.max(1, fit.rxPx));
+  return { u, v, rho, angle };
+}
+
+function buildRadialProfiles(image: ImageData, fit: EllipseFit): Profiles {
+  const { width, height, data } = image;
+  const bins = 220;
+  const color = new Array(bins).fill(0);
+  const red = new Array(bins).fill(0);
+  const green = new Array(bins).fill(0);
+  const counts = new Array(bins).fill(0);
+  const step = Math.max(1, Math.round(Math.max(width, height) / 780));
+
+  const minX = Math.max(0, Math.floor(fit.cxPx - fit.rxPx * 1.12));
+  const maxX = Math.min(width - 1, Math.ceil(fit.cxPx + fit.rxPx * 1.12));
+  const minY = Math.max(0, Math.floor(fit.cyPx - fit.ryPx * 1.12));
+  const maxY = Math.min(height - 1, Math.ceil(fit.cyPx + fit.ryPx * 1.12));
+
+  for (let y = minY; y <= maxY; y += step) {
+    for (let x = minX; x <= maxX; x += step) {
+      const { rho } = ellipseCoords(x, y, fit);
+      if (rho < 0 || rho > 1.10) continue;
       const idx = (y * width + x) * 4;
-      const color = colorZoneScore(data, idx);
-      if (color < 0.12) continue;
-      const w = color * (1 - d * 2.8);
-      if (w <= 0) continue;
-      sum += w;
-      sx += x * w;
-      sy += y * w;
+      const s = colorScores(data, idx);
+      const b = clamp(Math.floor((rho / 1.10) * bins), 0, bins - 1);
+      // Pondération par saturation : les blancs/noirs des segments ne doivent pas déplacer les anneaux.
+      color[b] += s.color;
+      red[b] += s.red;
+      green[b] += s.green;
+      counts[b] += 1;
     }
   }
 
-  if (sum <= 0) return { found: false, cx: cal.cx, cy: cal.cy, confidence: 0 };
-  const nx = sx / sum / width;
-  const ny = sy / sum / height;
-  const shift = Math.hypot(nx - cal.cx, ny - cal.cy);
-  if (shift > Math.max(cal.rx, cal.ry) * 0.08) return { found: false, cx: cal.cx, cy: cal.cy, confidence: 0 };
-  return { found: true, cx: cal.cx * 0.55 + nx * 0.45, cy: cal.cy * 0.55 + ny * 0.45, confidence: clamp(1 - shift / Math.max(0.0001, Math.max(cal.rx, cal.ry) * 0.08), 0, 1) };
+  for (let i = 0; i < bins; i += 1) {
+    const c = Math.max(1, counts[i]);
+    color[i] /= c;
+    red[i] /= c;
+    green[i] /= c;
+  }
+
+  return { color: smooth(color, 2), red: smooth(red, 2), green: smooth(green, 2), counts, bins };
+}
+
+function ratioToBin(ratio: number, bins: number): number {
+  return clamp(Math.round((ratio / 1.10) * bins), 0, bins - 1);
+}
+
+function binToRatio(bin: number, bins: number): number {
+  return (bin / Math.max(1, bins)) * 1.10;
+}
+
+function detectIntervalFromProfile(
+  profile: number[],
+  bins: number,
+  minRatio: number,
+  maxRatio: number,
+  fallback: [number, number],
+  opts: { minWidth?: number; maxWidth?: number; thresholdRatio?: number } = {}
+): { start: number; end: number; found: boolean; peak: number } {
+  const lo = ratioToBin(minRatio, bins);
+  const hi = ratioToBin(maxRatio, bins);
+  let peakBin = lo;
+  let peak = -Infinity;
+  for (let i = lo; i <= hi; i += 1) {
+    if ((profile[i] || 0) > peak) {
+      peak = profile[i] || 0;
+      peakBin = i;
+    }
+  }
+
+  const rangeValues = profile.slice(lo, hi + 1);
+  const base = percentile(rangeValues, 0.38);
+  const strong = percentile(rangeValues, 0.82);
+  const threshold = Math.max(base + (strong - base) * 0.30, peak * (opts.thresholdRatio ?? 0.42), 0.035);
+
+  if (!Number.isFinite(peak) || peak < Math.max(0.055, base * 1.35)) {
+    return { start: fallback[0], end: fallback[1], found: false, peak: Math.max(0, peak || 0) };
+  }
+
+  let a = peakBin;
+  let b = peakBin;
+  while (a > lo && (profile[a - 1] || 0) >= threshold) a -= 1;
+  while (b < hi && (profile[b + 1] || 0) >= threshold) b += 1;
+
+  let start = binToRatio(a, bins);
+  let end = binToRatio(b + 1, bins);
+  const width = end - start;
+  const minWidth = opts.minWidth ?? 0.018;
+  const maxWidth = opts.maxWidth ?? 0.090;
+
+  if (width < minWidth || width > maxWidth) {
+    // Si le seuil fait une zone trop large/étroite, on garde un anneau centré sur le pic.
+    const center = binToRatio(peakBin + 0.5, bins);
+    const targetWidth = clamp(width || (fallback[1] - fallback[0]), minWidth, maxWidth);
+    start = center - targetWidth / 2;
+    end = center + targetWidth / 2;
+  }
+
+  return {
+    start: clamp(start, minRatio, maxRatio),
+    end: clamp(end, minRatio, maxRatio),
+    found: true,
+    peak: Math.max(0, peak),
+  };
+}
+
+function detectCenterBullRings(profiles: Profiles): { innerBullOuter: number; outerBullOuter: number; foundInner: boolean; foundOuter: boolean } {
+  const merged = profiles.color.map((v, i) => Math.max(v, profiles.red[i] || 0, profiles.green[i] || 0));
+  const outer = detectIntervalFromProfile(merged, profiles.bins, 0.018, 0.160, [DEFAULT_CAMERA_BOARD_RINGS.innerBullOuter, DEFAULT_CAMERA_BOARD_RINGS.outerBullOuter], { minWidth: 0.035, maxWidth: 0.125, thresholdRatio: 0.34 });
+  const red = detectIntervalFromProfile(profiles.red, profiles.bins, 0.004, 0.075, [0.005, DEFAULT_CAMERA_BOARD_RINGS.innerBullOuter], { minWidth: 0.018, maxWidth: 0.060, thresholdRatio: 0.38 });
+
+  const outerBullOuter = outer.found ? clamp(outer.end, 0.070, 0.155) : DEFAULT_CAMERA_BOARD_RINGS.outerBullOuter;
+  const innerBullOuter = red.found ? clamp(red.end, 0.022, Math.min(0.070, outerBullOuter - 0.018)) : DEFAULT_CAMERA_BOARD_RINGS.innerBullOuter;
+  return { innerBullOuter, outerBullOuter, foundInner: red.found, foundOuter: outer.found };
+}
+
+function detectVisibleRings(profiles: Profiles): { rings: CameraBoardRingRatios; zoneConfidence: number; debug: any } {
+  const color = profiles.color;
+  const triple = detectIntervalFromProfile(color, profiles.bins, 0.48, 0.74, [DEFAULT_CAMERA_BOARD_RINGS.tripleInner, DEFAULT_CAMERA_BOARD_RINGS.tripleOuter], { minWidth: 0.024, maxWidth: 0.080, thresholdRatio: 0.40 });
+  const double = detectIntervalFromProfile(color, profiles.bins, 0.84, 1.045, [DEFAULT_CAMERA_BOARD_RINGS.doubleInner, DEFAULT_CAMERA_BOARD_RINGS.doubleOuter], { minWidth: 0.030, maxWidth: 0.095, thresholdRatio: 0.38 });
+  const bull = detectCenterBullRings(profiles);
+
+  let tripleInner = triple.found ? triple.start : DEFAULT_CAMERA_BOARD_RINGS.tripleInner;
+  let tripleOuter = triple.found ? triple.end : DEFAULT_CAMERA_BOARD_RINGS.tripleOuter;
+  let doubleInner = double.found ? double.start : DEFAULT_CAMERA_BOARD_RINGS.doubleInner;
+  let doubleOuter = double.found ? Math.max(double.end, 0.985) : DEFAULT_CAMERA_BOARD_RINGS.doubleOuter;
+
+  // Sécurité géométrique : jamais de chevauchement triple/double, jamais d'anneau hors cible.
+  doubleOuter = clamp(doubleOuter, 0.985, 1.015);
+  doubleInner = clamp(doubleInner, 0.875, Math.min(0.975, doubleOuter - 0.020));
+  tripleInner = clamp(tripleInner, 0.500, 0.695);
+  tripleOuter = clamp(tripleOuter, Math.max(tripleInner + 0.018, 0.535), Math.min(0.760, doubleInner - 0.090));
+
+  const rings: CameraBoardRingRatios = {
+    innerBullOuter: bull.innerBullOuter,
+    outerBullOuter: Math.max(bull.outerBullOuter, bull.innerBullOuter + 0.018),
+    tripleInner,
+    tripleOuter,
+    doubleInner,
+    doubleOuter,
+  };
+
+  let found = 0;
+  if (triple.found) found += 1;
+  if (double.found) found += 1;
+  if (bull.foundOuter) found += 0.7;
+  if (bull.foundInner) found += 0.5;
+  const zoneConfidence = clamp(0.24 + found / 3.2 * 0.68, 0.20, 0.95);
+
+  return { rings, zoneConfidence, debug: { triple, double, bull } };
+}
+
+function estimateTop20AngleFromDarkNumberRing(image: ImageData, fit: EllipseFit): { angle: number; confidence: number } {
+  // La lecture OCR des chiffres serait trop lourde. On garde donc le 20 en haut par défaut,
+  // mais on tient compte de la rotation physique de l'ellipse afin que les secteurs restent cohérents.
+  // L'utilisateur peut corriger avec les boutons 20 ±1/±5°.
+  return { angle: -Math.PI / 2 - fit.phi * 0.08, confidence: 0.35 };
 }
 
 export function detectDartboardCalibrationFromImageData(image: ImageData): AutoCalibrationResult {
@@ -303,73 +491,65 @@ export function detectDartboardCalibrationFromImageData(image: ImageData): AutoC
     return { ok: false, confidence: 0, message: "Photo invalide." };
   }
 
-  const initial = chooseInitialBounds(image);
-  if (!initial) {
-    return { ok: false, confidence: 0.08, message: "Cible non détectée. Cadre la cible entière, avec les doubles visibles sur les bords." };
+  const collected = collectColorSamples(image);
+  if (collected.samples.length < 70) {
+    return { ok: false, confidence: 0.08, message: "Pas assez de rouge/vert détecté. Cadre la cible entière et évite les reflets." };
   }
 
-  const refined = refineOuterEllipseByRays(image, initial);
-  let cx = refined.cx;
-  let cy = refined.cy;
-  let rx = refined.rx;
-  let ry = refined.ry;
-
-  const bull = estimateBullCenter(image, { cx, cy, rx, ry });
-  if (bull.found) {
-    cx = bull.cx;
-    cy = bull.cy;
+  const boardSamples = pickBoardComponent(collected.samples, collected.gridSize, collected.cellWeights, width, height);
+  const fit = fitEllipseFromColorSamples(boardSamples, width, height);
+  if (!fit) {
+    return { ok: false, confidence: 0.12, message: "Cible non détectée proprement. La photo doit montrer la cible complète avec l'anneau double et les chiffres autour." };
   }
 
-  const size = Math.min(rx * 2, ry * 2);
-  const aspect = Math.min(rx, ry) / Math.max(rx, ry);
-  const centerPenalty = Math.hypot(cx - 0.5, cy - 0.5);
-  let confidence = 0.18;
-  confidence += initial.source === "color" ? 0.22 : initial.source === "mixed" ? 0.14 : 0.05;
-  confidence += clamp(refined.confidence * 0.26, 0, 0.26);
-  confidence += clamp((size - 0.20) * 0.75, 0, 0.18);
-  confidence += clamp(aspect * 0.12, 0, 0.12);
-  confidence += bull.found ? clamp(bull.confidence * 0.10, 0, 0.10) : 0;
-  confidence -= clamp(centerPenalty * 0.35, 0, 0.14);
-  confidence = clamp(confidence, 0.08, 0.94);
+  const profiles = buildRadialProfiles(image, fit);
+  const visible = detectVisibleRings(profiles);
+  const top = estimateTop20AngleFromDarkNumberRing(image, fit);
 
-  if (rx < 0.12 || ry < 0.12 || rx > 0.60 || ry > 0.60) {
+  const confidence = clamp(fit.confidence * 0.55 + visible.zoneConfidence * 0.38 + top.confidence * 0.07, 0.12, 0.96);
+  const size = Math.min((fit.rxPx * 2) / width, (fit.ryPx * 2) / height);
+  if (size < 0.22) {
     return {
       ok: false,
-      confidence: Math.min(confidence, 0.28),
-      message: "La cible semble trop petite, trop grande ou partiellement hors cadre. Reprends une photo avec tout l'anneau double visible.",
-      debug: { initial, refined, bull, rx, ry },
+      confidence: Math.min(confidence, 0.25),
+      message: "La cible est trop petite dans l'image. Rapproche le téléphone ou zoome pour que les doubles et les chiffres soient bien visibles.",
+      debug: { collected, fit, visible },
     };
   }
 
-  const officialRings = DEFAULT_CAMERA_BOARD_RINGS;
   const cal: CameraCalibrationV2 = {
     v: 2,
-    cx: clamp01(cx),
-    cy: clamp01(cy),
-    rx: Math.max(0.0001, rx),
-    ry: Math.max(0.0001, ry),
-    r: Math.max(0.0001, (rx + ry) / 2),
-    a20: -Math.PI / 2,
-    method: "auto-photo-zones",
+    cx: clamp01(fit.cxPx / width),
+    cy: clamp01(fit.cyPx / height),
+    rx: Math.max(0.0001, fit.rxPx / width),
+    ry: Math.max(0.0001, fit.ryPx / height),
+    r: Math.max(0.0001, ((fit.rxPx / width) + (fit.ryPx / height)) / 2),
+    phi: fit.phi,
+    a20: top.angle,
+    method: "auto-photo-couleurs-v3",
     confidence: Math.round(confidence * 100) / 100,
-    zoneConfidence: Math.round((initial.source === "color" ? 0.78 : 0.52) * refined.confidence * 100) / 100,
-    // Important précision : les anneaux d'une cible bristle sont standardisés.
-    // On utilise les couleurs pour trouver l'ellipse extérieure, puis les ratios officiels
-    // pour éviter qu'une mauvaise lumière confonde triple et double.
-    rings: officialRings,
+    zoneConfidence: Math.round(visible.zoneConfidence * 100) / 100,
+    rings: visible.rings,
     updatedAt: Date.now(),
   };
 
-  const message = confidence >= 0.62
-    ? "Cible recalée avec bord extérieur + ratios officiels double/triple/bull. Vérifie que le cyan suit l'extérieur du double."
-    : "Détection fragile mais corrigée avec ratios officiels. Ajuste Taille/Centre si l'overlay ne colle pas parfaitement.";
+  const message = confidence >= 0.68
+    ? "Cible détectée par couleurs : extérieur, doubles, triples et bull recalés sur les zones visibles. Vérifie que les bandes colorées collent à la photo."
+    : "Détection couleur à vérifier : ajuste centre/taille/ellipse si l'overlay ne suit pas les doubles, triples et bull.";
 
   return {
     ok: true,
     calibration: cal,
     confidence,
     message,
-    debug: { initial, refined, bull, rings: officialRings },
+    debug: {
+      threshold: collected.threshold,
+      samples: collected.samples.length,
+      boardSamples: boardSamples.length,
+      fit,
+      visible,
+      rings: visible.rings,
+    },
   };
 }
 
