@@ -49,6 +49,31 @@ import { History, type SavedMatch, type PlayerLite } from "../lib/history";
 import { setX01DevSimEnabled } from "../lib/x01v3/x01DevSim";
 
 
+
+function x01ContextGameMeta(config: X01ConfigV3) {
+  const anyCfg: any = config as any;
+  const startScore = anyCfg.x01StartScore ?? config.startScore;
+  const hasTeams = Array.isArray(anyCfg.teams) && anyCfg.teams.length > 0;
+  const x01Variant = anyCfg.x01Variant || (hasTeams || anyCfg.gameMode === "teams" || anyCfg.matchMode === "teams"
+    ? "team"
+    : anyCfg.gameMode === "multi" || anyCfg.matchMode === "multi" || (Array.isArray(anyCfg.players) && anyCfg.players.length > 2)
+    ? "multi"
+    : Array.isArray(anyCfg.players) && anyCfg.players.length === 2
+    ? "duo"
+    : "solo");
+  const rawVictory = String(anyCfg.matchFormat?.type ?? anyCfg.matchVictoryMode ?? anyCfg.victoryMode ?? "best_of").toLowerCase();
+  const matchVictoryMode = rawVictory.includes("first") ? "first_to" : "best_of";
+  const matchFormat = anyCfg.matchFormat || { type: matchVictoryMode, target: anyCfg.setsToWin ?? null, unit: "sets" };
+  return {
+    startScore,
+    x01StartScore: startScore,
+    x01Variant,
+    matchVictoryMode,
+    victoryMode: matchVictoryMode,
+    matchFormat,
+  };
+}
+
 function safeTeamPlayers(team: any): string[] {
   const arr = team?.players;
   if (Array.isArray(arr)) return arr.filter(Boolean);
@@ -708,7 +733,7 @@ score: visit.currentScore,
             game: {
               ...(summaryAny.game || {}),
               mode: "x01",
-              startScore: config.startScore,
+              ...x01ContextGameMeta(config),
               legsPerSet: config.legsPerSet ?? null,
               setsToWin: config.setsToWin ?? null,
             },
@@ -965,7 +990,7 @@ function finalizeMultiContinueMatch(
     game: {
       ...(summaryAny.game || {}),
       mode: "x01",
-      startScore: config.startScore,
+      ...x01ContextGameMeta(config),
       legsPerSet: config.legsPerSet ?? null,
       setsToWin: config.setsToWin ?? null,
       multiFinishMode: (config as any).multiFinishMode ?? null,
@@ -1413,7 +1438,7 @@ score: m.visit.currentScore,
           game: {
             ...(summaryAny.game || {}),
             mode: "x01",
-            startScore: config.startScore,
+            ...x01ContextGameMeta(config),
             legsPerSet: config.legsPerSet ?? null,
             setsToWin: config.setsToWin ?? null,
           },
@@ -1785,7 +1810,7 @@ export function useX01EngineV3({
         winnerId: (state as any).lastWinnerId ?? null,
         game: {
           mode: "x01",
-          startScore: config.startScore,
+          ...x01ContextGameMeta(config),
         },
         summary,
         // payload complet pour reprise : config + state + stats live

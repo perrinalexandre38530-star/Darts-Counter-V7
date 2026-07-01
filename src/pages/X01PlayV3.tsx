@@ -2424,6 +2424,7 @@ const isBotTurn = React.useMemo(() => {
   );
 
   // Targets SETS/LEGS (robuste: compat anciens configs / modes TEAMS)
+  const matchFormatUnitForUi = String((config as any)?.matchFormat?.unit ?? "sets").toLowerCase().includes("leg") ? "legs" : "sets";
   const setsTarget = Math.max(
     1,
     Number(
@@ -5342,8 +5343,9 @@ if (isLandscapeTablet) {
                   color: "#ffd36a",
                 }}
               >
-                {setsTarget > 1 ? `Set ${state.currentSet}/${setsTarget} • ` : ""}
-                {`Leg ${state.currentLeg}/${legsTarget}`}
+                {matchFormatUnitForUi === "legs"
+                  ? `Leg ${state.currentSet}/${setsTarget}`
+                  : `${setsTarget > 1 ? `Set ${state.currentSet}/${setsTarget} • ` : ""}Leg ${state.currentLeg}/${legsTarget}`}
               </div>
             )}
 
@@ -5385,6 +5387,7 @@ if (isLandscapeTablet) {
             setsTarget={setsTarget}
             legsTarget={legsTarget}
             useSets={useSetsUi}
+            unit={matchFormatUnitForUi as any}
           />
         </div>
       </div>
@@ -5735,6 +5738,7 @@ if (isLandscapeTablet) {
                 setsTarget={setsTarget}
                 legsTarget={legsTarget}
                 useSets={useSetsUi}
+                unit={matchFormatUnitForUi as any}
               />
         ) : null}
         headerCenter={!isTabletUi ? (
@@ -5787,6 +5791,7 @@ if (isLandscapeTablet) {
                 setsTarget={setsTarget}
                 legsTarget={legsTarget}
                 useSets={useSetsUi}
+                unit={matchFormatUnitForUi as any}
               />
             </div>
           </div>
@@ -7809,8 +7814,9 @@ function SetLegChip(props: {
   setsTarget: number;
   legsTarget: number;
   useSets: boolean;
+  unit?: "sets" | "legs";
 }) {
-  const { currentSet, currentLegInSet, setsTarget, legsTarget, useSets } =
+  const { currentSet, currentLegInSet, setsTarget, legsTarget, useSets, unit = "sets" } =
     props;
 
   const st: React.CSSProperties = {
@@ -7829,11 +7835,11 @@ function SetLegChip(props: {
     borderRadius: 999,
   };
 
-  if (!useSets) {
+  if (!useSets || unit === "legs") {
     return (
       <span style={st}>
         <span>
-          Leg {currentLegInSet}/{legsTarget}
+          Leg {unit === "legs" ? currentSet : currentLegInSet}/{unit === "legs" ? setsTarget : legsTarget}
         </span>
       </span>
     );
@@ -9014,6 +9020,27 @@ function saveX01V3MatchToHistory({
   const effectiveSavedLegsPerSet = replayLegCountForSave <= 1 ? 1 : Math.max(1, Number((config as any)?.legsPerSet ?? 1) || 1);
   const effectiveSavedSetsToWin = replayLegCountForSave <= 1 ? 1 : Math.max(1, Number((config as any)?.setsToWin ?? 1) || 1);
 
+  const x01StartScoreForHistory = Number((config as any)?.x01StartScore ?? config.startScore ?? 501) || 501;
+  const x01HasTeamsForHistory = Array.isArray((config as any)?.teams) && (config as any).teams.length > 0;
+  const x01VariantForHistory =
+    (config as any)?.x01Variant ||
+    (x01HasTeamsForHistory || (config as any)?.gameMode === "teams" || (config as any)?.matchMode === "teams"
+      ? "team"
+      : (config as any)?.gameMode === "multi" || (config as any)?.matchMode === "multi" || players.length > 2
+      ? "multi"
+      : players.length === 2
+      ? "duo"
+      : "solo");
+  const rawVictoryModeForHistory = String((config as any)?.matchFormat?.type ?? (config as any)?.matchVictoryMode ?? (config as any)?.victoryMode ?? "best_of").toLowerCase();
+  const matchVictoryModeForHistory = rawVictoryModeForHistory.includes("first") ? "first_to" : "best_of";
+  const rawMatchFormatUnitForHistory = String((config as any)?.matchFormat?.unit ?? "sets").toLowerCase();
+  const matchFormatUnitForHistory = rawMatchFormatUnitForHistory.includes("leg") ? "legs" : "sets";
+  const matchFormatForHistory = {
+    type: matchVictoryModeForHistory,
+    target: effectiveSavedSetsToWin,
+    unit: matchFormatUnitForHistory as "sets" | "legs",
+  };
+
   // Source de vérité des scores finaux : le replay/visitHistory, pas state.scores.
   // Après un checkout, le moteur peut déjà avoir préparé la manche suivante et remettre
   // state.scores à startScore. En sauvegarde/historique, cela réattribue ensuite les
@@ -9612,6 +9639,12 @@ function saveX01V3MatchToHistory({
     statsDetailAvailable: statsDetailAvailableForHistory,
     hideSegmentStats: isVisitScoreInputForHistory,
     matchId,
+    x01StartScore: x01StartScoreForHistory,
+    startScore: x01StartScoreForHistory,
+    x01Variant: x01VariantForHistory,
+    matchVictoryMode: matchVictoryModeForHistory,
+    victoryMode: matchVictoryModeForHistory,
+    matchFormat: matchFormatForHistory,
     online: isOnlineMatch,
     onlineMode: isOnlineMatch ? "x01" : undefined,
     lobbyCode: onlineLobbyCode,
@@ -9619,7 +9652,12 @@ function saveX01V3MatchToHistory({
     game: {
       ...engineGame,
       mode: "x01",
-      startScore: config.startScore,
+      startScore: x01StartScoreForHistory,
+      x01StartScore: x01StartScoreForHistory,
+      x01Variant: x01VariantForHistory,
+      matchVictoryMode: matchVictoryModeForHistory,
+      victoryMode: matchVictoryModeForHistory,
+      matchFormat: matchFormatForHistory,
       legsPerSet: effectiveSavedLegsPerSet,
       setsToWin: effectiveSavedSetsToWin,
     },
@@ -9718,6 +9756,12 @@ function saveX01V3MatchToHistory({
 
   const lightConfig: X01ConfigV3 = {
     ...config,
+    startScore: x01StartScoreForHistory as any,
+    x01StartScore: x01StartScoreForHistory as any,
+    x01Variant: x01VariantForHistory as any,
+    matchVictoryMode: matchVictoryModeForHistory as any,
+    victoryMode: matchVictoryModeForHistory as any,
+    matchFormat: matchFormatForHistory as any,
     players: lightPlayers as any,
   };
 
@@ -9759,6 +9803,12 @@ function saveX01V3MatchToHistory({
     mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
     variant: "x01_v3",
     game: "x01",
+    x01StartScore: x01StartScoreForHistory,
+    startScore: x01StartScoreForHistory,
+    x01Variant: x01VariantForHistory,
+    matchVictoryMode: matchVictoryModeForHistory,
+    victoryMode: matchVictoryModeForHistory,
+    matchFormat: matchFormatForHistory,
     scoreInputMethod: scoreInputDefaultMethodForHistory,
     scoreInputMode: scoreInputDefaultMethodForHistory,
     isVisitScoreInput: isVisitScoreInputForHistory,
@@ -9768,7 +9818,6 @@ function saveX01V3MatchToHistory({
     onlineMode: isOnlineMatch ? "x01" : undefined,
     lobbyCode: onlineLobbyCode,
     source: isOnlineMatch ? "online" : undefined,
-    startScore: config.startScore,
     matchId, // 🧷 idem summary
     resumeId: matchId,
     config: lightConfig,
@@ -9819,6 +9868,12 @@ function saveX01V3MatchToHistory({
     resumeId: matchId, // pour matchLink() dans HistoryPage
     kind: "x01",
     status: "finished",
+    x01StartScore: x01StartScoreForHistory,
+    startScore: x01StartScoreForHistory,
+    x01Variant: x01VariantForHistory,
+    matchVictoryMode: matchVictoryModeForHistory,
+    victoryMode: matchVictoryModeForHistory,
+    matchFormat: matchFormatForHistory,
     scoreInputMethod: scoreInputDefaultMethodForHistory,
     scoreInputMode: scoreInputDefaultMethodForHistory,
     isVisitScoreInput: isVisitScoreInputForHistory,

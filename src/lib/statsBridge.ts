@@ -61,6 +61,7 @@ import {
   type CricketProfileStats,
 } from "./cricketStats";
 import { getOrRebuildStatsIndex, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
+import { getX01StatsContext, x01ContextMatchesFilter, type X01StatsContextFilter } from "./x01StatsContext";
 
 /* ============================================================
    Types publics
@@ -1212,7 +1213,7 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
    GETTERS NOUVEAUX — PROFIL PAR MODE
 ============================================================ */
 
-export async function getX01ProfileStats(profileId: string, range: RangeKey = "all", source: SourceKey = "all"): Promise<X01ProfileStats> {
+export async function getX01ProfileStats(profileId: string, range: RangeKey = "all", source: SourceKey = "all", contextFilter: X01StatsContextFilter = {}): Promise<X01ProfileStats> {
   const empty: X01ProfileStats = {
     games: 0,
     wins: 0,
@@ -1239,7 +1240,9 @@ export async function getX01ProfileStats(profileId: string, range: RangeKey = "a
 
   const idx = await buildStatsIndex(false);
   const mine = idx.byProfile[String(profileId)] || [];
-  const rows = applyFilters(mine, range, source).filter((m) => m.kind === "x01" || m.mode === "x01");
+  const rows = applyFilters(mine, range, source)
+    .filter((m) => m.kind === "x01" || m.mode === "x01")
+    .filter((m) => x01ContextMatchesFilter(getX01StatsContext((m as any).raw || m), contextFilter));
 
   let games = 0;
   let wins = 0;

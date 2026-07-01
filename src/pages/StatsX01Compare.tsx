@@ -18,6 +18,7 @@ import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
 import { getX01ProfileStats } from "../lib/statsBridge";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { loadX01MultiSessions } from "../stats/X01MultiStatsTabFull";
+import type { X01StartScoreKey, X01VariantKey } from "../lib/x01StatsContext";
 
 import {
   ResponsiveContainer,
@@ -36,6 +37,8 @@ import {
 
 type ModeKey = "x01_local" | "x01_online" | "training_x01";
 type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "ARV";
+type X01ScoreFilterKey = "all" | X01StartScoreKey;
+type X01VariantFilterKey = "all" | Extract<X01VariantKey, "duo" | "multi" | "team">;
 
 type X01Sample = {
   createdAt: number;
@@ -79,6 +82,11 @@ type X01Sample = {
   rank?: number | null;
   playerCount?: number;
   isTeam?: boolean;
+
+  // Contexte X01 : évite de mélanger 301/501/701/901 et Duo/Multi/Team.
+  x01StartScore?: X01StartScoreKey | null;
+  x01Variant?: X01VariantKey;
+  matchVictoryMode?: "best_of" | "first_to";
 };
 
 type AggregatedStats = {
@@ -1471,6 +1479,9 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   useLang();
 
   const [period, setPeriod] = useState<PeriodKey>("ALL");
+  const [scoreFilter, setScoreFilter] = useState<X01ScoreFilterKey>("all");
+  const [variantFilter, setVariantFilter] = useState<X01VariantFilterKey>("all");
+  const hasX01ContextFilters = scoreFilter !== "all" || variantFilter !== "all";
   const [samples, setSamples] = useState<X01Sample[] | null>(null);
   const [localBridgeStats, setLocalBridgeStats] = useState<any | null>(null);
   const [onlineBridgeStats, setOnlineBridgeStats] = useState<any | null>(null);
@@ -1510,7 +1521,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             matchId: (hs as any).matchId || undefined,
             rank: (hs as any).rank ?? null,
             playerCount: Number((hs as any).playerCount || 0) || undefined,
-            isTeam: !!(hs as any).isTeam,
+            isTeam: !!(hs as any).isTeam || (hs as any).x01Variant === "team",
+            x01StartScore: (hs as any).x01StartScore ?? null,
+            x01Variant: (hs as any).x01Variant ?? "unknown",
+            matchVictoryMode: (hs as any).matchVictoryMode ?? "best_of",
             avg3: hs.avg3 || undefined,
             bestVisit: hs.bestVisit || undefined,
             bestCheckout: hs.bestCheckout || undefined,
@@ -1557,6 +1571,9 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             rank: null,
             playerCount: 1,
             isTeam: false,
+            x01StartScore: null,
+            x01Variant: "training",
+            matchVictoryMode: "best_of",
             avg3: s.avg3D || undefined,
             bestVisit: s.bestVisit || undefined,
             bestCheckout: s.bestCheckout ?? undefined,
@@ -1616,8 +1633,12 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
 
       try {
         const range = periodToBridgeRange(period);
-        const stats = await getX01ProfileStats(String(targetProfile.id), range, "local");
-        const onlineStats = await getX01ProfileStats(String(targetProfile.id), range, "online").catch(() => null);
+        const contextFilter = {
+          startScore: scoreFilter === "all" ? "all" : scoreFilter,
+          variant: variantFilter === "all" ? "all" : variantFilter,
+        };
+        const stats = await getX01ProfileStats(String(targetProfile.id), range, "local", contextFilter as any);
+        const onlineStats = await getX01ProfileStats(String(targetProfile.id), range, "online", contextFilter as any).catch(() => null);
 
         // Même consolidation que Dashboard global / Profils / X01 Multi :
         // le bridge central peut encore renvoyer une AVG pondérée ou des records anciens
@@ -1627,7 +1648,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         const rows = await loadFullFinishedHistoryRowsForX01Compare();
         const candidateId = rows.length ? findX01CandidateIdByName(rows, targetProfile.name) : null;
         const effectiveId = String(targetProfile.id || candidateId || "");
-        if (range === "all" && rows.length) {
+        if (!hasX01ContextFilters && range === "all" && rows.length) {
           x01Agg = computeX01MultiAgg(rows as any, String(targetProfile.id), targetProfile.name);
           if ((Number(x01Agg?.sessions || 0) || 0) === 0 && candidateId) {
             const alt = computeX01MultiAgg(rows as any, candidateId, targetProfile.name);
@@ -1645,8 +1666,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
 
         let x01MultiTabMatches = emptyX01CompareMatchBreakdown();
         try {
-          const tabSessions = await loadX01MultiSessions(String(targetProfile.id));
-          x01MultiTabMatches = computeX01CompareMatchBreakdownFromMultiTabSessions(tabSessions as any[], String(targetProfile.id), byPeriod);
+          if (!hasX01ContextFilters) {
+            const tabSessions = await loadX01MultiSessions(String(targetProfile.id));
+            x01MultiTabMatches = computeX01CompareMatchBreakdownFromMultiTabSessions(tabSessions as any[], String(targetProfile.id), byPeriod);
+          }
         } catch (e) {
           console.warn("[StatsX01Compare] X01Multi tab match breakdown failed", e);
         }
@@ -1676,7 +1699,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     return () => {
       cancelled = true;
     };
-  }, [targetProfile?.id, period]);
+  }, [targetProfile?.id, period, scoreFilter, variantFilter, hasX01ContextFilters]);
 
   const { from, to, archivesOnly } = useMemo(
     () => getPeriodRange(period),
@@ -1698,12 +1721,19 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
       return true;
     };
 
+    const contextOK = (s: X01Sample) => {
+      if (s.mode === "training_x01") return true;
+      if (scoreFilter !== "all" && s.x01StartScore !== scoreFilter) return false;
+      if (variantFilter !== "all" && s.x01Variant !== variantFilter) return false;
+      return true;
+    };
+
     return {
-      local: samples.filter((s) => s.mode === "x01_local" && inRange(s)),
-      online: samples.filter((s) => s.mode === "x01_online" && inRange(s)),
+      local: samples.filter((s) => s.mode === "x01_local" && inRange(s) && contextOK(s)),
+      online: samples.filter((s) => s.mode === "x01_online" && inRange(s) && contextOK(s)),
       training: samples.filter((s) => s.mode === "training_x01" && inRange(s)),
     };
-  }, [samples, from, to, archivesOnly]);
+  }, [samples, from, to, archivesOnly, scoreFilter, variantFilter]);
 
   const aggLocalRaw = useMemo(() => aggregateSamples(filtered.local), [filtered.local]);
   const localSampleMatchBreakdown = useMemo(
@@ -1713,15 +1743,15 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   const aggLocal = useMemo(
     () => mergeX01CompareMatchBreakdown(
       applyX01MultiAggToAggregatedStats(
-        localX01MultiAgg,
+        hasX01ContextFilters ? null : localX01MultiAgg,
         bridgeX01ToAggregatedStats(localBridgeStats, aggLocalRaw)
       ),
       // La section MATCHS doit suivre la même source que le tableau détaillé X01 Multi
       // (lignes hydratées History), pas les samples profil seuls qui ne contiennent pas
       // toujours le classement complet de tous les joueurs.
-      hasX01CompareMatchBreakdownValues(matchBreakdown.local) ? matchBreakdown.local : localSampleMatchBreakdown
+      !hasX01ContextFilters && hasX01CompareMatchBreakdownValues(matchBreakdown.local) ? matchBreakdown.local : localSampleMatchBreakdown
     ),
-    [localX01MultiAgg, localBridgeStats, aggLocalRaw, localSampleMatchBreakdown, matchBreakdown.local]
+    [hasX01ContextFilters, localX01MultiAgg, localBridgeStats, aggLocalRaw, localSampleMatchBreakdown, matchBreakdown.local]
   );
   const onlineSampleMatchBreakdown = useMemo(
     () => computeX01CompareMatchBreakdownFromSamples(filtered.online),
@@ -1732,7 +1762,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     const base = bridgeX01ToAggregatedStats(onlineBridgeStats, aggregateSamples(filtered.online));
     const raw = hasX01CompareMatchBreakdownValues(onlineSampleMatchBreakdown)
       ? onlineSampleMatchBreakdown
-      : (matchBreakdown.online || emptyX01CompareMatchBreakdown());
+      : (hasX01ContextFilters ? emptyX01CompareMatchBreakdown() : (matchBreakdown.online || emptyX01CompareMatchBreakdown()));
 
     // Les matchs online historiques ne contiennent pas toujours les tableaux
     // de joueurs complets dans History. Dans ce cas, la source fiable reste
@@ -1749,7 +1779,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         };
 
     return mergeX01CompareMatchBreakdown(base, onlineFallback);
-  }, [onlineBridgeStats, filtered.online, onlineSampleMatchBreakdown, matchBreakdown.online]);
+  }, [hasX01ContextFilters, onlineBridgeStats, filtered.online, onlineSampleMatchBreakdown, matchBreakdown.online]);
   const aggTraining = useMemo(
     () => aggregateSamples(filtered.training),
     [filtered.training]
@@ -1933,6 +1963,82 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                   ? "0 0 12px rgba(255,216,111,0.7)"
                   : "0 0 0 rgba(0,0,0,0)",
                 transition: "background .18s, box-shadow .18s, transform .12s",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filtres contexte X01 */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          justifyContent: "center",
+          marginBottom: compact ? 0 : 4,
+          marginTop: 4,
+        }}
+      >
+        {(["all", 301, 501, 701, 901] as X01ScoreFilterKey[]).map((key) => {
+          const isActive = scoreFilter === key;
+          return (
+            <button
+              key={`score-${key}`}
+              onClick={() => setScoreFilter(key)}
+              style={{
+                borderRadius: 999,
+                padding: "5px 9px",
+                fontSize: 10,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                border: "none",
+                cursor: "pointer",
+                background: isActive ? `linear-gradient(135deg, ${primary}, ${primary}80)` : "rgba(255,255,255,0.07)",
+                color: isActive ? "#000" : "#fff",
+                fontWeight: 800,
+              }}
+            >
+              {key === "all" ? "Scores" : key}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          justifyContent: "center",
+          marginBottom: compact ? 0 : 8,
+          marginTop: 4,
+        }}
+      >
+        {([
+          ["all", "Tous X01"],
+          ["duo", "Duo"],
+          ["multi", "Multi"],
+          ["team", "Team"],
+        ] as [X01VariantFilterKey, string][]).map(([key, label]) => {
+          const isActive = variantFilter === key;
+          return (
+            <button
+              key={`variant-${key}`}
+              onClick={() => setVariantFilter(key)}
+              style={{
+                borderRadius: 999,
+                padding: "5px 9px",
+                fontSize: 10,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                border: "none",
+                cursor: "pointer",
+                background: isActive ? `linear-gradient(135deg, ${primary}, ${primary}80)` : "rgba(255,255,255,0.07)",
+                color: isActive ? "#000" : "#fff",
+                fontWeight: 800,
               }}
             >
               {label}

@@ -17,6 +17,7 @@ import TrainingRadar from "../components/TrainingRadar";
 import { GoldPill } from "../components/StatsPlayerDashboard";
 import { History } from "../lib/history";
 import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
+import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey } from "../lib/x01StatsContext";
 import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
 
@@ -152,6 +153,8 @@ const card: React.CSSProperties = {
 // ---------- Types / helpers ----------
 
 type TimeRange = "all" | "day" | "week" | "month" | "year";
+type X01ScoreFilterKey = "all" | X01StartScoreKey;
+type X01VariantFilterKey = "all" | Extract<X01VariantKey, "duo" | "multi" | "team">;
 
 /**
  * Ligne de stats = 1 joueur sur 1 match X01
@@ -204,6 +207,11 @@ export type X01MultiSession = {
 
   // ➕ avatar compressé (si dispo dans History.players)
   avatarDataUrl?: string | null;
+
+  // Contexte X01 : score de départ + variante, pour ne pas fusionner 301/501/701/901 ni Duo/Multi/Team.
+  x01StartScore?: X01StartScoreKey | null;
+  x01Variant?: X01VariantKey;
+  matchVictoryMode?: "best_of" | "first_to";
 };
 
 type Props = {
@@ -236,6 +244,18 @@ function filterByRange(
       : 365 * ONE_DAY;
   const minDate = now - delta;
   return sessions.filter((s) => s.date >= minDate);
+}
+
+function filterByX01Context(
+  sessions: X01MultiSession[],
+  scoreFilter: X01ScoreFilterKey,
+  variantFilter: X01VariantFilterKey
+): X01MultiSession[] {
+  return sessions.filter((s) => {
+    if (scoreFilter !== "all" && s.x01StartScore !== scoreFilter) return false;
+    if (variantFilter !== "all" && s.x01Variant !== variantFilter) return false;
+    return true;
+  });
 }
 
 
@@ -1635,6 +1655,8 @@ export async function loadX01MultiSessions(
 
     if (!isX01) continue;
 
+    const x01Ctx = getX01StatsContext(match);
+
     // --------- 2) méta (id + date) ----------
     const matchId = match.id || match.matchId || match?.payload?.summary?.matchId || match?.payload?.matchId || "";
     const createdAt =
@@ -1722,6 +1744,9 @@ export async function loadX01MultiSessions(
         date: createdAt,
         selectedPlayerId: pid,
         playerName,
+        x01StartScore: x01Ctx.startScore,
+        x01Variant: x01Ctx.variant,
+        matchVictoryMode: x01Ctx.victoryMode,
         // 🔥 profileId pour lier aux profils / bots
         profileId: player.profileId ?? player.id ?? null,
         // 🔥 avatar qui vient directement de History.players[].avatarDataUrl
@@ -1764,6 +1789,9 @@ export async function loadX01MultiSessions(
           date: Number(smp.createdAt || Date.now()),
           selectedPlayerId: String(smp.playerId || profileId),
           playerName: String(smp.playerName || "Joueur"),
+          x01StartScore: (smp as any).x01StartScore ?? null,
+          x01Variant: (smp as any).x01Variant ?? "unknown",
+          matchVictoryMode: (smp as any).matchVictoryMode ?? "best_of",
           profileId: String(profileId),
           avatarDataUrl: null,
           darts: Number(smp.darts || 0),
@@ -1983,6 +2011,8 @@ export default function X01MultiStatsTabFull({
   const [sessions, setSessions] = React.useState<X01MultiSession[]>([]);
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
+  const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>("all");
+  const [variantFilter, setVariantFilter] = React.useState<X01VariantFilterKey>("all");
   const [selected, setSelected] = React.useState<X01MultiSession | null>(null);
 
   const metricKeys: Array<
@@ -2044,8 +2074,8 @@ export default function X01MultiStatsTabFull({
 
   // Sessions filtrées
   const filtered = React.useMemo(
-    () => filterByRange(sessions, range).sort((a, b) => a.date - b.date),
-    [sessions, range]
+    () => filterByX01Context(filterByRange(sessions, range), scoreFilter, variantFilter).sort((a, b) => a.date - b.date),
+    [sessions, range, scoreFilter, variantFilter]
   );
 
   const selectedSessions = React.useMemo(() => {
@@ -3527,6 +3557,59 @@ return (
               </GoldPill>
             )
           )}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            justifyContent: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            transform: "scale(0.92)",
+            transformOrigin: "center",
+            marginTop: 8,
+          }}
+        >
+          {(["all", 301, 501, 701, 901] as X01ScoreFilterKey[]).map((key) => (
+            <GoldPill
+              key={`score-${key}`}
+              active={scoreFilter === key}
+              onClick={() => setScoreFilter(key)}
+              style={{ padding: "4px 10px", fontSize: 10, minWidth: "unset", whiteSpace: "nowrap" }}
+            >
+              {key === "all" ? "Scores" : key}
+            </GoldPill>
+          ))}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            justifyContent: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            transform: "scale(0.92)",
+            transformOrigin: "center",
+            marginTop: 4,
+          }}
+        >
+          {([
+            ["all", "Tous X01"],
+            ["duo", "Duo"],
+            ["multi", "Multi"],
+            ["team", "Team"],
+          ] as [X01VariantFilterKey, string][]).map(([key, label]) => (
+            <GoldPill
+              key={`variant-${key}`}
+              active={variantFilter === key}
+              onClick={() => setVariantFilter(key)}
+              style={{ padding: "4px 10px", fontSize: 10, minWidth: "unset", whiteSpace: "nowrap" }}
+            >
+              {label}
+            </GoldPill>
+          ))}
         </div>
       </div>
 

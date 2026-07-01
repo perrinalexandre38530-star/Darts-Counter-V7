@@ -21,6 +21,17 @@ export type X01OutMode = "single" | "double" | "master";
 
 export type X01GameMode = "solo" | "multi" | "teams";
 
+// Format de victoire X01 :
+// - best_of : BO3/BO5/BO7/BO13/BO35... = objectif calculé à la majorité
+// - first_to : First to 3/5/7/18... = objectif exact
+export type X01MatchVictoryMode = "best_of" | "first_to";
+export type X01MatchFormatUnit = "sets" | "legs";
+export interface X01MatchFormatV3 {
+  type: X01MatchVictoryMode | "bestOf" | "firstTo";
+  target: number;
+  unit?: X01MatchFormatUnit;
+}
+
 /* -----------------------------------------------
    Joueurs & Équipes
 ----------------------------------------------- */
@@ -56,8 +67,18 @@ export interface X01ConfigV3 {
   teams?: X01TeamV3[] | null;
 
   // Format Sets / Legs
-  legsPerSet: 1 | 3 | 5 | 7 | 9 | 11 | 13;
-  setsToWin: 1 | 3 | 5 | 7 | 9 | 11 | 13;
+  legsPerSet: number;
+  setsToWin: number;
+
+  // Contexte statistique X01 persistant.
+  // Permet de ne plus mélanger 301/501/701/901 ni Solo/Duo/Multi/Team.
+  x01StartScore?: 301 | 501 | 701 | 901;
+  x01Variant?: "solo" | "duo" | "multi" | "team";
+
+  // Type de victoire : formats rapides BO3/BO5/BO7 ou presets pros BO13 sets / BO35 legs / FT18 legs.
+  matchVictoryMode?: X01MatchVictoryMode;
+  victoryMode?: X01MatchVictoryMode; // alias legacy/backward-compat
+  matchFormat?: X01MatchFormatV3;
 
   // Serve: random / alterné
   serveMode: "random" | "alternate";

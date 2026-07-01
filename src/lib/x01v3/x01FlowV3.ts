@@ -58,6 +58,33 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
+
+function normalizeMatchVictoryMode(config: any): "best_of" | "first_to" {
+  const raw = String(
+    config?.matchFormat?.type ??
+      config?.victoryFormat?.type ??
+      config?.matchVictoryMode ??
+      config?.victoryMode ??
+      "best_of"
+  )
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_");
+
+  return raw.includes("first") ? "first_to" : "best_of";
+}
+
+function getMatchTargetSets(config: any): number {
+  const rawTarget = Number(config?.matchFormat?.target ?? config?.setsToWin ?? 1);
+  const configuredTarget = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 1;
+  const victoryMode = normalizeMatchVictoryMode(config);
+
+  // First To : la cible est exacte (First to 3 => 3 sets/legs gagnés).
+  if (victoryMode === "first_to") return Math.max(1, Math.floor(configuredTarget));
+
+  // Best Of : compat ancienne logique (BO3 => 2, BO5 => 3, BO7 => 4).
+  return configuredTarget <= 1 ? 1 : Math.floor(configuredTarget / 2) + 1;
+}
+
 function rotateArray<T>(arr: T[], amount: number): T[] {
   const a = [...arr];
   const n = a.length;
@@ -230,16 +257,15 @@ export function applySetWinV3(
 }
 
 /* -------------------------------------------------------
-   7. Détection MATCH gagné — logique "best-of"
-   config.setsToWin = nb de sets MAX (1,3,5,7...)
-   target = floor(setsMax / 2) + 1  → BO3=2, BO5=3, BO7=4...
+   7. Détection MATCH gagné
+   - best_of : BO3/BO5/BO7 => cible majorité (2/3/4...)
+   - first_to : First to 3/5/7 => cible exacte (3/5/7...)
 ------------------------------------------------------- */
 export function checkMatchWinV3(
   config: X01ConfigV3,
   state: X01MatchStateV3
 ): { winnerPlayerId?: X01PlayerId; winnerTeamId?: X01TeamId } | null {
-  const setsMax = config.setsToWin ?? 1;
-  const target = setsMax <= 1 ? 1 : Math.floor(setsMax / 2) + 1;
+  const target = getMatchTargetSets(config);
 
   if (config.gameMode === "teams") {
     const teamSets = state.teamSetsWon || {};

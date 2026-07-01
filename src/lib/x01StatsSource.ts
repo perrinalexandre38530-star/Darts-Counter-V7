@@ -2,6 +2,14 @@
 import { History } from "./history";
 import { loadStore } from "./storage";
 import { isOnlineStatsExcluded } from "./onlineStatsExclusions";
+import {
+  getX01StatsContext,
+  x01ContextMatchesFilter,
+  type X01StartScoreKey,
+  type X01VariantKey,
+  type X01VictoryModeKey,
+  type X01StatsContextFilter,
+} from "./x01StatsContext";
 
 export type X01Scope = "local" | "online" | "training";
 export type X01PlayerSample = {
@@ -40,6 +48,13 @@ export type X01PlayerSample = {
   bust: number;
   coAttempts: number;
   coSuccess: number;
+
+  // Contexte X01 pour filtrer correctement les stats
+  // 301/501/701/901 + Solo/Duo/Multi/Team + BO/First To
+  x01StartScore?: X01StartScoreKey | null;
+  x01Variant?: X01VariantKey;
+  matchVictoryMode?: X01VictoryModeKey;
+  matchFormat?: any;
 };
 
 export type X01Agg = {
@@ -70,6 +85,13 @@ export type X01Agg = {
   bust: number;
   coAttempts: number;
   coSuccess: number;
+
+  // Contexte X01 pour filtrer correctement les stats
+  // 301/501/701/901 + Solo/Duo/Multi/Team + BO/First To
+  x01StartScore?: X01StartScoreKey | null;
+  x01Variant?: X01VariantKey;
+  matchVictoryMode?: X01VictoryModeKey;
+  matchFormat?: any;
 };
 
 const num = (v: any, d = 0) => {
@@ -450,6 +472,7 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const bust = num(h.bust, num(s.bust, num(s.busts)));
   const coAttempts = num(s.coAttempts, num(s.checkoutAttempts, num(s.checkoutattempts, num(h.coAttempts, num(h.checkoutAttempts)))));
   const coSuccess = num(s.coSuccess, num(s.coHits, num(s.checkoutHits, num(s.checkoutSuccess, num(h.coSuccess)))));
+  const x01Ctx = getX01StatsContext(rec);
   return {
     id: String(rec?.id ?? rec?.matchId ?? rec?.payload?.id ?? `${playerId}-${rec?.createdAt ?? Date.now()}`),
     matchId: String(rec?.matchId ?? rec?.id ?? rec?.payload?.matchId ?? rec?.payload?.id ?? ""),
@@ -495,6 +518,11 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
     bust,
     coAttempts,
     coSuccess,
+    x01StartScore: x01Ctx.startScore,
+    x01Variant: x01Ctx.variant,
+    matchVictoryMode: x01Ctx.victoryMode,
+    matchFormat: x01Ctx.matchFormat,
+    isTeam: x01Ctx.variant === "team",
   };
 }
 
@@ -562,7 +590,7 @@ export async function loadAllHistoryRecords(): Promise<any[]> {
   return Array.from(byId.values());
 }
 
-export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X01Scope | "all" }): Promise<X01PlayerSample[]> {
+export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X01Scope | "all" } & X01StatsContextFilter): Promise<X01PlayerSample[]> {
   const all = await loadAllHistoryRecords();
   const out: X01PlayerSample[] = [];
   for (const rec of all || []) {
@@ -572,6 +600,7 @@ export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X0
     const smp = sampleFromRec(rec, profile);
     if (!smp) continue;
     if (opts?.scope && opts.scope !== "all" && smp.scope !== opts.scope) continue;
+    if (!x01ContextMatchesFilter({ startScore: smp.x01StartScore ?? null, variant: smp.x01Variant ?? "unknown", victoryMode: smp.matchVictoryMode ?? "best_of" }, opts)) continue;
     out.push(smp);
   }
   return out.sort((a, b) => a.createdAt - b.createdAt);
