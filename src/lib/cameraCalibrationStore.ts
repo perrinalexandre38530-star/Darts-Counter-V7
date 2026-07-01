@@ -52,7 +52,7 @@ export type CameraCalibrationV2 = {
   a20: number;
   // Rotation de l’ellipse dans la photo, en radians. 0 = axes écran.
   phi?: number;
-  method?: "auto-photo" | "auto-photo-zones" | "auto-photo-couleurs-v3" | "manual" | string;
+  method?: "auto-photo" | "auto-photo-zones" | "auto-photo-couleurs-v3" | "auto-photo-cible-v4" | "manual" | string;
   confidence?: number;
   zoneConfidence?: number;
   rings?: CameraBoardRingRatios;
