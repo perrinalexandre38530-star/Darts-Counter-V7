@@ -32,6 +32,12 @@ export interface X01MatchFormatV3 {
   unit?: X01MatchFormatUnit;
 }
 
+export interface X01NestedFormatV3 {
+  type: X01MatchVictoryMode | "bestOf" | "firstTo";
+  target: number;
+  unit: X01MatchFormatUnit;
+}
+
 /* -----------------------------------------------
    Joueurs & Équipes
 ----------------------------------------------- */
@@ -75,10 +81,21 @@ export interface X01ConfigV3 {
   x01StartScore?: 301 | 501 | 701 | 901;
   x01Variant?: "solo" | "duo" | "multi" | "team";
 
-  // Type de victoire : formats rapides BO3/BO5/BO7 ou presets pros BO13 sets / BO35 legs / FT18 legs.
+  // Type de victoire du match (niveau SETS) : formats rapides BO3/BO5/BO7 ou presets pros.
+  // `matchVictoryMode` / `matchFormat` restent les clés historiques de référence côté moteur / stats.
   matchVictoryMode?: X01MatchVictoryMode;
   victoryMode?: X01MatchVictoryMode; // alias legacy/backward-compat
   matchFormat?: X01MatchFormatV3;
+
+  // Réglages indépendants Sets / Legs pour permettre :
+  // - Best of 5 legs + First to 3 sets
+  // - First to 3 legs + Best of 3 sets
+  setVictoryMode?: X01MatchVictoryMode;
+  setVictoryTarget?: number; // cible UI choisie (ex: BO3 => 3, FT3 => 3)
+  legVictoryMode?: X01MatchVictoryMode;
+  legVictoryTarget?: number; // cible UI choisie (ex: BO5 => 5, FT3 => 3)
+  setFormat?: X01NestedFormatV3;
+  legFormat?: X01NestedFormatV3;
 
   // Serve: random / alterné
   serveMode: "random" | "alternate";

@@ -5344,7 +5344,7 @@ if (isLandscapeTablet) {
                 }}
               >
                 {matchFormatUnitForUi === "legs"
-                  ? `Leg ${state.currentSet}/${setsTarget}`
+                  ? `Leg ${setsTarget <= 1 ? state.currentLeg : state.currentSet}/${setsTarget <= 1 ? legsTarget : setsTarget}`
                   : `${setsTarget > 1 ? `Set ${state.currentSet}/${setsTarget} • ` : ""}Leg ${state.currentLeg}/${legsTarget}`}
               </div>
             )}
@@ -7839,7 +7839,7 @@ function SetLegChip(props: {
     return (
       <span style={st}>
         <span>
-          Leg {unit === "legs" ? currentSet : currentLegInSet}/{unit === "legs" ? setsTarget : legsTarget}
+          Leg {unit === "legs" ? (setsTarget <= 1 ? currentLegInSet : currentSet) : currentLegInSet}/{unit === "legs" ? (setsTarget <= 1 ? legsTarget : setsTarget) : legsTarget}
         </span>
       </span>
     );

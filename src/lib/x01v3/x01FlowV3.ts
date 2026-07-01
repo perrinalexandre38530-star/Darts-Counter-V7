@@ -59,30 +59,59 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 
-function normalizeMatchVictoryMode(config: any): "best_of" | "first_to" {
-  const raw = String(
-    config?.matchFormat?.type ??
-      config?.victoryFormat?.type ??
-      config?.matchVictoryMode ??
-      config?.victoryMode ??
-      "best_of"
-  )
+function normalizeVictoryMode(rawValue: any): "best_of" | "first_to" {
+  const raw = String(rawValue ?? "best_of")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_");
-
   return raw.includes("first") ? "first_to" : "best_of";
 }
 
+function normalizeMatchVictoryMode(config: any): "best_of" | "first_to" {
+  return normalizeVictoryMode(
+    config?.setFormat?.type ??
+      config?.matchFormat?.type ??
+      config?.victoryFormat?.type ??
+      config?.setVictoryMode ??
+      config?.matchVictoryMode ??
+      config?.victoryMode ??
+      "best_of"
+  );
+}
+
+function normalizeLegVictoryMode(config: any): "best_of" | "first_to" {
+  return normalizeVictoryMode(
+    config?.legFormat?.type ??
+      config?.legVictoryMode ??
+      // vieux patch "match en legs" : on retombe sur le mode global
+      (String(config?.matchFormat?.unit ?? "").toLowerCase().includes("leg")
+        ? config?.matchFormat?.type ?? config?.matchVictoryMode ?? config?.victoryMode
+        : "best_of")
+  );
+}
+
 function getMatchTargetSets(config: any): number {
-  const rawTarget = Number(config?.matchFormat?.target ?? config?.setsToWin ?? 1);
+  const rawTarget = Number(
+    config?.setFormat?.target ?? config?.setVictoryTarget ?? config?.matchFormat?.target ?? config?.setsToWin ?? 1
+  );
   const configuredTarget = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 1;
   const victoryMode = normalizeMatchVictoryMode(config);
 
-  // First To : la cible est exacte (First to 3 => 3 sets/legs gagnés).
+  // First To : la cible est exacte (First to 3 sets => 3 sets gagnés).
   if (victoryMode === "first_to") return Math.max(1, Math.floor(configuredTarget));
 
-  // Best Of : compat ancienne logique (BO3 => 2, BO5 => 3, BO7 => 4).
+  // Best Of : BO3 => 2, BO5 => 3, BO7 => 4...
   return configuredTarget <= 1 ? 1 : Math.floor(configuredTarget / 2) + 1;
+}
+
+function getLegsNeeded(config: any): number {
+  const mode = normalizeLegVictoryMode(config);
+  const totalLegs = Math.max(1, Math.floor(Number(config?.legsPerSet ?? 1) || 1));
+  if (mode === "first_to") {
+    const rawTarget = Number(config?.legFormat?.target ?? config?.legVictoryTarget ?? null);
+    const target = Number.isFinite(rawTarget) && rawTarget > 0 ? Math.floor(rawTarget) : Math.floor(totalLegs / 2) + 1;
+    return Math.max(1, target);
+  }
+  return totalLegs <= 1 ? 1 : Math.floor(totalLegs / 2) + 1;
 }
 
 function rotateArray<T>(arr: T[], amount: number): T[] {
@@ -214,7 +243,7 @@ export function checkSetWinV3(
   config: X01ConfigV3,
   state: X01MatchStateV3
 ): { winnerPlayerId?: X01PlayerId; winnerTeamId?: X01TeamId } | null {
-  const legsNeeded = Math.floor(config.legsPerSet / 2) + 1;
+  const legsNeeded = getLegsNeeded(config);
 
   if (config.gameMode === "teams") {
     const teamLegs = state.teamLegsWon || {};

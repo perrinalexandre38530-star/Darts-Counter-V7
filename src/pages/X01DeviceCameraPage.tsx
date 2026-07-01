@@ -25,7 +25,7 @@ type Props = {
   params?: any;
 };
 
-type Mode = "score" | "calibrate";
+type Mode = "score" | "calibrate" | "test";
 type TapPoint = { x: number; y: number };
 
 const CYAN = "#20e7ff";
@@ -489,6 +489,25 @@ export default function X01DeviceCameraPage({ params }: Props) {
     }
   }
 
+  function registerTestDart(dart: any, p: TapPoint) {
+    const clean = {
+      kind: "dart_test",
+      type: "dart_test",
+      segment: Number(dart?.segment || 0),
+      multiplier: Number(dart?.multiplier || 0),
+      score: scoreOf(dart),
+      label: dartLabel(dart),
+      deviceTs: Date.now(),
+      source: "phone_camera_test",
+      x: p?.x,
+      y: p?.y,
+    };
+    setLastTestDart(clean);
+    setLastTestPoint(p);
+    setTestHistory((prev) => [clean, ...prev].slice(0, 6));
+    setMessage(`Test calibration : ${clean.label} (${clean.score}) — non envoyé au match.`);
+  }
+
   async function handleTap(ev: any) {
     ev.preventDefault?.();
     ev.stopPropagation?.();
@@ -532,6 +551,10 @@ export default function X01DeviceCameraPage({ params }: Props) {
       return;
     }
     const dart = scoreTap(cal, p.x, p.y);
+    if (mode === "test") {
+      registerTestDart(dart, p);
+      return;
+    }
     await sendDart(dart);
   }
 
@@ -543,6 +566,8 @@ export default function X01DeviceCameraPage({ params }: Props) {
         ? "Manuel 2/3 — Tape le bord extérieur de la cible"
         : "Manuel 3/3 — Tape le centre du 20 en haut"
       : "Calibration recommandée — Photo cible détecte centre, extérieur, doubles, triples, bull et chiffres"
+    : mode === "test"
+    ? "Teste la calibration : tape D20, T20, BULL, DBULL, D3 et D19. Le résultat s'affiche immédiatement sans rien envoyer au match."
     : "Tape l'impact de la fléchette pour l'envoyer au match X01";
 
   const rings = previewCal?.v === 2 ? getCameraCalibrationRings(previewCal) : DEFAULT_CAMERA_BOARD_RINGS;
@@ -566,17 +591,18 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div style={{ fontSize: 11, color: "rgba(244,247,255,.68)", marginTop: 2 }}>Session {sessionId || "absente"}</div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button type="button" disabled={!ready || busy} onClick={runAutoPhotoCalibration} style={btn(true, !ready || busy)}>Photo cible</button>
-          <button type="button" onClick={startManualCalibration} style={btn(false)}>Manuel</button>
-          <button type="button" disabled={!calibrated} onClick={() => { setFrozenFrameUrl(""); setMode("score"); setShowAdjustments(false); }} style={btn(false, !calibrated)}>Scorer</button>
+          <button type="button" disabled={!ready || busy} onClick={runAutoPhotoCalibration} style={btn(mode === "calibrate", !ready || busy)}>Photo cible</button>
+          <button type="button" onClick={startManualCalibration} style={btn(mode === "calibrate" && manualActive)}>Manuel</button>
+          <button type="button" disabled={!calibrated} onClick={() => { setMode("test"); setShowAdjustments(false); }} style={btn(mode === "test", !calibrated)}>Tester</button>
+          <button type="button" disabled={!calibrated} onClick={() => { setFrozenFrameUrl(""); setMode("score"); setShowAdjustments(false); }} style={btn(mode === "score", !calibrated)}>Scorer</button>
           <button type="button" onClick={() => setShowDetails((v) => !v)} style={btn(false)}>Infos</button>
           <button type="button" onClick={() => setShowHelp((v) => !v)} style={btn(false)}>?</button>
         </div>
       </header>
 
       <main ref={wrapRef} onClick={handleTap} onTouchStart={handleTap} style={{ position: "relative", flex: 1, minHeight: 0, overflow: "hidden", cursor: mode === "score" ? "crosshair" : "default" }}>
-        <video ref={videoRef} playsInline muted autoPlay style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: mode === "calibrate" && frozenFrameUrl ? "none" : "block" }} />
-        {mode === "calibrate" && frozenFrameUrl && (
+        <video ref={videoRef} playsInline muted autoPlay style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: mode !== "score" && frozenFrameUrl ? "none" : "block" }} />
+        {mode !== "score" && frozenFrameUrl && (
           <img src={frozenFrameUrl} alt="Photo de calibration" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
         )}
 
@@ -588,10 +614,14 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div key={i} style={{ position: "absolute", left: pct(p.x), top: pct(p.y), width: 20, height: 20, borderRadius: 999, transform: "translate(-50%,-50%)", border: `2px solid ${CYAN}`, background: "rgba(0,0,0,.22)", boxShadow: `0 0 18px ${CYAN}`, pointerEvents: "none" }} />
         ))}
 
+        {mode === "test" && lastTestPoint && (
+          <div style={{ position: "absolute", left: pct(lastTestPoint.x), top: pct(lastTestPoint.y), width: 24, height: 24, borderRadius: 999, transform: "translate(-50%,-50%)", border: `2px solid ${GOLD}`, background: "rgba(0,0,0,.18)", boxShadow: `0 0 18px ${GOLD}`, pointerEvents: "none" }} />
+        )}
+
         <div style={{ position: "absolute", left: 8, right: 8, top: 8, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, pointerEvents: "none" }}>
           <div style={{ maxWidth: showDetails ? "92%" : "76%", padding: showDetails ? "10px 11px" : "6px 9px", borderRadius: 14, background: "rgba(0,0,0,.48)", border: `1px solid ${CYAN}33`, boxShadow: `0 0 18px ${CYAN}18`, backdropFilter: "blur(4px)" }}>
-            <div style={{ color: CYAN, fontWeight: 1000, fontSize: showDetails ? 14 : 12 }}>{mode === "calibrate" ? "Calibration" : "Scoring"} · {methodLabel}</div>
-            <div style={{ marginTop: 2, fontSize: showDetails ? 12 : 10, color: "rgba(244,247,255,.86)", lineHeight: 1.28, fontWeight: 800 }}>{showDetails ? hint : (mode === "score" ? "Tape l'impact" : frozenFrameUrl ? "Vérifie le contour, puis Scorer" : "Prends Photo cible")}</div>
+            <div style={{ color: CYAN, fontWeight: 1000, fontSize: showDetails ? 14 : 12 }}>{mode === "calibrate" ? "Calibration" : mode === "test" ? "Test calibration" : "Scoring"} · {methodLabel}</div>
+            <div style={{ marginTop: 2, fontSize: showDetails ? 12 : 10, color: "rgba(244,247,255,.86)", lineHeight: 1.28, fontWeight: 800 }}>{showDetails ? hint : (mode === "score" ? "Tape l'impact" : mode === "test" ? "Teste D20 / T20 / BULL / DBULL" : frozenFrameUrl ? "Vérifie le contour, puis Tester" : "Prends Photo cible")}</div>
             {showDetails && <div style={{ marginTop: 5, fontSize: 11, color: "rgba(244,247,255,.80)", lineHeight: 1.35 }}>{message}</div>}
             {showDetails && previewCal && (
               <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10, fontWeight: 1000 }}>
@@ -610,7 +640,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div style={{ position: "absolute", left: 10, right: 10, top: 118, padding: 12, borderRadius: 16, background: "rgba(5,7,14,.88)", border: "1px solid rgba(255,255,255,.18)", boxShadow: "0 18px 40px rgba(0,0,0,.45)", pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
             <div style={{ color: CYAN, fontWeight: 1000, marginBottom: 5 }}>Comment vérifier la calibration</div>
             <div style={{ fontSize: 12, lineHeight: 1.45, color: "rgba(244,247,255,.84)" }}>
-              L'overlay doit épouser exactement la photo figée : contour cyan sur le bord extérieur du double, bande verte sur le double, bande rouge sur le triple, bull au centre, chiffres juste à l'extérieur. La Photo cible utilise les zones rouge/vert visibles mais verrouille une géométrie stable pour éviter les doubles hors cible. Si ça ne colle pas, ouvre Réglages et ajuste Centre/Taille/Largeur/Hauteur, puis corrige le 20 avec ±1°.
+              L'overlay doit épouser exactement la photo figée : contour cyan sur le bord extérieur du double, bande verte sur le double, bande rouge sur le triple, bull au centre, chiffres juste à l'extérieur. La Photo cible utilise les zones rouge/vert visibles mais verrouille une géométrie stable pour éviter les doubles hors cible. Si ça ne colle pas, ouvre Réglages et ajuste Centre/Taille/Largeur/Hauteur, puis corrige le 20 avec ±1°. Une fois bon, passe sur Tester pour taper quelques zones de contrôle sans envoyer au match.
             </div>
           </div>
         )}
@@ -641,7 +671,32 @@ export default function X01DeviceCameraPage({ params }: Props) {
           <div style={{ position: "absolute", left: 10, right: 10, bottom: 96, display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", pointerEvents: "auto" }} onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setShowAdjustments(true)} style={smallBtn()}>Réglages</button>
             <button type="button" onClick={() => setShowOverlay((v) => !v)} style={smallBtn()}>{showOverlay ? "Masquer overlay" : "Afficher overlay"}</button>
-            {mode === "calibrate" && frozenFrameUrl && <button type="button" onClick={() => { setFrozenFrameUrl(""); setMode("score"); }} style={smallBtn()}>Valider / Scorer</button>}
+            {mode === "calibrate" && frozenFrameUrl && <button type="button" onClick={() => { setMode("test"); setShowDetails(false); }} style={smallBtn()}>Valider / Tester</button>}
+            {mode === "test" && <button type="button" onClick={() => { setFrozenFrameUrl(""); setMode("score"); setShowDetails(false); }} style={smallBtn()}>Passer en Scorer</button>}
+          </div>
+        )}
+
+        {mode === "test" && (
+          <div style={{ position: "absolute", left: 10, right: 10, bottom: 12, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, pointerEvents: "none" }}>
+            <div style={{ borderRadius: 16, padding: "10px 12px", background: "rgba(0,0,0,.68)", border: `1px solid ${GOLD}44`, minWidth: 140 }}>
+              <div style={{ fontSize: 11, color: "rgba(244,247,255,.66)", fontWeight: 900 }}>Résultat test</div>
+              <div style={{ color: GOLD, fontWeight: 1000, fontSize: 24 }}>{lastTestDart ? dartLabel(lastTestDart) : "—"}</div>
+              <div style={{ marginTop: 2, fontSize: 11, color: "rgba(244,247,255,.82)", fontWeight: 800 }}>{lastTestDart ? `${lastTestDart.score} points` : "Aucun test encore"}</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, pointerEvents: "auto" }}>
+              {testHistory.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 260 }}>
+                  {testHistory.slice(0, 5).map((item, idx) => <span key={`${item.deviceTs}-${idx}`} style={pill(GOLD)}>{item.label}</span>)}
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,.74)", fontWeight: 800, textAlign: "right" }}>
+                Mode test : rien n'est envoyé au match.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button type="button" onClick={(e) => { e.stopPropagation(); setLastTestDart(null); setLastTestPoint(null); setTestHistory([]); setMessage("Historique test effacé. Continue à taper les zones de contrôle."); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer tests</button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); setFrozenFrameUrl(""); setMode("score"); setShowDetails(false); setMessage("Calibration validée. Mode score actif : les impacts sont maintenant envoyés au match."); }} style={{ ...btn(true), pointerEvents: "auto" }}>Envoyer au match</button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -655,7 +710,7 @@ export default function X01DeviceCameraPage({ params }: Props) {
               <div style={{ fontSize: 10, color: "rgba(255,255,255,.70)", fontWeight: 800, textAlign: "right" }}>
                 D {Math.round(rings.doubleInner * 100)}% · T {Math.round(rings.tripleInner * 100)}-{Math.round(rings.tripleOuter * 100)}% · Bull {Math.round(rings.outerBullOuter * 100)}%
               </div>
-              <button type="button" onClick={(e) => { e.stopPropagation(); clearCameraCalibration(); setPreviewCal(null); setAutoConfidence(undefined); setFrozenFrameUrl(""); setCalibrated(false); setMode("calibrate"); setManualActive(false); setShowAdjustments(false); setCalStep(0); setCenter(null); setOuter(null); setTop20(null); setMessage("Calibration effacée. Reprends une Photo cible ou passe en Manuel."); updateX01DeviceStatus(sessionId, { calibrated: false, message: "Calibration effacée" }).catch(() => {}); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer calibration</button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); clearCameraCalibration(); setPreviewCal(null); setAutoConfidence(undefined); setFrozenFrameUrl(""); setCalibrated(false); setMode("calibrate"); setManualActive(false); setShowAdjustments(false); setCalStep(0); setCenter(null); setOuter(null); setTop20(null); setLastTestDart(null); setLastTestPoint(null); setTestHistory([]); setMessage("Calibration effacée. Reprends une Photo cible ou passe en Manuel."); updateX01DeviceStatus(sessionId, { calibrated: false, message: "Calibration effacée" }).catch(() => {}); }} style={{ ...btn(false), pointerEvents: "auto" }}>Effacer calibration</button>
             </div>
           </div>
         )}
