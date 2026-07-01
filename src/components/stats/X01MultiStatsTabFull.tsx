@@ -162,7 +162,27 @@ function getMatchPlayedAt(rec: any): number {
 }
 
 function sameId(a: any, b: any) {
-  return String(a ?? "") === String(b ?? "");
+  const aa = String(a ?? "").trim();
+  const bb = String(b ?? "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+function firstFiniteStatsLocal(...values: any[]): number | null {
+  for (const v of values) {
+    if (v === undefined || v === null || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function mapValueForPlayerLocal(map: any, pid: string): any {
+  if (!map || typeof map !== "object") return undefined;
+  if (map[pid] !== undefined) return map[pid];
+  const key = Object.keys(map).find((k) => sameId(k, pid));
+  return key ? map[key] : undefined;
 }
 
 function getStableMatchKey(rec: any): string {
@@ -259,6 +279,12 @@ function extractX01PlayerStats(rec: SavedMatch, playerId: string) {
   let bestVisit = 0;
   let bestCheckout = 0;
 
+  const detailedPstat =
+    mapValueForPlayerLocal(ss.detailedByPlayer, playerId) ??
+    mapValueForPlayerLocal(ss.detailedbyplayer, playerId) ??
+    mapValueForPlayerLocal(rec.payload?.summary?.detailedByPlayer, playerId) ??
+    mapValueForPlayerLocal(rec.payload?.summary?.detailedbyplayer, playerId);
+
   const mapAvg3 =
     ss.avg3ByPlayer ??
     anyRec.engineState?.summary?.avg3ByPlayer ??
@@ -277,18 +303,19 @@ function extractX01PlayerStats(rec: SavedMatch, playerId: string) {
     rec.payload?.summary?.bestCheckoutByPlayer ??
     null;
 
-  if (mapAvg3 && mapAvg3[playerId] != null)
-    avg3 = Number(mapAvg3[playerId]) || 0;
-  if (mapBestVisit && mapBestVisit[playerId] != null)
-    bestVisit = Math.max(bestVisit, Number(mapBestVisit[playerId]) || 0);
-  if (mapBestCheckout && mapBestCheckout[playerId] != null)
+  if (mapAvg3 && mapValueForPlayerLocal(mapAvg3, playerId) != null && !detailedPstat)
+    avg3 = Number(mapValueForPlayerLocal(mapAvg3, playerId)) || 0;
+  if (mapBestVisit && mapValueForPlayerLocal(mapBestVisit, playerId) != null && !detailedPstat)
+    bestVisit = Math.max(bestVisit, Number(mapValueForPlayerLocal(mapBestVisit, playerId)) || 0);
+  if (mapBestCheckout && mapValueForPlayerLocal(mapBestCheckout, playerId) != null && !detailedPstat)
     bestCheckout = Math.max(
       bestCheckout,
-      Number(mapBestCheckout[playerId]) || 0
+      Number(mapValueForPlayerLocal(mapBestCheckout, playerId)) || 0
     );
 
   const pstat =
-    per.find((x: any) => x?.playerId === playerId) ??
+    detailedPstat ??
+    per.find((x: any) => sameId(x?.playerId ?? x?.id ?? x?.profileId, playerId)) ??
     ss[playerId] ??
     ss.players?.[playerId] ??
     ss.perPlayer?.[playerId] ??
@@ -306,12 +333,17 @@ function extractX01PlayerStats(rec: SavedMatch, playerId: string) {
     Number(pstat.bestVisit) || 0,
     Number(pstat.best_visit) || 0
   );
-  bestCheckout = Math.max(
-    bestCheckout,
-    Number(pstat.bestCheckout) || 0,
-    Number(pstat.best_co) || 0,
-    Number(pstat.bestFinish) || 0
-  );
+  {
+    const localBestCheckout = firstFiniteStatsLocal(
+      pstat.bestCheckout,
+      pstat.bestCO,
+      pstat.bestCo,
+      pstat.best_co,
+      pstat.bestFinish,
+      pstat.bc
+    );
+    if (localBestCheckout !== null) bestCheckout = Math.max(bestCheckout, localBestCheckout);
+  }
 
   return { avg3, bestVisit, bestCheckout };
 }
@@ -506,48 +538,45 @@ const filteredMatches: X01MatchExtract[] = React.useMemo(() => {
   const readStatsForPlayer = (rec: any, pid: string) => {
     const sum = rec?.summary ?? rec?.payload?.summary ?? null;
 
-    const avg3 =
-      Number(
-        sum?.players?.[pid]?.avg3 ??
-          sum?.avg3ByPlayer?.[pid] ??
-          sum?.perPlayer?.[pid]?.avg3 ??
-          sum?.perPlayer?.find?.((x: any) => sameId(x?.playerId, pid))?.avg3 ??
-          0
-      ) || 0;
-
-    const bestVisit =
-      Number(
-        sum?.players?.[pid]?.bestVisit ??
-          sum?.bestVisitByPlayer?.[pid] ??
-          sum?.perPlayer?.[pid]?.bestVisit ??
-          sum?.perPlayer?.find?.((x: any) => sameId(x?.playerId, pid))?.bestVisit ??
-          0
-      ) || 0;
-
-    const bestCheckout =
-      Number(
-        sum?.players?.[pid]?.bestCheckout ??
-          sum?.bestCheckoutByPlayer?.[pid] ??
-          sum?.perPlayer?.[pid]?.bestCheckout ??
-          sum?.perPlayer?.find?.((x: any) => sameId(x?.playerId, pid))?.bestCheckout ??
-          0
-      ) || 0;
-
     const perRow =
       (Array.isArray(sum?.perPlayer)
         ? sum.perPlayer.find((x: any) => sameId(x?.playerId ?? x?.id ?? x?.profileId, pid))
-        : sum?.perPlayer?.[pid]) ?? null;
+        : mapValueForPlayerLocal(sum?.perPlayer, pid)) ?? null;
 
-    const playerRow = sum?.players?.[pid] ?? null;
+    const playerRow = Array.isArray(sum?.players)
+      ? sum.players.find((x: any) => sameId(x?.playerId ?? x?.id ?? x?.profileId, pid)) ?? null
+      : mapValueForPlayerLocal(sum?.players, pid) ?? null;
 
     const detail =
-      sum?.detailedByPlayer?.[pid] ??
-      sum?.detailsByPlayer?.[pid] ??
-      sum?.detailed?.[pid] ??
-      sum?.details?.[pid] ??
+      mapValueForPlayerLocal(sum?.detailedByPlayer, pid) ??
+      mapValueForPlayerLocal(sum?.detailedbyplayer, pid) ??
+      mapValueForPlayerLocal(sum?.detailsByPlayer, pid) ??
+      mapValueForPlayerLocal(sum?.detailed, pid) ??
+      mapValueForPlayerLocal(sum?.details, pid) ??
       perRow ??
       playerRow ??
       null;
+
+    const avg3 = firstFiniteStatsLocal(
+      detail?.avg3, detail?.avg3D, detail?.avg3d,
+      playerRow?.avg3, playerRow?.avg3D, playerRow?.avg3d,
+      mapValueForPlayerLocal(sum?.avg3ByPlayer, pid),
+      perRow?.avg3, perRow?.avg3D, perRow?.avg3d
+    ) ?? 0;
+
+    const bestVisit = firstFiniteStatsLocal(
+      detail?.bestVisit, detail?.best_visit, detail?.bv,
+      playerRow?.bestVisit, playerRow?.best_visit, playerRow?.bv,
+      mapValueForPlayerLocal(sum?.bestVisitByPlayer, pid),
+      perRow?.bestVisit, perRow?.best_visit, perRow?.bv
+    ) ?? 0;
+
+    const bestCheckout = firstFiniteStatsLocal(
+      detail?.bestCheckout, detail?.bestCO, detail?.bestCo, detail?.best_co, detail?.bestFinish, detail?.bc,
+      playerRow?.bestCheckout, playerRow?.bestCO, playerRow?.bestCo, playerRow?.best_co, playerRow?.bestFinish, playerRow?.bc,
+      perRow?.bestCheckout, perRow?.bestCO, perRow?.bestCo, perRow?.best_co, perRow?.bestFinish, perRow?.bc,
+      mapValueForPlayerLocal(sum?.bestCheckoutByPlayer, pid)
+    ) ?? 0;
 
     return { avg3, bestVisit, bestCheckout, detail };
   };

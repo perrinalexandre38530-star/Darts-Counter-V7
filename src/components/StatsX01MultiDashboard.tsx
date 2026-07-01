@@ -31,6 +31,30 @@ type Props = {
 // ---------- Helpers génériques ----------
 const Nloc = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 
+function samePidLocal(a: any, b: any): boolean {
+  const aa = String(a ?? "").trim();
+  const bb = String(b ?? "").trim();
+  if (!aa || !bb) return false;
+  if (aa === bb) return true;
+  return aa.length >= 12 && bb.length >= 12 && (aa.startsWith(bb) || bb.startsWith(aa));
+}
+
+function firstFiniteLocal(...values: any[]): number | null {
+  for (const v of values) {
+    if (v === undefined || v === null || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function mapValueForPidLocal(map: any, pid: string): any {
+  if (!map || typeof map !== "object") return undefined;
+  if (map[pid] !== undefined) return map[pid];
+  const key = Object.keys(map).find((k) => samePidLocal(k, pid));
+  return key ? map[key] : undefined;
+}
+
 function formatShortDate(ts: number) {
   try {
     const d = new Date(ts);
@@ -87,6 +111,12 @@ function extractX01PlayerStats(rec: SavedMatch, pid: string) {
   let nb140 = 0;
   let nb100 = 0;
 
+  const detailedPstat =
+    mapValueForPidLocal(ss.detailedByPlayer, pid) ??
+    mapValueForPidLocal(ss.detailedbyplayer, pid) ??
+    mapValueForPidLocal(rec.payload?.summary?.detailedByPlayer, pid) ??
+    mapValueForPidLocal(rec.payload?.summary?.detailedbyplayer, pid);
+
   // A) Maps par joueur (avg3ByPlayer / bestVisitByPlayer / bestCheckoutByPlayer)
   const mapAvg3 =
     ss.avg3ByPlayer ??
@@ -106,19 +136,20 @@ function extractX01PlayerStats(rec: SavedMatch, pid: string) {
     rec.payload?.summary?.bestCheckoutByPlayer ??
     null;
 
-  if (mapAvg3 && mapAvg3[pid] != null) {
-    avg3 = Nloc(mapAvg3[pid]);
+  if (mapAvg3 && mapValueForPidLocal(mapAvg3, pid) != null && !detailedPstat) {
+    avg3 = Nloc(mapValueForPidLocal(mapAvg3, pid));
   }
-  if (mapBestVisit && mapBestVisit[pid] != null) {
-    bestVisit = Math.max(bestVisit, Nloc(mapBestVisit[pid]));
+  if (mapBestVisit && mapValueForPidLocal(mapBestVisit, pid) != null && !detailedPstat) {
+    bestVisit = Math.max(bestVisit, Nloc(mapValueForPidLocal(mapBestVisit, pid)));
   }
-  if (mapBestCheckout && mapBestCheckout[pid] != null) {
-    bestCheckout = Math.max(bestCheckout, Nloc(mapBestCheckout[pid]));
+  if (mapBestCheckout && mapValueForPidLocal(mapBestCheckout, pid) != null && !detailedPstat) {
+    bestCheckout = Math.max(bestCheckout, Nloc(mapValueForPidLocal(mapBestCheckout, pid)));
   }
 
-  // B) perPlayer
+  // B) detailedByPlayer / perPlayer
   const pstat =
-    per.find((x) => x?.playerId === pid) ??
+    detailedPstat ??
+    per.find((x) => samePidLocal(x?.playerId ?? x?.id ?? x?.profileId, pid)) ??
     (ss[pid] || ss.players?.[pid] || ss.perPlayer?.[pid]) ??
     {};
 
@@ -136,12 +167,17 @@ function extractX01PlayerStats(rec: SavedMatch, pid: string) {
     Nloc(pstat.bestVisit),
     Nloc(pstat.best_visit)
   );
-  bestCheckout = Math.max(
-    bestCheckout,
-    Nloc(pstat.bestCheckout),
-    Nloc(pstat.best_co),
-    Nloc(pstat.bestFinish)
-  );
+  {
+    const localBestCheckout = firstFiniteLocal(
+      pstat.bestCheckout,
+      pstat.bestCO,
+      pstat.bestCo,
+      pstat.best_co,
+      pstat.bestFinish,
+      pstat.bc
+    );
+    bestCheckout = localBestCheckout !== null ? Math.max(bestCheckout, localBestCheckout) : bestCheckout;
+  }
 
   legs += Nloc(pstat.legs || pstat.legsPlayed);
   darts += Nloc(pstat.darts || pstat.dartsThrown);

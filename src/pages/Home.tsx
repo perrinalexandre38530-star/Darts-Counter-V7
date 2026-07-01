@@ -971,26 +971,47 @@ async function buildStatsForProfile(
         ratingSumExpected += expected;
       }
 
+      const detailBestVisitRaw = detailedMe
+        ? detailedMe.bestVisit ?? detailedMe.best_visit ?? detailedMe.bv
+        : undefined;
       let bv = Number(me.bestVisit ?? me.bestVisitScore ?? me.best_visit ?? 0) || 0;
-      if ((!bv || bv <= 0) && summary?.bestVisitByPlayer) {
+      if (detailBestVisitRaw !== undefined && detailBestVisitRaw !== null && Number.isFinite(Number(detailBestVisitRaw))) {
+        bv = Number(detailBestVisitRaw) || 0;
+      } else if ((!bv || bv <= 0) && summary?.bestVisitByPlayer) {
         const v = (summary.bestVisitByPlayer as any)[myKey];
         if (v != null) bv = Number(v) || 0;
       }
       if (bv > multiBestVisit) multiBestVisit = bv;
 
-      let bco =
-        Number(
-          me.bestCheckout ??
-            me.bestCO ??
-            me.bestCo ??
-            me.bestFinish ??
-            me.best_checkout ??
-            me.stats?.bestCO ??
-            me.stats?.bestCo ??
-            0
-        ) || 0;
+      const detailBestCheckoutRaw = detailedMe
+        ? detailedMe.bestCheckout ??
+          detailedMe.bestCO ??
+          detailedMe.bestCo ??
+          detailedMe.best_co ??
+          detailedMe.bestFinish ??
+          detailedMe.bc
+        : undefined;
+      const hasDetailedBestCheckout =
+        detailBestCheckoutRaw !== undefined &&
+        detailBestCheckoutRaw !== null &&
+        Number.isFinite(Number(detailBestCheckoutRaw));
 
-      if ((!bco || bco <= 0) && summary?.bestCheckoutByPlayer) {
+      let bco = hasDetailedBestCheckout
+        ? Number(detailBestCheckoutRaw) || 0
+        : Number(
+            me.bestCheckout ??
+              me.bestCO ??
+              me.bestCo ??
+              me.bestFinish ??
+              me.best_checkout ??
+              me.stats?.bestCO ??
+              me.stats?.bestCo ??
+              0
+          ) || 0;
+
+      // Les maps héritées bestCheckoutByPlayer peuvent être désynchronisées sur certaines
+      // sauvegardes X01 multi. On ne les utilise qu'en absence totale de détail joueur.
+      if (!hasDetailedBestCheckout && (!bco || bco <= 0) && summary?.bestCheckoutByPlayer) {
         const v = (summary.bestCheckoutByPlayer as any)[myKey];
         if (v != null) bco = Number(v) || 0;
       }

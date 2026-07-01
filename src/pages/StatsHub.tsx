@@ -1281,6 +1281,31 @@ function statHubPlayerIds(p: any): string[] {
     .filter(Boolean);
 }
 
+function statHubFirstFinite(...values: any[]): number | null {
+  for (const v of values) {
+    if (v === undefined || v === null || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function statHubMapValueForPlayer(map: any, pid: string, playerName?: string): any {
+  if (!map || typeof map !== "object") return undefined;
+  const targetName = statHubNormName(playerName);
+
+  for (const [key, row] of Object.entries(map)) {
+    if (statHubIdMatches(key, pid)) return row;
+    if (row && typeof row === "object") {
+      const ids = statHubPlayerIds(row);
+      const nm = statHubNormName((row as any)?.name ?? (row as any)?.playerName ?? (row as any)?.displayName ?? (row as any)?.nickname ?? (row as any)?.surname);
+      if (ids.some((id) => statHubIdMatches(id, pid)) || (!!targetName && !!nm && nm === targetName)) return row;
+    }
+  }
+
+  return undefined;
+}
+
 function recordHasPlayer(r: any, pid: string, playerName?: string): boolean {
   if (!r || !pid) return false;
 
@@ -1617,8 +1642,13 @@ function buildDashboardForPlayer(
     const perSrc: any = ss.perPlayer ?? (r as any)?.payload?.summary?.perPlayer ?? [];
     const perArr: any[] = Array.isArray(perSrc) ? perSrc : [];
 
+    const detailedPstat =
+      statHubMapValueForPlayer(ss?.detailedByPlayer, pid, player?.name) ??
+      statHubMapValueForPlayer(ss?.detailedbyplayer, pid, player?.name);
+
     const pstat =
-      (ss?.players && typeof ss.players === "object" ? ss.players[pid] : null) ??
+      detailedPstat ??
+      (ss?.players && typeof ss.players === "object" && !Array.isArray(ss.players) ? ss.players[pid] : null) ??
       (perArr.find((x) => {
         const ids = statHubPlayerIds(x);
         const nm = statHubNormName(x?.name ?? x?.playerName ?? x?.displayName ?? x?.nickname ?? x?.surname);
@@ -1631,14 +1661,15 @@ function buildDashboardForPlayer(
       (ss?.[pid]) ??
       {};
 
-    const a3 =
-      Nloc(pstat.avg3) ||
-      Nloc(pstat.avg_3) ||
-      Nloc(pstat.avg3Darts) ||
-      Nloc(pstat.average3);
+    const a3Raw = statHubFirstFinite(pstat.avg3, pstat.avg_3, pstat.avg3Darts, pstat.avg3D, pstat.average3);
+    const a3 = a3Raw ?? 0;
 
-    const bestV = Nloc(pstat.bestVisit ?? ss?.bestVisitByPlayer?.[pid]);
-    const bestCO = Nloc(pstat.bestCheckout ?? ss?.bestCheckoutByPlayer?.[pid]);
+    const bestVRaw = statHubFirstFinite(pstat.bestVisit, pstat.best_visit, pstat.bv);
+    const bestCORaw = statHubFirstFinite(pstat.bestCheckout, pstat.bestCO, pstat.bestCo, pstat.best_co, pstat.bestFinish, pstat.bc);
+
+    const bestV = bestVRaw ?? Nloc(ss?.bestVisitByPlayer?.[pid]);
+    // Si detailedByPlayer dit 0 pour le joueur, on respecte 0 et on ignore la map héritée.
+    const bestCO = bestCORaw ?? Nloc(ss?.bestCheckoutByPlayer?.[pid]);
 
     if (a3 > 0) {
       byDate.push({

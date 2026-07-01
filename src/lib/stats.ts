@@ -518,15 +518,37 @@ export function buildLegStatsFromX01V3Summary(
         ? (points / darts) * 3
         : 0;
 
+    const bestVisitRaw =
+      detail.bestVisit ??
+      detail.best_visit ??
+      detail.bv ??
+      base.bestVisit ??
+      base.best_visit;
     const bestVisit =
-      typeof bestVisitByPlayer[pid] === "number"
+      bestVisitRaw !== undefined && Number.isFinite(Number(bestVisitRaw))
+        ? Number(bestVisitRaw) || 0
+        : typeof bestVisitByPlayer[pid] === "number"
         ? bestVisitByPlayer[pid]
-        : base.bestVisit ?? 0;
+        : 0;
 
+    const bestCheckoutRaw =
+      detail.bestCheckout ??
+      detail.bestCO ??
+      detail.bestCo ??
+      detail.best_co ??
+      detail.bestFinish ??
+      detail.bc ??
+      base.bestCheckout ??
+      base.bestCO ??
+      base.bestCo ??
+      base.best_co ??
+      base.bestFinish;
     const bestCheckout =
-      typeof bestCheckoutByPlayer[pid] === "number"
+      bestCheckoutRaw !== undefined && Number.isFinite(Number(bestCheckoutRaw))
+        ? Number(bestCheckoutRaw) || 0
+        : typeof bestCheckoutByPlayer[pid] === "number"
         ? bestCheckoutByPlayer[pid]
-        : base.bestCheckout ?? 0;
+        : 0;
 
     // Hits détaillés
     const hits = base.hits || {};

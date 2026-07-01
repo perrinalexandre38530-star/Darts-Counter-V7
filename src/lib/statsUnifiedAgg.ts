@@ -130,6 +130,15 @@ export type UnifiedPlayerDashboardStats = {
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const fmt1 = (x: number) => Math.round(x * 10) / 10;
 
+function firstFiniteStatsValue(...values: any[]): number {
+  for (const v of values) {
+    if (v === undefined || v === null || v === "") continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return NaN;
+}
+
 
 function normalizeDashboardMode(mode: any, raw?: any): string {
   const tag = [
@@ -440,39 +449,50 @@ function readX01SummaryFallback(m: NormalizedMatch, playerId: string, playerName
   const pid = String(playerId);
   const aliases = collectPlayerAliases(m, pid, playerName);
 
-  // A) summary.players map (shape X01PlayV3)
-  const sp = getByAlias(sum?.players, aliases) || getByAlias(sum?.detailedByPlayer, aliases) || getByAlias(sum?.detailedbyplayer, aliases) || null;
+  // A) summary.detailedByPlayer est prioritaire :
+  // certaines anciennes parties X01 multi ont une map bestCheckoutByPlayer corrompue
+  // qui attribue le checkout du vainqueur au profil actif. Si le détail joueur existe,
+  // même avec bestCheckout = 0, il doit bloquer cette map héritée.
+  const detailedSp = getByAlias(sum?.detailedByPlayer, aliases) || getByAlias(sum?.detailedbyplayer, aliases) || null;
+  const playerSummarySp = getByAlias(sum?.players, aliases) || null;
+  const sp = detailedSp || playerSummarySp;
   const perPlayerHit = findArrayByAlias(sum?.perPlayer, aliases, playerName);
   const statsPlayerHit = findArrayByAlias(rec?.payload?.stats?.players, aliases, playerName);
 
-  const avg3 =
-    N(sp?.avg3, NaN) ||
-    N(getByAlias(sum?.avg3ByPlayer, aliases), NaN) ||
-    N(perPlayerHit?.avg3, NaN) ||
-    N(getByAlias(sum?.avg3dByPlayer, aliases), NaN) ||
-    N(getByAlias(sum?.avg3d_by_player, aliases), NaN) ||
-    N(getByAlias(sum?.playersAvg3, aliases), NaN) ||
-    N(statsPlayerHit?.averages?.avg3d ?? statsPlayerHit?.avg3d, NaN);
+  const avg3 = firstFiniteStatsValue(
+    detailedSp?.avg3, detailedSp?.avg3D, detailedSp?.avg3d,
+    playerSummarySp?.avg3, playerSummarySp?.avg3D, playerSummarySp?.avg3d,
+    getByAlias(sum?.avg3ByPlayer, aliases),
+    perPlayerHit?.avg3, perPlayerHit?.avg3D, perPlayerHit?.avg3d,
+    getByAlias(sum?.avg3dByPlayer, aliases),
+    getByAlias(sum?.avg3d_by_player, aliases),
+    getByAlias(sum?.playersAvg3, aliases),
+    statsPlayerHit?.averages?.avg3d, statsPlayerHit?.avg3d
+  );
 
-  const visits =
-    N(sp?.visits, NaN) ||
-    N(getByAlias(sum?.legacy?.visits, aliases), NaN) ||
-    N(statsPlayerHit?.special?.visits, NaN) ||
-    N(statsPlayerHit?.visits, NaN);
+  const visits = firstFiniteStatsValue(
+    detailedSp?.visits, detailedSp?.visitCount,
+    playerSummarySp?.visits, playerSummarySp?.visitCount,
+    getByAlias(sum?.legacy?.visits, aliases),
+    statsPlayerHit?.special?.visits,
+    statsPlayerHit?.visits
+  );
 
-  const bestVisit =
-    N(sp?.bestVisit, NaN) ||
-    N(getByAlias(sum?.bestVisitByPlayer, aliases), NaN) ||
-    N(perPlayerHit?.bestVisit, NaN) ||
-    N(statsPlayerHit?.special?.bestVisit, NaN) ||
-    N(statsPlayerHit?.bestVisit, NaN);
+  const bestVisit = firstFiniteStatsValue(
+    detailedSp?.bestVisit, detailedSp?.best_visit, detailedSp?.bv,
+    playerSummarySp?.bestVisit, playerSummarySp?.best_visit, playerSummarySp?.bv,
+    getByAlias(sum?.bestVisitByPlayer, aliases),
+    perPlayerHit?.bestVisit, perPlayerHit?.best_visit, perPlayerHit?.bv,
+    statsPlayerHit?.special?.bestVisit, statsPlayerHit?.bestVisit
+  );
 
-  const bestCheckout =
-    N(sp?.bestCheckout, NaN) ||
-    N(getByAlias(sum?.bestCheckoutByPlayer, aliases), NaN) ||
-    N(perPlayerHit?.bestCheckout, NaN) ||
-    N(statsPlayerHit?.special?.bestCheckout, NaN) ||
-    N(statsPlayerHit?.bestCheckout, NaN);
+  const bestCheckout = firstFiniteStatsValue(
+    detailedSp?.bestCheckout, detailedSp?.bestCO, detailedSp?.bestCo, detailedSp?.best_co, detailedSp?.bestFinish, detailedSp?.bc,
+    playerSummarySp?.bestCheckout, playerSummarySp?.bestCO, playerSummarySp?.bestCo, playerSummarySp?.best_co, playerSummarySp?.bestFinish, playerSummarySp?.bc,
+    perPlayerHit?.bestCheckout, perPlayerHit?.bestCO, perPlayerHit?.bestCo, perPlayerHit?.best_co, perPlayerHit?.bestFinish, perPlayerHit?.bc,
+    statsPlayerHit?.special?.bestCheckout, statsPlayerHit?.bestCheckout, statsPlayerHit?.bestFinish,
+    getByAlias(sum?.bestCheckoutByPlayer, aliases)
+  );
 
   return {
     has: Number.isFinite(avg3) || Number.isFinite(bestVisit) || Number.isFinite(bestCheckout),
