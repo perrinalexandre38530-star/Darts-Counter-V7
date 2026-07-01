@@ -101,10 +101,10 @@ type Props = {
 
 const START_SCORES: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
 
-// Formats rapides : volontairement courts pour ne pas surcharger la config.
-// Les formats longs/pros sont appliqués via les presets avancés ci-dessous.
-const COMMON_BEST_OF_OPTIONS = [1, 3, 5, 7];
-const COMMON_FIRST_TO_OPTIONS = [3, 5, 7];
+// Grille simple commune : on affiche uniquement les chiffres dans les boutons.
+// Le libellé complet reste dans le récapitulatif / historique.
+const COMMON_BEST_OF_OPTIONS = [1, 3, 5, 7, 9, 11, 13];
+const COMMON_FIRST_TO_OPTIONS = [1, 3, 5, 7, 9, 11, 13];
 
 type ProVictoryPresetV3 = {
   id: string;
@@ -3331,7 +3331,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                     <PillButton label="First To" active={legVictoryMode === "first_to"} onClick={() => selectLegVictoryMode("first_to")} primary={primary} primarySoft={primarySoft} />
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {legVictoryOptions.map((n) => <PillButton key={`leg-${legVictoryMode}-${n}`} label={shortVictoryLabel(legVictoryMode, n)} active={legVictoryTarget === n} onClick={() => selectLegVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}
+                    {legVictoryOptions.map((n) => <PillButton key={`leg-${legVictoryMode}-${n}`} label={String(n)} active={legVictoryTarget === n} onClick={() => selectLegVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}
                   </div>
                 </div>
                 <div style={{ marginBottom: 14 }}>
@@ -3341,7 +3341,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                     <PillButton label="First To" active={matchVictoryMode === "first_to"} onClick={() => selectSetVictoryMode("first_to")} primary={primary} primarySoft={primarySoft} />
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {setVictoryOptions.map((n) => <PillButton key={`set-${matchVictoryMode}-${n}`} label={shortVictoryLabel(matchVictoryMode, n)} active={setVictoryTarget === n} onClick={() => selectSetVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}
+                    {setVictoryOptions.map((n) => <PillButton key={`set-${matchVictoryMode}-${n}`} label={String(n)} active={setVictoryTarget === n} onClick={() => selectSetVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}
                   </div>
                 </div>
                 <div style={{ marginBottom: 14 }}>
@@ -3831,7 +3831,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               {legVictoryOptions.map((n) => (
                 <PillButton
                   key={`leg-complete-${legVictoryMode}-${n}`}
-                  label={shortVictoryLabel(legVictoryMode, n)}
+                  label={String(n)}
                   active={legVictoryTarget === n}
                   onClick={() => selectLegVictoryTarget(n)}
                   primary={primary}
@@ -3852,7 +3852,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               {setVictoryOptions.map((n) => (
                 <PillButton
                   key={`set-complete-${matchVictoryMode}-${n}`}
-                  label={shortVictoryLabel(matchVictoryMode, n)}
+                  label={String(n)}
                   active={setVictoryTarget === n}
                   onClick={() => selectSetVictoryTarget(n)}
                   primary={primary}
