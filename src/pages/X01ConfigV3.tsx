@@ -101,10 +101,11 @@ type Props = {
 
 const START_SCORES: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
 
-// Grille simple commune : on affiche uniquement les chiffres dans les boutons.
-// Le libellé complet reste dans le récapitulatif / historique.
-const COMMON_BEST_OF_OPTIONS = [1, 3, 5, 7, 9, 11, 13];
-const COMMON_FIRST_TO_OPTIONS = [1, 3, 5, 7, 9, 11, 13];
+// Grilles numériques : les boutons restent simples, mais toutes les valeurs utilisées
+// par les presets pros doivent rester visibles et sélectionnables.
+const COMMON_SET_OPTIONS = [1, 3, 5, 7, 9, 11, 13];
+const COMMON_LEG_BEST_OF_OPTIONS = [1, 3, 5, 7, 9, 11, 13, 15];
+const COMMON_LEG_FIRST_TO_OPTIONS = [1, 3, 5, 7, 9, 10, 11, 13, 15, 16, 17, 18];
 
 type ProVictoryPresetV3 = {
   id: string;
@@ -117,16 +118,32 @@ type ProVictoryPresetV3 = {
 };
 
 const PRO_VICTORY_PRESETS: ProVictoryPresetV3[] = [
-  { id: "world-qf", label: "Mondial QF", detail: "BO9 sets • BO3 legs/set", setMode: "best_of", setTarget: 9, legMode: "best_of", legTarget: 3 },
-  { id: "world-sf", label: "Mondial SF", detail: "BO11 sets • BO3 legs/set", setMode: "best_of", setTarget: 11, legMode: "best_of", legTarget: 3 },
-  { id: "world-final", label: "Mondial Finale", detail: "BO13 sets • BO5 legs/set", setMode: "best_of", setTarget: 13, legMode: "best_of", legTarget: 5 },
+  // Legs directs / formats courts
+  { id: "qualifs", label: "Qualifications", detail: "BO7 legs", setMode: "best_of", setTarget: 1, legMode: "best_of", legTarget: 7 },
+  { id: "early-round", label: "Tour 1", detail: "BO9 legs", setMode: "best_of", setTarget: 1, legMode: "best_of", legTarget: 9 },
+  { id: "round-2", label: "Tour 2", detail: "BO11 legs", setMode: "best_of", setTarget: 1, legMode: "best_of", legTarget: 11 },
   { id: "protour", label: "Pro Tour", detail: "BO11 legs", setMode: "best_of", setTarget: 1, legMode: "best_of", legTarget: 11 },
+  { id: "semi-short", label: "Demi courte", detail: "BO13 legs", setMode: "best_of", setTarget: 1, legMode: "best_of", legTarget: 13 },
   { id: "short-final", label: "Finale courte", detail: "BO15 legs", setMode: "best_of", setTarget: 1, legMode: "best_of", legTarget: 15 },
+
+  // Formats Mondial en sets
+  { id: "world-r1-r2", label: "Mondial R1/R2", detail: "BO5 sets • BO5 legs/set", setMode: "best_of", setTarget: 5, legMode: "best_of", legTarget: 5 },
+  { id: "world-r3-r4", label: "Mondial R3/R4", detail: "BO7 sets • BO5 legs/set", setMode: "best_of", setTarget: 7, legMode: "best_of", legTarget: 5 },
+  { id: "world-qf", label: "Mondial QF", detail: "BO9 sets • BO5 legs/set", setMode: "best_of", setTarget: 9, legMode: "best_of", legTarget: 5 },
+  { id: "world-sf", label: "Mondial SF", detail: "BO11 sets • BO5 legs/set", setMode: "best_of", setTarget: 11, legMode: "best_of", legTarget: 5 },
+  { id: "world-final", label: "Mondial Finale", detail: "BO13 sets • BO5 legs/set", setMode: "best_of", setTarget: 13, legMode: "best_of", legTarget: 5 },
+
+  // World Matchplay / First To legs
+  { id: "matchplay-r1", label: "Matchplay R1", detail: "First to 10 legs", setMode: "best_of", setTarget: 1, legMode: "first_to", legTarget: 10 },
+  { id: "matchplay-r2", label: "Matchplay R2", detail: "First to 11 legs", setMode: "best_of", setTarget: 1, legMode: "first_to", legTarget: 11 },
+  { id: "matchplay-qf", label: "Matchplay QF", detail: "First to 16 legs", setMode: "best_of", setTarget: 1, legMode: "first_to", legTarget: 16 },
+  { id: "matchplay-sf", label: "Matchplay SF", detail: "First to 17 legs", setMode: "best_of", setTarget: 1, legMode: "first_to", legTarget: 17 },
   { id: "matchplay", label: "World Matchplay", detail: "First to 18 legs", setMode: "best_of", setTarget: 1, legMode: "first_to", legTarget: 18 },
 ];
 
-function getVictoryOptions(mode: MatchVictoryModeV3): number[] {
-  return mode === "first_to" ? COMMON_FIRST_TO_OPTIONS : COMMON_BEST_OF_OPTIONS;
+function getVictoryOptions(mode: MatchVictoryModeV3, unit: MatchFormatUnitV3 = "sets"): number[] {
+  if (unit === "sets") return COMMON_SET_OPTIONS;
+  return mode === "first_to" ? COMMON_LEG_FIRST_TO_OPTIONS : COMMON_LEG_BEST_OF_OPTIONS;
 }
 
 function totalCountFromSelection(mode: MatchVictoryModeV3, target: number): number {
@@ -156,6 +173,92 @@ function formatSummaryLabel(
   const legLabel = victoryLabel(legMode, legTarget, "legs", true);
   if (setTotal <= 1 && setTarget <= 1) return legLabel;
   return `${setLabel} • ${legLabel}`;
+}
+
+function proModeCompactLabel(mode: MatchVictoryModeV3, target: number): string {
+  return mode === "first_to" ? `F${target}` : `BO${target}`;
+}
+
+function getActiveProPresetId(
+  presets: ProVictoryPresetV3[],
+  setMode: MatchVictoryModeV3,
+  setTarget: number,
+  legMode: MatchVictoryModeV3,
+  legTarget: number
+): string | null {
+  const found = presets.find((preset) =>
+    preset.setMode === setMode &&
+    preset.setTarget === setTarget &&
+    preset.legMode === legMode &&
+    preset.legTarget === legTarget
+  );
+  return found?.id ?? null;
+}
+
+function ProFormatsTable({
+  presets,
+  activePresetId,
+  onSelect,
+  primary,
+}: {
+  presets: ProVictoryPresetV3[];
+  activePresetId: string | null;
+  onSelect: (preset: ProVictoryPresetV3) => void;
+  primary: string;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        overflow: "hidden",
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(8,12,28,0.55)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "76px minmax(0,1fr) 76px",
+          gap: 0,
+          background: "rgba(255,255,255,0.04)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <div style={{ padding: "8px 10px", textAlign: "center", fontSize: 11, fontWeight: 900, color: "#8fe8ff", textTransform: "uppercase", letterSpacing: 0.6 }}>Legs</div>
+        <div style={{ padding: "8px 10px", textAlign: "center", fontSize: 11, fontWeight: 900, color: "#cfd5f6", textTransform: "uppercase", letterSpacing: 0.6 }}>Compétition</div>
+        <div style={{ padding: "8px 10px", textAlign: "center", fontSize: 11, fontWeight: 900, color: "#8fe8ff", textTransform: "uppercase", letterSpacing: 0.6 }}>Sets</div>
+      </div>
+
+      {presets.map((preset, index) => {
+        const active = activePresetId === preset.id;
+        const legsLabel = proModeCompactLabel(preset.legMode, preset.legTarget);
+        const setsLabel = preset.setTarget > 1 ? proModeCompactLabel(preset.setMode, preset.setTarget) : "—";
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            onClick={() => onSelect(preset)}
+            style={{
+              width: "100%",
+              display: "grid",
+              gridTemplateColumns: "76px minmax(0,1fr) 76px",
+              gap: 0,
+              alignItems: "center",
+              padding: 0,
+              background: active ? "rgba(72,205,255,0.10)" : "transparent",
+              border: "none",
+              borderTop: index === 0 ? "none" : "1px solid rgba(255,255,255,0.06)",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ padding: "10px 8px", textAlign: "center", fontSize: 12, fontWeight: 900, color: active ? "#f7d774" : "#dfe5ff" }}>{legsLabel}</div>
+            <div style={{ padding: "10px 8px", textAlign: "center", fontSize: 12.5, fontWeight: active ? 900 : 800, color: active ? primary : "#edf1ff" }}>{preset.label}</div>
+            <div style={{ padding: "10px 8px", textAlign: "center", fontSize: 12, fontWeight: 900, color: active ? "#f7d774" : "#dfe5ff" }}>{setsLabel}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function computeX01VariantForConfig(participantMode: ParticipantMode, matchMode: MatchModeV3, totalPlayers: number): "solo" | "duo" | "multi" | "team" {
@@ -2025,12 +2128,16 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [matchMode, setMatchMode] = React.useState<MatchModeV3>("solo");
   const [multiFinishMode, setMultiFinishMode] = React.useState<MultiFinishModeV3>("stop_on_first");
 
-  const setVictoryOptions = React.useMemo(() => getVictoryOptions(matchVictoryMode), [matchVictoryMode]);
-  const legVictoryOptions = React.useMemo(() => getVictoryOptions(legVictoryMode), [legVictoryMode]);
+  const setVictoryOptions = React.useMemo(() => getVictoryOptions(matchVictoryMode, "sets"), [matchVictoryMode]);
+  const legVictoryOptions = React.useMemo(() => getVictoryOptions(legVictoryMode, "legs"), [legVictoryMode]);
+  const activeProPresetId = React.useMemo(
+    () => getActiveProPresetId(PRO_VICTORY_PRESETS, matchVictoryMode, setVictoryTarget, legVictoryMode, legVictoryTarget),
+    [matchVictoryMode, setVictoryTarget, legVictoryMode, legVictoryTarget]
+  );
 
   const selectSetVictoryMode = React.useCallback((mode: MatchVictoryModeV3) => {
     setMatchVictoryMode(mode);
-    const nextOptions = getVictoryOptions(mode);
+    const nextOptions = getVictoryOptions(mode, "sets");
     const nextTarget = nextOptions.includes(Number(setVictoryTarget)) ? Number(setVictoryTarget) : nextOptions[0];
     setSetVictoryTarget(nextTarget);
     setSetsToWin(totalCountFromSelection(mode, nextTarget));
@@ -2039,7 +2146,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   const selectLegVictoryMode = React.useCallback((mode: MatchVictoryModeV3) => {
     setLegVictoryMode(mode);
-    const nextOptions = getVictoryOptions(mode);
+    const nextOptions = getVictoryOptions(mode, "legs");
     const nextTarget = nextOptions.includes(Number(legVictoryTarget)) ? Number(legVictoryTarget) : nextOptions[0];
     setLegVictoryTarget(nextTarget);
     setLegsPerSet(totalCountFromSelection(mode, nextTarget));
@@ -3350,19 +3457,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                     <PillButton label={showProFormats ? "Masquer" : "Afficher"} active={showProFormats} onClick={() => setShowProFormats((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
                   </div>
                   {showProFormats && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {PRO_VICTORY_PRESETS.map((preset) => (
-                        <PillButton
-                          key={preset.id}
-                          label={`${preset.label} · ${preset.detail}`}
-                          active={matchVictoryMode === preset.setMode && setVictoryTarget === preset.setTarget && legVictoryMode === preset.legMode && legVictoryTarget === preset.legTarget}
-                          onClick={() => applyProVictoryPreset(preset)}
-                          primary={primary}
-                          primarySoft={primarySoft}
-                          compact
-                        />
-                      ))}
-                    </div>
+                    <ProFormatsTable
+                      presets={PRO_VICTORY_PRESETS}
+                      activePresetId={activeProPresetId}
+                      onSelect={applyProVictoryPreset}
+                      primary={primary}
+                    />
                   )}
                 </div>
                 <div style={{ fontSize: 11.5, color: "#aeb3d3", lineHeight: 1.35, marginBottom: 14 }}>
@@ -3869,20 +3969,13 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 <PillButton label={showProFormats ? t("common.hide", "Masquer") : t("common.show", "Afficher")} active={showProFormats} onClick={() => setShowProFormats((v) => !v)} primary={primary} primarySoft={primarySoft} compact />
               </div>
               {showProFormats && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {PRO_VICTORY_PRESETS.map((preset) => (
-                    <PillButton
-                      key={preset.id}
-                      label={`${preset.label} · ${preset.detail}`}
-                      active={matchVictoryMode === preset.setMode && setVictoryTarget === preset.setTarget && legVictoryMode === preset.legMode && legVictoryTarget === preset.legTarget}
-                      onClick={() => applyProVictoryPreset(preset)}
+                    <ProFormatsTable
+                      presets={PRO_VICTORY_PRESETS}
+                      activePresetId={activeProPresetId}
+                      onSelect={applyProVictoryPreset}
                       primary={primary}
-                      primarySoft={primarySoft}
-                      compact
                     />
-                  ))}
-                </div>
-              )}
+                  )}
             </div>
 
             <div style={{ marginTop: 8, fontSize: 11.5, color: "#aeb3d3", lineHeight: 1.35 }}>
