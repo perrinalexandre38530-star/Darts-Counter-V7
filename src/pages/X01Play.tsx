@@ -35,6 +35,8 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
 
+import { pickX01LowScoreSound } from "../lib/x01LowScoreSounds";
+
 import {
   x01SfxV3Preload,
   x01PlaySfxV3,
@@ -1453,26 +1455,26 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
       return;
     }
 
-    // ---- Null sfx (0..10) hors checkout et hors bust ----
-    if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
+    // ---- Petits scores (0..24) : vannes audio aléatoires hors checkout et hors bust ----
+    if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore < 25) {
       if (arcadeEnabled) {
-        const audio = playPublicSound("score-null.mp3", { volume: sfxVolume });
+        const audio = playPublicSound(pickX01LowScoreSound(), { volume: sfxVolume });
         if (audio && typeof (audio as any).addEventListener === "function") {
           (audio as any).addEventListener(
             "ended",
             () => {
-              // ✅ voix IA 1.5s après le SFX "nul"
-              scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+              // ✅ Voix IA après la vanne audio.
+              scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
             },
             { once: true } as any
           );
         } else {
           // fallback si l'event "ended" n'est pas dispo
-          scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+          scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
         }
       } else {
         // si pas de sfx arcade, on annonce quand même (avec un léger délai)
-        scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+        scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
       }
       return;
     }
