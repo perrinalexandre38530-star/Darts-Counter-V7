@@ -1,3 +1,5 @@
+import { loadStoragePrefs } from "../storagePlans";
+
 /**
  * src/lib/backup/fileExport.ts
  *
@@ -33,6 +35,39 @@ function safeJsonStringify(data: unknown, pretty = false): string {
   }
 }
 
+async function saveBlobWithPickerIfRequested(blob: Blob, filename: string): Promise<boolean> {
+  try {
+    const prefs = loadStoragePrefs();
+    const wantsUserLocation =
+      prefs.selectedDestination === "device_file" ||
+      prefs.selectedDestination === "external_sd_manual" ||
+      prefs.preferExternalStorage;
+    if (!wantsUserLocation) return false;
+
+    const picker = (window as any)?.showSaveFilePicker;
+    if (typeof picker !== "function") return false;
+
+    const handle = await picker({
+      suggestedName: filename,
+      types: [
+        {
+          description: "Export Multisports JSON",
+          accept: { "application/json": [".json", ".dcstats.json"] },
+        },
+      ],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  } catch (e: any) {
+    // Si l'utilisateur annule le sélecteur, on considère l'action comme gérée
+    // pour éviter de forcer un téléchargement dans un mauvais emplacement.
+    if (String(e?.name || "").toLowerCase() === "aborterror") return true;
+    return false;
+  }
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -60,6 +95,10 @@ export async function shareOrDownload(
   // Stringify once (avoid doing it twice for fallback).
   const json = safeJsonStringify(data, false);
   const blob = new Blob([json], { type: "application/json" });
+
+  // Si l'utilisateur a choisi "fichier local / carte SD", on tente d'abord
+  // le sélecteur natif quand il est disponible. Sinon, on continue vers share/download.
+  if (await saveBlobWithPickerIfRequested(blob, filename)) return;
 
   // Prefer sharing when available, but be defensive.
   try {

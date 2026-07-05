@@ -56,6 +56,18 @@ import { createViewerSession, publishViewerSnapshot, viewerJoinUrl } from "../li
 import { clearActiveViewerSession, getActiveViewerSession, setActiveViewerSession, subscribeViewerSessionChanged } from "../lib/viewer/viewerSession";
 import { clearViewerDiagLog, getViewerDiagLog } from "../lib/viewer/viewerPublisher";
 import type { ViewerSessionInfo } from "../lib/viewer/types";
+import {
+  getLocalStorageCapabilities,
+  estimateBrowserStorage,
+  formatStorageBytes,
+  formatStoragePrice,
+  getPublicStorageDestinations,
+  getPublicStoragePlans,
+  loadStoragePrefs,
+  saveStoragePrefs,
+  type StorageDestinationId,
+  type StoragePlanId,
+} from "../lib/storagePlans";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1141,7 +1153,7 @@ type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" |
 
 // ---------------- Account pages (NEW simple & clean) ----------------
 
-type AccountPage = "account_menu" | "account_notifications" | "account_danger";
+type AccountPage = "account_menu" | "account_storage" | "account_notifications" | "account_danger";
 
 async function hardClearLocalAccountAndAppDataForDeletedAccount() {
   if (typeof window === "undefined") return;
@@ -1234,6 +1246,35 @@ function AccountPages({
   const [error, setError] = React.useState<string | null>(null);
 
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
+  const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
+  const [storageEstimate, setStorageEstimate] = React.useState<{ usage: number; quota: number; free: number }>(() => ({ usage: 0, quota: 0, free: 0 }));
+  const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
+
+  React.useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      const est = await estimateBrowserStorage();
+      if (alive) setStorageEstimate(est);
+    };
+    refresh();
+    const onStoragePrefs = () => {
+      setStoragePrefs(loadStoragePrefs());
+      refresh();
+    };
+    window.addEventListener("dc-storage-prefs-changed", onStoragePrefs as any);
+    window.addEventListener("storage", onStoragePrefs as any);
+    return () => {
+      alive = false;
+      window.removeEventListener("dc-storage-prefs-changed", onStoragePrefs as any);
+      window.removeEventListener("storage", onStoragePrefs as any);
+    };
+  }, []);
+
+  function persistStoragePrefs(next: Partial<typeof storagePrefs>, msg?: string) {
+    const saved = saveStoragePrefs(next);
+    setStoragePrefs(saved);
+    setMessage(msg || "Préférence de stockage enregistrée.");
+  }
 
   React.useEffect(() => {
     setDisplayName(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
@@ -1456,6 +1497,14 @@ function AccountPages({
           </section>
 
           <SettingsMenuCard
+            title="Stockage & abonnements"
+            subtitle={`Destination actuelle : ${storagePrefs.selectedDestination === "cloud_r2" ? "Cloud R2" : storagePrefs.selectedDestination === "founder_nas" ? "NAS fondateur" : "local / appareil"}. Offre cloud : ${getPublicStoragePlans().find((p) => p.id === storagePrefs.selectedCloudPlan)?.shortLabel || "100 Mo"}.`}
+            theme={theme}
+            onClick={() => setPage("account_storage")}
+            rightHint={storagePrefs.selectedDestination === "cloud_r2" ? "☁" : "↧"}
+          />
+
+          <SettingsMenuCard
             title={t("settings.account.menu.notifications", "Notifications")}
             subtitle="Options locales uniquement. À garder simple tant que les notifications réelles ne sont pas branchées."
             theme={theme}
@@ -1469,6 +1518,165 @@ function AccountPages({
             rightHint="!"
           />
         </div>
+      )}
+
+      {/* STOCKAGE / ABONNEMENTS */}
+      {page === "account_storage" && (
+        <section style={sectionBox}>
+          {miniBack}
+
+          <h2 style={{ margin: 0, marginBottom: 8, fontSize: 18, color: theme.primary }}>
+            Stockage & abonnements
+          </h2>
+
+          <p style={{ margin: 0, marginBottom: 12, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.45 }}>
+            Le gratuit sert uniquement à tester le cloud. Le stockage lourd doit être payé par l'utilisateur :
+            historiques, stats, compétitions, avatars, sauvegardes et médias partiront vers Cloudflare R2 quand le mode cloud sera branché.
+            Ton compte fondateur reste prévu à part sur NAS.
+          </p>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+              Stockage local appareil
+            </div>
+            <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: theme.textSoft }}>Utilisé</div>
+                <div style={{ fontWeight: 950, color: "#fff" }}>{formatStorageBytes(storageEstimate.usage)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: theme.textSoft }}>Quota estimé</div>
+                <div style={{ fontWeight: 950, color: "#fff" }}>{formatStorageBytes(storageEstimate.quota)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: theme.textSoft }}>Libre</div>
+                <div style={{ fontWeight: 950, color: theme.primary }}>{formatStorageBytes(storageEstimate.free)}</div>
+              </div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+              OPFS : {storageCapabilities.opfs ? "OK" : "non dispo"} · Persistance : {storageCapabilities.persistentStorage ? "OK" : "non dispo"} · Export fichier : {storageCapabilities.filePicker ? "sélecteur avancé" : "fallback téléchargement"}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 950, color: theme.primary, marginBottom: 8 }}>
+              Où stocker les données ?
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {getPublicStorageDestinations().map((dest) => {
+                const active = storagePrefs.selectedDestination === dest.id;
+                return (
+                  <button
+                    key={dest.id}
+                    type="button"
+                    onClick={() =>
+                      persistStoragePrefs(
+                        {
+                          selectedDestination: dest.id as StorageDestinationId,
+                          preferExternalStorage: dest.id === "external_sd_manual" || dest.id === "device_file",
+                        },
+                        dest.id === "cloud_r2"
+                          ? "Cloud R2 sélectionné. La synchro réelle restera bloquée par quota et abonnement quand le Worker sera branché."
+                          : "Destination locale enregistrée."
+                      )
+                    }
+                    style={{
+                      textAlign: "left",
+                      borderRadius: 14,
+                      padding: 12,
+                      border: active ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+                      background: active ? `${theme.primary}16` : "rgba(255,255,255,0.035)",
+                      color: theme.text,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontWeight: 950, color: active ? theme.primary : "#fff" }}>{dest.label}</span>
+                      {active && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 950, color: theme.primary }}>ACTIF</span>}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>{dest.description}</div>
+                    {dest.warning && <div style={{ marginTop: 5, fontSize: 10.5, color: "#ffcc66", lineHeight: 1.35 }}>{dest.warning}</div>}
+                  </button>
+                );
+              })}
+
+              <div
+                style={{
+                  borderRadius: 14,
+                  padding: 12,
+                  border: `1px dashed ${theme.primary}77`,
+                  background: "rgba(255,255,255,0.025)",
+                }}
+              >
+                <div style={{ fontWeight: 950, color: theme.primary }}>NAS fondateur</div>
+                <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
+                  Réservé à ton compte admin : tu conserves ton NAS pour ne pas payer ton propre usage. Cette option ne sera pas proposée aux utilisateurs lambda.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 950, color: theme.primary, marginBottom: 8 }}>
+              Offres cloud publiques
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {getPublicStoragePlans().map((plan) => {
+                const active = storagePrefs.selectedCloudPlan === plan.id;
+                const monthly = formatStoragePrice(plan.priceMonthlyCents);
+                const yearly = plan.priceYearlyCents ? formatStoragePrice(plan.priceYearlyCents) : null;
+                return (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    onClick={() =>
+                      persistStoragePrefs(
+                        {
+                          selectedCloudPlan: plan.id as StoragePlanId,
+                          selectedDestination: plan.id === "free_test_100mb" ? storagePrefs.selectedDestination : "cloud_r2",
+                        },
+                        `${plan.label} sélectionné (${plan.shortLabel}).`
+                      )
+                    }
+                    style={{
+                      textAlign: "left",
+                      borderRadius: 14,
+                      padding: 12,
+                      border: active ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+                      background: active ? `${theme.primary}16` : "rgba(255,255,255,0.035)",
+                      color: theme.text,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 950, color: active ? theme.primary : "#fff" }}>{plan.label}</span>
+                      <span style={{ fontSize: 11, fontWeight: 950, color: theme.primary }}>{plan.shortLabel}</span>
+                      {plan.badge && <span style={{ fontSize: 10, fontWeight: 950, border: `1px solid ${theme.primary}88`, borderRadius: 999, padding: "2px 7px", color: theme.primary }}>{plan.badge}</span>}
+                      {active && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 950, color: theme.primary }}>CHOISI</span>}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, fontWeight: 900 }}>
+                      {plan.priceMonthlyCents === 0 ? "0 €" : `${monthly} / mois`}{yearly ? ` · ${yearly} / an` : ""}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>{plan.description}</div>
+                    <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                      {plan.features.slice(0, 4).map((f) => (
+                        <span key={f} style={{ fontSize: 10.5, borderRadius: 999, padding: "3px 7px", background: "rgba(255,255,255,0.055)", color: theme.textSoft }}>
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {message && (
+            <div style={{ marginTop: 10, fontSize: 11, color: "#62d26f", lineHeight: 1.35 }}>
+              {message}
+            </div>
+          )}
+        </section>
       )}
 
       {/* NOTIFICATIONS */}
