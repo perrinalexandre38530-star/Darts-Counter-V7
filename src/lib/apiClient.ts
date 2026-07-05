@@ -1,4 +1,5 @@
-import { getNasApiUrl } from "./serverConfig";
+import { getNasApiUrl, isNasProviderEnabled } from "./serverConfig";
+import { nasRestoreSession } from "./nasApi";
 
 const LEGACY_BAD_HOSTS = [
   "sustainability-accordingly-steven-investments.trycloudflare.com",
@@ -29,20 +30,70 @@ function safeParseJson<T>(raw: string, fallback: T): T {
   }
 }
 
-export function readNasAccessToken(): string {
-  const direct = safeReadLocalStorage("dc_nas_access_token_v1").trim();
-  if (direct) return direct;
-
-  const session = safeParseJson<any>(safeReadLocalStorage("dc_online_auth_supabase_v1"), null);
+function extractAuthTokenFromObject(value: any): string {
   return String(
-    session?.token ||
-      session?.accessToken ||
-      session?.access_token ||
-      session?.session?.token ||
-      session?.session?.accessToken ||
-      session?.session?.access_token ||
+    value?.token ||
+      value?.accessToken ||
+      value?.access_token ||
+      value?.jwt ||
+      value?.access ||
+      value?.bearer ||
+      value?.session?.token ||
+      value?.session?.accessToken ||
+      value?.session?.access_token ||
+      value?.session?.jwt ||
+      value?.data?.token ||
+      value?.data?.accessToken ||
+      value?.data?.access_token ||
+      value?.data?.jwt ||
+      value?.data?.session?.token ||
+      value?.data?.session?.accessToken ||
+      value?.data?.session?.access_token ||
+      value?.auth?.token ||
+      value?.auth?.accessToken ||
+      value?.auth?.access_token ||
       ""
   ).trim();
+}
+
+function looksLikeBearerToken(raw: string): boolean {
+  const value = String(raw || "").trim();
+  if (!value) return false;
+  // JWT classique ou token opaque suffisamment long.
+  return value.split(".").length >= 3 || value.length >= 24;
+}
+
+export function readNasAccessToken(): string {
+  const directKeys = [
+    "dc_nas_access_token_v1",
+    "auth_token",
+    "access_token",
+  ];
+
+  for (const key of directKeys) {
+    const direct = safeReadLocalStorage(key).trim();
+    if (direct) return direct;
+  }
+
+  const sessionKeys = [
+    "dc_online_auth_supabase_v1",
+    "auth_session",
+    "dc_session",
+    "current_user",
+    "supabase.auth.token",
+  ];
+
+  for (const key of sessionKeys) {
+    const raw = safeReadLocalStorage(key).trim();
+    if (!raw) continue;
+    if (looksLikeBearerToken(raw)) return raw;
+
+    const parsed = safeParseJson<any>(raw, null);
+    const token = extractAuthTokenFromObject(parsed);
+    if (token) return token;
+  }
+
+  return "";
 }
 
 const envUrl = sanitizeApiUrl(getNasApiUrl());
@@ -81,6 +132,25 @@ function clearNasAuthBecauseUnauthorized() {
   dispatchSignedOut("401");
 }
 
+async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<string> {
+  if (!isNasProviderEnabled()) return "";
+
+  const existing = readNasAccessToken();
+  if (existing && reason === "missing_token") return existing;
+
+  try {
+    const session: any = await nasRestoreSession({
+      force: reason === "401",
+      timeoutMs: reason === "401" ? 3500 : 2500,
+    });
+    const token = String(session?.token || readNasAccessToken() || "").trim();
+    return token;
+  } catch (e) {
+    console.warn(`[apiClient] NAS auth recovery failed (${reason})`, e);
+    return "";
+  }
+}
+
 async function parseJsonSafe(res: Response) {
   const text = await res.text();
   try {
@@ -104,33 +174,49 @@ function buildHeaders(init?: RequestInit): HeadersInit {
 async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
-  // Garde anti-spam : si l’utilisateur n’a plus de session, on ne lance pas les appels /online/*.
-  // Ça évite les rafales de 401 dans la console et laisse l’UI afficher le bloc de reconnexion.
+  // Garde anti-spam, mais sans faux positif au boot : avant d'annoncer une
+  // déconnexion, on tente de restaurer la session NAS depuis le cache complet.
   if (normalizedPath.startsWith("/online/") && !readNasAccessToken()) {
-    dispatchSignedOut("missing_token");
-    throw new Error(`${init?.method || "GET"} ${normalizedPath} skipped — session online absente`);
+    const recoveredToken = await recoverNasAuthToken("missing_token");
+    if (!recoveredToken) {
+      dispatchSignedOut("missing_token");
+      throw new Error(`${init?.method || "GET"} ${normalizedPath} skipped — session online absente`);
+    }
   }
 
-  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctrl ? window.setTimeout(() => {
-    try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
-  }, API_TIMEOUT_MS) : null;
+  let res: Response | null = null;
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${normalizedPath}`, {
-      ...init,
-      signal: ctrl?.signal ?? init?.signal,
-      headers: buildHeaders(init),
-    });
-  } catch (error: any) {
-    const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
-    throw new Error(aborted
-      ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${API_TIMEOUT_MS}ms)`
-      : (error?.message || "Backend NAS inaccessible"));
-  } finally {
-    if (timer) window.clearTimeout(timer);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? window.setTimeout(() => {
+      try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
+    }, API_TIMEOUT_MS) : null;
+
+    try {
+      res = await fetch(`${API_URL}${normalizedPath}`, {
+        ...init,
+        signal: ctrl?.signal ?? init?.signal,
+        headers: buildHeaders(init),
+      });
+    } catch (error: any) {
+      const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
+      throw new Error(aborted
+        ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${API_TIMEOUT_MS}ms)`
+        : (error?.message || "Backend NAS inaccessible"));
+    } finally {
+      if (timer) window.clearTimeout(timer);
+    }
+
+    if (res.status !== 401 || attempt > 0) break;
+
+    // 401 peut arriver juste après une relance app / réveil NAS alors que le
+    // cache local possède encore une session récupérable. On restaure puis on
+    // retente une seule fois avant de purger réellement l'auth.
+    const recoveredToken = await recoverNasAuthToken("401");
+    if (!recoveredToken) break;
   }
+
+  if (!res) throw new Error(`${init?.method || "GET"} ${normalizedPath} failed — réponse absente`);
 
   if (!res.ok) {
     if (res.status === 401) clearNasAuthBecauseUnauthorized();
@@ -149,6 +235,7 @@ async function doFetch(path: string, init?: RequestInit) {
 
   return parseJsonSafe(res);
 }
+
 
 export async function apiGet(path: string) {
   return doFetch(path);

@@ -19,6 +19,7 @@ import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled } from "../lib/serverConfig";
+import { readNasAccessToken } from "../lib/apiClient";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
@@ -348,27 +349,88 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
 }
 
 
-function SessionExpiredFloatingCard() {
+function forceOpenLoginRoute(): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    const appGo = (window as any).__appGo || (window as any).__appStore?.go;
+    if (typeof appGo === "function") {
+      appGo("auth_v7_login");
+    }
+  } catch {}
+
+  try {
+    const current = String(window.location.hash || "");
+    if (!current.startsWith("#/auth/login")) {
+      window.location.hash = "#/auth/login";
+    }
+    window.setTimeout(() => {
+      try { window.dispatchEvent(new HashChangeEvent("hashchange")); } catch {}
+    }, 0);
+  } catch {
+    try { window.location.hash = "#/auth/login"; } catch {}
+  }
+}
+
+function hasRecoverableNasAuth(): boolean {
+  try {
+    return isNasProviderEnabled() && !!readNasAccessToken();
+  } catch {
+    return false;
+  }
+}
+
+function SessionExpiredFloatingCard({
+  authStatus,
+  userId,
+  refresh,
+}: {
+  authStatus: AuthStatus;
+  userId: string | null;
+  refresh: () => Promise<void>;
+}) {
   const [visible, setVisible] = React.useState(false);
+  const statusRef = React.useRef<AuthStatus>(authStatus);
+  const userIdRef = React.useRef<string | null>(userId);
+  const refreshRef = React.useRef(refresh);
+
+  React.useEffect(() => { statusRef.current = authStatus; }, [authStatus]);
+  React.useEffect(() => { userIdRef.current = userId; }, [userId]);
+  React.useEffect(() => { refreshRef.current = refresh; }, [refresh]);
 
   React.useEffect(() => {
+    let disposed = false;
+
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<any>)?.detail || {};
       const reason = String(detail?.reason || "");
       if (detail?.status !== "signed_out") return;
       if (reason !== "401" && reason !== "missing_token") return;
 
-      setVisible(true);
-      try {
-        const hash = String(window.location.hash || "");
-        if (!hash.startsWith("#/auth/login") && !hash.startsWith("#/auth/signup")) {
-          window.location.hash = "#/auth/login";
+      void (async () => {
+        // Cas principal du bug : un appel /online/* part trop tôt au relancement
+        // et crie “déconnecté” alors que le provider a encore une session valide.
+        // On laisse d'abord le provider se resynchroniser.
+        if (statusRef.current === "signed_in" || userIdRef.current || hasRecoverableNasAuth()) {
+          try { await refreshRef.current?.(); } catch {}
+          if (disposed) return;
+          if (statusRef.current === "signed_in" || userIdRef.current || hasRecoverableNasAuth()) {
+            setVisible(false);
+            return;
+          }
         }
-      } catch {}
+
+        if (disposed) return;
+        setVisible(true);
+        forceOpenLoginRoute();
+      })();
     };
 
     window.addEventListener("dc-auth-changed", handler as EventListener);
-    return () => window.removeEventListener("dc-auth-changed", handler as EventListener);
+    return () => {
+      disposed = true;
+      window.removeEventListener("dc-auth-changed", handler as EventListener);
+    };
   }, []);
 
   if (!visible) return null;
@@ -422,7 +484,7 @@ function SessionExpiredFloatingCard() {
           type="button"
           onClick={() => {
             setVisible(false);
-            try { window.location.hash = "#/auth/login"; } catch {}
+            forceOpenLoginRoute();
           }}
           style={{
             width: "100%",
@@ -758,7 +820,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   return (
     <AuthOnlineContext.Provider value={value}>
       {children}
-      <SessionExpiredFloatingCard />
+      <SessionExpiredFloatingCard authStatus={state.status} userId={state.user?.id ?? null} refresh={refresh} />
     </AuthOnlineContext.Provider>
   );
 }
