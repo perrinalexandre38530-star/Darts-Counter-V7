@@ -71,6 +71,8 @@ import {
 import {
   createStorageCheckoutSession,
   getAccountStorageUsage,
+  deleteCloudObjectRemote,
+  downloadCloudObject,
   getCloudStorageStatus,
   saveAccountStoragePreferences,
   uploadCloudObject,
@@ -1264,6 +1266,12 @@ function AccountPages({
   const [cloudUsageError, setCloudUsageError] = React.useState<string | null>(null);
   const [cloudStorageStatus, setCloudStorageStatus] = React.useState<CloudStorageStatus | null>(null);
   const [cloudStorageTestLoading, setCloudStorageTestLoading] = React.useState(false);
+  const [cloudStorageTestResult, setCloudStorageTestResult] = React.useState<{
+    status: "ok" | "error" | "info";
+    title: string;
+    detail?: string;
+    objectKey?: string;
+  } | null>(null);
   const [storageCheckoutLoading, setStorageCheckoutLoading] = React.useState<string | null>(null);
   const processedStorageCheckoutRef = React.useRef<string | null>(null);
   const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
@@ -1349,29 +1357,70 @@ function AccountPages({
     setCloudStorageTestLoading(true);
     setCloudUsageError(null);
     setMessage(null);
+    setCloudStorageTestResult({
+      status: "info",
+      title: "Test R2 en cours…",
+      detail: "Envoi d’un petit JSON compressé vers Cloudflare R2.",
+    });
     try {
+      const smokePayload = {
+        ok: true,
+        type: "storage_smoke_test",
+        createdAt: new Date().toISOString(),
+        app: "Darts Counter V7",
+      };
       const result = await uploadCloudObject({
         objectType: "storage_smoke_test",
         sport: "system",
         title: "Test stockage R2",
-        payload: {
-          ok: true,
-          type: "storage_smoke_test",
-          createdAt: new Date().toISOString(),
-          app: "Darts Counter V7",
-        },
+        payload: smokePayload,
         gzip: true,
         metadata: { source: "settings_smoke_test" },
       });
+
+      const objectId = result?.object?.id;
+      const objectKey = result?.object?.object_key || result?.objectKey || "clé inconnue";
+      let downloadOk = false;
+      if (objectId) {
+        const downloaded = await downloadCloudObject(objectId);
+        const content = downloaded?.content as any;
+        downloadOk = !!downloaded?.ok && content?.type === smokePayload.type && content?.app === smokePayload.app;
+        if (!downloadOk) {
+          throw new Error("Upload R2 OK, mais vérification lecture R2 impossible.");
+        }
+        try {
+          const deleted = await deleteCloudObjectRemote(objectId);
+          if (deleted?.usage) setCloudUsage(deleted.usage);
+        } catch (deleteError: any) {
+          setCloudStorageTestResult({
+            status: "ok",
+            title: "R2 fonctionne, mais l’objet test n’a pas été supprimé automatiquement.",
+            detail: deleteError?.message || "Tu peux supprimer manuellement l’objet de test dans Cloudflare R2 si besoin.",
+            objectKey,
+          });
+          return;
+        }
+      }
+
       if (result?.usage) setCloudUsage(result.usage);
-      setMessage(`Test R2 OK : objet créé (${result?.object?.object_key || "clé inconnue"}).`);
+      setCloudStorageTestResult({
+        status: "ok",
+        title: "Test R2 réussi",
+        detail: "Upload OK · Lecture OK · Nettoyage OK. Le stockage Cloudflare R2 est opérationnel.",
+        objectKey,
+      });
+      setMessage(null);
     } catch (e: any) {
       const missing = e?.missingEnv || e?.data?.missingEnv;
-      setCloudUsageError(
-        Array.isArray(missing) && missing.length
-          ? `Cloudflare R2 non configuré dans le .env : ${missing.join(", ")}`
-          : e?.message || "Test stockage cloud impossible."
-      );
+      const detail = Array.isArray(missing) && missing.length
+        ? `Cloudflare R2 non configuré dans le .env : ${missing.join(", ")}`
+        : e?.message || "Test stockage cloud impossible.";
+      setCloudUsageError(detail);
+      setCloudStorageTestResult({
+        status: "error",
+        title: "Test R2 échoué",
+        detail,
+      });
     } finally {
       setCloudStorageTestLoading(false);
       void refreshCloudUsage();
@@ -1807,6 +1856,43 @@ function AccountPages({
               {cloudStorageStatus?.message || "Ce test envoie un petit JSON compressé vers R2. Il échouera normalement tant que R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY ne sont pas remplis dans le .env."}
               {cloudStorageStatus?.bucket ? ` Bucket : ${cloudStorageStatus.bucket}.` : ""}
             </div>
+            {cloudStorageTestResult && (
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 12,
+                  border: `1px solid ${
+                    cloudStorageTestResult.status === "ok"
+                      ? "rgba(98,210,111,0.55)"
+                      : cloudStorageTestResult.status === "error"
+                        ? "rgba(255,107,107,0.65)"
+                        : theme.borderSoft
+                  }`,
+                  background:
+                    cloudStorageTestResult.status === "ok"
+                      ? "rgba(98,210,111,0.10)"
+                      : cloudStorageTestResult.status === "error"
+                        ? "rgba(255,107,107,0.10)"
+                        : "rgba(255,255,255,0.055)",
+                  padding: 10,
+                  fontSize: 11,
+                  lineHeight: 1.35,
+                  color: cloudStorageTestResult.status === "error" ? "#ff8c8c" : theme.text,
+                }}
+              >
+                <div style={{ fontWeight: 950, color: cloudStorageTestResult.status === "ok" ? "#62d26f" : cloudStorageTestResult.status === "error" ? "#ff8c8c" : theme.primary }}>
+                  {cloudStorageTestResult.title}
+                </div>
+                {cloudStorageTestResult.detail && (
+                  <div style={{ marginTop: 4, color: theme.textSoft }}>{cloudStorageTestResult.detail}</div>
+                )}
+                {cloudStorageTestResult.objectKey && (
+                  <div style={{ marginTop: 4, color: theme.textSoft, wordBreak: "break-all" }}>
+                    Objet test : {cloudStorageTestResult.objectKey}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
