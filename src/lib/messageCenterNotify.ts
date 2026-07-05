@@ -8,7 +8,7 @@ import {
   type ProfileFriendLink,
   type SharedMatchItem,
 } from "./friendsApi";
-import { apiGet, readNasAccessToken } from "./apiClient";
+import { apiGet, apiPost, readNasAccessToken } from "./apiClient";
 
 export type MessageCenterUnreadSummary = {
   unreadMessages: number;
@@ -166,22 +166,76 @@ async function ensureMessageServiceWorkerRegistration(): Promise<ServiceWorkerRe
   }
 }
 
+
+function base64UrlToUint8Array(base64Url: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
+  const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+let pushSubscriptionPromise: Promise<boolean> | null = null;
+
+export async function ensureMessagePushSubscription(): Promise<boolean> {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return false;
+  if (Notification.permission !== "granted") return false;
+  if (!readNasAccessToken()) return false;
+
+  if (pushSubscriptionPromise) return pushSubscriptionPromise;
+  pushSubscriptionPromise = (async () => {
+    const reg = await ensureMessageServiceWorkerRegistration();
+    if (!reg?.pushManager) return false;
+
+    const keyPayload = await apiGet("/online/push/vapid-public-key").catch(() => null as any);
+    const publicKey = String(keyPayload?.publicKey || keyPayload?.key || "").trim();
+    if (!publicKey) return false;
+
+    let subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToUint8Array(publicKey) as BufferSource,
+      });
+    }
+
+    await apiPost("/online/push/subscribe", {
+      subscription: subscription.toJSON(),
+      endpoint: subscription.endpoint,
+      userAgent: navigator.userAgent || "",
+      scope: reg.scope || "/",
+    });
+    return true;
+  })().finally(() => {
+    window.setTimeout(() => { pushSubscriptionPromise = null; }, 5000);
+  });
+  return pushSubscriptionPromise;
+}
+
 export async function requestMessageNotificationsPermission(): Promise<NotificationPermission | "unsupported"> {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   if (!window.isSecureContext && !/^localhost$|^127\./.test(window.location.hostname)) return "unsupported";
   await ensureMessageServiceWorkerRegistration();
-  if (Notification.permission === "granted") return "granted";
+  if (Notification.permission === "granted") {
+    ensureMessagePushSubscription().catch(() => {});
+    return "granted";
+  }
   if (Notification.permission === "denied") return "denied";
   try {
     const permission = await Notification.requestPermission();
-    if (permission === "granted") await ensureMessageServiceWorkerRegistration();
+    if (permission === "granted") {
+      await ensureMessageServiceWorkerRegistration();
+      ensureMessagePushSubscription().catch(() => {});
+    }
     return permission;
   } catch {
     return Notification.permission;
   }
 }
 
-export async function showMessageCenterNotification(title: string, body: string) {
+export async function showMessageCenterNotification(title: string, body: string, extraOptions: NotificationOptions = {}) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   const options: NotificationOptions = {
@@ -190,6 +244,8 @@ export async function showMessageCenterNotification(title: string, body: string)
     silent: false,
     badge: "/app-512.png",
     icon: "/app-512.png",
+    ...extraOptions,
+    data: { ...(extraOptions as any)?.data, url: (extraOptions as any)?.data?.url || "/#/messages" },
   };
   try {
     const reg = await ensureMessageServiceWorkerRegistration();
@@ -198,7 +254,7 @@ export async function showMessageCenterNotification(title: string, body: string)
       return;
     }
     try {
-      reg?.active?.postMessage({ type: "SHOW_NOTIFICATION", title, body, url: "/#/messages" });
+      reg?.active?.postMessage({ type: "SHOW_NOTIFICATION", title, body, options, url: (options as any)?.data?.url || "/#/messages" });
       return;
     } catch {}
   } catch {}

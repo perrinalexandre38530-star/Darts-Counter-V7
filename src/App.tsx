@@ -76,6 +76,7 @@ import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
 import { setAvatarCache } from "./lib/avatarCache";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
 import BottomNav from "./components/BottomNav";
+import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import SportQuickSwitch from "./components/SportQuickSwitch";
 
 import AuthStart from "./pages/AuthStart";
@@ -5070,6 +5071,7 @@ case "babyfoot_team_edit":
     <CrashCatcher>
       <>
         <MobileErrorOverlay />
+        <GlobalMessengerCallBridge />
         {showSportQuickSwitch && (
           <SportQuickSwitch
             onAfterSwitch={() => {

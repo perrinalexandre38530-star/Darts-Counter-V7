@@ -357,6 +357,11 @@ export async function listActiveMessengerCalls(): Promise<MessengerCall[]> {
   return Array.isArray(res?.calls) ? res.calls : [];
 }
 
+export async function getMessengerCall(callId: string) {
+  const res = await apiGet(`/online/calls/${qs(callId)}`);
+  return res?.call as MessengerCall;
+}
+
 export async function acceptMessengerCall(callId: string) {
   const res = await apiPost(`/online/calls/${qs(callId)}/accept`, {});
   return res?.call as MessengerCall;

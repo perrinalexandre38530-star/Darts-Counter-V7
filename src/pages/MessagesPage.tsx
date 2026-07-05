@@ -24,6 +24,7 @@ import {
   sendMessengerCallSignal,
   listMessengerCallSignals,
   listIncomingMessengerCalls,
+  getMessengerCall,
   listMessengerGroups,
   createMessengerGroup,
   updateMessengerGroup,
@@ -2170,6 +2171,74 @@ export default function MessagesPage({ store, update, go }: Props) {
     setIncomingCallNotice(null);
     setInfo("Appel refusé");
   }
+
+
+  React.useEffect(() => {
+    const processed = new Set<string>();
+
+    const readPending = () => {
+      let callId = "";
+      let action = "open";
+      try {
+        callId = String(window.sessionStorage.getItem("dc_messenger_open_call_id") || "").trim();
+        action = String(window.sessionStorage.getItem("dc_messenger_open_call_action") || "open").trim();
+      } catch {}
+      try {
+        const hash = String(window.location.hash || "");
+        const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+        const params = new URLSearchParams(query);
+        callId = String(params.get("callId") || callId || "").trim();
+        action = String(params.get("callAction") || action || "open").trim();
+      } catch {}
+      return { callId, action };
+    };
+
+    const openAndMaybeAccept = async (callId: string, action: string) => {
+      const id = String(callId || "").trim();
+      if (!id || processed.has(`${id}:${action}`)) return;
+      processed.add(`${id}:${action}`);
+      try { window.sessionStorage.removeItem("dc_messenger_open_call_id"); window.sessionStorage.removeItem("dc_messenger_open_call_action"); } catch {}
+      let call: any = null;
+      try { call = await getMessengerCall(id); } catch {}
+      const callType = String(call?.callType || call?.type || "audio") === "video" ? "video" : "audio";
+      const friendId = String(call?.callerUserId || call?.friendUserId || call?.caller?.id || call?.caller?.userId || "").trim();
+      if (friendId) {
+        setSelectedThreadUserId(friendId);
+        setMessageToUserId(friendId);
+      }
+      setActive("messages");
+      setChatFullscreen(true);
+      if (action === "decline") {
+        await refuseIncomingCall(id);
+        return;
+      }
+      if (action === "accept") {
+        setIncomingCallNotice({ callId: id, callType, fromUserId: friendId, call, fromUser: call?.caller || null });
+        await acceptIncomingCall(callType as any, id);
+      }
+    };
+
+    const consume = () => {
+      const pending = readPending();
+      if (pending.callId) openAndMaybeAccept(pending.callId, pending.action || "open").catch((e: any) => setError(e?.message || String(e)));
+    };
+
+    const onOpenCall = (event: any) => {
+      const detail = event?.detail || {};
+      const callId = String(detail.callId || "").trim();
+      const action = String(detail.action || "open").trim();
+      if (callId) openAndMaybeAccept(callId, action).catch((e: any) => setError(e?.message || String(e)));
+      else consume();
+    };
+
+    consume();
+    window.addEventListener("hashchange", consume);
+    window.addEventListener("dc-messenger-open-call", onOpenCall as any);
+    return () => {
+      window.removeEventListener("hashchange", consume);
+      window.removeEventListener("dc-messenger-open-call", onOpenCall as any);
+    };
+  }, []);
 
   function closeCallPanel(notifyRemote = true) {
     stopIncomingCallRinging();
