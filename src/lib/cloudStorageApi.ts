@@ -171,6 +171,34 @@ export async function verifyStorageCheckoutSession(sessionId: string): Promise<{
   return res;
 }
 
+
+export type SupabaseAccountStatus = {
+  ok: boolean;
+  configured: boolean;
+  provider?: "supabase_minimal" | string;
+  projectUrlConfigured?: boolean;
+  projectHost?: string | null;
+  anonKeyConfigured?: boolean;
+  serviceRoleKeyConfigured?: boolean;
+  anonKeyKind?: string;
+  serviceKeyKind?: string;
+  missingEnv?: string[];
+  usage?: string;
+  auth?: {
+    skipped?: boolean;
+    reachable?: boolean;
+    ok?: boolean;
+    statusCode?: number | null;
+    message?: string;
+    missingEnv?: string[];
+  };
+  message?: string;
+};
+
+export async function getSupabaseAccountStatus(): Promise<SupabaseAccountStatus> {
+  return apiGet("/account/supabase/status") as any;
+}
+
 export type CloudStorageStatus = {
   ok: boolean;
   configured: boolean;

@@ -74,11 +74,13 @@ import {
   deleteCloudObjectRemote,
   downloadCloudObject,
   getCloudStorageStatus,
+  getSupabaseAccountStatus,
   saveAccountStoragePreferences,
   uploadCloudObject,
   verifyStorageCheckoutSession,
   type AccountStorageUsage,
   type CloudStorageStatus,
+  type SupabaseAccountStatus,
   type StorageBillingInterval,
 } from "../lib/cloudStorageApi";
 
@@ -1272,6 +1274,13 @@ function AccountPages({
     detail?: string;
     objectKey?: string;
   } | null>(null);
+  const [supabaseAccountStatus, setSupabaseAccountStatus] = React.useState<SupabaseAccountStatus | null>(null);
+  const [supabaseStatusLoading, setSupabaseStatusLoading] = React.useState(false);
+  const [supabaseStatusResult, setSupabaseStatusResult] = React.useState<{
+    status: "ok" | "error" | "info";
+    title: string;
+    detail?: string;
+  } | null>(null);
   const [storageCheckoutLoading, setStorageCheckoutLoading] = React.useState<string | null>(null);
   const processedStorageCheckoutRef = React.useRef<string | null>(null);
   const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
@@ -1313,6 +1322,12 @@ function AccountPages({
       } catch {
         setCloudStorageStatus(null);
       }
+      try {
+        const supabaseStatus = await getSupabaseAccountStatus();
+        setSupabaseAccountStatus(supabaseStatus);
+      } catch {
+        setSupabaseAccountStatus(null);
+      }
     } catch (e: any) {
       setCloudUsageError(e?.message || "Impossible de charger le quota cloud.");
     } finally {
@@ -1346,6 +1361,45 @@ function AccountPages({
     setStoragePrefs(saved);
     setMessage(msg || "Préférence de stockage enregistrée.");
     void syncStoragePrefsToBackend(saved);
+  }
+
+  async function refreshSupabaseStatus(showFeedback = true) {
+    if (!isSignedIn) {
+      safeAlert("Connecte-toi avant de tester Supabase.");
+      openAccountLogin();
+      return;
+    }
+    setSupabaseStatusLoading(true);
+    setSupabaseStatusResult({
+      status: "info",
+      title: "Test Supabase en cours…",
+      detail: "Vérification de l’URL projet, des clés backend et de Supabase Auth.",
+    });
+    try {
+      const status = await getSupabaseAccountStatus();
+      setSupabaseAccountStatus(status);
+      const missing = Array.isArray(status?.missingEnv) ? status.missingEnv.filter(Boolean) : [];
+      if (!status?.configured || missing.length) {
+        setSupabaseStatusResult({
+          status: "error",
+          title: "Supabase incomplet",
+          detail: `Variables manquantes dans le .env : ${missing.join(", ") || "configuration non reconnue"}.`,
+        });
+        return;
+      }
+      const authDetail = status.auth?.message ? ` ${status.auth.message}` : "";
+      setSupabaseStatusResult({
+        status: status.auth?.reachable === false ? "info" : "ok",
+        title: status.auth?.reachable === false ? "Supabase configuré, test réseau à surveiller" : "Supabase configuré",
+        detail: `${status.message || "Supabase minimal prêt."}${authDetail}`,
+      });
+      if (showFeedback) setMessage(null);
+    } catch (e: any) {
+      const detail = e?.message || "Impossible de vérifier Supabase.";
+      setSupabaseStatusResult({ status: "error", title: "Test Supabase échoué", detail });
+    } finally {
+      setSupabaseStatusLoading(false);
+    }
   }
 
   async function runCloudStorageSmokeTest() {
@@ -1894,6 +1948,96 @@ function AccountPages({
               </div>
             )}
           </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  Supabase minimal
+                </div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: supabaseAccountStatus?.configured ? "#62d26f" : "#ffcc66" }}>
+                  {supabaseAccountStatus?.configured ? "Configuré" : "Pas encore configuré"}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={supabaseStatusLoading || !isSignedIn}
+                onClick={() => void refreshSupabaseStatus(true)}
+                style={{
+                  borderRadius: 999,
+                  border: `1px solid ${theme.primary}88`,
+                  background: supabaseStatusLoading ? "rgba(255,255,255,0.08)" : `${theme.primary}22`,
+                  color: theme.primary,
+                  padding: "8px 11px",
+                  fontSize: 11,
+                  fontWeight: 950,
+                  cursor: supabaseStatusLoading || !isSignedIn ? "not-allowed" : "pointer",
+                  opacity: supabaseStatusLoading || !isSignedIn ? 0.65 : 1,
+                }}
+              >
+                {supabaseStatusLoading ? "Test…" : "Tester Supabase"}
+              </button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+              {supabaseAccountStatus?.message || "Supabase sert uniquement à l’authentification minimale et à l’index léger. Les données lourdes restent prévues pour Cloudflare R2."}
+              {supabaseAccountStatus?.projectHost ? ` Projet : ${supabaseAccountStatus.projectHost}.` : ""}
+            </div>
+            <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+              {[
+                ["URL", supabaseAccountStatus?.projectUrlConfigured],
+                ["Clé publique", supabaseAccountStatus?.anonKeyConfigured],
+                ["Clé serveur", supabaseAccountStatus?.serviceRoleKeyConfigured],
+              ].map(([label, ok]) => (
+                <div
+                  key={String(label)}
+                  style={{
+                    borderRadius: 10,
+                    border: `1px solid ${ok ? "rgba(98,210,111,0.45)" : "rgba(255,204,102,0.45)"}`,
+                    background: ok ? "rgba(98,210,111,0.08)" : "rgba(255,204,102,0.08)",
+                    padding: "7px 8px",
+                    fontSize: 10.5,
+                    fontWeight: 900,
+                    color: ok ? "#9cffaa" : "#ffdd88",
+                  }}
+                >
+                  {String(label)} : {ok ? "OK" : "à remplir"}
+                </div>
+              ))}
+            </div>
+            {supabaseStatusResult && (
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 12,
+                  border: `1px solid ${
+                    supabaseStatusResult.status === "ok"
+                      ? "rgba(98,210,111,0.55)"
+                      : supabaseStatusResult.status === "error"
+                        ? "rgba(255,107,107,0.65)"
+                        : theme.borderSoft
+                  }`,
+                  background:
+                    supabaseStatusResult.status === "ok"
+                      ? "rgba(98,210,111,0.10)"
+                      : supabaseStatusResult.status === "error"
+                        ? "rgba(255,107,107,0.10)"
+                        : "rgba(255,255,255,0.055)",
+                  padding: 10,
+                  fontSize: 11,
+                  lineHeight: 1.35,
+                  color: supabaseStatusResult.status === "error" ? "#ff8c8c" : theme.text,
+                }}
+              >
+                <div style={{ fontWeight: 950, color: supabaseStatusResult.status === "ok" ? "#62d26f" : supabaseStatusResult.status === "error" ? "#ff8c8c" : theme.primary }}>
+                  {supabaseStatusResult.title}
+                </div>
+                {supabaseStatusResult.detail && (
+                  <div style={{ marginTop: 4, color: theme.textSoft }}>{supabaseStatusResult.detail}</div>
+                )}
+              </div>
+            )}
+          </div>
+
 
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 950, color: theme.primary, marginBottom: 8 }}>
