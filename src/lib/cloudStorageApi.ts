@@ -138,3 +138,35 @@ export async function recalculateAccountStorageUsage(): Promise<AccountStorageUs
     percentUsed: quotaBytes > 0 ? Math.min(100, Math.max(0, (usedBytes / quotaBytes) * 100)) : 0,
   };
 }
+
+export type StorageBillingInterval = "monthly" | "yearly";
+
+export async function createStorageCheckoutSession(args: {
+  planId: StoragePlanId | string;
+  interval: StorageBillingInterval;
+}): Promise<{ ok: boolean; url?: string; sessionId?: string; plan?: any; interval?: StorageBillingInterval; error?: string; missingEnv?: string; message?: string }> {
+  return apiPost("/account/storage/checkout", {
+    planId: args.planId,
+    interval: args.interval,
+  }) as any;
+}
+
+export async function verifyStorageCheckoutSession(sessionId: string): Promise<{ ok: boolean; activated?: boolean; plan?: any; preference?: AccountStoragePreference; usage?: AccountStorageUsage; message?: string; error?: string }> {
+  const id = encodeURIComponent(String(sessionId || ""));
+  const res: any = await apiGet(`/account/storage/checkout/verify?session_id=${id}`);
+  const rawUsage = res?.usage;
+  if (rawUsage?.preference) {
+    const preference = rawUsage.preference;
+    const usedBytes = toNumber(rawUsage.usedBytes ?? preference.used_bytes, 0);
+    const quotaBytes = toNumber(rawUsage.quotaBytes ?? preference.quota_bytes, 0);
+    res.usage = {
+      ...rawUsage,
+      preference,
+      usedBytes,
+      quotaBytes,
+      remainingBytes: Math.max(0, toNumber(rawUsage.remainingBytes, quotaBytes - usedBytes)),
+      percentUsed: quotaBytes > 0 ? Math.min(100, Math.max(0, (usedBytes / quotaBytes) * 100)) : 0,
+    };
+  }
+  return res;
+}

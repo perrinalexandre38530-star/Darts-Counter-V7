@@ -69,9 +69,12 @@ import {
   type StoragePlanId,
 } from "../lib/storagePlans";
 import {
+  createStorageCheckoutSession,
   getAccountStorageUsage,
   saveAccountStoragePreferences,
+  verifyStorageCheckoutSession,
   type AccountStorageUsage,
+  type StorageBillingInterval,
 } from "../lib/cloudStorageApi";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
@@ -1256,6 +1259,8 @@ function AccountPages({
   const [cloudUsage, setCloudUsage] = React.useState<AccountStorageUsage | null>(null);
   const [cloudUsageLoading, setCloudUsageLoading] = React.useState(false);
   const [cloudUsageError, setCloudUsageError] = React.useState<string | null>(null);
+  const [storageCheckoutLoading, setStorageCheckoutLoading] = React.useState<string | null>(null);
+  const processedStorageCheckoutRef = React.useRef<string | null>(null);
   const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
 
   React.useEffect(() => {
@@ -1323,6 +1328,66 @@ function AccountPages({
     setMessage(msg || "Préférence de stockage enregistrée.");
     void syncStoragePrefsToBackend(saved);
   }
+
+  async function startStorageCheckout(planId: StoragePlanId, interval: StorageBillingInterval) {
+    if (!isSignedIn) {
+      safeAlert("Connecte-toi avant d'activer un abonnement cloud.");
+      openAccountLogin();
+      return;
+    }
+    const saved = saveStoragePrefs({ selectedCloudPlan: planId, selectedDestination: "cloud_r2" });
+    setStoragePrefs(saved);
+    setMessage(null);
+    setCloudUsageError(null);
+    setStorageCheckoutLoading(`${planId}:${interval}`);
+    try {
+      await saveAccountStoragePreferences({ planId, storageDestination: "cloud_r2" });
+      const checkout = await createStorageCheckoutSession({ planId, interval });
+      if (!checkout?.url) {
+        throw new Error(checkout?.message || checkout?.error || "URL Stripe non retournée.");
+      }
+      window.location.href = checkout.url;
+    } catch (e: any) {
+      const missingEnv = e?.missingEnv || e?.data?.missingEnv || "";
+      setCloudUsageError(
+        missingEnv
+          ? `Prix Stripe non configuré côté .env : ${missingEnv}`
+          : e?.message || "Impossible de lancer le paiement Stripe."
+      );
+    } finally {
+      setStorageCheckoutLoading(null);
+      void refreshCloudUsage();
+    }
+  }
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = String(window.location.hash || "");
+    if (!hash.includes("storage_checkout=")) return;
+    const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const params = new URLSearchParams(query);
+    const statusParam = params.get("storage_checkout") || "";
+    const sessionId = params.get("storage_session_id") || "";
+    setPage("account_storage");
+    try {
+      const cleanHash = hash.split("?")[0] || "#/settings";
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${cleanHash}`);
+    } catch {}
+    if (statusParam === "cancel") {
+      setMessage("Paiement annulé. L'offre payante reste en attente tant que Stripe n'a pas confirmé.");
+      return;
+    }
+    if (!isSignedIn || !sessionId || sessionId === "cancelled" || processedStorageCheckoutRef.current === sessionId) return;
+    processedStorageCheckoutRef.current = sessionId;
+    setStorageCheckoutLoading("verify");
+    verifyStorageCheckoutSession(sessionId)
+      .then((res) => {
+        if (res?.usage) setCloudUsage(res.usage);
+        setMessage(res?.activated ? "Paiement confirmé : quota cloud activé." : "Paiement vérifié. Le quota sera activé dès confirmation Stripe.");
+      })
+      .catch((e: any) => setCloudUsageError(e?.message || "Impossible de vérifier le paiement Stripe."))
+      .finally(() => setStorageCheckoutLoading(null));
+  }, [isSignedIn]);
 
   React.useEffect(() => {
     setDisplayName(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
@@ -1725,36 +1790,32 @@ function AccountPages({
             <div style={{ display: "grid", gap: 8 }}>
               {getPublicStoragePlans().map((plan) => {
                 const active = storagePrefs.selectedCloudPlan === plan.id;
+                const activeOnServer = cloudUsage?.preference?.plan_id === plan.id;
+                const pendingOnServer = cloudUsage?.desiredPlanId === plan.id;
                 const monthly = formatStoragePrice(plan.priceMonthlyCents);
                 const yearly = plan.priceYearlyCents ? formatStoragePrice(plan.priceYearlyCents) : null;
+                const paid = plan.priceMonthlyCents > 0;
+                const monthlyLoading = storageCheckoutLoading === `${plan.id}:monthly`;
+                const yearlyLoading = storageCheckoutLoading === `${plan.id}:yearly`;
                 return (
-                  <button
+                  <div
                     key={plan.id}
-                    type="button"
-                    onClick={() =>
-                      persistStoragePrefs(
-                        {
-                          selectedCloudPlan: plan.id as StoragePlanId,
-                          selectedDestination: plan.id === "free_test_100mb" ? storagePrefs.selectedDestination : "cloud_r2",
-                        },
-                        `${plan.label} sélectionné (${plan.shortLabel}).`
-                      )
-                    }
                     style={{
                       textAlign: "left",
                       borderRadius: 14,
                       padding: 12,
-                      border: active ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
-                      background: active ? `${theme.primary}16` : "rgba(255,255,255,0.035)",
+                      border: active || activeOnServer ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+                      background: active || activeOnServer ? `${theme.primary}16` : "rgba(255,255,255,0.035)",
                       color: theme.text,
-                      cursor: "pointer",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 950, color: active ? theme.primary : "#fff" }}>{plan.label}</span>
+                      <span style={{ fontWeight: 950, color: active || activeOnServer ? theme.primary : "#fff" }}>{plan.label}</span>
                       <span style={{ fontSize: 11, fontWeight: 950, color: theme.primary }}>{plan.shortLabel}</span>
                       {plan.badge && <span style={{ fontSize: 10, fontWeight: 950, border: `1px solid ${theme.primary}88`, borderRadius: 999, padding: "2px 7px", color: theme.primary }}>{plan.badge}</span>}
-                      {active && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 950, color: theme.primary }}>CHOISI</span>}
+                      {activeOnServer && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 950, color: "#62d26f" }}>ACTIF</span>}
+                      {!activeOnServer && pendingOnServer && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 950, color: "#ffcc66" }}>EN ATTENTE</span>}
+                      {!activeOnServer && !pendingOnServer && active && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 950, color: theme.primary }}>CHOISI</span>}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 12, fontWeight: 900 }}>
                       {plan.priceMonthlyCents === 0 ? "0 €" : `${monthly} / mois`}{yearly ? ` · ${yearly} / an` : ""}
@@ -1767,7 +1828,77 @@ function AccountPages({
                         </span>
                       ))}
                     </div>
-                  </button>
+
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          persistStoragePrefs(
+                            {
+                              selectedCloudPlan: plan.id as StoragePlanId,
+                              selectedDestination: plan.id === "free_test_100mb" ? storagePrefs.selectedDestination : "cloud_r2",
+                            },
+                            `${plan.label} sélectionné (${plan.shortLabel}).`
+                          )
+                        }
+                        style={{
+                          borderRadius: 999,
+                          border: `1px solid ${theme.borderSoft}`,
+                          background: active ? `${theme.primary}22` : "rgba(255,255,255,0.055)",
+                          color: active ? theme.primary : theme.text,
+                          padding: "8px 10px",
+                          fontSize: 11,
+                          fontWeight: 950,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {paid ? "Préparer cette offre" : "Activer gratuit"}
+                      </button>
+
+                      {paid && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={!!storageCheckoutLoading}
+                            onClick={() => void startStorageCheckout(plan.id as StoragePlanId, "monthly")}
+                            style={{
+                              borderRadius: 999,
+                              border: `1px solid ${theme.primary}88`,
+                              background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                              color: "#000",
+                              padding: "8px 11px",
+                              fontSize: 11,
+                              fontWeight: 950,
+                              cursor: storageCheckoutLoading ? "wait" : "pointer",
+                              opacity: storageCheckoutLoading ? 0.7 : 1,
+                            }}
+                          >
+                            {monthlyLoading ? "Ouverture Stripe…" : `Payer mensuel ${monthly}`}
+                          </button>
+                          {yearly && (
+                            <button
+                              type="button"
+                              disabled={!!storageCheckoutLoading}
+                              onClick={() => void startStorageCheckout(plan.id as StoragePlanId, "yearly")}
+                              style={{
+                                borderRadius: 999,
+                                border: `1px solid ${theme.primary}55`,
+                                background: "rgba(255,255,255,0.075)",
+                                color: theme.primary,
+                                padding: "8px 11px",
+                                fontSize: 11,
+                                fontWeight: 950,
+                                cursor: storageCheckoutLoading ? "wait" : "pointer",
+                                opacity: storageCheckoutLoading ? 0.7 : 1,
+                              }}
+                            >
+                              {yearlyLoading ? "Ouverture Stripe…" : `Payer annuel ${yearly}`}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
