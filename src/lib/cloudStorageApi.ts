@@ -199,6 +199,27 @@ export async function getSupabaseAccountStatus(): Promise<SupabaseAccountStatus>
   return apiGet("/account/supabase/status") as any;
 }
 
+
+export type SupabaseTablesStatus = {
+  ok: boolean;
+  configured?: boolean;
+  projectHost?: string | null;
+  missingEnv?: string[];
+  tables?: Array<{
+    table: string;
+    ok: boolean;
+    exists?: boolean | null;
+    statusCode?: number | null;
+    message?: string;
+  }>;
+  message?: string;
+  error?: string;
+};
+
+export async function getSupabaseTablesStatus(): Promise<SupabaseTablesStatus> {
+  return apiGet("/account/supabase/tables-status") as any;
+}
+
 export type CloudStorageStatus = {
   ok: boolean;
   configured: boolean;

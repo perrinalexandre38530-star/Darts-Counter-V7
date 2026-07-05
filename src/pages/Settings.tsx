@@ -75,12 +75,14 @@ import {
   downloadCloudObject,
   getCloudStorageStatus,
   getSupabaseAccountStatus,
+  getSupabaseTablesStatus,
   saveAccountStoragePreferences,
   uploadCloudObject,
   verifyStorageCheckoutSession,
   type AccountStorageUsage,
   type CloudStorageStatus,
   type SupabaseAccountStatus,
+  type SupabaseTablesStatus,
   type StorageBillingInterval,
 } from "../lib/cloudStorageApi";
 
@@ -1275,6 +1277,7 @@ function AccountPages({
     objectKey?: string;
   } | null>(null);
   const [supabaseAccountStatus, setSupabaseAccountStatus] = React.useState<SupabaseAccountStatus | null>(null);
+  const [supabaseTablesStatus, setSupabaseTablesStatus] = React.useState<SupabaseTablesStatus | null>(null);
   const [supabaseStatusLoading, setSupabaseStatusLoading] = React.useState(false);
   const [supabaseStatusResult, setSupabaseStatusResult] = React.useState<{
     status: "ok" | "error" | "info";
@@ -1378,6 +1381,12 @@ function AccountPages({
     try {
       const status = await getSupabaseAccountStatus();
       setSupabaseAccountStatus(status);
+      try {
+        const tables = await getSupabaseTablesStatus();
+        setSupabaseTablesStatus(tables);
+      } catch (tableError) {
+        setSupabaseTablesStatus(null);
+      }
       const missing = Array.isArray(status?.missingEnv) ? status.missingEnv.filter(Boolean) : [];
       if (!status?.configured || missing.length) {
         setSupabaseStatusResult({
@@ -2003,6 +2012,34 @@ function AccountPages({
                   {String(label)} : {ok ? "OK" : "à remplir"}
                 </div>
               ))}
+            </div>
+            <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+              {(supabaseTablesStatus?.tables || [
+                { table: "user_public_index", ok: false },
+                { table: "cloud_object_index", ok: false },
+              ]).map((row) => {
+                const ok = !!row.ok;
+                return (
+                  <div
+                    key={String(row.table)}
+                    title={row.message || ""}
+                    style={{
+                      borderRadius: 10,
+                      border: `1px solid ${ok ? "rgba(98,210,111,0.45)" : "rgba(255,204,102,0.45)"}`,
+                      background: ok ? "rgba(98,210,111,0.08)" : "rgba(255,204,102,0.08)",
+                      padding: "7px 8px",
+                      fontSize: 10.5,
+                      fontWeight: 900,
+                      color: ok ? "#9cffaa" : "#ffdd88",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {String(row.table)} : {ok ? "OK" : "à tester"}
+                  </div>
+                );
+              })}
             </div>
             {supabaseStatusResult && (
               <div
