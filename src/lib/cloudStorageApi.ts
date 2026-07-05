@@ -170,3 +170,42 @@ export async function verifyStorageCheckoutSession(sessionId: string): Promise<{
   }
   return res;
 }
+
+export type CloudStorageStatus = {
+  ok: boolean;
+  configured: boolean;
+  provider?: string;
+  bucket?: string | null;
+  publicBaseUrlConfigured?: boolean;
+  maxUploadBytes?: number;
+  canUpload?: boolean;
+  message?: string;
+};
+
+export async function getCloudStorageStatus(): Promise<CloudStorageStatus> {
+  return apiGet("/account/cloud-storage/status") as any;
+}
+
+export async function uploadCloudObject(args: {
+  objectKey?: string;
+  objectType: string;
+  sport?: string | null;
+  title?: string | null;
+  mimeType?: string;
+  payload?: any;
+  data?: any;
+  content?: string;
+  contentBase64?: string;
+  gzip?: boolean;
+  metadata?: Record<string, any>;
+}): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
+  return apiPost("/account/cloud-storage/upload", args) as any;
+}
+
+export async function downloadCloudObject(id: string): Promise<{ ok: boolean; object: CloudObjectIndexItem; mode?: "json" | "text" | "base64"; content?: any; text?: string; contentBase64?: string; error?: string }> {
+  return apiGet(`/account/cloud-storage/download/${encodeURIComponent(String(id || ""))}`) as any;
+}
+
+export async function deleteCloudObjectRemote(id: string): Promise<{ ok: boolean; usage: AccountStorageUsage; error?: string }> {
+  return apiDelete(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}`) as any;
+}

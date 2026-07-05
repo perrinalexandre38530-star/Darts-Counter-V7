@@ -71,9 +71,12 @@ import {
 import {
   createStorageCheckoutSession,
   getAccountStorageUsage,
+  getCloudStorageStatus,
   saveAccountStoragePreferences,
+  uploadCloudObject,
   verifyStorageCheckoutSession,
   type AccountStorageUsage,
+  type CloudStorageStatus,
   type StorageBillingInterval,
 } from "../lib/cloudStorageApi";
 
@@ -1259,6 +1262,8 @@ function AccountPages({
   const [cloudUsage, setCloudUsage] = React.useState<AccountStorageUsage | null>(null);
   const [cloudUsageLoading, setCloudUsageLoading] = React.useState(false);
   const [cloudUsageError, setCloudUsageError] = React.useState<string | null>(null);
+  const [cloudStorageStatus, setCloudStorageStatus] = React.useState<CloudStorageStatus | null>(null);
+  const [cloudStorageTestLoading, setCloudStorageTestLoading] = React.useState(false);
   const [storageCheckoutLoading, setStorageCheckoutLoading] = React.useState<string | null>(null);
   const processedStorageCheckoutRef = React.useRef<string | null>(null);
   const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
@@ -1294,6 +1299,12 @@ function AccountPages({
     try {
       const usage = await getAccountStorageUsage();
       setCloudUsage(usage);
+      try {
+        const status = await getCloudStorageStatus();
+        setCloudStorageStatus(status);
+      } catch {
+        setCloudStorageStatus(null);
+      }
     } catch (e: any) {
       setCloudUsageError(e?.message || "Impossible de charger le quota cloud.");
     } finally {
@@ -1327,6 +1338,44 @@ function AccountPages({
     setStoragePrefs(saved);
     setMessage(msg || "Préférence de stockage enregistrée.");
     void syncStoragePrefsToBackend(saved);
+  }
+
+  async function runCloudStorageSmokeTest() {
+    if (!isSignedIn) {
+      safeAlert("Connecte-toi avant de tester le stockage cloud.");
+      openAccountLogin();
+      return;
+    }
+    setCloudStorageTestLoading(true);
+    setCloudUsageError(null);
+    setMessage(null);
+    try {
+      const result = await uploadCloudObject({
+        objectType: "storage_smoke_test",
+        sport: "system",
+        title: "Test stockage R2",
+        payload: {
+          ok: true,
+          type: "storage_smoke_test",
+          createdAt: new Date().toISOString(),
+          app: "Darts Counter V7",
+        },
+        gzip: true,
+        metadata: { source: "settings_smoke_test" },
+      });
+      if (result?.usage) setCloudUsage(result.usage);
+      setMessage(`Test R2 OK : objet créé (${result?.object?.object_key || "clé inconnue"}).`);
+    } catch (e: any) {
+      const missing = e?.missingEnv || e?.data?.missingEnv;
+      setCloudUsageError(
+        Array.isArray(missing) && missing.length
+          ? `Cloudflare R2 non configuré dans le .env : ${missing.join(", ")}`
+          : e?.message || "Test stockage cloud impossible."
+      );
+    } finally {
+      setCloudStorageTestLoading(false);
+      void refreshCloudUsage();
+    }
   }
 
   async function startStorageCheckout(planId: StoragePlanId, interval: StorageBillingInterval) {
@@ -1725,6 +1774,41 @@ function AccountPages({
             </div>
           </div>
 
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  Cloudflare R2
+                </div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: cloudStorageStatus?.configured ? "#62d26f" : "#ffcc66" }}>
+                  {cloudStorageStatus?.configured ? "Configuré" : "Pas encore configuré"}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={cloudStorageTestLoading || !isSignedIn}
+                onClick={() => void runCloudStorageSmokeTest()}
+                style={{
+                  borderRadius: 999,
+                  border: `1px solid ${theme.primary}88`,
+                  background: cloudStorageTestLoading ? "rgba(255,255,255,0.08)" : `${theme.primary}22`,
+                  color: theme.primary,
+                  padding: "8px 11px",
+                  fontSize: 11,
+                  fontWeight: 950,
+                  cursor: cloudStorageTestLoading || !isSignedIn ? "not-allowed" : "pointer",
+                  opacity: cloudStorageTestLoading || !isSignedIn ? 0.65 : 1,
+                }}
+              >
+                {cloudStorageTestLoading ? "Test…" : "Tester R2"}
+              </button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+              {cloudStorageStatus?.message || "Ce test envoie un petit JSON compressé vers R2. Il échouera normalement tant que R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY ne sont pas remplis dans le .env."}
+              {cloudStorageStatus?.bucket ? ` Bucket : ${cloudStorageStatus.bucket}.` : ""}
+            </div>
+          </div>
+
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 950, color: theme.primary, marginBottom: 8 }}>
               Où stocker les données ?
@@ -1743,7 +1827,7 @@ function AccountPages({
                           preferExternalStorage: dest.id === "external_sd_manual" || dest.id === "device_file",
                         },
                         dest.id === "cloud_r2"
-                          ? "Cloud R2 sélectionné. La synchro réelle restera bloquée par quota et abonnement quand le Worker sera branché."
+                          ? "Cloud R2 sélectionné. Les uploads réels seront bloqués tant que les clés R2 ne seront pas remplies dans le .env."
                           : "Destination locale enregistrée."
                       )
                     }
