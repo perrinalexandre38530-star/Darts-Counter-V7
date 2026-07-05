@@ -68,6 +68,11 @@ import {
   type StorageDestinationId,
   type StoragePlanId,
 } from "../lib/storagePlans";
+import {
+  getAccountStorageUsage,
+  saveAccountStoragePreferences,
+  type AccountStorageUsage,
+} from "../lib/cloudStorageApi";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1248,6 +1253,9 @@ function AccountPages({
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
   const [storageEstimate, setStorageEstimate] = React.useState<{ usage: number; quota: number; free: number }>(() => ({ usage: 0, quota: 0, free: 0 }));
+  const [cloudUsage, setCloudUsage] = React.useState<AccountStorageUsage | null>(null);
+  const [cloudUsageLoading, setCloudUsageLoading] = React.useState(false);
+  const [cloudUsageError, setCloudUsageError] = React.useState<string | null>(null);
   const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
 
   React.useEffect(() => {
@@ -1270,10 +1278,50 @@ function AccountPages({
     };
   }, []);
 
+  const refreshCloudUsage = React.useCallback(async () => {
+    if (!isSignedIn) {
+      setCloudUsage(null);
+      setCloudUsageError(null);
+      return;
+    }
+    setCloudUsageLoading(true);
+    setCloudUsageError(null);
+    try {
+      const usage = await getAccountStorageUsage();
+      setCloudUsage(usage);
+    } catch (e: any) {
+      setCloudUsageError(e?.message || "Impossible de charger le quota cloud.");
+    } finally {
+      setCloudUsageLoading(false);
+    }
+  }, [isSignedIn]);
+
+  React.useEffect(() => {
+    if (page !== "account_storage") return;
+    void refreshCloudUsage();
+  }, [page, refreshCloudUsage]);
+
+  async function syncStoragePrefsToBackend(saved: typeof storagePrefs) {
+    if (!isSignedIn) return;
+    try {
+      const res = await saveAccountStoragePreferences({
+        planId: saved.selectedCloudPlan,
+        storageDestination: saved.selectedDestination,
+      });
+      await refreshCloudUsage();
+      if (res?.requiresPayment) {
+        setMessage(res.paymentMessage || "Offre préparée. Le quota cloud ne sera activé qu'après paiement.");
+      }
+    } catch (e: any) {
+      setCloudUsageError(e?.message || "Préférence locale enregistrée, mais synchro compte impossible.");
+    }
+  }
+
   function persistStoragePrefs(next: Partial<typeof storagePrefs>, msg?: string) {
     const saved = saveStoragePrefs(next);
     setStoragePrefs(saved);
     setMessage(msg || "Préférence de stockage enregistrée.");
+    void syncStoragePrefsToBackend(saved);
   }
 
   React.useEffect(() => {
@@ -1555,6 +1603,60 @@ function AccountPages({
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
               OPFS : {storageCapabilities.opfs ? "OK" : "non dispo"} · Persistance : {storageCapabilities.persistentStorage ? "OK" : "non dispo"} · Export fichier : {storageCapabilities.filePicker ? "sélecteur avancé" : "fallback téléchargement"}
+            </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  Quota cloud du compte
+                </div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: theme.primary }}>
+                  {!isSignedIn
+                    ? "Connecte-toi pour synchroniser un quota cloud"
+                    : cloudUsageLoading
+                      ? "Chargement…"
+                      : cloudUsage
+                        ? `${formatStorageBytes(cloudUsage.usedBytes)} / ${formatStorageBytes(cloudUsage.quotaBytes)}`
+                        : "Non initialisé"}
+                </div>
+              </div>
+              {isSignedIn && (
+                <button
+                  type="button"
+                  onClick={() => void refreshCloudUsage()}
+                  style={{
+                    borderRadius: 999,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(255,255,255,0.055)",
+                    color: theme.text,
+                    padding: "8px 10px",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Actualiser
+                </button>
+              )}
+            </div>
+            {cloudUsage && (
+              <>
+                <div style={{ marginTop: 8, height: 8, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,0.08)", border: `1px solid ${theme.borderSoft}` }}>
+                  <div style={{ width: `${Math.min(100, Math.max(0, cloudUsage.percentUsed))}%`, height: "100%", background: theme.primary }} />
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+                  Plan actif : <b>{String(cloudUsage.preference?.plan_id || "free_test_100mb")}</b> · Restant : <b>{formatStorageBytes(cloudUsage.remainingBytes)}</b>
+                  {cloudUsage.requiresPayment && (
+                    <span style={{ color: "#ffcc66" }}> · paiement requis pour activer {String(cloudUsage.desiredPlanId || "l'offre choisie")}</span>
+                  )}
+                </div>
+              </>
+            )}
+            {cloudUsageError && <div style={{ marginTop: 6, fontSize: 11, color: "#ff6b6b", lineHeight: 1.35 }}>{cloudUsageError}</div>}
+            <div style={{ marginTop: 6, fontSize: 10.5, color: theme.textSoft, lineHeight: 1.35 }}>
+              Sécurité : sélectionner une offre payante ne donne pas le quota tant que Stripe n'a pas confirmé l'abonnement. Le gratuit reste limité à 100 Mo.
             </div>
           </div>
 
