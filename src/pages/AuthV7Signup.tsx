@@ -1,17 +1,15 @@
 // ============================================
 // src/pages/AuthV7Signup.tsx
-// PROFILES V7 — Création compte email + mot de passe
-// - NAS: création compte finale via backend NAS
-// - Supabase: compat legacy si provider encore actif
+// Auth V7 — Création compte public Supabase par défaut
+// Accès NAS privé uniquement via code d’invitation.
 // ============================================
 import React from "react";
+import { __SUPABASE_ENV__ } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
 import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "../lib/remoteSnapshotRestore";
-import { getOnlineProviderLabel, isNasProviderEnabled } from "../lib/serverConfig";
 
-type Props = {
-  go: (t: any, p?: any) => void;
-};
+type Props = { go: (t: any, p?: any) => void };
+type AccessMode = "public" | "invite";
 
 function hasLinkedLocalProfile(userId?: string | null): boolean {
   try {
@@ -20,17 +18,11 @@ function hasLinkedLocalProfile(userId?: string | null): boolean {
     const store = (window as any)?.__appStore?.store ?? null;
     const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
     return profiles.some((p: any) => String((p?.privateInfo || {})?.onlineUserId || "") === uid);
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 function armNasProfileOnboarding(userId?: string | null) {
-  try {
-    const uid = String(userId || "").trim();
-    if (!uid) return;
-    localStorage.setItem("dc_nas_profile_onboarding_uid", uid);
-  } catch {}
+  try { const uid = String(userId || "").trim(); if (uid) localStorage.setItem("dc_nas_profile_onboarding_uid", uid); } catch {}
 }
 
 async function hasRemoteSnapshot(): Promise<boolean> {
@@ -38,9 +30,7 @@ async function hasRemoteSnapshot(): Promise<boolean> {
     const res: any = await onlineApi.pullStoreSnapshot();
     if (res?.status !== "ok") return false;
     return hasMeaningfulRemoteSnapshotPayload(res?.payload ?? null);
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 async function restoreRemoteSnapshotIntoLocalStore(): Promise<boolean> {
@@ -58,46 +48,53 @@ export default function AuthV7Signup({ go }: Props) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
+  const [invitationCode, setInvitationCode] = React.useState("");
+  const [accessMode, setAccessMode] = React.useState<AccessMode>("public");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
 
-  const nasMode = isNasProviderEnabled();
-  const providerLabel = getOnlineProviderLabel().toUpperCase();
+  const isInviteMode = accessMode === "invite";
 
   const onSubmit = async () => {
     setError(null);
     setInfo(null);
     const e = email.trim();
+    const invite = invitationCode.trim();
     if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
     if (!password || password.length < 6) return setError("Mot de passe : 6 caractères minimum.");
     if (password !== confirm) return setError("Les mots de passe ne correspondent pas.");
+    if (isInviteMode && !invite) return setError("Entre le code d’invitation privé que tu as reçu.");
+
+    if (!isInviteMode && !__SUPABASE_ENV__.hasEnv) {
+      setError(`Compte public Supabase non configuré côté application (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants).\nURL actuelle: ${__SUPABASE_ENV__.url || "(vide)"}`);
+      return;
+    }
 
     setLoading(true);
     try {
       const nickname = e.split("@")[0] || "Player";
-      const session = await onlineApi.signup({ email: e, password, nickname });
+      const session = isInviteMode
+        ? await onlineApi.signupWithInvitation({ email: e, password, nickname, invitationCode: invite })
+        : await onlineApi.signupPublic({ email: e, password, nickname });
 
-      if (nasMode || session?.token || session?.user?.id) {
+      if (session?.token || session?.user?.id) {
         const uid = String(session?.user?.id || "").trim();
+        setInfo(isInviteMode ? "Compte invité créé et connecté ✅" : "Compte public créé ✅");
 
-        let restored = false;
-        if (nasMode && uid) {
-          restored = await restoreRemoteSnapshotIntoLocalStore();
+        if (isInviteMode && uid) {
+          const restored = await restoreRemoteSnapshotIntoLocalStore();
+          const linked = hasLinkedLocalProfile(uid);
+          const remote = restored || await hasRemoteSnapshot();
+          if (!linked && !remote) {
+            armNasProfileOnboarding(uid);
+            go("profiles", { view: "locals", nasProfileOnboarding: true, autoCreate: true, returnTo: { tab: "gameSelect" } });
+            return;
+          }
         }
 
-        const linked = hasLinkedLocalProfile(uid);
-        const remote = nasMode ? (restored || await hasRemoteSnapshot()) : false;
-        setInfo("Compte créé et connecté ✅");
-
-        if (nasMode && uid && !linked && !remote) {
-          armNasProfileOnboarding(uid);
-          go("profiles", {
-            view: "locals",
-            nasProfileOnboarding: true,
-            autoCreate: true,
-            returnTo: { tab: "gameSelect" },
-          });
+        if (!isInviteMode && !session?.token) {
+          setInfo("Compte public créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app.");
           return;
         }
 
@@ -105,9 +102,7 @@ export default function AuthV7Signup({ go }: Props) {
         return;
       }
 
-      setInfo(
-        "Compte créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app."
-      );
+      setInfo("Compte public créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app.");
     } catch (e: any) {
       setError(e?.message || "Création de compte impossible.");
     } finally {
@@ -116,82 +111,56 @@ export default function AuthV7Signup({ go }: Props) {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "calc(100dvh - 88px)",
-        display: "grid",
-        placeItems: "center",
-        padding: "18px 12px",
-      }}
-    >
-      <div
-        style={{
-          width: "min(420px, 92vw)",
-          borderRadius: 22,
-          padding: 16,
-          background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
-          border: "1px solid rgba(255,255,255,.10)",
-          boxShadow: "0 22px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(0,0,0,.25) inset",
-        }}
-      >
-        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Créer un compte</div>
-        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
-          Provider online actif : <b>{providerLabel}</b>
+    <div style={{ minHeight: "calc(100dvh - 88px)", display: "grid", placeItems: "center", padding: "18px 12px" }}>
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>
+          {isInviteMode ? "Créer un compte invité" : "Créer un compte public"}
+        </div>
+        <div style={subtitleStyle}>
+          {isInviteMode
+            ? "Accès privé réservé aux personnes qui ont reçu un code d’invitation."
+            : "Compte public Multisports : authentification Supabase, stockage cloud R2 selon quota."}
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Adresse email"
-            autoComplete="email"
-            style={inputStyle}
-          />
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Mot de passe (6+ caractères)"
-            type="password"
-            autoComplete="new-password"
-            style={inputStyle}
-          />
-          <input
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Confirmer le mot de passe"
-            type="password"
-            autoComplete="new-password"
-            style={inputStyle}
-          />
+          {isInviteMode ? <input value={invitationCode} onChange={(e) => setInvitationCode(e.target.value)} placeholder="Code d’invitation privé" autoComplete="one-time-code" style={inputStyle} /> : null}
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Adresse email" autoComplete="email" style={inputStyle} />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mot de passe (6+ caractères)" type="password" autoComplete="new-password" style={inputStyle} />
+          <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Confirmer le mot de passe" type="password" autoComplete="new-password" style={inputStyle} />
 
           <button onClick={onSubmit} disabled={loading} style={primaryBtnStyle}>
-            {loading ? "Création..." : "Créer le compte"}
+            {loading ? "Création..." : isInviteMode ? "Créer le compte avec invitation" : "Créer le compte public"}
           </button>
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <button onClick={() => go("auth_v7_login")} style={linkBtnStyle}>
-              J’ai déjà un compte
-            </button>
-            <button onClick={() => go("auth_forgot")} style={linkBtnStyle}>
-              Mot de passe oublié ?
-            </button>
+            <button onClick={() => go("auth_v7_login")} style={linkBtnStyle}>J’ai déjà un compte</button>
+            <button onClick={() => go("auth_forgot")} style={linkBtnStyle}>Mot de passe oublié ?</button>
           </div>
 
-          {error ? (
-            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{error}</div>
-          ) : null}
-          {info ? (
-            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{info}</div>
-          ) : null}
-
-          <button onClick={() => go("auth_start")} style={secondaryBtnStyle}>
-            Retour
+          <button onClick={() => { setError(null); setInfo(null); setAccessMode(isInviteMode ? "public" : "invite"); }} style={inviteBtnStyle}>
+            {isInviteMode ? "← Revenir au compte public" : "J’ai un code d’invitation"}
           </button>
+
+          {error ? <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{error}</div> : null}
+          {info ? <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{info}</div> : null}
+
+          <button onClick={() => go("auth_start")} style={secondaryBtnStyle}>Retour</button>
         </div>
       </div>
     </div>
   );
 }
+
+const cardStyle: React.CSSProperties = {
+  width: "min(420px, 92vw)",
+  borderRadius: 22,
+  padding: 16,
+  background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
+  border: "1px solid rgba(255,255,255,.10)",
+  boxShadow: "0 22px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(0,0,0,.25) inset",
+};
+
+const subtitleStyle: React.CSSProperties = { fontSize: 12.5, opacity: 0.82, marginBottom: 12, lineHeight: 1.35 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -225,6 +194,17 @@ const secondaryBtnStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,.12)",
   background: "rgba(255,255,255,.05)",
   color: "rgba(255,255,255,.92)",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const inviteBtnStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 14,
+  padding: "10px 12px",
+  border: "1px dashed rgba(54,241,255,.35)",
+  background: "rgba(54,241,255,.06)",
+  color: "rgba(210,250,255,.95)",
   cursor: "pointer",
   fontWeight: 900,
 };

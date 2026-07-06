@@ -116,12 +116,14 @@ export type SignupPayload = {
   email?: string;
   nickname: string;
   password?: string;
+  invitationCode?: string;
 };
 
 export type LoginPayload = {
   email?: string;
   nickname?: string;
   password?: string;
+  invitationCode?: string;
 };
 
 export type UpdateProfilePayload = {
@@ -805,19 +807,13 @@ function normalizeAuthErrorMessage(msg: string) {
 // ============================================================
 // Public AUTH
 // ============================================================
-async function signup(payload: SignupPayload): Promise<AuthSession> {
-  if (isNasProviderEnabled()) {
-    const s = await nasSignup(payload);
-    saveAuthToLS(s);
-    return s;
-  }
-
+async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
   const password = payload.password?.trim();
   const nickname = payload.nickname?.trim() || email || "Player";
 
   if (!email || !password) {
-    throw new Error("Pour créer un compte online, email et mot de passe sont requis.");
+    throw new Error("Pour créer un compte public, email et mot de passe sont requis.");
   }
 
   const { data, error } = await supabase.auth.signUp({
@@ -850,31 +846,55 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
   }
 
   const live = await buildAuthSessionFromSupabase();
-  if (!live) throw new Error("Compte créé mais session introuvable (réessaie).");
+  if (!live) throw new Error("Compte public créé mais session introuvable (réessaie).");
   return live;
 }
 
-async function login(payload: LoginPayload): Promise<AuthSession> {
-  if (isNasProviderEnabled()) {
-    const s = await nasLogin(payload);
-    saveAuthToLS(s);
-    return s;
-  }
-
+async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
   const password = payload.password?.trim();
 
   if (!email || !password) {
-    throw new Error("Email et mot de passe sont requis pour se connecter.");
+    throw new Error("Email et mot de passe requis pour se connecter au compte public.");
   }
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw new Error(normalizeAuthErrorMessage(error.message));
 
   const session = await buildAuthSessionFromSupabase();
-  if (!session) throw new Error("Impossible de récupérer la session après la connexion.");
+  if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
   markAuthReady(!!session?.token);
-      return session;
+  return session;
+}
+
+async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession> {
+  const invitationCode = String(payload.invitationCode || "").trim();
+  if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
+  const s = await nasSignup({ ...payload, invitationCode });
+  saveAuthToLS(s);
+  return s;
+}
+
+async function loginWithInvitation(payload: LoginPayload): Promise<AuthSession> {
+  const invitationCode = String(payload.invitationCode || "").trim();
+  if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
+  const s = await nasLogin({ ...payload, invitationCode });
+  saveAuthToLS(s);
+  return s;
+}
+
+async function signup(payload: SignupPayload): Promise<AuthSession> {
+  // Compatibilité : les anciens appels restent branchés sur le provider historique.
+  // Les écrans V7 utilisent désormais explicitement signupPublic ou signupWithInvitation.
+  if (isNasProviderEnabled()) return signupWithInvitation(payload);
+  return signupPublic(payload);
+}
+
+async function login(payload: LoginPayload): Promise<AuthSession> {
+  // Compatibilité : les anciens appels restent branchés sur le provider historique.
+  // Les écrans V7 utilisent désormais explicitement loginPublic ou loginWithInvitation.
+  if (isNasProviderEnabled()) return loginWithInvitation(payload);
+  return loginPublic(payload);
 }
 
 // ============================================================
@@ -1863,6 +1883,10 @@ async function mediaHealth(): Promise<any> {
 export const onlineApi = {
   signup,
   login,
+  signupPublic,
+  loginPublic,
+  signupWithInvitation,
+  loginWithInvitation,
   restoreSession,
   ensureAnonymousSession,
   ensureAutoSession,

@@ -2,9 +2,8 @@
 // src/lib/serverConfig.ts
 // Configuration provider Online / NAS
 // - VITE_ONLINE_PROVIDER=supabase | hybrid | nas
-// - supabase : auth+online Supabase, pas de sync NAS
-// - hybrid   : auth Supabase + sync data NAS
-// - nas      : auth/profil/snapshot NAS
+// - Le provider principal peut rester NAS pour le compte fondateur,
+//   mais le client Supabase doit rester disponible pour les comptes publics.
 // ============================================================
 
 const LEGACY_BAD_HOSTS = [
@@ -51,12 +50,18 @@ export function getNasApiUrl(): string {
 }
 
 export function getOnlineProviderLabel(): string {
-  if (ONLINE_PROVIDER === "nas") return "nas";
-  if (isNasDataSyncEnabled()) return "nas";
-  return "nas";
+  if (ONLINE_PROVIDER === "nas") return "public Supabase + NAS/R2";
+  if (isNasDataSyncEnabled()) return "public Supabase + NAS/R2";
+  return "public Supabase";
 }
 
-
 export function isSupabaseHardDisabledInNasMode(): boolean {
-  return ONLINE_PROVIDER === "nas";
+  // Ancien comportement : en mode NAS, Supabase était totalement neutralisé.
+  // Nouveau comportement : on garde Supabase actif pour les comptes publics.
+  // Pour le couper volontairement en dépannage, mettre :
+  // VITE_DISABLE_SUPABASE_CLIENT_IN_NAS=true
+  const raw = String((import.meta as any)?.env?.VITE_DISABLE_SUPABASE_CLIENT_IN_NAS || "")
+    .trim()
+    .toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }

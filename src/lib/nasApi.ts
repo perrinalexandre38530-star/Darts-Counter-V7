@@ -411,6 +411,7 @@ export async function nasLogin(payload: LoginPayload): Promise<AuthSession> {
       email: payload.email,
       password: payload.password,
       nickname: payload.nickname,
+      invitationCode: (payload as any).invitationCode,
     }),
   });
   const session = buildSessionFromResponse(json, payload.email);
@@ -429,6 +430,7 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
       email: payload.email,
       password: payload.password,
       nickname: payload.nickname,
+      invitationCode: (payload as any).invitationCode,
     }),
   });
   const session = buildSessionFromResponse(json, payload.email);
