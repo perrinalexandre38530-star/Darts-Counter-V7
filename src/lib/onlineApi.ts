@@ -716,6 +716,79 @@ async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, prof
   }
 }
 
+function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): AuthSession {
+  const user = json?.user || {};
+  const profile = json?.profile || null;
+  const token = String(json?.token || json?.accessToken || json?.access_token || "").trim();
+  const refreshToken = String(json?.refreshToken || json?.refresh_token || "").trim();
+  const session: AuthSession = {
+    token,
+    refreshToken,
+    expiresAt: json?.expiresAt ? Date.parse(String(json.expiresAt)) : (typeof json?.expiresAt === "number" ? json.expiresAt : null),
+    userId: String(user?.id || json?.userId || "").trim() || null,
+    user: {
+      id: String(user?.id || json?.userId || "").trim(),
+      email: user?.email || fallbackEmail || undefined,
+      nickname: String(user?.nickname || profile?.displayName || profile?.nickname || (fallbackEmail ? String(fallbackEmail).split("@")[0] : "Player")),
+      createdAt: Number(user?.createdAt || (user?.created_at ? Date.parse(user.created_at) : Date.now())),
+    },
+    profile,
+  };
+  if (!session.token || !session.user?.id) {
+    throw new Error("Réponse bridge NAS/R2 invalide : session absente.");
+  }
+  saveNasTokens(session);
+  saveAuthToLS(session);
+  markAuthReady(true);
+  return session;
+}
+
+async function publicSupabaseViaBackend(kind: "login" | "register", payload: LoginPayload | SignupPayload): Promise<AuthSession> {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 20000) : null;
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`${getApiUrl()}/auth/supabase/${kind}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: payload.email,
+          password: payload.password,
+          nickname: (payload as any).nickname || (payload.email ? String(payload.email).split("@")[0] : "Player"),
+        }),
+        signal: ctrl?.signal,
+      });
+    } catch (networkError: any) {
+      const msg = String(networkError?.message || networkError || "");
+      throw new Error(`Impossible de joindre le backend NAS/R2 pour ${kind === "register" ? "créer" : "connecter"} le compte public. URL: ${getApiUrl()}. Détail: ${msg || "erreur réseau"}`);
+    }
+    const text = await res.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!res.ok) {
+      throw new Error(json?.message || json?.error || text || `Bridge public Supabase HTTP ${res.status}`);
+    }
+    return buildSessionFromNasBridgeResponse(json, payload.email);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
+async function tryNasLoginWithoutInvitation(payload: LoginPayload): Promise<AuthSession | null> {
+  try {
+    const session = await nasLogin({ email: payload.email, password: payload.password, nickname: payload.nickname });
+    if (session?.token) {
+      saveAuthToLS(session);
+      markAuthReady(true);
+      return session;
+    }
+  } catch (error) {
+    console.warn("[onlineApi] fallback NAS login skipped", error);
+  }
+  return null;
+}
+
 async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) {
@@ -834,15 +907,15 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
     data = result.data;
     error = result.error;
   } catch (fetchError: any) {
-    const msg = String(fetchError?.message || "");
-    if (/failed to fetch|network|load failed/i.test(msg)) {
-      throw new Error(`Impossible de joindre Supabase Auth pour créer le compte public. Vérifie que le build utilise bien VITE_SUPABASE_URL=${__SUPABASE_ENV__.url || "(vide)"} et que le téléphone a accès à Internet.`);
-    }
-    throw fetchError;
+    console.warn("[onlineApi] Supabase direct signup failed -> backend bridge fallback", fetchError);
+    return await publicSupabaseViaBackend("register", { email, password, nickname });
   }
 
   if (error) {
     const msg = String(error.message || "");
+    if (/failed to fetch|network|load failed/i.test(msg)) {
+      return await publicSupabaseViaBackend("register", { email, password, nickname });
+    }
     if (/already registered|user already registered|already exists/i.test(msg)) {
       throw new Error("Un compte public existe déjà avec cet email. Utilise “J’ai déjà un compte”, ou supprime complètement le compte depuis Réglages > Compte avant de le recréer.");
     }
@@ -850,6 +923,7 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
   }
 
   if (!data?.session) {
+    // Si Supabase demande une confirmation email, on ne force pas la connexion.
     const pending: AuthSession = {
       token: "",
       refreshToken: "",
@@ -867,9 +941,15 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
     return pending;
   }
 
-  const live = await buildAuthSessionFromSupabase();
-  if (!live) throw new Error("Compte public créé mais session introuvable (réessaie).");
-  return live;
+  try {
+    const live = await buildAuthSessionFromSupabase();
+    if (live) return live;
+  } catch (bridgeError) {
+    console.warn("[onlineApi] direct signup bridge failed -> backend bridge fallback", bridgeError);
+    return await publicSupabaseViaBackend("login", { email, password, nickname });
+  }
+
+  throw new Error("Compte public créé mais session introuvable (réessaie).");
 }
 
 async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
@@ -877,16 +957,44 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
   const password = payload.password?.trim();
 
   if (!email || !password) {
-    throw new Error("Email et mot de passe requis pour se connecter au compte public.");
+    throw new Error("Email et mot de passe requis pour se connecter.");
   }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new Error(normalizeAuthErrorMessage(error.message));
+  let publicError: any = null;
 
-  const session = await buildAuthSessionFromSupabase();
-  if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
-  markAuthReady(!!session?.token);
-  return session;
+  if (__SUPABASE_ENV__.hasEnv) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw new Error(normalizeAuthErrorMessage(error.message));
+
+      const session = await buildAuthSessionFromSupabase();
+      if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
+      markAuthReady(!!session?.token);
+      return session;
+    } catch (error: any) {
+      publicError = error;
+      console.warn("[onlineApi] public Supabase direct login failed -> trying backend/NAS fallback", error);
+
+      // Si le navigateur/mobile n’arrive pas à joindre Supabase directement, on passe
+      // par le backend NAS qui contacte Supabase côté serveur puis crée le bridge R2.
+      const msg = String(error?.message || "");
+      if (/failed to fetch|network|load failed|bridge|timeout|supabase/i.test(msg)) {
+        try {
+          return await publicSupabaseViaBackend("login", { email, password, nickname: payload.nickname });
+        } catch (backendError) {
+          console.warn("[onlineApi] public backend login failed", backendError);
+        }
+      }
+    }
+  }
+
+  // Connexion unifiée : les comptes NAS invités/fondateurs déjà créés se reconnectent
+  // ici avec email + mot de passe, sans retaper le code d’invitation.
+  const nasSession = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
+  if (nasSession) return nasSession;
+
+  if (publicError) throw publicError instanceof Error ? publicError : new Error(String(publicError));
+  throw new Error("Connexion impossible : compte public Supabase ou compte invité NAS introuvable.");
 }
 
 async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession> {
@@ -981,11 +1089,19 @@ async function waitOnlineAuthReady(timeoutMs = 4000): Promise<boolean> {
   return true;
 }
 async function restoreSession(): Promise<AuthSession | null> {
+  // Mode hybride : une session NAS/R2 issue du bridge Supabase ou d’un compte invité
+  // est une vraie session connectée. On ne l’efface plus au démarrage sous prétexte
+  // que Supabase n’a pas de session navigateur active.
+  const cachedNas = loadAuthFromLS();
+  if (isValidNasSession(cachedNas)) {
+    __nasLastGoodSession = cachedNas;
+    saveNasTokens(cachedNas, { silent: true });
+    markAuthReady(true);
+    return cachedNas;
+  }
+
   if (isNasProviderEnabled()) {
-    // LOT 2: pas de réseau NAS automatique dans restoreSession.
-    // On renvoie seulement la session locale en cache, si elle existe.
-    const cached = loadAuthFromLS();
-    return cached?.token ? cached : null;
+    return null;
   }
 
   try {

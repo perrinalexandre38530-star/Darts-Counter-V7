@@ -49,7 +49,15 @@ export default function AuthV7Signup({ go }: Props) {
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [invitationCode, setInvitationCode] = React.useState("");
-  const [accessMode, setAccessMode] = React.useState<AccessMode>("public");
+  const [accessMode, setAccessMode] = React.useState<AccessMode>(() => {
+    try {
+      const flag = localStorage.getItem("dc_auth_signup_invite_mode") === "1";
+      if (flag) localStorage.removeItem("dc_auth_signup_invite_mode");
+      return flag ? "invite" : "public";
+    } catch {
+      return "public";
+    }
+  });
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
@@ -82,13 +90,18 @@ export default function AuthV7Signup({ go }: Props) {
         const uid = String(session?.user?.id || "").trim();
         setInfo(isInviteMode ? "Compte invité créé et connecté ✅" : "Compte public créé ✅");
 
-        if (isInviteMode && uid) {
+        if (uid && session?.token) {
           const restored = await restoreRemoteSnapshotIntoLocalStore();
           const linked = hasLinkedLocalProfile(uid);
           const remote = restored || await hasRemoteSnapshot();
           if (!linked && !remote) {
             armNasProfileOnboarding(uid);
-            go("profiles", { view: "locals", nasProfileOnboarding: true, autoCreate: true, returnTo: { tab: "gameSelect" } });
+            go("profiles", {
+              view: "locals",
+              nasProfileOnboarding: true,
+              autoCreate: true,
+              returnTo: { tab: "profiles", params: { view: "me" } },
+            });
             return;
           }
         }

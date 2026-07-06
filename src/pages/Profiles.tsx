@@ -5701,7 +5701,7 @@ function LocalProfilesRefonte({
           {onboardingMode
             ? t(
                 "profiles.locals.onboarding.subtitle",
-                "Ton compte NAS est créé. Maintenant, crée le profil local actif qui lui sera lié."
+                "Ton compte est créé. Maintenant, crée le profil actif qui lui sera lié."
               )
             : t(
                 "profiles.locals.empty",
