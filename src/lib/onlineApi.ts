@@ -19,7 +19,7 @@ let __authBootstrapPromise: Promise<void> | null = null;
 // - garde TOUTE la logique existante
 // ============================================================
 
-import { supabase } from "./supabaseClient";
+import { supabase, __SUPABASE_ENV__ } from "./supabaseClient";
 import { isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
 import {
   nasDeleteAccount,
@@ -816,16 +816,38 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
     throw new Error("Pour créer un compte public, email et mot de passe sont requis.");
   }
 
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { nickname },
-      emailRedirectTo: getEmailConfirmRedirect(),
-    },
-  });
+  if (!__SUPABASE_ENV__.hasEnv) {
+    throw new Error("Compte public Supabase non configuré côté application : VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants.");
+  }
 
-  if (error) throw new Error(error.message);
+  let data: any;
+  let error: any;
+  try {
+    const result = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { nickname },
+        emailRedirectTo: getEmailConfirmRedirect(),
+      },
+    });
+    data = result.data;
+    error = result.error;
+  } catch (fetchError: any) {
+    const msg = String(fetchError?.message || "");
+    if (/failed to fetch|network|load failed/i.test(msg)) {
+      throw new Error(`Impossible de joindre Supabase Auth pour créer le compte public. Vérifie que le build utilise bien VITE_SUPABASE_URL=${__SUPABASE_ENV__.url || "(vide)"} et que le téléphone a accès à Internet.`);
+    }
+    throw fetchError;
+  }
+
+  if (error) {
+    const msg = String(error.message || "");
+    if (/already registered|user already registered|already exists/i.test(msg)) {
+      throw new Error("Un compte public existe déjà avec cet email. Utilise “J’ai déjà un compte”, ou supprime complètement le compte depuis Réglages > Compte avant de le recréer.");
+    }
+    throw new Error(msg);
+  }
 
   if (!data?.session) {
     const pending: AuthSession = {
@@ -870,6 +892,7 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
 async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession> {
   const invitationCode = String(payload.invitationCode || "").trim();
   if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
+  try { await supabase.auth.signOut(); } catch {}
   const s = await nasSignup({ ...payload, invitationCode });
   saveAuthToLS(s);
   return s;
@@ -878,6 +901,7 @@ async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession
 async function loginWithInvitation(payload: LoginPayload): Promise<AuthSession> {
   const invitationCode = String(payload.invitationCode || "").trim();
   if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
+  try { await supabase.auth.signOut(); } catch {}
   const s = await nasLogin({ ...payload, invitationCode });
   saveAuthToLS(s);
   return s;
@@ -1102,8 +1126,46 @@ async function updateEmail(newEmail: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+
+async function deletePublicSupabaseAccountThroughNas(): Promise<boolean> {
+  if (!isNasDataSyncEnabled()) return false;
+  let accessToken = "";
+  try {
+    const { data } = await supabase.auth.getSession();
+    accessToken = String(data?.session?.access_token || "").trim();
+  } catch {}
+  if (!accessToken) return false;
+
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 15000) : null;
+  try {
+    const res = await fetch(`${getApiUrl()}/auth/supabase/account`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken }),
+      signal: ctrl?.signal,
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!res.ok) throw new Error(json?.error || json?.message || text || `Suppression Supabase/NAS HTTP ${res.status}`);
+    try { await supabase.auth.signOut(); } catch {}
+    return true;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
 async function deleteAccount(): Promise<void> {
   try {
+    // Compte public : Supabase Auth + NAS/R2 bridge doivent être supprimés ensemble.
+    // Sinon l’email reste bloqué dans Supabase ou dans la table users NAS.
+    const publicDeleted = await deletePublicSupabaseAccountThroughNas().catch((error) => {
+      console.warn("[onlineApi] public Supabase/NAS delete failed", error);
+      return false;
+    });
+    if (publicDeleted) return;
+
     if (isNasProviderEnabled()) {
       await ensureNasSession();
       await nasDeleteAccount();
