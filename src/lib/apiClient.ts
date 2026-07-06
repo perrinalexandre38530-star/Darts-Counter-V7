@@ -111,25 +111,42 @@ const API_TIMEOUT_MS = Math.max(60000, rawApiTimeoutMs);
 
 let lastAuthChangedDispatchAt = 0;
 
-function dispatchSignedOut(reason: "401" | "missing_token") {
+function isSoftOnlineEndpoint(path: string): boolean {
+  const normalized = String(path || "");
+  // Ces routes sont lancées en arrière-plan au boot (appels, push, présence...).
+  // Un 401 ici ne doit JAMAIS déconnecter le compte ni afficher le bloc flottant :
+  // au pire, la fonctionnalité online concernée se resynchronisera au prochain refresh.
+  return normalized.startsWith("/online/");
+}
+
+function dispatchSignedOut(reason: "401" | "missing_token", sourcePath = "") {
   if (typeof window === "undefined") return;
   const now = Date.now();
-  // Évite de déclencher 20 fois le même écran flottant quand plusieurs hooks /online/* partent ensemble.
+  // Évite de déclencher 20 fois le même écran flottant quand plusieurs hooks partent ensemble.
   if (now - lastAuthChangedDispatchAt < 1200) return;
   lastAuthChangedDispatchAt = now;
   try {
-    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { status: "signed_out", reason } }));
+    window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { status: "signed_out", reason, sourcePath } }));
   } catch {}
 }
 
-function clearNasAuthBecauseUnauthorized() {
+function clearNasAuthBecauseUnauthorized(sourcePath = "") {
   if (typeof window === "undefined") return;
+
+  // Correctif anti-déconnexion fantôme : les appels /online/* peuvent recevoir 401
+  // pendant le réveil NAS, au chargement du service worker ou pendant une course
+  // entre restauration de session et polling. On ne purge pas les JWT sur ces routes.
+  if (isSoftOnlineEndpoint(sourcePath)) {
+    console.warn("[apiClient] 401 ignoré sur route online non critique — session conservée", sourcePath);
+    return;
+  }
+
   try {
     window.localStorage.removeItem("dc_nas_access_token_v1");
     window.localStorage.removeItem("dc_nas_refresh_token_v1");
     window.localStorage.removeItem("dc_online_auth_supabase_v1");
   } catch {}
-  dispatchSignedOut("401");
+  dispatchSignedOut("401", sourcePath);
 }
 
 async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<string> {
@@ -179,7 +196,9 @@ async function doFetch(path: string, init?: RequestInit) {
   if (normalizedPath.startsWith("/online/") && !readNasAccessToken()) {
     const recoveredToken = await recoverNasAuthToken("missing_token");
     if (!recoveredToken) {
-      dispatchSignedOut("missing_token");
+      // Route online en arrière-plan : pas de pop-up, pas de purge.
+      // L'utilisateur peut être en local, hors ligne, ou la session peut être en cours de restauration.
+      console.warn("[apiClient] /online/* ignoré sans token — session conservée", normalizedPath);
       throw new Error(`${init?.method || "GET"} ${normalizedPath} skipped — session online absente`);
     }
   }
@@ -219,7 +238,7 @@ async function doFetch(path: string, init?: RequestInit) {
   if (!res) throw new Error(`${init?.method || "GET"} ${normalizedPath} failed — réponse absente`);
 
   if (!res.ok) {
-    if (res.status === 401) clearNasAuthBecauseUnauthorized();
+    if (res.status === 401) clearNasAuthBecauseUnauthorized(normalizedPath);
     const errPayload = await parseJsonSafe(res).catch(() => null);
     const errMessage = String(
       errPayload?.message ||

@@ -419,8 +419,17 @@ function SessionExpiredFloatingCard({
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<any>)?.detail || {};
       const reason = String(detail?.reason || "");
+      const sourcePath = String(detail?.sourcePath || "");
       if (detail?.status !== "signed_out") return;
       if (reason !== "401" && reason !== "missing_token") return;
+
+      // Anti-déconnexion fantôme : un 401 issu d'un polling /online/*
+      // ne doit pas masquer l'app ni forcer une reconnexion.
+      if (sourcePath.startsWith("/online/")) {
+        try { refreshRef.current?.(); } catch {}
+        setVisible(false);
+        return;
+      }
 
       void (async () => {
         // Cas principal du bug : un appel /online/* part trop tôt au relancement

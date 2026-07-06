@@ -889,67 +889,19 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
     throw new Error("Pour créer un compte public, email et mot de passe sont requis.");
   }
 
-  if (!__SUPABASE_ENV__.hasEnv) {
-    throw new Error("Compte public Supabase non configuré côté application : VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants.");
-  }
-
-  let data: any;
-  let error: any;
+  // Mode public stabilisé : le navigateur ne contacte plus Supabase directement pour créer
+  // la session principale. Le backend NAS/R2 crée/authentifie le compte Supabase côté serveur,
+  // puis renvoie une session NAS interne persistante. Cela évite les erreurs mobiles
+  // "Failed to fetch" vers *.supabase.co et les conflits de cache d'ancien projet Supabase.
   try {
-    const result = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { nickname },
-        emailRedirectTo: getEmailConfirmRedirect(),
-      },
-    });
-    data = result.data;
-    error = result.error;
-  } catch (fetchError: any) {
-    console.warn("[onlineApi] Supabase direct signup failed -> backend bridge fallback", fetchError);
     return await publicSupabaseViaBackend("register", { email, password, nickname });
-  }
-
-  if (error) {
-    const msg = String(error.message || "");
-    if (/failed to fetch|network|load failed/i.test(msg)) {
-      return await publicSupabaseViaBackend("register", { email, password, nickname });
-    }
-    if (/already registered|user already registered|already exists/i.test(msg)) {
+  } catch (backendError: any) {
+    const msg = String(backendError?.message || backendError || "");
+    if (/already registered|user already registered|already exists|existe déjà/i.test(msg)) {
       throw new Error("Un compte public existe déjà avec cet email. Utilise “J’ai déjà un compte”, ou supprime complètement le compte depuis Réglages > Compte avant de le recréer.");
     }
-    throw new Error(msg);
+    throw backendError instanceof Error ? backendError : new Error(msg || "Création du compte public impossible.");
   }
-
-  if (!data?.session) {
-    // Si Supabase demande une confirmation email, on ne force pas la connexion.
-    const pending: AuthSession = {
-      token: "",
-      refreshToken: "",
-      expiresAt: null,
-      userId: data?.user?.id || null,
-      user: {
-        id: data?.user?.id || "pending",
-        email,
-        nickname,
-        createdAt: now(),
-      },
-      profile: null,
-    };
-    saveAuthToLS(pending);
-    return pending;
-  }
-
-  try {
-    const live = await buildAuthSessionFromSupabase();
-    if (live) return live;
-  } catch (bridgeError) {
-    console.warn("[onlineApi] direct signup bridge failed -> backend bridge fallback", bridgeError);
-    return await publicSupabaseViaBackend("login", { email, password, nickname });
-  }
-
-  throw new Error("Compte public créé mais session introuvable (réessaie).");
 }
 
 async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
@@ -962,36 +914,33 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
 
   let publicError: any = null;
 
-  if (__SUPABASE_ENV__.hasEnv) {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw new Error(normalizeAuthErrorMessage(error.message));
-
-      const session = await buildAuthSessionFromSupabase();
-      if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
-      markAuthReady(!!session?.token);
-      return session;
-    } catch (error: any) {
-      publicError = error;
-      console.warn("[onlineApi] public Supabase direct login failed -> trying backend/NAS fallback", error);
-
-      // Si le navigateur/mobile n’arrive pas à joindre Supabase directement, on passe
-      // par le backend NAS qui contacte Supabase côté serveur puis crée le bridge R2.
-      const msg = String(error?.message || "");
-      if (/failed to fetch|network|load failed|bridge|timeout|supabase/i.test(msg)) {
-        try {
-          return await publicSupabaseViaBackend("login", { email, password, nickname: payload.nickname });
-        } catch (backendError) {
-          console.warn("[onlineApi] public backend login failed", backendError);
-        }
-      }
-    }
+  // Connexion stabilisée : on privilégie le backend NAS/R2, qui vérifie Supabase côté serveur
+  // et renvoie directement la session interne utilisée par toute l'app.
+  try {
+    return await publicSupabaseViaBackend("login", { email, password, nickname: payload.nickname });
+  } catch (error: any) {
+    publicError = error;
+    console.warn("[onlineApi] public backend login failed -> trying NAS fallback", error);
   }
 
   // Connexion unifiée : les comptes NAS invités/fondateurs déjà créés se reconnectent
   // ici avec email + mot de passe, sans retaper le code d’invitation.
   const nasSession = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
   if (nasSession) return nasSession;
+
+  if (__SUPABASE_ENV__.hasEnv) {
+    // Dernier secours seulement : ancien compte Supabase direct non bridgé.
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw new Error(normalizeAuthErrorMessage(error.message));
+      const session = await buildAuthSessionFromSupabase();
+      if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
+      markAuthReady(!!session?.token);
+      return session;
+    } catch (directError: any) {
+      console.warn("[onlineApi] public direct Supabase fallback failed", directError);
+    }
+  }
 
   if (publicError) throw publicError instanceof Error ? publicError : new Error(String(publicError));
   throw new Error("Connexion impossible : compte public Supabase ou compte invité NAS introuvable.");
