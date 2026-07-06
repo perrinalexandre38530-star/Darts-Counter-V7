@@ -77,6 +77,7 @@ import {
   getSupabaseAccountStatus,
   getSupabaseBridgeStatus,
   getSupabaseTablesStatus,
+  getStorageStripeStatus,
   saveAccountStoragePreferences,
   uploadCloudObject,
   verifyStorageCheckoutSession,
@@ -86,6 +87,7 @@ import {
   type SupabaseBridgeStatus,
   type SupabaseTablesStatus,
   type StorageBillingInterval,
+  type StorageStripeStatus,
 } from "../lib/cloudStorageApi";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
@@ -1287,6 +1289,8 @@ function AccountPages({
     title: string;
     detail?: string;
   } | null>(null);
+  const [storageStripeStatus, setStorageStripeStatus] = React.useState<StorageStripeStatus | null>(null);
+  const [storageStripeStatusLoading, setStorageStripeStatusLoading] = React.useState(false);
   const [storageCheckoutLoading, setStorageCheckoutLoading] = React.useState<string | null>(null);
   const processedStorageCheckoutRef = React.useRef<string | null>(null);
   const storageCapabilities = React.useMemo(() => getLocalStorageCapabilities(), []);
@@ -1340,6 +1344,12 @@ function AccountPages({
       } catch {
         setSupabaseBridgeStatus(null);
       }
+      try {
+        const stripe = await getStorageStripeStatus(false);
+        setStorageStripeStatus(stripe);
+      } catch {
+        setStorageStripeStatus(null);
+      }
     } catch (e: any) {
       setCloudUsageError(e?.message || "Impossible de charger le quota cloud.");
     } finally {
@@ -1351,6 +1361,30 @@ function AccountPages({
     if (page !== "account_storage") return;
     void refreshCloudUsage();
   }, [page, refreshCloudUsage]);
+
+  async function refreshStorageStripeStatus(verify = true) {
+    if (!isSignedIn) {
+      safeAlert("Connecte-toi avant de tester Stripe.");
+      openAccountLogin();
+      return;
+    }
+    setStorageStripeStatusLoading(true);
+    try {
+      const status = await getStorageStripeStatus(verify);
+      setStorageStripeStatus(status);
+      if (status.configured) {
+        setMessage("Stripe stockage est configuré : les paiements peuvent être testés.");
+      } else if (!status.secretKeyConfigured) {
+        setCloudUsageError("STRIPE_SECRET_KEY est manquant côté NAS.");
+      } else {
+        setCloudUsageError(`Stripe stockage incomplet : ${status.missingEnv?.length || 0} price IDs à renseigner dans le .env.`);
+      }
+    } catch (e: any) {
+      setCloudUsageError(e?.message || "Impossible de tester Stripe.");
+    } finally {
+      setStorageStripeStatusLoading(false);
+    }
+  }
 
   async function syncStoragePrefsToBackend(saved: typeof storagePrefs) {
     if (!isSignedIn) return;
@@ -1401,6 +1435,12 @@ function AccountPages({
         setSupabaseBridgeStatus(bridge);
       } catch {
         setSupabaseBridgeStatus(null);
+      }
+      try {
+        const stripe = await getStorageStripeStatus(false);
+        setStorageStripeStatus(stripe);
+      } catch {
+        setStorageStripeStatus(null);
       }
       const missing = Array.isArray(status?.missingEnv) ? status.missingEnv.filter(Boolean) : [];
       if (!status?.configured || missing.length) {
@@ -2166,6 +2206,69 @@ function AccountPages({
                 </div>
               </div>
             </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  Stripe stockage
+                </div>
+                <div style={{ marginTop: 4, fontSize: 22, fontWeight: 1000, color: storageStripeStatus?.configured ? "#7CFF8A" : "#ffcc66" }}>
+                  {storageStripeStatus?.configured ? "Configuré" : storageStripeStatus ? "À finaliser" : "Non testé"}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshStorageStripeStatus(true)}
+                disabled={storageStripeStatusLoading}
+                style={{
+                  borderRadius: 999,
+                  border: `1px solid ${theme.primary}88`,
+                  background: "rgba(255,255,255,0.055)",
+                  color: theme.primary,
+                  padding: "10px 13px",
+                  fontSize: 12,
+                  fontWeight: 950,
+                  cursor: storageStripeStatusLoading ? "wait" : "pointer",
+                  opacity: storageStripeStatusLoading ? 0.65 : 1,
+                }}
+              >
+                {storageStripeStatusLoading ? "Test Stripe…" : "Tester Stripe"}
+              </button>
+            </div>
+
+            <div style={{ marginTop: 8, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.4 }}>
+              {storageStripeStatus?.message || "Stripe sert uniquement à activer les quotas payants. Les fichiers restent stockés dans Cloudflare R2."}
+            </div>
+
+            {storageStripeStatus && (
+              <div style={{ marginTop: 8, display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${storageStripeStatus.secretKeyConfigured ? "#62d26f88" : "#ff8c8c88"}`, color: storageStripeStatus.secretKeyConfigured ? "#7CFF8A" : "#ffb3b3", fontSize: 10.5, fontWeight: 950 }}>
+                  Clé Stripe : {storageStripeStatus.secretKeyConfigured ? `OK (${storageStripeStatus.mode || "mode ?"})` : "manquante"}
+                </span>
+                <span style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${storageStripeStatus.configured ? "#62d26f88" : "#ffcc6688"}`, color: storageStripeStatus.configured ? "#7CFF8A" : "#ffcc66", fontSize: 10.5, fontWeight: 950 }}>
+                  Prix : {storageStripeStatus.configuredPriceCount || 0} / {storageStripeStatus.priceCount || 0}
+                </span>
+                <span style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${storageStripeStatus.webhookStorageConfigured ? "#62d26f88" : "#ffcc6688"}`, color: storageStripeStatus.webhookStorageConfigured ? "#7CFF8A" : "#ffcc66", fontSize: 10.5, fontWeight: 950 }}>
+                  Webhook stockage : {storageStripeStatus.webhookStorageConfigured ? "OK" : "à créer"}
+                </span>
+              </div>
+            )}
+
+            {!!storageStripeStatus?.missingEnv?.length && (
+              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: "1px solid rgba(255,204,102,0.35)", background: "rgba(255,204,102,0.08)", color: "#ffe0a3", fontSize: 10.5, lineHeight: 1.35 }}>
+                <b>Variables .env à remplir :</b><br />
+                {storageStripeStatus.missingEnv.slice(0, 12).join(" · ")}
+              </div>
+            )}
+
+            {storageStripeStatus && !storageStripeStatus.webhookStorageConfigured && (
+              <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: "1px solid rgba(255,204,102,0.35)", background: "rgba(255,204,102,0.08)", color: "#ffe0a3", fontSize: 10.5, lineHeight: 1.35 }}>
+                <b>Webhook stockage à créer :</b><br />
+                lance <code>npm run stripe:storage:setup</code> côté backend NAS ou crée le webhook vers <code>/account/storage/stripe-webhook</code>, puis renseigne <code>STRIPE_WEBHOOK_SECRET_STORAGE</code>.
+              </div>
+            )}
           </div>
 
           <div>

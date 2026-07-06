@@ -172,6 +172,41 @@ export async function verifyStorageCheckoutSession(sessionId: string): Promise<{
 }
 
 
+export type StorageStripeStatus = {
+  ok: boolean;
+  configured: boolean;
+  provider?: "stripe" | string;
+  mode?: "test" | "live" | "missing" | "unknown" | string;
+  secretKeyConfigured?: boolean;
+  priceCount?: number;
+  configuredPriceCount?: number;
+  missingEnv?: string[];
+  webhookStorageConfigured?: boolean;
+  webhookFallbackConfigured?: boolean;
+  webhookSecretEnvName?: string | null;
+  webhookEndpoint?: string;
+  checkoutEndpoint?: string;
+  successCancelBaseUrl?: string | null;
+  prices?: Array<{
+    planId: string;
+    planLabel: string;
+    interval: "monthly" | "yearly" | string;
+    envName: string;
+    priceId: string;
+    configured: boolean;
+    expectedAmountCents?: number;
+    expectedCurrency?: string;
+  }>;
+  verifiedPrices?: Array<Record<string, any>>;
+  message?: string;
+  error?: string;
+};
+
+export async function getStorageStripeStatus(verify = false): Promise<StorageStripeStatus> {
+  return apiGet(`/account/storage/stripe-status${verify ? "?verify=1" : ""}`) as any;
+}
+
+
 export type SupabaseAccountStatus = {
   ok: boolean;
   configured: boolean;
