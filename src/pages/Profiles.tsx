@@ -1730,6 +1730,27 @@ export default function Profiles({
     } catch {}
   }
 
+  function readPendingOnboardingUserId(): string {
+    try {
+      return String(localStorage.getItem("dc_nas_profile_onboarding_uid") || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function readCachedAuthUser(): { id: string; email: string } {
+    try {
+      const raw = localStorage.getItem("dc_online_auth_supabase_v1");
+      const parsed = raw ? JSON.parse(raw) : null;
+      return {
+        id: String(parsed?.user?.id || parsed?.userId || "").trim(),
+        email: String(parsed?.user?.email || "").trim(),
+      };
+    } catch {
+      return { id: "", email: "" };
+    }
+  }
+
   function isLinkedOnlineProfile(profile: any): boolean {
     const authUid = String(auth?.user?.id || "").trim();
     if (!profile || !authUid) return false;
@@ -2011,14 +2032,54 @@ export default function Profiles({
 
 
     if ((privateInfo as any)?.onlineUserId) {
-      clearNasProfileOnboardingFlag(String((privateInfo as any)?.onlineUserId || ""));
+      const linkedUid = String((privateInfo as any)?.onlineUserId || "").trim();
+      clearNasProfileOnboardingFlag(linkedUid);
+      try { localStorage.setItem("dc_user_id", linkedUid); } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { reason: "profile_onboarding_complete", userId: linkedUid } }));
+      } catch {}
+      setView("me");
+      setToast({ type: "success", message: "Profil actif créé. Tu peux compléter Mon profil." });
       if (returnTo?.tab && go) {
-        go(returnTo.tab, returnTo.params);
+        go(returnTo.tab, returnTo.params || { view: "me" });
+      } else if (go) {
+        go("profiles", { view: "me" });
       }
     }
   }
   
   const active = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
+
+  // Rattrapage onboarding : si le compte vient d'être créé et que le hook auth
+  // n'était pas encore prêt au moment du clic, on lie quand même le profil local
+  // fraîchement créé au compte connecté, puis on ouvre Mon profil.
+  React.useEffect(() => {
+    if (!nasProfileOnboarding) return;
+    const uid = readPendingOnboardingUserId();
+    if (!uid) return;
+    const list = Array.isArray(stableProfiles) ? (stableProfiles as any[]) : [];
+    if (!list.length) return;
+    const alreadyLinked = list.find((p: any) => String((p?.privateInfo || {})?.onlineUserId || "") === uid);
+    const target = alreadyLinked || active || list[list.length - 1];
+    if (!target?.id) return;
+
+    if (!alreadyLinked) {
+      const cachedAuth = readCachedAuthUser();
+      patchProfilePrivateInfo(String(target.id), {
+        ...((target as any)?.privateInfo || {}),
+        onlineUserId: uid,
+        onlineEmail: String((auth.user as any)?.email || cachedAuth.email || "").trim(),
+        accountProvider: "public_or_invite_bridge",
+      } as any);
+    }
+
+    setActiveProfile(String(target.id));
+    clearNasProfileOnboardingFlag(uid);
+    setView("me");
+    try { localStorage.setItem("dc_user_id", uid); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-auth-changed", { detail: { reason: "profile_onboarding_repaired", userId: uid } })); } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nasProfileOnboarding, active?.id, (stableProfiles as any[])?.length]);
 
   // ------------------------------------------------------------
   // Online "Me" helpers (ne touche pas activeProfileId)
@@ -2868,15 +2929,20 @@ React.useEffect(() => {
                   profiles={stableProfiles as any}
                   activeProfileId={activeProfileId}
                   onCreate={(name, file, privateInfo) => {
-                    const shouldLinkOnline = nasProfileOnboarding && auth.status === "signed_in" && auth.user?.id;
+                    const cachedAuth = readCachedAuthUser();
+                    const onboardingUid = readPendingOnboardingUserId();
+                    const onlineUid = String(auth.user?.id || onboardingUid || cachedAuth.id || "").trim();
+                    const onlineEmail = String((auth.user as any)?.email || cachedAuth.email || "").trim();
+                    const shouldLinkOnline = !!(nasProfileOnboarding && onlineUid);
                     addProfile(
                       name,
                       file,
                       shouldLinkOnline
                         ? {
                             ...(privateInfo || {}),
-                            onlineUserId: String(auth.user?.id || ""),
-                            onlineEmail: String(auth.user?.email || ""),
+                            onlineUserId: onlineUid,
+                            onlineEmail,
+                            accountProvider: "public_or_invite_bridge",
                           }
                         : privateInfo
                     );

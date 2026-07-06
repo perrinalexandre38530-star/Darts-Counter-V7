@@ -213,30 +213,16 @@ const AuthOnlineContext = React.createContext<Ctx | null>(null);
 
 async function safeGetSession(): Promise<Session | null> {
   try {
+    // Priorité à la session interne NAS/R2 quand elle existe.
+    // C'est le cas des comptes publics Supabase bridgés et des comptes invités NAS :
+    // ils doivent apparaître connectés partout, même si le SDK Supabase navigateur
+    // n'a pas de session locale exploitable.
+    const nasBridge = await safeGetNasBridgeSession();
+    if (nasBridge?.user) return nasBridge;
+
     if (isNasProviderEnabled()) {
       await cleanupSupabaseLocalSessionForNas();
-
-      try {
-        const s: any = await onlineApi.getCurrentSession();
-        const user = s?.user?.id
-          ? ({
-              id: s.user.id,
-              email: s.user.email,
-              user_metadata: { nickname: s.user.nickname || s.profile?.displayName || "Player" },
-            } as any)
-          : null;
-
-        if (!user) return null;
-
-        return {
-          access_token: s?.token || "",
-          refresh_token: s?.refreshToken || "",
-          user,
-        } as any;
-      } catch (e) {
-        console.warn("[useAuthOnline] NAS safeGetSession soft-failed:", e);
-        return null;
-      }
+      return null;
     }
 
     const { data, error } = await supabase.auth.getSession();
@@ -374,9 +360,38 @@ function forceOpenLoginRoute(): void {
 
 function hasRecoverableNasAuth(): boolean {
   try {
-    return isNasProviderEnabled() && !!readNasAccessToken();
+    return !!readNasAccessToken();
   } catch {
     return false;
+  }
+}
+
+function authSessionToPseudoSupabaseSession(s: any): Session | null {
+  try {
+    const uid = String(s?.user?.id || s?.userId || "").trim();
+    if (!uid) return null;
+    return {
+      access_token: String(s?.token || ""),
+      refresh_token: String(s?.refreshToken || ""),
+      user: {
+        id: uid,
+        email: s?.user?.email || undefined,
+        user_metadata: {
+          nickname: s?.user?.nickname || s?.profile?.displayName || s?.profile?.nickname || "Player",
+        },
+      },
+    } as any;
+  } catch {
+    return null;
+  }
+}
+
+async function safeGetNasBridgeSession(): Promise<Session | null> {
+  try {
+    const s: any = await onlineApi.getCurrentSession?.();
+    return authSessionToPseudoSupabaseSession(s);
+  } catch {
+    return null;
   }
 }
 
@@ -598,55 +613,64 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           });
         }
 
-        if (isNasProviderEnabled()) {
-          nasHandler = async () => {
-            try {
-              if (!alive) return;
+        nasHandler = async () => {
+          try {
+            if (!alive) return;
 
-              const nowTs = Date.now();
-              if (nowTs - lastNasAuthAttemptRef.current < NAS_AUTH_COOLDOWN_MS) {
-                return;
-              }
-              lastNasAuthAttemptRef.current = nowTs;
-
-              await cleanupSupabaseLocalSessionForNas();
-              const nextSession = await safeEnsureSession();
-
-              if (nextSession?.user) {
-                lastSignedInSessionRef.current = nextSession;
-                applyAuthFromSession(setState, nextSession);
-              } else {
-                lastSignedInSessionRef.current = null;
-                applyAuthFromSession(setState, null);
-              }
-
-              const nextUser = nextSession?.user ?? null;
-              if (nextUser) {
-                tryBridgeLocalProfile(nextUser, null);
-                safeLoadProfileBestEffort(nextUser).then((profile) => {
-                  if (!alive) return;
-                  setState((s) => {
-                    if (!s.user || s.user.id !== nextUser.id) return s;
-                    return { ...s, profile };
-                  });
-                  tryBridgeLocalProfile(nextUser, profile);
-                });
-              }
-            } catch (e) {
-              console.warn("[useAuthOnline] NAS auth change handler error:", e);
-              setState((s) => ({ ...s, loading: false, ready: true }));
+            const nowTs = Date.now();
+            if (nowTs - lastNasAuthAttemptRef.current < NAS_AUTH_COOLDOWN_MS) {
+              return;
             }
-          };
+            lastNasAuthAttemptRef.current = nowTs;
 
-          window.addEventListener("dc-auth-changed", nasHandler as EventListener);
+            if (isNasProviderEnabled()) {
+              await cleanupSupabaseLocalSessionForNas();
+            }
+            const nextSession = await safeEnsureSession();
+
+            if (nextSession?.user) {
+              lastSignedInSessionRef.current = nextSession;
+              applyAuthFromSession(setState, nextSession);
+            } else {
+              lastSignedInSessionRef.current = null;
+              applyAuthFromSession(setState, null);
+            }
+
+            const nextUser = nextSession?.user ?? null;
+            if (nextUser) {
+              tryBridgeLocalProfile(nextUser, null);
+              safeLoadProfileBestEffort(nextUser).then((profile) => {
+                if (!alive) return;
+                setState((s) => {
+                  if (!s.user || s.user.id !== nextUser.id) return s;
+                  return { ...s, profile };
+                });
+                tryBridgeLocalProfile(nextUser, profile);
+              });
+            }
+          } catch (e) {
+            console.warn("[useAuthOnline] auth change handler error:", e);
+            setState((s) => ({ ...s, loading: false, ready: true }));
+          }
+        };
+
+        window.addEventListener("dc-auth-changed", nasHandler as EventListener);
+
+        if (isNasProviderEnabled()) {
           return;
         }
 
-        const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+        const { data } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
           try {
             if (!alive) return;
 
             if (event === "SIGNED_OUT" || !nextSession?.user) {
+              const fallback = await safeGetNasBridgeSession();
+              if (fallback?.user) {
+                lastSignedInSessionRef.current = fallback;
+                applyAuthFromSession(setState, fallback);
+                return;
+              }
               applyAuthFromSession(setState, null);
               return;
             }
