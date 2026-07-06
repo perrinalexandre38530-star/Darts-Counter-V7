@@ -35,12 +35,13 @@ import {
   nasUpdateProfile,
   nasUploadAvatarImage,
   nasUploadMediaAsset,
+  saveNasTokens,
   nasBulkResolveMediaAssets,
   nasMediaHealth,
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
-import { apiGet, apiPost, buildApiUrl, readNasAccessToken } from "./apiClient";
+import { apiGet, apiPost, buildApiUrl, getApiUrl, readNasAccessToken } from "./apiClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 export const CLOUD_STORE_KEY = "main";
@@ -663,6 +664,56 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
   return null;
 }
 
+async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, profile: OnlineProfile | null): Promise<AuthSession | null> {
+  // En mode public/hybride, Supabase authentifie l’utilisateur, mais le backend NAS
+  // reste l’API de contrôle des quotas et des objets R2. On échange donc le token
+  // Supabase contre une session NAS interne, sans stocker les données lourdes dans Supabase.
+  if (!isNasDataSyncEnabled()) return null;
+  const accessToken = String(session?.access_token || "").trim();
+  if (!accessToken) return null;
+
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 12000) : null;
+  try {
+    const res = await fetch(`${getApiUrl()}/auth/supabase/bridge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken,
+        nickname: userAuth.nickname,
+      }),
+      signal: ctrl?.signal,
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+    if (!res.ok) {
+      throw new Error(json?.message || json?.error || text || `Bridge Supabase/NAS HTTP ${res.status}`);
+    }
+    const token = String(json?.token || json?.accessToken || "").trim();
+    if (!token) throw new Error("Bridge Supabase/NAS invalide : token NAS absent.");
+    const bridgedUser = json?.user || {};
+    const bridgedProfile = json?.profile || profile || null;
+    const bridged: AuthSession = {
+      token,
+      refreshToken: String(json?.refreshToken || session?.refresh_token || ""),
+      expiresAt: json?.expiresAt ? Date.parse(json.expiresAt) : (Number(session?.expires_at || 0) || null),
+      userId: String(bridgedUser?.id || json?.userId || userAuth.id),
+      user: {
+        id: String(bridgedUser?.id || json?.userId || userAuth.id),
+        email: bridgedUser?.email || userAuth.email,
+        nickname: bridgedUser?.nickname || userAuth.nickname,
+        createdAt: Number(bridgedUser?.createdAt || userAuth.createdAt || now()),
+      },
+      profile: bridgedProfile,
+    };
+    saveNasTokens(bridged);
+    return bridged;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
 async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) {
@@ -694,6 +745,19 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
     user: userAuth,
     profile,
   };
+
+  try {
+    const bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile);
+    if (bridged?.token) {
+      saveAuthToLS(bridged);
+      return bridged;
+    }
+  } catch (bridgeError) {
+    console.warn("[onlineApi] Supabase -> NAS/R2 bridge failed", bridgeError);
+    if (isNasDataSyncEnabled()) {
+      throw bridgeError instanceof Error ? bridgeError : new Error(String(bridgeError || "Bridge Supabase/NAS impossible."));
+    }
+  }
 
   saveAuthToLS(authSession);
   return authSession;

@@ -75,6 +75,7 @@ import {
   downloadCloudObject,
   getCloudStorageStatus,
   getSupabaseAccountStatus,
+  getSupabaseBridgeStatus,
   getSupabaseTablesStatus,
   saveAccountStoragePreferences,
   uploadCloudObject,
@@ -82,6 +83,7 @@ import {
   type AccountStorageUsage,
   type CloudStorageStatus,
   type SupabaseAccountStatus,
+  type SupabaseBridgeStatus,
   type SupabaseTablesStatus,
   type StorageBillingInterval,
 } from "../lib/cloudStorageApi";
@@ -1278,6 +1280,7 @@ function AccountPages({
   } | null>(null);
   const [supabaseAccountStatus, setSupabaseAccountStatus] = React.useState<SupabaseAccountStatus | null>(null);
   const [supabaseTablesStatus, setSupabaseTablesStatus] = React.useState<SupabaseTablesStatus | null>(null);
+  const [supabaseBridgeStatus, setSupabaseBridgeStatus] = React.useState<SupabaseBridgeStatus | null>(null);
   const [supabaseStatusLoading, setSupabaseStatusLoading] = React.useState(false);
   const [supabaseStatusResult, setSupabaseStatusResult] = React.useState<{
     status: "ok" | "error" | "info";
@@ -1330,6 +1333,12 @@ function AccountPages({
         setSupabaseAccountStatus(supabaseStatus);
       } catch {
         setSupabaseAccountStatus(null);
+      }
+      try {
+        const bridge = await getSupabaseBridgeStatus();
+        setSupabaseBridgeStatus(bridge);
+      } catch {
+        setSupabaseBridgeStatus(null);
       }
     } catch (e: any) {
       setCloudUsageError(e?.message || "Impossible de charger le quota cloud.");
@@ -1386,6 +1395,12 @@ function AccountPages({
         setSupabaseTablesStatus(tables);
       } catch (tableError) {
         setSupabaseTablesStatus(null);
+      }
+      try {
+        const bridge = await getSupabaseBridgeStatus();
+        setSupabaseBridgeStatus(bridge);
+      } catch {
+        setSupabaseBridgeStatus(null);
       }
       const missing = Array.isArray(status?.missingEnv) ? status.missingEnv.filter(Boolean) : [];
       if (!status?.configured || missing.length) {
@@ -2040,6 +2055,25 @@ function AccountPages({
                   </div>
                 );
               })}
+            </div>
+            <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 6 }}>
+              <div
+                title={supabaseBridgeStatus?.message || "Le bridge permettra aux comptes publics Supabase d’utiliser les quotas/R2 via le backend NAS."}
+                style={{
+                  borderRadius: 10,
+                  border: `1px solid ${supabaseBridgeStatus?.linked ? "rgba(98,210,111,0.45)" : "rgba(0,245,255,0.35)"}`,
+                  background: supabaseBridgeStatus?.linked ? "rgba(98,210,111,0.08)" : "rgba(0,245,255,0.06)",
+                  padding: "7px 8px",
+                  fontSize: 10.5,
+                  fontWeight: 900,
+                  color: supabaseBridgeStatus?.linked ? "#9cffaa" : theme.primary,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Bridge Supabase → NAS/R2 : {supabaseBridgeStatus?.linked ? "lié" : "prêt"}
+              </div>
             </div>
             {supabaseStatusResult && (
               <div

@@ -220,6 +220,27 @@ export async function getSupabaseTablesStatus(): Promise<SupabaseTablesStatus> {
   return apiGet("/account/supabase/tables-status") as any;
 }
 
+
+export type SupabaseBridgeStatus = {
+  ok: boolean;
+  configured?: boolean;
+  linked?: boolean;
+  link?: {
+    provider?: string;
+    provider_user_id?: string;
+    email_normalized?: string;
+    created_at?: string;
+    updated_at?: string;
+    last_login_at?: string;
+  } | null;
+  message?: string;
+  error?: string;
+};
+
+export async function getSupabaseBridgeStatus(): Promise<SupabaseBridgeStatus> {
+  return apiGet("/account/supabase/bridge-status") as any;
+}
+
 export type CloudStorageStatus = {
   ok: boolean;
   configured: boolean;
