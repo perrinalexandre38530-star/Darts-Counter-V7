@@ -16,6 +16,7 @@ import InfoDot from "../../components/InfoDot";
 import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel";
 
 import type { Store, Profile } from "../../lib/types";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 import {
   loadPingPongState,
   savePingPongState,
@@ -119,7 +120,10 @@ export default function PingPongConfig({ go, params, store }: Props) {
   }, [isTraining, isTournante, is2v2, is2v1]);
 
   // Profils pour carrousel
-  const profiles: Profile[] = ((store as any)?.profiles || []) as Profile[];
+  const profiles: Profile[] = React.useMemo(
+    () => sortProfilesByModeUsage(((store as any)?.profiles || []) as Profile[], "pingpong", (store as any)?.activeProfileId),
+    [(store as any)?.profiles, (store as any)?.activeProfileId]
+  );
   const medallions = React.useMemo(
     () => profiles.map((p) => ({ id: p.id, name: p.name, profile: p })),
     [profiles]
@@ -274,6 +278,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
     setSt(next);
     // ✅ persiste immédiatement pour que PingPongPlay retrouve les profils sélectionnés
     try { savePingPongState(next as any); } catch {}
+    try { recordProfileUsageForMode("pingpong", [...selA, ...selB]); } catch {}
     go("pingpong_play", { matchId: (next as any).matchId });
   };
 
@@ -393,6 +398,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
                 <div style={{ marginTop: 10 }}>
                   <div style={sectionTitle(primary)}>{is2v2 || is2v1 ? "ÉQUIPE A" : "JOUEUR A"}</div>
                   <ProfileMedallionCarousel
+                    usageMode="pingpong"
                     items={medallions}
                     selectedIds={selA}
                     onToggle={(id) => toggle("A", id)}
@@ -407,6 +413,7 @@ export default function PingPongConfig({ go, params, store }: Props) {
                 <div style={{ marginTop: 12 }}>
                   <div style={sectionTitle(primary)}>{is2v2 ? "ÉQUIPE B" : "JOUEUR B"}</div>
                   <ProfileMedallionCarousel
+                    usageMode="pingpong"
                     items={medallions}
                     selectedIds={selB}
                     onToggle={(id) => toggle("B", id)}

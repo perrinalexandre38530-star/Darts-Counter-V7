@@ -26,6 +26,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 import { getProBotAvatar } from "../lib/botsProAvatars";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 
 type BotLevel = "easy" | "normal" | "hard";
 type BotRisk = "safe" | "normal" | "aggressive";
@@ -242,11 +243,11 @@ export default function CapitalConfig(props: any) {
   const store = props?.store;
   const go = props?.go || props?.setTab;
 
-  const locals = useMemo(
-    () => safeStoreProfiles(store).filter((p: any) => !p?.isBot),
-    [store]
-  );
   const activeProfileId = useMemo(() => safeActiveProfileId(store), [store]);
+  const locals = useMemo(
+    () => sortProfilesByModeUsage(safeStoreProfiles(store).filter((p: any) => !p?.isBot), "capital", activeProfileId),
+    [store, activeProfileId]
+  );
   const activeProfile = useMemo(
     () => locals.find((p: any) => p.id === activeProfileId) || locals[0] || null,
     [locals, activeProfileId]
@@ -473,6 +474,7 @@ export default function CapitalConfig(props: any) {
     if (cfg.startOrderMode === "random") {
       cfg.selectedIds = shuffleCopy(cfg.selectedIds);
     }
+    try { recordProfileUsageForMode("capital", cfg.selectedIds || selectedIds); } catch {}
     if (props?.setTab) return props.setTab("capital_play", { config: cfg });
     if (go) return go("capital_play", { config: cfg });
   }

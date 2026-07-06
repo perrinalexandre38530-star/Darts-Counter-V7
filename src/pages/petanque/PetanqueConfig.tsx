@@ -37,6 +37,7 @@ import {
   type TeamEntity,
 } from "../../lib/teamsStore";
 import { teamBaseId } from "../../lib/teamSelectionInstances";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 // ✅ Tickers (même logique que Games — DartsCounter)
 const tickerImports = import.meta.glob("../../assets/tickers/*.png", {
@@ -416,7 +417,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
   // ✅ Sans bots IA
   const profiles: Profile[] = React.useMemo(
-    () => extractProfiles(store).filter((p: any) => !(p as any).isBot),
+    () => sortProfilesByModeUsage(extractProfiles(store).filter((p: any) => !(p as any).isBot), "petanque", (store as any)?.activeProfileId),
     [store]
   );
 
@@ -777,6 +778,8 @@ function handleStart() {
         }
       : null,
   };
+
+  try { recordProfileUsageForMode("petanque", players.map((p: any) => p.id)); } catch {}
 
   // ✅ PATCH OBLIGATOIRE : matchId neuf, SANS condition
   go("petanque_play", {

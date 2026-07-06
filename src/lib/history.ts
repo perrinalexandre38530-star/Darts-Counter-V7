@@ -94,6 +94,7 @@ import { getStorageUser, loadStore, scopedStorageKey } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
+import { recordProfileUsageFromMatch } from "./profileUsage";
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
@@ -2610,6 +2611,16 @@ export async function upsert(rec: SavedMatch): Promise<void> {
           payloadCompressed,
           source: "history-upsert",
         });
+      }
+    } catch {}
+
+    // ================================
+    // ✅ USAGE PROFILS PAR MODE
+    // Met à jour le tri des sélecteurs après chaque partie terminée.
+    // ================================
+    try {
+      if (String((safe as any)?.status || "").toLowerCase() !== "in_progress") {
+        recordProfileUsageFromMatch({ ...(safe || {}), payload: payloadEffective });
       }
     } catch {}
 

@@ -1,5 +1,6 @@
 import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
+import { PROFILE_USAGE_UPDATED_EVENT, normalizeProfileUsageMode, profileUsageScore, readProfileUsageCounts } from "../lib/profileUsage";
 
 export type MedallionItem = {
   id: string;
@@ -11,7 +12,10 @@ export type MedallionItem = {
 export type ProfileMedallionCarouselProps = {
   items: MedallionItem[];
   selectedIds: string[];
-  onToggle: (id: string) => void;
+  onToggle?: (id: string) => void;
+  /** Compat anciens écrans: setter direct + maxSelect. */
+  setSelectedIds?: (ids: string[]) => void;
+  maxSelect?: number;
 
   /** Theme colors (use the same values you pass in DepartementsConfig) */
   primary: string;
@@ -30,6 +34,9 @@ export type ProfileMedallionCarouselProps = {
 
   /** Affiche les étoiles darts au-dessus des avatars. Par défaut: false pour les sports non-fléchettes. */
   showStars?: boolean;
+
+  /** Mode utilisé pour trier: profils les plus utilisés dans ce mode, puis alphabétique. */
+  usageMode?: string;
 };
 
 /**
@@ -43,6 +50,8 @@ export default function ProfileMedallionCarousel(props: ProfileMedallionCarousel
     items,
     selectedIds,
     onToggle,
+    setSelectedIds,
+    maxSelect,
     primary,
     primarySoft = "rgba(125,255,202,0.16)",
     showAssign = false,
@@ -51,7 +60,44 @@ export default function ProfileMedallionCarousel(props: ProfileMedallionCarousel
     grayscaleInactive = true,
     padLeft = 8,
     showStars = false,
+    usageMode = "global",
   } = props;
+
+  const normalizedUsageMode = React.useMemo(() => normalizeProfileUsageMode(usageMode || "global"), [usageMode]);
+  const [usageCounts, setUsageCounts] = React.useState<Record<string, number>>(() => readProfileUsageCounts(normalizedUsageMode));
+
+  React.useEffect(() => {
+    const refresh = () => setUsageCounts(readProfileUsageCounts(normalizedUsageMode));
+    refresh();
+    if (typeof window === "undefined") return;
+    window.addEventListener("storage", refresh);
+    window.addEventListener(PROFILE_USAGE_UPDATED_EVENT, refresh as any);
+    window.addEventListener("dc-history-updated", refresh as any);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener(PROFILE_USAGE_UPDATED_EVENT, refresh as any);
+      window.removeEventListener("dc-history-updated", refresh as any);
+    };
+  }, [normalizedUsageMode]);
+
+  const handleToggle = React.useCallback((id: string) => {
+    if (onToggle) return onToggle(id);
+    if (!setSelectedIds) return;
+    const key = String(id);
+    const current = Array.isArray(selectedIds) ? selectedIds.map(String) : [];
+    const exists = current.includes(key);
+    const next = exists ? current.filter((x) => x !== key) : [...current, key];
+    const capped = maxSelect && maxSelect > 0 ? next.slice(-maxSelect) : next;
+    setSelectedIds(capped);
+  }, [onToggle, setSelectedIds, selectedIds, maxSelect]);
+
+  const orderedItems = React.useMemo(() => {
+    return [...(items || [])].sort((a, b) => {
+      const usageDelta = profileUsageScore(b.profile || b, usageCounts, normalizedUsageMode) - profileUsageScore(a.profile || a, usageCounts, normalizedUsageMode);
+      if (usageDelta !== 0) return usageDelta;
+      return String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base", numeric: true });
+    });
+  }, [items, usageCounts, normalizedUsageMode]);
 
   return (
     <div
@@ -65,7 +111,7 @@ export default function ProfileMedallionCarousel(props: ProfileMedallionCarousel
         paddingLeft: padLeft,
       }}
     >
-      {items.map((it) => {
+      {orderedItems.map((it) => {
         const active = selectedIds.includes(it.id);
         const isPending = pendingId === it.id;
         return (
@@ -84,7 +130,7 @@ export default function ProfileMedallionCarousel(props: ProfileMedallionCarousel
           >
             <div
               role="button"
-              onClick={() => onToggle(it.id)}
+              onClick={() => handleToggle(it.id)}
               style={{
                 width: 78,
                 height: 78,

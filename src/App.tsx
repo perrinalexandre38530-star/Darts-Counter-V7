@@ -172,6 +172,7 @@ import SpectatorPage from "./pages/SpectatorPage";
 
 // Historique
 import { History } from "./lib/history";
+import { recordProfileUsageFromMatch } from "./lib/profileUsage";
 
 // ✅ DartSets localStorage store (synced into App store)
 import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
@@ -2834,6 +2835,11 @@ useEffect(() => {
         mode: originalPayload?.mode ?? (m as any)?.kind ?? "x01",
       },
     };
+
+    // ✅ Met à jour immédiatement le tri des profils par mode de jeu.
+    // L'IndexedDB fera aussi le rappel à la fin, mais ce bump rend le sélecteur
+    // cohérent dès le retour au configurateur.
+    try { recordProfileUsageFromMatch(saved, saved.kind, safeArray(store?.profiles)); } catch {}
 
     setStore((s) => {
       const list = [...((s as any).history ?? [])];

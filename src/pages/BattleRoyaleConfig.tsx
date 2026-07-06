@@ -18,6 +18,7 @@ import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
 import tickerImg from "../assets/tickers/ticker_battle_royale.png";
 import { setSfxEnabled } from "../lib/sfx";
 import { setVoiceEnabled } from "../lib/voice";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 
 type Props = {
   store: Store;
@@ -78,7 +79,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   const CARD_BG = theme.card;
 
   const locals: PlayerLite[] = React.useMemo(() => {
-    return (store?.profiles ?? [])
+    const list = (store?.profiles ?? [])
       .filter((p: any) => !p?.isBot)
       .map((p: any) => ({
         id: String(p.id),
@@ -86,7 +87,8 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
         avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
         isBot: false,
       }));
-  }, [store?.profiles]);
+    return sortProfilesByModeUsage(list, "battle_royale", (store as any)?.activeProfileId);
+  }, [store?.profiles, (store as any)?.activeProfileId]);
 
   const bots: PlayerLite[] = React.useMemo(() => safeBots(), []);
   const humanPlayers = React.useMemo(() => dedupe([...(locals || [])]), [locals]);
@@ -556,6 +558,8 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
               const players = selectedIds
                 .map((id) => byId.get(id))
                 .filter(Boolean) as PlayerLite[];
+
+              try { recordProfileUsageForMode("battle_royale", players.map((p) => p.id)); } catch {}
 
               const cfg = {
                 players,

@@ -20,6 +20,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
@@ -435,6 +436,8 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
       players: finalPlayers,
     };
 
+    try { recordProfileUsageForMode("five_lives", finalPlayers.map((p: any) => p.id)); } catch {}
+
     const startCb = onStart || onStartGame || onPlay;
     if (startCb) return startCb(cfg);
     if (typeof go === "function") return go("five_lives_play", { config: cfg });
@@ -531,6 +534,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
           ) : (
             <>
               <PlayerPagedSelector
+                  usageMode="five_lives"
                 profiles={humanProfiles}
                 selectedIds={selectedIds}
                 onToggle={togglePlayer}

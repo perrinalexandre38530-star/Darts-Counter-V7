@@ -12,6 +12,7 @@
 import React from "react";
 import type { Profile } from "../lib/types";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 
 export type CricketScoreMode = "points" | "no-points";
 export type CricketStartOrder = "selected" | "random";
@@ -125,6 +126,11 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
     set({ bots: nextBots, selectedIds: nextSelected, teamsMap: tm });
   }
 
+  function handleStartCricket() {
+    try { recordProfileUsageForMode("cricket", value.selectedIds); } catch {}
+    onStart();
+  }
+
   const allPlayers = React.useMemo(() => {
     const botsAsProfiles = value.bots.map((b) => ({
       id: b.id,
@@ -191,6 +197,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
         </div>
 
         <PlayerPagedSelector
+                  usageMode="cricket"
           profiles={allPlayers}
           selectedIds={value.selectedIds}
           onToggle={toggleId}
@@ -493,7 +500,7 @@ export default function CricketConfig({ profiles, value, onChange, onStart }: Pr
       >
         <button
           type="button"
-          onClick={onStart}
+          onClick={handleStartCricket}
           disabled={!canStart}
           style={{
             width: "100%",

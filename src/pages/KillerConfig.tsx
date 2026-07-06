@@ -30,6 +30,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
@@ -908,6 +909,8 @@ export default function KillerConfigPage(props: Props) {
       players: finalPlayers,
     };
 
+    try { recordProfileUsageForMode(cfg.gameId || cfg.variantId || "killer", finalPlayers.map((p: any) => p.id)); } catch {}
+
     if (startCb) {
       startCb(cfg);
       return;
@@ -1034,6 +1037,7 @@ export default function KillerConfigPage(props: Props) {
             <>
               <div style={{ opacity: numberAssignMode === "throw" ? 0.78 : 1 }}>
                 <PlayerPagedSelector
+                  usageMode={String((params as any)?.variantId || (params as any)?.gameId || "killer")}
                   profiles={humanProfiles}
                   selectedIds={selectedIds}
                   onToggle={togglePlayer}

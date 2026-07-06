@@ -24,6 +24,7 @@ import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BotPagedSelector from "../components/BotPagedSelector";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -383,6 +384,8 @@ export default function GolfConfig(props: any) {
       showHoleGrid,
     };
 
+    try { recordProfileUsageForMode("golf", selectedIds); } catch {}
+
     const go = (props as any)?.go ?? (props as any)?.params?.go;
     if (typeof go === "function") {
       go("golf_play", { config: payload });
@@ -545,6 +548,7 @@ export default function GolfConfig(props: any) {
 
             {/* Profils humains : sélection en bloc flottant type avatars */}
             <PlayerPagedSelector
+                  usageMode="golf"
               profiles={humanProfiles}
               selectedIds={selectedIds}
               onToggle={togglePlayer}

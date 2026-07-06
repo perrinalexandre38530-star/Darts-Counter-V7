@@ -33,6 +33,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { TERRITORY_MAPS, type TerritoryMap } from "../lib/territories/maps";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -399,7 +400,10 @@ export default function DepartementsConfig(props: any) {
 
   // store profiles (humans)
   const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
-  const humanProfiles = storeProfiles.filter((p) => p && !isBotLike(p));
+  const humanProfiles = React.useMemo(
+    () => sortProfilesByModeUsage(storeProfiles.filter((p) => p && !isBotLike(p)), "territories", (store as any)?.activeProfileId),
+    [storeProfiles, (store as any)?.activeProfileId]
+  );
 
   const maxPlayers = 6;
   const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
@@ -604,6 +608,7 @@ export default function DepartementsConfig(props: any) {
     try {
       localStorage.setItem("dc_modecfg_departements", JSON.stringify(payload));
     } catch {}
+    try { recordProfileUsageForMode("territories", selectedIds); } catch {}
     if ((props as any)?.go) return (props as any).go("departements_play", { config: payload });
     if ((props as any)?.setTab) return (props as any).setTab("departements_play", { config: payload });
   }

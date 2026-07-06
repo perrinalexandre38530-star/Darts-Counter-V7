@@ -16,6 +16,7 @@ import InfoDot from "../../components/InfoDot";
 import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel";
 
 import type { Store, Profile } from "../../lib/types";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 import type { MolkkyConfig as MolkkyEngineConfig } from "./engine/molkkyEngine";
 
 // Auto-resolve tickers
@@ -60,7 +61,10 @@ export default function MolkkyConfig({ go, store, params }: Props) {
     getTicker("molkky_games") ||
     null;
 
-  const profiles: Profile[] = Array.isArray(store?.profiles) ? (store.profiles as any) : [];
+  const profiles: Profile[] = React.useMemo(
+    () => sortProfilesByModeUsage(Array.isArray(store?.profiles) ? (store.profiles as any) : [], "molkky", store?.activeProfileId),
+    [store?.profiles, store?.activeProfileId]
+  );
 
     const medallions = React.useMemo(
     () =>
@@ -121,6 +125,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
 
   const start = () => {
     if (!canStart) return;
+    try { recordProfileUsageForMode("molkky", selectedIds); } catch {}
     go("molkky_play", {
       preset,
       players: players.map((p) => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
@@ -212,6 +217,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
 
         <div style={{ marginTop: 10 }}>
           <ProfileMedallionCarousel
+                    usageMode="molkky"
             items={medallions as any}
             selectedIds={selectedIds}
             onToggle={(id: string) => {

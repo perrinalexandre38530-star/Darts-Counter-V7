@@ -40,6 +40,7 @@ import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc } from "../lib/geoAssets";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
@@ -427,16 +428,10 @@ function x01PersistLastSelectedPlayerIds(ids: string[]) {
 
 function x01BumpPlayerUsage(ids: string[]) {
   try {
-    if (typeof window === "undefined") return;
-    const counts = x01ReadPlayerUsageCounts();
-    for (const raw of ids || []) {
-      const id = String(raw || "").trim();
-      if (!id) continue;
-      counts[id] = Number(counts[id] || 0) + 1;
-    }
-    window.localStorage.setItem(X01_PLAYER_USAGE_KEY, JSON.stringify(counts));
+    recordProfileUsageForMode("x01", ids || [], 1);
   } catch {}
 }
+
 
 function buildLastOrDefaultSelectedIds(humans: Profile[], activeProfileId: string | null | undefined): string[] {
   const available = new Set((Array.isArray(humans) ? humans : []).map((p: any) => String(p?.id || "").trim()).filter(Boolean));
@@ -3299,6 +3294,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   allProfiles={humanProfiles}
                 />
                 <PlayerPagedSelector
+                  usageMode="x01"
                   profiles={preferredHumanProfiles}
                   selectedIds={selectedIds}
                   onToggle={togglePlayer}
@@ -3653,6 +3649,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 />
 
                 <PlayerPagedSelector
+                  usageMode="x01"
                   profiles={preferredHumanProfiles}
                   selectedIds={selectedIds}
                   onToggle={togglePlayer}
@@ -5565,6 +5562,7 @@ function TeamsSection({
           </div>
           {togglePlayer ? (
             <PlayerPagedSelector
+                  usageMode="x01"
               profiles={selectableProfiles || profiles}
               selectedIds={selectedIds}
               onToggle={togglePlayer}

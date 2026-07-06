@@ -18,6 +18,7 @@ import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BotPagedSelector from "../components/BotPagedSelector";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -206,6 +207,8 @@ export default function ScramConfig(props: any) {
       roundsCap,
     };
 
+    try { recordProfileUsageForMode("scram", selectedIds); } catch {}
+
     // Debug (utile si "start" reset l'app): on garde le dernier payload
     try {
       localStorage.setItem("dc_last_scram_start_payload", JSON.stringify(payload));
@@ -279,6 +282,7 @@ export default function ScramConfig(props: any) {
 
             {/* Profils : sélection en bloc flottant type avatars */}
             <PlayerPagedSelector
+                  usageMode="scram"
               profiles={humanProfiles}
               selectedIds={selectedIds}
               onToggle={togglePlayer}

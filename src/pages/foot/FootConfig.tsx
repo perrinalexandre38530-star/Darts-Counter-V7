@@ -16,6 +16,7 @@ import {
 } from "../../lib/teamSelectionInstances";
 import { getFootFormat } from "./footFormats";
 import { getFootGameTicker } from "./footTickers";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; store?: any };
 type SourceMode = "manual" | "saved";
@@ -59,8 +60,9 @@ export default function FootConfig({ go, params, store }: Props) {
 
   const profiles = React.useMemo(() => {
     const list = Array.isArray(store?.profiles) ? store.profiles : [];
-    return list.filter((p: any) => p && p.id && !isBotProfile(p));
-  }, [store?.profiles]);
+    const humans = list.filter((p: any) => p && p.id && !isBotProfile(p));
+    return sortProfilesByModeUsage(humans, "foot", store?.activeProfileId);
+  }, [store?.profiles, store?.activeProfileId]);
 
   const savedTeams = React.useMemo<TeamEntity[]>(() => {
     try {
@@ -282,6 +284,7 @@ export default function FootConfig({ go, params, store }: Props) {
   const start = () => {
     if (!ready) return;
     const [a, b] = buildTeamSlots();
+    try { recordProfileUsageForMode("foot", [...a.playerIds, ...b.playerIds]); } catch {}
     go("foot_play", {
       config: {
         sport: "foot",
@@ -357,7 +360,7 @@ export default function FootConfig({ go, params, store }: Props) {
       {profiles.length === 0 ? (
         <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
       ) : (
-        <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir au moins ${requiredPlayers} joueurs`} />
+        <PlayerPagedSelector usageMode="foot" showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir au moins ${requiredPlayers} joueurs`} />
       )}
       <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
     </section>
@@ -447,7 +450,7 @@ export default function FootConfig({ go, params, store }: Props) {
           {profiles.length === 0 ? (
             <div style={emptyStyle}>Aucun profil local disponible. Crée d’abord tes joueurs dans Profils.</div>
           ) : (
-            <PlayerPagedSelector showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir au moins ${requiredPlayers} joueurs`} />
+            <PlayerPagedSelector usageMode="foot" showProfileStarring={false} profiles={profiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle={spec.kind === "duel" ? "Choisir les 2 joueurs" : `Choisir au moins ${requiredPlayers} joueurs`} />
           )}
           <SelectedPreview title={spec.kind === "duel" ? "Duel sélectionné" : "Répartition automatique"} leftTitle={spec.kind === "duel" ? "Camp A" : "Équipe A"} rightTitle={spec.kind === "duel" ? "Camp B" : "Équipe B"} left={manualA} right={manualB} primary={primary} />
         </>

@@ -1957,6 +1957,7 @@ return {
           </div>
 
           <PlayerPagedSelector
+                  usageMode="cricket"
             profiles={allProfiles.filter((p: any) => !p?.isBot)}
             selectedIds={selectedIds}
             onToggle={toggleProfile}

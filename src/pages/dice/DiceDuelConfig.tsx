@@ -15,6 +15,7 @@ import InfoDot from "../../components/InfoDot";
 import ConfigTickerHeader from "../../components/ConfigTickerHeader";
 import { getTicker } from "../../lib/tickers";
 import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 import type { Store, Profile } from "../../lib/types";
 import type { DiceConfig as DiceCfg } from "../../lib/diceTypes";
@@ -97,7 +98,10 @@ export default function DiceConfig({ go, store, params }: Props) {
 
   const headerTicker = getTicker("dice_duel") || getTicker("dice_games") || FALLBACK_HEADER;
 
-  const profiles: Profile[] = Array.isArray(store?.profiles) ? (store.profiles as any) : [];
+  const profiles: Profile[] = React.useMemo(
+    () => sortProfilesByModeUsage(Array.isArray(store?.profiles) ? (store.profiles as any) : [], "dicegame", store?.activeProfileId),
+    [store?.profiles, store?.activeProfileId]
+  );
 
   const medallions = React.useMemo(
     () =>
@@ -209,6 +213,7 @@ export default function DiceConfig({ go, store, params }: Props) {
         </div>
 
         <ProfileMedallionCarousel
+                    usageMode="dicegame"
           items={medallions}
           selectedIds={selectedIds}
           setSelectedIds={(ids: string[]) => {
@@ -281,6 +286,7 @@ export default function DiceConfig({ go, store, params }: Props) {
             onClick={() => {
               if (!canStart) return;
               const chosen = players.map((p: any) => ({ id: p.id, name: p.name, avatarDataUrl: p.profile?.avatarDataUrl ?? null }));
+              try { recordProfileUsageForMode("dicegame", chosen.map((p: any) => p.id)); } catch {}
               go("dice_play", { players: chosen, config: cfg });
             }}
             disabled={!canStart}

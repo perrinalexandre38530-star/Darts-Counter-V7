@@ -6,6 +6,13 @@ import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc } from "../lib/geoAssets";
+import {
+  PROFILE_USAGE_UPDATED_EVENT,
+  mergeProfileUsageFromHistory,
+  normalizeProfileUsageMode,
+  profileUsageScore,
+  readProfileUsageCounts,
+} from "../lib/profileUsage";
 
 type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
 
@@ -483,25 +490,50 @@ export default function PlayerPagedSelector({
   onAfterToggle,
   showProfileStarring,
   showSelectedSummary = true,
+  usageMode = "global",
 }: any) {
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [listOpen, setListOpen] = React.useState(false);
-  const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>(() => readX01PlayerUsageCounts());
+  const normalizedUsageMode = React.useMemo(() => normalizeProfileUsageMode(usageMode || "global"), [usageMode]);
+  const [historyUsageById, setHistoryUsageById] = React.useState<Record<string, number>>(() => readProfileUsageCounts(normalizedUsageMode));
   const [statsById, setStatsById] = React.useState<Record<string, any>>({});
   const effectiveShowProfileStarring = showProfileStarring === undefined ? isDartsSportContextForProfileStarring() : Boolean(showProfileStarring);
 
   React.useEffect(() => {
-    const refresh = () => setHistoryUsageById((prev) => ({ ...prev, ...readX01PlayerUsageCounts() }));
+    const refresh = () => setHistoryUsageById(readProfileUsageCounts(normalizedUsageMode));
     refresh();
     if (typeof window === "undefined") return;
     window.addEventListener("storage", refresh);
+    window.addEventListener(PROFILE_USAGE_UPDATED_EVENT, refresh as any);
     window.addEventListener("dc-x01-player-usage-updated", refresh as any);
+    window.addEventListener("dc-history-updated", refresh as any);
     return () => {
       window.removeEventListener("storage", refresh);
+      window.removeEventListener(PROFILE_USAGE_UPDATED_EVENT, refresh as any);
       window.removeEventListener("dc-x01-player-usage-updated", refresh as any);
+      window.removeEventListener("dc-history-updated", refresh as any);
     };
-  }, []);
+  }, [normalizedUsageMode]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (typeof window === "undefined" || !normalizedUsageMode || normalizedUsageMode === "global") return;
+    const run = async () => {
+      try {
+        const mod = await import("../lib/history");
+        const rows = await mod.History.list().catch(() => []);
+        if (cancelled) return;
+        const merged = mergeProfileUsageFromHistory(rows as any[], normalizedUsageMode, profiles || []);
+        if (!cancelled) setHistoryUsageById(merged);
+      } catch {}
+    };
+    const id = window.setTimeout(run, 0);
+    return () => {
+      cancelled = true;
+      try { window.clearTimeout(id); } catch {}
+    };
+  }, [normalizedUsageMode, profiles]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -534,47 +566,14 @@ export default function PlayerPagedSelector({
     return () => { cancelled = true; };
   }, [profiles, effectiveShowProfileStarring]);
 
-  // Le scan historique est déclenché par la page X01ConfigV3, puis propagé ici
-  // via dc-x01-player-usage-updated. On évite ainsi un double History.list()
-  // à chaque ouverture du sélecteur, qui ralentissait la pagination.
-
-
   const ordered = React.useMemo(() => {
-    const usageScore = (p: any): number => {
-      const ids = [p?.id, p?.profileId, p?.playerId, p?.localProfileId, p?.uid].map(usageKeyOf).filter(Boolean);
-      let best = 0;
-      for (const id of ids) best = Math.max(best, Number(historyUsageById[id] || 0));
-      const candidates = [
-        p?.__x01UsageCount,
-        p?.usageCount,
-        p?.useCount,
-        p?.uses,
-        p?.timesUsed,
-        p?.matchCount,
-        p?.matchesCount,
-        p?.matchesPlayed,
-        p?.gamesPlayed,
-        p?.played,
-        p?.stats?.played,
-        p?.stats?.matches,
-        p?.stats?.totalMatches,
-        p?.x01?.played,
-        p?.cricket?.played,
-        p?.killer?.played,
-      ];
-      for (const raw of candidates) {
-        const n = Number(raw);
-        if (Number.isFinite(n)) best = Math.max(best, n);
-      }
-      return best;
-    };
     const nameOf = (p: any) => String(p?.name || p?.label || p?.displayName || "");
     return [...(profiles || [])].sort((a: any, b: any) => {
-      const usageDelta = usageScore(b) - usageScore(a);
+      const usageDelta = profileUsageScore(b, historyUsageById, normalizedUsageMode) - profileUsageScore(a, historyUsageById, normalizedUsageMode);
       if (usageDelta !== 0) return usageDelta;
-      return nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base", numeric: true });
+      return nameOf(a).localeCompare(nameOf(b), "fr", { sensitivity: "base", numeric: true });
     });
-  }, [profiles, historyUsageById]);
+  }, [profiles, historyUsageById, normalizedUsageMode]);
 
   const selectedIdSet = React.useMemo(() => new Set((selectedIds || []).map((x: any) => String(x))), [selectedIds]);
   const selected = React.useMemo(() => ordered.filter((p: any) => selectedIdSet.has(String(p.id))), [ordered, selectedIdSet]);

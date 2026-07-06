@@ -16,6 +16,7 @@ import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import tickerWarfare from "../assets/tickers/ticker_warfare.png";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 import ProfileAvatar from "../components/ProfileAvatar";
 
 type Props = {
@@ -394,7 +395,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
   }, []);
 
   const locals = React.useMemo<PlayerLite[]>(() => {
-    return (store?.profiles ?? [])
+    const list = (store?.profiles ?? [])
       .filter((p: any) => !p?.isBot)
       .map((p: any) => ({
         id: String(p.id),
@@ -402,7 +403,8 @@ export default function WarfareConfigPage({ store, go }: Props) {
         avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
         isBot: false,
       }));
-  }, [store?.profiles]);
+    return sortProfilesByModeUsage(list, "warfare", (store as any)?.activeProfileId);
+  }, [store?.profiles, (store as any)?.activeProfileId]);
 
   const bots = React.useMemo<PlayerLite[]>(() => safeBots(), []);
   const allPlayers = React.useMemo<PlayerLite[]>(() => dedupe([...(locals || [])]), [locals]);
@@ -475,6 +477,8 @@ export default function WarfareConfigPage({ store, go }: Props) {
 
   function start() {
     if (!canStart) return;
+    try { recordProfileUsageForMode("warfare", [...(teams.TOP || []), ...(teams.BOTTOM || [])].map((p: any) => p.id)); } catch {}
+
     const cfg: WarfareConfig = {
       teams,
       zoneRule,

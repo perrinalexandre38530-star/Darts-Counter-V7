@@ -6,6 +6,7 @@
 import React from "react";
 import InfoDot from "../../components/InfoDot";
 import { getModeById } from "../../lib/dartsModesCatalog";
+import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 const TERRITORIES_MAPS: { id: string; label: string }[] = [
   { id: "FR", label: "France" },
@@ -34,7 +35,10 @@ export default function DartsModeConfig({ store, go, gameId }) {
     }
   }, [gameId]);
 
-  const profiles = store?.profiles ?? [];
+  const profiles = React.useMemo(
+    () => sortProfilesByModeUsage(store?.profiles ?? [], gameId || "darts_mode", store?.activeProfileId),
+    [store?.profiles, store?.activeProfileId, gameId]
+  );
   const [selectedIds, setSelectedIds] = React.useState(() => {
     const saved = Array.isArray(savedCfg?.players) ? savedCfg.players.map((p: any) => p?.id).filter(Boolean) : null;
     return (saved && saved.length ? saved : profiles.slice(0, 2).map((p: any) => p.id)) as any;
@@ -92,6 +96,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
       players: selectedPlayers.map(p => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
     };
     try { localStorage.setItem(`dc_modecfg_${gameId}`, JSON.stringify(cfg)); } catch {}
+    try { recordProfileUsageForMode(gameId || "darts_mode", selectedPlayers.map((p: any) => p.id)); } catch {}
     go("darts_mode_play", { gameId, config: cfg });
   }
 
