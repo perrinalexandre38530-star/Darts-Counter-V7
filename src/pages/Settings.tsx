@@ -70,6 +70,7 @@ import {
 } from "../lib/storagePlans";
 import {
   createStorageCheckoutSession,
+  submitStorageCheckoutRedirect,
   getAccountStorageUsage,
   deleteCloudObjectRemote,
   downloadCloudObject,
@@ -1558,12 +1559,20 @@ function AccountPages({
     setStorageCheckoutLoading(`${planId}:${interval}`);
     try {
       await saveAccountStoragePreferences({ planId, storageDestination: "cloud_r2" });
-      const checkout = await createStorageCheckoutSession({ planId, interval });
-      if (!checkout?.url) {
-        throw new Error(checkout?.message || checkout?.error || "URL Stripe non retournée.");
-      }
-      window.location.href = checkout.url;
+
+      // Chemin principal : POST formulaire + redirection 303 vers Stripe.
+      // Avantage : évite les faux blocages CORS/502 du navigateur au moment où Stripe ouvre Checkout.
+      submitStorageCheckoutRedirect({ planId, interval });
+      return;
     } catch (e: any) {
+      // Fallback historique : utile en desktop/dev si le formulaire est bloqué par un navigateur intégré.
+      try {
+        const checkout = await createStorageCheckoutSession({ planId, interval });
+        if (checkout?.url) {
+          window.location.href = checkout.url;
+          return;
+        }
+      } catch {}
       const missingEnv = e?.missingEnv || e?.data?.missingEnv || "";
       setCloudUsageError(
         missingEnv

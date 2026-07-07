@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiPost, getApiUrl, readNasAccessToken } from "./apiClient";
 import type { StorageDestinationId, StoragePlanId } from "./storagePlans";
 
 export type AccountStoragePreference = {
@@ -149,6 +149,43 @@ export async function createStorageCheckoutSession(args: {
     planId: args.planId,
     interval: args.interval,
   }) as any;
+}
+
+
+export function submitStorageCheckoutRedirect(args: {
+  planId: StoragePlanId | string;
+  interval: StorageBillingInterval;
+}) {
+  if (typeof document === "undefined") {
+    throw new Error("Redirection Stripe indisponible hors navigateur.");
+  }
+  const token = readNasAccessToken();
+  if (!token) {
+    throw new Error("Session absente : reconnecte-toi avant d'ouvrir Stripe.");
+  }
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = `${getApiUrl()}/account/storage/checkout`;
+  form.style.display = "none";
+
+  const fields: Record<string, string> = {
+    planId: String(args.planId || ""),
+    interval: String(args.interval || "monthly"),
+    redirect: "1",
+    accessToken: token,
+  };
+
+  for (const [name, value] of Object.entries(fields)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
 }
 
 export async function verifyStorageCheckoutSession(sessionId: string): Promise<{ ok: boolean; activated?: boolean; plan?: any; preference?: AccountStoragePreference; usage?: AccountStorageUsage; message?: string; error?: string }> {
