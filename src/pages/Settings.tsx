@@ -70,7 +70,6 @@ import {
 } from "../lib/storagePlans";
 import {
   createStorageCheckoutSession,
-  submitStorageCheckoutRedirect,
   getAccountStorageUsage,
   deleteCloudObjectRemote,
   downloadCloudObject,
@@ -1553,6 +1552,10 @@ function AccountPages({
       return;
     }
 
+    // Même logique que les packs Avatar IA : on demande d'abord au backend une
+    // vraie URL Stripe Checkout en JSON, puis seulement on quitte l'app.
+    // On ne passe plus par la redirection GET directe qui pouvait revenir dans
+    // l'app et laisser l'offre en « EN ATTENTE » sans ouvrir Stripe.
     const saved = saveStoragePrefs({ selectedCloudPlan: planId, selectedDestination: "cloud_r2" });
     setStoragePrefs(saved);
     setMessage("Ouverture de Stripe Checkout…");
@@ -1560,27 +1563,24 @@ function AccountPages({
     setStorageCheckoutLoading(`${planId}:${interval}`);
 
     try {
-      // Ne bloque plus l'ouverture Stripe sur une écriture préalable côté app.
-      // La route checkout backend prépare déjà l'offre en attente avant de rediriger.
-      submitStorageCheckoutRedirect({ planId, interval });
+      const checkout = await createStorageCheckoutSession({ planId, interval });
+      if (!checkout?.url) {
+        throw new Error(checkout?.message || checkout?.error || "Stripe n'a pas renvoyé d'URL Checkout.");
+      }
+      window.location.href = checkout.url;
     } catch (e: any) {
-      try {
-        const checkout = await createStorageCheckoutSession({ planId, interval });
-        if (checkout?.url) {
-          window.location.assign(checkout.url);
-          return;
-        }
-      } catch {}
       const missingEnv = e?.missingEnv || e?.data?.missingEnv || "";
       setCloudUsageError(
         missingEnv
           ? `Prix Stripe non configuré côté .env : ${missingEnv}`
           : e?.message || "Impossible de lancer le paiement Stripe."
       );
+      setMessage(null);
       setStorageCheckoutLoading(null);
       void refreshCloudUsage();
     }
   }
+
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;

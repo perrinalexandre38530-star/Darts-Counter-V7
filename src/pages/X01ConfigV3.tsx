@@ -52,6 +52,13 @@ import {
   rerollGeneratedTeamLogo,
   saveGeneratedTeamsToTeamStore,
 } from "../lib/teamAutoShuffle";
+import {
+  TEAM_LOGO_CATEGORIES,
+  TEAM_LOGO_LIBRARY,
+  teamLogoMatchesCategory,
+  type TeamLogoCategory,
+  type TeamLogoTemplate,
+} from "../assets/teamLogoLibrary";
 import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import botTeamEliteLogo from "../assets/ui/competition_bot_team_elite.webp";
@@ -99,7 +106,7 @@ type InModeV3 = "simple" | "double" | "master";
 type OutModeV3 = "simple" | "double" | "master";
 type ServiceModeV3 = "random" | "alternate";
 type TeamId = "gold" | "pink" | "blue" | "green";
-type TeamsSourceMode = "manual" | "saved";
+type TeamsSourceMode = "manual" | "saved" | "auto";
 type ParticipantMode = "players" | "teams";
 type ConfigViewMode = "guided" | "complete";
 
@@ -2664,7 +2671,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- conditions pour pouvoir démarrer ----
   const canStart = React.useMemo(() => {
     if (participantMode === "teams") {
-      if (teamsSourceMode === "saved") return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
+      if (teamsSourceMode === "saved" || teamsSourceMode === "auto") return selectedSavedTeamsCount >= 2 && savedTeamPlayerIds.length >= 2;
       if (selectedBotTeamsCount > 0) return manualAssignedTeamsCount + selectedBotTeamsCount >= 2;
       return totalPlayers >= 4;
     }
@@ -2696,8 +2703,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
 
   const guidedSelectionLabel = React.useMemo(() => {
     if (participantMode === "teams") {
-      const teamCount = teamsSourceMode === "saved" ? selectedSavedTeamsCount : manualAssignedTeamsCount + selectedBotTeamsCount;
-      const playerCount = teamsSourceMode === "saved" ? savedTeamPlayerIds.length : totalPlayers + botTeamPlayerIds.length;
+      const teamCount = teamsSourceMode === "saved" || teamsSourceMode === "auto" ? selectedSavedTeamsCount : manualAssignedTeamsCount + selectedBotTeamsCount;
+      const playerCount = teamsSourceMode === "saved" || teamsSourceMode === "auto" ? savedTeamPlayerIds.length : totalPlayers + botTeamPlayerIds.length;
       return `${teamCount} équipe${teamCount > 1 ? "s" : ""} • ${playerCount} joueur${playerCount > 1 ? "s" : ""}`;
     }
     return `${totalPlayers} profil${totalPlayers > 1 ? "s" : ""}`;
@@ -2934,7 +2941,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   // ---- validation & lancement ----
   function handleStart() {
     if (!canStart) {
-      if (matchMode === "teams" && teamsSourceMode === "saved") {
+      if (matchMode === "teams" && (teamsSourceMode === "saved" || teamsSourceMode === "auto")) {
         alert("Sélectionne au moins 2 équipes enregistrées avec des joueurs.");
         return;
       }
@@ -2971,12 +2978,12 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     let teams: null | Array<any> = null;
 
     if (participantMode === "teams" || matchMode === "teams") {
-      teams = teamsSourceMode === "saved" ? validateSavedTeams() : validateTeams();
+      teams = teamsSourceMode === "saved" || teamsSourceMode === "auto" ? validateSavedTeams() : validateTeams();
       if (!teams) return;
     }
 
     const effectivePlayerIds =
-      participantMode === "teams" && teamsSourceMode === "saved"
+      participantMode === "teams" && (teamsSourceMode === "saved" || teamsSourceMode === "auto")
         ? savedTeamPlayerIds
         : participantMode === "teams" && teamsSourceMode === "manual" && selectedBotTeams.length > 0
         ? Array.from(new Set([...(selectedIds || []), ...(botTeamPlayerIds || [])].map(String)))
@@ -3286,8 +3293,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <PillButton label="Manuel" active={teamsSourceMode === "manual"} onClick={() => setTeamsSourceMode("manual")} primary={primary} primarySoft={primarySoft} />
                       <PillButton label="Équipes enregistrées" active={teamsSourceMode === "saved"} onClick={() => setTeamsSourceMode("saved")} primary={primary} primarySoft={primarySoft} />
+                      <PillButton label="Brassage auto" active={teamsSourceMode === "auto"} onClick={() => setTeamsSourceMode("auto")} primary={primary} primarySoft={primarySoft} />
                     </div>
-                    <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>Tu peux sélectionner plusieurs fois la même équipe enregistrée tant qu’il reste des joueurs disponibles.</div>
+                    <div style={{ marginTop: 10, fontSize: 11, color: "#8f94b5" }}>
+                      Manuel = Gold/Pink/Blue/Green. Équipes enregistrées = teams existantes. Brassage auto = génération aléatoire ou équilibrée.
+                    </div>
                   </div>
                 )}
               </section>
@@ -3720,7 +3730,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           )}
         </section>
 
-        {participantMode === "teams" && (
+        {participantMode === "teams" && teamsSourceMode !== "auto" && (
           <BotTeamsSection
             botTeams={botDartsTeams}
             selectedBotTeamIds={selectedBotTeamIds}
@@ -5212,6 +5222,13 @@ function TeamsSection({
   const [autoShuffleMode, setAutoShuffleMode] = React.useState("balanced");
   const [autoShuffleError, setAutoShuffleError] = React.useState("");
   const [autoSavedHint, setAutoSavedHint] = React.useState("");
+  const [autoStatsById, setAutoStatsById] = React.useState<Record<string, any>>({});
+  const [autoLogoPickerTeamId, setAutoLogoPickerTeamId] = React.useState<string | null>(null);
+  const [autoLogoCategory, setAutoLogoCategory] = React.useState<TeamLogoCategory | "all">("popular");
+
+  React.useEffect(() => {
+    if (sourceMode === "auto") setAutoTeamsOpen(true);
+  }, [sourceMode]);
 
   const allStoredTeams = React.useMemo(() => {
     const byId = new Map<string, any>();
@@ -5250,11 +5267,7 @@ function TeamsSection({
   }, [selectedStoredInstances]);
 
   const autoCandidatePlayers = React.useMemo(() => {
-    const selectedSet = new Set((selectedIds || []).map((id: any) => String(id || "")).filter(Boolean));
-    const baseSource = Array.isArray(selectableProfiles) && selectableProfiles.length ? selectableProfiles : profiles;
-    const source = sourceMode === "manual" && selectedSet.size > 0
-      ? (profiles || baseSource || []).filter((player: any) => selectedSet.has(playerIdOf(player)))
-      : baseSource;
+    const source = Array.isArray(selectableProfiles) && selectableProfiles.length ? selectableProfiles : profiles;
     const seen = new Set<string>();
     return (source || []).filter((player: any) => {
       const id = playerIdOf(player);
@@ -5262,27 +5275,60 @@ function TeamsSection({
       seen.add(id);
       return true;
     });
-  }, [selectableProfiles, profiles, selectedIds, sourceMode]);
+  }, [selectableProfiles, profiles]);
+
+  const autoCandidateKey = React.useMemo(
+    () => autoCandidatePlayers.map((player: any) => playerIdOf(player)).filter(Boolean).join("|"),
+    [autoCandidatePlayers]
+  );
+
+  React.useEffect(() => {
+    if (sourceMode !== "auto") return;
+    if (autoParticipantIds.length > 0) return;
+    const valid = new Set(autoCandidatePlayers.map((player: any) => playerIdOf(player)).filter(Boolean));
+    const prefill = (selectedIds || []).map(String).filter((id) => valid.has(id));
+    if (prefill.length > 0) setAutoParticipantIds(prefill);
+  }, [sourceMode, selectedIds, autoCandidateKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const players = autoCandidatePlayers || [];
+    if (players.length <= 0) {
+      setAutoStatsById({});
+      return () => { cancelled = true; };
+    }
+    Promise.all(players.map(async (player: any) => {
+      const id = playerIdOf(player);
+      if (!id) return null;
+      const stats = await x01LoadBestProfileStatsForStars(id, player);
+      return [id, stats] as const;
+    })).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, any> = {};
+      for (const entry of entries) {
+        if (!entry) continue;
+        const [id, stats] = entry;
+        if (stats) next[id] = stats;
+      }
+      setAutoStatsById(next);
+    }).catch(() => { if (!cancelled) setAutoStatsById({}); });
+    return () => { cancelled = true; };
+  }, [autoCandidateKey]);
 
   React.useEffect(() => {
     setAutoParticipantIds((prev) => prev.filter((id) => autoCandidatePlayers.some((player: any) => playerIdOf(player) === id)));
   }, [autoCandidatePlayers]);
 
-  React.useEffect(() => {
-    if (sourceMode !== "manual") return;
-    const ids = (selectedIds || []).map((id: any) => String(id || "")).filter(Boolean);
-    setAutoParticipantIds((prev) => {
-      const prevSet = new Set((prev || []).map(String));
-      const alreadySynced = ids.length === prev.length && ids.every((id) => prevSet.has(id));
-      return alreadySynced ? prev : ids;
-    });
-    if (ids.length >= 4) setAutoTeamsOpen(true);
-  }, [sourceMode, selectedIds]);
-
   const autoSelectedPlayers = React.useMemo(() => {
     const ids = new Set((autoParticipantIds || []).map(String));
-    return autoCandidatePlayers.filter((player: any) => ids.has(playerIdOf(player)));
-  }, [autoCandidatePlayers, autoParticipantIds]);
+    return autoCandidatePlayers
+      .filter((player: any) => ids.has(playerIdOf(player)))
+      .map((player: any) => {
+        const id = playerIdOf(player);
+        const stats = autoStatsById[id];
+        return stats ? { ...player, x01Stats: stats, stats: { ...(player?.stats || {}), x01: stats } } : player;
+      });
+  }, [autoCandidatePlayers, autoParticipantIds, autoStatsById]);
 
   const autoTeamSize = 2;
   const autoTeamCount = Math.floor(autoSelectedPlayers.length / autoTeamSize);
@@ -5333,10 +5379,23 @@ function TeamsSection({
     updateAutoGeneratedTeams((autoGeneratedTeams || []).map((team: any) => team.id === id ? rerollGeneratedTeamLogo(team) : team));
   }
 
+  function setAutoGeneratedLogo(id: string, logo: TeamLogoTemplate) {
+    if (!id || !logo) return;
+    updateAutoGeneratedTeams((autoGeneratedTeams || []).map((team: any) => team.id === id ? {
+      ...team,
+      logoDataUrl: logo.src,
+      logoUrl: logo.src,
+      logoLibraryId: logo.id,
+      logoLibraryFileName: logo.fileName,
+      logoCategory: logo.category,
+      updatedAt: Date.now(),
+    } : team));
+    setAutoLogoPickerTeamId(null);
+  }
+
   function applyAutoGeneratedTeams() {
     if (!autoGeneratedTeams.length || !addStoredTeamSelection) return;
     rememberGeneratedTeams(autoGeneratedTeams);
-    setSourceMode("saved");
     for (const id of selectedStoredTeamIds || []) removeStoredTeamSelection?.(String(id));
     for (const id of selectedBotTeamIds || []) removeBotTeamSelection?.(String(id));
     for (const team of autoGeneratedTeams) addStoredTeamSelection(String(team.id), Array.isArray(team.playerIds) ? team.playerIds : []);
@@ -5403,6 +5462,16 @@ function TeamsSection({
   const maxPerTeamBase = totalPlayers >= 8 ? 4 : totalPlayers >= 6 ? 3 : 2;
   const usedTeamsCount = orderedTeams.filter((tid) => counts[tid] > 0).length;
   const maxPerTeam = usedTeamsCount >= 3 ? 2 : maxPerTeamBase;
+
+  const autoLogoPickerTeam = React.useMemo(
+    () => (autoGeneratedTeams || []).find((team: any) => String(team?.id || "") === String(autoLogoPickerTeamId || "")) || null,
+    [autoGeneratedTeams, autoLogoPickerTeamId]
+  );
+
+  const filteredAutoLogos = React.useMemo(() => {
+    const filtered = TEAM_LOGO_LIBRARY.filter((logo) => teamLogoMatchesCategory(logo, autoLogoCategory));
+    return filtered.length ? filtered : TEAM_LOGO_LIBRARY;
+  }, [autoLogoCategory]);
 
   const renderSavedTeamCard = (team: any, active: boolean, toggleTeam?: (teamId: string) => void) => {
     const ids = Array.isArray(team.playerIds) ? team.playerIds.map(String) : [];
@@ -5512,113 +5581,131 @@ function TeamsSection({
       <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
         {sourceMode === "saved"
           ? "Choisis tes équipes enregistrées, puis coche les joueurs qui participent au match."
+          : sourceMode === "auto"
+          ? "Sélectionne les joueurs, puis génère des équipes aléatoires ou équilibrées avec logos et noms éditables."
           : t(
               "x01v3.teams.subtitle",
               "Assigne chaque joueur à une Team : Gold, Pink, Blue ou Green. Combos possibles : 2v2, 3v3, 4v4, 2v2v2 ou 2v2v2v2."
             )}
       </p>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <PillButton
-          label="Manuel"
-          active={sourceMode === "manual"}
-          onClick={() => setSourceMode("manual")}
-          primary={primary}
-          primarySoft={primarySoft}
-        />
-        <PillButton
-          label="Équipes enregistrées"
-          active={sourceMode === "saved"}
-          onClick={() => setSourceMode("saved")}
-          primary={primary}
-          primarySoft={primarySoft}
-        />
-        <PillButton
-          label="Brassage auto"
-          active={autoTeamsOpen}
-          onClick={() => {
-            if (sourceMode === "manual" && selectedIds.length > 0) {
-              setAutoParticipantIds(selectedIds.map(String).filter(Boolean));
-            }
-            setAutoTeamsOpen(true);
-          }}
-          primary={primary}
-          primarySoft={primarySoft}
-        />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(138px, 1fr))",
+          gap: 8,
+          marginBottom: 12,
+        }}
+      >
+        <button type="button" onClick={() => setSourceMode("manual")} style={x01AutoModeTab(primary, sourceMode === "manual")}>Manuel</button>
+        <button type="button" onClick={() => setSourceMode("saved")} style={x01AutoModeTab(primary, sourceMode === "saved")}>Équipes enregistrées</button>
+        <button type="button" onClick={() => setSourceMode("auto")} style={x01AutoModeTab(primary, sourceMode === "auto")}>Brassage auto</button>
       </div>
 
-      {canAutoShuffleTeams ? (
-            <section style={{ borderRadius: 18, padding: 10, border: `1px solid ${primary}55`, background: `linear-gradient(180deg, ${primarySoft}, rgba(6,9,20,.58))` }}>
-              <button type="button" onClick={() => setAutoTeamsOpen((v) => !v)} style={{ width: "100%", border: "none", background: "transparent", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, cursor: "pointer", padding: 0, textAlign: "left" }}>
-                <span>
-                  <span style={{ display: "block", color: primary, fontSize: 11, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .9 }}>Composition automatique</span>
-                  <span style={{ display: "block", color: "#9da3c0", fontSize: 10, marginTop: 3 }}>Brassage aléatoire ou équilibré des joueurs sélectionnés</span>
-                </span>
-                <span style={{ color: primary, fontWeight: 1000 }}>{autoTeamsOpen ? "−" : "+"}</span>
-              </button>
-              {autoTeamsOpen ? (
-                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <button type="button" onClick={() => setAutoParticipantIds(autoCandidatePlayers.map(playerIdOf).filter(Boolean))} style={x01AutoSmallPill(primary, true)}>Tous les joueurs</button>
-                    <button type="button" onClick={() => { setAutoParticipantIds([]); updateAutoGeneratedTeams([]); setAutoShuffleError(""); }} style={x01AutoSmallPill(primary, false)}>Vider</button>
-                    <span style={{ color: "#9da3c0", fontSize: 10, fontWeight: 850 }}>{autoParticipantIds.length} sélectionné{autoParticipantIds.length > 1 ? "s" : ""}</span>
-                  </div>
-                  <div className="dc-scroll-thin" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 8, maxHeight: 220, overflowY: "auto", padding: 3 }}>
-                    {autoCandidatePlayers.map((player: any) => {
-                      const id = playerIdOf(player);
-                      const active = autoParticipantIds.includes(id);
-                      const level = playerBalanceLevel(player);
+      {sourceMode === "auto" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {canAutoShuffleTeams ? (
+            <section style={{ borderRadius: 22, padding: 12, border: `1px solid ${primary}77`, background: `linear-gradient(180deg, ${primarySoft}, rgba(6,9,20,.72))`, boxShadow: `0 0 28px ${primary}18` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+                <div>
+                  <div style={{ color: primary, fontSize: 13, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 1.1 }}>Composition automatique</div>
+                  <div style={{ color: "#aab0ca", fontSize: 11, marginTop: 4, lineHeight: 1.35 }}>Choisis les participants, puis génère des teams propres sans assignation Gold/Pink/Blue/Green.</div>
+                </div>
+                <span style={{ color: "#dfe6ff", fontWeight: 950, fontSize: 12, whiteSpace: "nowrap" }}>{autoParticipantIds.length} sélectionné{autoParticipantIds.length > 1 ? "s" : ""}</span>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                <button type="button" onClick={() => setAutoParticipantIds(autoCandidatePlayers.map(playerIdOf).filter(Boolean))} style={x01AutoSmallPill(primary, true)}>Tous les joueurs</button>
+                <button type="button" onClick={() => { setAutoParticipantIds([]); updateAutoGeneratedTeams([]); setAutoShuffleError(""); }} style={x01AutoSmallPill(primary, false)}>Vider</button>
+              </div>
+
+              <div className="dc-scroll-thin" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 10, maxHeight: 280, overflowY: "auto", padding: 3, marginBottom: 12 }}>
+                {autoCandidatePlayers.map((player: any) => {
+                  const id = playerIdOf(player);
+                  const active = autoParticipantIds.includes(id);
+                  const withStats = autoStatsById[id] ? { ...player, x01Stats: autoStatsById[id], stats: { ...(player?.stats || {}), x01: autoStatsById[id] } } : player;
+                  const level = playerBalanceLevel(withStats);
+                  const starData = x01ProfileStarRenderData(withStats, autoStatsById);
+                  return (
+                    <button key={id} type="button" onClick={() => toggleAutoParticipant(id)} style={{ display: "grid", justifyItems: "center", gap: 6, borderRadius: 18, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: active ? `${primary}18` : "rgba(255,255,255,.035)", color: "#fff", padding: 10, cursor: "pointer", minWidth: 0, boxShadow: active ? `0 0 18px ${primary}35` : "none" }}>
+                      <div style={{ position: "relative", width: 64, height: 64, display: "grid", placeItems: "center" }}>
+                        {starData ? <ProfileStarRing {...(starData.avg3d ? { avg3d: starData.avg3d } : { botLevel: starData.level })} anchorSize={58} starSize={8} gapPx={-2} /> : null}
+                        <ProfileAvatar profile={player} name={playerNameOf(player)} size={54} />
+                      </div>
+                      <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 950 }}>{playerNameOf(player)}</span>
+                      <span style={{ color: active ? primary : "#8f94b2", fontSize: 10, fontWeight: 950 }}>Niv. {level.toFixed(1)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8, marginBottom: 12 }}>
+                <button type="button" onClick={() => runAutoTeamShuffle("random")} style={x01AutoActionButton(primary, autoShuffleMode === "random")}>🎲 Brassage aléatoire</button>
+                <button type="button" onClick={() => runAutoTeamShuffle("balanced")} style={x01AutoActionButton(primary, autoShuffleMode === "balanced")}>⚖️ Brassage équilibré</button>
+                <button type="button" disabled={!autoGeneratedTeams.length} onClick={() => runAutoTeamShuffle(autoShuffleMode)} style={x01AutoActionButton(primary, false, !autoGeneratedTeams.length)}>🔁 Rebrasser</button>
+              </div>
+              {autoShuffleError ? <div style={{ color: "#ff9db8", fontSize: 12, fontWeight: 850, marginBottom: 10 }}>{autoShuffleError}</div> : null}
+
+              {autoGeneratedTeams.length ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: .9 }}>Aperçu des équipes générées</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(245px, 1fr))", gap: 12 }}>
+                    {autoGeneratedTeams.map((team: any) => {
+                      const members = (team.playerIds || []).map((id: string) => teamByPlayer.get(String(id))).filter(Boolean);
                       return (
-                        <button key={id} type="button" onClick={() => toggleAutoParticipant(id)} style={{ display: "grid", justifyItems: "center", gap: 5, borderRadius: 15, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: active ? `${primary}18` : "rgba(255,255,255,.035)", color: "#fff", padding: 8, cursor: "pointer", minWidth: 0 }}>
-                          <ProfileAvatar profile={player} name={playerNameOf(player)} size={42} />
-                          <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: 900 }}>{playerNameOf(player)}</span>
-                          <span style={{ color: active ? primary : "#8f94b2", fontSize: 9, fontWeight: 950 }}>Niv. {level.toFixed(1)}</span>
-                        </button>
+                        <article key={team.id} style={{ borderRadius: 22, padding: 12, border: `1px solid ${primary}66`, background: "linear-gradient(180deg, rgba(5,10,24,.92), rgba(3,6,16,.82))", display: "grid", gap: 10, boxShadow: `0 0 18px ${primary}18` }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                            <ProfileAvatar name={team.name} dataUrl={team.logoDataUrl || team.logoUrl || undefined} size={64} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <input value={team.name} onChange={(e) => renameAutoGeneratedTeam(team.id, e.target.value)} style={{ width: "100%", borderRadius: 12, border: `1px solid ${primary}66`, background: "rgba(0,0,0,.34)", color: "#fff", padding: "8px 9px", fontWeight: 1000, fontSize: 15, outline: "none" }} />
+                              <div style={{ color: "#aab0ca", fontSize: 11, marginTop: 5, fontWeight: 850 }}>Force : {Number(team.teamPower || 0).toFixed(1)}</div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minHeight: 42 }}>
+                              {members.map((p: any) => <ProfileAvatar key={p.id} profile={p} size={38} />)}
+                            </div>
+                            <button type="button" onClick={() => setAutoLogoPickerTeamId(team.id)} style={x01AutoSmallPill(primary, false)}>Logo</button>
+                          </div>
+                        </article>
                       );
                     })}
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
-                    <button type="button" onClick={() => runAutoTeamShuffle("random")} style={x01AutoActionButton(primary, autoShuffleMode === "random")}>🎲 Brassage aléatoire</button>
-                    <button type="button" onClick={() => runAutoTeamShuffle("balanced")} style={x01AutoActionButton(primary, autoShuffleMode === "balanced")}>⚖️ Brassage équilibré</button>
-                    <button type="button" disabled={!autoGeneratedTeams.length} onClick={() => runAutoTeamShuffle(autoShuffleMode)} style={x01AutoActionButton(primary, false, !autoGeneratedTeams.length)}>🔁 Rebrasser</button>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+                    <button type="button" onClick={applyAutoGeneratedTeams} style={x01AutoActionButton(primary, true)}>Valider ces équipes</button>
+                    <button type="button" onClick={saveAutoGeneratedTeams} style={x01AutoActionButton(primary, false)}>Enregistrer ces équipes</button>
                   </div>
-                  {autoShuffleError ? <div style={{ color: "#ff9db8", fontSize: 11, fontWeight: 850 }}>{autoShuffleError}</div> : null}
-                  {autoGeneratedTeams.length ? (
-                    <div style={{ display: "grid", gap: 9 }}>
-                      <div style={{ color: primary, fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8 }}>Aperçu des équipes générées</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 9 }}>
-                        {autoGeneratedTeams.map((team: any) => {
-                          const names = (team.playerIds || []).map((id: string) => teamByPlayer.get(String(id))?.name || id).join(", ");
-                          return (
-                            <article key={team.id} style={{ borderRadius: 16, padding: 9, border: `1px solid ${primary}55`, background: "rgba(3,6,16,.70)", display: "grid", gap: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                                <ProfileAvatar name={team.name} dataUrl={team.logoDataUrl || undefined} size={44} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <input value={team.name} onChange={(e) => renameAutoGeneratedTeam(team.id, e.target.value)} style={{ width: "100%", borderRadius: 10, border: `1px solid ${primary}55`, background: "rgba(0,0,0,.28)", color: "#fff", padding: "6px 7px", fontWeight: 950, outline: "none" }} />
-                                  <div style={{ color: "#aab0ca", fontSize: 10, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{names}</div>
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                                <span style={{ color: "#aab0ca", fontSize: 10, fontWeight: 850 }}>Force : {Number(team.teamPower || 0).toFixed(1)}</span>
-                                <button type="button" onClick={() => rerollAutoGeneratedLogo(team.id)} style={x01AutoSmallPill(primary, false)}>Logo</button>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-                        <button type="button" onClick={applyAutoGeneratedTeams} style={x01AutoActionButton(primary, true)}>Valider ces équipes</button>
-                        <button type="button" onClick={saveAutoGeneratedTeams} style={x01AutoActionButton(primary, false)}>Enregistrer ces équipes</button>
-                      </div>
-                      {autoSavedHint ? <div style={{ color: primary, fontSize: 11, fontWeight: 900 }}>{autoSavedHint}</div> : null}
-                    </div>
-                  ) : null}
+                  {autoSavedHint ? <div style={{ color: primary, fontSize: 12, fontWeight: 900 }}>{autoSavedHint}</div> : null}
                 </div>
               ) : null}
             </section>
-          ) : null}
+          ) : (
+            <div style={{ color: "#8f94b2", fontSize: 12, lineHeight: 1.35 }}>Il faut au moins 4 joueurs disponibles pour générer des équipes.</div>
+          )}
 
-      {sourceMode === "saved" ? (
+          {selectedStoredInstances.length > 0 ? (
+            <div>
+              <div style={{ fontSize: 11, color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Équipes validées</div>
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                {selectedStoredInstances.map((item: any) => {
+                  const logo = item.team?.logoDataUrl || item.team?.logoUrl || item.team?.avatarUrl || undefined;
+                  const members = (item.chosen || []).map((id: string) => teamByPlayer.get(String(id))).filter(Boolean);
+                  return (
+                    <div key={item.instanceId} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8, borderRadius: 999, padding: "6px 8px", border: `1px solid ${primary}66`, background: `${primary}12`, color: "#fff", maxWidth: 320 }}>
+                      <ProfileAvatar name={item.team?.name || "Équipe"} dataUrl={logo} size={32} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.team?.name || "Équipe"}</div>
+                        <div style={{ display: "flex", gap: 3, marginTop: 2 }}>{members.map((p: any) => <ProfileAvatar key={p.id} profile={p} size={18} />)}</div>
+                      </div>
+                      <button type="button" onClick={() => removeStoredTeamSelection && removeStoredTeamSelection(item.instanceId)} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: "#ff7aa8", borderRadius: 999, width: 26, height: 26, cursor: "pointer", fontWeight: 950 }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : sourceMode === "saved" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {selectedStoredInstances.length > 0 ? (
             <div>
@@ -5843,6 +5930,67 @@ function TeamsSection({
           })}
         </div>
       )}
+
+      {autoLogoPickerTeam ? (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.74)", display: "grid", placeItems: "center", padding: 12 }}
+          onClick={() => setAutoLogoPickerTeamId(null)}
+        >
+          <div
+            style={{ width: "min(760px, 96vw)", maxHeight: "90vh", overflow: "hidden", borderRadius: 24, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", border: `1px solid ${primary}88`, boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${primary}44`, display: "flex", flexDirection: "column" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${primary}44`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <ProfileAvatar name={autoLogoPickerTeam?.name || "Équipe"} dataUrl={autoLogoPickerTeam?.logoDataUrl || autoLogoPickerTeam?.logoUrl || undefined} size={50} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1.1, fontSize: 13 }}>Sélecteur de logos</div>
+                  <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{autoLogoPickerTeam?.name || "Équipe"}</div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setAutoLogoPickerTeamId(null)} style={{ width: 40, height: 40, borderRadius: 14, border: `1px solid ${primary}77`, background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 18 }}>×</button>
+            </div>
+
+            <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="dc-scroll-thin" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                {TEAM_LOGO_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setAutoLogoCategory(cat.id)}
+                    style={x01AutoSmallPill(primary, autoLogoCategory === cat.id)}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="dc-scroll-thin" style={{ padding: 14, overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))", gap: 10 }}>
+                {filteredAutoLogos.map((logo) => {
+                  const active = autoLogoPickerTeam?.logoLibraryId === logo.id || autoLogoPickerTeam?.logoDataUrl === logo.src || autoLogoPickerTeam?.logoUrl === logo.src;
+                  return (
+                    <button
+                      key={logo.id}
+                      type="button"
+                      onClick={() => setAutoGeneratedLogo(autoLogoPickerTeam.id, logo)}
+                      style={{ borderRadius: 18, padding: 8, border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.08)", background: active ? `${primary}18` : "rgba(255,255,255,0.035)", cursor: "pointer", color: "#fff", display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}
+                    >
+                      <img src={logo.src} alt={logo.label} style={{ width: 68, height: 68, objectFit: "contain", borderRadius: 14, filter: active ? `drop-shadow(0 0 12px ${primary}88)` : "drop-shadow(0 6px 10px rgba(0,0,0,.45))" }} />
+                      <span style={{ width: "100%", fontSize: 10, fontWeight: 850, color: active ? primary : "#b8bed8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{logo.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+                <button type="button" onClick={() => { rerollAutoGeneratedLogo(autoLogoPickerTeam.id); setAutoLogoPickerTeamId(null); }} style={x01AutoActionButton(primary, false)}>Logo aléatoire</button>
+                <button type="button" onClick={() => setAutoLogoPickerTeamId(null)} style={x01AutoActionButton(primary, true)}>Fermer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -6085,6 +6233,22 @@ function x01AutoSmallPill(primary: string, active: boolean): React.CSSProperties
     textTransform: "uppercase",
     letterSpacing: .6,
     cursor: "pointer",
+  };
+}
+
+function x01AutoModeTab(primary: string, active: boolean): React.CSSProperties {
+  return {
+    borderRadius: 999,
+    border: active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)",
+    background: active ? `linear-gradient(135deg, ${primary}2a, rgba(255,230,160,.16))` : "rgba(255,255,255,.035)",
+    color: active ? "#fff" : "#cfd4ec",
+    padding: "10px 12px",
+    fontSize: 12,
+    fontWeight: 1000,
+    cursor: "pointer",
+    boxShadow: active ? `0 0 18px ${primary}33` : "none",
+    whiteSpace: "nowrap",
+    textAlign: "center",
   };
 }
 

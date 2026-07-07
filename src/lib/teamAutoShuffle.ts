@@ -2,6 +2,8 @@
 // Génération d'équipes temporaires : brassage aléatoire ou équilibré.
 // Pensé pour être réutilisé par tous les modes qui utilisent le sélecteur d'équipes X01.
 
+import { TEAM_LOGO_LIBRARY, teamLogoMatchesCategory, type TeamLogoCategory, type TeamLogoTemplate } from "../assets/teamLogoLibrary";
+
 export type TeamShuffleMode = "random" | "balanced";
 
 export type AutoShufflePlayer = {
@@ -32,6 +34,9 @@ export type GeneratedTeam = {
   originalName: string;
   logoDataUrl: string;
   logoUrl?: string | null;
+  logoLibraryId?: string | null;
+  logoLibraryFileName?: string | null;
+  logoCategory?: string | null;
   playerIds: string[];
   generated: true;
   temporary: true;
@@ -230,6 +235,65 @@ function randomName(index: number, rnd: () => number): string {
   return `Les ${n} ${a}`.replace(/\s+/g, " ").trim() || `Équipe ${index + 1}`;
 }
 
+function normalizeLogoText(value: any): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function deterministicPick<T>(items: T[], seed: string | number): T | null {
+  if (!items.length) return null;
+  const rnd = seededRandom(seed);
+  return items[Math.floor(rnd() * items.length)] || items[0] || null;
+}
+
+function logoKeywordsForTeamName(name: string): string[] {
+  const base = normalizeLogoText(name).split(/\s+/).filter((x) => x.length >= 3);
+  const joined = ` ${normalizeLogoText(name)} `;
+  const extra: string[] = [];
+  const add = (...items: string[]) => extra.push(...items);
+  if (/\bloup|loups|wolf|wolves\b/.test(joined)) add("loup", "wolf", "meute");
+  if (/\bdragon/.test(joined)) add("dragon");
+  if (/\bninja/.test(joined)) add("ninja", "samourai", "guerrier");
+  if (/\bviking/.test(joined)) add("viking", "guerrier");
+  if (/\btaureau|bull|bulls\b/.test(joined)) add("taureau", "bull");
+  if (/\bcobra|serpent|snake\b/.test(joined)) add("cobra", "serpent", "snake");
+  if (/\brequin|shark\b/.test(joined)) add("requin", "shark");
+  if (/\bphenix|phoenix\b/.test(joined)) add("phenix", "phoenix", "feu");
+  if (/\bfl[eè]che|fleches|sniper|darts?\b/.test(joined)) add("dart", "darts", "fleche", "cible", "fléchettes");
+  if (/\bmeteor|cosmi|rocket|cyclone|foudre|eclair\b/.test(joined)) add("element", "energie", "foudre", "feu", "cosmique");
+  if (/\bjoker/.test(joined)) add("joker", "fun", "mascotte");
+  if (/\broyal|couronne|titan|spartiate|pirate|guerrier\b/.test(joined)) add("blason", "couronne", "guerrier", "trophee");
+  return Array.from(new Set([...base, ...extra]));
+}
+
+export function pickTeamLogoForGeneratedName(name: string, sport: TeamLogoCategory | "all" = "darts", seed?: string | number): TeamLogoTemplate | null {
+  const keywords = logoKeywordsForTeamName(name);
+  const scored = TEAM_LOGO_LIBRARY
+    .map((logo) => {
+      const haystack = normalizeLogoText([logo.label, logo.category, logo.fileName, ...(logo.tags || [])].join(" "));
+      const score = keywords.reduce((sum, word) => sum + (word && haystack.includes(normalizeLogoText(word)) ? 1 : 0), 0);
+      const sportBonus = sport && sport !== "all" && teamLogoMatchesCategory(logo, sport) ? 2 : 0;
+      const popularBonus = (logo.tags || []).includes("popular") ? 1 : 0;
+      return { logo, score: score * 3 + sportBonus + popularBonus };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const bestScore = scored[0]?.score || 0;
+  const best = bestScore > 0 ? scored.filter((item) => item.score === bestScore).map((item) => item.logo) : [];
+  if (best.length) return deterministicPick(best, seed || name);
+
+  const sportPool = TEAM_LOGO_LIBRARY.filter((logo) => sport && sport !== "all" && teamLogoMatchesCategory(logo, sport));
+  if (sportPool.length) return deterministicPick(sportPool, seed || name);
+
+  const fallback = TEAM_LOGO_LIBRARY.filter((logo) => (logo.tags || []).includes("popular"));
+  return deterministicPick(fallback.length ? fallback : TEAM_LOGO_LIBRARY, seed || name);
+}
+
 export function createRandomTeamLogo(seed: string | number, label = "TEAM"): string {
   const rnd = seededRandom(seed);
   const palette = LOGO_PALETTE[Math.floor(rnd() * LOGO_PALETTE.length)] || LOGO_PALETTE[0];
@@ -284,6 +348,8 @@ export function generateShuffledTeams(options: GenerateOptions): GeneratedTeam[]
     const name = randomName(index, rnd);
     const id = `tmp_shuffle_${now}_${index}_${Math.floor(rnd() * 100000)}`;
     const teamPower = players.reduce((sum, player) => sum + playerBalanceLevel(player), 0);
+    const logoTemplate = pickTeamLogoForGeneratedName(name, (options.sport || "darts") as TeamLogoCategory, `${seed}-${index}-${name}`);
+    const logoSrc = logoTemplate?.src || createRandomTeamLogo(`${seed}-${index}-${name}`, name);
     return {
       id,
       baseTeamId: id,
@@ -291,8 +357,11 @@ export function generateShuffledTeams(options: GenerateOptions): GeneratedTeam[]
       teamRefId: id,
       name,
       originalName: name,
-      logoDataUrl: createRandomTeamLogo(`${seed}-${index}-${name}`, name),
-      logoUrl: null,
+      logoDataUrl: logoSrc,
+      logoUrl: logoSrc,
+      logoLibraryId: logoTemplate?.id || null,
+      logoLibraryFileName: logoTemplate?.fileName || null,
+      logoCategory: logoTemplate?.category || null,
       playerIds: players.map(playerIdOf).filter(Boolean),
       generated: true,
       temporary: true,
@@ -359,7 +428,10 @@ export function saveGeneratedTeamsToTeamStore(teams: any[], sport = "darts") {
     sportIds: Array.isArray(team?.sportIds) && team.sportIds.length ? team.sportIds.map(String) : [String(team?.sport || sport || "darts")],
     playerIds: Array.isArray(team?.playerIds) ? team.playerIds.map(String).filter(Boolean) : [],
     logoDataUrl: team?.logoDataUrl || null,
-    logoUrl: team?.logoUrl || null,
+    logoUrl: team?.logoUrl || team?.logoDataUrl || null,
+    logoLibraryId: team?.logoLibraryId || null,
+    logoLibraryFileName: team?.logoLibraryFileName || null,
+    logoCategory: team?.logoCategory || null,
     temporary: false,
     generated: true,
     autoGenerated: true,
@@ -385,9 +457,16 @@ export function saveGeneratedTeamsToTeamStore(teams: any[], sport = "darts") {
 
 export function rerollGeneratedTeamLogo(team: any): any {
   const name = String(team?.name || "Équipe");
+  const sport = String(team?.sport || (Array.isArray(team?.sportIds) ? team.sportIds[0] : "darts") || "darts") as TeamLogoCategory;
+  const logoTemplate = pickTeamLogoForGeneratedName(name, sport, `${Date.now()}-${Math.random()}-${name}`);
+  const logoSrc = logoTemplate?.src || createRandomTeamLogo(`${Date.now()}-${Math.random()}-${name}`, name);
   return {
     ...team,
-    logoDataUrl: createRandomTeamLogo(`${Date.now()}-${Math.random()}-${name}`, name),
+    logoDataUrl: logoSrc,
+    logoUrl: logoSrc,
+    logoLibraryId: logoTemplate?.id || null,
+    logoLibraryFileName: logoTemplate?.fileName || null,
+    logoCategory: logoTemplate?.category || null,
     updatedAt: Date.now(),
   };
 }
