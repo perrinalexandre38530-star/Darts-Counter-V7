@@ -128,7 +128,56 @@ export function playerNameOf(player: any): string {
 }
 
 function profileFieldLevel(player: any): number {
-  const direct = [player?.level, player?.stars, player?.rating, player?.botLevel, player?.botTeamLevel, player?.profileLevel, player?.skillLevel];
+  // Le niveau d'équilibrage doit d'abord suivre les étoiles visibles du profil.
+  // On couvre les clés utilisées dans les écrans Profils/X01 et les variantes legacy.
+  const direct = [
+    player?.profileStarring,
+    player?.profileStars,
+    player?.profileStarRating,
+    player?.starring,
+    player?.stars,
+    player?.levelStars,
+    player?.x01ProfileStarring,
+    player?.dartsProfileStarring,
+    player?.autoBalanceLevel,
+    player?.balanceLevel,
+    player?.level,
+    player?.rating,
+    player?.botLevel,
+    player?.botTeamLevel,
+    player?.profileLevel,
+    player?.skillLevel,
+    player?.stats?.profileStarring,
+    player?.stats?.profileStars,
+    player?.stats?.stars,
+    player?.stats?.levelStars,
+    player?.stats?.x01?.profileStarring,
+    player?.stats?.x01?.stars,
+    player?.stats?.darts?.profileStarring,
+    player?.stats?.darts?.stars,
+    player?.x01?.profileStarring,
+    player?.x01?.stars,
+    player?.x01Stats?.profileStarring,
+    player?.x01Stats?.stars,
+    player?.privateInfo?.profileStarring,
+    player?.privateInfo?.profileStars,
+    player?.privateInfo?.stars,
+    player?.privateInfo?.x01ProfileStarring,
+    player?.privateInfo?.dartsProfileStarring,
+    player?.private_info?.profileStarring,
+    player?.private_info?.profileStars,
+    player?.private_info?.stars,
+    player?.private_info?.x01ProfileStarring,
+    player?.preferences?.profileStarring,
+    player?.preferences?.profileStars,
+    player?.preferences?.stars,
+    player?.preferences?.x01ProfileStarring,
+    player?.profile?.profileStarring,
+    player?.profile?.profileStars,
+    player?.profile?.stars,
+    player?.profile?.stats?.profileStarring,
+    player?.profile?.stats?.stars,
+  ];
   for (const value of direct) {
     const n = numeric(value);
     if (n > 0) return n > 5 ? n / 20 : n;
@@ -272,26 +321,29 @@ function logoKeywordsForTeamName(name: string): string[] {
 
 export function pickTeamLogoForGeneratedName(name: string, sport: TeamLogoCategory | "all" = "darts", seed?: string | number): TeamLogoTemplate | null {
   const keywords = logoKeywordsForTeamName(name);
-  const scored = TEAM_LOGO_LIBRARY
+  // Règle importante : quand un sport est fourni (X01 => darts), on ne pioche
+  // JAMAIS dans un autre sport. Les mots du nom servent uniquement à départager
+  // les logos compatibles avec le sport, pas à basculer sur pétanque/foot/etc.
+  const strictSportPool = sport && sport !== "all"
+    ? TEAM_LOGO_LIBRARY.filter((logo) => teamLogoMatchesCategory(logo, sport))
+    : TEAM_LOGO_LIBRARY;
+  const pool = strictSportPool.length ? strictSportPool : TEAM_LOGO_LIBRARY;
+
+  const scored = pool
     .map((logo) => {
       const haystack = normalizeLogoText([logo.label, logo.category, logo.fileName, ...(logo.tags || [])].join(" "));
-      const score = keywords.reduce((sum, word) => sum + (word && haystack.includes(normalizeLogoText(word)) ? 1 : 0), 0);
-      const sportBonus = sport && sport !== "all" && teamLogoMatchesCategory(logo, sport) ? 2 : 0;
+      const keywordScore = keywords.reduce((sum, word) => sum + (word && haystack.includes(normalizeLogoText(word)) ? 1 : 0), 0);
       const popularBonus = (logo.tags || []).includes("popular") ? 1 : 0;
-      return { logo, score: score * 3 + sportBonus + popularBonus };
+      return { logo, score: keywordScore * 3 + popularBonus };
     })
-    .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  const bestScore = scored[0]?.score || 0;
-  const best = bestScore > 0 ? scored.filter((item) => item.score === bestScore).map((item) => item.logo) : [];
+  const bestScore = scored[0]?.score ?? 0;
+  const best = scored.filter((item) => item.score === bestScore).map((item) => item.logo);
   if (best.length) return deterministicPick(best, seed || name);
 
-  const sportPool = TEAM_LOGO_LIBRARY.filter((logo) => sport && sport !== "all" && teamLogoMatchesCategory(logo, sport));
-  if (sportPool.length) return deterministicPick(sportPool, seed || name);
-
-  const fallback = TEAM_LOGO_LIBRARY.filter((logo) => (logo.tags || []).includes("popular"));
-  return deterministicPick(fallback.length ? fallback : TEAM_LOGO_LIBRARY, seed || name);
+  const fallback = pool.filter((logo) => (logo.tags || []).includes("popular"));
+  return deterministicPick(fallback.length ? fallback : pool, seed || name);
 }
 
 export function createRandomTeamLogo(seed: string | number, label = "TEAM"): string {
