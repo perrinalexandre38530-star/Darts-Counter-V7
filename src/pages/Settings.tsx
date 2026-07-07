@@ -1552,10 +1552,12 @@ function AccountPages({
       return;
     }
 
-    // Même logique que les packs Avatar IA : on demande d'abord au backend une
-    // vraie URL Stripe Checkout en JSON, puis seulement on quitte l'app.
-    // On ne passe plus par la redirection GET directe qui pouvait revenir dans
-    // l'app et laisser l'offre en « EN ATTENTE » sans ouvrir Stripe.
+    // Méthode volontairement identique à Avatar IA :
+    // 1) POST JSON vers le NAS
+    // 2) le NAS renvoie url Stripe
+    // 3) window.location.href ouvre Checkout.
+    // Si Stripe refuse le price_, on affiche le vrai message au lieu de laisser
+    // la carte bloquée sur EN ATTENTE.
     const saved = saveStoragePrefs({ selectedCloudPlan: planId, selectedDestination: "cloud_r2" });
     setStoragePrefs(saved);
     setMessage("Ouverture de Stripe Checkout…");
@@ -1563,20 +1565,24 @@ function AccountPages({
     setStorageCheckoutLoading(`${planId}:${interval}`);
 
     try {
-      const checkout = await createStorageCheckoutSession({ planId, interval });
+      const base = `${window.location.origin}${window.location.pathname}`;
+      const successUrl = `${base}#/settings?account=storage&storage_checkout=success&storage_session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${base}#/settings?account=storage&storage_checkout=cancel`;
+      const checkout = await createStorageCheckoutSession({ planId, interval, successUrl, cancelUrl });
       if (!checkout?.url) {
         throw new Error(checkout?.message || checkout?.error || "Stripe n'a pas renvoyé d'URL Checkout.");
       }
       window.location.href = checkout.url;
     } catch (e: any) {
       const missingEnv = e?.missingEnv || e?.data?.missingEnv || "";
-      setCloudUsageError(
-        missingEnv
-          ? `Prix Stripe non configuré côté .env : ${missingEnv}`
-          : e?.message || "Impossible de lancer le paiement Stripe."
-      );
+      const detail = missingEnv
+        ? `Prix Stripe non configuré côté .env : ${missingEnv}`
+        : e?.message || "Impossible de lancer le paiement Stripe.";
+      setCloudUsageError(detail);
       setMessage(null);
       setStorageCheckoutLoading(null);
+      safeAlert(detail);
+      void refreshStorageStripeStatus(true);
       void refreshCloudUsage();
     }
   }

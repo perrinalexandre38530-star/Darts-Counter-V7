@@ -144,10 +144,14 @@ export type StorageBillingInterval = "monthly" | "yearly";
 export async function createStorageCheckoutSession(args: {
   planId: StoragePlanId | string;
   interval: StorageBillingInterval;
-}): Promise<{ ok: boolean; url?: string; sessionId?: string; plan?: any; interval?: StorageBillingInterval; error?: string; missingEnv?: string; message?: string }> {
+  successUrl?: string;
+  cancelUrl?: string;
+}): Promise<{ ok: boolean; url?: string; sessionId?: string; plan?: any; interval?: StorageBillingInterval; error?: string; missingEnv?: string; message?: string; stripeMode?: string; priceId?: string; stripeErrorCode?: string; stripeErrorType?: string }> {
   return apiPost("/account/storage/checkout", {
     planId: args.planId,
     interval: args.interval,
+    successUrl: args.successUrl,
+    cancelUrl: args.cancelUrl,
   }) as any;
 }
 
