@@ -3,6 +3,8 @@
 // Règle : une équipe enregistrée peut être réutilisée tant qu'il reste assez de joueurs
 // disponibles. Les occurrences sont nommées "Familia A", "Familia B", etc.
 
+import { findRememberedGeneratedTeam } from "./teamAutoShuffle";
+
 export type TeamLike = {
   id?: string | number | null;
   name?: string | null;
@@ -135,7 +137,7 @@ export function resolveTeamInstance<T extends TeamLike>(
 ): (T & { id: string; baseTeamId: string; sourceTeamId: string; name: string; playerIds: string[]; originalName: string }) | null {
   const id = String(instanceId || "");
   const base = teamBaseId(id);
-  const team = (teams || []).find((t: any) => teamBaseId(t) === base);
+  const team = (teams || []).find((t: any) => teamBaseId(t) === base) || findRememberedGeneratedTeam(base);
   if (!team) return null;
   const selected = Array.isArray(selectionsByInstanceId[id])
     ? selectionsByInstanceId[id].map(String).filter(Boolean)
