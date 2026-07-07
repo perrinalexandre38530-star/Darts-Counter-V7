@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost, getApiUrl, readNasAccessToken } from "./apiClient";
+import { apiDelete, apiGet, apiPost, buildApiUrl, readNasAccessToken } from "./apiClient";
 import type { StorageDestinationId, StoragePlanId } from "./storagePlans";
 
 export type AccountStoragePreference = {
@@ -156,7 +156,7 @@ export function submitStorageCheckoutRedirect(args: {
   planId: StoragePlanId | string;
   interval: StorageBillingInterval;
 }) {
-  if (typeof document === "undefined") {
+  if (typeof window === "undefined") {
     throw new Error("Redirection Stripe indisponible hors navigateur.");
   }
   const token = readNasAccessToken();
@@ -164,28 +164,17 @@ export function submitStorageCheckoutRedirect(args: {
     throw new Error("Session absente : reconnecte-toi avant d'ouvrir Stripe.");
   }
 
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = `${getApiUrl()}/account/storage/checkout`;
-  form.style.display = "none";
-
-  const fields: Record<string, string> = {
+  // Navigation directe, pas de fetch et pas de formulaire caché.
+  // Ça contourne les blocages CORS/proxy/PWA : le navigateur quitte l'app,
+  // le backend crée la session Checkout, puis répond en 303 vers Stripe.
+  const url = buildApiUrl("/account/storage/checkout", {
     planId: String(args.planId || ""),
     interval: String(args.interval || "monthly"),
     redirect: "1",
-    accessToken: token,
-  };
+    access_token: token,
+  });
 
-  for (const [name, value] of Object.entries(fields)) {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-  }
-
-  document.body.appendChild(form);
-  form.submit();
+  window.location.assign(url);
 }
 
 export async function verifyStorageCheckoutSession(sessionId: string): Promise<{ ok: boolean; activated?: boolean; plan?: any; preference?: AccountStoragePreference; usage?: AccountStorageUsage; message?: string; error?: string }> {

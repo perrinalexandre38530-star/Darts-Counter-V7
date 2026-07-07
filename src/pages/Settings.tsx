@@ -1552,24 +1552,22 @@ function AccountPages({
       openAccountLogin();
       return;
     }
+
     const saved = saveStoragePrefs({ selectedCloudPlan: planId, selectedDestination: "cloud_r2" });
     setStoragePrefs(saved);
-    setMessage(null);
+    setMessage("Ouverture de Stripe Checkout…");
     setCloudUsageError(null);
     setStorageCheckoutLoading(`${planId}:${interval}`);
-    try {
-      await saveAccountStoragePreferences({ planId, storageDestination: "cloud_r2" });
 
-      // Chemin principal : POST formulaire + redirection 303 vers Stripe.
-      // Avantage : évite les faux blocages CORS/502 du navigateur au moment où Stripe ouvre Checkout.
+    try {
+      // Ne bloque plus l'ouverture Stripe sur une écriture préalable côté app.
+      // La route checkout backend prépare déjà l'offre en attente avant de rediriger.
       submitStorageCheckoutRedirect({ planId, interval });
-      return;
     } catch (e: any) {
-      // Fallback historique : utile en desktop/dev si le formulaire est bloqué par un navigateur intégré.
       try {
         const checkout = await createStorageCheckoutSession({ planId, interval });
         if (checkout?.url) {
-          window.location.href = checkout.url;
+          window.location.assign(checkout.url);
           return;
         }
       } catch {}
@@ -1579,7 +1577,6 @@ function AccountPages({
           ? `Prix Stripe non configuré côté .env : ${missingEnv}`
           : e?.message || "Impossible de lancer le paiement Stripe."
       );
-    } finally {
       setStorageCheckoutLoading(null);
       void refreshCloudUsage();
     }
