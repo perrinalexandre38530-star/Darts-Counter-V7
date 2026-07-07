@@ -2458,6 +2458,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [autoDartSetPicker, setAutoDartSetPicker] = React.useState<{ profileId: string; seq: number } | null>(null);
   const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(true);
 
+  React.useEffect(() => {
+    setAutoDartSetPicker(null);
+  }, [participantMode, teamsSourceMode, configViewMode]);
+
   const handleChangePlayerDartSet = React.useCallback((profileId: string, dartSetId: string | null) => {
     const pid = String(profileId || "").trim();
     const dsid = dartSetId ? String(dartSetId) : null;
@@ -2480,7 +2484,6 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
       if (!exists && humanProfiles.some((p: any) => String(p?.id) === pid)) {
         const preferred = x01MostUsedDartSetIdForProfile(pid, humanProfiles);
         setPlayerDartSets((old) => (old && Object.prototype.hasOwnProperty.call(old, pid) ? old : { ...old, [pid]: preferred }));
-        setAutoDartSetPicker({ profileId: pid, seq: Date.now() + Math.random() });
       }
 
       // nettoie l'affectation d'équipe si on retire un joueur
@@ -3331,6 +3334,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   accent={primary}
                   pageSize={9}
                   modalTitle="Choisir des joueurs"
+                  onClose={() => setAutoDartSetPicker(null)}
                   renderAvatarOverlay={(p: any) => (
                     <PlayerDartBadge
                       profileId={p.id}
@@ -3338,7 +3342,6 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                       onChange={(id) => handleChangePlayerDartSet(p.id, id)}
                       compact
                       allProfiles={humanProfiles}
-                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
                     />
                   )}
                   showSelectedSummary={false}
@@ -3687,6 +3690,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                   accent={primary}
                   pageSize={9}
                   modalTitle="Choisir des joueurs"
+                  onClose={() => setAutoDartSetPicker(null)}
                   renderAvatarOverlay={(p: any) => (
                     <PlayerDartBadge
                       profileId={p.id}
@@ -3694,7 +3698,6 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                       onChange={(id) => handleChangePlayerDartSet(p.id, id)}
                       compact
                       allProfiles={humanProfiles}
-                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
                     />
                   )}
                   showSelectedSummary={false}
@@ -5675,6 +5678,7 @@ function TeamsSection({
                   accent={primary}
                   pageSize={9}
                   modalTitle="Choisir les joueurs à brasser"
+                  onClose={() => setAutoDartSetPicker && setAutoDartSetPicker(null)}
                   renderAvatarOverlay={(p: any) => (
                     handleChangePlayerDartSet ? (
                       <PlayerDartBadge
@@ -5683,7 +5687,6 @@ function TeamsSection({
                         onChange={(id) => handleChangePlayerDartSet(p.id, id)}
                         compact
                         allProfiles={allProfiles || profiles}
-                        autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
                       />
                     ) : null
                   )}
@@ -5856,7 +5859,6 @@ function TeamsSection({
                                 if (!wasChecked) {
                                   const preferred = x01MostUsedDartSetIdForProfile(pid, allProfiles || profiles);
                                   if (handleChangePlayerDartSet && preferred && !((playerDartSets || {})[pid])) handleChangePlayerDartSet(pid, preferred);
-                                  if (setAutoDartSetPicker) setAutoDartSetPicker({ profileId: pid, seq: Date.now() + Math.random() });
                                 }
                                 return next;
                               });
@@ -5897,7 +5899,6 @@ function TeamsSection({
                                   onChange={(id) => handleChangePlayerDartSet(pid, id)}
                                   compact
                                   allProfiles={allProfiles || profiles}
-                                  autoOpenToken={autoDartSetPicker?.profileId === pid ? autoDartSetPicker.seq : null}
                                 />
                               ) : null}
                               <X01CountryFlagBadge profile={p} accent={primary} size={30} style={{ right: 8, bottom: 8 }} />
@@ -5930,6 +5931,7 @@ function TeamsSection({
               accent={primary}
               pageSize={9}
               modalTitle="Choisir les joueurs des équipes"
+              onClose={() => setAutoDartSetPicker && setAutoDartSetPicker(null)}
               renderAvatarOverlay={(p: any) => (
                 handleChangePlayerDartSet ? (
                   <PlayerDartBadge
@@ -5938,7 +5940,6 @@ function TeamsSection({
                     onChange={(id) => handleChangePlayerDartSet(p.id, id)}
                     compact
                     allProfiles={allProfiles || profiles}
-                    autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
                   />
                 ) : null
               )}

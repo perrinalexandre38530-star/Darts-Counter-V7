@@ -488,6 +488,7 @@ export default function PlayerPagedSelector({
   renderAvatarOverlay,
   closeOnSelect = false,
   onAfterToggle,
+  onClose,
   showProfileStarring,
   showSelectedSummary = true,
   usageMode = "global",
@@ -585,14 +586,19 @@ export default function PlayerPagedSelector({
     if (open) setPage(0);
   }, [open]);
 
+  const closePicker = React.useCallback(() => {
+    setOpen(false);
+    onClose?.();
+  }, [onClose]);
+
   const handlePick = React.useCallback((id: any) => {
     onToggle?.(id);
     onAfterToggle?.(id);
     if (closeOnSelect) {
-      setOpen(false);
+      closePicker();
       setListOpen(false);
     }
-  }, [onToggle, onAfterToggle, closeOnSelect]);
+  }, [onToggle, onAfterToggle, closeOnSelect, closePicker]);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -626,14 +632,14 @@ export default function PlayerPagedSelector({
       ) : null}
 
       {open ? (
-        <div role="dialog" aria-modal="true" onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+        <div role="dialog" aria-modal="true" onClick={closePicker} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 96vw)", maxHeight: "90vh", borderRadius: 18, border: `1px solid ${accent}88`, background: "linear-gradient(180deg, rgba(7,18,35,.98), rgba(3,6,16,.98))", boxShadow: `0 22px 70px rgba(0,0,0,.78), 0 0 28px ${accent}44`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "12px 12px 10px", borderBottom: `1px solid ${accent}44`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 950, color: accent, textTransform: "uppercase", letterSpacing: 1.2, fontSize: 13 }}>{modalTitle}</div>
                 <div style={{ color: "#aab0cc", fontSize: 11, fontWeight: 800, marginTop: 4 }}>9 profils/page · page {safePage + 1}/{pages}</div>
               </div>
-              <button className="btn sm" type="button" onClick={() => setOpen(false)}>✕</button>
+              <button className="btn sm" type="button" onClick={closePicker}>✕</button>
             </div>
             <div style={{ padding: 14, overflowY: "auto" }} className="dc-scroll-thin">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
@@ -658,11 +664,32 @@ export default function PlayerPagedSelector({
                   );
                 })}
               </div>
-              <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "84px 1fr 84px", alignItems: "center", gap: 10 }}>
                 <button type="button" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={safePage <= 0} style={nav(accent)}>←</button>
-                <div style={{ color: "#aab0cc", fontSize: 12, fontWeight: 900 }}>PAGE {safePage + 1}/{pages}</div>
+                <div style={{ color: "#aab0cc", fontSize: 12, fontWeight: 900, textAlign: "center" }}>PAGE {safePage + 1}/{pages}</div>
                 <button type="button" onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={safePage >= pages - 1} style={nav(accent)}>→</button>
               </div>
+              <button
+                type="button"
+                onClick={closePicker}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  minHeight: 42,
+                  borderRadius: 999,
+                  border: `1px solid ${accent}`,
+                  background: `linear-gradient(135deg, ${accent}33, rgba(255,255,255,.05))`,
+                  color: accent,
+                  fontSize: 13,
+                  fontWeight: 1000,
+                  textTransform: "uppercase",
+                  letterSpacing: 1.1,
+                  boxShadow: `0 0 18px ${accent}33`,
+                  cursor: "pointer",
+                }}
+              >
+                Valider la sélection
+              </button>
             </div>
           </div>
         </div>
