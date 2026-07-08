@@ -28,10 +28,13 @@ import {
   refreshStatsIndexFromHistoryNow,
 } from "../lib/stats/rebuildStatsFromHistory";
 import {
+  deleteCloudMatchBackup,
   deleteLocalMatchBackup,
   deleteNasMatchBackup,
+  listCloudMatchBackups,
   listLocalMatchBackups,
   listNasMatchBackups,
+  pullCloudMatchBackup,
   pullNasMatchBackup,
   restoreMatchBackupItem,
   type MatchBackupItem,
@@ -839,7 +842,8 @@ function MatchBackupCard({ item, busy, onRestore, onExport, onDelete }: {
     .filter(Boolean)
     .slice(0, 6)
     .join(" · ");
-  const origin = item.origin === "nas" ? "NAS" : "LOCAL";
+  const origin = item.origin === "nas" ? "NAS" : item.origin === "cloud" ? "CLOUD" : "LOCAL";
+  const originColor = item.origin === "nas" ? neon : item.origin === "cloud" ? gold : green;
   const when = item.updatedAt || item.createdAt || Date.parse(item.savedAt || "") || 0;
   return (
     <div style={{ ...panel, borderColor: "rgba(52,211,153,.38)" }}>
@@ -851,10 +855,10 @@ function MatchBackupCard({ item, busy, onRestore, onExport, onDelete }: {
           display: "grid",
           placeItems: "center",
           background: "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 14%, transparent)",
-          border: `1px solid ${item.origin === "nas" ? neon : green}`,
-          color: item.origin === "nas" ? neon : green,
+          border: `1px solid ${originColor}`,
+          color: originColor,
           fontWeight: 1000,
-          boxShadow: `0 0 18px color-mix(in srgb, ${item.origin === "nas" ? neon : green} 28%, transparent)`,
+          boxShadow: `0 0 18px color-mix(in srgb, ${originColor} 28%, transparent)`,
         }}>{origin}</div>
         <div style={wrapText}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -881,7 +885,7 @@ function MatchBackupCard({ item, busy, onRestore, onExport, onDelete }: {
         </div>
         <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
           <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>DÉTAIL</div>
-          <div style={{ color: neon, fontWeight: 1000, fontSize: 18 }}>{item.payloadCompressed || item.origin === "nas" ? "OK" : "—"}</div>
+          <div style={{ color: neon, fontWeight: 1000, fontSize: 18 }}>{item.payloadCompressed || item.origin === "nas" || item.origin === "cloud" ? "OK" : "—"}</div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
@@ -1112,11 +1116,12 @@ export default function StorageVaultPage({ go }: Props) {
   const archiveCloudOtherEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.source === "cloud" && entry.quality.grade !== "complete" && entry.quality.grade !== "history"), [archiveEntries]);
   const matchBackupEntries = React.useMemo(() => {
     const byId = new Map<string, MatchBackupItem>();
+    const priority = (origin?: string) => origin === "cloud" ? 3 : origin === "nas" ? 2 : 1;
     for (const item of matchBackups || []) {
       const id = String(item.matchId || item.id || "").trim();
       if (!id) continue;
       const existing = byId.get(id);
-      if (!existing || existing.origin !== "nas" || item.origin === "nas") byId.set(id, item);
+      if (!existing || priority(item.origin) >= priority(existing.origin)) byId.set(id, item);
     }
     return Array.from(byId.values()).sort((a, b) => {
       const ta = Number(a.updatedAt || a.createdAt || Date.parse(a.savedAt || "") || 0);
@@ -1185,15 +1190,17 @@ export default function StorageVaultPage({ go }: Props) {
 
         setNasSlots([]);
         setTrashNasSlots([]);
+        const cloudMatches = await listCloudMatchBackups().catch(() => []);
+
         setCloudSlots(checkedCloud);
         setTrashCloudSlots(checkedTrashCloud);
-        setMatchBackups([...(localMatches || [])]);
+        setMatchBackups([...(localMatches || []), ...(cloudMatches || [])]);
 
         const validCloud = checkedCloud.filter((slot) => assessSaveForProvider(slot.__summary, "cloud").restorable).length;
         const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
         const hidden = Math.max(0, activeRaw.length - checkedCloud.length);
         const accountHint = getVaultCurrentUserId() ? `Compte public cloud : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes cloud sont masquées.";
-        setMessage(`${accountHint} ${validCloud + validLocal} vrai(s) emplacement(s) restaurable(s). Destination : Cloudflare R2. La dernière sauvegarde cloud reste visible, les anciennes sont dans Archives, la corbeille contient ${checkedTrashCloud.length} sauvegarde(s). ${localMatches.length} sauvegarde(s) locale(s) de partie à l’unité détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) cloud non scanné(s) restent en expert.` : ""}`);
+        setMessage(`${accountHint} ${validCloud + validLocal} vrai(s) emplacement(s) restaurable(s). Destination : Cloudflare R2. La dernière sauvegarde cloud reste visible, les anciennes sont dans Archives, la corbeille contient ${checkedTrashCloud.length} sauvegarde(s). ${cloudMatches.length} sauvegarde(s) cloud de partie à l’unité + ${localMatches.length} locale(s) détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) cloud non scanné(s) restent en expert.` : ""}`);
         return;
       }
 
@@ -1347,7 +1354,11 @@ Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
     if (!ok) return;
     setBusy(true);
     try {
-      const full = item.origin === "nas" ? await pullNasMatchBackup(item.matchId || item.id) : item;
+      const full = item.origin === "nas"
+        ? await pullNasMatchBackup(item.matchId || item.id)
+        : item.origin === "cloud"
+          ? await pullCloudMatchBackup(item)
+          : item;
       if (!full) throw new Error("Sauvegarde de partie introuvable.");
       await restoreMatchBackupItem(full);
       await afterRestoreHousekeeping(`restore-single-match:${full.matchId || full.id}`);
@@ -1362,7 +1373,11 @@ Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
 
   const exportSingleMatch = async (item: MatchBackupItem) => {
     try {
-      const full = item.origin === "nas" ? await pullNasMatchBackup(item.matchId || item.id) : item;
+      const full = item.origin === "nas"
+        ? await pullNasMatchBackup(item.matchId || item.id)
+        : item.origin === "cloud"
+          ? await pullCloudMatchBackup(item)
+          : item;
       exportJsonDownload(full || item, `${String(item.matchId || item.id || "match").replace(/[^a-z0-9_-]/gi, "_")}.json`);
     } catch (error: any) {
       setMessage(`Export partie impossible : ${error?.message || error}`);
@@ -1376,6 +1391,7 @@ ${label}`)) return;
     setBusy(true);
     try {
       if (item.origin === "nas") await deleteNasMatchBackup(item.matchId || item.id);
+      if (item.origin === "cloud") await deleteCloudMatchBackup(item);
       await deleteLocalMatchBackup(item.matchId || item.id).catch(() => undefined);
       setMessage("Sauvegarde de partie supprimée.");
       await refresh();
@@ -1821,7 +1837,7 @@ ${label}`)) return;
               <div style={panel}>
                 <strong style={{ color: amber }}>Aucune sauvegarde de partie encore détectée</strong>
                 <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
-                  Termine une nouvelle partie : elle créera automatiquement un bloc local, puis un bloc serveur si ton compte est connecté et le backend disponible.
+                  Termine une nouvelle partie : elle créera automatiquement un bloc local, puis un bloc Cloudflare R2 si ton compte public est actif, ou NAS si ton compte fondateur utilise encore le NAS.
                 </div>
               </div>
             )}

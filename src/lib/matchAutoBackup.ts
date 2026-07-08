@@ -1,13 +1,28 @@
 import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
-import { getStorageUser } from "./storage";
+import { exportCloudSnapshot, getStorageUser } from "./storage";
+import {
+  CLOUD_VAULT_OBJECT_TYPE,
+  deleteCloudObjectRemote,
+  downloadCloudObject,
+  getAccountStorageUsage,
+  listCloudObjects,
+  uploadCloudObject,
+  type CloudObjectIndexItem,
+} from "./cloudStorageApi";
 
 const DB_NAME = "dc-match-backups-v1";
 const DB_VERSION = 1;
 const STORE_NAME = "matches";
 const MAX_LOCAL_MATCH_BACKUPS = 500;
+const CLOUD_MATCH_BACKUP_OBJECT_TYPE = "cloud_match_backup_v1";
+const CLOUD_MATCH_FULL_SNAPSHOT_KEY = "backups/cloud_vault_v1/auto_latest.json";
+const CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS = 90_000;
 
-export type MatchBackupOrigin = "local" | "nas";
+type StorageProviderCache = { at: number; provider: string; ok: boolean } | null;
+let storageProviderCache: StorageProviderCache = null;
+
+export type MatchBackupOrigin = "local" | "nas" | "cloud";
 
 export type MatchBackupItem = {
   id: string;
@@ -31,6 +46,8 @@ export type MatchBackupItem = {
   payloadEncoding: "lz-string-utf16";
   payloadBytes: number;
   source?: string;
+  cloudObjectId?: string | null;
+  cloudObjectKey?: string | null;
 };
 
 function nowIso() {
@@ -53,6 +70,127 @@ function currentOwnerId(): string | null {
   } catch {
     return null;
   }
+}
+
+
+function safeSegment(value: any, fallback = "item"): string {
+  const raw = String(value ?? "").trim().toLowerCase();
+  const out = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 90);
+  return out || fallback;
+}
+
+function parseMs(value: any, fallback = 0): number {
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return n;
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) && t > 0 ? t : fallback;
+}
+
+async function getActiveStorageProviderCached(): Promise<string> {
+  if (!readNasAccessToken()) return "";
+  const now = Date.now();
+  if (storageProviderCache && now - storageProviderCache.at < 60_000) return storageProviderCache.provider;
+  try {
+    const usage = await getAccountStorageUsage();
+    const provider = String(usage?.preference?.storage_provider || "").trim();
+    storageProviderCache = { at: now, provider, ok: true };
+    return provider;
+  } catch (error) {
+    storageProviderCache = { at: now, provider: "", ok: false };
+    throw error;
+  }
+}
+
+async function shouldUseCloudR2(): Promise<boolean> {
+  try {
+    return (await getActiveStorageProviderCached()) === "cloud_r2";
+  } catch {
+    return false;
+  }
+}
+
+function cloudMatchObjectKey(item: MatchBackupItem): string {
+  const sport = safeSegment(item.sport || "darts", "darts");
+  const matchId = safeSegment(item.matchId || item.id, "match");
+  return `backups/matches_v1/${sport}/${matchId}.json`;
+}
+
+function cloudMatchMetadata(item: MatchBackupItem): Record<string, any> {
+  return {
+    source: "match_auto_backup_cloud_r2",
+    backupKind: "single_match_backup",
+    matchId: item.matchId,
+    sport: item.sport,
+    kind: item.kind,
+    status: item.status,
+    title: item.title,
+    savedAt: item.savedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    players: Array.isArray(item.players) ? item.players.slice(0, 16) : [],
+    playersCount: Array.isArray(item.players) ? item.players.length : 0,
+    winnerId: item.winnerId ?? null,
+    payloadBytes: item.payloadBytes || 0,
+    summary: item.summary || {},
+  };
+}
+
+function hydrateMatchBackupFromCloudIndex(row: CloudObjectIndexItem): MatchBackupItem {
+  const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+  const matchId = String(metadata.matchId || metadata.match_id || row.title || row.id || "").trim();
+  const createdAt = parseMs(metadata.createdAt || row.created_at, Date.parse(String(row.created_at || "")) || Date.now());
+  const updatedAt = parseMs(metadata.updatedAt || row.updated_at, Date.parse(String(row.updated_at || row.created_at || "")) || createdAt);
+  return {
+    id: String(row.id || matchId),
+    matchId: matchId || String(row.id || ""),
+    origin: "cloud",
+    cloudObjectId: String(row.id || ""),
+    cloudObjectKey: String(row.object_key || ""),
+    sport: String(row.sport || metadata.sport || "darts"),
+    kind: String(metadata.kind || "match"),
+    title: String(row.title || metadata.title || "Partie cloud"),
+    status: String(metadata.status || "finished"),
+    createdAt,
+    updatedAt,
+    savedAt: String(metadata.savedAt || row.updated_at || row.created_at || nowIso()),
+    players: Array.isArray(metadata.players) ? metadata.players : [],
+    winnerId: metadata.winnerId ?? null,
+    summary: metadata.summary || {},
+    game: metadata.game || null,
+    header: metadata.header || {},
+    payloadCompressed: "",
+    payloadEncoding: "lz-string-utf16",
+    payloadBytes: Number(row.size_bytes || metadata.payloadBytes || 0) || 0,
+    source: "cloud-index",
+  };
+}
+
+function normalizeDownloadedCloudMatch(downloaded: any, id: string): MatchBackupItem | null {
+  const content = downloaded?.content ?? downloaded?.text ?? downloaded;
+  let item: any = content;
+  if (typeof content === "string") {
+    try { item = JSON.parse(content); } catch { item = null; }
+  }
+  if (!item || typeof item !== "object") return null;
+  const object = downloaded?.object || {};
+  const fallback = object?.id ? hydrateMatchBackupFromCloudIndex(object) : null;
+  const matchId = String(item.matchId || item.id || fallback?.matchId || "").trim();
+  if (!matchId || !item.payloadCompressed) return null;
+  return {
+    ...(fallback || {}),
+    ...item,
+    id: String(object.id || id || item.id || matchId),
+    matchId,
+    origin: "cloud",
+    cloudObjectId: String(object.id || id || item.cloudObjectId || ""),
+    cloudObjectKey: String(object.object_key || item.cloudObjectKey || ""),
+    payloadEncoding: "lz-string-utf16",
+  } as MatchBackupItem;
 }
 
 function backupBelongsToCurrentUser(item: any): boolean {
@@ -288,6 +426,57 @@ export async function deleteLocalMatchBackup(id: string): Promise<void> {
   }).catch(() => undefined);
 }
 
+
+export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<void> {
+  if (!readNasAccessToken()) return;
+  if (!(await shouldUseCloudR2())) return;
+  const clean: MatchBackupItem = {
+    ...item,
+    origin: "cloud",
+    cloudObjectKey: cloudMatchObjectKey(item),
+    cloudObjectId: item.cloudObjectId || null,
+  };
+  await uploadCloudObject({
+    objectType: CLOUD_MATCH_BACKUP_OBJECT_TYPE,
+    sport: clean.sport || "darts",
+    title: clean.title || `Partie ${clean.matchId}`,
+    objectKey: clean.cloudObjectKey || cloudMatchObjectKey(clean),
+    mimeType: "application/json",
+    content: JSON.stringify(clean),
+    gzip: true,
+    metadata: cloudMatchMetadata(clean),
+  });
+}
+
+async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
+  if (!readNasAccessToken()) return;
+  if (!(await shouldUseCloudR2())) return;
+  const now = Date.now();
+  try {
+    const last = Number(localStorage.getItem("dc_cloud_auto_full_backup_last_at_v1") || "0") || 0;
+    if (last > 0 && now - last < CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS) return;
+    localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now));
+  } catch {}
+  const snapshot = await exportCloudSnapshot();
+  const json = JSON.stringify(snapshot);
+  await uploadCloudObject({
+    objectType: CLOUD_VAULT_OBJECT_TYPE,
+    sport: "system",
+    title: `Sauvegarde cloud automatique — ${new Date().toLocaleString("fr-FR")}`,
+    objectKey: CLOUD_MATCH_FULL_SNAPSHOT_KEY,
+    mimeType: "application/json",
+    content: json,
+    gzip: true,
+    metadata: {
+      source: "match_auto_backup_cloud_r2",
+      backupKind: "auto_full_snapshot",
+      reason,
+      exportedAt: new Date().toISOString(),
+      rawSizeBytes: json.length,
+    },
+  });
+}
+
 export async function pushMatchBackupToNas(item: MatchBackupItem): Promise<void> {
   // Aucun appel réseau si l'utilisateur n'est pas connecté au NAS :
   // la sauvegarde locale suffit et on évite un 401/timeout inutile en fin de partie.
@@ -333,6 +522,36 @@ export async function deleteNasMatchBackup(id: string): Promise<void> {
   await apiDelete(`/sync/match-backups/${encodeURIComponent(String(id || ""))}`);
 }
 
+
+export async function listCloudMatchBackups(): Promise<MatchBackupItem[]> {
+  if (!readNasAccessToken()) return [];
+  if (!(await shouldUseCloudR2())) return [];
+  const rows = await listCloudObjects({ objectType: CLOUD_MATCH_BACKUP_OBJECT_TYPE, limit: 500 }).catch(() => []);
+  return rows
+    .filter((row: any) => row?.id && !row?.is_deleted)
+    .map(hydrateMatchBackupFromCloudIndex)
+    .filter((item) => !!item.matchId)
+    .sort((a, b) => parseMs(b.updatedAt || b.savedAt) - parseMs(a.updatedAt || a.savedAt));
+}
+
+export async function pullCloudMatchBackup(idOrItem: string | MatchBackupItem): Promise<MatchBackupItem | null> {
+  const objectId = typeof idOrItem === "string"
+    ? String(idOrItem || "").trim()
+    : String(idOrItem.cloudObjectId || idOrItem.id || "").trim();
+  if (!objectId || !readNasAccessToken()) return null;
+  const downloaded = await downloadCloudObject(objectId).catch(() => null);
+  if (!downloaded?.ok) return null;
+  return normalizeDownloadedCloudMatch(downloaded, objectId);
+}
+
+export async function deleteCloudMatchBackup(idOrItem: string | MatchBackupItem): Promise<void> {
+  const objectId = typeof idOrItem === "string"
+    ? String(idOrItem || "").trim()
+    : String(idOrItem.cloudObjectId || idOrItem.id || "").trim();
+  if (!objectId) throw new Error("Sauvegarde cloud introuvable.");
+  await deleteCloudObjectRemote(objectId, { force: true });
+}
+
 export async function saveMatchBackupAfterHistoryUpsert(args: {
   header: any;
   payload?: any;
@@ -342,11 +561,27 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
   const item = buildMatchBackupItem(args);
   if (!item) return;
   await saveLocalMatchBackup(item).catch(() => undefined);
-  await pushMatchBackupToNas(item).catch((error) => {
-    try {
-      localStorage.setItem("dc_match_backup_last_nas_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
-    } catch {}
-  });
+  const provider = await getActiveStorageProviderCached().catch(() => "");
+  if (provider === "cloud_r2") {
+    await pushMatchBackupToCloud(item).catch((error) => {
+      try {
+        localStorage.setItem("dc_match_backup_last_cloud_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
+      } catch {}
+    });
+    void pushLatestSnapshotToCloud("history-upsert").catch((error) => {
+      try {
+        localStorage.setItem("dc_cloud_auto_full_backup_last_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
+      } catch {}
+    });
+    return;
+  }
+  if (provider === "nas_founder") {
+    await pushMatchBackupToNas(item).catch((error) => {
+      try {
+        localStorage.setItem("dc_match_backup_last_nas_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
+      } catch {}
+    });
+  }
 }
 
 export async function restoreMatchBackupItem(item: MatchBackupItem): Promise<void> {
