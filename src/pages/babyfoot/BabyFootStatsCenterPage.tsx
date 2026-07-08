@@ -140,6 +140,10 @@ function mergeRows(...sources: any[][]) {
 
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    overflow: "hidden",
     borderRadius: 22,
     padding: 14,
     background: C.panel,
@@ -184,7 +188,7 @@ function Pill({ active, children, onClick, color = C.gold }: { active?: boolean;
 
 function Kpi({ label, value, color = C.text, hint }: { label: string; value: React.ReactNode; color?: string; hint?: string }) {
   return (
-    <div style={{ minWidth: 0, borderRadius: 17, padding: "11px 9px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.075)", textAlign: "center" }}>
+    <div style={{ minWidth: 0, width: "100%", maxWidth: "100%", overflow: "hidden", borderRadius: 17, padding: "11px 9px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.075)", textAlign: "center" }}>
       <div style={{ color: C.muted, fontSize: 9, fontWeight: 950, letterSpacing: .55, textTransform: "uppercase" }}>{label}</div>
       <div style={{ color, marginTop: 4, fontSize: 22, lineHeight: 1.05, fontWeight: 1000, fontVariantNumeric: "tabular-nums" }}>{value}</div>
       {hint ? <div style={{ color: C.dim, marginTop: 4, fontSize: 9, fontWeight: 800 }}>{hint}</div> : null}
@@ -195,7 +199,7 @@ function Kpi({ label, value, color = C.text, hint }: { label: string; value: Rea
 function MiniProgress({ label, value, max, color, suffix = "" }: { label: string; value: number; max: number; color: string; suffix?: string }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "82px minmax(0,1fr) 54px", gap: 9, alignItems: "center" }}>
+    <div style={{ minWidth: 0, width: "100%", maxWidth: "100%", display: "grid", gridTemplateColumns: "minmax(58px,82px) minmax(0,1fr) minmax(34px,48px)", gap: 7, alignItems: "center" }}>
       <div style={{ color: C.muted, fontSize: 11, fontWeight: 900 }}>{label}</div>
       <div style={{ height: 9, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg,${color},${color}88)`, boxShadow: `0 0 12px ${color}55` }} />
@@ -287,7 +291,7 @@ function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
         {rows.length ? rows.slice(0, 12).map((row, index) => {
           const podiumColor = index === 0 ? C.gold : index === 1 ? C.blue : index === 2 ? C.orange : C.muted;
           return (
-            <div key={row.id} style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1.35fr) 54px 52px 52px", gap: 7, alignItems: "center", padding: "10px 12px", borderTop: "1px solid rgba(255,255,255,.07)", background: index < 3 ? `linear-gradient(90deg,${podiumColor}15,transparent)` : "transparent" }}>
+            <div key={row.id} style={{ minWidth: 0, width: "100%", display: "grid", gridTemplateColumns: "30px minmax(0,1fr) minmax(32px,44px) minmax(36px,46px) minmax(38px,48px)", gap: 5, alignItems: "center", padding: "10px 10px", borderTop: "1px solid rgba(255,255,255,.07)", background: index < 3 ? `linear-gradient(90deg,${podiumColor}15,transparent)` : "transparent" }}>
               <div style={{ width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.08)", fontSize: 12, fontWeight: 1000 }}>{index + 1}</div>
               <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
                 <ProfileAvatar profile={row as any} size={30} />
@@ -318,7 +322,7 @@ function TeamBoard({ rows }: { rows: BabyFootLeaderboardBundle["topTeams"] }) {
         {rows.length ? rows.slice(0, 10).map((team, index) => {
           const podiumColor = index === 0 ? C.gold : index === 1 ? C.blue : index === 2 ? C.orange : C.muted;
           return (
-            <div key={team.key} style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) 46px 46px 48px", gap: 8, alignItems: "center", borderRadius: 15, padding: "9px 10px", border: "1px solid rgba(255,255,255,.075)", background: index < 3 ? `linear-gradient(90deg,${podiumColor}15,rgba(255,255,255,.025))` : "rgba(255,255,255,.032)" }}>
+            <div key={team.key} style={{ minWidth: 0, width: "100%", display: "grid", gridTemplateColumns: "28px minmax(0,1fr) minmax(30px,42px) minmax(34px,44px) minmax(36px,46px)", gap: 5, alignItems: "center", borderRadius: 15, padding: "9px 9px", border: "1px solid rgba(255,255,255,.075)", background: index < 3 ? `linear-gradient(90deg,${podiumColor}15,rgba(255,255,255,.025))` : "rgba(255,255,255,.032)" }}>
               <div style={{ width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.08)", fontSize: 12, fontWeight: 1000 }}>{index + 1}</div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: C.text, fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.label}</div>
@@ -338,13 +342,13 @@ function TeamBoard({ rows }: { rows: BabyFootLeaderboardBundle["topTeams"] }) {
 function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFootLeaderboardBundle; active: RankingView; onChange: (view: RankingView) => void }) {
   const current = RANKING_VIEWS.find((item) => item.key === active) || RANKING_VIEWS[0];
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", display: "grid", gap: 10 }}>
       <div style={cardStyle({ padding: 10 })}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 9 }}>
           {sectionTitle("Classements", current.color)}
           <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>fais défiler les intitulés</div>
         </div>
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
+        <div className="bf-stats-center-row" style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "flex", gap: 8, overflowX: "auto", overflowY: "hidden", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
           {RANKING_VIEWS.map((item) => (
             <Pill key={item.key} active={active === item.key} onClick={() => onChange(item.key)} color={item.color}>{item.label}</Pill>
           ))}
@@ -374,7 +378,7 @@ function MatchLine({ match, go }: { match: BabyFootProfileMatch; go: Props["go"]
   const color = match.won ? C.green : match.draw ? C.gold : C.pink;
   return (
     <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_center" })} style={{ width: "100%", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 10, background: "rgba(255,255,255,.03)", color: C.text, textAlign: "left", cursor: "pointer" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+      <div style={{ width: "100%", minWidth: 0, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color, fontSize: 11, fontWeight: 1000 }}>{match.won ? "VICTOIRE" : match.draw ? "NUL" : "DÉFAITE"} · {match.mode.toUpperCase()}</div>
           <div style={{ marginTop: 3, fontSize: 13, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{match.teamName} {match.scoreFor} — {match.scoreAgainst} {match.opponentName}</div>
@@ -465,29 +469,51 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
 
   return (
-    <div className="bf-stats-center" style={{ minHeight: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box", padding: "18px 14px 112px", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
+    <div className="bf-stats-center" style={{ position: "relative", left: "50%", right: "50%", marginLeft: "-50vw", marginRight: "-50vw", minHeight: "100%", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", padding: "18px max(10px, env(safe-area-inset-right)) 112px max(10px, env(safe-area-inset-left))", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
       <style>{`
-        .bf-stats-center, .bf-stats-center * { box-sizing: border-box; }
-        .bf-stats-center-row { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        @media (max-width: 420px) {
-          .bf-stats-center-title { font-size: 18px !important; letter-spacing: .45px !important; }
+        html, body, #root { max-width: 100vw !important; overflow-x: hidden !important; }
+        .container:has(.bf-stats-center) {
+          width: 100vw !important;
+          max-width: 100vw !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          overflow-x: hidden !important;
+        }
+        .bf-stats-center, .bf-stats-center * { box-sizing: border-box; min-width: 0; }
+        .bf-stats-center { contain: layout paint; }
+        .bf-stats-center-row {
+          max-width: 100%;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+          touch-action: pan-x;
+        }
+        .bf-stats-center-row::-webkit-scrollbar { display: none; }
+        @media (max-width: 560px) {
+          .bf-stats-center-title { font-size: 19px !important; letter-spacing: .5px !important; }
           .bf-stats-center-subtitle { font-size: 10px !important; }
         }
+        @media (max-width: 380px) {
+          .bf-stats-center-title { font-size: 17px !important; letter-spacing: .3px !important; }
+        }
       `}</style>
-      <div style={{ width: "100%", maxWidth: 720, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
+      <div className="bf-stats-center-shell" style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 20px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
         <div style={{ position: "relative", minHeight: 56, display: "grid", placeItems: "center" }}>
           <div style={{ position: "absolute", left: 0, top: 0 }}><BackDot onClick={() => go("stats" as any)} /></div>
-          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 52 }}>
+          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 44 }}>
             <div className="bf-stats-center-title" style={{ color: C.gold, fontSize: rankingOnly ? 22 : 23, fontWeight: 1000, letterSpacing: 1, textShadow: `0 0 12px ${C.gold}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{rankingOnly ? "CLASSEMENTS BABY-FOOT" : "CENTRE DE STATISTIQUES"}</div>
             <div className="bf-stats-center-subtitle" style={{ marginTop: 3, color: C.muted, fontSize: 11, fontWeight: 900, letterSpacing: 1.4 }}>BABY‑FOOT · {periodLabel} · {modeLabel}</div>
           </div>
         </div>
 
         <div style={cardStyle({ display: "grid", gap: 12 })}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
+          <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", overflow: "hidden" }}>
             {PERIODS.map((item) => <Pill key={item.key} active={period === item.key} onClick={() => setPeriod(item.key)}>{item.label}</Pill>)}
           </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap" }}>
+          <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", overflow: "hidden" }}>
             {MODES.map((item) => <Pill key={item.key} active={mode === item.key} onClick={() => setMode(item.key)} color={C.blue}>{item.label}</Pill>)}
           </div>
         </div>
@@ -496,7 +522,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         <div style={cardStyle()}>
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+            <div style={{ minWidth: 0, maxWidth: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, overflow: "hidden" }}>
               <div style={{ width: 72, height: 72, borderRadius: 999, padding: 3, background: `linear-gradient(180deg,${C.gold},${C.gold}33)`, boxShadow: `0 0 18px ${C.gold}44`, flex: "0 0 auto" }}>
                 <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#111" }}><ProfileAvatar profile={profile} size={66} /></div>
               </div>
@@ -508,7 +534,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             </div>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index + 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>›</button>
           </div>
-          <div style={{ marginTop: 13, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+          <div className="bf-stats-center-row" style={{ marginTop: 13, width: "100%", maxWidth: "100%", minWidth: 0, display: "flex", gap: 8, overflowX: "auto", overflowY: "hidden", paddingBottom: 2 }}>
             {CENTER_TABS.map((item) => <Pill key={item.key} active={tab === item.key} onClick={() => setTab(item.key)} color={item.key === "classements" ? C.gold : C.green}>{item.label}</Pill>)}
           </div>
         </div>
@@ -516,7 +542,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
         {!rankingOnly && (tab === "dashboard" || tab === "details") && (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+            <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(136px,100%),1fr))", gap: 10 }}>
               <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.gold} hint="BP / BC" />
               <Kpi label="Win%" value={formatBabyFootPct01(profileAgg.winRate)} color={C.green} hint={`${profileAgg.wins}V / ${profileAgg.matches}MJ`} />
               <Kpi label="BP / match" value={formatOne(profileAgg.avgGoalsFor)} color={C.blue} hint={`${profileAgg.goalsFor} buts pour`} />
@@ -531,7 +557,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <FormDots form={profileAgg.form} />
               </div>
               <TrendChart values={profileAgg.trend} />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
                 <Kpi label="Diff" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
                 <Kpi label="Best BP" value={profileAgg.bestGoalsFor} color={C.blue} />
                 <Kpi label="Durée moy." value={formatDuration(profileAgg.avgDurationMs)} color={C.gold} />
@@ -560,7 +586,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <>
             <div style={cardStyle()}>
               {sectionTitle("Stats avancées", C.green)}
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
                 <Kpi label="Buts perso" value={profileAgg.personalPoints} color={C.gold} hint={`${profileAgg.actualGoals} vrais buts`} />
                 <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="part des BP équipe" />
                 <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} hint="matchs avec détail" />
@@ -575,7 +601,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
             <div style={cardStyle()}>
               {sectionTitle("Impact dans l'équipe", C.blue)}
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
                 <Kpi label="BP équipe" value={profileAgg.goalsFor} color={C.green} hint={`${formatOne(profileAgg.avgGoalsFor)}/match`} />
                 <Kpi label="BC équipe" value={profileAgg.goalsAgainst} color={C.pink} hint={`${formatOne(profileAgg.avgGoalsAgainst)}/match`} />
                 <Kpi label="Diff équipe" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
