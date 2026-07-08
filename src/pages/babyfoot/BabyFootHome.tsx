@@ -17,6 +17,12 @@ import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/Arcad
 
 import { loadBabyFootState } from "../../lib/babyfootStore";
 import { computeShotConversion } from "../../lib/babyfootQualityStats";
+import {
+  babyFootRating,
+  computeBabyFootProfileAggregate,
+  formatBabyFootRatio,
+  normalizeBabyFootMatches,
+} from "../../lib/babyfootStatsAggregate";
 
 // ✅ Home ticker backgrounds (catégories)
 import tickerBabyfootActu1 from "../../assets/tickers/ticker_babyfoot_actu_1.png";
@@ -170,91 +176,39 @@ function getBabyfootHistoryRows(store: Store): any[] {
 }
 
 function computeBabyfootGlobalStats(store: Store, activeProfile: Profile | null) {
-  const profId = String(activeProfile?.id ?? "").trim();
-  const profName = String((activeProfile as any)?.name ?? "").trim().toLowerCase();
-  const hasProfile = !!profId || !!profName;
-
-  const matches = getBabyfootHistoryRows(store);
-
-  const resolveTeam = (payload: any): ("A" | "B" | null) => {
-    const aIds =
-      (payload?.teamAProfileIds ?? payload?.teamAIds ?? payload?.teams?.A?.players ?? payload?.teams?.A ?? []) as any[];
-    const bIds =
-      (payload?.teamBProfileIds ?? payload?.teamBIds ?? payload?.teams?.B?.players ?? payload?.teams?.B ?? []) as any[];
-
-    const A = Array.isArray(aIds) ? aIds : [];
-    const B = Array.isArray(bIds) ? bIds : [];
-
-    const inA = A.some(
-      (p: any) => String(p?.id ?? p ?? "") === profId || String(p?.name ?? "").trim().toLowerCase() === profName
-    );
-    const inB = B.some(
-      (p: any) => String(p?.id ?? p ?? "") === profId || String(p?.name ?? "").trim().toLowerCase() === profName
-    );
-    return inA ? "A" : inB ? "B" : null;
-  };
-
-  let sessions = 0;
-  let wins = 0;
-  let goalsFor = 0;
-  let goalsAgainst = 0;
-  let cleanSheets = 0;
-  let diffSum = 0;
+  const profileId = String(activeProfile?.id ?? "").trim();
+  const profiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+  const rows = normalizeBabyFootMatches(getBabyfootHistoryRows(store), { mode: "all", period: "ARV" });
+  const agg = computeBabyFootProfileAggregate(rows, profiles, profileId);
 
   let shots = 0;
-  let goals = 0;
-
-  if (matches.length && hasProfile) {
-    for (const m of matches) {
-      const payload = m?.payload ?? m;
-      const team = resolveTeam(payload);
-      if (!team) continue;
-
-      const scoreA = Number(payload?.scoreA ?? m?.summary?.scoreA ?? 0) || 0;
-      const scoreB = Number(payload?.scoreB ?? m?.summary?.scoreB ?? 0) || 0;
-      const winnerTeam = String(payload?.winner ?? m?.summary?.winner ?? "").toUpperCase();
-      const winnerId = String(m?.winnerId ?? payload?.winnerId ?? m?.summary?.winnerId ?? "").trim();
-
-      sessions += 1;
-
-      const gf = team === "A" ? scoreA : scoreB;
-      const ga = team === "A" ? scoreB : scoreA;
-      goalsFor += gf;
-      goalsAgainst += ga;
-      diffSum += gf - ga;
-      if (ga === 0) cleanSheets += 1;
-
-      if ((winnerTeam === "A" || winnerTeam === "B") && winnerTeam === team) wins += 1;
-      else if (winnerId && winnerId === profId) wins += 1;
-
-      if (Array.isArray(payload?.events) && payload.events.length) {
-        const conv = computeShotConversion(payload.events);
-        shots += Number(conv?.shots ?? 0) || 0;
-        goals += Number(conv?.goals ?? 0) || 0;
-      }
-    }
+  let shotGoals = 0;
+  for (const match of rows) {
+    if (!profileId) continue;
+    const inMatch = match.teamAProfileIds.includes(profileId) || match.teamBProfileIds.includes(profileId);
+    if (!inMatch) continue;
+    const conv = computeShotConversion(Array.isArray(match.data?.events) ? match.data.events : []);
+    shots += Number(conv?.shots ?? 0) || 0;
+    shotGoals += Number(conv?.goals ?? 0) || 0;
   }
 
-  const winRate = sessions > 0 ? wins / sessions : 0;
-  const avgGF = sessions > 0 ? goalsFor / sessions : 0;
-  const avgGA = sessions > 0 ? goalsAgainst / sessions : 0;
-  const avgDiff = sessions > 0 ? diffSum / sessions : 0;
-
-  const rating = sessions > 0 ? clamp(Math.round(winRate * 100 + avgDiff * 12 + avgGF * 4), 0, 999) : 0;
-  const convPct = shots > 0 ? goals / shots : null;
-
   return {
-    sessions,
-    wins,
-    winRate,
-    rating,
-    goalsFor,
-    goalsAgainst,
-    cleanSheets,
-    avgGF,
-    avgGA,
-    avgDiff,
-    conversion: convPct,
+    sessions: agg.matches,
+    wins: agg.wins,
+    losses: agg.losses,
+    draws: agg.draws,
+    winRate: agg.winRate,
+    rating: babyFootRating(agg),
+    goalsFor: agg.goalsFor,
+    goalsAgainst: agg.goalsAgainst,
+    cleanSheets: agg.cleanSheets,
+    avgGF: agg.avgGoalsFor,
+    avgGA: agg.avgGoalsAgainst,
+    avgDiff: agg.matches ? agg.goalDiff / agg.matches : 0,
+    ratio: agg.ratio,
+    bestWinStreak: agg.bestWinStreak,
+    currentWinStreak: agg.currentWinStreak,
+    conversion: shots > 0 ? shotGoals / shots : null,
   };
 }
 
@@ -548,14 +502,12 @@ export default function BabyFootHome({ store, go }: Props) {
   const resultsPool = useMemo(() => {
     if (!babyfootGlobalStats.sessions) {
       return [t("babyfoot.home.results.empty", "Aucun résultat pour ce profil — lance un match pour démarrer tes stats.")];
-
-  const resultsItems: ArcadeTickerItem[] = resultsPool.map((t, i) => ({ id: `bf-res-${i}`, title: 'Résultats', text: t }));
     }
-    const losses = babyfootGlobalStats.sessions - babyfootGlobalStats.wins;
+    const losses = babyfootGlobalStats.sessions - babyfootGlobalStats.wins - babyfootGlobalStats.draws;
     return [
       t(
         "babyfoot.home.results.line1",
-        `Bilan: ${babyfootGlobalStats.wins}V / ${losses}D · win ${Math.round(babyfootGlobalStats.winRate * 100)}%.`
+        `Bilan: ${babyfootGlobalStats.wins}V / ${babyfootGlobalStats.draws}N / ${losses}D · win ${Math.round(babyfootGlobalStats.winRate * 100)}%.`
       ),
       t("babyfoot.home.results.line2", `Buts pour: ${babyfootGlobalStats.goalsFor} · buts contre: ${babyfootGlobalStats.goalsAgainst}.`),
       t("babyfoot.home.results.line3", `Différence moyenne: ${babyfootGlobalStats.avgDiff.toFixed(1)} but(s)/match.`),
@@ -567,12 +519,10 @@ export default function BabyFootHome({ store, go }: Props) {
   const leaguePool = useMemo(() => {
     if (!babyfootGlobalStats.sessions) {
       return [t("babyfoot.home.league.empty", "Aucune stat Babyfoot — joue un match pour alimenter la ligue/classement.")];
-
-  const leagueItems: ArcadeTickerItem[] = leaguePool.map((t, i) => ({ id: `bf-lig-${i}`, title: 'Ligue', text: t }));
     }
     return [
-      t("babyfoot.home.league.line1", `Rating: ${babyfootGlobalStats.rating} · sessions: ${babyfootGlobalStats.sessions}.`),
-      t("babyfoot.home.league.line2", `Win%: ${Math.round(babyfootGlobalStats.winRate * 100)} · clean: ${babyfootGlobalStats.cleanSheets}.`),
+      t("babyfoot.home.league.line1", `Ratio BP/BC: ${formatBabyFootRatio(babyfootGlobalStats.ratio)} · ${babyfootGlobalStats.sessions} matchs.`),
+      t("babyfoot.home.league.line2", `Win%: ${Math.round(babyfootGlobalStats.winRate * 100)}% · série: ${babyfootGlobalStats.currentWinStreak} · clean: ${babyfootGlobalStats.cleanSheets}.`),
       t("babyfoot.home.league.line3", `Objectif ligue: enchaîne 3 matchs pour stabiliser ton rating.`),
       t("babyfoot.home.league.line4", `Conseil: joue en sets pour mieux comparer tes performances.`),
     ];
@@ -655,7 +605,7 @@ export default function BabyFootHome({ store, go }: Props) {
   const newsFocus = newsPool[newsIdx] ?? "";
 
   const resultsBadge = babyfootGlobalStats.sessions ? `win ${Math.round(babyfootGlobalStats.winRate * 100)}%` : "";
-  const leagueBadge = babyfootGlobalStats.sessions ? `rating ${babyfootGlobalStats.rating}` : "";
+  const leagueBadge = babyfootGlobalStats.sessions ? `ratio ${formatBabyFootRatio(babyfootGlobalStats.ratio)}` : "";
 
   // ✅ ArcadeTicker (comme HOME Darts/Pétanque) — 3 tickers empilés
   const resultsTickerItems: ArcadeTickerItem[] = useMemo(() => {
@@ -789,12 +739,12 @@ export default function BabyFootHome({ store, go }: Props) {
             }
             globalTitle={t("babyfoot.home.global.title", "Vue globale")}
             globalKpis={[
-              { label: t("babyfoot.kpi.rating", "rating"), value: babyfootGlobalStats.rating },
-              { label: t("babyfoot.kpi.matches", "matchs"), value: babyfootGlobalStats.sessions },
+              { label: t("babyfoot.kpi.ratio", "ratio"), value: formatBabyFootRatio(babyfootGlobalStats.ratio) },
               { label: t("babyfoot.kpi.win", "win%"), value: `${Math.round(babyfootGlobalStats.winRate * 100)}%` },
-              { label: t("babyfoot.kpi.avgDiff", "diff/match"), value: Number(babyfootGlobalStats.avgDiff).toFixed(1) },
+              { label: t("babyfoot.kpi.bpMatch", "BP/match"), value: Number(babyfootGlobalStats.avgGF).toFixed(1) },
+              { label: t("babyfoot.kpi.bcMatch", "BC/match"), value: Number(babyfootGlobalStats.avgGA).toFixed(1) },
+              { label: t("babyfoot.kpi.serie", "série"), value: babyfootGlobalStats.currentWinStreak },
               { label: t("babyfoot.kpi.clean", "clean"), value: babyfootGlobalStats.cleanSheets },
-              { label: t("babyfoot.kpi.conv", "conv."), value: convLabel },
             ]}
           />
         </div>

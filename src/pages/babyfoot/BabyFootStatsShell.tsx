@@ -226,9 +226,9 @@ export default function BabyFootStatsShell({ store, go }: Props) {
 
         <StatsShellCard
           title="CLASSEMENTS"
-          subtitle="Points, buts, diff. de buts (sur tes matchs enregistrés)."
+          subtitle="Carte classement façon DartsCounter : points, ratio BP/BC, Win%, diff. et séries."
           theme={theme}
-          onClick={() => go("babyfoot_stats_history", { section: "rankings" })}
+          onClick={() => go("babyfoot_stats_center", { tab: "classements" })}
           onInfo={() => setInfoMode("rankings")}
         />
 
