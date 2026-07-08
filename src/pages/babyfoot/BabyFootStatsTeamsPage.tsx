@@ -48,8 +48,7 @@ const PERIODS: Array<{ key: PeriodKey; label: string; long: string }> = [
   { key: "ARV", label: "ARV", long: "À vie" },
 ];
 
-const MODES: Array<{ key: ModeKey; label: string }> = [
-  { key: "1v1", label: "1V1" },
+const MODES: Array<{ key: Exclude<ModeKey, "1v1">; label: string }> = [
   { key: "2v2", label: "2V2" },
   { key: "2v1", label: "2V1" },
   { key: "all", label: "TOUS" },
@@ -98,6 +97,13 @@ function formatDuration(ms: number) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
+
+function formatPlayDuration(ms: number) {
+  const seconds = Math.max(0, Math.round(num(ms) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}'${String(rest).padStart(2, "0")}''`;
 }
 
 function formatDate(timestamp: number) {
@@ -526,7 +532,6 @@ function MatchLine({ match, go, team, teams, profilesById }: { match: BabyFootTe
   const rightPlayerIds = extractMatchSidePlayerIds(match.record, rightSide).length
     ? extractMatchSidePlayerIds(match.record, rightSide)
     : Array.from(new Set((opponent?.rosterIds || []).map(String).filter(Boolean)));
-  const totalPlayers = Array.from(new Set([...leftPlayerIds, ...rightPlayerIds])).length;
   const dateLabel = match.date ? new Date(match.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "Date inconnue";
   const timeLabel = match.date ? new Date(match.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
@@ -561,10 +566,8 @@ function MatchLine({ match, go, team, teams, profilesById }: { match: BabyFootTe
         </div>
 
         <div style={{ marginTop: 11, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: C.dim, fontSize: 10, fontWeight: 850 }}>
-            <span>{formatDuration(match.durationMs)}</span>
-            <span>•</span>
-            <span>{totalPlayers} joueur(s)</span>
+          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>
+            Temps de jeu : <span style={{ color: C.muted, fontWeight: 1000 }}>{formatPlayDuration(match.durationMs)}</span>
           </div>
           <div style={{ borderRadius: 14, padding: "6px 10px", border: `1px solid ${color}66`, background: `radial-gradient(circle at 50% 25%,${color}20,rgba(0,0,0,.18))` }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -600,7 +603,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
   const { theme } = useTheme() as any;
   const profiles: Profile[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
   const requestedMode = String(params?.mode || "").toLowerCase();
-  const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : "all";
+  const initialMode: ModeKey = requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : "all";
   const requestedPeriod = String(params?.period || params?.periodKey || "").toUpperCase();
   const initialPeriod: PeriodKey = requestedPeriod === "J" || requestedPeriod === "S" || requestedPeriod === "M" || requestedPeriod === "A" || requestedPeriod === "ARV" ? requestedPeriod : "ARV";
   const [period, setPeriod] = React.useState<PeriodKey>(initialPeriod);
