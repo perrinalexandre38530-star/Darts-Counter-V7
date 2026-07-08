@@ -28,7 +28,7 @@ type Props = {
 type PeriodKey = "J" | "S" | "M" | "A" | "ARV";
 type ModeKey = "1v1" | "2v2" | "2v1" | "all";
 type CenterTab = "dashboard" | "classements" | "details" | "history";
-type RankingView = "general" | "ratio" | "win" | "attack" | "defense" | "clean" | "streak" | "scorers" | "teams";
+type RankingView = "general" | "ratio" | "win" | "attack" | "defense" | "clean" | "streak" | "scorers" | "gamelles" | "pissettes" | "demis" | "csc" | "peche" | "rating" | "teams";
 
 const C = {
   gold: "#F6C256",
@@ -44,10 +44,6 @@ const C = {
   panel: "linear-gradient(180deg,rgba(17,18,24,.97),rgba(8,9,14,.98))",
   panel2: "linear-gradient(180deg,rgba(26,28,36,.95),rgba(10,11,17,.98))",
 };
-
-const PAGE_MAX_WIDTH = 620;
-const GRID_2 = "repeat(auto-fit,minmax(145px,1fr))";
-const GRID_3 = "repeat(auto-fit,minmax(96px,1fr))";
 
 const PERIODS: Array<{ key: PeriodKey; label: string; long: string }> = [
   { key: "J", label: "J", long: "Jour" },
@@ -80,6 +76,12 @@ const RANKING_VIEWS: Array<{ key: RankingView; label: string; color: string }> =
   { key: "clean", label: "CLEAN", color: C.green },
   { key: "streak", label: "SÉRIES", color: C.violet },
   { key: "scorers", label: "SCOREURS", color: C.orange },
+  { key: "gamelles", label: "GAMELLES", color: C.gold },
+  { key: "pissettes", label: "PISSETTES", color: C.orange },
+  { key: "demis", label: "DEMIS", color: C.violet },
+  { key: "csc", label: "CSC", color: C.pink },
+  { key: "peche", label: "PÊCHES", color: C.blue },
+  { key: "rating", label: "RATING", color: C.gold },
   { key: "teams", label: "ÉQUIPES", color: C.gold },
 ];
 
@@ -138,9 +140,6 @@ function mergeRows(...sources: any[][]) {
 
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
-    minWidth: 0,
-    maxWidth: "100%",
-    boxSizing: "border-box",
     borderRadius: 22,
     padding: 14,
     background: C.panel,
@@ -345,7 +344,7 @@ function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFo
           {sectionTitle("Classements", current.color)}
           <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>fais défiler les intitulés</div>
         </div>
-        <div className="bf-scroll-row" style={{ display: "flex", gap: 8, paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
           {RANKING_VIEWS.map((item) => (
             <Pill key={item.key} active={active === item.key} onClick={() => onChange(item.key)} color={item.color}>{item.label}</Pill>
           ))}
@@ -360,6 +359,12 @@ function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFo
       {active === "clean" ? <Board title="Clean sheets" subtitle="zéro encaissé" rows={leaderboards.topCleanSheets} value={(row) => String(row.cleanSheets)} color={C.green} /> : null}
       {active === "streak" ? <Board title="Séries" subtitle="record" rows={leaderboards.topStreaks} value={(row) => `${row.bestWinStreak} wins`} color={C.violet} /> : null}
       {active === "scorers" ? <Board title="Scoreurs" subtitle="buts perso" rows={leaderboards.topPersonalScorers} value={(row) => String(row.personalPoints || row.actualGoals)} color={C.orange} /> : null}
+      {active === "gamelles" ? <Board title="Top gamelles" subtitle="actions" rows={leaderboards.topGamelles} value={(row) => String(row.gamelle)} color={C.gold} /> : null}
+      {active === "pissettes" ? <Board title="Top pissettes" subtitle="validées/refusées" rows={leaderboards.topPissettes} value={(row) => `${row.pissetteValid}/${row.pissetteRefused}`} color={C.orange} /> : null}
+      {active === "demis" ? <Board title="Top demis" subtitle="demis + bonus" rows={leaderboards.topDemis} value={(row) => `${row.demi} · +${row.demiBonus}`} color={C.violet} /> : null}
+      {active === "csc" ? <Board title="CSC" subtitle="contre son camp" rows={leaderboards.topCsc} value={(row) => String(row.csc)} color={C.pink} /> : null}
+      {active === "peche" ? <Board title="Pêches" subtitle="off/déf" rows={leaderboards.topPeche} value={(row) => `${row.pecheOff}/${row.pecheDef}`} color={C.blue} /> : null}
+      {active === "rating" ? <Board title="Rating" subtitle="forme globale" rows={leaderboards.topRating} value={(row) => String(babyFootRating(row))} color={C.gold} /> : null}
       {active === "teams" ? <TeamBoard rows={leaderboards.topTeams} /> : null}
     </div>
   );
@@ -390,7 +395,9 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const activeProfileId = String((store as any)?.activeProfileId || "");
   const active = profiles.find((profile: any) => idOf(profile) === activeProfileId) || profiles[0] || null;
   const scope = String(params?.scope || "active");
-  const selectableProfiles = scope === "locals" ? profiles : active ? [active] : profiles;
+  const rankingOnly = scope === "rankings" || params?.onlyRankings === true || String(params?.view || "") === "rankings";
+  const localProfiles = profiles.filter((profile: any) => idOf(profile) !== activeProfileId);
+  const selectableProfiles = rankingOnly ? [] : scope === "locals" ? localProfiles : active ? [active] : profiles;
 
   const requestedMode = String(params?.mode || "").toLowerCase();
   const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : "all";
@@ -399,7 +406,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const [period, setPeriod] = React.useState<PeriodKey>(initialPeriod);
   const [mode, setMode] = React.useState<ModeKey>(initialMode);
   const requestedTab = String(params?.tab || "").toLowerCase();
-  const initialTab: CenterTab = requestedTab === "classements" ? "classements" : requestedTab === "details" ? "details" : requestedTab === "history" ? "history" : "dashboard";
+  const initialTab: CenterTab = rankingOnly || requestedTab === "classements" ? "classements" : requestedTab === "details" ? "details" : requestedTab === "history" ? "history" : "dashboard";
   const [tab, setTab] = React.useState<CenterTab>(initialTab);
   const [rankingView, setRankingView] = React.useState<RankingView>("general");
   const [profileIndex, setProfileIndex] = React.useState(0);
@@ -408,7 +415,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const profile = selectableProfiles[clampIndex(profileIndex, selectableProfiles.length)] || null;
   const profileId = idOf(profile);
 
-  React.useEffect(() => setProfileIndex(0), [scope, activeProfileId]);
+  React.useEffect(() => setProfileIndex(0), [scope, activeProfileId, rankingOnly]);
 
   React.useEffect(() => {
     let alive = true;
@@ -452,40 +459,27 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const primary = theme?.primary ?? C.gold;
   const rating = babyFootRating(profileAgg);
   const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc);
+  const personalShare = profileAgg.goalsFor > 0 ? Math.round((profileAgg.personalPoints / profileAgg.goalsFor) * 100) : 0;
+  const teammatePoints = Math.max(0, profileAgg.goalsFor - profileAgg.personalPoints);
+  const totalPissettes = profileAgg.pissetteValid + profileAgg.pissetteRefused;
+  const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
 
   return (
-    <div
-      className="babyfoot-stats-center-page"
-      style={{
-        minHeight: "100%",
-        width: "100%",
-        maxWidth: "100%",
-        overflowX: "hidden",
-        padding: "18px 0 112px",
-        color: C.text,
-        background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)`,
-      }}
-    >
+    <div className="bf-stats-center" style={{ minHeight: "100%", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box", padding: "18px 14px 112px", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
       <style>{`
-        .babyfoot-stats-center-page,
-        .babyfoot-stats-center-page * { box-sizing: border-box; }
-        .babyfoot-stats-center-page { touch-action: pan-y; }
-        .babyfoot-stats-center-page .bf-scroll-row {
-          max-width: 100%;
-          min-width: 0;
-          overflow-x: auto;
-          overflow-y: hidden;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none;
+        .bf-stats-center, .bf-stats-center * { box-sizing: border-box; }
+        .bf-stats-center-row { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        @media (max-width: 420px) {
+          .bf-stats-center-title { font-size: 18px !important; letter-spacing: .45px !important; }
+          .bf-stats-center-subtitle { font-size: 10px !important; }
         }
-        .babyfoot-stats-center-page .bf-scroll-row::-webkit-scrollbar { display: none; }
       `}</style>
-      <div style={{ width: `min(100%, ${PAGE_MAX_WIDTH}px)`, maxWidth: "calc(100vw - 32px)", margin: "0 auto", display: "grid", gap: 12, minWidth: 0, overflowX: "hidden" }}>
+      <div style={{ width: "100%", maxWidth: 720, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
         <div style={{ position: "relative", minHeight: 56, display: "grid", placeItems: "center" }}>
           <div style={{ position: "absolute", left: 0, top: 0 }}><BackDot onClick={() => go("stats" as any)} /></div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ color: C.gold, fontSize: "clamp(18px,5.2vw,23px)", fontWeight: 1000, letterSpacing: "clamp(.2px,.35vw,1px)", textShadow: `0 0 12px ${C.gold}99`, whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden" }}>CENTRE DE STATISTIQUES</div>
-            <div style={{ marginTop: 3, color: C.muted, fontSize: 11, fontWeight: 900, letterSpacing: 1.4 }}>BABY‑FOOT · {periodLabel} · {modeLabel}</div>
+          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 52 }}>
+            <div className="bf-stats-center-title" style={{ color: C.gold, fontSize: rankingOnly ? 22 : 23, fontWeight: 1000, letterSpacing: 1, textShadow: `0 0 12px ${C.gold}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{rankingOnly ? "CLASSEMENTS BABY-FOOT" : "CENTRE DE STATISTIQUES"}</div>
+            <div className="bf-stats-center-subtitle" style={{ marginTop: 3, color: C.muted, fontSize: 11, fontWeight: 900, letterSpacing: 1.4 }}>BABY‑FOOT · {periodLabel} · {modeLabel}</div>
           </div>
         </div>
 
@@ -498,11 +492,12 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           </div>
         </div>
 
+        {!rankingOnly && (
         <div style={cardStyle()}>
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-              <div style={{ width: "clamp(58px,15vw,72px)", height: "clamp(58px,15vw,72px)", borderRadius: 999, padding: 3, background: `linear-gradient(180deg,${C.gold},${C.gold}33)`, boxShadow: `0 0 18px ${C.gold}44`, flex: "0 0 auto" }}>
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+              <div style={{ width: 72, height: 72, borderRadius: 999, padding: 3, background: `linear-gradient(180deg,${C.gold},${C.gold}33)`, boxShadow: `0 0 18px ${C.gold}44`, flex: "0 0 auto" }}>
                 <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#111" }}><ProfileAvatar profile={profile} size={66} /></div>
               </div>
               <div style={{ minWidth: 0 }}>
@@ -513,14 +508,15 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             </div>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index + 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>›</button>
           </div>
-          <div className="bf-scroll-row" style={{ marginTop: 13, display: "flex", gap: 8, paddingBottom: 2 }}>
+          <div style={{ marginTop: 13, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
             {CENTER_TABS.map((item) => <Pill key={item.key} active={tab === item.key} onClick={() => setTab(item.key)} color={item.key === "classements" ? C.gold : C.green}>{item.label}</Pill>)}
           </div>
         </div>
+        )}
 
-        {(tab === "dashboard" || tab === "details") && (
+        {!rankingOnly && (tab === "dashboard" || tab === "details") && (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: GRID_2, gap: 10, minWidth: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
               <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.gold} hint="BP / BC" />
               <Kpi label="Win%" value={formatBabyFootPct01(profileAgg.winRate)} color={C.green} hint={`${profileAgg.wins}V / ${profileAgg.matches}MJ`} />
               <Kpi label="BP / match" value={formatOne(profileAgg.avgGoalsFor)} color={C.blue} hint={`${profileAgg.goalsFor} buts pour`} />
@@ -535,7 +531,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <FormDots form={profileAgg.form} />
               </div>
               <TrendChart values={profileAgg.trend} />
-              <div style={{ display: "grid", gridTemplateColumns: GRID_3, gap: 8, minWidth: 0 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
                 <Kpi label="Diff" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
                 <Kpi label="Best BP" value={profileAgg.bestGoalsFor} color={C.blue} />
                 <Kpi label="Durée moy." value={formatDuration(profileAgg.avgDurationMs)} color={C.gold} />
@@ -544,7 +540,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
             <div style={cardStyle()}>
               {sectionTitle("Répartition technique", C.blue)}
-              <div style={{ marginTop: 11, display: "grid", gap: 10, minWidth: 0 }}>
+              <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
                 <MiniProgress label="Buts AV" value={profileAgg.goalAv} max={maxAction} color={C.blue} />
                 <MiniProgress label="Buts DEF" value={profileAgg.goalDef} max={maxAction} color={C.pink} />
                 <MiniProgress label="Buts GB" value={profileAgg.goalGb} max={maxAction} color={C.green} />
@@ -556,21 +552,48 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           </>
         )}
 
-        {(tab === "dashboard" || tab === "classements") && (
+        {(rankingOnly || tab === "dashboard" || tab === "classements") && (
           <RankingsDeck leaderboards={leaderboards} active={rankingView} onChange={setRankingView} />
         )}
 
-        {tab === "details" && (
+        {!rankingOnly && tab === "details" && (
           <>
             <div style={cardStyle()}>
               {sectionTitle("Stats avancées", C.green)}
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: GRID_3, gap: 8, minWidth: 0 }}>
-                <Kpi label="Buts perso" value={profileAgg.personalPoints} color={C.gold} />
-                <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} />
-                <Kpi label="Pénos" value={`${profileAgg.penaltyGoals}/${profileAgg.penalties}`} color={C.violet} />
-                <Kpi label="Pêche off." value={profileAgg.pecheOff} color={C.blue} />
-                <Kpi label="Pêche déf." value={profileAgg.pecheDef} color={C.pink} />
-                <Kpi label="CSC" value={profileAgg.csc} color={C.pink} />
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                <Kpi label="Buts perso" value={profileAgg.personalPoints} color={C.gold} hint={`${profileAgg.actualGoals} vrais buts`} />
+                <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="part des BP équipe" />
+                <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} hint="matchs avec détail" />
+                <Kpi label="Demis" value={profileAgg.demi} color={C.violet} hint={`bonus +${profileAgg.demiBonus}`} />
+                <Kpi label="Gamelles" value={profileAgg.gamelle} color={C.gold} hint="actions spéciales" />
+                <Kpi label="Pissettes" value={`${profileAgg.pissetteValid}/${profileAgg.pissetteRefused}`} color={C.orange} hint="validées/refusées" />
+                <Kpi label="Pêches" value={totalPeches} color={C.blue} hint={`${profileAgg.pecheOff} off · ${profileAgg.pecheDef} déf`} />
+                <Kpi label="CSC" value={profileAgg.csc} color={C.pink} hint="contre son camp" />
+                <Kpi label="Pénos" value={`${profileAgg.penaltyGoals}/${profileAgg.penalties}`} color={C.violet} hint={profileAgg.penaltyRate == null ? "—" : formatBabyFootPct01(profileAgg.penaltyRate)} />
+              </div>
+            </div>
+
+            <div style={cardStyle()}>
+              {sectionTitle("Impact dans l'équipe", C.blue)}
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                <Kpi label="BP équipe" value={profileAgg.goalsFor} color={C.green} hint={`${formatOne(profileAgg.avgGoalsFor)}/match`} />
+                <Kpi label="BC équipe" value={profileAgg.goalsAgainst} color={C.pink} hint={`${formatOne(profileAgg.avgGoalsAgainst)}/match`} />
+                <Kpi label="Diff équipe" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
+                <Kpi label="Points joueur" value={profileAgg.personalPoints} color={C.gold} hint="buts + bonus" />
+                <Kpi label="Coéquipiers" value={teammatePoints} color={C.muted} hint="BP non attribués au joueur" />
+                <Kpi label="Clean" value={profileAgg.cleanSheets} color={C.green} hint="équipe sans encaisser" />
+              </div>
+            </div>
+
+            <div style={cardStyle()}>
+              {sectionTitle("Détail par ligne", C.blue)}
+              <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
+                <MiniProgress label="Avant" value={profileAgg.goalAv} max={maxAction} color={C.blue} />
+                <MiniProgress label="Défense" value={profileAgg.goalDef} max={maxAction} color={C.pink} />
+                <MiniProgress label="Gardien" value={profileAgg.goalGb} max={maxAction} color={C.green} />
+                <MiniProgress label="Milieu" value={profileAgg.goalMil} max={maxAction} color={C.violet} />
+                <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
+                <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
               </div>
             </div>
             <div style={cardStyle()}>
@@ -592,7 +615,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           </>
         )}
 
-        {(tab === "dashboard" || tab === "history") && (
+        {!rankingOnly && (tab === "dashboard" || tab === "history") && (
           <div style={cardStyle()}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
               {sectionTitle("Derniers matchs", C.gold)}

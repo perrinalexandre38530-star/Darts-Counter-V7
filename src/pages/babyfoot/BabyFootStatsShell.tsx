@@ -228,7 +228,7 @@ export default function BabyFootStatsShell({ store, go }: Props) {
           title="CLASSEMENTS"
           subtitle="Carte classement façon DartsCounter : points, ratio BP/BC, Win%, diff. et séries."
           theme={theme}
-          onClick={() => go("babyfoot_stats_center", { tab: "classements" })}
+          onClick={() => go("babyfoot_stats_center", { scope: "rankings", tab: "classements", onlyRankings: true })}
           onInfo={() => setInfoMode("rankings")}
         />
 

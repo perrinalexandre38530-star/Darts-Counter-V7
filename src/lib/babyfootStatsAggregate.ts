@@ -121,6 +121,12 @@ export type BabyFootLeaderboardBundle = {
   topCleanSheets: BabyFootPlayerAggregate[];
   topStreaks: BabyFootPlayerAggregate[];
   topPersonalScorers: BabyFootPlayerAggregate[];
+  topGamelles: BabyFootPlayerAggregate[];
+  topPissettes: BabyFootPlayerAggregate[];
+  topDemis: BabyFootPlayerAggregate[];
+  topCsc: BabyFootPlayerAggregate[];
+  topPeche: BabyFootPlayerAggregate[];
+  topRating: BabyFootPlayerAggregate[];
   topTeams: BabyFootTeamAggregate[];
   totals: {
     matches: number;
@@ -622,7 +628,13 @@ export function computeBabyFootLeaderboards(matches: BabyFootNormalizedMatch[], 
     topCleanSheets: [...players].filter((p) => p.cleanSheets > 0).sort((a, b) => b.cleanSheets - a.cleanSheets || a.avgGoalsAgainst - b.avgGoalsAgainst).slice(0, 10),
     topStreaks: [...players].filter((p) => p.bestWinStreak > 0).sort((a, b) => b.bestWinStreak - a.bestWinStreak || b.currentWinStreak - a.currentWinStreak).slice(0, 10),
     topPersonalScorers: [...players].filter((p) => p.actualGoals > 0 || p.personalPoints > 0).sort((a, b) => b.personalPoints - a.personalPoints || b.actualGoals - a.actualGoals).slice(0, 10),
-    topTeams: [...teams].filter((t) => t.matches >= 2).sort((a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.winRate - a.winRate).slice(0, 12),
+    topGamelles: [...players].filter((p) => p.gamelle > 0).sort((a, b) => b.gamelle - a.gamelle || b.matches - a.matches).slice(0, 10),
+    topPissettes: [...players].filter((p) => p.pissetteValid > 0 || p.pissetteRefused > 0).sort((a, b) => (b.pissetteValid + b.pissetteRefused) - (a.pissetteValid + a.pissetteRefused) || b.pissetteValid - a.pissetteValid).slice(0, 10),
+    topDemis: [...players].filter((p) => p.demi > 0 || p.demiBonus > 0).sort((a, b) => b.demi - a.demi || b.demiBonus - a.demiBonus).slice(0, 10),
+    topCsc: [...players].filter((p) => p.csc > 0).sort((a, b) => b.csc - a.csc || a.name.localeCompare(b.name, "fr")).slice(0, 10),
+    topPeche: [...players].filter((p) => p.pecheOff > 0 || p.pecheDef > 0).sort((a, b) => (b.pecheOff + b.pecheDef) - (a.pecheOff + a.pecheDef) || b.pecheOff - a.pecheOff).slice(0, 10),
+    topRating: [...players].filter((p) => p.matches > 0).sort((a, b) => babyFootRating(b) - babyFootRating(a) || byRanking(a, b)).slice(0, 10),
+    topTeams: [...teams].filter((t) => t.matches >= 1).sort((a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.winRate - a.winRate).slice(0, 12),
     totals: {
       matches: matches.length,
       goals,
