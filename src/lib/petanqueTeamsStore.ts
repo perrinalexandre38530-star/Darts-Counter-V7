@@ -662,6 +662,18 @@ const DEFAULT_BABYFOOT_TEAMS: Array<{ id: string; name: string; skin: "gold" | "
   { id: "bf-team-blue", name: "TEAM BLUE", skin: "blue" },
 ];
 
+function getDefaultBabyFootTeamLogo(teamId?: any, teamName?: any): string | null {
+  const id = String(teamId || "").trim();
+  const normalizedName = String(teamName || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const def = DEFAULT_BABYFOOT_TEAMS.find((team) => team.id === id || team.name.toLowerCase() === normalizedName);
+  return def ? getTeamAvatarUrl(def.skin) : null;
+}
+
 function ensureDefaultBabyFootTeams(): void {
   const existing = loadTeamsBySport("babyfoot");
   const existingIds = new Set(existing.map((t) => t.id));
@@ -704,8 +716,8 @@ export function loadBabyFootTeams(): BabyFootTeam[] {
     slogan: t.slogan ?? "",
     description: t.description ?? "",
     playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
-    logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl, (t as any).avatarUrl, (t as any).imageUrl),
-    logoUrl: (t as any).logoUrl ?? (t as any).avatarUrl ?? (t as any).imageUrl ?? null,
+    logoDataUrl: normalizeImageRef(t.logoDataUrl, (t as any).logoUrl, (t as any).avatarUrl, (t as any).imageUrl, getDefaultBabyFootTeamLogo(t.id, t.name)),
+    logoUrl: (t as any).logoUrl ?? (t as any).avatarUrl ?? (t as any).imageUrl ?? getDefaultBabyFootTeamLogo(t.id, t.name),
     logoAssetId: (t as any).logoAssetId ?? (t as any).logoMediaAssetId ?? (t as any).teamLogoAssetId ?? (t as any).avatarAssetId ?? (t as any).imageAssetId ?? null,
     createdAt: Number(t.createdAt || now()),
     updatedAt: Number(t.updatedAt || now()),

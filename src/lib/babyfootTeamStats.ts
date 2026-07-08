@@ -1,3 +1,4 @@
+import { getTeamAvatarUrl, type TeamSkin } from "../assets/teamAvatars";
 import { computeBabyFootRichStats, type BabyFootRichSideStats } from "./babyfootRichStats";
 import {
   formatBabyFootRatio,
@@ -127,6 +128,46 @@ type CatalogTeam = {
   playerIds?: string[];
 };
 
+
+type DefaultBabyFootTeamMeta = { id: string; label: string; skin: TeamSkin };
+
+const DEFAULT_BABYFOOT_TEAM_META: DefaultBabyFootTeamMeta[] = [
+  { id: "bf-team-gold", label: "TEAM GOLD", skin: "gold" },
+  { id: "bf-team-pink", label: "TEAM PINK", skin: "pink" },
+  { id: "bf-team-green", label: "TEAM GREEN", skin: "green" },
+  { id: "bf-team-blue", label: "TEAM BLUE", skin: "blue" },
+];
+
+const DEFAULT_BABYFOOT_TEAM_IDS = new Set(DEFAULT_BABYFOOT_TEAM_META.map((team) => team.id));
+
+function defaultTeamMeta(id?: any, name?: any): DefaultBabyFootTeamMeta | null {
+  const rawId = text(id);
+  if (rawId) {
+    const byId = DEFAULT_BABYFOOT_TEAM_META.find((team) => team.id === rawId);
+    if (byId) return byId;
+  }
+  const normalized = normalizeName(name);
+  if (!normalized) return null;
+  return DEFAULT_BABYFOOT_TEAM_META.find((team) => normalizeName(team.label) === normalized) || null;
+}
+
+function defaultTeamLogo(id?: any, name?: any): string | null {
+  const meta = defaultTeamMeta(id, name);
+  return meta ? getTeamAvatarUrl(meta.skin) : null;
+}
+
+function distinctPlayerIds(ids: any[]): string[] {
+  return Array.from(new Set(arr(ids).map((id) => text(id)).filter(Boolean)));
+}
+
+function isRealTeamRoster(ids: any[]): boolean {
+  return distinctPlayerIds(ids).length >= 2;
+}
+
+function isDefaultBabyFootTeamRef(id?: any, name?: any): boolean {
+  return Boolean(defaultTeamMeta(id, name));
+}
+
 function arr(value: any): any[] {
   return Array.isArray(value) ? value : [];
 }
@@ -164,7 +205,7 @@ function avatarOf(profile: any): string | null {
 
 function teamLogoOf(team: CatalogTeam | undefined): string | null {
   if (!team) return null;
-  return team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || null;
+  return team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || defaultTeamLogo(team.id, team.name);
 }
 
 function getAny(source: any, ...keys: string[]): any {
@@ -413,42 +454,57 @@ export function computeBabyFootTeamStatsBundle(
     const id = text(team?.id);
     const label = text(team?.name, "Équipe");
     if (!id && !label) continue;
-    ensureTeam(id || `catalog-name:${normalizeName(label)}`, label, { id: id || null, logoUrl: teamLogoOf(team), rosterIds: arr(team?.playerIds).map(String) });
+    const rosterIds = distinctPlayerIds(arr(team?.playerIds));
+    const isDefault = isDefaultBabyFootTeamRef(id, label);
+    if (!isDefault && !isRealTeamRoster(rosterIds)) continue;
+    const meta = defaultTeamMeta(id, label);
+    ensureTeam(id || `catalog-name:${normalizeName(label)}`, meta?.label || label, { id: id || null, logoUrl: teamLogoOf(team) || defaultTeamLogo(id, label), rosterIds });
   }
 
   const resolveKey = (match: BabyFootNormalizedMatch, side: "A" | "B") => {
-    const ids = side === "A" ? match.teamAProfileIds : match.teamBProfileIds;
+    const ids = distinctPlayerIds(side === "A" ? match.teamAProfileIds : match.teamBProfileIds);
+    if (!isRealTeamRoster(ids)) return null;
+
     const fallbackName = side === "A" ? match.teamAName : match.teamBName;
     const ref = sideRef(match, side);
+    const meta = defaultTeamMeta(ref, fallbackName);
     const byRef = ref ? catalogById.get(ref) : undefined;
     const byName = !isGenericTeamName(fallbackName) ? catalogByName.get(normalizeName(fallbackName)) : undefined;
     const catalog = byRef || byName;
-    if (catalog?.id) {
+
+    if (catalog?.id || meta) {
+      const id = text(catalog?.id || meta?.id || ref);
+      const label = text(catalog?.name || meta?.label, fallbackName);
+      const rosterIds = distinctPlayerIds(arr(catalog?.playerIds).length ? arr(catalog?.playerIds) : ids);
       return {
-        key: String(catalog.id),
-        id: String(catalog.id),
-        label: text(catalog.name, fallbackName),
-        logoUrl: teamLogoOf(catalog),
-        rosterIds: arr(catalog.playerIds).map(String),
+        key: id || `team-name:${normalizeName(label)}`,
+        id: id || null,
+        label,
+        logoUrl: teamLogoOf(catalog) || defaultTeamLogo(id, label),
+        rosterIds,
       };
     }
+
     if (ref) {
-      return { key: ref, id: ref, label: fallbackName, logoUrl: null, rosterIds: ids };
+      return { key: ref, id: ref, label: fallbackName, logoUrl: defaultTeamLogo(ref, fallbackName), rosterIds: ids };
     }
-    const cleanIds = ids.map(String).filter(Boolean).sort();
-    if (cleanIds.length) {
-      return { key: `composition:${cleanIds.join("|")}`, id: null, label: compositionLabel(cleanIds, fallbackName, profilesById), logoUrl: null, rosterIds: cleanIds };
-    }
-    const nameKey = normalizeName(fallbackName) || side.toLowerCase();
-    return { key: `name:${nameKey}`, id: null, label: fallbackName, logoUrl: null, rosterIds: [] };
+
+    return {
+      key: `composition:${ids.slice().sort().join("|")}`,
+      id: null,
+      label: compositionLabel(ids, fallbackName, profilesById),
+      logoUrl: defaultTeamLogo(null, fallbackName),
+      rosterIds: ids,
+    };
   };
 
   for (const match of [...matches].sort((a, b) => a.date - b.date)) {
     for (const side of ["A", "B"] as const) {
       const resolved = resolveKey(match, side);
+      if (!resolved) continue;
       const team = ensureTeam(resolved.key, resolved.label, resolved);
       const stats = sideStats(match, side);
-      const playerIds = side === "A" ? match.teamAProfileIds : match.teamBProfileIds;
+      const playerIds = distinctPlayerIds(side === "A" ? match.teamAProfileIds : match.teamBProfileIds);
       const scoreFor = side === "A" ? match.scoreA : match.scoreB;
       const scoreAgainst = side === "A" ? match.scoreB : match.scoreA;
       const won = scoreFor > scoreAgainst;
@@ -531,7 +587,9 @@ export function computeBabyFootTeamStatsBundle(
     team.players = Array.from(playerMaps.get(key)?.values() || []);
   }
 
-  const list = Array.from(teams.values()).map(finalizeTeam);
+  const list = Array.from(teams.values())
+    .filter((team) => isDefaultBabyFootTeamRef(team.id, team.label) || isRealTeamRoster(team.rosterIds) || team.matches > 0)
+    .map(finalizeTeam);
   const topTeams = [...list].filter((t) => t.matches > 0).sort((a, b) =>
     b.points - a.points || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor || a.avgGoalsAgainst - b.avgGoalsAgainst || a.label.localeCompare(b.label, "fr", { sensitivity: "base", numeric: true }),
   );
