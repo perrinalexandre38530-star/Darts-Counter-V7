@@ -16,6 +16,7 @@ import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 
 import { loadBabyFootState } from "../../lib/babyfootStore";
+import { History } from "../../lib/history";
 import { computeShotConversion } from "../../lib/babyfootQualityStats";
 import {
   babyFootRating,
@@ -162,23 +163,54 @@ function useAutoFitTitle(deps: any[] = []) {
 }
 
 // -------------------------------------------------------------
-// KPI Babyfoot (LOCAL) — depuis store.history
+// KPI Babyfoot (LOCAL) — source Historique complète comme le centre stats
 // -------------------------------------------------------------
 
-function getBabyfootHistoryRows(store: Store): any[] {
-  const rows = ((store as any)?.history ?? []) as any[];
-  if (!Array.isArray(rows)) return [];
-  return rows.filter((r) => {
-    const sport = String(r?.sport ?? "").toLowerCase();
-    const kind = String(r?.kind ?? r?.summary?.kind ?? "").toLowerCase();
-    return sport === "babyfoot" || kind.includes("baby");
-  });
+function mergeBabyFootHistoryRows(...sources: any[][]): any[] {
+  const byId = new Map<string, any>();
+  const quality = (row: any) => {
+    const payload = row?.payload || row;
+    const summary = row?.summary || payload?.summary || {};
+    return (row?.payload ? 10 : 0)
+      + (Array.isArray(payload?.events) ? payload.events.length * 3 : 0)
+      + (Array.isArray(summary?.events) ? summary.events.length * 3 : 0)
+      + (Array.isArray(payload?.players) ? payload.players.length : 0)
+      + (payload?.compact ? 4 : 0);
+  };
+  for (const source of sources) {
+    for (const row of Array.isArray(source) ? source : []) {
+      const id = String(row?.id || row?.matchId || row?.payload?.id || row?.payload?.matchId || "").trim();
+      if (!id) continue;
+      const previous = byId.get(id);
+      if (!previous || quality(row) >= quality(previous)) byId.set(id, row);
+    }
+  }
+  return Array.from(byId.values());
 }
 
-function computeBabyfootGlobalStats(store: Store, activeProfile: Profile | null) {
+async function loadBabyFootHistoryRowsFromAllSources(store: Store): Promise<any[]> {
+  const fromStore = Array.isArray((store as any)?.history) ? ((store as any).history as any[]) : [];
+  try {
+    const api: any = History as any;
+    let fromHistory: any[] = [];
+    if (typeof api.getAll === "function") {
+      fromHistory = await api.getAll();
+    } else if (typeof api.list === "function") {
+      const light = await api.list();
+      fromHistory = await Promise.all((Array.isArray(light) ? light : []).map(async (row: any) => {
+        const id = String(row?.id || row?.matchId || "").trim();
+        return id && typeof api.get === "function" ? ((await api.get(id).catch(() => null)) || row) : row;
+      }));
+    }
+    return mergeBabyFootHistoryRows(fromStore, fromHistory);
+  } catch {
+    return fromStore;
+  }
+}
+
+function computeBabyfootGlobalStats(historyRows: any[], profiles: Profile[], activeProfile: Profile | null) {
   const profileId = String(activeProfile?.id ?? "").trim();
-  const profiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
-  const rows = normalizeBabyFootMatches(getBabyfootHistoryRows(store), { mode: "all", period: "ARV" });
+  const rows = normalizeBabyFootMatches(historyRows, { mode: "all", period: "ARV" });
   const agg = computeBabyFootProfileAggregate(rows, profiles, profileId);
 
   let shots = 0;
@@ -480,7 +512,28 @@ export default function BabyFootHome({ store, go }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
-  const babyfootGlobalStats = useMemo(() => computeBabyfootGlobalStats(store, activeProfile), [store, activeProfile]);
+  const profiles = useMemo(() => Array.isArray((store as any)?.profiles) ? ((store as any).profiles as Profile[]) : [], [store]);
+  const [historyRows, setHistoryRows] = useState<any[]>(() => Array.isArray((store as any)?.history) ? ((store as any).history as any[]) : []);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const rows = await loadBabyFootHistoryRowsFromAllSources(store);
+      if (alive) setHistoryRows(rows);
+    };
+    load();
+    window.addEventListener("dc-history-updated", load as EventListener);
+    window.addEventListener("dc-stats-index-updated", load as EventListener);
+    window.addEventListener("storage", load as EventListener);
+    return () => {
+      alive = false;
+      window.removeEventListener("dc-history-updated", load as EventListener);
+      window.removeEventListener("dc-stats-index-updated", load as EventListener);
+      window.removeEventListener("storage", load as EventListener);
+    };
+  }, [store]);
+
+  const babyfootGlobalStats = useMemo(() => computeBabyfootGlobalStats(historyRows, profiles, activeProfile), [historyRows, profiles, activeProfile]);
   const primary = theme.primary ?? "#F6C256";
   const convLabel = babyfootGlobalStats.conversion == null ? "—" : `${Math.round(babyfootGlobalStats.conversion * 100)}%`;
 

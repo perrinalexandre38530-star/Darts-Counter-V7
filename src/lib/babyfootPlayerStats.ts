@@ -294,7 +294,7 @@ export function resolveBabyFootRecord(record: any): any {
     teamB: payload.teamB ?? p0.teamB ?? outer.teamB ?? summary.teamB,
     scoreA: payload.scoreA ?? p0.scoreA ?? outer.scoreA ?? summary.scoreA,
     scoreB: payload.scoreB ?? p0.scoreB ?? outer.scoreB ?? summary.scoreB,
-    mode: payload.mode ?? p0.mode ?? outer.mode ?? summary.mode ?? compact?.o?.mode ?? compact?.m,
+    mode: payload.mode ?? payload?.game?.mode ?? p0.mode ?? p0?.game?.mode ?? outer.mode ?? outer?.game?.mode ?? summary.mode ?? summary?.game?.mode ?? compact?.o?.mode ?? compact?.m,
     durationMs: payload.durationMs ?? p0.durationMs ?? outer.durationMs ?? summary.durationMs,
     specialStats: payload.specialStats ?? p0.specialStats ?? outer.specialStats ?? summary.specialStats,
     stats: payload.stats ?? p0.stats ?? outer.stats ?? summary.stats,

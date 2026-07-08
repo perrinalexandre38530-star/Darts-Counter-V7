@@ -239,7 +239,13 @@ export function babyFootCutoff(period: BabyFootPeriodFilter): number {
 }
 
 function modeOf(data: any): string {
-  const mode = text(data?.mode ?? data?.summary?.mode ?? data?.meta?.mode).toLowerCase();
+  const mode = text(
+    data?.mode
+      ?? data?.game?.mode
+      ?? data?.summary?.mode
+      ?? data?.summary?.game?.mode
+      ?? data?.meta?.mode
+  ).toLowerCase();
   return mode || "babyfoot";
 }
 

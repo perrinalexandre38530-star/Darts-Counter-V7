@@ -16,6 +16,7 @@ import {
   type BabyFootPeriodFilter,
   type BabyFootPlayerAggregate,
   type BabyFootProfileMatch,
+  type BabyFootLeaderboardBundle,
 } from "../../lib/babyfootStatsAggregate";
 
 type Props = {
@@ -27,6 +28,7 @@ type Props = {
 type PeriodKey = "J" | "S" | "M" | "A" | "ARV";
 type ModeKey = "1v1" | "2v2" | "2v1" | "all";
 type CenterTab = "dashboard" | "classements" | "details" | "history";
+type RankingView = "general" | "ratio" | "win" | "attack" | "defense" | "clean" | "streak" | "scorers" | "teams";
 
 const C = {
   gold: "#F6C256",
@@ -63,6 +65,18 @@ const CENTER_TABS: Array<{ key: CenterTab; label: string }> = [
   { key: "classements", label: "CLASSEMENTS" },
   { key: "details", label: "DÉTAILS" },
   { key: "history", label: "MATCHS" },
+];
+
+const RANKING_VIEWS: Array<{ key: RankingView; label: string; color: string }> = [
+  { key: "general", label: "GÉNÉRAL", color: C.gold },
+  { key: "ratio", label: "RATIO", color: C.gold },
+  { key: "win", label: "WIN%", color: C.green },
+  { key: "attack", label: "ATTAQUE", color: C.blue },
+  { key: "defense", label: "DÉFENSE", color: C.pink },
+  { key: "clean", label: "CLEAN", color: C.green },
+  { key: "streak", label: "SÉRIES", color: C.violet },
+  { key: "scorers", label: "SCOREURS", color: C.orange },
+  { key: "teams", label: "ÉQUIPES", color: C.gold },
 ];
 
 function idOf(profile: any) {
@@ -287,6 +301,63 @@ function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
   );
 }
 
+function TeamBoard({ rows }: { rows: BabyFootLeaderboardBundle["topTeams"] }) {
+  return (
+    <div style={cardStyle()}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+        {sectionTitle("Classement équipes", C.gold)}
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Pts · Diff · Ratio</div>
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+        {rows.length ? rows.slice(0, 10).map((team, index) => {
+          const podiumColor = index === 0 ? C.gold : index === 1 ? C.blue : index === 2 ? C.orange : C.muted;
+          return (
+            <div key={team.key} style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) 46px 46px 48px", gap: 8, alignItems: "center", borderRadius: 15, padding: "9px 10px", border: "1px solid rgba(255,255,255,.075)", background: index < 3 ? `linear-gradient(90deg,${podiumColor}15,rgba(255,255,255,.025))` : "rgba(255,255,255,.032)" }}>
+              <div style={{ width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.08)", fontSize: 12, fontWeight: 1000 }}>{index + 1}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: C.text, fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{team.label}</div>
+                <div style={{ marginTop: 1, color: C.dim, fontSize: 9, fontWeight: 850 }}>{team.wins}V/{team.draws}N/{team.losses}D · {team.matches} MJ</div>
+              </div>
+              <div style={{ color: C.gold, textAlign: "right", fontSize: 12, fontWeight: 1000 }}>{team.points}</div>
+              <div style={{ color: team.goalDiff >= 0 ? C.green : C.pink, textAlign: "right", fontSize: 12, fontWeight: 1000 }}>{formatSigned(team.goalDiff)}</div>
+              <div style={{ color: C.blue, textAlign: "right", fontSize: 12, fontWeight: 1000 }}>{formatBabyFootRatio(team.ratio)}</div>
+            </div>
+          );
+        }) : <div style={{ padding: 14, color: C.muted, textAlign: "center", fontWeight: 850 }}>Pas encore assez de compositions récurrentes.</div>}
+      </div>
+    </div>
+  );
+}
+
+function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFootLeaderboardBundle; active: RankingView; onChange: (view: RankingView) => void }) {
+  const current = RANKING_VIEWS.find((item) => item.key === active) || RANKING_VIEWS[0];
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={cardStyle({ padding: 10 })}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 9 }}>
+          {sectionTitle("Classements", current.color)}
+          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>fais défiler les intitulés</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
+          {RANKING_VIEWS.map((item) => (
+            <Pill key={item.key} active={active === item.key} onClick={() => onChange(item.key)} color={item.color}>{item.label}</Pill>
+          ))}
+        </div>
+      </div>
+
+      {active === "general" ? <RankingCard rows={leaderboards.topRanking} /> : null}
+      {active === "ratio" ? <Board title="Top ratio" subtitle="BP/BC" rows={leaderboards.topRatio} value={(row) => formatBabyFootRatio(row.ratio)} color={C.gold} /> : null}
+      {active === "win" ? <Board title="Top win%" subtitle="victoires" rows={leaderboards.topWinRate} value={(row) => formatBabyFootPct01(row.winRate)} color={C.green} /> : null}
+      {active === "attack" ? <Board title="Attaque" subtitle="BP/match" rows={leaderboards.topGoalsPerMatch} value={(row) => formatOne(row.avgGoalsFor)} color={C.blue} /> : null}
+      {active === "defense" ? <Board title="Défense" subtitle="BC/match" rows={leaderboards.topDefense} value={(row) => formatOne(row.avgGoalsAgainst)} color={C.pink} /> : null}
+      {active === "clean" ? <Board title="Clean sheets" subtitle="zéro encaissé" rows={leaderboards.topCleanSheets} value={(row) => String(row.cleanSheets)} color={C.green} /> : null}
+      {active === "streak" ? <Board title="Séries" subtitle="record" rows={leaderboards.topStreaks} value={(row) => `${row.bestWinStreak} wins`} color={C.violet} /> : null}
+      {active === "scorers" ? <Board title="Scoreurs" subtitle="buts perso" rows={leaderboards.topPersonalScorers} value={(row) => String(row.personalPoints || row.actualGoals)} color={C.orange} /> : null}
+      {active === "teams" ? <TeamBoard rows={leaderboards.topTeams} /> : null}
+    </div>
+  );
+}
+
 function MatchLine({ match, go }: { match: BabyFootProfileMatch; go: Props["go"] }) {
   const color = match.won ? C.green : match.draw ? C.gold : C.pink;
   return (
@@ -316,11 +387,14 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
   const requestedMode = String(params?.mode || "").toLowerCase();
   const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : "all";
-  const [period, setPeriod] = React.useState<PeriodKey>("M");
+  const requestedPeriod = String(params?.period || params?.periodKey || "").toUpperCase();
+  const initialPeriod: PeriodKey = requestedPeriod === "J" || requestedPeriod === "S" || requestedPeriod === "M" || requestedPeriod === "A" || requestedPeriod === "ARV" ? requestedPeriod : "ARV";
+  const [period, setPeriod] = React.useState<PeriodKey>(initialPeriod);
   const [mode, setMode] = React.useState<ModeKey>(initialMode);
   const requestedTab = String(params?.tab || "").toLowerCase();
   const initialTab: CenterTab = requestedTab === "classements" ? "classements" : requestedTab === "details" ? "details" : requestedTab === "history" ? "history" : "dashboard";
   const [tab, setTab] = React.useState<CenterTab>(initialTab);
+  const [rankingView, setRankingView] = React.useState<RankingView>("general");
   const [profileIndex, setProfileIndex] = React.useState(0);
   const [historyRows, setHistoryRows] = React.useState<any[]>(() => Array.isArray((store as any)?.history) ? (store as any).history : []);
 
@@ -451,17 +525,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         )}
 
         {(tab === "dashboard" || tab === "classements") && (
-          <>
-            <RankingCard rows={leaderboards.topRanking} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-              <Board title="Top ratio" subtitle="BP/BC" rows={leaderboards.topRatio} value={(row) => formatBabyFootRatio(row.ratio)} color={C.gold} />
-              <Board title="Top win%" subtitle="victoires" rows={leaderboards.topWinRate} value={(row) => formatBabyFootPct01(row.winRate)} color={C.green} />
-              <Board title="Attaque" subtitle="BP/match" rows={leaderboards.topGoalsPerMatch} value={(row) => formatOne(row.avgGoalsFor)} color={C.blue} />
-              <Board title="Défense" subtitle="BC/match" rows={leaderboards.topDefense} value={(row) => formatOne(row.avgGoalsAgainst)} color={C.pink} />
-              <Board title="Clean sheets" subtitle="zéro encaissé" rows={leaderboards.topCleanSheets} value={(row) => String(row.cleanSheets)} color={C.green} />
-              <Board title="Séries" subtitle="record" rows={leaderboards.topStreaks} value={(row) => `${row.bestWinStreak} wins`} color={C.violet} />
-            </div>
-          </>
+          <RankingsDeck leaderboards={leaderboards} active={rankingView} onChange={setRankingView} />
         )}
 
         {tab === "details" && (
