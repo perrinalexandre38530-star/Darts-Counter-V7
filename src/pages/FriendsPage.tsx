@@ -4018,7 +4018,7 @@ const doLogout = React.useCallback(async () => {
             right={<Pill label="MULTISPORTS" tone="blue" />}
           />
           <div style={{ marginTop: 10 }}>
-            <OnlineClubsPanel signedIn={isSignedIn} accent={onlineAccent} />
+            <OnlineClubsPanel signedIn={isSignedIn} accent={onlineAccent} activeSport={activeSportId} />
           </div>
         </>
       ) : null}

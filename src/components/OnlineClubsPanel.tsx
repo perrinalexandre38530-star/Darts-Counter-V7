@@ -27,6 +27,7 @@ import { loadTeams, upsertTeam } from "../lib/petanqueTeamsStore";
 type Props = {
   signedIn?: boolean;
   accent?: string;
+  activeSport?: string;
   onOpenTeam?: (team: any) => void;
 };
 
@@ -157,6 +158,26 @@ function sportIcon(value?: string | null) {
   return "★";
 }
 
+function normalizeSportId(value?: string | null) {
+  const raw = String(value || "darts").toLowerCase().trim();
+  if (raw === "flechettes" || raw === "fléchettes" || raw === "x01") return "darts";
+  if (raw === "baby-foot" || raw === "baby_foot") return "babyfoot";
+  if (raw === "ping-pong" || raw === "ping_pong" || raw === "tabletennis") return "pingpong";
+  if (raw === "petanque" || raw === "pétanque") return "petanque";
+  return raw || "darts";
+}
+
+function clubSupportsSport(club: Club, teams: ClubTeam[], sport: string) {
+  const wanted = normalizeSportId(sport);
+  const clubSports = Array.isArray(club?.sports) ? club.sports.map(normalizeSportId) : [];
+  if (clubSports.includes(wanted)) return true;
+  return teams.some((team) => normalizeSportId(team.sport) === wanted);
+}
+
+function teamSupportsSport(team: ClubTeam, sport: string) {
+  return normalizeSportId(team?.sport) === normalizeSportId(sport);
+}
+
 function sportsLabel(team: any) {
   const ids = Array.isArray(team?.sportIds) ? team.sportIds : team?.sport ? [team.sport] : [];
   if (team?.allSports) return "tous les sports";
@@ -278,7 +299,7 @@ function PresenceDots({ convocations, accent }: { convocations: ClubConvocation[
   return <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{convocations.slice(0, 26).map((c, i) => { const st = statusLabel(c.status); return <div key={`${c.id}-${i}`} title={`${c.displayName} • ${st.label}`} style={{ width: 26, height: 26, borderRadius: 999, border: `1px solid ${alpha(st.color, "cc")}`, background: `radial-gradient(circle at 35% 25%, ${alpha(st.color, "50")}, rgba(0,0,0,.55))`, color: st.color, display: "grid", placeItems: "center", fontSize: 10, fontWeight: 1000 }}>{c.avatarUrl ? <img src={c.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 999 }} /> : st.short}</div>; })}{convocations.length === 0 ? <span style={{ fontSize: 12, opacity: .65 }}>Aucune convocation liée</span> : null}{convocations.length > 26 ? <MetaChip accent={accent}>+{convocations.length - 26}</MetaChip> : null}</div>;
 }
 
-export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }: Props) {
+export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff", activeSport = "darts" }: Props) {
   const [clubs, setClubs] = React.useState<Club[]>([]);
   const [teamsByClub, setTeamsByClub] = React.useState<Record<string, ClubTeam[]>>({});
   const [invites, setInvites] = React.useState<ClubInvite[]>([]);
@@ -299,6 +320,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
   const [fullscreenMode, setFullscreenMode] = React.useState<FullscreenMode>("none");
   const [showClubInfo, setShowClubInfo] = React.useState(false);
   const [teamFilter, setTeamFilter] = React.useState<string>("all");
+  const [newSectionName, setNewSectionName] = React.useState("");
 
   const [postText, setPostText] = React.useState("");
   const [postTitle, setPostTitle] = React.useState("");
@@ -347,8 +369,9 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
       setClubConvocations(detail.convocations || []);
       setClubTab(tab);
       setFullscreenMode("club");
-      setSelectedInviteTeam((detail.teams || [])[0]?.id || "");
-      setMatchTeamId((detail.teams || [])[0]?.id || "");
+      const sportTeams = (detail.teams || []).filter((t) => teamSupportsSport(t, activeSport));
+      setSelectedInviteTeam((sportTeams[0] || (detail.teams || [])[0])?.id || "");
+      setMatchTeamId((sportTeams[0] || (detail.teams || [])[0])?.id || "");
     } catch (e: any) {
       setError(e?.message || "Impossible d’ouvrir le club");
     } finally {
@@ -358,20 +381,32 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
 
   React.useEffect(() => { reload(); }, [reload]);
 
+  const currentSportId = normalizeSportId(activeSport);
+  const sportAccent = accent;
   const selectedRole = String(selectedClub?.role || "member").toLowerCase();
   const canManage = MANAGER_ROLES.has(selectedRole);
   const totalMembers = clubMembers.length || selectedClub?.membersCount || 0;
   const allSports = (selectedClub?.sports || []).length ? (selectedClub?.sports || []) : SPORTS.slice(0, 4);
-  const filteredTeams = React.useMemo(() => teamFilter === "all" ? clubTeams : clubTeams.filter((t) => t.id === teamFilter), [clubTeams, teamFilter]);
-  const filteredMatches = React.useMemo(() => teamFilter === "all" ? clubMatches : clubMatches.filter((m) => String(m.clubTeamId || "") === teamFilter), [clubMatches, teamFilter]);
+  const clubTeamsForSport = React.useMemo(() => clubTeams.filter((team) => teamSupportsSport(team, currentSportId)), [clubTeams, currentSportId]);
+  const effectiveTeams = clubTeamsForSport.length ? clubTeamsForSport : [];
+  const filteredTeams = React.useMemo(() => teamFilter === "all" ? effectiveTeams : effectiveTeams.filter((t) => t.id === teamFilter), [effectiveTeams, teamFilter]);
+  const filteredMatches = React.useMemo(() => {
+    const teamIds = new Set(effectiveTeams.map((team) => team.id));
+    const sportRows = clubMatches.filter((m) => normalizeSportId(m.sport || "") === currentSportId || (m.clubTeamId && teamIds.has(String(m.clubTeamId))));
+    return teamFilter === "all" ? sportRows : sportRows.filter((m) => String(m.clubTeamId || "") === teamFilter);
+  }, [clubMatches, effectiveTeams, currentSportId, teamFilter]);
   const sortedEvents = React.useMemo(() => [...clubEvents].sort((a,b) => String(a.startsAt || "9999").localeCompare(String(b.startsAt || "9999"))), [clubEvents]);
-  const upcomingMatches = React.useMemo(() => [...clubMatches].sort((a,b) => String(a.startsAt || "9999").localeCompare(String(b.startsAt || "9999"))), [clubMatches]);
+  const upcomingMatches = React.useMemo(() => [...filteredMatches].sort((a,b) => String(a.startsAt || "9999").localeCompare(String(b.startsAt || "9999"))), [filteredMatches]);
   const nextMatch = upcomingMatches[0] || null;
   const seasonWins = clubMatches.filter((m) => String(m.status || "") === "finished" && Number(m.scoreFor || 0) > Number(m.scoreAgainst || 0)).length;
   const seasonDraws = clubMatches.filter((m) => String(m.status || "") === "finished" && Number(m.scoreFor || 0) === Number(m.scoreAgainst || 0)).length;
   const seasonLosses = clubMatches.filter((m) => String(m.status || "") === "finished" && Number(m.scoreFor || 0) < Number(m.scoreAgainst || 0)).length;
   const goalsFor = clubMatches.reduce((s, m) => s + Number(m.scoreFor || 0), 0);
   const goalsAgainst = clubMatches.reduce((s, m) => s + Number(m.scoreAgainst || 0), 0);
+
+  React.useEffect(() => {
+    if (teamFilter !== "all" && !effectiveTeams.some((team) => team.id === teamFilter)) setTeamFilter("all");
+  }, [effectiveTeams, teamFilter]);
 
   async function refreshSelected(tab = clubTab) {
     if (selectedClubId) await openClub(selectedClubId, tab);
@@ -382,7 +417,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
     if (!name || !signedIn) return;
     setBusy(true);
     try {
-      const club = await createClub({ name, sports: SPORTS, visibility: "members" });
+      const club = await createClub({ name, sports: [currentSportId], visibility: "members" });
       setNewClubName("");
       await reload();
       await openClub(club.id, "dashboard");
@@ -404,6 +439,28 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
       await openClub(club.id, "dashboard");
     } catch (e: any) { setError(e?.message || "Synchronisation impossible"); }
     finally { setBusy(false); }
+  }
+
+
+  async function createSportSection() {
+    if (!selectedClubId || !newSectionName.trim()) return;
+    setBusy(true);
+    try {
+      await upsertClubTeam({
+        clubId: selectedClubId,
+        localTeamId: `section_${currentSportId}_${Date.now()}`,
+        sport: currentSportId,
+        name: newSectionName.trim(),
+        description: `Section ${sportName(currentSportId)} du club`,
+        playerIds: [],
+      });
+      setNewSectionName("");
+      await refreshSelected("equipes");
+    } catch (e: any) {
+      setError(e?.message || "Création de section impossible");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleInvite(inviteId: string, status: "accepted" | "refused") {
@@ -480,44 +537,41 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
   }
 
   function renderTeamFilter() {
-    if (!clubTeams.length) return null;
-    return <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}><button type="button" onClick={() => setTeamFilter("all")} style={navButton(accent, teamFilter === "all")}>Toutes</button>{clubTeams.map((t) => <button key={t.id} type="button" onClick={() => setTeamFilter(t.id)} style={navButton(accent, teamFilter === t.id)}>{t.name}</button>)}</div>;
+    if (!effectiveTeams.length) return null;
+    return <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}><button type="button" onClick={() => setTeamFilter("all")} style={navButton(accent, teamFilter === "all")}>Toute la section</button>{effectiveTeams.map((t) => <button key={t.id} type="button" onClick={() => setTeamFilter(t.id)} style={navButton(accent, teamFilter === t.id)}>{t.name}</button>)}</div>;
   }
 
   function renderClubHeader() {
     if (!selectedClub) return null;
-    const sportsLine = allSports.map(sportName).join(" • ") || "Multisports";
+    const sectionTeamsCount = effectiveTeams.length;
+    const sectionMatchesCount = filteredMatches.length;
+    const sectionLabel = sportName(currentSportId);
     return (
       <>
-        <div style={{ position: "sticky", top: 0, zIndex: 25, padding: "12px 12px 8px", background: "linear-gradient(180deg, rgba(3,9,17,.98), rgba(3,9,17,.88) 70%, rgba(3,9,17,0))" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 25, padding: "10px 12px 8px", background: "linear-gradient(180deg, rgba(3,9,17,.98), rgba(3,9,17,.92) 72%, rgba(3,9,17,0))" }}>
           <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 48px", alignItems: "center", gap: 10 }}>
             <button type="button" onClick={() => { setFullscreenMode("none"); setSelectedClubId(null); }} style={iconButton(accent)}>←</button>
             <div style={{ textAlign: "center", minWidth: 0 }}>
               <div style={{ color: accent, fontSize: 20, fontWeight: 1000, letterSpacing: .5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedClub.name}</div>
-              <div style={{ fontSize: 11, opacity: .72 }}>{roleLabel(selectedClub.role)} • {sportsLine}</div>
+              <div style={{ fontSize: 11, opacity: .76 }}>{roleLabel(selectedClub.role)} • Section {sectionLabel}</div>
             </div>
             <button type="button" onClick={() => setShowClubInfo(true)} style={iconButton(accent)}>i</button>
           </div>
         </div>
 
-        <div style={{ padding: "0 12px 12px" }}>
-          <div style={{ ...glass(accent, 0), overflow: "hidden", position: "relative" }}>
-            <div style={{ minHeight: 174, background: selectedClub.coverUrl ? `linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.76)), url(${selectedClub.coverUrl}) center/cover` : `radial-gradient(circle at 50% 0%, ${alpha(accent, "30")}, rgba(2,8,15,.84) 58%, rgba(2,8,15,.97))`, display: "grid", placeItems: "center", padding: 16 }}>
-              <div style={{ display: "grid", justifyItems: "center", gap: 9 }}>
-                <Logo src={selectedClub.logoUrl} name={selectedClub.name} accent={accent} size={90} round={26} />
-                <div style={{ color: accent, fontSize: 27, fontWeight: 1000, textAlign: "center", textShadow: `0 0 18px ${alpha(accent, "70")}` }}>{selectedClub.name}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-                  <MetaChip accent={accent}>{totalMembers} membres</MetaChip>
-                  <MetaChip accent={accent}>{clubTeams.length || selectedClub.teamsCount || 0} équipes</MetaChip>
-                  <MetaChip accent={accent}>{selectedClub.visibility || "members"}</MetaChip>
-                </div>
+        <div style={{ padding: "0 12px 10px" }}>
+          <div style={{ ...card(accent, 12), display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "center", background: `linear-gradient(135deg, ${alpha(accent, "20")}, rgba(2,8,15,.92))` }}>
+            <Logo src={selectedClub.logoUrl} name={selectedClub.name} accent={accent} size={64} round={20} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 7 }}>
+                <MetaChip accent={accent}>{sportIcon(currentSportId)} {sectionLabel}</MetaChip>
+                <MetaChip accent="#7cff9d">{sectionTeamsCount} équipe(s)</MetaChip>
+                <MetaChip accent="#ffc857">{sectionMatchesCount} match(s)</MetaChip>
+                <MetaChip accent="#b58cff">{totalMembers} membre(s)</MetaChip>
               </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: alpha(accent, "2a"), borderTop: `1px solid ${alpha(accent, "28")}` }}>
-              <StatTile accent={accent} value={clubMatches.length} label="matchs" sub="saison" />
-              <StatTile accent="#7cff9d" value={clubConvocations.length} label="convocs" sub="joueurs" />
-              <StatTile accent="#ffc857" value={clubPosts.length} label="actus" sub="publiées" />
-              <StatTile accent="#b58cff" value={clubEvents.length} label="agenda" sub="à venir" />
+              <div style={{ fontSize: 12.5, opacity: .82, lineHeight: 1.35 }}>
+                Tu consultes uniquement les données de la section {sectionLabel}. Les autres sections du club restent masquées depuis ce sport.
+              </div>
             </div>
           </div>
         </div>
@@ -569,86 +623,50 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
   }
 
   function renderDashboard() {
-    const convStats = countByStatus(clubConvocations, nextMatch?.id);
-    const globalConvStats = countByStatus(clubConvocations);
-    const latestPosts = clubPosts.slice(0, 5);
-    const nextEvents = sortedEvents.slice(0, 5);
+    const sectionConvocations = clubConvocations.filter((c) => filteredMatches.some((m) => m.id === c.clubMatchId));
+    const globalConvStats = countByStatus(sectionConvocations);
+    const latestPosts = clubPosts.slice(0, 3);
+    const nextEvents = sortedEvents.slice(0, 4);
     const presenceRate = globalConvStats.total ? Math.round((globalConvStats.present / globalConvStats.total) * 100) : 0;
-    const staff = clubMembers.filter((m) => ["owner", "admin", "coach", "captain"].includes(String(m.role || "").toLowerCase())).slice(0, 8);
-    const activeMembers = clubMembers.filter((m) => String(m.status || "active") === "active").length;
-    const pendingRatio = globalConvStats.total ? Math.round((globalConvStats.pending / globalConvStats.total) * 100) : 0;
-    const clubHealth = Math.round((presenceRate * .45) + (clubTeams.length ? 20 : 0) + (latestPosts.length ? 15 : 0) + (nextMatch ? 20 : 0));
-    const alerts = [
-      { title: "Réponses convocation", value: globalConvStats.pending, body: "joueur(s) à relancer avant le match", color: accent, tab: "convocs" as ClubTab },
-      { title: "Matchs à planifier", value: clubTeams.length ? Math.max(0, clubTeams.length - upcomingMatches.length) : 0, body: "équipe(s) sans prochain rendez-vous", color: "#ffc857", tab: "matchs" as ClubTab },
-      { title: "Effectif à structurer", value: Math.max(0, totalMembers - clubMembers.filter((m) => String(m.role || "member") !== "member").length), body: "membre(s) sans rôle précis", color: "#b58cff", tab: "effectif" as ClubTab },
-      { title: "Vie du club", value: clubPosts.length + clubEvents.length, body: "actus et évènements publiés", color: "#7cff9d", tab: "actu" as ClubTab },
-    ];
-    const operations = [
-      { label: "Créer / vérifier le prochain match", done: !!nextMatch, tab: "matchs" as ClubTab },
-      { label: "Publier une information d'équipe", done: latestPosts.length > 0, tab: "actu" as ClubTab },
-      { label: "Relancer les convocations en attente", done: pendingRatio === 0, tab: "convocs" as ClubTab },
-      { label: "Renseigner les rôles du bureau et du staff", done: staff.length >= 2, tab: "effectif" as ClubTab },
-      { label: "Organiser agenda, entraînements et réunions", done: nextEvents.length > 0, tab: "agenda" as ClubTab },
-      { label: "Centraliser documents, photos et archives", done: false, tab: "documents" as ClubTab },
-    ];
-    const modules = [
-      { title: "Sport", body: "Matchs, compositions, résultats, stats, classement interne.", tab: "matchs" as ClubTab, color: accent },
-      { title: "Présences", body: "Convocations, réponses, relances, disponibilité des joueurs.", tab: "convocs" as ClubTab, color: "#7cff9d" },
-      { title: "Vie du club", body: "Actualités, annonces, sondages, événements, albums.", tab: "actu" as ClubTab, color: "#ffc857" },
-      { title: "Administration", body: "Rôles, droits, documents, réglages, organisation.", tab: "reglages" as ClubTab, color: "#b58cff" },
-    ];
-    return <div style={{ display: "grid", gap: 14 }}>
-      <div style={{ ...card(accent), padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: 15, display: "grid", gap: 12 }}>
-          <SectionTitle accent={accent} centered>Tableau de bord président / coach</SectionTitle>
-          <div style={{ fontSize: 12.5, opacity: .78, textAlign: "center", lineHeight: 1.35 }}>Vue complète du club : échéances, présence, animation, staff, effectif, résultats et actions prioritaires.</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
-            <StatTile accent={accent} value={totalMembers} label="membres" sub={`${activeMembers} actifs`} />
-            <StatTile accent="#7cff9d" value={clubTeams.length} label="équipes" sub="multisports" />
-            <StatTile accent="#ffc857" value={`${seasonWins}-${seasonDraws}-${seasonLosses}`} label="bilan" sub="V-N-D" />
-            <StatTile accent="#b58cff" value={`${clubHealth}%`} label="santé club" sub="score interne" />
+    const next = nextMatch;
+    return <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ ...card(accent, 13), display: "grid", gap: 10 }}>
+        <SectionTitle accent={accent} centered>Accueil section {sportName(currentSportId)}</SectionTitle>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
+          <StatTile accent={accent} value={totalMembers} label="membres" />
+          <StatTile accent="#7cff9d" value={effectiveTeams.length} label="équipes" />
+          <StatTile accent="#ffc857" value={filteredMatches.length} label="matchs" />
+          <StatTile accent="#b58cff" value={`${presenceRate}%`} label="présence" />
+        </div>
+      </div>
+
+      {next ? <div style={card(accent)}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <SectionTitle accent={accent}>Prochain rendez-vous</SectionTitle>
+          <button type="button" onClick={() => setClubTab("matchs")} style={navButton(accent, true)}>Voir</button>
+        </div>
+        <div style={{ marginTop: 12 }}><MatchCard match={next} /></div>
+      </div> : <EmptyState accent={accent} title={`Aucun match ${sportName(currentSportId)}`} body="Crée une rencontre dans cette section pour alimenter l’accueil, l’agenda et les convocations." />}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={card(accent)}>
+          <SectionTitle accent={accent}>Actions rapides</SectionTitle>
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            <QuickAction accent={accent} title="Créer une équipe/section" body={`Ajoute une équipe ${sportName(currentSportId)} dans le club.`} onClick={() => setClubTab("equipes")} />
+            <QuickAction accent="#7cff9d" title="Planifier un match" body="Prépare la fiche match et les convocations." onClick={() => setClubTab("matchs")} />
+            <QuickAction accent="#ffc857" title="Publier une actu" body="Informe les membres de la section." onClick={() => setClubTab("actu")} />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 1, background: alpha(accent, "20") }}>
-          <StatTile accent="#7cff9d" value={goalsFor} label="marqués" sub="points/buts" />
-          <StatTile accent="#ff6b7d" value={goalsAgainst} label="encaissés" sub="contre" />
-          <StatTile accent={accent} value={`${presenceRate}%`} label="présence" sub="convocs" />
-          <StatTile accent="#ffc857" value={clubPosts.length + clubEvents.length} label="activité" sub="actus + agenda" />
+        <div style={card(accent)}>
+          <SectionTitle accent={accent}>Activité récente</SectionTitle>
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            {latestPosts.length ? latestPosts.map((p) => <TimelineRow key={p.id} time={formatShortDate(p.createdAt)} title={p.title || "Actualité"} body={p.body || "Publication du club"} accent={accent} icon="•" />) : <div style={{ fontSize: 12.5, opacity: .72 }}>Aucune actualité pour le moment.</div>}
+            {nextEvents.slice(0, 2).map((e) => <TimelineRow key={e.id} time={formatShortDate(e.startsAt)} title={e.title} body={e.location || "Évènement club"} accent="#7cff9d" icon="•" />)}
+          </div>
         </div>
       </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
-        {alerts.map((a) => <button key={a.title} type="button" onClick={() => setClubTab(a.tab)} style={{ ...card(a.color), color: "#fff", textAlign: "left", minHeight: 118 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: a.color, fontWeight: 1000, lineHeight: 1.15 }}>{a.title}</div><div style={{ fontSize: 30, fontWeight: 1000 }}>{a.value}</div></div><div style={{ marginTop: 8, fontSize: 12, opacity: .72, lineHeight: 1.3 }}>{a.body}</div></button>)}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr .85fr", gap: 12 }}>
-        {nextMatch ? <div style={card(accent)}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><SectionTitle accent={accent}>Centre de match</SectionTitle><button type="button" onClick={() => setClubTab("matchs")} style={navButton(accent, true)}>Ouvrir</button></div><div style={{ marginTop: 12 }}><MatchCard match={nextMatch} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}><ProgressBar value={convStats.present} total={Math.max(convStats.total, 1)} color="#7cff9d" label="Présents" /><ProgressBar value={convStats.uncertain} total={Math.max(convStats.total, 1)} color="#ffc857" label="Incertains" /><ProgressBar value={convStats.absent} total={Math.max(convStats.total, 1)} color="#ff6b7d" label="Absents" /></div></div> : <EmptyState accent={accent} title="Aucun prochain match" body="Crée un match pour afficher sa fiche, ses convocations, son suivi de présence et son résumé sportif." />}
-        <div style={card(accent)}><SectionTitle accent={accent}>Plan d'action</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{operations.map((op, i) => <button key={op.label} type="button" onClick={() => setClubTab(op.tab)} style={{ ...glass(op.done ? "#7cff9d" : teamColor(i, accent)), color: "#fff", display: "grid", gridTemplateColumns: "32px 1fr", gap: 9, alignItems: "center", textAlign: "left" }}><div style={{ color: op.done ? "#7cff9d" : "#ffc857", fontWeight: 1000 }}>{op.done ? "✓" : "!"}</div><div style={{ fontSize: 12, fontWeight: 900, lineHeight: 1.25 }}>{op.label}</div></button>)}</div></div>
-      </div>
-
-      <div style={card(accent)}><SectionTitle accent={accent}>Modules de gestion</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 12 }}>{modules.map((m) => <button key={m.title} type="button" onClick={() => setClubTab(m.tab)} style={{ ...card(m.color), color: "#fff", minHeight: 132, textAlign: "left" }}><div style={{ width: 42, height: 42, borderRadius: 16, display: "grid", placeItems: "center", border: `1px solid ${alpha(m.color, "70")}`, color: m.color, boxShadow: `0 0 16px ${alpha(m.color, "20")}`, marginBottom: 10 }}>◆</div><div style={{ color: m.color, fontWeight: 1000, fontSize: 15 }}>{m.title}</div><div style={{ marginTop: 8, fontSize: 11.5, opacity: .74, lineHeight: 1.35 }}>{m.body}</div></button>)}</div></div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr .9fr", gap: 12 }}>
-        <div style={card(accent)}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><SectionTitle accent={accent}>Semaine du club</SectionTitle><MetaChip accent={accent}>{upcomingMatches.length + nextEvents.length} échéance(s)</MetaChip></div><div style={{ marginTop: 12 }}><MiniCalendar accent={accent} events={clubEvents} matches={clubMatches} /></div></div>
-        <div style={card(accent)}><SectionTitle accent={accent}>Staff & responsabilités</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{staff.length ? staff.map((m, i) => <div key={m.id} style={{ ...glass(teamColor(i, accent)), display: "grid", gridTemplateColumns: "38px 1fr auto", gap: 9, alignItems: "center" }}><Logo src={m.avatarUrl} name={m.displayName} accent={teamColor(i, accent)} size={38} round={999} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere" }}>{m.displayName}</div><div style={{ fontSize: 11, opacity: .72 }}>{roleLabel(m.role)}</div></div><MetaChip accent={teamColor(i, accent)}>Référent</MetaChip></div>) : <div style={{ fontSize: 12, opacity: .72 }}>Aucun rôle staff renseigné pour l’instant.</div>}</div></div>
-      </div>
-
-      <div style={card(accent)}><SectionTitle accent={accent}>Suivi opérationnel SportEasy+</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
-        <div style={glass("#7cff9d")}><ProgressBar value={globalConvStats.present} total={Math.max(globalConvStats.total, 1)} color="#7cff9d" label="Disponibles" /><div style={{ marginTop: 8, fontSize: 11.5, opacity: .72 }}>Mesure la capacité du club à aligner ses équipes.</div></div>
-        <div style={glass("#ffc857")}><ProgressBar value={globalConvStats.pending} total={Math.max(globalConvStats.total, 1)} color="#ffc857" label="À relancer" /><div style={{ marginTop: 8, fontSize: 11.5, opacity: .72 }}>Réponses manquantes sur les convocations.</div></div>
-        <div style={glass("#b58cff")}><ProgressBar value={clubTeams.length} total={Math.max(allSports.length, clubTeams.length, 1)} color="#b58cff" label="Sports couverts" /><div style={{ marginTop: 8, fontSize: 11.5, opacity: .72 }}>Compatibilité multisports de l’association.</div></div>
-      </div></div>
-
-      <div style={card(accent)}><SectionTitle accent={accent}>Fil d’activité enrichi</SectionTitle><div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        {latestPosts.map((p) => <TimelineRow key={p.id} time={formatShortDate(p.createdAt)} title={p.title || "Publication"} body={p.body || "Actualité du club"} accent={accent} icon="📢" />)}
-        {clubConvocations.slice(0, 4).map((c) => <TimelineRow key={`cv-${c.id}`} time={formatShortDate(c.startsAt)} title={`${c.displayName} • ${statusLabel(c.status).label}`} body={c.matchTitle || "Réponse à une convocation"} accent={statusLabel(c.status).color} icon={statusLabel(c.status).short} />)}
-        {clubMatches.slice(0, 4).map((m) => <TimelineRow key={`tm-${m.id}`} time={formatShortDate(m.startsAt)} title={m.title} body={`Match ${sportName(m.sport)} • ${m.location || "lieu à définir"}`} accent="#ffc857" icon="VS" />)}
-        {!latestPosts.length && !clubMatches.length && !clubConvocations.length ? <EmptyState accent={accent} title="Fil vide" body="Les publications, résultats, convocations et évènements apparaîtront ici." /> : null}
-      </div></div>
     </div>;
   }
-
   function renderActu() {
     return <div style={{ display: "grid", gap: 12 }}>
       {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Créer une publication</SectionTitle><div style={{ display: "grid", gap: 9, marginTop: 10 }}><input value={postTitle} onChange={(e) => setPostTitle(e.target.value)} placeholder="Titre : Convocation, résultat, info importante..." style={inputStyle(accent)} /><textarea value={postText} onChange={(e) => setPostText(e.target.value)} placeholder="Message visible par les membres du club" rows={4} style={{ ...inputStyle(accent), resize: "vertical" }} /><button type="button" disabled={!postText.trim() || busy} onClick={createPost} style={{ ...navButton(accent, true), width: "100%" }}>Publier dans le fil</button></div></div> : null}
@@ -667,7 +685,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
       {renderTeamFilter()}
       <div style={card(accent)}><SectionTitle accent={accent}>Centre des matchs</SectionTitle><div style={{ marginTop: 8, fontSize: 12.5, opacity: .76 }}>Fiches rencontre prêtes pour gérer adversaire, lieu, horaire, score, convocations, composition, feuille de match et résumé.</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 12 }}>{statusBuckets.map((b) => <StatTile key={b.id} accent={b.color} value={b.count} label={b.label} />)}</div></div>
       <div style={card(accent)}><SectionTitle accent={accent}>Bilan sportif</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 12 }}><StatTile accent="#7cff9d" value={seasonWins} label="victoires" /><StatTile accent="#ffc857" value={seasonDraws} label="nuls" /><StatTile accent="#ff6b7d" value={seasonLosses} label="défaites" /><StatTile accent={accent} value={`${goalsFor}-${goalsAgainst}`} label="points/buts" /></div><div style={{ marginTop: 12, display: "grid", gap: 9 }}><ProgressBar value={seasonWins} total={Math.max(clubMatches.length, 1)} color="#7cff9d" label="Ratio victoires" /><ProgressBar value={goalsFor} total={Math.max(goalsFor + goalsAgainst, 1)} color={accent} label="Part offensive" /></div></div>
-      {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Planifier une rencontre complète</SectionTitle><div style={{ marginTop: 8, fontSize: 12, opacity: .72 }}>La rencontre créée alimentera automatiquement le tableau de bord, l’agenda et le centre de convocations.</div><div style={{ display: "grid", gap: 9, marginTop: 10 }}><select value={matchTeamId} onChange={(e) => setMatchTeamId(e.target.value)} style={inputStyle(accent)}>{clubTeams.map((team) => <option key={team.id} value={team.id}>{team.name} • {sportName(team.sport)}</option>)}</select><input value={matchOpponent} onChange={(e) => setMatchOpponent(e.target.value)} placeholder="Adversaire" style={inputStyle(accent)} /><input value={matchDate} onChange={(e) => setMatchDate(e.target.value)} type="datetime-local" style={inputStyle(accent)} /><input value={matchLocation} onChange={(e) => setMatchLocation(e.target.value)} placeholder="Lieu / terrain / salle" style={inputStyle(accent)} /><button type="button" disabled={!matchOpponent.trim() || busy} onClick={createMatch} style={{ ...navButton(accent, true), width: "100%" }}>Créer la fiche match</button></div></div> : null}
+      {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Planifier une rencontre complète</SectionTitle><div style={{ marginTop: 8, fontSize: 12, opacity: .72 }}>La rencontre créée alimentera automatiquement le tableau de bord, l’agenda et le centre de convocations.</div><div style={{ display: "grid", gap: 9, marginTop: 10 }}><select value={matchTeamId} onChange={(e) => setMatchTeamId(e.target.value)} style={inputStyle(accent)}>{effectiveTeams.map((team) => <option key={team.id} value={team.id}>{team.name} • {sportName(team.sport)}</option>)}</select><input value={matchOpponent} onChange={(e) => setMatchOpponent(e.target.value)} placeholder="Adversaire" style={inputStyle(accent)} /><input value={matchDate} onChange={(e) => setMatchDate(e.target.value)} type="datetime-local" style={inputStyle(accent)} /><input value={matchLocation} onChange={(e) => setMatchLocation(e.target.value)} placeholder="Lieu / terrain / salle" style={inputStyle(accent)} /><button type="button" disabled={!matchOpponent.trim() || busy} onClick={createMatch} style={{ ...navButton(accent, true), width: "100%" }}>Créer la fiche match</button></div></div> : null}
       <div style={{ display: "grid", gap: 10 }}>{filteredMatches.length ? filteredMatches.map((m) => <div key={m.id} style={{ display: "grid", gap: 9 }}><MatchCard match={m} /><div style={{ ...glass(accent), display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}><MetaChip accent={accent}>Compo à préparer</MetaChip><MetaChip accent="#7cff9d">Feuille de match</MetaChip><MetaChip accent="#ffc857">Résumé</MetaChip><MetaChip accent="#b58cff">Stats</MetaChip></div></div>) : <EmptyState accent={accent} title="Aucun match" body="Les matchs du club apparaîtront ici avec score, convocations, réponses et détails de rencontre." />}</div>
     </div>;
   }
@@ -702,12 +720,35 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
     </div>;
   }
   function renderEquipes() {
-    const bySport: Record<string, ClubTeam[]> = {};
-    filteredTeams.forEach((t) => { const key = sportName(t.sport); bySport[key] = [...(bySport[key] || []), t]; });
     return <div style={{ display: "grid", gap: 12 }}>
-      {renderTeamFilter()}
-      <div style={card(accent)}><SectionTitle accent={accent}>Organisation multisports</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}><StatTile accent={accent} value={clubTeams.length} label="équipes" /><StatTile accent="#7cff9d" value={new Set(clubTeams.map((t) => t.sport)).size} label="sports" /><StatTile accent="#ffc857" value={clubTeams.reduce((s,t)=>s+Number(t.membersCount||0),0)} label="joueurs" /></div></div>
-      {Object.keys(bySport).length ? Object.entries(bySport).map(([sport, teams], idx) => <div key={sport} style={card(teamColor(idx, accent))}><SectionTitle accent={teamColor(idx, accent)}>{sportIcon(teams[0]?.sport)} {sport}</SectionTitle><div style={{ display: "grid", gap: 9, marginTop: 12 }}>{teams.map((team) => <div key={team.id} style={{ ...glass(teamColor(idx, accent)), display: "grid", gridTemplateColumns: "58px 1fr auto", gap: 11, alignItems: "center" }}><Logo src={team.logoUrl || team.logoDataUrl} name={team.name} accent={teamColor(idx, accent)} size={58} round={19} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 1000, fontSize: 16, overflowWrap: "anywhere" }}>{team.name}</div><div style={{ fontSize: 12, opacity: .72, marginTop: 4 }}>{team.membersCount || 0} membre(s) • {sportName(team.sport)}</div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}><MetaChip accent={teamColor(idx, accent)}>Matchs</MetaChip><MetaChip accent={teamColor(idx, accent)}>Compos</MetaChip><MetaChip accent={teamColor(idx, accent)}>Stats</MetaChip></div></div><MetaChip accent={teamColor(idx, accent)}>Détails</MetaChip></div>)}</div></div>) : <EmptyState accent={accent} title="Aucune équipe" body="Synchronise une équipe Club depuis Teams ou crée une équipe rattachée au club." />}
+      <div style={card(accent)}>
+        <SectionTitle accent={accent}>Équipes / sections {sportName(currentSportId)}</SectionTitle>
+        <div style={{ marginTop: 8, fontSize: 12.5, opacity: .76, lineHeight: 1.35 }}>
+          Le club peut avoir plusieurs sections par sport. Depuis le mode {sportName(currentSportId)}, seules les équipes rattachées à ce sport sont affichées et utilisées.
+        </div>
+      </div>
+      {canManage ? <div style={card(accent)}>
+        <SectionTitle accent={accent} small>Créer une équipe dans cette section</SectionTitle>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 10 }}>
+          <input value={newSectionName} onChange={(e) => setNewSectionName(e.target.value)} placeholder={`Nom équipe ${sportName(currentSportId)} : Senior A, Loisir, Elite...`} style={inputStyle(accent)} />
+          <button type="button" disabled={!newSectionName.trim() || busy} onClick={createSportSection} style={navButton(accent, true)}>Créer</button>
+        </div>
+      </div> : null}
+      <div style={{ display: "grid", gap: 10 }}>
+        {effectiveTeams.length ? effectiveTeams.map((team, i) => {
+          const matches = clubMatches.filter((m) => String(m.clubTeamId || "") === team.id);
+          const color = teamColor(i, accent);
+          return <div key={team.id} style={{ ...card(color), display: "grid", gridTemplateColumns: "58px 1fr auto", gap: 11, alignItems: "center" }}>
+            <Logo src={team.logoUrl || team.logoDataUrl} name={team.name} accent={color} size={58} round={19} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color, fontWeight: 1000, fontSize: 17, overflowWrap: "anywhere" }}>{team.name}</div>
+              <div style={{ marginTop: 4, fontSize: 11.5, opacity: .75 }}>{sportName(team.sport)} • {team.membersCount || 0} membre(s) • {matches.length} match(s)</div>
+              {team.description ? <div style={{ marginTop: 5, fontSize: 11.5, opacity: .68, lineHeight: 1.3 }}>{team.description}</div> : null}
+            </div>
+            <MetaChip accent={color}>Section</MetaChip>
+          </div>;
+        }) : <EmptyState accent={accent} title={`Aucune équipe ${sportName(currentSportId)}`} body="Crée une équipe dans cette section ou synchronise une équipe Club locale ayant ce sport coché." />}
+      </div>
     </div>;
   }
 
@@ -757,6 +798,9 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
     return renderReglages();
   }
 
+  const visibleClubs = clubs.filter((club) => clubSupportsSport(club, teamsByClub[club.id] || [], currentSportId));
+  const visibleLocalClubTeams = localClubTeams.filter((team: any) => team?.allSports === true || (Array.isArray(team?.sportIds) ? team.sportIds.map(normalizeSportId).includes(currentSportId) : normalizeSportId(team?.sport || teamMainSport(team)) === currentSportId));
+
   if (fullscreenMode === "club" && selectedClub) {
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 9999, overflowY: "auto", background: "radial-gradient(circle at 50% 0%, rgba(20,75,90,.42), #020711 38%, #000 100%)", color: "#fff", WebkitOverflowScrolling: "touch" }}>
@@ -773,15 +817,15 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div><div style={{ fontSize: 18, fontWeight: 1000, color: accent, letterSpacing: .4 }}>CLUBS</div><div style={{ fontSize: 12, opacity: .78 }}>Clubs et équipes Online que tu as rejoints.</div></div>
+        <div><div style={{ fontSize: 18, fontWeight: 1000, color: accent, letterSpacing: .4 }}>CLUBS</div><div style={{ fontSize: 12, opacity: .78 }}>Clubs et équipes Online de la section {sportName(currentSportId)}.</div></div>
         <button type="button" onClick={reload} disabled={busy} style={iconButton(accent)}>↻</button>
       </div>
       {!signedIn ? <div style={card(accent)}>Connecte ton compte Online pour afficher les clubs partagés.</div> : null}
       {error ? <div style={{ ...card("#ff5a6f"), color: "#ffd9df", fontSize: 12 }}>{error}</div> : null}
       <div style={card(accent)}><div style={{ fontWeight: 1000, marginBottom: 8 }}>Créer un club</div><div style={{ display: "flex", gap: 8 }}><input value={newClubName} onChange={(e) => setNewClubName(e.target.value)} placeholder="Nom du club" style={inputStyle(accent)} /><button type="button" disabled={!newClubName.trim() || busy || !signedIn} onClick={handleCreateClub} style={{ borderRadius: 16, border: 0, background: !newClubName.trim() || !signedIn ? "rgba(255,255,255,.12)" : `linear-gradient(135deg, ${accent}, ${alpha(accent, "99")})`, color: "#001018", padding: "0 15px", fontWeight: 1000 }}>Créer</button></div></div>
       {invites.length ? <div style={card(accent)}><div style={{ fontWeight: 1000, marginBottom: 8 }}>Invitations en attente</div><div style={{ display: "grid", gap: 8 }}>{invites.map((it) => <div key={it.id} style={{ borderRadius: 16, background: "rgba(255,255,255,.055)", padding: 10, display: "grid", gap: 8 }}><div style={{ fontWeight: 900 }}>{it.clubName || "Club"}{it.teamName ? ` • ${it.teamName}` : ""}</div><div style={{ fontSize: 11, opacity: .72 }}>Invité par {it.senderName || "un membre"}</div><div style={{ display: "flex", gap: 8 }}><button type="button" onClick={() => handleInvite(it.id, "accepted")} style={{ flex: 1, borderRadius: 12, border: 0, padding: 9, fontWeight: 1000, background: "rgba(84,255,145,.22)", color: "#9dffbd" }}>Accepter</button><button type="button" onClick={() => handleInvite(it.id, "refused")} style={{ flex: 1, borderRadius: 12, border: 0, padding: 9, fontWeight: 1000, background: "rgba(255,90,111,.16)", color: "#ff9baa" }}>Refuser</button></div></div>)}</div></div> : null}
-      <div style={{ display: "grid", gap: 10 }}>{clubs.length === 0 ? <div style={card(accent)}><div style={{ fontWeight: 1000 }}>Aucun club Online rejoint</div><div style={{ marginTop: 6, fontSize: 12, opacity: .76 }}>Crée un club ou accepte une invitation. Les équipes “Club” créées dans Teams peuvent être synchronisées ici.</div></div> : clubs.map((club) => { const teams = teamsByClub[club.id] || []; return <button type="button" key={club.id} onClick={() => openClub(club.id)} style={{ ...card(accent), color: "#fff", textAlign: "left" }}><div style={{ display: "flex", gap: 10, alignItems: "center" }}><Logo src={club.logoUrl} name={club.name} accent={accent} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{club.name}</div><div style={{ fontSize: 11, opacity: .72 }}>{club.membersCount || 0} membre(s) • {teams.length} équipe(s) • rôle {roleLabel(club.role)}</div></div><div style={{ color: accent, fontWeight: 1000 }}>Ouvrir</div></div></button>; })}</div>
-      {localClubTeams.length ? <div style={card(accent)}><div style={{ fontWeight: 1000 }}>Équipes Club locales à synchroniser</div><div style={{ marginTop: 6, fontSize: 11.5, opacity: .72 }}>Clique sur “Synchroniser” pour créer l’espace club Online et ouvrir sa page.</div><div style={{ marginTop: 10, display: "grid", gap: 8 }}>{localClubTeams.slice(0, 12).map((t: any) => <div key={t.id} style={{ borderRadius: 16, padding: 10, background: "rgba(255,255,255,.05)", display: "flex", gap: 9, alignItems: "center" }}><Logo src={t.logoDataUrl || t.logoUrl} name={t.name} accent={accent} size={36} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 950 }}>{t.name}</div><div style={{ fontSize: 10.5, opacity: .72 }}>{t.clubName || t.name} • {sportsLabel(t)}</div></div><button type="button" disabled={busy || !signedIn} onClick={() => syncLocalTeam(t)} style={navButton(accent, true)}>Synchroniser</button></div>)}</div></div> : null}
+      <div style={{ display: "grid", gap: 10 }}>{visibleClubs.length === 0 ? <div style={card(accent)}><div style={{ fontWeight: 1000 }}>Aucun club {sportName(currentSportId)} visible</div><div style={{ marginTop: 6, fontSize: 12, opacity: .76 }}>Un club apparaît ici seulement s’il pratique le sport actif. Crée un club ou synchronise une équipe “Club” avec ce sport coché.</div></div> : visibleClubs.map((club) => { const teams = (teamsByClub[club.id] || []).filter((t) => teamSupportsSport(t, currentSportId)); return <button type="button" key={club.id} onClick={() => openClub(club.id)} style={{ ...card(accent), color: "#fff", textAlign: "left" }}><div style={{ display: "flex", gap: 10, alignItems: "center" }}><Logo src={club.logoUrl} name={club.name} accent={accent} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 1000, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{club.name}</div><div style={{ fontSize: 11, opacity: .72 }}>{club.membersCount || 0} membre(s) • {teams.length} équipe(s) • rôle {roleLabel(club.role)}</div></div><div style={{ color: accent, fontWeight: 1000 }}>Ouvrir</div></div></button>; })}</div>
+      {visibleLocalClubTeams.length ? <div style={card(accent)}><div style={{ fontWeight: 1000 }}>Équipes Club locales à synchroniser</div><div style={{ marginTop: 6, fontSize: 11.5, opacity: .72 }}>Uniquement les équipes compatibles {sportName(currentSportId)}. Clique sur “Synchroniser” pour créer l’espace club Online et ouvrir sa page.</div><div style={{ marginTop: 10, display: "grid", gap: 8 }}>{visibleLocalClubTeams.slice(0, 12).map((t: any) => <div key={t.id} style={{ borderRadius: 16, padding: 10, background: "rgba(255,255,255,.05)", display: "flex", gap: 9, alignItems: "center" }}><Logo src={t.logoDataUrl || t.logoUrl} name={t.name} accent={accent} size={36} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ fontWeight: 950 }}>{t.name}</div><div style={{ fontSize: 10.5, opacity: .72 }}>{t.clubName || t.name} • {sportsLabel(t)}</div></div><button type="button" disabled={busy || !signedIn} onClick={() => syncLocalTeam(t)} style={navButton(accent, true)}>Synchroniser</button></div>)}</div></div> : null}
     </div>
   );
 }

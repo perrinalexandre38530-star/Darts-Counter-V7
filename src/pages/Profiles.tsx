@@ -37,7 +37,10 @@ import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
+import TopTicker from "../components/TopTicker";
 import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
+import tickerProfilesLocaux from "../assets/tickers/ticker_profiles_locaux.webp";
+import tickerLocalProfiles from "../assets/tickers/ticker_local_profiles.webp";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
@@ -2884,19 +2887,19 @@ React.useEffect(() => {
                 boxSizing: "border-box",
                 marginBottom: 10,
                 position: "relative",
-                minHeight: view === "dartsets" ? 54 : 40,
+                minHeight: view === "dartsets" || view === "locals" ? 92 : 40,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: view === "dartsets" ? "center" : "flex-start",
-                overflow: view === "dartsets" ? "visible" : undefined,
+                justifyContent: view === "dartsets" || view === "locals" ? "center" : "flex-start",
+                overflow: view === "dartsets" || view === "locals" ? "visible" : undefined,
               }}
             >
               <div
                 style={{
-                  position: view === "dartsets" ? "absolute" : "relative",
-                  left: view === "dartsets" ? 0 : undefined,
-                  top: view === "dartsets" ? "50%" : undefined,
-                  transform: view === "dartsets" ? "translateY(-50%)" : undefined,
+                  position: view === "dartsets" || view === "locals" ? "absolute" : "relative",
+                  left: view === "dartsets" || view === "locals" ? 0 : undefined,
+                  top: view === "dartsets" || view === "locals" ? "50%" : undefined,
+                  transform: view === "dartsets" || view === "locals" ? "translateY(-50%)" : undefined,
                   zIndex: 3,
                 }}
               >
@@ -2936,6 +2939,15 @@ React.useEffect(() => {
                     }}
                   />
                 </div>
+              )}
+
+              {view === "locals" && (
+                <TopTicker
+                  src={lang === "fr" ? tickerProfilesLocaux : tickerLocalProfiles}
+                  alt={lang === "fr" ? t("profiles.locals.title", "Profils locaux") : "Local profiles"}
+                  maxWidth="min(100%, calc(100vw - 72px), 560px)"
+                  marginBottom={0}
+                />
               )}
             </div>
 
@@ -3037,12 +3049,7 @@ React.useEffect(() => {
             )}
 
             {view === "locals" && (
-              <Card
-                title={nasProfileOnboarding ? t("profiles.locals.onboarding.title", "Créer ton profil actif") : `${t(
-                  "profiles.locals.title",
-                  "Profils locaux"
-                )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
-              >
+              <Card>
                 <MemoLocalProfilesRefonte
                   profiles={stableProfiles as any}
                   activeProfileId={activeProfileId}

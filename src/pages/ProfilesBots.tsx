@@ -10,6 +10,9 @@ import { useLang } from "../contexts/LangContext";
 import { loadStoredBots, saveStoredBots, subscribeBotsChange, type StoredBot, type StoredBotLevel } from "../lib/bots";
 import { fileToAvatarVariants } from "../lib/avatarSafe";
 import AvatarChoiceModal from "../components/AvatarChoiceModal";
+import BackDot from "../components/BackDot";
+import TopTicker from "../components/TopTicker";
+import tickerBotsCpu from "../assets/tickers/ticker_bots_cpu.webp";
 
 export type Bot = StoredBot;
 export type BotLevel = StoredBotLevel;
@@ -218,15 +221,21 @@ export default function ProfilesBots({ store, go }: Props) {
           await handleSetBotAvatar(targetId, file);
         }}
       />
-      <button onClick={() => go?.("profiles")} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.textSoft, padding: "6px 10px", fontSize: 13, marginBottom: 10, cursor: "pointer" }}>
-        ← {t("bots.back", "Retour aux profils")}
-      </button>
+      <TopTicker
+        src={tickerBotsCpu}
+        alt={t("bots.title", "BOTS (CPU)")}
+        startSlot={
+          <BackDot
+            size={42}
+            title={t("bots.back", "Retour aux profils")}
+            color={primary}
+            onClick={() => go?.("profiles")}
+          />
+        }
+      />
 
       <div style={{ marginBottom: 12 }}>
         <div style={smallBadge}>{t("bots.badge", "Joueurs virtuels")}</div>
-        <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: 1.6, textTransform: "uppercase", color: primary, textShadow: `0 0 10px ${primary}` }}>
-          {t("bots.title", "BOTS (CPU)")}
-        </div>
         <p style={{ fontSize: 12, color: theme.textSoft, marginTop: 4 }}>
           {t("bots.subtitle", "Crée tes propres joueurs imaginaires gérés par l’ordinateur, avec avatar et niveau de performance. Tu pourras ensuite les inviter dans tes parties X01, Cricket, Training, etc.")}
         </p>

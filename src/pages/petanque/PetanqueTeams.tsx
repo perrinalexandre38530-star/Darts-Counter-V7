@@ -23,6 +23,8 @@ import {
   type TeamEntity,
 } from "../../lib/petanqueTeamsStore";
 import { getCountryFlagSrc, getFRRegionLogoSrc } from "../../lib/geoAssets";
+import TopTicker from "../../components/TopTicker";
+import tickerDartsTeams from "../../assets/tickers/ticker_darts_teams.webp";
 
 type Props = { go: (tab: any, params?: any) => void; params?: any };
 
@@ -105,38 +107,61 @@ export default function PetanqueTeams({ go, params }: Props) {
 
   return (
     <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
-      <div style={{ display: "grid", gridTemplateColumns: "52px 1fr 52px", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <BackDot
-          size={46}
-          title={t("common.back", "Retour")}
-          color={theme?.primary || "#28eaff"}
-          onClick={() => go(returnTo as any, { sport: activeSport })}
+      {activeSport === "darts" ? (
+        <TopTicker
+          src={tickerDartsTeams}
+          alt="DARTS TEAMS"
+          startSlot={
+            <BackDot
+              size={46}
+              title={t("common.back", "Retour")}
+              color={theme?.primary || "#28eaff"}
+              onClick={() => go(returnTo as any, { sport: activeSport })}
+            />
+          }
+          endSlot={
+            <PlusDot
+              size={46}
+              title={t("teams.create", "Créer une équipe")}
+              color={theme?.primary || "#28eaff"}
+              onClick={handleCreate}
+            />
+          }
         />
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "52px 1fr 52px", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <BackDot
+            size={46}
+            title={t("common.back", "Retour")}
+            color={theme?.primary || "#28eaff"}
+            onClick={() => go(returnTo as any, { sport: activeSport })}
+          />
 
-        <h1
-          style={{
-            margin: 0,
-            textAlign: "center",
-            color: theme.primary,
-            textTransform: "uppercase",
-            letterSpacing: 1.8,
-            fontSize: "clamp(24px, 8vw, 42px)",
-            lineHeight: 1,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {activeSport === "darts" ? "DARTS TEAMS" : `${sportLabel} TEAMS`}
-        </h1>
+          <h1
+            style={{
+              margin: 0,
+              textAlign: "center",
+              color: theme.primary,
+              textTransform: "uppercase",
+              letterSpacing: 1.8,
+              fontSize: "clamp(24px, 8vw, 42px)",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {`${sportLabel} TEAMS`}
+          </h1>
 
-        <PlusDot
-          size={46}
-          title={t("teams.create", "Créer une équipe")}
-          color={theme?.primary || "#28eaff"}
-          onClick={handleCreate}
-        />
-      </div>
+          <PlusDot
+            size={46}
+            title={t("teams.create", "Créer une équipe")}
+            color={theme?.primary || "#28eaff"}
+            onClick={handleCreate}
+          />
+        </div>
+      )}
 
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         {teams.length === 0 ? (
