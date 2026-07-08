@@ -234,9 +234,9 @@ export default function BabyFootStatsShell({ store, go }: Props) {
 
         <StatsShellCard
           title="ÉQUIPES"
-          subtitle="Stats par compositions réelles (Team A / Team B)."
+          subtitle="Stats détaillées par équipe, teams par défaut et joueurs ayant participé."
           theme={theme}
-          onClick={() => go("babyfoot_stats_history", { section: "teams" })}
+          onClick={() => go("babyfoot_stats_teams")}
           onInfo={() => setInfoMode("teams")}
         />
 

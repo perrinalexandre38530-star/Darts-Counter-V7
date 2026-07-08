@@ -259,6 +259,7 @@ import BabyFootTeamEdit from "./pages/babyfoot/BabyFootTeamEdit";
 import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
 import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
 import BabyFootStatsCenterPage from "./pages/babyfoot/BabyFootStatsCenterPage";
+import BabyFootStatsTeamsPage from "./pages/babyfoot/BabyFootStatsTeamsPage";
 import BabyFootLeagueHome from "./pages/babyfoot/BabyFootLeagueHome";
 import BabyFootCompetitionHome from "./pages/babyfoot/BabyFootCompetitionHome";
 
@@ -4002,6 +4003,11 @@ case "babyfoot_team_edit":
       // ✅ BABY-FOOT — CENTRE DE STATISTIQUES (UI type Darts Counter)
       case "babyfoot_stats_center":
         page = <BabyFootStatsCenterPage store={store} go={go} params={routeParams} />;
+        break;
+
+      // ✅ BABY-FOOT — STATS ÉQUIPES DÉTAILLÉES
+      case "babyfoot_stats_teams":
+        page = <BabyFootStatsTeamsPage store={store} go={go} params={routeParams} />;
         break;
 
       // ✅ PING-PONG — STATS/HISTORY (LOCAL)
