@@ -592,13 +592,16 @@ export default function PlayerPagedSelector({
   }, [onClose]);
 
   const handlePick = React.useCallback((id: any) => {
+    const key = String(id ?? "");
+    const wasSelected = selectedIdSet.has(key);
+    const willBeSelected = !wasSelected;
     onToggle?.(id);
-    onAfterToggle?.(id);
+    onAfterToggle?.(id, { selected: willBeSelected, wasSelected });
     if (closeOnSelect) {
       closePicker();
       setListOpen(false);
     }
-  }, [onToggle, onAfterToggle, closeOnSelect, closePicker]);
+  }, [onToggle, onAfterToggle, closeOnSelect, closePicker, selectedIdSet]);
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -622,7 +625,7 @@ export default function PlayerPagedSelector({
         </div>
       ) : null}
 
-      {showSelectedSummary && selected.length ? (
+      {showSelectedSummary && selected.length && !open ? (
         <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", padding: 10 }}>
           <div style={{ color: accent, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Profils sélectionnés</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
