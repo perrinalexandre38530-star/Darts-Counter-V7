@@ -19,6 +19,7 @@ import { loadMolkkyMatches } from "../../lib/molkkyStore";
 import { aggregatePlayers, safeNum, formatDuration } from "../../lib/molkkyStats";
 
 import type { Profile } from "../../lib/types";
+import { sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 type Props = { go?: any; store?: any; embedded?: boolean };
 
@@ -54,8 +55,9 @@ export default function MolkkyStatsLocalsPage({ go, embedded }: Props) {
   }, []);
 
   const profiles = useMemo(() => {
-    // ✅ IMPORTANT: le profil actif ne doit PAS être affiché ici
-    return (allProfiles || []).filter((p) => (p?.id || "") !== activeProfileId);
+    // ✅ IMPORTANT: le profil actif ne doit PAS être affiché ici.
+    // Tri commun: profils les plus utilisés dans ce sport, puis alphabétique.
+    return sortProfilesByModeUsage((allProfiles || []).filter((p) => (p?.id || "") !== activeProfileId), "molkky");
   }, [allProfiles, activeProfileId]);
 
   const matches = useMemo(() => {

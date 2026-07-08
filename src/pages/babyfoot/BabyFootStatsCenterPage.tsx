@@ -451,8 +451,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const active = profiles.find((profile: any) => idOf(profile) === activeProfileId) || profiles[0] || null;
   const scope = String(params?.scope || "active");
   const rankingOnly = scope === "rankings" || params?.onlyRankings === true || String(params?.view || "") === "rankings";
-  const localProfiles = profiles.filter((profile: any) => idOf(profile) !== activeProfileId);
-  const selectableProfiles = rankingOnly ? [] : scope === "locals" ? localProfiles : active ? [active] : profiles;
+  const localProfilesBase = React.useMemo(() => profiles.filter((profile: any) => idOf(profile) !== activeProfileId), [profiles, activeProfileId]);
 
   const requestedMode = String(params?.mode || "").toLowerCase();
   const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : "all";
@@ -466,11 +465,6 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const [rankingView, setRankingView] = React.useState<RankingView>("general");
   const [profileIndex, setProfileIndex] = React.useState(0);
   const [historyRows, setHistoryRows] = React.useState<any[]>(() => Array.isArray((store as any)?.history) ? (store as any).history : []);
-
-  const profile = selectableProfiles[clampIndex(profileIndex, selectableProfiles.length)] || null;
-  const profileId = idOf(profile);
-
-  React.useEffect(() => setProfileIndex(0), [scope, activeProfileId, rankingOnly]);
 
   React.useEffect(() => {
     let alive = true;
@@ -506,6 +500,25 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
   const matches = React.useMemo(() => normalizeBabyFootMatches(historyRows, { period: period as BabyFootPeriodFilter, mode: mode as BabyFootModeFilter }), [historyRows, period, mode]);
   const leaderboards = React.useMemo(() => computeBabyFootLeaderboards(matches, profiles), [matches, profiles]);
+  const localProfiles = React.useMemo(() => {
+    const rankingById = new Map<string, BabyFootPlayerAggregate>();
+    for (const row of leaderboards.topRanking || []) rankingById.set(String(row.id), row);
+    const nameOf = (profile: any) => String(profile?.name || profile?.displayName || profile?.label || "");
+    return localProfilesBase.slice().sort((a: any, b: any) => {
+      const ra = rankingById.get(idOf(a));
+      const rb = rankingById.get(idOf(b));
+      const ua = Number(ra?.matches || 0);
+      const ub = Number(rb?.matches || 0);
+      if (ua !== ub) return ub - ua;
+      return nameOf(a).localeCompare(nameOf(b), "fr", { sensitivity: "base", numeric: true });
+    });
+  }, [localProfilesBase, leaderboards.topRanking]);
+  const selectableProfiles = rankingOnly ? [] : scope === "locals" ? localProfiles : active ? [active] : profiles;
+
+  React.useEffect(() => setProfileIndex(0), [scope, activeProfileId, rankingOnly, localProfiles.length]);
+
+  const profile = selectableProfiles[clampIndex(profileIndex, selectableProfiles.length)] || null;
+  const profileId = idOf(profile);
   const profileAgg = React.useMemo(() => computeBabyFootProfileAggregate(matches, profiles, profileId), [matches, profiles, profileId]);
   const profileMatches = React.useMemo(() => profileMatchesFromBabyFootMatches(matches, profileId), [matches, profileId]);
   const rank = React.useMemo(() => leaderboards.topRanking.findIndex((row) => row.id === profileId) + 1, [leaderboards.topRanking, profileId]);

@@ -414,17 +414,18 @@ export function profileUsageScore(profile: any, counts: ProfileUsageCounts, mode
   return best;
 }
 
-export function sortProfilesByModeUsage<T extends any>(profiles: T[], mode: any, activeProfileId?: any): T[] {
+export function profileDisplayNameForUsage(profile: any): string {
+  return clean(profile?.name || profile?.displayName || profile?.label || profile?.nickname || profile?.pseudo);
+}
+
+export function compareProfilesByUsage(a: any, b: any, counts: ProfileUsageCounts, mode: any): number {
+  const ua = profileUsageScore(a, counts, mode);
+  const ub = profileUsageScore(b, counts, mode);
+  if (ua !== ub) return ub - ua;
+  return profileDisplayNameForUsage(a).localeCompare(profileDisplayNameForUsage(b), "fr", { sensitivity: "base", numeric: true });
+}
+
+export function sortProfilesByModeUsage<T extends any>(profiles: T[], mode: any, _activeProfileId?: any): T[] {
   const counts = readProfileUsageCounts(mode);
-  const activeId = clean(activeProfileId);
-  return (Array.isArray(profiles) ? profiles : []).slice().sort((a: any, b: any) => {
-    const ua = profileUsageScore(a, counts, mode);
-    const ub = profileUsageScore(b, counts, mode);
-    if (ua !== ub) return ub - ua;
-    if (ua === 0 && ub === 0 && activeId) {
-      if (clean(a?.id) === activeId && clean(b?.id) !== activeId) return -1;
-      if (clean(b?.id) === activeId && clean(a?.id) !== activeId) return 1;
-    }
-    return clean(a?.name || a?.displayName || a?.label).localeCompare(clean(b?.name || b?.displayName || b?.label), "fr", { sensitivity: "base", numeric: true });
-  });
+  return (Array.isArray(profiles) ? profiles : []).slice().sort((a: any, b: any) => compareProfilesByUsage(a, b, counts, mode));
 }

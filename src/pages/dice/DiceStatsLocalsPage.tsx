@@ -19,6 +19,7 @@ import { loadDiceMatches } from "../../lib/diceStore";
 import { aggregatePlayers, safeNum, formatDuration } from "../../lib/diceStats";
 
 import type { Profile } from "../../lib/types";
+import { sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 type Props = { go?: any };
 
@@ -45,8 +46,9 @@ export default function DiceStatsLocalsPage({ go }: Props) {
   }, []);
 
   const profiles = useMemo(() => {
-    // ✅ IMPORTANT: le profil actif ne doit PAS être affiché ici
-    return (allProfiles || []).filter((p) => (p?.id || "") !== activeProfileId);
+    // ✅ IMPORTANT: le profil actif ne doit PAS être affiché ici.
+    // Tri commun: profils les plus utilisés dans ce sport, puis alphabétique.
+    return sortProfilesByModeUsage((allProfiles || []).filter((p) => (p?.id || "") !== activeProfileId), "dicegame");
   }, [allProfiles, activeProfileId]);
 
   const matches = useMemo(() => {

@@ -18,6 +18,7 @@ import { useStore } from "../../contexts/StoreContext";
 import { useStatsProvider } from "../../stats/useStatsProvider";
 
 import type { Profile } from "../../lib/types";
+import { sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 type Props = { go?: any };
 
@@ -35,8 +36,9 @@ export default function StatsCenterPlayersPage({ go }: Props) {
 
   const profiles: Profile[] = useMemo(() => {
     const arr = (store as any)?.profiles;
-    return Array.isArray(arr) ? arr : [];
-  }, [store]);
+    const base = Array.isArray(arr) ? arr : [];
+    return sortProfilesByModeUsage(base, sport || "global");
+  }, [store, sport]);
 
   const activeProfileId = (store as any)?.activeProfileId || "";
 

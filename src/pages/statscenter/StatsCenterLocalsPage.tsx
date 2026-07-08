@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import { useSport } from "../../contexts/SportContext";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -15,6 +16,7 @@ import { useStore } from "../../contexts/StoreContext";
 import { useStatsProvider } from "../../stats/useStatsProvider";
 
 import type { Profile } from "../../lib/types";
+import { sortProfilesByModeUsage } from "../../lib/profileUsage";
 
 type Props = { go?: any };
 
@@ -26,6 +28,7 @@ function safeNum(v: any) {
 export default function StatsCenterLocalsPage({ go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const { sport } = useSport();
   const { store } = useStore();
   const provider = useStatsProvider();
 
@@ -37,8 +40,8 @@ export default function StatsCenterLocalsPage({ go }: Props) {
   const activeProfileId = (store as any)?.activeProfileId || "";
 
   const locals = useMemo(() => {
-    return allProfiles.filter((p) => p?.id && p.id !== activeProfileId);
-  }, [allProfiles, activeProfileId]);
+    return sortProfilesByModeUsage(allProfiles.filter((p) => p?.id && p.id !== activeProfileId), sport || "global");
+  }, [allProfiles, activeProfileId, sport]);
 
   const [idx, setIdx] = useState(0);
   useEffect(() => setIdx(0), [locals.length]);
