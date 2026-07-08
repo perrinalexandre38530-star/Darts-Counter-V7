@@ -337,18 +337,50 @@ export async function uploadCloudObject(args: {
   return apiPost("/account/cloud-storage/upload", args) as any;
 }
 
-export async function downloadCloudObject(id: string): Promise<{ ok: boolean; object: CloudObjectIndexItem; mode?: "json" | "text" | "base64"; content?: any; text?: string; contentBase64?: string; error?: string }> {
-  return apiGet(`/account/cloud-storage/download/${encodeURIComponent(String(id || ""))}`) as any;
+export async function downloadCloudObject(id: string, opts?: { trash?: boolean }): Promise<{ ok: boolean; object: CloudObjectIndexItem; mode?: "json" | "text" | "base64"; content?: any; text?: string; contentBase64?: string; error?: string }> {
+  const qs = opts?.trash ? "?trash=1" : "";
+  return apiGet(`/account/cloud-storage/download/${encodeURIComponent(String(id || ""))}${qs}`) as any;
 }
 
-export async function deleteCloudObjectRemote(id: string): Promise<{ ok: boolean; usage: AccountStorageUsage; error?: string }> {
-  return apiDelete(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}`) as any;
+export async function deleteCloudObjectRemote(id: string, opts?: { force?: boolean }): Promise<{ ok: boolean; usage: AccountStorageUsage; error?: string }> {
+  const force = opts?.force !== false;
+  return apiDelete(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}${force ? "?force=1" : ""}`) as any;
+}
+
+export async function restoreCloudObjectFromTrash(id: string): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string }> {
+  return apiPost(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}/undelete`, {}) as any;
+}
+
+export async function purgeCloudObjectRemote(id: string): Promise<{ ok: boolean; usage: AccountStorageUsage; error?: string }> {
+  return apiDelete(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}?force=1`) as any;
+}
+
+export async function emptyCloudObjectTrash(objectType?: string): Promise<{ ok: boolean; purged?: number; usage: AccountStorageUsage; error?: string }> {
+  const qs = objectType ? `?objectType=${encodeURIComponent(objectType)}` : "";
+  return apiDelete(`/account/cloud-storage/trash${qs}`) as any;
 }
 
 export const CLOUD_BACKUP_OBJECT_TYPE = "cloud_backup_v1";
+export const CLOUD_VAULT_OBJECT_TYPE = "cloud_vault_snapshot_v1";
 
-export async function listCloudBackups(limit = 10): Promise<CloudObjectIndexItem[]> {
-  return listCloudObjects({ objectType: CLOUD_BACKUP_OBJECT_TYPE, sport: "system", limit });
+export async function listCloudBackups(limit = 10, includeDeleted = false): Promise<CloudObjectIndexItem[]> {
+  return listCloudObjects({ objectType: CLOUD_BACKUP_OBJECT_TYPE, sport: "system", limit, includeDeleted });
+}
+
+export async function listCloudVaultBackups(limit = 30, includeDeleted = false): Promise<CloudObjectIndexItem[]> {
+  const [vault, legacy] = await Promise.all([
+    listCloudObjects({ objectType: CLOUD_VAULT_OBJECT_TYPE, sport: "system", limit, includeDeleted }).catch(() => []),
+    listCloudObjects({ objectType: CLOUD_BACKUP_OBJECT_TYPE, sport: "system", limit, includeDeleted }).catch(() => []),
+  ]);
+  const byId = new Map<string, CloudObjectIndexItem>();
+  for (const item of [...vault, ...legacy]) {
+    if (item?.id) byId.set(String(item.id), item);
+  }
+  return Array.from(byId.values()).sort((a, b) => {
+    const ta = Date.parse(String(a.updated_at || a.created_at || "")) || 0;
+    const tb = Date.parse(String(b.updated_at || b.created_at || "")) || 0;
+    return tb - ta;
+  });
 }
 
 export async function uploadCloudBackupJson(args: {
@@ -369,6 +401,29 @@ export async function uploadCloudBackupJson(args: {
     metadata: {
       source: "settings_cloud_sync_v1",
       backupKind: "manual_full_backup",
+      ...(args.metadata || {}),
+    },
+  });
+}
+
+export async function uploadCloudVaultSnapshotJson(args: {
+  snapshotJson: string;
+  title?: string;
+  metadata?: Record<string, any>;
+}): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  return uploadCloudObject({
+    objectType: CLOUD_VAULT_OBJECT_TYPE,
+    sport: "system",
+    title: args.title || `Sauvegarde cloud ${now.toLocaleString("fr-FR")}`,
+    objectKey: `backups/cloud_vault_v1/manual_${stamp}.json`,
+    mimeType: "application/json",
+    content: args.snapshotJson,
+    gzip: true,
+    metadata: {
+      source: "storage_vault_cloud_r2",
+      backupKind: "vault_full_snapshot",
       ...(args.metadata || {}),
     },
   });

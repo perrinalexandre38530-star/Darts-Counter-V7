@@ -36,11 +36,26 @@ import {
   restoreMatchBackupItem,
   type MatchBackupItem,
 } from "../lib/matchAutoBackup";
+import {
+  CLOUD_BACKUP_OBJECT_TYPE,
+  CLOUD_VAULT_OBJECT_TYPE,
+  deleteCloudObjectIndex,
+  downloadCloudObject,
+  emptyCloudObjectTrash,
+  getAccountStorageUsage,
+  listCloudVaultBackups,
+  purgeCloudObjectRemote,
+  restoreCloudObjectFromTrash,
+  uploadCloudVaultSnapshotJson,
+  type CloudObjectIndexItem,
+} from "../lib/cloudStorageApi";
+import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
 
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
 type RestoreView = "current" | "archives" | "trash";
-type SaveSource = "nas" | "local";
+type SaveSource = "nas" | "local" | "cloud";
+type BackupProvider = "nas" | "cloud";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
 type SaveQuality = {
@@ -56,7 +71,7 @@ type SaveQuality = {
 type SaveEntry = {
   key: string;
   source: SaveSource;
-  slot: NasSlot | MemorySlot;
+  slot: NasSlot | MemorySlot | CloudSlot;
   summary: VaultSummary;
   title: string;
   subtitle: string;
@@ -65,6 +80,13 @@ type SaveEntry = {
   latest?: boolean;
   index: number;
   quality: SaveQuality;
+};
+
+type CloudSlot = CloudObjectIndexItem & {
+  __summary?: VaultSummary;
+  __payload?: any;
+  latest?: boolean;
+  deletedAt?: string | null;
 };
 
 const neon = "var(--dc-accent-soft, #22d3ee)";
@@ -344,6 +366,108 @@ function explainStrictPayload(payload: any): string {
   if (realHistory.rows > 0) return `${realHistory.rows} vraie(s) ligne(s) historique, dont ${realHistory.detailed} détaillée(s).`;
   if (statsIds > 0) return `${statsIds} référence(s) de stats, mais aucune vraie carte historique détaillée.`;
   return "Aucune vraie donnée de partie restaurable détectée.";
+}
+
+function looksLikeCloudBackupV1(value: any): boolean {
+  return !!value &&
+    typeof value === "object" &&
+    typeof value.version === "number" &&
+    typeof value.exportedAt === "string" &&
+    typeof value.appVersion === "string" &&
+    Array.isArray(value.history) &&
+    Array.isArray(value.localProfiles) &&
+    Array.isArray(value.dartsets);
+}
+
+function normalizeCloudPayload(input: any): any {
+  if (typeof input === "string") {
+    const raw = input.trim();
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return raw; }
+  }
+  return input;
+}
+
+function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSummary> | null {
+  const meta: any = item?.metadata || {};
+  const historyCount = Number(meta.historyCount ?? meta.matches ?? meta.historyRows ?? 0) || 0;
+  const profilesCount = Number(meta.profilesCount ?? meta.profiles ?? 0) || 0;
+  const dartsetsCount = Number(meta.dartsetsCount ?? 0) || 0;
+  const rawSize = Number(meta.rawSizeBytes ?? meta.originalByteSize ?? item?.size_bytes ?? 0) || 0;
+  if (!historyCount && !profilesCount && !dartsetsCount && !rawSize) return null;
+  return {
+    bytes: rawSize,
+    keys: 0,
+    profiles: profilesCount,
+    matches: historyCount,
+    historyRows: historyCount,
+    statsBlocks: 0,
+    mediaRefs: 0,
+    dataImages: 0,
+    sports: [],
+    names: [],
+    exportedAt: meta.exportedAt || item?.created_at || null,
+    probableContent: [
+      historyCount ? "historique réel" : "",
+      profilesCount ? "profils" : "",
+      dartsetsCount ? "dartsets" : "",
+    ].filter(Boolean),
+  };
+}
+
+function strictSummaryForCloudPayload(payload: any, fallback?: Partial<VaultSummary> | null): VaultSummary {
+  const normalized = normalizeCloudPayload(payload);
+  if (looksLikeCloudBackupV1(normalized)) {
+    const base = normalizeSummary(fallback || summarizeVaultPayload(normalized));
+    return {
+      ...base,
+      matches: Math.max(base.matches, normalized.history.length),
+      historyRows: Math.max(base.historyRows, normalized.history.length),
+      profiles: Math.max(base.profiles, normalized.localProfiles.length),
+      exportedAt: normalized.exportedAt || base.exportedAt,
+      probableContent: Array.from(new Set([...(base.probableContent || []), normalized.history.length ? "historique réel" : "", normalized.localProfiles.length ? "profils" : "", normalized.dartsets.length ? "dartsets" : ""].filter(Boolean))),
+    };
+  }
+  return strictSummaryForRestore(normalized, fallback);
+}
+
+function assessSaveForProvider(summary?: Partial<VaultSummary> | null, provider: BackupProvider = "nas"): SaveQuality {
+  const q = assessSave(summary);
+  const s = normalizeSummary(summary || {});
+  if (provider === "cloud" && !q.restorable && (s.profiles > 0 || s.matches > 0 || s.historyRows > 0)) {
+    return {
+      ...q,
+      restorable: true,
+      label: s.historyRows > 0 ? "SAUVEGARDE CLOUD" : "PROFILS CLOUD",
+      short: s.historyRows > 0 ? "Cloud" : "Profils",
+      color: s.historyRows > 0 ? green : neon,
+      score: Math.max(q.score, s.historyRows > 0 ? 68 : 35),
+      reason: "État cloud restaurable pour ce compte public, même si aucune partie n’est encore enregistrée.",
+    };
+  }
+  return q;
+}
+
+async function pullCloudVaultSlot(item: CloudObjectIndexItem, opts?: { trash?: boolean }): Promise<{ slot: CloudSlot; payload: any; summary: VaultSummary }> {
+  const downloaded = await downloadCloudObject(item.id, { trash: !!opts?.trash });
+  const payload = normalizeCloudPayload(
+    typeof downloaded.text === "string"
+      ? downloaded.text
+      : downloaded.content != null
+        ? downloaded.content
+        : downloaded.contentBase64 || null
+  );
+  const summary = strictSummaryForCloudPayload(payload, cloudObjectMetadataSummary(item));
+  return {
+    slot: { ...(downloaded.object || item), __payload: payload, __summary: summary, latest: (item as any).latest, deletedAt: (item as any).deletedAt || null },
+    payload,
+    summary,
+  };
+}
+
+function cloudTitle(item: CloudObjectIndexItem, idx: number, latest = false) {
+  if (item.title) return item.title;
+  return latest ? "Sauvegarde cloud courante" : `Sauvegarde cloud ${String(idx + 1).padStart(2, "0")}`;
 }
 
 function n(value: any): number {
@@ -814,6 +938,9 @@ export default function StorageVaultPage({ go }: Props) {
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
   const [trashNasSlots, setTrashNasSlots] = React.useState<NasSlot[]>([]);
+  const [cloudSlots, setCloudSlots] = React.useState<CloudSlot[]>([]);
+  const [trashCloudSlots, setTrashCloudSlots] = React.useState<CloudSlot[]>([]);
+  const [backupProvider, setBackupProvider] = React.useState<BackupProvider>("nas");
   const [restoreView, setRestoreView] = React.useState<RestoreView>("current");
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
@@ -899,6 +1026,63 @@ export default function StorageVaultPage({ go }: Props) {
   const archivedNasEntries = React.useMemo(() => {
     return nasEntries.filter((entry) => !entry.latest && entry.key !== latestNasEntry?.key);
   }, [nasEntries, latestNasEntry]);
+  const cloudEntries = React.useMemo<SaveEntry[]>(() => {
+    return cloudSlots
+      .map((slot, idx) => {
+        const summary = strictSummaryForCloudPayload(slot.__payload, slot.__summary || cloudObjectMetadataSummary(slot));
+        const q = assessSaveForProvider(summary, "cloud");
+        const latest = Boolean((slot as any).latest || idx === 0);
+        return {
+          key: `cloud:${slot.id}`,
+          source: "cloud" as const,
+          slot,
+          summary,
+          latest,
+          createdAt: slot.created_at || slot.updated_at || null,
+          updatedAt: slot.updated_at || slot.created_at || null,
+          index: idx + 1,
+          quality: q,
+          title: cloudTitle(slot, idx, latest),
+          subtitle: q.restorable ? `${saveCategory(summary)} · ${fmtDate(slot.created_at || slot.updated_at || null)}` : `Masqué par garde-fou · ${q.label}`,
+        };
+      })
+      .filter((entry) => entry.quality.restorable || entry.summary.profiles > 0 || entry.summary.matches > 0)
+      .sort((a, b) => (Date.parse(b.updatedAt || "") || 0) - (Date.parse(a.updatedAt || "") || 0));
+  }, [cloudSlots]);
+
+  const trashCloudEntries = React.useMemo<SaveEntry[]>(() => {
+    return trashCloudSlots
+      .map((slot, idx) => {
+        const summary = strictSummaryForCloudPayload(slot.__payload, slot.__summary || cloudObjectMetadataSummary(slot));
+        const q = assessSaveForProvider(summary, "cloud");
+        return {
+          key: `trash-cloud:${slot.id}`,
+          source: "cloud" as const,
+          slot,
+          summary,
+          latest: false,
+          createdAt: slot.created_at || slot.updated_at || null,
+          updatedAt: slot.updated_at || slot.created_at || null,
+          index: idx + 1,
+          quality: q.restorable ? q : { ...q, restorable: true, color: amber, short: q.short || "Corbeille", reason: "Sauvegarde cloud supprimée : récupérable tant que la corbeille n’est pas vidée." },
+          title: `Corbeille cloud ${String(idx + 1).padStart(2, "0")}`,
+          subtitle: `${saveCategory(summary)} · supprimé le ${fmtDate(slot.updated_at || slot.created_at || null)}`,
+        };
+      })
+      .sort((a, b) => (Date.parse(b.updatedAt || "") || 0) - (Date.parse(a.updatedAt || "") || 0));
+  }, [trashCloudSlots]);
+
+  const remoteEntries = backupProvider === "cloud" ? cloudEntries : nasEntries;
+  const trashRemoteEntries = backupProvider === "cloud" ? trashCloudEntries : trashNasEntries;
+  const latestRemoteEntry = React.useMemo(() => {
+    const latest = remoteEntries.find((entry) => entry.latest) || remoteEntries[0] || null;
+    return latest;
+  }, [remoteEntries]);
+
+  const archivedRemoteEntries = React.useMemo(() => {
+    return remoteEntries.filter((entry) => !entry.latest && entry.key !== latestRemoteEntry?.key);
+  }, [remoteEntries, latestRemoteEntry]);
+
 
   const localEntries = React.useMemo<SaveEntry[]>(() => {
     return localSlots
@@ -921,10 +1105,11 @@ export default function StorageVaultPage({ go }: Props) {
       .filter((entry) => entry.quality.restorable);
   }, [localSlots]);
 
-  const restorableEntries = React.useMemo(() => [...nasEntries, ...localEntries], [nasEntries, localEntries]);
-  const archiveEntries = React.useMemo(() => [...archivedNasEntries, ...localEntries], [archivedNasEntries, localEntries]);
+  const restorableEntries = React.useMemo(() => [...remoteEntries, ...localEntries], [remoteEntries, localEntries]);
+  const archiveEntries = React.useMemo(() => [...archivedRemoteEntries, ...localEntries], [archivedRemoteEntries, localEntries]);
   const archiveCompleteEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.quality.grade === "complete"), [archiveEntries]);
   const archiveHistoryEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.quality.grade === "history"), [archiveEntries]);
+  const archiveCloudOtherEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.source === "cloud" && entry.quality.grade !== "complete" && entry.quality.grade !== "history"), [archiveEntries]);
   const matchBackupEntries = React.useMemo(() => {
     const byId = new Map<string, MatchBackupItem>();
     for (const item of matchBackups || []) {
@@ -941,17 +1126,80 @@ export default function StorageVaultPage({ go }: Props) {
   }, [matchBackups]);
   const technicalCount = blocks.length;
 
+  const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
+    try {
+      const usage = await getAccountStorageUsage();
+      const provider = String(usage?.preference?.storage_provider || "").trim();
+      return provider === "cloud_r2" ? "cloud" : "nas";
+    } catch {
+      return "nas";
+    }
+  }, []);
+
   const refresh = React.useCallback(async () => {
     setBusy(true);
     ensureVaultNasToken();
     setAccountScopeId(getVaultCurrentUserId());
     try {
-      const [ls, nsRaw, trashRaw, bs, localMatches, nasMatches] = await Promise.all([
+      const provider = await resolveBackupProvider();
+      setBackupProvider(provider);
+
+      const [ls, bs, localMatches] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
-        listNasMemorySlots().catch(() => []),
-        listNasDeletedMemorySlots().catch(() => []),
         scanLocalStorageAndIndexedDb().catch(() => []),
         listLocalMatchBackups().catch(() => []),
+      ]);
+
+      setLocalSlots(ls);
+      setBlocks(bs);
+
+      if (provider === "cloud") {
+        const [cloudRaw, cloudAllRaw] = await Promise.all([
+          listCloudVaultBackups(120, false).catch(() => []),
+          listCloudVaultBackups(120, true).catch(() => []),
+        ]);
+        const trashRaw = cloudAllRaw.filter((item) => !!item.is_deleted);
+        const activeRaw = cloudRaw.filter((item) => !item.is_deleted);
+
+        const activeToCheck = activeRaw.slice(0, 30);
+        const checkedCloud = await Promise.all(activeToCheck.map(async (slot: CloudObjectIndexItem, idx: number) => {
+          try {
+            const pulled = await pullCloudVaultSlot(slot);
+            return { ...slot, __payload: pulled.payload, __summary: pulled.summary, latest: idx === 0 } as CloudSlot;
+          } catch {
+            const fallback = strictSummaryForCloudPayload(null, cloudObjectMetadataSummary(slot));
+            return { ...slot, __summary: fallback, latest: idx === 0 } as CloudSlot;
+          }
+        }));
+
+        const trashToCheck = trashRaw.slice(0, 30);
+        const checkedTrashCloud = await Promise.all(trashToCheck.map(async (slot: CloudObjectIndexItem) => {
+          try {
+            const pulled = await pullCloudVaultSlot(slot, { trash: true });
+            return { ...slot, __payload: pulled.payload, __summary: pulled.summary, deletedAt: slot.updated_at || null } as CloudSlot;
+          } catch {
+            const fallback = strictSummaryForCloudPayload(null, cloudObjectMetadataSummary(slot));
+            return { ...slot, __summary: fallback, deletedAt: slot.updated_at || null } as CloudSlot;
+          }
+        }));
+
+        setNasSlots([]);
+        setTrashNasSlots([]);
+        setCloudSlots(checkedCloud);
+        setTrashCloudSlots(checkedTrashCloud);
+        setMatchBackups([...(localMatches || [])]);
+
+        const validCloud = checkedCloud.filter((slot) => assessSaveForProvider(slot.__summary, "cloud").restorable).length;
+        const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
+        const hidden = Math.max(0, activeRaw.length - checkedCloud.length);
+        const accountHint = getVaultCurrentUserId() ? `Compte public cloud : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes cloud sont masquées.";
+        setMessage(`${accountHint} ${validCloud + validLocal} vrai(s) emplacement(s) restaurable(s). Destination : Cloudflare R2. La dernière sauvegarde cloud reste visible, les anciennes sont dans Archives, la corbeille contient ${checkedTrashCloud.length} sauvegarde(s). ${localMatches.length} sauvegarde(s) locale(s) de partie à l’unité détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) cloud non scanné(s) restent en expert.` : ""}`);
+        return;
+      }
+
+      const [nsRaw, trashRaw, nasMatches] = await Promise.all([
+        listNasMemorySlots().catch(() => []),
+        listNasDeletedMemorySlots().catch(() => []),
         listNasMatchBackups().catch(() => []),
       ]);
 
@@ -990,10 +1238,10 @@ export default function StorageVaultPage({ go }: Props) {
         }
       }));
 
-      setLocalSlots(ls);
+      setCloudSlots([]);
+      setTrashCloudSlots([]);
       setNasSlots(checkedNas);
       setTrashNasSlots(checkedTrashNas);
-      setBlocks(bs);
       setMatchBackups([...(localMatches || []), ...(nasMatches || [])]);
 
       const validNas = checkedNas.filter((slot) => isRestorable(slot.summary)).length;
@@ -1006,7 +1254,7 @@ export default function StorageVaultPage({ go }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [ensureVaultNasToken]);
+  }, [ensureVaultNasToken, resolveBackupProvider]);
 
   React.useEffect(() => { refresh(); }, [refresh]);
 
@@ -1017,25 +1265,52 @@ export default function StorageVaultPage({ go }: Props) {
     try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason } })); } catch {}
   };
 
+  const uploadCurrentSnapshotToCloudVault = async (reason: string, title?: string) => {
+    const snapshot = await exportCloudSnapshot();
+    const summary = strictSummaryForCloudPayload(snapshot);
+    const snapshotJson = JSON.stringify(snapshot);
+    const uploaded = await uploadCloudVaultSnapshotJson({
+      snapshotJson,
+      title: title || `Sauvegarde cloud — ${new Date().toLocaleString("fr-FR")}`,
+      metadata: {
+        reason,
+        exportedAt: new Date().toISOString(),
+        historyCount: summary.historyRows || summary.matches || 0,
+        profilesCount: summary.profiles || 0,
+        statsBlocks: summary.statsBlocks || 0,
+        rawSizeBytes: new Blob([snapshotJson]).size,
+      },
+    });
+    return { uploaded, summary };
+  };
+
   const restoreSnapshotIntoBrowserAndAccount = async (payload: any, reason: string, label: string) => {
-    const snapshot = unwrapSnapshotEnvelope(payload);
-    if (!looksLikeCloudSnapshot(snapshot)) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
-    const summary = strictSummaryForRestore(snapshot);
-    const q = assessSave(summary);
+    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(payload));
+    const isBackupV1 = looksLikeCloudBackupV1(snapshot);
+    if (!looksLikeCloudSnapshot(snapshot) && !isBackupV1) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
+    const summary = isBackupV1 ? strictSummaryForCloudPayload(snapshot) : strictSummaryForRestore(snapshot);
+    const q = backupProvider === "cloud" ? assessSaveForProvider(summary, "cloud") : assessSave(summary);
     if (!q.restorable) {
       throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason} ${explainStrictPayload(snapshot)}`);
     }
 
+    const targetLabel = backupProvider === "cloud" ? "Cloudflare R2" : "compte NAS";
     const ok = window.confirm(
       `Restaurer "${label}" ?\n\n` +
       `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
-      `L’application va créer une sécurité, restaurer le navigateur, envoyer au compte NAS puis recharger.`
+      `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`
     );
     if (!ok) return;
 
     const restoreAuth = rememberAuthKeys();
     await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
-    await importCloudSnapshot(snapshot, { mode: "replace" });
+
+    if (isBackupV1) {
+      const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(snapshot), mode: "replace", rebuild: true });
+      if (!restored.ok) throw new Error(restored.error || "Restauration CloudBackup impossible.");
+    } else {
+      await importCloudSnapshot(snapshot, { mode: "replace" });
+    }
     restoreAuth();
 
     // ✅ Important : la restauration IDB est faite, mais le state React courant
@@ -1051,7 +1326,11 @@ export default function StorageVaultPage({ go }: Props) {
     }
 
     await afterRestoreHousekeeping(reason);
-    await pushSnapshotToAccount(snapshot, reason);
+    if (backupProvider === "cloud") {
+      await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
+    } else {
+      await pushSnapshotToAccount(snapshot, reason);
+    }
     setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
     window.setTimeout(() => window.location.reload(), 900);
   };
@@ -1120,6 +1399,20 @@ ${label}`)) return;
   };
 
   const pushCurrentToAccount = async () => {
+    if (backupProvider === "cloud") {
+      const ok = window.confirm("Envoyer l’état complet actuel de ce navigateur vers Cloudflare R2 ?");
+      if (!ok) return;
+      setBusy(true);
+      try {
+        const { summary } = await uploadCurrentSnapshotToCloudVault("manual-save-page-push", `État actuel cloud — ${new Date().toLocaleString("fr-FR")}`);
+        setMessage(`Compte cloud mis à jour : ${summary.matches} parties • ${summary.profiles} profils • ${summary.statsBlocks} stats.`);
+        await refresh();
+      } catch (error: any) {
+        setMessage(`Envoi cloud impossible : ${error?.message || error}`);
+      } finally { setBusy(false); }
+      return;
+    }
+
     const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
     setAccountScopeId(getVaultCurrentUserId());
     if (!token) {
@@ -1139,6 +1432,26 @@ ${label}`)) return;
       await refresh();
     } catch (error: any) {
       setMessage(`Envoi au compte impossible : ${error?.message || error}`);
+    } finally { setBusy(false); }
+  };
+
+  const createCloudBackup = async () => {
+    const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+    setAccountScopeId(getVaultCurrentUserId());
+    if (!token) {
+      setMessage("Sauvegarde cloud impossible : session introuvable. Reconnecte-toi, puis relance la sauvegarde.");
+      return;
+    }
+    const ok = window.confirm("Créer une sauvegarde complète vers Cloudflare R2 maintenant ?\n\nElle devient l’emplacement courant et les anciennes sauvegardes restent dans Archives.");
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const { uploaded, summary } = await uploadCurrentSnapshotToCloudVault("manual-storage-vault", `Sauvegarde cloud manuelle — ${new Date().toLocaleString("fr-FR")}`);
+      const storedBytes = Number(uploaded?.object?.size_bytes || 0) || 0;
+      setMessage(`Sauvegarde cloud créée. ${summary.matches} partie(s) • ${summary.profiles} profil(s) • ${fmtBytes(storedBytes)} stockés sur R2.`);
+      await refresh();
+    } catch (error: any) {
+      setMessage(`Sauvegarde cloud impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
   };
 
@@ -1184,6 +1497,19 @@ ${label}`)) return;
     } finally { setBusy(false); }
   };
 
+  const restoreCloud = async (entry: SaveEntry) => {
+    setBusy(true);
+    try {
+      const slot = entry.slot as CloudSlot;
+      const pulled = slot.__payload
+        ? { payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
+        : await pullCloudVaultSlot(slot);
+      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-cloud:${slot.id}`, entry.title);
+    } catch (error: any) {
+      setMessage(`Restauration cloud impossible : ${error?.message || error}`);
+    } finally { setBusy(false); }
+  };
+
   const restoreLocal = async (entry: SaveEntry) => {
     setBusy(true);
     try {
@@ -1219,7 +1545,7 @@ ${label}`)) return;
       busy={busy}
       expanded={Boolean(expanded[entry.key])}
       onToggle={() => toggleExpanded(entry.key)}
-      onRestore={() => entry.source === "nas" ? restoreNas(entry) : restoreLocal(entry)}
+      onRestore={() => entry.source === "nas" ? restoreNas(entry) : entry.source === "cloud" ? restoreCloud(entry) : restoreLocal(entry)}
       onExport={async () => {
         try {
           if (entry.source === "nas") {
@@ -1227,6 +1553,12 @@ ${label}`)) return;
             const id = String(slot.id || "latest");
             const pulled = await pullNasMemorySlot(id);
             exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+          } else if (entry.source === "cloud") {
+            const slot = entry.slot as CloudSlot;
+            const pulled = slot.__payload
+              ? { slot, payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
+              : await pullCloudVaultSlot(slot);
+            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${String(slot.id || "cloud").replace(/[^a-z0-9_-]/gi, "_")}.json`);
           } else {
             exportJsonDownload(entry.slot, `${(entry.slot as MemorySlot).id}.json`);
           }
@@ -1242,13 +1574,21 @@ ${label}`)) return;
         try { await deleteNasMemorySlot(id); setMessage("Emplacement NAS envoyé dans la corbeille."); await refresh(); }
         catch (error: any) { setMessage(`Suppression NAS impossible : ${error?.message || error}`); }
         finally { setBusy(false); }
+      } : entry.source === "cloud" && !(entry.slot as CloudSlot).latest ? async () => {
+        const slot = entry.slot as CloudSlot;
+        const id = String(slot.id || "");
+        if (!window.confirm(`Envoyer cette sauvegarde cloud dans la corbeille ?\n\n${entry.title}\n\nTu pourras encore la récupérer depuis l’onglet Corbeille tant que celle-ci n’est pas vidée.`)) return;
+        setBusy(true);
+        try { await deleteCloudObjectIndex(id); setMessage("Sauvegarde cloud envoyée dans la corbeille."); await refresh(); }
+        catch (error: any) { setMessage(`Suppression cloud impossible : ${error?.message || error}`); }
+        finally { setBusy(false); }
       } : entry.source === "local" ? async () => {
         const slot = entry.slot as MemorySlot;
         if (!window.confirm(`Supprimer ce bloc local ?\n${entry.title}`)) return;
         await deleteLocalMemorySlot(slot.id);
         await refresh();
       } : undefined}
-      deleteLabel={entry.source === "nas" && !(entry.slot as NasSlot).latest ? "Mettre corbeille" : "Supprimer"}
+      deleteLabel={entry.source === "nas" && !(entry.slot as NasSlot).latest ? "Mettre corbeille" : entry.source === "cloud" && !(entry.slot as CloudSlot).latest ? "Mettre corbeille" : "Supprimer"}
     />
   );
 
@@ -1263,11 +1603,16 @@ ${label}`)) return;
       exportLabel="Exporter JSON"
       deleteLabel="Supprimer définitivement"
       onRestore={async () => {
-        const id = String((entry.slot as NasSlot).id || "");
+        const id = String((entry.slot as any).id || "");
         setBusy(true);
         try {
-          await restoreNasDeletedMemorySlot(id);
-          setMessage("Emplacement NAS sorti de la corbeille.");
+          if (entry.source === "cloud") {
+            await restoreCloudObjectFromTrash(id);
+            setMessage("Sauvegarde cloud sortie de la corbeille.");
+          } else {
+            await restoreNasDeletedMemorySlot(id);
+            setMessage("Emplacement NAS sorti de la corbeille.");
+          }
           await refresh();
         } catch (error: any) {
           setMessage(`Restauration corbeille impossible : ${error?.message || error}`);
@@ -1275,18 +1620,33 @@ ${label}`)) return;
       }}
       onExport={async () => {
         try {
-          const id = String((entry.slot as NasSlot).id || "");
-          const pulled = await pullNasMemorySlot(id, { trash: true });
-          exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+          const id = String((entry.slot as any).id || "");
+          if (entry.source === "cloud") {
+            const pulled = await pullCloudVaultSlot(entry.slot as CloudSlot, { trash: true });
+            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+          } else {
+            const pulled = await pullNasMemorySlot(id, { trash: true });
+            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+          }
         } catch (error: any) {
           setMessage(`Export corbeille impossible : ${error?.message || error}`);
         }
       }}
       onDelete={async () => {
-        const id = String((entry.slot as NasSlot).id || "");
-        if (!window.confirm(`Supprimer définitivement cet emplacement NAS ?\n\n${entry.title}\n\nCette action libère la place serveur et sera irréversible.`)) return;
+        const id = String((entry.slot as any).id || "");
+        const label = entry.source === "cloud" ? "cette sauvegarde cloud" : "cet emplacement NAS";
+        if (!window.confirm(`Supprimer définitivement ${label} ?\n\n${entry.title}\n\nCette action libère la place serveur et sera irréversible.`)) return;
         setBusy(true);
-        try { await deleteNasMemorySlot(id, true); setMessage("Emplacement NAS supprimé définitivement."); await refresh(); }
+        try {
+          if (entry.source === "cloud") {
+            await purgeCloudObjectRemote(id);
+            setMessage("Sauvegarde cloud supprimée définitivement.");
+          } else {
+            await deleteNasMemorySlot(id, true);
+            setMessage("Emplacement NAS supprimé définitivement.");
+          }
+          await refresh();
+        }
         catch (error: any) { setMessage(`Suppression définitive impossible : ${error?.message || error}`); }
         finally { setBusy(false); }
       }}
@@ -1294,12 +1654,19 @@ ${label}`)) return;
   );
 
   const emptyTrash = async () => {
-    if (!trashNasEntries.length) return;
-    if (!window.confirm(`Vider la corbeille NAS ?\n\n${trashNasEntries.length} emplacement(s) seront supprimés définitivement du serveur.`)) return;
+    if (!trashRemoteEntries.length) return;
+    const label = backupProvider === "cloud" ? "cloud" : "NAS";
+    if (!window.confirm(`Vider la corbeille ${label} ?\n\n${trashRemoteEntries.length} emplacement(s) seront supprimés définitivement du serveur.`)) return;
     setBusy(true);
     try {
-      await emptyNasDeletedMemorySlots();
-      setMessage("Corbeille NAS vidée. Les sauvegardes supprimées sont définitivement perdues.");
+      if (backupProvider === "cloud") {
+        await emptyCloudObjectTrash(CLOUD_VAULT_OBJECT_TYPE).catch(() => null);
+        await emptyCloudObjectTrash(CLOUD_BACKUP_OBJECT_TYPE).catch(() => null);
+        setMessage("Corbeille cloud vidée. Les sauvegardes supprimées sont définitivement perdues.");
+      } else {
+        await emptyNasDeletedMemorySlots();
+        setMessage("Corbeille NAS vidée. Les sauvegardes supprimées sont définitivement perdues.");
+      }
       await refresh();
     } catch (error: any) {
       setMessage(`Vidage corbeille impossible : ${error?.message || error}`);
@@ -1339,7 +1706,7 @@ ${label}`)) return;
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 14 }}>
             <StatBox label="Emplacements" value={restorableEntries.length} color={green} />
             <StatBox label="Parties auto" value={matchBackupEntries.length} color={gold} />
-            <StatBox label="NAS" value={nasEntries.length} color={neon} />
+            <StatBox label={backupProvider === "cloud" ? "CLOUD" : "NAS"} value={remoteEntries.length} color={neon} />
           </div>
         </div>
 
@@ -1360,23 +1727,23 @@ ${label}`)) return;
             <div style={{ ...panel, borderColor: "rgba(52,211,153,.36)" }}>
               <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Choisir un état à restaurer</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
-                Affichage simplifié : la page montre d’abord <b>la dernière sauvegarde NAS</b>. Les anciennes sauvegardes sont rangées dans Archives, et les suppressions passent par la Corbeille avant suppression définitive serveur.
+                Affichage simplifié : la page montre d’abord <b>la dernière sauvegarde {backupProvider === "cloud" ? "cloud" : "NAS"}</b>. Les anciennes sauvegardes sont rangées dans Archives, et les suppressions passent par la Corbeille avant suppression définitive serveur.
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
                 <TabButton active={restoreView === "current"} onClick={() => setRestoreView("current")}>Dernière</TabButton>
                 <TabButton active={restoreView === "archives"} onClick={() => setRestoreView("archives")}>Archives ({archiveEntries.length})</TabButton>
-                <TabButton active={restoreView === "trash"} onClick={() => setRestoreView("trash")}>Corbeille ({trashNasEntries.length})</TabButton>
+                <TabButton active={restoreView === "trash"} onClick={() => setRestoreView("trash")}>Corbeille ({trashRemoteEntries.length})</TabButton>
               </div>
             </div>
 
             {restoreView === "current" && (
               <>
-                <h2 style={{ margin: "4px 0 0", color: green, fontSize: 17, textShadow: "0 0 12px rgba(52,211,153,.45)" }}>Dernière sauvegarde NAS</h2>
-                {latestNasEntry ? renderEntry(latestNasEntry) : (
+                <h2 style={{ margin: "4px 0 0", color: green, fontSize: 17, textShadow: "0 0 12px rgba(52,211,153,.45)" }}>{backupProvider === "cloud" ? "Dernière sauvegarde cloud" : "Dernière sauvegarde NAS"}</h2>
+                {latestRemoteEntry ? renderEntry(latestRemoteEntry) : (
                   <div style={panel}>
-                    <strong style={{ color: amber }}>Aucune sauvegarde NAS courante affichable</strong>
+                    <strong style={{ color: amber }}>{backupProvider === "cloud" ? "Aucune sauvegarde cloud courante affichable" : "Aucune sauvegarde NAS courante affichable"}</strong>
                     <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
-                      Crée une sauvegarde NAS depuis l’onglet Sauver. Les anciens blocs restent accessibles dans Archives si le backend les renvoie.
+                      Crée une sauvegarde depuis l’onglet Sauver. Les anciens blocs restent accessibles dans Archives si le serveur les renvoie.
                     </div>
                   </div>
                 )}
@@ -1393,6 +1760,12 @@ ${label}`)) return;
                     {archiveHistoryEntries.map(renderEntry)}
                   </>
                 )}
+                {backupProvider === "cloud" && archiveCloudOtherEntries.length > 0 && (
+                  <>
+                    <h3 style={{ margin: "4px 0 0", color: neon, fontSize: 15 }}>Profils / état cloud</h3>
+                    {archiveCloudOtherEntries.map(renderEntry)}
+                  </>
+                )}
                 {!archiveEntries.length && (
                   <div style={panel}>
                     <strong style={{ color: amber }}>Aucune ancienne sauvegarde restaurable</strong>
@@ -1407,13 +1780,13 @@ ${label}`)) return;
             {restoreView === "trash" && (
               <>
                 <div style={{ ...panel, borderColor: "rgba(251,113,133,.35)" }}>
-                  <h2 style={{ margin: 0, color: red, fontSize: 18 }}>Corbeille NAS</h2>
+                  <h2 style={{ margin: 0, color: red, fontSize: 18 }}>{backupProvider === "cloud" ? "Corbeille cloud" : "Corbeille NAS"}</h2>
                   <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
                     Ici les sauvegardes sont seulement mises de côté. <b>Vider la corbeille</b> les supprime définitivement du serveur et libère la place.
                   </p>
-                  <button style={dangerBtn} disabled={busy || !trashNasEntries.length} onClick={emptyTrash}>Vider la corbeille</button>
+                  <button style={dangerBtn} disabled={busy || !trashRemoteEntries.length} onClick={emptyTrash}>Vider la corbeille</button>
                 </div>
-                {trashNasEntries.length > 0 ? trashNasEntries.map(renderTrashEntry) : (
+                {trashRemoteEntries.length > 0 ? trashRemoteEntries.map(renderTrashEntry) : (
                   <div style={panel}>
                     <strong style={{ color: green }}>Corbeille vide</strong>
                     <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
@@ -1448,7 +1821,7 @@ ${label}`)) return;
               <div style={panel}>
                 <strong style={{ color: amber }}>Aucune sauvegarde de partie encore détectée</strong>
                 <div style={{ color: "#cbd5e1", fontSize: 13, marginTop: 8, lineHeight: 1.45 }}>
-                  Termine une nouvelle partie : elle créera automatiquement un bloc local, puis un bloc NAS si ton compte est connecté et le backend disponible.
+                  Termine une nouvelle partie : elle créera automatiquement un bloc local, puis un bloc serveur si ton compte est connecté et le backend disponible.
                 </div>
               </div>
             )}
@@ -1460,10 +1833,10 @@ ${label}`)) return;
             <div style={panel}>
               <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Créer un point de restauration</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
-                Utilise surtout <b>Créer sauvegarde NAS</b>. C’est l’équivalent “Sauvegarder la partie” : historique, stats, profils et médias sont envoyés dans ton compte.
+                Utilise surtout <b>{backupProvider === "cloud" ? "Créer sauvegarde cloud" : "Créer sauvegarde NAS"}</b>. C’est l’équivalent “Sauvegarder la partie” : historique, stats, profils et médias sont envoyés vers la destination active du compte.
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
-                <button style={primaryBtn} disabled={busy} onClick={createNasBackup}>Créer sauvegarde NAS</button>
+                <button style={primaryBtn} disabled={busy} onClick={backupProvider === "cloud" ? createCloudBackup : createNasBackup}>{backupProvider === "cloud" ? "Créer sauvegarde cloud" : "Créer sauvegarde NAS"}</button>
                 <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer sécurité locale</button>
                 <button style={btn} disabled={busy} onClick={pushCurrentToAccount}>Envoyer état actuel</button>
                 <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer JSON</button>
