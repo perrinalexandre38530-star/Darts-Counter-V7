@@ -85,6 +85,9 @@ const RANKING_VIEWS: Array<{ key: RankingView; label: string; color: string }> =
   { key: "teams", label: "ÉQUIPES", color: C.gold },
 ];
 
+const DASHBOARD_MATCH_LIMIT = 5;
+const HISTORY_MATCH_LIMIT = 10;
+
 function idOf(profile: any) {
   return String(profile?.id || profile?.profileId || profile?.playerId || "").trim();
 }
@@ -224,35 +227,50 @@ function FormDots({ form }: { form: Array<"W" | "D" | "L"> }) {
 function TrendChart({ values }: { values: BabyFootPlayerAggregate["trend"] }) {
   const width = 440;
   const height = 154;
-  const pad = 18;
-  const safe = values.slice(-12);
-  const maxAbs = Math.max(1, ...safe.map((row) => Math.abs(row.diff)), ...safe.map((row) => row.gf), ...safe.map((row) => row.ga));
-  const zeroY = height / 2;
-  const step = safe.length > 1 ? (width - pad * 2) / (safe.length - 1) : 0;
-  const points = safe.map((row, index) => {
-    const x = safe.length === 1 ? width / 2 : pad + index * step;
-    const y = zeroY - (row.diff / maxAbs) * (height / 2 - pad);
+  const padX = 18;
+  const padTop = 18;
+  const padBottom = 28;
+  const safe = values.slice(-DASHBOARD_MATCH_LIMIT);
+  const maxGoals = Math.max(1, ...safe.map((row) => row.gf), ...safe.map((row) => row.ga));
+  const plotHeight = height - padTop - padBottom;
+  const baseY = height - padBottom;
+  const step = safe.length > 0 ? (width - padX * 2) / safe.length : width - padX * 2;
+  const diffMax = Math.max(1, ...safe.map((row) => Math.abs(row.diff)));
+  const diffPoints = safe.map((row, index) => {
+    const groupX = padX + step * index;
+    const x = groupX + step / 2;
+    const y = padTop + plotHeight / 2 - (row.diff / diffMax) * (plotHeight / 2 - 8);
     return [x, y] as const;
   });
-  const polyline = points.map(([x, y]) => `${x},${y}`).join(" ");
+  const polyline = diffPoints.map(([x, y]) => `${x},${y}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Courbe de différence de buts" style={{ width: "100%", height: 154, display: "block" }}>
-      <line x1={pad} x2={width - pad} y1={zeroY} y2={zeroY} stroke="rgba(255,255,255,.16)" strokeWidth="1" />
-      {[.25, .75].map((ratio) => <line key={ratio} x1={pad} x2={width - pad} y1={height * ratio} y2={height * ratio} stroke="rgba(255,255,255,.06)" strokeWidth="1" />)}
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Comparaison buts pour et buts contre" style={{ width: "100%", height: 154, display: "block" }}>
+      <line x1={padX} x2={width - padX} y1={baseY} y2={baseY} stroke="rgba(255,255,255,.16)" strokeWidth="1" />
+      {[.25, .5, .75].map((ratio) => <line key={ratio} x1={padX} x2={width - padX} y1={padTop + plotHeight * ratio} y2={padTop + plotHeight * ratio} stroke="rgba(255,255,255,.06)" strokeWidth="1" />)}
       {safe.map((row, index) => {
-        const x = safe.length === 1 ? width / 2 : pad + index * step;
-        const barW = Math.max(9, Math.min(18, step * .32 || 14));
-        const gfH = (row.gf / maxAbs) * (height / 2 - pad);
-        const gaH = (row.ga / maxAbs) * (height / 2 - pad);
+        const groupX = padX + step * index;
+        const maxBarW = Math.max(7, Math.min(17, step * .22));
+        const gap = Math.max(3, Math.min(6, step * .07));
+        const center = groupX + step / 2;
+        const gfH = Math.max(0, (row.gf / maxGoals) * plotHeight);
+        const gaH = Math.max(0, (row.ga / maxGoals) * plotHeight);
         return (
           <g key={row.id || index}>
-            <rect x={x - barW - 1} y={zeroY - gfH} width={barW} height={gfH} rx="4" fill={C.green} opacity=".72" />
-            <rect x={x + 1} y={zeroY} width={barW} height={gaH} rx="4" fill={C.pink} opacity=".66" />
+            <rect x={center - maxBarW - gap / 2} y={baseY - gfH} width={maxBarW} height={gfH} rx="4" fill={C.green} opacity=".76" />
+            <rect x={center + gap / 2} y={baseY - gaH} width={maxBarW} height={gaH} rx="4" fill={C.pink} opacity=".70" />
           </g>
         );
       })}
-      {polyline ? <polyline points={polyline} fill="none" stroke={C.gold} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 7px ${C.gold}88)` }} /> : null}
-      {points.map(([x, y], index) => <circle key={index} cx={x} cy={y} r="4" fill="#101115" stroke={C.gold} strokeWidth="3" />)}
+      {polyline ? <polyline points={polyline} fill="none" stroke={C.gold} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 7px ${C.gold}88)` }} /> : null}
+      {diffPoints.map(([x, y], index) => <circle key={index} cx={x} cy={y} r="3.5" fill="#101115" stroke={C.gold} strokeWidth="2.5" />)}
+      <g transform={`translate(${padX},${height - 13})`}>
+        <rect x="0" y="-7" width="9" height="9" rx="2" fill={C.green} opacity=".76" />
+        <text x="14" y="1" fill="rgba(255,255,255,.62)" fontSize="9" fontWeight="800">BP</text>
+        <rect x="44" y="-7" width="9" height="9" rx="2" fill={C.pink} opacity=".70" />
+        <text x="58" y="1" fill="rgba(255,255,255,.62)" fontSize="9" fontWeight="800">BC</text>
+        <circle cx="94" cy="-2.5" r="3" fill="#101115" stroke={C.gold} strokeWidth="2" />
+        <text x="104" y="1" fill="rgba(255,255,255,.62)" fontSize="9" fontWeight="800">Diff</text>
+      </g>
     </svg>
   );
 }
@@ -340,18 +358,51 @@ function TeamBoard({ rows }: { rows: BabyFootLeaderboardBundle["topTeams"] }) {
 }
 
 function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFootLeaderboardBundle; active: RankingView; onChange: (view: RankingView) => void }) {
-  const current = RANKING_VIEWS.find((item) => item.key === active) || RANKING_VIEWS[0];
+  const currentIndex = Math.max(0, RANKING_VIEWS.findIndex((item) => item.key === active));
+  const current = RANKING_VIEWS[currentIndex] || RANKING_VIEWS[0];
+  const previous = RANKING_VIEWS[clampIndex(currentIndex - 1, RANKING_VIEWS.length)];
+  const next = RANKING_VIEWS[clampIndex(currentIndex + 1, RANKING_VIEWS.length)];
+  const goPrevious = () => onChange(previous.key);
+  const goNext = () => onChange(next.key);
   return (
     <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden", display: "grid", gap: 10 }}>
-      <div style={cardStyle({ padding: 10 })}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 9 }}>
+      <div style={cardStyle({ padding: 12 })}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
           {sectionTitle("Classements", current.color)}
-          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>fais défiler les intitulés</div>
+          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>un classement à la fois</div>
         </div>
-        <div className="bf-stats-center-row" style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "flex", gap: 8, overflowX: "auto", overflowY: "hidden", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
-          {RANKING_VIEWS.map((item) => (
-            <Pill key={item.key} active={active === item.key} onClick={() => onChange(item.key)} color={item.color}>{item.label}</Pill>
-          ))}
+        <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "42px minmax(0,1fr) 42px", gap: 8, alignItems: "center", overflow: "hidden" }}>
+          <button type="button" aria-label={`Classement précédent : ${previous.label}`} onClick={goPrevious} style={carouselArrow(current.color)}>‹</button>
+          <button
+            type="button"
+            onClick={goNext}
+            title="Classement suivant"
+            style={{
+              minWidth: 0,
+              width: "100%",
+              maxWidth: "100%",
+              overflow: "hidden",
+              borderRadius: 18,
+              padding: "11px 10px",
+              border: `1px solid ${current.color}cc`,
+              background: `linear-gradient(180deg,${current.color}24,rgba(0,0,0,.38))`,
+              color: current.color,
+              boxShadow: `0 0 18px ${current.color}24, inset 0 0 14px ${current.color}12`,
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ color: C.dim, fontSize: 8, fontWeight: 900, letterSpacing: .8, textTransform: "uppercase" }}>Classement actif</div>
+            <div style={{ marginTop: 2, fontSize: 18, lineHeight: 1.08, fontWeight: 1000, letterSpacing: .9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{current.label}</div>
+            <div style={{ marginTop: 3, display: "flex", justifyContent: "center", gap: 5, alignItems: "center" }}>
+              {RANKING_VIEWS.map((item) => <span key={item.key} style={{ width: item.key === active ? 16 : 5, height: 5, borderRadius: 999, background: item.key === active ? current.color : "rgba(255,255,255,.20)", transition: "width .18s ease, background .18s ease" }} />)}
+            </div>
+          </button>
+          <button type="button" aria-label={`Classement suivant : ${next.label}`} onClick={goNext} style={carouselArrow(current.color)}>›</button>
+        </div>
+        <div style={{ marginTop: 8, width: "100%", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
+          <button type="button" onClick={goPrevious} style={carouselHintButton()}>{previous.label}</button>
+          <button type="button" onClick={goNext} style={carouselHintButton("right")}>{next.label}</button>
         </div>
       </div>
 
@@ -467,6 +518,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const teammatePoints = Math.max(0, profileAgg.goalsFor - profileAgg.personalPoints);
   const totalPissettes = profileAgg.pissetteValid + profileAgg.pissetteRefused;
   const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
+  const matchLimit = tab === "history" ? HISTORY_MATCH_LIMIT : DASHBOARD_MATCH_LIMIT;
+  const visibleProfileMatches = profileMatches.slice(0, matchLimit);
 
   return (
     <div className="bf-stats-center" style={{ position: "relative", left: "50%", right: "50%", marginLeft: "-50vw", marginRight: "-50vw", minHeight: "100%", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", padding: "18px max(10px, env(safe-area-inset-right)) 112px max(10px, env(safe-area-inset-left))", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
@@ -648,7 +701,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <button type="button" onClick={() => go("babyfoot_stats_history" as any)} style={{ border: `1px solid ${C.gold}77`, color: C.gold, background: `${C.gold}14`, borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 1000, cursor: "pointer" }}>HISTORIQUE COMPLET</button>
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-              {profileMatches.slice(0, tab === "history" ? 18 : 7).map((match) => <MatchLine key={match.id} match={match} go={go} />)}
+              {visibleProfileMatches.map((match) => <MatchLine key={match.id} match={match} go={go} />)}
+              {profileMatches.length > visibleProfileMatches.length ? <div style={{ padding: "4px 8px", color: C.dim, textAlign: "center", fontSize: 10, fontWeight: 850 }}>{profileMatches.length - visibleProfileMatches.length} match(s) supplémentaire(s) dans l’historique complet.</div> : null}
               {!profileMatches.length ? <div style={{ padding: 18, color: C.muted, textAlign: "center", fontWeight: 850 }}>Aucune partie Baby‑Foot trouvée pour ces filtres.</div> : null}
             </div>
           </div>
@@ -656,6 +710,44 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
       </div>
     </div>
   );
+}
+
+
+function carouselArrow(color: string): React.CSSProperties {
+  return {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    border: `1px solid ${color}88`,
+    background: `radial-gradient(circle at 35% 30%,${color}2b,rgba(0,0,0,.24))`,
+    color,
+    fontSize: 28,
+    lineHeight: 1,
+    fontWeight: 1000,
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    boxShadow: `0 0 14px ${color}22`,
+  };
+}
+
+function carouselHintButton(align: "left" | "right" = "left"): React.CSSProperties {
+  return {
+    minWidth: 0,
+    border: "1px solid rgba(255,255,255,.08)",
+    background: "rgba(255,255,255,.035)",
+    borderRadius: 999,
+    padding: "7px 9px",
+    color: C.muted,
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: .35,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    cursor: "pointer",
+    textAlign: align,
+  };
 }
 
 function arrowButton(color: string, disabled = false): React.CSSProperties {
