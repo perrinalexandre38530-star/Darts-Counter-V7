@@ -294,19 +294,186 @@ function PlayerRow({ row, profilesById }: { row: BabyFootTeamPlayerContribution;
   );
 }
 
+function PlayerFunTotal(row: BabyFootTeamPlayerContribution) {
+  return row.gamelle + row.pissetteValid + row.pissetteRefused + row.pecheOff + row.pecheDef + row.demi + row.csc;
+}
+
+function topPlayer(rows: BabyFootTeamPlayerContribution[], valueOf: (row: BabyFootTeamPlayerContribution) => number) {
+  return [...rows].sort((a, b) => valueOf(b) - valueOf(a) || b.matches - a.matches || a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true }))[0] || null;
+}
+
+function PlayerBadge({ row, profilesById, color, label, value }: { row: BabyFootTeamPlayerContribution | null; profilesById: Map<string, Profile>; color: string; label: string; value: React.ReactNode }) {
+  const profile = row ? (profilesById.get(row.id) || ({ id: row.id, name: row.name, avatarUrl: row.avatarUrl } as any)) : null;
+  return (
+    <div style={{ minWidth: 0, borderRadius: 16, padding: 10, background: `linear-gradient(180deg,${color}14,rgba(255,255,255,.035))`, border: `1px solid ${color}44` }}>
+      <div style={{ color, fontSize: 9, fontWeight: 1000, letterSpacing: .6, textTransform: "uppercase" }}>{label}</div>
+      {row ? (
+        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", alignItems: "center", gap: 8 }}>
+          <ProfileAvatar profile={profile as any} size={32} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: C.text, fontSize: 12, fontWeight: 1000, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{row.name}</div>
+            <div style={{ color: C.dim, fontSize: 9, fontWeight: 850 }}>{row.matches} MJ</div>
+          </div>
+          <div style={{ color, fontSize: 17, fontWeight: 1000, textAlign: "right" }}>{value}</div>
+        </div>
+      ) : <div style={{ color: C.dim, marginTop: 10, fontSize: 12, fontWeight: 850 }}>—</div>}
+    </div>
+  );
+}
+
+function PlayerCompareBars({
+  title,
+  subtitle,
+  rows,
+  profilesById,
+  color,
+  valueOf,
+  formatValue,
+  limit = 6,
+}: {
+  title: string;
+  subtitle?: string;
+  rows: BabyFootTeamPlayerContribution[];
+  profilesById: Map<string, Profile>;
+  color: string;
+  valueOf: (row: BabyFootTeamPlayerContribution) => number;
+  formatValue?: (value: number, row: BabyFootTeamPlayerContribution) => React.ReactNode;
+  limit?: number;
+}) {
+  const sorted = [...rows]
+    .sort((a, b) => valueOf(b) - valueOf(a) || b.matches - a.matches || a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true }))
+    .slice(0, limit);
+  const max = Math.max(1, ...sorted.map(valueOf));
+  return (
+    <div style={cardStyle()}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+        {sectionTitle(title, color)}
+        {subtitle ? <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>{subtitle}</div> : null}
+      </div>
+      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+        {sorted.length ? sorted.map((row, index) => {
+          const value = valueOf(row);
+          const pct = Math.max(0, Math.min(100, (value / max) * 100));
+          const profile = profilesById.get(row.id) || ({ id: row.id, name: row.name, avatarUrl: row.avatarUrl } as any);
+          return (
+            <div key={`${title}-${row.id}`} style={{ minWidth: 0, display: "grid", gridTemplateColumns: "26px 34px minmax(0,1fr) minmax(42px,auto)", gap: 8, alignItems: "center" }}>
+              <div style={{ color: index === 0 ? C.gold : C.muted, fontSize: 14, fontWeight: 1000, textAlign: "center" }}>{index + 1}</div>
+              <ProfileAvatar profile={profile as any} size={30} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <div style={{ color: C.text, fontSize: 11, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
+                </div>
+                <div style={{ marginTop: 4, height: 8, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg,${color},${color}88)`, boxShadow: `0 0 12px ${color}55` }} />
+                </div>
+              </div>
+              <div style={{ color, fontSize: 13, fontWeight: 1000, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatValue ? formatValue(value, row) : value}</div>
+            </div>
+          );
+        }) : <div style={{ color: C.muted, textAlign: "center", padding: 14, fontWeight: 850 }}>Aucun joueur à comparer avec ces filtres.</div>}
+      </div>
+    </div>
+  );
+}
+
+function PlayerRankingTable({ rows, profilesById }: { rows: BabyFootTeamPlayerContribution[]; profilesById: Map<string, Profile> }) {
+  const sorted = [...rows].sort((a, b) => b.personalPoints - a.personalPoints || b.contributionPct - a.contributionPct || b.teamGoalDiff - a.teamGoalDiff || a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true }));
+  return (
+    <div style={cardStyle()}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+        {sectionTitle("Classement interne joueurs", C.gold)}
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Buts · contrib · diff</div>
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+        {sorted.map((row, index) => {
+          const profile = profilesById.get(row.id) || ({ id: row.id, name: row.name, avatarUrl: row.avatarUrl } as any);
+          return (
+            <div key={`ranking-${row.id}`} style={{ display: "grid", gridTemplateColumns: "28px 34px minmax(0,1fr) 46px 46px 46px", alignItems: "center", gap: 7, padding: "8px 6px", borderRadius: 14, background: index === 0 ? `${C.gold}13` : "rgba(255,255,255,.03)", border: `1px solid ${index === 0 ? C.gold + "33" : "rgba(255,255,255,.06)"}` }}>
+              <div style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: index === 0 ? C.gold : "rgba(255,255,255,.08)", color: index === 0 ? "#14100A" : C.muted, fontSize: 12, fontWeight: 1000 }}>{index + 1}</div>
+              <ProfileAvatar profile={profile as any} size={30} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: C.text, fontSize: 12, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div>
+                <div style={{ color: C.dim, fontSize: 9, fontWeight: 850 }}>{row.matches} MJ · {row.wins}V/{row.losses}D</div>
+              </div>
+              <div style={{ color: C.gold, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{row.personalPoints}</div>
+              <div style={{ color: C.blue, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{row.contributionPct}%</div>
+              <div style={{ color: row.teamGoalDiff >= 0 ? C.green : C.pink, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{formatSigned(row.teamGoalDiff)}</div>
+            </div>
+          );
+        })}
+        {!sorted.length ? <div style={{ color: C.muted, textAlign: "center", padding: 14, fontWeight: 850 }}>Aucun joueur n’a encore joué dans cette équipe.</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function TeamPlayerLeaderboards({ team, profilesById }: { team: BabyFootTeamDetailedAggregate; profilesById: Map<string, Profile> }) {
+  const players = team.players || [];
+  const scorer = topPlayer(players, (row) => row.personalPoints);
+  const contribution = topPlayer(players, (row) => row.contributionPct);
+  const av = topPlayer(players, (row) => row.goalAv);
+  const defense = topPlayer(players, (row) => row.goalDef + row.goalGb);
+  const fun = topPlayer(players, PlayerFunTotal);
+  return (
+    <>
+      <div style={cardStyle()}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+          {sectionTitle("Leaders de l'équipe", C.blue)}
+          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>{players.length} joueur(s)</div>
+        </div>
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 8 }}>
+          <PlayerBadge row={scorer} profilesById={profilesById} color={C.gold} label="Top scoreur" value={scorer?.personalPoints ?? "—"} />
+          <PlayerBadge row={contribution} profilesById={profilesById} color={C.blue} label="Contribution" value={contribution ? `${contribution.contributionPct}%` : "—"} />
+          <PlayerBadge row={av} profilesById={profilesById} color={C.green} label="Meilleur AV" value={av?.goalAv ?? "—"} />
+          <PlayerBadge row={defense} profilesById={profilesById} color={C.pink} label="Déf / GB" value={defense ? `${defense.goalDef}/${defense.goalGb}` : "—"} />
+          <PlayerBadge row={fun} profilesById={profilesById} color={C.orange} label="Fun" value={fun ? PlayerFunTotal(fun) : "—"} />
+        </div>
+      </div>
+      <PlayerCompareBars title="Scoreurs de l'équipe" subtitle="buts + bonus" rows={players} profilesById={profilesById} color={C.gold} valueOf={(row) => row.personalPoints} />
+      <PlayerCompareBars title="Contribution au collectif" subtitle="part du BP équipe" rows={players} profilesById={profilesById} color={C.blue} valueOf={(row) => row.contributionPct} formatValue={(value) => `${value}%`} />
+      <PlayerCompareBars title="Jeu offensif AV" subtitle="buts avant" rows={players} profilesById={profilesById} color={C.green} valueOf={(row) => row.goalAv} />
+      <PlayerCompareBars title="Défense / gardien" subtitle="DEF + GB" rows={players} profilesById={profilesById} color={C.pink} valueOf={(row) => row.goalDef + row.goalGb} formatValue={(_, row) => `${row.goalDef}/${row.goalGb}`} />
+      <PlayerCompareBars title="Actions spéciales" subtitle="demis, gamelles, pissettes, pêches, CSC" rows={players} profilesById={profilesById} color={C.orange} valueOf={PlayerFunTotal} />
+      <PlayerRankingTable rows={players} profilesById={profilesById} />
+    </>
+  );
+}
+
 function MatchLine({ match, go }: { match: BabyFootTeamScopeMatch; go: Props["go"] }) {
   const color = match.won ? C.green : match.draw ? C.gold : C.pink;
+  const resultText = match.won ? "VICTOIRE" : match.draw ? "NUL" : "DÉFAITE";
+  const diff = match.scoreFor - match.scoreAgainst;
+  const gradient = match.won
+    ? `linear-gradient(135deg,${C.green}18,rgba(255,255,255,.035) 42%,rgba(0,0,0,.30))`
+    : match.draw
+      ? `linear-gradient(135deg,${C.gold}18,rgba(255,255,255,.035) 42%,rgba(0,0,0,.30))`
+      : `linear-gradient(135deg,${C.pink}18,rgba(255,255,255,.035) 42%,rgba(0,0,0,.30))`;
   return (
-    <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_teams" })} style={{ width: "100%", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 10, background: "rgba(255,255,255,.03)", color: C.text, textAlign: "left", cursor: "pointer" }}>
-      <div style={{ width: "100%", minWidth: 0, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+    <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_teams" })} style={{ width: "100%", border: `1px solid ${color}44`, borderRadius: 20, padding: 0, background: gradient, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 10px 24px rgba(0,0,0,.28), inset 0 0 28px ${color}0f` }}>
+      <div style={{ padding: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) 64px", gap: 10, alignItems: "stretch" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ color, fontSize: 11, fontWeight: 1000 }}>{match.won ? "VICTOIRE" : match.draw ? "NUL" : "DÉFAITE"} · {match.mode.toUpperCase()}</div>
-          <div style={{ marginTop: 3, fontSize: 13, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{match.teamName} {match.scoreFor} — {match.scoreAgainst} {match.opponentName}</div>
-          <div style={{ marginTop: 3, color: C.muted, fontSize: 10 }}>{formatDate(match.date)} · {formatDuration(match.durationMs)}</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ color: "#07100b", background: color, borderRadius: 999, padding: "4px 8px", fontSize: 9, fontWeight: 1000, letterSpacing: .5 }}>{resultText}</span>
+            <span style={{ color, border: `1px solid ${color}55`, background: `${color}12`, borderRadius: 999, padding: "3px 7px", fontSize: 9, fontWeight: 1000 }}>{match.mode.toUpperCase()}</span>
+          </div>
+          <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 7, alignItems: "baseline" }}>
+            <div style={{ minWidth: 0, color: C.text, fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{match.teamName}</div>
+            <div style={{ color, fontSize: 20, fontWeight: 1000, fontVariantNumeric: "tabular-nums", textShadow: `0 0 10px ${color}55` }}>{match.scoreFor}—{match.scoreAgainst}</div>
+            <div style={{ minWidth: 0, color: C.muted, fontSize: 13, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{match.opponentName}</div>
+          </div>
+          <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", color: C.dim, fontSize: 10, fontWeight: 850 }}>
+            <span>{formatDate(match.date)}</span>
+            <span>•</span>
+            <span>{formatDuration(match.durationMs)}</span>
+            <span>•</span>
+            <span>{match.playerIds.length} joueur(s)</span>
+          </div>
         </div>
-        <div style={{ flex: "0 0 auto", minWidth: 58, textAlign: "center", borderRadius: 12, padding: "7px 8px", border: `1px solid ${color}66`, background: `${color}0d` }}>
-          <div style={{ color: C.muted, fontSize: 8, fontWeight: 900 }}>DIFF</div>
-          <div style={{ color, fontSize: 18, fontWeight: 1000 }}>{formatSigned(match.scoreFor - match.scoreAgainst)}</div>
+        <div style={{ borderRadius: 16, display: "grid", placeItems: "center", border: `1px solid ${color}66`, background: `radial-gradient(circle at 50% 25%,${color}24,rgba(0,0,0,.22))` }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ color: C.muted, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>DIFF</div>
+            <div style={{ color, marginTop: 3, fontSize: 20, fontWeight: 1000 }}>{formatSigned(diff)}</div>
+          </div>
         </div>
       </div>
     </button>
@@ -411,7 +578,6 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
   const totalPissettes = (team?.pissetteValid || 0) + (team?.pissetteRefused || 0);
   const totalPeches = (team?.pecheOff || 0) + (team?.pecheDef || 0);
   const visibleMatches = (team?.matchList || []).slice(0, tab === "matches" ? MATCHES_LIMIT : DASHBOARD_MATCH_LIMIT);
-  const visiblePlayers = (team?.players || []).slice(0, tab === "players" ? 20 : 4);
 
   return (
     <div className="bf-team-stats" style={{ position: "relative", left: "50%", right: "50%", marginLeft: "-50vw", marginRight: "-50vw", minHeight: "100%", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", padding: "18px max(10px, env(safe-area-inset-right)) 112px max(10px, env(safe-area-inset-left))", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
@@ -475,7 +641,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
 
         {team ? (
           <>
-            {(tab === "dashboard" || tab === "details") && (
+            {tab === "dashboard" && (
               <>
                 <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(136px,100%),1fr))", gap: 10 }}>
                   <Kpi label="Ratio" value={formatBabyFootRatio(team.ratio)} color={C.gold} hint="BP / BC" />
@@ -515,21 +681,46 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
               </>
             )}
 
-            {(tab === "dashboard" || tab === "players") && (
+            {tab === "dashboard" && (
               <div style={cardStyle()}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                  {sectionTitle("Joueurs ayant joué dans cette équipe", C.blue)}
-                  <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>{team.players.length} joueur(s)</div>
+                  {sectionTitle("Leaders rapides", C.blue)}
+                  <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>ouvre Joueurs pour comparer</div>
                 </div>
-                <div style={{ marginTop: 10, display: "grid", gap: 9 }}>
-                  {visiblePlayers.length ? visiblePlayers.map((row) => <PlayerRow key={row.id} row={row} profilesById={profilesById} />) : <div style={{ padding: 18, color: C.muted, textAlign: "center", fontWeight: 850 }}>Aucun joueur n’a encore joué dans cette équipe avec les filtres actuels.</div>}
-                  {team.players.length > visiblePlayers.length ? <div style={{ padding: "4px 8px", color: C.dim, textAlign: "center", fontSize: 10, fontWeight: 850 }}>{team.players.length - visiblePlayers.length} joueur(s) supplémentaire(s) dans l’onglet Joueurs.</div> : null}
+                <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 8 }}>
+                  <PlayerBadge row={topPlayer(team.players, (row) => row.personalPoints)} profilesById={profilesById} color={C.gold} label="Top scoreur" value={topPlayer(team.players, (row) => row.personalPoints)?.personalPoints ?? "—"} />
+                  <PlayerBadge row={topPlayer(team.players, (row) => row.contributionPct)} profilesById={profilesById} color={C.blue} label="Contribution" value={topPlayer(team.players, (row) => row.contributionPct) ? `${topPlayer(team.players, (row) => row.contributionPct)?.contributionPct}%` : "—"} />
+                  <PlayerBadge row={topPlayer(team.players, PlayerFunTotal)} profilesById={profilesById} color={C.orange} label="Actions spéciales" value={topPlayer(team.players, PlayerFunTotal) ? PlayerFunTotal(topPlayer(team.players, PlayerFunTotal) as BabyFootTeamPlayerContribution) : "—"} />
                 </div>
               </div>
             )}
 
+            {tab === "players" && <TeamPlayerLeaderboards team={team} profilesById={profilesById} />}
+
             {tab === "details" && (
               <>
+                <div style={cardStyle()}>
+                  {sectionTitle("Lecture détaillée", C.blue)}
+                  <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(112px,100%),1fr))", gap: 8 }}>
+                    <Kpi label="Diff / match" value={formatOne(team.goalDiff / Math.max(1, team.matches))} color={team.goalDiff >= 0 ? C.green : C.pink} hint="écart moyen" />
+                    <Kpi label="Intensité" value={formatOne((team.goalsFor + team.goalsAgainst) / Math.max(1, team.matches))} color={C.gold} hint="buts totaux/M" />
+                    <Kpi label="Clean rate" value={formatBabyFootPct01(team.matches ? team.cleanSheets / team.matches : 0)} color={C.green} hint={`${team.cleanSheets}/${team.matches} MJ`} />
+                    <Kpi label="Fun / match" value={formatOne((team.demi + team.gamelle + totalPissettes + totalPeches + team.csc) / Math.max(1, team.matches))} color={C.orange} hint="actions spéciales" />
+                  </div>
+                </div>
+                <div style={cardStyle()}>
+                  {sectionTitle("Répartition technique équipe", C.blue)}
+                  <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
+                    <MiniProgress label="Buts AV" value={team.goalAv} max={maxAction} color={C.blue} />
+                    <MiniProgress label="Buts DEF" value={team.goalDef} max={maxAction} color={C.pink} />
+                    <MiniProgress label="Buts GB" value={team.goalGb} max={maxAction} color={C.green} />
+                    <MiniProgress label="Demis" value={team.demi} max={maxAction} color={C.violet} />
+                    <MiniProgress label="Gamelles" value={team.gamelle} max={maxAction} color={C.gold} />
+                    <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
+                    <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
+                    <MiniProgress label="CSC" value={team.csc} max={maxAction} color={C.pink} />
+                  </div>
+                </div>
                 <div style={cardStyle()}>
                   {sectionTitle("Stats avancées équipe", C.green)}
                   <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
