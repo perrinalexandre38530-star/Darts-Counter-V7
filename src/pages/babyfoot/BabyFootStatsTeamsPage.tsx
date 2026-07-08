@@ -439,40 +439,138 @@ function TeamPlayerLeaderboards({ team, profilesById }: { team: BabyFootTeamDeta
   );
 }
 
-function MatchLine({ match, go }: { match: BabyFootTeamScopeMatch; go: Props["go"] }) {
+function normalizeEntityName(value: any) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function teamAccentColor(label?: string | null) {
+  const name = normalizeEntityName(label);
+  if (name.includes("gold")) return C.gold;
+  if (name.includes("pink") || name.includes("rose")) return C.pink;
+  if (name.includes("blue") || name.includes("bleu")) return C.blue;
+  if (name.includes("green") || name.includes("vert")) return C.green;
+  return C.gold;
+}
+
+function extractMatchSidePlayerIds(record: any, side: "A" | "B") {
+  const suffix = side === "A" ? "A" : "B";
+  const ids = new Set<string>();
+  const roots = [record, record?.data, record?.payload, record?.payload?.data, record?.payload?.payload, record?.summary].filter(Boolean);
+  const pushMany = (value: any) => {
+    const list = Array.isArray(value) ? value : [];
+    for (const item of list) {
+      const id = String(item?.id || item?.playerId || item?.profileId || item || "").trim();
+      if (id) ids.add(id);
+    }
+  };
+  for (const root of roots) {
+    pushMany(root?.[`team${suffix}ProfileIds`]);
+    pushMany(root?.[`team${suffix}PlayerIds`]);
+    pushMany(root?.[`team${suffix}Players`]);
+    pushMany(root?.[`team${suffix}Profiles`]);
+    pushMany(root?.[`players${suffix}`]);
+    const players = Array.isArray(root?.players) ? root.players : Array.isArray(root?.summary?.players) ? root.summary.players : [];
+    for (const player of players) {
+      const team = String(player?.team || player?.side || player?.lane || "").toUpperCase();
+      if (team === suffix) {
+        const id = String(player?.id || player?.playerId || player?.profileId || "").trim();
+        if (id) ids.add(id);
+      }
+    }
+  }
+  return Array.from(ids);
+}
+
+function AvatarStrip({ playerIds, profilesById, max = 4 }: { playerIds: string[]; profilesById: Map<string, Profile>; max?: number }) {
+  const uniqueIds = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean))).slice(0, max);
+  const extra = Math.max(0, (playerIds || []).length - uniqueIds.length);
+  return (
+    <div style={{ display: "flex", alignItems: "center", minHeight: 28 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        {uniqueIds.map((id, index) => {
+          const profile = profilesById.get(id) || ({ id, name: id } as any);
+          return (
+            <div key={`${id}-${index}`} style={{ marginLeft: index === 0 ? 0 : -7, borderRadius: 999, boxShadow: "0 0 0 2px rgba(8,9,14,.92)" }}>
+              <ProfileAvatar profile={profile as any} size={24} />
+            </div>
+          );
+        })}
+      </div>
+      {extra > 0 ? <span style={{ marginLeft: 7, color: C.dim, fontSize: 9, fontWeight: 900 }}>+{extra}</span> : null}
+    </div>
+  );
+}
+
+function ScoreKpiBox({ value, color }: { value: number; color: string }) {
+  return (
+    <div style={{ minWidth: 54, borderRadius: 16, padding: "10px 8px", border: `1px solid ${color}66`, background: `linear-gradient(180deg,${color}20,rgba(255,255,255,.035))`, boxShadow: `0 0 16px ${color}20 inset`, textAlign: "center" }}>
+      <div style={{ color, fontSize: 28, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 12px ${color}55`, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+    </div>
+  );
+}
+
+function MatchLine({ match, go, team, teams, profilesById }: { match: BabyFootTeamScopeMatch; go: Props["go"]; team: BabyFootTeamDetailedAggregate; teams: BabyFootTeamDetailedAggregate[]; profilesById: Map<string, Profile> }) {
   const color = match.won ? C.green : match.draw ? C.gold : C.pink;
   const resultText = match.won ? "VICTOIRE" : match.draw ? "NUL" : "DÉFAITE";
   const diff = match.scoreFor - match.scoreAgainst;
-  const gradient = match.won
-    ? `linear-gradient(135deg,${C.green}18,rgba(255,255,255,.035) 42%,rgba(0,0,0,.30))`
-    : match.draw
-      ? `linear-gradient(135deg,${C.gold}18,rgba(255,255,255,.035) 42%,rgba(0,0,0,.30))`
-      : `linear-gradient(135deg,${C.pink}18,rgba(255,255,255,.035) 42%,rgba(0,0,0,.30))`;
+  const opponent = teams.find((row) => row.key !== team.key && normalizeEntityName(row.label) === normalizeEntityName(match.opponentName)) || null;
+  const leftColor = teamAccentColor(match.teamName || team.label);
+  const rightColor = teamAccentColor(match.opponentName || opponent?.label || "");
+  const leftPlayerIds = Array.from(new Set((match.playerIds || []).map(String).filter(Boolean)));
+  const rightSide = match.side === "A" ? "B" : "A";
+  const rightPlayerIds = extractMatchSidePlayerIds(match.record, rightSide).length
+    ? extractMatchSidePlayerIds(match.record, rightSide)
+    : Array.from(new Set((opponent?.rosterIds || []).map(String).filter(Boolean)));
+  const totalPlayers = Array.from(new Set([...leftPlayerIds, ...rightPlayerIds])).length;
+  const dateLabel = match.date ? new Date(match.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "Date inconnue";
+  const timeLabel = match.date ? new Date(match.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
-    <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_teams" })} style={{ width: "100%", border: `1px solid ${color}44`, borderRadius: 20, padding: 0, background: gradient, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 10px 24px rgba(0,0,0,.28), inset 0 0 28px ${color}0f` }}>
-      <div style={{ padding: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) 64px", gap: 10, alignItems: "stretch" }}>
-        <div style={{ minWidth: 0 }}>
+    <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_teams" })} style={{ position: "relative", width: "100%", border: `1px solid ${color}44`, borderRadius: 22, padding: 0, background: `linear-gradient(135deg,${color}12,rgba(255,255,255,.035) 40%,rgba(0,0,0,.34))`, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 12px 26px rgba(0,0,0,.30), inset 0 0 30px ${color}10` }}>
+      {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ position: "absolute", left: -10, top: "50%", transform: "translateY(-50%)", width: 120, height: 120, objectFit: "contain", opacity: .09, filter: "grayscale(0.05)" }} /> : null}
+      {opponent?.logoUrl ? <img src={opponent.logoUrl} alt="" style={{ position: "absolute", right: -10, top: "50%", transform: "translateY(-50%)", width: 120, height: 120, objectFit: "contain", opacity: .09, filter: "grayscale(0.05)" }} /> : null}
+      <div style={{ position: "relative", padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ color: "#07100b", background: color, borderRadius: 999, padding: "4px 8px", fontSize: 9, fontWeight: 1000, letterSpacing: .5 }}>{resultText}</span>
-            <span style={{ color, border: `1px solid ${color}55`, background: `${color}12`, borderRadius: 999, padding: "3px 7px", fontSize: 9, fontWeight: 1000 }}>{match.mode.toUpperCase()}</span>
+            <span style={{ color: "#07100b", background: color, borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 1000, letterSpacing: .6 }}>{resultText}</span>
+            <span style={{ color, border: `1px solid ${color}55`, background: `${color}12`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000 }}>{match.mode.toUpperCase()}</span>
           </div>
-          <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 7, alignItems: "baseline" }}>
-            <div style={{ minWidth: 0, color: C.text, fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{match.teamName}</div>
-            <div style={{ color, fontSize: 20, fontWeight: 1000, fontVariantNumeric: "tabular-nums", textShadow: `0 0 10px ${color}55` }}>{match.scoreFor}—{match.scoreAgainst}</div>
-            <div style={{ minWidth: 0, color: C.muted, fontSize: 13, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{match.opponentName}</div>
+          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900, textAlign: "right" }}>{dateLabel}{timeLabel ? ` · ${timeLabel}` : ""}</div>
+        </div>
+
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+          <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
+            <div style={{ color: leftColor, fontSize: 18, fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${leftColor}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{match.teamName}</div>
+            <AvatarStrip playerIds={leftPlayerIds} profilesById={profilesById} />
           </div>
-          <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", color: C.dim, fontSize: 10, fontWeight: 850 }}>
-            <span>{formatDate(match.date)}</span>
-            <span>•</span>
-            <span>{formatDuration(match.durationMs)}</span>
-            <span>•</span>
-            <span>{match.playerIds.length} joueur(s)</span>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6, justifySelf: "center" }}>
+            <ScoreKpiBox value={match.scoreFor} color={leftColor} />
+            <div style={{ color: C.muted, fontSize: 20, fontWeight: 1000, lineHeight: 1 }}>—</div>
+            <ScoreKpiBox value={match.scoreAgainst} color={rightColor} />
+          </div>
+
+          <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
+            <div style={{ color: rightColor, fontSize: 18, fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: `0 0 12px ${rightColor}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{match.opponentName}</div>
+            <div style={{ justifySelf: "end" }}><AvatarStrip playerIds={rightPlayerIds} profilesById={profilesById} /></div>
           </div>
         </div>
-        <div style={{ borderRadius: 16, display: "grid", placeItems: "center", border: `1px solid ${color}66`, background: `radial-gradient(circle at 50% 25%,${color}24,rgba(0,0,0,.22))` }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ color: C.muted, fontSize: 8, fontWeight: 1000, letterSpacing: .7 }}>DIFF</div>
-            <div style={{ color, marginTop: 3, fontSize: 20, fontWeight: 1000 }}>{formatSigned(diff)}</div>
+
+        <div style={{ marginTop: 11, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: C.dim, fontSize: 10, fontWeight: 850 }}>
+            <span>{formatDuration(match.durationMs)}</span>
+            <span>•</span>
+            <span>{totalPlayers} joueur(s)</span>
+          </div>
+          <div style={{ borderRadius: 14, padding: "6px 10px", border: `1px solid ${color}66`, background: `radial-gradient(circle at 50% 25%,${color}20,rgba(0,0,0,.18))` }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ color: C.muted, fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>DIFF</span>
+              <span style={{ color, fontSize: 18, fontWeight: 1000 }}>{formatSigned(diff)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -764,7 +862,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
                   <button type="button" onClick={() => go("babyfoot_stats_history" as any, { section: "teams", teamKey: team.key })} style={{ border: `1px solid ${C.gold}77`, color: C.gold, background: `${C.gold}14`, borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 1000, cursor: "pointer" }}>HISTORIQUE COMPLET</button>
                 </div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  {visibleMatches.map((match) => <MatchLine key={`${match.id}-${match.side}`} match={match} go={go} />)}
+                  {visibleMatches.map((match) => <MatchLine key={`${match.id}-${match.side}`} match={match} go={go} team={team} teams={teams} profilesById={profilesById} />)}
                   {team.matchList.length > visibleMatches.length ? <div style={{ padding: "4px 8px", color: C.dim, textAlign: "center", fontSize: 10, fontWeight: 850 }}>{team.matchList.length - visibleMatches.length} match(s) supplémentaire(s) dans l’historique complet.</div> : null}
                   {!team.matchList.length ? <div style={{ padding: 18, color: C.muted, textAlign: "center", fontWeight: 850 }}>Aucune partie Baby‑Foot trouvée pour cette équipe avec ces filtres.</div> : null}
                 </div>
