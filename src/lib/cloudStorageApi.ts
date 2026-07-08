@@ -344,3 +344,42 @@ export async function downloadCloudObject(id: string): Promise<{ ok: boolean; ob
 export async function deleteCloudObjectRemote(id: string): Promise<{ ok: boolean; usage: AccountStorageUsage; error?: string }> {
   return apiDelete(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}`) as any;
 }
+
+export const CLOUD_BACKUP_OBJECT_TYPE = "cloud_backup_v1";
+
+export async function listCloudBackups(limit = 10): Promise<CloudObjectIndexItem[]> {
+  return listCloudObjects({ objectType: CLOUD_BACKUP_OBJECT_TYPE, sport: "system", limit });
+}
+
+export async function uploadCloudBackupJson(args: {
+  backupJson: string;
+  title?: string;
+  metadata?: Record<string, any>;
+}): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  return uploadCloudObject({
+    objectType: CLOUD_BACKUP_OBJECT_TYPE,
+    sport: "system",
+    title: args.title || `Sauvegarde cloud ${now.toLocaleString("fr-FR")}`,
+    objectKey: `backups/cloud_sync_v1/manual_${stamp}.json`,
+    mimeType: "application/json",
+    content: args.backupJson,
+    gzip: true,
+    metadata: {
+      source: "settings_cloud_sync_v1",
+      backupKind: "manual_full_backup",
+      ...(args.metadata || {}),
+    },
+  });
+}
+
+export async function downloadCloudBackupJson(id: string): Promise<{ ok: boolean; object: CloudObjectIndexItem; backupJson: string }> {
+  const downloaded = await downloadCloudObject(id);
+  const backupJson = typeof downloaded.text === "string"
+    ? downloaded.text
+    : typeof downloaded.content === "string"
+      ? downloaded.content
+      : JSON.stringify(downloaded.content || {});
+  return { ok: !!downloaded.ok, object: downloaded.object, backupJson };
+}

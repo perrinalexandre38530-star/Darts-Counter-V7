@@ -34,6 +34,7 @@ import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import OnlineStatsCleanupPanel from "../components/OnlineStatsCleanupPanel";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, getNasSyncState, computeNasSyncSummary } from "../lib/manualNasSync";
 import { getApiUrl } from "../lib/apiClient";
+import { exportCloudBackupAsJson, restoreCloudBackupFromJson } from "../lib/cloudBackup";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
 import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
@@ -72,16 +73,20 @@ import {
   createStorageCheckoutSession,
   getAccountStorageUsage,
   deleteCloudObjectRemote,
+  downloadCloudBackupJson,
   downloadCloudObject,
   getCloudStorageStatus,
   getSupabaseAccountStatus,
   getSupabaseBridgeStatus,
   getSupabaseTablesStatus,
   getStorageStripeStatus,
+  listCloudBackups,
   saveAccountStoragePreferences,
+  uploadCloudBackupJson,
   uploadCloudObject,
   verifyStorageCheckoutSession,
   type AccountStorageUsage,
+  type CloudObjectIndexItem,
   type CloudStorageStatus,
   type SupabaseAccountStatus,
   type SupabaseBridgeStatus,
@@ -1280,6 +1285,13 @@ function AccountPages({
     detail?: string;
     objectKey?: string;
   } | null>(null);
+  const [cloudBackupItems, setCloudBackupItems] = React.useState<CloudObjectIndexItem[]>([]);
+  const [cloudBackupLoading, setCloudBackupLoading] = React.useState<null | "list" | "backup" | `restore:${string}` | `delete:${string}`>(null);
+  const [cloudBackupResult, setCloudBackupResult] = React.useState<{
+    status: "ok" | "error" | "info";
+    title: string;
+    detail?: string;
+  } | null>(null);
   const [supabaseAccountStatus, setSupabaseAccountStatus] = React.useState<SupabaseAccountStatus | null>(null);
   const [supabaseTablesStatus, setSupabaseTablesStatus] = React.useState<SupabaseTablesStatus | null>(null);
   const [supabaseBridgeStatus, setSupabaseBridgeStatus] = React.useState<SupabaseBridgeStatus | null>(null);
@@ -1361,6 +1373,12 @@ function AccountPages({
     if (page !== "account_storage") return;
     void refreshCloudUsage();
   }, [page, refreshCloudUsage]);
+
+  React.useEffect(() => {
+    if (page !== "account_storage" || !isSignedIn) return;
+    void refreshCloudBackupList(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, isSignedIn]);
 
   async function refreshStorageStripeStatus(verify = true) {
     if (!isSignedIn) {
@@ -1542,6 +1560,131 @@ function AccountPages({
     } finally {
       setCloudStorageTestLoading(false);
       void refreshCloudUsage();
+    }
+  }
+
+  async function refreshCloudBackupList(showFeedback = false) {
+    if (!isSignedIn) {
+      setCloudBackupItems([]);
+      return;
+    }
+    setCloudBackupLoading("list");
+    setCloudBackupResult(showFeedback ? { status: "info", title: "Recherche des sauvegardes…", detail: "Lecture de l’index R2 du compte." } : null);
+    try {
+      const rows = await listCloudBackups(12);
+      setCloudBackupItems(rows);
+      if (showFeedback) {
+        setCloudBackupResult({
+          status: "ok",
+          title: rows.length ? `${rows.length} sauvegarde(s) trouvée(s)` : "Aucune sauvegarde cloud pour le moment",
+          detail: rows.length ? "Les sauvegardes les plus récentes sont affichées ci-dessous." : "Lance une première sauvegarde manuelle pour créer ton point de restauration R2.",
+        });
+      }
+    } catch (e: any) {
+      const detail = e?.message || "Impossible de lister les sauvegardes cloud.";
+      setCloudBackupResult({ status: "error", title: "Liste cloud inaccessible", detail });
+    } finally {
+      setCloudBackupLoading(null);
+    }
+  }
+
+  async function runCloudBackupNow() {
+    if (!isSignedIn) {
+      safeAlert("Connecte-toi avant de sauvegarder vers le cloud.");
+      openAccountLogin();
+      return;
+    }
+    setCloudBackupLoading("backup");
+    setCloudUsageError(null);
+    setCloudBackupResult({
+      status: "info",
+      title: "Préparation de la sauvegarde…",
+      detail: "Export local : profils, dartsets et historique. Les stats agrégées seront reconstruites à la restauration.",
+    });
+    try {
+      const exported = await exportCloudBackupAsJson();
+      const backupObj: any = exported.backupObj || {};
+      const rawSize = new Blob([exported.backupJson]).size;
+      const uploaded = await uploadCloudBackupJson({
+        backupJson: exported.backupJson,
+        title: `Sauvegarde cloud manuelle — ${new Date().toLocaleString("fr-FR")}`,
+        metadata: {
+          appVersion: backupObj.appVersion || "unknown",
+          exportedAt: backupObj.exportedAt || new Date().toISOString(),
+          historyCount: Array.isArray(backupObj.history) ? backupObj.history.length : 0,
+          profilesCount: Array.isArray(backupObj.localProfiles) ? backupObj.localProfiles.length : 0,
+          dartsetsCount: Array.isArray(backupObj.dartsets) ? backupObj.dartsets.length : 0,
+          rawSizeBytes: rawSize,
+        },
+      });
+      if (uploaded?.usage) setCloudUsage(uploaded.usage);
+      setCloudBackupResult({
+        status: "ok",
+        title: "Sauvegarde cloud créée",
+        detail: `Backup envoyé vers R2 : ${formatStorageBytes(Number(uploaded?.object?.size_bytes || 0))} stockés · source ${formatStorageBytes(rawSize)}.`,
+      });
+      await refreshCloudBackupList(false);
+      await refreshCloudUsage();
+    } catch (e: any) {
+      const missing = e?.missingEnv || e?.data?.missingEnv;
+      const detail = Array.isArray(missing) && missing.length
+        ? `Cloudflare R2 non configuré dans le .env : ${missing.join(", ")}`
+        : e?.message || "Sauvegarde cloud impossible.";
+      setCloudUsageError(detail);
+      setCloudBackupResult({ status: "error", title: "Sauvegarde cloud échouée", detail });
+    } finally {
+      setCloudBackupLoading(null);
+    }
+  }
+
+  async function restoreCloudBackupItem(item: CloudObjectIndexItem) {
+    if (!isSignedIn) {
+      safeAlert("Connecte-toi avant de restaurer une sauvegarde cloud.");
+      openAccountLogin();
+      return;
+    }
+    const label = item.title || item.object_key || "cette sauvegarde";
+    const ok = window.confirm(
+      `Restaurer ${label} ?\n\n` +
+      "Mode V1 sécurisé : fusion des données cloud avec les données locales. Les stats seront reconstruites depuis l’historique."
+    );
+    if (!ok) return;
+    setCloudBackupLoading(`restore:${item.id}`);
+    setCloudBackupResult({ status: "info", title: "Restauration en cours…", detail: "Téléchargement R2 puis fusion locale." });
+    try {
+      const downloaded = await downloadCloudBackupJson(item.id);
+      const restored = await restoreCloudBackupFromJson({ json: downloaded.backupJson, mode: "merge", rebuild: true });
+      if (!restored.ok) throw new Error(restored.error || "Format de sauvegarde invalide.");
+      const backup: any = restored.backup;
+      setCloudBackupResult({
+        status: "ok",
+        title: "Restauration cloud terminée",
+        detail: `Fusion effectuée : ${Array.isArray(backup.history) ? backup.history.length : 0} parties · ${Array.isArray(backup.localProfiles) ? backup.localProfiles.length : 0} profils · ${Array.isArray(backup.dartsets) ? backup.dartsets.length : 0} sets.`,
+      });
+      const reload = window.confirm("Restauration terminée. Recharger l’application maintenant pour afficher les données restaurées ?");
+      if (reload) window.location.reload();
+    } catch (e: any) {
+      const detail = e?.message || "Restauration cloud impossible.";
+      setCloudBackupResult({ status: "error", title: "Restauration cloud échouée", detail });
+    } finally {
+      setCloudBackupLoading(null);
+    }
+  }
+
+  async function deleteCloudBackupItem(item: CloudObjectIndexItem) {
+    const ok = window.confirm(`Supprimer la sauvegarde cloud “${item.title || item.object_key || item.id}” ?`);
+    if (!ok) return;
+    setCloudBackupLoading(`delete:${item.id}`);
+    try {
+      const deleted = await deleteCloudObjectRemote(item.id);
+      if (deleted?.usage) setCloudUsage(deleted.usage);
+      setCloudBackupResult({ status: "ok", title: "Sauvegarde supprimée", detail: "L’objet R2 a été supprimé et le quota a été recalculé." });
+      await refreshCloudBackupList(false);
+      await refreshCloudUsage();
+    } catch (e: any) {
+      setCloudBackupResult({ status: "error", title: "Suppression impossible", detail: e?.message || "Erreur suppression sauvegarde cloud." });
+    } finally {
+      setCloudBackupLoading(null);
     }
   }
 
@@ -2023,6 +2166,172 @@ function AccountPages({
                 )}
               </div>
             )}
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  Cloud Sync V1 — sauvegarde R2
+                </div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: theme.primary }}>
+                  Backup manuel sécurisé
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  disabled={!!cloudBackupLoading || !isSignedIn}
+                  onClick={() => void runCloudBackupNow()}
+                  style={{
+                    borderRadius: 999,
+                    border: `1px solid ${theme.primary}88`,
+                    background: cloudBackupLoading === "backup" ? "rgba(255,255,255,0.08)" : `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                    color: cloudBackupLoading === "backup" ? theme.textSoft : "#000",
+                    padding: "9px 12px",
+                    fontSize: 11,
+                    fontWeight: 950,
+                    cursor: cloudBackupLoading || !isSignedIn ? "wait" : "pointer",
+                    opacity: cloudBackupLoading || !isSignedIn ? 0.7 : 1,
+                  }}
+                >
+                  {cloudBackupLoading === "backup" ? "Sauvegarde…" : "Sauvegarder maintenant"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!cloudBackupLoading || !isSignedIn}
+                  onClick={() => void refreshCloudBackupList(true)}
+                  style={{
+                    borderRadius: 999,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(255,255,255,0.055)",
+                    color: theme.primary,
+                    padding: "9px 12px",
+                    fontSize: 11,
+                    fontWeight: 950,
+                    cursor: cloudBackupLoading || !isSignedIn ? "wait" : "pointer",
+                    opacity: cloudBackupLoading || !isSignedIn ? 0.7 : 1,
+                  }}
+                >
+                  {cloudBackupLoading === "list" ? "Lecture…" : "Rafraîchir"}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+              Cette V1 crée une sauvegarde cloud complète compressée vers Cloudflare R2 : profils locaux, dartsets et historique.
+              La restauration est volontairement en <b>fusion</b> pour éviter d’écraser brutalement les données locales.
+            </div>
+
+            {cloudBackupResult && (
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 12,
+                  border: `1px solid ${
+                    cloudBackupResult.status === "ok"
+                      ? "rgba(98,210,111,0.55)"
+                      : cloudBackupResult.status === "error"
+                        ? "rgba(255,107,107,0.65)"
+                        : theme.borderSoft
+                  }`,
+                  background:
+                    cloudBackupResult.status === "ok"
+                      ? "rgba(98,210,111,0.10)"
+                      : cloudBackupResult.status === "error"
+                        ? "rgba(255,107,107,0.10)"
+                        : "rgba(255,255,255,0.055)",
+                  padding: 10,
+                  fontSize: 11,
+                  lineHeight: 1.35,
+                  color: cloudBackupResult.status === "error" ? "#ff8c8c" : theme.text,
+                }}
+              >
+                <div style={{ fontWeight: 950, color: cloudBackupResult.status === "ok" ? "#62d26f" : cloudBackupResult.status === "error" ? "#ff8c8c" : theme.primary }}>
+                  {cloudBackupResult.title}
+                </div>
+                {cloudBackupResult.detail && <div style={{ marginTop: 4, color: theme.textSoft }}>{cloudBackupResult.detail}</div>}
+              </div>
+            )}
+
+            <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+              {cloudBackupItems.length === 0 ? (
+                <div style={{ borderRadius: 12, padding: 10, border: `1px dashed ${theme.borderSoft}`, color: theme.textSoft, fontSize: 11, lineHeight: 1.35 }}>
+                  Aucune sauvegarde cloud listée pour ce compte. Clique sur “Sauvegarder maintenant” pour créer la première.
+                </div>
+              ) : (
+                cloudBackupItems.slice(0, 6).map((item) => {
+                  const meta: any = item.metadata || {};
+                  const updatedAt = String(item.updated_at || item.created_at || "");
+                  const restoreLoading = cloudBackupLoading === `restore:${item.id}`;
+                  const deleteLoading = cloudBackupLoading === `delete:${item.id}`;
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        border: `1px solid ${theme.borderSoft}`,
+                        background: "rgba(255,255,255,0.035)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 950, color: "#fff", fontSize: 12 }}>
+                            {item.title || "Sauvegarde cloud"}
+                          </div>
+                          <div style={{ marginTop: 3, fontSize: 10.5, color: theme.textSoft, lineHeight: 1.35 }}>
+                            {updatedAt ? new Date(updatedAt).toLocaleString("fr-FR") : "date inconnue"}
+                            {" · "}{formatStorageBytes(Number(item.size_bytes || 0))}
+                            {meta.historyCount != null ? ` · ${meta.historyCount} parties` : ""}
+                            {meta.profilesCount != null ? ` · ${meta.profilesCount} profils` : ""}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            disabled={!!cloudBackupLoading}
+                            onClick={() => void restoreCloudBackupItem(item)}
+                            style={{
+                              borderRadius: 999,
+                              border: `1px solid ${theme.primary}77`,
+                              background: `${theme.primary}18`,
+                              color: theme.primary,
+                              padding: "7px 9px",
+                              fontSize: 10.5,
+                              fontWeight: 950,
+                              cursor: cloudBackupLoading ? "wait" : "pointer",
+                            }}
+                          >
+                            {restoreLoading ? "Restauration…" : "Restaurer"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!!cloudBackupLoading}
+                            onClick={() => void deleteCloudBackupItem(item)}
+                            style={{
+                              borderRadius: 999,
+                              border: "1px solid rgba(255,107,107,0.45)",
+                              background: "rgba(255,107,107,0.08)",
+                              color: "#ff9b9b",
+                              padding: "7px 9px",
+                              fontSize: 10.5,
+                              fontWeight: 950,
+                              cursor: cloudBackupLoading ? "wait" : "pointer",
+                            }}
+                          >
+                            {deleteLoading ? "Suppression…" : "Supprimer"}
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 5, fontSize: 9.8, color: theme.textSoft, wordBreak: "break-all" }}>
+                        {item.object_key}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div style={{ ...softCard, marginBottom: 12 }}>
