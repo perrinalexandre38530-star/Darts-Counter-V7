@@ -575,56 +575,80 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff" }
     const nextEvents = sortedEvents.slice(0, 5);
     const presenceRate = globalConvStats.total ? Math.round((globalConvStats.present / globalConvStats.total) * 100) : 0;
     const staff = clubMembers.filter((m) => ["owner", "admin", "coach", "captain"].includes(String(m.role || "").toLowerCase())).slice(0, 8);
+    const activeMembers = clubMembers.filter((m) => String(m.status || "active") === "active").length;
+    const pendingRatio = globalConvStats.total ? Math.round((globalConvStats.pending / globalConvStats.total) * 100) : 0;
+    const clubHealth = Math.round((presenceRate * .45) + (clubTeams.length ? 20 : 0) + (latestPosts.length ? 15 : 0) + (nextMatch ? 20 : 0));
     const alerts = [
-      { title: "Réponses convocation", value: globalConvStats.pending, body: "joueur(s) à relancer", color: accent, tab: "convocs" as ClubTab },
-      { title: "Matchs à planifier", value: clubTeams.length ? Math.max(0, clubTeams.length - upcomingMatches.length) : 0, body: "équipe(s) sans prochain match", color: "#ffc857", tab: "matchs" as ClubTab },
+      { title: "Réponses convocation", value: globalConvStats.pending, body: "joueur(s) à relancer avant le match", color: accent, tab: "convocs" as ClubTab },
+      { title: "Matchs à planifier", value: clubTeams.length ? Math.max(0, clubTeams.length - upcomingMatches.length) : 0, body: "équipe(s) sans prochain rendez-vous", color: "#ffc857", tab: "matchs" as ClubTab },
       { title: "Effectif à structurer", value: Math.max(0, totalMembers - clubMembers.filter((m) => String(m.role || "member") !== "member").length), body: "membre(s) sans rôle précis", color: "#b58cff", tab: "effectif" as ClubTab },
+      { title: "Vie du club", value: clubPosts.length + clubEvents.length, body: "actus et évènements publiés", color: "#7cff9d", tab: "actu" as ClubTab },
+    ];
+    const operations = [
+      { label: "Créer / vérifier le prochain match", done: !!nextMatch, tab: "matchs" as ClubTab },
+      { label: "Publier une information d'équipe", done: latestPosts.length > 0, tab: "actu" as ClubTab },
+      { label: "Relancer les convocations en attente", done: pendingRatio === 0, tab: "convocs" as ClubTab },
+      { label: "Renseigner les rôles du bureau et du staff", done: staff.length >= 2, tab: "effectif" as ClubTab },
+      { label: "Organiser agenda, entraînements et réunions", done: nextEvents.length > 0, tab: "agenda" as ClubTab },
+      { label: "Centraliser documents, photos et archives", done: false, tab: "documents" as ClubTab },
+    ];
+    const modules = [
+      { title: "Sport", body: "Matchs, compositions, résultats, stats, classement interne.", tab: "matchs" as ClubTab, color: accent },
+      { title: "Présences", body: "Convocations, réponses, relances, disponibilité des joueurs.", tab: "convocs" as ClubTab, color: "#7cff9d" },
+      { title: "Vie du club", body: "Actualités, annonces, sondages, événements, albums.", tab: "actu" as ClubTab, color: "#ffc857" },
+      { title: "Administration", body: "Rôles, droits, documents, réglages, organisation.", tab: "reglages" as ClubTab, color: "#b58cff" },
     ];
     return <div style={{ display: "grid", gap: 14 }}>
       <div style={{ ...card(accent), padding: 0, overflow: "hidden" }}>
         <div style={{ padding: 15, display: "grid", gap: 12 }}>
-          <SectionTitle accent={accent} centered>Tableau de bord complet</SectionTitle>
-          <div style={{ fontSize: 12.5, opacity: .78, textAlign: "center", lineHeight: 1.35 }}>Vue président / coach : prochaines échéances, convocations, effectif, activité du club, santé sportive et actions rapides.</div>
+          <SectionTitle accent={accent} centered>Tableau de bord président / coach</SectionTitle>
+          <div style={{ fontSize: 12.5, opacity: .78, textAlign: "center", lineHeight: 1.35 }}>Vue complète du club : échéances, présence, animation, staff, effectif, résultats et actions prioritaires.</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
-            <StatTile accent={accent} value={totalMembers} label="membres" sub="club" />
+            <StatTile accent={accent} value={totalMembers} label="membres" sub={`${activeMembers} actifs`} />
             <StatTile accent="#7cff9d" value={clubTeams.length} label="équipes" sub="multisports" />
             <StatTile accent="#ffc857" value={`${seasonWins}-${seasonDraws}-${seasonLosses}`} label="bilan" sub="V-N-D" />
-            <StatTile accent="#b58cff" value={`${presenceRate}%`} label="présence" sub="convocs" />
+            <StatTile accent="#b58cff" value={`${clubHealth}%`} label="santé club" sub="score interne" />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 1, background: alpha(accent, "20") }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 1, background: alpha(accent, "20") }}>
           <StatTile accent="#7cff9d" value={goalsFor} label="marqués" sub="points/buts" />
           <StatTile accent="#ff6b7d" value={goalsAgainst} label="encaissés" sub="contre" />
-          <StatTile accent={accent} value={clubPosts.length + clubEvents.length} label="activité" sub="actus + agenda" />
+          <StatTile accent={accent} value={`${presenceRate}%`} label="présence" sub="convocs" />
+          <StatTile accent="#ffc857" value={clubPosts.length + clubEvents.length} label="activité" sub="actus + agenda" />
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
-        {alerts.map((a) => <button key={a.title} type="button" onClick={() => setClubTab(a.tab)} style={{ ...card(a.color), color: "#fff", textAlign: "left", minHeight: 108 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: a.color, fontWeight: 1000 }}>{a.title}</div><div style={{ fontSize: 28, fontWeight: 1000 }}>{a.value}</div></div><div style={{ marginTop: 8, fontSize: 12, opacity: .72 }}>{a.body}</div></button>)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
+        {alerts.map((a) => <button key={a.title} type="button" onClick={() => setClubTab(a.tab)} style={{ ...card(a.color), color: "#fff", textAlign: "left", minHeight: 118 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: a.color, fontWeight: 1000, lineHeight: 1.15 }}>{a.title}</div><div style={{ fontSize: 30, fontWeight: 1000 }}>{a.value}</div></div><div style={{ marginTop: 8, fontSize: 12, opacity: .72, lineHeight: 1.3 }}>{a.body}</div></button>)}
       </div>
-
-      {nextMatch ? <div style={card(accent)}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><SectionTitle accent={accent}>Prochain match</SectionTitle><button type="button" onClick={() => setClubTab("matchs")} style={navButton(accent, true)}>Voir fiche</button></div><div style={{ marginTop: 12 }}><MatchCard match={nextMatch} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}><ProgressBar value={convStats.present} total={Math.max(convStats.total, 1)} color="#7cff9d" label="Présents" /><ProgressBar value={convStats.uncertain} total={Math.max(convStats.total, 1)} color="#ffc857" label="Incertains" /><ProgressBar value={convStats.absent} total={Math.max(convStats.total, 1)} color="#ff6b7d" label="Absents" /></div></div> : <EmptyState accent={accent} title="Aucun prochain match" body="Crée un match pour faire apparaître la fiche, les convocations, le suivi des réponses et l’agenda." />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.15fr .85fr", gap: 12 }}>
-        <div style={card(accent)}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><SectionTitle accent={accent}>Semaine du club</SectionTitle><MetaChip accent={accent}>{upcomingMatches.length + nextEvents.length} échéance(s)</MetaChip></div><div style={{ marginTop: 12 }}><MiniCalendar accent={accent} events={clubEvents} matches={clubMatches} /></div></div>
-        <div style={card(accent)}><SectionTitle accent={accent}>Staff & responsabilités</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{staff.length ? staff.map((m, i) => <div key={m.id} style={{ ...glass(teamColor(i, accent)), display: "grid", gridTemplateColumns: "38px 1fr auto", gap: 9, alignItems: "center" }}><Logo src={m.avatarUrl} name={m.displayName} accent={teamColor(i, accent)} size={38} round={999} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere" }}>{m.displayName}</div><div style={{ fontSize: 11, opacity: .72 }}>{roleLabel(m.role)}</div></div><MetaChip accent={teamColor(i, accent)}>Actif</MetaChip></div>) : <div style={{ fontSize: 12, opacity: .72 }}>Aucun rôle staff renseigné pour l’instant.</div>}</div></div>
+        {nextMatch ? <div style={card(accent)}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><SectionTitle accent={accent}>Centre de match</SectionTitle><button type="button" onClick={() => setClubTab("matchs")} style={navButton(accent, true)}>Ouvrir</button></div><div style={{ marginTop: 12 }}><MatchCard match={nextMatch} /></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}><ProgressBar value={convStats.present} total={Math.max(convStats.total, 1)} color="#7cff9d" label="Présents" /><ProgressBar value={convStats.uncertain} total={Math.max(convStats.total, 1)} color="#ffc857" label="Incertains" /><ProgressBar value={convStats.absent} total={Math.max(convStats.total, 1)} color="#ff6b7d" label="Absents" /></div></div> : <EmptyState accent={accent} title="Aucun prochain match" body="Crée un match pour afficher sa fiche, ses convocations, son suivi de présence et son résumé sportif." />}
+        <div style={card(accent)}><SectionTitle accent={accent}>Plan d'action</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{operations.map((op, i) => <button key={op.label} type="button" onClick={() => setClubTab(op.tab)} style={{ ...glass(op.done ? "#7cff9d" : teamColor(i, accent)), color: "#fff", display: "grid", gridTemplateColumns: "32px 1fr", gap: 9, alignItems: "center", textAlign: "left" }}><div style={{ color: op.done ? "#7cff9d" : "#ffc857", fontWeight: 1000 }}>{op.done ? "✓" : "!"}</div><div style={{ fontSize: 12, fontWeight: 900, lineHeight: 1.25 }}>{op.label}</div></button>)}</div></div>
       </div>
 
-      <div style={card(accent)}><SectionTitle accent={accent}>Actions club</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
-        <QuickAction accent={accent} title="Convocation" body="Suivre les présents, absents et incertains." onClick={() => setClubTab("convocs")} />
-        <QuickAction accent="#7cff9d" title="Effectif" body="Inviter, classer, affecter les rôles." onClick={() => setClubTab("effectif")} />
-        <QuickAction accent="#ffc857" title="Agenda" body="Entraînement, réunion, tournoi, buvette." onClick={() => setClubTab("agenda")} />
-        <QuickAction accent="#b58cff" title="Documents" body="Licences, PV, feuilles de match, sponsors." onClick={() => setClubTab("documents")} />
+      <div style={card(accent)}><SectionTitle accent={accent}>Modules de gestion</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 12 }}>{modules.map((m) => <button key={m.title} type="button" onClick={() => setClubTab(m.tab)} style={{ ...card(m.color), color: "#fff", minHeight: 132, textAlign: "left" }}><div style={{ width: 42, height: 42, borderRadius: 16, display: "grid", placeItems: "center", border: `1px solid ${alpha(m.color, "70")}`, color: m.color, boxShadow: `0 0 16px ${alpha(m.color, "20")}`, marginBottom: 10 }}>◆</div><div style={{ color: m.color, fontWeight: 1000, fontSize: 15 }}>{m.title}</div><div style={{ marginTop: 8, fontSize: 11.5, opacity: .74, lineHeight: 1.35 }}>{m.body}</div></button>)}</div></div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr .9fr", gap: 12 }}>
+        <div style={card(accent)}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><SectionTitle accent={accent}>Semaine du club</SectionTitle><MetaChip accent={accent}>{upcomingMatches.length + nextEvents.length} échéance(s)</MetaChip></div><div style={{ marginTop: 12 }}><MiniCalendar accent={accent} events={clubEvents} matches={clubMatches} /></div></div>
+        <div style={card(accent)}><SectionTitle accent={accent}>Staff & responsabilités</SectionTitle><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{staff.length ? staff.map((m, i) => <div key={m.id} style={{ ...glass(teamColor(i, accent)), display: "grid", gridTemplateColumns: "38px 1fr auto", gap: 9, alignItems: "center" }}><Logo src={m.avatarUrl} name={m.displayName} accent={teamColor(i, accent)} size={38} round={999} /><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, overflowWrap: "anywhere" }}>{m.displayName}</div><div style={{ fontSize: 11, opacity: .72 }}>{roleLabel(m.role)}</div></div><MetaChip accent={teamColor(i, accent)}>Référent</MetaChip></div>) : <div style={{ fontSize: 12, opacity: .72 }}>Aucun rôle staff renseigné pour l’instant.</div>}</div></div>
+      </div>
+
+      <div style={card(accent)}><SectionTitle accent={accent}>Suivi opérationnel SportEasy+</SectionTitle><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
+        <div style={glass("#7cff9d")}><ProgressBar value={globalConvStats.present} total={Math.max(globalConvStats.total, 1)} color="#7cff9d" label="Disponibles" /><div style={{ marginTop: 8, fontSize: 11.5, opacity: .72 }}>Mesure la capacité du club à aligner ses équipes.</div></div>
+        <div style={glass("#ffc857")}><ProgressBar value={globalConvStats.pending} total={Math.max(globalConvStats.total, 1)} color="#ffc857" label="À relancer" /><div style={{ marginTop: 8, fontSize: 11.5, opacity: .72 }}>Réponses manquantes sur les convocations.</div></div>
+        <div style={glass("#b58cff")}><ProgressBar value={clubTeams.length} total={Math.max(allSports.length, clubTeams.length, 1)} color="#b58cff" label="Sports couverts" /><div style={{ marginTop: 8, fontSize: 11.5, opacity: .72 }}>Compatibilité multisports de l’association.</div></div>
       </div></div>
 
       <div style={card(accent)}><SectionTitle accent={accent}>Fil d’activité enrichi</SectionTitle><div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         {latestPosts.map((p) => <TimelineRow key={p.id} time={formatShortDate(p.createdAt)} title={p.title || "Publication"} body={p.body || "Actualité du club"} accent={accent} icon="📢" />)}
-        {clubConvocations.slice(0, 3).map((c) => <TimelineRow key={`cv-${c.id}`} time={formatShortDate(c.startsAt)} title={`${c.displayName} • ${statusLabel(c.status).label}`} body={c.matchTitle || "Réponse à une convocation"} accent={statusLabel(c.status).color} icon={statusLabel(c.status).short} />)}
-        {clubMatches.slice(0, 3).map((m) => <TimelineRow key={`tm-${m.id}`} time={formatShortDate(m.startsAt)} title={m.title} body={`Match ${sportName(m.sport)} • ${m.location || "lieu à définir"}`} accent="#ffc857" icon="VS" />)}
+        {clubConvocations.slice(0, 4).map((c) => <TimelineRow key={`cv-${c.id}`} time={formatShortDate(c.startsAt)} title={`${c.displayName} • ${statusLabel(c.status).label}`} body={c.matchTitle || "Réponse à une convocation"} accent={statusLabel(c.status).color} icon={statusLabel(c.status).short} />)}
+        {clubMatches.slice(0, 4).map((m) => <TimelineRow key={`tm-${m.id}`} time={formatShortDate(m.startsAt)} title={m.title} body={`Match ${sportName(m.sport)} • ${m.location || "lieu à définir"}`} accent="#ffc857" icon="VS" />)}
         {!latestPosts.length && !clubMatches.length && !clubConvocations.length ? <EmptyState accent={accent} title="Fil vide" body="Les publications, résultats, convocations et évènements apparaîtront ici." /> : null}
       </div></div>
     </div>;
   }
+
   function renderActu() {
     return <div style={{ display: "grid", gap: 12 }}>
       {canManage ? <div style={card(accent)}><SectionTitle accent={accent}>Créer une publication</SectionTitle><div style={{ display: "grid", gap: 9, marginTop: 10 }}><input value={postTitle} onChange={(e) => setPostTitle(e.target.value)} placeholder="Titre : Convocation, résultat, info importante..." style={inputStyle(accent)} /><textarea value={postText} onChange={(e) => setPostText(e.target.value)} placeholder="Message visible par les membres du club" rows={4} style={{ ...inputStyle(accent), resize: "vertical" }} /><button type="button" disabled={!postText.trim() || busy} onClick={createPost} style={{ ...navButton(accent, true), width: "100%" }}>Publier dans le fil</button></div></div> : null}
