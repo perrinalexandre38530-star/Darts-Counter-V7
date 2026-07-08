@@ -45,6 +45,10 @@ const C = {
   panel2: "linear-gradient(180deg,rgba(26,28,36,.95),rgba(10,11,17,.98))",
 };
 
+const PAGE_MAX_WIDTH = 620;
+const GRID_2 = "repeat(auto-fit,minmax(145px,1fr))";
+const GRID_3 = "repeat(auto-fit,minmax(96px,1fr))";
+
 const PERIODS: Array<{ key: PeriodKey; label: string; long: string }> = [
   { key: "J", label: "J", long: "Jour" },
   { key: "S", label: "S", long: "Semaine" },
@@ -134,6 +138,9 @@ function mergeRows(...sources: any[][]) {
 
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
     borderRadius: 22,
     padding: 14,
     background: C.panel,
@@ -338,7 +345,7 @@ function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFo
           {sectionTitle("Classements", current.color)}
           <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>fais défiler les intitulés</div>
         </div>
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
+        <div className="bf-scroll-row" style={{ display: "flex", gap: 8, paddingBottom: 2, WebkitOverflowScrolling: "touch" as any }}>
           {RANKING_VIEWS.map((item) => (
             <Pill key={item.key} active={active === item.key} onClick={() => onChange(item.key)} color={item.color}>{item.label}</Pill>
           ))}
@@ -447,12 +454,37 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc);
 
   return (
-    <div style={{ minHeight: "100%", padding: "18px 14px 112px", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
-      <div style={{ width: "100%", maxWidth: 720, margin: "0 auto", display: "grid", gap: 12 }}>
+    <div
+      className="babyfoot-stats-center-page"
+      style={{
+        minHeight: "100%",
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "hidden",
+        padding: "18px 0 112px",
+        color: C.text,
+        background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)`,
+      }}
+    >
+      <style>{`
+        .babyfoot-stats-center-page,
+        .babyfoot-stats-center-page * { box-sizing: border-box; }
+        .babyfoot-stats-center-page { touch-action: pan-y; }
+        .babyfoot-stats-center-page .bf-scroll-row {
+          max-width: 100%;
+          min-width: 0;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+        .babyfoot-stats-center-page .bf-scroll-row::-webkit-scrollbar { display: none; }
+      `}</style>
+      <div style={{ width: `min(100%, ${PAGE_MAX_WIDTH}px)`, maxWidth: "calc(100vw - 32px)", margin: "0 auto", display: "grid", gap: 12, minWidth: 0, overflowX: "hidden" }}>
         <div style={{ position: "relative", minHeight: 56, display: "grid", placeItems: "center" }}>
           <div style={{ position: "absolute", left: 0, top: 0 }}><BackDot onClick={() => go("stats" as any)} /></div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ color: C.gold, fontSize: 23, fontWeight: 1000, letterSpacing: 1, textShadow: `0 0 12px ${C.gold}99` }}>CENTRE DE STATISTIQUES</div>
+            <div style={{ color: C.gold, fontSize: "clamp(18px,5.2vw,23px)", fontWeight: 1000, letterSpacing: "clamp(.2px,.35vw,1px)", textShadow: `0 0 12px ${C.gold}99`, whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden" }}>CENTRE DE STATISTIQUES</div>
             <div style={{ marginTop: 3, color: C.muted, fontSize: 11, fontWeight: 900, letterSpacing: 1.4 }}>BABY‑FOOT · {periodLabel} · {modeLabel}</div>
           </div>
         </div>
@@ -469,8 +501,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         <div style={cardStyle()}>
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-              <div style={{ width: 72, height: 72, borderRadius: 999, padding: 3, background: `linear-gradient(180deg,${C.gold},${C.gold}33)`, boxShadow: `0 0 18px ${C.gold}44`, flex: "0 0 auto" }}>
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <div style={{ width: "clamp(58px,15vw,72px)", height: "clamp(58px,15vw,72px)", borderRadius: 999, padding: 3, background: `linear-gradient(180deg,${C.gold},${C.gold}33)`, boxShadow: `0 0 18px ${C.gold}44`, flex: "0 0 auto" }}>
                 <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#111" }}><ProfileAvatar profile={profile} size={66} /></div>
               </div>
               <div style={{ minWidth: 0 }}>
@@ -481,14 +513,14 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             </div>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index + 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>›</button>
           </div>
-          <div style={{ marginTop: 13, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+          <div className="bf-scroll-row" style={{ marginTop: 13, display: "flex", gap: 8, paddingBottom: 2 }}>
             {CENTER_TABS.map((item) => <Pill key={item.key} active={tab === item.key} onClick={() => setTab(item.key)} color={item.key === "classements" ? C.gold : C.green}>{item.label}</Pill>)}
           </div>
         </div>
 
         {(tab === "dashboard" || tab === "details") && (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: GRID_2, gap: 10, minWidth: 0 }}>
               <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.gold} hint="BP / BC" />
               <Kpi label="Win%" value={formatBabyFootPct01(profileAgg.winRate)} color={C.green} hint={`${profileAgg.wins}V / ${profileAgg.matches}MJ`} />
               <Kpi label="BP / match" value={formatOne(profileAgg.avgGoalsFor)} color={C.blue} hint={`${profileAgg.goalsFor} buts pour`} />
@@ -503,7 +535,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <FormDots form={profileAgg.form} />
               </div>
               <TrendChart values={profileAgg.trend} />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: GRID_3, gap: 8, minWidth: 0 }}>
                 <Kpi label="Diff" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
                 <Kpi label="Best BP" value={profileAgg.bestGoalsFor} color={C.blue} />
                 <Kpi label="Durée moy." value={formatDuration(profileAgg.avgDurationMs)} color={C.gold} />
@@ -512,7 +544,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
             <div style={cardStyle()}>
               {sectionTitle("Répartition technique", C.blue)}
-              <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
+              <div style={{ marginTop: 11, display: "grid", gap: 10, minWidth: 0 }}>
                 <MiniProgress label="Buts AV" value={profileAgg.goalAv} max={maxAction} color={C.blue} />
                 <MiniProgress label="Buts DEF" value={profileAgg.goalDef} max={maxAction} color={C.pink} />
                 <MiniProgress label="Buts GB" value={profileAgg.goalGb} max={maxAction} color={C.green} />
@@ -532,7 +564,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <>
             <div style={cardStyle()}>
               {sectionTitle("Stats avancées", C.green)}
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: GRID_3, gap: 8, minWidth: 0 }}>
                 <Kpi label="Buts perso" value={profileAgg.personalPoints} color={C.gold} />
                 <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} />
                 <Kpi label="Pénos" value={`${profileAgg.penaltyGoals}/${profileAgg.penalties}`} color={C.violet} />

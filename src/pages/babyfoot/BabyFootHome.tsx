@@ -76,6 +76,11 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
+function formatSignedInt(value: number) {
+  const n = Math.round(Number(value || 0));
+  return `${n >= 0 ? "+" : ""}${n}`;
+}
+
 function hashStringToInt(s: string) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
@@ -240,6 +245,13 @@ function computeBabyfootGlobalStats(historyRows: any[], profiles: Profile[], act
     ratio: agg.ratio,
     bestWinStreak: agg.bestWinStreak,
     currentWinStreak: agg.currentWinStreak,
+    bestGoalsFor: agg.bestGoalsFor,
+    bestGoalDiff: agg.bestGoalDiff,
+    personalPoints: agg.personalPoints,
+    actualGoals: agg.actualGoals,
+    demi: agg.demi,
+    gamelle: agg.gamelle,
+    pissetteValid: agg.pissetteValid,
     conversion: shots > 0 ? shotGoals / shots : null,
   };
 }
@@ -536,6 +548,25 @@ export default function BabyFootHome({ store, go }: Props) {
   const babyfootGlobalStats = useMemo(() => computeBabyfootGlobalStats(historyRows, profiles, activeProfile), [historyRows, profiles, activeProfile]);
   const primary = theme.primary ?? "#F6C256";
   const convLabel = babyfootGlobalStats.conversion == null ? "—" : `${Math.round(babyfootGlobalStats.conversion * 100)}%`;
+  const starAvg3D = Math.min(180, Math.max(0, Number(babyfootGlobalStats.rating || 0)));
+
+  const homeRecordSlides = useMemo(() => {
+    if (!babyfootGlobalStats.sessions) return [];
+    return [
+      {
+        id: "babyfoot-records",
+        title: t("babyfoot.home.records.title", "Records"),
+        rows: [
+          { label: t("babyfoot.home.records.bestBp", "best BP"), value: String(babyfootGlobalStats.bestGoalsFor) },
+          { label: t("babyfoot.home.records.bestDiff", "best diff"), value: formatSignedInt(babyfootGlobalStats.bestGoalDiff) },
+          { label: t("babyfoot.home.records.bestSerie", "série max"), value: String(babyfootGlobalStats.bestWinStreak) },
+          { label: t("babyfoot.home.records.clean", "clean sheets"), value: String(babyfootGlobalStats.cleanSheets) },
+          { label: t("babyfoot.home.records.butsPerso", "buts perso"), value: String(babyfootGlobalStats.personalPoints) },
+          { label: t("babyfoot.home.records.rating", "rating"), value: String(babyfootGlobalStats.rating) },
+        ],
+      },
+    ];
+  }, [babyfootGlobalStats, t]);
 
   // ✅ Auto-fit title
   const { wrapRef: titleWrapRef, textRef: titleTextRef, scale: titleScale } = useAutoFitTitle([
@@ -785,11 +816,14 @@ export default function BabyFootHome({ store, go }: Props) {
               {
                 ratingGlobal: babyfootGlobalStats.rating,
                 winrateGlobal: babyfootGlobalStats.winRate,
-                avg3DGlobal: babyfootGlobalStats.avgDiff,
+                avg3DGlobal: starAvg3D,
                 sessionsGlobal: babyfootGlobalStats.sessions,
                 favoriteNumberLabel: "—",
               } as any
             }
+            starAvg3D={starAvg3D}
+            suppressDefaultStatsSlides={true}
+            customSlides={homeRecordSlides}
             globalTitle={t("babyfoot.home.global.title", "Vue globale")}
             globalKpis={[
               { label: t("babyfoot.kpi.ratio", "ratio"), value: formatBabyFootRatio(babyfootGlobalStats.ratio) },

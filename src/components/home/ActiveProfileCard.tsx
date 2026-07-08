@@ -77,6 +77,9 @@ export type ActiveProfileStats = {
 type Props = {
   hideStatus?: boolean;
   hideStarRing?: boolean;
+  starAvg3D?: MaybeNum;
+  customSlides?: SlideDef[];
+  suppressDefaultStatsSlides?: boolean;
 
   // ✅ override des KPIs (ex: Pétanque)
   globalKpis?: { label: string; value: string | number }[];
@@ -242,6 +245,9 @@ function ActiveProfileCard({
   profile,
   stats,
   status: statusProp,
+  starAvg3D,
+  customSlides,
+  suppressDefaultStatsSlides,
 }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -301,6 +307,22 @@ function ActiveProfileCard({
               { label: t("home.stats?.favoriteNumber", "numéro favori"), value: s.favoriteNumberLabel ?? "—" },
             ],
     });
+
+    if (Array.isArray(customSlides) && customSlides.length) {
+      for (const custom of customSlides) {
+        if (!custom || !custom.rows?.length) continue;
+        out.push({
+          id: String(custom.id || `custom-${out.length}`),
+          title: String(custom.title || "Stats"),
+          rows: custom.rows.map((row) => ({
+            label: String(row.label || ""),
+            value: String(row.value ?? "—"),
+          })),
+        });
+      }
+    }
+
+    if (suppressDefaultStatsSlides) return out.length > 0 ? out.slice(0, 7) : [];
 
     // 2) Killer
     if (hasKillerData) {
@@ -430,7 +452,7 @@ function ActiveProfileCard({
     }
 
     return out.length > 0 ? out.slice(0, 7) : [];
-  }, [stats, t, globalTitle, globalKpis]);
+  }, [stats, t, globalTitle, globalKpis, customSlides, suppressDefaultStatsSlides]);
 
   useEffect(() => {
     if (!slides.length) {
@@ -510,6 +532,10 @@ function ActiveProfileCard({
     setIndex((i) => (i + 1) % slides.length);
   };
 
+  const starRingAvg3D = Number.isFinite(Number(starAvg3D))
+    ? Number(starAvg3D)
+    : Number(stats?.avg3DGlobal ?? 0) || 0;
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shimmerCss }} />
@@ -556,7 +582,7 @@ function ActiveProfileCard({
               {!hideStarRing && (
                 <ProfileStarRing
                   anchorSize={84}
-                  avg3d={stats?.avg3DGlobal ?? 0}
+                  avg3d={starRingAvg3D}
                   gapPx={-3}
                   starSize={14}
                   stepDeg={10}
