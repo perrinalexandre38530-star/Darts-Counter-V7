@@ -22,6 +22,7 @@ import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import type { Dart as UIDart } from "../lib/types";
 import {
   getCricketProfileStats,
@@ -7085,20 +7086,19 @@ return (
             marginBottom: 12,
           }}
         >
-          <div
-            style={{
-              fontSize: 15,
-              fontWeight: 900,
-              textTransform: "uppercase",
-              letterSpacing: 1.1,
-              color: T.accent ?? T.gold,
-              textShadow: `
-                0 0 10px ${T.accent ?? T.gold},
-                0 0 22px ${T.accentGlow ?? T.gold}
-              `,
-            }}
-          >
-            Centre de statistiques
+          <div style={{ display: "flex", justifyContent: "center", width: "100%", paddingInline: 18 }}>
+            <img
+              src={statsCenterTicker}
+              alt="Statistics Center"
+              draggable={false}
+              style={{
+                width: "100%",
+                maxWidth: 560,
+                height: "auto",
+                display: "block",
+                filter: `drop-shadow(0 0 18px ${T.accent ?? T.gold}44)`,
+              }}
+            />
           </div>
 
           {/* Carrousel modes */}

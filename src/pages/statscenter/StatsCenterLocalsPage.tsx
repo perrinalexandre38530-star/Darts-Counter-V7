@@ -11,6 +11,7 @@ import { useSport } from "../../contexts/SportContext";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 
 import { useStore } from "../../contexts/StoreContext";
 import { useStatsProvider } from "../../stats/useStatsProvider";
@@ -193,7 +194,9 @@ export default function StatsCenterLocalsPage({ go }: Props) {
     <div style={pageWrap}>
       <div style={topRow}>
         <BackDot onClick={() => (go ? go("stats") : null)} />
-        <div style={title}>{tr("molkky.locals", "MÖLKKY — PROFILS LOCAUX")}</div>
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
+        </div>
         <InfoDot onClick={() => (go ? go("stats") : null)} />
       </div>
 

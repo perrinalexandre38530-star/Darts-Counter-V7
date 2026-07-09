@@ -11,6 +11,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
+import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 
 type Props = {
   store: Store;
@@ -155,19 +156,19 @@ export default function BabyFootStatsShell({ store, go }: Props) {
       <div style={{ width: "100%", maxWidth: 520, paddingInline: 18, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ textAlign: "left" }}>
-            <div
+            <img
+              src={statsCenterTicker}
+              alt="Statistics Center"
+              draggable={false}
               style={{
-                fontWeight: 900,
-                letterSpacing: 0.9,
-                textTransform: "uppercase",
-                color: (theme as any).primary,
-                fontSize: "clamp(var(--title-min), var(--title-ideal), var(--title-max))",
-                textShadow: `0 0 14px ${(theme as any).primary}66`,
-                marginBottom: 4,
+                width: "100%",
+                maxWidth: 430,
+                height: "auto",
+                display: "block",
+                marginBottom: 8,
+                filter: `drop-shadow(0 0 14px ${(theme as any).primary}55)`,
               }}
-            >
-              {t?.("statsShell.title", "STATS") ?? "STATS"} — BABY-FOOT
-            </div>
+            />
             <div style={{ fontSize: 13, lineHeight: 1.35, color: (theme as any).textSoft, maxWidth: 280 }}>
               Analyse tes performances, les classements, les équipes et les duels (local).
             </div>
