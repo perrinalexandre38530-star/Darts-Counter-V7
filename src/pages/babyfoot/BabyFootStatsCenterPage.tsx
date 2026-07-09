@@ -6,23 +6,7 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
-
-function resolveProfileStarScore(profile: any) {
-  const raw =
-    profile?.profileStars ??
-    profile?.profileStarRating ??
-    profile?.stars ??
-    profile?.levelStars ??
-    profile?.level ??
-    profile?.x01ProfileStarring ??
-    profile?.dartsProfileStarring ??
-    profile?.stats?.profileStarRating ??
-    profile?.stats?.level ??
-    profile?.stats?.avg3 ??
-    0;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
+import { resolveProfileStarScore } from "../../lib/profileStarScore";
 import {
   babyFootRating,
   computeBabyFootLeaderboards,
@@ -240,14 +224,14 @@ function FilterGlyph({ size = 20 }: { size?: number }) {
   );
 }
 
-function StatHeroAvatar({ profile, size = 72, glowColor = C.gold, showStars = false }: { profile: any; size?: number; glowColor?: string; showStars?: boolean }) {
+function StatHeroAvatar({ profile, size = 72, glowColor = C.gold, showStars = false, starScore = 0 }: { profile: any; size?: number; glowColor?: string; showStars?: boolean; starScore?: number }) {
   return (
     <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible" }}>
       <div style={{ position: "absolute", inset: 0, borderRadius: 999, background: `radial-gradient(circle at 50% 38%,${glowColor}20,rgba(0,0,0,.08) 60%)`, boxShadow: `0 0 0 1px ${glowColor}66, 0 0 18px ${glowColor}50, 0 0 32px ${glowColor}22` }} />
       <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: 999, padding: 3, background: "rgba(8,10,18,.92)", boxShadow: `inset 0 0 0 1px ${glowColor}55` }}>
         <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#111" }}><ProfileAvatar profile={profile} size={size - 6} /></div>
       </div>
-      {showStars ? <ProfileStarRing profile={profile} score={resolveProfileStarScore(profile)} anchorSize={size} starSize={10} gapPx={-3} /> : null}
+      {showStars ? <ProfileStarRing profile={profile} score={starScore || resolveProfileStarScore(profile)} anchorSize={size} starSize={10} gapPx={-3} /> : null}
     </div>
   );
 }
@@ -820,7 +804,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
             <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "hidden" }}>
-              <StatHeroAvatar profile={profile} size={86} glowColor={primary} showStars />
+              <StatHeroAvatar profile={profile} size={86} glowColor={primary} showStars starScore={resolveProfileStarScore(profile, [rating, profileAgg?.rating, rank ? 20 + (Math.max(0, 12 - Number(rank)) * 5) : 0])} />
               <div style={{ marginTop: 10, color: primary, fontSize: 24, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
               <div style={{ marginTop: 5, color: C.muted, fontSize: 10, fontWeight: 850 }}>{rank ? `Rang #${rank}` : "Non classé"} · Rating {rating} · {profileAgg.matches} matchs</div>
               {scope === "locals" ? <div style={{ marginTop: 4, color: C.blue, fontSize: 10, fontWeight: 950, letterSpacing: .7, textTransform: "uppercase" }}>Profils locaux</div> : null}

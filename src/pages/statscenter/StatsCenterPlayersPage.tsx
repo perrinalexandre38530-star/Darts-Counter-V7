@@ -20,6 +20,7 @@ import { useStatsProvider } from "../../stats/useStatsProvider";
 
 import type { Profile } from "../../lib/types";
 import { sortProfilesByModeUsage } from "../../lib/profileUsage";
+import { resolveProfileStarScore } from "../../lib/profileStarScore";
 
 type Props = { go?: any };
 
@@ -320,10 +321,29 @@ export default function StatsCenterPlayersPage({ go }: Props) {
 
           <div style={{ textAlign: "center" }}>
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <ProfileStarRing size={64} profile={selected} />
-              <div style={{ position: "absolute" }} />
-              <div style={{ marginTop: 2 }}>
-                <ProfileAvatar size={62} profile={selected} />
+              <div style={{ position: "relative", width: 78, height: 78, overflow: "visible" }}>
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: -8,
+                    top: -8,
+                    width: 94,
+                    height: 94,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <ProfileStarRing
+                    anchorSize={64}
+                    starSize={10}
+                    gapPx={-2}
+                    stepDeg={10}
+                    score={resolveProfileStarScore(selected, [stats?.avgScore, stats?.bestScore])}
+                  />
+                </div>
+                <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}>
+                  <ProfileAvatar size={62} profile={selected} showStars={false} />
+                </div>
               </div>
             </div>
             <div style={{ fontWeight: 900, fontSize: 18, marginTop: 6 }}>

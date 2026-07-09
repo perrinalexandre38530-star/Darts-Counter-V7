@@ -13,23 +13,7 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import BackDot from "../../components/BackDot";
-
-function resolveProfileStarScore(profile: any) {
-  const raw =
-    profile?.profileStars ??
-    profile?.profileStarRating ??
-    profile?.stars ??
-    profile?.levelStars ??
-    profile?.level ??
-    profile?.x01ProfileStarring ??
-    profile?.dartsProfileStarring ??
-    profile?.stats?.profileStarRating ??
-    profile?.stats?.level ??
-    profile?.stats?.avg3 ??
-    0;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
+import { resolveProfileStarScore } from "../../lib/profileStarScore";
 
 type Props = {
   store: Store;
