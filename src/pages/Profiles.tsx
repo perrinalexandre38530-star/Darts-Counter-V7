@@ -80,6 +80,48 @@ async function markNasDirtySafe(reason: string) {
   } catch {}
 }
 
+function normalizeProfileLinkText(value: any): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function profileLinkTargetUserId(link: any): string {
+  return String(
+    link?.targetUser?.userId ||
+      link?.targetUser?.id ||
+      link?.friendUserId ||
+      link?.linkedFriendUserId ||
+      link?.linkedUserId ||
+      ""
+  ).trim();
+}
+
+function findOutgoingAcceptedProfileLink(links: any[], localProfile: any, profileId: string): any | null {
+  const pid = String(profileId || localProfile?.id || localProfile?.profileId || localProfile?.playerId || "").trim();
+  const info = localProfile?.privateInfo || localProfile?.private_info || {};
+  const storedLinkId = String(info?.profileFriendLinkId || info?.linkedFriendRequestId || "").trim();
+  const storedFriendId = String(info?.linkedFriendUserId || info?.linkedUserId || localProfile?.linkedFriendUserId || localProfile?.linkedUserId || "").trim();
+  const localName = normalizeProfileLinkText(localProfile?.name || localProfile?.displayName || localProfile?.nickname);
+
+  return (Array.isArray(links) ? links : []).find((link: any) => {
+    if (link?.direction !== "outgoing") return false;
+    if (String(link?.status || "").toLowerCase() !== "accepted") return false;
+
+    const sameLink = storedLinkId && String(link?.id || "") === storedLinkId;
+    const sameProfile = pid && String(link?.localProfileId || link?.profileId || "") === pid;
+    const sameFriend = storedFriendId && profileLinkTargetUserId(link) === storedFriendId;
+    const sameName = localName && normalizeProfileLinkText(link?.localProfileName || link?.profileName) === localName;
+
+    // Priorité ID lien, puis ID profil. Le fallback ami+nom absorbe les anciens
+    // profils dont l'id local a changé après restauration/import.
+    return !!(sameLink || sameProfile || (sameFriend && sameName));
+  }) || null;
+}
+
 
 const PREBUILT_AVATAR_COMMON_URLS = Array.from({ length: 141 }, (_, i) => i + 1)
   // Le pack fourni ne contient pas avatar-common-137.webp : on l'exclut pour éviter une image cassée.
@@ -1408,14 +1450,32 @@ export default function Profiles({
       return;
     }
 
-    const acceptedLink: any = (profileFriendLinks || []).find((link: any) => {
-      return link?.direction === "outgoing"
-        && String(link?.status || "").toLowerCase() === "accepted"
-        && String(link?.localProfileId || "") === pid;
-    });
+    let acceptedLink: any = findOutgoingAcceptedProfileLink(profileFriendLinks as any[], localProfile, pid);
 
     if (!acceptedLink?.id) {
-      setToast({ type: "error", message: "Association validée introuvable localement. Recharge la page puis réessaie." });
+      // Le cache local peut encore afficher "validé" alors que la liste des liens
+      // n'a pas été rechargée après réveil NAS / reconnexion. Avant de déclarer
+      // le lien introuvable, on tente une relecture serveur courte et robuste.
+      try {
+        const freshLinks = await listProfileFriendLinks();
+        const safeFreshLinks = Array.isArray(freshLinks) ? freshLinks : [];
+        setProfileFriendLinks(safeFreshLinks);
+        acceptedLink = findOutgoingAcceptedProfileLink(safeFreshLinks as any[], localProfile, pid);
+      } catch (error: any) {
+        console.warn("[Profiles] profile link server refresh failed before manual sync", error);
+        setToast({
+          type: "error",
+          message: "Serveur online/NAS inaccessible : impossible de vérifier l’association validée pour le moment.",
+        });
+        return;
+      }
+    }
+
+    if (!acceptedLink?.id) {
+      setToast({
+        type: "error",
+        message: "Association validée absente côté serveur. Dissocie puis recrée l’association si le serveur est bien en ligne.",
+      });
       return;
     }
 
@@ -5672,16 +5732,23 @@ function LocalProfilesRefonte({
     if (!current) return null;
     const pid = String((current as any)?.id || "");
     const storedLinkId = String((current as any)?.privateInfo?.profileFriendLinkId || "").trim();
+    const localName = normalizeProfileLinkText((current as any)?.name || (current as any)?.displayName || (current as any)?.nickname);
     return (profileFriendLinks || []).find((link: any) => {
+      if (link?.direction !== "outgoing") return false;
       const sameProfile = String(link?.localProfileId || "") === pid;
       const sameLink = storedLinkId && String(link?.id || "") === storedLinkId;
-      const sameFriend = linkedFriendUserId && String(link?.targetUser?.userId || link?.targetUser?.id || "") === linkedFriendUserId;
-      return link?.direction === "outgoing" && (sameLink || (sameProfile && sameFriend));
+      const sameFriend = linkedFriendUserId && profileLinkTargetUserId(link) === linkedFriendUserId;
+      const sameName = localName && normalizeProfileLinkText(link?.localProfileName || link?.profileName) === localName;
+      return sameLink || sameProfile || (sameFriend && sameName);
     }) || null;
   }, [current, profileFriendLinks, linkedFriendUserId]);
-  const linkStatus = String((currentProfileLink as any)?.status || (current as any)?.privateInfo?.profileFriendLinkStatus || (linkedFriendUserId ? "pending" : "")).toLowerCase();
-  const linkStatusLabel = linkStatus === "accepted" ? "Validé par l’ami" : linkStatus === "refused" ? "Refusé" : linkStatus === "pending" ? "En attente d’acceptation" : "Non lié";
-  const linkStatsShared = linkStatus === "accepted";
+  const cachedLinkStatus = String((current as any)?.privateInfo?.profileFriendLinkStatus || "").toLowerCase();
+  const linkStatus = String((currentProfileLink as any)?.status || cachedLinkStatus || (linkedFriendUserId ? "pending" : "")).toLowerCase();
+  const linkStatusFromCacheOnly = !!linkedFriendUserId && !currentProfileLink && cachedLinkStatus === "accepted";
+  const linkStatusLabel = linkStatusFromCacheOnly
+    ? "Validé localement — serveur à vérifier"
+    : linkStatus === "accepted" ? "Validé par l’ami" : linkStatus === "refused" ? "Refusé" : linkStatus === "pending" ? "En attente d’acceptation" : "Non lié";
+  const linkStatsShared = linkStatus === "accepted" && !!currentProfileLink;
   const linkedFriendAvatarUrl = String(
     (linkedFriend as any)?.avatarUrl ||
     (linkedFriend as any)?.avatar ||
@@ -6302,7 +6369,7 @@ function LocalProfilesRefonte({
                     </div>
                     {linkedFriendUserId ? (
                       <div style={{ marginTop: 5, fontSize: 10, fontWeight: 900, color: linkStatsShared ? "#38ff8a" : primary }}>
-                        Stats partagées : {linkStatsShared ? "OUI" : "NON — attente validation"}
+                        Stats partagées : {linkStatsShared ? "OUI" : linkStatusFromCacheOnly ? "À VÉRIFIER" : "NON — attente validation"}
                         {(currentProfileLink as any)?.updatedAt ? ` · MAJ ${new Date(String((currentProfileLink as any).updatedAt)).toLocaleString()}` : ""}
                       </div>
                     ) : null}
@@ -6341,13 +6408,13 @@ function LocalProfilesRefonte({
                   </select>
                 ) : null}
 
-                {linkedFriendUserId && linkStatsShared && onSyncLinkedStats ? (
+                {linkedFriendUserId && linkStatus === "accepted" && onSyncLinkedStats ? (
                   <button
                     type="button"
                     className="btn sm"
-                    disabled={linkedStatsSyncBusy}
+                    disabled={linkedStatsSyncBusy || !currentProfileLink || profileFriendLinksLoading}
                     onClick={async () => {
-                      if (!current?.id) return;
+                      if (!current?.id || !currentProfileLink) return;
                       setLinkedStatsSyncBusy(true);
                       try {
                         await onSyncLinkedStats(current.id);
@@ -6362,11 +6429,15 @@ function LocalProfilesRefonte({
                       marginTop: 8,
                       padding: "9px 10px",
                       fontSize: 11,
-                      opacity: linkedStatsSyncBusy ? 0.72 : 1,
+                      opacity: (linkedStatsSyncBusy || !currentProfileLink || profileFriendLinksLoading) ? 0.72 : 1,
                     }}
-                    title="Envoie immédiatement les stats de ce profil local vers le NAS et force la relecture côté compte associé."
+                    title={currentProfileLink ? "Envoie immédiatement les stats de ce profil local vers le NAS et force la relecture côté compte associé." : "Association connue en cache local, mais pas encore confirmée côté serveur."}
                   >
-                    {linkedStatsSyncBusy ? "SYNCHRO STATS…" : "SYNCHRONISER LES STATS ASSOCIÉES"}
+                    {linkedStatsSyncBusy
+                      ? "SYNCHRO STATS…"
+                      : !currentProfileLink
+                      ? "ASSOCIATION SERVEUR À VÉRIFIER"
+                      : "SYNCHRONISER LES STATS ASSOCIÉES"}
                   </button>
                 ) : null}
               </div>

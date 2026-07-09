@@ -22,7 +22,7 @@ type Props = {
 };
 
 type PeriodKey = "J" | "S" | "M" | "A" | "ARV";
-type ModeKey = "1v1" | "2v2" | "2v1" | "all";
+type ModeKey = "2v2" | "2v1" | "all";
 type TeamTab = "dashboard" | "players" | "details" | "matches";
 
 const C = {
@@ -48,7 +48,7 @@ const PERIODS: Array<{ key: PeriodKey; label: string; long: string }> = [
   { key: "ARV", label: "ARV", long: "À vie" },
 ];
 
-const MODES: Array<{ key: Exclude<ModeKey, "1v1">; label: string }> = [
+const MODES: Array<{ key: ModeKey; label: string }> = [
   { key: "2v2", label: "2V2" },
   { key: "2v1", label: "2V1" },
   { key: "all", label: "TOUS" },
@@ -99,11 +99,11 @@ function formatDuration(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
-function formatPlayDuration(ms: number) {
+function formatDurationLabel(ms: number) {
   const seconds = Math.max(0, Math.round(num(ms) / 1000));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
-  return `${minutes}'${String(rest).padStart(2, "0")}''`;
+  return `Temps de jeu : ${minutes}'${String(rest).padStart(2, "0")}''`;
 }
 
 function formatDate(timestamp: number) {
@@ -148,6 +148,15 @@ function sectionTitle(label: string, color = C.gold) {
   return (
     <div style={{ color, fontSize: 13, fontWeight: 1000, letterSpacing: 1.1, textTransform: "uppercase", textShadow: `0 0 12px ${color}66` }}>
       {label}
+    </div>
+  );
+}
+
+function HeaderTicker({ label, color = C.gold }: { label: string; color?: string }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, maxWidth: "100%", minWidth: 0, padding: "10px 16px", borderRadius: 18, border: `1px solid ${color}66`, background: `linear-gradient(90deg,rgba(0,0,0,.18),${color}16,rgba(0,0,0,.18))`, boxShadow: `0 0 18px ${color}22, inset 0 0 18px ${color}14` }}>
+      <span style={{ flex: "0 0 34px", height: 6, borderRadius: 999, background: `linear-gradient(90deg,transparent,${color})`, opacity: .9 }} />
+      <span className="bf-stats-teams-title" style={{ color, fontSize: 21, lineHeight: 1.05, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase", textShadow: `0 0 14px ${color}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
     </div>
   );
 }
@@ -566,8 +575,8 @@ function MatchLine({ match, go, team, teams, profilesById }: { match: BabyFootTe
         </div>
 
         <div style={{ marginTop: 11, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>
-            Temps de jeu : <span style={{ color: C.muted, fontWeight: 1000 }}>{formatPlayDuration(match.durationMs)}</span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", color: C.dim, fontSize: 10, fontWeight: 850 }}>
+            <span>{formatDurationLabel(match.durationMs)}</span>
           </div>
           <div style={{ borderRadius: 14, padding: "6px 10px", border: `1px solid ${color}66`, background: `radial-gradient(circle at 50% 25%,${color}20,rgba(0,0,0,.18))` }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -610,6 +619,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
   const [mode, setMode] = React.useState<ModeKey>(initialMode);
   const [tab, setTab] = React.useState<TeamTab>("dashboard");
   const [teamIndex, setTeamIndex] = React.useState(0);
+  const [filtersOpen, setFiltersOpen] = React.useState(Boolean(params?.showFilters));
   const [historyRows, setHistoryRows] = React.useState<any[]>(() => Array.isArray((store as any)?.history) ? (store as any).history : []);
   const [catalogTeams, setCatalogTeams] = React.useState<BabyFootTeam[]>(() => loadBabyFootTeams());
 
@@ -704,23 +714,25 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
           .bf-team-title { font-size: 17px !important; letter-spacing: .3px !important; }
         }
       `}</style>
-      <div style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 20px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
-        <div style={{ position: "relative", minHeight: 56, display: "grid", placeItems: "center" }}>
-          <div style={{ position: "absolute", left: 0, top: 0 }}><BackDot onClick={() => go("stats" as any)} /></div>
-          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 44 }}>
-            <div className="bf-team-title" style={{ color: C.gold, fontWeight: 1000, letterSpacing: 1, textShadow: `0 0 12px ${C.gold}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>STATS ÉQUIPES BABY-FOOT</div>
-            <div className="bf-team-subtitle" style={{ marginTop: 3, color: C.muted, fontSize: 11, fontWeight: 900, letterSpacing: 1.4 }}>BABY‑FOOT · {periodLabel} · {modeLabel}</div>
+      <div style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 24px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
+        <div style={{ position: "relative", minHeight: 62, display: "grid", placeItems: "center", paddingInline: 4 }}>
+          <div style={{ position: "absolute", left: 4, top: 3 }}><BackDot onClick={() => go("stats" as any)} /></div>
+          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 52 }}><HeaderTicker label="TEAM STATISTICS" color={primary} /></div>
+          <div style={{ position: "absolute", right: 4, top: 6 }}>
+            <button type="button" onClick={() => setFiltersOpen((v) => !v)} style={{ border: `1px solid ${C.blue}66`, color: C.blue, background: `${C.blue}10`, borderRadius: 999, padding: "8px 12px", fontSize: 10, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 14px ${C.blue}18` }}>
+              {filtersOpen ? "MASQUER" : "FILTRES"}
+            </button>
           </div>
         </div>
 
-        <div style={cardStyle({ display: "grid", gap: 12 })}>
+        {filtersOpen ? <div style={cardStyle({ display: "grid", gap: 10, padding: 10 })}>
           <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", overflow: "hidden" }}>
             {PERIODS.map((item) => <Pill key={item.key} active={period === item.key} onClick={() => setPeriod(item.key)}>{item.label}</Pill>)}
           </div>
           <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", overflow: "hidden" }}>
             {MODES.map((item) => <Pill key={item.key} active={mode === item.key} onClick={() => setMode(item.key)} color={C.blue}>{item.label}</Pill>)}
           </div>
-        </div>
+        </div> : null}
 
         <div style={cardStyle()}>
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
@@ -729,7 +741,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
               <TeamLogo team={team} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: C.blue, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>Équipe sélectionnée</div>
-                <div style={{ marginTop: 2, color: C.gold, fontSize: 22, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 9px ${C.gold}66` }}>{team?.label || "Aucune équipe"}</div>
+                <div style={{ marginTop: 2, color: primary, fontSize: 22, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 9px ${primary}66` }}>{team?.label || "Aucune équipe"}</div>
                 <div style={{ marginTop: 3, color: C.muted, fontSize: 10 }}>{rank ? `Rang #${rank}` : "Non classée"} · Rating {rating} · {team?.matches || 0} matchs</div>
               </div>
             </div>

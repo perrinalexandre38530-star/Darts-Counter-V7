@@ -589,6 +589,10 @@ function OnlineTicker({
         boxShadow: "0 12px 26px rgba(0,0,0,.55)",
         overflow: "hidden",
         position: "relative",
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        isolation: "isolate",
       }}
     >
       <style>{css}</style>
@@ -611,15 +615,16 @@ function OnlineTicker({
 
       <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(var(--online-accent-rgb),.55), rgba(79,180,255,.35), transparent)", opacity: 0.75 }} />
 
-      <div style={{ position: "relative", overflow: "hidden", padding: "10px 0" }}>
+      <div style={{ position: "relative", overflow: "hidden", padding: "10px 8px", maxWidth: "100%" }}>
         <div
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: 10,
-            paddingLeft: 12,
+            paddingLeft: 0,
             whiteSpace: "nowrap",
             width: "max-content",
+            maxWidth: "none",
             animation: `dcTickerScroll ${speedSec}s linear infinite`,
           }}
         >
@@ -638,8 +643,9 @@ function OnlineTicker({
                 fontSize: 12,
                 fontWeight: 900,
                 opacity: 0.95,
-                maxWidth: "min(84vw, 410px)",
+                maxWidth: "min(72vw, 310px)",
                 minWidth: 0,
+                boxSizing: "border-box",
               }}
             >
               <Pill label="•" tone={it.tone || "gold"} />
@@ -647,7 +653,7 @@ function OnlineTicker({
                 style={{
                   letterSpacing: 0.2,
                   display: "inline-block",
-                  maxWidth: "min(78vw, 360px)",
+                  maxWidth: "min(62vw, 250px)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -1986,7 +1992,7 @@ function OfficialLeagueFullScreen({
       className="container"
       style={{
         padding: 16,
-        paddingBottom: 96,
+        paddingBottom: 156,
         color: "#f5f5f7",
         minHeight: "100dvh",
         background: `radial-gradient(760px 300px at 92% -8%, rgba(${accentRgb},.42), transparent 62%), radial-gradient(620px 260px at 0% 30%, rgba(${accentRgb},.18), transparent 64%), linear-gradient(180deg, ${bg}, #020611 58%, #000 100%)`,
@@ -3572,7 +3578,7 @@ const doLogout = React.useCallback(async () => {
 
   if (!ready) {
     return (
-      <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+      <div className="container" style={{ padding: 16, paddingBottom: 156, color: "#f5f5f7" }}>
         Connexion en cours…
       </div>
     );
@@ -3583,7 +3589,7 @@ const doLogout = React.useCallback(async () => {
       className="container"
       style={{
         padding: 16,
-        paddingBottom: 96,
+        paddingBottom: 156,
         color: "#f5f5f7",
         minHeight: "100dvh",
         background: `radial-gradient(760px 300px at 92% -8%, rgba(${onlineAccentRgb},.42), transparent 62%), radial-gradient(620px 260px at 0% 30%, rgba(${onlineAccentRgb},.18), transparent 64%), linear-gradient(180deg, ${onlineBg}, #020611 58%, #000 100%)`,

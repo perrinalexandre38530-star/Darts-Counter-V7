@@ -69,11 +69,19 @@ function alpha(hex = "#22e6ff", opacity = "33") {
   return `${h}${opacity}`;
 }
 
+const CLUB_BG = "#020711";
+const CLUB_PANEL = "#06111d";
+const CLUB_PANEL_DARK = "#040b14";
+
+function clubSurface(accent: string, opacity = "18") {
+  return `linear-gradient(145deg, ${alpha(accent, opacity)}, ${CLUB_PANEL_DARK} 54%, #01050b 100%)`;
+}
+
 function card(accent: string, pad = 14): React.CSSProperties {
   return {
     borderRadius: 24,
     border: `1px solid ${alpha(accent, "38")}`,
-    background: `linear-gradient(145deg, ${alpha(accent, "15")}, rgba(255,255,255,.045))`,
+    background: clubSurface(accent, "16"),
     boxShadow: `0 0 24px ${alpha(accent, "12")}, inset 0 1px 0 rgba(255,255,255,.055)`,
     padding: pad,
     boxSizing: "border-box",
@@ -84,7 +92,7 @@ function glass(accent: string, pad = 12): React.CSSProperties {
   return {
     borderRadius: 20,
     border: `1px solid ${alpha(accent, "32")}`,
-    background: "rgba(5,12,22,.74)",
+    background: `linear-gradient(145deg, ${CLUB_PANEL}, ${CLUB_PANEL_DARK})`,
     boxShadow: `inset 0 1px 0 rgba(255,255,255,.05), 0 0 18px ${alpha(accent, "0f")}`,
     padding: pad,
     boxSizing: "border-box",
@@ -548,7 +556,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff", 
     const sectionLabel = sportName(currentSportId);
     return (
       <>
-        <div style={{ position: "sticky", top: 0, zIndex: 25, padding: "10px 12px 8px", background: "linear-gradient(180deg, rgba(3,9,17,.98), rgba(3,9,17,.92) 72%, rgba(3,9,17,0))" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 25, padding: "10px 12px 8px", background: `linear-gradient(180deg, ${CLUB_BG}, ${CLUB_BG})` }}>
           <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 48px", alignItems: "center", gap: 10 }}>
             <button type="button" onClick={() => { setFullscreenMode("none"); setSelectedClubId(null); }} style={iconButton(accent)}>←</button>
             <div style={{ textAlign: "center", minWidth: 0 }}>
@@ -560,7 +568,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff", 
         </div>
 
         <div style={{ padding: "0 12px 10px" }}>
-          <div style={{ ...card(accent, 12), display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "center", background: `linear-gradient(135deg, ${alpha(accent, "20")}, rgba(2,8,15,.92))` }}>
+          <div style={{ ...card(accent, 12), display: "grid", gridTemplateColumns: "64px 1fr", gap: 12, alignItems: "center", background: `linear-gradient(135deg, ${alpha(accent, "22")}, ${CLUB_PANEL} 42%, ${CLUB_PANEL_DARK})` }}>
             <Logo src={selectedClub.logoUrl} name={selectedClub.name} accent={accent} size={64} round={20} />
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 7 }}>
@@ -576,7 +584,7 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff", 
           </div>
         </div>
 
-        <div style={{ position: "sticky", top: 68, zIndex: 24, padding: "0 12px 10px", background: "linear-gradient(180deg, rgba(3,9,17,.96), rgba(3,9,17,.70), rgba(3,9,17,0))" }}>
+        <div style={{ position: "sticky", top: 68, zIndex: 24, padding: "0 12px 10px", background: `linear-gradient(180deg, ${CLUB_BG}, ${CLUB_BG})` }}>
           <div style={{ display: "flex", overflowX: "auto", gap: 8, paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
             {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setClubTab(tab.id)} style={navButton(accent, clubTab === tab.id)}>{tab.short}</button>)}
           </div>
@@ -803,8 +811,9 @@ export default function OnlineClubsPanel({ signedIn = true, accent = "#22e6ff", 
 
   if (fullscreenMode === "club" && selectedClub) {
     return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 9999, overflowY: "auto", background: "radial-gradient(circle at 50% 0%, rgba(20,75,90,.42), #020711 38%, #000 100%)", color: "#fff", WebkitOverflowScrolling: "touch" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", paddingBottom: 92 }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 999999, overflowY: "auto", background: `${CLUB_BG}`, color: "#fff", WebkitOverflowScrolling: "touch", isolation: "isolate", contain: "paint", transform: "translateZ(0)" }}>
+        <div aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: -1, pointerEvents: "none", background: `radial-gradient(circle at 50% 0%, ${alpha(accent, "22")}, ${CLUB_BG} 34%, #000 100%)` }} />
+        <div style={{ maxWidth: 900, margin: "0 auto", paddingBottom: 92, minHeight: "100vh", background: `linear-gradient(180deg, ${CLUB_BG}, #000 100%)` }}>
           {renderClubHeader()}
           {error ? <div style={{ margin: "0 12px 12px", ...card("#ff5a6f"), color: "#ffd9df", fontSize: 12 }}>{error}</div> : null}
           <div style={{ padding: "0 12px 20px", display: "grid", gap: 12 }}>{renderCurrentTab()}</div>

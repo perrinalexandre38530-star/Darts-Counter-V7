@@ -97,12 +97,50 @@ export function readNasAccessToken(): string {
 }
 
 const envUrl = sanitizeApiUrl(getNasApiUrl());
-const localOverride = sanitizeApiUrl(
-  typeof window !== "undefined" ? localStorage.getItem("dc_api_url") : ""
-);
+const PUBLIC_HTTPS_API_URL = "https://api.multisports-api.fr";
+const LEGACY_HTTP_API_URL = "http://api.multisports-api.fr:3000";
+const API_LAST_OK_KEY = "dc_api_url_last_ok";
+const API_OVERRIDE_KEY = "dc_api_url";
 
-// ✅ PRIORITÉ : domaine Cloudflare final > éventuel override local legacy
-const API_URL = envUrl || localOverride || "http://api.multisports-api.fr:3000";
+function uniqApiUrls(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const url = sanitizeApiUrl(raw);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
+export function getApiBaseCandidates(): string[] {
+  const lastOk = sanitizeApiUrl(safeReadLocalStorage(API_LAST_OK_KEY));
+  const localOverride = sanitizeApiUrl(safeReadLocalStorage(API_OVERRIDE_KEY));
+
+  // Important : l’override manuel doit pouvoir reprendre la main quand le domaine
+  // Vite compilé est cassé / DNS KO. Avant, envUrl gagnait toujours, donc on ne
+  // pouvait plus dépanner l’Online depuis l’app.
+  return uniqApiUrls([
+    lastOk,
+    localOverride,
+    envUrl,
+    PUBLIC_HTTPS_API_URL,
+    LEGACY_HTTP_API_URL,
+  ]);
+}
+
+function rememberWorkingApiUrl(url: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const clean = sanitizeApiUrl(url);
+    if (clean) window.localStorage.setItem(API_LAST_OK_KEY, clean);
+  } catch {}
+}
+
+function currentApiUrl(): string {
+  return getApiBaseCandidates()[0] || PUBLIC_HTTPS_API_URL;
+}
 // Le NAS/Cloudflare peut dépasser 3,5 s au réveil ou pendant une écriture snapshot/stats.
 // Ancien défaut: 3500 ms => les synchros profil lié étaient annulées côté navigateur
 // avant même que le backend ait fini de répondre. On laisse maintenant 60 s, surtout pour NAS + Cloudflare au réveil.
@@ -203,58 +241,76 @@ async function doFetch(path: string, init?: RequestInit) {
     }
   }
 
-  let res: Response | null = null;
+  const candidates = getApiBaseCandidates();
+  let lastError: any = null;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer = ctrl ? window.setTimeout(() => {
-      try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
-    }, API_TIMEOUT_MS) : null;
+  for (const apiBase of candidates) {
+    let res: Response | null = null;
 
-    try {
-      res = await fetch(`${API_URL}${normalizedPath}`, {
-        ...init,
-        signal: ctrl?.signal ?? init?.signal,
-        headers: buildHeaders(init),
-      });
-    } catch (error: any) {
-      const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
-      throw new Error(aborted
-        ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${API_TIMEOUT_MS}ms)`
-        : (error?.message || "Backend NAS inaccessible"));
-    } finally {
-      if (timer) window.clearTimeout(timer);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ctrl ? window.setTimeout(() => {
+        try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
+      }, API_TIMEOUT_MS) : null;
+
+      try {
+        res = await fetch(`${apiBase}${normalizedPath}`, {
+          ...init,
+          signal: ctrl?.signal ?? init?.signal,
+          headers: buildHeaders(init),
+        });
+      } catch (error: any) {
+        const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
+        lastError = new Error(aborted
+          ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${API_TIMEOUT_MS}ms)`
+          : `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS inaccessible (${apiBase})`);
+        res = null;
+        break;
+      } finally {
+        if (timer) window.clearTimeout(timer);
+      }
+
+      if (res.status !== 401 || attempt > 0) break;
+
+      // 401 peut arriver juste après une relance app / réveil NAS alors que le
+      // cache local possède encore une session récupérable. On restaure puis on
+      // retente une seule fois avant de purger réellement l'auth.
+      const recoveredToken = await recoverNasAuthToken("401");
+      if (!recoveredToken) break;
     }
 
-    if (res.status !== 401 || attempt > 0) break;
+    if (!res) continue;
 
-    // 401 peut arriver juste après une relance app / réveil NAS alors que le
-    // cache local possède encore une session récupérable. On restaure puis on
-    // retente une seule fois avant de purger réellement l'auth.
-    const recoveredToken = await recoverNasAuthToken("401");
-    if (!recoveredToken) break;
+    if (!res.ok) {
+      if (res.status === 401) clearNasAuthBecauseUnauthorized(normalizedPath);
+      const errPayload = await parseJsonSafe(res).catch(() => null);
+      const errMessage = String(
+        errPayload?.message ||
+          errPayload?.error ||
+          errPayload?.detail ||
+          errPayload?.hint ||
+          ""
+      ).trim();
+      const error = new Error(
+        `${init?.method || "GET"} ${normalizedPath} failed (${res.status})${errMessage ? ` — ${errMessage}` : ""}`
+      );
+
+      // Si on a un reverse proxy KO (502/503/504) ou une route health absente
+      // sur un ancien endpoint, on tente le candidat suivant. Pour les erreurs
+      // métier (400/401/403/404 hors health), on remonte immédiatement.
+      if ((res.status >= 500 || (res.status === 404 && normalizedPath === "/health")) && apiBase !== candidates[candidates.length - 1]) {
+        lastError = error;
+        continue;
+      }
+      throw error;
+    }
+
+    rememberWorkingApiUrl(apiBase);
+    return parseJsonSafe(res);
   }
 
-  if (!res) throw new Error(`${init?.method || "GET"} ${normalizedPath} failed — réponse absente`);
-
-  if (!res.ok) {
-    if (res.status === 401) clearNasAuthBecauseUnauthorized(normalizedPath);
-    const errPayload = await parseJsonSafe(res).catch(() => null);
-    const errMessage = String(
-      errPayload?.message ||
-        errPayload?.error ||
-        errPayload?.detail ||
-        errPayload?.hint ||
-        ""
-    ).trim();
-    throw new Error(
-      `${init?.method || "GET"} ${normalizedPath} failed (${res.status})${errMessage ? ` — ${errMessage}` : ""}`
-    );
-  }
-
-  return parseJsonSafe(res);
+  throw lastError || new Error(`${init?.method || "GET"} ${normalizedPath} failed — aucun backend NAS joignable`);
 }
-
 
 export async function apiGet(path: string) {
   return doFetch(path);
@@ -284,7 +340,7 @@ export async function apiDelete(path: string) {
 
 export function buildApiUrl(path: string, query?: Record<string, string | number | boolean | null | undefined>) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const url = new URL(`${API_URL}${normalizedPath}`);
+  const url = new URL(`${currentApiUrl()}${normalizedPath}`);
   for (const [key, value] of Object.entries(query || {})) {
     if (value === null || value === undefined || value === "") continue;
     url.searchParams.set(key, String(value));
@@ -293,5 +349,5 @@ export function buildApiUrl(path: string, query?: Record<string, string | number
 }
 
 export function getApiUrl() {
-  return API_URL;
+  return currentApiUrl();
 }

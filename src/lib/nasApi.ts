@@ -62,6 +62,44 @@ function readLs(key: string): string {
   }
 }
 
+function sanitizeNasBaseUrl(raw: unknown): string {
+  const value = String(raw || "").trim().replace(/\/+$/, "");
+  if (!value) return "";
+  if (value.includes("sustainability-accordingly-steven-investments.trycloudflare.com")) return "";
+  return value;
+}
+
+function uniqueNasBaseUrls(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const clean = sanitizeNasBaseUrl(raw);
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    out.push(clean);
+  }
+  return out;
+}
+
+function getNasApiBaseCandidates(): string[] {
+  const lastOk = sanitizeNasBaseUrl(readLs("dc_api_url_last_ok"));
+  const manualOverride = sanitizeNasBaseUrl(readLs("dc_api_url"));
+  return uniqueNasBaseUrls([
+    lastOk,
+    manualOverride,
+    NAS_API_URL,
+    "https://api.multisports-api.fr",
+    "http://api.multisports-api.fr:3000",
+  ]);
+}
+
+function rememberNasApiBaseUrl(url: string) {
+  try {
+    const clean = sanitizeNasBaseUrl(url);
+    if (clean) writeLs("dc_api_url_last_ok", clean);
+  } catch {}
+}
+
 function dispatchAuthChanged(detail?: any) {
   if (typeof window === "undefined") return;
   try {
@@ -162,61 +200,78 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 type NasFetchInit = RequestInit & { timeoutMs?: number };
 
 async function apiFetch(path: string, init?: NasFetchInit): Promise<any> {
-  if (!NAS_API_URL) {
+  const bases = getNasApiBaseCandidates();
+  if (!bases.length) {
     throw new Error("VITE_NAS_API_URL manquant.");
   }
 
-  const url = `${NAS_API_URL}${path.startsWith("/") ? path : `/${path}`}`;
-
+  const pathPart = path.startsWith("/") ? path : `/${path}`;
   const timeoutMs = Math.max(0, Number((init as any)?.timeoutMs ?? 0) || 0);
-  const ctrl = timeoutMs > 0 ? new AbortController() : null;
-  const timer = ctrl
-    ? window.setTimeout(() => {
-        try {
-          ctrl.abort(new DOMException("timeout", "AbortError"));
-        } catch {
-          ctrl.abort();
-        }
-      }, timeoutMs)
-    : null;
+  let lastError: any = null;
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...init,
-      signal: ctrl?.signal ?? init?.signal,
-      headers: {
-        ...authHeaders(),
-        ...((init?.headers as Record<string, string> | undefined) || {}),
-      },
-    });
-  } catch (e: any) {
-    const msg = String(e?.message || "");
-    const aborted = e?.name === "AbortError" || /abort|timeout/i.test(msg);
-    if (aborted && timeoutMs > 0) {
-      throw new Error(`Backend NAS trop lent (timeout ${timeoutMs}ms).`);
+  for (const baseUrl of bases) {
+    const url = `${baseUrl}${pathPart}`;
+    const ctrl = timeoutMs > 0 ? new AbortController() : null;
+    const timer = ctrl
+      ? window.setTimeout(() => {
+          try {
+            ctrl.abort(new DOMException("timeout", "AbortError"));
+          } catch {
+            ctrl.abort();
+          }
+        }, timeoutMs)
+      : null;
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...init,
+        signal: ctrl?.signal ?? init?.signal,
+        headers: {
+          ...authHeaders(),
+          ...((init?.headers as Record<string, string> | undefined) || {}),
+        },
+      });
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      const aborted = e?.name === "AbortError" || /abort|timeout/i.test(msg);
+      lastError = new Error(aborted
+        ? `Backend NAS trop lent (timeout ${timeoutMs}ms).`
+        : `Backend NAS injoignable (${baseUrl}).`);
+      if (timer) window.clearTimeout(timer);
+      continue;
+    } finally {
+      if (timer) window.clearTimeout(timer);
     }
-    throw new Error(e?.message || "Backend NAS injoignable.");
-  } finally {
-    if (timer) window.clearTimeout(timer);
+
+    const text = await res.text();
+    const json = readJson<any>(text, {});
+
+    if (!res.ok) {
+      const message = json?.error || json?.message || text || `Erreur backend NAS (${res.status})`;
+      if (res.status === 401) {
+        runtimeDiag("nas:http401", { path, message });
+        try { saveNasTokens(null, { silent: true }); } catch {}
+      }
+      const err: any = new Error(message);
+      err.status = res.status;
+      err.path = path;
+      err.baseUrl = baseUrl;
+
+      // Un reverse proxy/tunnel peut répondre 502/503/504 pendant le réveil.
+      // On tente alors l’override manuel ou le dernier endpoint fonctionnel.
+      if ((res.status >= 500 || (res.status === 404 && pathPart === "/health")) && baseUrl !== bases[bases.length - 1]) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+
+    rememberNasApiBaseUrl(baseUrl);
+    return json;
   }
 
-  const text = await res.text();
-  const json = readJson<any>(text, {});
-
-  if (!res.ok) {
-    const message = json?.error || json?.message || text || `Erreur backend NAS (${res.status})`;
-    if (res.status === 401) {
-      runtimeDiag("nas:http401", { path, message });
-      try { saveNasTokens(null, { silent: true }); } catch {}
-    }
-    const err: any = new Error(message);
-    err.status = res.status;
-    err.path = path;
-    throw err;
-  }
-
-  return json;
+  throw lastError || new Error("Backend NAS injoignable.");
 }
 
 function normalizeUser(raw: any, fallbackEmail?: string): UserAuth {

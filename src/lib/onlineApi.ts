@@ -1533,27 +1533,30 @@ async function pushStoreSnapshot(payload: any, version = 8, opts?: { force?: boo
 // ============================================================
 // ONLINE SERVER PING (safe)
 // ============================================================
-export type PingResult = { ok: true; authRequired?: boolean };
+export type PingResult = { ok: true; authRequired?: boolean; provider?: "nas" | "supabase"; dbReady?: boolean };
 
 async function ping(): Promise<PingResult> {
-  if (isNasProviderEnabled()) {
-    try {
-      await ensureNasSession();
-      return { ok: true };
-    } catch {
-      return { ok: true, authRequired: true };
+  // En mode NAS ou hybride, les associations profils, snapshots et stats liées
+  // passent par le backend NAS. Le statut affiché dans ONLINE doit donc tester
+  // /health du NAS, pas seulement Supabase. Sinon l’écran peut dire "hors ligne"
+  // alors que l’API utilisée par les associations est un autre serveur.
+  if (isNasProviderEnabled() || isNasDataSyncEnabled()) {
+    const health = await apiGet("/health");
+    if (health?.ok === false) {
+      throw new Error(health?.error || "Backend NAS joignable mais base de données indisponible.");
     }
+    return { ok: true, provider: "nas", dbReady: health?.dbReady !== false };
   }
 
   const { error } = await supabase.from("online_lobbies").select("id").limit(1);
 
   if (error) {
     const msg = String((error as any).message || error).toLowerCase();
-    if (msg.includes("permission")) return { ok: true, authRequired: true };
+    if (msg.includes("permission")) return { ok: true, authRequired: true, provider: "supabase" };
     throw error;
   }
 
-  return { ok: true };
+  return { ok: true, provider: "supabase" };
 }
 
 // ============================================================
