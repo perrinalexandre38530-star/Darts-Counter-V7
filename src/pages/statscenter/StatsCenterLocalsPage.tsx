@@ -192,12 +192,16 @@ export default function StatsCenterLocalsPage({ go }: Props) {
 
   return (
     <div style={pageWrap}>
-      <div style={topRow}>
-        <BackDot onClick={() => (go ? go("stats") : null)} />
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
+      <div style={{ position: "relative", minHeight: 64, marginBottom: 10 }}>
+        <div style={{ width: "100%", minWidth: 0 }}>
+          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
         </div>
-        <InfoDot onClick={() => (go ? go("stats") : null)} />
+        <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <BackDot onClick={() => (go ? go("stats") : null)} />
+        </div>
+        <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <InfoDot onClick={() => (go ? go("stats") : null)} />
+        </div>
       </div>
 
       <div style={pill}>{tr("stats.dashboardGlobal", "DASHBOARD GLOBAL")}</div>

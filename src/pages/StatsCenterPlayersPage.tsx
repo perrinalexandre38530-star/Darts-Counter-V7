@@ -5,21 +5,21 @@
 // ============================================
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useTheme } from "../../contexts/ThemeContext";
-import { useLang } from "../../contexts/LangContext";
-import { useSport } from "../../contexts/SportContext";
+import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
+import { useSport } from "../contexts/SportContext";
 
-import BackDot from "../../components/BackDot";
-import InfoDot from "../../components/InfoDot";
-import ProfileAvatar from "../../components/ProfileAvatar";
-import ProfileStarRing from "../../components/ProfileStarRing";
-import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
+import ProfileAvatar from "../components/ProfileAvatar";
+import ProfileStarRing from "../components/ProfileStarRing";
+import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 
-import { useStore } from "../../contexts/StoreContext";
-import { useStatsProvider } from "../../stats/useStatsProvider";
+import { useStore } from "../contexts/StoreContext";
+import { useStatsProvider } from "../stats/useStatsProvider";
 
-import type { Profile } from "../../lib/types";
-import { sortProfilesByModeUsage } from "../../lib/profileUsage";
+import type { Profile } from "../lib/types";
+import { sortProfilesByModeUsage } from "../lib/profileUsage";
 
 type Props = { go?: any };
 
@@ -293,12 +293,16 @@ export default function StatsCenterPlayersPage({ go }: Props) {
 
   return (
     <div style={pageWrap}>
-      <div style={topRow}>
-        <BackDot onClick={() => (go ? go("stats") : null)} />
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
+      <div style={{ position: "relative", minHeight: 64, marginBottom: 10 }}>
+        <div style={{ width: "100%", minWidth: 0 }}>
+          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
         </div>
-        <InfoDot onClick={() => (go ? go("stats") : null)} />
+        <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <BackDot onClick={() => (go ? go("stats") : null)} />
+        </div>
+        <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <InfoDot onClick={() => (go ? go("stats") : null)} />
+        </div>
       </div>
 
       <div style={pill}>{tr("stats.dashboardGlobal", "DASHBOARD GLOBAL")}</div>

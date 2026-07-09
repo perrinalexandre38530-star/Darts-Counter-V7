@@ -6,6 +6,23 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+
+function resolveProfileStarScore(profile: any) {
+  const raw =
+    profile?.profileStars ??
+    profile?.profileStarRating ??
+    profile?.stars ??
+    profile?.levelStars ??
+    profile?.level ??
+    profile?.x01ProfileStarring ??
+    profile?.dartsProfileStarring ??
+    profile?.stats?.profileStarRating ??
+    profile?.stats?.level ??
+    profile?.stats?.avg3 ??
+    0;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
 import {
   babyFootRating,
   computeBabyFootLeaderboards,
@@ -176,7 +193,7 @@ function sectionTitle(label: string, color = C.gold) {
 
 function HeaderTickerImage({ src, alt, fallbackLabel, color = C.gold }: { src?: string | null; alt: string; fallbackLabel?: string; color?: string }) {
   if (src) {
-    return <img src={src} alt={alt} className="bf-stats-center-title-img" style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", margin: "0 auto", filter: `drop-shadow(0 0 16px ${color}28)` }} draggable={false} />;
+    return <img src={src} alt={alt} className="bf-stats-center-title-img" style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", margin: "0 auto", filter: `drop-shadow(0 0 16px ${color}28)` }} draggable={false} />;
   }
   return (
     <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, maxWidth: "100%", minWidth: 0, padding: "10px 16px", borderRadius: 18, border: `1px solid ${color}66`, background: `linear-gradient(90deg,rgba(0,0,0,.18),${color}16,rgba(0,0,0,.18))`, boxShadow: `0 0 18px ${color}22, inset 0 0 18px ${color}14` }}>
@@ -230,7 +247,7 @@ function StatHeroAvatar({ profile, size = 72, glowColor = C.gold, showStars = fa
       <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: 999, padding: 3, background: "rgba(8,10,18,.92)", boxShadow: `inset 0 0 0 1px ${glowColor}55` }}>
         <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#111" }}><ProfileAvatar profile={profile} size={size - 6} /></div>
       </div>
-      {showStars ? <ProfileStarRing profile={profile} anchorSize={size} starSize={10} gapPx={-3} /> : null}
+      {showStars ? <ProfileStarRing profile={profile} score={resolveProfileStarScore(profile)} anchorSize={size} starSize={10} gapPx={-3} /> : null}
     </div>
   );
 }
@@ -764,7 +781,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         .bf-stats-center-row::-webkit-scrollbar { display: none; }
         @media (max-width: 560px) {
           .bf-stats-center-title { font-size: 19px !important; letter-spacing: .5px !important; }
-          .bf-stats-center-title-img { max-width: min(100%, 360px) !important; }
+          .bf-stats-center-title-img { max-width: none !important; }
           .bf-stats-center-subtitle { font-size: 10px !important; }
         }
         @media (max-width: 380px) {
@@ -772,9 +789,9 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         }
       `}</style>
       <div className="bf-stats-center-shell" style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 24px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
-        <div style={{ position: "relative", minHeight: 62, display: "grid", placeItems: "center", paddingInline: 4 }}>
-          <div style={{ position: "absolute", left: 4, top: 3 }}><BackDot onClick={() => go("stats" as any)} /></div>
-          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 56 }}>
+        <div style={{ position: "relative", minHeight: 64, display: "grid", placeItems: "center" }}>
+          <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}><BackDot onClick={() => go("stats" as any)} /></div>
+          <div style={{ textAlign: "center", minWidth: 0, width: "100%" }}>
             <HeaderTickerImage
               src={rankingOnly ? undefined : statsCenterTicker}
               alt={rankingOnly ? "Baby-Foot Rankings" : "Statistics Center"}
@@ -782,7 +799,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               color={primary}
             />
           </div>
-          <div style={{ position: "absolute", right: 4, top: 6 }}>
+          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
             <HeaderIconButton active={filtersOpen} onClick={() => setFiltersOpen((v) => !v)} title={filtersOpen ? "Masquer les filtres" : "Afficher les filtres"}>
               <FilterGlyph />
             </HeaderIconButton>

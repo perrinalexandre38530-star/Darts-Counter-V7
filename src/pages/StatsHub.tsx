@@ -23,6 +23,7 @@ import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
+import BackDot from "../components/BackDot";
 import type { Dart as UIDart } from "../lib/types";
 import {
   getCricketProfileStats,
@@ -7086,19 +7087,22 @@ return (
             marginBottom: 12,
           }}
         >
-          <div style={{ display: "flex", justifyContent: "center", width: "100%", paddingInline: 18 }}>
+          <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
             <img
               src={statsCenterTicker}
               alt="Statistics Center"
               draggable={false}
               style={{
                 width: "100%",
-                maxWidth: 560,
+                maxWidth: "none",
                 height: "auto",
                 display: "block",
                 filter: `drop-shadow(0 0 18px ${T.accent ?? T.gold}44)`,
               }}
             />
+            <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
+              <BackDot onClick={() => go("stats" as any)} />
+            </div>
           </div>
 
           {/* Carrousel modes */}

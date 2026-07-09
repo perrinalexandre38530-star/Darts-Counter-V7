@@ -10,6 +10,7 @@ import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import BackDot from "../../components/BackDot";
 import teamStatsTicker from "../../assets/tickers/ticker_team_statistics_universal.webp";
 import { aggregatePetanqueByTeam, getPetanqueMatches, listPetanquePlayersFromMatches } from "../../lib/petanqueStats";
 
@@ -101,14 +102,11 @@ export default function PetanqueStatsTeamsPage({ store, go }: Props) {
 
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <button onClick={() => go("stats")} style={{ border: "none", background: "transparent", color: theme.text, fontWeight: 900 }}>
-          ← {t("common.back", "Retour")}
-        </button>
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-          <img src={teamStatsTicker} alt="Team Statistics" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${theme.primary || "#47B5FF"}44)` }} />
+      <div style={{ position: "relative", width: "100%" }}>
+        <img src={teamStatsTicker} alt="Team Statistics" draggable={false} style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${theme.primary || "#47B5FF"}44)` }} />
+        <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
+          <BackDot onClick={() => go("stats")} />
         </div>
-        <div style={{ width: 40 }} />
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>

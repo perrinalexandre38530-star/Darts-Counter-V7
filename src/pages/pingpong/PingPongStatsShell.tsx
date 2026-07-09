@@ -17,6 +17,7 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+import BackDot from "../../components/BackDot";
 
 type Props = {
   store: Store;
@@ -174,53 +175,33 @@ export default function StatsShell({ store, go }: Props) {
       `}</style>
 
       {/* ===== HEADER ===== */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          paddingInline: 18,
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div style={{ textAlign: "left" }}>
-            <img
-              src={statsCenterTicker}
-              alt="Statistics Center"
-              draggable={false}
-              style={{
-                width: "100%",
-                maxWidth: 430,
-                height: "auto",
-                display: "block",
-                marginBottom: 8,
-                filter: `drop-shadow(0 0 14px ${theme.primary}55)`,
-              }}
-            />
-            <div
-              style={{
-                fontSize: 13,
-                lineHeight: 1.35,
-                color: theme.textSoft,
-                maxWidth: 260,
-              }}
-            >
-              {t(
+      <div style={{ width: "100%", maxWidth: "none", paddingInline: 0, marginBottom: 16 }}>
+        <div style={{ position: "relative", width: "100%", minWidth: 0 }}>
+          <img
+            src={statsCenterTicker}
+            alt="Statistics Center"
+            draggable={false}
+            style={{
+              width: "100%",
+              maxWidth: "none",
+              height: "auto",
+              display: "block",
+              filter: `drop-shadow(0 0 14px ${theme.primary}55)`,
+            }}
+          />
+          <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
+            <BackDot onClick={() => go("pingpong_menu" as any)} />
+          </div>
+        </div>
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingInline: 8 }}>
+          <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
+            {t(
                 "statsShell.subtitle",
                 "Analyse tes performances, ton training, ton historique et synchronise tes stats."
               )}
-            </div>
           </div>
-
           <button
-            onClick={() => go("sync_center")}
+            onClick={() => go("sync_center" as any)}
             style={{
               borderRadius: 999,
               border: `1px solid ${theme.primary}`,
@@ -247,7 +228,7 @@ export default function StatsShell({ store, go }: Props) {
         className="stats-shell-list"
         style={{
           width: "100%",
-          maxWidth: 520,
+          maxWidth: "none",
           display: "flex",
           flexDirection: "column",
           gap: "var(--menu-gap)",

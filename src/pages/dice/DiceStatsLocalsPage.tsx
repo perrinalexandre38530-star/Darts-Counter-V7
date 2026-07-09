@@ -233,7 +233,7 @@ export default function DiceStatsLocalsPage({ go }: Props) {
       <div style={topRow}>
         <BackDot onClick={() => (go ? go("dice_stats") : window.history.back())} />
         <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
+          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
         </div>
         <InfoDot
           onClick={() =>

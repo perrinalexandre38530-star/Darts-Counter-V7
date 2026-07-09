@@ -9,6 +9,7 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import BackDot from "../../components/BackDot";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import {
   aggregateDuos,
@@ -85,20 +86,15 @@ export default function PetanqueStatsPlayersPage({ store, go }: Props) {
 
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <button
-          onClick={() => go("stats")}
-          style={{ background: "transparent", border: "none", color: theme.text, cursor: "pointer", fontWeight: 900 }}
-        >
-          ← {t("common.back", "Retour")}
-        </button>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          {t("petanque.stats.players.kpi", "Matchs")}: {totalMatches} · {t("petanque.stats.players.kpi2", "Joueurs")}: {totalPlayers}
+      <div style={{ position: "relative", width: "100%", marginTop: 4 }}>
+        <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: "none", height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${theme.primary || "#47B5FF"}44)` }} />
+        <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
+          <BackDot onClick={() => go("stats")} />
         </div>
       </div>
 
-      <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
-        <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${theme.primary || "#47B5FF"}44)` }} />
+      <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8, textAlign: "center" }}>
+        {t("petanque.stats.players.kpi", "Matchs")}: {totalMatches} · {t("petanque.stats.players.kpi2", "Joueurs")}: {totalPlayers}
       </div>
 
       {/* Filters */}
