@@ -5,7 +5,7 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import { History } from "../../lib/history";
 import { loadBabyFootTeams, type BabyFootTeam } from "../../lib/petanqueTeamsStore";
-import teamStatsTicker from "../../assets/tickers/ticker_babyfoot_team_statistics.svg";
+import teamStatsTicker from "../../assets/tickers/ticker_team_statistics_universal.webp";
 import {
   babyFootTeamRating,
   computeBabyFootTeamStatsBundle,

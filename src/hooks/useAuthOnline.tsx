@@ -18,7 +18,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
-import { isNasProviderEnabled } from "../lib/serverConfig";
+import { isNasProviderEnabled, isNasDataSyncEnabled } from "../lib/serverConfig";
 import { readNasAccessToken } from "../lib/apiClient";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
@@ -88,7 +88,7 @@ async function cleanupDeletedAccountLocalData(): Promise<void> {
 
 async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
   try {
-    if (!isNasProviderEnabled()) return;
+    if (!isNasDataSyncEnabled()) return;
 
     try {
       const authAny: any = (supabase as any)?.auth;
@@ -132,7 +132,7 @@ async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
 
 async function ensureOnlineProfileRow(user: User): Promise<void> {
   try {
-    if (isNasProviderEnabled()) return;
+    if (isNasDataSyncEnabled()) return;
     const existing = await supabase
       .from("profiles")
       .select("id")
@@ -220,7 +220,7 @@ async function safeGetSession(): Promise<Session | null> {
     const nasBridge = await safeGetNasBridgeSession();
     if (nasBridge?.user) return nasBridge;
 
-    if (isNasProviderEnabled()) {
+    if (isNasDataSyncEnabled()) {
       await cleanupSupabaseLocalSessionForNas();
       return null;
     }
@@ -318,7 +318,7 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
         return String((pi as any)?.onlineUserId || "") === uid;
       });
 
-      if (isNasProviderEnabled() && !alreadyLinked) {
+      if (isNasDataSyncEnabled() && !alreadyLinked) {
         return store;
       }
 
@@ -547,13 +547,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   React.useEffect(() => {
-    if (!isNasProviderEnabled()) return;
+    if (!isNasDataSyncEnabled()) return;
     cleanupSupabaseLocalSessionForNas();
   }, []);
 
   const refresh = React.useCallback(async () => {
     try {
-      if (isNasProviderEnabled()) {
+      if (isNasDataSyncEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
 
@@ -595,7 +595,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     (async () => {
       try {
-        if (isNasProviderEnabled()) {
+        if (isNasDataSyncEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
         }
 
@@ -632,7 +632,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             }
             lastNasAuthAttemptRef.current = nowTs;
 
-            if (isNasProviderEnabled()) {
+            if (isNasDataSyncEnabled()) {
               await cleanupSupabaseLocalSessionForNas();
             }
             const nextSession = await safeEnsureSession();
@@ -665,7 +665,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
         window.addEventListener("dc-auth-changed", nasHandler as EventListener);
 
-        if (isNasProviderEnabled()) {
+        if (isNasDataSyncEnabled()) {
           return;
         }
 
@@ -730,7 +730,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const signup = React.useCallback(
     async (payload: { email?: string; nickname: string; password?: string }) => {
       try {
-        if (isNasProviderEnabled()) {
+        if (isNasDataSyncEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
         }
         const ok = await (onlineApi as any).signup?.(payload);
@@ -757,7 +757,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const login = React.useCallback(
     async (payload: { email?: string; nickname?: string; password?: string }) => {
       try {
-        if (isNasProviderEnabled()) {
+        if (isNasDataSyncEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
         }
         const ok = await (onlineApi as any).login?.(payload);
@@ -790,7 +790,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } finally {
       try { setStorageUser(null); } catch {}
       purgeAuthKeysFromBrowser();
-      if (isNasProviderEnabled()) {
+      if (isNasDataSyncEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
       lastSignedInSessionRef.current = null;
@@ -819,7 +819,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } finally {
       try { setStorageUser(null); } catch {}
       await cleanupDeletedAccountLocalData();
-      if (isNasProviderEnabled()) {
+      if (isNasDataSyncEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
       lastSignedInSessionRef.current = null;

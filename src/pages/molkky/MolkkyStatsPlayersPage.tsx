@@ -15,6 +15,7 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
+import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 
 import { useStore } from "../../contexts/StoreContext";
 
@@ -243,7 +244,9 @@ export default function MolkkyStatsPlayersPage({ go, embedded }: Props) {
         <>
           <div style={topRow}>
             <BackDot onClick={() => (go ? go("molkky_stats") : window.history.back())} />
-            <div style={title}>{t("stats.center", "CENTRE DE STATISTIQUES")}</div>
+            <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
+        </div>
             <InfoDot
               onClick={() =>
                 alert("Stats Mölkky — Dashboard\n\n- Carousel pour naviguer entre les profils\n- Les données sont calculées via l\x27historique local")

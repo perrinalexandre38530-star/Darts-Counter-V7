@@ -227,6 +227,10 @@ export type OnlineMatchRow = {
 // Config
 // --------------------------------------------
 const USE_MOCK = false;
+function useNasOnlineBackend(): boolean {
+  return isNasProviderEnabled() || isNasDataSyncEnabled();
+}
+
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
 const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
@@ -1112,10 +1116,12 @@ async function logout(): Promise<void> {
 }
 
 async function getCurrentSession(): Promise<AuthSession | null> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     try {
       return await ensureNasSession();
     } catch {
+      // En mode hybride, on garde un dernier secours Supabase pour les anciens comptes non bridgés.
+      if (!isNasProviderEnabled()) return await restoreSession();
       return null;
     }
   }
@@ -1123,7 +1129,7 @@ async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 async function getProfile(): Promise<OnlineProfile | null> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     return await nasGetProfile();
   }
@@ -1255,7 +1261,7 @@ async function deleteAccount(): Promise<void> {
 // Profil
 // ============================================================
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     return await nasUpdateProfile(patch);
   }
@@ -1317,7 +1323,7 @@ async function uploadAvatarImage(opts: {
   folder?: string;
   updateProfile?: boolean;
 }): Promise<{ publicUrl: string; path: string }> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     return await nasUploadAvatarImage(opts);
   }
@@ -1570,7 +1576,7 @@ function generateLobbyCode(): string {
 }
 
 async function createLobby(args: { mode: string; maxPlayers: number; settings: OnlineLobbySettings }): Promise<OnlineLobby> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiPost("/online/lobbies/create-safe", {
       mode: args.mode,
@@ -1617,7 +1623,7 @@ async function createLobby(args: { mode: string; maxPlayers: number; settings: O
 async function joinLobby(args: { code: string; [k: string]: any }): Promise<OnlineLobby> {
   const codeUpper = safeUpper(args.code);
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/join-safe`, {
       code: codeUpper,
@@ -1644,7 +1650,7 @@ async function setLobbyReady(args: { code: string; ready: boolean; nickname?: st
   const codeUpper = safeUpper(args.code);
   if (!codeUpper) throw new Error("Code salon manquant.");
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/ready-safe`, {
       ready: !!args.ready,
@@ -1679,7 +1685,7 @@ async function setLobbyReady(args: { code: string; ready: boolean; nickname?: st
 
 async function getLobby(code: string): Promise<OnlineLobby> {
   const codeUpper = safeUpper(code);
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiGet(`/online/lobbies/${encodeURIComponent(codeUpper)}`);
     return (res?.lobby || res) as OnlineLobby;
@@ -1699,7 +1705,7 @@ async function getLobby(code: string): Promise<OnlineLobby> {
 
 // ✅ A) Lobbies actifs pour page “ONLINE / Spectateur”
 async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiGet(`/online/lobbies?limit=${encodeURIComponent(String(limit))}`);
     return Array.isArray(res?.lobbies) ? res.lobbies : [];
@@ -1722,7 +1728,7 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
 async function startMatch(args: { lobbyCode: string; initialState?: any }): Promise<OnlineMatchRow> {
   const code = safeUpper(args.lobbyCode);
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiPost("/online/matches/start-safe", {
       lobbyCode: code,
@@ -1767,7 +1773,7 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
 async function updateMatchState(args: { lobbyCode: string; state: any; status?: OnlineMatchStatus }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     await apiPost("/online/matches/state-safe", {
       lobbyCode: code,
@@ -1790,7 +1796,7 @@ async function updateMatchState(args: { lobbyCode: string; state: any; status?: 
 async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     await apiPost("/online/matches/end-safe", {
       lobbyCode: code,
@@ -1814,7 +1820,7 @@ async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | nul
   const code = safeUpper(lobbyCode);
   if (!code) return null;
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiGet(`/online/matches/by-code-safe/${encodeURIComponent(code)}`);
     return (res?.match || null) as OnlineMatchRow | null;
@@ -1842,7 +1848,7 @@ type OnlineStreamHandlers = {
 
 function subscribeOnlineStream(lobbyCode: string, handlers: OnlineStreamHandlers = {}) {
   const code = safeUpper(lobbyCode);
-  if (!code || !isNasProviderEnabled() || typeof window === "undefined" || typeof EventSource === "undefined") {
+  if (!code || !useNasOnlineBackend() || typeof window === "undefined" || typeof EventSource === "undefined") {
     return () => {};
   }
 
@@ -1962,7 +1968,7 @@ async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
 }
 
 async function listMatches(limit = 50): Promise<OnlineMatch[]> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     const res = await apiGet(`/online/matches?limit=${encodeURIComponent(String(limit))}`);
     const rows = Array.isArray(res?.matches) ? res.matches : [];
@@ -1981,7 +1987,7 @@ async function listMatches(limit = 50): Promise<OnlineMatch[]> {
 
 
 async function uploadMediaAsset(payload: UploadMediaAssetPayload): Promise<ResolvedMediaAsset> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     return await nasUploadMediaAsset(payload as any);
   }
@@ -1992,7 +1998,7 @@ async function bulkResolveMediaAssets(ids: string[]): Promise<ResolvedMediaAsset
   const cleanIds = (Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean);
   if (!cleanIds.length) return [];
 
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     await ensureNasSession();
     return await nasBulkResolveMediaAssets(cleanIds);
   }
@@ -2000,7 +2006,7 @@ async function bulkResolveMediaAssets(ids: string[]): Promise<ResolvedMediaAsset
 }
 
 async function mediaHealth(): Promise<any> {
-  if (isNasProviderEnabled()) {
+  if (useNasOnlineBackend()) {
     return await nasMediaHealth();
   }
   return { ok: false, provider: "supabase" };

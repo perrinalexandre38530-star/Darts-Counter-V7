@@ -1,4 +1,6 @@
 import { supabase } from "./supabaseClient";
+import { isNasDataSyncEnabled } from "./serverConfig";
+import { onlineApi } from "./onlineApi";
 
 export type LobbyRow = {
   id: string;
@@ -24,10 +26,39 @@ function safeUpper(code: string) {
   return String(code || "").trim().toUpperCase();
 }
 
+function mapLobbyToRow(lobby: any): LobbyRow {
+  return {
+    id: String(lobby?.id || lobby?.code || ""),
+    lobby_code: String(lobby?.lobby_code || lobby?.code || "").trim().toUpperCase() || null,
+    status: String(lobby?.status || "waiting"),
+    title: lobby?.title || lobby?.settings?.label || lobby?.mode || null,
+    players: lobby?.players || null,
+    updated_at: lobby?.updated_at || lobby?.updatedAt || lobby?.createdAt || undefined,
+    created_at: lobby?.created_at || lobby?.createdAt || undefined,
+  };
+}
+
+function mapMatchToRow(match: any): MatchRow {
+  return {
+    id: String(match?.id || match?.matchId || match?.onlineMatchId || ""),
+    lobby_code: String(match?.lobby_code || match?.lobbyCode || match?.payload?.lobbyCode || "").trim().toUpperCase() || null,
+    status: String(match?.status || "started"),
+    state_json: match?.state_json || match?.state || match?.payload?.state || match?.payload || {},
+    updated_at: match?.updated_at || match?.updatedAt || undefined,
+    created_at: match?.created_at || match?.createdAt || undefined,
+    finished_at: match?.finished_at || match?.finishedAt || null,
+  };
+}
+
 /* ------------------------------
    A) Lobbies list
 ------------------------------- */
 export async function listActiveLobbies(limit = 50): Promise<LobbyRow[]> {
+  if (isNasDataSyncEnabled()) {
+    const rows = await onlineApi.listActiveLobbies(limit);
+    return (Array.isArray(rows) ? rows : []).map(mapLobbyToRow);
+  }
+
   const { data, error } = await supabase
     .from("online_lobbies")
     .select("*")
@@ -40,6 +71,12 @@ export async function listActiveLobbies(limit = 50): Promise<LobbyRow[]> {
 }
 
 export function subscribeLobbies(onChange: () => void) {
+  if (isNasDataSyncEnabled()) {
+    // En mode NAS/hybride, la page spectateur se rafraîchit par polling UI.
+    // On ne branche pas le websocket Supabase navigateur, qui provoquait des ERR_NAME_NOT_RESOLVED.
+    return async () => {};
+  }
+
   const ch = supabase
     .channel("spectator:lobbies")
     .on(
@@ -61,6 +98,11 @@ export async function fetchMatchByCode(lobbyCode: string): Promise<MatchRow | nu
   const code = safeUpper(lobbyCode);
   if (!code) return null;
 
+  if (isNasDataSyncEnabled()) {
+    const row = await onlineApi.fetchMatchByCode(code);
+    return row ? mapMatchToRow(row) : null;
+  }
+
   const { data, error } = await supabase
     .from("online_matches")
     .select("*")
@@ -75,6 +117,14 @@ export async function fetchMatchByCode(lobbyCode: string): Promise<MatchRow | nu
 
 export function subscribeMatchState(lobbyCode: string, onUpsert: (row: MatchRow) => void) {
   const code = safeUpper(lobbyCode);
+
+  if (isNasDataSyncEnabled()) {
+    const stop = onlineApi.subscribeOnlineStream(code, {
+      onMatch: (row: any) => onUpsert(mapMatchToRow(row)),
+    });
+    return async () => { try { stop?.(); } catch {} };
+  }
+
   const ch = supabase
     .channel(`spectator:match:${code}`)
     .on(

@@ -1,4 +1,4 @@
-import { getNasApiUrl, isNasProviderEnabled } from "./serverConfig";
+import { getNasApiUrl, isNasDataSyncEnabled } from "./serverConfig";
 import { nasRestoreSession } from "./nasApi";
 
 const LEGACY_BAD_HOSTS = [
@@ -188,7 +188,7 @@ function clearNasAuthBecauseUnauthorized(sourcePath = "") {
 }
 
 async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<string> {
-  if (!isNasProviderEnabled()) return "";
+  if (!isNasDataSyncEnabled()) return "";
 
   const existing = readNasAccessToken();
   if (existing && reason === "missing_token") return existing;

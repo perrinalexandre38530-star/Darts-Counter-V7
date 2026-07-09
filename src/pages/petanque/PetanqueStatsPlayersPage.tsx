@@ -9,6 +9,7 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import {
   aggregateDuos,
   aggregatePlayers,
@@ -96,18 +97,8 @@ export default function PetanqueStatsPlayersPage({ store, go }: Props) {
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 10,
-          fontSize: 22,
-          fontWeight: 1000,
-          letterSpacing: 0.6,
-          textTransform: "uppercase",
-          textAlign: "center",
-          color: theme.text,
-        }}
-      >
-        {t("petanque.stats.players.title", "JOUEURS")}
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+        <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${theme.primary || "#47B5FF"}44)` }} />
       </div>
 
       {/* Filters */}

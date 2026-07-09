@@ -14,6 +14,7 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
+import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 
 import { loadMolkkyMatches } from "../../lib/molkkyStore";
 import { aggregatePlayers, safeNum, formatDuration } from "../../lib/molkkyStats";
@@ -242,7 +243,9 @@ export default function MolkkyStatsLocalsPage({ go, embedded }: Props) {
         <>
           <div style={topRow}>
             <BackDot onClick={() => (go ? go("molkky_stats") : window.history.back())} />
-            <div style={title}>{t("molkky.localProfiles", "MÖLKKY — PROFILS LOCAUX")}</div>
+            <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+          <img src={statsCenterTicker} alt="Statistics Center" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${accent}44)` }} />
+        </div>
             <InfoDot onClick={() => alert("Profils locaux Mölkky")}
             />
           </div>

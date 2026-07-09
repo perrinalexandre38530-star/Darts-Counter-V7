@@ -5,7 +5,7 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
-import statsCenterTicker from "../../assets/tickers/ticker_babyfoot_stats_center.svg";
+import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import {
   babyFootRating,
   computeBabyFootLeaderboards,

@@ -16,9 +16,11 @@ export function SaveToast({ type, message, onClose }: Props) {
     <div
       style={{
         position: "fixed",
-        bottom: 24,
+        bottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)",
         left: "50%",
         transform: "translateX(-50%)",
+        maxWidth: "calc(100vw - 32px)",
+        textAlign: "center",
         background: type === "success" ? "#1f8f4a" : "#a83232",
         color: "white",
         padding: "12px 20px",

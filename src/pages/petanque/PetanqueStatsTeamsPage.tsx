@@ -10,6 +10,7 @@ import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import teamStatsTicker from "../../assets/tickers/ticker_team_statistics_universal.webp";
 import { aggregatePetanqueByTeam, getPetanqueMatches, listPetanquePlayersFromMatches } from "../../lib/petanqueStats";
 
 type Props = {
@@ -104,8 +105,10 @@ export default function PetanqueStatsTeamsPage({ store, go }: Props) {
         <button onClick={() => go("stats")} style={{ border: "none", background: "transparent", color: theme.text, fontWeight: 900 }}>
           ← {t("common.back", "Retour")}
         </button>
-        <div style={{ fontWeight: 1000, letterSpacing: 1.4, textTransform: "uppercase" }}>{t("petanque.stats.teams", "Équipes")}</div>
-        <div />
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+          <img src={teamStatsTicker} alt="Team Statistics" draggable={false} style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", filter: `drop-shadow(0 0 16px ${theme.primary || "#47B5FF"}44)` }} />
+        </div>
+        <div style={{ width: 40 }} />
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
