@@ -5,6 +5,7 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
+import statsCenterTicker from "../../assets/tickers/ticker_babyfoot_stats_center.svg";
 import {
   babyFootRating,
   computeBabyFootLeaderboards,
@@ -173,12 +174,52 @@ function sectionTitle(label: string, color = C.gold) {
   );
 }
 
-function HeaderTicker({ label, color = C.gold }: { label: string; color?: string }) {
+function HeaderTickerImage({ src, alt, fallbackLabel, color = C.gold }: { src?: string | null; alt: string; fallbackLabel?: string; color?: string }) {
+  if (src) {
+    return <img src={src} alt={alt} className="bf-stats-center-title-img" style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", margin: "0 auto", filter: `drop-shadow(0 0 16px ${color}28)` }} draggable={false} />;
+  }
   return (
     <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, maxWidth: "100%", minWidth: 0, padding: "10px 16px", borderRadius: 18, border: `1px solid ${color}66`, background: `linear-gradient(90deg,rgba(0,0,0,.18),${color}16,rgba(0,0,0,.18))`, boxShadow: `0 0 18px ${color}22, inset 0 0 18px ${color}14` }}>
       <span style={{ flex: "0 0 34px", height: 6, borderRadius: 999, background: `linear-gradient(90deg,transparent,${color})`, opacity: .9 }} />
-      <span className="bf-stats-center-title" style={{ color, fontSize: 21, lineHeight: 1.05, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase", textShadow: `0 0 14px ${color}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      <span className="bf-stats-center-title" style={{ color, fontSize: 21, lineHeight: 1.05, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase", textShadow: `0 0 14px ${color}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fallbackLabel || alt}</span>
     </div>
+  );
+}
+
+function HeaderIconButton({ active = false, onClick, children, title, color = C.blue }: { active?: boolean; onClick?: () => void; children: React.ReactNode; title?: string; color?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        border: `1px solid ${active ? color + "aa" : color + "55"}`,
+        color,
+        background: active ? `radial-gradient(circle at 35% 30%,${color}26,rgba(0,0,0,.22))` : `rgba(7,16,26,.72)`,
+        cursor: "pointer",
+        boxShadow: active ? `0 0 18px ${color}33, inset 0 0 14px ${color}12` : `0 0 14px ${color}18`,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilterGlyph({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 7h12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 12h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 17h10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="18" cy="7" r="2.2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="10" cy="12" r="2.2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="16" cy="17" r="2.2" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
   );
 }
 
@@ -239,6 +280,39 @@ function AvatarStrip({ playerIds, profilesById, max = 4 }: { playerIds: string[]
         })}
       </div>
       {extra > 0 ? <span style={{ marginLeft: 7, color: C.dim, fontSize: 9, fontWeight: 900 }}>+{extra}</span> : null}
+    </div>
+  );
+}
+
+function GhostAvatarBackdrop({ playerIds, profilesById, side }: { playerIds: string[]; profilesById: Map<string, Profile>; side: "left" | "right" }) {
+  const uniqueIds = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean))).slice(0, 3);
+  if (!uniqueIds.length) return null;
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        top: "50%",
+        [side]: -14,
+        transform: "translateY(-50%)",
+        display: "flex",
+        flexDirection: side === "left" ? "row" : "row-reverse",
+        alignItems: "center",
+        pointerEvents: "none",
+        opacity: .14,
+        filter: "saturate(1.05)",
+      } as React.CSSProperties}
+    >
+      {uniqueIds.map((id, index) => {
+        const profile = profilesById.get(id) || ({ id, name: id } as any);
+        return (
+          <div key={`${side}-${id}-${index}`} style={{ marginLeft: side === "left" && index > 0 ? -26 : 0, marginRight: side === "right" && index > 0 ? -26 : 0, transform: `scale(${1 - index * 0.08})` }}>
+            <div style={{ width: 92, height: 92, borderRadius: 999, overflow: "hidden", boxShadow: "0 0 0 1px rgba(255,255,255,.05)" }}>
+              <ProfileAvatar profile={profile as any} size={92} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -523,6 +597,8 @@ function MatchLine({ match, go, profilesById, primary = C.gold }: { match: BabyF
   const timeLabel = match.date ? new Date(match.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
     <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_center" })} style={{ position: "relative", width: "100%", border: `1px solid ${color}44`, borderRadius: 22, padding: 0, background: `linear-gradient(135deg,${color}12,rgba(255,255,255,.035) 40%,rgba(0,0,0,.34))`, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 12px 26px rgba(0,0,0,.30), inset 0 0 30px ${color}10` }}>
+      <GhostAvatarBackdrop playerIds={leftPlayerIds} profilesById={profilesById} side="left" />
+      <GhostAvatarBackdrop playerIds={rightPlayerIds} profilesById={profilesById} side="right" />
       <div style={{ position: "relative", padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -688,6 +764,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         .bf-stats-center-row::-webkit-scrollbar { display: none; }
         @media (max-width: 560px) {
           .bf-stats-center-title { font-size: 19px !important; letter-spacing: .5px !important; }
+          .bf-stats-center-title-img { max-width: min(100%, 360px) !important; }
           .bf-stats-center-subtitle { font-size: 10px !important; }
         }
         @media (max-width: 380px) {
@@ -697,11 +774,18 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
       <div className="bf-stats-center-shell" style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 24px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
         <div style={{ position: "relative", minHeight: 62, display: "grid", placeItems: "center", paddingInline: 4 }}>
           <div style={{ position: "absolute", left: 4, top: 3 }}><BackDot onClick={() => go("stats" as any)} /></div>
-          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 52 }}><HeaderTicker label={rankingOnly ? "BABY-FOOT RANKINGS" : "STATISTICS CENTER"} color={primary} /></div>
+          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 56 }}>
+            <HeaderTickerImage
+              src={rankingOnly ? undefined : statsCenterTicker}
+              alt={rankingOnly ? "Baby-Foot Rankings" : "Statistics Center"}
+              fallbackLabel={rankingOnly ? "BABY-FOOT RANKINGS" : "STATISTICS CENTER"}
+              color={primary}
+            />
+          </div>
           <div style={{ position: "absolute", right: 4, top: 6 }}>
-            <button type="button" onClick={() => setFiltersOpen((v) => !v)} style={{ border: `1px solid ${C.blue}66`, color: C.blue, background: `${C.blue}10`, borderRadius: 999, padding: "8px 12px", fontSize: 10, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 14px ${C.blue}18` }}>
-              {filtersOpen ? "MASQUER" : "FILTRES"}
-            </button>
+            <HeaderIconButton active={filtersOpen} onClick={() => setFiltersOpen((v) => !v)} title={filtersOpen ? "Masquer les filtres" : "Afficher les filtres"}>
+              <FilterGlyph />
+            </HeaderIconButton>
           </div>
         </div>
 
@@ -718,13 +802,11 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         <div style={cardStyle()}>
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
-            <div style={{ minWidth: 0, maxWidth: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, overflow: "hidden" }}>
-              <StatHeroAvatar profile={profile} size={72} glowColor={primary} showStars />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: C.blue, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>{scope === "locals" ? "Profils locaux" : "Profil actif"}</div>
-                <div style={{ marginTop: 2, color: primary, fontSize: 22, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
-                <div style={{ marginTop: 3, color: C.muted, fontSize: 10 }}>{rank ? `Rang #${rank}` : "Non classé"} · Rating {rating} · {profileAgg.matches} matchs</div>
-              </div>
+            <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "hidden" }}>
+              <StatHeroAvatar profile={profile} size={86} glowColor={primary} showStars />
+              <div style={{ marginTop: 10, color: primary, fontSize: 24, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
+              <div style={{ marginTop: 5, color: C.muted, fontSize: 10, fontWeight: 850 }}>{rank ? `Rang #${rank}` : "Non classé"} · Rating {rating} · {profileAgg.matches} matchs</div>
+              {scope === "locals" ? <div style={{ marginTop: 4, color: C.blue, fontSize: 10, fontWeight: 950, letterSpacing: .7, textTransform: "uppercase" }}>Profils locaux</div> : null}
             </div>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index + 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>›</button>
           </div>

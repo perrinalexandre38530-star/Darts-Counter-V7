@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="180" viewBox="0 0 800 180" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#031217"/>
+      <stop offset="0.52" stop-color="#071E26"/>
+      <stop offset="1" stop-color="#031217"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="0" y1="90" x2="800" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B3B48"/>
+      <stop offset="0.5" stop-color="#1EE8FF"/>
+      <stop offset="1" stop-color="#0B3B48"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="118" y1="0" x2="682" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17C9E8" stop-opacity="0"/>
+      <stop offset="0.12" stop-color="#17C9E8" stop-opacity="0.95"/>
+      <stop offset="0.88" stop-color="#17C9E8" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#17C9E8" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="textGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0.9  0 0 1 0 1  0 0 0 1 0"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="6" y="22" width="788" height="136" rx="34" fill="url(#bg)" stroke="url(#stroke)" stroke-width="2"/>
+  <rect x="40" y="84" width="78" height="12" rx="6" fill="url(#accent)" filter="url(#glow)"/>
+  <rect x="682" y="84" width="78" height="12" rx="6" fill="url(#accent)" filter="url(#glow)" transform="rotate(180 721 90)"/>
+  <rect x="190" y="60" width="420" height="58" rx="12" fill="#06161D" fill-opacity="0.68" stroke="#0C3C49" stroke-opacity="0.45"/>
+  <text x="400" y="102" text-anchor="middle" fill="#25E6FF" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="34" letter-spacing="1.8" filter="url(#textGlow)">STATISTICS CENTER</text>
+</svg>

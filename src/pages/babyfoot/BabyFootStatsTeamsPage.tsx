@@ -5,6 +5,7 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import { History } from "../../lib/history";
 import { loadBabyFootTeams, type BabyFootTeam } from "../../lib/petanqueTeamsStore";
+import teamStatsTicker from "../../assets/tickers/ticker_babyfoot_team_statistics.svg";
 import {
   babyFootTeamRating,
   computeBabyFootTeamStatsBundle,
@@ -152,12 +153,52 @@ function sectionTitle(label: string, color = C.gold) {
   );
 }
 
-function HeaderTicker({ label, color = C.gold }: { label: string; color?: string }) {
+function HeaderTickerImage({ src, alt, fallbackLabel, color = C.gold }: { src?: string | null; alt: string; fallbackLabel?: string; color?: string }) {
+  if (src) {
+    return <img src={src} alt={alt} className="bf-stats-teams-title-img" style={{ width: "100%", maxWidth: 420, height: "auto", display: "block", margin: "0 auto", filter: `drop-shadow(0 0 16px ${color}28)` }} draggable={false} />;
+  }
   return (
     <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10, maxWidth: "100%", minWidth: 0, padding: "10px 16px", borderRadius: 18, border: `1px solid ${color}66`, background: `linear-gradient(90deg,rgba(0,0,0,.18),${color}16,rgba(0,0,0,.18))`, boxShadow: `0 0 18px ${color}22, inset 0 0 18px ${color}14` }}>
       <span style={{ flex: "0 0 34px", height: 6, borderRadius: 999, background: `linear-gradient(90deg,transparent,${color})`, opacity: .9 }} />
-      <span className="bf-stats-teams-title" style={{ color, fontSize: 21, lineHeight: 1.05, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase", textShadow: `0 0 14px ${color}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      <span className="bf-stats-teams-title" style={{ color, fontSize: 21, lineHeight: 1.05, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase", textShadow: `0 0 14px ${color}99`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fallbackLabel || alt}</span>
     </div>
+  );
+}
+
+function HeaderIconButton({ active = false, onClick, children, title, color = C.blue }: { active?: boolean; onClick?: () => void; children: React.ReactNode; title?: string; color?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      style={{
+        width: 46,
+        height: 46,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        border: `1px solid ${active ? color + "aa" : color + "55"}`,
+        color,
+        background: active ? `radial-gradient(circle at 35% 30%,${color}26,rgba(0,0,0,.22))` : `rgba(7,16,26,.72)`,
+        cursor: "pointer",
+        boxShadow: active ? `0 0 18px ${color}33, inset 0 0 14px ${color}12` : `0 0 14px ${color}18`,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilterGlyph({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 7h12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 12h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 17h10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="18" cy="7" r="2.2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="10" cy="12" r="2.2" fill="none" stroke="currentColor" strokeWidth="2" />
+      <circle cx="16" cy="17" r="2.2" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
   );
 }
 
@@ -208,13 +249,16 @@ function MiniProgress({ label, value, max, color, suffix = "" }: { label: string
   );
 }
 
-function TeamLogo({ team, size = 74 }: { team: BabyFootTeamDetailedAggregate | null; size?: number }) {
+function TeamHeroMedallion({ team, size = 88, glowColor = C.gold }: { team: BabyFootTeamDetailedAggregate | null; size?: number; glowColor?: string }) {
   const label = String(team?.label || "Équipe").trim();
   const initials = label.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join("").toUpperCase() || "T";
   return (
-    <div style={{ width: size, height: size, borderRadius: 999, padding: 3, background: `linear-gradient(180deg,${C.gold},${C.gold}33)`, boxShadow: `0 0 18px ${C.gold}44`, flex: "0 0 auto" }}>
-      <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#101116", display: "grid", placeItems: "center" }}>
-        {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: C.gold, fontSize: Math.round(size * .32), fontWeight: 1000 }}>{initials}</span>}
+    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
+      <div style={{ position: "absolute", inset: 0, borderRadius: 999, background: `radial-gradient(circle at 50% 38%,${glowColor}22,rgba(0,0,0,.08) 60%)`, boxShadow: `0 0 0 1px ${glowColor}66, 0 0 18px ${glowColor}50, 0 0 32px ${glowColor}22` }} />
+      <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: 999, padding: 4, background: "rgba(8,10,18,.92)", boxShadow: `inset 0 0 0 1px ${glowColor}55` }}>
+        <div style={{ width: "100%", height: "100%", borderRadius: 999, overflow: "hidden", background: "#101116", display: "grid", placeItems: "center" }}>
+          {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: glowColor, fontSize: Math.round(size * .32), fontWeight: 1000 }}>{initials}</span>}
+        </div>
       </div>
     </div>
   );
@@ -708,6 +752,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
         .bf-team-title { font-size: 22px; }
         @media (max-width: 560px) {
           .bf-team-title { font-size: 19px !important; letter-spacing: .5px !important; }
+          .bf-stats-teams-title-img { max-width: min(100%, 360px) !important; }
           .bf-team-subtitle { font-size: 10px !important; }
         }
         @media (max-width: 380px) {
@@ -717,11 +762,13 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
       <div style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 24px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
         <div style={{ position: "relative", minHeight: 62, display: "grid", placeItems: "center", paddingInline: 4 }}>
           <div style={{ position: "absolute", left: 4, top: 3 }}><BackDot onClick={() => go("stats" as any)} /></div>
-          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 52 }}><HeaderTicker label="TEAM STATISTICS" color={primary} /></div>
+          <div style={{ textAlign: "center", minWidth: 0, width: "100%", paddingInline: 56 }}>
+            <HeaderTickerImage src={teamStatsTicker} alt="Team Statistics" fallbackLabel="TEAM STATISTICS" color={primary} />
+          </div>
           <div style={{ position: "absolute", right: 4, top: 6 }}>
-            <button type="button" onClick={() => setFiltersOpen((v) => !v)} style={{ border: `1px solid ${C.blue}66`, color: C.blue, background: `${C.blue}10`, borderRadius: 999, padding: "8px 12px", fontSize: 10, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 14px ${C.blue}18` }}>
-              {filtersOpen ? "MASQUER" : "FILTRES"}
-            </button>
+            <HeaderIconButton active={filtersOpen} onClick={() => setFiltersOpen((v) => !v)} title={filtersOpen ? "Masquer les filtres" : "Afficher les filtres"}>
+              <FilterGlyph />
+            </HeaderIconButton>
           </div>
         </div>
 
@@ -737,13 +784,10 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
         <div style={cardStyle()}>
           <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={teams.length < 2} onClick={() => setTeamIndex((index) => clampIndex(index - 1, teams.length))} style={arrowButton(C.blue, teams.length < 2)}>‹</button>
-            <div style={{ minWidth: 0, maxWidth: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, overflow: "hidden" }}>
-              <TeamLogo team={team} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: C.blue, fontSize: 11, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>Équipe sélectionnée</div>
-                <div style={{ marginTop: 2, color: primary, fontSize: 22, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 9px ${primary}66` }}>{team?.label || "Aucune équipe"}</div>
-                <div style={{ marginTop: 3, color: C.muted, fontSize: 10 }}>{rank ? `Rang #${rank}` : "Non classée"} · Rating {rating} · {team?.matches || 0} matchs</div>
-              </div>
+            <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "hidden" }}>
+              <TeamHeroMedallion team={team} size={88} glowColor={primary} />
+              <div style={{ marginTop: 10, color: primary, fontSize: 24, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{team?.label || "Aucune équipe"}</div>
+              <div style={{ marginTop: 5, color: C.muted, fontSize: 10, fontWeight: 850 }}>{rank ? `Rang #${rank}` : "Non classée"} · Rating {rating} · {team?.matches || 0} matchs</div>
             </div>
             <button type="button" disabled={teams.length < 2} onClick={() => setTeamIndex((index) => clampIndex(index + 1, teams.length))} style={arrowButton(C.blue, teams.length < 2)}>›</button>
           </div>

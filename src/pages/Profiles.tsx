@@ -100,7 +100,12 @@ function profileLinkTargetUserId(link: any): string {
   ).trim();
 }
 
-function findOutgoingAcceptedProfileLink(links: any[], localProfile: any, profileId: string): any | null {
+function findOutgoingProfileLink(
+  links: any[],
+  localProfile: any,
+  profileId: string,
+  opts: { acceptedOnly?: boolean } = {}
+): any | null {
   const pid = String(profileId || localProfile?.id || localProfile?.profileId || localProfile?.playerId || "").trim();
   const info = localProfile?.privateInfo || localProfile?.private_info || {};
   const storedLinkId = String(info?.profileFriendLinkId || info?.linkedFriendRequestId || "").trim();
@@ -109,17 +114,22 @@ function findOutgoingAcceptedProfileLink(links: any[], localProfile: any, profil
 
   return (Array.isArray(links) ? links : []).find((link: any) => {
     if (link?.direction !== "outgoing") return false;
-    if (String(link?.status || "").toLowerCase() !== "accepted") return false;
+    const status = String(link?.status || "pending").toLowerCase();
+    if (opts.acceptedOnly && status !== "accepted") return false;
 
     const sameLink = storedLinkId && String(link?.id || "") === storedLinkId;
     const sameProfile = pid && String(link?.localProfileId || link?.profileId || "") === pid;
     const sameFriend = storedFriendId && profileLinkTargetUserId(link) === storedFriendId;
     const sameName = localName && normalizeProfileLinkText(link?.localProfileName || link?.profileName) === localName;
 
-    // Priorité ID lien, puis ID profil. Le fallback ami+nom absorbe les anciens
-    // profils dont l'id local a changé après restauration/import.
+    // Priorité ID lien, puis ID profil. Le fallback ami+nom récupère les liens
+    // après restauration/import quand l'id local a changé mais que l'ami + nom sont les mêmes.
     return !!(sameLink || sameProfile || (sameFriend && sameName));
   }) || null;
+}
+
+function findOutgoingAcceptedProfileLink(links: any[], localProfile: any, profileId: string): any | null {
+  return findOutgoingProfileLink(links, localProfile, profileId, { acceptedOnly: true });
 }
 
 
@@ -1369,6 +1379,7 @@ export default function Profiles({
           const pi = p?.privateInfo || p?.private_info || {};
           const storedLinkId = String(pi?.profileFriendLinkId || "").trim();
           const storedFriendId = String(pi?.linkedFriendUserId || pi?.linkedUserId || p?.linkedFriendUserId || p?.linkedUserId || "").trim();
+          const localName = normalizeProfileLinkText(p?.name || p?.displayName || p?.nickname);
 
           const link: any = safeLinks.find((row: any) => {
             if (row?.direction !== "outgoing") return false;
@@ -1376,7 +1387,8 @@ export default function Profiles({
             const sameProfile = String(row?.localProfileId || "") === pid;
             const targetId = String(row?.targetUser?.userId || row?.targetUser?.id || row?.friendUserId || "").trim();
             const sameFriend = storedFriendId && targetId === storedFriendId;
-            return sameLink || (sameProfile && (!storedFriendId || sameFriend));
+            const sameName = localName && normalizeProfileLinkText(row?.localProfileName || row?.profileName) === localName;
+            return sameLink || (sameProfile && (!storedFriendId || sameFriend)) || (sameFriend && sameName);
           });
           if (!link) return p;
 
@@ -1629,6 +1641,93 @@ export default function Profiles({
     await refreshProfileFriendLinks();
     setToast({ type: "success", message: friend ? "Demande envoyée à l’ami : attente de validation" : "Association supprimée" });
   }, [store, update, scheduleProfilesPersist, refreshProfileFriendLinks]);
+
+  const recoverLocalProfileFriendLink = React.useCallback(async (profileId: string) => {
+    if (auth.status !== "signed_in") {
+      setToast({ type: "error", message: "Connexion requise pour récupérer l’association" });
+      return;
+    }
+
+    const pid = String(profileId || "").trim();
+    const localProfiles = Array.isArray((store as any)?.profiles) ? ((store as any).profiles as any[]) : [];
+    const localProfile = localProfiles.find((p: any) => String(p?.id || p?.profileId || p?.playerId || "") === pid) || null;
+    if (!pid || !localProfile) {
+      setToast({ type: "error", message: "Profil local introuvable pour récupérer l’association" });
+      return;
+    }
+
+    const info = localProfile?.privateInfo || localProfile?.private_info || {};
+    const storedFriendId = String(info?.linkedFriendUserId || info?.linkedUserId || localProfile?.linkedFriendUserId || localProfile?.linkedUserId || "").trim();
+    const storedFriendName = String(info?.linkedFriendName || localProfile?.linkedFriendName || "").trim();
+    if (!storedFriendId) {
+      setToast({ type: "error", message: "Aucun ami mémorisé pour ce profil. Choisis un ami dans la liste pour envoyer une demande." });
+      return;
+    }
+
+    try {
+      const freshLinks = await listProfileFriendLinks();
+      const safeFreshLinks = Array.isArray(freshLinks) ? freshLinks : [];
+      setProfileFriendLinks(safeFreshLinks);
+
+      const foundLink = findOutgoingProfileLink(safeFreshLinks as any[], localProfile, pid);
+      const foundStatus = String(foundLink?.status || "").toLowerCase();
+
+      if (foundLink?.id && (foundStatus === "accepted" || foundStatus === "pending")) {
+        const target = foundLink?.targetUser || foundLink?.friend || {};
+        const friendUserId = String(target?.userId || target?.id || foundLink?.friendUserId || storedFriendId || "").trim();
+        const friendName = String(target?.displayName || target?.nickname || foundLink?.friendDisplayName || storedFriendName || "").trim();
+        const friendAvatarUrl = String(target?.avatarUrl || foundLink?.friendAvatarUrl || info?.linkedFriendAvatarUrl || "").trim();
+
+        const nextProfiles = localProfiles.map((p: any) => {
+          if (String(p?.id || p?.profileId || p?.playerId || "") !== pid) return p;
+          const prevInfo = p?.privateInfo || p?.private_info || {};
+          const nextInfo = {
+            ...prevInfo,
+            linkedFriendUserId: friendUserId || storedFriendId,
+            linkedUserId: friendUserId || storedFriendId,
+            linkedFriendName: friendName || storedFriendName,
+            linkedFriendAvatarUrl: friendAvatarUrl || null,
+            profileFriendLinkId: String(foundLink.id || ""),
+            profileFriendLinkStatus: foundStatus,
+            profileFriendLinkUpdatedAt: String(foundLink?.updatedAt || new Date().toISOString()),
+            profileFriendStatsShared: foundStatus === "accepted",
+          };
+          return {
+            ...p,
+            linkedFriendUserId: nextInfo.linkedFriendUserId,
+            linkedUserId: nextInfo.linkedUserId,
+            linkedFriendName: nextInfo.linkedFriendName,
+            linkedFriendAvatarUrl: nextInfo.linkedFriendAvatarUrl,
+            privateInfo: nextInfo,
+            updatedAt: Date.now(),
+          };
+        });
+
+        update((prev: any) => ({ ...(prev || {}), profiles: nextProfiles }));
+        writeProfilesCache(nextProfiles as any);
+        scheduleProfilesPersist("profiles_recover_friend_link", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 1200 });
+        setToast({
+          type: "success",
+          message: foundStatus === "accepted"
+            ? "Association récupérée. Tu peux synchroniser les stats."
+            : "Demande d’association retrouvée : attente de validation de l’ami.",
+        });
+        return;
+      }
+
+      const friend = (friends || []).find((row: any) => String(row?.userId || row?.id || "") === storedFriendId) || {
+        id: storedFriendId,
+        userId: storedFriendId,
+        name: storedFriendName || "Ami",
+        displayName: storedFriendName || "Ami",
+      };
+      await linkLocalProfileToFriend(pid, friend as any);
+      setToast({ type: "success", message: "Association serveur absente : nouvelle demande envoyée à l’ami." });
+    } catch (error: any) {
+      console.warn("[Profiles] recover profile friend link failed", error);
+      setToast({ type: "error", message: error?.message || "Serveur online/NAS inaccessible : récupération impossible pour le moment." });
+    }
+  }, [auth.status, store, friends, update, scheduleProfilesPersist, linkLocalProfileToFriend]);
 
   const respondToProfileFriendLink = React.useCallback(async (linkId: string, status: "accepted" | "refused") => {
     try {
@@ -3142,6 +3241,7 @@ React.useEffect(() => {
                   profileFriendLinksLoading={profileFriendLinksLoading}
                   onRespondProfileFriendLink={respondToProfileFriendLink}
                   onLinkFriend={linkLocalProfileToFriend}
+                  onRecoverFriendLink={recoverLocalProfileFriendLink}
                   onSyncLinkedStats={handleManualLinkedProfileStatsSync}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
@@ -5570,6 +5670,7 @@ function LocalProfilesRefonte({
   profileFriendLinksLoading = false,
   onRespondProfileFriendLink,
   onLinkFriend,
+  onRecoverFriendLink,
   onSyncLinkedStats,
   onboardingMode = false,
   autoFocusCreate = false,
@@ -5592,6 +5693,7 @@ function LocalProfilesRefonte({
   profileFriendLinksLoading?: boolean;
   onRespondProfileFriendLink?: (linkId: string, status: "accepted" | "refused") => void;
   onLinkFriend?: (profileId: string, friend: FriendLike | null) => void | Promise<void>;
+  onRecoverFriendLink?: (profileId: string) => void | Promise<void>;
   onSyncLinkedStats?: (profileId?: string) => void | Promise<void>;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
@@ -5744,11 +5846,22 @@ function LocalProfilesRefonte({
   }, [current, profileFriendLinks, linkedFriendUserId]);
   const cachedLinkStatus = String((current as any)?.privateInfo?.profileFriendLinkStatus || "").toLowerCase();
   const linkStatus = String((currentProfileLink as any)?.status || cachedLinkStatus || (linkedFriendUserId ? "pending" : "")).toLowerCase();
-  const linkStatusFromCacheOnly = !!linkedFriendUserId && !currentProfileLink && cachedLinkStatus === "accepted";
-  const linkStatusLabel = linkStatusFromCacheOnly
-    ? "Validé localement — serveur à vérifier"
-    : linkStatus === "accepted" ? "Validé par l’ami" : linkStatus === "refused" ? "Refusé" : linkStatus === "pending" ? "En attente d’acceptation" : "Non lié";
-  const linkStatsShared = linkStatus === "accepted" && !!currentProfileLink;
+  const linkServerConfirmed = !!currentProfileLink;
+  const linkIsAssociated = !!linkedFriendUserId && linkStatus === "accepted";
+  const linkIsPending = !!linkedFriendUserId && linkStatus === "pending";
+  const linkIsRefused = !!linkedFriendUserId && linkStatus === "refused";
+  const associationStatusLabel = linkIsAssociated ? "ASSOCIÉ" : "NON ASSOCIÉ";
+  const associationDetailLabel = !linkedFriendUserId
+    ? "Choisis un ami pour envoyer une demande d’association."
+    : linkIsAssociated
+      ? `Lié à ${linkedFriendName || "un ami NAS"} · autorisation validée`
+      : linkIsPending
+        ? `Lié à ${linkedFriendName || "un ami NAS"} · demande envoyée, attente de validation`
+        : linkIsRefused
+          ? `Lié à ${linkedFriendName || "un ami NAS"} · demande refusée ou à relancer`
+          : `Lié à ${linkedFriendName || "un ami NAS"} · association à relancer`;
+  const linkStatsShared = linkIsAssociated;
+  const showRecoverLinkButton = !!linkedFriendUserId && !!onRecoverFriendLink && (!linkServerConfirmed || linkIsRefused);
   const linkedFriendAvatarUrl = String(
     (linkedFriend as any)?.avatarUrl ||
     (linkedFriend as any)?.avatar ||
@@ -6361,60 +6474,117 @@ function LocalProfilesRefonte({
                   background: linkedFriendUserId ? `${primary}14` : "rgba(255,255,255,0.045)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: primary, fontWeight: 950, fontSize: 12 }}>Compte ami associé</div>
-                    <div className="subtitle" style={{ fontSize: 11 }}>
-                      {linkedFriendUserId ? `Lié à ${linkedFriendName || "un ami NAS"} · ${linkStatusLabel}` : "Associe ce profil à un ami pour fusionner/identifier les stats partagées."}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ color: primary, fontWeight: 950, fontSize: 12 }}>Compte ami</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 999,
+                          padding: "5px 9px",
+                          border: `1px solid ${linkIsAssociated ? "#38ff8a99" : primary + "88"}`,
+                          color: linkIsAssociated ? "#38ff8a" : primary,
+                          background: "rgba(0,0,0,0.22)",
+                          fontSize: 10,
+                          fontWeight: 950,
+                          letterSpacing: 0.4,
+                        }}
+                      >
+                        {associationStatusLabel}
+                      </span>
+                      <span className="subtitle" style={{ fontSize: 11, lineHeight: 1.25 }}>
+                        {associationDetailLabel}
+                      </span>
                     </div>
                     {linkedFriendUserId ? (
-                      <div style={{ marginTop: 5, fontSize: 10, fontWeight: 900, color: linkStatsShared ? "#38ff8a" : primary }}>
-                        Stats partagées : {linkStatsShared ? "OUI" : linkStatusFromCacheOnly ? "À VÉRIFIER" : "NON — attente validation"}
+                      <div style={{ marginTop: 6, fontSize: 10, fontWeight: 900, color: linkStatsShared ? "#38ff8a" : primary }}>
+                        Stats partagées : {linkStatsShared ? "OUI" : "NON"}
                         {(currentProfileLink as any)?.updatedAt ? ` · MAJ ${new Date(String((currentProfileLink as any).updatedAt)).toLocaleString()}` : ""}
                       </div>
                     ) : null}
                   </div>
+
                   {linkedFriendUserId && onLinkFriend ? (
-                    <button type="button" className="btn sm" style={{ ...pillBtnDanger, maxWidth: 92 }} onClick={() => onLinkFriend(current.id, null)}>
-                      {linkStatus === "pending" ? "Annuler" : "Dissocier"}
+                    <button
+                      type="button"
+                      className="btn sm"
+                      style={{ ...pillBtnDanger, width: 86, minWidth: 86, maxWidth: 86, padding: "7px 6px", fontSize: 9, flexShrink: 0 }}
+                      onClick={() => onLinkFriend(current.id, null)}
+                    >
+                      {linkIsPending ? "ANNULER" : "DISSOCIER"}
                     </button>
                   ) : null}
                 </div>
+
                 {onLinkFriend ? (
-                  <select
-                    value={linkedFriendUserId}
-                    onChange={(e) => {
-                      const id = (e.target as HTMLSelectElement).value;
-                      const f = (onlineFriends || []).find((row: any) => String(row?.userId || row?.id || "") === id) || null;
-                      onLinkFriend(current.id, f as any);
-                    }}
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      padding: "9px 10px",
-                      border: `1px solid ${primary}66`,
-                      background: "rgba(0,0,0,0.35)",
-                      color: "inherit",
-                      outline: "none",
-                      fontWeight: 800,
-                    }}
-                  >
-                    <option value="">— Aucun ami associé —</option>
-                    {(onlineFriends || []).map((f: any) => {
-                      const id = String(f?.userId || f?.id || "");
-                      const name = f?.displayName || f?.nickname || f?.name || "Ami";
-                      return <option key={id} value={id}>{name}</option>;
-                    })}
-                  </select>
+                  <div>
+                    <div className="subtitle" style={{ fontSize: 10, marginBottom: 5 }}>
+                      {linkedFriendUserId
+                        ? "Changer d’ami enverra une nouvelle demande d’autorisation."
+                        : "Choisis un ami : une demande d’autorisation sera envoyée une seule fois."}
+                    </div>
+                    <select
+                      value={linkedFriendUserId}
+                      onChange={(e) => {
+                        const id = (e.target as HTMLSelectElement).value;
+                        const f = (onlineFriends || []).find((row: any) => String(row?.userId || row?.id || "") === id) || null;
+                        onLinkFriend(current.id, f as any);
+                      }}
+                      style={{
+                        width: "100%",
+                        borderRadius: 12,
+                        padding: "9px 10px",
+                        border: `1px solid ${primary}66`,
+                        background: "rgba(0,0,0,0.35)",
+                        color: "inherit",
+                        outline: "none",
+                        fontWeight: 800,
+                      }}
+                    >
+                      <option value="">— Aucun ami associé —</option>
+                      {(onlineFriends || []).map((f: any) => {
+                        const id = String(f?.userId || f?.id || "");
+                        const name = f?.displayName || f?.nickname || f?.name || "Ami";
+                        return <option key={id} value={id}>{name}</option>;
+                      })}
+                    </select>
+                  </div>
                 ) : null}
 
-                {linkedFriendUserId && linkStatus === "accepted" && onSyncLinkedStats ? (
+                {showRecoverLinkButton ? (
                   <button
                     type="button"
                     className="btn sm"
-                    disabled={linkedStatsSyncBusy || !currentProfileLink || profileFriendLinksLoading}
+                    disabled={profileFriendLinksLoading}
                     onClick={async () => {
-                      if (!current?.id || !currentProfileLink) return;
+                      if (!current?.id || !onRecoverFriendLink) return;
+                      await onRecoverFriendLink(current.id);
+                    }}
+                    style={{
+                      ...pillBtnBase,
+                      width: "100%",
+                      maxWidth: "100%",
+                      marginTop: 8,
+                      padding: "9px 10px",
+                      fontSize: 11,
+                      opacity: profileFriendLinksLoading ? 0.72 : 1,
+                    }}
+                    title="Recharge le lien côté serveur. Si le lien accepté existe encore, il est récupéré sans redemander l’autorisation. Sinon une nouvelle demande est envoyée."
+                  >
+                    {linkIsRefused ? "RELANCER L’ASSOCIATION" : "RÉCUPÉRER L’ASSOCIATION"}
+                  </button>
+                ) : null}
+
+                {linkedFriendUserId && linkIsAssociated && onSyncLinkedStats ? (
+                  <button
+                    type="button"
+                    className="btn sm"
+                    disabled={linkedStatsSyncBusy || profileFriendLinksLoading}
+                    onClick={async () => {
+                      if (!current?.id) return;
                       setLinkedStatsSyncBusy(true);
                       try {
                         await onSyncLinkedStats(current.id);
@@ -6429,15 +6599,11 @@ function LocalProfilesRefonte({
                       marginTop: 8,
                       padding: "9px 10px",
                       fontSize: 11,
-                      opacity: (linkedStatsSyncBusy || !currentProfileLink || profileFriendLinksLoading) ? 0.72 : 1,
+                      opacity: (linkedStatsSyncBusy || profileFriendLinksLoading) ? 0.72 : 1,
                     }}
-                    title={currentProfileLink ? "Envoie immédiatement les stats de ce profil local vers le NAS et force la relecture côté compte associé." : "Association connue en cache local, mais pas encore confirmée côté serveur."}
+                    title="Envoie immédiatement les stats de ce profil local vers le NAS et force la relecture côté compte associé."
                   >
-                    {linkedStatsSyncBusy
-                      ? "SYNCHRO STATS…"
-                      : !currentProfileLink
-                      ? "ASSOCIATION SERVEUR À VÉRIFIER"
-                      : "SYNCHRONISER LES STATS ASSOCIÉES"}
+                    {linkedStatsSyncBusy ? "SYNCHRO STATS…" : "SYNCHRONISER LES STATS"}
                   </button>
                 ) : null}
               </div>
