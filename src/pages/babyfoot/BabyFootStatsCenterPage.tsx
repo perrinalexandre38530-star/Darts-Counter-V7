@@ -7,6 +7,7 @@ import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import { resolveProfileStarScore } from "../../lib/profileStarScore";
+import { useBasicProfileViewStats } from "../../hooks/useBasicProfileViewStats";
 import {
   babyFootRating,
   computeBabyFootLeaderboards,
@@ -225,7 +226,8 @@ function FilterGlyph({ size = 20 }: { size?: number }) {
 }
 
 function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = false, starAvg3D = 0 }: { profile: any; size?: number; glowColor?: string; showStars?: boolean; starAvg3D?: number }) {
-  const avg3d = Number(starAvg3D || resolveProfileStarScore(profile) || 0) || 0;
+  const basic = useBasicProfileViewStats(profile?.id ? String(profile.id) : null, !!profile?.id);
+  const avg3d = Number(starAvg3D || basic?.avg3 || resolveProfileStarScore(profile) || 0) || 0;
   return (
     <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible" }}>
       <ProfileAvatar
@@ -241,7 +243,7 @@ function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = fa
           gapPx={-3}
           starSize={14}
           stepDeg={10}
-          animateGlow={true}
+          animateGlow
         />
       ) : null}
     </div>

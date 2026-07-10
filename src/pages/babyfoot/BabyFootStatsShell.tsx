@@ -14,6 +14,7 @@ import ProfileStarRing from "../../components/ProfileStarRing";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import BackDot from "../../components/BackDot";
 import { resolveProfileStarScore } from "../../lib/profileStarScore";
+import { useBasicProfileViewStats } from "../../hooks/useBasicProfileViewStats";
 
 type Props = {
   store: Store;
@@ -358,23 +359,40 @@ function StatsPlayerAvatar({ profile, theme }: { profile: Profile | null; theme:
   const STAR = 10;
 
   const legacy = (profile as any)?.stats || {};
-  const avg3n = typeof legacy.avg3 === "number" && !Number.isNaN(legacy.avg3) ? legacy.avg3 : 0;
+  const basic = useBasicProfileViewStats(profile?.id ? String(profile.id) : null, !!profile?.id);
+  const avg3n = Number.isFinite(Number(basic?.avg3)) && Number(basic?.avg3) > 0
+    ? Number(basic.avg3)
+    : typeof legacy.avg3 === "number" && !Number.isNaN(legacy.avg3)
+      ? legacy.avg3
+      : 0;
+  const starAvg3D = avg3n > 0 ? avg3n : resolveProfileStarScore(profile);
 
   return (
-    <div style={{ position: "relative", width: AVA, height: AVA, flexShrink: 0 }}>
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          left: -(PAD + STAR / 2),
-          top: -(PAD + STAR / 2),
-          width: AVA + (PAD + STAR / 2) * 2,
-          height: AVA + (PAD + STAR / 2) * 2,
-          pointerEvents: "none",
-        }}
-      >
-        <ProfileStarRing anchorSize={AVA} gapPx={-2} starSize={STAR} stepDeg={10} rotationDeg={0} avg3d={resolveProfileStarScore(profile) || avg3n} animateGlow />
-      </div>
+    <div style={{ position: "relative", width: AVA, height: AVA, flexShrink: 0, overflow: "visible" }}>
+      {starAvg3D > 0 ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: -(PAD + STAR / 2),
+            top: -(PAD + STAR / 2),
+            width: AVA + (PAD + STAR / 2) * 2,
+            height: AVA + (PAD + STAR / 2) * 2,
+            pointerEvents: "none",
+            overflow: "visible",
+          }}
+        >
+          <ProfileStarRing
+            anchorSize={AVA}
+            gapPx={-2}
+            starSize={STAR}
+            stepDeg={10}
+            rotationDeg={0}
+            avg3d={starAvg3D}
+            animateGlow
+          />
+        </div>
+      ) : null}
 
       <div
         style={{
