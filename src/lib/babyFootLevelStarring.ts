@@ -1,12 +1,12 @@
-import { babyFootRating, type BabyFootPlayerAggregate } from "./babyfootStatsAggregate";
+import { babyFootLevelPercent, type BabyFootPlayerAggregate } from "./babyfootStatsAggregate";
 
 export type BabyFootLevelBreakdown = {
   matches: number;
-  win: number;
-  attack: number;
-  defense: number;
-  diff: number;
-  clean: number;
+  winPct: number;
+  bpPct: number;
+  bcPenaltyPct: number;
+  rawFormula: number;
+  levelPct: number;
   rating: number;
   starScore: number;
 };
@@ -16,40 +16,49 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function babyFootLevelScoreFromRating(rating: number): number {
-  return Math.round(clampNumber(Number(rating) || 0, 0, 180));
+function pct(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+const BABYFOOT_TARGET_GOALS_FOR_LEVEL = 10;
+const STAR_SCORE_MAX = 180;
+
+export function babyFootLevelScoreFromRating(ratingPct: number): number {
+  // ProfileStarRing reste le même composant visuel : 180 = 14 étoiles.
+  // Le Baby-Foot lui envoie maintenant un niveau logique 0..100%.
+  return Math.round((clampNumber(Number(ratingPct) || 0, 0, 100) / 100) * STAR_SCORE_MAX);
 }
 
 export function babyFootLevelScoreFromAggregate(
-  agg: Pick<BabyFootPlayerAggregate, "matches" | "winRate" | "goalDiff" | "avgGoalsFor" | "avgGoalsAgainst" | "cleanSheets"> | null | undefined,
+  agg: Pick<BabyFootPlayerAggregate, "matches" | "winRate" | "avgGoalsFor" | "avgGoalsAgainst"> | null | undefined,
 ): number {
   if (!agg || !Number(agg.matches || 0)) return 0;
-  return babyFootLevelScoreFromRating(babyFootRating(agg));
+  return babyFootLevelScoreFromRating(babyFootLevelPercent(agg));
 }
 
 export function babyFootLevelBreakdown(
-  agg: Pick<BabyFootPlayerAggregate, "matches" | "winRate" | "goalDiff" | "avgGoalsFor" | "avgGoalsAgainst" | "cleanSheets"> | null | undefined,
+  agg: Pick<BabyFootPlayerAggregate, "matches" | "winRate" | "avgGoalsFor" | "avgGoalsAgainst"> | null | undefined,
 ): BabyFootLevelBreakdown {
   const matches = Math.max(0, Number(agg?.matches || 0));
   if (!agg || !matches) {
-    return { matches: 0, win: 0, attack: 0, defense: 0, diff: 0, clean: 0, rating: 0, starScore: 0 };
+    return { matches: 0, winPct: 0, bpPct: 0, bcPenaltyPct: 0, rawFormula: 0, levelPct: 0, rating: 0, starScore: 0 };
   }
 
-  const win = clampNumber(Number(agg.winRate || 0), 0, 1) * 100;
-  const attack = Math.max(0, Number(agg.avgGoalsFor || 0)) * 5;
-  const defense = Math.max(0, 6 - Math.max(0, Number(agg.avgGoalsAgainst || 0))) * 3;
-  const diff = (Number(agg.goalDiff || 0) / Math.max(1, matches)) * 10;
-  const clean = (Math.max(0, Number(agg.cleanSheets || 0)) / Math.max(1, matches)) * 12;
-  const rating = babyFootRating(agg);
+  const winPct = pct(Number(agg.winRate || 0) * 100);
+  const bpPct = pct((Math.max(0, Number(agg.avgGoalsFor || 0)) / BABYFOOT_TARGET_GOALS_FOR_LEVEL) * 100);
+  const bcPenaltyPct = pct((Math.max(0, Number(agg.avgGoalsAgainst || 0)) / BABYFOOT_TARGET_GOALS_FOR_LEVEL) * 100);
+  const rawFormula = winPct + bpPct - bcPenaltyPct;
+  const levelPct = babyFootLevelPercent(agg);
 
   return {
     matches,
-    win: Math.round(win * 10) / 10,
-    attack: Math.round(attack * 10) / 10,
-    defense: Math.round(defense * 10) / 10,
-    diff: Math.round(diff * 10) / 10,
-    clean: Math.round(clean * 10) / 10,
-    rating,
-    starScore: babyFootLevelScoreFromRating(rating),
+    winPct: Math.round(winPct * 10) / 10,
+    bpPct: Math.round(bpPct * 10) / 10,
+    bcPenaltyPct: Math.round(bcPenaltyPct * 10) / 10,
+    rawFormula: Math.round(rawFormula * 10) / 10,
+    levelPct,
+    rating: levelPct,
+    starScore: babyFootLevelScoreFromRating(levelPct),
   };
 }

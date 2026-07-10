@@ -656,11 +656,35 @@ export function formatBabyFootPct01(value: number | null | undefined): string {
   return `${Math.round(Math.max(0, Math.min(1, Number(value))) * 100)}%`;
 }
 
+const BABYFOOT_TARGET_GOALS_FOR_LEVEL = 10;
+const BABYFOOT_LEVEL_STABILIZATION_MATCHES = 5;
+
+function clampPct(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+export function babyFootLevelPercent(
+  agg: Pick<BabyFootPlayerAggregate, "matches" | "winRate" | "avgGoalsFor" | "avgGoalsAgainst">,
+): number {
+  const matches = Math.max(0, Number(agg?.matches || 0));
+  if (!matches) return 0;
+
+  const winPct = clampPct(Number(agg.winRate || 0) * 100);
+  const bpPct = clampPct((Math.max(0, Number(agg.avgGoalsFor || 0)) / BABYFOOT_TARGET_GOALS_FOR_LEVEL) * 100);
+  const bcPenaltyPct = clampPct((Math.max(0, Number(agg.avgGoalsAgainst || 0)) / BABYFOOT_TARGET_GOALS_FOR_LEVEL) * 100);
+
+  // Base Baby-Foot demandée : %WIN + %BP/match - %BC/match.
+  // La formule brute va de -100 à 200, donc on la ramène proprement sur 0..100.
+  const raw = winPct + bpPct - bcPenaltyPct;
+  const normalized = clampPct(((raw + 100) / 300) * 100);
+
+  // Petite stabilisation pour éviter qu'un seul match donne instantanément un niveau définitif.
+  // 1 match = 70% de la valeur, 5 matchs et plus = valeur complète.
+  const confidence = 0.7 + 0.3 * Math.min(1, matches / BABYFOOT_LEVEL_STABILIZATION_MATCHES);
+  return Math.round(clampPct(normalized * confidence));
+}
+
 export function babyFootRating(agg: Pick<BabyFootPlayerAggregate, "matches" | "winRate" | "goalDiff" | "avgGoalsFor" | "avgGoalsAgainst" | "cleanSheets">): number {
-  if (!agg.matches) return 0;
-  const cleanBonus = (agg.cleanSheets / Math.max(1, agg.matches)) * 12;
-  const attack = agg.avgGoalsFor * 5;
-  const defense = Math.max(0, 6 - agg.avgGoalsAgainst) * 3;
-  const diff = (agg.goalDiff / Math.max(1, agg.matches)) * 10;
-  return Math.max(0, Math.round(agg.winRate * 100 + attack + defense + diff + cleanBonus));
+  return babyFootLevelPercent(agg);
 }
