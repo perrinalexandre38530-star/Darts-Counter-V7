@@ -13,9 +13,8 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import BackDot from "../../components/BackDot";
-import { History } from "../../lib/history";
 import { computeBabyFootProfileAggregate, normalizeBabyFootMatches } from "../../lib/babyfootStatsAggregate";
-import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
+import { babyFootLevelScoreFromAggregate } from "../../lib/babyfootLevelStarring";
 
 type Props = {
   store: Store;
@@ -23,41 +22,6 @@ type Props = {
 };
 
 type InfoMode = "players" | "locals" | "rankings" | "teams" | "history" | "sync" | null;
-
-function mergeBabyFootHistoryRows(...sources: any[][]): any[] {
-  const byId = new Map<string, any>();
-  for (const source of sources) {
-    for (const row of Array.isArray(source) ? source : []) {
-      const id = String(row?.id || row?.matchId || row?.payload?.id || row?.payload?.matchId || "").trim();
-      if (!id) continue;
-      const previous = byId.get(id);
-      const currentQuality = JSON.stringify(row || {}).length;
-      const previousQuality = JSON.stringify(previous || {}).length;
-      if (!previous || currentQuality >= previousQuality) byId.set(id, row);
-    }
-  }
-  return Array.from(byId.values());
-}
-
-async function loadBabyFootHistoryRowsForStatsShell(store: Store): Promise<any[]> {
-  const fromStore = Array.isArray((store as any)?.history) ? ((store as any).history as any[]) : [];
-  try {
-    const api: any = History as any;
-    let fromHistory: any[] = [];
-    if (typeof api.getAll === "function") {
-      fromHistory = await api.getAll();
-    } else if (typeof api.list === "function") {
-      const light = await api.list();
-      fromHistory = await Promise.all((Array.isArray(light) ? light : []).map(async (row: any) => {
-        const id = String(row?.id || row?.matchId || "").trim();
-        return id && typeof api.get === "function" ? ((await api.get(id).catch(() => null)) || row) : row;
-      }));
-    }
-    return mergeBabyFootHistoryRows(fromStore, fromHistory);
-  } catch {
-    return fromStore;
-  }
-}
 
 export default function BabyFootStatsShell({ store, go }: Props) {
   const { theme } = useTheme();
@@ -68,36 +32,16 @@ export default function BabyFootStatsShell({ store, go }: Props) {
   const active: Profile | null =
     profiles.find((p: any) => p.id === activeProfileId) ?? profiles[0] ?? null;
 
-  const [historyRows, setHistoryRows] = React.useState<any[]>([]);
-  React.useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      const rows = await loadBabyFootHistoryRowsForStatsShell(store);
-      if (alive) setHistoryRows(rows);
-    };
-    load();
-    window.addEventListener("dc-history-updated", load as EventListener);
-    window.addEventListener("dc-stats-index-updated", load as EventListener);
-    window.addEventListener("storage", load as EventListener);
-    return () => {
-      alive = false;
-      window.removeEventListener("dc-history-updated", load as EventListener);
-      window.removeEventListener("dc-stats-index-updated", load as EventListener);
-      window.removeEventListener("storage", load as EventListener);
-    };
-  }, [store]);
-
-  const activeBabyFootLevelScore = React.useMemo(() => {
-    const profileId = String((active as any)?.id ?? "").trim();
-    if (!profileId) return 0;
-    const matches = normalizeBabyFootMatches(historyRows, { mode: "all", period: "ARV" });
-    const agg = computeBabyFootProfileAggregate(matches, profiles, profileId);
-    return babyFootLevelScoreFromAggregate(agg);
-  }, [active, historyRows, profiles]);
-
   const playerLabel = active
     ? (t?.("statsShell.players.titleActivePrefix", "STATS ") ?? "STATS ") + (active as any).name
     : t?.("statsShell.players.titleDefault", "STATS JOUEURS") ?? "STATS JOUEURS";
+
+  const activeLevelScore = React.useMemo(() => {
+    const rows = Array.isArray((store as any)?.history) ? (store as any).history : [];
+    const matches = normalizeBabyFootMatches(rows, { mode: "all", period: "ARV" });
+    const agg = computeBabyFootProfileAggregate(matches, profiles, String((active as any)?.id || ""));
+    return babyFootLevelScoreFromAggregate(agg);
+  }, [store, profiles, active?.id]);
 
   const [infoMode, setInfoMode] = React.useState<InfoMode>(null);
 
@@ -280,6 +224,7 @@ export default function BabyFootStatsShell({ store, go }: Props) {
           profile={active}
           label={playerLabel}
           theme={theme}
+          levelScore={activeLevelScore}
           onClick={() => go("babyfoot_stats_center", { scope: "active" })}
           onInfo={() => setInfoMode("players")}
         />
@@ -342,10 +287,12 @@ function StatsShellPlayerCard({
   theme,
   onClick,
   onInfo,
+  levelScore = 0,
 }: {
   profile: Profile | null;
   label: string;
   theme: any;
+  levelScore?: number;
   onClick?: () => void;
   onInfo?: () => void;
 }) {
@@ -376,7 +323,7 @@ function StatsShellPlayerCard({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <StatsPlayerAvatar profile={profile} theme={theme} babyFootLevelScore={activeBabyFootLevelScore} />
+          <StatsPlayerAvatar profile={profile} theme={theme} levelScore={levelScore} />
           <div
             style={{
               fontSize: "var(--menu-title)",
@@ -416,15 +363,16 @@ function StatsShellPlayerCard({
   );
 }
 
-function StatsPlayerAvatar({ profile, theme, babyFootLevelScore = 0 }: { profile: Profile | null; theme: any; babyFootLevelScore?: number }) {
+function StatsPlayerAvatar({ profile, theme, levelScore = 0 }: { profile: Profile | null; theme: any; levelScore?: number }) {
   const AVA = 44;
   const PAD = 6;
   const STAR = 10;
-  const starScore = Number.isFinite(Number(babyFootLevelScore)) ? Number(babyFootLevelScore) : 0;
+
+  const starAvg3D = Math.max(0, Math.min(180, Number(levelScore || 0) || 0));
 
   return (
     <div style={{ position: "relative", width: AVA, height: AVA, flexShrink: 0, overflow: "visible" }}>
-      {starScore > 0 ? (
+      {starAvg3D > 0 ? (
         <div
           aria-hidden
           style={{
@@ -443,7 +391,7 @@ function StatsPlayerAvatar({ profile, theme, babyFootLevelScore = 0 }: { profile
             starSize={STAR}
             stepDeg={10}
             rotationDeg={0}
-            avg3d={starScore}
+            avg3d={starAvg3D}
             animateGlow
           />
         </div>

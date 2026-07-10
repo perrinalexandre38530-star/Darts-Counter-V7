@@ -6,6 +6,7 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+import { babyFootLevelScoreFromAggregate } from "../../lib/babyfootLevelStarring";
 import {
   babyFootRating,
   computeBabyFootLeaderboards,
@@ -20,7 +21,6 @@ import {
   type BabyFootProfileMatch,
   type BabyFootLeaderboardBundle,
 } from "../../lib/babyfootStatsAggregate";
-import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
 
 type Props = {
   store: Store;
@@ -225,7 +225,7 @@ function FilterGlyph({ size = 20 }: { size?: number }) {
 }
 
 function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = false, starAvg3D = 0 }: { profile: any; size?: number; glowColor?: string; showStars?: boolean; starAvg3D?: number }) {
-  const avg3d = Number(starAvg3D || 0) || 0;
+  const avg3d = Math.max(0, Math.min(180, Number(starAvg3D || 0) || 0));
   return (
     <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible" }}>
       <ProfileAvatar
@@ -812,8 +812,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         </div> : null}
 
         {!rankingOnly && (
-        <div style={cardStyle({ overflow: "visible", paddingTop: 28 })}>
-          <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
+        <div style={cardStyle({ overflow: "visible", paddingTop: 30 })}>
+          <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8, overflow: "visible" }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
             <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "visible" }}>
               <StatHeroAvatar profile={profile} size={84} glowColor={primary} showStars starAvg3D={babyFootLevelScoreFromAggregate(profileAgg)} />

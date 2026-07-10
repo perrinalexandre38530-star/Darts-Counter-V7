@@ -29,7 +29,7 @@ import {
   formatBabyFootRatio,
   normalizeBabyFootMatches,
 } from "../lib/babyfootStatsAggregate";
-import { babyFootLevelScoreFromAggregate } from "../lib/babyFootLevelStarring";
+import { babyFootLevelScoreFromAggregate } from "../lib/babyfootLevelStarring";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
