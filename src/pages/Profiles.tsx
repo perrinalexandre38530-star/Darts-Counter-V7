@@ -29,6 +29,7 @@ import {
   formatBabyFootRatio,
   normalizeBabyFootMatches,
 } from "../lib/babyfootStatsAggregate";
+import { babyFootLevelScoreFromAggregate } from "../lib/babyFootLevelStarring";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -417,7 +418,7 @@ async function getBabyFootProfileMiniStats(playerId: string): Promise<ProfileMin
     const agg = computeBabyFootProfileAggregate(matches, storeProfiles, pid);
     const rating = babyFootRating(agg);
     return normalizeProfileMiniStats({
-      avg3: Math.min(180, rating),
+      avg3: babyFootLevelScoreFromAggregate(agg),
       bestVisit: agg.avgGoalsFor,
       bestCheckout: agg.avgGoalsAgainst,
       wins: agg.wins,

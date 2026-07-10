@@ -24,6 +24,7 @@ import {
   formatBabyFootRatio,
   normalizeBabyFootMatches,
 } from "../../lib/babyfootStatsAggregate";
+import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
 
 // ✅ Home ticker backgrounds (catégories)
 import tickerBabyfootActu1 from "../../assets/tickers/ticker_babyfoot_actu_1.png";
@@ -548,7 +549,7 @@ export default function BabyFootHome({ store, go }: Props) {
   const babyfootGlobalStats = useMemo(() => computeBabyfootGlobalStats(historyRows, profiles, activeProfile), [historyRows, profiles, activeProfile]);
   const primary = theme.primary ?? "#F6C256";
   const convLabel = babyfootGlobalStats.conversion == null ? "—" : `${Math.round(babyfootGlobalStats.conversion * 100)}%`;
-  const starAvg3D = Math.min(180, Math.max(0, Number(babyfootGlobalStats.rating || 0)));
+  const starAvg3D = babyFootLevelScoreFromAggregate(babyfootGlobalStats as any);
 
   const homeRecordSlides = useMemo(() => {
     if (!babyfootGlobalStats.sessions) return [];

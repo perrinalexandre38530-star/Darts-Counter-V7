@@ -6,8 +6,6 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
-import { resolveProfileStarScore } from "../../lib/profileStarScore";
-import { useBasicProfileViewStats } from "../../hooks/useBasicProfileViewStats";
 import {
   babyFootRating,
   computeBabyFootLeaderboards,
@@ -22,6 +20,7 @@ import {
   type BabyFootProfileMatch,
   type BabyFootLeaderboardBundle,
 } from "../../lib/babyfootStatsAggregate";
+import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
 
 type Props = {
   store: Store;
@@ -226,10 +225,9 @@ function FilterGlyph({ size = 20 }: { size?: number }) {
 }
 
 function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = false, starAvg3D = 0 }: { profile: any; size?: number; glowColor?: string; showStars?: boolean; starAvg3D?: number }) {
-  const basic = useBasicProfileViewStats(profile?.id ? String(profile.id) : null, !!profile?.id);
-  const avg3d = Number(basic?.avg3 || starAvg3D || resolveProfileStarScore(profile) || 0) || 0;
+  const avg3d = Number(starAvg3D || 0) || 0;
   return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible", zIndex: 2 }}>
+    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible" }}>
       <ProfileAvatar
         profile={profile}
         size={size}
@@ -237,16 +235,14 @@ function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = fa
         showStars={false}
       />
       {showStars && avg3d > 0 ? (
-        <div style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none", zIndex: 5 }}>
-          <ProfileStarRing
-            anchorSize={size}
-            avg3d={avg3d}
-            gapPx={-3}
-            starSize={14}
-            stepDeg={10}
-            animateGlow
-          />
-        </div>
+        <ProfileStarRing
+          anchorSize={size}
+          avg3d={avg3d}
+          gapPx={-3}
+          starSize={14}
+          stepDeg={10}
+          animateGlow
+        />
       ) : null}
     </div>
   );
@@ -817,10 +813,10 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
         {!rankingOnly && (
         <div style={cardStyle({ overflow: "visible", paddingTop: 28 })}>
-          <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8, overflow: "visible" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
             <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "visible" }}>
-              <StatHeroAvatar profile={profile} size={84} glowColor={primary} showStars starAvg3D={Math.min(180, Math.max(0, Number(rating || 0)))} />
+              <StatHeroAvatar profile={profile} size={84} glowColor={primary} showStars starAvg3D={babyFootLevelScoreFromAggregate(profileAgg)} />
               <div style={{ marginTop: 10, color: primary, fontSize: 24, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
               <div style={{ marginTop: 5, color: C.muted, fontSize: 10, fontWeight: 850 }}>{rank ? `Rang #${rank}` : "Non classé"} · Rating {rating} · {profileAgg.matches} matchs</div>
               {scope === "locals" ? <div style={{ marginTop: 4, color: C.blue, fontSize: 10, fontWeight: 950, letterSpacing: .7, textTransform: "uppercase" }}>Profils locaux</div> : null}
