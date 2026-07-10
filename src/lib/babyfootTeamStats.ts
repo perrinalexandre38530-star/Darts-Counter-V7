@@ -52,6 +52,7 @@ export type BabyFootTeamPlayerContribution = {
   pissetteValid: number;
   pissetteRefused: number;
   csc: number;
+  parachute: number;
   penalties: number;
   penaltyGoals: number;
   avgPersonalPoints: number;
@@ -101,6 +102,7 @@ export type BabyFootTeamDetailedAggregate = {
   pissetteValid: number;
   pissetteRefused: number;
   csc: number;
+  parachute: number;
   penalties: number;
   handicap: number;
   equalizations: number;
@@ -282,6 +284,7 @@ function makeEmptyTeam(key: string, label: string, input?: { id?: string | null;
     pissetteValid: 0,
     pissetteRefused: 0,
     csc: 0,
+    parachute: 0,
     penalties: 0,
     handicap: 0,
     equalizations: 0,
@@ -366,6 +369,7 @@ function bumpPlayer(
       pissetteValid: 0,
       pissetteRefused: 0,
       csc: 0,
+      parachute: 0,
       penalties: 0,
       penaltyGoals: 0,
       avgPersonalPoints: 0,
@@ -396,6 +400,7 @@ function bumpPlayer(
     out.pissetteValid += num(row.pissetteValid, 0);
     out.pissetteRefused += num(row.pissetteRefused, 0);
     out.csc += num(row.csc, 0);
+    out.parachute += num((row as any).parachute, 0);
     out.penalties += num(row.penalties, 0);
     out.penaltyGoals += num(row.penaltyGoals, 0);
   }
@@ -547,6 +552,7 @@ export function computeBabyFootTeamStatsBundle(
       team.pissetteValid += num(stats.pissetteValid, 0);
       team.pissetteRefused += num(stats.pissetteRefused, 0);
       team.csc += num(stats.csc, 0);
+      team.parachute += num((stats as any).parachute, 0);
       team.penalties += num(stats.penalties, 0);
       team.handicap += num(stats.handicap, 0);
       team.equalizations += num(stats.equalizations, 0);

@@ -33,6 +33,7 @@ export type BabyFootPlayerStatRow = {
   pissetteRefused: number;
   csc: number;
   ownGoals: number;
+  parachute: number;
   penalties: number;
   penaltyGoals: number;
   penaltyMisses: number;
@@ -41,7 +42,7 @@ export type BabyFootPlayerStatRow = {
 const ACTION_KEYS: Array<keyof BabyFootPlayerStatRow> = [
   "points", "goals", "goalAv", "goalDef", "goalGb", "goalMil", "demi", "demiBonus",
   "gamelle", "peche", "pecheOff", "pecheDef", "pissette", "pissetteValid",
-  "pissetteRefused", "csc", "ownGoals", "penalties", "penaltyGoals", "penaltyMisses",
+  "pissetteRefused", "csc", "ownGoals", "parachute", "penalties", "penaltyGoals", "penaltyMisses",
 ];
 
 function obj(v: any): Record<string, any> {
@@ -144,6 +145,7 @@ function normalizeCompactTeamStats(raw: any): any {
     goalAv: num(compactValue(side, "goalAv", "goalav", 0), 0),
     goalDef: num(compactValue(side, "goalDef", "goaldef", 0), 0),
     goalGb: num(compactValue(side, "goalGb", "goalgb", 0), 0),
+    parachute: num(compactValue(side, "parachute", "parachute", 0), 0),
     penalties: num(compactValue(side, "penalties", "penalties", 0), 0),
     handicap: num(compactValue(side, "handicap", "handicap", 0), 0),
     goalsConcededAv: num(compactValue(side, "goalsConcededAv", "goalsconcededav", 0), 0),
@@ -164,7 +166,7 @@ function normalizeCompactSpecialStats(raw: any): any {
     ["pissetteRefusedA", "pissetterefuseda"], ["pissetteRefusedB", "pissetterefusedb"], ["pecheOffA", "pecheoffa"], ["pecheOffB", "pecheoffb"],
     ["pecheDefA", "pechedefa"], ["pecheDefB", "pechedefb"], ["demiBonusAppliedA", "demibonusapplieda"], ["demiBonusAppliedB", "demibonusappliedb"],
     ["goalAvA", "goalava"], ["goalAvB", "goalavb"], ["goalDefA", "goaldefa"], ["goalDefB", "goaldefb"],
-    ["goalGbA", "goalgba"], ["goalGbB", "goalgbb"], ["cscA", "csca"], ["cscB", "cscb"],
+    ["goalGbA", "goalgba"], ["goalGbB", "goalgbb"], ["cscA", "csca"], ["cscB", "cscb"], ["parachuteA", "parachutea"], ["parachuteB", "parachuteb"],
   ];
   const out: any = { ...s };
   for (const [camel, compact] of keys) out[camel] = num(compactValue(s, camel, compact, 0), 0);
@@ -377,6 +379,7 @@ function makeBaseRow(input: {
     pissetteRefused: 0,
     csc: 0,
     ownGoals: 0,
+    parachute: 0,
     penalties: 0,
     penaltyGoals: 0,
     penaltyMisses: 0,
@@ -420,6 +423,7 @@ function normalizeRawRow(raw: any, base: BabyFootPlayerStatRow): BabyFootPlayerS
     pissetteRefused: num(row.pissetteRefused, 0),
     csc: num(row.csc, num(row.ownGoals, 0)),
     ownGoals: num(row.ownGoals, num(row.csc, 0)),
+    parachute: num(row.parachute, 0),
     penalties: num(row.penalties, num(row.penaltyGoals, 0) + num(row.penaltyMisses, 0)),
     penaltyGoals: num(row.penaltyGoals, 0),
     penaltyMisses: num(row.penaltyMisses, 0),
@@ -500,6 +504,7 @@ export function buildBabyFootPlayerStatsMap(input: {
         if (ev.kind === "gamelle") scorer.gamelle += 1;
         if (ev.kind === "peche") { scorer.peche += 1; scorer.pecheOff += 1; }
         if (ev.kind === "pissette") { scorer.pissette += 1; scorer.pissetteValid += 1; }
+        if (ev.kind === "parachute") scorer.parachute += 1;
       }
       if (ev.ownGoalById || ev.ownGoalTeam || ev.kind === "csc") {
         const guiltyTeam = String(ev.ownGoalTeam || (team === "A" ? "B" : "A")).toUpperCase() === "B" ? "B" : "A";
@@ -523,6 +528,7 @@ export function buildBabyFootPlayerStatsMap(input: {
         else scorer.pissetteRefused += 1;
       }
       if (ev.kind === "csc") { scorer.csc += 1; scorer.ownGoals += 1; }
+      if (ev.kind === "parachute") scorer.parachute += 1;
       scorer.demiBonus += Math.max(0, num(ev.demiBonusApplied, 0));
     } else if (ev.t === "pen_shot" || ev.t === "penalty") {
       const scorer = ensure(ev.scorerId, { team }, team);
@@ -651,6 +657,7 @@ export function extractBabyFootPlayerStatsRows(record: any): BabyFootPlayerStatR
         pissetteRefused: num(side?.pissetteRefused, 0),
         csc: num(side?.csc, 0),
         ownGoals: num(side?.csc, 0),
+        parachute: num(side?.parachute, 0),
         penalties: num(side?.penalties, 0),
       };
       const index = rows.findIndex((row) => row.id === targetId);

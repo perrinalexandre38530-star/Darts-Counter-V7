@@ -81,6 +81,7 @@ export type BabyFootPlayerAggregate = {
   pissetteValid: number;
   pissetteRefused: number;
   csc: number;
+  parachute: number;
   penalties: number;
   penaltyGoals: number;
   penaltyRate: number | null;
@@ -175,6 +176,7 @@ const EMPTY_PROFILE_AGG: BabyFootPlayerAggregate = {
   pissetteValid: 0,
   pissetteRefused: 0,
   csc: 0,
+  parachute: 0,
   penalties: 0,
   penaltyGoals: 0,
   penaltyRate: null,
@@ -469,6 +471,7 @@ export function computeBabyFootProfileAggregate(
       agg.pissetteValid += num(row.pissetteValid, 0);
       agg.pissetteRefused += num(row.pissetteRefused, 0);
       agg.csc += num(row.csc, 0);
+      agg.parachute += num((row as any).parachute, 0);
       agg.penalties += num(row.penalties, 0);
       agg.penaltyGoals += num(row.penaltyGoals, 0);
     }
@@ -605,6 +608,7 @@ export function computeBabyFootLeaderboards(matches: BabyFootNormalizedMatch[], 
       p.pissetteValid += num(row.pissetteValid, 0);
       p.pissetteRefused += num(row.pissetteRefused, 0);
       p.csc += num(row.csc, 0);
+      p.parachute += num((row as any).parachute, 0);
       p.penalties += num(row.penalties, 0);
       p.penaltyGoals += num(row.penaltyGoals, 0);
     }

@@ -4,7 +4,7 @@
 // ✅ V4.5: filtres période + mode (1v1/2v2/2v1/all) + recherche
 // ✅ V4.6: stats équipes (compositions réelles Team A/Team B)
 // ✅ V4.7: duels (comparatif joueur vs joueur)
-// ⚠️ Tolérant aux payloads (V2/V3/V4): summary / events / penalties / sets…
+// ⚠️ Tolérant aux payloads (V2/V3/V4): summary / events / parachutes / sets…
 // Source: store.history (App.tsx pushBabyFootHistory)
 // =============================================================
 
@@ -139,8 +139,8 @@ function teamKey(ids: string[]) {
   return a.join("|") || "—";
 }
 
-function computePenalties(payload: any) {
-  const p = payload?.penalties ?? payload?.summary?.penalties ?? null;
+function computeParachutes(payload: any) {
+  const p = payload?.parachutes ?? payload?.summary?.parachutes ?? null;
   if (p && typeof p === "object") {
     return {
       shotsA: safeNum(p.shotsA, 0),
@@ -474,8 +474,8 @@ export default function BabyFootStatsHistoryPage({ store, go, params }: Props) {
         p.goals += 1;
       }
 
-      // Penalties
-      const pen = computePenalties(payload);
+      // Parachutes
+      const pen = computeParachutes(payload);
       if (pen) {
         // team level (by composition)
         const tA = ensureTeam(teamAIds, teamA);
@@ -538,7 +538,7 @@ if (Array.isArray(bursts) && bursts.length) {
   }
 }
 
-// Penalties décisifs (match décidé aux TAB)
+// Parachutes décisifs (match décidé aux TAB)
 const penImpact = computePenaltyImpact({ events: ev as any, scoreA, scoreB });
 if (penImpact) penaltyDecisiveTotal += 1;
 
@@ -785,7 +785,7 @@ if (conv?.shots > 0) {
   <div style={{ fontWeight: 1000, letterSpacing: 0.6, marginBottom: 10 }}>Qualité</div>
   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
     <KPI theme={theme} label="Buts décisifs" value={String((agg as any).decisiveTotal ?? 0)} />
-    <KPI theme={theme} label="Penalties décisifs" value={String((agg as any).penaltyDecisiveTotal ?? 0)} />
+    <KPI theme={theme} label="Parachutes" value={String((agg as any).parachuteTotal ?? 0)} />
     <KPI theme={theme} label="Momentum (bursts)" value={String((agg as any).momentumTotal ?? 0)} />
     <KPI
       theme={theme}

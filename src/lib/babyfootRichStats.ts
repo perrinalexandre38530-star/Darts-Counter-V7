@@ -16,6 +16,7 @@ export type BabyFootRichSideStats = {
   pissetteValid: number;
   pissetteRefused: number;
   csc: number;
+  parachute: number;
   demiBonus: number;
   goalAv: number;
   goalDef: number;
@@ -92,6 +93,8 @@ function normalizeSpecialStats(raw: any) {
     goalGbB: safeNum(stats.goalGbB),
     cscA: safeNum(stats.cscA),
     cscB: safeNum(stats.cscB),
+    parachuteA: safeNum(stats.parachuteA),
+    parachuteB: safeNum(stats.parachuteB),
   };
 }
 
@@ -193,6 +196,7 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     pissetteValid: specialStats.pissetteValidA,
     pissetteRefused: specialStats.pissetteRefusedA,
     csc: specialStats.cscA,
+    parachute: specialStats.parachuteA,
     demiBonus: specialStats.demiBonusAppliedA,
     goalAv: specialStats.goalAvA,
     goalDef: specialStats.goalDefA,
@@ -225,6 +229,7 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     pissetteValid: specialStats.pissetteValidB,
     pissetteRefused: specialStats.pissetteRefusedB,
     csc: specialStats.cscB,
+    parachute: specialStats.parachuteB,
     demiBonus: specialStats.demiBonusAppliedB,
     goalAv: specialStats.goalAvB,
     goalDef: specialStats.goalDefB,

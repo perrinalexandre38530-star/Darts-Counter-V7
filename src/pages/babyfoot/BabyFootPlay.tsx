@@ -98,7 +98,7 @@ type ScoreVisual = {
 };
 
 type PlayTab = "score" | "compo" | "stats" | "individual" | "actions";
-type QuickAction = "goal" | "demi" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "csc";
+type QuickAction = "goal" | "demi" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "csc" | "parachute";
 
 function tourResultKey(tournamentId: unknown, matchId: unknown) {
   return `bf_tour_result_${String(tournamentId || "")}_${String(matchId || "")}`;
@@ -424,6 +424,7 @@ function ActionTiles({
     { label: pecheOffLabel, action: "peche_off", source: "AV", accent: "#ff8b5a", muted: state.pecheOffRule === "forbidden" },
     { label: pecheDefLabel, action: "peche_def", source: "DEF", accent: "#5ad7ff", muted: state.pecheDefRule === "forbidden" },
     { label: pissetteLabel, action: "pissette", source: "AV", accent: "#ff59b0", muted: state.pissetteRule !== "point" },
+    { label: "PARACHUTE +1", action: "parachute", source: "GB", accent: "#5df0ff", muted: !state.allowLobShot },
     { label: "CSC", action: "csc", source: "AV", accent: "#ff4f6d" },
   ];
   return (
@@ -442,7 +443,7 @@ function ActionTiles({
   );
 }
 
-function IndividualStatsTabs({ rows }: { rows: Array<{ id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number }> }) {
+function IndividualStatsTabs({ rows }: { rows: Array<{ id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number; parachute?: number }> }) {
   const [tab, setTab] = useState<"A" | "B" | "ALL">("ALL");
   const filtered = rows.filter((row) => tab === "ALL" || row.team === tab);
   const statItems = (row: typeof rows[number]) => [
@@ -456,6 +457,7 @@ function IndividualStatsTabs({ rows }: { rows: Array<{ id: string; name: string;
     ["Pêche +", row.pecheOff],
     ["Pêche -", row.pecheDef],
     ["Pissette", row.pissette],
+    ["Parachute", row.parachute || 0],
     ["CSC", row.csc],
   ] as const;
 
@@ -1012,6 +1014,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       openCscPicker(team);
       return;
     }
+    if (action === "parachute" && !state.allowLobShot) return;
     const ids = team === "A" ? teamAIds : teamBIds;
     const resolvedPlayerId = playerId ?? (ids.length === 1 ? ids[0] : null);
     // En équipe, une action ne doit jamais être enregistrée silencieusement sans joueur.
@@ -1159,11 +1162,11 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   };
 
   const individualStats = useMemo(() => {
-    const byId = new Map<string, { id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number }>();
+    const byId = new Map<string, { id: string; name: string; team: BabyFootTeamId; goals: number; av: number; def: number; gb: number; demi: number; ptsDemi: number; gamelle: number; pecheOff: number; pecheDef: number; pissette: number; csc: number; parachute: number }>();
     const ensure = (id: string | null | undefined, team: BabyFootTeamId) => {
       const safeId = id || `${team}-collectif`;
       const profile = id ? getProfile(id) : null;
-      if (!byId.has(safeId)) byId.set(safeId, { id: safeId, name: profile?.name || (team === "A" ? visualA.name : visualB.name), team, goals: 0, av: 0, def: 0, gb: 0, demi: 0, ptsDemi: 0, gamelle: 0, pecheOff: 0, pecheDef: 0, pissette: 0, csc: 0 });
+      if (!byId.has(safeId)) byId.set(safeId, { id: safeId, name: profile?.name || (team === "A" ? visualA.name : visualB.name), team, goals: 0, av: 0, def: 0, gb: 0, demi: 0, ptsDemi: 0, gamelle: 0, pecheOff: 0, pecheDef: 0, pissette: 0, csc: 0, parachute: 0 });
       return byId.get(safeId)!;
     };
     for (const id of teamAIds) ensure(id, "A");
@@ -1184,6 +1187,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         if ((event as any).sourceLine === "DEF") row.def += 1;
         if ((event as any).sourceLine === "GB") row.gb += 1;
         if ((event as any).sourceLine === "MIL") row.demi += 1;
+        if ((event as any).kind === "parachute") row.parachute += 1;
       }
       if (event.t === "demi") row.demi += 1;
       if (event.t === "special") {
@@ -1191,6 +1195,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         if ((event as any).kind === "peche_off") row.pecheOff += 1;
         if ((event as any).kind === "peche_def") row.pecheDef += 1;
         if ((event as any).kind === "pissette") row.pissette += 1;
+        if ((event as any).kind === "parachute") row.parachute += 1;
         if ((event as any).kind === "csc") row.csc += 1;
       }
     }
@@ -1490,7 +1495,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                   Choisis le joueur puis l’action. Le bouton CSC ouvre le choix du joueur adverse fautif.
                 </div>
                 <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", fontSize: 12, lineHeight: 1.45, color: "rgba(255,255,255,.74)" }}>
-                  Règles actives : pissette {state.pissetteRule === "point" ? "validée +1" : state.pissetteRule === "forbidden_stat" ? "refusée" : "stat seulement"} · gamelle {state.gamelleRule === "plus_one_scoring_team" ? "+1" : state.gamelleRule === "minus_one_conceding_team" ? "-1 subi" : "stat"} · pêche off {state.pecheOffRule === "minus_one_conceding_team" ? "-1 subi" : state.pecheOffRule === "stat_only" ? "stat" : "interdite"} · pêche def {state.pecheDefRule === "cancel_goal" ? "annule le dernier but adverse" : state.pecheDefRule === "stat_only" ? "stat" : "interdite"}.
+                  Règles actives : pissette {state.pissetteRule === "point" ? "validée +1" : state.pissetteRule === "forbidden_stat" ? "refusée" : "stat seulement"} · gamelle {state.gamelleRule === "plus_one_scoring_team" ? "+1" : state.gamelleRule === "minus_one_conceding_team" ? "-1 subi" : "stat"} · pêche off {state.pecheOffRule === "minus_one_conceding_team" ? "-1 subi" : state.pecheOffRule === "stat_only" ? "stat" : "interdite"} · pêche def {state.pecheDefRule === "cancel_goal" ? "annule le dernier but adverse" : state.pecheDefRule === "stat_only" ? "stat" : "interdite"} · parachute {state.allowLobShot ? "+1" : "OFF"}.
                 </div>
 
                 <div style={{ marginTop: 16, display: "grid", gap: 10 }}>

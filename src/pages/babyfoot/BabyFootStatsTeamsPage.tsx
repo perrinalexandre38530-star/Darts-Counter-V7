@@ -346,7 +346,7 @@ function PlayerRow({ row, profilesById }: { row: BabyFootTeamPlayerContribution;
         <Kpi label="Buts perso" value={row.personalPoints} color={C.gold} hint={`${row.actualGoals} vrais`} />
         <Kpi label="AV/DEF/GB" value={`${row.goalAv}/${row.goalDef}/${row.goalGb}`} color={C.blue} />
         <Kpi label="Demis" value={row.demi} color={C.violet} hint={`bonus +${row.demiBonus}`} />
-        <Kpi label="Fun" value={`${row.gamelle}/${totalPissettes}/${totalPeches}`} color={C.orange} hint="gam/piss/pêches" />
+        <Kpi label="Fun" value={`${row.gamelle}/${totalPissettes}/${totalPeches}/${row.parachute || 0}`} color={C.orange} hint="gam/piss/pêches/parach." />
         <Kpi label="CSC" value={row.csc} color={C.pink} />
       </div>
     </div>
@@ -354,7 +354,7 @@ function PlayerRow({ row, profilesById }: { row: BabyFootTeamPlayerContribution;
 }
 
 function PlayerFunTotal(row: BabyFootTeamPlayerContribution) {
-  return row.gamelle + row.pissetteValid + row.pissetteRefused + row.pecheOff + row.pecheDef + row.demi + row.csc;
+  return row.gamelle + row.pissetteValid + row.pissetteRefused + row.pecheOff + row.pecheDef + row.demi + row.csc + (row.parachute || 0);
 }
 
 function topPlayer(rows: BabyFootTeamPlayerContribution[], valueOf: (row: BabyFootTeamPlayerContribution) => number) {
@@ -492,7 +492,7 @@ function TeamPlayerLeaderboards({ team, profilesById }: { team: BabyFootTeamDeta
       <PlayerCompareBars title="Contribution au collectif" subtitle="part du BP équipe" rows={players} profilesById={profilesById} color={C.blue} valueOf={(row) => row.contributionPct} formatValue={(value) => `${value}%`} />
       <PlayerCompareBars title="Jeu offensif AV" subtitle="buts avant" rows={players} profilesById={profilesById} color={C.green} valueOf={(row) => row.goalAv} />
       <PlayerCompareBars title="Défense / gardien" subtitle="DEF + GB" rows={players} profilesById={profilesById} color={C.pink} valueOf={(row) => row.goalDef + row.goalGb} formatValue={(_, row) => `${row.goalDef}/${row.goalGb}`} />
-      <PlayerCompareBars title="Actions spéciales" subtitle="demis, gamelles, pissettes, pêches, CSC" rows={players} profilesById={profilesById} color={C.orange} valueOf={PlayerFunTotal} />
+      <PlayerCompareBars title="Actions spéciales" subtitle="demis, gamelles, pissettes, pêches, parachutes, CSC" rows={players} profilesById={profilesById} color={C.orange} valueOf={PlayerFunTotal} />
       <PlayerRankingTable rows={players} profilesById={profilesById} />
     </>
   );
@@ -589,8 +589,8 @@ function MatchLine({ match, go, team, teams, profilesById }: { match: BabyFootTe
   const timeLabel = match.date ? new Date(match.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
     <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_teams" })} style={{ position: "relative", width: "100%", border: `1px solid ${color}44`, borderRadius: 22, padding: 0, background: `linear-gradient(135deg,${color}12,rgba(255,255,255,.035) 40%,rgba(0,0,0,.34))`, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 12px 26px rgba(0,0,0,.30), inset 0 0 30px ${color}10` }}>
-      {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ position: "absolute", left: -10, top: "50%", transform: "translateY(-50%)", width: 148, height: 148, objectFit: "contain", opacity: .18, filter: "grayscale(0.05)" }} /> : null}
-      {opponent?.logoUrl ? <img src={opponent.logoUrl} alt="" style={{ position: "absolute", right: -10, top: "50%", transform: "translateY(-50%)", width: 148, height: 148, objectFit: "contain", opacity: .18, filter: "grayscale(0.05)" }} /> : null}
+      {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ position: "absolute", left: -28, top: "50%", transform: "translateY(-50%)", width: 198, height: 198, objectFit: "contain", opacity: .25, filter: "grayscale(0.05)" }} /> : null}
+      {opponent?.logoUrl ? <img src={opponent.logoUrl} alt="" style={{ position: "absolute", right: -28, top: "50%", transform: "translateY(-50%)", width: 198, height: 198, objectFit: "contain", opacity: .25, filter: "grayscale(0.05)" }} /> : null}
       <div style={{ position: "relative", padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -729,9 +729,10 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
   const modeLabel = MODES.find((item) => item.key === mode)?.label || "TOUS";
   const primary = theme?.primary ?? C.gold;
   const rating = team ? babyFootTeamRating(team) : 0;
-  const maxAction = Math.max(1, team?.goalAv || 0, team?.goalDef || 0, team?.goalGb || 0, team?.demi || 0, team?.demiBonus || 0, team?.gamelle || 0, team?.pecheOff || 0, team?.pecheDef || 0, team?.pissetteValid || 0, team?.pissetteRefused || 0, team?.csc || 0, team?.goalsConcededAv || 0, team?.goalsConcededDef || 0, team?.goalsConcededGb || 0);
+  const maxAction = Math.max(1, team?.goalAv || 0, team?.goalDef || 0, team?.goalGb || 0, team?.demi || 0, team?.demiBonus || 0, team?.gamelle || 0, team?.pecheOff || 0, team?.pecheDef || 0, team?.pissetteValid || 0, team?.pissetteRefused || 0, team?.csc || 0, team?.parachute || 0, team?.goalsConcededAv || 0, team?.goalsConcededDef || 0, team?.goalsConcededGb || 0);
   const totalPissettes = (team?.pissetteValid || 0) + (team?.pissetteRefused || 0);
   const totalPeches = (team?.pecheOff || 0) + (team?.pecheDef || 0);
+  const totalParachutes = team?.parachute || 0;
   const visibleMatches = (team?.matchList || []).slice(0, tab === "matches" ? MATCHES_LIMIT : DASHBOARD_MATCH_LIMIT);
 
   return (
@@ -832,6 +833,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
                     <MiniProgress label="Gamelles" value={team.gamelle} max={maxAction} color={C.gold} />
                     <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
                     <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
+                    <MiniProgress label="Parachutes" value={totalParachutes} max={maxAction} color={C.green} />
                     <MiniProgress label="CSC" value={team.csc} max={maxAction} color={C.pink} />
                   </div>
                 </div>
@@ -875,6 +877,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
                     <MiniProgress label="Gamelles" value={team.gamelle} max={maxAction} color={C.gold} />
                     <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
                     <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
+                    <MiniProgress label="Parachutes" value={totalParachutes} max={maxAction} color={C.green} />
                     <MiniProgress label="CSC" value={team.csc} max={maxAction} color={C.pink} />
                   </div>
                 </div>
@@ -907,8 +910,8 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
                     <Kpi label="Gamelles" value={team.gamelle} color={C.gold} />
                     <Kpi label="Pissettes" value={`${team.pissetteValid}/${team.pissetteRefused}`} color={C.orange} hint="valid/refus" />
                     <Kpi label="Pêches" value={totalPeches} color={C.blue} hint={`${team.pecheOff} off · ${team.pecheDef} déf`} />
+                    <Kpi label="Parachutes" value={totalParachutes} color={C.green} hint="au-dessus gardien" />
                     <Kpi label="CSC" value={team.csc} color={C.pink} />
-                    <Kpi label="Pénos" value={team.penalties} color={C.violet} />
                   </div>
                 </div>
               </>

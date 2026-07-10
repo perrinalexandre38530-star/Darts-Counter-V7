@@ -203,6 +203,27 @@ function getTeamLogoForLabel(label: string, teamLogoByName: Map<string, string>)
   return (key && teamLogoByName.get(key)) || null;
 }
 
+function matchStartTime(resolved: any, match: BabyFootProfileMatch) {
+  const raw = num(resolved?.startedAt ?? resolved?.summary?.startedAt ?? resolved?.createdAt ?? resolved?.summary?.createdAt, 0);
+  if (raw > 0) return raw;
+  const duration = Math.max(0, num(resolved?.summary?.durationMs ?? resolved?.durationMs ?? match?.durationMs, 0));
+  const finished = num(resolved?.finishedAt ?? resolved?.summary?.finishedAt ?? match?.date, 0);
+  return finished > 0 && duration > 0 ? finished - duration : 0;
+}
+
+function eventElapsedMs(event: any, resolved: any, match: BabyFootProfileMatch, durationMs: number) {
+  const directElapsed = num(event?.elapsedMs ?? event?.matchElapsedMs ?? event?.elapsed, 0);
+  if (directElapsed > 0) return directElapsed;
+  const rawAt = num(event?.at ?? event?.timestamp, 0);
+  if (rawAt <= 0) return 0;
+  // Anciennes sauvegardes possibles : at peut être déjà un temps relatif au match.
+  if (rawAt <= durationMs * 1.25) return rawAt;
+  // Sauvegardes actuelles : at est un timestamp Date.now(). On le ramène au temps joué.
+  const start = matchStartTime(resolved, match);
+  if (start > 0) return Math.max(0, rawAt - start);
+  return Math.max(0, rawAt);
+}
+
 function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: string) {
   const pid = String(profileId || "").trim();
   const buckets: ScoreTimelineBucket[] = SCORE_TIMELINE_TEMPLATE.map((item) => ({ ...item, count: 0, pct: 0 }));
@@ -224,9 +245,10 @@ function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: 
       const scorerId = String(event?.scorerId || event?.playerId || event?.profileId || "").trim();
       const eventTeam = String(event?.team || event?.side || "").toUpperCase();
       if (eventTeam === String(match?.team || "").toUpperCase() && !scorerId) hasUnattributedTeamGoal = true;
-      if (!scorerId || scorerId !== pid) continue;
-      const at = Math.max(0, num(event?.at ?? event?.timestamp, 0));
-      const ratio = Math.max(0, Math.min(0.999, at / durationMs));
+      const belongsToPlayer = scorerId === pid || (!scorerId && String((match as any)?.player?.id || (match as any)?.player?.playerId || "") === pid);
+      if (!belongsToPlayer) continue;
+      const elapsed = eventElapsedMs(event, resolved, match, durationMs);
+      const ratio = Math.max(0, Math.min(0.999, elapsed / durationMs));
       const bucketIndex = Math.max(0, Math.min(buckets.length - 1, Math.floor(ratio * buckets.length)));
       buckets[bucketIndex].count += points;
       total += points;
@@ -246,6 +268,7 @@ function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: 
 
   return { buckets, total, topLabels, attributedMatches, unattributedMatches };
 }
+
 
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
@@ -408,20 +431,20 @@ function GhostAvatarBackdrop({
 }) {
   const uniqueIds = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean))).slice(0, 3);
   if (!imageSrc && !uniqueIds.length) return null;
-  const size = imageSrc ? 148 : 124;
+  const size = imageSrc ? 198 : 164;
   return (
     <div
       aria-hidden="true"
       style={{
         position: "absolute",
         top: "50%",
-        [side]: imageSrc ? -10 : -18,
+        [side]: imageSrc ? -26 : -30,
         transform: "translateY(-50%)",
         display: "flex",
         flexDirection: side === "left" ? "row" : "row-reverse",
         alignItems: "center",
         pointerEvents: "none",
-        opacity: imageSrc ? .18 : .24,
+        opacity: imageSrc ? .25 : .32,
         filter: imageSrc ? "saturate(1.15)" : "saturate(1.05)",
       } as React.CSSProperties}
     >
@@ -787,11 +810,18 @@ function MatchLine({
 
 function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPlayerScoringTimeline> }) {
   const buckets = summary.buckets;
-  const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
+  const total = Math.max(0, summary.total || 0);
+  const size = 148;
+  const cx = 74;
+  const cy = 74;
+  const r = 58;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+
   return (
-    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Points attribués analysés : {summary.total}</div>
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Points attribués analysés : {total}</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {(summary.topLabels.length ? summary.topLabels : ["Aucun moment fort détecté"]).map((label, index) => (
             <span key={`${label}-${index}`} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${index === 0 ? C.gold : C.blue}55`, color: index === 0 ? C.gold : C.blue, background: index === 0 ? `${C.gold}14` : `${C.blue}12`, fontSize: 10, fontWeight: 1000 }}>
@@ -801,24 +831,57 @@ function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPla
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
-        {buckets.map((bucket) => (
-          <div key={bucket.key} style={{ display: "grid", gridTemplateColumns: "92px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: bucket.color, fontSize: 11, fontWeight: 1000 }}>{bucket.label}</div>
-              <div style={{ color: C.dim, fontSize: 9, fontWeight: 850 }}>{bucket.short}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 14, alignItems: "center" }}>
+        <div style={{ position: "relative", width: size, height: size, display: "grid", placeItems: "center" }}>
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)", filter: "drop-shadow(0 0 12px rgba(255,213,91,.18))" }}>
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="18" />
+            {buckets.map((bucket) => {
+              const dash = total > 0 ? bucket.pct * circumference : 0;
+              const circle = (
+                <circle
+                  key={bucket.key}
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  fill="none"
+                  stroke={bucket.color}
+                  strokeWidth="18"
+                  strokeLinecap="butt"
+                  strokeDasharray={`${dash} ${circumference - dash}`}
+                  strokeDashoffset={-offset}
+                />
+              );
+              offset += dash;
+              return circle;
+            })}
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
+            <div>
+              <div style={{ color: C.text, fontSize: 24, fontWeight: 1100, lineHeight: 1 }}>{total}</div>
+              <div style={{ color: C.dim, fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>points</div>
             </div>
-            <div style={{ position: "relative", height: 14, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.045)" }}>
-              <div style={{ position: "absolute", inset: 0, width: `${Math.max(bucket.count > 0 ? 10 : 0, bucket.pct * 100)}%`, borderRadius: 999, background: `linear-gradient(90deg,${bucket.color}aa,${bucket.color}44)`, boxShadow: `0 0 18px ${bucket.color}35` }} />
-            </div>
-            <div style={{ color: bucket.color, fontSize: 12, fontWeight: 1000, minWidth: 32, textAlign: "right" }}>{bucket.count}</div>
           </div>
-        ))}
+        </div>
+
+        <div style={{ minWidth: 0, display: "grid", gap: 8 }}>
+          {buckets.map((bucket) => (
+            <div key={bucket.key} style={{ minWidth: 0, display: "grid", gridTemplateColumns: "12px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 999, background: bucket.color, boxShadow: `0 0 10px ${bucket.color}66` }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: bucket.color, fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bucket.label}</div>
+                <div style={{ color: C.dim, fontSize: 9, fontWeight: 850 }}>{bucket.short}</div>
+              </div>
+              <div style={{ color: bucket.color, fontSize: 12, fontWeight: 1000, minWidth: 54, textAlign: "right" }}>
+                {bucket.count} · {total ? Math.round(bucket.pct * 100) : 0}%
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {summary.unattributedMatches > 0 ? (
         <div style={{ color: C.dim, fontSize: 10, fontWeight: 850 }}>
-          {summary.unattributedMatches} match(s) contiennent des buts d’équipe non attribués à un joueur précis : la timeline se base uniquement sur les points effectivement rattachés au joueur.
+          {summary.unattributedMatches} match(s) contiennent des buts d’équipe non attribués à un joueur précis : le camembert se base uniquement sur les points rattachés au joueur.
         </div>
       ) : null}
     </div>
@@ -916,11 +979,12 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const babyFootTeams = React.useMemo(() => loadBabyFootTeams(), []);
   const teamLogoByName = React.useMemo(() => buildTeamLogoByName(babyFootTeams), [babyFootTeams]);
   const rating = babyFootRating(profileAgg);
-  const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc);
+  const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc, Number((profileAgg as any).parachute || 0));
   const personalShare = profileAgg.goalsFor > 0 ? Math.round((profileAgg.personalPoints / profileAgg.goalsFor) * 100) : 0;
   const teammatePoints = Math.max(0, profileAgg.goalsFor - profileAgg.personalPoints);
   const totalPissettes = profileAgg.pissetteValid + profileAgg.pissetteRefused;
   const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
+  const totalParachutes = Number((profileAgg as any).parachute || 0);
   const matchLimit = tab === "history" ? HISTORY_MATCH_LIMIT : DASHBOARD_MATCH_LIMIT;
   const visibleProfileMatches = profileMatches.slice(0, matchLimit);
   const scoringTimeline = React.useMemo(() => buildPlayerScoringTimeline(profileMatches, profileId), [profileMatches, profileId]);
@@ -1036,6 +1100,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <MiniProgress label="Demis" value={profileAgg.demi} max={maxAction} color={C.violet} />
                 <MiniProgress label="Gamelles" value={profileAgg.gamelle} max={maxAction} color={C.gold} />
                 <MiniProgress label="Pissettes" value={profileAgg.pissetteValid} max={maxAction} color={C.orange} />
+                <MiniProgress label="Parachutes" value={totalParachutes} max={maxAction} color={C.green} />
               </div>
             </div>
           </>
@@ -1059,8 +1124,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <Kpi label="Gamelles" value={profileAgg.gamelle} color={C.gold} hint="actions spéciales" />
                 <Kpi label="Pissettes" value={`${profileAgg.pissetteValid}/${profileAgg.pissetteRefused}`} color={C.orange} hint="validées/refusées" />
                 <Kpi label="Pêches" value={totalPeches} color={C.blue} hint={`${profileAgg.pecheOff} off · ${profileAgg.pecheDef} déf`} />
+                <Kpi label="Parachutes" value={totalParachutes} color={C.green} hint="au-dessus du gardien" />
                 <Kpi label="CSC" value={profileAgg.csc} color={C.pink} hint="contre son camp" />
-                <Kpi label="Pénos" value={`${profileAgg.penaltyGoals}/${profileAgg.penalties}`} color={C.violet} hint={profileAgg.penaltyRate == null ? "—" : formatBabyFootPct01(profileAgg.penaltyRate)} />
               </div>
             </div>
 
@@ -1085,6 +1150,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <MiniProgress label="Milieu" value={profileAgg.goalMil} max={maxAction} color={C.violet} />
                 <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
                 <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
+                <MiniProgress label="Parachutes" value={totalParachutes} max={maxAction} color={C.green} />
               </div>
             </div>
 

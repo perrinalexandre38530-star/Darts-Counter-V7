@@ -1781,7 +1781,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                   <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <div style={pillStyle(allowRoulette, primary, primarySoft)} onClick={() => setAllowRoulette((v) => !v)}>Roulette {allowRoulette ? "ON" : "OFF"}</div>
                     <div style={pillStyle(allowTacles, primary, primarySoft)} onClick={() => setAllowTacles((v) => !v)}>Tacles {allowTacles ? "ON" : "OFF"}</div>
-                    <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Lob / choc {allowLobShot ? "ON" : "OFF"}</div>
+                    <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Parachute {allowLobShot ? "ON" : "OFF"}</div>
                   </div>
                 </div>
               </div>
@@ -1810,7 +1810,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                   <div><b style={{ color: primary }}>Gamelle :</b> {optionLabel(GAMELLE_OPTIONS, gamelleRule)}</div>
                   <div><b style={{ color: primary }}>Pêche offensive :</b> {optionLabel(PECHE_OFF_OPTIONS, pecheOffRule)}</div>
                   <div><b style={{ color: primary }}>Pêche défensive :</b> {optionLabel(PECHE_DEF_OPTIONS, pecheDefRule)}</div>
-                  <div><b style={{ color: primary }}>Options :</b> Roulette {allowRoulette ? "ON" : "OFF"} · Tacles {allowTacles ? "ON" : "OFF"} · Lob/choc {allowLobShot ? "ON" : "OFF"}</div>
+                  <div><b style={{ color: primary }}>Options :</b> Roulette {allowRoulette ? "ON" : "OFF"} · Tacles {allowTacles ? "ON" : "OFF"} · Parachute {allowLobShot ? "ON" : "OFF"}</div>
                 </div>
               </div>
             ) : null}
@@ -2194,7 +2194,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div style={pillStyle(allowRoulette, primary, primarySoft)} onClick={() => setAllowRoulette((v) => !v)}>Roulette {allowRoulette ? "ON" : "OFF"}</div>
             <div style={pillStyle(allowTacles, primary, primarySoft)} onClick={() => setAllowTacles((v) => !v)}>Tacles {allowTacles ? "ON" : "OFF"}</div>
-            <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Lob / choc {allowLobShot ? "ON" : "OFF"}</div>
+            <div style={pillStyle(allowLobShot, primary, primarySoft)} onClick={() => setAllowLobShot((v) => !v)}>Parachute {allowLobShot ? "ON" : "OFF"}</div>
           </div>
 
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, lineHeight: 1.45 }}>

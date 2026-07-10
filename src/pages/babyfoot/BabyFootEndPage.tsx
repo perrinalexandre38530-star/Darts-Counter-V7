@@ -166,17 +166,16 @@ function actionLabel(ev: any, payload: any, match: any, teamA: string, teamB: st
   if (ev?.t === "finish") return `Fin du match${ev?.winner ? ` · victoire ${ev.winner === "A" ? teamA : teamB}` : " · match nul"}`;
   if (ev?.t === "phase") return `Passage en ${String(ev?.phase || "phase").toUpperCase()}`;
   if (ev?.t === "set_win") return `Set gagné · ${team}`;
-  if (ev?.t === "pen_shot") return `Penalty ${ev?.scored ? "marqué" : "raté"} · ${team}${who}`;
-  if (ev?.t === "demi") return `Demi · ${team}${who}`;
+    if (ev?.t === "demi") return `Demi · ${team}${who}`;
   if (ev?.t === "undo") return "Dernière action annulée";
   if (ev?.t === "special") {
-    const map: Record<string, string> = { gamelle: "Gamelle", peche_off: "Pêche offensive", peche_def: "Pêche défensive", pissette: ev?.counted ? "Pissette validée" : "Pissette refusée", csc: "CSC" };
+    const map: Record<string, string> = { gamelle: "Gamelle", peche_off: "Pêche offensive", peche_def: "Pêche défensive", pissette: ev?.counted ? "Pissette validée" : "Pissette refusée", parachute: "Parachute", csc: "CSC" };
     const delta = n(ev?.scoreDeltaA) || n(ev?.scoreDeltaB) ? ` · score ${n(ev?.scoreDeltaA) >= 0 ? "+" : ""}${n(ev?.scoreDeltaA)}/${n(ev?.scoreDeltaB) >= 0 ? "+" : ""}${n(ev?.scoreDeltaB)}` : "";
     return `${map[String(ev?.kind || "")] || String(ev?.kind || "Action")} · ${team}${who}${delta}`;
   }
   if (ev?.t === "goal") {
     const line = ev?.sourceLine ? ` ${String(ev.sourceLine).toUpperCase()}` : "";
-    const kind = ev?.kind === "gamelle" ? "Gamelle" : ev?.kind === "pissette" ? "Pissette" : ev?.kind === "csc" ? "CSC" : `But${line}`;
+    const kind = ev?.kind === "gamelle" ? "Gamelle" : ev?.kind === "pissette" ? "Pissette" : ev?.kind === "csc" ? "CSC" : ev?.kind === "parachute" ? "Parachute" : `But${line}`;
     const pts = Math.max(1, n(ev?.points, 1));
     const bonus = Math.max(0, n(ev?.demiBonusApplied));
     return `${kind} · ${team}${who}${pts > 1 ? ` · +${pts} pts` : ""}${bonus ? ` (${bonus} bonus demi)` : ""}`;
@@ -285,7 +284,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
 
   const infoContent = (
     <div style={{ display: "grid", gap: 10, lineHeight: 1.5 }}>
-      <div><strong>Stats globales</strong> compare les deux équipes : buts par ligne, demis, gamelles, pêches, pissettes, CSC, penalties et dynamique du score.</div>
+      <div><strong>Stats globales</strong> compare les deux équipes : buts par ligne, demis, gamelles, pêches, pissettes, parachutes, CSC et dynamique du score.</div>
       <div><strong>Stats individuelles</strong> détaille les actions attribuées à chaque joueur.</div>
       <div><strong>Fil du match</strong> reprend chaque action enregistrée avec son temps et le score après l’action.</div>
       <div style={{ opacity: .72 }}>Les anciennes parties dépourvues de journal d’actions ne peuvent pas être reconstruites rétroactivement.</div>
@@ -377,7 +376,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
           </div>
         ) : (
           <div style={{ ...small(theme), padding: 12, borderRadius: 14, border: `1px dashed ${theme.borderSoft ?? "rgba(255,255,255,.18)"}`, background: "rgba(255,255,255,.025)" }}>
-            Aucun journal détaillé n’est présent dans cette ancienne sauvegarde. Les prochains matchs enregistreront chaque but, demi, gamelle, pêche, pissette, CSC et penalty.
+            Aucun journal détaillé n’est présent dans cette ancienne sauvegarde. Les prochains matchs enregistreront chaque but, demi, gamelle, pêche, pissette, parachute et CSC.
           </div>
         )}
       </section>
@@ -458,7 +457,7 @@ function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scor
     ["Pissettes validées", n(a.pissetteValid), n(b.pissetteValid)],
     ["Pissettes refusées", n(a.pissetteRefused), n(b.pissetteRefused)],
     ["CSC", n(a.csc), n(b.csc)],
-    ["Penaltys marqués", n(a.penalties), n(b.penalties)],
+    ["Parachutes", n((a as any).parachute), n((b as any).parachute)],
     ["Plus longue série", n(a.longestRun), n(b.longestRun)],
     ["Égalisations", n(a.equalizations), n(b.equalizations)],
     ["Prises de tête", n(a.leadChanges), n(b.leadChanges)],
@@ -534,7 +533,7 @@ function PlayerStatsCard({ theme, row, accent }: any) {
     ["Pêche déf.", n(row.pecheDef)],
     ["Pissette", `${n(row.pissetteValid)}/${n(row.pissetteRefused)}`],
     ["CSC", n(row.csc ?? row.ownGoals)],
-    ["Penalty", `${n(row.penaltyGoals)}/${n(row.penalties)}`],
+    ["Parachute", n(row.parachute)],
   ];
   return (
     <div style={{ borderRadius: 17, padding: 11, border: `1px solid ${accent}4d`, background: `linear-gradient(180deg, ${accent}10, rgba(255,255,255,.025))` }}>

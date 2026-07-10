@@ -11,9 +11,9 @@
 export type BabyFootTeamId = "A" | "B";
 export type BabyFootMode = "1v1" | "2v2" | "2v1";
 export type BabyFootPhase = "play" | "overtime" | "penalties" | "finished";
-export type BabyFootGoalKind = "normal" | "gamelle" | "peche" | "pissette" | "csc";
+export type BabyFootGoalKind = "normal" | "gamelle" | "peche" | "pissette" | "csc" | "parachute";
 export type BabyFootGoalSource = "AV" | "DEF" | "GB" | "MIL";
-export type BabyFootScoreAction = "goal" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "demi" | "csc";
+export type BabyFootScoreAction = "goal" | "gamelle" | "peche_off" | "peche_def" | "pissette" | "demi" | "csc" | "parachute";
 export type BabyFootRulePreset = "competition" | "bar";
 export type BabyFootDemiRule = "point" | "suspend" | "forbidden"; // point conservé pour compatibilité: traité comme suspendu
 export type BabyFootPissetteRule = "point" | "forbidden_stat" | "stat_only";
@@ -46,13 +46,16 @@ export type BabyFootSpecialStats = {
   goalGbB: number;
   cscA: number;
   cscB: number;
+  parachuteA: number;
+  parachuteB: number;
 };
 
 export type BabyFootEvent =
-  | { t: "start"; at: number }
+  | { t: "start"; at: number; elapsedMs?: number }
   | {
       t: "goal";
       at: number;
+      elapsedMs?: number;
       team: BabyFootTeamId;
       scorerId?: string | null;
       ownGoalById?: string | null;
@@ -63,13 +66,13 @@ export type BabyFootEvent =
       demiBonusApplied?: number;
       sourceLine?: BabyFootGoalSource;
     }
-  | { t: "demi"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; sourceLine?: BabyFootGoalSource }
-  | { t: "special"; at: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; kind: Exclude<BabyFootScoreAction, "goal" | "demi">; counted?: boolean; scoreDeltaA?: number; scoreDeltaB?: number; demiBonusApplied?: number; sourceLine?: BabyFootGoalSource }
-  | { t: "pen_shot"; at: number; team: BabyFootTeamId; scored: boolean; scorerId?: string | null }
-  | { t: "set_win"; at: number; team: BabyFootTeamId; setIndex: number }
-  | { t: "phase"; at: number; phase: BabyFootPhase }
-  | { t: "undo"; at: number }
-  | { t: "finish"; at: number; winner: BabyFootTeamId | null; reason: "target" | "golden" | "time" | "sets" | "penalties" | "draw" };
+  | { t: "demi"; at: number; elapsedMs?: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; sourceLine?: BabyFootGoalSource }
+  | { t: "special"; at: number; elapsedMs?: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; kind: Exclude<BabyFootScoreAction, "goal" | "demi">; counted?: boolean; scoreDeltaA?: number; scoreDeltaB?: number; demiBonusApplied?: number; sourceLine?: BabyFootGoalSource }
+  | { t: "pen_shot"; at: number; elapsedMs?: number; team: BabyFootTeamId; scored: boolean; scorerId?: string | null }
+  | { t: "set_win"; at: number; elapsedMs?: number; team: BabyFootTeamId; setIndex: number }
+  | { t: "phase"; at: number; elapsedMs?: number; phase: BabyFootPhase }
+  | { t: "undo"; at: number; elapsedMs?: number }
+  | { t: "finish"; at: number; elapsedMs?: number; winner: BabyFootTeamId | null; reason: "target" | "golden" | "time" | "sets" | "penalties" | "draw" };
 
 export type PenaltiesState = {
   shotsA: number;
@@ -214,6 +217,8 @@ function emptySpecialStats(): BabyFootSpecialStats {
     goalGbB: 0,
     cscA: 0,
     cscB: 0,
+    parachuteA: 0,
+    parachuteB: 0,
   };
 }
 
@@ -245,6 +250,8 @@ function normalizeSpecialStats(raw: any): BabyFootSpecialStats {
     goalGbB: Number.isFinite(raw.goalGbB) ? raw.goalGbB : base.goalGbB,
     cscA: Number.isFinite(raw.cscA) ? raw.cscA : base.cscA,
     cscB: Number.isFinite(raw.cscB) ? raw.cscB : base.cscB,
+    parachuteA: Number.isFinite(raw.parachuteA) ? raw.parachuteA : base.parachuteA,
+    parachuteB: Number.isFinite(raw.parachuteB) ? raw.parachuteB : base.parachuteB,
   };
 }
 
@@ -476,6 +483,16 @@ export function computeDurationMs(s: BabyFootState) {
   return Math.max(0, end - s.startedAt - pausedMs);
 }
 
+function computeDurationAtMs(s: BabyFootState, at: number) {
+  if (!s.startedAt) return 0;
+  const end = Number.isFinite(at) && at > 0 ? at : Date.now();
+  let pausedMs = Math.max(0, Number(s.pausedTotalMs) || 0);
+  if (!s.clockRunning && s.pausedAt != null) {
+    pausedMs += Math.max(0, end - s.pausedAt);
+  }
+  return Math.max(0, end - s.startedAt - pausedMs);
+}
+
 function pushUndo(s: BabyFootState) {
   const snap: any = {
     scoreA: s.scoreA,
@@ -697,6 +714,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
   if (s.finished || s.phase === "penalties") return s;
 
   const now = Date.now();
+  const elapsedMs = computeDurationAtMs(s, now);
   const undo = pushUndo(s);
   let stats = normalizeSpecialStats(s.specialStats);
   const pending = Math.max(0, Number(s.pendingDemiBonus) || 0);
@@ -723,6 +741,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
         {
           t: "goal",
           at: now,
+          elapsedMs,
           team: eventTeam,
           scorerId: eventScorerId ?? null,
           ownGoalById: ownGoal?.byId ?? null,
@@ -822,6 +841,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
         {
           t: "special",
           at: now,
+          elapsedMs,
           team,
           scorerId: scorerId ?? null,
           phase: s.phase,
@@ -884,7 +904,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
         ...s,
         undo,
         specialStats: stats,
-        events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
+        events: [...(s.events || []), { t: "demi", at: now, elapsedMs, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
         updatedAt: now,
       };
       return persist(next);
@@ -899,7 +919,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
       undo,
       pendingDemiBonus: pending + 1,
       specialStats: stats,
-      events: [...(s.events || []), { t: "demi", at: now, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
+      events: [...(s.events || []), { t: "demi", at: now, elapsedMs, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
       updatedAt: now,
     };
     return persist(next);
@@ -944,6 +964,11 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     return withSpecialEvent({}, "pissette", { counted: s.pissetteRule === "forbidden_stat", scoreDeltaA: 0, scoreDeltaB: 0 });
   }
 
+  if (kind === "parachute") {
+    stats = bumpSpecialStats(stats, team === "A" ? "parachuteA" : "parachuteB");
+    // Parachute = balle qui passe au-dessus de la barre du gardien : +1 et stat dédiée.
+    return withGoalEvent(s.scoreA + (team === "A" ? 1 : 0), s.scoreB + (team === "B" ? 1 : 0), "parachute", 1, 0, team, scorerId ?? null, undefined);
+  }
 
   if (kind === "csc") {
     // CSC = le joueur sélectionné marque contre son camp.
