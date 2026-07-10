@@ -63,17 +63,11 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
   const quick = readQuickStats(profile) || {};
 
   const avgCandidates = [
-    ...extraCandidates,
+    // mêmes sources rapides que les pages HOME / PROFILES : d'abord les stats X01/Darts persistées
     quick?.avg3D,
     quick?.avg3d,
     quick?.avg3,
     quick?.average3Darts,
-    profile?.avg3D,
-    profile?.avg3d,
-    profile?.avg3,
-    profile?.stats?.avg3D,
-    profile?.stats?.avg3d,
-    profile?.stats?.avg3,
     profile?.stats?.x01?.avg3D,
     profile?.stats?.x01?.avg3d,
     profile?.stats?.x01?.avg3,
@@ -89,6 +83,7 @@ export function resolveProfileStarScore(profile: any, extraCandidates: any[] = [
     profile?.stats?.darts?.avg3D,
     profile?.stats?.darts?.avg3d,
     profile?.stats?.darts?.avg3,
+    ...extraCandidates,
   ];
 
   for (const raw of avgCandidates) {

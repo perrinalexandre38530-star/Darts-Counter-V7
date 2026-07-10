@@ -338,7 +338,8 @@ export default function StatsCenterPlayersPage({ go }: Props) {
                     starSize={10}
                     gapPx={-2}
                     stepDeg={10}
-                    score={resolveProfileStarScore(selected, [stats?.avgScore, stats?.bestScore])}
+                    avg3d={resolveProfileStarScore(selected, [stats?.avgScore, stats?.bestScore])}
+                    animateGlow={true}
                   />
                 </div>
                 <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}>

@@ -17,6 +17,7 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+import { resolveProfileStarScore } from "../../lib/profileStarScore";
 import BackDot from "../../components/BackDot";
 
 type Props = {
@@ -451,9 +452,10 @@ function StatsPlayerAvatar({
           anchorSize={AVA}
           gapPx={-2}
           starSize={STAR}
-          stepDeg={12}
+          stepDeg={10}
           rotationDeg={0}
-          avg3d={avg3n}
+          avg3d={resolveProfileStarScore(profile) || avg3n}
+          animateGlow
         />
       </div>
 

@@ -373,7 +373,7 @@ function StatsPlayerAvatar({ profile, theme }: { profile: Profile | null; theme:
           pointerEvents: "none",
         }}
       >
-        <ProfileStarRing anchorSize={AVA} gapPx={-2} starSize={STAR} stepDeg={12} rotationDeg={0} score={resolveProfileStarScore(profile) || avg3n} />
+        <ProfileStarRing anchorSize={AVA} gapPx={-2} starSize={STAR} stepDeg={10} rotationDeg={0} avg3d={resolveProfileStarScore(profile) || avg3n} animateGlow />
       </div>
 
       <div

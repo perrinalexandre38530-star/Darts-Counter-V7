@@ -21,6 +21,7 @@ import { aggregatePlayers, safeNum, formatDuration } from "../../lib/diceStats";
 
 import type { Profile } from "../../lib/types";
 import { sortProfilesByModeUsage } from "../../lib/profileUsage";
+import { resolveProfileStarScore } from "../../lib/profileStarScore";
 
 type Props = { go?: any };
 
@@ -264,7 +265,7 @@ export default function DiceStatsLocalsPage({ go }: Props) {
           {selected ? (
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ position: "relative", width: 58, height: 58 }}>
-                <ProfileStarRing profile={selected} size={58} />
+                <ProfileStarRing anchorSize={58} avg3d={resolveProfileStarScore(selected)} gapPx={-3} starSize={10} stepDeg={10} animateGlow />
                 <div style={{ position: "absolute", inset: 4, borderRadius: 999, overflow: "hidden" }}>
                   <ProfileAvatar profile={selected} size={50} />
                 </div>
