@@ -580,14 +580,16 @@ function ActiveProfileCard({
                 showStars={false}
               />
               {!hideStarRing && (
-                <ProfileStarRing
-                  anchorSize={84}
-                  avg3d={starRingAvg3D}
-                  gapPx={-3}
-                  starSize={14}
-                  stepDeg={10}
-                  animateGlow={true}
-                />
+                <div style={{ position: "absolute", inset: 0, transform: "translateX(2px) translateY(-1px)", pointerEvents: "none" }}>
+                  <ProfileStarRing
+                    anchorSize={84}
+                    avg3d={starRingAvg3D}
+                    gapPx={-2}
+                    starSize={14}
+                    stepDeg={10}
+                    animateGlow={true}
+                  />
+                </div>
               )}
             </div>
 

@@ -5,6 +5,7 @@ import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
+import { loadBabyFootTeams, type BabyFootTeam } from "../../lib/petanqueTeamsStore";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
 import {
@@ -21,6 +22,7 @@ import {
   type BabyFootProfileMatch,
   type BabyFootLeaderboardBundle,
 } from "../../lib/babyfootStatsAggregate";
+import { resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 
 type Props = {
   store: Store;
@@ -151,6 +153,100 @@ function mergeRows(...sources: any[][]) {
   return Array.from(byId.values());
 }
 
+type ScoreTimelineBucket = {
+  key: string;
+  label: string;
+  short: string;
+  color: string;
+  count: number;
+  pct: number;
+};
+
+const SCORE_TIMELINE_TEMPLATE: Array<Omit<ScoreTimelineBucket, "count" | "pct">> = [
+  { key: "opening", label: "Entame", short: "0–20%", color: C.blue },
+  { key: "build", label: "Montée", short: "20–40%", color: C.green },
+  { key: "mid", label: "Cœur du match", short: "40–60%", color: C.gold },
+  { key: "money", label: "Money time", short: "60–80%", color: C.orange },
+  { key: "finish", label: "Finish", short: "80–100%", color: C.violet },
+];
+
+function normalizeLabelKey(value: any) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function teamLogoSrc(team: BabyFootTeam | null | undefined): string | null {
+  if (!team) return null;
+  return String(team.logoDataUrl || team.logoUrl || (team as any).avatarUrl || "").trim() || null;
+}
+
+function buildTeamLogoByName(teams: BabyFootTeam[]) {
+  const out = new Map<string, string>();
+  for (const team of Array.isArray(teams) ? teams : []) {
+    const key = normalizeLabelKey((team as any)?.name);
+    const src = teamLogoSrc(team);
+    if (key && src && !out.has(key)) out.set(key, src);
+  }
+  return out;
+}
+
+function isTeamMode(mode: string) {
+  return String(mode || "").toLowerCase() !== "1v1";
+}
+
+function getTeamLogoForLabel(label: string, teamLogoByName: Map<string, string>) {
+  const key = normalizeLabelKey(label);
+  return (key && teamLogoByName.get(key)) || null;
+}
+
+function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: string) {
+  const pid = String(profileId || "").trim();
+  const buckets: ScoreTimelineBucket[] = SCORE_TIMELINE_TEMPLATE.map((item) => ({ ...item, count: 0, pct: 0 }));
+  let total = 0;
+  let attributedMatches = 0;
+  let unattributedMatches = 0;
+  if (!pid) return { buckets, total, topLabels: [] as string[], attributedMatches, unattributedMatches };
+
+  for (const match of Array.isArray(matches) ? matches : []) {
+    const resolved = resolveBabyFootRecord(match?.record);
+    const events = Array.isArray(resolved?.events) ? resolved.events : [];
+    const durationMs = Math.max(1, num(resolved?.summary?.durationMs ?? resolved?.durationMs ?? match?.durationMs, 0));
+    let hasAttributedGoal = false;
+    let hasUnattributedTeamGoal = false;
+
+    for (const event of events) {
+      if (String(event?.t || event?.type || "") !== "goal") continue;
+      const points = Math.max(1, num(event?.points, 1));
+      const scorerId = String(event?.scorerId || event?.playerId || event?.profileId || "").trim();
+      const eventTeam = String(event?.team || event?.side || "").toUpperCase();
+      if (eventTeam === String(match?.team || "").toUpperCase() && !scorerId) hasUnattributedTeamGoal = true;
+      if (!scorerId || scorerId !== pid) continue;
+      const at = Math.max(0, num(event?.at ?? event?.timestamp, 0));
+      const ratio = Math.max(0, Math.min(0.999, at / durationMs));
+      const bucketIndex = Math.max(0, Math.min(buckets.length - 1, Math.floor(ratio * buckets.length)));
+      buckets[bucketIndex].count += points;
+      total += points;
+      hasAttributedGoal = true;
+    }
+
+    if (hasAttributedGoal) attributedMatches += 1;
+    else if (hasUnattributedTeamGoal) unattributedMatches += 1;
+  }
+
+  for (const bucket of buckets) bucket.pct = total > 0 ? bucket.count / total : 0;
+  const topLabels = buckets
+    .filter((bucket) => bucket.count > 0)
+    .sort((a, b) => (b.count - a.count) || (b.pct - a.pct))
+    .slice(0, 2)
+    .map((bucket) => bucket.label);
+
+  return { buckets, total, topLabels, attributedMatches, unattributedMatches };
+}
+
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
     width: "100%",
@@ -235,14 +331,16 @@ function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = fa
         showStars={false}
       />
       {showStars && avg3d > 0 ? (
-        <ProfileStarRing
-          anchorSize={size}
-          avg3d={avg3d}
-          gapPx={-3}
-          starSize={14}
-          stepDeg={10}
-          animateGlow
-        />
+        <div style={{ position: "absolute", inset: 0, transform: "translateX(2px) translateY(-1px)", pointerEvents: "none" }}>
+          <ProfileStarRing
+            anchorSize={size}
+            avg3d={avg3d}
+            gapPx={-2}
+            starSize={14}
+            stepDeg={10}
+            animateGlow
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -297,31 +395,46 @@ function AvatarStrip({ playerIds, profilesById, max = 4 }: { playerIds: string[]
   );
 }
 
-function GhostAvatarBackdrop({ playerIds, profilesById, side }: { playerIds: string[]; profilesById: Map<string, Profile>; side: "left" | "right" }) {
+function GhostAvatarBackdrop({
+  playerIds,
+  profilesById,
+  side,
+  imageSrc,
+}: {
+  playerIds: string[];
+  profilesById: Map<string, Profile>;
+  side: "left" | "right";
+  imageSrc?: string | null;
+}) {
   const uniqueIds = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean))).slice(0, 3);
-  if (!uniqueIds.length) return null;
+  if (!imageSrc && !uniqueIds.length) return null;
+  const size = imageSrc ? 148 : 124;
   return (
     <div
       aria-hidden="true"
       style={{
         position: "absolute",
         top: "50%",
-        [side]: -14,
+        [side]: imageSrc ? -10 : -18,
         transform: "translateY(-50%)",
         display: "flex",
         flexDirection: side === "left" ? "row" : "row-reverse",
         alignItems: "center",
         pointerEvents: "none",
-        opacity: .14,
-        filter: "saturate(1.05)",
+        opacity: imageSrc ? .18 : .24,
+        filter: imageSrc ? "saturate(1.15)" : "saturate(1.05)",
       } as React.CSSProperties}
     >
-      {uniqueIds.map((id, index) => {
+      {imageSrc ? (
+        <div style={{ width: size, height: size, borderRadius: 30, overflow: "hidden", boxShadow: "0 0 0 1px rgba(255,255,255,.05)" }}>
+          <img src={imageSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        </div>
+      ) : uniqueIds.map((id, index) => {
         const profile = profilesById.get(id) || ({ id, name: id } as any);
         return (
-          <div key={`${side}-${id}-${index}`} style={{ marginLeft: side === "left" && index > 0 ? -26 : 0, marginRight: side === "right" && index > 0 ? -26 : 0, transform: `scale(${1 - index * 0.08})` }}>
-            <div style={{ width: 92, height: 92, borderRadius: 999, overflow: "hidden", boxShadow: "0 0 0 1px rgba(255,255,255,.05)" }}>
-              <ProfileAvatar profile={profile as any} size={92} />
+          <div key={`${side}-${id}-${index}`} style={{ marginLeft: side === "left" && index > 0 ? -34 : 0, marginRight: side === "right" && index > 0 ? -34 : 0, transform: `scale(${1 - index * 0.08})` }}>
+            <div style={{ width: size, height: size, borderRadius: 999, overflow: "hidden", boxShadow: "0 0 0 1px rgba(255,255,255,.05)" }}>
+              <ProfileAvatar profile={profile as any} size={size} />
             </div>
           </div>
         );
@@ -598,7 +711,19 @@ function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFo
   );
 }
 
-function MatchLine({ match, go, profilesById, primary = C.gold }: { match: BabyFootProfileMatch; go: Props["go"]; profilesById: Map<string, Profile>; primary?: string }) {
+function MatchLine({
+  match,
+  go,
+  profilesById,
+  teamLogoByName,
+  primary = C.gold,
+}: {
+  match: BabyFootProfileMatch;
+  go: Props["go"];
+  profilesById: Map<string, Profile>;
+  teamLogoByName: Map<string, string>;
+  primary?: string;
+}) {
   const color = match.won ? C.green : match.draw ? C.gold : C.pink;
   const resultText = match.won ? "VICTOIRE" : match.draw ? "NUL" : "DÉFAITE";
   const diff = match.scoreFor - match.scoreAgainst;
@@ -606,12 +731,17 @@ function MatchLine({ match, go, profilesById, primary = C.gold }: { match: BabyF
   const rightColor = match.draw ? C.gold : match.won ? C.pink : C.green;
   const leftPlayerIds = extractMatchSidePlayerIds(match.record, match.team === "A" ? "A" : "B");
   const rightPlayerIds = extractMatchSidePlayerIds(match.record, match.team === "A" ? "B" : "A");
+  const teamMode = isTeamMode(match.mode);
+  const leftBackdropSrc = teamMode ? getTeamLogoForLabel(match.teamName, teamLogoByName) : null;
+  const rightBackdropSrc = teamMode ? getTeamLogoForLabel(match.opponentName, teamLogoByName) : null;
   const dateLabel = match.date ? new Date(match.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "Date inconnue";
   const timeLabel = match.date ? new Date(match.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+  const leftNameSize = teamMode ? "clamp(14px, 3.8vw, 17px)" : "clamp(15px, 4vw, 18px)";
+  const rightNameSize = leftNameSize;
   return (
-    <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_center" })} style={{ position: "relative", width: "100%", border: `1px solid ${color}44`, borderRadius: 22, padding: 0, background: `linear-gradient(135deg,${color}12,rgba(255,255,255,.035) 40%,rgba(0,0,0,.34))`, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 12px 26px rgba(0,0,0,.30), inset 0 0 30px ${color}10` }}>
-      <GhostAvatarBackdrop playerIds={leftPlayerIds} profilesById={profilesById} side="left" />
-      <GhostAvatarBackdrop playerIds={rightPlayerIds} profilesById={profilesById} side="right" />
+    <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_center" })} style={{ position: "relative", width: "100%", maxWidth: "100%", border: `1px solid ${color}44`, borderRadius: 22, padding: 0, background: `linear-gradient(135deg,${color}12,rgba(255,255,255,.035) 40%,rgba(0,0,0,.34))`, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 12px 26px rgba(0,0,0,.30), inset 0 0 30px ${color}10` }}>
+      <GhostAvatarBackdrop playerIds={leftPlayerIds} profilesById={profilesById} side="left" imageSrc={leftBackdropSrc} />
+      <GhostAvatarBackdrop playerIds={rightPlayerIds} profilesById={profilesById} side="right" imageSrc={rightBackdropSrc} />
       <div style={{ position: "relative", padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
@@ -623,7 +753,7 @@ function MatchLine({ match, go, profilesById, primary = C.gold }: { match: BabyF
 
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
           <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
-            <div style={{ color: leftColor, fontSize: 18, fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${leftColor}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{match.teamName}</div>
+            <div style={{ color: leftColor, fontSize: leftNameSize, fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${leftColor}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{match.teamName}</div>
             <AvatarStrip playerIds={leftPlayerIds} profilesById={profilesById} />
           </div>
 
@@ -634,7 +764,7 @@ function MatchLine({ match, go, profilesById, primary = C.gold }: { match: BabyF
           </div>
 
           <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
-            <div style={{ color: rightColor, fontSize: 18, fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: `0 0 12px ${rightColor}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{match.opponentName}</div>
+            <div style={{ color: rightColor, fontSize: rightNameSize, fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: `0 0 12px ${rightColor}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%", maxWidth: "100%" }}>{match.opponentName}</div>
             <div style={{ justifySelf: "end" }}><AvatarStrip playerIds={rightPlayerIds} profilesById={profilesById} /></div>
           </div>
         </div>
@@ -654,6 +784,47 @@ function MatchLine({ match, go, profilesById, primary = C.gold }: { match: BabyF
     </button>
   );
 }
+
+function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPlayerScoringTimeline> }) {
+  const buckets = summary.buckets;
+  const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
+  return (
+    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Points attribués analysés : {summary.total}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {(summary.topLabels.length ? summary.topLabels : ["Aucun moment fort détecté"]).map((label, index) => (
+            <span key={`${label}-${index}`} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${index === 0 ? C.gold : C.blue}55`, color: index === 0 ? C.gold : C.blue, background: index === 0 ? `${C.gold}14` : `${C.blue}12`, fontSize: 10, fontWeight: 1000 }}>
+              {index === 0 ? "Moment fort" : "Alternative"} · {label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        {buckets.map((bucket) => (
+          <div key={bucket.key} style={{ display: "grid", gridTemplateColumns: "92px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: bucket.color, fontSize: 11, fontWeight: 1000 }}>{bucket.label}</div>
+              <div style={{ color: C.dim, fontSize: 9, fontWeight: 850 }}>{bucket.short}</div>
+            </div>
+            <div style={{ position: "relative", height: 14, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.045)" }}>
+              <div style={{ position: "absolute", inset: 0, width: `${Math.max(bucket.count > 0 ? 10 : 0, bucket.pct * 100)}%`, borderRadius: 999, background: `linear-gradient(90deg,${bucket.color}aa,${bucket.color}44)`, boxShadow: `0 0 18px ${bucket.color}35` }} />
+            </div>
+            <div style={{ color: bucket.color, fontSize: 12, fontWeight: 1000, minWidth: 32, textAlign: "right" }}>{bucket.count}</div>
+          </div>
+        ))}
+      </div>
+
+      {summary.unattributedMatches > 0 ? (
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 850 }}>
+          {summary.unattributedMatches} match(s) contiennent des buts d’équipe non attribués à un joueur précis : la timeline se base uniquement sur les points effectivement rattachés au joueur.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 
 export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const { theme } = useTheme() as any;
@@ -742,6 +913,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     for (const p of profiles) map.set(idOf(p), p);
     return map;
   }, [profiles]);
+  const babyFootTeams = React.useMemo(() => loadBabyFootTeams(), []);
+  const teamLogoByName = React.useMemo(() => buildTeamLogoByName(babyFootTeams), [babyFootTeams]);
   const rating = babyFootRating(profileAgg);
   const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc);
   const personalShare = profileAgg.goalsFor > 0 ? Math.round((profileAgg.personalPoints / profileAgg.goalsFor) * 100) : 0;
@@ -750,6 +923,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
   const matchLimit = tab === "history" ? HISTORY_MATCH_LIMIT : DASHBOARD_MATCH_LIMIT;
   const visibleProfileMatches = profileMatches.slice(0, matchLimit);
+  const scoringTimeline = React.useMemo(() => buildPlayerScoringTimeline(profileMatches, profileId), [profileMatches, profileId]);
 
   return (
     <div className="bf-stats-center" style={{ position: "relative", left: "50%", right: "50%", marginLeft: "-50vw", marginRight: "-50vw", minHeight: "100%", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", padding: "18px max(10px, env(safe-area-inset-right)) 112px max(10px, env(safe-area-inset-left))", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
@@ -817,7 +991,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
             <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "visible" }}>
               <StatHeroAvatar profile={profile} size={84} glowColor={primary} showStars starAvg3D={babyFootLevelScoreFromAggregate(profileAgg)} />
-              <div style={{ marginTop: 10, color: primary, fontSize: 24, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
+              <div style={{ marginTop: 10, color: primary, fontSize: "clamp(18px, 5.4vw, 24px)", fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
               <div style={{ marginTop: 5, color: C.muted, fontSize: 10, fontWeight: 850 }}>{rank ? `Rang #${rank}` : "Non classé"} · Rating {rating} · {profileAgg.matches} matchs</div>
               {scope === "locals" ? <div style={{ marginTop: 4, color: C.blue, fontSize: 10, fontWeight: 950, letterSpacing: .7, textTransform: "uppercase" }}>Profils locaux</div> : null}
             </div>
@@ -832,7 +1006,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         {!rankingOnly && (tab === "dashboard" || tab === "details") && (
           <>
             <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(136px,100%),1fr))", gap: 10 }}>
-              <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.gold} hint="BP / BC" />
+              <Kpi label="Rating" value={rating} color={C.gold} hint={`Ratio ${formatBabyFootRatio(profileAgg.ratio)}`} />
               <Kpi label="Win%" value={formatBabyFootPct01(profileAgg.winRate)} color={C.green} hint={`${profileAgg.wins}V / ${profileAgg.matches}MJ`} />
               <Kpi label="BP / match" value={formatOne(profileAgg.avgGoalsFor)} color={C.blue} hint={`${profileAgg.goalsFor} buts pour`} />
               <Kpi label="BC / match" value={formatOne(profileAgg.avgGoalsAgainst)} color={C.pink} hint={`${profileAgg.goalsAgainst} encaissés`} />
@@ -876,6 +1050,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             <div style={cardStyle()}>
               {sectionTitle("Stats avancées", C.green)}
               <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
+                <Kpi label="Rating" value={rating} color={C.gold} hint="forme globale" />
+                <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.blue} hint="BP / BC" />
                 <Kpi label="Buts perso" value={profileAgg.personalPoints} color={C.gold} hint={`${profileAgg.actualGoals} vrais buts`} />
                 <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="part des BP équipe" />
                 <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} hint="matchs avec détail" />
@@ -911,6 +1087,12 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
               </div>
             </div>
+
+            <div style={cardStyle()}>
+              {sectionTitle("Frise chronologique des points", C.gold)}
+              <ScoringTimelineChart summary={scoringTimeline} />
+            </div>
+
             <div style={cardStyle()}>
               {sectionTitle("Classement équipes", C.gold)}
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
@@ -937,7 +1119,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <button type="button" onClick={() => go("babyfoot_stats_history" as any)} style={{ border: `1px solid ${C.gold}77`, color: C.gold, background: `${C.gold}14`, borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 1000, cursor: "pointer" }}>HISTORIQUE COMPLET</button>
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-              {visibleProfileMatches.map((match) => <MatchLine key={match.id} match={match} go={go} profilesById={profilesById} primary={primary} />)}
+              {visibleProfileMatches.map((match) => <MatchLine key={match.id} match={match} go={go} profilesById={profilesById} teamLogoByName={teamLogoByName} primary={primary} />)}
               {profileMatches.length > visibleProfileMatches.length ? <div style={{ padding: "4px 8px", color: C.dim, textAlign: "center", fontSize: 10, fontWeight: 850 }}>{profileMatches.length - visibleProfileMatches.length} match(s) supplémentaire(s) dans l’historique complet.</div> : null}
               {!profileMatches.length ? <div style={{ padding: 18, color: C.muted, textAlign: "center", fontWeight: 850 }}>Aucune partie Baby‑Foot trouvée pour ces filtres.</div> : null}
             </div>

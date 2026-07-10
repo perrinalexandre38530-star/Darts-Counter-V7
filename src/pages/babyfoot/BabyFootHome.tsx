@@ -827,7 +827,7 @@ export default function BabyFootHome({ store, go }: Props) {
             customSlides={homeRecordSlides}
             globalTitle={t("babyfoot.home.global.title", "Vue globale")}
             globalKpis={[
-              { label: t("babyfoot.kpi.ratio", "ratio"), value: formatBabyFootRatio(babyfootGlobalStats.ratio) },
+              { label: t("babyfoot.kpi.rating", "rating"), value: babyfootGlobalStats.rating },
               { label: t("babyfoot.kpi.win", "win%"), value: `${Math.round(babyfootGlobalStats.winRate * 100)}%` },
               { label: t("babyfoot.kpi.bpMatch", "BP/match"), value: Number(babyfootGlobalStats.avgGF).toFixed(1) },
               { label: t("babyfoot.kpi.bcMatch", "BC/match"), value: Number(babyfootGlobalStats.avgGA).toFixed(1) },
