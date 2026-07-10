@@ -227,9 +227,9 @@ function FilterGlyph({ size = 20 }: { size?: number }) {
 
 function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = false, starAvg3D = 0 }: { profile: any; size?: number; glowColor?: string; showStars?: boolean; starAvg3D?: number }) {
   const basic = useBasicProfileViewStats(profile?.id ? String(profile.id) : null, !!profile?.id);
-  const avg3d = Number(starAvg3D || basic?.avg3 || resolveProfileStarScore(profile) || 0) || 0;
+  const avg3d = Number(basic?.avg3 || starAvg3D || resolveProfileStarScore(profile) || 0) || 0;
   return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible" }}>
+    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto", overflow: "visible", zIndex: 2 }}>
       <ProfileAvatar
         profile={profile}
         size={size}
@@ -237,14 +237,16 @@ function StatHeroAvatar({ profile, size = 84, glowColor = C.gold, showStars = fa
         showStars={false}
       />
       {showStars && avg3d > 0 ? (
-        <ProfileStarRing
-          anchorSize={size}
-          avg3d={avg3d}
-          gapPx={-3}
-          starSize={14}
-          stepDeg={10}
-          animateGlow
-        />
+        <div style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none", zIndex: 5 }}>
+          <ProfileStarRing
+            anchorSize={size}
+            avg3d={avg3d}
+            gapPx={-3}
+            starSize={14}
+            stepDeg={10}
+            animateGlow
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -786,7 +788,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           .bf-stats-center-title { font-size: 17px !important; letter-spacing: .3px !important; }
         }
       `}</style>
-      <div className="bf-stats-center-shell" style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 24px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "hidden" }}>
+      <div className="bf-stats-center-shell" style={{ width: "min(100%, 720px)", maxWidth: "calc(100vw - 24px)", minWidth: 0, margin: "0 auto", display: "grid", gap: 12, overflow: "visible" }}>
         <div style={{ position: "relative", minHeight: 64, display: "grid", placeItems: "center" }}>
           <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}><BackDot onClick={() => go("stats" as any)} /></div>
           <div style={{ textAlign: "center", minWidth: 0, width: "100%" }}>
@@ -814,11 +816,11 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         </div> : null}
 
         {!rankingOnly && (
-        <div style={cardStyle()}>
-          <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8 }}>
+        <div style={cardStyle({ overflow: "visible", paddingTop: 28 })}>
+          <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 8, overflow: "visible" }}>
             <button type="button" disabled={selectableProfiles.length < 2} onClick={() => setProfileIndex((index) => clampIndex(index - 1, selectableProfiles.length))} style={arrowButton(C.blue, selectableProfiles.length < 2)}>‹</button>
-            <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "hidden" }}>
-              <StatHeroAvatar profile={profile} size={84} glowColor={primary} showStars starAvg3D={resolveProfileStarScore(profile)} />
+            <div style={{ minWidth: 0, maxWidth: "100%", display: "grid", justifyItems: "center", textAlign: "center", overflow: "visible" }}>
+              <StatHeroAvatar profile={profile} size={84} glowColor={primary} showStars starAvg3D={Math.min(180, Math.max(0, Number(rating || 0)))} />
               <div style={{ marginTop: 10, color: primary, fontSize: 24, fontWeight: 1000, lineHeight: 1.05, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", textShadow: `0 0 9px ${primary}66` }}>{(profile as any)?.name || (profile as any)?.displayName || "Aucun profil"}</div>
               <div style={{ marginTop: 5, color: C.muted, fontSize: 10, fontWeight: 850 }}>{rank ? `Rang #${rank}` : "Non classé"} · Rating {rating} · {profileAgg.matches} matchs</div>
               {scope === "locals" ? <div style={{ marginTop: 4, color: C.blue, fontSize: 10, fontWeight: 950, letterSpacing: .7, textTransform: "uppercase" }}>Profils locaux</div> : null}

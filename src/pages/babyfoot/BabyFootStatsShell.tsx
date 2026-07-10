@@ -368,7 +368,7 @@ function StatsPlayerAvatar({ profile, theme }: { profile: Profile | null; theme:
   const starAvg3D = avg3n > 0 ? avg3n : resolveProfileStarScore(profile);
 
   return (
-    <div style={{ position: "relative", width: AVA, height: AVA, flexShrink: 0, overflow: "visible" }}>
+    <div style={{ position: "relative", width: AVA, height: AVA, flexShrink: 0, overflow: "visible", zIndex: 2 }}>
       {starAvg3D > 0 ? (
         <div
           aria-hidden
@@ -380,6 +380,7 @@ function StatsPlayerAvatar({ profile, theme }: { profile: Profile | null; theme:
             height: AVA + (PAD + STAR / 2) * 2,
             pointerEvents: "none",
             overflow: "visible",
+            zIndex: 5,
           }}
         >
           <ProfileStarRing
