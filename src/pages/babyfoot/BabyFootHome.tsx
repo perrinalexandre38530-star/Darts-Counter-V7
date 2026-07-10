@@ -24,7 +24,7 @@ import {
   formatBabyFootRatio,
   normalizeBabyFootMatches,
 } from "../../lib/babyfootStatsAggregate";
-import { babyFootLevelScoreFromRating } from "../../lib/babyfootLevelStarring";
+import { babyFootLevelScoreFromRating } from "../../lib/babyFootLevelStarring";
 
 // ✅ Home ticker backgrounds (catégories)
 import tickerBabyfootActu1 from "../../assets/tickers/ticker_babyfoot_actu_1.png";

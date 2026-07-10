@@ -14,7 +14,7 @@ import ProfileStarRing from "../../components/ProfileStarRing";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
 import BackDot from "../../components/BackDot";
 import { computeBabyFootProfileAggregate, normalizeBabyFootMatches } from "../../lib/babyfootStatsAggregate";
-import { babyFootLevelScoreFromAggregate } from "../../lib/babyfootLevelStarring";
+import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
 
 type Props = {
   store: Store;
