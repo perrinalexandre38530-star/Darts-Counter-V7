@@ -12,6 +12,7 @@ type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any }
 type AnyMatch = Record<string, any>;
 type TeamId = "A" | "B";
 type StatsView = "global" | "individual";
+type MatchFeedTab = "momentum" | "details";
 
 function n(v: any, fallback = 0) {
   const x = Number(v);
@@ -166,7 +167,10 @@ function actionLabel(ev: any, payload: any, match: any, teamA: string, teamB: st
   if (ev?.t === "finish") return `Fin du match${ev?.winner ? ` · victoire ${ev.winner === "A" ? teamA : teamB}` : " · match nul"}`;
   if (ev?.t === "phase") return `Passage en ${String(ev?.phase || "phase").toUpperCase()}`;
   if (ev?.t === "set_win") return `Set gagné · ${team}`;
-    if (ev?.t === "demi") return `Demi · ${team}${who}`;
+  if (ev?.t === "demi") {
+    const penalty = Math.max(0, n(ev?.lastBallPenalty));
+    return `Demi · ${team}${who}${penalty ? ` · -${penalty} pts (dernière balle)` : ""}`;
+  }
   if (ev?.t === "undo") return "Dernière action annulée";
   if (ev?.t === "special") {
     const map: Record<string, string> = { gamelle: "Gamelle", peche_off: "Pêche offensive", peche_def: "Pêche défensive", pissette: ev?.counted ? "Pissette validée" : "Pissette refusée", parachute: "Parachute", csc: "CSC" };
@@ -189,26 +193,64 @@ function buildTimelineRows(events: any[], payload: any, summary: any, match: any
   let scoreA = Math.max(0, n(payload?.handicapB ?? summary?.handicapB, 0));
   let scoreB = Math.max(0, n(payload?.handicapA ?? summary?.handicapA, 0));
   return events.map((ev: any, index: number) => {
+    let deltaA = 0;
+    let deltaB = 0;
     if (ev?.t === "goal") {
       const pts = Math.max(1, n(ev?.points, 1));
-      if (ev?.team === "A") scoreA += pts;
-      if (ev?.team === "B") scoreB += pts;
+      if (ev?.team === "A") deltaA += pts;
+      if (ev?.team === "B") deltaB += pts;
     } else if (ev?.t === "special") {
-      scoreA = Math.max(0, scoreA + n(ev?.scoreDeltaA, 0));
-      scoreB = Math.max(0, scoreB + n(ev?.scoreDeltaB, 0));
-    } else if (ev?.t === "set_win") {
+      deltaA += n(ev?.scoreDeltaA, 0);
+      deltaB += n(ev?.scoreDeltaB, 0);
+    } else if (ev?.t === "demi") {
+      const penalty = Math.max(0, n(ev?.lastBallPenalty, 0));
+      deltaA += n(ev?.scoreDeltaA, ev?.team === "A" && penalty ? -penalty : 0);
+      deltaB += n(ev?.scoreDeltaB, ev?.team === "B" && penalty ? -penalty : 0);
+    }
+
+    if (ev?.t === "set_win") {
       scoreA = Math.max(0, n(payload?.handicapB ?? summary?.handicapB, 0));
       scoreB = Math.max(0, n(payload?.handicapA ?? summary?.handicapA, 0));
+    } else {
+      scoreA = Math.max(0, scoreA + deltaA);
+      scoreB = Math.max(0, scoreB + deltaB);
     }
+
     const elapsed = start && ev?.at ? Math.max(0, n(ev.at) - start) : 0;
     return {
       key: `${ev?.t || "event"}-${ev?.at || index}-${index}`,
       time: fmtDuration(elapsed),
+      elapsedMs: elapsed,
       label: actionLabel(ev, payload, match, teamA, teamB),
       score: `${scoreA}-${scoreB}`,
       team: ev?.team || null,
       type: ev?.t,
+      kind: ev?.kind || null,
+      counted: ev?.counted,
+      penalty: Math.max(0, n(ev?.lastBallPenalty, 0)),
+      deltaA,
+      deltaB,
+      weight: Math.max(1, Math.abs(deltaA) + Math.abs(deltaB) || (ev?.t === "demi" ? 1 : 0)),
     };
+  });
+}
+
+function buildMomentumEntries(timelineRows: any[]) {
+  return (Array.isArray(timelineRows) ? timelineRows : []).filter((row: any) => {
+    if (!row || !row.type) return false;
+    if (row.type === "goal") return true;
+    if (row.type === "demi") return row.counted !== false;
+    if (row.type === "special") return true;
+    return false;
+  });
+}
+
+function buildTimeTicks(totalMs: number, count = 5) {
+  const safeTotal = Math.max(0, Number(totalMs) || 0);
+  const points = Math.max(2, Math.floor(count));
+  return Array.from({ length: points }, (_, index) => {
+    const ratio = points <= 1 ? 0 : index / (points - 1);
+    return { ratio, label: fmtDuration(Math.round(safeTotal * ratio)) };
   });
 }
 
@@ -220,6 +262,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const [loading, setLoading] = React.useState(Boolean(requestedId));
   const [view, setView] = React.useState<StatsView>(String(params?.statsView || "global") === "individual" ? "individual" : "global");
   const [individualTeam, setIndividualTeam] = React.useState<TeamId>("A");
+  const [matchFeedTab, setMatchFeedTab] = React.useState<MatchFeedTab>(String(params?.matchFeedTab || "momentum") === "details" ? "details" : "momentum");
 
   React.useEffect(() => {
     let alive = true;
@@ -286,7 +329,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
     <div style={{ display: "grid", gap: 10, lineHeight: 1.5 }}>
       <div><strong>Stats globales</strong> compare les deux équipes : buts par ligne, demis, gamelles, pêches, pissettes, parachutes, CSC et dynamique du score.</div>
       <div><strong>Stats individuelles</strong> détaille les actions attribuées à chaque joueur.</div>
-      <div><strong>Fil du match</strong> reprend chaque action enregistrée avec son temps et le score après l’action.</div>
+      <div><strong>Momentum</strong> visualise les temps forts du match, tandis que <strong>Détails</strong> conserve la liste des moments clés comme avant.</div>
       <div style={{ opacity: .72 }}>Les anciennes parties dépourvues de journal d’actions ne peuvent pas être reconstruites rétroactivement.</div>
     </div>
   );
@@ -355,29 +398,22 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
 
       <section style={{ ...panel(theme), marginTop: 12 }}>
         <div style={{ ...sectionTitle(theme), display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <span>Fil chronologique du match</span>
+          <span>Temps forts du match</span>
           <span style={{ fontSize: 11, color: theme.primary }}>{timelineRows.length} action{timelineRows.length > 1 ? "s" : ""}</span>
         </div>
-        {timelineRows.length ? (
-          <div style={{ display: "grid", gap: 8, maxHeight: 480, overflow: "auto", padding: "4px 2px 4px 8px" }}>
-            {timelineRows.map((row: any, i: number) => {
-              const accent = row.team === "B" ? "#ff59b0" : row.team === "A" ? theme.primary : "#82cfff";
-              return (
-                <div key={row.key || i} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 44px", gap: 8, alignItems: "center" }}>
-                  <div style={{ fontSize: 11, fontWeight: 1000, color: accent, textAlign: "right" }}>{row.time}</div>
-                  <div style={{ position: "relative", borderRadius: 14, padding: "9px 10px 9px 16px", border: `1px solid ${accent}55`, background: `${accent}12`, fontSize: 12, fontWeight: 900, lineHeight: 1.25 }}>
-                    <span style={{ position: "absolute", left: -7, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: 999, background: accent, boxShadow: `0 0 12px ${accent}` }} />
-                    {row.label}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 1100, color: theme.text, textAlign: "center" }}>{row.score}</div>
-                </div>
-              );
-            })}
-          </div>
+        <MatchFeedSelector theme={theme} view={matchFeedTab} setView={setMatchFeedTab} />
+        {matchFeedTab === "momentum" ? (
+          <MomentumView
+            theme={theme}
+            teamA={teamA}
+            teamB={teamB}
+            scoreA={scoreA}
+            scoreB={scoreB}
+            timelineRows={timelineRows}
+            durationMs={durationMs}
+          />
         ) : (
-          <div style={{ ...small(theme), padding: 12, borderRadius: 14, border: `1px dashed ${theme.borderSoft ?? "rgba(255,255,255,.18)"}`, background: "rgba(255,255,255,.025)" }}>
-            Aucun journal détaillé n’est présent dans cette ancienne sauvegarde. Les prochains matchs enregistreront chaque but, demi, gamelle, pêche, pissette, parachute et CSC.
-          </div>
+          <MatchTimelineDetails theme={theme} timelineRows={timelineRows} />
         )}
       </section>
 
@@ -431,6 +467,146 @@ function StatsViewSelector({ theme, view, setView }: any) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
       {item("global", "STATS GLOBALES")}
       {item("individual", "STATS INDIVIDUELLES")}
+    </div>
+  );
+}
+
+
+function MatchFeedSelector({ theme, view, setView }: any) {
+  const item = (key: MatchFeedTab, label: string) => (
+    <button
+      type="button"
+      onClick={() => setView(key)}
+      style={{
+        minHeight: 42,
+        borderRadius: 14,
+        border: `1px solid ${view === key ? theme.primary : theme.borderSoft ?? "rgba(255,255,255,.14)"}`,
+        background: view === key ? `${theme.primary}18` : "rgba(255,255,255,.04)",
+        color: view === key ? theme.primary : theme.text,
+        boxShadow: view === key ? `0 0 18px ${theme.primary}25` : "none",
+        fontWeight: 1000,
+        fontSize: 12,
+        cursor: "pointer",
+      }}
+    >{label}</button>
+  );
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10, marginBottom: 12 }}>
+      {item("momentum", "MOMENTUM")}
+      {item("details", "DÉTAILS")}
+    </div>
+  );
+}
+
+function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durationMs }: any) {
+  const entries = buildMomentumEntries(timelineRows);
+  if (!entries.length) {
+    return (
+      <div style={{ ...small(theme), padding: 12, borderRadius: 14, border: `1px dashed ${theme.borderSoft ?? "rgba(255,255,255,.18)"}`, background: "rgba(255,255,255,.025)" }}>
+        Aucun momentum n’est disponible sur cette sauvegarde. Consulte l’onglet Détails pour la liste des actions si elle existe.
+      </div>
+    );
+  }
+
+  const totalMs = Math.max(
+    1000,
+    n(durationMs, 0),
+    ...entries.map((row: any) => n(row?.elapsedMs, 0))
+  );
+  const ticks = buildTimeTicks(totalMs, 5);
+  const baseY = 116;
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: theme.primary, fontWeight: 1100, fontSize: 14, textShadow: `0 0 12px ${theme.primary}55`, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{teamA}</div>
+        </div>
+        <div style={{ padding: "8px 12px", borderRadius: 16, border: `1px solid ${theme.primary}55`, background: "rgba(255,255,255,.035)", fontWeight: 1100, fontSize: 22, color: theme.text, boxShadow: `0 0 22px ${theme.primary}18 inset` }}>{scoreA} - {scoreB}</div>
+        <div style={{ minWidth: 0, textAlign: "right" }}>
+          <div style={{ color: "#ff59b0", fontWeight: 1100, fontSize: 14, textShadow: "0 0 12px rgba(255,89,176,.45)", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{teamB}</div>
+        </div>
+      </div>
+
+      <div style={{ borderRadius: 18, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "linear-gradient(180deg, rgba(5,16,34,.92), rgba(2,8,18,.86))", padding: 12, boxShadow: `0 0 26px ${theme.primary}12 inset` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <div style={{ color: theme.text, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase" }}>Momentum</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, fontWeight: 900, color: theme.textSoft }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: theme.primary, boxShadow: `0 0 10px ${theme.primary}` }} />{teamA}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: "#ff59b0", boxShadow: "0 0 10px rgba(255,89,176,.8)" }} />{teamB}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: "#ffd76a", boxShadow: "0 0 10px rgba(255,215,106,.8)" }} />Demi pénalisant</span>
+          </div>
+        </div>
+
+        <div style={{ position: "relative", height: 250, overflow: "hidden", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), transparent 30%, transparent 70%, rgba(0,0,0,.18))" }} />
+          <div style={{ position: "absolute", left: 14, right: 14, top: baseY, height: 2, background: `linear-gradient(90deg, ${theme.primary}, rgba(255,255,255,.28), #ff59b0)`, boxShadow: `0 0 14px ${theme.primary}33` }} />
+
+          {ticks.map((tick: any) => (
+            <React.Fragment key={`tick-${tick.ratio}`}>
+              <div style={{ position: "absolute", left: `calc(${tick.ratio * 100}% - 1px)`, top: 16, bottom: 24, width: 1, background: "rgba(255,255,255,.08)" }} />
+              <div style={{ position: "absolute", left: `calc(${tick.ratio * 100}% - 18px)`, bottom: 4, width: 36, textAlign: "center", fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,.6)" }}>{tick.label}</div>
+            </React.Fragment>
+          ))}
+
+          {entries.map((row: any, index: number) => {
+            const team = row.team === "B" ? "B" : "A";
+            const isPenalty = row.type === "demi" && row.penalty > 0;
+            const accent = isPenalty ? "#ffd76a" : team === "A" ? theme.primary : "#ff59b0";
+            const x = totalMs > 0 ? (n(row.elapsedMs, 0) / totalMs) * 100 : 0;
+            const strength = Math.max(1, n(row.weight, 1));
+            const barHeight = Math.min(90, 26 + (strength - 1) * 18 + (row.type === "goal" ? 10 : 0) + (isPenalty ? 8 : 0));
+            const barWidth = Math.max(6, Math.min(12, 5 + strength * 2));
+            const scoreTop = team === "A" ? baseY - barHeight - 26 : baseY + barHeight + 10;
+            const labelTop = team === "A" ? baseY - barHeight - 8 : baseY + barHeight - 2;
+            const symbol = isPenalty ? `-${row.penalty}` : row.type === "demi" ? "½" : row.kind === "csc" ? "CSC" : "⚽";
+            return (
+              <div key={row.key || index} title={`${row.time} · ${row.label} · ${row.score}`} style={{ position: "absolute", left: `calc(${x}% - ${Math.round(barWidth / 2)}px)`, insetBlock: 0 }}>
+                <div style={{ position: "absolute", left: 0, width: barWidth, borderRadius: 999, background: `linear-gradient(180deg, ${accent}, ${accent}aa)`, boxShadow: `0 0 14px ${accent}`, opacity: .96, ...(team === "A" ? { bottom: `${250 - baseY}px`, height: barHeight } : { top: `${baseY}px`, height: barHeight }) }} />
+                <div style={{ position: "absolute", left: `calc(50% - ${isPenalty ? 14 : 11}px)`, top: scoreTop, minWidth: isPenalty ? 28 : 22, padding: isPenalty ? "2px 5px" : "0 4px", height: isPenalty ? "auto" : 22, lineHeight: isPenalty ? 1.35 : "22px", borderRadius: 999, border: `1px solid ${accent}99`, background: "rgba(4,9,18,.88)", color: accent, textAlign: "center", fontSize: isPenalty ? 10 : 11, fontWeight: 1100, boxShadow: `0 0 12px ${accent}22` }}>{symbol}</div>
+                <div style={{ position: "absolute", left: "50%", top: labelTop, transform: `translate(${team === "A" ? "-10%" : "-90%"}, ${team === "A" ? "-100%" : "0"})`, maxWidth: 108, fontSize: 10, fontWeight: 900, color: accent, textShadow: `0 0 10px ${accent}44`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.time}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+          {entries.slice(-4).reverse().map((row: any) => {
+            const accent = row.type === "demi" && row.penalty > 0 ? "#ffd76a" : row.team === "B" ? "#ff59b0" : theme.primary;
+            return (
+              <div key={`summary-${row.key}`} style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 8, alignItems: "center", fontSize: 11, fontWeight: 900 }}>
+                <div style={{ color: accent }}>{row.time}</div>
+                <div style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", color: theme.text }}>{row.label}</div>
+                <div style={{ color: theme.textSoft }}>{row.score}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MatchTimelineDetails({ theme, timelineRows }: any) {
+  return timelineRows.length ? (
+    <div style={{ display: "grid", gap: 8, maxHeight: 480, overflow: "auto", padding: "4px 2px 4px 8px" }}>
+      {timelineRows.map((row: any, i: number) => {
+        const accent = row.type === "demi" && row.penalty > 0 ? "#ffd76a" : row.team === "B" ? "#ff59b0" : row.team === "A" ? theme.primary : "#82cfff";
+        return (
+          <div key={row.key || i} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) 44px", gap: 8, alignItems: "center" }}>
+            <div style={{ fontSize: 11, fontWeight: 1000, color: accent, textAlign: "right" }}>{row.time}</div>
+            <div style={{ position: "relative", borderRadius: 14, padding: "9px 10px 9px 16px", border: `1px solid ${accent}55`, background: `${accent}12`, fontSize: 12, fontWeight: 900, lineHeight: 1.25 }}>
+              <span style={{ position: "absolute", left: -7, top: "50%", transform: "translateY(-50%)", width: 12, height: 12, borderRadius: 999, background: accent, boxShadow: `0 0 12px ${accent}` }} />
+              {row.label}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 1100, color: theme.text, textAlign: "center" }}>{row.score}</div>
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div style={{ ...small(theme), padding: 12, borderRadius: 14, border: `1px dashed ${theme.borderSoft ?? "rgba(255,255,255,.18)"}`, background: "rgba(255,255,255,.025)" }}>
+      Aucun journal détaillé n’est présent dans cette ancienne sauvegarde. Les prochains matchs enregistreront chaque but, demi, gamelle, pêche, pissette, parachute et CSC.
     </div>
   );
 }

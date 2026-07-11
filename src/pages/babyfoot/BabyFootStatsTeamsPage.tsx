@@ -589,8 +589,8 @@ function MatchLine({ match, go, team, teams, profilesById }: { match: BabyFootTe
   const timeLabel = match.date ? new Date(match.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
   return (
     <button type="button" onClick={() => go("babyfoot_end" as any, { matchId: match.id, matchPayload: match.record, from: "babyfoot_stats_teams" })} style={{ position: "relative", width: "100%", border: `1px solid ${color}44`, borderRadius: 22, padding: 0, background: `linear-gradient(135deg,${color}12,rgba(255,255,255,.035) 40%,rgba(0,0,0,.34))`, color: C.text, textAlign: "left", cursor: "pointer", overflow: "hidden", boxShadow: `0 12px 26px rgba(0,0,0,.30), inset 0 0 30px ${color}10` }}>
-      {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ position: "absolute", left: -28, top: "50%", transform: "translateY(-50%)", width: 198, height: 198, objectFit: "contain", opacity: .25, filter: "grayscale(0.05)" }} /> : null}
-      {opponent?.logoUrl ? <img src={opponent.logoUrl} alt="" style={{ position: "absolute", right: -28, top: "50%", transform: "translateY(-50%)", width: 198, height: 198, objectFit: "contain", opacity: .25, filter: "grayscale(0.05)" }} /> : null}
+      {team?.logoUrl ? <img src={team.logoUrl} alt="" style={{ position: "absolute", left: -30, top: "50%", transform: "translateY(-50%)", width: 164, height: 164, objectFit: "contain", opacity: .28, filter: "grayscale(0.05)" }} /> : null}
+      {opponent?.logoUrl ? <img src={opponent.logoUrl} alt="" style={{ position: "absolute", right: -30, top: "50%", transform: "translateY(-50%)", width: 164, height: 164, objectFit: "contain", opacity: .28, filter: "grayscale(0.05)" }} /> : null}
       <div style={{ position: "relative", padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>

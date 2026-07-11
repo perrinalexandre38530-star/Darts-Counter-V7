@@ -621,20 +621,20 @@ function GhostAvatarBackdrop({
 }) {
   const uniqueIds = Array.from(new Set((playerIds || []).map((id) => String(id || "").trim()).filter(Boolean))).slice(0, 3);
   if (!imageSrc && !uniqueIds.length) return null;
-  const size = imageSrc ? 198 : 164;
+  const size = 164;
   return (
     <div
       aria-hidden="true"
       style={{
         position: "absolute",
         top: "50%",
-        [side]: imageSrc ? -26 : -30,
+        [side]: -30,
         transform: "translateY(-50%)",
         display: "flex",
         flexDirection: side === "left" ? "row" : "row-reverse",
         alignItems: "center",
         pointerEvents: "none",
-        opacity: imageSrc ? .25 : .32,
+        opacity: imageSrc ? .28 : .32,
         filter: imageSrc ? "saturate(1.15)" : "saturate(1.05)",
       } as React.CSSProperties}
     >

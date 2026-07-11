@@ -1676,7 +1676,7 @@ function SetupSection(props: SetupSectionProps) {
       <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary }}>{participantMode === "teams" ? "2. Équipes" : "2. Joueurs"}</div>
+            <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary }}>2. Participants</div>
             <div style={{ fontSize: 11, color: textSoft, marginTop: 3 }}>{participantMode === "teams" ? "Même sélecteur Teams que dans X01." : "Même sélecteur Joueurs que dans X01."}</div>
           </div>
           {configViewMode === "complete" ? (
@@ -1850,7 +1850,7 @@ function SetupSection(props: SetupSectionProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <CompactIntro />
-      {(configViewMode === "guided" && guidedStep === 0) || configViewMode === "complete" ? <TypeBlock /> : null}
+      {configViewMode === "guided" && guidedStep === 0 ? <TypeBlock /> : null}
       {(configViewMode === "guided" && guidedStep === 1) || configViewMode === "complete" ? <ParticipantsBlock /> : null}
       {(configViewMode === "guided" && guidedStep === 2) || configViewMode === "complete" ? <VariantsBlock /> : null}
       {(configViewMode === "guided" && guidedStep === 3) || configViewMode === "complete" ? <OptionsBlock /> : null}
