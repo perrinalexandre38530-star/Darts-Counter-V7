@@ -77,6 +77,149 @@ function downloadJsonFile(json: string, fileName: string) {
   }, 1500);
 }
 
+
+function isPlainObject(value: any): value is Record<string, any> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function asArray(value: any): any[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function looksLikeBabyFootMatch(value: any) {
+  const payload = isPlainObject(value?.payload) ? value.payload : value;
+  const sport = String(
+    value?.kind ??
+    value?.sport ??
+    value?.sp ??
+    payload?.kind ??
+    payload?.sport ??
+    payload?.sp ??
+    payload?.game?.sport ??
+    payload?.game?.mode ??
+    payload?.summary?.mode ??
+    ""
+  ).toLowerCase();
+  const mode = String(
+    payload?.game?.mode ??
+    payload?.summary?.mode ??
+    payload?.mode ??
+    value?.game?.mode ??
+    value?.summary?.title ??
+    ""
+  ).toLowerCase();
+  return sport.includes("babyfoot") || sport.includes("baby-foot") || ["1v1", "2v2", "2v1"].includes(mode);
+}
+
+function normalizeBabyFootImportRecord(input: any) {
+  if (!isPlainObject(input)) return null;
+
+  const isSharePacket = isPlainObject(input.payload) && (input.matchId || input.version || input.app || input.kind);
+  const rawPayload = isPlainObject(input.payload) ? input.payload : input;
+  if (!looksLikeBabyFootMatch(input)) return null;
+
+  const payloadSummary = isPlainObject(rawPayload.summary) ? rawPayload.summary : {};
+  const topSummary = isPlainObject(input.summary) ? input.summary : {};
+  const mergedSummary = { ...payloadSummary, ...topSummary };
+  const id = String(
+    input.matchId ??
+    input.id ??
+    rawPayload.matchId ??
+    rawPayload.id ??
+    mergedSummary.matchId ??
+    `bf-import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  ).trim();
+
+  const mode = String(
+    rawPayload.game?.mode ??
+    rawPayload.mode ??
+    mergedSummary.mode ??
+    mergedSummary.title ??
+    "babyfoot"
+  ).toLowerCase();
+
+  const players = asArray(rawPayload.players).length
+    ? asArray(rawPayload.players)
+    : asArray(mergedSummary.players);
+
+  const createdAt = safeNum(rawPayload.createdAt ?? input.createdAt ?? mergedSummary.startedAt ?? mergedSummary.startedat ?? mergedSummary.finishedAt ?? mergedSummary.finishedat ?? Date.now(), Date.now());
+  const updatedAt = safeNum(rawPayload.updatedAt ?? input.updatedAt ?? mergedSummary.finishedAt ?? mergedSummary.finishedat ?? createdAt, createdAt);
+  const status = String(input.status ?? rawPayload.status ?? mergedSummary.status ?? "finished").toLowerCase();
+  const scoreLine = String(mergedSummary.scoreLine ?? mergedSummary.scoreline ?? topSummary.scoreLine ?? "").trim();
+
+  const payload = {
+    ...rawPayload,
+    id,
+    matchId: id,
+    kind: "babyfoot",
+    sport: "babyfoot",
+    game: { ...(isPlainObject(rawPayload.game) ? rawPayload.game : {}), mode },
+    summary: {
+      ...payloadSummary,
+      ...topSummary,
+      mode,
+      ...(scoreLine ? { scoreLine, scoreline: scoreLine } : {}),
+    },
+  };
+
+  return {
+    ...(isSharePacket ? {} : input),
+    id,
+    matchId: id,
+    kind: "babyfoot",
+    sport: "babyfoot",
+    status: status === "in_progress" || status === "running" ? "in_progress" : "finished",
+    game: payload.game,
+    players,
+    winnerId: rawPayload.winnerId ?? input.winnerId ?? null,
+    createdAt,
+    updatedAt,
+    summary: {
+      ...mergedSummary,
+      title: mergedSummary.title ?? mode.toUpperCase(),
+      status: status === "in_progress" || status === "running" ? "in_progress" : "finished",
+      ...(scoreLine ? { scoreLine, scoreline: scoreLine } : {}),
+    },
+    payload,
+    resume: rawPayload.resume ?? input.resume ?? null,
+  };
+}
+
+function collectBabyFootImportRecords(json: any): any[] {
+  const candidates: any[] = [];
+  const pushMany = (value: any) => {
+    if (Array.isArray(value)) candidates.push(...value);
+  };
+
+  if (Array.isArray(json)) {
+    candidates.push(...json);
+  } else if (isPlainObject(json)) {
+    const containers = [
+      json.matches,
+      json.history,
+      json.items,
+      json.records,
+      json.entries,
+      json.data,
+      json.payload?.matches,
+      json.payload?.history,
+      json.payload?.items,
+      json.payload?.records,
+      json.payload?.entries,
+    ];
+    for (const value of containers) pushMany(value);
+    candidates.push(json);
+  }
+
+  const out = new Map<string, any>();
+  for (const candidate of candidates) {
+    const rec = normalizeBabyFootImportRecord(candidate);
+    if (!rec) continue;
+    out.set(String(rec.id), rec);
+  }
+  return Array.from(out.values());
+}
+
 function historyRowId(row: any) {
   return String(row?.id || row?.matchId || row?.payload?.id || row?.payload?.matchId || "").trim();
 }
@@ -1097,6 +1240,35 @@ function HistoryCardsView({
   focusMatchId,
 }: HistoryCardsViewProps) {
   const focusRef = React.useRef<HTMLDivElement | null>(null);
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const requestReload = React.useCallback(() => {
+    window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { sport: "babyfoot", imported: true } }));
+  }, []);
+
+  const importBabyFootFile = React.useCallback(async (file: File | null | undefined) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const records = collectBabyFootImportRecords(json);
+      if (!records.length) {
+        window.alert("Import impossible : aucun match Baby-Foot reconnu dans ce fichier JSON.");
+        return;
+      }
+
+      let imported = 0;
+      for (const rec of records) {
+        await (History as any).upsert(rec);
+        imported += 1;
+      }
+      requestReload();
+      window.alert(imported === 1 ? "Partie Baby-Foot importée ✅" : `${imported} parties Baby-Foot importées ✅`);
+    } catch (error) {
+      console.error("[BabyFootStatsHistory] import failed", error);
+      window.alert("Import impossible : fichier JSON illisible ou incompatible.");
+    }
+  }, [requestReload]);
 
   const shareMatch = React.useCallback(async (h: any) => {
     const id = String(h?.id || h?.matchId || Date.now()).trim();
@@ -1184,12 +1356,23 @@ function HistoryCardsView({
       </div>
 
       <div style={historyToolbar}>
-        <button type="button" style={historyToolIconBtn(theme)} title="Recharger">
+        <button type="button" style={historyToolIconBtn(theme)} title="Recharger" onClick={requestReload}>
           <HistIcon.Refresh />
         </button>
-        <button type="button" style={historyToolIconBtn(theme)} title="Importer">
+        <button type="button" style={historyToolIconBtn(theme)} title="Importer" onClick={() => importInputRef.current?.click()}>
           <HistIcon.Upload />
         </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: "none" }}
+          onChange={async (e) => {
+            const file = e.currentTarget.files?.[0] || null;
+            e.currentTarget.value = "";
+            await importBabyFootFile(file);
+          }}
+        />
         <div style={{ position: "relative" }}>
           <button type="button" style={historyToolIconBtn(theme, mode !== "all" || !!q.trim())} title="Filtres">
             <HistIcon.Filter />
