@@ -599,6 +599,52 @@ export function extractBabyFootPlayerStatsRows(record: any): BabyFootPlayerStatR
     const rawActivity = activityScore(rawRow);
     let chosen = rawActivity > derivedActivity ? rawRow! : eventRow || rawRow || base;
 
+    // Les anciennes sauvegardes peuvent avoir deux sources différentes :
+    // - playerStats : compteurs détaillés / bonus
+    // - events : vrais buts horodatés
+    // On fusionne au lieu de choisir brutalement une source, sinon les KPI peuvent afficher
+    // 24 buts alors que la timeline issue des events en voit 26.
+    if (rawRow && eventRow) {
+      const eventRealGoals = num(eventRow.goals, 0);
+      const rawRealGoals = num(rawRow.goals, 0);
+      const eventLineTotal = num(eventRow.goalAv, 0) + num(eventRow.goalDef, 0) + num(eventRow.goalGb, 0) + num(eventRow.goalMil, 0);
+      const rawLineTotal = num(rawRow.goalAv, 0) + num(rawRow.goalDef, 0) + num(rawRow.goalGb, 0) + num(rawRow.goalMil, 0);
+      const realGoals = Math.max(eventRealGoals, rawRealGoals, eventLineTotal, rawLineTotal);
+      const lineSource = eventLineTotal >= rawLineTotal ? eventRow : rawRow;
+
+      chosen = {
+        ...chosen,
+        points: Math.max(num(rawRow.points, 0), num(eventRow.points, 0), num(chosen.points, 0)),
+        goals: realGoals,
+        goalAv: num(lineSource.goalAv, 0),
+        goalDef: num(lineSource.goalDef, 0),
+        goalGb: num(lineSource.goalGb, 0),
+        goalMil: num(lineSource.goalMil, 0),
+        demi: Math.max(num(rawRow.demi, 0), num(eventRow.demi, 0), num(chosen.demi, 0)),
+        demiBonus: Math.max(num(rawRow.demiBonus, 0), num(eventRow.demiBonus, 0), num(chosen.demiBonus, 0)),
+        gamelle: Math.max(num(rawRow.gamelle, 0), num(eventRow.gamelle, 0), num(chosen.gamelle, 0)),
+        peche: Math.max(num(rawRow.peche, 0), num(eventRow.peche, 0), num(chosen.peche, 0)),
+        pecheOff: Math.max(num(rawRow.pecheOff, 0), num(eventRow.pecheOff, 0), num(chosen.pecheOff, 0)),
+        pecheDef: Math.max(num(rawRow.pecheDef, 0), num(eventRow.pecheDef, 0), num(chosen.pecheDef, 0)),
+        pissette: Math.max(num(rawRow.pissette, 0), num(eventRow.pissette, 0), num(chosen.pissette, 0)),
+        pissetteValid: Math.max(num(rawRow.pissetteValid, 0), num(eventRow.pissetteValid, 0), num(chosen.pissetteValid, 0)),
+        pissetteRefused: Math.max(num(rawRow.pissetteRefused, 0), num(eventRow.pissetteRefused, 0), num(chosen.pissetteRefused, 0)),
+        csc: Math.max(num(rawRow.csc, 0), num(eventRow.csc, 0), num(chosen.csc, 0)),
+        ownGoals: Math.max(num(rawRow.ownGoals, 0), num(eventRow.ownGoals, 0), num(chosen.ownGoals, 0)),
+        parachute: Math.max(num((rawRow as any).parachute, 0), num((eventRow as any).parachute, 0), num((chosen as any).parachute, 0)),
+        penalties: Math.max(num(rawRow.penalties, 0), num(eventRow.penalties, 0), num(chosen.penalties, 0)),
+        penaltyGoals: Math.max(num(rawRow.penaltyGoals, 0), num(eventRow.penaltyGoals, 0), num(chosen.penaltyGoals, 0)),
+        penaltyMisses: Math.max(num(rawRow.penaltyMisses, 0), num(eventRow.penaltyMisses, 0), num(chosen.penaltyMisses, 0)),
+      };
+
+      // Si les events donnent plus de vrais buts que le détail par ligne sauvegardé,
+      // on rattache l'écart à l'avant pour que le total "Détail par ligne" reste cohérent.
+      const chosenLineTotal = num(chosen.goalAv, 0) + num(chosen.goalDef, 0) + num(chosen.goalGb, 0) + num(chosen.goalMil, 0);
+      if (realGoals > chosenLineTotal) {
+        chosen.goalAv = num(chosen.goalAv, 0) + (realGoals - chosenLineTotal);
+      }
+    }
+
     // Preserve identity from the profile while keeping the richest counters.
     chosen = {
       ...chosen,

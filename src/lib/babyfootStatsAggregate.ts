@@ -458,7 +458,7 @@ export function computeBabyFootProfileAggregate(
     if (row && match.attributed) {
       agg.attributedMatches += 1;
       agg.personalPoints += num(row.points, num(row.goals, 0));
-      agg.actualGoals += num(row.goals, 0);
+      agg.actualGoals += num((row as any).actualGoals, num(row.goals, 0));
       agg.goalAv += num(row.goalAv, 0);
       agg.goalDef += num(row.goalDef, 0);
       agg.goalGb += num(row.goalGb, 0);
@@ -595,7 +595,7 @@ export function computeBabyFootLeaderboards(matches: BabyFootNormalizedMatch[], 
       if (!p || playerStatActivity(row) <= 0) continue;
       p.attributedMatches += 1;
       p.personalPoints += num(row.points, num(row.goals, 0));
-      p.actualGoals += num(row.goals, 0);
+      p.actualGoals += num((row as any).actualGoals, num(row.goals, 0));
       p.goalAv += num(row.goalAv, 0);
       p.goalDef += num(row.goalDef, 0);
       p.goalGb += num(row.goalGb, 0);
