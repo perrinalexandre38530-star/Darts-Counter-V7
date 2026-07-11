@@ -1497,11 +1497,59 @@ function SetupSection(props: SetupSectionProps) {
   const selectedProfiles = React.useMemo(() => (selectedPlayerIds || []).map((id) => profiles.find((p) => String(p.id) === String(id))).filter(Boolean) as Profile[], [selectedPlayerIds, profiles]);
   const selectedTeams = React.useMemo(() => (selectedTeamIds || []).map((id) => teamsCatalog.find((team) => String(team.id) === String(id))).filter(Boolean) as TeamEntity[], [selectedTeamIds, teamsCatalog]);
 
-  const modeMeta: Record<ClockMode, { title: string; short: string; icon: string; hint: string; tone: string; ticker: string }> = {
-    classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les segments comptent.", tone: primary, ticker: tickerClockClassic },
-    doubles: { title: "Doubles", short: "D1 → D20 + DBull", icon: "×2", hint: "Seulement la couronne double.", tone: success, ticker: tickerClockDoubles },
-    triples: { title: "Triples", short: "T1 → T20", icon: "×3", hint: "Seulement la couronne triple.", tone: "#c77dff", ticker: tickerClockTriples },
-    sdt: { title: "S · D · T", short: "Simple → Double → Triple", icon: "3×", hint: "3 étapes par numéro.", tone: accent2, ticker: tickerClockSDT },
+  const modeMeta: Record<ClockMode, { title: string; icon: string; tone: string; ticker: string; rule: React.ReactNode }> = {
+    classic: {
+      title: "Classique",
+      icon: "◎",
+      tone: primary,
+      ticker: tickerClockClassic,
+      rule: (
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong style={{ color: primary }}>Classique</strong>
+          <span>Le joueur doit toucher successivement les cibles de 1 à 20, puis le Bull.</span>
+          <span>Un simple, un double ou un triple valide le numéro visé.</span>
+        </div>
+      ),
+    },
+    doubles: {
+      title: "Doubles",
+      icon: "×2",
+      tone: success,
+      ticker: tickerClockDoubles,
+      rule: (
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong style={{ color: success }}>Doubles</strong>
+          <span>Le joueur doit toucher D1, puis D2, jusqu’à D20, avant de terminer par le Double Bull.</span>
+          <span>Seule la couronne double valide la cible.</span>
+        </div>
+      ),
+    },
+    triples: {
+      title: "Triples",
+      icon: "×3",
+      tone: "#c77dff",
+      ticker: tickerClockTriples,
+      rule: (
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong style={{ color: "#c77dff" }}>Triples</strong>
+          <span>Le joueur doit toucher T1, puis T2, jusqu’à T20.</span>
+          <span>Seule la couronne triple valide la cible.</span>
+        </div>
+      ),
+    },
+    sdt: {
+      title: "S-D-T",
+      icon: "3×",
+      tone: accent2,
+      ticker: tickerClockSDT,
+      rule: (
+        <div style={{ display: "grid", gap: 8 }}>
+          <strong style={{ color: accent2 }}>S-D-T</strong>
+          <span>Pour chaque numéro, le joueur doit réussir successivement un Simple, un Double puis un Triple.</span>
+          <span>Une fois les trois étapes validées, il passe au numéro suivant.</span>
+        </div>
+      ),
+    },
   };
 
   const guidedSteps = ["Type", participantMode === "teams" ? "Équipes" : "Joueurs", "Variante", "Options", "Résumé"];
@@ -1707,7 +1755,7 @@ function SetupSection(props: SetupSectionProps) {
                   cursor: "pointer",
                   boxShadow: active ? `0 0 22px ${hexToRgba(meta.tone, 0.24)}` : "inset 0 0 18px rgba(255,255,255,.02)",
                   display: "grid",
-                  gridTemplateRows: "auto auto 1fr auto",
+                  gridTemplateRows: "auto auto",
                   gap: 10,
                 }}
               >
@@ -1715,10 +1763,15 @@ function SetupSection(props: SetupSectionProps) {
                   <img src={meta.ticker} alt={meta.title} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", display: "block" }} />
                   <span style={{ position: "absolute", top: 10, right: 10, width: 24, height: 24, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.28)"}`, display: "grid", placeItems: "center", color: active ? meta.tone : "rgba(255,255,255,.5)", fontSize: 12, fontWeight: 1000, background: "rgba(5,8,16,.75)", boxShadow: active ? `0 0 10px ${hexToRgba(meta.tone, 0.35)}` : "none" }}>{active ? "✓" : ""}</span>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 1000, color: active ? meta.tone : text }}>{meta.short}</div>
-                <div style={{ fontSize: 12, color: text, lineHeight: 1.35 }}>{meta.hint}</div>
-                <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                  <div style={{ width: active ? "100%" : "45%", height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${meta.tone}, ${hexToRgba(meta.tone, 0.4)})`, opacity: active ? 1 : .6 }} />
+                <div style={{ minHeight: 34, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 2px 2px" }}>
+                  <div style={{ minWidth: 0, fontSize: 18, fontWeight: 1000, color: active ? meta.tone : text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{meta.title}</div>
+                  <InfoDot
+                    size={28}
+                    color={meta.tone}
+                    glow={hexToRgba(meta.tone, 0.7)}
+                    title={`Règle ${meta.title}`}
+                    content={meta.rule}
+                  />
                 </div>
               </button>
             );
