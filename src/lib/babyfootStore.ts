@@ -66,7 +66,7 @@ export type BabyFootEvent =
       demiBonusApplied?: number;
       sourceLine?: BabyFootGoalSource;
     }
-  | { t: "demi"; at: number; elapsedMs?: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; sourceLine?: BabyFootGoalSource }
+  | { t: "demi"; at: number; elapsedMs?: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; sourceLine?: BabyFootGoalSource; counted?: boolean; lastBallPenalty?: number; pendingBefore?: number; scoreDeltaA?: number; scoreDeltaB?: number }
   | { t: "special"; at: number; elapsedMs?: number; team: BabyFootTeamId; scorerId?: string | null; phase?: BabyFootPhase; kind: Exclude<BabyFootScoreAction, "goal" | "demi">; counted?: boolean; scoreDeltaA?: number; scoreDeltaB?: number; demiBonusApplied?: number; sourceLine?: BabyFootGoalSource }
   | { t: "pen_shot"; at: number; elapsedMs?: number; team: BabyFootTeamId; scored: boolean; scorerId?: string | null }
   | { t: "set_win"; at: number; elapsedMs?: number; team: BabyFootTeamId; setIndex: number }
@@ -526,6 +526,48 @@ function pushUndo(s: BabyFootState) {
   return [...(s.undo || []), snap].slice(-50);
 }
 
+function isLimitedBallsMode(s: Pick<BabyFootState, "scoreMode">) {
+  return s.scoreMode === "balls5" || s.scoreMode === "balls10" || s.scoreMode === "balls11";
+}
+
+function maxBallsForState(s: Pick<BabyFootState, "scoreMode" | "maxBalls">) {
+  const fallback = s.scoreMode === "balls5" ? 5 : s.scoreMode === "balls11" ? 11 : 10;
+  return Math.max(1, Math.floor(Number(s.maxBalls) || fallback));
+}
+
+function isPlayableBallEvent(event: BabyFootEvent | any) {
+  if (!event || typeof event !== "object") return false;
+  if (event.t === "goal" || event.t === "demi") return true;
+  if (event.t === "special") {
+    const kind = String(event.kind || "");
+    return kind === "gamelle" || kind === "peche_off" || kind === "peche_def" || kind === "pissette" || kind === "csc" || kind === "parachute";
+  }
+  return false;
+}
+
+function playedBallsCount(events: BabyFootEvent[] | any[]) {
+  return (Array.isArray(events) ? events : []).filter(isPlayableBallEvent).length;
+}
+
+function finishAfterLimitedBallsIfNeeded(s: BabyFootState, now: number, reason: "target" | "draw" = "target") {
+  if (!isLimitedBallsMode(s)) return s;
+  const maxBalls = maxBallsForState(s);
+  if (playedBallsCount(s.events || []) < maxBalls) return s;
+  if (s.setsEnabled) return maybeWinLimitedBallsSet(s);
+  const winner: BabyFootTeamId | null = s.scoreA === s.scoreB ? null : s.scoreA > s.scoreB ? "A" : "B";
+  return persist({
+    ...s,
+    finished: true,
+    winner,
+    phase: "finished",
+    clockRunning: false,
+    finishedAt: now,
+    events: [...(s.events || []), { t: "finish", at: now, elapsedMs: computeDurationAtMs(s, now), winner, reason: winner ? reason : "draw" }],
+    updatedAt: now,
+  });
+}
+
+
 function persist(next: BabyFootState) {
   saveBabyFootState(next);
   return next;
@@ -666,11 +708,10 @@ function maybeWinLimitedBallsSet(s: BabyFootState) {
   if (!s.setsEnabled) return s;
   if (s.scoreMode !== "balls5" && s.scoreMode !== "balls10" && s.scoreMode !== "balls11") return s;
 
-  const fallbackMaxBalls = s.scoreMode === "balls5" ? 5 : s.scoreMode === "balls11" ? 11 : 10;
-  const maxBalls = Math.max(1, Math.floor(Number(s.maxBalls) || fallbackMaxBalls));
-  if ((s.scoreA + s.scoreB) < maxBalls) return s;
+  const maxBalls = maxBallsForState(s);
+  if (playedBallsCount(s.events || []) < maxBalls) return s;
 
-  // En sets + balles limitées, le set se termine à la limite de balles si un camp mène.
+  // En sets + balles limitées, le set se termine à la limite de balles jouées si un camp mène.
   // En cas d'égalité, on laisse jouer la balle suivante pour éviter un set sans vainqueur.
   if (s.scoreA === s.scoreB) return s;
 
@@ -785,25 +826,8 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     next = maybeWinSet(next);
     if (next.finished) return next;
 
-    next = maybeWinLimitedBallsSet(next);
+    next = finishAfterLimitedBallsIfNeeded(next, now, "target");
     if (next.finished) return next;
-
-    if (!next.setsEnabled && (next.scoreMode === "balls5" || next.scoreMode === "balls10" || next.scoreMode === "balls11")) {
-      const fallbackMaxBalls = next.scoreMode === "balls5" ? 5 : next.scoreMode === "balls11" ? 11 : 10;
-      const maxBalls = Math.max(1, Math.floor(Number(next.maxBalls) || fallbackMaxBalls));
-      if ((next.scoreA + next.scoreB) >= maxBalls) {
-        const winner: BabyFootTeamId | null = next.scoreA === next.scoreB ? null : next.scoreA > next.scoreB ? "A" : "B";
-        next = {
-          ...next,
-          finished: true,
-          winner,
-          phase: "finished",
-          clockRunning: false,
-          finishedAt: now,
-          events: [...(next.events || []), { t: "finish", at: now, winner, reason: winner ? "target" : "draw" }],
-        };
-      }
-    }
 
     if (!next.setsEnabled && next.scoreMode !== "chrono" && !next.finished) {
       const target = Math.max(1, next.target || 10);
@@ -859,41 +883,67 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
   };
 
   if (kind === "demi") {
+    // Règle Baby-Foot validée :
+    // - Partie au temps : le DEMI est totalement ignoré (aucun point, aucun bonus, aucune stat).
+    // - Partie à nombre de balles : si le DEMI tombe sur la dernière balle, il enlève
+    //   2 points à son équipe + les demis déjà en suspens.
+    //   Exemple : aucun demi en suspens => -2 ; 1 demi en suspens => -3 ; 2 => -4, etc.
+    // - Sinon, le DEMI reste en suspens pour le prochain BUT NORMAL AV/DEF/GB.
+    if (s.scoreMode === "chrono") {
+      return s;
+    }
+
     stats = bumpSpecialStats(stats, team === "A" ? "demiA" : "demiB");
 
-    // Modes à balles limitées façon bar : si un DEMI tombe sur la dernière balle,
-    // il coûte -1 point à l’équipe qui le fait et la partie se termine.
-    if (!s.setsEnabled && (s.scoreMode === "balls5" || s.scoreMode === "balls10" || s.scoreMode === "balls11")) {
-      const fallbackMaxBalls = s.scoreMode === "balls5" ? 5 : s.scoreMode === "balls11" ? 11 : 10;
-      const maxBalls = Math.max(1, Math.floor(Number(s.maxBalls) || fallbackMaxBalls));
-      if ((s.scoreA + s.scoreB) >= maxBalls - 1) {
-        const nextScoreA = Math.max(0, s.scoreA - (team === "A" ? 1 : 0));
-        const nextScoreB = Math.max(0, s.scoreB - (team === "B" ? 1 : 0));
-        const winner: BabyFootTeamId | null = nextScoreA === nextScoreB ? null : nextScoreA > nextScoreB ? "A" : "B";
-        const next: BabyFootState = {
+    if (isLimitedBallsMode(s)) {
+      const maxBalls = maxBallsForState(s);
+      const isLastBall = playedBallsCount(s.events || []) >= maxBalls - 1;
+      if (isLastBall) {
+        const penalty = Math.max(2, pending + 2);
+        const scoreDeltaA = team === "A" ? -penalty : 0;
+        const scoreDeltaB = team === "B" ? -penalty : 0;
+        const nextScoreA = Math.max(0, s.scoreA + scoreDeltaA);
+        const nextScoreB = Math.max(0, s.scoreB + scoreDeltaB);
+        const demiEvent: BabyFootEvent = {
+          t: "demi",
+          at: now,
+          elapsedMs,
+          team,
+          scorerId: scorerId ?? null,
+          phase: s.phase,
+          sourceLine: sourceLine ?? "MIL",
+          counted: true,
+          pendingBefore: pending,
+          lastBallPenalty: penalty,
+          scoreDeltaA,
+          scoreDeltaB,
+        };
+        let next: BabyFootState = {
           ...s,
           undo,
           scoreA: nextScoreA,
           scoreB: nextScoreB,
+          pendingDemiBonus: 0,
+          specialStats: stats,
+          events: [...(s.events || []), demiEvent],
+          updatedAt: now,
+        };
+
+        if (next.setsEnabled) {
+          next = maybeWinLimitedBallsSet(next);
+          if (next.finished) return next;
+          return persist(next);
+        }
+
+        const winner: BabyFootTeamId | null = nextScoreA === nextScoreB ? null : nextScoreA > nextScoreB ? "A" : "B";
+        next = {
+          ...next,
           finished: true,
           winner,
           phase: "finished",
           clockRunning: false,
           finishedAt: now,
-          specialStats: stats,
-          events: [
-            ...(s.events || []),
-            {
-              t: "demi",
-              at: now,
-              team,
-              scorerId: scorerId ?? null,
-              phase: s.phase,
-              sourceLine: sourceLine ?? "MIL",
-            },
-            { t: "finish", at: now, winner, reason: winner ? "target" : "draw" },
-          ],
-          updatedAt: now,
+          events: [...(next.events || []), { t: "finish", at: now, elapsedMs, winner, reason: winner ? "target" : "draw" }],
         };
         return persist(next);
       }
@@ -904,22 +954,18 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
         ...s,
         undo,
         specialStats: stats,
-        events: [...(s.events || []), { t: "demi", at: now, elapsedMs, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
+        events: [...(s.events || []), { t: "demi", at: now, elapsedMs, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL", counted: false }],
         updatedAt: now,
       };
       return persist(next);
     }
-    // Règle Baby-Foot validée : un DEMI ne donne jamais le point immédiatement.
-    // Chaque demi ajoute 1 point en suspens. Le prochain BUT NORMAL (AV/DEF/GB)
-    // récupère son point + tous les points de demis en attente, quelle que soit l’équipe
-    // qui avait marqué les demis. L’ancienne valeur demiRule="point" est donc traitée
-    // comme "suspend" pour ne pas casser les anciennes sauvegardes/configs.
+
     const next: BabyFootState = {
       ...s,
       undo,
       pendingDemiBonus: pending + 1,
       specialStats: stats,
-      events: [...(s.events || []), { t: "demi", at: now, elapsedMs, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL" }],
+      events: [...(s.events || []), { t: "demi", at: now, elapsedMs, team, scorerId: scorerId ?? null, phase: s.phase, sourceLine: sourceLine ?? "MIL", counted: true }],
       updatedAt: now,
     };
     return persist(next);

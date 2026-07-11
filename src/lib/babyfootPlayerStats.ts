@@ -111,6 +111,8 @@ function normalizeCompactBabyFootEvent(raw: any): any {
     demiBonusApplied: num(compactValue(ev, "demiBonusApplied", "demibonusapplied", 0), 0),
     sourceLine: compactValue(ev, "sourceLine", "sourceline", null),
     counted: compactValue(ev, "counted", "counted", undefined),
+    pendingBefore: num(compactValue(ev, "pendingBefore", "pendingbefore", 0), 0),
+    lastBallPenalty: num(compactValue(ev, "lastBallPenalty", "lastballpenalty", 0), 0),
     scoreDeltaA: num(compactValue(ev, "scoreDeltaA", "scoredeltaa", 0), 0),
     scoreDeltaB: num(compactValue(ev, "scoreDeltaB", "scoredeltab", 0), 0),
     scored: compactValue(ev, "scored", "scored", undefined),
@@ -512,8 +514,13 @@ export function buildBabyFootPlayerStatsMap(input: {
         if (own) { own.csc += 1; own.ownGoals += 1; }
       }
     } else if (ev.t === "demi") {
+      if (ev.counted === false) continue;
       const scorer = ensure(ev.scorerId, { team }, team);
-      if (scorer) scorer.demi += 1;
+      if (scorer) {
+        scorer.demi += 1;
+        const penalty = Math.max(0, num(ev.lastBallPenalty, 0));
+        if (penalty > 0) scorer.points -= penalty;
+      }
     } else if (ev.t === "special") {
       const scorer = ensure(ev.scorerId, { team }, team);
       if (!scorer) continue;

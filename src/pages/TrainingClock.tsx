@@ -21,6 +21,10 @@ import { getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc } from "../lib/geoAssets";
 import { getDartSetsForProfile, getPublicDartSetsForSelector, getFavoriteDartSetForProfile, getDartSetById, getDartSetMainImageSrc, getDartSetThumbImageSrc, bumpDartSetUsage } from "../lib/dartSetsStore";
 import tickerTourHorloge from "../assets/tickers/ticker_tour_horloge.png";
+import tickerClockClassic from "../assets/tickers/clock_variants/classic.png";
+import tickerClockDoubles from "../assets/tickers/clock_variants/doubles.png";
+import tickerClockTriples from "../assets/tickers/clock_variants/triples.png";
+import tickerClockSDT from "../assets/tickers/clock_variants/sdt.png";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
 type ParticipantMode = "players" | "teams";
@@ -1493,11 +1497,11 @@ function SetupSection(props: SetupSectionProps) {
   const selectedProfiles = React.useMemo(() => (selectedPlayerIds || []).map((id) => profiles.find((p) => String(p.id) === String(id))).filter(Boolean) as Profile[], [selectedPlayerIds, profiles]);
   const selectedTeams = React.useMemo(() => (selectedTeamIds || []).map((id) => teamsCatalog.find((team) => String(team.id) === String(id))).filter(Boolean) as TeamEntity[], [selectedTeamIds, teamsCatalog]);
 
-  const modeMeta: Record<ClockMode, { title: string; short: string; icon: string; hint: string; tone: string }> = {
-    classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les segments comptent.", tone: primary },
-    doubles: { title: "Doubles", short: "D1 → D20 + DBull", icon: "×2", hint: "Seulement la couronne double.", tone: success },
-    triples: { title: "Triples", short: "T1 → T20", icon: "×3", hint: "Seulement la couronne triple.", tone: "#c77dff" },
-    sdt: { title: "S · D · T", short: "Simple → Double → Triple", icon: "3×", hint: "3 étapes par numéro.", tone: accent2 },
+  const modeMeta: Record<ClockMode, { title: string; short: string; icon: string; hint: string; tone: string; ticker: string }> = {
+    classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les segments comptent.", tone: primary, ticker: tickerClockClassic },
+    doubles: { title: "Doubles", short: "D1 → D20 + DBull", icon: "×2", hint: "Seulement la couronne double.", tone: success, ticker: tickerClockDoubles },
+    triples: { title: "Triples", short: "T1 → T20", icon: "×3", hint: "Seulement la couronne triple.", tone: "#c77dff", ticker: tickerClockTriples },
+    sdt: { title: "S · D · T", short: "Simple → Double → Triple", icon: "3×", hint: "3 étapes par numéro.", tone: accent2, ticker: tickerClockSDT },
   };
 
   const guidedSteps = ["Type", participantMode === "teams" ? "Équipes" : "Joueurs", "Variante", "Options", "Résumé"];
@@ -1529,20 +1533,12 @@ function SetupSection(props: SetupSectionProps) {
   function CompactIntro() {
     return (
       <section style={{ background: cardBg, borderRadius: 20, padding: 14, border: `1px solid ${hexToRgba(primary, 0.3)}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: 1.1, color: primary, fontWeight: 1000, textTransform: "uppercase" }}>Tour de l'horloge</div>
-            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 1000, color: text }}>Configuration type X01</div>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 18, fontWeight: 1000, color: text, textTransform: "uppercase", letterSpacing: 0.8 }}>Configuration</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => setConfigViewMode("guided")} />
             <PillButton label="Complète" active={configViewMode === "complete"} onClick={() => setConfigViewMode("complete")} />
           </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-          <div style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${hexToRgba(primary, 0.32)}`, background: hexToRgba(primary, 0.12), color: primary, fontSize: 11, fontWeight: 950 }}>{participantMode === "teams" ? "Mode équipes" : "Mode joueurs"}</div>
-          <div style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.04)", color: text, fontSize: 11, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedNames}</div>
         </div>
 
         {configViewMode === "guided" ? (
@@ -1688,7 +1684,7 @@ function SetupSection(props: SetupSectionProps) {
           <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>3</span>
           <div>
             <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Variante de jeu</div>
-            <div style={{ fontSize: 11, color: textSoft }}>Style plus arcade avec un rendu plus visuel.</div>
+            <div style={{ fontSize: 11, color: textSoft }}>Tickers arcade dédiés pour chaque variante.</div>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
@@ -1703,34 +1699,26 @@ function SetupSection(props: SetupSectionProps) {
                 style={{
                   borderRadius: 22,
                   border: `1px solid ${active ? hexToRgba(meta.tone, 0.65) : borderSoft}`,
-                  background: active ? `radial-gradient(circle at 15% 0%, ${hexToRgba(meta.tone, 0.18)}, rgba(13,17,28,.98))` : "linear-gradient(180deg, rgba(17,22,36,.96), rgba(8,10,18,.98))",
+                  background: active ? `radial-gradient(circle at 15% 0%, ${hexToRgba(meta.tone, 0.12)}, rgba(13,17,28,.98))` : "linear-gradient(180deg, rgba(17,22,36,.96), rgba(8,10,18,.98))",
                   color: text,
                   padding: 10,
-                  minHeight: 142,
+                  minHeight: 250,
                   textAlign: "left",
                   cursor: "pointer",
                   boxShadow: active ? `0 0 22px ${hexToRgba(meta.tone, 0.24)}` : "inset 0 0 18px rgba(255,255,255,.02)",
                   display: "grid",
-                  gridTemplateRows: "auto 1fr",
+                  gridTemplateRows: "auto auto 1fr auto",
                   gap: 10,
                 }}
               >
-                <div style={{ borderRadius: 16, padding: "10px 12px", border: `1px solid ${active ? hexToRgba(meta.tone, 0.55) : "rgba(255,255,255,.1)"}`, background: `linear-gradient(135deg, ${hexToRgba(meta.tone, 0.36)}, rgba(12,18,28,.92))`, boxShadow: `inset 0 0 24px ${hexToRgba(meta.tone, 0.16)}, 0 0 12px rgba(0,0,0,.2)`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ display: "grid", gap: 2 }}>
-                    <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1.2, textTransform: "uppercase", color: active ? "#fff" : textSoft }}>Tour de l'horloge</div>
-                    <div style={{ fontSize: 20, lineHeight: 1, fontWeight: 1000, color: "#fff", textShadow: `0 0 12px ${hexToRgba(meta.tone, 0.45)}` }}>{meta.title}</div>
-                  </div>
-                  <div style={{ fontSize: 32, lineHeight: 1, color: meta.tone, fontWeight: 1000, textShadow: `0 0 10px ${hexToRgba(meta.tone, 0.45)}` }}>{meta.icon}</div>
+                <div style={{ position: "relative", borderRadius: 18, overflow: "hidden", border: `1px solid ${active ? hexToRgba(meta.tone, 0.6) : "rgba(255,255,255,.12)"}`, background: "rgba(255,255,255,.03)", boxShadow: active ? `0 0 18px ${hexToRgba(meta.tone, 0.16)}` : "none" }}>
+                  <img src={meta.ticker} alt={meta.title} style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", display: "block" }} />
+                  <span style={{ position: "absolute", top: 10, right: 10, width: 24, height: 24, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.28)"}`, display: "grid", placeItems: "center", color: active ? meta.tone : "rgba(255,255,255,.5)", fontSize: 12, fontWeight: 1000, background: "rgba(5,8,16,.75)", boxShadow: active ? `0 0 10px ${hexToRgba(meta.tone, 0.35)}` : "none" }}>{active ? "✓" : ""}</span>
                 </div>
-                <div style={{ padding: "0 4px 4px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 16, fontWeight: 1000, color: active ? meta.tone : text }}>{meta.short}</div>
-                    <span style={{ width: 22, height: 22, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 11, background: active ? hexToRgba(meta.tone, 0.1) : "transparent" }}>{active ? "✓" : ""}</span>
-                  </div>
-                  <div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 800, color: text }}>{meta.hint}</div>
-                  <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
-                    <div style={{ width: active ? "100%" : "45%", height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${meta.tone}, ${hexToRgba(meta.tone, 0.4)})`, opacity: active ? 1 : .6 }} />
-                  </div>
+                <div style={{ fontSize: 18, fontWeight: 1000, color: active ? meta.tone : text }}>{meta.short}</div>
+                <div style={{ fontSize: 12, color: text, lineHeight: 1.35 }}>{meta.hint}</div>
+                <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                  <div style={{ width: active ? "100%" : "45%", height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${meta.tone}, ${hexToRgba(meta.tone, 0.4)})`, opacity: active ? 1 : .6 }} />
                 </div>
               </button>
             );
