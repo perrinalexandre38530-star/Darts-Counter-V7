@@ -12,6 +12,7 @@ import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import AvatarLite from "../components/profile/AvatarLite";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
 import {
@@ -42,6 +43,8 @@ import TopTicker from "../components/TopTicker";
 import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
 import tickerProfilesLocaux from "../assets/tickers/ticker_profiles_locaux.webp";
 import tickerLocalProfiles from "../assets/tickers/ticker_local_profiles.webp";
+import tickerAmis from "../assets/tickers/ticker_amis.webp";
+import tickerFriends from "../assets/tickers/ticker_friends.webp";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
@@ -2961,10 +2964,6 @@ React.useEffect(() => {
     }
   }
 
-  const onlineFriendsCount = friends.filter(
-    (f) => f.status === "online" || f.status === "away"
-  ).length;
-
   return (
     <>
       {/* Shimmer du nom de profil (utilise profileHeaderCss) */}
@@ -3040,76 +3039,113 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "100%",
-                boxSizing: "border-box",
-                marginBottom: 10,
-                position: "relative",
-                minHeight: view === "dartsets" || view === "locals" ? 92 : 40,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: view === "dartsets" || view === "locals" ? "center" : "flex-start",
-                overflow: view === "dartsets" || view === "locals" ? "visible" : undefined,
-              }}
-            >
+            {view === "friends" ? (
               <div
                 style={{
-                  position: view === "dartsets" || view === "locals" ? "absolute" : "relative",
-                  left: view === "dartsets" || view === "locals" ? 0 : undefined,
-                  top: view === "dartsets" || view === "locals" ? "50%" : undefined,
-                  transform: view === "dartsets" || view === "locals" ? "translateY(-50%)" : undefined,
-                  zIndex: 3,
+                  width: "calc(100% + 32px)",
+                  maxWidth: "calc(100% + 32px)",
+                  marginInline: -16,
+                  marginBottom: 10,
+                  boxSizing: "border-box",
                 }}
               >
-                <BackDot
-                  size={36}
-                  title={t("profiles.menu.back", "Retour au menu Profils")}
-                  onClick={() => openView("menu")}
+                <TopTicker
+                  src={lang === "fr" ? tickerAmis : tickerFriends}
+                  alt={lang === "fr" ? "Amis" : "Friends"}
+                  maxWidth="100%"
+                  marginBottom={0}
+                  startSlot={
+                    <BackDot
+                      size={42}
+                      title={lang === "fr" ? "Retour à la page précédente" : "Back to the previous page"}
+                      onClick={() => openView("menu")}
+                    />
+                  }
+                  endSlot={
+                    <InfoDot
+                      size={42}
+                      title={lang === "fr" ? "Informations sur la page Amis" : "Friends page information"}
+                      content={
+                        lang === "fr"
+                          ? "Cette page affiche les amis synchronisés avec ton compte Online.\n\n• Consulte leur statut de présence.\n• Retrouve leurs principales statistiques de jeu.\n• Utilise « Recharger » pour actualiser la liste et les informations."
+                          : "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information."
+                      }
+                    />
+                  }
                 />
               </div>
-
-              {view === "dartsets" && (
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                  marginBottom: 10,
+                  position: "relative",
+                  minHeight: view === "dartsets" || view === "locals" ? 92 : 40,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: view === "dartsets" || view === "locals" ? "center" : "flex-start",
+                  overflow: view === "dartsets" || view === "locals" ? "visible" : undefined,
+                }}
+              >
                 <div
                   style={{
-                    width: "min(100%, calc(100vw - 72px), 560px)",
-                    height: "clamp(40px, 11vw, 48px)",
-                    borderRadius: 16,
-                    border: `1px solid ${primary}88`,
-                    background:
-                      "linear-gradient(90deg, rgba(4,6,14,.96), rgba(18,22,36,.92), rgba(4,6,14,.96))",
-                    boxShadow: `0 0 18px ${primary}44, inset 0 0 18px rgba(255,255,255,.035)`,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "hidden",
-                    padding: 0,
-                    marginInline: "auto",
+                    position: view === "dartsets" || view === "locals" ? "absolute" : "relative",
+                    left: view === "dartsets" || view === "locals" ? 0 : undefined,
+                    top: view === "dartsets" || view === "locals" ? "50%" : undefined,
+                    transform: view === "dartsets" || view === "locals" ? "translateY(-50%)" : undefined,
+                    zIndex: 3,
                   }}
                 >
-                  <img
-                    src={tickerDartsets}
-                    alt="Set of darts"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
-                    }}
+                  <BackDot
+                    size={36}
+                    title={t("profiles.menu.back", "Retour au menu Profils")}
+                    onClick={() => openView("menu")}
                   />
                 </div>
-              )}
 
-              {view === "locals" && (
-                <TopTicker
-                  src={lang === "fr" ? tickerProfilesLocaux : tickerLocalProfiles}
-                  alt={lang === "fr" ? t("profiles.locals.title", "Profils locaux") : "Local profiles"}
-                  maxWidth="min(100%, calc(100vw - 72px), 560px)"
-                  marginBottom={0}
-                />
-              )}
-            </div>
+                {view === "dartsets" && (
+                  <div
+                    style={{
+                      width: "min(100%, calc(100vw - 72px), 560px)",
+                      height: "clamp(40px, 11vw, 48px)",
+                      borderRadius: 16,
+                      border: `1px solid ${primary}88`,
+                      background:
+                        "linear-gradient(90deg, rgba(4,6,14,.96), rgba(18,22,36,.92), rgba(4,6,14,.96))",
+                      boxShadow: `0 0 18px ${primary}44, inset 0 0 18px rgba(255,255,255,.035)`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      padding: 0,
+                      marginInline: "auto",
+                    }}
+                  >
+                    <img
+                      src={tickerDartsets}
+                      alt="Set of darts"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                  </div>
+                )}
+
+                {view === "locals" && (
+                  <TopTicker
+                    src={lang === "fr" ? tickerProfilesLocaux : tickerLocalProfiles}
+                    alt={lang === "fr" ? t("profiles.locals.title", "Profils locaux") : "Local profiles"}
+                    maxWidth="min(100%, calc(100vw - 72px), 560px)"
+                    marginBottom={0}
+                  />
+                )}
+              </div>
+            )}
 
             {view === "me" && (
               <>
@@ -3288,12 +3324,7 @@ React.useEffect(() => {
             )}
 
             {view === "friends" && (
-              <Card
-                title={t(
-                  "profiles.section.friends",
-                  "Amis ({count})"
-                ).replace("{count}", String(onlineFriendsCount))}
-              >
+              <Card>
                 <FriendsMergedBlock friends={friends} loading={onlineProfileFriendsLoading} error={onlineProfileFriendsError} onRefresh={refreshProfileOnlineFriends} />
               </Card>
             )}
