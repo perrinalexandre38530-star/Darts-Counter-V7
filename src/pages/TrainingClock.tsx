@@ -16,6 +16,9 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import TeamPagedSelector from "../components/TeamPagedSelector";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { useTheme } from "../contexts/ThemeContext";
+import ProfileAvatar from "../components/ProfileAvatar";
+import { getCountryFlag } from "../lib/countryNames";
+import { getCountryFlagSrc } from "../lib/geoAssets";
 import { getDartSetsForProfile, getPublicDartSetsForSelector, getFavoriteDartSetForProfile, getDartSetById, getDartSetMainImageSrc, getDartSetThumbImageSrc, bumpDartSetUsage } from "../lib/dartSetsStore";
 import tickerTourHorloge from "../assets/tickers/ticker_tour_horloge.png";
 
@@ -304,6 +307,85 @@ function guessClockDefaultDartSetId(profileId: string): string | null {
   if (fav?.id) return String(fav.id);
   const pool = getClockSelectableDartSets(pid);
   return pool[0]?.id ? String(pool[0].id) : null;
+}
+
+function getClockProfileCountryRaw(profile: any): string {
+  const candidates = [
+    profile?.countryCode, profile?.country_code, profile?.country, profile?.countryName, profile?.nation, profile?.nationality,
+    profile?.privateInfo?.countryCode, profile?.privateInfo?.country_code, profile?.privateInfo?.country, profile?.privateInfo?.countryName,
+    profile?.private_info?.countryCode, profile?.private_info?.country_code, profile?.private_info?.country, profile?.private_info?.countryName,
+    profile?.preferences?.countryCode, profile?.preferences?.country_code, profile?.preferences?.country,
+    profile?.profile?.countryCode, profile?.profile?.country_code, profile?.profile?.country,
+  ];
+  for (const value of candidates) {
+    const raw = String(value || "").trim();
+    if (raw) return raw;
+  }
+  return "";
+}
+
+function getClockProfileCountryCode(profile: any): string {
+  const raw = String(getClockProfileCountryRaw(profile) || "").trim();
+  if (!raw) return "";
+  const upper = raw.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper)) return upper === "UK" ? "GB" : upper;
+  const chars = Array.from(raw);
+  if (chars.length === 2) {
+    const a = chars[0].codePointAt(0) || 0;
+    const b = chars[1].codePointAt(0) || 0;
+    if (a >= 0x1f1e6 && a <= 0x1f1ff && b >= 0x1f1e6 && b <= 0x1f1ff) {
+      return String.fromCharCode(65 + a - 0x1f1e6, 65 + b - 0x1f1e6);
+    }
+  }
+  try {
+    const emoji = getCountryFlag(raw);
+    const emojiChars = Array.from(emoji);
+    if (emojiChars.length === 2) {
+      const a = emojiChars[0].codePointAt(0) || 0;
+      const b = emojiChars[1].codePointAt(0) || 0;
+      if (a >= 0x1f1e6 && a <= 0x1f1ff && b >= 0x1f1e6 && b <= 0x1f1ff) {
+        return String.fromCharCode(65 + a - 0x1f1e6, 65 + b - 0x1f1e6);
+      }
+    }
+  } catch {}
+  return "";
+}
+
+function ClockCountryFlagBadge({ profile, accent, size = 30, style = {} }: { profile: any; accent: string; size?: number; style?: React.CSSProperties }) {
+  const raw = getClockProfileCountryRaw(profile);
+  const code = getClockProfileCountryCode(profile);
+  const src = code ? (getCountryFlagSrc(code) || "") : "";
+  let fallback = "";
+  try { fallback = raw ? getCountryFlag(raw) : ""; } catch {}
+  if (!src && !fallback) return null;
+  return (
+    <span
+      title={raw || undefined}
+      aria-label="Pays du joueur"
+      style={{
+        position: "absolute",
+        right: 8,
+        bottom: 8,
+        zIndex: 7,
+        width: size,
+        height: size,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(3,8,18,.96)",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 10px ${accent}66, 0 8px 18px rgba(0,0,0,.42)`,
+        overflow: "hidden",
+        color: "#fff",
+        fontSize: Math.max(10, Math.round(size * 0.42)),
+        fontWeight: 950,
+        lineHeight: 1,
+        ...style,
+      }}
+    >
+      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <span style={{ lineHeight: 1 }}>{fallback}</span>}
+    </span>
+  );
 }
 
 // ============================================
@@ -1201,9 +1283,10 @@ type ClockDartSetPickerProps = {
   onChange: (id: string | null) => void;
   primary: string;
   textSoft: string;
+  compact?: boolean;
 };
 
-function ClockDartSetPicker({ profileId, dartSetId, onChange, primary, textSoft }: ClockDartSetPickerProps) {
+function ClockDartSetPicker({ profileId, dartSetId, onChange, primary, textSoft, compact = false }: ClockDartSetPickerProps) {
   const [open, setOpen] = React.useState(false);
   const [refreshVersion, setRefreshVersion] = React.useState(0);
 
@@ -1231,36 +1314,47 @@ function ClockDartSetPicker({ profileId, dartSetId, onChange, primary, textSoft 
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         style={{
-          minHeight: 40,
+          position: compact ? "absolute" : "relative",
+          left: compact ? 8 : undefined,
+          bottom: compact ? 6 : undefined,
+          zIndex: compact ? 6 : undefined,
+          minHeight: compact ? undefined : 40,
+          width: compact ? 30 : undefined,
+          height: compact ? 30 : undefined,
+          minWidth: compact ? 30 : undefined,
           borderRadius: 999,
           border: `1px solid ${selectedSet ? primary : "rgba(255,255,255,.12)"}`,
-          background: selectedSet ? `radial-gradient(circle at 0% 0%, ${hexToRgba(primary, 0.26)}, rgba(12,15,26,.96))` : "rgba(255,255,255,.04)",
-          padding: selectedSet ? "5px 8px 5px 6px" : "0 12px",
+          background: selectedSet ? `radial-gradient(circle at 0% 0%, ${hexToRgba(primary, 0.26)}, rgba(12,15,26,.96))` : "rgba(10,11,22,.92)",
+          padding: compact ? 0 : (selectedSet ? "5px 8px 5px 6px" : "0 12px"),
           display: "inline-flex",
           alignItems: "center",
-          gap: 8,
+          justifyContent: "center",
+          gap: compact ? 0 : 8,
           color: "#fff",
           fontWeight: 900,
           fontSize: 11,
           cursor: "pointer",
-          boxShadow: selectedSet ? `0 0 12px ${hexToRgba(primary, 0.34)}` : "none",
-          maxWidth: 156,
+          boxShadow: selectedSet ? `0 0 12px ${hexToRgba(primary, 0.34)}` : "0 0 10px rgba(0,0,0,.55)",
+          maxWidth: compact ? 30 : 156,
+          overflow: "hidden",
         }}
       >
         {selectedSet ? (
-          <span style={{ width: 28, height: 28, borderRadius: 999, overflow: "hidden", background: "rgba(0,0,0,.4)", border: `1px solid ${primary}`, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
+          <span style={{ width: compact ? 24 : 28, height: compact ? 24 : 28, borderRadius: 999, overflow: "hidden", background: "rgba(0,0,0,.4)", border: `1px solid ${primary}`, display: "grid", placeItems: "center", flex: "0 0 auto", boxShadow: `0 0 10px ${hexToRgba(primary, 0.5)}` }}>
             {getClockDartSetThumb(selectedSet) ? (
               <img src={getClockDartSetThumb(selectedSet) as string} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
               <span style={{ fontSize: 14 }}>🎯</span>
             )}
           </span>
+        ) : compact ? (
+          <span style={{ fontSize: 14, color: primary }}>🎯</span>
         ) : (
           <span style={{ fontSize: 14 }}>🎯</span>
         )}
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedSet ? selectedSet.name || "SET" : "Choisir set"}</span>
+        {compact ? null : <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedSet ? selectedSet.name || "SET" : "Choisir set"}</span>}
       </button>
 
       {open ? (
@@ -1470,30 +1564,47 @@ function SetupSection(props: SetupSectionProps) {
     );
   }
 
+  function PlayerSummaryMedallion({ player, summary = false }: { player: PlayerLite; summary?: boolean }) {
+    const profile = profiles.find((p) => String(p.id) === String(player.id));
+    const selectedSetId = player.id ? (playerDartSets[String(player.id)] ?? null) : null;
+    const selectedSet = selectedSetId ? getDartSetById(String(selectedSetId)) : null;
+    return (
+      <div
+        key={`${summary ? "summary" : "card"}-${player.teamId || "solo"}-${String(player.id || player.name)}`}
+        style={{
+          borderRadius: 20,
+          padding: summary ? "12px 10px 10px" : "10px 8px 8px",
+          background: `linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025))`,
+          border: `1px solid ${hexToRgba(primary, summary ? 0.3 : 0.18)}`,
+          boxShadow: summary ? `0 0 18px ${hexToRgba(primary, 0.14)}` : "inset 0 0 16px rgba(255,255,255,.03)",
+          display: "grid",
+          justifyItems: "center",
+          gap: 6,
+          minWidth: 0,
+        }}
+      >
+        <div style={{ position: "relative", width: summary ? 104 : 96, height: summary ? 104 : 96, display: "grid", placeItems: "center", overflow: "visible" }}>
+          <div style={{ filter: `drop-shadow(0 0 12px ${hexToRgba(primary, 0.28)})` }}>
+            <ProfileAvatar profile={profile || ({ id: player.id, name: player.name } as any)} size={summary ? 82 : 76} showStars={true} />
+          </div>
+          <ClockDartSetPicker compact profileId={player.id} dartSetId={selectedSetId} onChange={(id) => setDartSetForProfile(player.id, id)} primary={primary} textSoft={textSoft} />
+          <ClockCountryFlagBadge profile={profile} accent={primary} size={summary ? 30 : 28} style={{ right: summary ? 7 : 8, bottom: summary ? 8 : 8 }} />
+        </div>
+        <div style={{ color: text, fontSize: summary ? 13 : 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
+        <div style={{ color: textSoft, fontSize: 10.5, fontWeight: 800, textAlign: "center", minHeight: 14 }}>{selectedSet?.name || "Aucun set"}</div>
+        {player.teamName ? <div style={{ color: primary, fontSize: 10, fontWeight: 900, textAlign: "center" }}>{player.teamName}</div> : null}
+      </div>
+    );
+  }
+
   function ParticipantSetRows() {
     if (!players.length) return null;
     return (
       <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
         <div style={{ fontSize: 11, color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8 }}>Sets de fléchettes</div>
-        {players.map((player) => {
-          const profile = profiles.find((p) => String(p.id) === String(player.id));
-          const selectedSetId = player.id ? (playerDartSets[String(player.id)] ?? null) : null;
-          const selectedSet = selectedSetId ? getDartSetById(String(selectedSetId)) : null;
-          return (
-            <div key={`${player.teamId || "solo"}-${String(player.id || player.name)}`} style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,0.04)", border: `1px solid ${borderSoft}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${hexToRgba(primary, 0.42)}`, background: `radial-gradient(circle at 30% 20%, ${hexToRgba(primary, 0.28)}, rgba(18,22,36,.98))`, display: "grid", placeItems: "center", color: text, fontWeight: 1000, flex: "0 0 auto" }}>
-                  {profile?.avatarDataUrl ? <img src={String(profile.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : initialsFromName(player.name)}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 950, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
-                  <div style={{ fontSize: 10, color: textSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.teamName ? `${player.teamName}` : (selectedSet?.name ? `Set : ${selectedSet.name}` : "Aucun set assigné")}</div>
-                </div>
-              </div>
-              <ClockDartSetPicker profileId={player.id} dartSetId={selectedSetId} onChange={(id) => setDartSetForProfile(player.id, id)} primary={primary} textSoft={textSoft} />
-            </div>
-          );
-        })}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
+          {players.map((player) => <PlayerSummaryMedallion key={`row-${player.teamId || "solo"}-${String(player.id || player.name)}`} player={player} />)}
+        </div>
       </div>
     );
   }
@@ -1532,21 +1643,40 @@ function SetupSection(props: SetupSectionProps) {
           ) : null}
         </div>
 
-        <div style={{ borderRadius: 14, border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.03)", padding: "10px 12px", fontSize: 11, color: text, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {selectedNames}
-        </div>
-
-        <div style={{ marginTop: 10 }}>
+        <div style={{ marginTop: 6 }}>
           {participantMode === "players" ? (
-            <PlayerPagedSelector usageMode="x01" profiles={profiles} selectedIds={selectedPlayerIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
+            <PlayerPagedSelector
+              usageMode="x01"
+              profiles={profiles}
+              selectedIds={selectedPlayerIds}
+              onToggle={togglePlayer}
+              accent={primary}
+              pageSize={9}
+              modalTitle="Choisir des joueurs"
+              showSelectedSummary={true}
+              renderAvatarOverlay={(p: any) => (
+                <ClockDartSetPicker
+                  compact
+                  profileId={p.id}
+                  dartSetId={(playerDartSets || {})[String(p.id)] ?? null}
+                  onChange={(id) => setDartSetForProfile(p.id, id)}
+                  primary={primary}
+                  textSoft={textSoft}
+                />
+              )}
+            />
           ) : teamsCatalog.length > 0 ? (
-            <TeamPagedSelector teams={teamsCatalog} selectedIds={selectedTeamIds} onToggle={toggleTeam} accent={primary} pageSize={9} modalTitle="Choisir des équipes" chooseLabel="Choisir équipes" listLabel="Liste équipes" />
+            <>
+              <div style={{ borderRadius: 14, border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.03)", padding: "10px 12px", fontSize: 11, color: text, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 10 }}>
+                {selectedNames}
+              </div>
+              <TeamPagedSelector teams={teamsCatalog} selectedIds={selectedTeamIds} onToggle={toggleTeam} accent={primary} pageSize={9} modalTitle="Choisir des équipes" chooseLabel="Choisir équipes" listLabel="Liste équipes" />
+              <ParticipantSetRows />
+            </>
           ) : (
             <div style={{ fontSize: 12, color: textSoft }}>Aucune team Darts avec joueurs trouvée.</div>
           )}
         </div>
-
-        <ParticipantSetRows />
       </section>
     );
   }
@@ -1558,7 +1688,7 @@ function SetupSection(props: SetupSectionProps) {
           <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>3</span>
           <div>
             <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Variante de jeu</div>
-            <div style={{ fontSize: 11, color: textSoft }}>Des cartes plus épurées et plus lisibles.</div>
+            <div style={{ fontSize: 11, color: textSoft }}>Style plus arcade avec un rendu plus visuel.</div>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
@@ -1566,14 +1696,42 @@ function SetupSection(props: SetupSectionProps) {
             const meta = modeMeta[mode];
             const active = config.mode === mode;
             return (
-              <button key={mode} type="button" onClick={() => setConfig((c) => ({ ...c, mode }))} style={{ borderRadius: 18, border: `1px solid ${active ? hexToRgba(meta.tone, 0.5) : borderSoft}`, background: active ? `radial-gradient(circle at 0% 0%, ${hexToRgba(meta.tone, 0.18)}, rgba(13,17,28,.98))` : "rgba(255,255,255,0.035)", color: text, padding: 12, minHeight: 104, textAlign: "left", cursor: "pointer", boxShadow: active ? `0 0 18px ${hexToRgba(meta.tone, 0.22)}` : "none" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontSize: 24, lineHeight: 1, color: meta.tone, fontWeight: 1000 }}>{meta.icon}</span>
-                  <span style={{ width: 18, height: 18, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 10 }}>{active ? "✓" : ""}</span>
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, mode }))}
+                style={{
+                  borderRadius: 22,
+                  border: `1px solid ${active ? hexToRgba(meta.tone, 0.65) : borderSoft}`,
+                  background: active ? `radial-gradient(circle at 15% 0%, ${hexToRgba(meta.tone, 0.18)}, rgba(13,17,28,.98))` : "linear-gradient(180deg, rgba(17,22,36,.96), rgba(8,10,18,.98))",
+                  color: text,
+                  padding: 10,
+                  minHeight: 142,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  boxShadow: active ? `0 0 22px ${hexToRgba(meta.tone, 0.24)}` : "inset 0 0 18px rgba(255,255,255,.02)",
+                  display: "grid",
+                  gridTemplateRows: "auto 1fr",
+                  gap: 10,
+                }}
+              >
+                <div style={{ borderRadius: 16, padding: "10px 12px", border: `1px solid ${active ? hexToRgba(meta.tone, 0.55) : "rgba(255,255,255,.1)"}`, background: `linear-gradient(135deg, ${hexToRgba(meta.tone, 0.36)}, rgba(12,18,28,.92))`, boxShadow: `inset 0 0 24px ${hexToRgba(meta.tone, 0.16)}, 0 0 12px rgba(0,0,0,.2)`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 2 }}>
+                    <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1.2, textTransform: "uppercase", color: active ? "#fff" : textSoft }}>Tour de l'horloge</div>
+                    <div style={{ fontSize: 20, lineHeight: 1, fontWeight: 1000, color: "#fff", textShadow: `0 0 12px ${hexToRgba(meta.tone, 0.45)}` }}>{meta.title}</div>
+                  </div>
+                  <div style={{ fontSize: 32, lineHeight: 1, color: meta.tone, fontWeight: 1000, textShadow: `0 0 10px ${hexToRgba(meta.tone, 0.45)}` }}>{meta.icon}</div>
                 </div>
-                <div style={{ marginTop: 12, fontSize: 15, fontWeight: 1000, color: active ? meta.tone : text }}>{meta.title}</div>
-                <div style={{ marginTop: 4, fontSize: 11, fontWeight: 800, color: text }}>{meta.short}</div>
-                <div style={{ marginTop: 6, fontSize: 10, color: textSoft }}>{meta.hint}</div>
+                <div style={{ padding: "0 4px 4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 16, fontWeight: 1000, color: active ? meta.tone : text }}>{meta.short}</div>
+                    <span style={{ width: 22, height: 22, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 11, background: active ? hexToRgba(meta.tone, 0.1) : "transparent" }}>{active ? "✓" : ""}</span>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 800, color: text }}>{meta.hint}</div>
+                  <div style={{ marginTop: 8, height: 6, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}>
+                    <div style={{ width: active ? "100%" : "45%", height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${meta.tone}, ${hexToRgba(meta.tone, 0.4)})`, opacity: active ? 1 : .6 }} />
+                  </div>
+                </div>
               </button>
             );
           })}
@@ -1635,20 +1793,11 @@ function SetupSection(props: SetupSectionProps) {
         </div>
 
         {players.length > 0 ? (
-          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-            {players.map((player) => {
-              const setId = player.id ? (playerDartSets[String(player.id)] ?? null) : null;
-              const dartSet = setId ? getDartSetById(String(setId)) : null;
-              return (
-                <div key={`summary-${player.teamId || "solo"}-${String(player.id || player.name)}`} style={{ borderRadius: 14, border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.035)", padding: "9px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 950, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}{player.teamName ? <span style={{ color: primary }}> • {player.teamName}</span> : null}</div>
-                    <div style={{ fontSize: 10, color: textSoft, marginTop: 2 }}>{dartSet?.name || "Aucun set"}</div>
-                  </div>
-                  <div style={{ borderRadius: 999, padding: "5px 10px", border: `1px solid ${dartSet ? hexToRgba(primary, 0.4) : borderSoft}`, color: dartSet ? primary : textSoft, background: dartSet ? hexToRgba(primary, 0.1) : "rgba(255,255,255,0.03)", fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>{dartSet ? "SET OK" : "SANS SET"}</div>
-                </div>
-              );
-            })}
+          <div style={{ borderRadius: 16, border: `1px solid ${hexToRgba(primary, 0.18)}`, background: "rgba(255,255,255,0.035)", padding: 12, marginTop: 12 }}>
+            <div style={{ color: primary, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Participants prêts</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 10 }}>
+              {players.map((player) => <PlayerSummaryMedallion key={`summary-${player.teamId || "solo"}-${String(player.id || player.name)}`} player={player} summary />)}
+            </div>
           </div>
         ) : null}
 
