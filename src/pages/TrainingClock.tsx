@@ -12,14 +12,22 @@ import { playSound } from "../lib/sound";
 import type { Profile } from "../lib/types";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import TeamPagedSelector from "../components/TeamPagedSelector";
+import SelectionStickyBanner from "../components/SelectionStickyBanner";
+import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import tickerTourHorloge from "../assets/tickers/ticker_tour_horloge.png";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
+type ParticipantMode = "players" | "teams";
 
 type ClockConfig = {
   mode: ClockMode;
   showTimer: boolean;
   dartLimit: number | null; // nb de fléchettes max par joueur, null = illimité
+  participantMode?: ParticipantMode;
+  teamIds?: string[];
+  teamNames?: string[];
 };
 
 type Target = number | "BULL";
@@ -45,6 +53,8 @@ type ClockSession = {
   id: string;
   profileId: string | null;
   profileName: string;
+  teamId?: string | null;
+  teamName?: string | null;
   config: ClockConfig;
   startedAt: string;
   endedAt: string;
@@ -67,7 +77,7 @@ type ClockSession = {
 const STORAGE_KEY = "dc_training_clock_stats_v1";
 const LEGACY_STORAGE_KEY = "dc-training-clock-v1";
 
-type PlayerLite = { id: string | null; name: string };
+type PlayerLite = { id: string | null; name: string; teamId?: string | null; teamName?: string | null };
 
 type Props = {
   profiles?: Profile[];
@@ -200,10 +210,15 @@ function normalizeClockSession(raw: any): ClockSession {
     id: String(raw?.id || generateId()),
     profileId: raw?.profileId == null ? null : String(raw.profileId),
     profileName: String(raw?.profileName || raw?.playerName || "Joueur"),
+    teamId: raw?.teamId == null ? null : String(raw.teamId),
+    teamName: raw?.teamName == null ? null : String(raw.teamName),
     config: {
       mode: (["classic", "doubles", "triples", "sdt"] as ClockMode[]).includes(raw?.config?.mode) ? raw.config.mode : "classic",
       showTimer: raw?.config?.showTimer !== false,
       dartLimit: Number(raw?.config?.dartLimit) > 0 ? Number(raw.config.dartLimit) : null,
+      participantMode: raw?.config?.participantMode === "teams" ? "teams" : "players",
+      teamIds: Array.isArray(raw?.config?.teamIds) ? raw.config.teamIds.map((x: any) => String(x)) : undefined,
+      teamNames: Array.isArray(raw?.config?.teamNames) ? raw.config.teamNames.map((x: any) => String(x)) : undefined,
     },
     startedAt: String(raw?.startedAt || raw?.createdAt || new Date().toISOString()),
     endedAt: String(raw?.endedAt || raw?.updatedAt || raw?.startedAt || new Date().toISOString()),
@@ -261,28 +276,58 @@ const TrainingClock: React.FC<Props> = (props) => {
     else window.location.hash = "#/"; // dernier filet de sécurité
   }, [appGo]);  
 
-  // --- sélection de joueurs (solo + multi) ---
+  // --- sélection de joueurs / équipes ---
+  const [participantMode, setParticipantMode] = React.useState<ParticipantMode>("players");
   const [selectedPlayerIds, setSelectedPlayerIds] = React.useState<string[]>(
     () => {
       const list = profiles || [];
       if (!list.length) return [];
-      const found =
-        activeProfileId && list.find((p) => p.id === activeProfileId);
+      const found = activeProfileId && list.find((p) => p.id === activeProfileId);
       return [found?.id ?? list[0].id];
     }
   );
+  const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>([]);
 
-  const players: PlayerLite[] = React.useMemo(
-    () =>
-      (selectedPlayerIds || []).map((id) => {
-        const p = profiles.find((pr) => pr.id === id);
-        return {
-          id,
-          name: p?.nickname ?? p?.name ?? "Joueur",
-        };
-      }),
-    [selectedPlayerIds, profiles]
-  );
+  const teamsCatalog = React.useMemo<TeamEntity[]>(() => {
+    try {
+      return loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0);
+    } catch {
+      return [];
+    }
+  }, [profiles]);
+
+  const selectedTeams = React.useMemo(() => {
+    return (selectedTeamIds || [])
+      .map((id) => teamsCatalog.find((team) => String(team.id) === String(id)))
+      .filter(Boolean) as TeamEntity[];
+  }, [selectedTeamIds, teamsCatalog]);
+
+  const players: PlayerLite[] = React.useMemo(() => {
+    if (participantMode === "teams") {
+      const fromTeams: PlayerLite[] = [];
+      for (const team of selectedTeams) {
+        const memberIds = Array.isArray(team?.playerIds) ? team.playerIds.map((x) => String(x)) : [];
+        for (const memberId of memberIds) {
+          const p = profiles.find((pr) => String(pr.id) === memberId);
+          if (!p) continue;
+          fromTeams.push({
+            id: memberId,
+            name: p?.nickname ?? p?.name ?? "Joueur",
+            teamId: String(team.id),
+            teamName: team.name || "Équipe",
+          });
+        }
+      }
+      return fromTeams;
+    }
+    return (selectedPlayerIds || []).map((id) => {
+      const p = profiles.find((pr) => String(pr.id) === String(id));
+      return {
+        id,
+        name: p?.nickname ?? p?.name ?? "Joueur",
+      };
+    });
+  }, [participantMode, selectedPlayerIds, selectedTeams, profiles]);
 
   const [step, setStep] = React.useState<"setup" | "play" | "summary">(
     "setup"
@@ -527,11 +572,20 @@ const TrainingClock: React.FC<Props> = (props) => {
     const accuracyPct = finalDarts > 0 ? Math.round((finalHits / finalDarts) * 1000) / 10 : 0;
     const breakdown = breakdownFromLabels(finalThrowLabels);
 
+    const sessionConfig: ClockConfig = {
+      ...config,
+      participantMode,
+      teamIds: participantMode === "teams" ? selectedTeams.map((team) => String(team.id)) : undefined,
+      teamNames: participantMode === "teams" ? selectedTeams.map((team) => String(team.name || "Équipe")) : undefined,
+    };
+
     const session: ClockSession = {
       id: generateId(),
       profileId: player?.id ?? null,
       profileName: player?.name ?? "Joueur solo",
-      config,
+      teamId: player?.teamId ?? null,
+      teamName: player?.teamName ?? null,
+      config: sessionConfig,
       startedAt: startTime != null ? new Date(startTime).toISOString() : new Date().toISOString(),
       endedAt: new Date(now).toISOString(),
       dartsThrown: finalDarts,
@@ -580,8 +634,11 @@ const TrainingClock: React.FC<Props> = (props) => {
         hits: session.validHits,
         misses: Math.max(0, session.dartsThrown - session.validHits),
       },
+      teamId: session.teamId ?? null,
+      teamName: session.teamName ?? null,
       special: {
         mode: session.config.mode,
+        participantMode: session.config.participantMode || "players",
         targetsCompleted: session.targetsCompleted,
         targetReached: session.targetReached,
         elapsedMs: session.elapsedMs,
@@ -598,7 +655,7 @@ const TrainingClock: React.FC<Props> = (props) => {
         mode: "tour_de_l_horloge",
         createdAt: session.startedAt,
         updatedAt: session.endedAt,
-        players: [{ id: session.profileId, name: session.profileName }],
+        players: [{ id: session.profileId, name: session.profileName, teamId: session.teamId ?? null, teamName: session.teamName ?? null }],
         winnerId: session.completed ? session.profileId : null,
         summary: {
           kind: "clock",
@@ -611,9 +668,10 @@ const TrainingClock: React.FC<Props> = (props) => {
         payload: {
           kind: "clock",
           mode: "tour_de_l_horloge",
-          gameMode: "clock",
+          gameMode: participantMode === "teams" ? "teams" : "clock",
           sport: "darts",
           config: session.config,
+          teams: participantMode === "teams" ? selectedTeams.map((team) => ({ id: team.id, name: team.name, playerIds: Array.isArray(team.playerIds) ? team.playerIds.map(String) : [] })) : undefined,
           players: [playerStats],
           stats: { kind: "clock", mode: "tour_de_l_horloge", players: [playerStats] },
           summary: { players: [playerStats], perPlayer: [playerStats], session },
@@ -849,14 +907,17 @@ const TrainingClock: React.FC<Props> = (props) => {
           {step === "setup" && (
             <SetupSection
               profiles={profiles}
+              participantMode={participantMode}
+              setParticipantMode={setParticipantMode}
               selectedPlayerIds={selectedPlayerIds}
               setSelectedPlayerIds={setSelectedPlayerIds}
+              teamsCatalog={teamsCatalog}
+              selectedTeamIds={selectedTeamIds}
+              setSelectedTeamIds={setSelectedTeamIds}
               config={config}
               setConfig={setConfig}
               players={players}
-              isMulti={isMulti}
               history={history}
-              labelMode={labelMode}
               onStart={handleStart}
             />
           )}
@@ -1027,30 +1088,80 @@ export default TrainingClock;
 
 type SetupSectionProps = {
   profiles: Profile[];
+  participantMode: ParticipantMode;
+  setParticipantMode: React.Dispatch<React.SetStateAction<ParticipantMode>>;
   selectedPlayerIds: string[];
-  setSelectedPlayerIds: (fn: (prev: string[]) => string[]) => void;
+  setSelectedPlayerIds: React.Dispatch<React.SetStateAction<string[]>>;
+  teamsCatalog: TeamEntity[];
+  selectedTeamIds: string[];
+  setSelectedTeamIds: React.Dispatch<React.SetStateAction<string[]>>;
   config: ClockConfig;
   setConfig: React.Dispatch<React.SetStateAction<ClockConfig>>;
   players: PlayerLite[];
-  isMulti: boolean;
   history: ClockSession[];
-  labelMode: (mode: ClockMode) => string;
   onStart: () => void;
 };
 
 function SetupSection(props: SetupSectionProps) {
   const {
     profiles,
+    participantMode,
+    setParticipantMode,
     selectedPlayerIds,
     setSelectedPlayerIds,
+    teamsCatalog,
+    selectedTeamIds,
+    setSelectedTeamIds,
     config,
     setConfig,
     players,
-    isMulti,
     history,
-    labelMode,
     onStart,
   } = props;
+
+  const primary = "#ffc63a";
+  const primarySoft = "rgba(255,198,58,.14)";
+  const cardBg = "linear-gradient(180deg, rgba(18,20,32,.98), rgba(5,6,12,.98))";
+
+  const [configViewMode, setConfigViewMode] = React.useState<"guided" | "complete">(() => {
+    try {
+      return String(window.localStorage.getItem("dc_training_clock_config_view_mode") || "guided") === "complete" ? "complete" : "guided";
+    } catch {
+      return "guided";
+    }
+  });
+  const [guidedStep, setGuidedStep] = React.useState(0);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem("dc_training_clock_config_view_mode", configViewMode);
+    } catch {}
+  }, [configViewMode]);
+
+  const togglePlayer = React.useCallback((id: any) => {
+    const pid = String(id || "");
+    if (!pid) return;
+    setSelectedPlayerIds((prev) => {
+      const exists = prev.includes(pid);
+      if (exists) return prev.filter((x) => x !== pid);
+      if (prev.length >= 4) return prev;
+      return [...prev, pid];
+    });
+  }, [setSelectedPlayerIds]);
+
+  const toggleTeam = React.useCallback((id: any) => {
+    const tid = String(id || "");
+    if (!tid) return;
+    setSelectedTeamIds((prev) => {
+      const exists = prev.includes(tid);
+      if (exists) return prev.filter((x) => x !== tid);
+      if (prev.length >= 4) return prev;
+      return [...prev, tid];
+    });
+  }, [setSelectedTeamIds]);
+
+  const selectedProfiles = React.useMemo(() => (selectedPlayerIds || []).map((id) => profiles.find((p) => String(p.id) === String(id))).filter(Boolean) as Profile[], [selectedPlayerIds, profiles]);
+  const selectedTeams = React.useMemo(() => (selectedTeamIds || []).map((id) => teamsCatalog.find((team) => String(team.id) === String(id))).filter(Boolean) as TeamEntity[], [selectedTeamIds, teamsCatalog]);
 
   const modeMeta: Record<ClockMode, { title: string; short: string; icon: string; hint: string; tone: string }> = {
     classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les multiplicateurs valident la cible.", tone: "#ffc63a" },
@@ -1059,250 +1170,56 @@ function SetupSection(props: SetupSectionProps) {
     sdt: { title: "S · D · T", short: "3 étapes / numéro", icon: "3×", hint: "Simple, Double puis Triple avant d’avancer.", tone: "#ff6fb5" },
   };
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* ✅ Styles locaux (1 seule fois) : halo + scrollbar hidden */}
-      <style>{`
-        @keyframes dcClockGlow {
-          0% { transform: rotate(0deg); opacity: .65; }
-          50% { opacity: .95; }
-          100% { transform: rotate(360deg); opacity: .65; }
-        }
+  const guidedSteps = participantMode === "teams"
+    ? ["Type de partie", "Équipes", "Variante", "Options"]
+    : ["Type de partie", "Joueurs", "Variante", "Options"];
+  const guidedMaxStep = guidedSteps.length - 1;
 
-        /* ✅ Cache scrollbar du carrousel joueurs (supprime la barre jaune qui clignote) */
-        .dcPlayerCarousel {
-          scrollbar-width: none;         /* Firefox */
-          -ms-overflow-style: none;      /* IE/Edge legacy */
-        }
-        .dcPlayerCarousel::-webkit-scrollbar {
-          width: 0;
-          height: 0;
-          display: none;                 /* Chrome/Safari */
-        }
-      `}</style>
+  React.useEffect(() => {
+    setGuidedStep((prev) => Math.max(0, Math.min(prev, guidedMaxStep)));
+  }, [guidedMaxStep]);
 
-      <div
+  const canStart = players.length > 0;
+  const canProceedSelection = participantMode === "teams" ? selectedTeams.length > 0 && players.length > 0 : selectedProfiles.length > 0;
+  const summaryLabel = participantMode === "teams"
+    ? `${selectedTeams.length} équipe(s) • ${players.length} joueur(s)`
+    : `${selectedProfiles.length} joueur(s)`;
+
+  function PillButton({ label, active, onClick, compact = false }: { label: string; active: boolean; onClick: () => void; compact?: boolean }) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
         style={{
-          borderRadius: 20,
-          padding: 12,
-          background: "linear-gradient(180deg,rgba(31,31,38,.98),rgba(9,9,13,.98))",
-          border: "1px solid rgba(255,198,58,.28)",
-          boxShadow: "0 10px 24px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.05)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: 1.4, color: "#ffc63a", fontWeight: 900 }}>CONFIGURATION GUIDÉE</div>
-            <div style={{ fontSize: 16, fontWeight: 1000, marginTop: 2 }}>Prépare ta session</div>
-          </div>
-          <div style={{ borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 900, border: "1px solid rgba(255,198,58,.45)", color: "#ffc63a", background: "rgba(255,198,58,.08)" }}>
-            {players.length || 0}/4 joueur{players.length > 1 ? "s" : ""}
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6 }}>
-          {["1 · JOUEURS", "2 · VARIANTE", "3 · OPTIONS"].map((label, index) => (
-            <div key={label} style={{ borderRadius: 11, padding: "7px 5px", textAlign: "center", fontSize: 9, fontWeight: 900, color: index === 0 || players.length ? "#f6d680" : "rgba(255,255,255,.42)", border: `1px solid ${index === 0 || players.length ? "rgba(255,198,58,.32)" : "rgba(255,255,255,.08)"}`, background: index === 0 || players.length ? "rgba(255,198,58,.07)" : "rgba(255,255,255,.025)" }}>
-              {label}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* JOUEURS */}
-      <section
-        className="card"
-        style={{
-          borderRadius: 18,
-          padding: 14,
-          marginTop: 2,
-          background:
-            "linear-gradient(180deg, rgba(25,25,30,.98), rgba(5,5,8,.98))",
-          border: "1px solid rgba(255,255,255,.10)",
-          boxShadow: "0 0 16px rgba(0,0,0,.7)",
-        }}
-      >
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
-          Joueurs
-        </h2>
-
-        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 10 }}>
-          Sélectionne 1 à 4 joueurs. Chaque joueur jouera une session à la suite.
-        </div>
-
-        {profiles.length === 0 ? (
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Aucun profil pour l&apos;instant. Crée un profil dans l&apos;onglet
-            &quot;Profils&quot; pour enregistrer tes stats.
-          </div>
-        ) : (
-          <div
-            className="dcPlayerCarousel"
-            style={{
-              display: "flex",
-              gap: 12,
-              overflowX: "auto",
-              overflowY: "hidden", // ✅ IMPORTANT : supprime la barre verticale
-              paddingBottom: 6,
-              paddingRight: 6,
-              WebkitOverflowScrolling: "touch",
-              alignItems: "flex-start",
-            }}
-          >
-            {profiles.map((p) => {
-              const selected = selectedPlayerIds.includes(p.id);
-              const name = p.nickname ?? p.name ?? "Joueur";
-              const initials = initialsFromName(name);
-
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  title={name}
-                  onClick={() => {
-                    setSelectedPlayerIds((prev) => {
-                      const exists = prev.includes(p.id);
-                      if (exists) {
-                        if (prev.length === 1) return prev; // jamais 0
-                        return prev.filter((id) => id !== p.id);
-                      }
-                      if (prev.length >= 4) return prev;
-                      return [...prev, p.id];
-                    });
-                  }}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                    flex: "0 0 auto",
-                    width: 72, // ✅ tuile fixe -> carrousel 1 ligne
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: "50%",
-                      position: "relative",
-                      margin: "0 auto",
-                    }}
-                  >
-                    {/* ✅ AURA UNIQUEMENT (pas d’anneau jaune/noir) */}
-                    {selected && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: -10,
-                          borderRadius: "50%",
-                          background:
-                            "conic-gradient(from 180deg, rgba(255,198,58,0), rgba(255,198,58,.40), rgba(255,79,216,.22), rgba(255,198,58,0))",
-                          filter: "blur(12px)",
-                          animation: "dcClockGlow 1.6s linear infinite",
-                          pointerEvents: "none",
-                        }}
-                      />
-                    )}
-
-                    {/* ✅ Médaillon SANS anneaux (bord constant) */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        borderRadius: "50%",
-                        overflow: "hidden",
-                        background: "#111",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "1px solid rgba(255,255,255,.14)", // constant
-                        boxShadow: "inset 0 1px 0 rgba(255,255,255,.06)",
-                        filter: selected ? "none" : "grayscale(1)",
-                        opacity: selected ? 1 : 0.35,
-                      }}
-                    >
-                      {p.avatarDataUrl ? (
-                        <img
-                          src={p.avatarDataUrl}
-                          alt={name}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 800,
-                            color: "#f5f5f5",
-                          }}
-                        >
-                          {initials}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 10,
-                      textAlign: "center",
-                      opacity: selected ? 0.95 : 0.55,
-                      whiteSpace: "nowrap",
-                      textOverflow: "ellipsis",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {name}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Infos résumé joueurs */}
-      <div
-        style={{
-          alignSelf: "flex-start",
+          minHeight: compact ? 34 : 38,
+          padding: compact ? "0 12px" : "0 14px",
           borderRadius: 999,
-          border: "1px solid rgba(255,198,58,.45)",
-          padding: "4px 10px",
-          fontSize: 11,
-          background:
-            "linear-gradient(180deg, rgba(50,40,20,.95), rgba(20,14,6,.98))",
-          boxShadow: "0 0 12px rgba(255,198,58,.4)",
+          border: `1px solid ${active ? primary : "rgba(255,255,255,0.12)"}`,
+          background: active ? primarySoft : "rgba(255,255,255,0.035)",
+          color: active ? primary : "#e9ecff",
+          fontSize: compact ? 11 : 12,
+          fontWeight: 950,
+          letterSpacing: 0.4,
+          cursor: "pointer",
+          boxShadow: active ? `0 0 14px ${primary}33` : "none",
         }}
       >
-        {isMulti
-          ? `${players.length} joueurs sélectionnés`
-          : `Mode solo • ${players[0]?.name ?? "Joueur solo"}`}
-      </div>
+        {label}
+      </button>
+    );
+  }
 
-      {/* Choix du mode */}
-      <section
-        className="card"
-        style={{
-          borderRadius: 18,
-          padding: 14,
-          background:
-            "linear-gradient(180deg, rgba(25,25,30,.98), rgba(5,5,8,.98))",
-          border: "1px solid rgba(255,255,255,.10)",
-          boxShadow: "0 0 16px rgba(0,0,0,.7)",
-        }}
-      >
+  function VariantsBlock() {
+    return (
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "#ffc63a", color: "#111", fontSize: 11, fontWeight: 1000 }}>2</span>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: "#111", fontSize: 11, fontWeight: 1000 }}>2</span>
           <div>
-            <h2 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Variante de jeu</h2>
-            <div style={{ fontSize: 10, opacity: .65, marginTop: 1 }}>Choisis la difficulté et le type de segment attendu.</div>
+            <div style={{ fontSize: 14, fontWeight: 950 }}>Variante de jeu</div>
+            <div style={{ fontSize: 11, color: "#aeb2d3" }}>Choisis la difficulté et le type de segment attendu.</div>
           </div>
         </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
           {(["classic", "doubles", "triples", "sdt"] as ClockMode[]).map((mode) => {
             const active = config.mode === mode;
             const meta = modeMeta[mode];
@@ -1312,10 +1229,10 @@ function SetupSection(props: SetupSectionProps) {
                 type="button"
                 onClick={() => setConfig((c) => ({ ...c, mode }))}
                 style={{
-                  minHeight: 112,
-                  padding: 10,
+                  minHeight: 126,
+                  padding: 12,
                   textAlign: "left",
-                  borderRadius: 16,
+                  borderRadius: 18,
                   border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.12)"}`,
                   background: active
                     ? `radial-gradient(circle at 0% 0%, ${meta.tone}33, transparent 60%), linear-gradient(180deg,#24242b,#0c0c11)`
@@ -1326,186 +1243,286 @@ function SetupSection(props: SetupSectionProps) {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontSize: 22, lineHeight: 1, color: meta.tone, fontWeight: 1000, textShadow: `0 0 12px ${meta.tone}` }}>{meta.icon}</span>
-                  <span style={{ width: 18, height: 18, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 10 }}>{active ? "✓" : ""}</span>
+                  <span style={{ fontSize: 24, lineHeight: 1, color: meta.tone, fontWeight: 1000, textShadow: `0 0 12px ${meta.tone}` }}>{meta.icon}</span>
+                  <span style={{ width: 20, height: 20, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 11 }}>{active ? "✓" : ""}</span>
                 </div>
-                <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000, color: active ? meta.tone : "#fff" }}>{meta.title}</div>
-                <div style={{ marginTop: 2, fontSize: 10, fontWeight: 800, opacity: .88 }}>{meta.short}</div>
-                <div style={{ marginTop: 5, fontSize: 9.5, lineHeight: 1.25, opacity: .58 }}>{meta.hint}</div>
+                <div style={{ marginTop: 10, fontSize: 15, fontWeight: 1000, color: active ? meta.tone : "#fff" }}>{meta.title}</div>
+                <div style={{ marginTop: 2, fontSize: 11, fontWeight: 800, opacity: .88 }}>{meta.short}</div>
+                <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.3, opacity: .62 }}>{meta.hint}</div>
               </button>
             );
           })}
         </div>
       </section>
+    );
+  }
 
-      {/* Options timer / limite fléchettes */}
-      <section
-        className="card"
-        style={{
-          borderRadius: 18,
-          padding: 14,
-          background:
-            "linear-gradient(180deg, rgba(25,25,30,.98), rgba(5,5,8,.98))",
-          border: "1px solid rgba(255,255,255,.10)",
-          boxShadow: "0 0 16px rgba(0,0,0,.7)",
-        }}
-      >
+  function OptionsBlock() {
+    return (
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "#ffc63a", color: "#111", fontSize: 11, fontWeight: 1000 }}>3</span>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: "#111", fontSize: 11, fontWeight: 1000 }}>3</span>
           <div>
-            <h2 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Options de session</h2>
-            <div style={{ fontSize: 10, opacity: .65, marginTop: 1 }}>Ajuste le chrono et la limite de fléchettes.</div>
+            <div style={{ fontSize: 14, fontWeight: 950 }}>Options de session</div>
+            <div style={{ fontSize: 11, color: "#aeb2d3" }}>Retrouve le comportement des autres configs type X01.</div>
           </div>
         </div>
 
-        {/* Timer */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 10,
-            gap: 8,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 13 }}>Afficher le timer</div>
-            <div style={{ fontSize: 11, opacity: 0.7 }}>
-              Chrono visible pendant la session
+        <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 900 }}>Afficher le timer</div>
+              <div style={{ fontSize: 11, color: "#9da3c8" }}>Chrono visible pendant la session.</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <PillButton label="Oui" active={config.showTimer} onClick={() => setConfig((c) => ({ ...c, showTimer: true }))} compact />
+              <PillButton label="Non" active={!config.showTimer} onClick={() => setConfig((c) => ({ ...c, showTimer: false }))} compact />
             </div>
           </div>
 
-          <button
-            type="button"
-            className={"chip " + (config.showTimer ? "chip-active" : "")}
-            style={{
-              fontSize: 12,
-              minWidth: 64,
-              background: config.showTimer
-                ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
-                : "linear-gradient(180deg, rgba(40,40,46,.95), rgba(18,18,24,.98))",
-              color: config.showTimer ? "#111" : "#f5f5f5",
-              borderColor: config.showTimer
-                ? "rgba(0,0,0,.45)"
-                : "rgba(255,255,255,.22)",
-              boxShadow: config.showTimer
-                ? "0 0 10px rgba(255,198,58,.55)"
-                : "none",
-            }}
-            onClick={() => setConfig((c) => ({ ...c, showTimer: !c.showTimer }))}
-          >
-            {config.showTimer ? "Oui" : "Non"}
-          </button>
-        </div>
-
-        {/* Limite de fléchettes */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
           <div>
-            <div style={{ fontSize: 13 }}>Limite de fléchettes</div>
-            <div style={{ fontSize: 11, opacity: 0.7 }}>
-              Par joueur : 0 = illimité, sinon fin auto quand la limite est atteinte
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 190 }}>
-            {[0, 30, 60, 90, 120].map((limit) => {
-              const active = (config.dartLimit ?? 0) === limit;
-              return (
-                <button
+            <div style={{ fontSize: 13, fontWeight: 900 }}>Limite de fléchettes</div>
+            <div style={{ fontSize: 11, color: "#9da3c8", marginTop: 3 }}>0 = illimité, sinon fin auto quand la limite est atteinte.</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              {[0, 30, 60, 90, 120].map((limit) => (
+                <PillButton
                   key={limit}
-                  type="button"
+                  label={limit === 0 ? "∞" : String(limit)}
+                  active={(config.dartLimit ?? 0) === limit}
                   onClick={() => setConfig((c) => ({ ...c, dartLimit: limit > 0 ? limit : null }))}
-                  style={{
-                    minWidth: 42,
-                    height: 30,
-                    borderRadius: 10,
-                    border: `1px solid ${active ? "#ffc63a" : "rgba(255,255,255,.14)"}`,
-                    background: active ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "linear-gradient(180deg,#303139,#17181e)",
-                    color: active ? "#111" : "#f5f5f5",
-                    fontSize: 10,
-                    fontWeight: 900,
-                    boxShadow: active ? "0 0 10px rgba(255,198,58,.45)" : "none",
-                  }}
-                >
-                  {limit === 0 ? "∞" : limit}
-                </button>
-              );
-            })}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </section>
+    );
+  }
 
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 12,
-          display: "grid",
-          gridTemplateColumns: "1.2fr 1fr 1fr",
-          gap: 8,
-          background: "linear-gradient(180deg,rgba(255,198,58,.11),rgba(20,14,6,.42))",
-          border: "1px solid rgba(255,198,58,.32)",
-          boxShadow: "0 0 18px rgba(255,198,58,.10)",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 8.5, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Joueur(s)</div>
-          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{players.map((p) => p.name).join(", ") || "—"}</div>
+  function SummaryBlock() {
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ borderRadius: 18, padding: 12, display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 8, background: "linear-gradient(180deg,rgba(255,198,58,.11),rgba(20,14,6,.42))", border: "1px solid rgba(255,198,58,.32)", boxShadow: "0 0 18px rgba(255,198,58,.10)" }}>
+          <div>
+            <div style={{ fontSize: 9, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Participants</div>
+            <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {participantMode === "teams" ? (selectedTeams.map((team) => team.name).join(", ") || "—") : (selectedProfiles.map((p) => p.nickname || p.name || "Joueur").join(", ") || "—")}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Variante</div>
+            <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, color: modeMeta[config.mode].tone }}>{modeMeta[config.mode].title}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Limite</div>
+            <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900 }}>{config.dartLimit ? `${config.dartLimit} darts` : "Illimitée"}</div>
+          </div>
         </div>
-        <div>
-          <div style={{ fontSize: 8.5, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Variante</div>
-          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, color: modeMeta[config.mode].tone }}>{modeMeta[config.mode].title}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 8.5, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Limite</div>
-          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900 }}>{config.dartLimit ? `${config.dartLimit} darts` : "Illimitée"}</div>
-        </div>
+
+        <button
+          type="button"
+          style={{
+            width: "100%",
+            padding: "14px 0",
+            borderRadius: 18,
+            fontSize: 15,
+            fontWeight: 1000,
+            letterSpacing: .6,
+            background: canStart ? "linear-gradient(180deg,#ffc63a,#ffaf00)" : "linear-gradient(180deg,#555,#333)",
+            color: canStart ? "#111" : "#888",
+            border: "1px solid rgba(0,0,0,.9)",
+            boxShadow: canStart ? "0 0 16px rgba(255,198,58,.6)" : "none",
+            cursor: canStart ? "pointer" : "default",
+          }}
+          onClick={onStart}
+          disabled={!canStart}
+        >
+          ▶ DÉMARRER LA SESSION
+        </button>
       </div>
+    );
+  }
 
-      {/* Bouton démarrer */}
-      <button
-        type="button"
-        className="btn-primary"
-        style={{
-          width: "100%",
-          padding: "14px 0",
-          borderRadius: 18,
-          fontSize: 15,
-          fontWeight: 1000,
-          letterSpacing: .6,
-          marginTop: 2,
-          background: players.length
-            ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
-            : "linear-gradient(180deg,#555,#333)",
-          color: players.length ? "#111" : "#888",
-          border: "1px solid rgba(0,0,0,.9)",
-          boxShadow: players.length ? "0 0 16px rgba(255,198,58,.6)" : "none",
-        }}
-        onClick={onStart}
-        disabled={!players.length}
-      >
-        ▶ DÉMARRER LA SESSION
-      </button>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <section style={{ background: cardBg, borderRadius: 20, padding: 14, border: `1px solid ${primary}44`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: 1.2, color: primary, fontWeight: 950, textTransform: "uppercase" }}>Tour de l'horloge</div>
+            <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 3 }}>Configuration type X01</div>
+            <div style={{ fontSize: 11, color: "#aeb2d3", marginTop: 4 }}>Mode assisté étape par étape ou vue complète, avec les mêmes sélecteurs joueurs / équipes.</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => setConfigViewMode("guided")} />
+            <PillButton label="Complète" active={configViewMode === "complete"} onClick={() => setConfigViewMode("complete")} />
+          </div>
+        </div>
 
-      {/* Historique en bas */}
-      {history.length > 0 && (
-        <section style={{ marginTop: 6 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
-            Dernières sessions
-          </h2>
-          <HistoryList history={history.slice(0, 5)} />
+        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ borderRadius: 999, padding: "5px 10px", border: `1px solid ${primary}55`, background: primarySoft, color: primary, fontSize: 11, fontWeight: 950 }}>{participantMode === "teams" ? "Mode équipes" : "Mode joueurs"}</div>
+          <div style={{ borderRadius: 999, padding: "5px 10px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#d6daf2", fontSize: 11, fontWeight: 900 }}>{summaryLabel}</div>
+        </div>
+
+        {configViewMode === "guided" ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "#cfd5f6", fontWeight: 900, marginBottom: 8 }}>Étape {guidedStep + 1}/{guidedSteps.length} • {guidedSteps[guidedStep]}</div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${guidedSteps.length}, minmax(0, 1fr))`, gap: 8 }}>
+              {guidedSteps.map((label, idx) => (
+                <div key={label} style={{ borderRadius: 14, padding: "8px 6px", textAlign: "center", fontSize: 10, fontWeight: 900, color: idx === guidedStep ? primary : idx < guidedStep ? "#fff" : "#9aa0c8", border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,0.10)"}`, background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)" }}>
+                  {idx + 1} • {label}
+                </div>
+              ))}
+            </div>
+            <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.06)", marginTop: 10, overflow: "hidden" }}>
+              <div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, #ffe089)` }} />
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {configViewMode === "guided" && guidedStep === 0 && (
+        <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>1. Type de partie</h3>
+          <p style={{ fontSize: 12, color: "#aeb2d3", lineHeight: 1.35, margin: "0 0 12px" }}>Choisis le même point d’entrée que dans X01 : profils individuels ou équipes enregistrées.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+            <button type="button" onClick={() => setParticipantMode("players")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "players" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "players" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
+              <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Joueurs</div>
+              <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>1 à 4 profils qui joueront leur session à la suite.</div>
+            </button>
+            <button type="button" onClick={() => setParticipantMode("teams")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "teams" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "teams" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
+              <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Équipes</div>
+              <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>Réutilise les teams Darts déjà créées, avec leurs joueurs.</div>
+            </button>
+          </div>
         </section>
       )}
+
+      {((configViewMode === "guided" && guidedStep === 1) || configViewMode === "complete") && (
+        <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary }}>
+                {participantMode === "teams" ? "2. Équipes" : "2. Joueurs"}
+              </div>
+              <div style={{ fontSize: 12, color: "#aeb2d3", marginTop: 4 }}>
+                {participantMode === "teams" ? "Même sélecteur teams que dans X01Config." : "Même sélecteur joueurs que dans X01Config."}
+              </div>
+            </div>
+            {configViewMode === "complete" ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <PillButton label="Joueurs" active={participantMode === "players"} onClick={() => setParticipantMode("players")} compact />
+                <PillButton label="Équipes" active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} compact />
+              </div>
+            ) : null}
+          </div>
+
+          {participantMode === "players" ? (
+            <>
+              <SelectionStickyBanner
+                title="Joueurs sélectionnés"
+                accent={primary}
+                items={selectedProfiles.map((profile) => ({ id: String(profile.id), name: profile.nickname || profile.name || "Joueur", profile, avatarDataUrl: (profile as any)?.avatarDataUrl || null, subtitle: "Profil local" }))}
+              />
+              <PlayerPagedSelector
+                usageMode="x01"
+                profiles={profiles}
+                selectedIds={selectedPlayerIds}
+                onToggle={togglePlayer}
+                accent={primary}
+                pageSize={9}
+                modalTitle="Choisir des joueurs"
+                showSelectedSummary={false}
+              />
+              <div style={{ marginTop: 8, fontSize: 11, color: "#8f94b5" }}>Tu peux sélectionner jusqu’à 4 joueurs.</div>
+            </>
+          ) : (
+            <>
+              <SelectionStickyBanner
+                title="Équipes sélectionnées"
+                accent={primary}
+                items={selectedTeams.map((team) => ({ id: String(team.id), name: team.name || "Équipe", logoDataUrl: team.logoDataUrl || team.logoUrl || team.avatarUrl || null, subtitle: `${Array.isArray(team.playerIds) ? team.playerIds.length : 0} joueur(s)` }))}
+              />
+              {teamsCatalog.length > 0 ? (
+                <TeamPagedSelector
+                  teams={teamsCatalog}
+                  selectedIds={selectedTeamIds}
+                  onToggle={toggleTeam}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle="Choisir des équipes"
+                  chooseLabel="Choisir équipes"
+                  listLabel="Liste équipes"
+                />
+              ) : (
+                <div style={{ fontSize: 12, color: "#aeb2d3" }}>Aucune team Darts avec joueurs n’a été trouvée dans Profils &gt; Teams.</div>
+              )}
+              {selectedTeams.length > 0 ? (
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  {selectedTeams.map((team) => {
+                    const memberNames = (Array.isArray(team.playerIds) ? team.playerIds : []).map((id) => profiles.find((p) => String(p.id) === String(id))?.nickname || profiles.find((p) => String(p.id) === String(id))?.name).filter(Boolean);
+                    return (
+                      <div key={String(team.id)} style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.035)", padding: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 950, color: "#fff" }}>{team.name}</div>
+                        <div style={{ fontSize: 11, color: "#9da3c8", marginTop: 4 }}>{memberNames.length ? memberNames.join(", ") : "Aucun joueur lié"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+      )}
+
+      {((configViewMode === "guided" && guidedStep === 2) || configViewMode === "complete") && <VariantsBlock />}
+      {((configViewMode === "guided" && guidedStep === 3) || configViewMode === "complete") && <OptionsBlock />}
+      {((configViewMode === "guided" && guidedStep === 3) || configViewMode === "complete") && <SummaryBlock />}
+
+      {configViewMode === "guided" ? (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setGuidedStep((step) => Math.max(0, step - 1))}
+            disabled={guidedStep <= 0}
+            style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)", color: guidedStep <= 0 ? "#565b76" : "#fff", fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}
+          >
+            ← Précédent
+          </button>
+
+          {guidedStep < guidedMaxStep ? (
+            <button
+              type="button"
+              onClick={() => setGuidedStep((step) => Math.min(guidedMaxStep, step + 1))}
+              disabled={(guidedStep === 1 && !canProceedSelection)}
+              style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: (guidedStep === 1 && !canProceedSelection) ? "rgba(255,255,255,0.03)" : primarySoft, color: (guidedStep === 1 && !canProceedSelection) ? "#565b76" : primary, fontWeight: 950, cursor: (guidedStep === 1 && !canProceedSelection) ? "default" : "pointer" }}
+            >
+              Suivant →
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onStart}
+              disabled={!canStart}
+              style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: canStart ? primarySoft : "rgba(255,255,255,0.03)", color: canStart ? primary : "#565b76", fontWeight: 950, cursor: canStart ? "pointer" : "default" }}
+            >
+              Démarrer
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {history.length > 0 ? (
+        <section style={{ marginTop: 2 }}>
+          <h2 style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Dernières sessions</h2>
+          <HistoryList history={history.slice(0, 5)} />
+        </section>
+      ) : null}
     </div>
   );
 }
 
+// ============================================
+// SECTION PLAY
 // ============================================
 // SECTION PLAY
 // ============================================
@@ -1698,11 +1715,8 @@ function PlaySection(props: PlaySectionProps) {
                   opacity: 0.8,
                 }}
               >
-                {isMulti
-                  ? `Joueur ${currentPlayerIndex + 1}/${
-                      players.length
-                    }`
-                  : "Mode solo"}
+                <div>{isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}</div>
+                {currentPlayer?.teamName ? <div style={{ color: "#ffc63a", fontWeight: 900, marginTop: 2 }}>Équipe : {currentPlayer.teamName}</div> : null}
               </div>
               {config.showTimer && (
                 <div
@@ -2054,8 +2068,8 @@ function SummarySection(props: SummarySectionProps) {
           Résumé de la session
         </h2>
         <div style={{ marginBottom: 2 }}>
-          Joueur :{" "}
-          <strong>{lastSession.profileName}</strong>
+          Joueur : <strong>{lastSession.profileName}</strong>
+          {lastSession.teamName ? <span style={{ color: "#ffc63a" }}> • {lastSession.teamName}</span> : null}
         </div>
         <div style={{ marginBottom: 2 }}>
           Mode :{" "}
@@ -2122,7 +2136,7 @@ function SummarySection(props: SummarySectionProps) {
             onClick={onNextPlayer}
           >
             Joueur suivant :{" "}
-            {players[currentPlayerIndex + 1]?.name ?? ""}
+            {players[currentPlayerIndex + 1]?.teamName ? `${players[currentPlayerIndex + 1]?.name} • ${players[currentPlayerIndex + 1]?.teamName}` : (players[currentPlayerIndex + 1]?.name ?? "") }
           </button>
         )}
 
