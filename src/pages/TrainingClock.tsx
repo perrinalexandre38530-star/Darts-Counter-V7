@@ -14,8 +14,9 @@ import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import TeamPagedSelector from "../components/TeamPagedSelector";
-import SelectionStickyBanner from "../components/SelectionStickyBanner";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
+import { useTheme } from "../contexts/ThemeContext";
+import { getDartSetsForProfile, getPublicDartSetsForSelector, getFavoriteDartSetForProfile, getDartSetById, getDartSetMainImageSrc, getDartSetThumbImageSrc, bumpDartSetUsage } from "../lib/dartSetsStore";
 import tickerTourHorloge from "../assets/tickers/ticker_tour_horloge.png";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
@@ -28,6 +29,7 @@ type ClockConfig = {
   participantMode?: ParticipantMode;
   teamIds?: string[];
   teamNames?: string[];
+  playerDartSets?: Record<string, string | null>;
 };
 
 type Target = number | "BULL";
@@ -55,6 +57,8 @@ type ClockSession = {
   profileName: string;
   teamId?: string | null;
   teamName?: string | null;
+  dartSetId?: string | null;
+  dartSetName?: string | null;
   config: ClockConfig;
   startedAt: string;
   endedAt: string;
@@ -212,6 +216,8 @@ function normalizeClockSession(raw: any): ClockSession {
     profileName: String(raw?.profileName || raw?.playerName || "Joueur"),
     teamId: raw?.teamId == null ? null : String(raw.teamId),
     teamName: raw?.teamName == null ? null : String(raw.teamName),
+    dartSetId: raw?.dartSetId == null ? null : String(raw.dartSetId),
+    dartSetName: raw?.dartSetName == null ? null : String(raw.dartSetName),
     config: {
       mode: (["classic", "doubles", "triples", "sdt"] as ClockMode[]).includes(raw?.config?.mode) ? raw.config.mode : "classic",
       showTimer: raw?.config?.showTimer !== false,
@@ -219,6 +225,7 @@ function normalizeClockSession(raw: any): ClockSession {
       participantMode: raw?.config?.participantMode === "teams" ? "teams" : "players",
       teamIds: Array.isArray(raw?.config?.teamIds) ? raw.config.teamIds.map((x: any) => String(x)) : undefined,
       teamNames: Array.isArray(raw?.config?.teamNames) ? raw.config.teamNames.map((x: any) => String(x)) : undefined,
+      playerDartSets: raw?.config?.playerDartSets && typeof raw.config.playerDartSets === "object" ? Object.fromEntries(Object.entries(raw.config.playerDartSets).map(([k,v]) => [String(k), v == null ? null : String(v)])) : undefined,
     },
     startedAt: String(raw?.startedAt || raw?.createdAt || new Date().toISOString()),
     endedAt: String(raw?.endedAt || raw?.updatedAt || raw?.startedAt || new Date().toISOString()),
@@ -237,6 +244,66 @@ function normalizeClockSession(raw: any): ClockSession {
     breakdown,
     throwLabels,
   };
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return `rgba(246,194,86,${alpha})`;
+  const n = Number.parseInt(clean, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function getClockDartSetThumb(set: any): string | null {
+  return getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || null;
+}
+
+function isClockSetPublic(set: any): boolean {
+  return String(set?.scope || "").toLowerCase() === "public";
+}
+
+function isClockSetFavoriteForProfile(set: any, profileId: string): boolean {
+  const pid = String(profileId || "");
+  if (!pid || !set) return false;
+  const favs = Array.isArray(set?.favoriteProfileIds) ? set.favoriteProfileIds.map((x: any) => String(x)) : [];
+  if (favs.includes(pid)) return true;
+  if (!isClockSetPublic(set) && String(set?.profileId || "") === pid && set?.isFavorite) return true;
+  return false;
+}
+
+function getClockSelectableDartSets(profileId: string): any[] {
+  const pid = String(profileId || "");
+  if (!pid) return [];
+  const combined = [...(getPublicDartSetsForSelector() || []), ...(getDartSetsForProfile(pid) || [])];
+  const map = new Map<string, any>();
+  for (const set of combined) {
+    const id = String(set?.id || "");
+    if (!id || map.has(id)) continue;
+    map.set(id, set);
+  }
+  return [...map.values()].sort((a: any, b: any) => {
+    const aFav = isClockSetFavoriteForProfile(a, pid) ? 1 : 0;
+    const bFav = isClockSetFavoriteForProfile(b, pid) ? 1 : 0;
+    if (aFav !== bFav) return bFav - aFav;
+    const aPrivate = isClockSetPublic(a) ? 0 : 1;
+    const bPrivate = isClockSetPublic(b) ? 0 : 1;
+    if (aPrivate !== bPrivate) return bPrivate - aPrivate;
+    const aUsage = Number(a?.usageCount || 0);
+    const bUsage = Number(b?.usageCount || 0);
+    if (aUsage !== bUsage) return bUsage - aUsage;
+    return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { sensitivity: "base", numeric: true });
+  });
+}
+
+function guessClockDefaultDartSetId(profileId: string): string | null {
+  const pid = String(profileId || "");
+  if (!pid) return null;
+  const fav = getFavoriteDartSetForProfile(pid);
+  if (fav?.id) return String(fav.id);
+  const pool = getClockSelectableDartSets(pid);
+  return pool[0]?.id ? String(pool[0].id) : null;
 }
 
 // ============================================
@@ -287,6 +354,7 @@ const TrainingClock: React.FC<Props> = (props) => {
     }
   );
   const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>([]);
+  const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
 
   const teamsCatalog = React.useMemo<TeamEntity[]>(() => {
     try {
@@ -329,6 +397,28 @@ const TrainingClock: React.FC<Props> = (props) => {
     });
   }, [participantMode, selectedPlayerIds, selectedTeams, profiles]);
 
+  React.useEffect(() => {
+    const participantIds = players.map((p) => String(p.id || "")).filter(Boolean);
+    setPlayerDartSets((prev) => {
+      const next: Record<string, string | null> = {};
+      let changed = false;
+      for (const pid of participantIds) {
+        if (Object.prototype.hasOwnProperty.call(prev, pid)) next[pid] = prev[pid] ?? null;
+        else {
+          next[pid] = guessClockDefaultDartSetId(pid);
+          changed = true;
+        }
+      }
+      const prevKeys = Object.keys(prev || {});
+      if (!changed && prevKeys.length === participantIds.length) {
+        for (const pid of participantIds) {
+          if ((prev[pid] ?? null) !== (next[pid] ?? null)) { changed = true; break; }
+        }
+      }
+      return changed || prevKeys.length !== participantIds.length ? next : prev;
+    });
+  }, [players]);
+
   const [step, setStep] = React.useState<"setup" | "play" | "summary">(
     "setup"
   );
@@ -339,6 +429,8 @@ const TrainingClock: React.FC<Props> = (props) => {
       name: "Joueur solo",
     };
   const isMulti = players.length > 1;
+  const currentPlayerDartSetId = currentPlayer?.id ? (playerDartSets[String(currentPlayer.id)] ?? null) : null;
+  const currentPlayerDartSet = currentPlayerDartSetId ? getDartSetById(currentPlayerDartSetId) : null;
 
   const [config, setConfig] = React.useState<ClockConfig>({
     mode: "classic",
@@ -572,11 +664,14 @@ const TrainingClock: React.FC<Props> = (props) => {
     const accuracyPct = finalDarts > 0 ? Math.round((finalHits / finalDarts) * 1000) / 10 : 0;
     const breakdown = breakdownFromLabels(finalThrowLabels);
 
+    const sessionDartSetId = player?.id ? (playerDartSets[String(player.id)] ?? null) : null;
+    const sessionDartSet = sessionDartSetId ? getDartSetById(sessionDartSetId) : null;
     const sessionConfig: ClockConfig = {
       ...config,
       participantMode,
       teamIds: participantMode === "teams" ? selectedTeams.map((team) => String(team.id)) : undefined,
       teamNames: participantMode === "teams" ? selectedTeams.map((team) => String(team.name || "Équipe")) : undefined,
+      playerDartSets: Object.fromEntries(Object.entries(playerDartSets || {}).filter(([pid]) => players.some((p) => String(p.id || "") === String(pid)))),
     };
 
     const session: ClockSession = {
@@ -585,6 +680,8 @@ const TrainingClock: React.FC<Props> = (props) => {
       profileName: player?.name ?? "Joueur solo",
       teamId: player?.teamId ?? null,
       teamName: player?.teamName ?? null,
+      dartSetId: sessionDartSetId,
+      dartSetName: sessionDartSet?.name ? String(sessionDartSet.name) : null,
       config: sessionConfig,
       startedAt: startTime != null ? new Date(startTime).toISOString() : new Date().toISOString(),
       endedAt: new Date(now).toISOString(),
@@ -606,6 +703,9 @@ const TrainingClock: React.FC<Props> = (props) => {
 
     setLastSession(session);
     saveSessionToHistory(session);
+    if (session.dartSetId) {
+      try { bumpDartSetUsage(session.dartSetId); } catch {}
+    }
 
     const playerStats = {
       id: session.profileId,
@@ -636,9 +736,13 @@ const TrainingClock: React.FC<Props> = (props) => {
       },
       teamId: session.teamId ?? null,
       teamName: session.teamName ?? null,
+      dartSetId: session.dartSetId ?? null,
+      dartSetName: session.dartSetName ?? null,
       special: {
         mode: session.config.mode,
         participantMode: session.config.participantMode || "players",
+        dartSetId: session.dartSetId ?? null,
+        dartSetName: session.dartSetName ?? null,
         targetsCompleted: session.targetsCompleted,
         targetReached: session.targetReached,
         elapsedMs: session.elapsedMs,
@@ -655,7 +759,7 @@ const TrainingClock: React.FC<Props> = (props) => {
         mode: "tour_de_l_horloge",
         createdAt: session.startedAt,
         updatedAt: session.endedAt,
-        players: [{ id: session.profileId, name: session.profileName, teamId: session.teamId ?? null, teamName: session.teamName ?? null }],
+        players: [{ id: session.profileId, name: session.profileName, teamId: session.teamId ?? null, teamName: session.teamName ?? null, dartSetId: session.dartSetId ?? null, dartSetName: session.dartSetName ?? null }],
         winnerId: session.completed ? session.profileId : null,
         summary: {
           kind: "clock",
@@ -916,6 +1020,8 @@ const TrainingClock: React.FC<Props> = (props) => {
               setSelectedTeamIds={setSelectedTeamIds}
               config={config}
               setConfig={setConfig}
+              playerDartSets={playerDartSets}
+              setPlayerDartSets={setPlayerDartSets}
               players={players}
               history={history}
               onStart={handleStart}
@@ -942,6 +1048,7 @@ const TrainingClock: React.FC<Props> = (props) => {
               objectiveKind={currentObjectiveKind}
               objectiveLabel={objectiveLabel}
               precision={precision}
+              currentDartSetName={currentPlayerDartSet?.name || null}
               labelTarget={labelTarget}
               selectedValue={selectedValue}
               setSelectedValue={setSelectedValue}
@@ -1086,6 +1193,122 @@ export default TrainingClock;
 // SECTION SETUP
 // ============================================
 
+type PlayerDartSetMap = Record<string, string | null>;
+
+type ClockDartSetPickerProps = {
+  profileId: string | null | undefined;
+  dartSetId: string | null | undefined;
+  onChange: (id: string | null) => void;
+  primary: string;
+  textSoft: string;
+};
+
+function ClockDartSetPicker({ profileId, dartSetId, onChange, primary, textSoft }: ClockDartSetPickerProps) {
+  const [open, setOpen] = React.useState(false);
+  const [refreshVersion, setRefreshVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refresh = () => setRefreshVersion((v) => v + 1);
+    window.addEventListener("dc-dartsets-updated", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("dc-dartsets-updated", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  const pid = String(profileId || "");
+  const sets = React.useMemo(() => getClockSelectableDartSets(pid), [pid, refreshVersion]);
+  const selectedSet = React.useMemo(() => {
+    if (!dartSetId) return null;
+    return getDartSetById(String(dartSetId)) || sets.find((set: any) => String(set?.id || "") === String(dartSetId)) || null;
+  }, [dartSetId, sets, refreshVersion]);
+
+  if (!pid) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          minHeight: 40,
+          borderRadius: 999,
+          border: `1px solid ${selectedSet ? primary : "rgba(255,255,255,.12)"}`,
+          background: selectedSet ? `radial-gradient(circle at 0% 0%, ${hexToRgba(primary, 0.26)}, rgba(12,15,26,.96))` : "rgba(255,255,255,.04)",
+          padding: selectedSet ? "5px 8px 5px 6px" : "0 12px",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          color: "#fff",
+          fontWeight: 900,
+          fontSize: 11,
+          cursor: "pointer",
+          boxShadow: selectedSet ? `0 0 12px ${hexToRgba(primary, 0.34)}` : "none",
+          maxWidth: 156,
+        }}
+      >
+        {selectedSet ? (
+          <span style={{ width: 28, height: 28, borderRadius: 999, overflow: "hidden", background: "rgba(0,0,0,.4)", border: `1px solid ${primary}`, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
+            {getClockDartSetThumb(selectedSet) ? (
+              <img src={getClockDartSetThumb(selectedSet) as string} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <span style={{ fontSize: 14 }}>🎯</span>
+            )}
+          </span>
+        ) : (
+          <span style={{ fontSize: 14 }}>🎯</span>
+        )}
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedSet ? selectedSet.name || "SET" : "Choisir set"}</span>
+      </button>
+
+      {open ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.72)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 14 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "min(94vw, 460px)", maxHeight: "82vh", overflow: "hidden", borderRadius: 24, border: `1px solid ${hexToRgba(primary, 0.66)}`, background: "linear-gradient(180deg, rgba(12,17,30,.98), rgba(5,8,16,.99))", boxShadow: `0 0 36px ${hexToRgba(primary, 0.22)}, 0 24px 80px rgba(0,0,0,.75)`, color: "#fff" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 14px 10px" }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 1000, color: primary, letterSpacing: .8, textTransform: "uppercase" }}>Choisir un set</div>
+                <div style={{ fontSize: 11, color: textSoft, marginTop: 2 }}>{sets.length} set(s) disponible(s)</div>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>×</button>
+            </div>
+            <div className="dc-scroll-thin" style={{ padding: 14, paddingTop: 4, maxHeight: "calc(82vh - 64px)", overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                <button type="button" onClick={() => { onChange(null); setOpen(false); }} style={{ borderRadius: 16, border: !selectedSet ? `2px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: !selectedSet ? `radial-gradient(circle at 0% 0%, ${hexToRgba(primary, 0.26)}, rgba(12,15,26,.98))` : "rgba(255,255,255,.04)", color: "#fff", minHeight: 108, padding: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer" }}>
+                  <span style={{ fontSize: 24 }}>⛔</span>
+                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase" }}>Aucun set</span>
+                </button>
+                {sets.map((set: any) => {
+                  const thumb = getClockDartSetThumb(set);
+                  const selected = String(set?.id || "") === String(dartSetId || "");
+                  return (
+                    <button key={String(set.id)} type="button" onClick={() => { onChange(String(set.id)); setOpen(false); }} style={{ borderRadius: 16, border: selected ? `2px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: selected ? `radial-gradient(circle at 0% 0%, ${hexToRgba(primary, 0.24)}, rgba(12,15,26,.98))` : "rgba(255,255,255,.04)", color: "#fff", minHeight: 108, padding: 8, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, boxShadow: selected ? `0 0 16px ${hexToRgba(primary, 0.32)}` : "none" }}>
+                      <span style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 14, overflow: "hidden", background: set?.bgColor || "rgba(255,255,255,.06)", display: "grid", placeItems: "center", position: "relative" }}>
+                        {thumb ? <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 24 }}>🎯</span>}
+                        {isClockSetFavoriteForProfile(set, pid) ? <span style={{ position: "absolute", left: 6, top: 5, color: "#f5c35b", fontSize: 17, textShadow: "0 0 8px rgba(245,195,91,.9)" }}>★</span> : null}
+                      </span>
+                      <span style={{ width: "100%", fontSize: 10, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{set?.name || "SET"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 type SetupSectionProps = {
   profiles: Profile[];
   participantMode: ParticipantMode;
@@ -1097,6 +1320,8 @@ type SetupSectionProps = {
   setSelectedTeamIds: React.Dispatch<React.SetStateAction<string[]>>;
   config: ClockConfig;
   setConfig: React.Dispatch<React.SetStateAction<ClockConfig>>;
+  playerDartSets: PlayerDartSetMap;
+  setPlayerDartSets: React.Dispatch<React.SetStateAction<PlayerDartSetMap>>;
   players: PlayerLite[];
   history: ClockSession[];
   onStart: () => void;
@@ -1114,15 +1339,26 @@ function SetupSection(props: SetupSectionProps) {
     setSelectedTeamIds,
     config,
     setConfig,
+    playerDartSets,
+    setPlayerDartSets,
     players,
     history,
     onStart,
   } = props;
 
-  const primary = "#ffc63a";
-  const primarySoft = "rgba(255,198,58,.14)";
-  const cardBg = "linear-gradient(180deg, rgba(18,20,32,.98), rgba(5,6,12,.98))";
+  const { theme } = useTheme() as any;
+  const primary = (theme?.primary || "#F6C256") as string;
+  const accent = (theme?.accent1 || primary) as string;
+  const accent2 = (theme?.accent2 || primary) as string;
+  const text = (theme?.text || "#fff") as string;
+  const textSoft = (theme?.textSoft || "rgba(255,255,255,0.7)") as string;
+  const panel = (theme?.card || "#121420") as string;
+  const bg = (theme?.bg || "#050712") as string;
+  const borderSoft = (theme?.borderSoft || "rgba(255,255,255,0.08)") as string;
+  const success = (theme?.success || "#4CD964") as string;
 
+  const cardBg = `linear-gradient(180deg, ${hexToRgba(panel, 0.95)}, ${hexToRgba(bg, 0.98)})`;
+  const softPanel = hexToRgba(primary, 0.1);
   const [configViewMode, setConfigViewMode] = React.useState<"guided" | "complete">(() => {
     try {
       return String(window.localStorage.getItem("dc_training_clock_config_view_mode") || "guided") === "complete" ? "complete" : "guided";
@@ -1164,15 +1400,13 @@ function SetupSection(props: SetupSectionProps) {
   const selectedTeams = React.useMemo(() => (selectedTeamIds || []).map((id) => teamsCatalog.find((team) => String(team.id) === String(id))).filter(Boolean) as TeamEntity[], [selectedTeamIds, teamsCatalog]);
 
   const modeMeta: Record<ClockMode, { title: string; short: string; icon: string; hint: string; tone: string }> = {
-    classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les multiplicateurs valident la cible.", tone: "#ffc63a" },
-    doubles: { title: "Doubles", short: "D1 → D20 + DBull", icon: "×2", hint: "Seule la couronne double compte.", tone: "#42e58d" },
-    triples: { title: "Triples", short: "T1 → T20", icon: "×3", hint: "Seule la couronne triple compte.", tone: "#c77dff" },
-    sdt: { title: "S · D · T", short: "3 étapes / numéro", icon: "3×", hint: "Simple, Double puis Triple avant d’avancer.", tone: "#ff6fb5" },
+    classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les segments comptent.", tone: primary },
+    doubles: { title: "Doubles", short: "D1 → D20 + DBull", icon: "×2", hint: "Seulement la couronne double.", tone: success },
+    triples: { title: "Triples", short: "T1 → T20", icon: "×3", hint: "Seulement la couronne triple.", tone: "#c77dff" },
+    sdt: { title: "S · D · T", short: "Simple → Double → Triple", icon: "3×", hint: "3 étapes par numéro.", tone: accent2 },
   };
 
-  const guidedSteps = participantMode === "teams"
-    ? ["Type de partie", "Équipes", "Variante", "Options"]
-    : ["Type de partie", "Joueurs", "Variante", "Options"];
+  const guidedSteps = ["Type", participantMode === "teams" ? "Équipes" : "Joueurs", "Variante", "Options", "Résumé"];
   const guidedMaxStep = guidedSteps.length - 1;
 
   React.useEffect(() => {
@@ -1181,74 +1415,165 @@ function SetupSection(props: SetupSectionProps) {
 
   const canStart = players.length > 0;
   const canProceedSelection = participantMode === "teams" ? selectedTeams.length > 0 && players.length > 0 : selectedProfiles.length > 0;
-  const summaryLabel = participantMode === "teams"
-    ? `${selectedTeams.length} équipe(s) • ${players.length} joueur(s)`
-    : `${selectedProfiles.length} joueur(s)`;
 
-  function PillButton({ label, active, onClick, compact = false }: { label: string; active: boolean; onClick: () => void; compact?: boolean }) {
+  const selectedNames = participantMode === "teams"
+    ? (selectedTeams.map((team) => team.name || "Équipe").join(", ") || "Aucune équipe")
+    : (selectedProfiles.map((p) => p.nickname || p.name || "Joueur").join(", ") || "Aucun joueur");
+
+  function setDartSetForProfile(profileId: string | null | undefined, dartSetId: string | null) {
+    const pid = String(profileId || "");
+    if (!pid) return;
+    setPlayerDartSets((prev) => ({ ...prev, [pid]: dartSetId }));
+  }
+
+  function PillButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        style={{
-          minHeight: compact ? 34 : 38,
-          padding: compact ? "0 12px" : "0 14px",
-          borderRadius: 999,
-          border: `1px solid ${active ? primary : "rgba(255,255,255,0.12)"}`,
-          background: active ? primarySoft : "rgba(255,255,255,0.035)",
-          color: active ? primary : "#e9ecff",
-          fontSize: compact ? 11 : 12,
-          fontWeight: 950,
-          letterSpacing: 0.4,
-          cursor: "pointer",
-          boxShadow: active ? `0 0 14px ${primary}33` : "none",
-        }}
-      >
-        {label}
-      </button>
+      <button type="button" onClick={onClick} style={{ minHeight: 38, padding: "0 16px", borderRadius: 999, border: `1px solid ${active ? primary : borderSoft}`, background: active ? hexToRgba(primary, 0.14) : "rgba(255,255,255,0.035)", color: active ? primary : text, fontSize: 12, fontWeight: 950, letterSpacing: 0.4, cursor: "pointer", boxShadow: active ? `0 0 14px ${hexToRgba(primary, 0.22)}` : "none" }}>{label}</button>
+    );
+  }
+
+  function CompactIntro() {
+    return (
+      <section style={{ background: cardBg, borderRadius: 20, padding: 14, border: `1px solid ${hexToRgba(primary, 0.3)}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: 1.1, color: primary, fontWeight: 1000, textTransform: "uppercase" }}>Tour de l'horloge</div>
+            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 1000, color: text }}>Configuration type X01</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => setConfigViewMode("guided")} />
+            <PillButton label="Complète" active={configViewMode === "complete"} onClick={() => setConfigViewMode("complete")} />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          <div style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${hexToRgba(primary, 0.32)}`, background: hexToRgba(primary, 0.12), color: primary, fontSize: 11, fontWeight: 950 }}>{participantMode === "teams" ? "Mode équipes" : "Mode joueurs"}</div>
+          <div style={{ borderRadius: 999, padding: "6px 10px", border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.04)", color: text, fontSize: 11, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedNames}</div>
+        </div>
+
+        {configViewMode === "guided" ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: text, fontWeight: 950 }}>Étape {guidedStep + 1}/{guidedSteps.length} • {guidedSteps[guidedStep]}</div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${guidedSteps.length}, minmax(0, 1fr))`, gap: 8, marginTop: 8 }}>
+              {guidedSteps.map((label, idx) => (
+                <div key={label} style={{ borderRadius: 14, padding: "8px 5px", textAlign: "center", fontSize: 10, fontWeight: 900, color: idx === guidedStep ? primary : idx < guidedStep ? text : textSoft, border: `1px solid ${idx === guidedStep ? hexToRgba(primary, 0.46) : borderSoft}`, background: idx === guidedStep ? hexToRgba(primary, 0.12) : idx < guidedStep ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.03)" }}>
+                  {idx + 1} • {label}
+                </div>
+              ))}
+            </div>
+            <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.06)", marginTop: 10, overflow: "hidden" }}>
+              <div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, ${accent})` }} />
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  function ParticipantSetRows() {
+    if (!players.length) return null;
+    return (
+      <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+        <div style={{ fontSize: 11, color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8 }}>Sets de fléchettes</div>
+        {players.map((player) => {
+          const profile = profiles.find((p) => String(p.id) === String(player.id));
+          const selectedSetId = player.id ? (playerDartSets[String(player.id)] ?? null) : null;
+          const selectedSet = selectedSetId ? getDartSetById(String(selectedSetId)) : null;
+          return (
+            <div key={`${player.teamId || "solo"}-${String(player.id || player.name)}`} style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,0.04)", border: `1px solid ${borderSoft}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${hexToRgba(primary, 0.42)}`, background: `radial-gradient(circle at 30% 20%, ${hexToRgba(primary, 0.28)}, rgba(18,22,36,.98))`, display: "grid", placeItems: "center", color: text, fontWeight: 1000, flex: "0 0 auto" }}>
+                  {profile?.avatarDataUrl ? <img src={String(profile.avatarDataUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : initialsFromName(player.name)}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 950, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}</div>
+                  <div style={{ fontSize: 10, color: textSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.teamName ? `${player.teamName}` : (selectedSet?.name ? `Set : ${selectedSet.name}` : "Aucun set assigné")}</div>
+                </div>
+              </div>
+              <ClockDartSetPicker profileId={player.id} dartSetId={selectedSetId} onChange={(id) => setDartSetForProfile(player.id, id)} primary={primary} textSoft={textSoft} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function TypeBlock() {
+    return (
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary, margin: "0 0 10px" }}>1. Type de partie</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+          <button type="button" onClick={() => setParticipantMode("players")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "players" ? hexToRgba(primary, 0.42) : borderSoft}`, background: participantMode === "players" ? hexToRgba(primary, 0.14) : "rgba(255,255,255,0.03)", color: text, padding: 14, textAlign: "left", cursor: "pointer" }}>
+            <div style={{ color: primary, fontWeight: 1000, fontSize: 16 }}>Joueurs</div>
+            <div style={{ color: textSoft, fontSize: 11, marginTop: 4 }}>1 à 4 profils.</div>
+          </button>
+          <button type="button" onClick={() => setParticipantMode("teams")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "teams" ? hexToRgba(primary, 0.42) : borderSoft}`, background: participantMode === "teams" ? hexToRgba(primary, 0.14) : "rgba(255,255,255,0.03)", color: text, padding: 14, textAlign: "left", cursor: "pointer" }}>
+            <div style={{ color: primary, fontWeight: 1000, fontSize: 16 }}>Équipes</div>
+            <div style={{ color: textSoft, fontSize: 11, marginTop: 4 }}>Teams Darts enregistrées.</div>
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  function ParticipantsBlock() {
+    return (
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary }}>{participantMode === "teams" ? "2. Équipes" : "2. Joueurs"}</div>
+            <div style={{ fontSize: 11, color: textSoft, marginTop: 3 }}>{participantMode === "teams" ? "Même sélecteur Teams que dans X01." : "Même sélecteur Joueurs que dans X01."}</div>
+          </div>
+          {configViewMode === "complete" ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <PillButton label="Joueurs" active={participantMode === "players"} onClick={() => setParticipantMode("players")} />
+              <PillButton label="Équipes" active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} />
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ borderRadius: 14, border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.03)", padding: "10px 12px", fontSize: 11, color: text, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {selectedNames}
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          {participantMode === "players" ? (
+            <PlayerPagedSelector usageMode="x01" profiles={profiles} selectedIds={selectedPlayerIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
+          ) : teamsCatalog.length > 0 ? (
+            <TeamPagedSelector teams={teamsCatalog} selectedIds={selectedTeamIds} onToggle={toggleTeam} accent={primary} pageSize={9} modalTitle="Choisir des équipes" chooseLabel="Choisir équipes" listLabel="Liste équipes" />
+          ) : (
+            <div style={{ fontSize: 12, color: textSoft }}>Aucune team Darts avec joueurs trouvée.</div>
+          )}
+        </div>
+
+        <ParticipantSetRows />
+      </section>
     );
   }
 
   function VariantsBlock() {
     return (
-      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: "#111", fontSize: 11, fontWeight: 1000 }}>2</span>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>3</span>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 950 }}>Variante de jeu</div>
-            <div style={{ fontSize: 11, color: "#aeb2d3" }}>Choisis la difficulté et le type de segment attendu.</div>
+            <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Variante de jeu</div>
+            <div style={{ fontSize: 11, color: textSoft }}>Des cartes plus épurées et plus lisibles.</div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
           {(["classic", "doubles", "triples", "sdt"] as ClockMode[]).map((mode) => {
-            const active = config.mode === mode;
             const meta = modeMeta[mode];
+            const active = config.mode === mode;
             return (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, mode }))}
-                style={{
-                  minHeight: 126,
-                  padding: 12,
-                  textAlign: "left",
-                  borderRadius: 18,
-                  border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.12)"}`,
-                  background: active
-                    ? `radial-gradient(circle at 0% 0%, ${meta.tone}33, transparent 60%), linear-gradient(180deg,#24242b,#0c0c11)`
-                    : "linear-gradient(180deg,rgba(31,31,37,.96),rgba(10,10,14,.98))",
-                  color: "#f7f7fa",
-                  boxShadow: active ? `0 0 18px ${meta.tone}44, inset 0 1px 0 rgba(255,255,255,.08)` : "inset 0 1px 0 rgba(255,255,255,.04)",
-                  cursor: "pointer",
-                }}
-              >
+              <button key={mode} type="button" onClick={() => setConfig((c) => ({ ...c, mode }))} style={{ borderRadius: 18, border: `1px solid ${active ? hexToRgba(meta.tone, 0.5) : borderSoft}`, background: active ? `radial-gradient(circle at 0% 0%, ${hexToRgba(meta.tone, 0.18)}, rgba(13,17,28,.98))` : "rgba(255,255,255,0.035)", color: text, padding: 12, minHeight: 104, textAlign: "left", cursor: "pointer", boxShadow: active ? `0 0 18px ${hexToRgba(meta.tone, 0.22)}` : "none" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontSize: 24, lineHeight: 1, color: meta.tone, fontWeight: 1000, textShadow: `0 0 12px ${meta.tone}` }}>{meta.icon}</span>
-                  <span style={{ width: 20, height: 20, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 11 }}>{active ? "✓" : ""}</span>
+                  <span style={{ fontSize: 24, lineHeight: 1, color: meta.tone, fontWeight: 1000 }}>{meta.icon}</span>
+                  <span style={{ width: 18, height: 18, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 10 }}>{active ? "✓" : ""}</span>
                 </div>
-                <div style={{ marginTop: 10, fontSize: 15, fontWeight: 1000, color: active ? meta.tone : "#fff" }}>{meta.title}</div>
-                <div style={{ marginTop: 2, fontSize: 11, fontWeight: 800, opacity: .88 }}>{meta.short}</div>
-                <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.3, opacity: .62 }}>{meta.hint}</div>
+                <div style={{ marginTop: 12, fontSize: 15, fontWeight: 1000, color: active ? meta.tone : text }}>{meta.title}</div>
+                <div style={{ marginTop: 4, fontSize: 11, fontWeight: 800, color: text }}>{meta.short}</div>
+                <div style={{ marginTop: 6, fontSize: 10, color: textSoft }}>{meta.hint}</div>
               </button>
             );
           })}
@@ -1259,38 +1584,31 @@ function SetupSection(props: SetupSectionProps) {
 
   function OptionsBlock() {
     return (
-      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: "#111", fontSize: 11, fontWeight: 1000 }}>3</span>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>4</span>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 950 }}>Options de session</div>
-            <div style={{ fontSize: 11, color: "#aeb2d3" }}>Retrouve le comportement des autres configs type X01.</div>
+            <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Options de session</div>
+            <div style={{ fontSize: 11, color: textSoft }}>Timer et limite de fléchettes.</div>
           </div>
         </div>
-
         <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 900 }}>Afficher le timer</div>
-              <div style={{ fontSize: 11, color: "#9da3c8" }}>Chrono visible pendant la session.</div>
+              <div style={{ fontSize: 13, fontWeight: 950, color: text }}>Afficher le timer</div>
+              <div style={{ fontSize: 11, color: textSoft }}>Chrono visible pendant la session.</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <PillButton label="Oui" active={config.showTimer} onClick={() => setConfig((c) => ({ ...c, showTimer: true }))} compact />
-              <PillButton label="Non" active={!config.showTimer} onClick={() => setConfig((c) => ({ ...c, showTimer: false }))} compact />
+              <PillButton label="Oui" active={config.showTimer} onClick={() => setConfig((c) => ({ ...c, showTimer: true }))} />
+              <PillButton label="Non" active={!config.showTimer} onClick={() => setConfig((c) => ({ ...c, showTimer: false }))} />
             </div>
           </div>
-
           <div>
-            <div style={{ fontSize: 13, fontWeight: 900 }}>Limite de fléchettes</div>
-            <div style={{ fontSize: 11, color: "#9da3c8", marginTop: 3 }}>0 = illimité, sinon fin auto quand la limite est atteinte.</div>
+            <div style={{ fontSize: 13, fontWeight: 950, color: text }}>Limite de fléchettes</div>
+            <div style={{ fontSize: 11, color: textSoft, marginTop: 3 }}>0 = illimité.</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               {[0, 30, 60, 90, 120].map((limit) => (
-                <PillButton
-                  key={limit}
-                  label={limit === 0 ? "∞" : String(limit)}
-                  active={(config.dartLimit ?? 0) === limit}
-                  onClick={() => setConfig((c) => ({ ...c, dartLimit: limit > 0 ? limit : null }))}
-                />
+                <button key={limit} type="button" onClick={() => setConfig((c) => ({ ...c, dartLimit: limit > 0 ? limit : null }))} style={{ minWidth: 54, height: 42, borderRadius: 999, border: `1px solid ${((config.dartLimit ?? 0) === limit) ? hexToRgba(primary, 0.5) : borderSoft}`, background: ((config.dartLimit ?? 0) === limit) ? hexToRgba(primary, 0.14) : "rgba(255,255,255,0.04)", color: ((config.dartLimit ?? 0) === limit) ? primary : text, fontWeight: 950, cursor: "pointer" }}>{limit === 0 ? "∞" : limit}</button>
               ))}
             </div>
           </div>
@@ -1301,212 +1619,60 @@ function SetupSection(props: SetupSectionProps) {
 
   function SummaryBlock() {
     return (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ borderRadius: 18, padding: 12, display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 8, background: "linear-gradient(180deg,rgba(255,198,58,.11),rgba(20,14,6,.42))", border: "1px solid rgba(255,198,58,.32)", boxShadow: "0 0 18px rgba(255,198,58,.10)" }}>
+      <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${hexToRgba(primary, 0.28)}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>5</span>
           <div>
-            <div style={{ fontSize: 9, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Participants</div>
-            <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {participantMode === "teams" ? (selectedTeams.map((team) => team.name).join(", ") || "—") : (selectedProfiles.map((p) => p.nickname || p.name || "Joueur").join(", ") || "—")}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Variante</div>
-            <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, color: modeMeta[config.mode].tone }}>{modeMeta[config.mode].title}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 9, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Limite</div>
-            <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900 }}>{config.dartLimit ? `${config.dartLimit} darts` : "Illimitée"}</div>
+            <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Résumé de configuration</div>
+            <div style={{ fontSize: 11, color: textSoft }}>La partie ne peut être lancée qu’à cette étape.</div>
           </div>
         </div>
 
-        <button
-          type="button"
-          style={{
-            width: "100%",
-            padding: "14px 0",
-            borderRadius: 18,
-            fontSize: 15,
-            fontWeight: 1000,
-            letterSpacing: .6,
-            background: canStart ? "linear-gradient(180deg,#ffc63a,#ffaf00)" : "linear-gradient(180deg,#555,#333)",
-            color: canStart ? "#111" : "#888",
-            border: "1px solid rgba(0,0,0,.9)",
-            boxShadow: canStart ? "0 0 16px rgba(255,198,58,.6)" : "none",
-            cursor: canStart ? "pointer" : "default",
-          }}
-          onClick={onStart}
-          disabled={!canStart}
-        >
-          ▶ DÉMARRER LA SESSION
-        </button>
-      </div>
+        <div style={{ borderRadius: 16, padding: 12, background: `linear-gradient(180deg, ${hexToRgba(primary, 0.12)}, rgba(20,14,6,.22))`, border: `1px solid ${hexToRgba(primary, 0.28)}`, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+          <div><div style={{ fontSize: 9, opacity: .6, textTransform: "uppercase", letterSpacing: .7 }}>Participants</div><div style={{ marginTop: 4, fontSize: 11, fontWeight: 900, color: text }}>{participantMode === "teams" ? `${selectedTeams.length} équipe(s)` : `${selectedProfiles.length} joueur(s)`}</div></div>
+          <div><div style={{ fontSize: 9, opacity: .6, textTransform: "uppercase", letterSpacing: .7 }}>Variante</div><div style={{ marginTop: 4, fontSize: 11, fontWeight: 900, color: modeMeta[config.mode].tone }}>{modeMeta[config.mode].title}</div></div>
+          <div><div style={{ fontSize: 9, opacity: .6, textTransform: "uppercase", letterSpacing: .7 }}>Limite</div><div style={{ marginTop: 4, fontSize: 11, fontWeight: 900, color: text }}>{config.dartLimit ? `${config.dartLimit} darts` : "Illimitée"}</div></div>
+        </div>
+
+        {players.length > 0 ? (
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {players.map((player) => {
+              const setId = player.id ? (playerDartSets[String(player.id)] ?? null) : null;
+              const dartSet = setId ? getDartSetById(String(setId)) : null;
+              return (
+                <div key={`summary-${player.teamId || "solo"}-${String(player.id || player.name)}`} style={{ borderRadius: 14, border: `1px solid ${borderSoft}`, background: "rgba(255,255,255,0.035)", padding: "9px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 950, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{player.name}{player.teamName ? <span style={{ color: primary }}> • {player.teamName}</span> : null}</div>
+                    <div style={{ fontSize: 10, color: textSoft, marginTop: 2 }}>{dartSet?.name || "Aucun set"}</div>
+                  </div>
+                  <div style={{ borderRadius: 999, padding: "5px 10px", border: `1px solid ${dartSet ? hexToRgba(primary, 0.4) : borderSoft}`, color: dartSet ? primary : textSoft, background: dartSet ? hexToRgba(primary, 0.1) : "rgba(255,255,255,0.03)", fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>{dartSet ? "SET OK" : "SANS SET"}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <button type="button" onClick={onStart} disabled={!canStart} style={{ width: "100%", marginTop: 14, padding: "14px 0", borderRadius: 18, fontSize: 15, fontWeight: 1000, letterSpacing: .6, background: canStart ? `linear-gradient(180deg, ${primary}, ${accent})` : "linear-gradient(180deg,#555,#333)", color: canStart ? "#111" : "#888", border: "1px solid rgba(0,0,0,.85)", boxShadow: canStart ? `0 0 18px ${hexToRgba(primary, 0.5)}` : "none", cursor: canStart ? "pointer" : "default" }}>▶ DÉMARRER LA SESSION</button>
+      </section>
     );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <section style={{ background: cardBg, borderRadius: 20, padding: 14, border: `1px solid ${primary}44`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: 1.2, color: primary, fontWeight: 950, textTransform: "uppercase" }}>Tour de l'horloge</div>
-            <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 3 }}>Configuration type X01</div>
-            <div style={{ fontSize: 11, color: "#aeb2d3", marginTop: 4 }}>Mode assisté étape par étape ou vue complète, avec les mêmes sélecteurs joueurs / équipes.</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => setConfigViewMode("guided")} />
-            <PillButton label="Complète" active={configViewMode === "complete"} onClick={() => setConfigViewMode("complete")} />
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ borderRadius: 999, padding: "5px 10px", border: `1px solid ${primary}55`, background: primarySoft, color: primary, fontSize: 11, fontWeight: 950 }}>{participantMode === "teams" ? "Mode équipes" : "Mode joueurs"}</div>
-          <div style={{ borderRadius: 999, padding: "5px 10px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "#d6daf2", fontSize: 11, fontWeight: 900 }}>{summaryLabel}</div>
-        </div>
-
-        {configViewMode === "guided" ? (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, color: "#cfd5f6", fontWeight: 900, marginBottom: 8 }}>Étape {guidedStep + 1}/{guidedSteps.length} • {guidedSteps[guidedStep]}</div>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${guidedSteps.length}, minmax(0, 1fr))`, gap: 8 }}>
-              {guidedSteps.map((label, idx) => (
-                <div key={label} style={{ borderRadius: 14, padding: "8px 6px", textAlign: "center", fontSize: 10, fontWeight: 900, color: idx === guidedStep ? primary : idx < guidedStep ? "#fff" : "#9aa0c8", border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,0.10)"}`, background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)" }}>
-                  {idx + 1} • {label}
-                </div>
-              ))}
-            </div>
-            <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.06)", marginTop: 10, overflow: "hidden" }}>
-              <div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, #ffe089)` }} />
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      {configViewMode === "guided" && guidedStep === 0 && (
-        <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: "0 0 8px" }}>1. Type de partie</h3>
-          <p style={{ fontSize: 12, color: "#aeb2d3", lineHeight: 1.35, margin: "0 0 12px" }}>Choisis le même point d’entrée que dans X01 : profils individuels ou équipes enregistrées.</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-            <button type="button" onClick={() => setParticipantMode("players")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "players" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "players" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
-              <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Joueurs</div>
-              <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>1 à 4 profils qui joueront leur session à la suite.</div>
-            </button>
-            <button type="button" onClick={() => setParticipantMode("teams")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "teams" ? primary : "rgba(255,255,255,0.10)"}`, background: participantMode === "teams" ? primarySoft : "rgba(255,255,255,0.035)", color: "#fff", padding: 14, textAlign: "left", cursor: "pointer" }}>
-              <div style={{ color: primary, fontWeight: 950, fontSize: 18 }}>Équipes</div>
-              <div style={{ color: "#aeb2d3", fontSize: 12, marginTop: 4 }}>Réutilise les teams Darts déjà créées, avec leurs joueurs.</div>
-            </button>
-          </div>
-        </section>
-      )}
-
-      {((configViewMode === "guided" && guidedStep === 1) || configViewMode === "complete") && (
-        <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary }}>
-                {participantMode === "teams" ? "2. Équipes" : "2. Joueurs"}
-              </div>
-              <div style={{ fontSize: 12, color: "#aeb2d3", marginTop: 4 }}>
-                {participantMode === "teams" ? "Même sélecteur teams que dans X01Config." : "Même sélecteur joueurs que dans X01Config."}
-              </div>
-            </div>
-            {configViewMode === "complete" ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <PillButton label="Joueurs" active={participantMode === "players"} onClick={() => setParticipantMode("players")} compact />
-                <PillButton label="Équipes" active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} compact />
-              </div>
-            ) : null}
-          </div>
-
-          {participantMode === "players" ? (
-            <>
-              <SelectionStickyBanner
-                title="Joueurs sélectionnés"
-                accent={primary}
-                items={selectedProfiles.map((profile) => ({ id: String(profile.id), name: profile.nickname || profile.name || "Joueur", profile, avatarDataUrl: (profile as any)?.avatarDataUrl || null, subtitle: "Profil local" }))}
-              />
-              <PlayerPagedSelector
-                usageMode="x01"
-                profiles={profiles}
-                selectedIds={selectedPlayerIds}
-                onToggle={togglePlayer}
-                accent={primary}
-                pageSize={9}
-                modalTitle="Choisir des joueurs"
-                showSelectedSummary={false}
-              />
-              <div style={{ marginTop: 8, fontSize: 11, color: "#8f94b5" }}>Tu peux sélectionner jusqu’à 4 joueurs.</div>
-            </>
-          ) : (
-            <>
-              <SelectionStickyBanner
-                title="Équipes sélectionnées"
-                accent={primary}
-                items={selectedTeams.map((team) => ({ id: String(team.id), name: team.name || "Équipe", logoDataUrl: team.logoDataUrl || team.logoUrl || team.avatarUrl || null, subtitle: `${Array.isArray(team.playerIds) ? team.playerIds.length : 0} joueur(s)` }))}
-              />
-              {teamsCatalog.length > 0 ? (
-                <TeamPagedSelector
-                  teams={teamsCatalog}
-                  selectedIds={selectedTeamIds}
-                  onToggle={toggleTeam}
-                  accent={primary}
-                  pageSize={9}
-                  modalTitle="Choisir des équipes"
-                  chooseLabel="Choisir équipes"
-                  listLabel="Liste équipes"
-                />
-              ) : (
-                <div style={{ fontSize: 12, color: "#aeb2d3" }}>Aucune team Darts avec joueurs n’a été trouvée dans Profils &gt; Teams.</div>
-              )}
-              {selectedTeams.length > 0 ? (
-                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                  {selectedTeams.map((team) => {
-                    const memberNames = (Array.isArray(team.playerIds) ? team.playerIds : []).map((id) => profiles.find((p) => String(p.id) === String(id))?.nickname || profiles.find((p) => String(p.id) === String(id))?.name).filter(Boolean);
-                    return (
-                      <div key={String(team.id)} style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.035)", padding: 10 }}>
-                        <div style={{ fontSize: 13, fontWeight: 950, color: "#fff" }}>{team.name}</div>
-                        <div style={{ fontSize: 11, color: "#9da3c8", marginTop: 4 }}>{memberNames.length ? memberNames.join(", ") : "Aucun joueur lié"}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </>
-          )}
-        </section>
-      )}
-
-      {((configViewMode === "guided" && guidedStep === 2) || configViewMode === "complete") && <VariantsBlock />}
-      {((configViewMode === "guided" && guidedStep === 3) || configViewMode === "complete") && <OptionsBlock />}
-      {((configViewMode === "guided" && guidedStep === 3) || configViewMode === "complete") && <SummaryBlock />}
+      <CompactIntro />
+      {(configViewMode === "guided" && guidedStep === 0) || configViewMode === "complete" ? <TypeBlock /> : null}
+      {(configViewMode === "guided" && guidedStep === 1) || configViewMode === "complete" ? <ParticipantsBlock /> : null}
+      {(configViewMode === "guided" && guidedStep === 2) || configViewMode === "complete" ? <VariantsBlock /> : null}
+      {(configViewMode === "guided" && guidedStep === 3) || configViewMode === "complete" ? <OptionsBlock /> : null}
+      {(configViewMode === "guided" && guidedStep === 4) || configViewMode === "complete" ? <SummaryBlock /> : null}
 
       {configViewMode === "guided" ? (
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => setGuidedStep((step) => Math.max(0, step - 1))}
-            disabled={guidedStep <= 0}
-            style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)", color: guidedStep <= 0 ? "#565b76" : "#fff", fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}
-          >
-            ← Précédent
-          </button>
-
+          <button type="button" onClick={() => setGuidedStep((step) => Math.max(0, step - 1))} disabled={guidedStep <= 0} style={{ flex: "1 1 0", height: 44, borderRadius: 999, border: `1px solid ${borderSoft}`, background: guidedStep <= 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)", color: guidedStep <= 0 ? "#565b76" : text, fontWeight: 950, cursor: guidedStep <= 0 ? "default" : "pointer" }}>← Précédent</button>
           {guidedStep < guidedMaxStep ? (
-            <button
-              type="button"
-              onClick={() => setGuidedStep((step) => Math.min(guidedMaxStep, step + 1))}
-              disabled={(guidedStep === 1 && !canProceedSelection)}
-              style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: (guidedStep === 1 && !canProceedSelection) ? "rgba(255,255,255,0.03)" : primarySoft, color: (guidedStep === 1 && !canProceedSelection) ? "#565b76" : primary, fontWeight: 950, cursor: (guidedStep === 1 && !canProceedSelection) ? "default" : "pointer" }}
-            >
-              Suivant →
-            </button>
+            <button type="button" onClick={() => setGuidedStep((step) => Math.min(guidedMaxStep, step + 1))} disabled={(guidedStep === 1 && !canProceedSelection)} style={{ flex: "1 1 0", height: 44, borderRadius: 999, border: `1px solid ${hexToRgba(primary, 0.5)}`, background: (guidedStep === 1 && !canProceedSelection) ? "rgba(255,255,255,0.03)" : hexToRgba(primary, 0.12), color: (guidedStep === 1 && !canProceedSelection) ? "#565b76" : primary, fontWeight: 950, cursor: (guidedStep === 1 && !canProceedSelection) ? "default" : "pointer" }}>Suivant →</button>
           ) : (
-            <button
-              type="button"
-              onClick={onStart}
-              disabled={!canStart}
-              style={{ flex: "1 1 0", height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: canStart ? primarySoft : "rgba(255,255,255,0.03)", color: canStart ? primary : "#565b76", fontWeight: 950, cursor: canStart ? "pointer" : "default" }}
-            >
-              Démarrer
-            </button>
+            <button type="button" onClick={onStart} disabled={!canStart} style={{ flex: "1 1 0", height: 44, borderRadius: 999, border: `1px solid ${hexToRgba(primary, 0.5)}`, background: canStart ? hexToRgba(primary, 0.12) : "rgba(255,255,255,0.03)", color: canStart ? primary : "#565b76", fontWeight: 950, cursor: canStart ? "pointer" : "default" }}>Démarrer</button>
           )}
         </div>
       ) : null}
@@ -1521,6 +1687,8 @@ function SetupSection(props: SetupSectionProps) {
   );
 }
 
+// ============================================
+// SECTION PLAY
 // ============================================
 // SECTION PLAY
 // ============================================
@@ -1545,6 +1713,7 @@ type PlaySectionProps = {
   objectiveKind: ObjectiveKind;
   objectiveLabel: string;
   precision: number;
+  currentDartSetName?: string | null;
   labelTarget: (t: Target, m: ClockMode, s: StageSDT) => string;
   selectedValue: Target | null;
   setSelectedValue: (v: Target | null) => void;
@@ -1578,6 +1747,7 @@ function PlaySection(props: PlaySectionProps) {
     objectiveKind,
     objectiveLabel,
     precision,
+    currentDartSetName,
     labelTarget,
     selectedValue,
     setSelectedValue,
@@ -1717,6 +1887,7 @@ function PlaySection(props: PlaySectionProps) {
               >
                 <div>{isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}</div>
                 {currentPlayer?.teamName ? <div style={{ color: "#ffc63a", fontWeight: 900, marginTop: 2 }}>Équipe : {currentPlayer.teamName}</div> : null}
+                {currentDartSetName ? <div style={{ color: "#70d8ff", fontWeight: 900, marginTop: 2 }}>Set : {currentDartSetName}</div> : null}
               </div>
               {config.showTimer && (
                 <div
@@ -2070,6 +2241,7 @@ function SummarySection(props: SummarySectionProps) {
         <div style={{ marginBottom: 2 }}>
           Joueur : <strong>{lastSession.profileName}</strong>
           {lastSession.teamName ? <span style={{ color: "#ffc63a" }}> • {lastSession.teamName}</span> : null}
+          {lastSession.dartSetName ? <span style={{ color: "#70d8ff" }}> • {lastSession.dartSetName}</span> : null}
         </div>
         <div style={{ marginBottom: 2 }}>
           Mode :{" "}

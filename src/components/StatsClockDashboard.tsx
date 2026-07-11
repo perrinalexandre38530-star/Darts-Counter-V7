@@ -13,6 +13,8 @@ type ClockRow = {
   elapsedMs: number;
   bestStreak: number;
   accuracy: number;
+  dartSetId?: string | null;
+  dartSetName?: string | null;
 };
 
 type Props = {
@@ -114,6 +116,8 @@ function normalizeClockRow(source: any, fallbackId: string, fallbackDate: any): 
     elapsedMs,
     bestStreak: num(source?.bestStreak ?? special?.bestStreak ?? session?.bestStreak),
     accuracy,
+    dartSetId: source?.dartSetId != null ? String(source.dartSetId) : (special?.dartSetId != null ? String(special.dartSetId) : (session?.dartSetId != null ? String(session.dartSetId) : null)),
+    dartSetName: source?.dartSetName != null ? String(source.dartSetName) : (special?.dartSetName != null ? String(special.dartSetName) : (session?.dartSetName != null ? String(session.dartSetName) : null)),
   };
 }
 
@@ -232,6 +236,35 @@ export default function StatsClockDashboard({ records = [], playerId, playerName
     };
   }, [rows]);
 
+  const dartSets = React.useMemo(() => {
+    const map = new Map<string, { id: string; name: string; sessions: number; completed: number; darts: number; hits: number; bestTargets: number; bestTime: number; }>();
+    for (const row of rows) {
+      const rawId = row.dartSetId ? String(row.dartSetId) : "__none__";
+      const name = row.dartSetName || (rawId === "__none__" ? "Sans set" : "Set inconnu");
+      const key = `${rawId}::${name}`;
+      const prev = map.get(key) || { id: rawId, name, sessions: 0, completed: 0, darts: 0, hits: 0, bestTargets: 0, bestTime: 0 };
+      prev.sessions += 1;
+      prev.completed += row.completed ? 1 : 0;
+      prev.darts += row.darts;
+      prev.hits += row.hits;
+      prev.bestTargets = Math.max(prev.bestTargets, row.targets);
+      if (row.completed && row.elapsedMs > 0) {
+        prev.bestTime = prev.bestTime > 0 ? Math.min(prev.bestTime, row.elapsedMs) : row.elapsedMs;
+      }
+      map.set(key, prev);
+    }
+    return [...map.values()].map((row) => ({
+      ...row,
+      accuracy: row.darts > 0 ? Math.round((row.hits / row.darts) * 1000) / 10 : 0,
+    })).sort((a, b) => {
+      if (a.id === "__none__" && b.id !== "__none__") return 1;
+      if (b.id === "__none__" && a.id !== "__none__") return -1;
+      if (a.sessions !== b.sessions) return b.sessions - a.sessions;
+      if (a.completed !== b.completed) return b.completed - a.completed;
+      return String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base", numeric: true });
+    });
+  }, [rows]);
+
   const modes = React.useMemo(() => {
     return (["classic", "doubles", "triples", "sdt"] as ClockMode[]).map((mode) => {
       const subset = rows.filter((row) => row.mode === mode);
@@ -316,6 +349,26 @@ export default function StatsClockDashboard({ records = [], playerId, playerName
                 <div style={{ textAlign: "center" }}><strong>{row.sessions}</strong><div style={{ fontSize: 7.5, opacity: .45 }}>SESS.</div></div>
                 <div style={{ textAlign: "center" }}><strong>{row.completed}</strong><div style={{ fontSize: 7.5, opacity: .45 }}>FINIES</div></div>
                 <div style={{ textAlign: "right" }}><strong>{row.accuracy}%</strong><div style={{ fontSize: 7.5, opacity: .45 }}>PRÉC.</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {dartSets.length > 0 ? (
+        <div style={{ borderRadius: 20, padding: 13, background: "linear-gradient(180deg,#17181d,#0b0c10)", border: "1px solid rgba(255,255,255,.10)" }}>
+          <div style={{ fontSize: 11, fontWeight: 1000, color: GOLD, letterSpacing: .8, marginBottom: 9 }}>DÉTAIL PAR SET DE FLÉCHETTES</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {dartSets.slice(0, 8).map((row) => (
+              <div key={`${row.id}-${row.name}`} style={{ display: "grid", gridTemplateColumns: "1.3fr .65fr .65fr .65fr .75fr", gap: 6, alignItems: "center", borderRadius: 13, padding: "8px 9px", background: "rgba(255,255,255,.035)", border: `1px solid ${row.id === "__none__" ? "rgba(255,255,255,.07)" : "rgba(112,216,255,.20)"}`, fontSize: 9.5 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: row.id === "__none__" ? "#d8d8de" : BLUE, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
+                  <div style={{ marginTop: 2, opacity: .45 }}>{row.completed} finie(s){row.bestTime ? ` · best ${formatDuration(row.bestTime)}` : ""}</div>
+                </div>
+                <div style={{ textAlign: "center" }}><strong>{row.sessions}</strong><div style={{ fontSize: 7.5, opacity: .45 }}>SESS.</div></div>
+                <div style={{ textAlign: "center" }}><strong>{row.accuracy}%</strong><div style={{ fontSize: 7.5, opacity: .45 }}>PRÉC.</div></div>
+                <div style={{ textAlign: "center" }}><strong>{row.bestTargets}</strong><div style={{ fontSize: 7.5, opacity: .45 }}>BEST</div></div>
+                <div style={{ textAlign: "right" }}><strong>{row.id === "__none__" ? "—" : row.completed ? `${Math.round((row.completed / row.sessions) * 100)}%` : "0%"}</strong><div style={{ fontSize: 7.5, opacity: .45 }}>RÉUSS.</div></div>
               </div>
             ))}
           </div>
