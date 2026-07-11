@@ -1676,7 +1676,7 @@ function SetupSection(props: SetupSectionProps) {
       <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary }}>2. Participants</div>
+            <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary }}>{configViewMode === "complete" ? "Participants" : "2. Participants"}</div>
             <div style={{ fontSize: 11, color: textSoft, marginTop: 3 }}>{participantMode === "teams" ? "Même sélecteur Teams que dans X01." : "Même sélecteur Joueurs que dans X01."}</div>
           </div>
           {configViewMode === "complete" ? (
@@ -1729,7 +1729,7 @@ function SetupSection(props: SetupSectionProps) {
     return (
       <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>3</span>
+          {configViewMode === "guided" ? <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>3</span> : null}
           <div>
             <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Variante de jeu</div>
             <div style={{ fontSize: 11, color: textSoft }}>Tickers arcade dédiés pour chaque variante.</div>
@@ -1785,7 +1785,7 @@ function SetupSection(props: SetupSectionProps) {
     return (
       <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>4</span>
+          {configViewMode === "guided" ? <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>4</span> : null}
           <div>
             <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Options de session</div>
             <div style={{ fontSize: 11, color: textSoft }}>Timer et limite de fléchettes.</div>
@@ -1820,7 +1820,7 @@ function SetupSection(props: SetupSectionProps) {
     return (
       <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${hexToRgba(primary, 0.28)}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>5</span>
+          {configViewMode === "guided" ? <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: primary, color: bg, fontSize: 11, fontWeight: 1000 }}>5</span> : null}
           <div>
             <div style={{ fontSize: 14, fontWeight: 950, color: text }}>Résumé de configuration</div>
             <div style={{ fontSize: 11, color: textSoft }}>La partie ne peut être lancée qu’à cette étape.</div>
