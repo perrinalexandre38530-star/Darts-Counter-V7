@@ -241,8 +241,10 @@ function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: 
 
     for (const event of events) {
       if (String(event?.t || event?.type || "") !== "goal") continue;
-      const points = Math.max(1, num(event?.points, 1));
       const scorerId = String(event?.scorerId || event?.playerId || event?.profileId || "").trim();
+      // Un but reste 1 but, même si l'action a consommé des bonus de demis.
+      // Les bonus restent détaillés dans les stats Demis/Bonus, mais ne gonflent jamais le total de buts perso.
+      const goalCount = 1;
       const eventTeam = String(event?.team || event?.side || "").toUpperCase();
       if (eventTeam === String(match?.team || "").toUpperCase() && !scorerId) hasUnattributedTeamGoal = true;
       const belongsToPlayer = scorerId === pid || (!scorerId && String((match as any)?.player?.id || (match as any)?.player?.playerId || "") === pid);
@@ -250,8 +252,8 @@ function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: 
       const elapsed = eventElapsedMs(event, resolved, match, durationMs);
       const ratio = Math.max(0, Math.min(0.999, elapsed / durationMs));
       const bucketIndex = Math.max(0, Math.min(buckets.length - 1, Math.floor(ratio * buckets.length)));
-      buckets[bucketIndex].count += points;
-      total += points;
+      buckets[bucketIndex].count += goalCount;
+      total += goalCount;
       hasAttributedGoal = true;
     }
 
@@ -722,7 +724,7 @@ function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFo
       {active === "defense" ? <Board title="Défense" subtitle="BC/match" rows={leaderboards.topDefense} value={(row) => formatOne(row.avgGoalsAgainst)} color={C.pink} /> : null}
       {active === "clean" ? <Board title="Clean sheets" subtitle="zéro encaissé" rows={leaderboards.topCleanSheets} value={(row) => String(row.cleanSheets)} color={C.green} /> : null}
       {active === "streak" ? <Board title="Séries" subtitle="record" rows={leaderboards.topStreaks} value={(row) => `${row.bestWinStreak} wins`} color={C.violet} /> : null}
-      {active === "scorers" ? <Board title="Scoreurs" subtitle="buts perso" rows={leaderboards.topPersonalScorers} value={(row) => String(row.personalPoints || row.actualGoals)} color={C.orange} /> : null}
+      {active === "scorers" ? <Board title="Scoreurs" subtitle="buts réels" rows={leaderboards.topPersonalScorers} value={(row) => String(row.actualGoals)} color={C.orange} /> : null}
       {active === "gamelles" ? <Board title="Top gamelles" subtitle="actions" rows={leaderboards.topGamelles} value={(row) => String(row.gamelle)} color={C.gold} /> : null}
       {active === "pissettes" ? <Board title="Top pissettes" subtitle="validées/refusées" rows={leaderboards.topPissettes} value={(row) => `${row.pissetteValid}/${row.pissetteRefused}`} color={C.orange} /> : null}
       {active === "demis" ? <Board title="Top demis" subtitle="demis + bonus" rows={leaderboards.topDemis} value={(row) => `${row.demi} · +${row.demiBonus}`} color={C.violet} /> : null}
@@ -821,7 +823,7 @@ function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPla
   return (
     <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Points attribués analysés : {total}</div>
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Buts marqués analysés : {total}</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {(summary.topLabels.length ? summary.topLabels : ["Aucun moment fort détecté"]).map((label, index) => (
             <span key={`${label}-${index}`} style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${index === 0 ? C.gold : C.blue}55`, color: index === 0 ? C.gold : C.blue, background: index === 0 ? `${C.gold}14` : `${C.blue}12`, fontSize: 10, fontWeight: 1000 }}>
@@ -858,7 +860,7 @@ function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPla
           <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
             <div>
               <div style={{ color: C.text, fontSize: 24, fontWeight: 1100, lineHeight: 1 }}>{total}</div>
-              <div style={{ color: C.dim, fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>points</div>
+              <div style={{ color: C.dim, fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>buts</div>
             </div>
           </div>
         </div>
@@ -881,7 +883,7 @@ function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPla
 
       {summary.unattributedMatches > 0 ? (
         <div style={{ color: C.dim, fontSize: 10, fontWeight: 850 }}>
-          {summary.unattributedMatches} match(s) contiennent des buts d’équipe non attribués à un joueur précis : le camembert se base uniquement sur les points rattachés au joueur.
+          {summary.unattributedMatches} match(s) contiennent des buts d’équipe non attribués à un joueur précis : le camembert se base uniquement sur les buts rattachés au joueur.
         </div>
       ) : null}
     </div>
@@ -980,8 +982,9 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const teamLogoByName = React.useMemo(() => buildTeamLogoByName(babyFootTeams), [babyFootTeams]);
   const rating = babyFootRating(profileAgg);
   const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc, Number((profileAgg as any).parachute || 0));
-  const personalShare = profileAgg.goalsFor > 0 ? Math.round((profileAgg.personalPoints / profileAgg.goalsFor) * 100) : 0;
-  const teammatePoints = Math.max(0, profileAgg.goalsFor - profileAgg.personalPoints);
+  const playerGoalsOnly = Math.max(0, Number(profileAgg.actualGoals || 0));
+  const personalShare = profileAgg.goalsFor > 0 ? Math.round((playerGoalsOnly / profileAgg.goalsFor) * 100) : 0;
+  const teammateGoals = Math.max(0, profileAgg.goalsFor - playerGoalsOnly);
   const totalPissettes = profileAgg.pissetteValid + profileAgg.pissetteRefused;
   const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
   const totalParachutes = Number((profileAgg as any).parachute || 0);
@@ -1117,7 +1120,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
                 <Kpi label="Rating" value={rating} color={C.gold} hint="forme globale" />
                 <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.blue} hint="BP / BC" />
-                <Kpi label="Buts perso" value={profileAgg.personalPoints} color={C.gold} hint={`${profileAgg.actualGoals} vrais buts`} />
+                <Kpi label="Buts perso" value={playerGoalsOnly} color={C.gold} hint={profileAgg.demiBonus > 0 ? `+${profileAgg.demiBonus} bonus demis non inclus` : "hors bonus demis"} />
                 <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="part des BP équipe" />
                 <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} hint="matchs avec détail" />
                 <Kpi label="Demis" value={profileAgg.demi} color={C.violet} hint={`bonus +${profileAgg.demiBonus}`} />
@@ -1135,8 +1138,8 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
                 <Kpi label="BP équipe" value={profileAgg.goalsFor} color={C.green} hint={`${formatOne(profileAgg.avgGoalsFor)}/match`} />
                 <Kpi label="BC équipe" value={profileAgg.goalsAgainst} color={C.pink} hint={`${formatOne(profileAgg.avgGoalsAgainst)}/match`} />
                 <Kpi label="Diff équipe" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
-                <Kpi label="Points joueur" value={profileAgg.personalPoints} color={C.gold} hint="buts + bonus" />
-                <Kpi label="Coéquipiers" value={teammatePoints} color={C.muted} hint="BP non attribués au joueur" />
+                <Kpi label="Buts joueur" value={playerGoalsOnly} color={C.gold} hint="hors bonus demis" />
+                <Kpi label="Coéquipiers" value={teammateGoals} color={C.muted} hint="BP marqués par les autres" />
                 <Kpi label="Clean" value={profileAgg.cleanSheets} color={C.green} hint="équipe sans encaisser" />
               </div>
             </div>
@@ -1155,7 +1158,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             </div>
 
             <div style={cardStyle()}>
-              {sectionTitle("Frise chronologique des points", C.gold)}
+              {sectionTitle("Frise chronologique des buts", C.gold)}
               <ScoringTimelineChart summary={scoringTimeline} />
             </div>
 

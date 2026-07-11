@@ -338,12 +338,12 @@ function PlayerRow({ row, profilesById }: { row: BabyFootTeamPlayerContribution;
           <div style={{ color: C.text, fontSize: 13, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
           <div style={{ color: C.dim, marginTop: 2, fontSize: 10, fontWeight: 850 }}>{row.matches} MJ · {row.wins}V/{row.draws}N/{row.losses}D · contribution {row.contributionPct}%</div>
         </div>
-        <div style={{ color: C.gold, fontSize: 18, fontWeight: 1000, textAlign: "right" }}>{row.personalPoints}</div>
+        <div style={{ color: C.gold, fontSize: 18, fontWeight: 1000, textAlign: "right" }}>{row.actualGoals}</div>
       </div>
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(90px,100%),1fr))", gap: 7 }}>
         <Kpi label="BP équipe" value={row.teamGoalsFor} color={C.green} hint={`${formatOne(row.avgGoalsFor)}/M`} />
         <Kpi label="BC équipe" value={row.teamGoalsAgainst} color={C.pink} hint={`${formatOne(row.avgGoalsAgainst)}/M`} />
-        <Kpi label="Buts perso" value={row.personalPoints} color={C.gold} hint={`${row.actualGoals} vrais`} />
+        <Kpi label="Buts perso" value={row.actualGoals} color={C.gold} hint={row.demiBonus > 0 ? `+${row.demiBonus} bonus demis non inclus` : "hors bonus demis"} />
         <Kpi label="AV/DEF/GB" value={`${row.goalAv}/${row.goalDef}/${row.goalGb}`} color={C.blue} />
         <Kpi label="Demis" value={row.demi} color={C.violet} hint={`bonus +${row.demiBonus}`} />
         <Kpi label="Fun" value={`${row.gamelle}/${totalPissettes}/${totalPeches}/${row.parachute || 0}`} color={C.orange} hint="gam/piss/pêches/parach." />
@@ -436,7 +436,7 @@ function PlayerCompareBars({
 }
 
 function PlayerRankingTable({ rows, profilesById }: { rows: BabyFootTeamPlayerContribution[]; profilesById: Map<string, Profile> }) {
-  const sorted = [...rows].sort((a, b) => b.personalPoints - a.personalPoints || b.contributionPct - a.contributionPct || b.teamGoalDiff - a.teamGoalDiff || a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true }));
+  const sorted = [...rows].sort((a, b) => b.actualGoals - a.actualGoals || b.contributionPct - a.contributionPct || b.teamGoalDiff - a.teamGoalDiff || a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true }));
   return (
     <div style={cardStyle()}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
@@ -454,7 +454,7 @@ function PlayerRankingTable({ rows, profilesById }: { rows: BabyFootTeamPlayerCo
                 <div style={{ color: C.text, fontSize: 12, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div>
                 <div style={{ color: C.dim, fontSize: 9, fontWeight: 850 }}>{row.matches} MJ · {row.wins}V/{row.losses}D</div>
               </div>
-              <div style={{ color: C.gold, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{row.personalPoints}</div>
+              <div style={{ color: C.gold, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{row.actualGoals}</div>
               <div style={{ color: C.blue, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{row.contributionPct}%</div>
               <div style={{ color: row.teamGoalDiff >= 0 ? C.green : C.pink, fontSize: 13, fontWeight: 1000, textAlign: "right" }}>{formatSigned(row.teamGoalDiff)}</div>
             </div>
@@ -468,7 +468,7 @@ function PlayerRankingTable({ rows, profilesById }: { rows: BabyFootTeamPlayerCo
 
 function TeamPlayerLeaderboards({ team, profilesById }: { team: BabyFootTeamDetailedAggregate; profilesById: Map<string, Profile> }) {
   const players = team.players || [];
-  const scorer = topPlayer(players, (row) => row.personalPoints);
+  const scorer = topPlayer(players, (row) => row.actualGoals);
   const contribution = topPlayer(players, (row) => row.contributionPct);
   const av = topPlayer(players, (row) => row.goalAv);
   const defense = topPlayer(players, (row) => row.goalDef + row.goalGb);
@@ -481,14 +481,14 @@ function TeamPlayerLeaderboards({ team, profilesById }: { team: BabyFootTeamDeta
           <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>{players.length} joueur(s)</div>
         </div>
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 8 }}>
-          <PlayerBadge row={scorer} profilesById={profilesById} color={C.gold} label="Top scoreur" value={scorer?.personalPoints ?? "—"} />
+          <PlayerBadge row={scorer} profilesById={profilesById} color={C.gold} label="Top scoreur" value={scorer?.actualGoals ?? "—"} />
           <PlayerBadge row={contribution} profilesById={profilesById} color={C.blue} label="Contribution" value={contribution ? `${contribution.contributionPct}%` : "—"} />
           <PlayerBadge row={av} profilesById={profilesById} color={C.green} label="Meilleur AV" value={av?.goalAv ?? "—"} />
           <PlayerBadge row={defense} profilesById={profilesById} color={C.pink} label="Déf / GB" value={defense ? `${defense.goalDef}/${defense.goalGb}` : "—"} />
           <PlayerBadge row={fun} profilesById={profilesById} color={C.orange} label="Fun" value={fun ? PlayerFunTotal(fun) : "—"} />
         </div>
       </div>
-      <PlayerCompareBars title="Scoreurs de l'équipe" subtitle="buts + bonus" rows={players} profilesById={profilesById} color={C.gold} valueOf={(row) => row.personalPoints} />
+      <PlayerCompareBars title="Scoreurs de l'équipe" subtitle="buts réels, hors bonus demis" rows={players} profilesById={profilesById} color={C.gold} valueOf={(row) => row.actualGoals} />
       <PlayerCompareBars title="Contribution au collectif" subtitle="part du BP équipe" rows={players} profilesById={profilesById} color={C.blue} valueOf={(row) => row.contributionPct} formatValue={(value) => `${value}%`} />
       <PlayerCompareBars title="Jeu offensif AV" subtitle="buts avant" rows={players} profilesById={profilesById} color={C.green} valueOf={(row) => row.goalAv} />
       <PlayerCompareBars title="Défense / gardien" subtitle="DEF + GB" rows={players} profilesById={profilesById} color={C.pink} valueOf={(row) => row.goalDef + row.goalGb} formatValue={(_, row) => `${row.goalDef}/${row.goalGb}`} />
@@ -847,7 +847,7 @@ export default function BabyFootStatsTeamsPage({ store, go, params }: Props) {
                   <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>ouvre Joueurs pour comparer</div>
                 </div>
                 <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 8 }}>
-                  <PlayerBadge row={topPlayer(team.players, (row) => row.personalPoints)} profilesById={profilesById} color={C.gold} label="Top scoreur" value={topPlayer(team.players, (row) => row.personalPoints)?.personalPoints ?? "—"} />
+                  <PlayerBadge row={topPlayer(team.players, (row) => row.actualGoals)} profilesById={profilesById} color={C.gold} label="Top scoreur" value={topPlayer(team.players, (row) => row.actualGoals)?.actualGoals ?? "—"} />
                   <PlayerBadge row={topPlayer(team.players, (row) => row.contributionPct)} profilesById={profilesById} color={C.blue} label="Contribution" value={topPlayer(team.players, (row) => row.contributionPct) ? `${topPlayer(team.players, (row) => row.contributionPct)?.contributionPct}%` : "—"} />
                   <PlayerBadge row={topPlayer(team.players, PlayerFunTotal)} profilesById={profilesById} color={C.orange} label="Actions spéciales" value={topPlayer(team.players, PlayerFunTotal) ? PlayerFunTotal(topPlayer(team.players, PlayerFunTotal) as BabyFootTeamPlayerContribution) : "—"} />
                 </div>

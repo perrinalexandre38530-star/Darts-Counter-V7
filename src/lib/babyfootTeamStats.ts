@@ -302,10 +302,10 @@ function finalizePlayerContribution(row: BabyFootTeamPlayerContribution): BabyFo
   return {
     ...row,
     teamGoalDiff: row.teamGoalsFor - row.teamGoalsAgainst,
-    avgPersonalPoints: matches ? row.personalPoints / matches : 0,
+    avgPersonalPoints: matches ? row.actualGoals / matches : 0,
     avgGoalsFor: matches ? row.teamGoalsFor / matches : 0,
     avgGoalsAgainst: matches ? row.teamGoalsAgainst / matches : 0,
-    contributionPct: row.teamGoalsFor > 0 ? Math.round((row.personalPoints / row.teamGoalsFor) * 100) : 0,
+    contributionPct: row.teamGoalsFor > 0 ? Math.round((row.actualGoals / row.teamGoalsFor) * 100) : 0,
   };
 }
 
@@ -313,7 +313,7 @@ function finalizeTeam(team: BabyFootTeamDetailedAggregate): BabyFootTeamDetailed
   const matches = Math.max(0, team.matches);
   const players = team.players.map(finalizePlayerContribution).sort((a, b) =>
     b.matches - a.matches ||
-    b.personalPoints - a.personalPoints ||
+    b.actualGoals - a.actualGoals ||
     b.teamGoalDiff - a.teamGoalDiff ||
     a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true }),
   );
