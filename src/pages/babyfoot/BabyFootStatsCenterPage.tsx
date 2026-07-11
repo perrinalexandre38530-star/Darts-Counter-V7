@@ -33,6 +33,7 @@ type Props = {
 type PeriodKey = "J" | "S" | "M" | "A" | "ARV";
 type ModeKey = "1v1" | "2v2" | "2v1" | "all";
 type CenterTab = "dashboard" | "classements" | "details" | "history";
+type DetailsSubTab = "solo" | "team";
 type RankingView = "general" | "ratio" | "win" | "attack" | "defense" | "clean" | "streak" | "scorers" | "gamelles" | "pissettes" | "demis" | "csc" | "peche" | "rating" | "teams";
 
 const C = {
@@ -70,6 +71,11 @@ const CENTER_TABS: Array<{ key: CenterTab; label: string }> = [
   { key: "classements", label: "CLASSEMENTS" },
   { key: "details", label: "DÉTAILS" },
   { key: "history", label: "MATCHS" },
+];
+
+const DETAIL_SUB_TABS: Array<{ key: DetailsSubTab; label: string; subtitle: string; color: string }> = [
+  { key: "solo", label: "INDIVIDUELLES", subtitle: "Solo · 1V1 uniquement", color: C.blue },
+  { key: "team", label: "INDIV. PAR ÉQUIPE", subtitle: "2V2 + 2V1 réunis", color: C.green },
 ];
 
 const RANKING_VIEWS: Array<{ key: RankingView; label: string; color: string }> = [
@@ -285,6 +291,7 @@ type ProfileStatsSlice = {
   goalDiff: number;
   actualGoals: number;
   pointsTotal: number;
+  demi: number;
   demiBonus: number;
   cleanSheets: number;
   goalAv: number;
@@ -312,6 +319,7 @@ function emptyProfileStatsSlice(label: string): ProfileStatsSlice {
     goalDiff: 0,
     actualGoals: 0,
     pointsTotal: 0,
+    demi: 0,
     demiBonus: 0,
     cleanSheets: 0,
     goalAv: 0,
@@ -353,6 +361,7 @@ function bumpProfileStatsSlice(slice: ProfileStatsSlice, match: BabyFootProfileM
   if (num(match.scoreAgainst, 0) === 0) slice.cleanSheets += 1;
   slice.actualGoals += realGoalsOf(row);
   slice.pointsTotal += totalPointsOf(row);
+  slice.demi += Math.max(0, num(row.demi, 0));
   slice.demiBonus += Math.max(0, num(row.demiBonus, 0));
   slice.goalAv += num(row.goalAv, 0);
   slice.goalDef += num(row.goalDef, 0);
@@ -398,6 +407,30 @@ function winPctOfSlice(slice: ProfileStatsSlice) {
 
 function avgForSlice(slice: ProfileStatsSlice, value: number) {
   return slice.matches ? value / slice.matches : 0;
+}
+
+function ratioForSlice(slice: ProfileStatsSlice): number | null {
+  if (!slice.matches) return null;
+  if (slice.goalsAgainst <= 0) return slice.goalsFor > 0 ? slice.goalsFor : null;
+  return slice.goalsFor / slice.goalsAgainst;
+}
+
+function ratingForSlice(slice: ProfileStatsSlice) {
+  return babyFootRating({
+    matches: slice.matches,
+    winRate: winPctOfSlice(slice),
+    goalDiff: slice.goalDiff,
+    avgGoalsFor: avgForSlice(slice, slice.goalsFor),
+    avgGoalsAgainst: avgForSlice(slice, slice.goalsAgainst),
+    cleanSheets: slice.cleanSheets,
+  });
+}
+
+function matchesForDetailsSubTab(matches: BabyFootProfileMatch[], subTab: DetailsSubTab) {
+  return (Array.isArray(matches) ? matches : []).filter((match) => {
+    const modeKey = String(match.mode || "").toLowerCase();
+    return subTab === "solo" ? modeKey === "1v1" : modeKey === "2v2" || modeKey === "2v1" || (modeKey !== "1v1" && isTeamMode(modeKey));
+  });
 }
 
 function ModeSliceCard({ slice, color }: { slice: ProfileStatsSlice; color: string }) {
@@ -1064,6 +1097,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const requestedTab = String(params?.tab || "").toLowerCase();
   const initialTab: CenterTab = rankingOnly || requestedTab === "classements" ? "classements" : requestedTab === "details" ? "details" : requestedTab === "history" ? "history" : "dashboard";
   const [tab, setTab] = React.useState<CenterTab>(initialTab);
+  const [detailsSubTab, setDetailsSubTab] = React.useState<DetailsSubTab>(initialMode === "2v2" || initialMode === "2v1" ? "team" : "solo");
   const [rankingView, setRankingView] = React.useState<RankingView>("general");
   const [profileIndex, setProfileIndex] = React.useState(0);
   const [filtersOpen, setFiltersOpen] = React.useState(Boolean(params?.showFilters));
@@ -1138,20 +1172,33 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const rating = babyFootRating(profileAgg);
   const modeSlices = React.useMemo(() => buildProfileModeSlices(profileMatches), [profileMatches]);
   const currentSlice = modeSlices.all;
+  const soloSlice = modeSlices.solo;
   const teamImpact = modeSlices.team;
-  const maxAction = Math.max(1, currentSlice.goalAv, currentSlice.goalDef, currentSlice.goalGb, currentSlice.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc, Number((profileAgg as any).parachute || 0));
+  const detailsSlice = detailsSubTab === "solo" ? soloSlice : teamImpact;
+  const detailMatches = React.useMemo(() => matchesForDetailsSubTab(profileMatches, detailsSubTab), [profileMatches, detailsSubTab]);
+  const maxAction = Math.max(1, currentSlice.goalAv, currentSlice.goalDef, currentSlice.goalGb, currentSlice.goalMil, currentSlice.demi, currentSlice.gamelle, currentSlice.pecheOff, currentSlice.pecheDef, currentSlice.pissetteValid, currentSlice.csc, Number(currentSlice.parachute || 0));
+  const detailMaxAction = Math.max(1, detailsSlice.goalAv, detailsSlice.goalDef, detailsSlice.goalGb, detailsSlice.goalMil, detailsSlice.demi, detailsSlice.gamelle, detailsSlice.pecheOff, detailsSlice.pecheDef, detailsSlice.pissetteValid, detailsSlice.csc, Number(detailsSlice.parachute || 0));
   const playerGoalsOnly = Math.max(0, Number(currentSlice.actualGoals || 0));
   const playerPointsTotal = Math.max(0, Number(currentSlice.pointsTotal || profileAgg.personalPoints || 0));
   const totalBonusPoints = Math.max(0, playerPointsTotal - playerGoalsOnly);
-  const personalShare = currentSlice.goalsFor > 0 ? Math.round((playerGoalsOnly / currentSlice.goalsFor) * 100) : 0;
+  const detailPlayerGoalsOnly = Math.max(0, Number(detailsSlice.actualGoals || 0));
+  const detailPlayerPointsTotal = Math.max(0, Number(detailsSlice.pointsTotal || 0));
+  const detailBonusPoints = Math.max(0, detailPlayerPointsTotal - detailPlayerGoalsOnly);
+  const detailShare = detailsSlice.goalsFor > 0 ? Math.round((detailPlayerGoalsOnly / detailsSlice.goalsFor) * 100) : 0;
   const teamPlayerShare = teamImpact.goalsFor > 0 ? Math.round((teamImpact.actualGoals / teamImpact.goalsFor) * 100) : 0;
   const teammateGoals = Math.max(0, teamImpact.goalsFor - teamImpact.actualGoals);
-  const totalPissettes = profileAgg.pissetteValid + profileAgg.pissetteRefused;
-  const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
-  const totalParachutes = Number((profileAgg as any).parachute || 0);
+  const totalPissettes = currentSlice.pissetteValid + currentSlice.pissetteRefused;
+  const totalPeches = currentSlice.pecheOff + currentSlice.pecheDef;
+  const totalParachutes = Number(currentSlice.parachute || 0);
+  const detailPissettes = detailsSlice.pissetteValid + detailsSlice.pissetteRefused;
+  const detailPeches = detailsSlice.pecheOff + detailsSlice.pecheDef;
+  const detailParachutes = Number(detailsSlice.parachute || 0);
+  const detailRating = ratingForSlice(detailsSlice);
+  const detailRatio = ratioForSlice(detailsSlice);
   const matchLimit = tab === "history" ? HISTORY_MATCH_LIMIT : DASHBOARD_MATCH_LIMIT;
   const visibleProfileMatches = profileMatches.slice(0, matchLimit);
   const scoringTimeline = React.useMemo(() => buildPlayerScoringTimeline(profileMatches, profileId), [profileMatches, profileId]);
+  const detailScoringTimeline = React.useMemo(() => buildPlayerScoringTimeline(detailMatches, profileId), [detailMatches, profileId]);
 
   return (
     <div className="bf-stats-center" style={{ position: "relative", left: "50%", right: "50%", marginLeft: "-50vw", marginRight: "-50vw", minHeight: "100%", width: "100vw", maxWidth: "100vw", minWidth: 0, overflowX: "hidden", boxSizing: "border-box", padding: "18px max(10px, env(safe-area-inset-right)) 112px max(10px, env(safe-area-inset-left))", color: C.text, background: `radial-gradient(circle at 50% -10%,${primary}1f,transparent 38%)` }}>
@@ -1231,7 +1278,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         </div>
         )}
 
-        {!rankingOnly && (tab === "dashboard" || tab === "details") && (
+        {!rankingOnly && tab === "dashboard" && (
           <>
             <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(136px,100%),1fr))", gap: 10 }}>
               <Kpi label="Rating" value={rating} color={C.gold} hint={`Ratio ${formatBabyFootRatio(profileAgg.ratio)}`} />
@@ -1276,86 +1323,115 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
 
         {!rankingOnly && tab === "details" && (
           <>
+            <div style={cardStyle({ padding: 12 })}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                {sectionTitle("Détails séparés par mode", C.gold)}
+                <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>solo et équipe ne sont plus mélangés</div>
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                {DETAIL_SUB_TABS.map((item) => {
+                  const activeSub = detailsSubTab === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setDetailsSubTab(item.key)}
+                      style={{
+                        minWidth: 0,
+                        border: `1px solid ${activeSub ? item.color + "dd" : "rgba(255,255,255,.12)"}`,
+                        background: activeSub ? `linear-gradient(180deg,${item.color}24,rgba(0,0,0,.36))` : "rgba(255,255,255,.035)",
+                        color: activeSub ? item.color : C.muted,
+                        borderRadius: 18,
+                        padding: "10px 9px",
+                        cursor: "pointer",
+                        boxShadow: activeSub ? `0 0 18px ${item.color}22, inset 0 0 14px ${item.color}10` : "none",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: "clamp(10px,3vw,13px)", fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</div>
+                      <div style={{ marginTop: 3, color: C.dim, fontSize: 9, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div style={cardStyle()}>
-              {sectionTitle("Stats avancées", C.green)}
+              {sectionTitle(detailsSubTab === "solo" ? "Individuelles · 1V1" : "Individuelles par équipes · 2V2 + 2V1", detailsSubTab === "solo" ? C.blue : C.green)}
               <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
-                <Kpi label="Rating" value={rating} color={C.gold} hint="forme globale" />
-                <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.blue} hint="BP / BC" />
-                <Kpi label="Vrais buts" value={playerGoalsOnly} color={C.gold} hint="sans bonus" />
-                <Kpi label="Points total" value={playerPointsTotal} color={C.blue} hint={totalBonusPoints > 0 ? `+${totalBonusPoints} bonus inclus` : "score brut"} />
-                <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="vrais buts / BP sélection" />
-                <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} hint="matchs avec détail" />
-                <Kpi label="Demis" value={profileAgg.demi} color={C.violet} hint={`bonus +${profileAgg.demiBonus}`} />
-                <Kpi label="Gamelles" value={profileAgg.gamelle} color={C.gold} hint="actions spéciales" />
-                <Kpi label="Pissettes" value={`${profileAgg.pissetteValid}/${profileAgg.pissetteRefused}`} color={C.orange} hint="validées/refusées" />
-                <Kpi label="Pêches" value={totalPeches} color={C.blue} hint={`${profileAgg.pecheOff} off · ${profileAgg.pecheDef} déf`} />
-                <Kpi label="Parachutes" value={totalParachutes} color={C.green} hint="+2 points si validé" />
-                <Kpi label="CSC" value={profileAgg.csc} color={C.pink} hint="contre son camp" />
+                <Kpi label="MJ" value={detailsSlice.matches} color={detailsSubTab === "solo" ? C.blue : C.green} hint={detailsSubTab === "solo" ? "1V1 uniquement" : "2V2 / 2V1"} />
+                <Kpi label="Rating" value={detailRating} color={C.gold} hint="niveau du sous-mode" />
+                <Kpi label="Ratio" value={formatBabyFootRatio(detailRatio)} color={C.blue} hint="BP / BC" />
+                <Kpi label="Win%" value={formatBabyFootPct01(winPctOfSlice(detailsSlice))} color={C.green} hint={`${detailsSlice.wins}V / ${detailsSlice.matches}MJ`} />
+                <Kpi label="BP" value={detailsSlice.goalsFor} color={C.green} hint={`${formatOne(avgForSlice(detailsSlice, detailsSlice.goalsFor))}/match`} />
+                <Kpi label="BC" value={detailsSlice.goalsAgainst} color={C.pink} hint={`${formatOne(avgForSlice(detailsSlice, detailsSlice.goalsAgainst))}/match`} />
+                <Kpi label="Diff" value={formatSigned(detailsSlice.goalDiff)} color={detailsSlice.goalDiff >= 0 ? C.green : C.pink} />
+                <Kpi label="Vrais buts" value={detailPlayerGoalsOnly} color={C.gold} hint="sans bonus" />
+                <Kpi label="Points total" value={detailPlayerPointsTotal} color={C.blue} hint={detailBonusPoints > 0 ? `+${detailBonusPoints} bonus inclus` : "score brut"} />
+                <Kpi label="Contribution" value={`${detailShare}%`} color={C.blue} hint={detailsSubTab === "solo" ? "buts joueur / BP 1V1" : "buts joueur / BP équipe"} />
+                <Kpi label="Clean" value={detailsSlice.cleanSheets} color={C.green} hint="sans encaisser" />
+                <Kpi label="Demis" value={detailsSlice.demi} color={C.violet} hint={`bonus +${detailsSlice.demiBonus}`} />
+                <Kpi label="Gamelles" value={detailsSlice.gamelle} color={C.gold} hint="actions spéciales" />
+                <Kpi label="Pissettes" value={`${detailsSlice.pissetteValid}/${detailsSlice.pissetteRefused}`} color={C.orange} hint="validées/refusées" />
+                <Kpi label="Pêches" value={detailPeches} color={C.blue} hint={`${detailsSlice.pecheOff} off · ${detailsSlice.pecheDef} déf`} />
+                <Kpi label="Parachutes" value={detailParachutes} color={C.green} hint="+2 points si validé" />
+                <Kpi label="CSC" value={detailsSlice.csc} color={C.pink} hint="contre son camp" />
               </div>
-            </div>
-
-            <div style={cardStyle()}>
-              {sectionTitle("Répartition par mode", C.gold)}
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 10 }}>
-                <ModeSliceCard slice={modeSlices.solo} color={C.blue} />
-                <ModeSliceCard slice={modeSlices.twoVTwo} color={C.green} />
-                <ModeSliceCard slice={modeSlices.twoVOne} color={C.violet} />
-              </div>
-            </div>
-
-            <div style={cardStyle()}>
-              {sectionTitle("Impact en équipe", C.blue)}
-              {teamImpact.matches ? (
-                <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
-                  <Kpi label="MJ équipe" value={teamImpact.matches} color={C.blue} hint="2V2 / 2V1" />
-                  <Kpi label="BP équipe" value={teamImpact.goalsFor} color={C.green} hint={`${formatOne(avgForSlice(teamImpact, teamImpact.goalsFor))}/match`} />
-                  <Kpi label="BC équipe" value={teamImpact.goalsAgainst} color={C.pink} hint={`${formatOne(avgForSlice(teamImpact, teamImpact.goalsAgainst))}/match`} />
-                  <Kpi label="Diff équipe" value={formatSigned(teamImpact.goalDiff)} color={teamImpact.goalDiff >= 0 ? C.green : C.pink} />
-                  <Kpi label="Buts joueur" value={teamImpact.actualGoals} color={C.gold} hint={`${teamPlayerShare}% des BP équipe`} />
-                  <Kpi label="Points joueur" value={teamImpact.pointsTotal} color={C.blue} hint="bonus inclus" />
-                  <Kpi label="Autres BP" value={teammateGoals} color={C.muted} hint="coéquipiers + bonus/CSC" />
-                  <Kpi label="Clean" value={teamImpact.cleanSheets} color={C.green} hint="équipe sans encaisser" />
+              {!detailsSlice.matches ? (
+                <div style={{ marginTop: 10, padding: 12, borderRadius: 15, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: C.muted, fontSize: 11, fontWeight: 850, textAlign: "center" }}>
+                  Aucune donnée {detailsSubTab === "solo" ? "1V1" : "équipe 2V2/2V1"} dans le filtre actuel.
                 </div>
-              ) : (
-                <div style={{ marginTop: 10, padding: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: C.muted, fontWeight: 850, textAlign: "center" }}>
-                  Aucun match en équipe dans le filtre actuel. L’impact équipe ne mélange plus les stats 1V1.
-                </div>
-              )}
+              ) : null}
             </div>
 
-            <div style={cardStyle()}>
-              {sectionTitle("Détail par ligne", C.blue)}
-              <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
-                <MiniProgress label="Avant" value={currentSlice.goalAv} max={maxAction} color={C.blue} />
-                <MiniProgress label="Défense" value={currentSlice.goalDef} max={maxAction} color={C.pink} />
-                <MiniProgress label="Gardien" value={currentSlice.goalGb} max={maxAction} color={C.green} />
-                <MiniProgress label="Milieu" value={currentSlice.goalMil} max={maxAction} color={C.violet} />
-                <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
-                <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
-                <MiniProgress label="Parachutes" value={totalParachutes} max={maxAction} color={C.green} />
-              </div>
-            </div>
-
-            <div style={cardStyle()}>
-              {sectionTitle("Frise chronologique des buts", C.gold)}
-              <ScoringTimelineChart summary={scoringTimeline} />
-            </div>
-
-            <div style={cardStyle()}>
-              {sectionTitle("Classement équipes", C.gold)}
-              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                {leaderboards.topTeams.length ? leaderboards.topTeams.map((team, index) => (
-                  <div key={team.key} style={{ borderRadius: 16, padding: 10, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ minWidth: 0, color: C.text, fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>#{index + 1} · {team.label}</div>
-                      <div style={{ color: C.gold, fontWeight: 1000 }}>{team.points} pts</div>
-                    </div>
-                    <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap", color: C.muted, fontSize: 10, fontWeight: 900 }}>
-                      <span>{team.matches} MJ</span><span>•</span><span>{formatBabyFootPct01(team.winRate)}</span><span>•</span><span>Diff {formatSigned(team.goalDiff)}</span><span>•</span><span>Ratio {formatBabyFootRatio(team.ratio)}</span>
-                    </div>
+            {detailsSubTab === "team" ? (
+              <div style={cardStyle()}>
+                {sectionTitle("Impact en équipe", C.blue)}
+                {teamImpact.matches ? (
+                  <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
+                    <Kpi label="MJ équipe" value={teamImpact.matches} color={C.blue} hint="2V2 / 2V1" />
+                    <Kpi label="BP équipe" value={teamImpact.goalsFor} color={C.green} hint={`${formatOne(avgForSlice(teamImpact, teamImpact.goalsFor))}/match`} />
+                    <Kpi label="BC équipe" value={teamImpact.goalsAgainst} color={C.pink} hint={`${formatOne(avgForSlice(teamImpact, teamImpact.goalsAgainst))}/match`} />
+                    <Kpi label="Diff équipe" value={formatSigned(teamImpact.goalDiff)} color={teamImpact.goalDiff >= 0 ? C.green : C.pink} />
+                    <Kpi label="Buts joueur" value={teamImpact.actualGoals} color={C.gold} hint={`${teamPlayerShare}% des BP équipe`} />
+                    <Kpi label="Points joueur" value={teamImpact.pointsTotal} color={C.blue} hint="bonus inclus" />
+                    <Kpi label="Autres BP" value={teammateGoals} color={C.muted} hint="coéquipiers + bonus/CSC" />
+                    <Kpi label="Clean" value={teamImpact.cleanSheets} color={C.green} hint="équipe sans encaisser" />
                   </div>
-                )) : <div style={{ padding: 14, color: C.muted, textAlign: "center", fontWeight: 850 }}>Pas encore assez de compositions récurrentes.</div>}
+                ) : (
+                  <div style={{ marginTop: 10, padding: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: C.muted, fontWeight: 850, textAlign: "center" }}>
+                    Aucun match en équipe dans le filtre actuel. Les stats 1V1 restent dans l’onglet Individuelles.
+                  </div>
+                )}
               </div>
+            ) : null}
+
+            {detailsSubTab === "team" ? (
+              <div style={cardStyle()}>
+                {sectionTitle("Répartition équipe par mode", C.gold)}
+                <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 10 }}>
+                  <ModeSliceCard slice={modeSlices.twoVTwo} color={C.green} />
+                  <ModeSliceCard slice={modeSlices.twoVOne} color={C.violet} />
+                </div>
+              </div>
+            ) : null}
+
+            <div style={cardStyle()}>
+              {sectionTitle(detailsSubTab === "solo" ? "Détail par ligne · 1V1" : "Détail par ligne · équipe", C.blue)}
+              <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
+                <MiniProgress label="Avant" value={detailsSlice.goalAv} max={detailMaxAction} color={C.blue} />
+                <MiniProgress label="Défense" value={detailsSlice.goalDef} max={detailMaxAction} color={C.pink} />
+                <MiniProgress label="Gardien" value={detailsSlice.goalGb} max={detailMaxAction} color={C.green} />
+                <MiniProgress label="Milieu" value={detailsSlice.goalMil} max={detailMaxAction} color={C.violet} />
+                <MiniProgress label="Pissettes" value={detailsSlice.pissetteValid} max={detailMaxAction} color={C.orange} />
+                <MiniProgress label="Pêches" value={detailPeches} max={detailMaxAction} color={C.blue} />
+                <MiniProgress label="Parachutes" value={detailParachutes} max={detailMaxAction} color={C.green} />
+              </div>
+            </div>
+
+            <div style={cardStyle()}>
+              {sectionTitle(detailsSubTab === "solo" ? "Frise des buts · 1V1" : "Frise des buts · équipe", C.gold)}
+              <ScoringTimelineChart summary={detailScoringTimeline} />
             </div>
           </>
         )}
