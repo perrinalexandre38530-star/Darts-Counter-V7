@@ -424,7 +424,7 @@ function ActionTiles({
     { label: pecheOffLabel, action: "peche_off", source: "AV", accent: "#ff8b5a", muted: state.pecheOffRule === "forbidden" },
     { label: pecheDefLabel, action: "peche_def", source: "DEF", accent: "#5ad7ff", muted: state.pecheDefRule === "forbidden" },
     { label: pissetteLabel, action: "pissette", source: "AV", accent: "#ff59b0", muted: state.pissetteRule !== "point" },
-    { label: "PARACHUTE +1", action: "parachute", source: "GB", accent: "#5df0ff", muted: !state.allowLobShot },
+    { label: "PARACHUTE +2", action: "parachute", source: "GB", accent: "#5df0ff", muted: !state.allowLobShot },
     { label: "CSC", action: "csc", source: "AV", accent: "#ff4f6d" },
   ];
   return (
@@ -1181,7 +1181,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       }
       const row = ensure((event as any).scorerId, (event as any).team);
       if (event.t === "goal") {
-        row.goals += Math.max(1, Number((event as any).points) || 1);
+        row.goals += 1;
         row.ptsDemi += Math.max(0, Number((event as any).demiBonusApplied) || 0);
         if ((event as any).sourceLine === "AV") row.av += 1;
         if ((event as any).sourceLine === "DEF") row.def += 1;

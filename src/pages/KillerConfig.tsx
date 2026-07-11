@@ -1037,7 +1037,7 @@ export default function KillerConfigPage(props: Props) {
             <>
               <div style={{ opacity: numberAssignMode === "throw" ? 0.78 : 1 }}>
                 <PlayerPagedSelector
-                  usageMode={String((params as any)?.variantId || (params as any)?.gameId || "killer")}
+                  usageMode={String(props?.params?.variantId || props?.params?.gameId || "killer")}
                   profiles={humanProfiles}
                   selectedIds={selectedIds}
                   onToggle={togglePlayer}

@@ -562,7 +562,7 @@ export default function BabyFootHome({ store, go }: Props) {
           { label: t("babyfoot.home.records.bestDiff", "best diff"), value: formatSignedInt(babyfootGlobalStats.bestGoalDiff) },
           { label: t("babyfoot.home.records.bestSerie", "série max"), value: String(babyfootGlobalStats.bestWinStreak) },
           { label: t("babyfoot.home.records.clean", "clean sheets"), value: String(babyfootGlobalStats.cleanSheets) },
-          { label: t("babyfoot.home.records.butsPerso", "buts perso"), value: String(babyfootGlobalStats.personalPoints) },
+          { label: t("babyfoot.home.records.butsPerso", "buts perso"), value: String(babyfootGlobalStats.actualGoals) },
           { label: t("babyfoot.home.records.rating", "rating"), value: String(babyfootGlobalStats.rating) },
         ],
       },

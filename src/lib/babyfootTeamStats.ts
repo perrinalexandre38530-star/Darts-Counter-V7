@@ -387,7 +387,7 @@ function bumpPlayer(
   else out.losses += 1;
   if (row && playerStatActivity(row) > 0) {
     out.personalPoints += num(row.points, num(row.goals, 0));
-    out.actualGoals += num(row.goals, 0);
+    out.actualGoals += num((row as any).actualGoals, num(row.goals, 0));
     out.goalAv += num(row.goalAv, 0);
     out.goalDef += num(row.goalDef, 0);
     out.goalGb += num(row.goalGb, 0);

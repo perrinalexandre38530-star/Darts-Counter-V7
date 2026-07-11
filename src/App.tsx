@@ -2769,7 +2769,7 @@ useEffect(() => {
   /* --------------------------------------------
       pushHistory (FIN DE PARTIE)
   -------------------------------------------- */
-  function pushHistory(m: MatchRecord) {
+  function pushHistory(m: MatchRecord, options?: { navigate?: boolean }) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -2987,11 +2987,15 @@ useEffect(() => {
           .catch(() => {});
       }
     } catch {}
-    const nav = () => go("statsHub", { tab: "history" });
+    const shouldNavigate = options?.navigate !== false;
+    const nav = () => {
+      if (shouldNavigate) go("statsHub", { tab: "history" });
+    };
 
     if (upsertPromise && typeof (upsertPromise as any).then === "function") {
-      (upsertPromise as any).finally(() => nav());
-    } else {
+      if (shouldNavigate) (upsertPromise as any).finally(() => nav());
+      else (upsertPromise as any).catch(() => {});
+    } else if (shouldNavigate) {
       nav();
     }
 
@@ -4634,7 +4638,14 @@ case "babyfoot_team_edit":
         break;
 
       case "training_clock":
-        page = <TrainingClock profiles={store.profiles ?? []} activeProfileId={store.activeProfileId ?? null} go={go} />;
+        page = (
+          <TrainingClock
+            profiles={store.profiles ?? []}
+            activeProfileId={store.activeProfileId ?? null}
+            go={go}
+            onFinish={(m: any) => pushHistory(m, { navigate: false })}
+          />
+        );
         break;
 
       case "training_mode": {

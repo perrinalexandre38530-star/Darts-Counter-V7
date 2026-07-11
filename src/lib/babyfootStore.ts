@@ -966,8 +966,8 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
 
   if (kind === "parachute") {
     stats = bumpSpecialStats(stats, team === "A" ? "parachuteA" : "parachuteB");
-    // Parachute = balle qui passe au-dessus de la barre du gardien : +1 et stat dédiée.
-    return withGoalEvent(s.scoreA + (team === "A" ? 1 : 0), s.scoreB + (team === "B" ? 1 : 0), "parachute", 1, 0, team, scorerId ?? null, undefined);
+    // Parachute = balle qui passe au-dessus de la barre du gardien : +2 et stat dédiée.
+    return withGoalEvent(s.scoreA + (team === "A" ? 2 : 0), s.scoreB + (team === "B" ? 2 : 0), "parachute", 2, 0, team, scorerId ?? null, undefined);
   }
 
   if (kind === "csc") {

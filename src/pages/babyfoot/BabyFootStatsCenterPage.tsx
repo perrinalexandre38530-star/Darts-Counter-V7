@@ -247,7 +247,9 @@ function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: 
       const goalCount = 1;
       const eventTeam = String(event?.team || event?.side || "").toUpperCase();
       if (eventTeam === String(match?.team || "").toUpperCase() && !scorerId) hasUnattributedTeamGoal = true;
-      const belongsToPlayer = scorerId === pid || (!scorerId && String((match as any)?.player?.id || (match as any)?.player?.playerId || "") === pid);
+      const sideIds = extractMatchSidePlayerIds(match.record, match.team === "A" ? "A" : "B");
+      const isSoloSide = !isTeamMode(match.mode) || sideIds.length <= 1;
+      const belongsToPlayer = scorerId === pid || (!scorerId && isSoloSide && sideIds.includes(pid));
       if (!belongsToPlayer) continue;
       const elapsed = eventElapsedMs(event, resolved, match, durationMs);
       const ratio = Math.max(0, Math.min(0.999, elapsed / durationMs));
@@ -269,6 +271,159 @@ function buildPlayerScoringTimeline(matches: BabyFootProfileMatch[], profileId: 
     .map((bucket) => bucket.label);
 
   return { buckets, total, topLabels, attributedMatches, unattributedMatches };
+}
+
+
+type ProfileStatsSlice = {
+  label: string;
+  matches: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDiff: number;
+  actualGoals: number;
+  pointsTotal: number;
+  demiBonus: number;
+  cleanSheets: number;
+  goalAv: number;
+  goalDef: number;
+  goalGb: number;
+  goalMil: number;
+  gamelle: number;
+  pissetteValid: number;
+  pissetteRefused: number;
+  pecheOff: number;
+  pecheDef: number;
+  csc: number;
+  parachute: number;
+};
+
+function emptyProfileStatsSlice(label: string): ProfileStatsSlice {
+  return {
+    label,
+    matches: 0,
+    wins: 0,
+    draws: 0,
+    losses: 0,
+    goalsFor: 0,
+    goalsAgainst: 0,
+    goalDiff: 0,
+    actualGoals: 0,
+    pointsTotal: 0,
+    demiBonus: 0,
+    cleanSheets: 0,
+    goalAv: 0,
+    goalDef: 0,
+    goalGb: 0,
+    goalMil: 0,
+    gamelle: 0,
+    pissetteValid: 0,
+    pissetteRefused: 0,
+    pecheOff: 0,
+    pecheDef: 0,
+    csc: 0,
+    parachute: 0,
+  };
+}
+
+function realGoalsOf(row: any): number {
+  return Math.max(0, num(row?.actualGoals, num(row?.goals, 0)));
+}
+
+function totalPointsOf(row: any): number {
+  const realGoals = realGoalsOf(row);
+  const points = num(row?.points, 0);
+  const demiBonus = Math.max(0, num(row?.demiBonus, 0));
+  // points = score réellement crédité au joueur quand la sauvegarde le fournit.
+  // fallback : vrais buts + bonus demis pour les anciennes parties.
+  return Math.max(points, realGoals + demiBonus, realGoals);
+}
+
+function bumpProfileStatsSlice(slice: ProfileStatsSlice, match: BabyFootProfileMatch) {
+  const row: any = match.player || {};
+  slice.matches += 1;
+  if (match.won) slice.wins += 1;
+  else if (match.draw) slice.draws += 1;
+  else slice.losses += 1;
+  slice.goalsFor += num(match.scoreFor, 0);
+  slice.goalsAgainst += num(match.scoreAgainst, 0);
+  slice.goalDiff += num(match.scoreFor, 0) - num(match.scoreAgainst, 0);
+  if (num(match.scoreAgainst, 0) === 0) slice.cleanSheets += 1;
+  slice.actualGoals += realGoalsOf(row);
+  slice.pointsTotal += totalPointsOf(row);
+  slice.demiBonus += Math.max(0, num(row.demiBonus, 0));
+  slice.goalAv += num(row.goalAv, 0);
+  slice.goalDef += num(row.goalDef, 0);
+  slice.goalGb += num(row.goalGb, 0);
+  slice.goalMil += num(row.goalMil, 0);
+  slice.gamelle += num(row.gamelle, 0);
+  slice.pissetteValid += num(row.pissetteValid, 0);
+  slice.pissetteRefused += num(row.pissetteRefused, 0);
+  slice.pecheOff += num(row.pecheOff, 0);
+  slice.pecheDef += num(row.pecheDef, 0);
+  slice.csc += num(row.csc, 0);
+  slice.parachute += num(row.parachute, 0);
+}
+
+function buildProfileModeSlices(matches: BabyFootProfileMatch[]) {
+  const all = emptyProfileStatsSlice("TOTAL");
+  const solo = emptyProfileStatsSlice("1V1");
+  const team = emptyProfileStatsSlice("ÉQUIPE");
+  const twoVTwo = emptyProfileStatsSlice("2V2");
+  const twoVOne = emptyProfileStatsSlice("2V1");
+
+  for (const match of Array.isArray(matches) ? matches : []) {
+    const modeKey = String(match.mode || "").toLowerCase();
+    bumpProfileStatsSlice(all, match);
+    if (modeKey === "1v1") bumpProfileStatsSlice(solo, match);
+    if (modeKey === "2v2") {
+      bumpProfileStatsSlice(team, match);
+      bumpProfileStatsSlice(twoVTwo, match);
+    } else if (modeKey === "2v1") {
+      bumpProfileStatsSlice(team, match);
+      bumpProfileStatsSlice(twoVOne, match);
+    } else if (isTeamMode(modeKey)) {
+      bumpProfileStatsSlice(team, match);
+    }
+  }
+
+  return { all, solo, team, twoVTwo, twoVOne };
+}
+
+function winPctOfSlice(slice: ProfileStatsSlice) {
+  return slice.matches ? slice.wins / slice.matches : 0;
+}
+
+function avgForSlice(slice: ProfileStatsSlice, value: number) {
+  return slice.matches ? value / slice.matches : 0;
+}
+
+function ModeSliceCard({ slice, color }: { slice: ProfileStatsSlice; color: string }) {
+  return (
+    <div style={{ border: `1px solid ${color}33`, borderRadius: 16, padding: 10, background: `linear-gradient(180deg,${color}10,rgba(255,255,255,.035))`, minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+        <div style={{ color, fontSize: 12, fontWeight: 1000, letterSpacing: .7 }}>{slice.label}</div>
+        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>{slice.matches} MJ</div>
+      </div>
+      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+        <MiniStat label="Win" value={formatBabyFootPct01(winPctOfSlice(slice))} color={C.green} />
+        <MiniStat label="Diff" value={formatSigned(slice.goalDiff)} color={slice.goalDiff >= 0 ? C.green : C.pink} />
+        <MiniStat label="Buts" value={slice.actualGoals} color={C.gold} />
+        <MiniStat label="Points" value={slice.pointsTotal} color={C.blue} />
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: any; color: string }) {
+  return (
+    <div style={{ borderRadius: 12, padding: "7px 8px", background: "rgba(0,0,0,.22)", border: "1px solid rgba(255,255,255,.07)", minWidth: 0 }}>
+      <div style={{ color: C.dim, fontSize: 8, fontWeight: 1000, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ color, fontSize: 13, fontWeight: 1000, lineHeight: 1.05 }}>{value}</div>
+    </div>
+  );
 }
 
 
@@ -981,10 +1136,16 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const babyFootTeams = React.useMemo(() => loadBabyFootTeams(), []);
   const teamLogoByName = React.useMemo(() => buildTeamLogoByName(babyFootTeams), [babyFootTeams]);
   const rating = babyFootRating(profileAgg);
-  const maxAction = Math.max(1, profileAgg.goalAv, profileAgg.goalDef, profileAgg.goalGb, profileAgg.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc, Number((profileAgg as any).parachute || 0));
-  const playerGoalsOnly = Math.max(0, Number(profileAgg.actualGoals || 0));
-  const personalShare = profileAgg.goalsFor > 0 ? Math.round((playerGoalsOnly / profileAgg.goalsFor) * 100) : 0;
-  const teammateGoals = Math.max(0, profileAgg.goalsFor - playerGoalsOnly);
+  const modeSlices = React.useMemo(() => buildProfileModeSlices(profileMatches), [profileMatches]);
+  const currentSlice = modeSlices.all;
+  const teamImpact = modeSlices.team;
+  const maxAction = Math.max(1, currentSlice.goalAv, currentSlice.goalDef, currentSlice.goalGb, currentSlice.goalMil, profileAgg.demi, profileAgg.gamelle, profileAgg.pecheOff, profileAgg.pecheDef, profileAgg.pissetteValid, profileAgg.csc, Number((profileAgg as any).parachute || 0));
+  const playerGoalsOnly = Math.max(0, Number(currentSlice.actualGoals || 0));
+  const playerPointsTotal = Math.max(0, Number(currentSlice.pointsTotal || profileAgg.personalPoints || 0));
+  const totalBonusPoints = Math.max(0, playerPointsTotal - playerGoalsOnly);
+  const personalShare = currentSlice.goalsFor > 0 ? Math.round((playerGoalsOnly / currentSlice.goalsFor) * 100) : 0;
+  const teamPlayerShare = teamImpact.goalsFor > 0 ? Math.round((teamImpact.actualGoals / teamImpact.goalsFor) * 100) : 0;
+  const teammateGoals = Math.max(0, teamImpact.goalsFor - teamImpact.actualGoals);
   const totalPissettes = profileAgg.pissetteValid + profileAgg.pissetteRefused;
   const totalPeches = profileAgg.pecheOff + profileAgg.pecheDef;
   const totalParachutes = Number((profileAgg as any).parachute || 0);
@@ -1120,37 +1281,55 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
               <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
                 <Kpi label="Rating" value={rating} color={C.gold} hint="forme globale" />
                 <Kpi label="Ratio" value={formatBabyFootRatio(profileAgg.ratio)} color={C.blue} hint="BP / BC" />
-                <Kpi label="Buts perso" value={playerGoalsOnly} color={C.gold} hint={profileAgg.demiBonus > 0 ? `+${profileAgg.demiBonus} bonus demis non inclus` : "hors bonus demis"} />
-                <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="part des BP équipe" />
+                <Kpi label="Vrais buts" value={playerGoalsOnly} color={C.gold} hint="sans bonus" />
+                <Kpi label="Points total" value={playerPointsTotal} color={C.blue} hint={totalBonusPoints > 0 ? `+${totalBonusPoints} bonus inclus` : "score brut"} />
+                <Kpi label="Contribution" value={`${personalShare}%`} color={C.blue} hint="vrais buts / BP sélection" />
                 <Kpi label="Attr." value={`${profileAgg.attributedMatches}/${profileAgg.matches}`} color={C.blue} hint="matchs avec détail" />
                 <Kpi label="Demis" value={profileAgg.demi} color={C.violet} hint={`bonus +${profileAgg.demiBonus}`} />
                 <Kpi label="Gamelles" value={profileAgg.gamelle} color={C.gold} hint="actions spéciales" />
                 <Kpi label="Pissettes" value={`${profileAgg.pissetteValid}/${profileAgg.pissetteRefused}`} color={C.orange} hint="validées/refusées" />
                 <Kpi label="Pêches" value={totalPeches} color={C.blue} hint={`${profileAgg.pecheOff} off · ${profileAgg.pecheDef} déf`} />
-                <Kpi label="Parachutes" value={totalParachutes} color={C.green} hint="au-dessus du gardien" />
+                <Kpi label="Parachutes" value={totalParachutes} color={C.green} hint="+2 points si validé" />
                 <Kpi label="CSC" value={profileAgg.csc} color={C.pink} hint="contre son camp" />
               </div>
             </div>
 
             <div style={cardStyle()}>
-              {sectionTitle("Impact dans l'équipe", C.blue)}
-              <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
-                <Kpi label="BP équipe" value={profileAgg.goalsFor} color={C.green} hint={`${formatOne(profileAgg.avgGoalsFor)}/match`} />
-                <Kpi label="BC équipe" value={profileAgg.goalsAgainst} color={C.pink} hint={`${formatOne(profileAgg.avgGoalsAgainst)}/match`} />
-                <Kpi label="Diff équipe" value={formatSigned(profileAgg.goalDiff)} color={profileAgg.goalDiff >= 0 ? C.green : C.pink} />
-                <Kpi label="Buts joueur" value={playerGoalsOnly} color={C.gold} hint="hors bonus demis" />
-                <Kpi label="Coéquipiers" value={teammateGoals} color={C.muted} hint="BP marqués par les autres" />
-                <Kpi label="Clean" value={profileAgg.cleanSheets} color={C.green} hint="équipe sans encaisser" />
+              {sectionTitle("Répartition par mode", C.gold)}
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 10 }}>
+                <ModeSliceCard slice={modeSlices.solo} color={C.blue} />
+                <ModeSliceCard slice={modeSlices.twoVTwo} color={C.green} />
+                <ModeSliceCard slice={modeSlices.twoVOne} color={C.violet} />
               </div>
+            </div>
+
+            <div style={cardStyle()}>
+              {sectionTitle("Impact en équipe", C.blue)}
+              {teamImpact.matches ? (
+                <div style={{ marginTop: 10, width: "100%", maxWidth: "100%", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(102px,100%),1fr))", gap: 8 }}>
+                  <Kpi label="MJ équipe" value={teamImpact.matches} color={C.blue} hint="2V2 / 2V1" />
+                  <Kpi label="BP équipe" value={teamImpact.goalsFor} color={C.green} hint={`${formatOne(avgForSlice(teamImpact, teamImpact.goalsFor))}/match`} />
+                  <Kpi label="BC équipe" value={teamImpact.goalsAgainst} color={C.pink} hint={`${formatOne(avgForSlice(teamImpact, teamImpact.goalsAgainst))}/match`} />
+                  <Kpi label="Diff équipe" value={formatSigned(teamImpact.goalDiff)} color={teamImpact.goalDiff >= 0 ? C.green : C.pink} />
+                  <Kpi label="Buts joueur" value={teamImpact.actualGoals} color={C.gold} hint={`${teamPlayerShare}% des BP équipe`} />
+                  <Kpi label="Points joueur" value={teamImpact.pointsTotal} color={C.blue} hint="bonus inclus" />
+                  <Kpi label="Autres BP" value={teammateGoals} color={C.muted} hint="coéquipiers + bonus/CSC" />
+                  <Kpi label="Clean" value={teamImpact.cleanSheets} color={C.green} hint="équipe sans encaisser" />
+                </div>
+              ) : (
+                <div style={{ marginTop: 10, padding: 14, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: C.muted, fontWeight: 850, textAlign: "center" }}>
+                  Aucun match en équipe dans le filtre actuel. L’impact équipe ne mélange plus les stats 1V1.
+                </div>
+              )}
             </div>
 
             <div style={cardStyle()}>
               {sectionTitle("Détail par ligne", C.blue)}
               <div style={{ marginTop: 11, display: "grid", gap: 10 }}>
-                <MiniProgress label="Avant" value={profileAgg.goalAv} max={maxAction} color={C.blue} />
-                <MiniProgress label="Défense" value={profileAgg.goalDef} max={maxAction} color={C.pink} />
-                <MiniProgress label="Gardien" value={profileAgg.goalGb} max={maxAction} color={C.green} />
-                <MiniProgress label="Milieu" value={profileAgg.goalMil} max={maxAction} color={C.violet} />
+                <MiniProgress label="Avant" value={currentSlice.goalAv} max={maxAction} color={C.blue} />
+                <MiniProgress label="Défense" value={currentSlice.goalDef} max={maxAction} color={C.pink} />
+                <MiniProgress label="Gardien" value={currentSlice.goalGb} max={maxAction} color={C.green} />
+                <MiniProgress label="Milieu" value={currentSlice.goalMil} max={maxAction} color={C.violet} />
                 <MiniProgress label="Pissettes" value={totalPissettes} max={maxAction} color={C.orange} />
                 <MiniProgress label="Pêches" value={totalPeches} max={maxAction} color={C.blue} />
                 <MiniProgress label="Parachutes" value={totalParachutes} max={maxAction} color={C.green} />

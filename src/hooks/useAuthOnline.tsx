@@ -20,6 +20,7 @@ import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled, isNasDataSyncEnabled } from "../lib/serverConfig";
 import { readNasAccessToken } from "../lib/apiClient";
+import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
@@ -576,6 +577,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           return { ...s, profile };
         });
         tryBridgeLocalProfile(user, profile);
+        void maybeAutoRestoreCloudForSignedInUser(user.id);
       }
     } catch (e: any) {
       console.warn("[useAuthOnline] refresh fatal:", e);
@@ -619,6 +621,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
               return { ...s, profile };
             });
             tryBridgeLocalProfile(user, profile);
+            void maybeAutoRestoreCloudForSignedInUser(user.id);
           });
         }
 
@@ -655,6 +658,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
                   return { ...s, profile };
                 });
                 tryBridgeLocalProfile(nextUser, profile);
+                void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
               });
             }
           } catch (e) {
@@ -697,6 +701,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
               });
 
               tryBridgeLocalProfile(nextUser, profile);
+              void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
             });
           } catch (e) {
             console.warn("[useAuthOnline] onAuthStateChange handler error:", e);

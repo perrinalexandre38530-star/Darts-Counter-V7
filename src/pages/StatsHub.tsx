@@ -225,6 +225,7 @@ import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
 import StatsDartSetsSection from "../components/StatsDartSetsSection";
+import StatsClockDashboard from "../components/StatsClockDashboard";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
 
@@ -4751,6 +4752,7 @@ const modeDefs = React.useMemo(
               { key: "capital", label: "Capital" },
               { key: "batard", label: "BÂTARD" },
               { key: "territories", label: "Territories" },
+              { key: "tour_de_l_horloge", label: "Tour de l’Horloge" },
               { key: "leaderboards", label: "Classements" },
               { key: "history", label: "Historique" },
             ],
@@ -6048,6 +6050,11 @@ type ModeDashboardCard = {
   dbull?: number;
   captures: number;
   extra: number;
+  clockCompleted?: number;
+  clockTotalTimeMs?: number;
+  clockBestTimeMs?: number;
+  clockBestDarts?: number;
+  clockBestStreak?: number;
   ticker: ModeTickerStat[];
 };
 
@@ -6519,6 +6526,11 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       favHits: 0,
       captures: 0,
       extra: 0,
+      clockCompleted: 0,
+      clockTotalTimeMs: 0,
+      clockBestTimeMs: 0,
+      clockBestDarts: 0,
+      clockBestStreak: 0,
       ticker: [],
       samples: [],
       favMap: {},
@@ -6696,6 +6708,61 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.missHits = Number(a.missHits || 0) + golfCounts.miss;
       a.bestHole = a.bestHole && score > 0 ? Math.min(Number(a.bestHole), score) : Math.max(Number(a.bestHole || 0), Number(score || 0));
       mergeFavMap(a.favMap, golfCounts.favMap);
+    }
+
+    if (mode === "clock") {
+      const session = r?.payload?.session ?? r?.summary?.session ?? r?.payload?.summary?.session ?? {};
+      const special = pl?.special ?? modeStatsPlayer?.special ?? {};
+      const clockTargets = pickNum(
+        pl?.targetsCompleted,
+        pl?.targetsHit,
+        special?.targetsCompleted,
+        session?.targetsCompleted,
+        session?.targetsHit,
+        score
+      );
+      const clockDarts = pickNum(
+        pl?.dartsThrown,
+        pl?.attempts,
+        pl?.darts?.thrown,
+        session?.dartsThrown,
+        darts
+      );
+      const clockHits = pickNum(
+        pl?.validHits,
+        pl?.hits,
+        pl?.darts?.hits,
+        session?.validHits,
+        session?.hits,
+        hits
+      );
+      const clockElapsedMs = pickNum(
+        pl?.elapsedMs,
+        special?.elapsedMs,
+        session?.elapsedMs,
+        Number(pl?.totalTimeSec ?? session?.totalTimeSec ?? 0) * 1000
+      );
+      const clockCompleted = Boolean(pl?.completed ?? pl?.win ?? session?.completed ?? clockTargets >= 21);
+      const clockStreak = pickNum(pl?.bestStreak, special?.bestStreak, session?.bestStreak);
+
+      score = clockTargets;
+      darts = clockDarts;
+      hits = clockHits;
+      miss = Math.max(0, clockDarts - clockHits);
+      a.captures = Number(a.captures || 0) + clockTargets;
+      a.clockCompleted = Number(a.clockCompleted || 0) + (clockCompleted ? 1 : 0);
+      a.clockTotalTimeMs = Number(a.clockTotalTimeMs || 0) + clockElapsedMs;
+      a.clockBestStreak = Math.max(Number(a.clockBestStreak || 0), clockStreak);
+      if (clockCompleted && clockElapsedMs > 0) {
+        a.clockBestTimeMs = Number(a.clockBestTimeMs || 0) > 0
+          ? Math.min(Number(a.clockBestTimeMs || 0), clockElapsedMs)
+          : clockElapsedMs;
+      }
+      if (clockCompleted && clockDarts > 0) {
+        a.clockBestDarts = Number(a.clockBestDarts || 0) > 0
+          ? Math.min(Number(a.clockBestDarts || 0), clockDarts)
+          : clockDarts;
+      }
     }
 
     const best = n(stats?.bestVisit) || n(stats?.bestAction) || n(stats?.bestScore) || n(stats?.best) || n(modeStatsPlayer?.best) || (mode === "cricket" ? Math.max(score, marksTotal) : score);
@@ -6938,6 +7005,30 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "% DBull", value: ringLabel(Number(a.dbullHits || 0)), tone: "blue" },
           { label: "Trou favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
+      : a.key === "clock"
+      ? (() => {
+          const completed = Number(a.clockCompleted || 0);
+          const completionRate = a.matches ? (completed / a.matches) * 100 : 0;
+          const avgTargets = a.matches ? Number(a.captures || 0) / a.matches : 0;
+          const avgTimeMs = a.matches ? Number(a.clockTotalTimeMs || 0) / a.matches : 0;
+          const fmtClockTime = (ms: number) => {
+            if (!ms) return "—";
+            const total = Math.max(0, Math.round(ms / 1000));
+            return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+          };
+          return [
+            { label: "Sessions", value: fmtStatValue(a.matches), tone: "gold" },
+            { label: "Terminées", value: `${completed}/${a.matches}`, tone: "green" },
+            { label: "Réussite", value: fmtStatValue(completionRate, "%"), tone: "green" },
+            { label: "Cibles", value: fmtStatValue(a.captures || 0), tone: "gold" },
+            { label: "Cibles/session", value: fmtStatValue(avgTargets), tone: "gold" },
+            { label: "Précision", value: a.darts || a.hits ? fmtStatValue(accuracy, "%") : "—", tone: "green" },
+            { label: "Best temps", value: fmtClockTime(Number(a.clockBestTimeMs || 0)), tone: "blue" },
+            { label: "Temps moyen", value: fmtClockTime(avgTimeMs), tone: "blue" },
+            { label: "Min darts", value: Number(a.clockBestDarts || 0) > 0 ? fmtStatValue(a.clockBestDarts) : "—", tone: "gold" },
+            { label: "Best série", value: fmtStatValue(a.clockBestStreak || 0), tone: "blue" },
+          ];
+        })()
       : [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
           { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
@@ -8338,6 +8429,16 @@ return (
                     );
                   })()}
                 </div>
+              </div>
+            )}
+
+            {currentMode === "tour_de_l_horloge" && (
+              <div style={card}>
+                <StatsClockDashboard
+                  records={records as any[]}
+                  playerId={selectedPlayer?.id ?? null}
+                  playerName={selectedPlayer?.name ?? null}
+                />
               </div>
             )}
 

@@ -32,6 +32,15 @@ const TARGETS: Target[] = [
 
 type StageSDT = 0 | 1 | 2; // 0 = Simple, 1 = Double, 2 = Triple
 
+type ClockBreakdown = {
+  simple: number;
+  double: number;
+  triple: number;
+  bull: number;
+  dbull: number;
+  miss: number;
+};
+
 type ClockSession = {
   id: string;
   profileId: string | null;
@@ -40,20 +49,31 @@ type ClockSession = {
   startedAt: string;
   endedAt: string;
   dartsThrown: number;
+  attempts: number;
   hits: number;
+  validHits: number;
+  targetsHit: number;
+  targetsCompleted: number;
+  targetReached: string;
   completed: boolean;
   elapsedMs: number;
+  totalTimeSec: number;
   bestStreak: number;
+  accuracyPct: number;
+  breakdown: ClockBreakdown;
+  throwLabels: string[];
 };
 
-const STORAGE_KEY = "dc-training-clock-v1";
+const STORAGE_KEY = "dc_training_clock_stats_v1";
+const LEGACY_STORAGE_KEY = "dc-training-clock-v1";
 
 type PlayerLite = { id: string | null; name: string };
 
 type Props = {
   profiles?: Profile[];
   activeProfileId?: string | null;
-  go?: (tab: any, params?: any) => void; // ✅ NEW
+  go?: (tab: any, params?: any) => void;
+  onFinish?: (match: any) => void;
 };
 
 // --------- helpers temps / format ---------
@@ -142,12 +162,75 @@ function labelObjective(
   return base;
 }
 
+function emptyBreakdown(): ClockBreakdown {
+  return { simple: 0, double: 0, triple: 0, bull: 0, dbull: 0, miss: 0 };
+}
+
+function breakdownFromLabels(labels: string[]): ClockBreakdown {
+  return (labels || []).reduce((acc, raw) => {
+    const label = String(raw || "").trim();
+    if (!label || label.toLowerCase() === "miss") acc.miss += 1;
+    else if (label === "DBull") acc.dbull += 1;
+    else if (label === "Bull") acc.bull += 1;
+    else if (label.startsWith("T")) acc.triple += 1;
+    else if (label.startsWith("D")) acc.double += 1;
+    else acc.simple += 1;
+    return acc;
+  }, emptyBreakdown());
+}
+
+function normalizeClockSession(raw: any): ClockSession {
+  const dartsThrown = Number(raw?.dartsThrown ?? raw?.attempts ?? raw?.throws ?? 0) || 0;
+  const validHits = Number(raw?.validHits ?? raw?.hits ?? 0) || 0;
+  const targetsCompleted = Number(raw?.targetsCompleted ?? raw?.targetsHit ?? Math.min(21, validHits)) || 0;
+  const elapsedMs = Number(raw?.elapsedMs ?? (Number(raw?.totalTimeSec ?? raw?.timeSec ?? 0) * 1000)) || 0;
+  const throwLabels = Array.isArray(raw?.throwLabels) ? raw.throwLabels.map((x: any) => String(x)) : [];
+  const fallbackBreakdown = breakdownFromLabels(throwLabels);
+  const breakdown = raw?.breakdown && typeof raw.breakdown === "object"
+    ? {
+        simple: Number(raw.breakdown.simple ?? raw.breakdown.s ?? 0) || 0,
+        double: Number(raw.breakdown.double ?? raw.breakdown.d ?? 0) || 0,
+        triple: Number(raw.breakdown.triple ?? raw.breakdown.t ?? 0) || 0,
+        bull: Number(raw.breakdown.bull ?? 0) || 0,
+        dbull: Number(raw.breakdown.dbull ?? raw.breakdown.doubleBull ?? 0) || 0,
+        miss: Number(raw.breakdown.miss ?? 0) || 0,
+      }
+    : fallbackBreakdown;
+  return {
+    id: String(raw?.id || generateId()),
+    profileId: raw?.profileId == null ? null : String(raw.profileId),
+    profileName: String(raw?.profileName || raw?.playerName || "Joueur"),
+    config: {
+      mode: (["classic", "doubles", "triples", "sdt"] as ClockMode[]).includes(raw?.config?.mode) ? raw.config.mode : "classic",
+      showTimer: raw?.config?.showTimer !== false,
+      dartLimit: Number(raw?.config?.dartLimit) > 0 ? Number(raw.config.dartLimit) : null,
+    },
+    startedAt: String(raw?.startedAt || raw?.createdAt || new Date().toISOString()),
+    endedAt: String(raw?.endedAt || raw?.updatedAt || raw?.startedAt || new Date().toISOString()),
+    dartsThrown,
+    attempts: dartsThrown,
+    hits: validHits,
+    validHits,
+    targetsHit: targetsCompleted,
+    targetsCompleted,
+    targetReached: String(raw?.targetReached || (targetsCompleted >= 21 ? "Bull" : Math.max(0, targetsCompleted))),
+    completed: Boolean(raw?.completed),
+    elapsedMs,
+    totalTimeSec: Math.round((elapsedMs / 1000) * 10) / 10,
+    bestStreak: Number(raw?.bestStreak ?? raw?.streak ?? 0) || 0,
+    accuracyPct: dartsThrown > 0 ? Math.round((validHits / dartsThrown) * 1000) / 10 : 0,
+    breakdown,
+    throwLabels,
+  };
+}
+
 // ============================================
 // Component principal
 // ============================================
 
 const TrainingClock: React.FC<Props> = (props) => {
   useFullscreenPlay();
+  const onFinish = props.onFinish;
   // Récupération des profils depuis les props OU depuis le store global exposé par App
   const globalStore = (window as any).__appStore || {};
   const profiles: Profile[] = props.profiles ?? globalStore.profiles ?? [];
@@ -222,6 +305,7 @@ const TrainingClock: React.FC<Props> = (props) => {
   const [stageSDT, setStageSDT] = React.useState<StageSDT>(0);
   const [dartsThrown, setDartsThrown] = React.useState(0);
   const [hits, setHits] = React.useState(0);
+  const [targetsCompleted, setTargetsCompleted] = React.useState(0);
   const [bestStreak, setBestStreak] = React.useState(0);
   const [currentStreak, setCurrentStreak] = React.useState(0);
   const [startTime, setStartTime] = React.useState<number | null>(null);
@@ -237,6 +321,7 @@ const TrainingClock: React.FC<Props> = (props) => {
 
   // historique court des derniers lancers (affiché en bas)
   const [lastThrows, setLastThrows] = React.useState<string[]>([]);
+  const [throwLog, setThrowLog] = React.useState<string[]>([]);
 
   // dernier objectif validé + temps au moment du hit
   const [lastObjectiveLabel, setLastObjectiveLabel] =
@@ -262,13 +347,18 @@ const TrainingClock: React.FC<Props> = (props) => {
   }, []);
 
 
-  // Charger historique local au mount
+  // Charger et migrer l'historique local vers la clé commune utilisée par Home/Stats.
   React.useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const canonicalRaw = window.localStorage.getItem(STORAGE_KEY);
+      const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      const raw = canonicalRaw || legacyRaw;
       if (!raw) return;
-      const parsed = JSON.parse(raw) as ClockSession[];
-      setHistory(parsed);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized = parsed.map(normalizeClockSession).slice(0, 100);
+      setHistory(normalized);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
     } catch (e) {
       console.warn("Impossible de charger l'historique Tour de l'horloge", e);
     }
@@ -290,7 +380,7 @@ const TrainingClock: React.FC<Props> = (props) => {
   // sauver historique local
   function saveSessionToHistory(session: ClockSession) {
     try {
-      const next = [session, ...history].slice(0, 50);
+      const next = [session, ...history].slice(0, 100);
       setHistory(next);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch (e) {
@@ -374,6 +464,7 @@ const TrainingClock: React.FC<Props> = (props) => {
     setStageSDT(0);
     setDartsThrown(0);
     setHits(0);
+    setTargetsCompleted(0);
     setCurrentStreak(0);
     setBestStreak(0);
     setStartTime(null);
@@ -382,6 +473,7 @@ const TrainingClock: React.FC<Props> = (props) => {
     setSelectedMult(1);
     setIsMiss(false);
     setLastThrows([]);
+    setThrowLog([]);
     setLastObjectiveLabel(null);
     setLastObjectiveTimeMs(null);
   }
@@ -407,101 +499,182 @@ const TrainingClock: React.FC<Props> = (props) => {
     setStep("setup");
   }
 
-  function finishSessionForCurrentPlayer(completed: boolean) {
+  function finishSessionForCurrentPlayer(
+    completed: boolean,
+    values?: {
+      dartsThrown?: number;
+      hits?: number;
+      targetsCompleted?: number;
+      bestStreak?: number;
+      throwLabels?: string[];
+    }
+  ) {
     const player = currentPlayer;
     const now = Date.now();
     setEndTime(now);
 
-    const elapsed =
-      startTime != null ? Math.max(0, now - startTime) : 0;
+    const finalDarts = Number(values?.dartsThrown ?? dartsThrown) || 0;
+    const finalHits = Number(values?.hits ?? hits) || 0;
+    const finalTargets = Math.max(0, Math.min(TARGETS.length, Number(values?.targetsCompleted ?? targetsCompleted) || 0));
+    const finalBestStreak = Number(values?.bestStreak ?? bestStreak) || 0;
+    const finalThrowLabels = Array.isArray(values?.throwLabels) ? values!.throwLabels! : throwLog;
+    const elapsed = startTime != null ? Math.max(0, now - startTime) : 0;
+    const targetReachedValue = completed
+      ? "Bull"
+      : finalTargets > 0
+      ? String(TARGETS[Math.min(TARGETS.length - 1, finalTargets - 1)] === "BULL" ? "Bull" : TARGETS[Math.min(TARGETS.length - 1, finalTargets - 1)])
+      : "—";
+    const accuracyPct = finalDarts > 0 ? Math.round((finalHits / finalDarts) * 1000) / 10 : 0;
+    const breakdown = breakdownFromLabels(finalThrowLabels);
 
     const session: ClockSession = {
       id: generateId(),
       profileId: player?.id ?? null,
       profileName: player?.name ?? "Joueur solo",
       config,
-      startedAt:
-        startTime != null
-          ? new Date(startTime).toISOString()
-          : new Date().toISOString(),
+      startedAt: startTime != null ? new Date(startTime).toISOString() : new Date().toISOString(),
       endedAt: new Date(now).toISOString(),
-      dartsThrown,
-      hits,
+      dartsThrown: finalDarts,
+      attempts: finalDarts,
+      hits: finalHits,
+      validHits: finalHits,
+      targetsHit: finalTargets,
+      targetsCompleted: finalTargets,
+      targetReached: targetReachedValue,
       completed,
       elapsedMs: elapsed,
-      bestStreak,
+      totalTimeSec: Math.round((elapsed / 1000) * 10) / 10,
+      bestStreak: finalBestStreak,
+      accuracyPct,
+      breakdown,
+      throwLabels: finalThrowLabels,
     };
 
     setLastSession(session);
     saveSessionToHistory(session);
+
+    const playerStats = {
+      id: session.profileId,
+      profileId: session.profileId,
+      playerId: session.profileId,
+      name: session.profileName,
+      win: session.completed,
+      completed: session.completed,
+      score: session.targetsCompleted,
+      points: session.targetsCompleted,
+      dartsThrown: session.dartsThrown,
+      attempts: session.attempts,
+      hits: session.validHits,
+      validHits: session.validHits,
+      misses: Math.max(0, session.dartsThrown - session.validHits),
+      targetsHit: session.targetsHit,
+      targetsCompleted: session.targetsCompleted,
+      targetReached: session.targetReached,
+      elapsedMs: session.elapsedMs,
+      totalTimeSec: session.totalTimeSec,
+      bestStreak: session.bestStreak,
+      accuracyPct: session.accuracyPct,
+      breakdown: session.breakdown,
+      darts: {
+        thrown: session.dartsThrown,
+        hits: session.validHits,
+        misses: Math.max(0, session.dartsThrown - session.validHits),
+      },
+      special: {
+        mode: session.config.mode,
+        targetsCompleted: session.targetsCompleted,
+        targetReached: session.targetReached,
+        elapsedMs: session.elapsedMs,
+        bestStreak: session.bestStreak,
+        accuracyPct: session.accuracyPct,
+        breakdown: session.breakdown,
+      },
+    };
+
+    try {
+      onFinish?.({
+        id: `clock-${session.id}`,
+        kind: "clock",
+        mode: "tour_de_l_horloge",
+        createdAt: session.startedAt,
+        updatedAt: session.endedAt,
+        players: [{ id: session.profileId, name: session.profileName }],
+        winnerId: session.completed ? session.profileId : null,
+        summary: {
+          kind: "clock",
+          mode: "tour_de_l_horloge",
+          winnerId: session.completed ? session.profileId : null,
+          players: [playerStats],
+          perPlayer: [playerStats],
+          session,
+        },
+        payload: {
+          kind: "clock",
+          mode: "tour_de_l_horloge",
+          gameMode: "clock",
+          sport: "darts",
+          config: session.config,
+          players: [playerStats],
+          stats: { kind: "clock", mode: "tour_de_l_horloge", players: [playerStats] },
+          summary: { players: [playerStats], perPlayer: [playerStats], session },
+          session,
+        },
+      });
+    } catch (e) {
+      console.warn("Impossible d'ajouter la session Tour de l'horloge à l'historique global", e);
+    }
+
     setStep("summary");
     playSound(completed ? "win" : "lose");
   }
 
   function handleThrow() {
     if (step !== "play") return;
-
-    // limite de fléchettes (par joueur)
-    if (config.dartLimit != null && dartsThrown >= config.dartLimit) {
-      return;
-    }
+    if (config.dartLimit != null && dartsThrown >= config.dartLimit) return;
 
     const newDarts = dartsThrown + 1;
-    setDartsThrown(newDarts);
-
-    // enregistrer lancers pour la petite ligne d'historique
     const label = formatThrowLabel(isMiss, selectedValue, selectedMult);
-    setLastThrows((prev) => {
-      const next = [label, ...prev];
-      return next.slice(0, 14);
-    });
+    const nextThrowLog = [...throwLog, label];
+    setDartsThrown(newDarts);
+    setThrowLog(nextThrowLog);
+    setLastThrows((prev) => [label, ...prev].slice(0, 14));
+
+    let nextHits = hits;
+    let nextTargets = targetsCompleted;
+    let nextBestStreak = bestStreak;
+    let didComplete = false;
 
     if (isMiss || !selectedValue) {
       setCurrentStreak(0);
       playSound("miss");
     } else {
-      const res = isHit(
-        currentTarget,
-        config.mode,
-        selectedValue,
-        selectedMult,
-        stageSDT
-      );
+      const res = isHit(currentTarget, config.mode, selectedValue, selectedMult, stageSDT);
 
       if (res.hit) {
-        const newHits = hits + 1;
-        setHits(newHits);
+        nextHits = hits + 1;
+        setHits(nextHits);
 
         const newStreak = currentStreak + 1;
         setCurrentStreak(newStreak);
-        if (newStreak > bestStreak) {
-          setBestStreak(newStreak);
-        }
-
+        nextBestStreak = Math.max(bestStreak, newStreak);
+        setBestStreak(nextBestStreak);
         playSound("hit");
 
-        if (res.nextStage !== undefined) {
-          setStageSDT(res.nextStage);
-        }
+        if (res.nextStage !== undefined) setStageSDT(res.nextStage);
 
         if (res.advanceTarget) {
-          // mémoriser le dernier objectif validé + temps
+          nextTargets = Math.min(TARGETS.length, targetsCompleted + 1);
+          setTargetsCompleted(nextTargets);
+
           if (startTime != null) {
-            const elapsedAtObjective = Math.max(
-              0,
-              (endTime ?? Date.now()) - startTime
-            );
-            setLastObjectiveTimeMs(elapsedAtObjective);
-            setLastObjectiveLabel(
-              labelObjective(currentTarget, config, stageSDT)
-            );
+            setLastObjectiveTimeMs(Math.max(0, (endTime ?? Date.now()) - startTime));
+            setLastObjectiveLabel(labelObjective(currentTarget, config, stageSDT));
           }
 
           const nextIndex = currentTargetIndex + 1;
           if (nextIndex >= TARGETS.length) {
-            setCurrentTargetIndex(nextIndex - 1);
-            finishSessionForCurrentPlayer(true);
-            return;
+            setCurrentTargetIndex(TARGETS.length - 1);
+            didComplete = true;
           } else {
             setCurrentTargetIndex(nextIndex);
             setStageSDT(0);
@@ -513,13 +686,25 @@ const TrainingClock: React.FC<Props> = (props) => {
       }
     }
 
-    // si limite atteinte -> fin de session pour ce joueur
-    if (
-      config.dartLimit != null &&
-      newDarts >= config.dartLimit &&
-      step === "play"
-    ) {
-      finishSessionForCurrentPlayer(false);
+    if (didComplete) {
+      finishSessionForCurrentPlayer(true, {
+        dartsThrown: newDarts,
+        hits: nextHits,
+        targetsCompleted: nextTargets,
+        bestStreak: nextBestStreak,
+        throwLabels: nextThrowLog,
+      });
+      return;
+    }
+
+    if (config.dartLimit != null && newDarts >= config.dartLimit) {
+      finishSessionForCurrentPlayer(false, {
+        dartsThrown: newDarts,
+        hits: nextHits,
+        targetsCompleted: nextTargets,
+        bestStreak: nextBestStreak,
+        throwLabels: nextThrowLog,
+      });
     }
   }
 
@@ -689,6 +874,7 @@ const TrainingClock: React.FC<Props> = (props) => {
               stageSDT={stageSDT}
               dartsThrown={dartsThrown}
               hits={hits}
+              targetsCompleted={targetsCompleted}
               bestStreak={bestStreak}
               currentStreak={currentStreak}
               elapsedNow={elapsedNow}
@@ -866,6 +1052,13 @@ function SetupSection(props: SetupSectionProps) {
     onStart,
   } = props;
 
+  const modeMeta: Record<ClockMode, { title: string; short: string; icon: string; hint: string; tone: string }> = {
+    classic: { title: "Classique", short: "1 → 20 + Bull", icon: "◎", hint: "Tous les multiplicateurs valident la cible.", tone: "#ffc63a" },
+    doubles: { title: "Doubles", short: "D1 → D20 + DBull", icon: "×2", hint: "Seule la couronne double compte.", tone: "#42e58d" },
+    triples: { title: "Triples", short: "T1 → T20", icon: "×3", hint: "Seule la couronne triple compte.", tone: "#c77dff" },
+    sdt: { title: "S · D · T", short: "3 étapes / numéro", icon: "3×", hint: "Simple, Double puis Triple avant d’avancer.", tone: "#ff6fb5" },
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* ✅ Styles locaux (1 seule fois) : halo + scrollbar hidden */}
@@ -887,6 +1080,33 @@ function SetupSection(props: SetupSectionProps) {
           display: none;                 /* Chrome/Safari */
         }
       `}</style>
+
+      <div
+        style={{
+          borderRadius: 20,
+          padding: 12,
+          background: "linear-gradient(180deg,rgba(31,31,38,.98),rgba(9,9,13,.98))",
+          border: "1px solid rgba(255,198,58,.28)",
+          boxShadow: "0 10px 24px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.05)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: 1.4, color: "#ffc63a", fontWeight: 900 }}>CONFIGURATION GUIDÉE</div>
+            <div style={{ fontSize: 16, fontWeight: 1000, marginTop: 2 }}>Prépare ta session</div>
+          </div>
+          <div style={{ borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 900, border: "1px solid rgba(255,198,58,.45)", color: "#ffc63a", background: "rgba(255,198,58,.08)" }}>
+            {players.length || 0}/4 joueur{players.length > 1 ? "s" : ""}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6 }}>
+          {["1 · JOUEURS", "2 · VARIANTE", "3 · OPTIONS"].map((label, index) => (
+            <div key={label} style={{ borderRadius: 11, padding: "7px 5px", textAlign: "center", fontSize: 9, fontWeight: 900, color: index === 0 || players.length ? "#f6d680" : "rgba(255,255,255,.42)", border: `1px solid ${index === 0 || players.length ? "rgba(255,198,58,.32)" : "rgba(255,255,255,.08)"}`, background: index === 0 || players.length ? "rgba(255,198,58,.07)" : "rgba(255,255,255,.025)" }}>
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* JOUEURS */}
       <section
@@ -1074,40 +1294,47 @@ function SetupSection(props: SetupSectionProps) {
           boxShadow: "0 0 16px rgba(0,0,0,.7)",
         }}
       >
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
-          Mode de jeu
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "#ffc63a", color: "#111", fontSize: 11, fontWeight: 1000 }}>2</span>
+          <div>
+            <h2 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Variante de jeu</h2>
+            <div style={{ fontSize: 10, opacity: .65, marginTop: 1 }}>Choisis la difficulté et le type de segment attendu.</div>
+          </div>
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {(["classic", "doubles", "triples", "sdt"] as ClockMode[]).map(
-            (mode) => {
-              const active = config.mode === mode;
-
-              const baseBg =
-                "linear-gradient(180deg, rgba(32,32,38,.95), rgba(10,10,14,.98))";
-              const activeBg =
-                "linear-gradient(180deg, rgba(50,40,20,.95), rgba(20,14,6,.98))";
-
-              return (
-                <button
-                  key={mode}
-                  type="button"
-                  className="chip w-full justify-between"
-                  style={{
-                    justifyContent: "space-between",
-                    fontSize: 13,
-                    background: active ? activeBg : baseBg,
-                    color: "#f5f5f5",
-                    borderColor: active ? "#ffc63a" : "rgba(255,255,255,.18)",
-                    boxShadow: active ? "0 0 14px rgba(255,198,58,.45)" : "none",
-                  }}
-                  onClick={() => setConfig((c) => ({ ...c, mode }))}
-                >
-                  <span>{labelMode(mode)}</span>
-                </button>
-              );
-            }
-          )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+          {(["classic", "doubles", "triples", "sdt"] as ClockMode[]).map((mode) => {
+            const active = config.mode === mode;
+            const meta = modeMeta[mode];
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, mode }))}
+                style={{
+                  minHeight: 112,
+                  padding: 10,
+                  textAlign: "left",
+                  borderRadius: 16,
+                  border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.12)"}`,
+                  background: active
+                    ? `radial-gradient(circle at 0% 0%, ${meta.tone}33, transparent 60%), linear-gradient(180deg,#24242b,#0c0c11)`
+                    : "linear-gradient(180deg,rgba(31,31,37,.96),rgba(10,10,14,.98))",
+                  color: "#f7f7fa",
+                  boxShadow: active ? `0 0 18px ${meta.tone}44, inset 0 1px 0 rgba(255,255,255,.08)` : "inset 0 1px 0 rgba(255,255,255,.04)",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 22, lineHeight: 1, color: meta.tone, fontWeight: 1000, textShadow: `0 0 12px ${meta.tone}` }}>{meta.icon}</span>
+                  <span style={{ width: 18, height: 18, borderRadius: 999, border: `1px solid ${active ? meta.tone : "rgba(255,255,255,.2)"}`, display: "grid", placeItems: "center", color: meta.tone, fontSize: 10 }}>{active ? "✓" : ""}</span>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 13, fontWeight: 1000, color: active ? meta.tone : "#fff" }}>{meta.title}</div>
+                <div style={{ marginTop: 2, fontSize: 10, fontWeight: 800, opacity: .88 }}>{meta.short}</div>
+                <div style={{ marginTop: 5, fontSize: 9.5, lineHeight: 1.25, opacity: .58 }}>{meta.hint}</div>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -1123,9 +1350,13 @@ function SetupSection(props: SetupSectionProps) {
           boxShadow: "0 0 16px rgba(0,0,0,.7)",
         }}
       >
-        <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
-          Options
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", background: "#ffc63a", color: "#111", fontSize: 11, fontWeight: 1000 }}>3</span>
+          <div>
+            <h2 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Options de session</h2>
+            <div style={{ fontSize: 10, opacity: .65, marginTop: 1 }}>Ajuste le chrono et la limite de fléchettes.</div>
+          </div>
+        </div>
 
         {/* Timer */}
         <div
@@ -1183,28 +1414,59 @@ function SetupSection(props: SetupSectionProps) {
             </div>
           </div>
 
-          <select
-            className="chip"
-            style={{
-              fontSize: 12,
-              minWidth: 132,
-              background:
-                "linear-gradient(180deg, rgba(40,40,46,.95), rgba(18,18,24,.98))",
-              borderColor: "rgba(255,255,255,.22)",
-            }}
-            value={config.dartLimit ?? 0}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setConfig((c) => ({ ...c, dartLimit: v > 0 ? v : null }));
-            }}
-          >
-            <option value={0}>Illimité</option>
-            <option value={30}>30 fléchettes</option>
-            <option value={60}>60 fléchettes</option>
-            <option value={90}>90 fléchettes</option>
-          </select>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 190 }}>
+            {[0, 30, 60, 90, 120].map((limit) => {
+              const active = (config.dartLimit ?? 0) === limit;
+              return (
+                <button
+                  key={limit}
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, dartLimit: limit > 0 ? limit : null }))}
+                  style={{
+                    minWidth: 42,
+                    height: 30,
+                    borderRadius: 10,
+                    border: `1px solid ${active ? "#ffc63a" : "rgba(255,255,255,.14)"}`,
+                    background: active ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "linear-gradient(180deg,#303139,#17181e)",
+                    color: active ? "#111" : "#f5f5f5",
+                    fontSize: 10,
+                    fontWeight: 900,
+                    boxShadow: active ? "0 0 10px rgba(255,198,58,.45)" : "none",
+                  }}
+                >
+                  {limit === 0 ? "∞" : limit}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
+
+      <div
+        style={{
+          borderRadius: 18,
+          padding: 12,
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr 1fr",
+          gap: 8,
+          background: "linear-gradient(180deg,rgba(255,198,58,.11),rgba(20,14,6,.42))",
+          border: "1px solid rgba(255,198,58,.32)",
+          boxShadow: "0 0 18px rgba(255,198,58,.10)",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 8.5, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Joueur(s)</div>
+          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{players.map((p) => p.name).join(", ") || "—"}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 8.5, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Variante</div>
+          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, color: modeMeta[config.mode].tone }}>{modeMeta[config.mode].title}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 8.5, opacity: .58, textTransform: "uppercase", letterSpacing: .7 }}>Limite</div>
+          <div style={{ marginTop: 3, fontSize: 11, fontWeight: 900 }}>{config.dartLimit ? `${config.dartLimit} darts` : "Illimitée"}</div>
+        </div>
+      </div>
 
       {/* Bouton démarrer */}
       <button
@@ -1212,10 +1474,11 @@ function SetupSection(props: SetupSectionProps) {
         className="btn-primary"
         style={{
           width: "100%",
-          padding: "12px 0",
-          borderRadius: 16,
+          padding: "14px 0",
+          borderRadius: 18,
           fontSize: 15,
-          fontWeight: 700,
+          fontWeight: 1000,
+          letterSpacing: .6,
           marginTop: 2,
           background: players.length
             ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
@@ -1227,7 +1490,7 @@ function SetupSection(props: SetupSectionProps) {
         onClick={onStart}
         disabled={!players.length}
       >
-        Commencer la session
+        ▶ DÉMARRER LA SESSION
       </button>
 
       {/* Historique en bas */}
@@ -1258,6 +1521,7 @@ type PlaySectionProps = {
   stageSDT: StageSDT;
   dartsThrown: number;
   hits: number;
+  targetsCompleted: number;
   bestStreak: number;
   currentStreak: number;
   elapsedNow: number;
@@ -1290,6 +1554,7 @@ function PlaySection(props: PlaySectionProps) {
     stageSDT,
     dartsThrown,
     hits,
+    targetsCompleted,
     bestStreak,
     currentStreak,
     elapsedNow,
@@ -1333,6 +1598,10 @@ function PlaySection(props: PlaySectionProps) {
     lastObjectiveLabel != null && lastObjectiveTimeMs != null
       ? `${lastObjectiveLabel} à ${formatTime(lastObjectiveTimeMs)}`
       : "—";
+  const progressPct = Math.max(0, Math.min(100, (targetsCompleted / TARGETS.length) * 100));
+  const currentTargetPosition = Math.min(TARGETS.length - 1, targetsCompleted);
+  const nearbyTargets = TARGETS.map((target, index) => ({ target, index }))
+    .filter(({ index }) => Math.abs(index - currentTargetPosition) <= 2);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1550,6 +1819,55 @@ function PlaySection(props: PlaySectionProps) {
         </div>
       </section>
 
+      <section
+        style={{
+          borderRadius: 22,
+          padding: 14,
+          overflow: "hidden",
+          position: "relative",
+          background: `radial-gradient(circle at 50% 12%, ${objectiveKind === "double" ? "rgba(41,199,111,.24)" : objectiveKind === "triple" ? "rgba(177,106,223,.24)" : "rgba(255,198,58,.24)"}, transparent 56%), linear-gradient(180deg,#1d1d24,#08080c)`,
+          border: `1px solid ${objectiveKind === "double" ? "rgba(41,199,111,.46)" : objectiveKind === "triple" ? "rgba(177,106,223,.46)" : "rgba(255,198,58,.46)"}`,
+          boxShadow: `0 0 26px ${objectiveKind === "double" ? "rgba(41,199,111,.16)" : objectiveKind === "triple" ? "rgba(177,106,223,.16)" : "rgba(255,198,58,.16)"}`,
+        }}
+      >
+        <div style={{ textAlign: "center", fontSize: 9, letterSpacing: 1.6, fontWeight: 1000, opacity: .58 }}>OBJECTIF EN COURS</div>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+          <div
+            style={{
+              width: 118,
+              height: 118,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              position: "relative",
+              background: `conic-gradient(${objectiveKind === "double" ? "#29c76f" : objectiveKind === "triple" ? "#b16adf" : "#ffc63a"} ${progressPct}%, rgba(255,255,255,.08) 0)`,
+              boxShadow: objShadow,
+            }}
+          >
+            <div style={{ position: "absolute", inset: 7, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%,#2a2b33,#0a0a0e 72%)", border: "1px solid rgba(255,255,255,.12)" }} />
+            <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: objectiveLabel.length > 4 ? 30 : 42, lineHeight: 1, fontWeight: 1000, color: objectiveKind === "double" ? "#53ee9a" : objectiveKind === "triple" ? "#d49cff" : "#ffd86b", textShadow: objShadow }}>{objectiveLabel}</div>
+              <div style={{ marginTop: 5, fontSize: 9, fontWeight: 900, opacity: .62 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 12 }}>
+          {nearbyTargets.map(({ target, index }) => {
+            const active = index === currentTargetPosition;
+            const done = index < currentTargetPosition;
+            return (
+              <div key={String(target)} style={{ minWidth: active ? 54 : 34, height: active ? 32 : 27, borderRadius: 999, display: "grid", placeItems: "center", fontSize: active ? 12 : 10, fontWeight: 1000, border: `1px solid ${active ? "rgba(255,198,58,.72)" : done ? "rgba(81,232,147,.42)" : "rgba(255,255,255,.12)"}`, background: active ? "rgba(255,198,58,.14)" : done ? "rgba(81,232,147,.08)" : "rgba(255,255,255,.035)", color: active ? "#ffd86b" : done ? "#51e893" : "rgba(255,255,255,.55)" }}>
+                {done ? "✓" : target === "BULL" ? "BULL" : target}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)", marginTop: 12 }}>
+          <div style={{ width: `${progressPct}%`, height: "100%", borderRadius: 999, background: objectiveKind === "double" ? "linear-gradient(90deg,#14733d,#42e58d)" : objectiveKind === "triple" ? "linear-gradient(90deg,#63307c,#c77dff)" : "linear-gradient(90deg,#9b6900,#ffc63a)", boxShadow: objShadow, transition: "width .25s ease" }} />
+        </div>
+      </section>
+
       {/* Ligne d'historique de hits (sous le header, au-dessus du keypad) */}
       <section
         className="card"
@@ -1676,7 +1994,7 @@ function PlaySection(props: PlaySectionProps) {
           }}
           onClick={onThrow}
         >
-          Valider la fléchette
+          VALIDER · {formatThrowLabel(isMiss, selectedValue, selectedMult)}
         </button>
       </div>
     </div>
@@ -1756,7 +2074,10 @@ function SummarySection(props: SummarySectionProps) {
             ` / ${lastSession.config.dartLimit}`}
         </div>
         <div style={{ marginBottom: 2 }}>
-          Hits : <strong>{lastSession.hits}</strong>
+          Cibles validées : <strong>{lastSession.targetsCompleted} / {TARGETS.length}</strong>
+        </div>
+        <div style={{ marginBottom: 2 }}>
+          Fléchettes valides : <strong>{lastSession.validHits}</strong> · Précision : <strong>{lastSession.accuracyPct}%</strong>
         </div>
         <div style={{ marginBottom: 2 }}>
           Meilleure série :{" "}
@@ -2132,7 +2453,7 @@ const HistoryList: React.FC<HistoryListProps> = ({ history }) => {
           </div>
           <div style={{ textAlign: "right" }}>
             <div>
-              🎯 {s.hits} / {s.dartsThrown}
+              🎯 {s.targetsCompleted}/{TARGETS.length} · {s.accuracyPct}%
             </div>
             {s.config.showTimer && (
               <div style={{ opacity: 0.7 }}>

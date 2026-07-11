@@ -401,7 +401,7 @@ function loadClockAggForProfile(profileId: string): ClockAgg {
   if (typeof window === "undefined") return makeEmptyClockAgg();
 
   try {
-    const raw = window.localStorage.getItem(TRAINING_CLOCK_STATS_KEY);
+    const raw = window.localStorage.getItem(TRAINING_CLOCK_STATS_KEY) || window.localStorage.getItem("dc-training-clock-v1");
     if (!raw) return makeEmptyClockAgg();
 
     const parsed = JSON.parse(raw);
@@ -422,8 +422,8 @@ function loadClockAggForProfile(profileId: string): ClockAgg {
       }
 
       const targetsHit = Number(row.targetsHit ?? row.hits ?? 0) || 0;
-      const attempts = Number(row.attempts ?? row.throws ?? 0) || 0;
-      const timeSec = Number(row.totalTimeSec ?? row.timeSec ?? 0) || 0;
+      const attempts = Number(row.attempts ?? row.throws ?? row.dartsThrown ?? 0) || 0;
+      const timeSec = Number(row.totalTimeSec ?? row.timeSec ?? (Number(row.elapsedMs ?? 0) / 1000)) || 0;
       const streak = Number(row.bestStreak ?? row.streak ?? 0) || 0;
 
       agg.runs += 1;
