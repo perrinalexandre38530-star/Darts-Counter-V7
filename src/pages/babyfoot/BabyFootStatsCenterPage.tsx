@@ -798,7 +798,7 @@ function Board({ title, subtitle, rows, value, color = C.gold }: { title: string
   );
 }
 
-function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
+function RankingCard({ rows, modeLabel }: { rows: BabyFootPlayerAggregate[]; modeLabel: string }) {
   const stickyRankWidth = 48;
   const stickyAvatarWidth = 54;
 
@@ -833,7 +833,10 @@ function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
     <div style={cardStyle({ padding: 0, overflow: "hidden" })}>
       <div style={{ padding: "14px 14px 11px", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
         {sectionTitle("Classement général", C.gold)}
-        <div style={{ color: C.dim, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}>← défilement horizontal →</div>
+        <div style={{ display: "grid", justifyItems: "end", gap: 2 }}>
+          <div style={{ color: C.blue, fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap" }}>{modeLabel}</div>
+          <div style={{ color: C.dim, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}>← défilement horizontal →</div>
+        </div>
       </div>
 
       {rows.length ? (
@@ -1028,7 +1031,7 @@ function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFo
         </div>
       </div>
 
-      {active === "general" ? <RankingCard rows={leaderboards.topRanking} /> : null}
+      {active === "general" ? <RankingCard rows={leaderboards.topRanking} modeLabel={modeLabel} /> : null}
       {active === "ratio" ? <Board title="Top ratio" subtitle="BP/BC" rows={leaderboards.topRatio} value={(row) => formatBabyFootRatio(row.ratio)} color={C.gold} /> : null}
       {active === "win" ? <Board title="Top win%" subtitle="victoires" rows={leaderboards.topWinRate} value={(row) => formatBabyFootPct01(row.winRate)} color={C.green} /> : null}
       {active === "attack" ? <Board title="Attaque" subtitle="BP/match" rows={leaderboards.topGoalsPerMatch} value={(row) => formatOne(row.avgGoalsFor)} color={C.blue} /> : null}
@@ -1212,7 +1215,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const localProfilesBase = React.useMemo(() => profiles.filter((profile: any) => idOf(profile) !== activeProfileId), [profiles, activeProfileId]);
 
   const requestedMode = String(params?.mode || "").toLowerCase();
-  const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : "all";
+  const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : rankingOnly ? "1v1" : "all";
   const requestedPeriod = String(params?.period || params?.periodKey || "").toUpperCase();
   const initialPeriod: PeriodKey = requestedPeriod === "J" || requestedPeriod === "S" || requestedPeriod === "M" || requestedPeriod === "A" || requestedPeriod === "ARV" ? requestedPeriod : "ARV";
   const [period, setPeriod] = React.useState<PeriodKey>(initialPeriod);
@@ -1223,8 +1226,10 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const [detailsSubTab, setDetailsSubTab] = React.useState<DetailsSubTab>(initialMode === "2v2" || initialMode === "2v1" ? "team" : "solo");
   const [rankingView, setRankingView] = React.useState<RankingView>("general");
   const [profileIndex, setProfileIndex] = React.useState(0);
-  const [filtersOpen, setFiltersOpen] = React.useState(Boolean(params?.showFilters));
+  const [filtersOpen, setFiltersOpen] = React.useState(rankingOnly || Boolean(params?.showFilters));
   const [historyRows, setHistoryRows] = React.useState<any[]>(() => Array.isArray((store as any)?.history) ? (store as any).history : []);
+  const rankingModes = React.useMemo(() => rankingOnly ? MODES.filter((item) => item.key !== "all") : MODES, [rankingOnly]);
+
 
   React.useEffect(() => {
     let alive = true;
@@ -1276,6 +1281,10 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const selectableProfiles = rankingOnly ? [] : scope === "locals" ? localProfiles : active ? [active] : profiles;
 
   React.useEffect(() => setProfileIndex(0), [scope, activeProfileId, rankingOnly, localProfiles.length]);
+  React.useEffect(() => {
+    if (rankingOnly && mode === "all") setMode("1v1");
+  }, [rankingOnly, mode]);
+
 
   const profile = selectableProfiles[clampIndex(profileIndex, selectableProfiles.length)] || null;
   const profileId = idOf(profile);
@@ -1395,8 +1404,13 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
             {PERIODS.map((item) => <Pill key={item.key} active={period === item.key} onClick={() => setPeriod(item.key)}>{item.label}</Pill>)}
           </div>
           <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", overflow: "hidden" }}>
-            {MODES.map((item) => <Pill key={item.key} active={mode === item.key} onClick={() => setMode(item.key)} color={C.blue}>{item.label}</Pill>)}
+            {rankingModes.map((item) => <Pill key={item.key} active={mode === item.key} onClick={() => setMode(item.key)} color={C.blue}>{item.label}</Pill>)}
           </div>
+          {rankingOnly ? (
+            <div style={{ color: C.dim, fontSize: 10, fontWeight: 850, textAlign: "center", lineHeight: 1.35 }}>
+              Classements individuels séparés par mode pour ne pas mélanger les statistiques <span style={{ color: C.blue, fontWeight: 1000 }}>1V1</span>, <span style={{ color: C.blue, fontWeight: 1000 }}>2V2</span> et <span style={{ color: C.blue, fontWeight: 1000 }}>2V1</span>.
+            </div>
+          ) : null}
         </div> : null}
 
         {!rankingOnly && (
