@@ -4002,7 +4002,7 @@ function AvatarGalleryPanel({
             );
           })}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
