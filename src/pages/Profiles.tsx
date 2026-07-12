@@ -1426,6 +1426,7 @@ export default function Profiles({
       ? "avatarGallery"
       : "menu"
   );
+  const profilesPageRef = React.useRef<HTMLDivElement | null>(null);
   const profilesDiagPrevRef = React.useRef<any>(null);
 
   const refreshProfileOnlineFriends = React.useCallback(async () => {
@@ -1986,6 +1987,44 @@ export default function Profiles({
     profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
     setView(next);
   }, [view]);
+
+  // La vue PROFILS LOCAUX doit toujours s'ouvrir en haut, même lorsque le
+  // conteneur principal (ou un parent applicatif) conserve son ancien scroll.
+  React.useLayoutEffect(() => {
+    if (view !== "locals" || typeof window === "undefined") return;
+
+    const resetProfilesScroll = () => {
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      } catch {
+        window.scrollTo(0, 0);
+      }
+
+      try {
+        document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      } catch {}
+
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      let node: HTMLElement | null = profilesPageRef.current;
+      while (node) {
+        node.scrollTop = 0;
+        node.scrollLeft = 0;
+        node = node.parentElement;
+      }
+    };
+
+    resetProfilesScroll();
+    const raf = window.requestAnimationFrame(resetProfilesScroll);
+    const delayed = window.setTimeout(resetProfilesScroll, 180);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(delayed);
+    };
+  }, [view]);
+
   React.useEffect(() => {
     if (view === "menu") return;
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
@@ -3286,6 +3325,7 @@ React.useEffect(() => {
       />
 
       <div
+        ref={profilesPageRef}
         className="container"
         style={{
           width: "100%",
@@ -3369,7 +3409,7 @@ React.useEffect(() => {
                   width: "100%",
                   maxWidth: "100%",
                   boxSizing: "border-box",
-                  marginBottom: 10,
+                  marginBottom: view === "locals" ? 2 : 10,
                   position: "relative",
                   minHeight: view === "dartsets" || view === "locals" ? 92 : 40,
                   display: "flex",
@@ -3534,7 +3574,7 @@ React.useEffect(() => {
             )}
 
             {view === "locals" && (
-              <Card>
+              <Card compact>
                 <MemoLocalProfilesRefonte
                   profiles={stableProfiles as any}
                   activeProfileId={activeProfileId}
@@ -4304,9 +4344,11 @@ function firstStringChunk(value: any, len = 80): string {
 function Card({
   title,
   children,
+  compact = false,
 }: {
   title?: string;
   children: React.ReactNode;
+  compact?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -4319,7 +4361,8 @@ function Card({
         width: "100%",
         maxWidth: "100%",
         boxSizing: "border-box",
-        padding: "clamp(8px, 3vw, 16px)",
+        padding: compact ? "6px" : "clamp(8px, 3vw, 16px)",
+        marginTop: compact ? -4 : 0,
         marginBottom: 14,
         borderRadius: 18,
         overflow: "hidden",
@@ -7036,7 +7079,7 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
   const STAR = 12;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
       <AvatarChoiceModal
         open={avatarPickerOpen}
         title={t("profiles.avatarPicker.title", "Choisir un avatar")}
@@ -7144,8 +7187,8 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
         ) : !listDetailOpen ? (
           <div
             style={{
-              marginTop: 2,
-              padding: 11,
+              marginTop: 0,
+              padding: 10,
               borderRadius: 18,
               border: `1px solid ${theme.borderSoft}`,
               background: "radial-gradient(circle at top, rgba(255,255,255,.075), transparent 64%)",
@@ -7157,15 +7200,40 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 10,
-                marginBottom: 11,
+                marginBottom: 8,
               }}
             >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: primary, fontWeight: 950, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
-                  Profils locaux ({locals.length})
+              <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <div
+                  style={{
+                    color: primary,
+                    fontWeight: 950,
+                    fontSize: 11.5,
+                    letterSpacing: .7,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {t("profiles.locals.countLabel", "Nombre de Profils")}
                 </div>
-                <div className="subtitle" style={{ fontSize: 10.5, marginTop: 2 }}>
-                  9 profils par page · touche un profil pour ouvrir sa fiche
+                <div
+                  aria-label={`${locals.length} profils locaux`}
+                  style={{
+                    minWidth: 36,
+                    height: 27,
+                    padding: "0 9px",
+                    borderRadius: 10,
+                    border: `1px solid ${primary}`,
+                    background: `linear-gradient(180deg, ${primary}33, rgba(0,0,0,.28))`,
+                    color: theme.textMain,
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 13,
+                    fontWeight: 950,
+                    lineHeight: 1,
+                    boxShadow: `0 0 10px ${primary}55, inset 0 0 10px rgba(255,255,255,.04)`,
+                  }}
+                >
+                  {locals.length}
                 </div>
               </div>
               <div style={{ color: theme.textSoft, fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap" }}>
