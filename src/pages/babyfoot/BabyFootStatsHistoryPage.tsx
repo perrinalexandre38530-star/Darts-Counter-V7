@@ -284,11 +284,38 @@ function getMode(payload: any): "1v1" | "2v2" | "2v1" | "unknown" {
 function getTeams(payload: any) {
   const teamA = payload?.teamA ?? payload?.summary?.teamA ?? "TEAM A";
   const teamB = payload?.teamB ?? payload?.summary?.teamB ?? "TEAM B";
-  const scoreA = safeNum(payload?.scoreA ?? payload?.summary?.scoreA, 0);
-  const scoreB = safeNum(payload?.scoreB ?? payload?.summary?.scoreB, 0);
+  const displayScore = getDisplayScorePair(payload);
+  const scoreA = displayScore.scoreA;
+  const scoreB = displayScore.scoreB;
   const teamAIds = Array.isArray(payload?.teamAProfileIds) ? payload.teamAProfileIds : [];
   const teamBIds = Array.isArray(payload?.teamBProfileIds) ? payload.teamBProfileIds : [];
   return { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds };
+}
+
+function parseBabyFootScoreLine(line: any): { scoreA: number; scoreB: number } | null {
+  const text = String(line ?? "").trim();
+  if (!text) return null;
+  const colon = Array.from(text.matchAll(/:\s*(-?\d+)/g)).map((m) => Number(m[1]));
+  if (colon.length >= 2 && Number.isFinite(colon[0]) && Number.isFinite(colon[1])) return { scoreA: Math.max(0, colon[0]), scoreB: Math.max(0, colon[1]) };
+  const dash = text.match(/(-?\d+)\s*(?:—|-|–|\/)\s*(-?\d+)/);
+  if (dash) {
+    const a = Number(dash[1]);
+    const b = Number(dash[2]);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { scoreA: Math.max(0, a), scoreB: Math.max(0, b) };
+  }
+  return null;
+}
+
+function getDisplayScorePair(payload: any) {
+  const fromLine = parseBabyFootScoreLine(payload?.summary?.scoreLine ?? payload?.summary?.scoreline ?? payload?.scoreLine ?? payload?.scoreline);
+  if (fromLine) return fromLine;
+  const stA = payload?.stats?.teamA?.score ?? payload?.stats?.teamA?.sc ?? payload?.stats?.teama?.score ?? payload?.stats?.teama?.sc;
+  const stB = payload?.stats?.teamB?.score ?? payload?.stats?.teamB?.sc ?? payload?.stats?.teamb?.score ?? payload?.stats?.teamb?.sc;
+  if (Number.isFinite(Number(stA)) && Number.isFinite(Number(stB))) return { scoreA: Math.max(0, Number(stA)), scoreB: Math.max(0, Number(stB)) };
+  return {
+    scoreA: safeNum(payload?.summary?.scoreA ?? payload?.summary?.scorea ?? payload?.scoreA ?? payload?.scorea, 0),
+    scoreB: safeNum(payload?.summary?.scoreB ?? payload?.summary?.scoreb ?? payload?.scoreB ?? payload?.scoreb, 0),
+  };
 }
 
 function getWinnerTeam(payload: any): TeamId | null {

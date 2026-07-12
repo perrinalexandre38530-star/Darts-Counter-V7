@@ -78,6 +78,32 @@ function getSummary(match: AnyMatch | null, payload: any) {
   };
 }
 
+function parseBabyFootScoreLine(line: any): { scoreA: number; scoreB: number } | null {
+  const text = String(line ?? "").trim();
+  if (!text) return null;
+  const colon = Array.from(text.matchAll(/:\s*(-?\d+)/g)).map((m) => Number(m[1]));
+  if (colon.length >= 2 && Number.isFinite(colon[0]) && Number.isFinite(colon[1])) return { scoreA: Math.max(0, colon[0]), scoreB: Math.max(0, colon[1]) };
+  const dash = text.match(/(-?\d+)\s*(?:—|-|–|\/)\s*(-?\d+)/);
+  if (dash) {
+    const a = Number(dash[1]);
+    const b = Number(dash[2]);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { scoreA: Math.max(0, a), scoreB: Math.max(0, b) };
+  }
+  return null;
+}
+
+function getBabyFootDisplayScorePair(summary: any, payload: any, match: any, params: any) {
+  const fromLine = parseBabyFootScoreLine(summary?.scoreLine ?? summary?.scoreline ?? payload?.scoreLine ?? payload?.scoreline ?? match?.summary?.scoreLine ?? match?.summary?.scoreline);
+  if (fromLine) return fromLine;
+  const stA = payload?.stats?.teamA?.score ?? payload?.stats?.teamA?.sc ?? payload?.stats?.teama?.score ?? payload?.stats?.teama?.sc;
+  const stB = payload?.stats?.teamB?.score ?? payload?.stats?.teamB?.sc ?? payload?.stats?.teamb?.score ?? payload?.stats?.teamb?.sc;
+  if (Number.isFinite(Number(stA)) && Number.isFinite(Number(stB))) return { scoreA: Math.max(0, Number(stA)), scoreB: Math.max(0, Number(stB)) };
+  return {
+    scoreA: n(summary?.scoreA ?? summary?.scorea ?? payload?.scoreA ?? payload?.scorea ?? match?.scoreA ?? match?.scorea ?? params?.scoreA),
+    scoreB: n(summary?.scoreB ?? summary?.scoreb ?? payload?.scoreB ?? payload?.scoreb ?? match?.scoreB ?? match?.scoreb ?? params?.scoreB),
+  };
+}
+
 function fmtDate(ts: any) {
   const d = new Date(n(ts, Date.now()));
   return d.toLocaleString("fr-FR");
@@ -285,8 +311,9 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const summary = getSummary(resolvedMatch, resolvedMatch);
   const players = allPlayers(match, payload);
   const events = getEventsFrom(payload, summary, match);
-  const scoreA = n(summary?.scoreA ?? payload?.scoreA ?? match?.scoreA ?? params?.scoreA);
-  const scoreB = n(summary?.scoreB ?? payload?.scoreB ?? match?.scoreB ?? params?.scoreB);
+  const displayScore = getBabyFootDisplayScorePair(summary, payload, match, params);
+  const scoreA = displayScore.scoreA;
+  const scoreB = displayScore.scoreB;
   const teamA = String(summary?.teamA || payload?.teamA || match?.teamA || params?.teamA || "Équipe A");
   const teamB = String(summary?.teamB || payload?.teamB || match?.teamB || params?.teamB || "Équipe B");
   const winnerTeam = String(summary?.winnerTeam || payload?.winnerTeam || match?.winnerTeam || (scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "D"));
@@ -523,6 +550,9 @@ function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durat
     { key: "money", label: "Money time", short: "60-80%", from: .6, to: .8, color: "#ffb35c" },
     { key: "finish", label: "Finish", short: "80-100%", from: .8, to: 1, color: "#b78cff" },
   ];
+  const chartPadPct = 4;
+  const chartScalePct = 100 - chartPadPct * 2;
+  const xPct = (ratio: number) => chartPadPct + Math.max(0, Math.min(1, ratio)) * chartScalePct;
   const periodFor = (ratio: number) => periods.find((p: any) => ratio >= p.from && ratio <= p.to) || periods[periods.length - 1];
   const periodCounts = periods.map((period: any) => ({
     ...period,
@@ -569,18 +599,18 @@ function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durat
         <div style={{ position: "relative", height: chartH, overflow: "hidden", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), transparent 30%, transparent 70%, rgba(0,0,0,.18))" }} />
           {periods.map((period: any) => (
-            <div key={period.key} style={{ position: "absolute", left: `${period.from * 100}%`, width: `${(period.to - period.from) * 100}%`, top: 0, bottom: 0, background: `linear-gradient(180deg, ${period.color}12, transparent 42%, transparent 58%, ${period.color}10)`, borderLeft: `1px solid ${period.color}22` }} />
+            <div key={period.key} style={{ position: "absolute", left: `${xPct(period.from)}%`, width: `${Math.max(0, (period.to - period.from) * chartScalePct)}%`, top: 0, bottom: 0, background: `linear-gradient(180deg, ${period.color}12, transparent 42%, transparent 58%, ${period.color}10)`, borderLeft: `1px solid ${period.color}22` }} />
           ))}
           <div style={{ position: "absolute", left: 12, right: 12, top: baseY, height: 2, background: "linear-gradient(90deg, rgba(69,184,255,.65), rgba(255,255,255,.45), rgba(255,89,176,.65))", boxShadow: `0 0 10px ${theme.primary}33` }} />
           {ticks.map((tick: any) => (
             <React.Fragment key={tick.label}>
-              <div style={{ position: "absolute", top: 18, bottom: 24, left: `${tick.ratio * 100}%`, width: 1, background: "rgba(255,255,255,.08)" }} />
-              <div style={{ position: "absolute", bottom: 7, left: `${tick.ratio * 100}%`, transform: "translateX(-50%)", fontSize: 10, fontWeight: 900, color: theme.textSoft }}>{tick.label}</div>
+              <div style={{ position: "absolute", top: 18, bottom: 24, left: `${xPct(tick.ratio)}%`, width: 1, background: `${periodFor(tick.ratio).color}33` }} />
+              <div style={{ position: "absolute", bottom: 7, left: `${xPct(tick.ratio)}%`, transform: "translateX(-50%)", fontSize: 10, fontWeight: 1000, color: periodFor(tick.ratio).color, textShadow: `0 0 8px ${periodFor(tick.ratio).color}66` }}>{tick.label}</div>
             </React.Fragment>
           ))}
           {entries.map((row: any, index: number) => {
             const ratio = Math.max(0, Math.min(1, n(row.elapsedMs, 0) / totalMs));
-            const x = ratio * 100;
+            const x = xPct(ratio);
             const isPenalty = row.type === "demi" && row.penalty > 0;
             const team = row.team === "B" ? "B" : "A";
             const sideAccent = isPenalty ? "#ffd76a" : team === "B" ? "#ff59b0" : theme.primary;

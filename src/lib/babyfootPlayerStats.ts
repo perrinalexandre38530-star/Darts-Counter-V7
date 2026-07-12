@@ -88,6 +88,33 @@ function compactRootOf(...values: any[]): Record<string, any> {
   return {};
 }
 
+function parseBabyFootScoreLineForResolve(line: any): { scoreA: number; scoreB: number } | null {
+  const text = String(line ?? "").trim();
+  if (!text) return null;
+  const colon = Array.from(text.matchAll(/:\s*(-?\d+)/g)).map((m) => Number(m[1]));
+  if (colon.length >= 2 && Number.isFinite(colon[0]) && Number.isFinite(colon[1])) return { scoreA: Math.max(0, colon[0]), scoreB: Math.max(0, colon[1]) };
+  const dash = text.match(/(-?\d+)\s*(?:—|-|–|\/)\s*(-?\d+)/);
+  if (dash) {
+    const a = Number(dash[1]);
+    const b = Number(dash[2]);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { scoreA: Math.max(0, a), scoreB: Math.max(0, b) };
+  }
+  return null;
+}
+
+function preferredScorePairForResolve(payload: any, p0: any, outer: any, summary: any): { scoreA: number; scoreB: number } | null {
+  const linePair =
+    parseBabyFootScoreLineForResolve(summary?.scoreLine ?? summary?.scoreline) ||
+    parseBabyFootScoreLineForResolve(payload?.scoreLine ?? payload?.scoreline) ||
+    parseBabyFootScoreLineForResolve(p0?.scoreLine ?? p0?.scoreline) ||
+    parseBabyFootScoreLineForResolve(outer?.scoreLine ?? outer?.scoreline);
+  if (linePair) return linePair;
+  const stA = payload?.stats?.teamA?.score ?? payload?.stats?.teamA?.sc ?? payload?.stats?.teama?.score ?? payload?.stats?.teama?.sc ?? summary?.stats?.teamA?.score ?? summary?.stats?.teama?.sc;
+  const stB = payload?.stats?.teamB?.score ?? payload?.stats?.teamB?.sc ?? payload?.stats?.teamb?.score ?? payload?.stats?.teamb?.sc ?? summary?.stats?.teamB?.score ?? summary?.stats?.teamb?.sc;
+  if (Number.isFinite(Number(stA)) && Number.isFinite(Number(stB))) return { scoreA: Math.max(0, Number(stA)), scoreB: Math.max(0, Number(stB)) };
+  return null;
+}
+
 function compactValue(source: any, camel: string, compact: string, fallback?: any): any {
   if (source && source[camel] !== undefined) return source[camel];
   if (source && source[compact] !== undefined) return source[compact];
@@ -282,6 +309,7 @@ export function resolveBabyFootRecord(record: any): any {
     pissetteRule: payload.pissetteRule ?? p0.pissetteRule ?? outer.pissetteRule ?? summary.pissetteRule,
   });
   const playerStats = mergePlayerStatsSources(rawPlayerStats, eventPlayerStats);
+  const preferredScore = preferredScorePairForResolve(payload, p0, outer, summary);
 
   return {
     ...outer,
@@ -296,8 +324,8 @@ export function resolveBabyFootRecord(record: any): any {
     teamBProfileIds: teamBIds,
     teamA: payload.teamA ?? p0.teamA ?? outer.teamA ?? summary.teamA,
     teamB: payload.teamB ?? p0.teamB ?? outer.teamB ?? summary.teamB,
-    scoreA: payload.scoreA ?? p0.scoreA ?? outer.scoreA ?? summary.scoreA,
-    scoreB: payload.scoreB ?? p0.scoreB ?? outer.scoreB ?? summary.scoreB,
+    scoreA: preferredScore?.scoreA ?? payload.scoreA ?? p0.scoreA ?? outer.scoreA ?? summary.scoreA,
+    scoreB: preferredScore?.scoreB ?? payload.scoreB ?? p0.scoreB ?? outer.scoreB ?? summary.scoreB,
     mode: payload.mode ?? payload?.game?.mode ?? p0.mode ?? p0?.game?.mode ?? outer.mode ?? outer?.game?.mode ?? summary.mode ?? summary?.game?.mode ?? compact?.o?.mode ?? compact?.m,
     durationMs: payload.durationMs ?? p0.durationMs ?? outer.durationMs ?? summary.durationMs,
     specialStats: payload.specialStats ?? p0.specialStats ?? outer.specialStats ?? summary.specialStats,

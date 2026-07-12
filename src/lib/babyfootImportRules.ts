@@ -23,6 +23,78 @@ function str(value: any, fallback = ""): string {
   return value == null ? fallback : String(value);
 }
 
+function firstObj(...values: any[]): Record<string, any> | null {
+  for (const value of values) {
+    if (isObj(value)) return value;
+  }
+  return null;
+}
+
+function compactRootOf(record: any): Record<string, any> | null {
+  const root = getPayloadRoot(record);
+  const candidates = [
+    record?.compact,
+    record?.payload?.compact,
+    root?.compact,
+    root?.payload?.compact,
+    record?.payload?.payload?.compact,
+  ];
+  for (const value of candidates) {
+    if (isObj(value) && value.__compact === "match.v1") return value;
+  }
+  return null;
+}
+
+function parseScorePairFromLine(line: any): { scoreA: number; scoreB: number } | null {
+  const text = str(line).trim();
+  if (!text) return null;
+  const colon = Array.from(text.matchAll(/:\s*(-?\d+)/g)).map((m) => Number(m[1]));
+  if (colon.length >= 2 && Number.isFinite(colon[0]) && Number.isFinite(colon[1])) {
+    return { scoreA: Math.max(0, colon[0]), scoreB: Math.max(0, colon[1]) };
+  }
+  const aroundDash = text.match(/(-?\d+)\s*(?:—|-|–|\/)\s*(-?\d+)/);
+  if (aroundDash) {
+    const a = Number(aroundDash[1]);
+    const b = Number(aroundDash[2]);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { scoreA: Math.max(0, a), scoreB: Math.max(0, b) };
+  }
+  const nums = (text.match(/-?\d+/g) || []).map(Number).filter(Number.isFinite);
+  if (nums.length >= 2) return { scoreA: Math.max(0, nums[0]), scoreB: Math.max(0, nums[1]) };
+  return null;
+}
+
+function compactScorePair(record: any): { scoreA: number; scoreB: number } | null {
+  const compact = compactRootOf(record);
+  const state = firstObj(compact?.d?.s, compact?.d?.summary, compact?.summary);
+  if (!state) return null;
+  const a = state.scoreA ?? state.scorea ?? state.stats?.teamA?.score ?? state.stats?.teamA?.sc ?? state.stats?.teama?.score ?? state.stats?.teama?.sc;
+  const b = state.scoreB ?? state.scoreb ?? state.stats?.teamB?.score ?? state.stats?.teamB?.sc ?? state.stats?.teamb?.score ?? state.stats?.teamb?.sc;
+  const scoreA = Number(a);
+  const scoreB = Number(b);
+  if (Number.isFinite(scoreA) && Number.isFinite(scoreB)) {
+    return { scoreA: Math.max(0, scoreA), scoreB: Math.max(0, scoreB) };
+  }
+  return parseScorePairFromLine(state.scoreLine ?? state.scoreline);
+}
+
+function scoreLinePair(record: any): { scoreA: number; scoreB: number } | null {
+  const root = getPayloadRoot(record);
+  const summary = getSummary(root);
+  return (
+    parseScorePairFromLine(record?.summary?.scoreLine ?? record?.summary?.scoreline) ||
+    parseScorePairFromLine(summary?.scoreLine ?? summary?.scoreline) ||
+    parseScorePairFromLine(root?.scoreLine ?? root?.scoreline) ||
+    parseScorePairFromLine(record?.scoreLine ?? record?.scoreline)
+  );
+}
+
+function preferredImportedScorePair(record: any): { scoreA: number; scoreB: number } | null {
+  // Pour les imports corrigés, le compact et la scoreLine sont les sources les
+  // plus fiables : certains anciens exports gardent encore payload.scoreA=7
+  // alors que le score validé est déjà 5-1 dans compact/scoreLine.
+  return compactScorePair(record) || scoreLinePair(record);
+}
+
 function cloneJson<T>(value: T): T {
   try {
     return JSON.parse(JSON.stringify(value));
@@ -88,41 +160,30 @@ function setScorePair(record: any, scoreA: number, scoreB: number) {
   const topSummary = isObj(record?.summary) ? record.summary : null;
   const summary = isObj(root?.summary) ? root.summary : null;
 
+  const teamA = str(summary?.teamA ?? summary?.teama ?? root?.teamA ?? root?.teama ?? topSummary?.teamA ?? topSummary?.teama ?? record?.teamA ?? "Équipe A");
+  const teamB = str(summary?.teamB ?? summary?.teamb ?? root?.teamB ?? root?.teamb ?? topSummary?.teamB ?? topSummary?.teamb ?? record?.teamB ?? "Équipe B");
+  const scoreLine = `${teamA} : ${scoreA} • ${teamB} : ${scoreB}`;
+
   const apply = (obj: any) => {
     if (!isObj(obj)) return;
     obj.scoreA = scoreA;
     obj.scoreB = scoreB;
     obj.scorea = scoreA;
     obj.scoreb = scoreB;
+    obj.scoreLine = scoreLine;
+    obj.scoreline = scoreLine;
   };
   apply(record);
   apply(root);
   apply(summary);
-
-  const teamA = str(summary?.teamA ?? summary?.teama ?? root?.teamA ?? root?.teama ?? record?.teamA ?? "Équipe A");
-  const teamB = str(summary?.teamB ?? summary?.teamb ?? root?.teamB ?? root?.teamb ?? record?.teamB ?? "Équipe B");
-  const scoreLine = `${teamA} : ${scoreA} • ${teamB} : ${scoreB}`;
-
-  if (topSummary) {
-    topSummary.scoreLine = scoreLine;
-    topSummary.scoreline = scoreLine;
-  }
-  if (summary) {
-    summary.scoreLine = scoreLine;
-    summary.scoreline = scoreLine;
-  }
-  if (isObj(root)) {
-    root.scoreLine = scoreLine;
-    root.scoreline = scoreLine;
-  }
-  if (isObj(record)) {
-    record.scoreLine = scoreLine;
-    record.scoreline = scoreLine;
-  }
+  apply(topSummary);
+  apply(root?.payload);
+  apply(root?.payload?.summary);
+  apply(record?.payload?.summary);
 
   const winnerTeam = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
   const winnerName = winnerTeam === "A" ? teamA : winnerTeam === "B" ? teamB : "Match nul";
-  for (const obj of [record, root, summary, topSummary]) {
+  for (const obj of [record, root, summary, topSummary, root?.payload, root?.payload?.summary, record?.payload?.summary]) {
     if (!isObj(obj)) continue;
     obj.winnerTeam = winnerTeam;
     obj.winnerteam = winnerTeam;
@@ -132,21 +193,46 @@ function setScorePair(record: any, scoreA: number, scoreB: number) {
     obj.teamwinnername = winnerName;
   }
 
-  const maybeStats = [root?.stats, summary?.stats, record?.stats, topSummary?.stats].filter(isObj);
-  for (const stats of maybeStats) {
+  const updateStatsObj = (stats: any) => {
+    if (!isObj(stats)) return;
     const a = isObj(stats.teamA) ? stats.teamA : isObj(stats.teama) ? stats.teama : null;
     const b = isObj(stats.teamB) ? stats.teamB : isObj(stats.teamb) ? stats.teamb : null;
     if (a && b) {
       a.score = scoreA;
+      a.sc = scoreA;
       b.score = scoreB;
+      b.sc = scoreB;
       a.goalsConceded = scoreB;
+      a.goalsconceded = scoreB;
       b.goalsConceded = scoreA;
+      b.goalsconceded = scoreA;
       a.goalDiff = scoreA - scoreB;
+      a.goaldiff = scoreA - scoreB;
       b.goalDiff = scoreB - scoreA;
-      const legs = Math.max(1, num(stats.totalLegs, 1));
+      b.goaldiff = scoreB - scoreA;
+      const legs = Math.max(1, num(stats.totalLegs ?? stats.totallegs, 1));
       a.avgGoalsPerLeg = Math.round((scoreA / legs) * 10) / 10;
+      a.avggoalsperleg = a.avgGoalsPerLeg;
       b.avgGoalsPerLeg = Math.round((scoreB / legs) * 10) / 10;
+      b.avggoalsperleg = b.avgGoalsPerLeg;
       stats.totalGoals = scoreA + scoreB;
+      stats.totalgoals = scoreA + scoreB;
+    }
+  };
+  for (const stats of [root?.stats, summary?.stats, record?.stats, topSummary?.stats, root?.payload?.stats, root?.payload?.summary?.stats]) updateStatsObj(stats);
+
+  const compactCandidates = [record?.compact, record?.payload?.compact, root?.compact, root?.payload?.compact, record?.payload?.payload?.compact];
+  for (const compact of compactCandidates) {
+    if (!isObj(compact) || compact.__compact !== "match.v1") continue;
+    const state = compact?.d?.s;
+    if (isObj(state)) {
+      state.scoreA = scoreA;
+      state.scoreB = scoreB;
+      state.scorea = scoreA;
+      state.scoreb = scoreB;
+      state.scoreLine = scoreLine;
+      state.scoreline = scoreLine;
+      updateStatsObj(state.stats);
     }
   }
 }
@@ -195,8 +281,16 @@ export function applyBabyFootImportRules<T = any>(input: T): T {
   const record: any = cloneJson(input as any);
   const events = firstEvents(record);
   if (!Array.isArray(events) || events.length === 0) return record as T;
-  if (hasAlreadyAppliedDemiPenalty(events)) return record as T;
-  if (!isLimitedBallsLike(record, events)) return record as T;
+  if (hasAlreadyAppliedDemiPenalty(events)) {
+    const preferred = preferredImportedScorePair(record);
+    if (preferred) setScorePair(record, preferred.scoreA, preferred.scoreB);
+    return record as T;
+  }
+  if (!isLimitedBallsLike(record, events)) {
+    const preferred = preferredImportedScorePair(record);
+    if (preferred) setScorePair(record, preferred.scoreA, preferred.scoreB);
+    return record as T;
+  }
 
   const playable = events.filter(isPlayableBallEvent);
   const lastPlayable = playable[playable.length - 1];
