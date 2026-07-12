@@ -1263,15 +1263,23 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         ? String(teamBObj?.name || "TEAM B")
         : "TEAM PINK";
 
+    const defaultGoldTeam = !useExistingTeams && mode !== "1v1"
+      ? teamsCatalog.find((team: any) => String(team?.id || "") === "bf-team-gold" || String(team?.name || "").trim().toUpperCase() === "TEAM GOLD")
+      : null;
+    const defaultPinkTeam = !useExistingTeams && mode === "2v2"
+      ? teamsCatalog.find((team: any) => String(team?.id || "") === "bf-team-pink" || String(team?.name || "").trim().toUpperCase() === "TEAM PINK")
+      : null;
+    const matchTeamA = useExistingTeams ? teamAObj : defaultGoldTeam;
+    const matchTeamB = useExistingTeams && mode === "2v2" ? teamBObj : defaultPinkTeam;
+
     setTeams(nameA, nameB, {
-      teamARefId: useExistingTeams ? teamAObj?.id ?? null : null,
-      teamBRefId: useExistingTeams && mode === "2v2" ? teamBObj?.id ?? null : null,
-      teamALogoDataUrl: useExistingTeams
-        ? teamAObj?.logoDataUrl ?? teamAObj?.regionLogoDataUrl ?? null
-        : null,
+      teamARefId: matchTeamA?.id ?? null,
+      teamBRefId: mode === "2v2" ? matchTeamB?.id ?? null : null,
+      teamALogoDataUrl:
+        matchTeamA?.logoDataUrl ?? matchTeamA?.logoUrl ?? matchTeamA?.regionLogoDataUrl ?? null,
       teamBLogoDataUrl:
-        useExistingTeams && mode === "2v2"
-          ? teamBObj?.logoDataUrl ?? teamBObj?.regionLogoDataUrl ?? null
+        mode === "2v2"
+          ? matchTeamB?.logoDataUrl ?? matchTeamB?.logoUrl ?? matchTeamB?.regionLogoDataUrl ?? null
           : null,
       campSource,
     } as any);

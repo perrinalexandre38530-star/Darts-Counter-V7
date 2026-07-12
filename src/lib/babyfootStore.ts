@@ -537,10 +537,16 @@ function maxBallsForState(s: Pick<BabyFootState, "scoreMode" | "maxBalls">) {
 
 function isPlayableBallEvent(event: BabyFootEvent | any) {
   if (!event || typeof event !== "object") return false;
-  if (event.t === "goal" || event.t === "demi") return true;
+  const kind = String(event.kind || "");
+
+  // Une gamelle ne met pas fin à l'échange : la balle reste en jeu.
+  // Même principe pour les pêches offensive/défensive. Ces actions modifient
+  // éventuellement le score et les statistiques, mais ne consomment jamais
+  // une balle dans les formats 5 / 10 / 11 balles.
+  if (event.t === "goal") return kind !== "gamelle";
+  if (event.t === "demi") return true;
   if (event.t === "special") {
-    const kind = String(event.kind || "");
-    return kind === "gamelle" || kind === "peche_off" || kind === "peche_def" || kind === "pissette" || kind === "csc" || kind === "parachute";
+    return kind === "pissette" || kind === "csc" || kind === "parachute";
   }
   return false;
 }
@@ -829,7 +835,7 @@ function applyScoreAction(kind: BabyFootScoreAction, team: BabyFootTeamId, score
     next = finishAfterLimitedBallsIfNeeded(next, now, "target");
     if (next.finished) return next;
 
-    if (!next.setsEnabled && next.scoreMode !== "chrono" && !next.finished) {
+    if (!next.setsEnabled && next.scoreMode !== "chrono" && !isLimitedBallsMode(next) && !next.finished) {
       const target = Math.max(1, next.target || 10);
       if (next.scoreA >= target || next.scoreB >= target) {
         const require2 = !!next.requireTwoGoalLead && !Number.isFinite(next.matchDurationSec as any);

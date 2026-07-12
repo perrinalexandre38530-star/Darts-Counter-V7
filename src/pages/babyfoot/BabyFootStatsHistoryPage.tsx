@@ -25,6 +25,7 @@ import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../../lib/matchInboxLocal";
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../../lib/babyfootImportRules";
 import { deriveBabyFootScoreFromRecord } from "../../lib/babyfootScoreRules";
+import { loadBabyFootTeams } from "../../lib/petanqueTeamsStore";
 
 type Props = {
   store: any;
@@ -277,8 +278,14 @@ function getEvents(payload: any): any[] {
 }
 
 function getMode(payload: any): "1v1" | "2v2" | "2v1" | "unknown" {
-  const m = String(payload?.mode ?? payload?.meta?.mode ?? payload?.summary?.mode ?? "").trim();
-  if (m === "1v1" || m === "2v2" || m === "2v1") return m;
+  const m = String(payload?.mode ?? payload?.meta?.mode ?? payload?.summary?.mode ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[×x]/g, "v")
+    .replace(/[^a-z0-9]/g, "");
+  if (m.includes("2v2")) return "2v2";
+  if (m.includes("2v1")) return "2v1";
+  if (m.includes("1v1")) return "1v1";
   return "unknown";
 }
 
@@ -291,6 +298,42 @@ function getTeams(payload: any) {
   const teamAIds = Array.isArray(payload?.teamAProfileIds) ? payload.teamAProfileIds : [];
   const teamBIds = Array.isArray(payload?.teamBProfileIds) ? payload.teamBProfileIds : [];
   return { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds };
+}
+
+function historyFinishRuleLabel(payload: any) {
+  const summary = payload?.summary || {};
+  const scoreMode = String(summary?.scoreMode ?? payload?.scoreMode ?? "target").toLowerCase();
+  const target = Math.max(1, safeNum(summary?.target ?? payload?.target, 10));
+  let base = `Finish · ${target} buts`;
+  if (scoreMode === "chrono") {
+    const sec = safeNum(summary?.matchDurationSec ?? payload?.matchDurationSec, 0);
+    base = sec > 0 ? `Temps · ${fmt(sec * 1000)}` : "Temps";
+  } else if (scoreMode === "balls5") base = "Finish · 5 balles";
+  else if (scoreMode === "balls10") base = "Finish · 10 balles";
+  else if (scoreMode === "balls11") base = "Finish · 11 balles";
+  if (summary?.setsEnabled ?? payload?.setsEnabled) {
+    const bestOf = Math.max(1, safeNum(summary?.setsBestOf ?? payload?.setsBestOf, 1));
+    return `BO${bestOf} sets · ${base}`;
+  }
+  return base;
+}
+
+function resolveHistoryTeamLogo(payload: any, team: TeamId, catalog: any[]) {
+  const summary = payload?.summary || {};
+  const prefix = team === "A" ? "teamA" : "teamB";
+  const direct =
+    payload?.[`${prefix}LogoDataUrl`] ||
+    summary?.[`${prefix}LogoDataUrl`] ||
+    payload?.[`${prefix}LogoUrl`] ||
+    summary?.[`${prefix}LogoUrl`] ||
+    null;
+  if (direct) return direct;
+  const refId = String(payload?.[`${prefix}RefId`] ?? summary?.[`${prefix}RefId`] ?? "").trim();
+  const name = String(payload?.[prefix] ?? summary?.[prefix] ?? "").trim().toUpperCase();
+  const found = (Array.isArray(catalog) ? catalog : []).find((row: any) =>
+    (refId && String(row?.id || "") === refId) || String(row?.name || "").trim().toUpperCase() === name
+  );
+  return found?.logoDataUrl || found?.logoUrl || found?.regionLogoDataUrl || null;
 }
 
 function parseBabyFootScoreLine(line: any): { scoreA: number; scoreB: number } | null {
@@ -458,6 +501,9 @@ export default function BabyFootStatsHistoryPage({ store, go, params, onImportBa
     for (const p of (store?.profiles ?? [])) if (p?.id) map[p.id] = p;
     return map;
   }, [store?.profiles]);
+  const babyFootTeams = useMemo(() => {
+    try { return loadBabyFootTeams(); } catch { return []; }
+  }, [store?.teams]);
 
   const all = useMemo(() => {
     const list = mergeHistoryRows(Array.isArray(store?.history) ? store.history : [], historyRows)
@@ -886,6 +932,7 @@ if (conv?.shots > 0) {
         theme={theme}
         go={go}
         profilesById={profilesById}
+        babyFootTeams={babyFootTeams}
         filtered={filtered}
         mode={mode}
         setMode={setMode}
@@ -1268,6 +1315,7 @@ type HistoryCardsViewProps = {
   theme: any;
   go: (t: any, p?: any) => void;
   profilesById: Record<string, any>;
+  babyFootTeams: any[];
   filtered: any[];
   mode: "all" | "1v1" | "2v2" | "2v1";
   setMode: (value: any) => void;
@@ -1286,6 +1334,7 @@ function HistoryCardsView({
   theme,
   go,
   profilesById,
+  babyFootTeams,
   filtered,
   mode,
   setMode,
@@ -1595,7 +1644,10 @@ function HistoryCardsView({
             const rich = computeBabyFootRichStats(payload);
             const winner = getWinnerTeam(payload);
             const modeRaw = getMode(payload);
-            const modeChip = modeRaw === "unknown" ? "BABY-FOOT" : `BABY-FOOT ${modeRaw.toUpperCase()}`;
+            const modeChip = modeRaw === "unknown" ? "MATCH" : modeRaw.toUpperCase();
+            const finishChip = historyFinishRuleLabel(payload);
+            const teamALogo = resolveHistoryTeamLogo(payload, "A", babyFootTeams);
+            const teamBLogo = resolveHistoryTeamLogo(payload, "B", babyFootTeams);
             const isFocus = !!focusMatchId && String(h?.id || "") === focusMatchId;
             const ids = [...(teamAIds || []), ...(teamBIds || [])].filter(Boolean);
             const players = ids.length
@@ -1615,18 +1667,23 @@ function HistoryCardsView({
                 <div style={historyRowBetween}>
                   <div style={{ display: "flex", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
                     <span style={historyModeBadge(theme)}>{modeChip}</span>
+                    <span style={historyFinishBadge}>{finishChip}</span>
                     <span style={historyStatusBadge(theme, statusLabel !== "Terminé")}>{statusLabel}</span>
                   </div>
                   <span style={historyDate(theme)}>{new Date(h?.updatedAt || h?.createdAt || Date.now()).toLocaleString()}</span>
                 </div>
 
-                <div style={historyPreviewLine}>
-                  <span style={{ color: theme?.primary ?? "#42e9ff" }}>{teamA} {scoreA}</span>
-                  <span style={{ opacity: .58 }}> — </span>
-                  <span style={{ color: "#ff59b0" }}>{teamB} {scoreB}</span>
-                  {rich.setsEnabled ? <span style={{ opacity: .72 }}>{` • Sets ${rich.teamA.sets}-${rich.teamB.sets}`}</span> : null}
-                  {rich.totalLegs ? <span style={{ opacity: .72 }}>{` • Legs ${rich.teamA.legs}-${rich.teamB.legs}`}</span> : null}
-                </div>
+                <HistoryScoreDuel
+                  theme={theme}
+                  teamA={teamA}
+                  teamB={teamB}
+                  teamALogo={teamALogo}
+                  teamBLogo={teamBLogo}
+                  scoreA={scoreA}
+                  scoreB={scoreB}
+                  setsLabel={rich.setsEnabled ? `Sets ${rich.teamA.sets}-${rich.teamB.sets}` : ""}
+                  legsLabel={rich.totalLegs ? `Manches ${rich.teamA.legs}-${rich.teamB.legs}` : ""}
+                />
                 {individualLine.length ? (
                   <div style={historyIndividualLine}>
                     {individualLine.map((label: string, index: number) => {
@@ -1668,6 +1725,29 @@ function HistoryCardsView({
           })
         )}
       </div>
+    </div>
+  );
+}
+
+function HistoryScoreDuel({ theme, teamA, teamB, teamALogo, teamBLogo, scoreA, scoreB, setsLabel, legsLabel }: any) {
+  const side = (name: string, logo: string | null, accent: string, align: "left" | "right") => (
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-start" : "flex-end", gap: 8, flexDirection: align === "left" ? "row" : "row-reverse" }}>
+      <div style={{ width: 42, height: 42, borderRadius: 13, flex: "0 0 auto", display: "grid", placeItems: "center", overflow: "hidden", border: `1px solid ${accent}77`, background: `${accent}12`, boxShadow: `0 0 14px ${accent}22` }}>
+        {logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 3, boxSizing: "border-box" }} /> : <span style={{ color: accent, fontSize: 13, fontWeight: 1100 }}>{String(name || "?").slice(0, 2).toUpperCase()}</span>}
+      </div>
+      <div style={{ minWidth: 0, color: accent, fontSize: 13, fontWeight: 1100, lineHeight: 1.12, textAlign: align, whiteSpace: "normal", overflowWrap: "anywhere", textShadow: `0 0 10px ${accent}33` }}>{name}</div>
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 12, position: "relative", zIndex: 1, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(2,8,18,.30)", padding: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
+        {side(teamA, teamALogo, theme?.primary ?? "#42e9ff", "left")}
+        <div style={{ minWidth: 80, borderRadius: 14, padding: "7px 9px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", textAlign: "center", fontSize: 25, fontWeight: 1100, color: "#fff", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ color: theme?.primary ?? "#42e9ff" }}>{scoreA}</span><span style={{ opacity: .58 }}> - </span><span style={{ color: "#ff59b0" }}>{scoreB}</span>
+        </div>
+        {side(teamB, teamBLogo, "#ff59b0", "right")}
+      </div>
+      {(setsLabel || legsLabel) ? <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", fontSize: 10, fontWeight: 950, color: "rgba(255,255,255,.68)" }}>{setsLabel ? <span>{setsLabel}</span> : null}{legsLabel ? <span>{legsLabel}</span> : null}</div> : null}
     </div>
   );
 }
@@ -1978,8 +2058,9 @@ const historyWatermark: React.CSSProperties = {
 const historyRowBetween: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
-  gap: 10,
+  alignItems: "flex-start",
+  gap: "7px 10px",
+  flexWrap: "wrap",
 };
 
 const historyModeBadge = (theme: any): React.CSSProperties => ({
@@ -1994,6 +2075,19 @@ const historyModeBadge = (theme: any): React.CSSProperties => ({
   whiteSpace: "nowrap",
 });
 
+const historyFinishBadge: React.CSSProperties = {
+  padding: "4px 9px",
+  borderRadius: 999,
+  fontSize: 10,
+  fontWeight: 1000,
+  background: "rgba(255,255,255,.055)",
+  border: "1px solid rgba(255,255,255,.18)",
+  color: "rgba(255,255,255,.88)",
+  whiteSpace: "normal",
+  lineHeight: 1.1,
+  textAlign: "center",
+};
+
 const historyStatusBadge = (theme: any, running = false): React.CSSProperties => ({
   padding: "4px 10px",
   borderRadius: 999,
@@ -2007,11 +2101,15 @@ const historyStatusBadge = (theme: any, running = false): React.CSSProperties =>
 });
 
 const historyDate = (theme: any): React.CSSProperties => ({
-  fontSize: 11,
+  marginLeft: "auto",
+  maxWidth: "100%",
+  fontSize: 10,
+  lineHeight: 1.15,
   color: theme?.primary ?? "#c7ff26",
   fontWeight: 900,
   textAlign: "right",
-  whiteSpace: "nowrap",
+  whiteSpace: "normal",
+  overflowWrap: "anywhere",
 });
 
 const historyPreviewLine: React.CSSProperties = {

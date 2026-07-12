@@ -24,6 +24,7 @@ import {
   type BabyFootLeague,
 } from "../../lib/babyfootLeagueStore";
 import { submitBabyFootLeagueOnlineResult } from "../../lib/babyfootLeagueOnlineApi";
+import { loadBabyFootTeams } from "../../lib/petanqueTeamsStore";
 
 import { sendCastSnapshot } from "../../cast/googleCast";
 import {
@@ -95,6 +96,7 @@ type ScoreVisual = {
   name: string;
   imageSrc?: string | null;
   roleLabel: string;
+  isTeam?: boolean;
 };
 
 type PlayTab = "score" | "compo" | "stats" | "individual" | "actions";
@@ -823,6 +825,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       teamB: state.teamB,
       teamARefId: state.teamARefId ?? null,
       teamBRefId: state.teamBRefId ?? null,
+      teamALogoDataUrl: resolvedTeamALogo,
+      teamBLogoDataUrl: resolvedTeamBLogo,
       teamAProfileIds: [...(state.teamAProfileIds || [])],
       teamBProfileIds: [...(state.teamBProfileIds || [])],
       mode: state.mode,
@@ -834,6 +838,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
       target: state.target,
       scoreMode: state.scoreMode,
       maxBalls: state.maxBalls ?? null,
+      matchDurationSec: state.matchDurationSec ?? null,
+      overtimeSec: state.overtimeSec ?? 0,
       setTarget: state.setTarget,
       setsBestOf: state.setsBestOf,
       handicapA: state.handicapA ?? 0,
@@ -867,6 +873,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         teamB: state.teamB,
         teamARefId: state.teamARefId ?? null,
         teamBRefId: state.teamBRefId ?? null,
+        teamALogoDataUrl: resolvedTeamALogo,
+        teamBLogoDataUrl: resolvedTeamBLogo,
         teamAProfileIds: [...(state.teamAProfileIds || [])],
         teamBProfileIds: [...(state.teamBProfileIds || [])],
         scoreA: displayedScore.scoreA,
@@ -880,6 +888,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         target: state.target,
         scoreMode: state.scoreMode,
         maxBalls: state.maxBalls ?? null,
+        matchDurationSec: state.matchDurationSec ?? null,
+        overtimeSec: state.overtimeSec ?? 0,
         setTarget: state.setTarget,
         setsBestOf: state.setsBestOf,
         handicapA: state.handicapA ?? 0,
@@ -1080,16 +1090,31 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const teamBProfile = teamBIds[0] ? getProfile(teamBIds[0]) : null;
   const isOneVsOne = state.mode === "1v1" && teamAIds.length <= 1 && teamBIds.length <= 1;
   const hasTeamIndividualStats = state.mode === "2v1" || state.mode === "2v2" || teamAIds.length > 1 || teamBIds.length > 1;
+  const babyFootTeams = useMemo(() => {
+    try { return loadBabyFootTeams(); } catch { return []; }
+  }, []);
+  const lookupTeamLogo = (refId: any, name: any) => {
+    const ref = String(refId || "").trim();
+    const normalizedName = String(name || "").trim().toUpperCase();
+    const found = babyFootTeams.find((team: any) =>
+      (ref && String(team?.id || "") === ref) || String(team?.name || "").trim().toUpperCase() === normalizedName
+    );
+    return normalizeSrc(found?.logoDataUrl) || normalizeSrc(found?.logoUrl) || normalizeSrc(found?.regionLogoDataUrl) || null;
+  };
+  const resolvedTeamALogo = normalizeSrc(state.teamALogoDataUrl) || lookupTeamLogo(state.teamARefId, state.teamA);
+  const resolvedTeamBLogo = normalizeSrc(state.teamBLogoDataUrl) || lookupTeamLogo(state.teamBRefId, state.teamB);
 
   const visualA: ScoreVisual = {
     name: isOneVsOne ? teamAProfile?.name || state.teamA : state.teamA,
-    imageSrc: isOneVsOne ? profileImage(teamAProfile) : normalizeSrc(state.teamALogoDataUrl) || profileImage(teamAProfile),
+    imageSrc: isOneVsOne ? profileImage(teamAProfile) : resolvedTeamALogo || profileImage(teamAProfile),
     roleLabel: isOneVsOne ? "Joueur A" : "Équipe A",
+    isTeam: !isOneVsOne,
   };
   const visualB: ScoreVisual = {
     name: isOneVsOne ? teamBProfile?.name || state.teamB : state.teamB,
-    imageSrc: isOneVsOne ? profileImage(teamBProfile) : normalizeSrc(state.teamBLogoDataUrl) || profileImage(teamBProfile),
+    imageSrc: isOneVsOne ? profileImage(teamBProfile) : resolvedTeamBLogo || profileImage(teamBProfile),
     roleLabel: isOneVsOne ? "Joueur B" : "Équipe B",
+    isTeam: !isOneVsOne,
   };
 
   const infiniteLeagueChoices = useMemo(() => {
@@ -1353,7 +1378,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                     title="Équipe A"
                     accent="#c7ff26"
                     teamName={state.teamA}
-                    teamLogo={normalizeSrc(state.teamALogoDataUrl)}
+                    teamLogo={resolvedTeamALogo}
                     playerIds={teamAIds}
                     getProfile={getProfile}
                   />
@@ -1362,7 +1387,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                     title="Équipe B"
                     accent="#ff59b0"
                     teamName={state.teamB}
-                    teamLogo={normalizeSrc(state.teamBLogoDataUrl)}
+                    teamLogo={resolvedTeamBLogo}
                     playerIds={teamBIds}
                     getProfile={getProfile}
                   />

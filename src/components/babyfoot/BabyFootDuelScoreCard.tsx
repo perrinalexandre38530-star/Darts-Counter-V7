@@ -4,6 +4,7 @@ type SideVisual = {
   name: string;
   imageSrc?: string | null;
   roleLabel?: string;
+  isTeam?: boolean;
 };
 
 type Props = {
@@ -66,10 +67,10 @@ function scoreAction(accent: string, disabled: boolean): React.CSSProperties {
     letterSpacing: 0.2,
     cursor: disabled ? "default" : "pointer",
     boxShadow: disabled ? "none" : `0 0 14px ${accent}22`,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    padding: "0 14px",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    lineHeight: 1.05,
+    padding: "7px 10px",
   };
 }
 
@@ -98,7 +99,7 @@ function SetDots({ won, count, accent, align }: { won: number; count: number; ac
 }
 
 function SideBlock({ visual, accent, align, setsEnabled, setsWon, setsToWin }: { visual: SideVisual; accent: string; align: "left" | "right"; setsEnabled: boolean; setsWon: number; setsToWin: number }) {
-  const compact = (visual.name || "").length > 13;
+  const compact = (visual.name || "").length > 11;
   return (
     <div
       style={{
@@ -112,7 +113,7 @@ function SideBlock({ visual, accent, align, setsEnabled, setsWon, setsToWin }: {
       <div style={avatarRing(accent, compact)}>
         <div style={avatarInner()}>
           {visual.imageSrc ? (
-            <img src={visual.imageSrc} alt={visual.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={visual.imageSrc} alt={visual.name} style={{ width: "100%", height: "100%", objectFit: visual.isTeam ? "contain" : "cover", padding: visual.isTeam ? 5 : 0, boxSizing: "border-box" }} />
           ) : (
             <div style={{ fontSize: compact ? 30 : 34, fontWeight: 1100 }}>{visual.name.trim().slice(0, 1).toUpperCase() || "?"}</div>
           )}
@@ -121,15 +122,18 @@ function SideBlock({ visual, accent, align, setsEnabled, setsWon, setsToWin }: {
       <div
         title={visual.name}
         style={{
-          fontSize: compact ? 15 : 17,
-          lineHeight: 1.05,
+          fontSize: compact ? 12 : 14,
+          lineHeight: 1.12,
           fontWeight: 1100,
           color: accent,
           textShadow: `0 0 12px ${accent}22`,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          maxWidth: 136,
+          whiteSpace: "normal",
+          overflowWrap: "anywhere",
+          maxWidth: 116,
+          minHeight: 28,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: align === "left" ? "flex-start" : "flex-end",
         }}
       >
         {visual.name}
@@ -176,8 +180,8 @@ export default function BabyFootDuelScoreCard({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(82px,1fr) auto minmax(82px,1fr)",
-              gap: 10,
+              gridTemplateColumns: "minmax(76px,1fr) auto minmax(76px,1fr)",
+              gap: 7,
               alignItems: "center",
             }}
           >
@@ -185,9 +189,9 @@ export default function BabyFootDuelScoreCard({
 
             <div
               style={{
-                minWidth: 112,
-                borderRadius: 20,
-                padding: "10px 9px",
+                minWidth: 88,
+                borderRadius: 17,
+                padding: "8px 7px",
                 border: "1px solid rgba(255,255,255,0.10)",
                 background: "rgba(8,10,18,0.42)",
                 boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.02)",
@@ -195,9 +199,9 @@ export default function BabyFootDuelScoreCard({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }}>
-                <span style={{ fontSize: 56, lineHeight: 0.95, fontWeight: 1100, color: green, textShadow: `0 0 18px ${green}66` }}>{scoreA}</span>
-                <span style={{ fontSize: 23, lineHeight: 1, fontWeight: 1100, color: "rgba(255,255,255,0.92)" }}>–</span>
-                <span style={{ fontSize: 56, lineHeight: 0.95, fontWeight: 1100, color: pink, textShadow: `0 0 18px ${pink}66` }}>{scoreB}</span>
+                <span style={{ fontSize: 43, lineHeight: 0.95, fontWeight: 1100, color: green, textShadow: `0 0 18px ${green}66` }}>{scoreA}</span>
+                <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 1100, color: "rgba(255,255,255,0.92)" }}>–</span>
+                <span style={{ fontSize: 43, lineHeight: 0.95, fontWeight: 1100, color: pink, textShadow: `0 0 18px ${pink}66` }}>{scoreB}</span>
               </div>
             </div>
 

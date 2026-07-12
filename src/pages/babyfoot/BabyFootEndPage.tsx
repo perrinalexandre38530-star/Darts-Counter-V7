@@ -8,6 +8,7 @@ import { History } from "../../lib/history";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 import { babyFootPenaltyLossByTeam, deriveBabyFootScoreFromRecord } from "../../lib/babyfootScoreRules";
+import { loadBabyFootTeams } from "../../lib/petanqueTeamsStore";
 import trophyCup from "../../ui_assets/trophy-cup.png";
 
 type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any };
@@ -201,10 +202,33 @@ function actionSubject(team: string, player: string) {
   return cleanTeam || cleanPlayer || "";
 }
 
-function actionLabel(ev: any, payload: any, match: any, teamA: string, teamB: string) {
+function recordTeamLogo(payload: any, summary: any, team: TeamId) {
+  const prefix = team === "A" ? "teamA" : "teamB";
+  const direct =
+    payload?.[`${prefix}LogoDataUrl`] ||
+    summary?.[`${prefix}LogoDataUrl`] ||
+    payload?.[`${prefix}LogoUrl`] ||
+    summary?.[`${prefix}LogoUrl`] ||
+    payload?.[`${prefix}AvatarUrl`] ||
+    summary?.[`${prefix}AvatarUrl`] ||
+    null;
+  if (direct) return direct;
+  try {
+    const refId = String(payload?.[`${prefix}RefId`] ?? summary?.[`${prefix}RefId`] ?? "").trim();
+    const name = String(payload?.[prefix] ?? summary?.[prefix] ?? "").trim().toUpperCase();
+    const found = loadBabyFootTeams().find((row: any) =>
+      (refId && String(row?.id || "") === refId) || String(row?.name || "").trim().toUpperCase() === name
+    );
+    return found?.logoDataUrl || found?.logoUrl || found?.regionLogoDataUrl || null;
+  } catch {
+    return null;
+  }
+}
+
+function actionLabel(ev: any, payload: any, match: any, teamA: string, teamB: string, logoReplacesTeamName = false) {
   const team = ev?.team === "A" ? teamA : ev?.team === "B" ? teamB : "";
   const player = playerNameFromPayload(payload, match, ev?.scorerId) || playerNameFromPayload(payload, match, ev?.ownGoalById);
-  const who = actionSubject(team, player);
+  const who = logoReplacesTeamName ? "" : actionSubject(team, player);
   const whoSuffix = who ? ` · ${who}` : "";
   if (ev?.t === "start") return "Début du match";
   if (ev?.t === "finish") return `Fin du match${ev?.winner ? ` · victoire ${ev.winner === "A" ? teamA : teamB}` : " · match nul"}`;
@@ -233,6 +257,8 @@ function actionLabel(ev: any, payload: any, match: any, teamA: string, teamB: st
 function buildTimelineRows(events: any[], payload: any, summary: any, match: any, teamA: string, teamB: string) {
   const startEvent = events.find((ev) => ev?.t === "start" && ev?.at);
   const start = n(startEvent?.at ?? payload?.startedAt ?? summary?.startedAt ?? payload?.createdAt ?? match?.createdAt, 0);
+  const mode = String(payload?.mode ?? summary?.mode ?? match?.mode ?? "").toLowerCase();
+  const isTwoVsTwo = mode === "2v2" || teamIds(payload, summary, "A").length > 1 || teamIds(payload, summary, "B").length > 1;
   let scoreA = Math.max(0, n(payload?.handicapB ?? summary?.handicapB, 0));
   let scoreB = Math.max(0, n(payload?.handicapA ?? summary?.handicapA, 0));
   return events.map((ev: any, index: number) => {
@@ -266,9 +292,11 @@ function buildTimelineRows(events: any[], payload: any, summary: any, match: any
       key: `${ev?.t || "event"}-${ev?.at || index}-${index}`,
       time: fmtDuration(elapsed),
       elapsedMs: elapsed,
-      label: actionLabel(ev, payload, match, teamA, teamB),
+      label: actionLabel(ev, payload, match, teamA, teamB, isTwoVsTwo),
       score: `${scoreA}-${scoreB}`,
       team: ev?.team || null,
+      teamLogo: ev?.team === "A" ? recordTeamLogo(payload, summary, "A") : ev?.team === "B" ? recordTeamLogo(payload, summary, "B") : null,
+      isTwoVsTwo,
       type: ev?.t,
       kind: ev?.kind || null,
       counted: ev?.counted,
@@ -292,12 +320,12 @@ function buildMomentumEntries(timelineRows: any[]) {
   });
 }
 
-function buildTimeTicks(totalMs: number, count = 5) {
+function buildTimeTicks(totalMs: number, periodCount = 5) {
   const safeTotal = Math.max(0, Number(totalMs) || 0);
-  const points = Math.max(2, Math.floor(count));
-  return Array.from({ length: points }, (_, index) => {
-    const ratio = points <= 1 ? 0 : index / (points - 1);
-    return { ratio, label: fmtDuration(Math.round(safeTotal * ratio)) };
+  const periods = Math.max(1, Math.floor(periodCount));
+  return Array.from({ length: periods + 1 }, (_, index) => {
+    const ratio = index / periods;
+    return { ratio, label: fmtDuration(Math.round(safeTotal * ratio)), edge: index === 0 ? "start" : index === periods ? "end" : "middle" };
   });
 }
 
@@ -505,6 +533,8 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const durationMs = summary?.durationMs ?? payload?.durationMs ?? match?.durationMs ?? params?.durationMs;
   const teamAPlayers = teamPlayers(players, payload, summary, "A");
   const teamBPlayers = teamPlayers(players, payload, summary, "B");
+  const teamALogo = recordTeamLogo(payload, summary, "A");
+  const teamBLogo = recordTeamLogo(payload, summary, "B");
 
   const richStats = React.useMemo(() => {
     return computeBabyFootRichStats({
@@ -587,6 +617,8 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
             teamB={teamB}
             playersA={teamAPlayers}
             playersB={teamBPlayers}
+            teamALogo={teamALogo}
+            teamBLogo={teamBLogo}
             scoreA={scoreA}
             scoreB={scoreB}
             stats={richStats}
@@ -608,8 +640,8 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
             theme={theme}
             teamA={teamA}
             teamB={teamB}
-            teamALogo={payload?.teamALogoDataUrl || summary?.teamALogoDataUrl || null}
-            teamBLogo={payload?.teamBLogoDataUrl || summary?.teamBLogoDataUrl || null}
+            teamALogo={teamALogo}
+            teamBLogo={teamBLogo}
             playersA={teamAPlayers}
             playersB={teamBPlayers}
             scoreA={scoreA}
@@ -669,8 +701,10 @@ function StatsViewSelector({ theme, view, setView }: any) {
 
 function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB, winnerLabel, durationMs, mode, finishedAt, summary, payload, events }: any) {
   const isTeamMode = String(mode || "").includes("2V2") || (Array.isArray(playersA) && playersA.length > 1) || (Array.isArray(playersB) && playersB.length > 1);
-  const leftBackdrop = payload?.teamALogoDataUrl || summary?.teamALogoDataUrl || avatarOf((playersA || [])[0]) || null;
-  const rightBackdrop = payload?.teamBLogoDataUrl || summary?.teamBLogoDataUrl || avatarOf((playersB || [])[0]) || null;
+  const teamALogo = recordTeamLogo(payload, summary, "A");
+  const teamBLogo = recordTeamLogo(payload, summary, "B");
+  const leftBackdrop = teamALogo || avatarOf((playersA || [])[0]) || null;
+  const rightBackdrop = teamBLogo || avatarOf((playersB || [])[0]) || null;
   const winnerAccent = scoreA === scoreB ? "#ffd76a" : scoreA > scoreB ? "#78ff9f" : "#ff70bd";
   const diff = scoreA - scoreB;
   const setsEnabled = !!(summary?.setsEnabled ?? payload?.setsEnabled);
@@ -695,13 +729,14 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
           <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-              {winnerSide === "A" ? <img src={trophyCup} alt="" style={{ width: 16, height: 16, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
-              <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(12px, 3.5vw, 17px)" : "clamp(12px, 3.7vw, 18px)", fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", alignSelf: "center" }}>{teamA}</div>
+              {winnerSide === "A" ? <img src={trophyCup} alt="" style={{ width: 14, height: 14, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
+              {isTeamMode && teamALogo ? <TeamIdentityBadge theme={theme} image={teamALogo} fallback={teamA} accent={theme.primary} size={30} shape="round" /> : null}
+              <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(10px, 3vw, 14px)" : "clamp(11px, 3.3vw, 16px)", fontWeight: 1000, lineHeight: 1.12, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "normal", overflowWrap: "anywhere", alignSelf: "center", maxWidth: "100%" }}>{teamA}</div>
             </div>
             {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : <div style={{ height: 10 }} />}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 7, justifySelf: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, justifySelf: "center" }}>
             <ScoreKpiMini value={scoreA} color={theme.primary} />
             <div style={{ color: "rgba(255,255,255,.72)", fontSize: 22, fontWeight: 1000, lineHeight: 1 }}>—</div>
             <ScoreKpiMini value={scoreB} color="#ff70bd" />
@@ -709,8 +744,9 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
 
           <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", width: "100%", minWidth: 0 }}>
-              <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(12px, 3.5vw, 17px)" : "clamp(12px, 3.7vw, 18px)", fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, alignSelf: "center" }}>{teamB}</div>
-              {winnerSide === "B" ? <img src={trophyCup} alt="" style={{ width: 16, height: 16, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
+              <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(10px, 3vw, 14px)" : "clamp(11px, 3.3vw, 16px)", fontWeight: 1000, lineHeight: 1.12, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0, alignSelf: "center", maxWidth: "100%" }}>{teamB}</div>
+              {isTeamMode && teamBLogo ? <TeamIdentityBadge theme={theme} image={teamBLogo} fallback={teamB} accent="#ff70bd" size={30} shape="round" /> : null}
+              {winnerSide === "B" ? <img src={trophyCup} alt="" style={{ width: 14, height: 14, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
             </div>
             {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : <div style={{ height: 10 }} />}
           </div>
@@ -766,7 +802,7 @@ function SetSummaryTable({ theme, teamA, teamB, rows }: any) {
 }
 
 function ScoreKpiMini({ value, color }: { value: number; color: string }) {
-  return <div style={{ minWidth: 50, borderRadius: 15, padding: "8px 10px", border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}16,rgba(255,255,255,.04))`, boxShadow: `0 0 14px ${color}20 inset`, textAlign: "center" }}><div style={{ color, fontSize: 32, lineHeight: .95, fontWeight: 1000, textShadow: `0 0 12px ${color}44`, fontVariantNumeric: "tabular-nums" }}>{value}</div></div>;
+  return <div style={{ minWidth: 40, borderRadius: 13, padding: "7px 7px", border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}16,rgba(255,255,255,.04))`, boxShadow: `0 0 14px ${color}20 inset`, textAlign: "center" }}><div style={{ color, fontSize: 27, lineHeight: .95, fontWeight: 1000, textShadow: `0 0 12px ${color}44`, fontVariantNumeric: "tabular-nums" }}>{value}</div></div>;
 }
 
 function MomentumView({ theme, teamA, teamB, teamALogo, teamBLogo, playersA, playersB, scoreA, scoreB, timelineRows, durationMs }: any) {
@@ -794,12 +830,15 @@ function MomentumView({ theme, teamA, teamB, teamALogo, teamBLogo, playersA, pla
   const chartPadPct = 4;
   const chartScalePct = 100 - chartPadPct * 2;
   const xPct = (ratio: number) => chartPadPct + Math.max(0, Math.min(1, ratio)) * chartScalePct;
-  const periodFor = (ratio: number) => periods.find((p: any) => ratio >= p.from && ratio <= p.to) || periods[periods.length - 1];
+  const periodFor = (ratio: number) => periods.find((p: any, index: number) =>
+    ratio >= p.from && (index === periods.length - 1 ? ratio <= p.to : ratio < p.to)
+  ) || periods[periods.length - 1];
   const periodCounts = periods.map((period: any) => ({
     ...period,
     count: entries.filter((row: any) => {
       const ratio = Math.max(0, Math.min(1, n(row.elapsedMs, 0) / totalMs));
-      return ratio >= period.from && ratio <= period.to;
+      const isLast = period.key === periods[periods.length - 1].key;
+      return ratio >= period.from && (isLast ? ratio <= period.to : ratio < period.to);
     }).length,
   }));
 
@@ -870,9 +909,9 @@ function MomentumView({ theme, teamA, teamB, teamALogo, teamBLogo, playersA, pla
               ))}
               <div style={{ position: "absolute", left: 12, right: 12, top: baseY, height: 2, background: "linear-gradient(90deg, rgba(69,184,255,.65), rgba(255,255,255,.45), rgba(255,89,176,.65))", boxShadow: `0 0 10px ${theme.primary}33` }} />
               {ticks.map((tick: any) => (
-                <React.Fragment key={tick.label}>
+                <React.Fragment key={`${tick.ratio}-${tick.label}`}>
                   <div style={{ position: "absolute", top: 18, bottom: 24, left: `${xPct(tick.ratio)}%`, width: 1, background: `${periodFor(tick.ratio).color}33` }} />
-                  <div style={{ position: "absolute", bottom: 7, left: `${xPct(tick.ratio)}%`, transform: "translateX(-50%)", fontSize: 10, fontWeight: 1000, color: periodFor(tick.ratio).color, textShadow: `0 0 8px ${periodFor(tick.ratio).color}66` }}>{tick.label}</div>
+                  <div style={{ position: "absolute", bottom: 7, left: `${xPct(tick.ratio)}%`, transform: tick.edge === "start" ? "none" : tick.edge === "end" ? "translateX(-100%)" : "translateX(-50%)", fontSize: 10, fontWeight: 1000, color: periodFor(Math.min(.999999, tick.ratio)).color, textShadow: `0 0 8px ${periodFor(Math.min(.999999, tick.ratio)).color}66`, whiteSpace: "nowrap" }}>{tick.label}</div>
                 </React.Fragment>
               ))}
               {entries.map((row: any, index: number) => {
@@ -933,7 +972,10 @@ function MatchTimelineDetails({ theme, timelineRows }: any) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                 <span style={{ borderRadius: 999, padding: "3px 8px", background: `${accent}18`, border: `1px solid ${accent}44`, color: accent, fontSize: 9, fontWeight: 1100, letterSpacing: .5 }}>{tag}</span>
               </div>
-              <div style={{ color: theme.text, fontSize: 12, fontWeight: 900, lineHeight: 1.28, paddingRight: row.actorAvatar ? 36 : 0 }}>{row.label}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, paddingRight: row.actorAvatar ? 36 : 0 }}>
+                {row.isTwoVsTwo && row.teamLogo ? <img src={row.teamLogo} alt="" style={{ width: 28, height: 28, flex: "0 0 auto", objectFit: "contain", borderRadius: 9, border: `1px solid ${accent}66`, background: "rgba(0,0,0,.24)", padding: 2, boxSizing: "border-box", boxShadow: `0 0 10px ${accent}33` }} /> : null}
+                <div style={{ minWidth: 0, color: theme.text, fontSize: 12, fontWeight: 900, lineHeight: 1.28, overflowWrap: "anywhere" }}>{row.label}</div>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div style={{ minWidth: 50, borderRadius: 12, padding: "8px 8px", textAlign: "center", border: `1px solid ${accent}33`, background: "rgba(255,255,255,.03)", color: theme.text, fontSize: 14, fontWeight: 1100 }}>{row.score}</div>
@@ -949,7 +991,7 @@ function MatchTimelineDetails({ theme, timelineRows }: any) {
   );
 }
 
-function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB, stats, durationMs, summary, events }: any) {
+function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, teamALogo, teamBLogo, scoreA, scoreB, stats, durationMs, summary, events }: any) {
   const a = objectOrEmpty(stats?.teamA);
   const b = objectOrEmpty(stats?.teamB);
   const losses = babyFootPenaltyLossByTeam(events || []);
@@ -990,9 +1032,9 @@ function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scor
       </div>
       <div style={{ borderRadius: 20, overflow: "hidden", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "linear-gradient(180deg, rgba(18,25,43,.92), rgba(6,10,20,.96))", boxShadow: `0 0 28px ${theme.primary}12 inset` }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr .9fr 1fr", alignItems: "center", gap: 8, padding: "12px 10px", background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", borderBottom: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
-          <TeamHeaderMini theme={theme} name={teamA} players={playersA} align="left" />
+          <TeamHeaderMini theme={theme} name={teamA} players={playersA} teamLogo={teamALogo} align="left" />
           <div style={{ textAlign: "center", fontSize: 14, fontWeight: 1100, color: theme.primary, textShadow: `0 0 10px ${theme.primary}44` }}>Stat</div>
-          <TeamHeaderMini theme={theme} name={teamB} players={playersB} align="right" />
+          <TeamHeaderMini theme={theme} name={teamB} players={playersB} teamLogo={teamBLogo} align="right" />
         </div>
         {neonRows.map((row: any, index: number) => {
           const leftBest = row.bestSide === "left";
@@ -1127,19 +1169,15 @@ function TeamBlock({ theme, name, players, align }: { theme: any; name: string; 
   );
 }
 
-function TeamHeaderMini({ theme, name, players, align }: any) {
-  if (align === "left") {
-    return (
-      <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8 }}>
-        <AvatarStack theme={theme} players={players} align={align} size={32} />
-        <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: theme.primary, textAlign: "left", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div>
-      </div>
-    );
-  }
+function TeamHeaderMini({ theme, name, players, teamLogo, align }: any) {
+  const accent = align === "left" ? theme.primary : "#ff70bd";
+  const identity = teamLogo
+    ? <TeamIdentityBadge theme={theme} image={teamLogo} fallback={name} accent={accent} size={32} shape="round" />
+    : <AvatarStack theme={theme} players={players} align={align} size={30} />;
   return (
-    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8, flexDirection: "row-reverse" }}>
-      <AvatarStack theme={theme} players={players} align={align} size={32} />
-      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: "#ff70bd", textAlign: "left", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div>
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-start" : "flex-end", gap: 6, flexDirection: align === "left" ? "row" : "row-reverse" }}>
+      {identity}
+      <div style={{ minWidth: 0, fontSize: 10, fontWeight: 1100, color: accent, textAlign: align, textTransform: "uppercase", letterSpacing: .2, lineHeight: 1.12, whiteSpace: "normal", overflowWrap: "anywhere", maxWidth: "100%" }}>{name}</div>
     </div>
   );
 }
