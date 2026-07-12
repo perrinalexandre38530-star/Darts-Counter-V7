@@ -1215,7 +1215,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const localProfilesBase = React.useMemo(() => profiles.filter((profile: any) => idOf(profile) !== activeProfileId), [profiles, activeProfileId]);
 
   const requestedMode = String(params?.mode || "").toLowerCase();
-  const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? "2v1" : rankingOnly ? "1v1" : "all";
+  const initialMode: ModeKey = requestedMode === "1v1" ? "1v1" : requestedMode === "2v2" ? "2v2" : requestedMode === "2v1" ? (rankingOnly ? "2v2" : "2v1") : rankingOnly ? "1v1" : "all";
   const requestedPeriod = String(params?.period || params?.periodKey || "").toUpperCase();
   const initialPeriod: PeriodKey = requestedPeriod === "J" || requestedPeriod === "S" || requestedPeriod === "M" || requestedPeriod === "A" || requestedPeriod === "ARV" ? requestedPeriod : "ARV";
   const [period, setPeriod] = React.useState<PeriodKey>(initialPeriod);
@@ -1228,7 +1228,11 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const [profileIndex, setProfileIndex] = React.useState(0);
   const [filtersOpen, setFiltersOpen] = React.useState(rankingOnly || Boolean(params?.showFilters));
   const [historyRows, setHistoryRows] = React.useState<any[]>(() => Array.isArray((store as any)?.history) ? (store as any).history : []);
-  const rankingModes = React.useMemo(() => rankingOnly ? MODES.filter((item) => item.key !== "all") : MODES, [rankingOnly]);
+  const rankingModes = React.useMemo(() => rankingOnly ? ([
+    { key: "1v1" as ModeKey, label: "1V1" },
+    { key: "2v2" as ModeKey, label: "ÉQUIPES" },
+    { key: "all" as ModeKey, label: "ALL" },
+  ]) : MODES, [rankingOnly]);
 
 
   React.useEffect(() => {
@@ -1263,7 +1267,18 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
     };
   }, [store]);
 
-  const matches = React.useMemo(() => normalizeBabyFootMatches(historyRows, { period: period as BabyFootPeriodFilter, mode: mode as BabyFootModeFilter }), [historyRows, period, mode]);
+  const normalizedMatches = React.useMemo(() => {
+    const baseMode: BabyFootModeFilter = rankingOnly && (mode === "2v2" || mode === "2v1")
+      ? "all"
+      : mode as BabyFootModeFilter;
+    return normalizeBabyFootMatches(historyRows, { period: period as BabyFootPeriodFilter, mode: baseMode });
+  }, [historyRows, period, mode, rankingOnly]);
+  const matches = React.useMemo(() => {
+    if (rankingOnly && (mode === "2v2" || mode === "2v1")) {
+      return normalizedMatches.filter((match) => match.mode === "2v2" || match.mode === "2v1");
+    }
+    return normalizedMatches;
+  }, [normalizedMatches, rankingOnly, mode]);
   const leaderboards = React.useMemo(() => computeBabyFootLeaderboards(matches, profiles), [matches, profiles]);
   const localProfiles = React.useMemo(() => {
     const rankingById = new Map<string, BabyFootPlayerAggregate>();
@@ -1281,10 +1296,6 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const selectableProfiles = rankingOnly ? [] : scope === "locals" ? localProfiles : active ? [active] : profiles;
 
   React.useEffect(() => setProfileIndex(0), [scope, activeProfileId, rankingOnly, localProfiles.length]);
-  React.useEffect(() => {
-    if (rankingOnly && mode === "all") setMode("1v1");
-  }, [rankingOnly, mode]);
-
 
   const profile = selectableProfiles[clampIndex(profileIndex, selectableProfiles.length)] || null;
   const profileId = idOf(profile);
@@ -1292,7 +1303,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const profileMatches = React.useMemo(() => profileMatchesFromBabyFootMatches(matches, profileId), [matches, profileId]);
   const rank = React.useMemo(() => leaderboards.topRanking.findIndex((row) => row.id === profileId) + 1, [leaderboards.topRanking, profileId]);
   const periodLabel = PERIODS.find((item) => item.key === period)?.long || "À vie";
-  const modeLabel = MODES.find((item) => item.key === mode)?.label || "TOUS";
+  const modeLabel = rankingOnly ? (mode === "1v1" ? "1V1" : mode === "all" ? "ALL" : "ÉQUIPES") : (MODES.find((item) => item.key === mode)?.label || "TOUS");
   const primary = theme?.primary ?? C.gold;
   const profilesById = React.useMemo(() => {
     const map = new Map<string, Profile>();
@@ -1408,7 +1419,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           </div>
           {rankingOnly ? (
             <div style={{ color: C.dim, fontSize: 10, fontWeight: 850, textAlign: "center", lineHeight: 1.35 }}>
-              Classements individuels séparés par mode pour ne pas mélanger les statistiques <span style={{ color: C.blue, fontWeight: 1000 }}>1V1</span>, <span style={{ color: C.blue, fontWeight: 1000 }}>2V2</span> et <span style={{ color: C.blue, fontWeight: 1000 }}>2V1</span>.
+              Classements individuels disponibles en <span style={{ color: C.blue, fontWeight: 1000 }}>1V1</span>, en <span style={{ color: C.blue, fontWeight: 1000 }}>ÉQUIPES</span> (2V2 + 2V1 regroupés), ou en <span style={{ color: C.blue, fontWeight: 1000 }}>ALL</span> pour tout mélanger.
             </div>
           ) : null}
         </div> : null}
