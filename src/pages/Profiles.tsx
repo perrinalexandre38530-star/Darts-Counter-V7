@@ -58,6 +58,13 @@ import {
   getDartSetThumbImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
+import {
+  PROFILE_USAGE_UPDATED_EVENT,
+  profileUsageScore,
+  readProfileUsageCounts,
+  readProfileUsageStore,
+  type ProfileUsageCounts,
+} from "../lib/profileUsage";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -80,6 +87,42 @@ import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncA
 
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
+
+/**
+ * Totalise les utilisations enregistrées dans tous les modes de jeu.
+ * La page PROFILS LOCAUX n'est pas liée à un mode précis : elle doit donc
+ * afficher les joueurs les plus sollicités globalement, puis les autres
+ * dans l'ordre alphabétique, comme les sélecteurs de profils.
+ */
+function readAllModesProfileUsageCounts(): ProfileUsageCounts {
+  const usageStore = readProfileUsageStore();
+  const totals: ProfileUsageCounts = {};
+
+  for (const counts of Object.values(usageStore || {})) {
+    for (const [profileId, rawCount] of Object.entries(counts || {})) {
+      const id = String(profileId || "").trim();
+      const count = Number(rawCount);
+      if (!id || !Number.isFinite(count) || count <= 0) continue;
+      totals[id] = Number(totals[id] || 0) + count;
+    }
+  }
+
+  // Compatibilité avec l'ancien compteur X01, qui peut encore contenir des
+  // valeurs absentes du nouveau store par mode. On ajoute uniquement l'écart
+  // afin de ne pas compter deux fois les mêmes parties.
+  const storedX01 = usageStore?.x01 || {};
+  const compatibleX01 = readProfileUsageCounts("x01");
+  for (const [profileId, rawCount] of Object.entries(compatibleX01 || {})) {
+    const id = String(profileId || "").trim();
+    const compatibleCount = Number(rawCount);
+    const alreadyCounted = Number(storedX01?.[id] || 0);
+    const missing = compatibleCount - alreadyCounted;
+    if (!id || !Number.isFinite(missing) || missing <= 0) continue;
+    totals[id] = Number(totals[id] || 0) + missing;
+  }
+
+  return totals;
+}
 
 async function getOnlineApi() {
   const mod = await import("../lib/onlineApi");
@@ -6386,9 +6429,32 @@ function LocalProfilesRefonte({
     }
   }, [onboardingMode]);
 
+  const [profileUsageRevision, setProfileUsageRevision] = React.useState(0);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refreshUsageOrder = () => setProfileUsageRevision((value) => value + 1);
+    window.addEventListener("storage", refreshUsageOrder);
+    window.addEventListener(PROFILE_USAGE_UPDATED_EVENT, refreshUsageOrder as EventListener);
+    window.addEventListener("dc-x01-player-usage-updated", refreshUsageOrder);
+    window.addEventListener("dc-history-updated", refreshUsageOrder);
+    return () => {
+      window.removeEventListener("storage", refreshUsageOrder);
+      window.removeEventListener(PROFILE_USAGE_UPDATED_EVENT, refreshUsageOrder as EventListener);
+      window.removeEventListener("dc-x01-player-usage-updated", refreshUsageOrder);
+      window.removeEventListener("dc-history-updated", refreshUsageOrder);
+    };
+  }, []);
+
+  const allModesUsageCounts = React.useMemo(
+    () => readAllModesProfileUsageCounts(),
+    [profileUsageRevision]
+  );
+
   // ✅ Profils locaux :
   // - on enlève le profil actif
-  // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
+  // - on exclut TOUS les mirrors "online:*"
+  // - on classe d'abord par nombre total d'utilisations, puis par nom
   const locals = React.useMemo(() => {
     if (onboardingMode) return [];
 
@@ -6403,13 +6469,17 @@ function LocalProfilesRefonte({
     });
 
     return [...filtered].sort((a: any, b: any) => {
-      const nameA = String(a?.name || "").trim();
-      const nameB = String(b?.name || "").trim();
+      const usageA = profileUsageScore(a, allModesUsageCounts, "global");
+      const usageB = profileUsageScore(b, allModesUsageCounts, "global");
+      if (usageA !== usageB) return usageB - usageA;
+
+      const nameA = String(a?.name || a?.displayName || "").trim();
+      const nameB = String(b?.name || b?.displayName || "").trim();
       const byName = collator.compare(nameA || "~~~", nameB || "~~~");
       if (byName !== 0) return byName;
       return collator.compare(String(a?.id || ""), String(b?.id || ""));
     });
-  }, [profiles, activeProfileId, onboardingMode]);
+  }, [profiles, activeProfileId, onboardingMode, allModesUsageCounts]);
 
   const gridPageSize = 9;
   const gridPages = Math.max(1, Math.ceil(locals.length / gridPageSize));
@@ -7790,24 +7860,55 @@ function AddLocalProfile({
             gap: 6,
             display: "flex",
             flexDirection: "column",
-            alignItems: "flex-end",
-            minWidth: 96,
+            alignItems: "center",
+            minWidth: 62,
           }}
         >
           <button
-            className="btn primary sm"
+            type="button"
             onClick={submit}
+            aria-label={t("profiles.locals.add.btnAdd", "Ajouter")}
+            title={t("profiles.locals.add.btnAdd", "Ajouter")}
             style={{
-              background: `linear-gradient(180deg, ${primary}, ${primary}AA)`,
-              color: "#000",
-              fontWeight: 700,
-              minWidth: 90,
+              width: 54,
+              height: 54,
+              borderRadius: 18,
+              border: `1px solid ${primary}`,
+              background: "rgba(0,0,0,.22)",
+              color: theme.textMain,
+              display: "grid",
+              placeItems: "center",
+              padding: 0,
+              cursor: "pointer",
+              boxShadow: `0 0 0 1px ${primary}55, 0 0 12px ${primary}CC`,
+              filter: `drop-shadow(0 0 5px ${primary})`,
+              transition: "transform .16s ease, box-shadow .16s ease",
+              flex: "0 0 auto",
             }}
+            onPointerDown={(event) => { event.currentTarget.style.transform = "scale(.94)"; }}
+            onPointerUp={(event) => { event.currentTarget.style.transform = "scale(1)"; }}
+            onPointerCancel={(event) => { event.currentTarget.style.transform = "scale(1)"; }}
+            onPointerLeave={(event) => { event.currentTarget.style.transform = "scale(1)"; }}
           >
-            {t("profiles.locals.add.btnAdd", "Ajouter")}
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              style={{ display: "block" }}
+            >
+              <path
+                d="M12 5v14M5 12h14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
           {hasSomething && (
-            <button className="btn sm" onClick={reset}>
+            <button type="button" className="btn sm" onClick={reset}>
               {t("profiles.locals.add.btnCancel", "Annuler")}
             </button>
           )}
