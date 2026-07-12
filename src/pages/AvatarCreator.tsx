@@ -19,11 +19,14 @@ import {
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import InfoMini from "../components/InfoMini";
+import TopTicker from "../components/TopTicker";
 import { useDevMode } from "../contexts/DevModeContext";
 import { loadStore, saveStore } from "../lib/storage";
 import { apiGet, apiPost } from "../lib/apiClient";
 import { loadBots, saveBots } from "../lib/bots";
 import { upsertAvatarGalleryItem } from "../lib/avatarGallery";
+import tickerAvatarIa from "../assets/tickers/ticker_avatar_ia.webp";
+import tickerAiAvatar from "../assets/tickers/ticker_ai_avatar.webp";
 
 type Props = {
   size?: number;
@@ -904,7 +907,7 @@ function AvatarCreator({
   isBotMode = false,
 }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const devMode = useDevMode();
 
   const [name, setName] = React.useState(defaultName || "");
@@ -1584,18 +1587,36 @@ function AvatarCreator({
 
   const infoContent = (
     <div style={{ lineHeight: 1.45 }}>
-      <p style={{ marginTop: 0 }}>
-        <strong>AVATAR IA</strong> : importe une photo dans le médaillon,
-        recadre-la, génère une caricature cartoon, puis enregistre le WebP
-        final.
-      </p>
-      <p>
-        Le premier avatar IA est offert. Ensuite, chaque génération réussie
-        consomme 1 crédit.
-      </p>
-      <p style={{ marginBottom: 0 }}>
-        Le diagnostic API est masqué et visible uniquement en mode développeur.
-      </p>
+      {lang === "fr" ? (
+        <>
+          <p style={{ marginTop: 0 }}>
+            <strong>AVATAR IA</strong> : importe une photo dans le médaillon,
+            recadre-la, génère une caricature cartoon, puis enregistre le WebP
+            final.
+          </p>
+          <p>
+            Le premier avatar IA est offert. Ensuite, chaque génération réussie
+            consomme 1 crédit.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            Le diagnostic API est masqué et visible uniquement en mode développeur.
+          </p>
+        </>
+      ) : (
+        <>
+          <p style={{ marginTop: 0 }}>
+            <strong>AI AVATAR</strong>: import a photo into the medallion,
+            crop it, generate a cartoon caricature, then save the final WebP.
+          </p>
+          <p>
+            The first AI avatar is free. After that, each successful generation
+            consumes 1 credit.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            API diagnostics are hidden and only visible in developer mode.
+          </p>
+        </>
+      )}
     </div>
   );
 
@@ -2460,53 +2481,28 @@ function AvatarCreator({
             backdropFilter: "blur(12px)",
           }}
         >
-          <header
-            style={{
-              ...cardBase,
-              padding: "12px 14px",
-              display: "grid",
-              gridTemplateColumns: "44px 1fr 44px",
-              alignItems: "center",
-              gap: 10,
-              background:
-                "linear-gradient(135deg, rgba(13,16,24,.92), rgba(43,28,73,.72))",
-            }}
-          >
-            <BackDot onClick={handleBack} size={40} color={primary} />
-            <div style={{ minWidth: 0, textAlign: "center" }}>
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: 24,
-                  lineHeight: 1,
-                  fontWeight: 1000,
-                  letterSpacing: 1.4,
-                  color: primary,
-                  textTransform: "uppercase",
-                }}
-              >
-                AVATAR IA
-              </h1>
-              <div
-                style={{
-                  marginTop: 5,
-                  fontSize: 12,
-                  opacity: 0.82,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                Caricature cartoon + médaillon WebP
-              </div>
-            </div>
-            <InfoDot
-              title="Infos Avatar IA"
-              content={infoContent}
-              size={40}
-              color={primary}
-            />
-          </header>
+          <TopTicker
+            src={lang === "fr" ? tickerAvatarIa : tickerAiAvatar}
+            alt={lang === "fr" ? "Avatar IA" : "AI Avatar"}
+            maxWidth="100%"
+            marginBottom={0}
+            startSlot={
+              <BackDot
+                onClick={handleBack}
+                size={40}
+                color={primary}
+                title={lang === "fr" ? "Retour à la page précédente" : "Back to the previous page"}
+              />
+            }
+            endSlot={
+              <InfoDot
+                title={lang === "fr" ? "Infos Avatar IA" : "AI Avatar info"}
+                content={infoContent}
+                size={40}
+                color={primary}
+              />
+            }
+          />
 
           <div
             style={{
