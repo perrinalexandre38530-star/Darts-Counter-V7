@@ -385,9 +385,13 @@ function QuickTeamPad({ label, accent, onPick }: { label: string; accent: string
 
 function ActionTiles({
   state,
+  actionSource,
+  onSourceChange,
   onAction,
 }: {
   state: BabyFootState;
+  actionSource: BabyFootGoalSource;
+  onSourceChange: (source: BabyFootGoalSource) => void;
   onAction: (action: QuickAction, source: BabyFootGoalSource) => void;
 }) {
   const pissetteLabel =
@@ -427,18 +431,47 @@ function ActionTiles({
     { label: "PARACHUTE +2", action: "parachute", source: "GB", accent: "#5df0ff", muted: !state.allowLobShot },
     { label: "CSC", action: "csc", source: "AV", accent: "#ff4f6d" },
   ];
+  const resolveSource = (action: QuickAction, fallback: BabyFootGoalSource) => {
+    if (action === "gamelle" || action === "parachute") return actionSource;
+    return fallback;
+  };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}>
-      {tiles.map((tile) => (
-        <button
-          key={tile.label}
-          type="button"
-          onClick={() => onAction(tile.action, tile.source)}
-          style={{ ...tileStyle(tile.accent), opacity: tile.muted ? 0.62 : 1 }}
-        >
-          {tile.label}
-        </button>
-      ))}
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}>
+        {(["AV", "DEF", "GB"] as BabyFootGoalSource[]).map((src) => (
+          <button
+            key={src}
+            type="button"
+            onClick={() => onSourceChange(src)}
+            style={{
+              borderRadius: 12,
+              border: `1px solid ${actionSource === src ? "rgba(93,240,255,.88)" : "rgba(255,255,255,.14)"}`,
+              background: actionSource === src ? "rgba(93,240,255,.16)" : "rgba(255,255,255,.04)",
+              color: actionSource === src ? "#5df0ff" : "rgba(255,255,255,.82)",
+              minHeight: 34,
+              fontWeight: 1000,
+              cursor: "pointer",
+            }}
+          >
+            {src}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,.68)", fontWeight: 800 }}>
+        Source pour <b>gamelle</b> et <b>parachute</b> : {actionSource}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}>
+        {tiles.map((tile) => (
+          <button
+            key={tile.label}
+            type="button"
+            onClick={() => onAction(tile.action, resolveSource(tile.action, tile.source))}
+            style={{ ...tileStyle(tile.accent), opacity: tile.muted ? 0.62 : 1 }}
+          >
+            {tile.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1515,11 +1548,11 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
                           <ProfileAvatar profile={profile || { id: playerId, name: playerId }} size={34} />
                           <span>{label}</span>
                         </div>
-                        <ActionTiles state={state} onAction={(action, source) => applyQuickAction(pickTeam, action, playerId, source)} />
+                        <ActionTiles state={state} actionSource={pickGoalSource} onSourceChange={setPickGoalSource} onAction={(action, source) => applyQuickAction(pickTeam, action, playerId, source)} />
                       </div>
                     );
                   }) : (
-                    <ActionTiles state={state} onAction={(action, source) => applyQuickAction(pickTeam, action, null, source)} />
+                    <ActionTiles state={state} actionSource={pickGoalSource} onSourceChange={setPickGoalSource} onAction={(action, source) => applyQuickAction(pickTeam, action, null, source)} />
                   )}
                 </div>
               </>

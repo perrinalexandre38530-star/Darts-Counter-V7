@@ -35,6 +35,13 @@ export type BabyFootPlayerStatRow = {
   csc: number;
   ownGoals: number;
   parachute: number;
+  gamelleAv: number;
+  gamelleDef: number;
+  gamelleGb: number;
+  gamelleMil: number;
+  gamellePenaltyPoints: number;
+  demiLastBallCount: number;
+  demiLastBallLoss: number;
   bonusDemiAv: number;
   bonusDemiDef: number;
   bonusDemiGb: number;
@@ -51,7 +58,7 @@ export type BabyFootPlayerStatRow = {
 const ACTION_KEYS: Array<keyof BabyFootPlayerStatRow> = [
   "points", "goals", "goalAv", "goalDef", "goalGb", "goalMil", "demi", "demiBonus",
   "gamelle", "peche", "pecheOff", "pecheDef", "pissette", "pissetteValid",
-  "pissetteRefused", "csc", "ownGoals", "parachute", "bonusDemiAv", "bonusDemiDef", "bonusDemiGb", "bonusDemiMil", "parachuteAv", "parachuteDef", "parachuteGb", "parachuteMil", "penalties", "penaltyGoals", "penaltyMisses",
+  "pissetteRefused", "csc", "ownGoals", "parachute", "gamelleAv", "gamelleDef", "gamelleGb", "gamelleMil", "gamellePenaltyPoints", "demiLastBallCount", "demiLastBallLoss", "bonusDemiAv", "bonusDemiDef", "bonusDemiGb", "bonusDemiMil", "parachuteAv", "parachuteDef", "parachuteGb", "parachuteMil", "penalties", "penaltyGoals", "penaltyMisses",
 ];
 
 function obj(v: any): Record<string, any> {
@@ -420,6 +427,13 @@ function makeBaseRow(input: {
     csc: 0,
     ownGoals: 0,
     parachute: 0,
+    gamelleAv: 0,
+    gamelleDef: 0,
+    gamelleGb: 0,
+    gamelleMil: 0,
+    gamellePenaltyPoints: 0,
+    demiLastBallCount: 0,
+    demiLastBallLoss: 0,
     bonusDemiAv: 0,
     bonusDemiDef: 0,
     bonusDemiGb: 0,
@@ -472,6 +486,13 @@ function normalizeRawRow(raw: any, base: BabyFootPlayerStatRow): BabyFootPlayerS
     csc: num(row.csc, num(row.ownGoals, 0)),
     ownGoals: num(row.ownGoals, num(row.csc, 0)),
     parachute: num(row.parachute, 0),
+    gamelleAv: num((row as any).gamelleAv, 0),
+    gamelleDef: num((row as any).gamelleDef, 0),
+    gamelleGb: num((row as any).gamelleGb, 0),
+    gamelleMil: num((row as any).gamelleMil, 0),
+    gamellePenaltyPoints: num((row as any).gamellePenaltyPoints, 0),
+    demiLastBallCount: num((row as any).demiLastBallCount, 0),
+    demiLastBallLoss: num((row as any).demiLastBallLoss, 0),
     bonusDemiAv: num((row as any).bonusDemiAv, 0),
     bonusDemiDef: num((row as any).bonusDemiDef, 0),
     bonusDemiGb: num((row as any).bonusDemiGb, 0),
@@ -564,6 +585,14 @@ export function buildBabyFootPlayerStatsMap(input: {
     else row.parachuteAv += 1;
   };
 
+  const bumpGamelleByLine = (row: BabyFootPlayerStatRow, line: any) => {
+    const src = String(line || "AV").toUpperCase();
+    if (src === "DEF") row.gamelleDef += 1;
+    else if (src === "GB") row.gamelleGb += 1;
+    else if (src === "MIL") row.gamelleMil += 1;
+    else row.gamelleAv += 1;
+  };
+
   for (const event of arr(input.events)) {
     const ev = obj(event);
     const team = String(ev.team || "A").toUpperCase() === "B" ? "B" : "A";
@@ -577,7 +606,7 @@ export function buildBabyFootPlayerStatsMap(input: {
         scorer.demiBonus += bonus;
         bumpBonusByLine(scorer, ev.sourceLine, bonus);
         bumpLine(scorer, ev.sourceLine);
-        if (ev.kind === "gamelle") scorer.gamelle += 1;
+        if (ev.kind === "gamelle") { scorer.gamelle += 1; bumpGamelleByLine(scorer, ev.sourceLine); }
         if (ev.kind === "peche") { scorer.peche += 1; scorer.pecheOff += 1; }
         if (ev.kind === "pissette") { scorer.pissette += 1; scorer.pissetteValid += 1; }
         if (ev.kind === "parachute") { scorer.parachute += 1; bumpParachuteByLine(scorer, ev.sourceLine); }
@@ -593,12 +622,20 @@ export function buildBabyFootPlayerStatsMap(input: {
       if (scorer) {
         scorer.demi += 1;
         const penalty = Math.max(0, num(ev.lastBallPenalty, 0));
-        if (penalty > 0) scorer.points -= penalty;
+        if (penalty > 0) {
+          scorer.points -= penalty;
+          scorer.demiLastBallCount += 1;
+          scorer.demiLastBallLoss += penalty;
+        }
       }
     } else if (ev.t === "special") {
       const scorer = ensure(ev.scorerId, { team }, team);
       if (!scorer) continue;
-      if (ev.kind === "gamelle") scorer.gamelle += 1;
+      if (ev.kind === "gamelle") {
+        scorer.gamelle += 1;
+        bumpGamelleByLine(scorer, ev.sourceLine);
+        scorer.gamellePenaltyPoints += Math.abs(num(ev.scoreDeltaA, 0)) + Math.abs(num(ev.scoreDeltaB, 0));
+      }
       if (ev.kind === "peche_off") { scorer.peche += 1; scorer.pecheOff += 1; }
       if (ev.kind === "peche_def") { scorer.peche += 1; scorer.pecheDef += 1; }
       if (ev.kind === "pissette") {
@@ -715,6 +752,13 @@ export function extractBabyFootPlayerStatsRows(record: any): BabyFootPlayerStatR
         csc: Math.max(num(rawRow.csc, 0), num(eventRow.csc, 0), num(chosen.csc, 0)),
         ownGoals: Math.max(num(rawRow.ownGoals, 0), num(eventRow.ownGoals, 0), num(chosen.ownGoals, 0)),
         parachute: Math.max(num((rawRow as any).parachute, 0), num((eventRow as any).parachute, 0), num((chosen as any).parachute, 0)),
+        gamelleAv: Math.max(num((rawRow as any).gamelleAv, 0), num((eventRow as any).gamelleAv, 0), num((chosen as any).gamelleAv, 0)),
+        gamelleDef: Math.max(num((rawRow as any).gamelleDef, 0), num((eventRow as any).gamelleDef, 0), num((chosen as any).gamelleDef, 0)),
+        gamelleGb: Math.max(num((rawRow as any).gamelleGb, 0), num((eventRow as any).gamelleGb, 0), num((chosen as any).gamelleGb, 0)),
+        gamelleMil: Math.max(num((rawRow as any).gamelleMil, 0), num((eventRow as any).gamelleMil, 0), num((chosen as any).gamelleMil, 0)),
+        gamellePenaltyPoints: Math.max(num((rawRow as any).gamellePenaltyPoints, 0), num((eventRow as any).gamellePenaltyPoints, 0), num((chosen as any).gamellePenaltyPoints, 0)),
+        demiLastBallCount: Math.max(num((rawRow as any).demiLastBallCount, 0), num((eventRow as any).demiLastBallCount, 0), num((chosen as any).demiLastBallCount, 0)),
+        demiLastBallLoss: Math.max(num((rawRow as any).demiLastBallLoss, 0), num((eventRow as any).demiLastBallLoss, 0), num((chosen as any).demiLastBallLoss, 0)),
         bonusDemiAv: Math.max(num((rawRow as any).bonusDemiAv, 0), num((eventRow as any).bonusDemiAv, 0), num((chosen as any).bonusDemiAv, 0)),
         bonusDemiDef: Math.max(num((rawRow as any).bonusDemiDef, 0), num((eventRow as any).bonusDemiDef, 0), num((chosen as any).bonusDemiDef, 0)),
         bonusDemiGb: Math.max(num((rawRow as any).bonusDemiGb, 0), num((eventRow as any).bonusDemiGb, 0), num((chosen as any).bonusDemiGb, 0)),

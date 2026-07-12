@@ -198,8 +198,6 @@ function playerNameFromPayload(payload: any, match: any, id: any) {
 function actionSubject(team: string, player: string) {
   const cleanTeam = String(team || "").trim();
   const cleanPlayer = String(player || "").trim();
-  if (cleanTeam && cleanPlayer && cleanTeam.toLowerCase() === cleanPlayer.toLowerCase()) return cleanTeam;
-  if (cleanTeam && cleanPlayer) return `${cleanTeam} · ${cleanPlayer}`;
   return cleanTeam || cleanPlayer || "";
 }
 
@@ -262,6 +260,8 @@ function buildTimelineRows(events: any[], payload: any, summary: any, match: any
     }
 
     const elapsed = start && ev?.at ? Math.max(0, n(ev.at) - start) : 0;
+    const actorId = String(ev?.scorerId || ev?.ownGoalById || "").trim();
+    const actor = actorId ? allPlayers(match, payload).find((p: any) => playerId(p) === actorId) : null;
     return {
       key: `${ev?.t || "event"}-${ev?.at || index}-${index}`,
       time: fmtDuration(elapsed),
@@ -275,6 +275,8 @@ function buildTimelineRows(events: any[], payload: any, summary: any, match: any
       penalty: Math.max(0, n(ev?.lastBallPenalty, 0)),
       deltaA,
       deltaB,
+      actorAvatar: actor ? avatarOf(actor) : null,
+      actorName: actor ? playerName(actor) : "",
       weight: Math.max(1, Math.abs(deltaA) + Math.abs(deltaB) || (ev?.t === "demi" ? 1 : 0)),
     };
   });
@@ -376,6 +378,24 @@ function InlineIcon({ kind, color = "currentColor", size = 22 }: { kind: string;
 
 function statLowerIsBetter(label: string) {
   return ["Points encaissés", "Points perdus", "Demi dernière balle", "Pissettes refusées", "CSC"].includes(label);
+}
+
+function finishRuleLabel(summary: any, payload: any) {
+  const scoreMode = String(summary?.scoreMode || payload?.scoreMode || "target").toLowerCase();
+  const target = Math.max(1, n(summary?.target ?? payload?.target, 10));
+  let base = `${target} buts`;
+  if (scoreMode === "chrono") {
+    const sec = n(summary?.matchDurationSec ?? payload?.matchDurationSec, 0);
+    base = sec > 0 ? `Temps · ${fmtDuration(sec * 1000)}` : "Temps";
+  } else if (scoreMode === "balls5") base = "Finish · 5 balles";
+  else if (scoreMode === "balls10") base = "Finish · 10 balles";
+  else if (scoreMode === "balls11") base = "Finish · 11 balles";
+  else base = `Finish · ${target} buts`;
+  if (summary?.setsEnabled ?? payload?.setsEnabled) {
+    const bestOf = Math.max(1, n(summary?.setsBestOf ?? payload?.setsBestOf, 1));
+    return `BO${bestOf} sets · ${base}`;
+  }
+  return base;
 }
 
 function statBestSide(label: string, left: any, right: any) {
@@ -520,7 +540,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   if (!match && !loading) {
     return (
       <div style={{ minHeight: "100dvh", background: theme.bg, color: theme.text, padding: 16 }}>
-        <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} />
+        <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} matchTime={payload?.finishedAt || summary?.finishedAt || match?.finishedAt || match?.updatedAt} />
         <section style={{ ...panel(theme), marginTop: 14 }}>
           <div style={sectionTitle(theme)}>Match introuvable</div>
           <div style={small(theme)}>La carte existe peut-être encore dans la liste légère, mais le détail de la partie n’est plus présent dans IndexedDB.</div>
@@ -531,7 +551,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
 
   return (
     <div style={{ minHeight: "100dvh", background: theme.bg, color: theme.text, padding: "14px 14px 96px", boxSizing: "border-box" }}>
-      <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} />
+      <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} matchTime={payload?.finishedAt || summary?.finishedAt || match?.finishedAt || match?.updatedAt} />
 
       <section style={{ ...panel(theme), marginTop: 14, padding: 10 }}>
         <ScoreHeroCard
@@ -606,12 +626,15 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   );
 }
 
-function HeaderAboveTicker({ theme, onBack, infoContent }: any) {
+function HeaderAboveTicker({ theme, onBack, infoContent, matchTime }: any) {
   return (
     <header>
       <div style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr) 52px", alignItems: "center", gap: 10, marginBottom: 10, minHeight: 48 }}>
         <div style={{ display: "flex", justifyContent: "flex-start" }}><BackDot onClick={onBack} size={44} /></div>
-        <div style={{ textAlign: "center", color: theme.primary, fontWeight: 1100, letterSpacing: 1.1, textTransform: "uppercase", fontSize: 15, textShadow: `0 0 14px ${theme.primary}66` }}>RÉSULTAT BABY-FOOT</div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ color: theme.primary, fontWeight: 1100, letterSpacing: 1.1, textTransform: "uppercase", fontSize: 15, textShadow: `0 0 14px ${theme.primary}66` }}>RÉSULTAT BABY-FOOT</div>
+          {matchTime ? <div style={{ marginTop: 3, fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,.62)" }}>{scoreRowTime(matchTime)}</div> : null}
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end" }}><InfoDot title="Stats du match Baby-Foot" content={infoContent} size={44} glow={`${theme.primary}88`} /></div>
       </div>
       <div style={{ position: "relative", borderRadius: 20, overflow: "hidden", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, boxShadow: `0 0 28px ${theme.primary}22`, aspectRatio: "800 / 200", minHeight: 92 }}>
@@ -652,24 +675,22 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
   const indicatorSlots = Math.max(needed, bestOf);
   const setSummaries = setsEnabled ? buildSetSummaries(events, { ...payload, summary }) : [];
   const winnerSide = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+  const finishRule = finishRuleLabel(summary, payload);
   return (
     <div style={{ position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid ${winnerAccent}44`, background: `linear-gradient(135deg,${winnerAccent}10,rgba(255,255,255,.03) 42%,rgba(0,0,0,.34))`, boxShadow: `0 16px 36px rgba(0,0,0,.34), inset 0 0 30px ${winnerAccent}10` }}>
-      {leftBackdrop ? <div aria-hidden="true" style={{ position: "absolute", left: -8, top: "50%", transform: "translateY(-50%)", opacity: .24, pointerEvents: "none" }}><img src={leftBackdrop} alt="" style={{ width: 170, height: 170, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 30 : 999 }} /></div> : null}
-      {rightBackdrop ? <div aria-hidden="true" style={{ position: "absolute", right: -8, top: "50%", transform: "translateY(-50%)", opacity: .2, pointerEvents: "none" }}><img src={rightBackdrop} alt="" style={{ width: 170, height: 170, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 30 : 999 }} /></div> : null}
+      {leftBackdrop ? <div aria-hidden="true" style={{ position: "absolute", left: -34, top: "54%", transform: "translateY(-50%)", opacity: .13, pointerEvents: "none", filter: "grayscale(1) brightness(.9)" }}><img src={leftBackdrop} alt="" style={{ width: 200, height: 200, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 34 : 999 }} /></div> : null}
+      {rightBackdrop ? <div aria-hidden="true" style={{ position: "absolute", right: -34, top: "54%", transform: "translateY(-50%)", opacity: .13, pointerEvents: "none", filter: "grayscale(1) brightness(.9)" }}><img src={rightBackdrop} alt="" style={{ width: 200, height: 200, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 34 : 999 }} /></div> : null}
       <div style={{ position: "relative", padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ color: "#07100b", background: scoreA === scoreB ? "#ffd76a" : "#7dffab", borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 1000, letterSpacing: .6 }}>{scoreA === scoreB ? "NUL" : "VICTOIRE"}</span>
-            <span style={{ color: winnerAccent, border: `1px solid ${winnerAccent}55`, background: `${winnerAccent}12`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000 }}>{mode}</span>
-          </div>
-          <div style={{ color: "rgba(255,255,255,.58)", fontSize: 10, fontWeight: 900, textAlign: "right" }}>{scoreRowTime(finishedAt)}</div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ color: winnerAccent, border: `1px solid ${winnerAccent}55`, background: `${winnerAccent}12`, borderRadius: 999, padding: "4px 10px", fontSize: 10, fontWeight: 1000 }}>{mode}</span>
+          <span style={{ color: "rgba(255,255,255,.92)", border: `1px solid rgba(255,255,255,.14)`, background: "rgba(255,255,255,.05)", borderRadius: 999, padding: "4px 10px", fontSize: 10, fontWeight: 1000 }}>{finishRule}</span>
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
           <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               {winnerSide === "A" ? <img src={trophyCup} alt="" style={{ width: 16, height: 16, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
-              <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(14px, 4vw, 20px)" : "clamp(14px, 4.1vw, 21px)", fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamA}</div>
+              <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(12px, 3.5vw, 17px)" : "clamp(12px, 3.7vw, 18px)", fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", alignSelf: "center" }}>{teamA}</div>
             </div>
             {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : <div style={{ height: 10 }} />}
           </div>
@@ -682,7 +703,7 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
 
           <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", width: "100%", minWidth: 0 }}>
-              <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(14px, 4vw, 20px)" : "clamp(14px, 4.1vw, 21px)", fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{teamB}</div>
+              <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(12px, 3.5vw, 17px)" : "clamp(12px, 3.7vw, 18px)", fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, alignSelf: "center" }}>{teamB}</div>
               {winnerSide === "B" ? <img src={trophyCup} alt="" style={{ width: 16, height: 16, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
             </div>
             {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : <div style={{ height: 10 }} />}
@@ -902,10 +923,11 @@ function MatchTimelineDetails({ theme, timelineRows }: any) {
             </div>
             <div style={{ position: "relative", borderRadius: 16, padding: "10px 12px 10px 16px", border: `1px solid ${accent}55`, background: `linear-gradient(180deg, ${accent}14, rgba(255,255,255,.02))`, boxShadow: `0 0 16px ${accent}10 inset` }}>
               <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 999, background: accent, boxShadow: `0 0 10px ${accent}` }} />
+              {row.actorAvatar ? <img aria-hidden="true" src={row.actorAvatar} alt="" style={{ position: "absolute", right: -14, top: "50%", transform: "translateY(-50%)", width: 86, height: 86, objectFit: "cover", borderRadius: 999, opacity: .14, filter: "grayscale(1) brightness(.9)", pointerEvents: "none" }} /> : null}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                 <span style={{ borderRadius: 999, padding: "3px 8px", background: `${accent}18`, border: `1px solid ${accent}44`, color: accent, fontSize: 9, fontWeight: 1100, letterSpacing: .5 }}>{tag}</span>
               </div>
-              <div style={{ color: theme.text, fontSize: 12, fontWeight: 900, lineHeight: 1.28 }}>{row.label}</div>
+              <div style={{ color: theme.text, fontSize: 12, fontWeight: 900, lineHeight: 1.28, paddingRight: row.actorAvatar ? 36 : 0 }}>{row.label}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div style={{ minWidth: 50, borderRadius: 12, padding: "8px 8px", textAlign: "center", border: `1px solid ${accent}33`, background: "rgba(255,255,255,.03)", color: theme.text, fontSize: 14, fontWeight: 1100 }}>{row.score}</div>
@@ -932,7 +954,7 @@ function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scor
     ["Points marqués", n(a.goals), n(b.goals)],
     ["Points encaissés", n(a.goalsConceded), n(b.goalsConceded)],
     ["Points perdus", n(losses.A.total), n(losses.B.total)],
-    ["Demi dernière balle", n(losses.A.demi), n(losses.B.demi)],
+    ["Demi dernière balle", n(losses.A.demi) ? `-${n(losses.A.demi)}` : 0, n(losses.B.demi) ? `-${n(losses.B.demi)}` : 0],
     ["Moyenne / manche", Number(n(a.avgGoalsPerLeg).toFixed(1)), Number(n(b.avgGoalsPerLeg).toFixed(1))],
     ["Différence", signed(n(a.goalDiff)), signed(n(b.goalDiff))],
     ["Buts AV", n(a.goalAv), n(b.goalAv)],
@@ -1019,6 +1041,8 @@ function PlayerStatsCard({ theme, row, accent }: any) {
   const bonusDef = n((row as any).bonusDemiDef) + n((row as any).bonusDemiGb) + n((row as any).bonusDemiMil);
   const parachuteOff = n((row as any).parachuteAv);
   const parachuteDef = n((row as any).parachuteDef) + n((row as any).parachuteGb) + n((row as any).parachuteMil) || Math.max(0, n(row.parachute) - parachuteOff);
+  const gamelleOff = n((row as any).gamelleAv) || (!n((row as any).gamelleDef) && !n((row as any).gamelleGb) && !n((row as any).gamelleMil) ? n(row.gamelle) : 0);
+  const gamelleDef = n((row as any).gamelleDef) + n((row as any).gamelleGb) + n((row as any).gamelleMil);
   const groups = [
     {
       key: "off",
@@ -1030,6 +1054,7 @@ function PlayerStatsCard({ theme, row, accent }: any) {
         ["Pissettes +", n(row.pissetteValid)],
         ["Bonus demi +", bonusOff],
         ["Parachutes AV", parachuteOff],
+        ["Gamelles AV", gamelleOff],
       ],
     },
     {
@@ -1041,6 +1066,7 @@ function PlayerStatsCard({ theme, row, accent }: any) {
         ["Pêche déf.", n(row.pecheDef)],
         ["Bonus demi +", bonusDef],
         ["Parachutes DEF/GB", parachuteDef],
+        ["Gamelles DEF/GB", gamelleDef],
       ],
     },
     {
@@ -1048,8 +1074,10 @@ function PlayerStatsCard({ theme, row, accent }: any) {
       title: "Pénalisant / divers",
       items: [
         ["Demis", n(row.demi)],
+        ["Demis dernière balle", n((row as any).demiLastBallCount)],
+        ["Pts perdus demi", n((row as any).demiLastBallLoss)],
+        ["Gamelles - pts", n((row as any).gamellePenaltyPoints)],
         ["CSC", n(row.csc ?? row.ownGoals)],
-        ["Gamelles", n(row.gamelle)],
         ["Pissettes -", n(row.pissetteRefused)],
       ],
     },
@@ -1095,9 +1123,10 @@ function TeamBlock({ theme, name, players, align }: { theme: any; name: string; 
 
 function TeamHeaderMini({ theme, name, players, align }: any) {
   return (
-    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-start" : "flex-end", gap: 7, flexDirection: align === "left" ? "row" : "row-reverse" }}>
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-end" : "flex-start", gap: 8, flexDirection: align === "left" ? "row" : "row-reverse" }}>
+      {align === "left" ? <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: theme.primary, textAlign: "right", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div> : null}
       <AvatarStack theme={theme} players={players} align={align} size={32} />
-      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 1100, color: align === "left" ? theme.primary : "#ff70bd", textAlign: align }}>{name}</div>
+      {align === "right" ? <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: "#ff70bd", textAlign: "left", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div> : null}
     </div>
   );
 }
