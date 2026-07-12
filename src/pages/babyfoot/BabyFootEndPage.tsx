@@ -402,6 +402,12 @@ function statBestSide(label: string, left: any, right: any) {
   const ln = Number(String(left).replace("+", ""));
   const rn = Number(String(right).replace("+", ""));
   if (!Number.isFinite(ln) || !Number.isFinite(rn) || ln === rn) return null;
+  if (label === "Demi dernière balle") {
+    const leftLoss = Math.abs(ln);
+    const rightLoss = Math.abs(rn);
+    if (leftLoss === rightLoss) return null;
+    return leftLoss < rightLoss ? "left" : "right";
+  }
   const lowerBetter = statLowerIsBetter(label);
   if (lowerBetter) return ln < rn ? "left" : "right";
   return ln > rn ? "left" : "right";
@@ -921,9 +927,9 @@ function MatchTimelineDetails({ theme, timelineRows }: any) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
               <div style={{ minWidth: 48, borderRadius: 999, padding: "6px 8px", textAlign: "center", border: `1px solid ${accent}55`, background: `${accent}12`, color: accent, fontSize: 11, fontWeight: 1100, boxShadow: `0 0 12px ${accent}22 inset` }}>{row.time}</div>
             </div>
-            <div style={{ position: "relative", borderRadius: 16, padding: "10px 12px 10px 16px", border: `1px solid ${accent}55`, background: `linear-gradient(180deg, ${accent}14, rgba(255,255,255,.02))`, boxShadow: `0 0 16px ${accent}10 inset` }}>
+            <div style={{ position: "relative", overflow: "hidden", borderRadius: 16, padding: "10px 12px 10px 16px", border: `1px solid ${accent}55`, background: `linear-gradient(180deg, ${accent}14, rgba(255,255,255,.02))`, boxShadow: `0 0 16px ${accent}10 inset` }}>
               <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 999, background: accent, boxShadow: `0 0 10px ${accent}` }} />
-              {row.actorAvatar ? <img aria-hidden="true" src={row.actorAvatar} alt="" style={{ position: "absolute", right: -14, top: "50%", transform: "translateY(-50%)", width: 86, height: 86, objectFit: "cover", borderRadius: 999, opacity: .14, filter: "grayscale(1) brightness(.9)", pointerEvents: "none" }} /> : null}
+              {row.actorAvatar ? <img aria-hidden="true" src={row.actorAvatar} alt="" style={{ position: "absolute", right: -18, top: "50%", transform: "translateY(-50%)", width: 88, height: 88, objectFit: "cover", borderRadius: 999, opacity: .28, filter: "saturate(.9) brightness(.85)", pointerEvents: "none", boxShadow: `0 0 18px ${accent}22` }} /> : null}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                 <span style={{ borderRadius: 999, padding: "3px 8px", background: `${accent}18`, border: `1px solid ${accent}44`, color: accent, fontSize: 9, fontWeight: 1100, letterSpacing: .5 }}>{tag}</span>
               </div>
@@ -1122,11 +1128,18 @@ function TeamBlock({ theme, name, players, align }: { theme: any; name: string; 
 }
 
 function TeamHeaderMini({ theme, name, players, align }: any) {
+  if (align === "left") {
+    return (
+      <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8 }}>
+        <AvatarStack theme={theme} players={players} align={align} size={32} />
+        <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: theme.primary, textAlign: "left", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div>
+      </div>
+    );
+  }
   return (
-    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-end" : "flex-start", gap: 8, flexDirection: align === "left" ? "row" : "row-reverse" }}>
-      {align === "left" ? <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: theme.primary, textAlign: "right", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div> : null}
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8, flexDirection: "row-reverse" }}>
       <AvatarStack theme={theme} players={players} align={align} size={32} />
-      {align === "right" ? <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: "#ff70bd", textAlign: "left", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div> : null}
+      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 1100, color: "#ff70bd", textAlign: "left", textTransform: "uppercase", letterSpacing: .4 }}>{name}</div>
     </div>
   );
 }
