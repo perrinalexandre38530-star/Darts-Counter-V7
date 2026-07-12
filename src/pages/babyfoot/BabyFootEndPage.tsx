@@ -514,7 +514,35 @@ function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durat
     ...entries.map((row: any) => n(row?.elapsedMs, 0))
   );
   const ticks = buildTimeTicks(totalMs, 5);
-  const baseY = 116;
+  const baseY = 122;
+  const chartH = 260;
+  const periods = [
+    { key: "start", label: "Entame", short: "0-20%", from: 0, to: .2, color: "#45b8ff" },
+    { key: "rise", label: "Montée", short: "20-40%", from: .2, to: .4, color: "#77ff99" },
+    { key: "heart", label: "Cœur", short: "40-60%", from: .4, to: .6, color: "#ffd45c" },
+    { key: "money", label: "Money time", short: "60-80%", from: .6, to: .8, color: "#ffb35c" },
+    { key: "finish", label: "Finish", short: "80-100%", from: .8, to: 1, color: "#b78cff" },
+  ];
+  const periodFor = (ratio: number) => periods.find((p: any) => ratio >= p.from && ratio <= p.to) || periods[periods.length - 1];
+  const periodCounts = periods.map((period: any) => ({
+    ...period,
+    count: entries.filter((row: any) => {
+      const ratio = Math.max(0, Math.min(1, n(row.elapsedMs, 0) / totalMs));
+      return ratio >= period.from && ratio <= period.to;
+    }).length,
+  }));
+
+  let runStart = 0;
+  const runMeta = entries.map((row: any, index: number) => {
+    if (index === 0 || entries[index - 1]?.team !== row.team || !row.team) runStart = index;
+    let runEnd = index;
+    while (runEnd + 1 < entries.length && entries[runEnd + 1]?.team === row.team && row.team) runEnd += 1;
+    const runLength = Math.max(1, runEnd - runStart + 1);
+    const position = index - runStart;
+    const center = (runLength - 1) / 2;
+    const mountain = runLength <= 1 ? 0 : 1 - Math.min(1, Math.abs(position - center) / Math.max(.5, center));
+    return { runLength, mountain };
+  });
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -538,49 +566,51 @@ function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durat
           </div>
         </div>
 
-        <div style={{ position: "relative", height: 250, overflow: "hidden", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
+        <div style={{ position: "relative", height: chartH, overflow: "hidden", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), transparent 30%, transparent 70%, rgba(0,0,0,.18))" }} />
-          <div style={{ position: "absolute", left: 14, right: 14, top: baseY, height: 2, background: `linear-gradient(90deg, ${theme.primary}, rgba(255,255,255,.28), #ff59b0)`, boxShadow: `0 0 14px ${theme.primary}33` }} />
-
+          {periods.map((period: any) => (
+            <div key={period.key} style={{ position: "absolute", left: `${period.from * 100}%`, width: `${(period.to - period.from) * 100}%`, top: 0, bottom: 0, background: `linear-gradient(180deg, ${period.color}12, transparent 42%, transparent 58%, ${period.color}10)`, borderLeft: `1px solid ${period.color}22` }} />
+          ))}
+          <div style={{ position: "absolute", left: 12, right: 12, top: baseY, height: 2, background: "linear-gradient(90deg, rgba(69,184,255,.65), rgba(255,255,255,.45), rgba(255,89,176,.65))", boxShadow: `0 0 10px ${theme.primary}33` }} />
           {ticks.map((tick: any) => (
-            <React.Fragment key={`tick-${tick.ratio}`}>
-              <div style={{ position: "absolute", left: `calc(${tick.ratio * 100}% - 1px)`, top: 16, bottom: 24, width: 1, background: "rgba(255,255,255,.08)" }} />
-              <div style={{ position: "absolute", left: `calc(${tick.ratio * 100}% - 18px)`, bottom: 4, width: 36, textAlign: "center", fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,.6)" }}>{tick.label}</div>
+            <React.Fragment key={tick.label}>
+              <div style={{ position: "absolute", top: 18, bottom: 24, left: `${tick.ratio * 100}%`, width: 1, background: "rgba(255,255,255,.08)" }} />
+              <div style={{ position: "absolute", bottom: 7, left: `${tick.ratio * 100}%`, transform: "translateX(-50%)", fontSize: 10, fontWeight: 900, color: theme.textSoft }}>{tick.label}</div>
             </React.Fragment>
           ))}
-
           {entries.map((row: any, index: number) => {
-            const team = row.team === "B" ? "B" : "A";
+            const ratio = Math.max(0, Math.min(1, n(row.elapsedMs, 0) / totalMs));
+            const x = ratio * 100;
             const isPenalty = row.type === "demi" && row.penalty > 0;
-            const accent = isPenalty ? "#ffd76a" : team === "A" ? theme.primary : "#ff59b0";
-            const x = totalMs > 0 ? (n(row.elapsedMs, 0) / totalMs) * 100 : 0;
-            const strength = Math.max(1, n(row.weight, 1));
-            const barHeight = Math.min(90, 26 + (strength - 1) * 18 + (row.type === "goal" ? 10 : 0) + (isPenalty ? 8 : 0));
-            const barWidth = Math.max(6, Math.min(12, 5 + strength * 2));
-            const scoreTop = team === "A" ? baseY - barHeight - 26 : baseY + barHeight + 10;
-            const labelTop = team === "A" ? baseY - barHeight - 8 : baseY + barHeight - 2;
-            const symbol = isPenalty ? `-${row.penalty}` : row.type === "demi" ? "½" : row.kind === "csc" ? "CSC" : "⚽";
+            const team = row.team === "B" ? "B" : "A";
+            const sideAccent = isPenalty ? "#ffd76a" : team === "B" ? "#ff59b0" : theme.primary;
+            const period = periodFor(ratio);
+            const accent = isPenalty ? "#ffd76a" : period.color;
+            const run = runMeta[index] || { runLength: 1, mountain: 0 };
+            const weight = Math.max(1, n(row.weight, 1));
+            const barHeight = Math.min(96, 24 + (run.runLength > 1 ? 22 : 0) + run.mountain * 48 + Math.min(22, (weight - 1) * 12));
+            const barWidth = Math.max(5, Math.min(14, 7 + Math.min(6, weight * 2)));
+            const bottom = chartH - baseY;
+            const top = baseY;
             return (
               <div key={row.key || index} title={`${row.time} · ${row.label} · ${row.score}`} style={{ position: "absolute", left: `calc(${x}% - ${Math.round(barWidth / 2)}px)`, insetBlock: 0 }}>
-                <div style={{ position: "absolute", left: 0, width: barWidth, borderRadius: 999, background: `linear-gradient(180deg, ${accent}, ${accent}aa)`, boxShadow: `0 0 14px ${accent}`, opacity: .96, ...(team === "A" ? { bottom: `${250 - baseY}px`, height: barHeight } : { top: `${baseY}px`, height: barHeight }) }} />
-                <div style={{ position: "absolute", left: `calc(50% - ${isPenalty ? 14 : 11}px)`, top: scoreTop, minWidth: isPenalty ? 28 : 22, padding: isPenalty ? "2px 5px" : "0 4px", height: isPenalty ? "auto" : 22, lineHeight: isPenalty ? 1.35 : "22px", borderRadius: 999, border: `1px solid ${accent}99`, background: "rgba(4,9,18,.88)", color: accent, textAlign: "center", fontSize: isPenalty ? 10 : 11, fontWeight: 1100, boxShadow: `0 0 12px ${accent}22` }}>{symbol}</div>
-                <div style={{ position: "absolute", left: "50%", top: labelTop, transform: `translate(${team === "A" ? "-10%" : "-90%"}, ${team === "A" ? "-100%" : "0"})`, maxWidth: 108, fontSize: 10, fontWeight: 900, color: accent, textShadow: `0 0 10px ${accent}44`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.time}</div>
+                <div style={{ position: "absolute", left: 0, width: barWidth, borderRadius: 999, background: `linear-gradient(180deg, ${sideAccent}, ${accent}cc)`, boxShadow: `0 0 14px ${sideAccent}`, opacity: .96, ...(team === "A" ? { bottom: `${bottom}px`, height: barHeight } : { top: `${top}px`, height: barHeight }) }} />
+                {isPenalty ? <div style={{ position: "absolute", left: `calc(50% - 11px)`, top: team === "A" ? baseY - barHeight - 20 : baseY + barHeight + 2, width: 22, height: 22, lineHeight: "22px", borderRadius: 999, border: `1px solid ${sideAccent}99`, background: "rgba(4,9,18,.88)", color: sideAccent, textAlign: "center", fontSize: 11, fontWeight: 1100, boxShadow: `0 0 12px ${sideAccent}33` }}>½</div> : null}
               </div>
             );
           })}
         </div>
 
-        <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-          {entries.slice(-4).reverse().map((row: any) => {
-            const accent = row.type === "demi" && row.penalty > 0 ? "#ffd76a" : row.team === "B" ? "#ff59b0" : theme.primary;
-            return (
-              <div key={`summary-${row.key}`} style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 8, alignItems: "center", fontSize: 11, fontWeight: 900 }}>
-                <div style={{ color: accent }}>{row.time}</div>
-                <div style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", color: theme.text }}>{row.label}</div>
-                <div style={{ color: theme.textSoft }}>{row.score}</div>
+        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+          {periodCounts.map((period: any) => (
+            <div key={period.key} style={{ display: "grid", gridTemplateColumns: "78px minmax(0,1fr) 42px", gap: 8, alignItems: "center", fontSize: 10, fontWeight: 900 }}>
+              <div style={{ color: period.color }}><div style={{ fontSize: 11, fontWeight: 1100 }}>{period.label}</div><div style={{ color: theme.textSoft }}>{period.short}</div></div>
+              <div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}>
+                <div style={{ width: `${entries.length ? (period.count / entries.length) * 100 : 0}%`, height: "100%", background: period.color, boxShadow: `0 0 10px ${period.color}66` }} />
               </div>
-            );
-          })}
+              <div style={{ color: period.color, textAlign: "right", fontSize: 12, fontWeight: 1100 }}>{period.count}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

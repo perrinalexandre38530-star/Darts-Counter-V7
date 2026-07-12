@@ -27,6 +27,7 @@ import { isOnlineRecord } from "../lib/x01StatsSource";
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
+import { applyBabyFootImportRules, isBabyFootShareLike } from "../lib/babyfootImportRules";
 import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
 import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
 import logoDarts from "../assets/games/logo-darts.png";
@@ -2619,8 +2620,10 @@ export default function HistoryPage({
   }
 
   async function acceptPacket(packet: MatchSharePacketV1) {
-    const rec = buildHistoryRecordFromPacket(packet);
-    await History.upsert(rec as any);
+    const normalizedPacket = isBabyFootShareLike(packet) ? applyBabyFootImportRules(packet) : packet;
+    const rec = buildHistoryRecordFromPacket(normalizedPacket as MatchSharePacketV1);
+    const finalRec = isBabyFootShareLike(normalizedPacket) ? applyBabyFootImportRules(rec) : rec;
+    await History.upsert(finalRec as any);
     await loadHistory();
   }
 

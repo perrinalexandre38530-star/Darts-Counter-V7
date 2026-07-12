@@ -45,6 +45,10 @@ import tickerProfilesLocaux from "../assets/tickers/ticker_profiles_locaux.webp"
 import tickerLocalProfiles from "../assets/tickers/ticker_local_profiles.webp";
 import tickerAmis from "../assets/tickers/ticker_amis.webp";
 import tickerFriends from "../assets/tickers/ticker_friends.webp";
+import tickerMonProfil from "../assets/tickers/ticker_mon_profil.png";
+import tickerMyProfile from "../assets/tickers/ticker_my_profile.png";
+import tickerGalerie from "../assets/tickers/ticker_galerie.png";
+import tickerGallery from "../assets/tickers/ticker_gallery.png";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
@@ -3039,7 +3043,7 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            {view === "friends" ? (
+            {view === "friends" || view === "me" || view === "avatarGallery" ? (
               <div
                 style={{
                   width: "calc(100% + 32px)",
@@ -3050,8 +3054,16 @@ React.useEffect(() => {
                 }}
               >
                 <TopTicker
-                  src={lang === "fr" ? tickerAmis : tickerFriends}
-                  alt={lang === "fr" ? "Amis" : "Friends"}
+                  src={view === "friends"
+                    ? (lang === "fr" ? tickerAmis : tickerFriends)
+                    : view === "me"
+                      ? (lang === "fr" ? tickerMonProfil : tickerMyProfile)
+                      : (lang === "fr" ? tickerGalerie : tickerGallery)}
+                  alt={view === "friends"
+                    ? (lang === "fr" ? "Amis" : "Friends")
+                    : view === "me"
+                      ? (lang === "fr" ? "Mon profil" : "My profile")
+                      : (lang === "fr" ? "Galerie" : "Gallery")}
                   maxWidth="100%"
                   marginBottom={0}
                   startSlot={
@@ -3064,11 +3076,23 @@ React.useEffect(() => {
                   endSlot={
                     <InfoDot
                       size={42}
-                      title={lang === "fr" ? "Informations sur la page Amis" : "Friends page information"}
+                      title={view === "friends"
+                        ? (lang === "fr" ? "Informations sur la page Amis" : "Friends page information")
+                        : view === "me"
+                          ? (lang === "fr" ? "Informations sur la page Mon profil" : "My profile page information")
+                          : (lang === "fr" ? "Informations sur la page Galerie" : "Gallery page information")}
                       content={
-                        lang === "fr"
-                          ? "Cette page affiche les amis synchronisés avec ton compte Online.\n\n• Consulte leur statut de présence.\n• Retrouve leurs principales statistiques de jeu.\n• Utilise « Recharger » pour actualiser la liste et les informations."
-                          : "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information."
+                        view === "friends"
+                          ? (lang === "fr"
+                              ? "Cette page affiche les amis synchronisés avec ton compte Online.\n\n• Consulte leur statut de présence.\n• Retrouve leurs principales statistiques de jeu.\n• Utilise « Recharger » pour actualiser la liste et les informations."
+                              : "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information.")
+                          : view === "me"
+                            ? (lang === "fr"
+                                ? "Cette page affiche ton profil actif synchronisé avec ton compte.\n\n• Consulte ton avatar, ton statut et tes statistiques principales.\n• Modifie tes informations personnelles.\n• Accède rapidement à l'édition, aux statistiques et aux réglages liés à ton profil."
+                                : "This page shows your active profile synchronized with your account.\n\n• View your avatar, status and key statistics.\n• Edit your personal information.\n• Quickly access editing, statistics and profile-related settings.")
+                            : (lang === "fr"
+                                ? "Cette page regroupe la galerie du compte avec les avatars IA, profils locaux, bots CPU, teams et l'avatar du profil actif.\n\n• Parcours les avatars disponibles.\n• Filtre et scanne automatiquement les éléments.\n• Attribue rapidement un avatar au profil actif, à un profil local ou à un bot."
+                                : "This page gathers the account gallery with AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n\n• Browse the available avatars.\n• Filter and automatically scan gallery items.\n• Quickly assign an avatar to the active profile, a local profile or a bot.")
                       }
                     />
                   }

@@ -16,12 +16,14 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
 import victoryCup from "../../assets/victory.webp";
 import { History } from "../../lib/history";
-import { buildMatchSharePacket } from "../../lib/matchShare";
+import { buildMatchSharePacket, isMatchSharePacketV1, type MatchSharePacketV1 } from "../../lib/matchShare";
 import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 
 import { computeDecisiveGoals, computeMomentum, computePenaltyImpact, computeShotConversion } from "../../lib/babyfootQualityStats";
 import { computeBabyFootRichStats, formatBabyFootAvg } from "../../lib/babyfootRichStats";
 import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
+import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../../lib/matchInboxLocal";
+import { applyBabyFootImportRules, isBabyFootShareLike } from "../../lib/babyfootImportRules";
 
 type Props = {
   store: any;
@@ -1269,10 +1271,44 @@ function HistoryCardsView({
 }: HistoryCardsViewProps) {
   const focusRef = React.useRef<HTMLDivElement | null>(null);
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [historyTab, setHistoryTab] = React.useState<"done" | "running" | "inbox">("done");
+  const [inboxLocal, setInboxLocal] = React.useState<InboxItemLocal[]>(() => {
+    try { return inboxListLocal().filter((item: any) => isBabyFootShareLike(item?.packet)); } catch { return []; }
+  });
+
+  const refreshInbox = React.useCallback(() => {
+    try { setInboxLocal(inboxListLocal().filter((item: any) => isBabyFootShareLike(item?.packet))); } catch { setInboxLocal([]); }
+  }, []);
+
+  React.useEffect(() => { refreshInbox(); }, [refreshInbox]);
 
   const requestReload = React.useCallback(() => {
     window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { sport: "babyfoot", imported: true } }));
   }, []);
+
+  const packetFromImportRecord = React.useCallback((record: any): MatchSharePacketV1 | null => {
+    if (!record) return null;
+    if (isMatchSharePacketV1(record)) return record as MatchSharePacketV1;
+    const normalized = normalizeBabyFootImportRecord(record);
+    if (!normalized) return null;
+    return buildMatchSharePacket({ ...normalized, kind: "babyfoot", sport: "babyfoot" }) as MatchSharePacketV1;
+  }, []);
+
+  const acceptBabyFootPacket = React.useCallback(async (packet: MatchSharePacketV1) => {
+    const rawRecord = normalizeBabyFootImportRecord(packet);
+    if (!rawRecord) throw new Error("Packet Baby-Foot invalide");
+    const corrected = applyBabyFootImportRules(rawRecord);
+    const id = historyRowId(corrected);
+    if (id) clearBabyFootImportTombstones([id]);
+    await (History as any).upsert(corrected);
+    const fresh = id && typeof (History as any).get === "function"
+      ? ((await (History as any).get(id).catch(() => null)) || corrected)
+      : corrected;
+    onImportedRecords?.([fresh]);
+    requestReload();
+    window.setTimeout(requestReload, 120);
+    return fresh;
+  }, [onImportedRecords, requestReload]);
 
   const importBabyFootFile = React.useCallback(async (file: File | null | undefined) => {
     if (!file) return;
@@ -1280,50 +1316,49 @@ function HistoryCardsView({
       const text = await file.text();
       const json = JSON.parse(text);
       const records = collectBabyFootImportRecords(json);
-      if (!records.length) {
+      const packets: MatchSharePacketV1[] = [];
+
+      if (isMatchSharePacketV1(json) && isBabyFootShareLike(json)) {
+        packets.push(json as MatchSharePacketV1);
+      } else {
+        for (const rec of records) {
+          const packet = packetFromImportRecord(rec);
+          if (packet && isBabyFootShareLike(packet)) packets.push(packet);
+        }
+      }
+
+      if (!packets.length) {
         window.alert("Import impossible : aucun match Baby-Foot reconnu dans ce fichier JSON.");
         return;
       }
 
-      const ids = records.map((rec) => historyRowId(rec)).filter(Boolean);
-      clearBabyFootImportTombstones(ids);
-
-      let added = 0;
-      let updated = 0;
-      const freshRecords: any[] = [];
-
-      for (const rec of records) {
-        const id = historyRowId(rec);
-        const alreadyVisible = !!id && filtered.some((row: any) => historyRowId(row) === id);
-        const existingStored = id && typeof (History as any).get === "function"
-          ? await (History as any).get(id).catch(() => null)
-          : null;
-        const alreadyStored = !!existingStored;
-
-        await (History as any).upsert(rec);
-
-        const fresh = id && typeof (History as any).get === "function"
-          ? ((await (History as any).get(id).catch(() => null)) || rec)
-          : rec;
-        freshRecords.push(fresh);
-
-        if (alreadyVisible || alreadyStored) updated += 1;
-        else added += 1;
-      }
-
-      onImportedRecords?.(freshRecords);
-      requestReload();
-      window.setTimeout(requestReload, 120);
-
-      const parts: string[] = [];
-      if (added) parts.push(`${added} nouvelle${added > 1 ? "s" : ""}`);
-      if (updated) parts.push(`${updated} mise${updated > 1 ? "s" : ""} à jour`);
-      window.alert(parts.length ? `Import Baby-Foot OK : ${parts.join(" + ")} ✅` : "Import Baby-Foot OK ✅");
+      packets.forEach((packet) => inboxAddLocal(packet));
+      refreshInbox();
+      setHistoryTab("inbox");
+      window.alert(`Partie Baby-Foot reçue ✅ (${packets.length} en attente d’acceptation)`);
     } catch (error) {
       console.error("[BabyFootStatsHistory] import failed", error);
       window.alert("Import impossible : fichier JSON illisible ou incompatible.");
     }
-  }, [filtered, onImportedRecords, requestReload]);
+  }, [packetFromImportRecord, refreshInbox]);
+
+  const acceptInboxItem = React.useCallback(async (item: InboxItemLocal) => {
+    try {
+      await acceptBabyFootPacket(item.packet as MatchSharePacketV1);
+      inboxRemoveLocal(item.id);
+      refreshInbox();
+      setHistoryTab("done");
+      window.alert("Partie Baby-Foot acceptée ✅");
+    } catch (error) {
+      console.error("[BabyFootStatsHistory] accept inbox failed", error);
+      window.alert("Acceptation impossible : partie Baby-Foot invalide.");
+    }
+  }, [acceptBabyFootPacket, refreshInbox]);
+
+  const refuseInboxItem = React.useCallback((item: InboxItemLocal) => {
+    inboxRemoveLocal(item.id);
+    refreshInbox();
+  }, [refreshInbox]);
 
   const shareMatch = React.useCallback(async (h: any) => {
     const id = String(h?.id || h?.matchId || Date.now()).trim();
@@ -1375,8 +1410,12 @@ function HistoryCardsView({
     return () => window.clearTimeout(id);
   }, [focusMatchId, filtered.length]);
 
-  const doneCount = filtered.filter((h: any) => !h?.status || h.status === "finished").length;
-  const runningCount = filtered.filter((h: any) => h?.status === "in_progress" || h?.status === "running").length;
+  const doneRows = filtered.filter((h: any) => !h?.status || h.status === "finished");
+  const runningRows = filtered.filter((h: any) => h?.status === "in_progress" || h?.status === "running");
+  const doneCount = doneRows.length;
+  const runningCount = runningRows.length;
+  const inboxCount = inboxLocal.length;
+  const visibleRows = historyTab === "running" ? runningRows : doneRows;
 
   const setQuickPeriod = (key: "today" | "week" | "month" | "year" | "archives") => {
     if (key === "week") return setPeriod("7");
@@ -1392,22 +1431,22 @@ function HistoryCardsView({
       <div style={historyTitle(theme)}>HISTORIQUE</div>
 
       <div style={historyKpiRow}>
-        <div style={historyKpiCard(theme, true)}>
+        <button type="button" style={historyKpiCard(theme, historyTab !== "inbox")} onClick={() => setHistoryTab("done")}>
           <div style={historyKpiLabel}>ALL</div>
           <div style={historyKpiValue(theme)}>{filtered.length}</div>
-        </div>
-        <div style={historyKpiCard(theme, true)}>
+        </button>
+        <button type="button" style={historyKpiCard(theme, historyTab === "done")} onClick={() => setHistoryTab("done")}>
           <div style={historyKpiLabel}>Terminées</div>
           <div style={historyKpiValue(theme)}>{doneCount}</div>
-        </div>
-        <div style={historyKpiCard(theme, false)}>
+        </button>
+        <button type="button" style={historyKpiCard(theme, historyTab === "running")} onClick={() => setHistoryTab("running")}>
           <div style={historyKpiLabel}>En cours</div>
           <div style={{ ...historyKpiValue(theme), color: "#ff5b5b" }}>{runningCount}</div>
-        </div>
-        <div style={historyKpiCard(theme, false)}>
+        </button>
+        <button type="button" style={historyKpiCard(theme, historyTab === "inbox")} onClick={() => { refreshInbox(); setHistoryTab("inbox"); }}>
           <div style={historyKpiLabel}>Reçues</div>
-          <div style={historyKpiValue(theme)}>0</div>
-        </div>
+          <div style={historyKpiValue(theme)}>{inboxCount}</div>
+        </button>
       </div>
 
       <div style={historyToolbar}>
@@ -1467,12 +1506,60 @@ function HistoryCardsView({
       </div>
 
       <div style={historyList}>
-        {filtered.length === 0 ? (
+        {historyTab === "inbox" ? (
+          inboxLocal.length === 0 ? (
+            <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20, fontWeight: 900 }}>
+              Aucune partie Baby-Foot reçue.
+            </div>
+          ) : (
+            inboxLocal.map((item: any) => {
+              const rec = applyBabyFootImportRules(normalizeBabyFootImportRecord(item.packet) || item.packet);
+              const payload = getPayload(rec);
+              const { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds } = getTeams(payload);
+              const players = [...(teamAIds || []), ...(teamBIds || [])].filter(Boolean).map((id: string) => profilesById[id] || { id, name: id.slice(0, 6) });
+              return (
+                <div key={item.id} style={historyMatchCard(theme, false)}>
+                  <img src={logoBabyFoot} alt="" style={historyWatermark} />
+                  <div style={historyRowBetween}>
+                    <div style={{ display: "flex", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
+                      <span style={historyModeBadge(theme)}>BABY-FOOT REÇU</span>
+                      <span style={historyStatusBadge(theme, true)}>En attente</span>
+                    </div>
+                    <span style={historyDate(theme)}>{new Date(item.receivedAt || Date.now()).toLocaleString()}</span>
+                  </div>
+                  <div style={historyPreviewLine}>
+                    <span style={{ color: theme?.primary ?? "#42e9ff" }}>{teamA} {scoreA}</span>
+                    <span style={{ opacity: .58 }}> — </span>
+                    <span style={{ color: "#ff59b0" }}>{teamB} {scoreB}</span>
+                  </div>
+                  <div style={{ ...historyRowBetween, marginTop: 10 }}>
+                    <div style={historyAvatars}>
+                      {players.slice(0, 6).map((p: any, i: number) => (
+                        <div key={p?.id || i} style={{ ...historyAvWrap, marginLeft: i === 0 ? 0 : -8 }}>
+                          <ProfileAvatar profile={p} size={42} />
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ color: theme?.primary ?? "#42e9ff", fontSize: 11, fontWeight: 1000 }}>À VALIDER</div>
+                  </div>
+                  <div style={historyActionRow}>
+                    <button type="button" style={historyPrimaryAction(theme)} onClick={() => acceptInboxItem(item)}>
+                      ✓ Accepter / remplacer
+                    </button>
+                    <div style={historyIconRow}>
+                      <button type="button" style={historyIconBtn(theme, true)} title="Refuser" onClick={() => refuseInboxItem(item)}><HistIcon.Trash /></button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )
+        ) : visibleRows.length === 0 ? (
           <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20, fontWeight: 900 }}>
             Aucune partie Baby-Foot ici.
           </div>
         ) : (
-          filtered.map((h: any) => {
+          visibleRows.map((h: any) => {
             const payload = getPayload(h);
             const { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds } = getTeams(payload);
             const rich = computeBabyFootRichStats(payload);
@@ -1645,6 +1732,9 @@ const historyKpiCard = (theme: any, active = false): React.CSSProperties => ({
   padding: "10px 6px",
   textAlign: "center",
   minWidth: 0,
+  color: "inherit",
+  cursor: "pointer",
+  appearance: "none",
 });
 
 const historyKpiLabel: React.CSSProperties = { fontSize: 12, opacity: 0.72, fontWeight: 900 };
