@@ -35,6 +35,14 @@ export type BabyFootPlayerStatRow = {
   csc: number;
   ownGoals: number;
   parachute: number;
+  bonusDemiAv: number;
+  bonusDemiDef: number;
+  bonusDemiGb: number;
+  bonusDemiMil: number;
+  parachuteAv: number;
+  parachuteDef: number;
+  parachuteGb: number;
+  parachuteMil: number;
   penalties: number;
   penaltyGoals: number;
   penaltyMisses: number;
@@ -43,7 +51,7 @@ export type BabyFootPlayerStatRow = {
 const ACTION_KEYS: Array<keyof BabyFootPlayerStatRow> = [
   "points", "goals", "goalAv", "goalDef", "goalGb", "goalMil", "demi", "demiBonus",
   "gamelle", "peche", "pecheOff", "pecheDef", "pissette", "pissetteValid",
-  "pissetteRefused", "csc", "ownGoals", "parachute", "penalties", "penaltyGoals", "penaltyMisses",
+  "pissetteRefused", "csc", "ownGoals", "parachute", "bonusDemiAv", "bonusDemiDef", "bonusDemiGb", "bonusDemiMil", "parachuteAv", "parachuteDef", "parachuteGb", "parachuteMil", "penalties", "penaltyGoals", "penaltyMisses",
 ];
 
 function obj(v: any): Record<string, any> {
@@ -412,6 +420,14 @@ function makeBaseRow(input: {
     csc: 0,
     ownGoals: 0,
     parachute: 0,
+    bonusDemiAv: 0,
+    bonusDemiDef: 0,
+    bonusDemiGb: 0,
+    bonusDemiMil: 0,
+    parachuteAv: 0,
+    parachuteDef: 0,
+    parachuteGb: 0,
+    parachuteMil: 0,
     penalties: 0,
     penaltyGoals: 0,
     penaltyMisses: 0,
@@ -456,6 +472,14 @@ function normalizeRawRow(raw: any, base: BabyFootPlayerStatRow): BabyFootPlayerS
     csc: num(row.csc, num(row.ownGoals, 0)),
     ownGoals: num(row.ownGoals, num(row.csc, 0)),
     parachute: num(row.parachute, 0),
+    bonusDemiAv: num((row as any).bonusDemiAv, 0),
+    bonusDemiDef: num((row as any).bonusDemiDef, 0),
+    bonusDemiGb: num((row as any).bonusDemiGb, 0),
+    bonusDemiMil: num((row as any).bonusDemiMil, 0),
+    parachuteAv: num((row as any).parachuteAv, 0),
+    parachuteDef: num((row as any).parachuteDef, 0),
+    parachuteGb: num((row as any).parachuteGb, 0),
+    parachuteMil: num((row as any).parachuteMil, 0),
     penalties: num(row.penalties, num(row.penaltyGoals, 0) + num(row.penaltyMisses, 0)),
     penaltyGoals: num(row.penaltyGoals, 0),
     penaltyMisses: num(row.penaltyMisses, 0),
@@ -522,6 +546,24 @@ export function buildBabyFootPlayerStatsMap(input: {
     else row.goalAv += 1;
   };
 
+  const bumpBonusByLine = (row: BabyFootPlayerStatRow, line: any, amount: number) => {
+    const safe = Math.max(0, num(amount, 0));
+    if (!safe) return;
+    const src = String(line || "AV").toUpperCase();
+    if (src === "DEF") row.bonusDemiDef += safe;
+    else if (src === "GB") row.bonusDemiGb += safe;
+    else if (src === "MIL") row.bonusDemiMil += safe;
+    else row.bonusDemiAv += safe;
+  };
+
+  const bumpParachuteByLine = (row: BabyFootPlayerStatRow, line: any) => {
+    const src = String(line || "GB").toUpperCase();
+    if (src === "DEF") row.parachuteDef += 1;
+    else if (src === "GB") row.parachuteGb += 1;
+    else if (src === "MIL") row.parachuteMil += 1;
+    else row.parachuteAv += 1;
+  };
+
   for (const event of arr(input.events)) {
     const ev = obj(event);
     const team = String(ev.team || "A").toUpperCase() === "B" ? "B" : "A";
@@ -531,12 +573,14 @@ export function buildBabyFootPlayerStatsMap(input: {
       if (scorer) {
         scorer.points += points;
         scorer.goals += 1;
-        scorer.demiBonus += Math.max(0, num(ev.demiBonusApplied, 0));
+        const bonus = Math.max(0, num(ev.demiBonusApplied, 0));
+        scorer.demiBonus += bonus;
+        bumpBonusByLine(scorer, ev.sourceLine, bonus);
         bumpLine(scorer, ev.sourceLine);
         if (ev.kind === "gamelle") scorer.gamelle += 1;
         if (ev.kind === "peche") { scorer.peche += 1; scorer.pecheOff += 1; }
         if (ev.kind === "pissette") { scorer.pissette += 1; scorer.pissetteValid += 1; }
-        if (ev.kind === "parachute") scorer.parachute += 1;
+        if (ev.kind === "parachute") { scorer.parachute += 1; bumpParachuteByLine(scorer, ev.sourceLine); }
       }
       if (ev.ownGoalById || ev.ownGoalTeam || ev.kind === "csc") {
         const guiltyTeam = String(ev.ownGoalTeam || (team === "A" ? "B" : "A")).toUpperCase() === "B" ? "B" : "A";
@@ -565,8 +609,10 @@ export function buildBabyFootPlayerStatsMap(input: {
         else scorer.pissetteRefused += 1;
       }
       if (ev.kind === "csc") { scorer.csc += 1; scorer.ownGoals += 1; }
-      if (ev.kind === "parachute") scorer.parachute += 1;
-      scorer.demiBonus += Math.max(0, num(ev.demiBonusApplied, 0));
+      if (ev.kind === "parachute") { scorer.parachute += 1; bumpParachuteByLine(scorer, ev.sourceLine); }
+      const bonus = Math.max(0, num(ev.demiBonusApplied, 0));
+      scorer.demiBonus += bonus;
+      bumpBonusByLine(scorer, ev.sourceLine, bonus);
     } else if (ev.t === "pen_shot" || ev.t === "penalty") {
       const scorer = ensure(ev.scorerId, { team }, team);
       if (scorer) {
@@ -669,6 +715,14 @@ export function extractBabyFootPlayerStatsRows(record: any): BabyFootPlayerStatR
         csc: Math.max(num(rawRow.csc, 0), num(eventRow.csc, 0), num(chosen.csc, 0)),
         ownGoals: Math.max(num(rawRow.ownGoals, 0), num(eventRow.ownGoals, 0), num(chosen.ownGoals, 0)),
         parachute: Math.max(num((rawRow as any).parachute, 0), num((eventRow as any).parachute, 0), num((chosen as any).parachute, 0)),
+        bonusDemiAv: Math.max(num((rawRow as any).bonusDemiAv, 0), num((eventRow as any).bonusDemiAv, 0), num((chosen as any).bonusDemiAv, 0)),
+        bonusDemiDef: Math.max(num((rawRow as any).bonusDemiDef, 0), num((eventRow as any).bonusDemiDef, 0), num((chosen as any).bonusDemiDef, 0)),
+        bonusDemiGb: Math.max(num((rawRow as any).bonusDemiGb, 0), num((eventRow as any).bonusDemiGb, 0), num((chosen as any).bonusDemiGb, 0)),
+        bonusDemiMil: Math.max(num((rawRow as any).bonusDemiMil, 0), num((eventRow as any).bonusDemiMil, 0), num((chosen as any).bonusDemiMil, 0)),
+        parachuteAv: Math.max(num((rawRow as any).parachuteAv, 0), num((eventRow as any).parachuteAv, 0), num((chosen as any).parachuteAv, 0)),
+        parachuteDef: Math.max(num((rawRow as any).parachuteDef, 0), num((eventRow as any).parachuteDef, 0), num((chosen as any).parachuteDef, 0)),
+        parachuteGb: Math.max(num((rawRow as any).parachuteGb, 0), num((eventRow as any).parachuteGb, 0), num((chosen as any).parachuteGb, 0)),
+        parachuteMil: Math.max(num((rawRow as any).parachuteMil, 0), num((eventRow as any).parachuteMil, 0), num((chosen as any).parachuteMil, 0)),
         penalties: Math.max(num(rawRow.penalties, 0), num(eventRow.penalties, 0), num(chosen.penalties, 0)),
         penaltyGoals: Math.max(num(rawRow.penaltyGoals, 0), num(eventRow.penaltyGoals, 0), num(chosen.penaltyGoals, 0)),
         penaltyMisses: Math.max(num(rawRow.penaltyMisses, 0), num(eventRow.penaltyMisses, 0), num(chosen.penaltyMisses, 0)),
