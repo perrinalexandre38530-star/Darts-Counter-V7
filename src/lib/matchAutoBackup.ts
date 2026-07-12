@@ -91,8 +91,29 @@ function parseMs(value: any, fallback = 0): number {
   return Number.isFinite(t) && t > 0 ? t : fallback;
 }
 
+function readStorageProviderFromCachedAuthSession(): string {
+  try {
+    const raw = localStorage.getItem("dc_online_auth_supabase_v1") || "";
+    if (!raw) return "";
+    const parsed = JSON.parse(raw);
+    return String(
+      parsed?.storage?.storage_provider ||
+      parsed?.preference?.storage_provider ||
+      parsed?.user?.storage?.storage_provider ||
+      ""
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
 async function getActiveStorageProviderCached(): Promise<string> {
   if (!readNasAccessToken()) return "";
+  const cachedAuthProvider = readStorageProviderFromCachedAuthSession();
+  if (cachedAuthProvider === "nas_founder") {
+    storageProviderCache = { at: Date.now(), provider: "nas_founder", ok: true };
+    return "nas_founder";
+  }
   const now = Date.now();
   if (storageProviderCache && now - storageProviderCache.at < 60_000) return storageProviderCache.provider;
   try {

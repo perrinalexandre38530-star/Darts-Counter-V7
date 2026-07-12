@@ -633,6 +633,10 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
             setTeam={setIndividualTeam}
             teamA={teamA}
             teamB={teamB}
+            teamALogo={teamALogo}
+            teamBLogo={teamBLogo}
+            teamAPlayers={teamAPlayers}
+            teamBPlayers={teamBPlayers}
             rows={visibleIndividuals}
           />
         ) : (
@@ -708,7 +712,7 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
   const winnerAccent = scoreA === scoreB ? "#ffd76a" : scoreA > scoreB ? "#78ff9f" : "#ff70bd";
   const diff = scoreA - scoreB;
   const setsEnabled = !!(summary?.setsEnabled ?? payload?.setsEnabled);
-  const bestOf = Math.max(1, n(summary?.setsBestOf ?? payload?.setsBestOf, 1));
+  const bestOf = Math.max(1, Math.floor(n(summary?.setsBestOf ?? payload?.setsBestOf, 1)));
   const setsA = Math.max(0, n(summary?.setsA ?? payload?.setsA, 0));
   const setsB = Math.max(0, n(summary?.setsB ?? payload?.setsB, 0));
   const needed = Math.max(1, Math.floor(bestOf / 2) + 1);
@@ -728,26 +732,17 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
 
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
           <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-              {winnerSide === "A" ? <img src={trophyCup} alt="" style={{ width: 14, height: 14, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
-              {isTeamMode && teamALogo ? <TeamIdentityBadge theme={theme} image={teamALogo} fallback={teamA} accent={theme.primary} size={30} shape="round" /> : null}
-              <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(10px, 3vw, 14px)" : "clamp(11px, 3.3vw, 16px)", fontWeight: 1000, lineHeight: 1.12, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "normal", overflowWrap: "anywhere", alignSelf: "center", maxWidth: "100%" }}>{teamA}</div>
-            </div>
+            <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(9px, 2.7vw, 13px)" : "clamp(10px, 3vw, 15px)", fontWeight: 1000, lineHeight: 1.08, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "normal", overflowWrap: "anywhere", alignSelf: "center", maxWidth: "100%", textTransform: "uppercase" }}>{teamA}</div>
             {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : <div style={{ height: 10 }} />}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 4, justifySelf: "center" }}>
-            <ScoreKpiMini value={scoreA} color={theme.primary} />
-            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 22, fontWeight: 1000, lineHeight: 1 }}>—</div>
-            <ScoreKpiMini value={scoreB} color="#ff70bd" />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifySelf: "center" }}>
+            <ScoreKpiMini value={scoreA} color={theme.primary} trophySide={winnerSide === "A" ? "left" : undefined} />
+            <ScoreKpiMini value={scoreB} color="#ff70bd" trophySide={winnerSide === "B" ? "right" : undefined} />
           </div>
 
           <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", width: "100%", minWidth: 0 }}>
-              <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(10px, 3vw, 14px)" : "clamp(11px, 3.3vw, 16px)", fontWeight: 1000, lineHeight: 1.12, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0, alignSelf: "center", maxWidth: "100%" }}>{teamB}</div>
-              {isTeamMode && teamBLogo ? <TeamIdentityBadge theme={theme} image={teamBLogo} fallback={teamB} accent="#ff70bd" size={30} shape="round" /> : null}
-              {winnerSide === "B" ? <img src={trophyCup} alt="" style={{ width: 14, height: 14, objectFit: "contain", flex: "0 0 auto", filter: "drop-shadow(0 0 8px rgba(255,215,106,.55))" }} /> : null}
-            </div>
+            <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(9px, 2.7vw, 13px)" : "clamp(10px, 3vw, 15px)", fontWeight: 1000, lineHeight: 1.08, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0, alignSelf: "center", maxWidth: "100%", textTransform: "uppercase" }}>{teamB}</div>
             {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : <div style={{ height: 10 }} />}
           </div>
         </div>
@@ -801,8 +796,28 @@ function SetSummaryTable({ theme, teamA, teamB, rows }: any) {
   );
 }
 
-function ScoreKpiMini({ value, color }: { value: number; color: string }) {
-  return <div style={{ minWidth: 40, borderRadius: 13, padding: "7px 7px", border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}16,rgba(255,255,255,.04))`, boxShadow: `0 0 14px ${color}20 inset`, textAlign: "center" }}><div style={{ color, fontSize: 27, lineHeight: .95, fontWeight: 1000, textShadow: `0 0 12px ${color}44`, fontVariantNumeric: "tabular-nums" }}>{value}</div></div>;
+function ScoreKpiMini({ value, color, trophySide }: { value: number; color: string; trophySide?: "left" | "right" }) {
+  return (
+    <div style={{ position: "relative", minWidth: 44, borderRadius: 14, padding: "8px 10px", border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}16,rgba(255,255,255,.04))`, boxShadow: `0 0 14px ${color}20 inset`, textAlign: "center" }}>
+      {trophySide ? (
+        <img
+          src={trophyCup}
+          alt=""
+          style={{
+            position: "absolute",
+            top: "50%",
+            [trophySide]: -18,
+            transform: "translateY(-50%)",
+            width: 18,
+            height: 18,
+            objectFit: "contain",
+            filter: "drop-shadow(0 0 8px rgba(255,215,106,.6))",
+          } as React.CSSProperties}
+        />
+      ) : null}
+      <div style={{ color, fontSize: 24, lineHeight: .95, fontWeight: 1000, textShadow: `0 0 12px ${color}44`, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+    </div>
+  );
 }
 
 function MomentumView({ theme, teamA, teamB, teamALogo, teamBLogo, playersA, playersB, scoreA, scoreB, timelineRows, durationMs }: any) {
@@ -1058,24 +1073,33 @@ function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, teamALogo, t
   );
 }
 
-function IndividualStatsView({ theme, team, setTeam, teamA, teamB, rows }: any) {
+function IndividualStatsView({ theme, team, setTeam, teamA, teamB, teamALogo, teamBLogo, teamAPlayers, teamBPlayers, rows }: any) {
   const toggle = () => setTeam(team === "A" ? "B" : "A");
   const teamName = team === "A" ? teamA : teamB;
   const accent = team === "A" ? theme.primary : "#ff59b0";
-  const heroRow = rows[0];
+  const teamLogo = team === "A" ? teamALogo : teamBLogo;
+  const teamPlayers = team === "A" ? teamAPlayers : teamBPlayers;
+  const canCompare = rows.length >= 2;
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <button type="button" onClick={toggle} style={arrowBtn(theme)}>‹</button>
         <div style={{ minWidth: 0, display: "flex", justifyContent: "center" }}>
-          <TeamIdentityBadge theme={theme} image={heroRow?.avatar || null} fallback={heroRow?.name || teamName} accent={accent} size={52} />
+          <div style={{ minWidth: 0, maxWidth: 280, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px 12px", borderRadius: 18, border: `1px solid ${accent}55`, background: `linear-gradient(180deg, ${accent}16, rgba(255,255,255,.04))`, boxShadow: `0 0 18px ${accent}18 inset` }}>
+            {teamLogo ? <TeamIdentityBadge theme={theme} image={teamLogo} fallback={teamName} accent={accent} size={42} shape="round" /> : <AvatarStack theme={theme} players={teamPlayers} align="left" size={28} />}
+            <div style={{ minWidth: 0, color: accent, fontSize: 13, fontWeight: 1100, textTransform: "uppercase", whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "center" }}>{teamName}</div>
+          </div>
         </div>
         <button type="button" onClick={toggle} style={arrowBtn(theme)}>›</button>
       </div>
       {rows.length ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          {rows.map((row: any) => <PlayerStatsCard key={row.id} theme={theme} row={row} accent={accent} />)}
-        </div>
+        canCompare ? (
+          <PlayerStatsComparisonTable theme={theme} team={team} teamName={teamName} teamLogo={teamLogo} rows={rows.slice(0, 2)} />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {rows.map((row: any, index: number) => <PlayerStatsCard key={row.id} theme={theme} row={row} accent={individualPlayerAccent(team, index, theme)} teamLogo={teamLogo} />)}
+          </div>
+        )
       ) : (
         <div style={{ ...small(theme), padding: 12 }}>Aucune statistique individuelle n’a été attribuée aux joueurs de cette équipe.</div>
       )}
@@ -1084,55 +1108,131 @@ function IndividualStatsView({ theme, team, setTeam, teamA, teamB, rows }: any) 
   );
 }
 
-function PlayerStatsCard({ theme, row, accent }: any) {
+function individualPlayerAccent(team: TeamId, index: number, theme: any) {
+  const paletteA = [theme.primary, "#7ff6ff", "#9cffc7"];
+  const paletteB = ["#ff59b0", "#ff8fd0", "#ffc37a"];
+  return (team === "A" ? paletteA : paletteB)[index] || (team === "A" ? theme.primary : "#ff59b0");
+}
+
+function buildPlayerStatSnapshot(row: any) {
   const bonusOff = n((row as any).bonusDemiAv);
   const bonusDef = n((row as any).bonusDemiDef) + n((row as any).bonusDemiGb) + n((row as any).bonusDemiMil);
   const parachuteOff = n((row as any).parachuteAv);
   const parachuteDef = n((row as any).parachuteDef) + n((row as any).parachuteGb) + n((row as any).parachuteMil) || Math.max(0, n(row.parachute) - parachuteOff);
   const gamelleOff = n((row as any).gamelleAv) || (!n((row as any).gamelleDef) && !n((row as any).gamelleGb) && !n((row as any).gamelleMil) ? n(row.gamelle) : 0);
   const gamelleDef = n((row as any).gamelleDef) + n((row as any).gamelleGb) + n((row as any).gamelleMil);
+  return {
+    bonusOff,
+    bonusDef,
+    parachuteOff,
+    parachuteDef,
+    gamelleOff,
+    gamelleDef,
+    rows: [
+      ["Points", n(row.points ?? row.goals)],
+      ["Buts AV", n(row.goalAv ?? row.av)],
+      ["Pêche off.", n(row.pecheOff)],
+      ["Pissettes +", n(row.pissetteValid)],
+      ["Bonus demi +", bonusOff],
+      ["Parachutes AV", parachuteOff],
+      ["Gamelles AV", gamelleOff],
+      ["Buts DEF", n(row.goalDef ?? row.def)],
+      ["Buts GB", n(row.goalGb ?? row.gb)],
+      ["Pêche déf.", n(row.pecheDef)],
+      ["Bonus demi DEF", bonusDef],
+      ["Parachutes DEF/GB", parachuteDef],
+      ["Gamelles DEF/GB", gamelleDef],
+      ["Demis", n(row.demi)],
+      ["Demis dernière balle", n((row as any).demiLastBallCount)],
+      ["Pts perdus demi", n((row as any).demiLastBallLoss)],
+      ["Gamelles - pts", n((row as any).gamellePenaltyPoints)],
+      ["CSC", n(row.csc ?? row.ownGoals)],
+      ["Pissettes -", n(row.pissetteRefused)],
+    ],
+  };
+}
+
+function PlayerStatsComparisonTable({ theme, team, teamName, teamLogo, rows }: any) {
+  const left = rows[0];
+  const right = rows[1];
+  const leftAccent = individualPlayerAccent(team, 0, theme);
+  const rightAccent = individualPlayerAccent(team, 1, theme);
+  const leftSnap = buildPlayerStatSnapshot(left);
+  const rightSnap = buildPlayerStatSnapshot(right);
+  const entries = leftSnap.rows.map(([label, value]: any, index: number) => ({ label, left: value, right: rightSnap.rows[index]?.[1] ?? 0 }));
+  return (
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 18, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "linear-gradient(180deg, rgba(18,25,43,.92), rgba(6,10,20,.96))", boxShadow: `0 0 28px ${leftAccent}12 inset` }}>
+      {teamLogo ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", opacity: .09, filter: "grayscale(1) brightness(.95)" }}><img src={teamLogo} alt="" style={{ width: 260, height: 260, objectFit: "contain" }} /></div> : null}
+      <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr .95fr 1fr", alignItems: "center", gap: 8, padding: "12px 10px", background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", borderBottom: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
+        <PlayerMiniHeader theme={theme} row={left} accent={leftAccent} align="left" />
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 1100, color: accentForTeam(team, theme), textTransform: "uppercase", whiteSpace: "normal", overflowWrap: "anywhere" }}>{teamName}</div>
+          <div style={{ marginTop: 2, fontSize: 11, fontWeight: 1000, color: theme.textSoft }}>Stat</div>
+        </div>
+        <PlayerMiniHeader theme={theme} row={right} accent={rightAccent} align="right" />
+      </div>
+      {entries.map((entry: any, index: number) => {
+        const leftBest = Number(entry.left) > Number(entry.right);
+        const rightBest = Number(entry.right) > Number(entry.left);
+        return (
+          <div key={entry.label} style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(66px,1fr) minmax(110px,1.15fr) minmax(66px,1fr)", alignItems: "center", minHeight: 38, borderTop: index ? "1px solid rgba(255,255,255,.06)" : "none" }}>
+            <div style={{ position: "relative", padding: "8px 10px 8px 14px", textAlign: "left", fontWeight: 1100, color: leftBest ? leftAccent : theme.text }}>
+              {leftBest ? <div style={{ position: "absolute", left: 30, right: 10, top: "50%", transform: "translateY(-50%)", height: 2, background: `linear-gradient(90deg, ${leftAccent}22, ${leftAccent})`, boxShadow: `0 0 12px ${leftAccent}` }} /> : null}
+              <span style={{ position: "relative", zIndex: 1 }}>{entry.left}</span>
+            </div>
+            <div style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, fontWeight: 900, color: theme.textSoft, lineHeight: 1.1 }}>{entry.label}</div>
+            <div style={{ position: "relative", padding: "8px 14px 8px 10px", textAlign: "right", fontWeight: 1100, color: rightBest ? rightAccent : theme.text }}>
+              {rightBest ? <div style={{ position: "absolute", left: 10, right: 30, top: "50%", transform: "translateY(-50%)", height: 2, background: `linear-gradient(90deg, ${rightAccent}, ${rightAccent}22)`, boxShadow: `0 0 12px ${rightAccent}` }} /> : null}
+              <span style={{ position: "relative", zIndex: 1 }}>{entry.right}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlayerMiniHeader({ theme, row, accent, align }: any) {
+  return (
+    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8, justifyContent: align === "left" ? "flex-start" : "flex-end", flexDirection: align === "left" ? "row" : "row-reverse" }}>
+      <div style={{ width: 42, height: 42, borderRadius: 999, border: `1px solid ${accent}77`, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(0,0,0,.25)", flex: "0 0 auto", boxShadow: `0 0 14px ${accent}28` }}>
+        {row?.avatar ? <img src={row.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 1100 }}>{String(row?.name || "?").slice(0, 2).toUpperCase()}</span>}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: accent, fontWeight: 1100, fontSize: 14, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: align }}>{row?.name}</div>
+        <div style={{ marginTop: 2, fontSize: 9, color: theme.textSoft, fontWeight: 900, textAlign: align }}>{row?.collective ? "NON ATTRIBUÉ" : n(row?.wins) ? "VICTOIRE" : n(row?.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
+      </div>
+    </div>
+  );
+}
+
+function accentForTeam(team: TeamId, theme: any) {
+  return team === "A" ? theme.primary : "#ff59b0";
+}
+
+function PlayerStatsCard({ theme, row, accent, teamLogo }: any) {
+  const snapshot = buildPlayerStatSnapshot(row);
   const groups = [
     {
       key: "off",
       title: "Offensif",
-      items: [
-        ["Points", n(row.points ?? row.goals)],
-        ["Buts AV", n(row.goalAv ?? row.av)],
-        ["Pêche off.", n(row.pecheOff)],
-        ["Pissettes +", n(row.pissetteValid)],
-        ["Bonus demi +", bonusOff],
-        ["Parachutes AV", parachuteOff],
-        ["Gamelles AV", gamelleOff],
-      ],
+      items: snapshot.rows.slice(0, 7),
     },
     {
       key: "def",
       title: "Défensif",
-      items: [
-        ["Buts DEF", n(row.goalDef ?? row.def)],
-        ["Buts GB", n(row.goalGb ?? row.gb)],
-        ["Pêche déf.", n(row.pecheDef)],
-        ["Bonus demi +", bonusDef],
-        ["Parachutes DEF/GB", parachuteDef],
-        ["Gamelles DEF/GB", gamelleDef],
-      ],
+      items: snapshot.rows.slice(7, 13),
     },
     {
       key: "pen",
       title: "Pénalisant / divers",
-      items: [
-        ["Demis", n(row.demi)],
-        ["Demis dernière balle", n((row as any).demiLastBallCount)],
-        ["Pts perdus demi", n((row as any).demiLastBallLoss)],
-        ["Gamelles - pts", n((row as any).gamellePenaltyPoints)],
-        ["CSC", n(row.csc ?? row.ownGoals)],
-        ["Pissettes -", n(row.pissetteRefused)],
-      ],
+      items: snapshot.rows.slice(13),
     },
   ];
   return (
-    <div style={{ borderRadius: 17, padding: 11, border: `1px solid ${accent}4d`, background: `linear-gradient(180deg, ${accent}10, rgba(255,255,255,.025))` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 17, padding: 11, border: `1px solid ${accent}4d`, background: `linear-gradient(180deg, ${accent}10, rgba(255,255,255,.025))` }}>
+      {teamLogo ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", opacity: .08, filter: "grayscale(1) brightness(.95)" }}><img src={teamLogo} alt="" style={{ width: 250, height: 250, objectFit: "contain" }} /></div> : null}
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 46, height: 46, borderRadius: 999, border: `1px solid ${accent}77`, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(0,0,0,.25)", flex: "0 0 auto" }}>
           {row.avatar ? <img src={row.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 1100 }}>{String(row.name || "?").slice(0, 2).toUpperCase()}</span>}
         </div>
@@ -1141,7 +1241,7 @@ function PlayerStatsCard({ theme, row, accent }: any) {
           <div style={{ marginTop: 3, fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>{row.collective ? "ANCIENNE PARTIE · NON ATTRIBUÉ" : n(row.wins) ? "VICTOIRE" : n(row.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
         </div>
       </div>
-      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+      <div style={{ position: "relative", marginTop: 10, display: "grid", gap: 10 }}>
         {groups.map((group: any) => (
           <div key={group.key}>
             <div style={{ marginBottom: 6, color: theme.textSoft, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .7 }}>{group.title}</div>
@@ -1171,12 +1271,9 @@ function TeamBlock({ theme, name, players, align }: { theme: any; name: string; 
 
 function TeamHeaderMini({ theme, name, players, teamLogo, align }: any) {
   const accent = align === "left" ? theme.primary : "#ff70bd";
-  const identity = teamLogo
-    ? <TeamIdentityBadge theme={theme} image={teamLogo} fallback={name} accent={accent} size={32} shape="round" />
-    : <AvatarStack theme={theme} players={players} align={align} size={30} />;
   return (
     <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-start" : "flex-end", gap: 6, flexDirection: align === "left" ? "row" : "row-reverse" }}>
-      {identity}
+      <AvatarStack theme={theme} players={players} align={align} size={30} />
       <div style={{ minWidth: 0, fontSize: 10, fontWeight: 1100, color: accent, textAlign: align, textTransform: "uppercase", letterSpacing: .2, lineHeight: 1.12, whiteSpace: "normal", overflowWrap: "anywhere", maxWidth: "100%" }}>{name}</div>
     </div>
   );
