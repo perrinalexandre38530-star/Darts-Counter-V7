@@ -1,3 +1,5 @@
+import { deriveBabyFootScoreFromEvents } from "./babyfootScoreRules";
+
 export type BabyFootRichSideStats = {
   name: string;
   score: number;
@@ -142,18 +144,39 @@ function computeLeadStats(goalEvents: any[]) {
 
 export function computeBabyFootRichStats(input: any): BabyFootRichStats {
   const summary = extractSummary(input);
+  const events = extractEvents(input);
   const existing = summary?.stats;
   if (existing?.teamA && existing?.teamB) {
-    return existing as BabyFootRichStats;
+    const eventScore = deriveBabyFootScoreFromEvents(events, input);
+    if (!eventScore.hasScoringEvents) return existing as BabyFootRichStats;
+    const a0 = safeNum(existing.teamA.score ?? existing.teamA.sc, 0);
+    const b0 = safeNum(existing.teamB.score ?? existing.teamB.sc, 0);
+    if (a0 === eventScore.scoreA && b0 === eventScore.scoreB) return existing as BabyFootRichStats;
+    const fixed: any = {
+      ...existing,
+      teamA: { ...existing.teamA },
+      teamB: { ...existing.teamB },
+    };
+    const legs = Math.max(1, safeNum(fixed.totalLegs ?? fixed.totallegs, 1));
+    fixed.teamA.score = eventScore.scoreA;
+    fixed.teamB.score = eventScore.scoreB;
+    fixed.teamA.goalsConceded = eventScore.scoreB;
+    fixed.teamB.goalsConceded = eventScore.scoreA;
+    fixed.teamA.goalDiff = eventScore.scoreA - eventScore.scoreB;
+    fixed.teamB.goalDiff = eventScore.scoreB - eventScore.scoreA;
+    fixed.teamA.avgGoalsPerLeg = round1(eventScore.scoreA / legs);
+    fixed.teamB.avgGoalsPerLeg = round1(eventScore.scoreB / legs);
+    fixed.totalGoals = eventScore.scoreA + eventScore.scoreB;
+    return fixed as BabyFootRichStats;
   }
 
-  const events = extractEvents(input);
   const goalEvents = events.filter((event) => event?.t === 'goal');
   const setWinEvents = events.filter((event) => event?.t === 'set_win');
   const penEvents = events.filter((event) => event?.t === 'pen_shot');
 
-  const scoreA = safeNum(summary?.scoreA ?? input?.scoreA);
-  const scoreB = safeNum(summary?.scoreB ?? input?.scoreB);
+  const eventScore = deriveBabyFootScoreFromEvents(events, input);
+  const scoreA = eventScore.hasScoringEvents ? eventScore.scoreA : safeNum(summary?.scoreA ?? input?.scoreA);
+  const scoreB = eventScore.hasScoringEvents ? eventScore.scoreB : safeNum(summary?.scoreB ?? input?.scoreB);
   const handicapA = safeNum(summary?.handicapA ?? input?.handicapA);
   const handicapB = safeNum(summary?.handicapB ?? input?.handicapB);
   const setsEnabled = Boolean(summary?.setsEnabled ?? input?.setsEnabled);
@@ -184,9 +207,9 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     sets: setsA,
     legs: legsWonA,
     goals: goalsA,
-    goalsConceded: goalsB,
-    avgGoalsPerLeg: round1(goalsA / Math.max(1, totalLegs)),
-    goalDiff: goalsA - goalsB,
+    goalsConceded: scoreB,
+    avgGoalsPerLeg: round1(scoreA / Math.max(1, totalLegs)),
+    goalDiff: scoreA - scoreB,
     gamelle: specialStats.gamelleA,
     peche: specialStats.pecheOffA + specialStats.pecheDefA,
     pecheOff: specialStats.pecheOffA,
@@ -217,9 +240,9 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     sets: setsB,
     legs: legsWonB,
     goals: goalsB,
-    goalsConceded: goalsA,
-    avgGoalsPerLeg: round1(goalsB / Math.max(1, totalLegs)),
-    goalDiff: goalsB - goalsA,
+    goalsConceded: scoreA,
+    avgGoalsPerLeg: round1(scoreB / Math.max(1, totalLegs)),
+    goalDiff: scoreB - scoreA,
     gamelle: specialStats.gamelleB,
     peche: specialStats.pecheOffB + specialStats.pecheDefB,
     pecheOff: specialStats.pecheOffB,
@@ -249,7 +272,7 @@ export function computeBabyFootRichStats(input: any): BabyFootRichStats {
     teamB,
     setsEnabled,
     totalLegs,
-    totalGoals: goalsA + goalsB,
+    totalGoals: scoreA + scoreB,
     totalGamelle: teamA.gamelle + teamB.gamelle,
     totalPeche: teamA.peche + teamB.peche,
     totalDemi: teamA.demi + teamB.demi,

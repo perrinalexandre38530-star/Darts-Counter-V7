@@ -1,4 +1,5 @@
 import { computeBabyFootRichStats } from "./babyfootRichStats";
+import { deriveBabyFootScoreFromEvents } from "./babyfootScoreRules";
 
 export type BabyFootTeamIdLike = "A" | "B";
 
@@ -310,6 +311,7 @@ export function resolveBabyFootRecord(record: any): any {
   });
   const playerStats = mergePlayerStatsSources(rawPlayerStats, eventPlayerStats);
   const preferredScore = preferredScorePairForResolve(payload, p0, outer, summary);
+  const eventScore = deriveBabyFootScoreFromEvents(events, { ...outer, ...p0, ...payload, summary });
 
   return {
     ...outer,
@@ -324,8 +326,8 @@ export function resolveBabyFootRecord(record: any): any {
     teamBProfileIds: teamBIds,
     teamA: payload.teamA ?? p0.teamA ?? outer.teamA ?? summary.teamA,
     teamB: payload.teamB ?? p0.teamB ?? outer.teamB ?? summary.teamB,
-    scoreA: preferredScore?.scoreA ?? payload.scoreA ?? p0.scoreA ?? outer.scoreA ?? summary.scoreA,
-    scoreB: preferredScore?.scoreB ?? payload.scoreB ?? p0.scoreB ?? outer.scoreB ?? summary.scoreB,
+    scoreA: eventScore.hasScoringEvents ? eventScore.scoreA : (preferredScore?.scoreA ?? payload.scoreA ?? p0.scoreA ?? outer.scoreA ?? summary.scoreA),
+    scoreB: eventScore.hasScoringEvents ? eventScore.scoreB : (preferredScore?.scoreB ?? payload.scoreB ?? p0.scoreB ?? outer.scoreB ?? summary.scoreB),
     mode: payload.mode ?? payload?.game?.mode ?? p0.mode ?? p0?.game?.mode ?? outer.mode ?? outer?.game?.mode ?? summary.mode ?? summary?.game?.mode ?? compact?.o?.mode ?? compact?.m,
     durationMs: payload.durationMs ?? p0.durationMs ?? outer.durationMs ?? summary.durationMs,
     specialStats: payload.specialStats ?? p0.specialStats ?? outer.specialStats ?? summary.specialStats,

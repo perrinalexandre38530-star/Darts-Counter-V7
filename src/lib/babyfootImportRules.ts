@@ -6,6 +6,8 @@
 //   validated last-ball penalty before being written to History.
 // =============================================================
 
+import { deriveBabyFootScoreFromEvents, normalizeBabyFootScoreEvent } from "./babyfootScoreRules";
+
 function isObj(value: any): value is Record<string, any> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -135,6 +137,13 @@ function setEvents(record: any, nextEvents: any[]) {
   }
   if (Array.isArray(record?.events)) record.events = nextEvents;
   if (isObj(record?.summary) && Array.isArray(record.summary.events)) record.summary.events = nextEvents;
+
+  const compactCandidates = [record?.compact, record?.payload?.compact, root?.compact, root?.payload?.compact, record?.payload?.payload?.compact];
+  for (const compact of compactCandidates) {
+    if (!isObj(compact) || compact.__compact !== "match.v1") continue;
+    if (isObj(compact?.d?.s) && Array.isArray(compact.d.s.events)) compact.d.s.events = nextEvents;
+    if (isObj(compact?.d) && Array.isArray(compact.d.e)) compact.d.e = nextEvents;
+  }
 }
 
 function isPlayableBallEvent(event: any) {
@@ -232,6 +241,12 @@ function setScorePair(record: any, scoreA: number, scoreB: number) {
       state.scoreb = scoreB;
       state.scoreLine = scoreLine;
       state.scoreline = scoreLine;
+      state.winnerTeam = winnerTeam;
+      state.winnerteam = winnerTeam;
+      state.winnerName = winnerName;
+      state.winnername = winnerName;
+      state.teamWinnerName = winnerName;
+      state.teamwinnername = winnerName;
       updateStatsObj(state.stats);
     }
   }
@@ -281,14 +296,22 @@ export function applyBabyFootImportRules<T = any>(input: T): T {
   const record: any = cloneJson(input as any);
   const events = firstEvents(record);
   if (!Array.isArray(events) || events.length === 0) return record as T;
+  const eventScore = deriveBabyFootScoreFromEvents(events, record);
+
   if (hasAlreadyAppliedDemiPenalty(events)) {
-    const preferred = preferredImportedScorePair(record);
-    if (preferred) setScorePair(record, preferred.scoreA, preferred.scoreB);
+    if (eventScore.hasScoringEvents) setScorePair(record, eventScore.scoreA, eventScore.scoreB);
+    else {
+      const preferred = preferredImportedScorePair(record);
+      if (preferred) setScorePair(record, preferred.scoreA, preferred.scoreB);
+    }
     return record as T;
   }
   if (!isLimitedBallsLike(record, events)) {
-    const preferred = preferredImportedScorePair(record);
-    if (preferred) setScorePair(record, preferred.scoreA, preferred.scoreB);
+    if (eventScore.hasScoringEvents) setScorePair(record, eventScore.scoreA, eventScore.scoreB);
+    else {
+      const preferred = preferredImportedScorePair(record);
+      if (preferred) setScorePair(record, preferred.scoreA, preferred.scoreB);
+    }
     return record as T;
   }
 
@@ -296,26 +319,24 @@ export function applyBabyFootImportRules<T = any>(input: T): T {
   const lastPlayable = playable[playable.length - 1];
   if (!lastPlayable || lastPlayable.t !== "demi") return record as T;
 
-  const team = String(lastPlayable.team || "").toUpperCase() === "B" ? "B" : "A";
-  const pendingBefore = Math.max(0, num(lastPlayable.pendingBefore, 0));
+  const normalizedLast = normalizeBabyFootScoreEvent(lastPlayable);
+  const team = String(normalizedLast.team || lastPlayable.team || "").toUpperCase() === "B" ? "B" : "A";
+  const pendingBefore = Math.max(0, num(normalizedLast.pendingBefore, 0));
   const penalty = Math.max(2, pendingBefore + 2);
-  const scoreA = getScore(record, "A");
-  const scoreB = getScore(record, "B");
-  const nextScoreA = Math.max(0, scoreA - (team === "A" ? penalty : 0));
-  const nextScoreB = Math.max(0, scoreB - (team === "B" ? penalty : 0));
 
   const nextEvents = events.map((event) => event === lastPlayable ? {
-    ...event,
+    ...normalizeBabyFootScoreEvent(event),
     counted: true,
     pendingBefore,
     lastBallPenalty: penalty,
     scoreDeltaA: team === "A" ? -penalty : 0,
     scoreDeltaB: team === "B" ? -penalty : 0,
-  } : event);
+  } : normalizeBabyFootScoreEvent(event));
 
   setEvents(record, nextEvents);
-  setScorePair(record, nextScoreA, nextScoreB);
-  patchPlayerPenalty(record, lastPlayable.scorerId ?? lastPlayable.scorerid, team, penalty);
+  const recalculated = deriveBabyFootScoreFromEvents(nextEvents, record);
+  setScorePair(record, recalculated.scoreA, recalculated.scoreB);
+  patchPlayerPenalty(record, normalizedLast.scorerId ?? lastPlayable.scorerId ?? lastPlayable.scorerid, team, penalty);
 
   const root = getPayloadRoot(record);
   const summary = getSummary(root);

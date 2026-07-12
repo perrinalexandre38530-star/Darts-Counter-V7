@@ -7,6 +7,7 @@ import tickerBabyFootLigue from "../../assets/tickers/ticker_babyfoot_ligue.png"
 import { History } from "../../lib/history";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
+import { babyFootPenaltyLossByTeam, deriveBabyFootScoreFromRecord } from "../../lib/babyfootScoreRules";
 
 type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any };
 type AnyMatch = Record<string, any>;
@@ -311,7 +312,9 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const summary = getSummary(resolvedMatch, resolvedMatch);
   const players = allPlayers(match, payload);
   const events = getEventsFrom(payload, summary, match);
-  const displayScore = getBabyFootDisplayScorePair(summary, payload, match, params);
+  const eventScore = React.useMemo(() => deriveBabyFootScoreFromRecord({ ...objectOrEmpty(match), ...objectOrEmpty(payload), summary: { ...objectOrEmpty(summary), events }, events }), [match, payload, summary, events]);
+  const fallbackDisplayScore = getBabyFootDisplayScorePair(summary, payload, match, params);
+  const displayScore = eventScore.hasScoringEvents ? eventScore : fallbackDisplayScore;
   const scoreA = displayScore.scoreA;
   const scoreB = displayScore.scoreB;
   const teamA = String(summary?.teamA || payload?.teamA || match?.teamA || params?.teamA || "Équipe A");
@@ -323,14 +326,12 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const teamBPlayers = teamPlayers(players, payload, summary, "B");
 
   const richStats = React.useMemo(() => {
-    const saved = summary?.stats || payload?.stats;
-    if (saved?.teamA && saved?.teamB) return saved;
     return computeBabyFootRichStats({
       ...payload,
       scoreA,
       scoreB,
       events,
-      summary: { ...summary, scoreA, scoreB, events, specialStats: summary?.specialStats || payload?.specialStats },
+      summary: { ...summary, scoreA, scoreB, events, specialStats: summary?.specialStats || payload?.specialStats, stats: summary?.stats || payload?.stats },
     });
   }, [payload, summary, scoreA, scoreB, events]);
 
@@ -410,6 +411,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
             stats={richStats}
             durationMs={durationMs}
             summary={summary}
+            events={events}
           />
         ) : (
           <IndividualStatsView
@@ -671,15 +673,18 @@ function MatchTimelineDetails({ theme, timelineRows }: any) {
   );
 }
 
-function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB, stats, durationMs, summary }: any) {
+function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB, stats, durationMs, summary, events }: any) {
   const a = objectOrEmpty(stats?.teamA);
   const b = objectOrEmpty(stats?.teamB);
+  const losses = babyFootPenaltyLossByTeam(events || []);
   const rows = [
     ["Score final", scoreA, scoreB],
     ["Sets gagnés", n(summary?.setsA ?? a.sets), n(summary?.setsB ?? b.sets)],
     ["Manches gagnées", n(a.legs), n(b.legs)],
     ["Points marqués", n(a.goals), n(b.goals)],
     ["Points encaissés", n(a.goalsConceded), n(b.goalsConceded)],
+    ["Points perdus", n(losses.A.total), n(losses.B.total)],
+    ["Demi dernière balle", n(losses.A.demi), n(losses.B.demi)],
     ["Moyenne / manche", Number(n(a.avgGoalsPerLeg).toFixed(1)), Number(n(b.avgGoalsPerLeg).toFixed(1))],
     ["Différence", signed(n(a.goalDiff)), signed(n(b.goalDiff))],
     ["Buts AV", n(a.goalAv), n(b.goalAv)],
@@ -696,7 +701,7 @@ function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scor
     ["Parachutes", n((a as any).parachute), n((b as any).parachute)],
     ["Plus longue série", n(a.longestRun), n(b.longestRun)],
     ["Égalisations", n(a.equalizations), n(b.equalizations)],
-    ["Prises de tête", n(a.leadChanges), n(b.leadChanges)],
+    ["Changements leader", n(a.leadChanges), n(b.leadChanges)],
     ["Handicap", n(a.handicap), n(b.handicap)],
   ];
   return (

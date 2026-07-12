@@ -24,6 +24,7 @@ import { computeBabyFootRichStats, formatBabyFootAvg } from "../../lib/babyfootR
 import { buildBabyFootStatSections } from "../../lib/babyfootStatSections";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../../lib/matchInboxLocal";
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../../lib/babyfootImportRules";
+import { deriveBabyFootScoreFromRecord } from "../../lib/babyfootScoreRules";
 
 type Props = {
   store: any;
@@ -307,6 +308,8 @@ function parseBabyFootScoreLine(line: any): { scoreA: number; scoreB: number } |
 }
 
 function getDisplayScorePair(payload: any) {
+  const eventScore = deriveBabyFootScoreFromRecord(payload);
+  if (eventScore.hasScoringEvents) return { scoreA: eventScore.scoreA, scoreB: eventScore.scoreB };
   const fromLine = parseBabyFootScoreLine(payload?.summary?.scoreLine ?? payload?.summary?.scoreline ?? payload?.scoreLine ?? payload?.scoreline);
   if (fromLine) return fromLine;
   const stA = payload?.stats?.teamA?.score ?? payload?.stats?.teamA?.sc ?? payload?.stats?.teama?.score ?? payload?.stats?.teama?.sc;
