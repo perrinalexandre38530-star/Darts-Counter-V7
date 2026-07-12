@@ -982,7 +982,7 @@ function TeamBoard({ rows }: { rows: BabyFootLeaderboardBundle["topTeams"] }) {
   );
 }
 
-function RankingsDeck({ leaderboards, active, onChange }: { leaderboards: BabyFootLeaderboardBundle; active: RankingView; onChange: (view: RankingView) => void }) {
+function RankingsDeck({ leaderboards, active, onChange, modeLabel }: { leaderboards: BabyFootLeaderboardBundle; active: RankingView; onChange: (view: RankingView) => void; modeLabel: string }) {
   const currentIndex = Math.max(0, RANKING_VIEWS.findIndex((item) => item.key === active));
   const current = RANKING_VIEWS[currentIndex] || RANKING_VIEWS[0];
   const previous = RANKING_VIEWS[clampIndex(currentIndex - 1, RANKING_VIEWS.length)];
@@ -1471,7 +1471,7 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
         )}
 
         {(rankingOnly || tab === "dashboard" || tab === "classements") && (
-          <RankingsDeck leaderboards={leaderboards} active={rankingView} onChange={setRankingView} />
+          <RankingsDeck leaderboards={leaderboards} active={rankingView} onChange={setRankingView} modeLabel={modeLabel} />
         )}
 
         {!rankingOnly && tab === "details" && (
