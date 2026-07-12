@@ -1,83 +1,251 @@
 // ============================================
 // src/pages/ProfilesBots.tsx
 // Gestion des BOTS (CPU) — joueurs virtuels
+// Refonte visuelle alignée sur PROFILS LOCAUX
 // ============================================
 import React from "react";
 import { nanoid } from "nanoid";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import { loadStoredBots, saveStoredBots, subscribeBotsChange, type StoredBot, type StoredBotLevel } from "../lib/bots";
+import {
+  loadStoredBots,
+  saveStoredBots,
+  subscribeBotsChange,
+  type StoredBot,
+  type StoredBotLevel,
+} from "../lib/bots";
 import { fileToAvatarVariants } from "../lib/avatarSafe";
 import AvatarChoiceModal from "../components/AvatarChoiceModal";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 import TopTicker from "../components/TopTicker";
 import tickerBotsCpu from "../assets/tickers/ticker_bots_cpu.webp";
 
 export type Bot = StoredBot;
 export type BotLevel = StoredBotLevel;
+
 export function loadBots(): Bot[] {
   return loadStoredBots();
 }
+
 export function saveBots(bots: Bot[]) {
   saveStoredBots(bots);
 }
 
 function levelLabel(level: BotLevel, t: (k: string, f?: string) => string) {
   switch (level) {
-    case "easy": return t("bots.level.easy", "Débutant");
-    case "medium": return t("bots.level.medium", "Standard");
-    case "strong": return t("bots.level.strong", "Fort");
-    case "pro": return t("bots.level.pro", "Pro");
-    case "legend": return t("bots.level.legend", "Légende");
-    default: return level;
+    case "easy":
+      return t("bots.level.easy", "Débutant");
+    case "medium":
+      return t("bots.level.medium", "Standard");
+    case "strong":
+      return t("bots.level.strong", "Fort");
+    case "pro":
+      return t("bots.level.pro", "Pro");
+    case "legend":
+      return t("bots.level.legend", "Légende");
+    default:
+      return level;
   }
 }
 
 function levelDescription(level: BotLevel, t: (k: string, f?: string) => string) {
   switch (level) {
-    case "easy": return t("bots.level.easy.desc", "Niveau très accessible, parfait pour découvrir le jeu.");
-    case "medium": return t("bots.level.medium.desc", "Niveau régulier, proche d’un joueur loisir.");
-    case "strong": return t("bots.level.strong.desc", "Niveau soutenu, capable de belles séries.");
-    case "pro": return t("bots.level.pro.desc", "Niveau très solide, proche d’un bon joueur de club.");
-    case "legend": return t("bots.level.legend.desc", "Niveau élite, très difficile à battre.");
-    default: return "";
+    case "easy":
+      return t("bots.level.easy.desc", "Niveau très accessible, parfait pour découvrir le jeu.");
+    case "medium":
+      return t("bots.level.medium.desc", "Niveau régulier, proche d’un joueur loisir.");
+    case "strong":
+      return t("bots.level.strong.desc", "Niveau soutenu, capable de belles séries.");
+    case "pro":
+      return t("bots.level.pro.desc", "Niveau très solide, proche d’un bon joueur de club.");
+    case "legend":
+      return t("bots.level.legend.desc", "Niveau élite, très difficile à battre.");
+    default:
+      return "";
   }
+}
+
+function resolveBotAvatar(bot: Bot | null) {
+  if (!bot) return null;
+  if (typeof bot.avatarDataUrl === "string" && bot.avatarDataUrl.trim()) return bot.avatarDataUrl;
+  if (typeof (bot as any).avatarUrl === "string" && (bot as any).avatarUrl.trim()) return (bot as any).avatarUrl;
+  return null;
 }
 
 function BotAvatar({ bot, color, size = 42 }: { bot: Bot | null; color: string; size?: number }) {
   const letter = (bot?.name || "?").trim().charAt(0).toUpperCase() || "?";
-  const resolvedAvatarSrc = bot?.avatarDataUrl || (typeof (bot as any)?.avatarUrl === "string" ? (bot as any).avatarUrl : null);
-  if (resolvedAvatarSrc) {
-    return (
-      <div style={{ width: size, height: size, borderRadius: "50%", background: "#050714", border: `1px solid ${color}aa`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", boxShadow: `0 0 10px ${color}55`, flexShrink: 0, overflow: "hidden" }}>
-        <img src={resolvedAvatarSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      </div>
-    );
-  }
+  const src = resolveBotAvatar(bot);
+
   return (
-    <div style={{ width: size, height: size, borderRadius: "50%", background: `radial-gradient(circle at 30% 0%, ${color}55, #050714)`, border: `1px solid ${color}aa`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", boxShadow: `0 0 10px ${color}55`, flexShrink: 0 }}>
-      <span style={{ fontSize: Math.max(18, Math.round(size * 0.46)), fontWeight: 900, color: "#fff" }}>{letter}</span>
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: `radial-gradient(circle at 30% 0%, ${color}55, #050714 72%)`,
+        border: `2px solid ${color}99`,
+        display: "grid",
+        placeItems: "center",
+        position: "relative",
+        boxShadow: `0 0 16px ${color}55, 0 10px 24px rgba(0,0,0,.42)`,
+        flexShrink: 0,
+        overflow: "hidden",
+      }}
+    >
+      {src ? (
+        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <span style={{ fontSize: Math.max(18, Math.round(size * 0.43)), fontWeight: 950, color: "#fff" }}>{letter}</span>
+      )}
     </div>
   );
 }
+
+type BotSection = "create" | "list";
 
 type Props = {
   store: Store;
   go?: (tab: any, params?: any) => void;
 };
 
+function BotSectionTab({
+  active,
+  label,
+  onClick,
+  accent,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  accent: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minWidth: 0,
+        minHeight: 46,
+        borderRadius: 15,
+        border: `1px solid ${active ? accent : `${accent}55`}`,
+        background: active
+          ? `linear-gradient(180deg, ${accent}44, ${accent}16)`
+          : "linear-gradient(180deg, rgba(255,255,255,.045), rgba(0,0,0,.18))",
+        color: active ? "#fff" : "rgba(255,255,255,.72)",
+        fontSize: 12,
+        fontWeight: 950,
+        letterSpacing: 1.05,
+        textTransform: "uppercase",
+        boxShadow: active ? `0 0 18px ${accent}55, inset 0 1px 0 rgba(255,255,255,.14)` : "none",
+        cursor: "pointer",
+        padding: "8px 5px",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function BotGridCard({
+  bot,
+  accent,
+  active,
+  onClick,
+  t,
+}: {
+  bot: Bot;
+  accent: string;
+  active: boolean;
+  onClick: () => void;
+  t: (key: string, fallback?: string) => string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minWidth: 0,
+        borderRadius: 18,
+        padding: "10px 5px 9px",
+        background: active
+          ? `linear-gradient(180deg, ${accent}25, rgba(0,0,0,.18))`
+          : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.18))",
+        border: `1px solid ${active ? accent : `${accent}44`}`,
+        boxShadow: active
+          ? `0 0 17px ${accent}44, inset 0 0 18px rgba(255,255,255,.035)`
+          : "inset 0 0 18px rgba(255,255,255,.025), 0 9px 20px rgba(0,0,0,.28)",
+        cursor: "pointer",
+        color: "inherit",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 6,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ width: 86, height: 86, display: "grid", placeItems: "center" }}>
+        <BotAvatar bot={bot} color={accent} size={78} />
+      </div>
+      <div
+        style={{
+          width: "100%",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 950,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          textTransform: "uppercase",
+        }}
+      >
+        {bot.name || "BOT"}
+      </div>
+      <div
+        style={{
+          width: "100%",
+          color: accent,
+          fontSize: 9.5,
+          fontWeight: 900,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          minHeight: 12,
+          textTransform: "uppercase",
+        }}
+      >
+        {levelLabel((bot.level || "medium") as BotLevel, t)}
+      </div>
+    </button>
+  );
+}
+
 export default function ProfilesBots({ store, go }: Props) {
+  void store;
+
   const { theme } = useTheme();
   const { t } = useLang();
   const primary = theme.primary;
 
   const [bots, setBots] = React.useState<Bot[]>([]);
-  const [name, setName] = React.useState("");
-  const [level, setLevel] = React.useState<BotLevel>("medium");
-  const [seed, setSeed] = React.useState("");
-  const [editingBotId, setEditingBotId] = React.useState<string | null>(null);
-  const [selectedBotId, setSelectedBotId] = React.useState<string>("");
+  const [section, setSection] = React.useState<BotSection>("list");
+  const [selectedBotId, setSelectedBotId] = React.useState("");
+  const [listDetailOpen, setListDetailOpen] = React.useState(false);
+  const [gridPage, setGridPage] = React.useState(0);
+
+  const [createName, setCreateName] = React.useState("");
+  const [createLevel, setCreateLevel] = React.useState<BotLevel>("medium");
+  const [createSeed, setCreateSeed] = React.useState("");
+
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editName, setEditName] = React.useState("");
+  const [editLevel, setEditLevel] = React.useState<BotLevel>("medium");
+  const [editSeed, setEditSeed] = React.useState("");
+  const [actionsOpen, setActionsOpen] = React.useState(false);
+
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
   const [avatarTargetBotId, setAvatarTargetBotId] = React.useState<string | null>(null);
 
@@ -85,7 +253,7 @@ export default function ProfilesBots({ store, go }: Props) {
     const refresh = () => {
       const loaded = loadBots();
       setBots(loaded);
-      setSelectedBotId((prev) => (loaded.some((b) => b.id === prev) ? prev : loaded[0]?.id || ""));
+      setSelectedBotId((previous) => (loaded.some((bot) => bot.id === previous) ? previous : loaded[0]?.id || ""));
     };
     refresh();
     return subscribeBotsChange(refresh);
@@ -96,49 +264,68 @@ export default function ProfilesBots({ store, go }: Props) {
     if (!ok) {
       const loaded = loadBots();
       setBots(loaded);
-      setSelectedBotId((prev) => (loaded.some((b) => b.id === prev) ? prev : loaded[0]?.id || ""));
-      alert("Enregistrement BOT impossible (stockage plein ?)");
+      setSelectedBotId((previous) => (loaded.some((bot) => bot.id === previous) ? previous : loaded[0]?.id || ""));
+      window.alert(t("bots.storage.error", "Enregistrement BOT impossible (stockage plein ?)") as string);
       return false;
     }
     setBots(next);
     return true;
   }
 
-  function handleRandomSeed() {
-    setSeed(Math.random().toString(36).slice(2, 10));
-  }
+  const selectedBot = React.useMemo(
+    () => bots.find((bot) => bot.id === selectedBotId) || bots[0] || null,
+    [bots, selectedBotId]
+  );
+  const selectedIndex = React.useMemo(
+    () => Math.max(0, bots.findIndex((bot) => bot.id === (selectedBot?.id || ""))),
+    [bots, selectedBot]
+  );
 
-  function handleResetForm() {
-    setName("");
-    setLevel("medium");
-    setSeed("");
-    setEditingBotId(null);
-  }
+  const gridPageSize = 9;
+  const gridPages = Math.max(1, Math.ceil(bots.length / gridPageSize));
+  const safeGridPage = Math.min(Math.max(gridPage, 0), gridPages - 1);
+  const gridBots = React.useMemo(
+    () => bots.slice(safeGridPage * gridPageSize, safeGridPage * gridPageSize + gridPageSize),
+    [bots, safeGridPage]
+  );
 
-  function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    const now = new Date().toISOString();
+  React.useEffect(() => {
+    if (gridPage > gridPages - 1) setGridPage(Math.max(0, gridPages - 1));
+  }, [gridPage, gridPages]);
 
-    if (editingBotId) {
-      const next = bots.map((b) =>
-        b.id === editingBotId
-          ? { ...b, name: name.trim(), level, botLevel: level, avatarSeed: seed.trim() || b.avatarSeed || Math.random().toString(36).slice(2, 10), updatedAt: now }
-          : b
-      );
-      if (persist(next)) {
-        setSelectedBotId(editingBotId);
-        handleResetForm();
-      }
+  React.useEffect(() => {
+    if (!selectedBot) {
+      setIsEditing(false);
+      setActionsOpen(false);
       return;
     }
+    setEditName(selectedBot.name || "");
+    setEditLevel((selectedBot.level || "medium") as BotLevel);
+    setEditSeed(selectedBot.avatarSeed || "");
+  }, [selectedBot?.id]);
 
+  function randomSeed() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  function resetCreateForm() {
+    setCreateName("");
+    setCreateLevel("medium");
+    setCreateSeed("");
+  }
+
+  function handleCreate(event: React.FormEvent) {
+    event.preventDefault();
+    const cleanName = createName.trim();
+    if (!cleanName) return;
+
+    const now = new Date().toISOString();
     const bot: Bot = {
       id: nanoid(),
-      name: name.trim(),
-      level,
-      botLevel: level,
-      avatarSeed: seed.trim() || Math.random().toString(36).slice(2, 10),
+      name: cleanName,
+      level: createLevel,
+      botLevel: createLevel,
+      avatarSeed: createSeed.trim() || randomSeed(),
       avatarDataUrl: null,
       createdAt: now,
       updatedAt: now,
@@ -149,65 +336,128 @@ export default function ProfilesBots({ store, go }: Props) {
       cpu: true,
     };
 
-    const next = [...bots, bot];
-    if (persist(next)) {
-      setSelectedBotId(bot.id);
-      setAvatarTargetBotId(bot.id);
-      setAvatarPickerOpen(true);
-      handleResetForm();
-    }
-  }
+    if (!persist([...bots, bot])) return;
 
-  function handleDelete(id: string) {
-    if (!window.confirm("Supprimer ce BOT ?")) return;
-    const next = bots.filter((b) => b.id !== id);
-    if (persist(next)) {
-      if (selectedBotId === id) setSelectedBotId(next[0]?.id || "");
-      if (editingBotId === id) handleResetForm();
-    }
-  }
-
-  function handleEdit(bot: Bot) {
-    setEditingBotId(bot.id);
-    setSelectedBotId(bot.id);
-    setName(bot.name || "");
-    setLevel(bot.level || "medium");
-    setSeed(bot.avatarSeed || "");
-  }
-
-  function handleOpenAvatarEditor(bot: Bot) {
     setSelectedBotId(bot.id);
     setAvatarTargetBotId(bot.id);
+    setListDetailOpen(true);
+    setSection("list");
     setAvatarPickerOpen(true);
+    resetCreateForm();
   }
 
-  async function handleSetBotAvatar(botId: string, file: File) {
-    const now = new Date().toISOString();
-    // BOT selectors need a reliably persisted lightweight image.
-    // 160px WebP is enough for config carousels and avoids localStorage quota pruning.
-    const variants = await fileToAvatarVariants(file);
-    const avatarDataUrl = variants.thumbDataUrl;
-    const next = bots.map((b) =>
-      b.id === botId
-        ? { ...b, avatarDataUrl, avatarUrl: undefined, updatedAt: now }
-        : b
-    );
-    persist(next);
+  function openBotDetail(bot: Bot) {
+    setSelectedBotId(bot.id);
+    setListDetailOpen(true);
+    setIsEditing(false);
+    setActionsOpen(false);
   }
-
-  const selectedBot = React.useMemo(() => bots.find((b) => b.id === selectedBotId) || bots[0] || null, [bots, selectedBotId]);
-  const selectedIndex = React.useMemo(() => Math.max(0, bots.findIndex((b) => b.id === (selectedBot?.id || ""))), [bots, selectedBot]);
 
   function shiftSelected(delta: number) {
     if (!bots.length) return;
     const nextIndex = (selectedIndex + delta + bots.length) % bots.length;
-    setSelectedBotId(bots[nextIndex]?.id || "");
+    const nextBot = bots[nextIndex];
+    if (!nextBot) return;
+    setSelectedBotId(nextBot.id);
+    setIsEditing(false);
+    setActionsOpen(false);
   }
 
-  const count = bots.length;
-  const pagePadding: React.CSSProperties = { padding: 16, paddingBottom: 90 };
-  const cardStyle: React.CSSProperties = { background: theme.card, borderRadius: 18, padding: 14, border: `1px solid ${theme.borderSoft}`, boxShadow: "0 18px 36px rgba(0,0,0,.35)", marginBottom: 14 };
-  const smallBadge: React.CSSProperties = { fontSize: 11, textTransform: "uppercase", letterSpacing: 1.8, color: theme.textSoft };
+  function beginEdit() {
+    if (!selectedBot) return;
+    setEditName(selectedBot.name || "");
+    setEditLevel((selectedBot.level || "medium") as BotLevel);
+    setEditSeed(selectedBot.avatarSeed || "");
+    setIsEditing((value) => !value);
+    setActionsOpen(false);
+  }
+
+  function saveEdit() {
+    if (!selectedBot || !editName.trim()) return;
+    const now = new Date().toISOString();
+    const next = bots.map((bot) =>
+      bot.id === selectedBot.id
+        ? {
+            ...bot,
+            name: editName.trim(),
+            level: editLevel,
+            botLevel: editLevel,
+            avatarSeed: editSeed.trim() || bot.avatarSeed || randomSeed(),
+            updatedAt: now,
+          }
+        : bot
+    );
+    if (persist(next)) setIsEditing(false);
+  }
+
+  function handleDelete(id: string) {
+    if (!window.confirm(t("bots.delete.confirm", "Supprimer définitivement ce BOT ?") as string)) return;
+    const next = bots.filter((bot) => bot.id !== id);
+    if (!persist(next)) return;
+
+    setSelectedBotId(next[0]?.id || "");
+    setListDetailOpen(false);
+    setIsEditing(false);
+    setActionsOpen(false);
+  }
+
+  function openAvatarEditor(bot: Bot) {
+    setSelectedBotId(bot.id);
+    setAvatarTargetBotId(bot.id);
+    setAvatarPickerOpen(true);
+    setActionsOpen(false);
+  }
+
+  async function handleSetBotAvatar(botId: string, file: File) {
+    const now = new Date().toISOString();
+    const variants = await fileToAvatarVariants(file);
+    const avatarDataUrl = variants.thumbDataUrl;
+    const next = bots.map((bot) =>
+      bot.id === botId
+        ? { ...bot, avatarDataUrl, avatarUrl: undefined, avatarUpdatedAt: now, updatedAt: now }
+        : bot
+    );
+    persist(next);
+  }
+
+  const pagePadding: React.CSSProperties = {
+    padding: 16,
+    paddingBottom: 90,
+  };
+
+  const panelStyle: React.CSSProperties = {
+    padding: 12,
+    borderRadius: 18,
+    border: `1px solid ${theme.borderSoft}`,
+    background: "radial-gradient(circle at top, rgba(255,255,255,.075), transparent 64%)",
+    boxShadow: "0 16px 30px rgba(0,0,0,.26)",
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "11px 12px",
+    borderRadius: 13,
+    border: `1px solid ${theme.borderSoft}`,
+    background: "rgba(5,6,12,.88)",
+    color: "#fff",
+    fontSize: 13,
+    boxSizing: "border-box",
+  };
+
+  const actionBase: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 38,
+    borderRadius: 999,
+    border: `1px solid ${primary}88`,
+    background: `linear-gradient(135deg, ${primary}10, ${primary}42)`,
+    color: "#fff",
+    fontSize: 10.5,
+    fontWeight: 950,
+    letterSpacing: 0.5,
+    cursor: "pointer",
+    padding: "7px 8px",
+  };
 
   return (
     <div style={pagePadding}>
@@ -221,6 +471,7 @@ export default function ProfilesBots({ store, go }: Props) {
           await handleSetBotAvatar(targetId, file);
         }}
       />
+
       <TopTicker
         src={tickerBotsCpu}
         alt={t("bots.title", "BOTS (CPU)")}
@@ -232,126 +483,507 @@ export default function ProfilesBots({ store, go }: Props) {
             onClick={() => go?.("profiles")}
           />
         }
+        endSlot={
+          <InfoDot
+            size={42}
+            color={primary}
+            glow={`${primary}99`}
+            title={t("bots.info.title", "Joueurs virtuels")}
+            content={
+              <div style={{ display: "grid", gap: 10, lineHeight: 1.5 }}>
+                <div style={{ color: primary, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>
+                  {t("bots.badge", "Joueurs virtuels")}
+                </div>
+                <div>
+                  {t(
+                    "bots.subtitle",
+                    "Crée tes propres joueurs imaginaires gérés par l’ordinateur, avec avatar et niveau de performance. Tu pourras ensuite les inviter dans tes parties X01, Cricket, Training, etc."
+                  )}
+                </div>
+              </div>
+            }
+          />
+        }
       />
 
-      <div style={{ marginBottom: 12 }}>
-        <div style={smallBadge}>{t("bots.badge", "Joueurs virtuels")}</div>
-        <p style={{ fontSize: 12, color: theme.textSoft, marginTop: 4 }}>
-          {t("bots.subtitle", "Crée tes propres joueurs imaginaires gérés par l’ordinateur, avec avatar et niveau de performance. Tu pourras ensuite les inviter dans tes parties X01, Cricket, Training, etc.")}
-        </p>
-      </div>
-
-      <section style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: primary, textTransform: "uppercase", letterSpacing: 0.8 }}>{t("bots.list.title", "Tes BOTS")}</div>
-            <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 2 }}>
-              {count === 0 ? t("bots.list.emptyHint", "Aucun BOT pour le moment. Commence par en créer un ci-dessous.") : t("bots.list.count", `${count} BOT(s) disponibles pour les sélecteurs de joueurs.`)}
-            </div>
-          </div>
-          <div style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,0.4)", color: theme.textSoft }}>
-            {count} BOT{count > 1 ? "S" : ""}
-          </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 8,
+            padding: 7,
+            borderRadius: 18,
+            border: `1px solid ${primary}55`,
+            background: "rgba(0,0,0,.18)",
+            boxShadow: "inset 0 0 20px rgba(255,255,255,.025)",
+          }}
+        >
+          <BotSectionTab
+            active={section === "create"}
+            label={t("bots.tabs.create", "Créer")}
+            accent={primary}
+            onClick={() => {
+              setSection("create");
+              setListDetailOpen(false);
+              setActionsOpen(false);
+              setIsEditing(false);
+            }}
+          />
+          <BotSectionTab
+            active={section === "list"}
+            label={t("bots.tabs.list", "Liste")}
+            accent={primary}
+            onClick={() => setSection("list")}
+          />
         </div>
 
-        {count === 0 ? (
-          <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.4)", fontSize: 12, color: theme.textSoft }}>
-            {t("bots.list.emptyHelp", "Tes BOTS apparaîtront ici et pourront ensuite être sélectionnés comme joueurs dans les différents modes.")}
-          </div>
-        ) : (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0,1fr) 40px", gap: 10, alignItems: "center" }}>
-              <button type="button" onClick={() => shiftSelected(-1)} style={{ width: 40, height: 40, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,0.35)", color: theme.text, cursor: "pointer", fontSize: 18, fontWeight: 900 }} aria-label="BOT précédent">‹</button>
-              <div style={{ borderRadius: 16, border: `1px solid ${theme.borderSoft}`, background: "linear-gradient(180deg, rgba(20,20,28,.92), rgba(10,10,16,.94))", padding: 14, display: "grid", gridTemplateColumns: "96px minmax(0,1fr)", gap: 14, alignItems: "center" }}>
-                <div style={{ display: "grid", placeItems: "center" }}><BotAvatar bot={selectedBot} color={primary} size={84} /></div>
+        {section === "create" ? (
+          <form onSubmit={handleCreate} style={panelStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>
+                  {t("bots.form.title", "Créer un nouveau BOT")}
+                </div>
+                <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 2 }}>
+                  {t("bots.form.subtitle.short", "Nom, niveau et avatar : uniquement l’essentiel.")}
+                </div>
+              </div>
+              <div
+                style={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: "50%",
+                  border: `1px solid ${primary}88`,
+                  display: "grid",
+                  placeItems: "center",
+                  color: primary,
+                  background: `${primary}12`,
+                  boxShadow: `0 0 15px ${primary}33`,
+                  fontSize: 25,
+                  fontWeight: 950,
+                  flex: "0 0 auto",
+                }}
+                aria-hidden
+              >
+                CPU
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 11 }}>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ color: "#fff", fontSize: 12, fontWeight: 850 }}>{t("bots.form.name.label", "Nom du BOT")}</span>
+                <input
+                  type="text"
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                  placeholder={t("bots.form.name.placeholder", "Ex : The Grinder, RoboPhil...")}
+                  style={fieldStyle}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ color: "#fff", fontSize: 12, fontWeight: 850 }}>{t("bots.form.level.label", "Niveau de performance")}</span>
+                <select
+                  value={createLevel}
+                  onChange={(event) => setCreateLevel(event.target.value as BotLevel)}
+                  style={fieldStyle}
+                >
+                  <option value="easy">{t("bots.level.easy", "Débutant")}</option>
+                  <option value="medium">{t("bots.level.medium", "Standard")}</option>
+                  <option value="strong">{t("bots.level.strong", "Fort")}</option>
+                  <option value="pro">{t("bots.level.pro", "Pro")}</option>
+                  <option value="legend">{t("bots.level.legend", "Légende")}</option>
+                </select>
+                <span style={{ color: theme.textSoft, fontSize: 10.5 }}>{levelDescription(createLevel, t)}</span>
+              </label>
+
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ color: "#fff", fontSize: 12, fontWeight: 850 }}>{t("bots.form.seed.label", "Seed d’avatar (optionnel)")}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
+                  <input
+                    type="text"
+                    value={createSeed}
+                    onChange={(event) => setCreateSeed(event.target.value)}
+                    placeholder={t("bots.form.seed.placeholder", "Seed aléatoire")}
+                    style={fieldStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCreateSeed(randomSeed())}
+                    style={{
+                      borderRadius: 13,
+                      border: `1px solid ${primary}99`,
+                      background: `${primary}12`,
+                      color: primary,
+                      padding: "8px 11px",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {t("bots.form.seed.random.short", "Aléatoire")}
+                  </button>
+                </div>
+              </label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, marginTop: 2 }}>
+                <button
+                  type="submit"
+                  disabled={!createName.trim()}
+                  style={{
+                    minHeight: 48,
+                    borderRadius: 16,
+                    border: `1px solid ${createName.trim() ? primary : theme.borderSoft}`,
+                    background: createName.trim()
+                      ? `linear-gradient(180deg, ${primary}CC, ${primary}77)`
+                      : "linear-gradient(180deg,#3a3a3e,#333338)",
+                    color: createName.trim() ? "#051016" : "#99999f",
+                    boxShadow: createName.trim() ? `0 0 18px ${primary}55` : "none",
+                    fontWeight: 950,
+                    fontSize: 12,
+                    letterSpacing: 0.7,
+                    textTransform: "uppercase",
+                    cursor: createName.trim() ? "pointer" : "not-allowed",
+                    padding: "10px 12px",
+                  }}
+                >
+                  {t("bots.form.create", "Créer le BOT")}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCreateForm}
+                  style={{
+                    minHeight: 48,
+                    borderRadius: 16,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(255,255,255,.035)",
+                    color: theme.textSoft,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                    padding: "10px 12px",
+                  }}
+                >
+                  {t("bots.form.reset", "Réinitialiser")}
+                </button>
+              </div>
+            </div>
+          </form>
+        ) : null}
+
+        {section === "list" ? (
+          bots.length === 0 ? (
+            <div style={{ ...panelStyle, textAlign: "center", color: theme.textSoft, fontSize: 12 }}>
+              {t("bots.list.empty", "Aucun BOT pour l’instant. Utilise l’onglet CRÉER pour ajouter ton premier joueur CPU.")}
+            </div>
+          ) : !listDetailOpen ? (
+            <div style={panelStyle}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 11 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedBot?.name}</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                    <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 999, background: `${primary}22`, border: `1px solid ${primary}aa`, color: primary, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 800 }}>{levelLabel((selectedBot?.level || "medium") as BotLevel, t)}</span>
-                    <span style={{ fontSize: 11, color: theme.textSoft }}>seed: {selectedBot?.avatarSeed}</span>
+                  <div style={{ color: primary, fontWeight: 950, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
+                    {t("bots.list.title", "BOTS CPU")} ({bots.length})
                   </div>
-                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => selectedBot && handleEdit(selectedBot)} style={{ borderRadius: 999, border: `1px solid ${primary}aa`, background: `${primary}18`, color: primary, fontSize: 11, padding: "7px 10px", cursor: "pointer", fontWeight: 700 }}>{t("bots.actions.edit", "Modifier")}</button>
-                    <button type="button" onClick={() => selectedBot && handleOpenAvatarEditor(selectedBot)} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.text, fontSize: 11, padding: "7px 10px", cursor: "pointer", fontWeight: 700 }}>{t("bots.actions.avatar", "Avatar")}</button>
-                    <button type="button" onClick={() => selectedBot && handleDelete(selectedBot.id)} style={{ borderRadius: 999, border: "1px solid rgba(255,90,90,.7)", background: "transparent", color: "#ff9c9c", fontSize: 11, padding: "7px 10px", cursor: "pointer", fontWeight: 700 }}>{t("bots.actions.delete", "Supprimer")}</button>
+                  <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 2 }}>
+                    {t("bots.list.gridHint", "9 BOTS par page · touche un BOT pour ouvrir sa fiche")}
+                  </div>
+                </div>
+                <div style={{ color: theme.textSoft, fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap" }}>
+                  {safeGridPage + 1}/{gridPages}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                {gridBots.map((bot) => (
+                  <BotGridCard
+                    key={bot.id}
+                    bot={bot}
+                    accent={primary}
+                    active={bot.id === selectedBot?.id}
+                    onClick={() => openBotDetail(bot)}
+                    t={t}
+                  />
+                ))}
+              </div>
+
+              <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "76px 1fr 76px", gap: 9, alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="btn sm"
+                  disabled={safeGridPage <= 0}
+                  onClick={() => setGridPage((value) => Math.max(0, value - 1))}
+                  style={{ opacity: safeGridPage <= 0 ? 0.42 : 1 }}
+                >
+                  ←
+                </button>
+                <div style={{ textAlign: "center", color: theme.textSoft, fontSize: 11, fontWeight: 900 }}>
+                  PAGE {safeGridPage + 1}/{gridPages}
+                </div>
+                <button
+                  type="button"
+                  className="btn sm"
+                  disabled={safeGridPage >= gridPages - 1}
+                  onClick={() => setGridPage((value) => Math.min(gridPages - 1, value + 1))}
+                  style={{ opacity: safeGridPage >= gridPages - 1 ? 0.42 : 1 }}
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...panelStyle, position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+                <BackDot
+                  size={34}
+                  title={t("bots.list.back", "Retour à la liste des BOTS")}
+                  color={primary}
+                  onClick={() => {
+                    setListDetailOpen(false);
+                    setActionsOpen(false);
+                    setIsEditing(false);
+                  }}
+                />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ color: primary, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: 0.9 }}>
+                    {t("bots.detail.title", "Fiche du BOT CPU")}
+                  </div>
+                  <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 1 }}>
+                    {t("bots.detail.subtitle", "Retourne à la grille avec le bouton ci-contre")}
                   </div>
                 </div>
               </div>
-              <button type="button" onClick={() => shiftSelected(1)} style={{ width: 40, height: 40, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,0.35)", color: theme.text, cursor: "pointer", fontSize: 18, fontWeight: 900 }} aria-label="BOT suivant">›</button>
+
+              <div style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) 42px", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => shiftSelected(-1)}
+                  disabled={bots.length <= 1}
+                  aria-label={t("bots.previous", "BOT précédent")}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(0,0,0,.3)",
+                    color: theme.text,
+                    fontSize: 20,
+                    fontWeight: 950,
+                    cursor: bots.length <= 1 ? "default" : "pointer",
+                    opacity: bots.length <= 1 ? 0.42 : 1,
+                  }}
+                >
+                  ‹
+                </button>
+                <div style={{ textAlign: "center", color: theme.textSoft, fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>
+                  {t("bots.carousel.label", "BOT CPU")} {bots.length > 1 ? `(${selectedIndex + 1}/${bots.length})` : ""}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => shiftSelected(1)}
+                  disabled={bots.length <= 1}
+                  aria-label={t("bots.next", "BOT suivant")}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(0,0,0,.3)",
+                    color: theme.text,
+                    fontSize: 20,
+                    fontWeight: 950,
+                    cursor: bots.length <= 1 ? "default" : "pointer",
+                    opacity: bots.length <= 1 ? 0.42 : 1,
+                  }}
+                >
+                  ›
+                </button>
+              </div>
+
+              {selectedBot ? (
+                <>
+                  <div style={{ display: "grid", placeItems: "center", margin: "4px 0 10px" }}>
+                    <div
+                      style={{
+                        width: 146,
+                        height: 146,
+                        borderRadius: "50%",
+                        display: "grid",
+                        placeItems: "center",
+                        background: `radial-gradient(circle, ${primary}16, transparent 69%)`,
+                        boxShadow: `0 0 34px ${primary}22`,
+                      }}
+                    >
+                      <BotAvatar bot={selectedBot} color={primary} size={124} />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#fff",
+                      fontSize: 22,
+                      fontWeight: 950,
+                      textAlign: "center",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {selectedBot.name}
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: 7 }}>
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        border: `1px solid ${primary}`,
+                        background: `${primary}18`,
+                        color: primary,
+                        padding: "5px 11px",
+                        fontSize: 10.5,
+                        fontWeight: 950,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.8,
+                      }}
+                    >
+                      {levelLabel((selectedBot.level || "medium") as BotLevel, t)}
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: "center", color: theme.textSoft, fontSize: 11, marginTop: 8, lineHeight: 1.45 }}>
+                    {levelDescription((selectedBot.level || "medium") as BotLevel, t)}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 11,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ borderRadius: 13, border: `1px solid ${primary}44`, background: `${primary}0D`, padding: "9px 8px", textAlign: "center" }}>
+                      <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 850, textTransform: "uppercase" }}>Seed</div>
+                      <div style={{ color: "#fff", fontSize: 11.5, fontWeight: 900, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {selectedBot.avatarSeed || "—"}
+                      </div>
+                    </div>
+                    <div style={{ borderRadius: 13, border: `1px solid ${primary}44`, background: `${primary}0D`, padding: "9px 8px", textAlign: "center" }}>
+                      <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 850, textTransform: "uppercase" }}>
+                        {t("bots.detail.status", "Statut")}
+                      </div>
+                      <div style={{ color: primary, fontSize: 11.5, fontWeight: 950, marginTop: 2, textTransform: "uppercase" }}>
+                        {t("bots.detail.available", "Disponible")}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 6, marginTop: 12, width: "100%" }}>
+                    <button type="button" onClick={beginEdit} style={actionBase}>
+                      {t("bots.actions.edit", "ÉDITER")}
+                    </button>
+                    <button type="button" onClick={() => openAvatarEditor(selectedBot)} style={actionBase}>
+                      {t("bots.actions.avatar", "AVATAR")}
+                    </button>
+                    <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActionsOpen((value) => !value)}
+                        style={{ ...actionBase, width: "100%", color: primary, borderColor: primary, background: `${primary}20` }}
+                      >
+                        {t("bots.actions.more", "ACTIONS")}
+                      </button>
+
+                      {actionsOpen ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "110%",
+                            right: 0,
+                            zIndex: 40,
+                            minWidth: 210,
+                            padding: 8,
+                            borderRadius: 12,
+                            background: theme.card,
+                            border: `1px solid ${theme.borderSoft}`,
+                            boxShadow: "0 14px 30px rgba(0,0,0,.62)",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="btn danger sm"
+                            onClick={() => handleDelete(selectedBot.id)}
+                            style={{ width: "100%", justifyContent: "flex-start", fontSize: 11 }}
+                          >
+                            {t("bots.actions.delete", "Supprimer ce BOT")}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {isEditing ? (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 12,
+                        borderTop: `1px dashed ${theme.borderSoft}`,
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <input
+                        value={editName}
+                        onChange={(event) => setEditName(event.target.value)}
+                        placeholder={t("bots.form.name.label", "Nom du BOT")}
+                        style={fieldStyle}
+                      />
+                      <select value={editLevel} onChange={(event) => setEditLevel(event.target.value as BotLevel)} style={fieldStyle}>
+                        <option value="easy">{t("bots.level.easy", "Débutant")}</option>
+                        <option value="medium">{t("bots.level.medium", "Standard")}</option>
+                        <option value="strong">{t("bots.level.strong", "Fort")}</option>
+                        <option value="pro">{t("bots.level.pro", "Pro")}</option>
+                        <option value="legend">{t("bots.level.legend", "Légende")}</option>
+                      </select>
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
+                        <input
+                          value={editSeed}
+                          onChange={(event) => setEditSeed(event.target.value)}
+                          placeholder={t("bots.form.seed.placeholder", "Seed aléatoire")}
+                          style={fieldStyle}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditSeed(randomSeed())}
+                          style={{
+                            borderRadius: 13,
+                            border: `1px solid ${primary}99`,
+                            background: `${primary}12`,
+                            color: primary,
+                            padding: "8px 11px",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {t("bots.form.seed.random.short", "Aléatoire")}
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <button type="button" className="btn sm" onClick={() => setIsEditing(false)}>
+                          {t("common.cancel", "Annuler")}
+                        </button>
+                        <button type="button" className="btn ok sm" disabled={!editName.trim()} onClick={saveEdit}>
+                          {t("common.save", "Enregistrer")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </div>
-
-            <div style={{ marginTop: 12, display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 }}>
-              {bots.map((bot) => {
-                const active = bot.id === selectedBot?.id;
-                return (
-                  <button key={bot.id} type="button" onClick={() => setSelectedBotId(bot.id)} style={{ minWidth: 88, padding: "6px 6px 4px", borderRadius: 14, border: `1px solid ${active ? primary + "aa" : theme.borderSoft}`, background: active ? `${primary}18` : "rgba(0,0,0,0.22)", cursor: "pointer", color: theme.text }}>
-                    <div style={{ display: "grid", placeItems: "center", marginBottom: 4 }}><BotAvatar bot={bot} color={primary} size={48} /></div>
-                    <div style={{ fontSize: 11, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bot.name}</div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <label style={{ display: "block", fontSize: 11, color: theme.textSoft, marginBottom: 4 }}>{t("bots.selector.label", "Accès rapide à un BOT")}</label>
-              <select value={selectedBot?.id || ""} onChange={(e) => setSelectedBotId(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(5,6,12,0.9)", color: "#fff", fontSize: 13 }}>
-                {bots.map((bot, index) => <option key={bot.id} value={bot.id}>{index + 1}. {bot.name} — {levelLabel(bot.level, t)}</option>)}
-              </select>
-            </div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 10, fontSize: 11, color: theme.textSoft }}>
-          {t("bots.list.footer", "Après création, personnalise le médaillon de ton BOT dans le créateur d’avatar.")}
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: primary, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>
-          {editingBotId ? t("bots.form.editTitle", "Modifier ce BOT") : t("bots.form.title", "Créer un nouveau BOT")}
-        </div>
-        <div style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10 }}>
-          {t("bots.form.subtitle", "Donne-lui un nom, choisis son niveau, puis crée son avatar dans l’éditeur.")}
-        </div>
-
-        <form onSubmit={handleCreate}>
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4, color: "#fff" }}>{t("bots.form.name.label", "Nom du BOT")}</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("bots.form.name.placeholder", "Ex : The Grinder, RoboPhil...")} style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(5,6,12,0.9)", color: "#fff", fontSize: 13 }} />
-          </div>
-
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4, color: "#fff" }}>{t("bots.form.level.label", "Niveau de performance")}</label>
-            <select value={level} onChange={(e) => setLevel(e.target.value as BotLevel)} style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(5,6,12,0.9)", color: "#fff", fontSize: 13 }}>
-              <option value="easy">{t("bots.level.easy", "Débutant")}</option>
-              <option value="medium">{t("bots.level.medium", "Standard")}</option>
-              <option value="strong">{t("bots.level.strong", "Fort")}</option>
-              <option value="pro">{t("bots.level.pro", "Pro")}</option>
-              <option value="legend">{t("bots.level.legend", "Légende")}</option>
-            </select>
-            <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 4 }}>{levelDescription(level, t)}</div>
-          </div>
-
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4, color: "#fff" }}>{t("bots.form.seed.label", "Seed d’avatar (optionnel)")}</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input type="text" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder={t("bots.form.seed.placeholder", "Seed aléatoire")} style={{ flex: 1, padding: "8px 10px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(5,6,12,0.9)", color: "#fff", fontSize: 13 }} />
-              <button type="button" onClick={handleRandomSeed} style={{ borderRadius: 10, border: `1px solid ${primary}aa`, background: "transparent", color: primary, fontSize: 11, padding: "6px 8px", cursor: "pointer", whiteSpace: "nowrap" }}>{t("bots.form.seed.random", "Seed aléatoire")}</button>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button type="submit" disabled={!name.trim()} style={{ flex: 1, borderRadius: 999, border: "none", padding: "10px 12px", fontWeight: 800, fontSize: 14, textTransform: "uppercase", letterSpacing: 1, cursor: name.trim() ? "pointer" : "not-allowed", background: name.trim() ? primary : "linear-gradient(180deg,#3a3a3e,#333338)", color: name.trim() ? "#050712" : "#9a9aa0", boxShadow: name.trim() ? `0 0 18px ${primary}` : "none" }}>
-              {editingBotId ? t("bots.form.save", "Enregistrer les modifications") : t("bots.form.createAndEdit", "Créer ce BOT et ouvrir l’éditeur d’avatar")}
-            </button>
-            <button type="button" onClick={handleResetForm} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.textSoft, padding: "10px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>{t("bots.form.reset", editingBotId ? "Annuler" : "Réinitialiser")}</button>
-          </div>
-        </form>
-
-        <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 10 }}>
-          {t("bots.form.footer", "Chaque BOT est stocké en local. Tu pourras le sélectionner comme joueur dans les écrans de préparation des parties.")}
-        </div>
-      </section>
+          )
+        ) : null}
+      </div>
     </div>
   );
 }

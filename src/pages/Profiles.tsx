@@ -2381,7 +2381,7 @@ export default function Profiles({
     name: string,
     file?: File | null,
     privateInfo?: Partial<PrivateInfo>
-  ) {
+  ): Promise<Profile | undefined> {
     const cleanName = (name || "").trim();
     if (!cleanName) return;
   
@@ -2471,6 +2471,8 @@ export default function Profiles({
         go("profiles", { view: "me" });
       }
     }
+
+    return p;
   }
   
   const active = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
@@ -3417,7 +3419,7 @@ React.useEffect(() => {
                     const onlineUid = String(auth.user?.id || onboardingUid || cachedAuth.id || "").trim();
                     const onlineEmail = String((auth.user as any)?.email || cachedAuth.email || "").trim();
                     const shouldLinkOnline = !!(nasProfileOnboarding && onlineUid);
-                    addProfile(
+                    return addProfile(
                       name,
                       file,
                       shouldLinkOnline
@@ -6390,7 +6392,7 @@ function LocalProfilesRefonte({
     name: string,
     file?: File | null,
     privateInfo?: Partial<{ country?: string }>
-  ) => void;
+  ) => Profile | void | Promise<Profile | void>;
   onRename: (id: string, name: string) => void;
   onPatchPrivateInfo: (id: string, patch: Partial<{ country?: string }>) => void;
   onAvatar: (id: string, file: File) => void;
@@ -6421,6 +6423,7 @@ function LocalProfilesRefonte({
   const [localSection, setLocalSection] = React.useState<LocalProfilesSection>(onboardingMode ? "create" : "list");
   const [listDetailOpen, setListDetailOpen] = React.useState(false);
   const [gridPage, setGridPage] = React.useState(0);
+  const [pendingCreatedProfileId, setPendingCreatedProfileId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (onboardingMode) {
@@ -6481,6 +6484,26 @@ function LocalProfilesRefonte({
     });
   }, [profiles, activeProfileId, onboardingMode, allModesUsageCounts]);
 
+  const handleCreateLocal = React.useCallback(
+    async (
+      name: string,
+      file?: File | null,
+      privateInfo?: Partial<{ country?: string }>
+    ) => {
+      const created = await Promise.resolve(onCreate(name, file, privateInfo));
+      const createdId = String((created as Profile | undefined)?.id || "").trim();
+
+      if (!onboardingMode && createdId) {
+        setPendingCreatedProfileId(createdId);
+        setListDetailOpen(false);
+        setLocalSection("list");
+      }
+
+      return created;
+    },
+    [onCreate, onboardingMode]
+  );
+
   const gridPageSize = 9;
   const gridPages = Math.max(1, Math.ceil(locals.length / gridPageSize));
   const safeGridPage = Math.min(Math.max(gridPage, 0), gridPages - 1);
@@ -6529,6 +6552,26 @@ function LocalProfilesRefonte({
       }, 180);
     }
   }, [locals.length]);
+
+  React.useEffect(() => {
+    if (!pendingCreatedProfileId || onboardingMode) return;
+
+    const createdIndex = locals.findIndex(
+      (profile: any) => String(profile?.id || "") === pendingCreatedProfileId
+    );
+    if (createdIndex < 0) return;
+
+    setGridPage(Math.floor(createdIndex / gridPageSize));
+    goToLocalIndex(createdIndex);
+    setListDetailOpen(true);
+    setPendingCreatedProfileId(null);
+  }, [
+    pendingCreatedProfileId,
+    onboardingMode,
+    locals,
+    gridPageSize,
+    goToLocalIndex,
+  ]);
 
   React.useEffect(() => {
     return () => {
@@ -6811,7 +6854,7 @@ function LocalProfilesRefonte({
 
       {localSection === "create" ? (
         <>
-          <AddLocalProfile onCreate={onCreate} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
+          <AddLocalProfile onCreate={handleCreateLocal} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
           {onboardingMode ? (
             <div
               className="subtitle"
@@ -7681,7 +7724,7 @@ function AddLocalProfile({
     privateInfo?: Partial<{
       country?: string;
     }>
-  ) => void;
+  ) => Profile | void | Promise<Profile | void>;
   autoFocus?: boolean;
   onboardingMode?: boolean;
 }) {
@@ -7690,6 +7733,7 @@ function AddLocalProfile({
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
+  const [creating, setCreating] = React.useState(false);
   const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const { theme } = useTheme();
@@ -7722,7 +7766,9 @@ function AddLocalProfile({
     setPreview(null);
   }
 
-  function submit() {
+  async function submit() {
+    if (creating) return;
+
     if ((window as any).__profilesDiag?.consoleEnabled) console.log("[AddLocalProfile] submit() click", {
       name,
       country,
@@ -7743,8 +7789,13 @@ function AddLocalProfile({
       privateInfo,
     });
   
-    onCreate(trimmedName, file, privateInfo);
-    reset();
+    setCreating(true);
+    try {
+      const created = await Promise.resolve(onCreate(trimmedName, file, privateInfo));
+      if (created) reset();
+    } finally {
+      setCreating(false);
+    }
   }
 
   const hasSomething = name || country || file;
@@ -7843,14 +7894,14 @@ function AddLocalProfile({
             )}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
+            onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
           />
           <input
             className="input"
             placeholder={t("profiles.private.country", "Pays")}
             value={country}
             onChange={(e) => setCountry(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
+            onKeyDown={(e) => { if (e.key === "Enter") void submit(); }}
           />
         </div>
 
@@ -7866,7 +7917,8 @@ function AddLocalProfile({
         >
           <button
             type="button"
-            onClick={submit}
+            onClick={() => void submit()}
+            disabled={creating}
             aria-label={t("profiles.locals.add.btnAdd", "Ajouter")}
             title={t("profiles.locals.add.btnAdd", "Ajouter")}
             style={{
@@ -7879,7 +7931,8 @@ function AddLocalProfile({
               display: "grid",
               placeItems: "center",
               padding: 0,
-              cursor: "pointer",
+              cursor: creating ? "wait" : "pointer",
+              opacity: creating ? 0.65 : 1,
               boxShadow: `0 0 0 1px ${primary}55, 0 0 12px ${primary}CC`,
               filter: `drop-shadow(0 0 5px ${primary})`,
               transition: "transform .16s ease, box-shadow .16s ease",
