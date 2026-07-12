@@ -1,12 +1,15 @@
 import React from "react";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
 import { History } from "../../lib/history";
 import { loadBabyFootTeams, type BabyFootTeam } from "../../lib/petanqueTeamsStore";
 import statsCenterTicker from "../../assets/tickers/ticker_statistics_center_universal.webp";
+import tickerClassements from "../../assets/tickers/ticker_classements.webp";
+import tickerRankings from "../../assets/tickers/ticker_rankings.webp";
 import { babyFootLevelScoreFromAggregate } from "../../lib/babyFootLevelStarring";
 import {
   babyFootRating,
@@ -1081,6 +1084,7 @@ function ScoringTimelineChart({ summary }: { summary: ReturnType<typeof buildPla
 
 export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
   const { theme } = useTheme() as any;
+  const { lang } = useLang();
   const profiles: Profile[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
   const activeProfileId = String((store as any)?.activeProfileId || "");
   const active = profiles.find((profile: any) => idOf(profile) === activeProfileId) || profiles[0] || null;
@@ -1238,9 +1242,9 @@ export default function BabyFootStatsCenterPage({ store, go, params }: Props) {
           <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}><BackDot onClick={() => go("stats" as any)} /></div>
           <div style={{ textAlign: "center", minWidth: 0, width: "100%" }}>
             <HeaderTickerImage
-              src={rankingOnly ? undefined : statsCenterTicker}
-              alt={rankingOnly ? "Baby-Foot Rankings" : "Statistics Center"}
-              fallbackLabel={rankingOnly ? "BABY-FOOT RANKINGS" : "STATISTICS CENTER"}
+              src={rankingOnly ? (lang === "fr" ? tickerClassements : tickerRankings) : statsCenterTicker}
+              alt={rankingOnly ? (lang === "fr" ? "Classements" : "Rankings") : "Statistics Center"}
+              fallbackLabel={rankingOnly ? (lang === "fr" ? "CLASSEMENTS" : "RANKINGS") : "STATISTICS CENTER"}
               color={primary}
             />
           </div>
