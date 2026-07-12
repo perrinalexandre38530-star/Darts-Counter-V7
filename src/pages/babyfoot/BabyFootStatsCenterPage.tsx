@@ -799,13 +799,16 @@ function Board({ title, subtitle, rows, value, color = C.gold }: { title: string
 }
 
 function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
+  const stickyRankWidth = 48;
+  const stickyAvatarWidth = 54;
+
   const headerCell = (sticky?: { left: number; zIndex: number }): React.CSSProperties => ({
-    height: 42,
-    padding: "0 10px",
+    height: 40,
+    padding: "0 8px",
     borderBottom: "1px solid rgba(255,255,255,.16)",
     background: "#17181e",
     color: "rgba(255,255,255,.62)",
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: 950,
     letterSpacing: ".02em",
     textAlign: "center",
@@ -814,12 +817,12 @@ function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
   });
 
   const bodyCell = (background: string, sticky?: { left: number; zIndex: number }): React.CSSProperties => ({
-    height: 56,
-    padding: "0 10px",
+    height: 52,
+    padding: "0 8px",
     borderBottom: "1px solid rgba(255,255,255,.075)",
     background,
     color: C.text,
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: 850,
     textAlign: "center",
     whiteSpace: "nowrap",
@@ -845,25 +848,29 @@ function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
             overscrollBehaviorX: "contain",
           }}
         >
-          <table style={{ width: "100%", minWidth: 1060, borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed" }}>
+          <table style={{ width: "100%", minWidth: 900, borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed" }}>
             <colgroup>
-              <col style={{ width: 58 }} />
-              <col style={{ width: 210 }} />
-              <col style={{ width: 88 }} />
-              <col style={{ width: 72 }} />
-              <col style={{ width: 56 }} />
-              <col style={{ width: 52 }} />
-              <col style={{ width: 52 }} />
-              <col style={{ width: 52 }} />
-              <col style={{ width: 62 }} />
-              <col style={{ width: 62 }} />
+              <col style={{ width: stickyRankWidth }} />
+              <col style={{ width: stickyAvatarWidth }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 78 }} />
               <col style={{ width: 68 }} />
-              <col style={{ width: 72 }} />
+              <col style={{ width: 58 }} />
+              <col style={{ width: 42 }} />
+              <col style={{ width: 42 }} />
+              <col style={{ width: 42 }} />
+              <col style={{ width: 42 }} />
+              <col style={{ width: 44 }} />
+              <col style={{ width: 44 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 52 }} />
             </colgroup>
             <thead>
               <tr>
                 <th scope="col" style={{ ...headerCell({ left: 0, zIndex: 4 }), boxShadow: "1px 0 0 rgba(255,255,255,.08)" }}>RANK</th>
-                <th scope="col" style={{ ...headerCell({ left: 58, zIndex: 4 }), textAlign: "left", boxShadow: "8px 0 12px rgba(0,0,0,.28)" }}>AVATAR + NOM</th>
+                <th scope="col" style={{ ...headerCell({ left: stickyRankWidth, zIndex: 4 }), boxShadow: "8px 0 12px rgba(0,0,0,.28)" }}>AVATAR</th>
+                <th scope="col" style={{ ...headerCell(), textAlign: "left" }}>NOM</th>
+                <th scope="col" style={headerCell()}>FORME</th>
                 <th scope="col" style={headerCell()}>PTS/MATCH</th>
                 <th scope="col" style={headerCell()}>POINTS</th>
                 <th scope="col" style={headerCell()}>MJ</th>
@@ -882,23 +889,47 @@ function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
                 const rowBackground = index % 2 === 0 ? "#111217" : "#0c0d12";
                 const pointsPerMatch = row.matches > 0 ? row.points / row.matches : 0;
                 const pointsPerMatchLabel = pointsPerMatch.toFixed(2).replace(/\.?0+$/, "");
+                const lastFiveForm = row.form.slice(-5).reverse();
                 return (
                   <tr key={row.id}>
                     <td style={{ ...bodyCell(rowBackground, { left: 0, zIndex: 2 }), boxShadow: "1px 0 0 rgba(255,255,255,.06)" }}>
-                      <span style={{ width: 28, height: 28, margin: "0 auto", borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.09)", fontSize: 12, fontWeight: 1000 }}>
+                      <span style={{ width: 24, height: 24, margin: "0 auto", borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.09)", fontSize: 11, fontWeight: 1000 }}>
                         {index + 1}
                       </span>
                     </td>
-                    <td style={{ ...bodyCell(rowBackground, { left: 58, zIndex: 2 }), textAlign: "left", boxShadow: "8px 0 12px rgba(0,0,0,.28)" }}>
-                      <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 9 }}>
-                        <ProfileAvatar profile={row as any} size={32} />
-                        <div style={{ minWidth: 0, maxWidth: 148, overflow: "hidden", textOverflow: "ellipsis", color: C.text, fontSize: 12, fontWeight: 1000 }} title={row.name}>
-                          {row.name}
-                        </div>
+                    <td style={{ ...bodyCell(rowBackground, { left: stickyRankWidth, zIndex: 2 }), boxShadow: "8px 0 12px rgba(0,0,0,.28)" }}>
+                      <div style={{ display: "grid", placeItems: "center" }} title={row.name}>
+                        <ProfileAvatar profile={row as any} size={28} />
+                      </div>
+                    </td>
+                    <td style={{ ...bodyCell(rowBackground), textAlign: "left" }}>
+                      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", color: C.text, fontSize: 11.5, fontWeight: 1000 }} title={row.name}>
+                        {row.name}
+                      </div>
+                    </td>
+                    <td style={{ ...bodyCell(rowBackground), padding: "0 4px" }}>
+                      <div style={{ display: "flex", gap: 3, justifyContent: "center", alignItems: "center" }}>
+                        {lastFiveForm.length ? lastFiveForm.map((item, formIndex) => {
+                          const color = item === "W" ? C.green : item === "D" ? C.gold : C.pink;
+                          return (
+                            <span
+                              key={`${item}-${formIndex}`}
+                              title={item}
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: 999,
+                                display: "inline-block",
+                                background: color,
+                                boxShadow: `0 0 8px ${color}55`,
+                              }}
+                            />
+                          );
+                        }) : <span style={{ color: C.dim, fontSize: 11, fontWeight: 900 }}>—</span>}
                       </div>
                     </td>
                     <td style={{ ...bodyCell(rowBackground), color: C.orange, fontWeight: 1000 }}>{pointsPerMatchLabel}</td>
-                    <td style={{ ...bodyCell(rowBackground), color: C.gold, fontSize: 13, fontWeight: 1000 }}>{row.points}</td>
+                    <td style={{ ...bodyCell(rowBackground), color: C.gold, fontSize: 12.5, fontWeight: 1000 }}>{row.points}</td>
                     <td style={bodyCell(rowBackground)}>{row.matches}</td>
                     <td style={{ ...bodyCell(rowBackground), color: C.green }}>{row.wins}</td>
                     <td style={bodyCell(rowBackground)}>{row.draws}</td>

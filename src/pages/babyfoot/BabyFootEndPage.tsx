@@ -4,11 +4,15 @@ import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import tickerBabyFootLigue from "../../assets/tickers/ticker_babyfoot_ligue.png";
+import tickerBabyFootTournoi from "../../assets/tickers/ticker_babyfoot_tournoi.png";
+import tickerBabyFootMatch from "../../assets/tickers/ticker_babyfoot_match.png";
 import { History } from "../../lib/history";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 import { babyFootPenaltyLossByTeam, deriveBabyFootScoreFromRecord } from "../../lib/babyfootScoreRules";
 import { loadBabyFootTeams } from "../../lib/petanqueTeamsStore";
+import { loadBabyFootLeagues } from "../../lib/babyfootLeagueStore";
+import { getTournamentLocal } from "../../lib/tournaments/storeLocal";
 import trophyCup from "../../ui_assets/trophy-cup.png";
 
 type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any };
@@ -380,6 +384,38 @@ function scoreRowTime(ts: any) {
   }
 }
 
+function resolveCompetitionBanner(params: any, payload: any, summary: any, match: any) {
+  const leagueId = String(params?.leagueId || payload?.leagueId || summary?.leagueId || match?.leagueId || "").trim();
+  if (leagueId) {
+    const league = loadBabyFootLeagues().find((row: any) => String(row?.id || "") === leagueId);
+    return {
+      type: "league",
+      label: "Ligue",
+      name: String(league?.name || "Ligue Baby-Foot"),
+      logo: league?.logoDataUrl || null,
+      cover: league?.coverDataUrl || league?.coverUrl || tickerBabyFootLigue,
+    };
+  }
+  const tournamentId = String(params?.tournamentId || payload?.tournamentId || summary?.tournamentId || match?.tournamentId || "").trim();
+  if (tournamentId) {
+    const tournament = getTournamentLocal(tournamentId);
+    return {
+      type: "tournament",
+      label: "Tournoi",
+      name: String(tournament?.name || "Tournoi Baby-Foot"),
+      logo: tournament?.logoDataUrl || tournament?.logoUrl || tournament?.avatarDataUrl || null,
+      cover: tournament?.coverDataUrl || tournament?.coverUrl || tickerBabyFootTournoi,
+    };
+  }
+  return {
+    type: "friendly",
+    label: "Amical",
+    name: "Match amical",
+    logo: null,
+    cover: tickerBabyFootMatch,
+  };
+}
+
 function iconButtonBase(theme: any, active: boolean): React.CSSProperties {
   return {
     minHeight: 50,
@@ -561,6 +597,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   const timelineRows = React.useMemo(() => buildTimelineRows(events, payload, summary, match, teamA, teamB), [events, payload, summary, match, teamA, teamB]);
   const backToLeague = params?.fromLeague || params?.leagueId || payload?.fromLeague || payload?.leagueId;
   const leagueParams = { leagueId: String(params?.leagueId || payload?.leagueId || ""), view: "detail", tab: "calendar" };
+  const competitionBanner = React.useMemo(() => resolveCompetitionBanner(params, payload, summary, match), [params, payload, summary, match]);
   const matchId = String(payload?.matchId || match?.id || match?.matchId || requestedId || "");
   const goBack = () => backToLeague ? go("babyfoot_league" as any, leagueParams) : go("babyfoot_stats_history" as any, { focusMatchId: matchId });
 
@@ -576,7 +613,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   if (!match && !loading) {
     return (
       <div style={{ minHeight: "100dvh", background: theme.bg, color: theme.text, padding: 16 }}>
-        <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} matchTime={payload?.finishedAt || summary?.finishedAt || match?.finishedAt || match?.updatedAt} />
+        <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} matchTime={payload?.finishedAt || summary?.finishedAt || match?.finishedAt || match?.updatedAt} competitionBanner={competitionBanner} />
         <section style={{ ...panel(theme), marginTop: 14 }}>
           <div style={sectionTitle(theme)}>Match introuvable</div>
           <div style={small(theme)}>La carte existe peut-être encore dans la liste légère, mais le détail de la partie n’est plus présent dans IndexedDB.</div>
@@ -587,7 +624,7 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
 
   return (
     <div style={{ minHeight: "100dvh", background: theme.bg, color: theme.text, padding: "14px 14px 96px", boxSizing: "border-box" }}>
-      <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} matchTime={payload?.finishedAt || summary?.finishedAt || match?.finishedAt || match?.updatedAt} />
+      <HeaderAboveTicker theme={theme} onBack={goBack} infoContent={infoContent} matchTime={payload?.finishedAt || summary?.finishedAt || match?.finishedAt || match?.updatedAt} competitionBanner={competitionBanner} />
 
       <section style={{ ...panel(theme), marginTop: 14, padding: 10 }}>
         <ScoreHeroCard
@@ -668,7 +705,8 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
   );
 }
 
-function HeaderAboveTicker({ theme, onBack, infoContent, matchTime }: any) {
+function HeaderAboveTicker({ theme, onBack, infoContent, matchTime, competitionBanner }: any) {
+  const banner = competitionBanner || { type: "friendly", label: "Amical", name: "Match amical", cover: tickerBabyFootMatch, logo: null };
   return (
     <header>
       <div style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr) 52px", alignItems: "center", gap: 10, marginBottom: 10, minHeight: 48 }}>
@@ -680,8 +718,19 @@ function HeaderAboveTicker({ theme, onBack, infoContent, matchTime }: any) {
         <div style={{ display: "flex", justifyContent: "flex-end" }}><InfoDot title="Stats du match Baby-Foot" content={infoContent} size={44} glow={`${theme.primary}88`} /></div>
       </div>
       <div style={{ position: "relative", borderRadius: 20, overflow: "hidden", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, boxShadow: `0 0 28px ${theme.primary}22`, aspectRatio: "800 / 200", minHeight: 92 }}>
-        <img src={tickerBabyFootLigue} alt="Baby-Foot" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(90deg, rgba(0,0,0,.22), transparent 24%, transparent 76%, rgba(0,0,0,.22))" }} />
+        <img src={banner.cover || tickerBabyFootMatch} alt={banner.name || "Baby-Foot"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: banner.type === "friendly" ? "linear-gradient(90deg, rgba(0,0,0,.22), transparent 24%, transparent 76%, rgba(0,0,0,.22))" : "linear-gradient(90deg, rgba(0,0,0,.48), rgba(0,0,0,.12) 28%, rgba(0,0,0,.12) 72%, rgba(0,0,0,.48))" }} />
+        {banner.type !== "friendly" ? (
+          <div style={{ position: "absolute", inset: 0, display: "grid", alignContent: "center", justifyItems: "center", gap: 5, padding: 12 }}>
+            {banner.logo ? <div style={{ width: 52, height: 52, borderRadius: 16, overflow: "hidden", border: `1px solid ${theme.primary}66`, background: "rgba(3,8,16,.66)", boxShadow: `0 0 18px ${theme.primary}22` }}><img src={banner.logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div> : null}
+            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>{banner.label}</div>
+            <div style={{ color: "#fff", fontSize: 18, fontWeight: 1100, textAlign: "center", textShadow: "0 2px 12px rgba(0,0,0,.45)", whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: 1.1 }}>{banner.name}</div>
+          </div>
+        ) : (
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 10, display: "flex", justifyContent: "center" }}>
+            <div style={{ borderRadius: 999, padding: "6px 14px", border: `1px solid ${theme.primary}66`, background: "rgba(2,10,22,.56)", color: theme.primary, fontSize: 11, fontWeight: 1100, letterSpacing: .8, textTransform: "uppercase", boxShadow: `0 0 16px ${theme.primary}20` }}>Amical</div>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -731,9 +780,9 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
-          <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
-            <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(9px, 2.7vw, 13px)" : "clamp(10px, 3vw, 15px)", fontWeight: 1000, lineHeight: 1.08, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "normal", overflowWrap: "anywhere", alignSelf: "center", maxWidth: "100%", textTransform: "uppercase" }}>{teamA}</div>
-            {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : <div style={{ height: 10 }} />}
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 62, gap: 6 }}>
+            <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(10px, 2.9vw, 15px)" : "clamp(11px, 3vw, 16px)", fontWeight: 1000, lineHeight: 1.08, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "normal", overflowWrap: "anywhere", alignSelf: "flex-start", maxWidth: "100%", textTransform: "uppercase" }}>{teamA}</div>
+            {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : null}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, justifySelf: "center" }}>
@@ -741,9 +790,9 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
             <ScoreKpiMini value={scoreB} color="#ff70bd" trophySide={winnerSide === "B" ? "right" : undefined} />
           </div>
 
-          <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
-            <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(9px, 2.7vw, 13px)" : "clamp(10px, 3vw, 15px)", fontWeight: 1000, lineHeight: 1.08, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0, alignSelf: "center", maxWidth: "100%", textTransform: "uppercase" }}>{teamB}</div>
-            {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : <div style={{ height: 10 }} />}
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-end", minHeight: 62, gap: 6 }}>
+            <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(10px, 2.9vw, 15px)" : "clamp(11px, 3vw, 16px)", fontWeight: 1000, lineHeight: 1.08, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0, alignSelf: "flex-end", maxWidth: "100%", textTransform: "uppercase" }}>{teamB}</div>
+            {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : null}
           </div>
         </div>
 
@@ -808,8 +857,8 @@ function ScoreKpiMini({ value, color, trophySide }: { value: number; color: stri
             top: "50%",
             [trophySide]: -18,
             transform: "translateY(-50%)",
-            width: 18,
-            height: 18,
+            width: 30,
+            height: 30,
             objectFit: "contain",
             filter: "drop-shadow(0 0 8px rgba(255,215,106,.6))",
           } as React.CSSProperties}
@@ -1193,15 +1242,15 @@ function PlayerStatsComparisonTable({ theme, team, teamName, teamLogo, rows }: a
 }
 
 function PlayerMiniHeader({ theme, row, accent, align }: any) {
+  const avatar = (
+    <div style={{ width: 42, height: 42, borderRadius: 999, border: `1px solid ${accent}77`, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(0,0,0,.25)", flex: "0 0 auto", boxShadow: `0 0 14px ${accent}28` }}>
+      {row?.avatar ? <img src={row.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 1100 }}>{String(row?.name || "?").slice(0, 2).toUpperCase()}</span>}
+    </div>
+  );
+  const label = <div style={{ minWidth: 0, color: accent, fontWeight: 1100, fontSize: 14, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: align }}>{row?.name}</div>;
   return (
-    <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8, justifyContent: align === "left" ? "flex-start" : "flex-end", flexDirection: align === "left" ? "row" : "row-reverse" }}>
-      <div style={{ width: 42, height: 42, borderRadius: 999, border: `1px solid ${accent}77`, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(0,0,0,.25)", flex: "0 0 auto", boxShadow: `0 0 14px ${accent}28` }}>
-        {row?.avatar ? <img src={row.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 1100 }}>{String(row?.name || "?").slice(0, 2).toUpperCase()}</span>}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: accent, fontWeight: 1100, fontSize: 14, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: align }}>{row?.name}</div>
-        <div style={{ marginTop: 2, fontSize: 9, color: theme.textSoft, fontWeight: 900, textAlign: align }}>{row?.collective ? "NON ATTRIBUÉ" : n(row?.wins) ? "VICTOIRE" : n(row?.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
-      </div>
+    <div style={{ minWidth: 0, width: "100%", display: "grid", gridTemplateColumns: align === "left" ? "auto minmax(0,1fr)" : "minmax(0,1fr) auto", alignItems: "center", gap: 8 }}>
+      {align === "left" ? <><div>{avatar}</div><div>{label}</div></> : <><div>{label}</div><div style={{ justifySelf: "end" }}>{avatar}</div></>}
     </div>
   );
 }
@@ -1238,7 +1287,7 @@ function PlayerStatsCard({ theme, row, accent, teamLogo }: any) {
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ color: accent, fontWeight: 1100, fontSize: 15, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{row.name}</div>
-          <div style={{ marginTop: 3, fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>{row.collective ? "ANCIENNE PARTIE · NON ATTRIBUÉ" : n(row.wins) ? "VICTOIRE" : n(row.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
+          {row.collective ? <div style={{ marginTop: 3, fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>ANCIENNE PARTIE · NON ATTRIBUÉ</div> : null}
         </div>
       </div>
       <div style={{ position: "relative", marginTop: 10, display: "grid", gap: 10 }}>
