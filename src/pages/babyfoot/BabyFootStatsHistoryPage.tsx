@@ -335,6 +335,32 @@ function resolveHistoryTeamLogo(payload: any, team: TeamId, catalog: any[]) {
   );
   return found?.logoDataUrl || found?.logoUrl || found?.regionLogoDataUrl || null;
 }
+function resolveHistoryProfileAvatar(profile: any): string | null {
+  return profile?.avatarDataUrl || profile?.avatarUrl || profile?.avatar_url || profile?.avatar || null;
+}
+
+function resolveHistorySideIdentity(
+  payload: any,
+  team: TeamId,
+  catalog: any[],
+  profilesById: Record<string, any>,
+  fallbackPlayers: any[],
+) {
+  const teamLogo = resolveHistoryTeamLogo(payload, team, catalog);
+  if (teamLogo) return { image: teamLogo, isAvatar: false };
+
+  const { teamAIds, teamBIds } = getTeams(payload);
+  const ids = team === "A" ? teamAIds : teamBIds;
+  const sideProfile = (ids || [])
+    .map((id: string) => profilesById[id])
+    .find((profile: any) => !!resolveHistoryProfileAvatar(profile));
+  const fallbackProfile = (fallbackPlayers || []).find((profile: any) => {
+    const id = String(profile?.id || profile?.profileId || profile?.playerId || "");
+    return ids.includes(id) && !!resolveHistoryProfileAvatar(profile);
+  });
+  const avatar = resolveHistoryProfileAvatar(sideProfile || fallbackProfile);
+  return { image: avatar, isAvatar: !!avatar };
+}
 
 function parseBabyFootScoreLine(line: any): { scoreA: number; scoreB: number } | null {
   const text = String(line ?? "").trim();
@@ -1646,13 +1672,13 @@ function HistoryCardsView({
             const modeRaw = getMode(payload);
             const modeChip = modeRaw === "unknown" ? "MATCH" : modeRaw.toUpperCase();
             const finishChip = historyFinishRuleLabel(payload);
-            const teamALogo = resolveHistoryTeamLogo(payload, "A", babyFootTeams);
-            const teamBLogo = resolveHistoryTeamLogo(payload, "B", babyFootTeams);
             const isFocus = !!focusMatchId && String(h?.id || "") === focusMatchId;
             const ids = [...(teamAIds || []), ...(teamBIds || [])].filter(Boolean);
             const players = ids.length
               ? ids.map((id: string) => profilesById[id] || { id, name: id.slice(0, 6) })
               : (Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : []);
+            const teamAIdentity = resolveHistorySideIdentity(payload, "A", babyFootTeams, profilesById, players);
+            const teamBIdentity = resolveHistorySideIdentity(payload, "B", babyFootTeams, profilesById, players);
             const summaryLine = `${teamA} ${scoreA} — ${scoreB} ${teamB}`;
             const statusLabel = h?.status === "in_progress" || h?.status === "running" ? "En cours" : "Terminé";
             const perPlayerRows = extractBabyFootPlayerStatsRows(payload).filter((row: any) => !row?.collective);
@@ -1677,8 +1703,10 @@ function HistoryCardsView({
                   theme={theme}
                   teamA={teamA}
                   teamB={teamB}
-                  teamALogo={teamALogo}
-                  teamBLogo={teamBLogo}
+                  teamALogo={teamAIdentity.image}
+                  teamBLogo={teamBIdentity.image}
+                  teamAIsAvatar={teamAIdentity.isAvatar}
+                  teamBIsAvatar={teamBIdentity.isAvatar}
                   scoreA={scoreA}
                   scoreB={scoreB}
                   setsLabel={rich.setsEnabled ? `Sets ${rich.teamA.sets}-${rich.teamB.sets}` : ""}
@@ -1729,11 +1757,25 @@ function HistoryCardsView({
   );
 }
 
-function HistoryScoreDuel({ theme, teamA, teamB, teamALogo, teamBLogo, scoreA, scoreB, setsLabel, legsLabel }: any) {
-  const side = (name: string, logo: string | null, accent: string, align: "left" | "right") => (
+function HistoryScoreDuel({ theme, teamA, teamB, teamALogo, teamBLogo, teamAIsAvatar = false, teamBIsAvatar = false, scoreA, scoreB, setsLabel, legsLabel }: any) {
+  const side = (name: string, logo: string | null, isAvatar: boolean, accent: string, align: "left" | "right") => (
     <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: align === "left" ? "flex-start" : "flex-end", gap: 8, flexDirection: align === "left" ? "row" : "row-reverse" }}>
-      <div style={{ width: 42, height: 42, borderRadius: 13, flex: "0 0 auto", display: "grid", placeItems: "center", overflow: "hidden", border: `1px solid ${accent}77`, background: `${accent}12`, boxShadow: `0 0 14px ${accent}22` }}>
-        {logo ? <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 3, boxSizing: "border-box" }} /> : <span style={{ color: accent, fontSize: 13, fontWeight: 1100 }}>{String(name || "?").slice(0, 2).toUpperCase()}</span>}
+      <div style={{ width: 42, height: 42, borderRadius: isAvatar ? 999 : 13, flex: "0 0 auto", display: "grid", placeItems: "center", overflow: "hidden", border: `1px solid ${accent}77`, background: `${accent}12`, boxShadow: `0 0 14px ${accent}22` }}>
+        {logo ? (
+          <img
+            src={logo}
+            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: isAvatar ? "cover" : "contain",
+              padding: isAvatar ? 0 : 3,
+              boxSizing: "border-box",
+            }}
+          />
+        ) : (
+          <span style={{ color: accent, fontSize: 13, fontWeight: 1100 }}>{String(name || "?").slice(0, 2).toUpperCase()}</span>
+        )}
       </div>
       <div style={{ minWidth: 0, color: accent, fontSize: 13, fontWeight: 1100, lineHeight: 1.12, textAlign: align, whiteSpace: "normal", overflowWrap: "anywhere", textShadow: `0 0 10px ${accent}33` }}>{name}</div>
     </div>
@@ -1741,11 +1783,11 @@ function HistoryScoreDuel({ theme, teamA, teamB, teamALogo, teamBLogo, scoreA, s
   return (
     <div style={{ marginTop: 12, position: "relative", zIndex: 1, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(2,8,18,.30)", padding: 10 }}>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
-        {side(teamA, teamALogo, theme?.primary ?? "#42e9ff", "left")}
+        {side(teamA, teamALogo, teamAIsAvatar, theme?.primary ?? "#42e9ff", "left")}
         <div style={{ minWidth: 80, borderRadius: 14, padding: "7px 9px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", textAlign: "center", fontSize: 25, fontWeight: 1100, color: "#fff", fontVariantNumeric: "tabular-nums" }}>
           <span style={{ color: theme?.primary ?? "#42e9ff" }}>{scoreA}</span><span style={{ opacity: .58 }}> - </span><span style={{ color: "#ff59b0" }}>{scoreB}</span>
         </div>
-        {side(teamB, teamBLogo, "#ff59b0", "right")}
+        {side(teamB, teamBLogo, teamBIsAvatar, "#ff59b0", "right")}
       </div>
       {(setsLabel || legsLabel) ? <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", fontSize: 10, fontWeight: 950, color: "rgba(255,255,255,.68)" }}>{setsLabel ? <span>{setsLabel}</span> : null}{legsLabel ? <span>{legsLabel}</span> : null}</div> : null}
     </div>
