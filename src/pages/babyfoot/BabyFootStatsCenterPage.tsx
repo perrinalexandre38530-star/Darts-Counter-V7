@@ -799,32 +799,123 @@ function Board({ title, subtitle, rows, value, color = C.gold }: { title: string
 }
 
 function RankingCard({ rows }: { rows: BabyFootPlayerAggregate[] }) {
+  const headerCell = (sticky?: { left: number; zIndex: number }): React.CSSProperties => ({
+    height: 42,
+    padding: "0 10px",
+    borderBottom: "1px solid rgba(255,255,255,.16)",
+    background: "#17181e",
+    color: "rgba(255,255,255,.62)",
+    fontSize: 10,
+    fontWeight: 950,
+    letterSpacing: ".02em",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    ...(sticky ? { position: "sticky", left: sticky.left, zIndex: sticky.zIndex } : {}),
+  });
+
+  const bodyCell = (background: string, sticky?: { left: number; zIndex: number }): React.CSSProperties => ({
+    height: 56,
+    padding: "0 10px",
+    borderBottom: "1px solid rgba(255,255,255,.075)",
+    background,
+    color: C.text,
+    fontSize: 12,
+    fontWeight: 850,
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    ...(sticky ? { position: "sticky", left: sticky.left, zIndex: sticky.zIndex } : {}),
+  });
+
   return (
     <div style={cardStyle({ padding: 0, overflow: "hidden" })}>
-      <div style={{ padding: "14px 14px 10px", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-        {sectionTitle("Carte classement", C.gold)}
-        <div style={{ color: C.dim, fontSize: 10, fontWeight: 900 }}>Pts · Diff · Ratio</div>
+      <div style={{ padding: "14px 14px 11px", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+        {sectionTitle("Classement général", C.gold)}
+        <div style={{ color: C.dim, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}>← défilement horizontal →</div>
       </div>
-      <div style={{ display: "grid" }}>
-        {rows.length ? rows.slice(0, 12).map((row, index) => {
-          const podiumColor = index === 0 ? C.gold : index === 1 ? C.blue : index === 2 ? C.orange : C.muted;
-          return (
-            <div key={row.id} style={{ minWidth: 0, width: "100%", display: "grid", gridTemplateColumns: "30px minmax(0,1fr) minmax(32px,44px) minmax(36px,46px) minmax(38px,48px)", gap: 5, alignItems: "center", padding: "10px 10px", borderTop: "1px solid rgba(255,255,255,.07)", background: index < 3 ? `linear-gradient(90deg,${podiumColor}15,transparent)` : "transparent" }}>
-              <div style={{ width: 26, height: 26, borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.08)", fontSize: 12, fontWeight: 1000 }}>{index + 1}</div>
-              <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                <ProfileAvatar profile={row as any} size={30} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ color: C.text, fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
-                  <div style={{ marginTop: 1, color: C.dim, fontSize: 9, fontWeight: 850 }}>{row.wins}V/{row.draws}N/{row.losses}D · {row.matches} MJ</div>
-                </div>
-              </div>
-              <div style={{ color: C.gold, textAlign: "right", fontSize: 13, fontWeight: 1000 }}>{row.points}</div>
-              <div style={{ color: row.goalDiff >= 0 ? C.green : C.pink, textAlign: "right", fontSize: 12, fontWeight: 1000 }}>{formatSigned(row.goalDiff)}</div>
-              <div style={{ color: C.blue, textAlign: "right", fontSize: 12, fontWeight: 1000 }}>{formatBabyFootRatio(row.ratio)}</div>
-            </div>
-          );
-        }) : <div style={{ padding: 18, color: C.muted, fontWeight: 850, textAlign: "center" }}>Aucun classement Baby‑Foot disponible.</div>}
-      </div>
+
+      {rows.length ? (
+        <div
+          aria-label="Tableau du classement général"
+          style={{
+            width: "100%",
+            maxWidth: "100%",
+            overflowX: "auto",
+            overflowY: "hidden",
+            WebkitOverflowScrolling: "touch",
+            overscrollBehaviorX: "contain",
+          }}
+        >
+          <table style={{ width: "100%", minWidth: 1060, borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 58 }} />
+              <col style={{ width: 210 }} />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 56 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 62 }} />
+              <col style={{ width: 62 }} />
+              <col style={{ width: 68 }} />
+              <col style={{ width: 72 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" style={{ ...headerCell({ left: 0, zIndex: 4 }), boxShadow: "1px 0 0 rgba(255,255,255,.08)" }}>RANK</th>
+                <th scope="col" style={{ ...headerCell({ left: 58, zIndex: 4 }), textAlign: "left", boxShadow: "8px 0 12px rgba(0,0,0,.28)" }}>AVATAR + NOM</th>
+                <th scope="col" style={headerCell()}>PTS/MATCH</th>
+                <th scope="col" style={headerCell()}>POINTS</th>
+                <th scope="col" style={headerCell()}>MJ</th>
+                <th scope="col" style={headerCell()}>V</th>
+                <th scope="col" style={headerCell()}>N</th>
+                <th scope="col" style={headerCell()}>D</th>
+                <th scope="col" style={headerCell()}>BP</th>
+                <th scope="col" style={headerCell()}>BC</th>
+                <th scope="col" style={headerCell()}>DIFF</th>
+                <th scope="col" style={headerCell()}>RATIO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const podiumColor = index === 0 ? C.gold : index === 1 ? C.blue : index === 2 ? C.orange : C.muted;
+                const rowBackground = index % 2 === 0 ? "#111217" : "#0c0d12";
+                const pointsPerMatch = row.matches > 0 ? row.points / row.matches : 0;
+                const pointsPerMatchLabel = pointsPerMatch.toFixed(2).replace(/\.?0+$/, "");
+                return (
+                  <tr key={row.id}>
+                    <td style={{ ...bodyCell(rowBackground, { left: 0, zIndex: 2 }), boxShadow: "1px 0 0 rgba(255,255,255,.06)" }}>
+                      <span style={{ width: 28, height: 28, margin: "0 auto", borderRadius: 999, display: "grid", placeItems: "center", color: index < 3 ? "#14110a" : C.text, background: index < 3 ? podiumColor : "rgba(255,255,255,.09)", fontSize: 12, fontWeight: 1000 }}>
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td style={{ ...bodyCell(rowBackground, { left: 58, zIndex: 2 }), textAlign: "left", boxShadow: "8px 0 12px rgba(0,0,0,.28)" }}>
+                      <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 9 }}>
+                        <ProfileAvatar profile={row as any} size={32} />
+                        <div style={{ minWidth: 0, maxWidth: 148, overflow: "hidden", textOverflow: "ellipsis", color: C.text, fontSize: 12, fontWeight: 1000 }} title={row.name}>
+                          {row.name}
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ ...bodyCell(rowBackground), color: C.orange, fontWeight: 1000 }}>{pointsPerMatchLabel}</td>
+                    <td style={{ ...bodyCell(rowBackground), color: C.gold, fontSize: 13, fontWeight: 1000 }}>{row.points}</td>
+                    <td style={bodyCell(rowBackground)}>{row.matches}</td>
+                    <td style={{ ...bodyCell(rowBackground), color: C.green }}>{row.wins}</td>
+                    <td style={bodyCell(rowBackground)}>{row.draws}</td>
+                    <td style={{ ...bodyCell(rowBackground), color: C.pink }}>{row.losses}</td>
+                    <td style={bodyCell(rowBackground)}>{row.goalsFor}</td>
+                    <td style={bodyCell(rowBackground)}>{row.goalsAgainst}</td>
+                    <td style={{ ...bodyCell(rowBackground), color: row.goalDiff >= 0 ? C.green : C.pink, fontWeight: 1000 }}>{formatSigned(row.goalDiff)}</td>
+                    <td style={{ ...bodyCell(rowBackground), color: C.blue, fontWeight: 1000 }}>{formatBabyFootRatio(row.ratio)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ padding: 18, color: C.muted, fontWeight: 850, textAlign: "center" }}>Aucun classement Baby‑Foot disponible.</div>
+      )}
     </div>
   );
 }
