@@ -6641,7 +6641,7 @@ function LocalProfilesRefonte({
         />
       ) : null}
 
-      {localSection === "list" && !onboardingMode ? (
+      {localSection === "list" && !onboardingMode && (
         locals.length === 0 ? (
           <div
             className="subtitle"
@@ -7224,7 +7224,7 @@ function LocalProfilesRefonte({
             </>
           )}
         </div>
-      ) : null}
+      ))}
     </div>
   );
 }
