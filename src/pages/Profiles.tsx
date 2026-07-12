@@ -124,6 +124,83 @@ function readAllModesProfileUsageCounts(): ProfileUsageCounts {
   return totals;
 }
 
+const DELETED_LOCAL_PROFILES_STORAGE_KEY = "dc-deleted-local-profiles-v1";
+
+type DeletedLocalProfileArchiveEntry = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  deletedAt: number;
+  profile: Profile;
+};
+
+function normalizeLocalProfileArchiveName(value: unknown): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("fr")
+    .replace(/\s+/g, " ");
+}
+
+function readDeletedLocalProfileArchive(): DeletedLocalProfileArchiveEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DELETED_LOCAL_PROFILES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((entry: any) => entry && entry.profile && String(entry.id || entry.profile?.id || "").trim())
+      .map((entry: any) => ({
+        id: String(entry.id || entry.profile.id),
+        name: String(entry.name || entry.profile.name || ""),
+        normalizedName: String(entry.normalizedName || normalizeLocalProfileArchiveName(entry.name || entry.profile.name)),
+        deletedAt: Number(entry.deletedAt || 0) || 0,
+        profile: entry.profile as Profile,
+      }))
+      .sort((a, b) => b.deletedAt - a.deletedAt);
+  } catch {
+    return [];
+  }
+}
+
+function writeDeletedLocalProfileArchive(entries: DeletedLocalProfileArchiveEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      DELETED_LOCAL_PROFILES_STORAGE_KEY,
+      JSON.stringify(entries.slice(0, 50))
+    );
+  } catch {}
+}
+
+function archiveDeletedLocalProfile(profile: Profile) {
+  const id = String((profile as any)?.id || "").trim();
+  const name = String((profile as any)?.name || "").trim();
+  if (!id || !name) return;
+  const entries = readDeletedLocalProfileArchive().filter((entry) => entry.id !== id);
+  entries.unshift({
+    id,
+    name,
+    normalizedName: normalizeLocalProfileArchiveName(name),
+    deletedAt: Date.now(),
+    profile: { ...(profile as any) },
+  });
+  writeDeletedLocalProfileArchive(entries);
+}
+
+function findDeletedLocalProfileByName(name: string): DeletedLocalProfileArchiveEntry | null {
+  const normalizedName = normalizeLocalProfileArchiveName(name);
+  if (!normalizedName) return null;
+  return readDeletedLocalProfileArchive().find((entry) => entry.normalizedName === normalizedName) || null;
+}
+
+function consumeDeletedLocalProfileArchive(id: string) {
+  const cleanId = String(id || "").trim();
+  if (!cleanId) return;
+  writeDeletedLocalProfileArchive(readDeletedLocalProfileArchive().filter((entry) => entry.id !== cleanId));
+}
+
 async function getOnlineApi() {
   const mod = await import("../lib/onlineApi");
   return mod.onlineApi;
@@ -2325,57 +2402,62 @@ export default function Profiles({
   }
 
   async function delProfile(id: string) {
-    const ok = window.confirm(
-      "Supprimer ce profil local ET toutes ses stats associées sur cet appareil ?"
-    );
-    if (!ok) return;
-  
-    // 1) On calcule la prochaine liste de profils depuis la source STORE (référence)
+    const cleanId = String(id || "").trim();
+    if (!cleanId) return;
+
+    // La suppression retire uniquement la fiche locale. Les parties et statistiques
+    // restent intactes et continuent d'être rattachées à l'identifiant historique.
     let nextStoreSnapshot: any = null;
-  
+    let deletedProfileSnapshot: Profile | null = (
+      (Array.isArray(stableProfiles) ? stableProfiles : []).find(
+        (profile: any) => String(profile?.id || "") === cleanId
+      ) || null
+    ) as Profile | null;
+
     update((s: any) => {
       const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
-      const nextProfiles = prevProfiles.filter((p: any) => p.id !== id);
-  
+      const profileFromStore = prevProfiles.find(
+        (profile: any) => String(profile?.id || "") === cleanId
+      ) as Profile | undefined;
+      if (profileFromStore) deletedProfileSnapshot = profileFromStore;
+      const nextProfiles = prevProfiles.filter((profile: any) => String(profile?.id || "") !== cleanId);
+
       const nextActive =
-        s?.activeProfileId === id ? (nextProfiles[0]?.id ?? null) : s?.activeProfileId ?? null;
-  
+        String(s?.activeProfileId || "") === cleanId
+          ? (nextProfiles[0]?.id ?? null)
+          : (s?.activeProfileId ?? null);
+
       const nextStore = {
         ...s,
         profiles: nextProfiles,
         activeProfileId: nextActive,
       };
-  
+
       nextStoreSnapshot = nextStore;
       return nextStore;
     });
-  
-    // 2) Persistance différée : on batch les suppressions pour éviter les gels UI
+
+    if (deletedProfileSnapshot) {
+      archiveDeletedLocalProfile(deletedProfileSnapshot);
+    }
+
     if (nextStoreSnapshot) {
       scheduleProfilesPersist("profiles_delete", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
     }
-  
-    // 3) UI local state (si tu en as un séparé) : on aligne aussi, en mode removal autorisé
-    setProfilesReplace((arr) => (Array.isArray(arr) ? arr.filter((p) => p.id !== id) : []));
-  
-    // 4) Nettoie le mini-cache des stats côté UI
-    setStatsMap((m) => {
-      const c = { ...m };
-      delete c[id];
-      return c;
+
+    setProfilesReplace((arr) =>
+      Array.isArray(arr) ? arr.filter((profile) => String(profile?.id || "") !== cleanId) : []
+    );
+
+    // Cache d'affichage uniquement : aucune statistique persistée n'est supprimée.
+    setStatsMap((map) => {
+      const next = { ...map };
+      delete next[cleanId];
+      return next;
     });
-  
-    // 5) Purge stats locales
-    try {
-      await purgeAllStatsForProfile(id);
-      console.log("[Profiles] Stats locales purgées pour le profil", id);
-    } catch (e) {
-      console.warn("[Profiles] Erreur purgeAllStatsForProfile", e);
-    }
-  
-    console.log("[Profiles] ✅ Profil supprimé (store + ui + persist différé)", id);
+
+    console.log("[Profiles] ✅ Fiche locale supprimée, historique et stats conservés", cleanId);
   }
-  
 
   async function addProfile(
     name: string,
@@ -2384,22 +2466,49 @@ export default function Profiles({
   ): Promise<Profile | undefined> {
     const cleanName = (name || "").trim();
     if (!cleanName) return;
-  
+
+    const archivedMatch = findDeletedLocalProfileByName(cleanName);
+    const archivedIdAlreadyUsed = archivedMatch
+      ? (Array.isArray(stableProfiles) ? stableProfiles : []).some(
+          (row: any) => String(row?.id || "") === String(archivedMatch.id || "")
+        )
+      : false;
+    const restoreArchived = !!archivedMatch && !archivedIdAlreadyUsed && window.confirm(
+      `Un ancien profil nommé « ${archivedMatch.name || cleanName} » a été supprimé.
+
+OK : restaurer ce profil et rattacher automatiquement ses anciennes parties et statistiques.
+ANNULER : créer un nouveau profil distinct portant le même nom.`
+    );
+    const archivedProfile = restoreArchived ? archivedMatch?.profile || null : null;
+
     const now = Date.now();
     const avatarVariants = file ? await fileToAvatarVariants(file) : null;
     const avatarDataUrl = avatarVariants?.thumbDataUrl || null;
-  
-    const p: Profile = {
-      id:
-        globalThis.crypto && "randomUUID" in globalThis.crypto
-          ? globalThis.crypto.randomUUID()
-          : `${now}-${Math.random().toString(16).slice(2)}`,
-      name: cleanName,
-      avatarDataUrl,
-      avatarUpdatedAt: now,
-      privateInfo:
-        privateInfo && Object.keys(privateInfo).length ? { ...privateInfo } : undefined,
+    const generatedId =
+      globalThis.crypto && "randomUUID" in globalThis.crypto
+        ? globalThis.crypto.randomUUID()
+        : `${now}-${Math.random().toString(16).slice(2)}`;
+    const restoredPrivateInfo = ((archivedProfile as any)?.privateInfo || {}) as Record<string, any>;
+    const mergedPrivateInfo = {
+      ...restoredPrivateInfo,
+      ...(privateInfo || {}),
     };
+
+    const p: Profile = {
+      ...((archivedProfile as any) || {}),
+      id: String((archivedProfile as any)?.id || generatedId),
+      name: cleanName,
+      avatarDataUrl: avatarDataUrl || (archivedProfile as any)?.avatarDataUrl || null,
+      avatarUpdatedAt: avatarDataUrl
+        ? now
+        : (Number((archivedProfile as any)?.avatarUpdatedAt || 0) || now),
+      privateInfo: Object.keys(mergedPrivateInfo).length ? mergedPrivateInfo : undefined,
+    };
+
+    if (avatarDataUrl) {
+      (p as any).avatarUrl = null;
+      (p as any).avatarPath = null;
+    }
 
     if (avatarDataUrl) {
       writeAvatarCache(p.id, {
@@ -2428,7 +2537,11 @@ export default function Profiles({
     let nextStoreSnapshot: any = null;
   
     update((s: any) => {
-      const nextProfiles = Array.isArray(s?.profiles) ? [...s.profiles, p] : [p];
+      const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
+      const nextProfiles = [
+        ...prevProfiles.filter((row: any) => String(row?.id || "") !== String(p.id || "")),
+        p,
+      ];
   
       const shouldMakeActive = !!(privateInfo as any)?.onlineUserId;
       const fallbackActiveId = s?.activeProfileId ?? (Array.isArray(s?.profiles) ? s.profiles[0]?.id ?? null : null);
@@ -2450,10 +2563,22 @@ export default function Profiles({
     // ✅ 3) Si tu as un state local "profiles", mets-le juste pour l’UI (SANS saveStore ici)
     setProfilesSafe?.((prev: any[]) => {
       const arr = Array.isArray(prev) ? prev : [];
-      return [...arr, p];
+      return [
+        ...arr.filter((row: any) => String(row?.id || "") !== String(p.id || "")),
+        p,
+      ];
     });
-  
-    console.log("[Profiles] ✅ Profil local créé + persisté", p.id);
+
+    if (restoreArchived) {
+      consumeDeletedLocalProfileArchive(String(p.id || ""));
+    }
+
+    console.log(
+      restoreArchived
+        ? "[Profiles] ✅ Profil historique restauré avec son identifiant et ses stats"
+        : "[Profiles] ✅ Nouveau profil local créé + persisté",
+      p.id
+    );
 
 
     if ((privateInfo as any)?.onlineUserId) {
@@ -5896,6 +6021,145 @@ function LocalSectionTab({
   );
 }
 
+type LocalProfileActionIconName = "edit" | "avatar" | "purge" | "delete";
+
+function LocalProfileActionGlyph({
+  name,
+  size = 23,
+}: {
+  name: LocalProfileActionIconName;
+  size?: number;
+}) {
+  const strokeProps = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  } as const;
+
+  if (name === "edit") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+        <path {...strokeProps} d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Z" />
+        <path {...strokeProps} d="m13.8 6.2 3.2 3.2" />
+        <path {...strokeProps} d="M3 21h18" />
+      </svg>
+    );
+  }
+
+  if (name === "avatar") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+        <circle {...strokeProps} cx="12" cy="8" r="3.3" />
+        <path {...strokeProps} d="M5 20a7 7 0 0 1 14 0" />
+        <path {...strokeProps} d="M18.5 3.5v4" />
+        <path {...strokeProps} d="M16.5 5.5h4" />
+      </svg>
+    );
+  }
+
+  if (name === "purge") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+        <path {...strokeProps} d="M4 20V9" />
+        <path {...strokeProps} d="M9 20V5" />
+        <path {...strokeProps} d="M14 20v-7" />
+        <path {...strokeProps} d="M19 20v-4" />
+        <path {...strokeProps} d="M17.5 5.5a4 4 0 1 0 1.2 3" />
+        <path {...strokeProps} d="M18.7 3v5h-5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <path {...strokeProps} d="M4 7h16" />
+      <path {...strokeProps} d="M9 3h6l1 4H8l1-4Z" />
+      <path {...strokeProps} d="m6 7 1 14h10l1-14" />
+      <path {...strokeProps} d="M10 11v6" />
+      <path {...strokeProps} d="M14 11v6" />
+    </svg>
+  );
+}
+
+function LocalProfileActionButton({
+  icon,
+  label,
+  title,
+  accent,
+  active = false,
+  danger = false,
+  onClick,
+}: {
+  icon: LocalProfileActionIconName;
+  label: string;
+  title: string;
+  accent: string;
+  active?: boolean;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  const tone = danger ? "#ff5f72" : accent;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      style={{
+        minWidth: 0,
+        minHeight: 66,
+        padding: "8px 4px 7px",
+        borderRadius: 16,
+        border: `1px solid ${active || danger ? tone : `${accent}66`}`,
+        background: active
+          ? `linear-gradient(180deg, ${accent}42, ${accent}16)`
+          : danger
+            ? "linear-gradient(180deg, rgba(255,95,114,.17), rgba(255,95,114,.055))"
+            : "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.2))",
+        color: danger ? "#ff8795" : "#fff",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        boxShadow: active
+          ? `0 0 0 1px ${accent}44 inset, 0 0 16px ${accent}77`
+          : danger
+            ? "0 0 12px rgba(255,95,114,.18), inset 0 1px 0 rgba(255,255,255,.08)"
+            : "inset 0 1px 0 rgba(255,255,255,.08), 0 5px 12px rgba(0,0,0,.28)",
+        cursor: "pointer",
+        transition: "transform .12s ease, border-color .16s ease, box-shadow .16s ease",
+      }}
+    >
+      <span
+        style={{
+          lineHeight: 0,
+          filter: `drop-shadow(0 0 5px ${tone}99)`,
+        }}
+      >
+        <LocalProfileActionGlyph name={icon} />
+      </span>
+      <span
+        style={{
+          maxWidth: "100%",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontSize: 9.5,
+          lineHeight: 1,
+          fontWeight: 950,
+          letterSpacing: .45,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
 function FavoriteDartSetBadge({
   profileId,
   accent,
@@ -6396,7 +6660,7 @@ function LocalProfilesRefonte({
   onRename: (id: string, name: string) => void;
   onPatchPrivateInfo: (id: string, patch: Partial<{ country?: string }>) => void;
   onAvatar: (id: string, file: File) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onOpenAvatarCreator?: () => void;
   onlineFriends?: FriendLike[];
   profileFriendLinks?: ProfileFriendLink[];
@@ -6590,7 +6854,6 @@ function LocalProfilesRefonte({
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   // Cache-bust local pour éviter qu'un ancien avatar reste affiché après remplacement.
   const [avatarRefreshKey, setAvatarRefreshKey] = React.useState(0);
-  const [actionsOpen, setActionsOpen] = React.useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -6679,7 +6942,6 @@ function LocalProfilesRefonte({
     setIsEditing(false);
     setEditFile(null);
     setEditPreview(null);
-    setActionsOpen(false);
     if (current) {
       const pi = ((current as any)?.privateInfo || {}) as { country?: string };
       setEditName(current.name || "");
@@ -6750,14 +7012,21 @@ function LocalProfilesRefonte({
 
   function handleDeleteProfile() {
     if (!current) return;
+    const profileId = String(current.id || "");
+    const profileName = String(current.name || "ce profil");
     const ok = window.confirm(
       t(
         "profiles.locals.actions.deleteConfirm",
-        "Supprimer ce profil local ? Ses stats resteront dans l’historique."
+        `Supprimer uniquement la fiche locale « ${profileName} » ?
+
+Ses parties et statistiques historiques resteront enregistrées. Si un profil du même nom est recréé plus tard, l’application proposera de les rétablir.`
       )
     );
     if (!ok) return;
-    onDelete(current.id);
+
+    setIsEditing(false);
+    setListDetailOpen(false);
+    void Promise.resolve(onDelete(profileId));
   }
 
   // tailles médaillon
@@ -6765,39 +7034,6 @@ function LocalProfilesRefonte({
   const BORDER = 10;
   const MEDALLION = AVATAR + BORDER;
   const STAR = 12;
-
-  const pillBtnBase: React.CSSProperties = {
-    flex: 1,
-    minWidth: 0,
-    maxWidth: 110,
-    borderRadius: 999,
-    border: `1px solid ${primary}AA`,
-    background: `linear-gradient(135deg, ${primary}33, ${primary}AA)`,
-    color: "#000",
-    fontWeight: 800,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-    padding: "5px 8px",
-    boxShadow: "0 8px 18px rgba(0,0,0,.5)",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
-  };
-
-  const pillBtnGhost: React.CSSProperties = {
-    ...pillBtnBase,
-    background: `linear-gradient(135deg, ${primary}11, ${primary}55)`,
-    color: "#fff",
-  };
-
-  const pillBtnDanger: React.CSSProperties = {
-    ...pillBtnBase,
-    background: `linear-gradient(180deg, ${primary}24, ${primary}66)`,
-    border: `1px solid ${primary}`,
-    color: primary,
-    boxShadow: `0 0 14px ${primary}44, inset 0 1px 0 rgba(255,255,255,.16)`,
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -6997,7 +7233,6 @@ function LocalProfilesRefonte({
                 title="Retour à la liste des profils locaux"
                 onClick={() => {
                   setListDetailOpen(false);
-                  setActionsOpen(false);
                   setIsEditing(false);
                 }}
               />
@@ -7261,94 +7496,48 @@ function LocalProfilesRefonte({
 
               {/* Sets de fléchettes déplacés vers une vue dédiée dédiée du menu Profils */}
 
-              {/* Boutons actions : EDITER / AVATAR / ACTIONS */}
+              {/* Actions directes, sans menu déroulant : même langage visuel que la BottomNav. */}
               <div
-                className="row local-actions"
+                aria-label="Actions du profil local"
                 style={{
-                  gap: 6,
-                  justifyContent: "center",
-                  flexWrap: "nowrap",
-                  marginBottom: 4,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gap: 7,
+                  marginTop: 3,
+                  marginBottom: 5,
                   width: "100%",
                 }}
               >
-                <button
-                  className="btn sm"
-                  type="button"
-                  onClick={() => setIsEditing((v) => !v)}
-                  style={pillBtnGhost}
-                >
-                  {t("profiles.locals.actions.edit", "ÉDITER")}
-                </button>
-
-                <button
-                  className="btn sm"
-                  type="button"
+                <LocalProfileActionButton
+                  icon="edit"
+                  label={t("profiles.locals.actions.edit", "ÉDITER")}
+                  title="Modifier le nom et le pays"
+                  accent={primary}
+                  active={isEditing}
+                  onClick={() => setIsEditing((value) => !value)}
+                />
+                <LocalProfileActionButton
+                  icon="avatar"
+                  label={t("profiles.locals.actions.avatar", "AVATAR")}
+                  title="Changer l’avatar"
+                  accent={primary}
                   onClick={() => setAvatarPickerOpen(true)}
-                  style={pillBtnBase}
-                >
-                  {t("profiles.locals.actions.avatar", "AVATAR")}
-                </button>
-
-                <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
-                  <button
-                    className="btn sm"
-                    type="button"
-                    onClick={() => setActionsOpen((v) => !v)}
-                    style={pillBtnDanger}
-                  >
-                    {t("profiles.locals.actions.more", "ACTIONS")}
-                  </button>
-
-                  {actionsOpen && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "110%",
-                        right: 0,
-                        zIndex: 50,
-                        minWidth: 210,
-                        padding: 8,
-                        borderRadius: 10,
-                        background: theme.bg,
-                        border: `1px solid ${theme.borderSoft}`,
-                        boxShadow: "0 12px 24px rgba(0,0,0,.6)",
-                        display: "grid",
-                        gap: 6,
-                      }}
-                    >
-                      <button
-                        className="btn sm"
-                        type="button"
-                        onClick={() => {
-                          setActionsOpen(false);
-                          handlePurgeStats();
-                        }}
-                        style={{ justifyContent: "flex-start", fontSize: 11 }}
-                      >
-                        {t(
-                          "profiles.locals.actions.purgeStats",
-                          "Purger toutes les stats de ce profil"
-                        )}
-                      </button>
-
-                      <button
-                        className="btn danger sm"
-                        type="button"
-                        onClick={() => {
-                          setActionsOpen(false);
-                          handleDeleteProfile();
-                        }}
-                        style={{ justifyContent: "flex-start", fontSize: 11 }}
-                      >
-                        {t(
-                          "profiles.locals.actions.delete",
-                          "Supprimer ce profil local"
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                />
+                <LocalProfileActionButton
+                  icon="purge"
+                  label={t("profiles.locals.actions.purgeShort", "PURGER")}
+                  title="Purger les statistiques calculées de ce profil"
+                  accent={primary}
+                  onClick={handlePurgeStats}
+                />
+                <LocalProfileActionButton
+                  icon="delete"
+                  label={t("profiles.locals.actions.deleteShort", "SUPPR.")}
+                  title="Supprimer uniquement la fiche locale"
+                  accent={primary}
+                  danger
+                  onClick={handleDeleteProfile}
+                />
               </div>
 
               {/* MODE EDITION (nom / pays / avatar) */}
