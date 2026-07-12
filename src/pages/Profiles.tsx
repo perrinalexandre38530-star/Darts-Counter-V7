@@ -52,6 +52,12 @@ import tickerGallery from "../assets/tickers/ticker_gallery.png";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
+import {
+  getFavoriteDartSetForProfile,
+  getDartSetMainImageSrc,
+  getDartSetThumbImageSrc,
+  type DartSet,
+} from "../lib/dartSetsStore";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -3996,7 +4002,7 @@ function AvatarGalleryPanel({
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -5712,6 +5718,480 @@ function UnifiedAuthBlock({
 
 /* ----- NOUVELLE refonte Profils locaux : création + carrousel ----- */
 
+type LocalProfilesSection = "create" | "list" | "associate";
+type LocalAssociationSection = "linked" | "unlinked";
+
+function LocalSectionTab({
+  active,
+  label,
+  onClick,
+  accent,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  accent: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minWidth: 0,
+        minHeight: 46,
+        borderRadius: 15,
+        border: `1px solid ${active ? accent : `${accent}55`}`,
+        background: active
+          ? `linear-gradient(180deg, ${accent}44, ${accent}16)`
+          : "linear-gradient(180deg, rgba(255,255,255,.045), rgba(0,0,0,.18))",
+        color: active ? "#fff" : "rgba(255,255,255,.72)",
+        fontSize: 12,
+        fontWeight: 950,
+        letterSpacing: 1.05,
+        textTransform: "uppercase",
+        boxShadow: active ? `0 0 18px ${accent}55, inset 0 1px 0 rgba(255,255,255,.14)` : "none",
+        cursor: "pointer",
+        padding: "8px 5px",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function FavoriteDartSetBadge({
+  profileId,
+  accent,
+  size = 32,
+  style,
+}: {
+  profileId?: string | null;
+  accent: string;
+  size?: number;
+  style?: React.CSSProperties;
+}) {
+  const [favorite, setFavorite] = React.useState<DartSet | null>(null);
+
+  React.useEffect(() => {
+    const refresh = () => {
+      try {
+        setFavorite(profileId ? (getFavoriteDartSetForProfile(String(profileId)) || null) : null);
+      } catch {
+        setFavorite(null);
+      }
+    };
+    refresh();
+    if (typeof window === "undefined") return;
+    window.addEventListener("dc-dartsets-updated", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("dc-dartsets-updated", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [profileId]);
+
+  if (!favorite) return null;
+  const src = getDartSetMainImageSrc(favorite) || getDartSetThumbImageSrc(favorite) || "";
+
+  return (
+    <span
+      title={`Set préféré : ${favorite.name || "Set de fléchettes"}`}
+      aria-label={`Set préféré ${favorite.name || ""}`}
+      style={{
+        position: "absolute",
+        left: 2,
+        bottom: 2,
+        zIndex: 12,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+        background: "rgba(3,8,18,.97)",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 11px ${accent}66, 0 7px 16px rgba(0,0,0,.55)`,
+        color: "#fff",
+        fontSize: Math.max(13, Math.round(size * 0.48)),
+        lineHeight: 1,
+        ...style,
+      }}
+    >
+      {src ? (
+        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      ) : (
+        <span aria-hidden>🎯</span>
+      )}
+    </span>
+  );
+}
+
+function LocalCountryFlagBadge({
+  profile,
+  accent,
+  size = 32,
+  style,
+}: {
+  profile: any;
+  accent: string;
+  size?: number;
+  style?: React.CSSProperties;
+}) {
+  const country = String(profile?.privateInfo?.country || profile?.private_info?.country || profile?.country || "").trim();
+  const flag = getCountryFlag(country);
+  if (!flag) return null;
+  return (
+    <span
+      title={country || undefined}
+      aria-label={country ? `Pays : ${country}` : "Pays"}
+      style={{
+        position: "absolute",
+        right: 2,
+        bottom: 2,
+        zIndex: 12,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+        background: "rgba(3,8,18,.97)",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 11px ${accent}66, 0 7px 16px rgba(0,0,0,.55)`,
+        fontSize: Math.max(14, Math.round(size * 0.55)),
+        lineHeight: 1,
+        ...style,
+      }}
+    >
+      <span style={{ transform: "translateY(-1px)" }}>{flag}</span>
+    </span>
+  );
+}
+
+function LocalProfileGridCard({
+  profile,
+  accent,
+  sportKey,
+  showStars,
+  disabledStats,
+  onClick,
+}: {
+  profile: any;
+  accent: string;
+  sportKey: string;
+  showStars: boolean;
+  disabledStats: boolean;
+  onClick: () => void;
+}) {
+  const stats = useBasicStats(profile?.id, !disabledStats && !!profile?.id, profile?.name, sportKey);
+  const avg3 = Number.isFinite(Number(stats?.avg3)) ? Number(stats.avg3) : 0;
+  const country = String(profile?.privateInfo?.country || profile?.private_info?.country || profile?.country || "").trim();
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minWidth: 0,
+        borderRadius: 18,
+        padding: "10px 5px 9px",
+        background: "linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.18))",
+        border: `1px solid ${accent}44`,
+        boxShadow: "inset 0 0 18px rgba(255,255,255,.025), 0 9px 20px rgba(0,0,0,.28)",
+        cursor: "pointer",
+        color: "inherit",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 6,
+        overflow: "visible",
+      }}
+    >
+      <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible" }}>
+        {showStars ? (
+          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={-2} animateGlow={!disabledStats} />
+        ) : null}
+        <div
+          style={{
+            width: 82,
+            height: 82,
+            borderRadius: "50%",
+            overflow: "hidden",
+            border: `2px solid ${accent}88`,
+            boxShadow: `0 0 16px ${accent}44`,
+            background: "rgba(0,0,0,.5)",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <ProfileAvatar profile={profile} size={76} noFrame showStars={false} />
+        </div>
+        <FavoriteDartSetBadge profileId={profile?.id} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
+        <LocalCountryFlagBadge profile={profile} accent={accent} size={29} style={{ right: 2, bottom: 4 }} />
+      </div>
+      <div
+        style={{
+          width: "100%",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 950,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          textTransform: "uppercase",
+        }}
+      >
+        {profile?.name || "Profil"}
+      </div>
+      <div
+        style={{
+          width: "100%",
+          color: "rgba(255,255,255,.52)",
+          fontSize: 9.5,
+          fontWeight: 800,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          minHeight: 12,
+        }}
+      >
+        {country || "—"}
+      </div>
+    </button>
+  );
+}
+
+function LocalAssociationsPanel({
+  locals,
+  onlineFriends,
+  profileFriendLinks,
+  loading,
+  onRespond,
+  onLinkFriend,
+  onRecover,
+  onSync,
+}: {
+  locals: Profile[];
+  onlineFriends: FriendLike[];
+  profileFriendLinks: ProfileFriendLink[];
+  loading: boolean;
+  onRespond?: (linkId: string, status: "accepted" | "refused") => void;
+  onLinkFriend?: (profileId: string, friend: FriendLike | null) => void | Promise<void>;
+  onRecover?: (profileId: string) => void | Promise<void>;
+  onSync?: (profileId?: string) => void | Promise<void>;
+}) {
+  const { theme } = useTheme();
+  const accent = theme.primary;
+  const [section, setSection] = React.useState<LocalAssociationSection>("linked");
+  const [busyId, setBusyId] = React.useState("");
+
+  const incoming = React.useMemo(
+    () => (profileFriendLinks || []).filter((link: any) => link?.direction === "incoming" && String(link?.status || "").toLowerCase() === "pending"),
+    [profileFriendLinks]
+  );
+
+  const rows = React.useMemo(() => (locals || []).map((profile: any) => {
+    const pid = String(profile?.id || "");
+    const link = findOutgoingProfileLink(profileFriendLinks as any[], profile, pid) as any;
+    const linkedFriendUserId = String(
+      profile?.linkedFriendUserId ||
+      profile?.linkedUserId ||
+      profile?.privateInfo?.linkedFriendUserId ||
+      profile?.privateInfo?.linkedUserId ||
+      profileLinkTargetUserId(link) ||
+      ""
+    ).trim();
+    const friend = linkedFriendUserId
+      ? (onlineFriends || []).find((f: any) => String(f?.userId || f?.id || "") === linkedFriendUserId) || null
+      : null;
+    const status = String(link?.status || profile?.privateInfo?.profileFriendLinkStatus || (linkedFriendUserId ? "pending" : "none")).toLowerCase();
+    const accepted = !!linkedFriendUserId && status === "accepted";
+    return { profile, pid, link, friend, linkedFriendUserId, status, accepted };
+  }), [locals, onlineFriends, profileFriendLinks]);
+
+  const linkedRows = rows.filter((row) => row.accepted);
+  const unlinkedRows = rows.filter((row) => !row.accepted);
+  const visibleRows = section === "linked" ? linkedRows : unlinkedRows;
+
+  const runBusy = React.useCallback(async (id: string, task: () => void | Promise<void>) => {
+    setBusyId(id);
+    try { await task(); } finally { setBusyId(""); }
+  }, []);
+
+  const subTab = (id: LocalAssociationSection, label: string, count: number) => (
+    <button
+      type="button"
+      onClick={() => setSection(id)}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        minHeight: 38,
+        borderRadius: 999,
+        border: `1px solid ${section === id ? accent : `${accent}55`}`,
+        background: section === id ? `${accent}22` : "rgba(255,255,255,.035)",
+        color: section === id ? accent : "rgba(255,255,255,.7)",
+        fontWeight: 950,
+        fontSize: 10.5,
+        letterSpacing: .7,
+        textTransform: "uppercase",
+        cursor: "pointer",
+      }}
+    >
+      {label} ({count})
+    </button>
+  );
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {incoming.length > 0 ? (
+        <div style={{ borderRadius: 16, border: `1px solid ${accent}88`, background: `${accent}12`, padding: 10 }}>
+          <div style={{ color: accent, fontWeight: 950, fontSize: 12, marginBottom: 8 }}>Demandes reçues</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {incoming.map((link: any, incomingIndex: number) => (
+              <div key={String(link?.id || `incoming-${incomingIndex}`)} style={{ borderRadius: 13, border: "1px solid rgba(255,255,255,.1)", background: "rgba(0,0,0,.22)", padding: 9 }}>
+                <div style={{ fontSize: 12, fontWeight: 900 }}>
+                  {link?.requesterUser?.displayName || link?.requesterUser?.nickname || "Un ami"}
+                </div>
+                <div className="subtitle" style={{ fontSize: 10.5, marginTop: 2 }}>
+                  souhaite associer le profil <b>{link?.localProfileName || "Profil local"}</b>
+                </div>
+                <div style={{ display: "flex", gap: 7, marginTop: 8 }}>
+                  <button type="button" className="btn sm" onClick={() => onRespond?.(String(link.id), "accepted")} style={{ flex: 1 }}>ACCEPTER</button>
+                  <button type="button" className="btn sm" onClick={() => onRespond?.(String(link.id), "refused")} style={{ flex: 1 }}>REFUSER</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        {subTab("linked", "Associés", linkedRows.length)}
+        {subTab("unlinked", "À associer", unlinkedRows.length)}
+      </div>
+
+      {loading ? (
+        <div className="subtitle" style={{ textAlign: "center", fontSize: 11, padding: 12 }}>Chargement des associations…</div>
+      ) : visibleRows.length === 0 ? (
+        <div className="subtitle" style={{ textAlign: "center", fontSize: 11, padding: 16 }}>
+          {section === "linked" ? "Aucun profil associé pour le moment." : "Tous les profils locaux sont déjà associés."}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 9 }}>
+          {visibleRows.map(({ profile, pid, friend, linkedFriendUserId, status, accepted, link }) => {
+            const friendName = String((friend as any)?.displayName || (friend as any)?.nickname || (friend as any)?.name || profile?.privateInfo?.linkedFriendName || "Ami");
+            const isBusy = busyId === pid;
+            const statusLabel = accepted ? "ASSOCIÉ" : status === "pending" ? "EN ATTENTE" : status === "refused" ? "REFUSÉ" : "NON ASSOCIÉ";
+            return (
+              <div
+                key={pid}
+                style={{
+                  borderRadius: 16,
+                  border: `1px solid ${accepted ? "#38ff8a77" : `${accent}55`}`,
+                  background: accepted ? "rgba(20,90,58,.12)" : "rgba(255,255,255,.035)",
+                  padding: 10,
+                }}
+              >
+                <div style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+                  <div style={{ position: "relative", width: 54, height: 54 }}>
+                    <ProfileAvatar profile={profile as any} size={54} showStars={false} />
+                    <LocalCountryFlagBadge profile={profile} accent={accent} size={23} style={{ right: -4, bottom: -3 }} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 950, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{profile?.name || "Profil"}</span>
+                      <span style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${accepted ? "#38ff8a88" : `${accent}88`}`, color: accepted ? "#38ff8a" : accent, fontSize: 9, fontWeight: 950 }}>{statusLabel}</span>
+                    </div>
+                    <div className="subtitle" style={{ fontSize: 10.5, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {linkedFriendUserId ? `Compte ami : ${friendName}` : "Aucun compte ami sélectionné"}
+                    </div>
+                  </div>
+                </div>
+
+                {accepted ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={isBusy || !onSync}
+                      onClick={() => runBusy(pid, () => onSync?.(pid))}
+                    >
+                      {isBusy ? "SYNCHRO…" : "SYNCHRONISER"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={isBusy || !onLinkFriend}
+                      onClick={() => runBusy(pid, () => onLinkFriend?.(pid, null))}
+                    >
+                      DISSOCIER
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+                    <select
+                      value={linkedFriendUserId}
+                      disabled={isBusy || !onLinkFriend}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const selectedFriend = (onlineFriends || []).find((row: any) => String(row?.userId || row?.id || "") === id) || null;
+                        runBusy(pid, () => onLinkFriend?.(pid, selectedFriend as any));
+                      }}
+                      style={{
+                        width: "100%",
+                        borderRadius: 12,
+                        padding: "9px 10px",
+                        border: `1px solid ${accent}66`,
+                        background: "rgba(0,0,0,.34)",
+                        color: "inherit",
+                        fontWeight: 800,
+                      }}
+                    >
+                      <option value="">— Choisir un ami —</option>
+                      {(onlineFriends || []).map((friendRow: any) => {
+                        const id = String(friendRow?.userId || friendRow?.id || "");
+                        const name = friendRow?.displayName || friendRow?.nickname || friendRow?.name || "Ami";
+                        return <option key={id} value={id}>{name}</option>;
+                      })}
+                    </select>
+                    {(linkedFriendUserId || status === "refused") ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                        <button
+                          type="button"
+                          className="btn sm"
+                          disabled={isBusy || !onRecover}
+                          onClick={() => runBusy(pid, () => onRecover?.(pid))}
+                        >
+                          {status === "refused" ? "RELANCER" : "RÉCUPÉRER"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn sm"
+                          disabled={isBusy || !onLinkFriend}
+                          onClick={() => runBusy(pid, () => onLinkFriend?.(pid, null))}
+                        >
+                          ANNULER
+                        </button>
+                      </div>
+                    ) : null}
+                    {(link as any)?.updatedAt ? (
+                      <div className="subtitle" style={{ fontSize: 9.5, textAlign: "right" }}>
+                        Mise à jour : {new Date(String((link as any).updatedAt)).toLocaleString()}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LocalProfilesRefonte({
   profiles,
   activeProfileId,
@@ -5763,6 +6243,16 @@ function LocalProfilesRefonte({
   const isBabyFoot = isBabyFootSportKey(sportResolved);
   const { t } = useLang();
   const primary = theme.primary;
+  const [localSection, setLocalSection] = React.useState<LocalProfilesSection>(onboardingMode ? "create" : "list");
+  const [listDetailOpen, setListDetailOpen] = React.useState(false);
+  const [gridPage, setGridPage] = React.useState(0);
+
+  React.useEffect(() => {
+    if (onboardingMode) {
+      setLocalSection("create");
+      setListDetailOpen(false);
+    }
+  }, [onboardingMode]);
 
   // ✅ Profils locaux :
   // - on enlève le profil actif
@@ -5788,6 +6278,18 @@ function LocalProfilesRefonte({
       return collator.compare(String(a?.id || ""), String(b?.id || ""));
     });
   }, [profiles, activeProfileId, onboardingMode]);
+
+  const gridPageSize = 9;
+  const gridPages = Math.max(1, Math.ceil(locals.length / gridPageSize));
+  const safeGridPage = Math.min(Math.max(gridPage, 0), gridPages - 1);
+  const gridProfiles = React.useMemo(
+    () => locals.slice(safeGridPage * gridPageSize, safeGridPage * gridPageSize + gridPageSize),
+    [locals, safeGridPage]
+  );
+
+  React.useEffect(() => {
+    if (gridPage > gridPages - 1) setGridPage(Math.max(0, gridPages - 1));
+  }, [gridPage, gridPages]);
 
   const localsAvatarCacheKey = React.useMemo(
     () => locals.map((p: any) => `${String(p?.id || "")}:${Number((p as any)?.avatarUpdatedAt || 0)}`).join("|"),
@@ -5836,7 +6338,6 @@ function LocalProfilesRefonte({
 
   const prevLocalsIdsRef = React.useRef<string[]>([]);
   const prevLocalsCountRef = React.useRef(0);
-  const [profilesListOpen, setProfilesListOpen] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editCountry, setEditCountry] = React.useState("");
@@ -5845,7 +6346,6 @@ function LocalProfilesRefonte({
   // Cache-bust local pour éviter qu'un ancien avatar reste affiché après remplacement.
   const [avatarRefreshKey, setAvatarRefreshKey] = React.useState(0);
   const [actionsOpen, setActionsOpen] = React.useState(false);
-  const [linkedStatsSyncBusy, setLinkedStatsSyncBusy] = React.useState(false);
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -5900,24 +6400,6 @@ function LocalProfilesRefonte({
       return sameLink || sameProfile || (sameFriend && sameName);
     }) || null;
   }, [current, profileFriendLinks, linkedFriendUserId]);
-  const cachedLinkStatus = String((current as any)?.privateInfo?.profileFriendLinkStatus || "").toLowerCase();
-  const linkStatus = String((currentProfileLink as any)?.status || cachedLinkStatus || (linkedFriendUserId ? "pending" : "")).toLowerCase();
-  const linkServerConfirmed = !!currentProfileLink;
-  const linkIsAssociated = !!linkedFriendUserId && linkStatus === "accepted";
-  const linkIsPending = !!linkedFriendUserId && linkStatus === "pending";
-  const linkIsRefused = !!linkedFriendUserId && linkStatus === "refused";
-  const associationStatusLabel = linkIsAssociated ? "ASSOCIÉ" : "NON ASSOCIÉ";
-  const associationDetailLabel = !linkedFriendUserId
-    ? "Choisis un ami pour envoyer une demande d’association."
-    : linkIsAssociated
-      ? `Lié à ${linkedFriendName || "un ami NAS"} · autorisation validée`
-      : linkIsPending
-        ? `Lié à ${linkedFriendName || "un ami NAS"} · demande envoyée, attente de validation`
-        : linkIsRefused
-          ? `Lié à ${linkedFriendName || "un ami NAS"} · demande refusée ou à relancer`
-          : `Lié à ${linkedFriendName || "un ami NAS"} · association à relancer`;
-  const linkStatsShared = linkIsAssociated;
-  const showRecoverLinkButton = !!linkedFriendUserId && !!onRecoverFriendLink && (!linkServerConfirmed || linkIsRefused);
   const linkedFriendAvatarUrl = String(
     (linkedFriend as any)?.avatarUrl ||
     (linkedFriend as any)?.avatar ||
@@ -5928,7 +6410,6 @@ function LocalProfilesRefonte({
     (current as any)?.linkedFriendAvatarUrl ||
     ""
   ).trim();
-  const incomingProfileLinks = React.useMemo(() => (profileFriendLinks || []).filter((link: any) => link?.direction === "incoming" && String(link?.status || "") === "pending"), [profileFriendLinks]);
 
 
 
@@ -6085,204 +6566,202 @@ function LocalProfilesRefonte({
         }}
       />
 
-      {incomingProfileLinks.length > 0 ? (
+      {!onboardingMode ? (
         <div
           style={{
-            borderRadius: 16,
-            border: `1px solid ${primary}88`,
-            background: `${primary}14`,
-            padding: 10,
-            boxShadow: `0 0 18px ${primary}22`,
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 8,
+            padding: 7,
+            borderRadius: 18,
+            border: `1px solid ${primary}55`,
+            background: "rgba(0,0,0,.18)",
+            boxShadow: "inset 0 0 20px rgba(255,255,255,.025)",
           }}
         >
-          <div style={{ color: primary, fontWeight: 950, fontSize: 13, marginBottom: 6 }}>Demandes d’association reçues</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {incomingProfileLinks.map((link: any) => (
-              <div key={link.id} style={{ border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: 8, background: "rgba(0,0,0,.25)" }}>
-                <div style={{ fontWeight: 900, fontSize: 12 }}>
-                  {link?.requesterUser?.displayName || link?.requesterUser?.nickname || "Un ami"} veut lier le profil local
-                </div>
-                <div className="subtitle" style={{ fontSize: 11, marginTop: 2 }}>
-                  Profil : <b>{link?.localProfileName || "Profil local"}</b> · Stats partagées après acceptation uniquement
-                </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                  <button type="button" className="btn sm" style={{ ...pillBtnBase, maxWidth: 110 }} onClick={() => onRespondProfileFriendLink?.(String(link.id), "accepted")}>Accepter</button>
-                  <button type="button" className="btn sm" style={{ ...pillBtnDanger, maxWidth: 110 }} onClick={() => onRespondProfileFriendLink?.(String(link.id), "refused")}>Refuser</button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <LocalSectionTab
+            active={localSection === "create"}
+            label="Créer"
+            accent={primary}
+            onClick={() => {
+              setLocalSection("create");
+              setListDetailOpen(false);
+            }}
+          />
+          <LocalSectionTab
+            active={localSection === "list"}
+            label="Liste"
+            accent={primary}
+            onClick={() => setLocalSection("list")}
+          />
+          <LocalSectionTab
+            active={localSection === "associate"}
+            label="Associer"
+            accent={primary}
+            onClick={() => {
+              setLocalSection("associate");
+              setListDetailOpen(false);
+            }}
+          />
         </div>
-      ) : profileFriendLinksLoading ? (
-        <div className="subtitle" style={{ fontSize: 11, textAlign: "center" }}>Vérification des demandes d’association…</div>
       ) : null}
 
-      {/* ------- Création PROFIL LOCAL ------- */}
-      <AddLocalProfile onCreate={onCreate} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
-
-      {/* ------- Carrousel + stats + actions ------- */}
-      {locals.length === 0 ? (
-        <div
-          className="subtitle"
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: theme.textSoft,
-            textAlign: "center",
-          }}
-        >
-          {onboardingMode
-            ? t(
-                "profiles.locals.onboarding.subtitle",
-                "Ton compte est créé. Maintenant, crée le profil actif qui lui sera lié."
-              )
-            : t(
-                "profiles.locals.empty",
-                "Aucun profil local pour l’instant. Ajoute un joueur au-dessus."
-              )}
-        </div>
-      ) : (
-        <div
-          style={{
-            marginTop: 8,
-            padding: 12,
-            borderRadius: 16,
-            border: `1px solid ${theme.borderSoft}`,
-            background:
-              "radial-gradient(circle at top, rgba(255,255,255,.08), transparent 60%)",
-          }}
-        >
-          {/* Liste alphabétique déroulante des profils locaux */}
-          <div
-            style={{
-              marginBottom: 12,
-              borderRadius: 14,
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,.18)",
-              overflow: "hidden",
-            }}
-          >
-            <button
-              type="button"
-              className="btn sm"
-              onClick={() => setProfilesListOpen((v) => !v)}
+      {localSection === "create" ? (
+        <>
+          <AddLocalProfile onCreate={onCreate} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
+          {onboardingMode ? (
+            <div
+              className="subtitle"
               style={{
-                width: "100%",
-                justifyContent: "space-between",
-                border: "none",
-                borderRadius: 0,
-                background: "transparent",
-                color: theme.text,
-                padding: "9px 10px",
-                textTransform: "uppercase",
-                letterSpacing: 0.8,
-                fontSize: 11,
-                fontWeight: 800,
+                marginTop: 8,
+                fontSize: 12,
+                color: theme.textSoft,
+                textAlign: "center",
               }}
             >
-              <span>
-                {t("profiles.locals.list.title", "Liste des profils locaux")}
-                {locals.length > 0 ? ` (${locals.length})` : ""}
-              </span>
-              <span aria-hidden>{profilesListOpen ? "▴" : "▾"}</span>
-            </button>
+              {t(
+                "profiles.locals.onboarding.subtitle",
+                "Ton compte est créé. Maintenant, crée le profil actif qui lui sera lié."
+              )}
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
-            {profilesListOpen && (
-              <div
-                style={{
-                  // 5 profils visibles maximum : le reste défile à l’intérieur de la liste.
-                  maxHeight: 250,
-                  overflowY: "auto",
-                  padding: 8,
-                  borderTop: `1px solid ${theme.borderSoft}`,
-                  display: "grid",
-                  gap: 6,
-                }}
-              >
-                {locals.map((p: any, i: number) => {
-                  const selected = i === index;
-                  const country = String(p?.privateInfo?.country || "").trim();
-                  const flag = getCountryFlag(country);
+      {localSection === "associate" && !onboardingMode ? (
+        <LocalAssociationsPanel
+          locals={locals}
+          onlineFriends={onlineFriends}
+          profileFriendLinks={profileFriendLinks}
+          loading={profileFriendLinksLoading}
+          onRespond={onRespondProfileFriendLink}
+          onLinkFriend={onLinkFriend}
+          onRecover={onRecoverFriendLink}
+          onSync={onSyncLinkedStats}
+        />
+      ) : null}
 
-                  return (
-                    <button
-                      key={String(p?.id || i)}
-                      type="button"
-                      onClick={() => {
-                        goToLocalIndex(i);
-                        setProfilesListOpen(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 9,
-                        width: "100%",
-                        borderRadius: 12,
-                        border: `1px solid ${selected ? primary : theme.borderSoft}`,
-                        background: selected ? `${primary}22` : "rgba(255,255,255,.035)",
-                        color: theme.text,
-                        padding: "7px 9px",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <AvatarLite
-                        size={34}
-                        src={buildAvatarSrc({
-                          avatarUrl: p?.avatarUrl || null,
-                          avatarDataUrl: p?.avatarDataUrl || null,
-                          avatarFullDataUrl: p?.avatarUrl ? null : ((avatarCacheById.get(String(p?.id || "")) as any)?.avatarThumbDataUrl || (avatarCacheById.get(String(p?.id || "")) as any)?.avatarDataUrl || null),
-                          avatarUpdatedAt: p?.avatarUpdatedAt ?? null,
-                        })}
-                        label={String(p?.name || "?").charAt(0).toUpperCase() || "?"}
-                      />
-                      <span style={{ minWidth: 0, flex: 1 }}>
-                        <span
-                          style={{
-                            display: "block",
-                            fontSize: 13,
-                            fontWeight: 900,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {String(p?.name || "—").toUpperCase()}
-                        </span>
-                        {country && (
-                          <span
-                            style={{
-                              display: "block",
-                              fontSize: 10,
-                              color: theme.textSoft,
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {flag ? `${flag} ` : ""}{country}
-                          </span>
-                        )}
-                      </span>
-                      {selected && (
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            fontSize: 10,
-                            fontWeight: 900,
-                            color: primary,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          Actif
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+      {localSection === "list" && !onboardingMode ? (
+        locals.length === 0 ? (
+          <div
+            className="subtitle"
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: theme.textSoft,
+              textAlign: "center",
+            }}
+          >
+            {t(
+              "profiles.locals.empty",
+              "Aucun profil local pour l’instant. Utilise l’onglet CRÉER pour ajouter un joueur."
             )}
           </div>
+        ) : !listDetailOpen ? (
+          <div
+            style={{
+              marginTop: 2,
+              padding: 11,
+              borderRadius: 18,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "radial-gradient(circle at top, rgba(255,255,255,.075), transparent 64%)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 11,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: primary, fontWeight: 950, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
+                  Profils locaux ({locals.length})
+                </div>
+                <div className="subtitle" style={{ fontSize: 10.5, marginTop: 2 }}>
+                  9 profils par page · touche un profil pour ouvrir sa fiche
+                </div>
+              </div>
+              <div style={{ color: theme.textSoft, fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap" }}>
+                {safeGridPage + 1}/{gridPages}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              {gridProfiles.map((profile: any) => {
+                const profileIndex = locals.findIndex((row: any) => String(row?.id || "") === String(profile?.id || ""));
+                return (
+                  <LocalProfileGridCard
+                    key={String(profile?.id || profileIndex)}
+                    profile={profile}
+                    accent={primary}
+                    sportKey={sportResolved}
+                    showStars={isDarts}
+                    disabledStats={deferHeavy}
+                    onClick={() => {
+                      goToLocalIndex(Math.max(0, profileIndex));
+                      setListDetailOpen(true);
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "76px 1fr 76px", gap: 9, alignItems: "center" }}>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={safeGridPage <= 0}
+                onClick={() => setGridPage((value) => Math.max(0, value - 1))}
+                style={{ opacity: safeGridPage <= 0 ? .42 : 1 }}
+              >
+                ←
+              </button>
+              <div style={{ textAlign: "center", color: theme.textSoft, fontSize: 11, fontWeight: 900 }}>
+                PAGE {safeGridPage + 1}/{gridPages}
+              </div>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={safeGridPage >= gridPages - 1}
+                onClick={() => setGridPage((value) => Math.min(gridPages - 1, value + 1))}
+                style={{ opacity: safeGridPage >= gridPages - 1 ? .42 : 1 }}
+              >
+                →
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 2,
+              padding: 12,
+              borderRadius: 16,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "radial-gradient(circle at top, rgba(255,255,255,.08), transparent 60%)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+              <BackDot
+                size={34}
+                title="Retour à la liste des profils locaux"
+                onClick={() => {
+                  setListDetailOpen(false);
+                  setActionsOpen(false);
+                  setIsEditing(false);
+                }}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ color: primary, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: .9 }}>
+                  Fiche du profil local
+                </div>
+                <div className="subtitle" style={{ fontSize: 10.5, marginTop: 1 }}>
+                  Retourne à la grille avec le bouton ci-contre
+                </div>
+              </div>
+            </div>
           {/* Header carrousel */}
           <div
             style={{
@@ -6404,6 +6883,18 @@ function LocalProfilesRefonte({
                       label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
                     />
                   </div>
+                  <FavoriteDartSetBadge
+                    profileId={renderedCurrent?.id}
+                    accent={primary}
+                    size={36}
+                    style={{ left: -2, bottom: -2 }}
+                  />
+                  <LocalCountryFlagBadge
+                    profile={renderedCurrent}
+                    accent={primary}
+                    size={36}
+                    style={{ right: -2, bottom: -2 }}
+                  />
                 </div>
               </div>
 
@@ -6518,150 +7009,6 @@ function LocalProfilesRefonte({
                     />
                   </>
                 )}
-              </div>
-
-              {/* Association profil local ↔ compte ami NAS */}
-              <div
-                style={{
-                  margin: "8px 0",
-                  padding: 10,
-                  borderRadius: 14,
-                  border: `1px solid ${linkedFriendUserId ? primary + "88" : "rgba(255,255,255,0.12)"}`,
-                  background: linkedFriendUserId ? `${primary}14` : "rgba(255,255,255,0.045)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ color: primary, fontWeight: 950, fontSize: 12 }}>Compte ami</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          borderRadius: 999,
-                          padding: "5px 9px",
-                          border: `1px solid ${linkIsAssociated ? "#38ff8a99" : primary + "88"}`,
-                          color: linkIsAssociated ? "#38ff8a" : primary,
-                          background: "rgba(0,0,0,0.22)",
-                          fontSize: 10,
-                          fontWeight: 950,
-                          letterSpacing: 0.4,
-                        }}
-                      >
-                        {associationStatusLabel}
-                      </span>
-                      <span className="subtitle" style={{ fontSize: 11, lineHeight: 1.25 }}>
-                        {associationDetailLabel}
-                      </span>
-                    </div>
-                    {linkedFriendUserId ? (
-                      <div style={{ marginTop: 6, fontSize: 10, fontWeight: 900, color: linkStatsShared ? "#38ff8a" : primary }}>
-                        Stats partagées : {linkStatsShared ? "OUI" : "NON"}
-                        {(currentProfileLink as any)?.updatedAt ? ` · MAJ ${new Date(String((currentProfileLink as any).updatedAt)).toLocaleString()}` : ""}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {linkedFriendUserId && onLinkFriend ? (
-                    <button
-                      type="button"
-                      className="btn sm"
-                      style={{ ...pillBtnDanger, width: 86, minWidth: 86, maxWidth: 86, padding: "7px 6px", fontSize: 9, flexShrink: 0 }}
-                      onClick={() => onLinkFriend(current.id, null)}
-                    >
-                      {linkIsPending ? "ANNULER" : "DISSOCIER"}
-                    </button>
-                  ) : null}
-                </div>
-
-                {onLinkFriend ? (
-                  <div>
-                    <div className="subtitle" style={{ fontSize: 10, marginBottom: 5 }}>
-                      {linkedFriendUserId
-                        ? "Changer d’ami enverra une nouvelle demande d’autorisation."
-                        : "Choisis un ami : une demande d’autorisation sera envoyée une seule fois."}
-                    </div>
-                    <select
-                      value={linkedFriendUserId}
-                      onChange={(e) => {
-                        const id = (e.target as HTMLSelectElement).value;
-                        const f = (onlineFriends || []).find((row: any) => String(row?.userId || row?.id || "") === id) || null;
-                        onLinkFriend(current.id, f as any);
-                      }}
-                      style={{
-                        width: "100%",
-                        borderRadius: 12,
-                        padding: "9px 10px",
-                        border: `1px solid ${primary}66`,
-                        background: "rgba(0,0,0,0.35)",
-                        color: "inherit",
-                        outline: "none",
-                        fontWeight: 800,
-                      }}
-                    >
-                      <option value="">— Aucun ami associé —</option>
-                      {(onlineFriends || []).map((f: any) => {
-                        const id = String(f?.userId || f?.id || "");
-                        const name = f?.displayName || f?.nickname || f?.name || "Ami";
-                        return <option key={id} value={id}>{name}</option>;
-                      })}
-                    </select>
-                  </div>
-                ) : null}
-
-                {showRecoverLinkButton ? (
-                  <button
-                    type="button"
-                    className="btn sm"
-                    disabled={profileFriendLinksLoading}
-                    onClick={async () => {
-                      if (!current?.id || !onRecoverFriendLink) return;
-                      await onRecoverFriendLink(current.id);
-                    }}
-                    style={{
-                      ...pillBtnBase,
-                      width: "100%",
-                      maxWidth: "100%",
-                      marginTop: 8,
-                      padding: "9px 10px",
-                      fontSize: 11,
-                      opacity: profileFriendLinksLoading ? 0.72 : 1,
-                    }}
-                    title="Recharge le lien côté serveur. Si le lien accepté existe encore, il est récupéré sans redemander l’autorisation. Sinon une nouvelle demande est envoyée."
-                  >
-                    {linkIsRefused ? "RELANCER L’ASSOCIATION" : "RÉCUPÉRER L’ASSOCIATION"}
-                  </button>
-                ) : null}
-
-                {linkedFriendUserId && linkIsAssociated && onSyncLinkedStats ? (
-                  <button
-                    type="button"
-                    className="btn sm"
-                    disabled={linkedStatsSyncBusy || profileFriendLinksLoading}
-                    onClick={async () => {
-                      if (!current?.id) return;
-                      setLinkedStatsSyncBusy(true);
-                      try {
-                        await onSyncLinkedStats(current.id);
-                      } finally {
-                        setLinkedStatsSyncBusy(false);
-                      }
-                    }}
-                    style={{
-                      ...pillBtnBase,
-                      width: "100%",
-                      maxWidth: "100%",
-                      marginTop: 8,
-                      padding: "9px 10px",
-                      fontSize: 11,
-                      opacity: (linkedStatsSyncBusy || profileFriendLinksLoading) ? 0.72 : 1,
-                    }}
-                    title="Envoie immédiatement les stats de ce profil local vers le NAS et force la relecture côté compte associé."
-                  >
-                    {linkedStatsSyncBusy ? "SYNCHRO STATS…" : "SYNCHRONISER LES STATS"}
-                  </button>
-                ) : null}
               </div>
 
               {/* Sets de fléchettes déplacés vers une vue dédiée dédiée du menu Profils */}
@@ -6877,7 +7224,7 @@ function LocalProfilesRefonte({
             </>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
