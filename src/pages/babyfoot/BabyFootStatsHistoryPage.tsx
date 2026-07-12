@@ -27,6 +27,7 @@ type Props = {
   store: any;
   go: (t: any, p?: any) => void;
   params?: any;
+  onImportBabyFootHistory?: (records: any[]) => void;
 };
 
 type TeamId = "A" | "B";
@@ -248,6 +249,25 @@ function mergeHistoryRows(...sources: any[][]) {
   return Array.from(byId.values());
 }
 
+function clearBabyFootImportTombstones(ids: string[]) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const raw = localStorage.getItem("dc-history-deleted-ids-v1");
+    if (!raw) return;
+    const map = JSON.parse(raw);
+    if (!map || typeof map !== "object" || Array.isArray(map)) return;
+    let changed = false;
+    for (const id of ids || []) {
+      const key = String(id || "").trim();
+      if (key && Object.prototype.hasOwnProperty.call(map, key)) {
+        delete map[key];
+        changed = true;
+      }
+    }
+    if (changed) localStorage.setItem("dc-history-deleted-ids-v1", JSON.stringify(map));
+  } catch {}
+}
+
 function getEvents(payload: any): any[] {
   const ev = payload?.events ?? payload?.payload?.events ?? payload?.summary?.events ?? [];
   return Array.isArray(ev) ? ev : [];
@@ -325,7 +345,7 @@ function pill(theme: any, active?: boolean): React.CSSProperties {
   };
 }
 
-export default function BabyFootStatsHistoryPage({ store, go, params }: Props) {
+export default function BabyFootStatsHistoryPage({ store, go, params, onImportBabyFootHistory }: Props) {
   const { theme } = useTheme();
   const lang = useLang() as any;
   const t = lang?.t ?? ((_: string, fb: string) => fb);
@@ -845,6 +865,12 @@ if (conv?.shots > 0) {
         modeLabel={modeLabel}
         periodLabel={periodLabel}
         focusMatchId={String(params?.focusMatchId ?? "")}
+        onImportedRecords={(records) => {
+          const clean = Array.isArray(records) ? records.filter(Boolean) : [];
+          if (!clean.length) return;
+          setHistoryRows((prev) => mergeHistoryRows(prev, clean));
+          onImportBabyFootHistory?.(clean);
+        }}
       />
     );
   }
@@ -1221,6 +1247,7 @@ type HistoryCardsViewProps = {
   modeLabel: string;
   periodLabel: string;
   focusMatchId: string;
+  onImportedRecords?: (records: any[]) => void;
 };
 
 function HistoryCardsView({
@@ -1238,6 +1265,7 @@ function HistoryCardsView({
   modeLabel,
   periodLabel,
   focusMatchId,
+  onImportedRecords,
 }: HistoryCardsViewProps) {
   const focusRef = React.useRef<HTMLDivElement | null>(null);
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -1257,18 +1285,45 @@ function HistoryCardsView({
         return;
       }
 
-      let imported = 0;
+      const ids = records.map((rec) => historyRowId(rec)).filter(Boolean);
+      clearBabyFootImportTombstones(ids);
+
+      let added = 0;
+      let updated = 0;
+      const freshRecords: any[] = [];
+
       for (const rec of records) {
+        const id = historyRowId(rec);
+        const alreadyVisible = !!id && filtered.some((row: any) => historyRowId(row) === id);
+        const existingStored = id && typeof (History as any).get === "function"
+          ? await (History as any).get(id).catch(() => null)
+          : null;
+        const alreadyStored = !!existingStored;
+
         await (History as any).upsert(rec);
-        imported += 1;
+
+        const fresh = id && typeof (History as any).get === "function"
+          ? ((await (History as any).get(id).catch(() => null)) || rec)
+          : rec;
+        freshRecords.push(fresh);
+
+        if (alreadyVisible || alreadyStored) updated += 1;
+        else added += 1;
       }
+
+      onImportedRecords?.(freshRecords);
       requestReload();
-      window.alert(imported === 1 ? "Partie Baby-Foot importée ✅" : `${imported} parties Baby-Foot importées ✅`);
+      window.setTimeout(requestReload, 120);
+
+      const parts: string[] = [];
+      if (added) parts.push(`${added} nouvelle${added > 1 ? "s" : ""}`);
+      if (updated) parts.push(`${updated} mise${updated > 1 ? "s" : ""} à jour`);
+      window.alert(parts.length ? `Import Baby-Foot OK : ${parts.join(" + ")} ✅` : "Import Baby-Foot OK ✅");
     } catch (error) {
       console.error("[BabyFootStatsHistory] import failed", error);
       window.alert("Import impossible : fichier JSON illisible ou incompatible.");
     }
-  }, [requestReload]);
+  }, [filtered, onImportedRecords, requestReload]);
 
   const shareMatch = React.useCallback(async (h: any) => {
     const id = String(h?.id || h?.matchId || Date.now()).trim();

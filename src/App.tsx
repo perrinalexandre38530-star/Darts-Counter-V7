@@ -4001,7 +4001,31 @@ case "babyfoot_team_edit":
 
       // ✅ BABY-FOOT — STATS/HISTORY (LOCAL)
       case "babyfoot_stats_history":
-        page = <BabyFootStatsHistoryPage store={store} go={go} params={routeParams} />;
+        page = (
+          <BabyFootStatsHistoryPage
+            store={store}
+            go={go}
+            params={routeParams}
+            onImportBabyFootHistory={(records: any[]) => {
+              const imported = Array.isArray(records) ? records.filter(Boolean) : [];
+              if (!imported.length) return;
+              setStore((s) => {
+                const list = [...(((s as any).history ?? []) as any[])];
+                for (const rec of imported) {
+                  const id = String(rec?.id || rec?.matchId || rec?.payload?.id || rec?.payload?.matchId || "").trim();
+                  if (!id) continue;
+                  const normalized = { ...rec, id, matchId: id, kind: "babyfoot", sport: "babyfoot", status: rec?.status || "finished" };
+                  const index = list.findIndex((row: any) => String(row?.id || row?.matchId || row?.payload?.id || row?.payload?.matchId || "") === id);
+                  if (index >= 0) list[index] = normalized;
+                  else list.unshift(normalized);
+                }
+                const next = { ...(s as any), history: list } as any;
+                scheduleStorePersist(next);
+                return next;
+              });
+            }}
+          />
+        );
         break;
 
       // ✅ BABY-FOOT — CENTRE DE STATISTIQUES (UI type Darts Counter)
