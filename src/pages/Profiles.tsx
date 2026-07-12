@@ -146,6 +146,56 @@ function findOutgoingAcceptedProfileLink(links: any[], localProfile: any, profil
   return findOutgoingProfileLink(links, localProfile, profileId, { acceptedOnly: true });
 }
 
+const PROFILE_FRIEND_LINKS_CACHE_KEY = "dc_profile_friend_links_cache_v1";
+const PROFILE_ASSOCIATION_UI_TIMEOUT_MS = 8000;
+
+function readProfileFriendLinksCache(): ProfileFriendLink[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PROFILE_FRIEND_LINKS_CACHE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeProfileFriendLinksCache(links: ProfileFriendLink[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROFILE_FRIEND_LINKS_CACHE_KEY, JSON.stringify(Array.isArray(links) ? links : []));
+  } catch {}
+}
+
+function withProfileAssociationUiTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = PROFILE_ASSOCIATION_UI_TIMEOUT_MS,
+  label = "Le serveur des associations met trop de temps à répondre"
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(label));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 
 const PREBUILT_AVATAR_COMMON_URLS = Array.from({ length: 141 }, (_, i) => i + 1)
   // Le pack fourni ne contient pas avatar-common-137.webp : on l'exclut pour éviter une image cassée.
@@ -1191,8 +1241,9 @@ export default function Profiles({
   const [onlineProfileFriends, setOnlineProfileFriends] = React.useState<FriendLike[]>([]);
   const [onlineProfileFriendsLoading, setOnlineProfileFriendsLoading] = React.useState(false);
   const [onlineProfileFriendsError, setOnlineProfileFriendsError] = React.useState<string | null>(null);
-  const [profileFriendLinks, setProfileFriendLinks] = React.useState<ProfileFriendLink[]>([]);
+  const [profileFriendLinks, setProfileFriendLinks] = React.useState<ProfileFriendLink[]>(() => readProfileFriendLinksCache());
   const [profileFriendLinksLoading, setProfileFriendLinksLoading] = React.useState(false);
+  const [profileFriendLinksError, setProfileFriendLinksError] = React.useState<string | null>(null);
   const profileFriendStatsSyncRef = React.useRef<Record<string, string>>({});
 
   const friends: FriendLike[] = React.useMemo(() => {
@@ -1261,7 +1312,11 @@ export default function Profiles({
     setOnlineProfileFriendsLoading(true);
     setOnlineProfileFriendsError(null);
     try {
-      const apiFriends = await listFriends();
+      const apiFriends = await withProfileAssociationUiTimeout(
+        listFriends(),
+        PROFILE_ASSOCIATION_UI_TIMEOUT_MS,
+        "Le serveur des amis met trop de temps à répondre"
+      );
       const mapped: FriendLike[] = (Array.isArray(apiFriends) ? apiFriends : []).map((f: OnlineFriendUser) => ({
         id: String(f.id || f.userId || ""),
         userId: String(f.userId || f.id || ""),
@@ -1276,7 +1331,8 @@ export default function Profiles({
       setOnlineProfileFriends(mapped);
     } catch (error: any) {
       setOnlineProfileFriendsError(error?.message || "Impossible de charger les amis online");
-      setOnlineProfileFriends([]);
+      // On conserve la dernière liste connue au lieu de vider le sélecteur pendant
+      // un simple réveil NAS / timeout réseau.
     } finally {
       setOnlineProfileFriendsLoading(false);
     }
@@ -1284,14 +1340,30 @@ export default function Profiles({
 
   const refreshProfileFriendLinks = React.useCallback(async () => {
     if (auth.status !== "signed_in") {
-      setProfileFriendLinks([]);
+      setProfileFriendLinksLoading(false);
+      setProfileFriendLinksError(null);
       return;
     }
+
+    let baseLinksLoaded = false;
     setProfileFriendLinksLoading(true);
+    setProfileFriendLinksError(null);
+
     try {
-      const links = await listProfileFriendLinks();
+      const links = await withProfileAssociationUiTimeout(
+        listProfileFriendLinks(),
+        PROFILE_ASSOCIATION_UI_TIMEOUT_MS,
+        "Le serveur des associations met trop de temps à répondre"
+      );
       const safeLinks = Array.isArray(links) ? links : [];
+      baseLinksLoaded = true;
       setProfileFriendLinks(safeLinks);
+      writeProfileFriendLinksCache(safeLinks);
+
+      // IMPORTANT : l'écran ne doit pas attendre la fusion des snapshots NAS ni
+      // le recalcul des statistiques. Les liens sont déjà disponibles : on libère
+      // immédiatement l'interface, puis la synchronisation lourde continue derrière.
+      setProfileFriendLinksLoading(false);
 
       // Synchronise le statut accepté/refusé dans les profils locaux.
       // Objectif : l’écran Profils affiche immédiatement "Validé", et les exports/partages
@@ -1450,9 +1522,15 @@ export default function Profiles({
           scheduleProfilesPersist("profiles_friend_link_status_sync", { ...(store as any), profiles: nextProfiles }, { cloud: false, delayMs: 2500 });
         }
       }
-    } catch (error) {
-      console.warn("[Profiles] listProfileFriendLinks error", error);
-      setProfileFriendLinks([]);
+    } catch (error: any) {
+      console.warn("[Profiles] profile associations refresh error", error);
+      if (!baseLinksLoaded) {
+        setProfileFriendLinksError(
+          error?.message ||
+          "Impossible d'actualiser les associations. Les données locales restent affichées."
+        );
+      }
+      // Ne jamais vider les associations déjà connues en cas de NAS lent ou hors ligne.
     } finally {
       setProfileFriendLinksLoading(false);
     }
@@ -1577,13 +1655,24 @@ export default function Profiles({
 
   React.useEffect(() => {
     if (view !== "friends") return;
-    refreshProfileOnlineFriends();
+    void refreshProfileOnlineFriends();
   }, [view, refreshProfileOnlineFriends]);
 
+  // Les associations ne sont plus chargées dès l'ouverture de PROFILS LOCAUX.
+  // Elles sont demandées uniquement quand l'utilisateur ouvre l'onglet ASSOCIER.
+  // Cela évite le réveil NAS et les calculs lourds quand il consulte CRÉER ou LISTE.
   React.useEffect(() => {
-    if (view !== "locals" && view !== "friends") return;
-    refreshProfileFriendLinks();
-  }, [view, refreshProfileFriendLinks]);
+    if (view !== "friends") return;
+    void refreshProfileFriendLinks();
+    // refreshProfileFriendLinks dépend volontairement du store pour la synchro de fond ;
+    // on ne veut pas relancer ce GET à chaque mutation locale du store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, auth.status]);
+
+  const openLocalAssociations = React.useCallback(() => {
+    void refreshProfileOnlineFriends();
+    void refreshProfileFriendLinks();
+  }, [refreshProfileOnlineFriends, refreshProfileFriendLinks]);
 
 
   const linkLocalProfileToFriend = React.useCallback(async (profileId: string, friend: FriendLike | null) => {
@@ -3306,6 +3395,9 @@ React.useEffect(() => {
                   onlineFriends={friends}
                   profileFriendLinks={profileFriendLinks}
                   profileFriendLinksLoading={profileFriendLinksLoading}
+                  profileFriendLinksError={profileFriendLinksError}
+                  onOpenAssociations={openLocalAssociations}
+                  onRefreshAssociations={openLocalAssociations}
                   onRespondProfileFriendLink={respondToProfileFriendLink}
                   onLinkFriend={linkLocalProfileToFriend}
                   onRecoverFriendLink={recoverLocalProfileFriendLink}
@@ -5968,6 +6060,8 @@ function LocalAssociationsPanel({
   onlineFriends,
   profileFriendLinks,
   loading,
+  error,
+  onRetry,
   onRespond,
   onLinkFriend,
   onRecover,
@@ -5977,6 +6071,8 @@ function LocalAssociationsPanel({
   onlineFriends: FriendLike[];
   profileFriendLinks: ProfileFriendLink[];
   loading: boolean;
+  error?: string | null;
+  onRetry?: () => void | Promise<void>;
   onRespond?: (linkId: string, status: "accepted" | "refused") => void;
   onLinkFriend?: (profileId: string, friend: FriendLike | null) => void | Promise<void>;
   onRecover?: (profileId: string) => void | Promise<void>;
@@ -6073,10 +6169,40 @@ function LocalAssociationsPanel({
       </div>
 
       {loading ? (
-        <div className="subtitle" style={{ textAlign: "center", fontSize: 11, padding: 12 }}>Chargement des associations…</div>
-      ) : visibleRows.length === 0 ? (
+        <div className="subtitle" style={{ textAlign: "center", fontSize: 10.5, padding: "4px 8px" }}>
+          Actualisation des associations…
+        </div>
+      ) : null}
+
+      {error ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            borderRadius: 12,
+            border: `1px solid ${accent}55`,
+            background: "rgba(255,255,255,.035)",
+            padding: "8px 10px",
+          }}
+        >
+          <div className="subtitle" style={{ minWidth: 0, fontSize: 10.5 }}>
+            {error} Les associations enregistrées localement restent accessibles.
+          </div>
+          <button type="button" className="btn sm" onClick={() => void onRetry?.()} disabled={loading || !onRetry}>
+            RÉESSAYER
+          </button>
+        </div>
+      ) : null}
+
+      {visibleRows.length === 0 ? (
         <div className="subtitle" style={{ textAlign: "center", fontSize: 11, padding: 16 }}>
-          {section === "linked" ? "Aucun profil associé pour le moment." : "Tous les profils locaux sont déjà associés."}
+          {loading
+            ? "Chargement des associations…"
+            : section === "linked"
+            ? "Aucun profil associé pour le moment."
+            : "Tous les profils locaux sont déjà associés."}
         </div>
       ) : (
         <div style={{ display: "grid", gap: 9 }}>
@@ -6204,6 +6330,9 @@ function LocalProfilesRefonte({
   onlineFriends = [],
   profileFriendLinks = [],
   profileFriendLinksLoading = false,
+  profileFriendLinksError = null,
+  onOpenAssociations,
+  onRefreshAssociations,
   onRespondProfileFriendLink,
   onLinkFriend,
   onRecoverFriendLink,
@@ -6227,6 +6356,9 @@ function LocalProfilesRefonte({
   onlineFriends?: FriendLike[];
   profileFriendLinks?: ProfileFriendLink[];
   profileFriendLinksLoading?: boolean;
+  profileFriendLinksError?: string | null;
+  onOpenAssociations?: () => void | Promise<void>;
+  onRefreshAssociations?: () => void | Promise<void>;
   onRespondProfileFriendLink?: (linkId: string, status: "accepted" | "refused") => void;
   onLinkFriend?: (profileId: string, friend: FriendLike | null) => void | Promise<void>;
   onRecoverFriendLink?: (profileId: string) => void | Promise<void>;
@@ -6601,6 +6733,7 @@ function LocalProfilesRefonte({
             onClick={() => {
               setLocalSection("associate");
               setListDetailOpen(false);
+              void onOpenAssociations?.();
             }}
           />
         </div>
@@ -6634,6 +6767,8 @@ function LocalProfilesRefonte({
           onlineFriends={onlineFriends}
           profileFriendLinks={profileFriendLinks}
           loading={profileFriendLinksLoading}
+          error={profileFriendLinksError}
+          onRetry={onRefreshAssociations}
           onRespond={onRespondProfileFriendLink}
           onLinkFriend={onLinkFriend}
           onRecover={onRecoverFriendLink}
@@ -8079,13 +8214,18 @@ const MemoLocalProfilesRefonte = React.memo(LocalProfilesRefonte, (prev, next) =
   const nextIds = (next.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}:${(p as any)?.linkedFriendUserId || (p as any)?.privateInfo?.linkedFriendUserId || ''}`).join('|');
   const prevFriends = (prev.onlineFriends || []).map((f: any) => `${f?.id || f?.userId || ''}:${f?.displayName || f?.nickname || f?.name || ''}`).join('|');
   const nextFriends = (next.onlineFriends || []).map((f: any) => `${f?.id || f?.userId || ''}:${f?.displayName || f?.nickname || f?.name || ''}`).join('|');
+  const prevLinks = (prev.profileFriendLinks || []).map((link: any) => `${link?.id || ''}:${link?.status || ''}:${link?.updatedAt || ''}:${link?.direction || ''}:${profileLinkTargetUserId(link)}`).join('|');
+  const nextLinks = (next.profileFriendLinks || []).map((link: any) => `${link?.id || ''}:${link?.status || ''}:${link?.updatedAt || ''}:${link?.direction || ''}:${profileLinkTargetUserId(link)}`).join('|');
   return (
     prevIds === nextIds &&
     prev.activeProfileId === next.activeProfileId &&
     prev.onboardingMode === next.onboardingMode &&
     prev.autoFocusCreate === next.autoFocusCreate &&
     prev.deferHeavy === next.deferHeavy &&
-    prevFriends === nextFriends
+    prevFriends === nextFriends &&
+    prevLinks === nextLinks &&
+    prev.profileFriendLinksLoading === next.profileFriendLinksLoading &&
+    prev.profileFriendLinksError === next.profileFriendLinksError
   );
 });
 
