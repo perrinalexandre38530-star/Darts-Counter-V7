@@ -6329,7 +6329,6 @@ function LocalProfileGridCard({
 }) {
   const stats = useBasicStats(profile?.id, !disabledStats && !!profile?.id, profile?.name, sportKey);
   const avg3 = Number.isFinite(Number(stats?.avg3)) ? Number(stats.avg3) : 0;
-  const country = String(profile?.privateInfo?.country || profile?.private_info?.country || profile?.country || "").trim();
 
   return (
     <button
@@ -6370,7 +6369,9 @@ function LocalProfileGridCard({
         >
           <ProfileAvatar profile={profile} size={76} noFrame showStars={false} />
         </div>
-        <FavoriteDartSetBadge profileId={profile?.id} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
+        {showStars ? (
+          <FavoriteDartSetBadge profileId={profile?.id} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
+        ) : null}
         <LocalCountryFlagBadge profile={profile} accent={accent} size={29} style={{ right: 2, bottom: 4 }} />
       </div>
       <div
@@ -6387,21 +6388,6 @@ function LocalProfileGridCard({
         }}
       >
         {profile?.name || "Profil"}
-      </div>
-      <div
-        style={{
-          width: "100%",
-          color: "rgba(255,255,255,.52)",
-          fontSize: 9.5,
-          fontWeight: 800,
-          textAlign: "center",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          minHeight: 12,
-        }}
-      >
-        {country || "—"}
       </div>
     </button>
   );
@@ -7434,12 +7420,14 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
                       label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
                     />
                   </div>
-                  <FavoriteDartSetBadge
-                    profileId={renderedCurrent?.id}
-                    accent={primary}
-                    size={36}
-                    style={{ left: -2, bottom: -2 }}
-                  />
+                  {isDarts ? (
+                    <FavoriteDartSetBadge
+                      profileId={renderedCurrent?.id}
+                      accent={primary}
+                      size={36}
+                      style={{ left: -2, bottom: -2 }}
+                    />
+                  ) : null}
                   <LocalCountryFlagBadge
                     profile={renderedCurrent}
                     accent={primary}
@@ -7449,7 +7437,7 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
                 </div>
               </div>
 
-              {/* === NOM PROFIL LOCAL (SHIMMER PREMIUM) + PAYS === */}
+              {/* === NOM PROFIL LOCAL (SHIMMER PREMIUM) === */}
               <div style={{ textAlign: "center", marginBottom: 12 }}>
                 <span
                   className="dc-stats-name-wrapper"
@@ -7471,52 +7459,6 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
                   <span className="dc-stats-name-shimmer">{renderedCurrent.name || "—"}</span>
                 </span>
 
-                <div
-                  className="subtitle"
-                  style={{
-                    fontSize: 14,
-                    marginTop: 4,
-                    color: theme.textSoft,
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  {(() => {
-                    const pi = ((renderedCurrent as any).privateInfo || {}) as {
-                      country?: string;
-                    };
-                    const country = pi.country || "";
-                    const flag = getCountryFlag(country);
-
-                    if (flag) {
-                      return (
-                        <>
-                          <span style={{ fontSize: 18 }}>{flag}</span>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              opacity: 0.7,
-                              maxWidth: 120,
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {country}
-                          </span>
-                        </>
-                      );
-                    }
-
-                    return (
-                      <span style={{ fontSize: 11, opacity: 0.6 }}>
-                        {t("profiles.private.country", "Pays")}
-                      </span>
-                    );
-                  })()}
-                </div>
               </div>
 
               {/* KPIs */}
