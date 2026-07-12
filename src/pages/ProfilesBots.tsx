@@ -17,6 +17,7 @@ import {
 } from "../lib/bots";
 import { fileToAvatarVariants } from "../lib/avatarSafe";
 import AvatarChoiceModal from "../components/AvatarChoiceModal";
+import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import TopTicker from "../components/TopTicker";
@@ -104,6 +105,7 @@ function BotAvatar({ bot, color, size = 42 }: { bot: Bot | null; color: string; 
 }
 
 type BotSection = "create" | "list";
+type BotLevelFilter = "all" | BotLevel;
 
 type Props = {
   store: Store;
@@ -153,13 +155,11 @@ function BotGridCard({
   accent,
   active,
   onClick,
-  t,
 }: {
   bot: Bot;
   accent: string;
   active: boolean;
   onClick: () => void;
-  t: (key: string, fallback?: string) => string;
 }) {
   return (
     <button
@@ -182,11 +182,26 @@ function BotGridCard({
         flexDirection: "column",
         alignItems: "center",
         gap: 6,
-        overflow: "hidden",
+        overflow: "visible",
       }}
     >
-      <div style={{ width: 86, height: 86, display: "grid", placeItems: "center" }}>
-        <BotAvatar bot={bot} color={accent} size={78} />
+      <div
+        style={{
+          position: "relative",
+          width: 98,
+          height: 98,
+          display: "grid",
+          placeItems: "center",
+          overflow: "visible",
+        }}
+      >
+        <ProfileStarRing
+          botLevel={bot.botLevel || bot.level || "medium"}
+          anchorSize={88}
+          starSize={12}
+          gapPx={-2}
+        />
+        <BotAvatar bot={bot} color={accent} size={82} />
       </div>
       <div
         style={{
@@ -202,22 +217,6 @@ function BotGridCard({
         }}
       >
         {bot.name || "BOT"}
-      </div>
-      <div
-        style={{
-          width: "100%",
-          color: accent,
-          fontSize: 9.5,
-          fontWeight: 900,
-          textAlign: "center",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          minHeight: 12,
-          textTransform: "uppercase",
-        }}
-      >
-        {levelLabel((bot.level || "medium") as BotLevel, t)}
       </div>
     </button>
   );
@@ -239,6 +238,10 @@ export default function ProfilesBots({ store, go }: Props) {
   const [createName, setCreateName] = React.useState("");
   const [createLevel, setCreateLevel] = React.useState<BotLevel>("medium");
   const [createSeed, setCreateSeed] = React.useState("");
+  const [createAvatarFile, setCreateAvatarFile] = React.useState<File | null>(null);
+  const [createAvatarPreview, setCreateAvatarPreview] = React.useState<string | null>(null);
+
+  const [levelFilter, setLevelFilter] = React.useState<BotLevelFilter>("all");
 
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
@@ -248,6 +251,19 @@ export default function ProfilesBots({ store, go }: Props) {
 
   const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
   const [avatarTargetBotId, setAvatarTargetBotId] = React.useState<string | null>(null);
+  const [avatarPickerMode, setAvatarPickerMode] = React.useState<"create" | "edit">("edit");
+
+  React.useEffect(() => {
+    if (!createAvatarFile) {
+      setCreateAvatarPreview(null);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setCreateAvatarPreview(String(reader.result || ""));
+    reader.onerror = () => setCreateAvatarPreview(null);
+    reader.readAsDataURL(createAvatarFile);
+  }, [createAvatarFile]);
 
   React.useEffect(() => {
     const refresh = () => {
@@ -276,22 +292,41 @@ export default function ProfilesBots({ store, go }: Props) {
     () => bots.find((bot) => bot.id === selectedBotId) || bots[0] || null,
     [bots, selectedBotId]
   );
+
+  const filteredBots = React.useMemo(
+    () =>
+      levelFilter === "all"
+        ? bots
+        : bots.filter((bot) => ((bot.level || bot.botLevel || "medium") as BotLevel) === levelFilter),
+    [bots, levelFilter]
+  );
+
+  const detailBots = React.useMemo(
+    () => (filteredBots.some((bot) => bot.id === selectedBot?.id) ? filteredBots : bots),
+    [bots, filteredBots, selectedBot?.id]
+  );
+
   const selectedIndex = React.useMemo(
-    () => Math.max(0, bots.findIndex((bot) => bot.id === (selectedBot?.id || ""))),
-    [bots, selectedBot]
+    () => Math.max(0, detailBots.findIndex((bot) => bot.id === (selectedBot?.id || ""))),
+    [detailBots, selectedBot]
   );
 
   const gridPageSize = 9;
-  const gridPages = Math.max(1, Math.ceil(bots.length / gridPageSize));
+  const gridPages = Math.max(1, Math.ceil(filteredBots.length / gridPageSize));
   const safeGridPage = Math.min(Math.max(gridPage, 0), gridPages - 1);
   const gridBots = React.useMemo(
-    () => bots.slice(safeGridPage * gridPageSize, safeGridPage * gridPageSize + gridPageSize),
-    [bots, safeGridPage]
+    () => filteredBots.slice(safeGridPage * gridPageSize, safeGridPage * gridPageSize + gridPageSize),
+    [filteredBots, safeGridPage]
   );
 
   React.useEffect(() => {
     if (gridPage > gridPages - 1) setGridPage(Math.max(0, gridPages - 1));
   }, [gridPage, gridPages]);
+
+  React.useEffect(() => {
+    setGridPage(0);
+    setListDetailOpen(false);
+  }, [levelFilter]);
 
   React.useEffect(() => {
     if (!selectedBot) {
@@ -312,12 +347,26 @@ export default function ProfilesBots({ store, go }: Props) {
     setCreateName("");
     setCreateLevel("medium");
     setCreateSeed("");
+    setCreateAvatarFile(null);
+    setCreateAvatarPreview(null);
   }
 
-  function handleCreate(event: React.FormEvent) {
+  async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
     const cleanName = createName.trim();
     if (!cleanName) return;
+
+    let avatarDataUrl: string | null = null;
+    if (createAvatarFile) {
+      try {
+        const variants = await fileToAvatarVariants(createAvatarFile);
+        avatarDataUrl = variants.thumbDataUrl;
+      } catch (error) {
+        console.error("[ProfilesBots] avatar import failed", error);
+        window.alert(t("bots.avatar.import.error", "Impossible d’importer cette image d’avatar.") as string);
+        return;
+      }
+    }
 
     const now = new Date().toISOString();
     const bot: Bot = {
@@ -326,7 +375,7 @@ export default function ProfilesBots({ store, go }: Props) {
       level: createLevel,
       botLevel: createLevel,
       avatarSeed: createSeed.trim() || randomSeed(),
-      avatarDataUrl: null,
+      avatarDataUrl,
       createdAt: now,
       updatedAt: now,
       isBot: true,
@@ -342,7 +391,6 @@ export default function ProfilesBots({ store, go }: Props) {
     setAvatarTargetBotId(bot.id);
     setListDetailOpen(true);
     setSection("list");
-    setAvatarPickerOpen(true);
     resetCreateForm();
   }
 
@@ -354,9 +402,9 @@ export default function ProfilesBots({ store, go }: Props) {
   }
 
   function shiftSelected(delta: number) {
-    if (!bots.length) return;
-    const nextIndex = (selectedIndex + delta + bots.length) % bots.length;
-    const nextBot = bots[nextIndex];
+    if (!detailBots.length) return;
+    const nextIndex = (selectedIndex + delta + detailBots.length) % detailBots.length;
+    const nextBot = detailBots[nextIndex];
     if (!nextBot) return;
     setSelectedBotId(nextBot.id);
     setIsEditing(false);
@@ -404,6 +452,7 @@ export default function ProfilesBots({ store, go }: Props) {
   function openAvatarEditor(bot: Bot) {
     setSelectedBotId(bot.id);
     setAvatarTargetBotId(bot.id);
+    setAvatarPickerMode("edit");
     setAvatarPickerOpen(true);
     setActionsOpen(false);
   }
@@ -466,6 +515,10 @@ export default function ProfilesBots({ store, go }: Props) {
         title={t("profiles.avatarPicker.title", "Choisir un avatar")}
         onClose={() => setAvatarPickerOpen(false)}
         onSelectFile={async (file) => {
+          if (avatarPickerMode === "create") {
+            setCreateAvatarFile(file);
+            return;
+          }
           const targetId = avatarTargetBotId || selectedBot?.id || "";
           if (!targetId) return;
           await handleSetBotAvatar(targetId, file);
@@ -549,7 +602,14 @@ export default function ProfilesBots({ store, go }: Props) {
                   {t("bots.form.subtitle.short", "Nom, niveau et avatar : uniquement l’essentiel.")}
                 </div>
               </div>
-              <div
+              <button
+                type="button"
+                onClick={() => {
+                  setAvatarPickerMode("create");
+                  setAvatarTargetBotId(null);
+                  setAvatarPickerOpen(true);
+                }}
+                title={t("bots.form.avatar.import", "Importer l’image de l’avatar")}
                 style={{
                   width: 58,
                   height: 58,
@@ -563,14 +623,92 @@ export default function ProfilesBots({ store, go }: Props) {
                   fontSize: 25,
                   fontWeight: 950,
                   flex: "0 0 auto",
+                  padding: 0,
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  position: "relative",
                 }}
-                aria-hidden
               >
-                CPU
-              </div>
+                {createAvatarPreview ? (
+                  <img
+                    src={createAvatarPreview}
+                    alt=""
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  "CPU"
+                )}
+              </button>
             </div>
 
             <div style={{ display: "grid", gap: 11 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0,1fr) auto",
+                  gap: 8,
+                  alignItems: "center",
+                  borderRadius: 13,
+                  border: `1px solid ${primary}44`,
+                  background: `${primary}0D`,
+                  padding: "9px 10px",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: "#fff", fontSize: 11.5, fontWeight: 900 }}>
+                    {t("bots.form.avatar.label", "Image de l’avatar")}
+                  </div>
+                  <div style={{ color: theme.textSoft, fontSize: 10, marginTop: 2 }}>
+                    {createAvatarFile
+                      ? createAvatarFile.name
+                      : t("bots.form.avatar.hint", "Importe une photo ou une image avant de créer le BOT.")}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  {createAvatarFile ? (
+                    <button
+                      type="button"
+                      onClick={() => setCreateAvatarFile(null)}
+                      style={{
+                        minHeight: 34,
+                        borderRadius: 11,
+                        border: `1px solid ${theme.borderSoft}`,
+                        background: "rgba(255,255,255,.035)",
+                        color: theme.textSoft,
+                        fontSize: 10,
+                        fontWeight: 850,
+                        cursor: "pointer",
+                        padding: "7px 9px",
+                      }}
+                    >
+                      {t("common.remove", "Retirer")}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAvatarPickerMode("create");
+                      setAvatarTargetBotId(null);
+                      setAvatarPickerOpen(true);
+                    }}
+                    style={{
+                      minHeight: 34,
+                      borderRadius: 11,
+                      border: `1px solid ${primary}99`,
+                      background: `${primary}16`,
+                      color: primary,
+                      fontSize: 10,
+                      fontWeight: 950,
+                      cursor: "pointer",
+                      padding: "7px 10px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {t("bots.form.avatar.import.short", "IMPORTER")}
+                  </button>
+                </div>
+              </div>
+
               <label style={{ display: "grid", gap: 5 }}>
                 <span style={{ color: "#fff", fontSize: 12, fontWeight: 850 }}>{t("bots.form.name.label", "Nom du BOT")}</span>
                 <input
@@ -681,7 +819,7 @@ export default function ProfilesBots({ store, go }: Props) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 11 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: primary, fontWeight: 950, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
-                    {t("bots.list.title", "BOTS CPU")} ({bots.length})
+                    {t("bots.list.title", "BOTS CPU")} ({filteredBots.length}{levelFilter !== "all" ? `/${bots.length}` : ""})
                   </div>
                   <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 2 }}>
                     {t("bots.list.gridHint", "9 BOTS par page · touche un BOT pour ouvrir sa fiche")}
@@ -692,18 +830,76 @@ export default function ProfilesBots({ store, go }: Props) {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-                {gridBots.map((bot) => (
-                  <BotGridCard
-                    key={bot.id}
-                    bot={bot}
-                    accent={primary}
-                    active={bot.id === selectedBot?.id}
-                    onClick={() => openBotDetail(bot)}
-                    t={t}
-                  />
-                ))}
-              </div>
+              <label
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto minmax(0,1fr)",
+                  gap: 9,
+                  alignItems: "center",
+                  marginBottom: 12,
+                  padding: "8px 9px",
+                  borderRadius: 13,
+                  border: `1px solid ${primary}44`,
+                  background: `${primary}0D`,
+                }}
+              >
+                <span
+                  style={{
+                    color: primary,
+                    fontSize: 10,
+                    fontWeight: 950,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.7,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {t("bots.filter.level", "Niveau")}
+                </span>
+                <select
+                  value={levelFilter}
+                  onChange={(event) => setLevelFilter(event.target.value as BotLevelFilter)}
+                  style={{ ...fieldStyle, minHeight: 36, padding: "7px 10px", fontSize: 11.5 }}
+                >
+                  <option value="all">{t("bots.filter.all", "Tous les niveaux")}</option>
+                  <option value="easy">{t("bots.level.easy", "Débutant")}</option>
+                  <option value="medium">{t("bots.level.medium", "Standard")}</option>
+                  <option value="strong">{t("bots.level.strong", "Fort")}</option>
+                  <option value="pro">{t("bots.level.pro", "Pro")}</option>
+                  <option value="legend">{t("bots.level.legend", "Légende")}</option>
+                </select>
+              </label>
+
+              {gridBots.length ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                  {gridBots.map((bot) => (
+                    <BotGridCard
+                      key={bot.id}
+                      bot={bot}
+                      accent={primary}
+                      active={bot.id === selectedBot?.id}
+                      onClick={() => openBotDetail(bot)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    minHeight: 130,
+                    display: "grid",
+                    placeItems: "center",
+                    textAlign: "center",
+                    color: theme.textSoft,
+                    fontSize: 11.5,
+                    lineHeight: 1.5,
+                    borderRadius: 14,
+                    border: `1px dashed ${theme.borderSoft}`,
+                    background: "rgba(255,255,255,.02)",
+                    padding: 14,
+                  }}
+                >
+                  {t("bots.filter.empty", "Aucun BOT ne correspond à ce niveau.")}
+                </div>
+              )}
 
               <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "76px 1fr 76px", gap: 9, alignItems: "center" }}>
                 <button
@@ -756,7 +952,7 @@ export default function ProfilesBots({ store, go }: Props) {
                 <button
                   type="button"
                   onClick={() => shiftSelected(-1)}
-                  disabled={bots.length <= 1}
+                  disabled={detailBots.length <= 1}
                   aria-label={t("bots.previous", "BOT précédent")}
                   style={{
                     width: 40,
@@ -767,19 +963,19 @@ export default function ProfilesBots({ store, go }: Props) {
                     color: theme.text,
                     fontSize: 20,
                     fontWeight: 950,
-                    cursor: bots.length <= 1 ? "default" : "pointer",
-                    opacity: bots.length <= 1 ? 0.42 : 1,
+                    cursor: detailBots.length <= 1 ? "default" : "pointer",
+                    opacity: detailBots.length <= 1 ? 0.42 : 1,
                   }}
                 >
                   ‹
                 </button>
                 <div style={{ textAlign: "center", color: theme.textSoft, fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>
-                  {t("bots.carousel.label", "BOT CPU")} {bots.length > 1 ? `(${selectedIndex + 1}/${bots.length})` : ""}
+                  {t("bots.carousel.label", "BOT CPU")} {detailBots.length > 1 ? `(${selectedIndex + 1}/${detailBots.length})` : ""}
                 </div>
                 <button
                   type="button"
                   onClick={() => shiftSelected(1)}
-                  disabled={bots.length <= 1}
+                  disabled={detailBots.length <= 1}
                   aria-label={t("bots.next", "BOT suivant")}
                   style={{
                     width: 40,
@@ -790,8 +986,8 @@ export default function ProfilesBots({ store, go }: Props) {
                     color: theme.text,
                     fontSize: 20,
                     fontWeight: 950,
-                    cursor: bots.length <= 1 ? "default" : "pointer",
-                    opacity: bots.length <= 1 ? 0.42 : 1,
+                    cursor: detailBots.length <= 1 ? "default" : "pointer",
+                    opacity: detailBots.length <= 1 ? 0.42 : 1,
                   }}
                 >
                   ›

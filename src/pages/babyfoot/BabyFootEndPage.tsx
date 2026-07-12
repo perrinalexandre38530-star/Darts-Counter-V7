@@ -8,6 +8,7 @@ import { History } from "../../lib/history";
 import { computeBabyFootRichStats } from "../../lib/babyfootRichStats";
 import { extractBabyFootPlayerStatsRows, resolveBabyFootRecord } from "../../lib/babyfootPlayerStats";
 import { babyFootPenaltyLossByTeam, deriveBabyFootScoreFromRecord } from "../../lib/babyfootScoreRules";
+import trophyCup from "../../ui_assets/trophy-cup.png";
 
 type Props = { go: (tab: any, params?: any) => void; store?: any; params?: any };
 type AnyMatch = Record<string, any>;
@@ -115,6 +116,15 @@ function fmtDuration(ms: any) {
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function fmtDurationFancy(ms: any) {
+  const total = Math.max(0, Math.floor(n(ms) / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}'${String(s).padStart(2, "0")}''`;
+  return `${m}'${String(s).padStart(2, "0")}''`;
 }
 
 function playerId(p: any) {
@@ -355,20 +365,66 @@ function InlineIcon({ kind, color = "currentColor", size = 22 }: { kind: string;
   return null;
 }
 
+function statLowerIsBetter(label: string) {
+  return ["Points encaissés", "Points perdus", "Demi dernière balle", "Pissettes refusées", "CSC"].includes(label);
+}
+
+function statBestSide(label: string, left: any, right: any) {
+  const ln = Number(String(left).replace("+", ""));
+  const rn = Number(String(right).replace("+", ""));
+  if (!Number.isFinite(ln) || !Number.isFinite(rn) || ln === rn) return null;
+  const lowerBetter = statLowerIsBetter(label);
+  if (lowerBetter) return ln < rn ? "left" : "right";
+  return ln > rn ? "left" : "right";
+}
+
 function buildNeonWidths(rows: any[]) {
-  const leftVals = rows.map(([, left]) => Math.abs(Number(String(left).replace("+", "")) || 0));
-  const rightVals = rows.map(([, , right]) => Math.abs(Number(String(right).replace("+", "")) || 0));
-  const maxLeft = Math.max(1, ...leftVals);
-  const maxRight = Math.max(1, ...rightVals);
-  return rows.map(([label, left, right]: any) => ({
+  const magnitudes = rows.map(([label, left, right]: any) => ({
     label,
     left,
     right,
-    leftW: `${Math.max(8, (Math.abs(Number(String(left).replace("+", "")) || 0) / maxLeft) * 100)}%`,
-    rightW: `${Math.max(8, (Math.abs(Number(String(right).replace("+", "")) || 0) / maxRight) * 100)}%`,
+    leftN: Math.abs(Number(String(left).replace("+", "")) || 0),
+    rightN: Math.abs(Number(String(right).replace("+", "")) || 0),
+  }));
+  const maxVal = Math.max(1, ...magnitudes.flatMap((row: any) => [row.leftN, row.rightN]));
+  return magnitudes.map((row: any) => ({
+    ...row,
+    leftW: `${Math.max(8, (row.leftN / maxVal) * 100)}%`,
+    rightW: `${Math.max(8, (row.rightN / maxVal) * 100)}%`,
+    bestSide: statBestSide(row.label, row.left, row.right),
   }));
 }
 
+
+
+function teamIdentityImage(teamName: string, players: any[], teamLogo?: string | null) {
+  return teamLogo || avatarOf((players || [])[0]) || null;
+}
+
+function TeamIdentityBadge({ theme, image, fallback, accent, size = 42, shape = "circle" }: any) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: shape === "round" ? 14 : 999, border: `1px solid ${accent}66`, overflow: "hidden", display: "grid", placeItems: "center", background: "rgba(255,255,255,.05)", boxShadow: `0 0 14px ${accent}33` }}>
+      {image ? <img src={image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontSize: Math.max(14, size * .34), fontWeight: 1100 }}>{String(fallback || "?").slice(0, 2).toUpperCase()}</span>}
+    </div>
+  );
+}
+
+function IconTextPill({ theme, icon, text, accent, image, faint = false }: any) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, borderRadius: 999, padding: "5px 10px", border: `1px solid ${accent}44`, background: faint ? "rgba(255,255,255,.03)" : `${accent}12`, color: theme.text }}>
+      {image ? <img src={image} alt="" style={{ width: 18, height: 18, objectFit: "contain", flex: "0 0 auto" }} /> : icon ? <span style={{ color: accent }}>{icon}</span> : null}
+      <span style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", fontSize: 11, fontWeight: 1000 }}>{text}</span>
+    </div>
+  );
+}
+
+function TeamMomentumIdentity({ theme, image, label, accent, align = "left" }: any) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: align === "right" ? "flex-end" : "flex-start", minWidth: 0 }}>
+      <TeamIdentityBadge theme={theme} image={image} fallback={label} accent={accent} size={36} shape={image && String(label || "").toUpperCase().startsWith("TEAM") ? "round" : "circle"} />
+    </div>
+  );
+}
 export default function BabyFootEndPage({ go, store, params }: Props) {
   const { theme } = useTheme();
   const requestedId = String(params?.matchId || params?.focusMatchId || params?.matchPayload?.id || params?.matchPayload?.matchId || "").trim();
@@ -517,20 +573,16 @@ export default function BabyFootEndPage({ go, store, params }: Props) {
             theme={theme}
             teamA={teamA}
             teamB={teamB}
+            teamALogo={payload?.teamALogoDataUrl || summary?.teamALogoDataUrl || null}
+            teamBLogo={payload?.teamBLogoDataUrl || summary?.teamBLogoDataUrl || null}
+            playersA={teamAPlayers}
+            playersB={teamBPlayers}
             scoreA={scoreA}
             scoreB={scoreB}
             timelineRows={timelineRows}
             durationMs={durationMs}
           />
         )}
-      </section>
-
-      <section style={{ ...panel(theme), marginTop: 12 }}>
-        <div style={{ ...sectionTitle(theme), display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <span>Journal des actions</span>
-          <span style={{ fontSize: 11, color: theme.primary }}>{timelineRows.length} action{timelineRows.length > 1 ? "s" : ""}</span>
-        </div>
-        <MatchTimelineDetails theme={theme} timelineRows={timelineRows} />
       </section>
 
       <section style={{ ...panel(theme), marginTop: 12 }}>
@@ -581,7 +633,7 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
   const isTeamMode = String(mode || "").includes("2V2") || (Array.isArray(playersA) && playersA.length > 1) || (Array.isArray(playersB) && playersB.length > 1);
   const leftBackdrop = payload?.teamALogoDataUrl || summary?.teamALogoDataUrl || avatarOf((playersA || [])[0]) || null;
   const rightBackdrop = payload?.teamBLogoDataUrl || summary?.teamBLogoDataUrl || avatarOf((playersB || [])[0]) || null;
-  const color = scoreA === scoreB ? "#ffd76a" : scoreA > scoreB ? "#78ff9f" : "#ff70bd";
+  const winnerAccent = scoreA === scoreB ? "#ffd76a" : scoreA > scoreB ? "#78ff9f" : "#ff70bd";
   const diff = scoreA - scoreB;
   const setsEnabled = !!(summary?.setsEnabled ?? payload?.setsEnabled);
   const bestOf = Math.max(1, n(summary?.setsBestOf ?? payload?.setsBestOf, 1));
@@ -590,48 +642,47 @@ function ScoreHeroCard({ theme, teamA, teamB, playersA, playersB, scoreA, scoreB
   const needed = Math.max(1, Math.floor(bestOf / 2) + 1);
   const indicatorSlots = Math.max(needed, bestOf);
   const setSummaries = setsEnabled ? buildSetSummaries(events, { ...payload, summary }) : [];
+  const winnerSide = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
   return (
-    <div style={{ position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid ${color}44`, background: `linear-gradient(135deg,${color}10,rgba(255,255,255,.03) 42%,rgba(0,0,0,.34))`, boxShadow: `0 16px 36px rgba(0,0,0,.34), inset 0 0 30px ${color}10` }}>
-      {leftBackdrop ? <div aria-hidden="true" style={{ position: "absolute", left: -10, top: "50%", transform: "translateY(-50%)", opacity: .26, pointerEvents: "none" }}><img src={leftBackdrop} alt="" style={{ width: 180, height: 180, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 32 : 999 }} /></div> : null}
-      {rightBackdrop ? <div aria-hidden="true" style={{ position: "absolute", right: -10, top: "50%", transform: "translateY(-50%)", opacity: .24, pointerEvents: "none" }}><img src={rightBackdrop} alt="" style={{ width: 180, height: 180, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 32 : 999 }} /></div> : null}
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 24, border: `1px solid ${winnerAccent}44`, background: `linear-gradient(135deg,${winnerAccent}10,rgba(255,255,255,.03) 42%,rgba(0,0,0,.34))`, boxShadow: `0 16px 36px rgba(0,0,0,.34), inset 0 0 30px ${winnerAccent}10` }}>
+      {leftBackdrop ? <div aria-hidden="true" style={{ position: "absolute", left: -8, top: "50%", transform: "translateY(-50%)", opacity: .24, pointerEvents: "none" }}><img src={leftBackdrop} alt="" style={{ width: 170, height: 170, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 30 : 999 }} /></div> : null}
+      {rightBackdrop ? <div aria-hidden="true" style={{ position: "absolute", right: -8, top: "50%", transform: "translateY(-50%)", opacity: .2, pointerEvents: "none" }}><img src={rightBackdrop} alt="" style={{ width: 170, height: 170, objectFit: isTeamMode ? "contain" : "cover", borderRadius: isTeamMode ? 30 : 999 }} /></div> : null}
       <div style={{ position: "relative", padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ color: "#07100b", background: color, borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 1000, letterSpacing: .6 }}>{scoreA === scoreB ? "NUL" : "VICTOIRE"}</span>
-            <span style={{ color, border: `1px solid ${color}55`, background: `${color}12`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000 }}>{mode}</span>
+            <span style={{ color: "#07100b", background: scoreA === scoreB ? "#ffd76a" : "#7dffab", borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 1000, letterSpacing: .6 }}>{scoreA === scoreB ? "NUL" : "VICTOIRE"}</span>
+            <span style={{ color: winnerAccent, border: `1px solid ${winnerAccent}55`, background: `${winnerAccent}12`, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000 }}>{mode}</span>
           </div>
           <div style={{ color: "rgba(255,255,255,.58)", fontSize: 10, fontWeight: 900, textAlign: "right" }}>{scoreRowTime(finishedAt)}</div>
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center" }}>
           <div style={{ minWidth: 0, display: "grid", gap: 6 }}>
-            <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(18px, 4.8vw, 28px)" : "clamp(18px, 5vw, 30px)", fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamA}</div>
-            {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : <div style={{ height: 12 }} />}
+            <div style={{ color: theme.primary, fontSize: isTeamMode ? "clamp(16px, 4.4vw, 24px)" : "clamp(16px, 4.6vw, 25px)", fontWeight: 1000, lineHeight: 1.05, textShadow: `0 0 12px ${theme.primary}55`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{teamA}</div>
+            {setsEnabled ? <SetDots color={theme.primary} won={setsA} total={indicatorSlots} align="left" /> : <div style={{ height: 10 }} />}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 7, justifySelf: "center" }}>
             <ScoreKpiMini value={scoreA} color={theme.primary} />
-            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 26, fontWeight: 1000, lineHeight: 1 }}>—</div>
+            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 24, fontWeight: 1000, lineHeight: 1 }}>—</div>
             <ScoreKpiMini value={scoreB} color="#ff70bd" />
           </div>
 
           <div style={{ minWidth: 0, display: "grid", gap: 6, justifyItems: "end" }}>
-            <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(18px, 4.8vw, 28px)" : "clamp(18px, 5vw, 30px)", fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{teamB}</div>
-            {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : <div style={{ height: 12 }} />}
+            <div style={{ color: "#ff70bd", fontSize: isTeamMode ? "clamp(16px, 4.4vw, 24px)" : "clamp(16px, 4.6vw, 25px)", fontWeight: 1000, lineHeight: 1.05, textAlign: "right", textShadow: "0 0 12px rgba(255,89,176,.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{teamB}</div>
+            {setsEnabled ? <SetDots color="#ff70bd" won={setsB} total={indicatorSlots} align="right" /> : <div style={{ height: 10 }} />}
           </div>
         </div>
 
-        <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ color: "rgba(255,255,255,.9)", fontSize: 12, fontWeight: 900 }}>
-            <span style={{ color: theme.primary }}>Vainqueur</span> · {winnerLabel}
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+            <IconTextPill theme={theme} image={trophyCup} text={winnerLabel} accent={winnerSide === "B" ? "#ff70bd" : theme.primary} />
+            <div style={{ color: "rgba(255,255,255,.78)", fontSize: 11, fontWeight: 900 }}>Temps de jeu : {fmtDurationFancy(durationMs)}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850 }}>{fmtDuration(durationMs)}</span>
-            <div style={{ borderRadius: 14, padding: "6px 10px", border: `1px solid ${color}66`, background: `radial-gradient(circle at 50% 25%,${color}20,rgba(0,0,0,.18))` }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ color: "rgba(255,255,255,.6)", fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>DIFF</span>
-                <span style={{ color, fontSize: 18, fontWeight: 1000 }}>{diff >= 0 ? `+${diff}` : String(diff)}</span>
-              </div>
+          <div style={{ justifySelf: "end", borderRadius: 14, padding: "6px 10px", border: `1px solid ${winnerAccent}66`, background: `radial-gradient(circle at 50% 25%,${winnerAccent}20,rgba(0,0,0,.18))` }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ color: "rgba(255,255,255,.6)", fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>DIFF</span>
+              <span style={{ color: winnerAccent, fontSize: 16, fontWeight: 1000 }}>{diff >= 0 ? `+${diff}` : String(diff)}</span>
             </div>
           </div>
         </div>
@@ -674,24 +725,21 @@ function SetSummaryTable({ theme, teamA, teamB, rows }: any) {
 }
 
 function ScoreKpiMini({ value, color }: { value: number; color: string }) {
-  return <div style={{ minWidth: 68, borderRadius: 18, padding: "12px 10px", border: `1px solid ${color}66`, background: `linear-gradient(180deg,${color}18,rgba(255,255,255,.04))`, boxShadow: `0 0 16px ${color}22 inset`, textAlign: "center" }}><div style={{ color, fontSize: 46, lineHeight: .95, fontWeight: 1000, textShadow: `0 0 14px ${color}50`, fontVariantNumeric: "tabular-nums" }}>{value}</div></div>;
+  return <div style={{ minWidth: 58, borderRadius: 16, padding: "10px 10px", border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}16,rgba(255,255,255,.04))`, boxShadow: `0 0 14px ${color}20 inset`, textAlign: "center" }}><div style={{ color, fontSize: 38, lineHeight: .95, fontWeight: 1000, textShadow: `0 0 12px ${color}44`, fontVariantNumeric: "tabular-nums" }}>{value}</div></div>;
 }
 
-function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durationMs }: any) {
+function MomentumView({ theme, teamA, teamB, teamALogo, teamBLogo, playersA, playersB, scoreA, scoreB, timelineRows, durationMs }: any) {
+  const [subView, setSubView] = React.useState<"momentum" | "journal">("momentum");
   const entries = buildMomentumEntries(timelineRows);
-  if (!entries.length) {
+  if (!entries.length && !timelineRows.length) {
     return (
       <div style={{ ...small(theme), padding: 12, borderRadius: 14, border: `1px dashed ${theme.borderSoft ?? "rgba(255,255,255,.18)"}`, background: "rgba(255,255,255,.025)" }}>
-        Aucun momentum n’est disponible sur cette sauvegarde. Consulte l’onglet Détails pour la liste des actions si elle existe.
+        Aucun momentum n’est disponible sur cette sauvegarde.
       </div>
     );
   }
 
-  const totalMs = Math.max(
-    1000,
-    n(durationMs, 0),
-    ...entries.map((row: any) => n(row?.elapsedMs, 0))
-  );
+  const totalMs = Math.max(1000, n(durationMs, 0), ...entries.map((row: any) => n(row?.elapsedMs, 0)), ...timelineRows.map((row: any) => n(row?.elapsedMs, 0)));
   const ticks = buildTimeTicks(totalMs, 5);
   const baseY = 122;
   const chartH = 260;
@@ -726,75 +774,103 @@ function MomentumView({ theme, teamA, teamB, scoreA, scoreB, timelineRows, durat
     return { runLength, mountain };
   });
 
+  const tabBtn = (active: boolean): React.CSSProperties => ({
+    borderRadius: 16,
+    padding: "12px 10px",
+    border: `1px solid ${active ? theme.primary : theme.borderSoft ?? "rgba(255,255,255,.14)"}`,
+    background: active ? `${theme.primary}18` : "rgba(255,255,255,.04)",
+    color: active ? theme.primary : theme.text,
+    fontWeight: 1100,
+    cursor: "pointer",
+    textTransform: "uppercase",
+    letterSpacing: .5,
+  });
+
+  const aImage = teamIdentityImage(teamA, playersA, teamALogo);
+  const bImage = teamIdentityImage(teamB, playersB, teamBLogo);
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: theme.primary, fontWeight: 1100, fontSize: 14, textShadow: `0 0 12px ${theme.primary}55`, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{teamA}</div>
-        </div>
-        <div style={{ padding: "8px 12px", borderRadius: 16, border: `1px solid ${theme.primary}55`, background: "rgba(255,255,255,.035)", fontWeight: 1100, fontSize: 22, color: theme.text, boxShadow: `0 0 22px ${theme.primary}18 inset` }}>{scoreA} - {scoreB}</div>
-        <div style={{ minWidth: 0, textAlign: "right" }}>
-          <div style={{ color: "#ff59b0", fontWeight: 1100, fontSize: 14, textShadow: "0 0 12px rgba(255,89,176,.45)", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{teamB}</div>
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+        <button type="button" onClick={() => setSubView("momentum")} style={tabBtn(subView === "momentum")}>MOMENTUM</button>
+        <button type="button" onClick={() => setSubView("journal")} style={tabBtn(subView === "journal")}>JOURNAL</button>
       </div>
 
-      <div style={{ borderRadius: 18, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "linear-gradient(180deg, rgba(5,16,34,.92), rgba(2,8,18,.86))", padding: 12, boxShadow: `0 0 26px ${theme.primary}12 inset` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-          <div style={{ color: theme.text, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase" }}>Momentum</div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, fontWeight: 900, color: theme.textSoft }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: theme.primary, boxShadow: `0 0 10px ${theme.primary}` }} />{teamA}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: "#ff59b0", boxShadow: "0 0 10px rgba(255,89,176,.8)" }} />{teamB}</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: "#ffd76a", boxShadow: "0 0 10px rgba(255,215,106,.8)" }} />Demi pénalisant</span>
+      {subView === "journal" ? (
+        <div style={{ borderRadius: 18, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "linear-gradient(180deg, rgba(5,16,34,.92), rgba(2,8,18,.86))", padding: 12, boxShadow: `0 0 26px ${theme.primary}12 inset` }}>
+          <div style={{ ...sectionTitle(theme), display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
+            <span>Journal des actions</span>
+            <span style={{ fontSize: 11, color: theme.primary }}>{timelineRows.length} action{timelineRows.length > 1 ? "s" : ""}</span>
           </div>
+          <MatchTimelineDetails theme={theme} timelineRows={timelineRows} />
         </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+            <TeamMomentumIdentity theme={theme} image={aImage} label={teamA} accent={theme.primary} align="left" />
+            <div style={{ padding: "8px 12px", borderRadius: 16, border: `1px solid ${theme.primary}55`, background: "rgba(255,255,255,.035)", fontWeight: 1100, fontSize: 22, color: theme.text, boxShadow: `0 0 22px ${theme.primary}18 inset` }}>{scoreA} - {scoreB}</div>
+            <TeamMomentumIdentity theme={theme} image={bImage} label={teamB} accent="#ff59b0" align="right" />
+          </div>
 
-        <div style={{ position: "relative", height: chartH, overflow: "hidden", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), transparent 30%, transparent 70%, rgba(0,0,0,.18))" }} />
-          {periods.map((period: any) => (
-            <div key={period.key} style={{ position: "absolute", left: `${xPct(period.from)}%`, width: `${Math.max(0, (period.to - period.from) * chartScalePct)}%`, top: 0, bottom: 0, background: `linear-gradient(180deg, ${period.color}12, transparent 42%, transparent 58%, ${period.color}10)`, borderLeft: `1px solid ${period.color}22` }} />
-          ))}
-          <div style={{ position: "absolute", left: 12, right: 12, top: baseY, height: 2, background: "linear-gradient(90deg, rgba(69,184,255,.65), rgba(255,255,255,.45), rgba(255,89,176,.65))", boxShadow: `0 0 10px ${theme.primary}33` }} />
-          {ticks.map((tick: any) => (
-            <React.Fragment key={tick.label}>
-              <div style={{ position: "absolute", top: 18, bottom: 24, left: `${xPct(tick.ratio)}%`, width: 1, background: `${periodFor(tick.ratio).color}33` }} />
-              <div style={{ position: "absolute", bottom: 7, left: `${xPct(tick.ratio)}%`, transform: "translateX(-50%)", fontSize: 10, fontWeight: 1000, color: periodFor(tick.ratio).color, textShadow: `0 0 8px ${periodFor(tick.ratio).color}66` }}>{tick.label}</div>
-            </React.Fragment>
-          ))}
-          {entries.map((row: any, index: number) => {
-            const ratio = Math.max(0, Math.min(1, n(row.elapsedMs, 0) / totalMs));
-            const x = xPct(ratio);
-            const isPenalty = row.type === "demi" && row.penalty > 0;
-            const team = row.team === "B" ? "B" : "A";
-            const sideAccent = isPenalty ? "#ffd76a" : team === "B" ? "#ff59b0" : theme.primary;
-            const period = periodFor(ratio);
-            const accent = isPenalty ? "#ffd76a" : period.color;
-            const run = runMeta[index] || { runLength: 1, mountain: 0 };
-            const weight = Math.max(1, n(row.weight, 1));
-            const barHeight = Math.min(96, 24 + (run.runLength > 1 ? 22 : 0) + run.mountain * 48 + Math.min(22, (weight - 1) * 12));
-            const barWidth = Math.max(5, Math.min(14, 7 + Math.min(6, weight * 2)));
-            const bottom = chartH - baseY;
-            const top = baseY;
-            return (
-              <div key={row.key || index} title={`${row.time} · ${row.label} · ${row.score}`} style={{ position: "absolute", left: `calc(${x}% - ${Math.round(barWidth / 2)}px)`, insetBlock: 0 }}>
-                <div style={{ position: "absolute", left: 0, width: barWidth, borderRadius: 999, background: `linear-gradient(180deg, ${sideAccent}, ${accent}cc)`, boxShadow: `0 0 14px ${sideAccent}`, opacity: .96, ...(team === "A" ? { bottom: `${bottom}px`, height: barHeight } : { top: `${top}px`, height: barHeight }) }} />
-                {isPenalty ? <div style={{ position: "absolute", left: `calc(50% - 11px)`, top: team === "A" ? baseY - barHeight - 20 : baseY + barHeight + 2, width: 22, height: 22, lineHeight: "22px", borderRadius: 999, border: `1px solid ${sideAccent}99`, background: "rgba(4,9,18,.88)", color: sideAccent, textAlign: "center", fontSize: 11, fontWeight: 1100, boxShadow: `0 0 12px ${sideAccent}33` }}>½</div> : null}
+          <div style={{ borderRadius: 18, border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.14)"}`, background: "linear-gradient(180deg, rgba(5,16,34,.92), rgba(2,8,18,.86))", padding: 12, boxShadow: `0 0 26px ${theme.primary}12 inset` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+              <div style={{ color: theme.text, fontWeight: 1000, letterSpacing: .9, textTransform: "uppercase" }}>Momentum</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, fontWeight: 900, color: theme.textSoft }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: theme.primary, boxShadow: `0 0 10px ${theme.primary}` }} />{teamA}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: "#ff59b0", boxShadow: "0 0 10px rgba(255,89,176,.8)" }} />{teamB}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 999, background: "#ffd76a", boxShadow: "0 0 10px rgba(255,215,106,.8)" }} />Demi pénalisant</span>
               </div>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
-          {periodCounts.map((period: any) => (
-            <div key={period.key} style={{ display: "grid", gridTemplateColumns: "78px minmax(0,1fr) 42px", gap: 8, alignItems: "center", fontSize: 10, fontWeight: 900 }}>
-              <div style={{ color: period.color }}><div style={{ fontSize: 11, fontWeight: 1100 }}>{period.label}</div><div style={{ color: theme.textSoft }}>{period.short}</div></div>
-              <div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}>
-                <div style={{ width: `${entries.length ? (period.count / entries.length) * 100 : 0}%`, height: "100%", background: period.color, boxShadow: `0 0 10px ${period.color}66` }} />
-              </div>
-              <div style={{ color: period.color, textAlign: "right", fontSize: 12, fontWeight: 1100 }}>{period.count}</div>
             </div>
-          ))}
-        </div>
-      </div>
+
+            <div style={{ position: "relative", height: chartH, overflow: "hidden", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015))", border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,.12)"}` }}>
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.16), transparent 30%, transparent 70%, rgba(0,0,0,.18))" }} />
+              {periods.map((period: any) => (
+                <div key={period.key} style={{ position: "absolute", left: `${xPct(period.from)}%`, width: `${Math.max(0, (period.to - period.from) * chartScalePct)}%`, top: 0, bottom: 0, background: `linear-gradient(180deg, ${period.color}12, transparent 42%, transparent 58%, ${period.color}10)`, borderLeft: `1px solid ${period.color}22` }} />
+              ))}
+              <div style={{ position: "absolute", left: 12, right: 12, top: baseY, height: 2, background: "linear-gradient(90deg, rgba(69,184,255,.65), rgba(255,255,255,.45), rgba(255,89,176,.65))", boxShadow: `0 0 10px ${theme.primary}33` }} />
+              {ticks.map((tick: any) => (
+                <React.Fragment key={tick.label}>
+                  <div style={{ position: "absolute", top: 18, bottom: 24, left: `${xPct(tick.ratio)}%`, width: 1, background: `${periodFor(tick.ratio).color}33` }} />
+                  <div style={{ position: "absolute", bottom: 7, left: `${xPct(tick.ratio)}%`, transform: "translateX(-50%)", fontSize: 10, fontWeight: 1000, color: periodFor(tick.ratio).color, textShadow: `0 0 8px ${periodFor(tick.ratio).color}66` }}>{tick.label}</div>
+                </React.Fragment>
+              ))}
+              {entries.map((row: any, index: number) => {
+                const ratio = Math.max(0, Math.min(1, n(row.elapsedMs, 0) / totalMs));
+                const x = xPct(ratio);
+                const isPenalty = row.type === "demi" && row.penalty > 0;
+                const team = row.team === "B" ? "B" : "A";
+                const sideAccent = isPenalty ? "#ffd76a" : team === "B" ? "#ff59b0" : theme.primary;
+                const period = periodFor(ratio);
+                const accent = isPenalty ? "#ffd76a" : period.color;
+                const run = runMeta[index] || { runLength: 1, mountain: 0 };
+                const weight = Math.max(1, n(row.weight, 1));
+                const barHeight = Math.min(96, 24 + (run.runLength > 1 ? 22 : 0) + run.mountain * 48 + Math.min(22, (weight - 1) * 12));
+                const barWidth = Math.max(5, Math.min(14, 7 + Math.min(6, weight * 2)));
+                const bottom = chartH - baseY;
+                const top = baseY;
+                return (
+                  <div key={row.key || index} title={`${row.time} · ${row.label} · ${row.score}`} style={{ position: "absolute", left: `calc(${x}% - ${Math.round(barWidth / 2)}px)`, insetBlock: 0 }}>
+                    <div style={{ position: "absolute", left: 0, width: barWidth, borderRadius: 999, background: `linear-gradient(180deg, ${sideAccent}, ${accent}cc)`, boxShadow: `0 0 14px ${sideAccent}`, opacity: .96, ...(team === "A" ? { bottom: `${bottom}px`, height: barHeight } : { top: `${top}px`, height: barHeight }) }} />
+                    {isPenalty ? <div style={{ position: "absolute", left: `calc(50% - 11px)`, top: team === "A" ? baseY - barHeight - 20 : baseY + barHeight + 2, width: 22, height: 22, lineHeight: "22px", borderRadius: 999, border: `1px solid ${sideAccent}99`, background: "rgba(4,9,18,.88)", color: sideAccent, textAlign: "center", fontSize: 11, fontWeight: 1100, boxShadow: `0 0 12px ${sideAccent}33` }}>½</div> : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+              {periodCounts.map((period: any) => (
+                <div key={period.key} style={{ display: "grid", gridTemplateColumns: "78px minmax(0,1fr) 42px", gap: 8, alignItems: "center", fontSize: 10, fontWeight: 900 }}>
+                  <div style={{ color: period.color }}><div style={{ fontSize: 11, fontWeight: 1100 }}>{period.label}</div><div style={{ color: theme.textSoft }}>{period.short}</div></div>
+                  <div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}>
+                    <div style={{ width: `${entries.length ? (period.count / entries.length) * 100 : 0}%`, height: "100%", background: period.color, boxShadow: `0 0 10px ${period.color}66` }} />
+                  </div>
+                  <div style={{ color: period.color, textAlign: "right", fontSize: 12, fontWeight: 1100 }}>{period.count}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -869,19 +945,17 @@ function GlobalStatsView({ theme, teamA, teamB, playersA, playersB, scoreA, scor
           <TeamHeaderMini theme={theme} name={teamB} players={playersB} align="right" />
         </div>
         {neonRows.map((row: any, index: number) => {
-          const ln = Number(String(row.left).replace("+", ""));
-          const rn = Number(String(row.right).replace("+", ""));
-          const leftBest = Number.isFinite(ln) && Number.isFinite(rn) && ln > rn;
-          const rightBest = Number.isFinite(ln) && Number.isFinite(rn) && rn > ln;
+          const leftBest = row.bestSide === "left";
+          const rightBest = row.bestSide === "right";
           return (
             <div key={row.label} style={{ display: "grid", gridTemplateColumns: "minmax(70px,1fr) minmax(110px,1.15fr) minmax(70px,1fr)", alignItems: "center", minHeight: 40, borderTop: index ? "1px solid rgba(255,255,255,.06)" : "none" }}>
               <div style={{ position: "relative", padding: "8px 10px 8px 16px", textAlign: "left", fontWeight: 1100, color: leftBest ? theme.primary : theme.text }}>
-                <div style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", width: `calc(${row.leftW} - 8px)`, height: 2, background: `linear-gradient(90deg, transparent, ${theme.primary})`, boxShadow: `0 0 12px ${theme.primary}` }} />
+                {leftBest ? <div style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", width: `calc(${row.leftW} - 8px)`, height: 2, background: `linear-gradient(90deg, transparent, ${theme.primary})`, boxShadow: `0 0 12px ${theme.primary}` }} /> : null}
                 <span style={{ position: "relative", zIndex: 1 }}>{row.left}</span>
               </div>
               <div style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, fontWeight: 900, color: theme.textSoft, lineHeight: 1.1 }}>{row.label}</div>
               <div style={{ position: "relative", padding: "8px 16px 8px 10px", textAlign: "right", fontWeight: 1100, color: rightBest ? "#ff70bd" : theme.text }}>
-                <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: `calc(${row.rightW} - 8px)`, height: 2, background: "linear-gradient(90deg, #ff70bd, transparent)", boxShadow: "0 0 12px rgba(255,89,176,.9)" }} />
+                {rightBest ? <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: `calc(${row.rightW} - 8px)`, height: 2, background: "linear-gradient(90deg, #ff70bd, transparent)", boxShadow: "0 0 12px rgba(255,89,176,.9)" }} /> : null}
                 <span style={{ position: "relative", zIndex: 1 }}>{row.right}</span>
               </div>
             </div>
@@ -896,13 +970,13 @@ function IndividualStatsView({ theme, team, setTeam, teamA, teamB, rows }: any) 
   const toggle = () => setTeam(team === "A" ? "B" : "A");
   const teamName = team === "A" ? teamA : teamB;
   const accent = team === "A" ? theme.primary : "#ff59b0";
+  const heroRow = rows[0];
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) 44px", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <button type="button" onClick={toggle} style={arrowBtn(theme)}>‹</button>
-        <div style={{ minWidth: 0, textAlign: "center" }}>
-          <div style={{ fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>ÉQUIPE {team}</div>
-          <div style={{ color: accent, fontWeight: 1100, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textShadow: `0 0 12px ${accent}55` }}>{teamName}</div>
+        <div style={{ minWidth: 0, display: "flex", justifyContent: "center" }}>
+          <TeamIdentityBadge theme={theme} image={heroRow?.avatar || null} fallback={heroRow?.name || teamName} accent={accent} size={52} />
         </div>
         <button type="button" onClick={toggle} style={arrowBtn(theme)}>›</button>
       </div>
@@ -919,19 +993,37 @@ function IndividualStatsView({ theme, team, setTeam, teamA, teamB, rows }: any) 
 }
 
 function PlayerStatsCard({ theme, row, accent }: any) {
-  const stats = [
-    ["Points", n(row.points ?? row.goals)],
-    ["AV", n(row.goalAv ?? row.av)],
-    ["DEF", n(row.goalDef ?? row.def)],
-    ["GB", n(row.goalGb ?? row.gb)],
-    ["Demi", n(row.demi)],
-    ["Bonus demi", n(row.demiBonus ?? row.ptsDemi)],
-    ["Gamelle", n(row.gamelle)],
-    ["Pêche off.", n(row.pecheOff)],
-    ["Pêche déf.", n(row.pecheDef)],
-    ["Pissette", `${n(row.pissetteValid)}/${n(row.pissetteRefused)}`],
-    ["CSC", n(row.csc ?? row.ownGoals)],
-    ["Parachute", n(row.parachute)],
+  const groups = [
+    {
+      key: "off",
+      title: "Offensif",
+      items: [
+        ["Points", n(row.points ?? row.goals)],
+        ["AV", n(row.goalAv ?? row.av)],
+        ["GB", n(row.goalGb ?? row.gb)],
+        ["Pêche off.", n(row.pecheOff)],
+      ],
+    },
+    {
+      key: "def",
+      title: "Défensif",
+      items: [
+        ["DEF", n(row.goalDef ?? row.def)],
+        ["Pêche déf.", n(row.pecheDef)],
+        ["Parachute", n(row.parachute)],
+        ["CSC", n(row.csc ?? row.ownGoals)],
+      ],
+    },
+    {
+      key: "pen",
+      title: "Pénalisant / divers",
+      items: [
+        ["Demi", n(row.demi)],
+        ["Bonus demi", n(row.demiBonus ?? row.ptsDemi)],
+        ["Gamelle", n(row.gamelle)],
+        ["Pissette", `${n(row.pissetteValid)}/${n(row.pissetteRefused)}`],
+      ],
+    },
   ];
   return (
     <div style={{ borderRadius: 17, padding: 11, border: `1px solid ${accent}4d`, background: `linear-gradient(180deg, ${accent}10, rgba(255,255,255,.025))` }}>
@@ -944,11 +1036,18 @@ function PlayerStatsCard({ theme, row, accent }: any) {
           <div style={{ marginTop: 3, fontSize: 10, color: theme.textSoft, fontWeight: 900 }}>{row.collective ? "ANCIENNE PARTIE · NON ATTRIBUÉ" : n(row.wins) ? "VICTOIRE" : n(row.losses) ? "DÉFAITE" : "MATCH NUL"}</div>
         </div>
       </div>
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
-        {stats.map(([label, value]) => (
-          <div key={label} style={{ minWidth: 0, borderRadius: 12, padding: "7px 6px", background: "rgba(0,0,0,.20)", border: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}>
-            <div style={{ fontSize: 9, color: theme.textSoft, fontWeight: 900, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{label}</div>
-            <div style={{ marginTop: 2, color: accent, fontSize: 16, fontWeight: 1100 }}>{value}</div>
+      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+        {groups.map((group: any) => (
+          <div key={group.key}>
+            <div style={{ marginBottom: 6, color: theme.textSoft, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .7 }}>{group.title}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+              {group.items.map(([label, value]: any) => (
+                <div key={label} style={{ minWidth: 0, borderRadius: 12, padding: "8px 6px", background: "rgba(0,0,0,.20)", border: "1px solid rgba(255,255,255,.06)", textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: theme.textSoft, fontWeight: 900, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{label}</div>
+                  <div style={{ marginTop: 2, color: accent, fontSize: 16, fontWeight: 1100 }}>{value}</div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
