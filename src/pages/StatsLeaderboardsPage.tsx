@@ -20,6 +20,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useSport } from "../contexts/SportContext";
 import ProfileAvatar from "../components/ProfileAvatar";
+import RankingsTickerHeader from "../components/RankingsTickerHeader";
 import { History } from "../lib/history";
 import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territories/territoriesStats";
 // Optionnel (si tu l’as dans ton projet). On n’en dépend pas pour éviter de casser.
@@ -1833,7 +1834,7 @@ function isBotRow(row: any, botsMap: Record<string, any>, profileIds: Set<string
 
 // =============================================================
 
-export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
+export default function StatsLeaderboardsPage({ store, go, sportOverride }: Props) {
   const { sport } = useSport();
 
   const inferredHistorySport = React.useMemo(() => {
@@ -2139,36 +2140,16 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
         color: theme.text,
       }}
     >
-      {/* HEADER (sans bouton retour) */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          marginBottom: 10,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontWeight: 900,
-              letterSpacing: 0.9,
-              textTransform: "uppercase",
-              color: theme.primary,
-              fontSize: 20,
-              textShadow: `0 0 14px ${theme.primary}66`,
-              marginBottom: 4,
-            }}
-          >
-            {t("stats.leaderboards.titleMain", "CLASSEMENTS")}
-          </div>
-          <div style={{ fontSize: 12, lineHeight: 1.3, color: theme.textSoft }}>
-            Classements globaux par mode de jeu et par stat.
-          </div>
-        </div>
+      <div style={{ width: "100%", maxWidth: 520, marginBottom: 10 }}>
+        <RankingsTickerHeader
+          onBack={() => go?.("stats")}
+          infoContent={
+            langAny?.lang === "fr"
+              ? "Classements globaux du sport actif. Choisis la source locale ou Online, le mode de jeu, la période et la statistique utilisée pour trier le classement."
+              : "Global rankings for the active sport. Choose the local or Online source, game mode, period and statistic used to sort the rankings."
+          }
+          marginBottom={0}
+        />
       </div>
 
       {/* CARD : SCOPE + MODE */}

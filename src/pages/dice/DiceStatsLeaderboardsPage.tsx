@@ -11,6 +11,7 @@ import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import RankingsTickerHeader from "../../components/RankingsTickerHeader";
 
 import type { Store } from "../../lib/types";
 import { getDiceMatches, aggregatePlayers } from "../../lib/diceStats";
@@ -88,30 +89,11 @@ export default function DiceStatsLeaderboardsPage({ store, go }: Props) {
   return (
     <div className="page" style={{ minHeight: "100vh", background: theme.bg, color: theme.text }}>
       <div style={{ padding: 12, maxWidth: 560, margin: "0 auto", paddingBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <BackDot onClick={() => go("dice_stats_shell")} />
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontWeight: 900,
-                letterSpacing: 0.8,
-                textTransform: "uppercase",
-                color: theme.primary,
-                textShadow: `0 0 14px ${theme.primary}66`,
-                fontSize: 16,
-              }}
-            >
-              {t("dice.leaderboards.title", "DICE — CLASSEMENTS")}
-            </div>
-            <div style={{ fontSize: 11.5, color: theme.textSoft, marginTop: 2 }}>
-              {t("dice.leaderboards.subtitle", "Classements globaux Dice (historique local).")}
-            </div>
-          </div>
-          <InfoDot
-            title={t("dice.leaderboards.infoTitle", "Classements")}
-            lines={[t("dice.leaderboards.info", "Tri par métrique — même rendu que Darts, adapté Dice.")]}
-          />
-        </div>
+        <RankingsTickerHeader
+          onBack={() => go("stats")}
+          infoContent={t("dice.leaderboards.info", "Tri par métrique — classement global adapté aux jeux de dés.")}
+          marginBottom={12}
+        />
 
         {/* Metric selector (Darts-like pill) */}
         <div

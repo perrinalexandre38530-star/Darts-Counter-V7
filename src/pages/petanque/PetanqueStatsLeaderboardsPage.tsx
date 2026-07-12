@@ -12,6 +12,7 @@ import * as React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import RankingsTickerHeader from "../../components/RankingsTickerHeader";
 
 import {
   aggregatePetanquePlayers,
@@ -93,7 +94,7 @@ function getInitials(name: string) {
   return (a + b).toUpperCase();
 }
 
-export default function PetanqueStatsLeaderboardsPage({ params }: Props) {
+export default function PetanqueStatsLeaderboardsPage({ go, params }: Props) {
   const { theme } = useTheme();
   const langAny: any = useLang();
 
@@ -258,46 +259,16 @@ export default function PetanqueStatsLeaderboardsPage({ params }: Props) {
         color: theme.text,
       }}
     >
-      {/* HEADER (même esprit que StatsLeaderboardsPage darts) */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          marginBottom: 10,
-          padding: 14,
-          borderRadius: 20,
-          border: `1px solid ${theme.borderSoft}`,
-          background: `linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02))`,
-          boxShadow: `0 0 0 1px rgba(0,0,0,.25), 0 8px 30px rgba(0,0,0,.35)`,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: 0.6 }}>
-              {t("petanque.leaderboards.title", "CLASSEMENTS")}
-            </div>
-            <div style={{ fontSize: 12, lineHeight: 1.3, color: theme.textSoft }}>
-              {t("petanque.leaderboards.subtitle", "Classements Pétanque — Joueurs / Équipes / Duos.")}
-            </div>
-          </div>
-
-          <div
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${theme.borderSoft}`,
-              color: theme.primary,
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-              boxShadow: `0 0 10px ${theme.primary}33`,
-              background: "rgba(0,0,0,.35)",
-            }}
-          >
-            PÉTANQUE
-          </div>
-        </div>
+      <div style={{ width: "100%", maxWidth: 520, marginBottom: 10 }}>
+        <RankingsTickerHeader
+          onBack={() => go?.("stats")}
+          infoContent={
+            langAny?.lang === "fr"
+              ? "Classements Pétanque : compare les joueurs, les équipes et les duos selon la période et la statistique sélectionnées."
+              : "Pétanque rankings: compare players, teams and pairs using the selected period and statistic."
+          }
+          marginBottom={0}
+        />
       </div>
 
       {/* CARD : MODE */}

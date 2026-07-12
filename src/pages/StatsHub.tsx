@@ -8457,6 +8457,7 @@ return (
                     records={(isMolkkySport ? records.filter((r: any) => isMolkkyRecord(r)) : records) as any}
                     profiles={effectiveStoreProfiles as any}
                     sportOverride={effectiveSport}
+                    go={go}
                   />
                 </React.Suspense>
               </div>

@@ -11,6 +11,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import RankingsTickerHeader from "../../components/RankingsTickerHeader";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import { loadMolkkyMatches } from "../../lib/molkkyStore";
 
@@ -98,8 +99,9 @@ function formatMetric(k: MetricKey, v: number): string {
   return `${Math.round(v)}`;
 }
 
-export default function MolkkyStatsLeaderboardsPage({ store, go }: Props) {
+export default function MolkkyStatsLeaderboardsPage({ store, go, params }: Props) {
   const { theme } = useTheme();
+  const embedded = Boolean(params?.embedded);
   const langAny: any = useLang();
   const t = React.useCallback(
     (key: string, fallback: string) => {
@@ -312,13 +314,15 @@ export default function MolkkyStatsLeaderboardsPage({ store, go }: Props) {
   return (
     <div style={pageWrap}>
       {!embedded && (
-        <div style={topRow}>
-          <BackDot onClick={() => go("molkky_stats")} />
-          <div style={title}>{t("leaderboards.title", "CLASSEMENTS")}</div>
-          <InfoDot
-            onClick={() =>
-              alert("Classements Mölkky (local)\n\nVisuel calqué sur Darts. Filtres période + tri par métrique.")
+        <div style={{ width: "100%", maxWidth: 520, margin: "0 auto 10px" }}>
+          <RankingsTickerHeader
+            onBack={() => go("stats")}
+            infoContent={
+              langAny?.lang === "fr"
+                ? "Classements Mölkky locaux : filtre la période puis choisis la métrique utilisée pour trier les joueurs."
+                : "Local Mölkky rankings: filter the period, then choose the metric used to sort players."
             }
+            marginBottom={0}
           />
         </div>
       )}

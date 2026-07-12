@@ -10,6 +10,7 @@ import { useLang } from "../../contexts/LangContext";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import RankingsTickerHeader from "../../components/RankingsTickerHeader";
 
 import { useStatsProvider } from "../../stats/useStatsProvider";
 import type { StatsPeriod } from "../../stats/types";
@@ -177,10 +178,12 @@ export default function StatsCenterLeaderboardsPage({ go }: Props) {
 
   return (
     <div style={pageWrap}>
-      <div style={topRow}>
-        <BackDot onClick={() => (go ? go("stats") : null)} />
-        <div style={title}>{tr("stats.rankings", "CLASSEMENTS")}</div>
-        <InfoDot onClick={() => (go ? go("stats") : null)} />
+      <div style={{ width: "100%", maxWidth: 520, margin: "0 auto 10px" }}>
+        <RankingsTickerHeader
+          onBack={() => (go ? go("stats") : null)}
+          infoContent={tr("stats.rankings.info", "Classements globaux avec filtres de période et de statistique.")}
+          marginBottom={0}
+        />
       </div>
 
       <div style={card}>
