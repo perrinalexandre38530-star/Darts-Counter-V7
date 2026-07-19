@@ -101,11 +101,6 @@ const btnDouble: React.CSSProperties = {
   background: "rgba(46,150,193,.2)",
   color: "#bfeaff",
 };
-const btnSimple: React.CSSProperties = {
-  ...btnBase,
-  background: "rgba(73,188,128,.18)",
-  color: "#c8ffe0",
-};
 const btnTriple: React.CSSProperties = {
   ...btnBase,
   background: "rgba(179,68,151,.2)",
@@ -252,29 +247,15 @@ export default function Keypad({
         </div>
       )}
 
-      {/* SIMPLE / DOUBLE / TRIPLE / ANNULER + action compacte PRESET ou MICRO */}
+      {/* DOUBLE / TRIPLE / ANNULER + action compacte PRESET ou MICRO */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          gap: 8,
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 10,
           marginBottom: noticeSlot ? 8 : 10,
         }}
       >
-        <button
-          type="button"
-          style={{
-            ...btnSimple,
-            borderColor: multiplier === 1 ? "#a9ffd0" : "rgba(255,255,255,.08)",
-            boxShadow: multiplier === 1 ? "0 0 16px rgba(111,255,180,.20)" : "none",
-          }}
-          aria-pressed={multiplier === 1}
-          onClick={onSimple}
-          title="Simple"
-        >
-          SIMPLE
-        </button>
-
         <button
           type="button"
           style={{
@@ -283,6 +264,7 @@ export default function Keypad({
           }}
           aria-pressed={multiplier === 2}
           onClick={onDouble}
+          onMouseUp={onSimple}
           title="Double"
         >
           DOUBLE
@@ -296,6 +278,7 @@ export default function Keypad({
           }}
           aria-pressed={multiplier === 3}
           onClick={onTriple}
+          onMouseUp={onSimple}
           title="Triple"
         >
           TRIPLE

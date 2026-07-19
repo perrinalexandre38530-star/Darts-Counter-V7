@@ -29,19 +29,19 @@ import {
   type ScoreInputMethod,
 } from "../lib/scoreInput/types";
 
-import tickerFiveLives from "../assets/tickers/ticker_killer_2.png";
+import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
 // 🔽 AVATARS BOTS PRO (mêmes chemins que KillerConfig)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
-import avatarSnakeKing from "../assets/avatars/bots-pro/green-machine.png";
-import avatarWonderKid from "../assets/avatars/bots-pro/one-dart.png";
-import avatarIceMan from "../assets/avatars/bots-pro/darth-maple.png";
+import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
+import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
+import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
 import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
 import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
-import avatarThePower from "../assets/avatars/bots-pro/flying-scotsman.png";
+import avatarThePower from "../assets/avatars/bots-pro/the-power.png";
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
-import avatarTheAsp from "../assets/avatars/bots-pro/crafty-cockney.png";
-import avatarHollywood from "../assets/avatars/bots-pro/cool-hand.png";
-import avatarTheFerret from "../assets/avatars/bots-pro/jackpot.png";
+import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
+import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
+import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
 import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
 import avatarBarney from "../assets/avatars/bots-pro/barney.png";
