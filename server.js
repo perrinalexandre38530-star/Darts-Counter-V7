@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
 const zlib = require("zlib");
+const LZString = require("lz-string");
 const { promisify } = require("util");
 
 const gzipAsync = promisify(zlib.gzip);
@@ -2755,6 +2756,59 @@ function linkedStatsPickProfileAvatar(profile) {
   return profile?.avatarUrl || profile?.avatar_url || profile?.avatarDataUrl || profile?.avatar_data_url || profile?.avatar || profile?.photoURL || null;
 }
 
+function linkedStatsParseJsonObject(value) {
+  if (value && typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || (!text.startsWith("{") && !text.startsWith("["))) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function linkedStatsDecodeHistoryPayload(row) {
+  if (linkedStatsIsPlainObject(row?.payload) || Array.isArray(row?.payload)) return row.payload;
+  const packed = row?.payloadCompressed ?? row?.detail?.payloadCompressed ?? null;
+  if (typeof packed !== "string" || !packed.length) return null;
+  const direct = linkedStatsParseJsonObject(packed);
+  if (direct) return direct;
+  const attempts = [
+    () => LZString.decompressFromUTF16(packed),
+    () => LZString.decompress(packed),
+    () => LZString.decompressFromBase64(packed),
+  ];
+  for (const attempt of attempts) {
+    try {
+      const parsed = linkedStatsParseJsonObject(attempt());
+      if (parsed) return parsed;
+    } catch {}
+  }
+  return null;
+}
+
+function linkedStatsHydrateHistoryRow(row) {
+  if (!linkedStatsIsPlainObject(row)) return row;
+  const payload = linkedStatsDecodeHistoryPayload(row);
+  if (!linkedStatsIsPlainObject(payload)) return row;
+  const payloadSummary = linkedStatsIsPlainObject(payload.summary) ? payload.summary : {};
+  const rowSummary = linkedStatsIsPlainObject(row.summary) ? row.summary : {};
+  const playersCandidates = [row.players, rowSummary.players, payload.players, payloadSummary.players, payload?.config?.players]
+    .filter(Array.isArray)
+    .sort((a, b) => b.length - a.length);
+  const players = playersCandidates[0] || [];
+  const summary = { ...rowSummary, ...payloadSummary, ...(players.length ? { players } : {}) };
+  return {
+    ...row,
+    payload: { ...payload, ...(players.length ? { players } : {}), summary },
+    summary,
+    ...(players.length ? { players } : {}),
+    winnerId: payloadSummary.winnerId ?? payload.winnerId ?? payload?.result?.winnerId ?? row.winnerId ?? null,
+  };
+}
+
 function linkedStatsExtractProfiles(snapshot) {
   const st = linkedStatsExtractStoreLike(snapshot);
   const out = [
@@ -2834,22 +2888,27 @@ function linkedStatsCollectMatches(snapshot, localProfileId, localProfileName) {
   const seen = new Set();
   function maybePush(value, path = "") {
     if (!linkedStatsIsPlainObject(value)) return;
+    // Les lignes du dump History sont séparées en header + payloadCompressed.
+    // On inspecte la version hydratée pour retrouver aussi les participants qui
+    // n'existent que dans le détail, mais on renvoie la ligne compressée afin de
+    // ne pas multiplier le poids réseau du snapshot.
+    const inspected = linkedStatsHydrateHistoryRow(value);
     const looksLikeMatch = (
-      Array.isArray(value.players) ||
-      Array.isArray(value.participants) ||
-      Array.isArray(value.legs) ||
-      Array.isArray(value.sets) ||
-      linkedStatsIsPlainObject(value.result) ||
-      linkedStatsIsPlainObject(value.summary) ||
-      value.finalScore != null ||
-      value.score != null ||
-      value.sport != null ||
-      value.game != null ||
-      value.mode != null ||
+      Array.isArray(inspected.players) ||
+      Array.isArray(inspected.participants) ||
+      Array.isArray(inspected.legs) ||
+      Array.isArray(inspected.sets) ||
+      linkedStatsIsPlainObject(inspected.result) ||
+      linkedStatsIsPlainObject(inspected.summary) ||
+      inspected.finalScore != null ||
+      inspected.score != null ||
+      inspected.sport != null ||
+      inspected.game != null ||
+      inspected.mode != null ||
       /history|match|matches|games|parties|results|saved/i.test(path || "")
     );
     if (!looksLikeMatch) return;
-    const hasProfile = linkedStatsObjectContainsId(value, localProfileId) || linkedStatsObjectContainsName(value, names);
+    const hasProfile = linkedStatsObjectContainsId(inspected, localProfileId) || linkedStatsObjectContainsName(inspected, names);
     if (!hasProfile) return;
     const key = String(value.id || value.matchId || value.resumeId || value.createdAt || value.date || path || JSON.stringify(value).slice(0, 100));
     if (seen.has(key)) return;
@@ -2931,7 +2990,8 @@ function linkedStatsAggregateFromMatches(matches, localProfileId, localProfileNa
     return (id && pid === id) || (!!wantedName && pname === wantedName);
   }
 
-  for (const match of matches || []) {
+  for (const rawMatch of matches || []) {
+    const match = linkedStatsHydrateHistoryRow(rawMatch);
     totalMatches += 1;
     const containers = [
       match,

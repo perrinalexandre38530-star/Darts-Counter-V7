@@ -11,6 +11,7 @@ import { apiGet, apiPost } from "./apiClient";
 import { History } from "./history";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
+import { hydrateLinkedHistoryRow, linkedHistoryRowQuality } from "./linkedProfileHistory";
 import type { Profile } from "./types";
 
 export type LinkedProfileSnapshot = {
@@ -442,7 +443,25 @@ function makeVirtualHistoryForLink(snapshot: LinkedProfileSnapshot, localProfile
     ...arr((snapshot as any)?.linkedLocalProfile?.history),
     ...arr((snapshot as any)?.linkedLocalProfile?.matches),
   ];
-  const sourceRows = remoteRows.length ? remoteRows : extractHistory(snapshot?.payload);
+  const sourceRowsRaw = remoteRows.length ? remoteRows : extractHistory(snapshot?.payload);
+
+  // /linked-snapshots expose volontairement plusieurs alias compatibles
+  // (history, matches, filtered.history...). Ils peuvent pointer sur les mêmes
+  // lignes. On hydrate d'abord le payload History compressé, puis on ne garde
+  // qu'une seule version — la plus riche — par partie source.
+  const sourceRowsById = new Map<string, any>();
+  sourceRowsRaw.forEach((rawRow: any, idx: number) => {
+    const hydrated = hydrateLinkedHistoryRow(rawRow);
+    const sourceId = s(
+      hydrated?.id || hydrated?.matchId || hydrated?.resumeId ||
+      hydrated?.payload?.matchId || hydrated?.payload?.sessionId || `row-${idx}`
+    );
+    const previous = sourceRowsById.get(sourceId);
+    if (!previous || linkedHistoryRowQuality(hydrated) > linkedHistoryRowQuality(previous)) {
+      sourceRowsById.set(sourceId, hydrated);
+    }
+  });
+  const sourceRows = Array.from(sourceRowsById.values());
 
   return sourceRows.map((row: any, idx: number) => {
     const cloned = rewritePlayersInObject(row, { ...localProfile, id: localId }, friendProfile, friendUser);
@@ -739,10 +758,12 @@ export async function materializeLinkedProfileProjection(projection: LinkedProfi
       const id = s(row?.id || row?.matchId || row?.resumeId);
       if (!id) continue;
       const signature = JSON.stringify({
-        v: 2,
+        v: 3,
         updatedAt: row?.updatedAt || row?.createdAt || row?.date || null,
         players: Array.isArray(row?.players) ? row.players.map((p: any) => [p?.id, p?.playerId, p?.profileId, p?.name, p?.avatarUrl || p?.avatar]) : [],
         winnerId: row?.winnerId || row?.summary?.winnerId || row?.payload?.winnerId || null,
+        summaryHash: hashString(JSON.stringify(row?.summary || {})),
+        payloadHash: hashString(JSON.stringify(row?.payload || row?.payloadCompressed || {})),
         dartSetIdsByPlayer: row?.dartSetIdsByPlayer || row?.meta?.dartSetIdsByPlayer || row?.payload?.meta?.dartSetIdsByPlayer || null,
       });
       if (materializedLinkedHistorySignatures.get(id) === signature) continue;

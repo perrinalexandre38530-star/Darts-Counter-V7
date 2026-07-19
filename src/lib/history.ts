@@ -2093,6 +2093,11 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     (crypto.randomUUID?.() ?? String(now));
 
   const safe: any = normalizeHistoryRow({
+    // Conserver les champs racine propres au sport (scoreA/scoreB, équipes,
+    // composition, fil, stats détaillées, métadonnées de synchro...). Avant ce
+    // patch, un import de profil lié ne gardait qu'un petit sous-ensemble et ne
+    // pouvait donc jamais être identique à la partie d'origine.
+    ...(rec as any),
     id: String(canonicalId),
     matchId: String(canonicalId),
     kind: rec.kind || "x01",
