@@ -8404,10 +8404,47 @@ return (
                     const livesLeft = sum("livesLeft") || sum("remainingLives") || sum("lives");
                     const lostLives = sum("lostLives") || sum("damageTaken") || sum("deaths");
                     const advances = sum("advances");
+                    const visits = sum("visits") || sum("turns") || sum("rounds");
+                    const targetsFaced = sum("targetsFaced");
+                    const successfulVisits = sum("successfulVisits") || sum("successes");
+                    const failedVisits = sum("failedVisits") || sum("fails");
+                    const singles = sum("singles");
+                    const doubles = sum("doubles");
+                    const triples = sum("triples");
+                    const bulls = sum("bulls");
+                    const dbulls = sum("dbulls");
+                    const misses = sum("misses");
+                    const bestMargin = playerRows.reduce((a: number, x: any) => Math.max(a, Number(x.pl?.bestMargin ?? 0) || 0), 0);
+                    const averageVisit = visits ? points / visits : 0;
+                    const objectiveRate = targetsFaced ? Math.round((successfulVisits / targetsFaced) * 1000) / 10 : 0;
                     const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
                     const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
                     const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
-                    return (
+                    return currentMode === "five_lives" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Volées jouées</div><div style={value}>{visits}</div></div>
+                          <div style={statBox}><div style={label}>Moyenne / volée</div><div style={value}>{averageVisit.toFixed(1)}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure volée</div><div style={value}>{bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Objectifs réussis</div><div style={value}>{successfulVisits} / {targetsFaced}</div><div style={{ opacity: .75, fontSize: 11 }}>{objectiveRate}% de réussite</div></div>
+                          <div style={statBox}><div style={label}>Échecs / vies perdues</div><div style={value}>{failedVisits} / {lostLives}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure marge</div><div style={value}>+{bestMargin}</div></div>
+                          <div style={statBox}><div style={label}>Points marqués</div><div style={value}>{points}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ ...softCard, marginTop: 10, padding: 14 }}>
+                          <div style={{ ...label, marginBottom: 9, fontWeight: 950 }}>Répartition des impacts</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                            {[['Simple', singles], ['Double', doubles], ['Triple', triples], ['Bull', bulls], ['DBull', dbulls], ['Miss', misses]].map(([name, n]: any) => <div key={name} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.045)", textAlign: "center" }}><div style={{ fontSize: 10, opacity: .72 }}>{name}</div><div style={{ fontWeight: 1000, fontSize: 17 }}>{n}</div></div>)}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
+                          Données issues des volées Les 5 vies : objectifs affrontés et réussis, marges, vies perdues et zones touchées.
+                        </div>
+                      </>
+                    ) : (
                       <>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>

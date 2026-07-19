@@ -37,8 +37,8 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
   },
   five_lives: {
     title: "Les 5 vies",
-    accent: "#43d67f",
-    subtitle: "Survie, vies perdues et dernier joueur debout.",
+    accent: "#ff4fb8",
+    subtitle: "Objectifs battus, vies perdues et dernier joueur debout.",
     primary: "Vies restantes",
     secondary: "Vies perdues",
     tertiary: "Tours",
@@ -279,6 +279,7 @@ function buildRows(rec: any, mode: ModeKind) {
     return {
       id,
       name: playerName(merged, playersById),
+      avatar: pick(merged.avatarDataUrl, merged.avatarUrl, merged.avatar),
       rank: num(pick(merged.rank, merged.position, index + 1), index + 1),
       isWinner: Boolean(pick(merged.isWinner, merged.winner, id && String(pick(rec?.winnerId, rec?.summary?.winnerId, rec?.payload?.winnerId, rec?.payload?.summary?.winnerId)) === id)),
       primary: valueFor(mode, "primary", merged, index + 1),
@@ -345,9 +346,12 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           {rows.length ? rows.map((r, i) => (
             <div key={`${r.id}-${i}`} style={{ display: "grid", gridTemplateColumns: "34px 1fr auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 14, background: r.isWinner ? `${meta.accent}20` : "rgba(255,255,255,.045)", border: `1px solid ${r.isWinner ? meta.accent : "rgba(255,255,255,.10)"}` }}>
               <div style={{ width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", background: r.isWinner ? meta.accent : "rgba(255,255,255,.08)", color: r.isWinner ? "#05060b" : "#fff", fontWeight: 1000 }}>{i + 1}</div>
-              <div>
-                <div style={{ fontWeight: 1000 }}>{r.name}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {r.avatar ? <img src={String(r.avatar)} alt="" style={{ width: 30, height: 30, borderRadius: 999, objectFit: "cover", border: `1px solid ${meta.accent}88` }} /> : null}
+                <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
                 <div style={{ fontSize: 11, color: "#b8b8c6" }}>{meta.primary}: {r.primary} • {meta.secondary}: {r.secondary}</div>
+                </div>
               </div>
               <div style={{ fontWeight: 1000, color: meta.accent }}>{r.isWinner ? "WIN" : r.tertiary}</div>
             </div>
@@ -355,33 +359,56 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         </div>
       </section>
 
-      <section style={card(meta.accent)}>
-        <div style={sectionTitle(meta.accent)}>Stats détaillées</div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ color: meta.accent, textAlign: "left" }}>
-                <th style={th}>Joueur</th>
-                <th style={th}>{meta.primary}</th>
-                <th style={th}>{meta.secondary}</th>
-                <th style={th}>{meta.tertiary}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={`stat-${r.id}`}>
-                  <td style={td}>{r.name}</td>
-                  <td style={td}>{r.primary}</td>
-                  <td style={td}>{r.secondary}</td>
-                  <td style={td}>{r.tertiary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {mode === "five_lives" ? <FiveLivesSummaryTables rec={rec} rows={rows} accent={meta.accent} /> : (
+        <section style={card(meta.accent)}>
+          <div style={sectionTitle(meta.accent)}>Stats détaillées</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead><tr style={{ color: meta.accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>{meta.primary}</th><th style={th}>{meta.secondary}</th><th style={th}>{meta.tertiary}</th></tr></thead>
+              <tbody>{rows.map((r) => <tr key={`stat-${r.id}`}><td style={td}>{r.name}</td><td style={td}>{r.primary}</td><td style={td}>{r.secondary}</td><td style={td}>{r.tertiary}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
+}
+
+function FiveLivesSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const visits = asArray(pick(rec?.payload?.visitHistory, rec?.payload?.events, rec?.visitHistory, rec?.events));
+  const columns: Array<[string, (p: any) => any]> = [
+    ["#", (p) => p.rank], ["Joueur", (p) => p.name], ["Vies", (p) => pick(p.livesLeft, p.remainingLives, p.lives, 0)],
+    ["Perdues", (p) => pick(p.livesLost, p.lostLives, 0)], ["Volées", (p) => pick(p.visits, p.turns, 0)],
+    ["Objectifs", (p) => pick(p.targetsFaced, 0)], ["Réussite", (p) => `${num(p.successRate, 0)}%`],
+    ["Moy.", (p) => num(p.avgVisit, 0).toFixed(1)], ["Best", (p) => pick(p.bestVisit, 0)],
+    ["Échecs", (p) => pick(p.failedVisits, p.fails, 0)], ["Best marge", (p) => `+${num(p.bestMargin, 0)}`],
+    ["S", (p) => pick(p.singles, 0)], ["D", (p) => pick(p.doubles, 0)], ["T", (p) => pick(p.triples, 0)],
+    ["Bull", (p) => pick(p.bulls, 0)], ["DBull", (p) => pick(p.dbulls, 0)], ["Miss", (p) => pick(p.misses, 0)],
+  ];
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Tableau complet de fin de partie</div>
+      <div style={{ overflowX: "auto", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)" }}>
+        <table style={{ width: "100%", minWidth: 1020, borderCollapse: "collapse", fontSize: 11 }}>
+          <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{columns.map(([label]) => <th key={label} style={th}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((r) => <tr key={`five-stat-${r.id}`} style={{ background: r.isWinner ? `${accent}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ ...td, color: label === "Joueur" && r.isWinner ? accent : td.color }}>{read(r.raw)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Déroulé des volées</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {visits.length ? visits.map((v, index) => {
+          const margin = v?.margin == null ? null : num(v.margin, 0);
+          return <div key={v?.id || index} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: "9px 10px", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
+            <div style={{ color: "#9295a5", fontWeight: 900 }}>#{pick(v?.turn, index + 1)}</div>
+            <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{pick(v?.playerName, "Joueur")}</div><div style={{ color: "#aeb0bd", fontSize: 10.5 }}>{v?.openingVisit ? "Référence initiale" : `Objectif ${pick(v?.required, "—")} • ${v?.success ? `réussi +${Math.max(0, margin || 0)}` : `échoué ${margin ?? "—"}`}`}{v?.lifeLost ? " • −1 vie" : ""}</div></div>
+            <div style={{ color: v?.success ? "#72f0a8" : "#ff7187", fontWeight: 1000, fontSize: 17 }}>{num(v?.score, 0)}</div>
+          </div>;
+        }) : <div style={{ color: "#c9c9d4" }}>Aucun détail de volée enregistré.</div>}
+      </div>
+    </section>
+  </>;
 }
 
 function Kpi({ label, value, accent }: { label: string; value: any; accent: string }) {

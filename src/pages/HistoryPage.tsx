@@ -911,7 +911,16 @@ function summarizeX01SetsLegsScore(e: SavedEntry): string {
 
 
 
-type HistoryScorePlayer = { name: string; main: string; sub?: string; rank?: number };
+type HistoryScorePlayer = {
+  name: string;
+  main: string;
+  sub?: string;
+  rank?: number;
+  avg?: number;
+  best?: number;
+  successRate?: number;
+  failed?: number;
+};
 
 
 function historyIsX01Like(e: SavedEntry): boolean {
@@ -1075,6 +1084,13 @@ function isProgressiveKillerEntry(e: SavedEntry): boolean {
   return historyModeTokens(e).some(
     (token) => token.includes("killer_progressive") || token.includes("killer-progressive") || token === "progressive"
   );
+}
+
+function isFiveLivesEntry(e: SavedEntry): boolean {
+  return historyModeTokens(e).some((token) => {
+    const n = token.replace(/[\s-]+/g, "_");
+    return n.includes("five_lives") || n.includes("5_vies") || n.includes("cinq_vies") || n.includes("les_5_vies");
+  });
 }
 
 function killerLivePlayerRows(e: SavedEntry): any[] {
@@ -1362,6 +1378,29 @@ function genericHistoryRankScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
   }).filter((x: any) => x.name);
 }
 
+function fiveLivesHistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
+  const anyE: any = e as any;
+  const pools = [
+    anyE?.summary?.rankings,
+    anyE?.payload?.summary?.rankings,
+    anyE?.payload?.stats?.players,
+    anyE?.stats?.players,
+    anyE?.summary?.perPlayer,
+    anyE?.payload?.summary?.perPlayer,
+    anyE?.players,
+  ];
+  const source = pools.find((p) => Array.isArray(p) && p.length) || [];
+  return source.map((r: any, idx: number) => ({
+    name: historyScoreName(e, r),
+    main: historyScoreNumber(r?.livesLeft ?? r?.remainingLives ?? r?.lives, "0"),
+    rank: Number(r?.rank ?? r?.position ?? idx + 1) || idx + 1,
+    avg: Number(r?.avgVisit ?? r?.avg3 ?? 0) || 0,
+    best: Number(r?.bestVisit ?? 0) || 0,
+    successRate: Number(r?.successRate ?? 0) || 0,
+    failed: Number(r?.failedVisits ?? r?.fails ?? r?.livesLost ?? 0) || 0,
+  })).filter((x: any) => x.name).sort((a: any, b: any) => Number(a.rank || 0) - Number(b.rank || 0));
+}
+
 function historyRankColor(rank: number): string {
   return rank === 1 ? "#ffd76a" : rank === 2 ? "#dce6f2" : rank === 3 ? "#c98945" : "rgba(255,255,255,.88)";
 }
@@ -1455,6 +1494,25 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         </span>
       );
     }
+  }
+
+  if (isFiveLivesEntry(e)) {
+    const players = fiveLivesHistoryScorePlayers(e);
+    if (players.length) return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {players.slice(0, 4).map((p: any, idx: number) => <React.Fragment key={`${p.name}-${idx}`}>
+            {idx ? <span style={{ color: "rgba(255,255,255,.42)" }}>•</span> : null}
+            <span style={{ color: historyRankColor(p.rank || idx + 1), fontWeight: 1000 }}>{p.rank || idx + 1}.</span>
+            <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{p.name}</span>
+            <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{p.main} ♥</span>
+          </React.Fragment>)}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
+          {players.slice(0, 3).map((p: any) => `${p.name} : moy. ${Number(p.avg || 0).toFixed(1)} • best ${p.best || 0} • obj. ${p.successRate || 0}% • échecs ${p.failed || 0}`).join("  |  ")}
+        </div>
+      </div>
+    );
   }
 
   const teamRows = isX01Entry(e) ? historyTeamRowsForX01(e) : [];

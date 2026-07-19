@@ -1,7 +1,7 @@
 // @ts-nocheck
 // =============================================================
 // src/pages/FiveLivesConfig.tsx
-// LES 5 VIES — CONFIG
+// LES 5 VIES — CONFIG V2
 // ✅ UI = pattern KillerConfig (carrousels profils + bots)
 // - Sélection profils locaux (store.profiles)
 // - Ajout bots : PRO + bots user depuis localStorage dc_bots_v1
@@ -23,20 +23,25 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import {
+  SCORE_INPUT_LS_KEY,
+  sanitizeScoreInputMethod,
+  type ScoreInputMethod,
+} from "../lib/scoreInput/types";
 
-import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
+import tickerFiveLives from "../assets/tickers/ticker_killer_2.png";
 // 🔽 AVATARS BOTS PRO (mêmes chemins que KillerConfig)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
-import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
-import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
-import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
+import avatarSnakeKing from "../assets/avatars/bots-pro/green-machine.png";
+import avatarWonderKid from "../assets/avatars/bots-pro/one-dart.png";
+import avatarIceMan from "../assets/avatars/bots-pro/darth-maple.png";
 import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
 import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
-import avatarThePower from "../assets/avatars/bots-pro/the-power.png";
+import avatarThePower from "../assets/avatars/bots-pro/flying-scotsman.png";
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
-import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
-import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
-import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
+import avatarTheAsp from "../assets/avatars/bots-pro/crafty-cockney.png";
+import avatarHollywood from "../assets/avatars/bots-pro/cool-hand.png";
+import avatarTheFerret from "../assets/avatars/bots-pro/jackpot.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
 import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
 import avatarBarney from "../assets/avatars/bots-pro/barney.png";
@@ -58,12 +63,15 @@ export type FiveLivesConfigPlayer = {
   botLevel?: string;
 };
 
+export type FiveLivesPlayerLite = FiveLivesConfigPlayer;
+
 export type FiveLivesConfig = {
   id: string;
   mode: "five_lives";
   createdAt: number;
   startingLives: number;
   randomStartOrder: boolean;
+  scoreInputMethod: ScoreInputMethod;
   players: FiveLivesConfigPlayer[];
 };
 
@@ -114,6 +122,11 @@ function clampInt(n: any, min: number, max: number, fb: number) {
   const x = Math.floor(Number(n));
   if (!Number.isFinite(x)) return fb;
   return Math.max(min, Math.min(max, x));
+}
+
+function sanitizeFiveLivesScoreInput(value: unknown): ScoreInputMethod {
+  const method = sanitizeScoreInputMethod(value);
+  return method === "visit_score" || method === "dartboard" ? method : "keypad";
 }
 
 function pickAvatar(p: any): string | null {
@@ -347,6 +360,13 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
 
   const [startingLives, setStartingLives] = React.useState<number>(5);
   const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
+    try {
+      return sanitizeFiveLivesScoreInput(localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad");
+    } catch {
+      return "keypad";
+    }
+  });
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(true);
 
@@ -433,8 +453,11 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
       createdAt: Date.now(),
       startingLives: clampInt(startingLives, 1, 20, 5),
       randomStartOrder: !!randomStartOrder,
+      scoreInputMethod,
       players: finalPlayers,
     };
+
+    try { localStorage.setItem(SCORE_INPUT_LS_KEY, scoreInputMethod); } catch {}
 
     try { recordProfileUsageForMode("five_lives", finalPlayers.map((p: any) => p.id)); } catch {}
 
@@ -673,6 +696,22 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
             </div>
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
               En aléatoire : le 1er joueur est tiré au sort (et l'ordre suit la sélection).
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Mode de saisie</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => setScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} />
+              <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => setScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} />
+              <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => setScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} />
+            </div>
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6, lineHeight: 1.35 }}>
+              {scoreInputMethod === "dartboard"
+                ? "CIBLE : touche directement la zone atteinte sur la cible, comme en X01."
+                : scoreInputMethod === "visit_score"
+                ? "SCORE VOLÉE : saisis directement le total de 0 à 180. Le détail S/D/T ne pourra pas être calculé."
+                : "KEYPAD : saisis chaque fléchette avec SIMPLE, DOUBLE ou TRIPLE."}
             </div>
           </div>
         </section>
