@@ -41,6 +41,21 @@ export function invalidateLinkedProfileProjectionCache() {
   cacheValue = null;
 }
 
+// Au premier rendu, la projection peut partir juste avant la fin de la
+// restauration de session. Dès que le JWT NAS interne est disponible, on
+// invalide le résultat vide et on réveille automatiquement Accueil/Stats.
+if (typeof window !== "undefined") {
+  window.addEventListener("dc-api-auth-token-ready", () => {
+    invalidateLinkedProfileProjectionCache();
+    try {
+      window.dispatchEvent(new CustomEvent("dc-profile-links-updated", {
+        detail: { reason: "auth-token-ready" },
+      }));
+    } catch {}
+    try { window.dispatchEvent(new Event("dc-stats-index-updated")); } catch {}
+  });
+}
+
 function s(v: any) { return String(v ?? "").trim(); }
 function low(v: any) { return s(v).toLowerCase(); }
 function hashString(value: string): string {

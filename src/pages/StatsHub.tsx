@@ -263,6 +263,9 @@ const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/S
 const X01MultiStatsTabFull = React.lazy(
   () => import("../stats/X01MultiStatsTabFull")
 );
+const FiveLivesStatsTabFull = React.lazy(
+  () => import("../stats/FiveLivesStatsTabFull")
+);
 const StatsLeaderboardsTab = React.lazy(
   () => import("../components/stats/StatsLeaderboardsTab")
 );
@@ -8353,7 +8356,25 @@ return (
               </div>
             )}
 
-{["battle_royale", "warfare", "five_lives", "scram", "capital"].includes(String(currentMode)) && (
+
+            {currentMode === "five_lives" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement Les 5 vies…" />}>
+                    <FiveLivesStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher les statistiques Les 5 vies.
+                  </div>
+                )}
+              </div>
+            )}
+
+{["battle_royale", "warfare", "scram", "capital"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>

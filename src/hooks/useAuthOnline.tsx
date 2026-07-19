@@ -19,7 +19,7 @@ import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled, isNasDataSyncEnabled } from "../lib/serverConfig";
-import { readNasAccessToken } from "../lib/apiClient";
+import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
@@ -54,6 +54,7 @@ function purgeAuthKeysFromBrowser(): void {
     }
   } catch {}
   try { window.sessionStorage.clear(); } catch {}
+  setApiAccessToken("");
 }
 
 function redirectToAuth(hash: string): void {
@@ -267,6 +268,7 @@ function applyAuthFromSession(
   session: Session | null
 ) {
   const user = session?.user ?? null;
+  setApiAccessToken((session as any)?.access_token || "");
 
   if (user) {
     try {

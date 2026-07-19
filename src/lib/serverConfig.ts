@@ -26,7 +26,7 @@ function normalizeProvider(raw: unknown): "supabase" | "hybrid" | "nas" {
 
 export const ONLINE_PROVIDER = normalizeProvider((import.meta as any)?.env?.VITE_ONLINE_PROVIDER);
 export const NAS_API_URL =
-  sanitizeUrl((import.meta as any)?.env?.VITE_NAS_API_URL) || "http://api.multisports-api.fr:3000";
+  sanitizeUrl((import.meta as any)?.env?.VITE_NAS_API_URL) || "https://api.multisports-api.fr";
 
 export function isNasProviderEnabled(): boolean {
   return ONLINE_PROVIDER === "nas";

@@ -787,7 +787,15 @@ async function tryNasLoginWithoutInvitation(payload: LoginPayload): Promise<Auth
       markAuthReady(true);
       return session;
     }
-  } catch (error) {
+  } catch (error: any) {
+    const msg = String(error?.message || error || "");
+    const status = Number(error?.status || 0);
+    // 401 = normal pour un compte public Supabase dont le mot de passe NAS interne
+    // est aléatoire. En revanche, un 5xx signifie que la connexion NAS est cassée :
+    // on le remonte pour ne plus afficher à tort “Invalid login credentials”.
+    if (status >= 500 || /Internal Server Error|Erreur login|failed \(500\)|Backend NAS trop lent/i.test(msg)) {
+      throw error;
+    }
     console.warn("[onlineApi] fallback NAS login skipped", error);
   }
   return null;
@@ -916,21 +924,30 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
     throw new Error("Email et mot de passe requis pour se connecter.");
   }
 
+  let nasError: any = null;
   let publicError: any = null;
+  let directError: any = null;
 
-  // Connexion stabilisée : on privilégie le backend NAS/R2, qui vérifie Supabase côté serveur
-  // et renvoie directement la session interne utilisée par toute l'app.
+  // Connexion unifiée V8 : on teste d'abord la session NAS interne.
+  // Les comptes fondateur/invités NAS doivent pouvoir se reconnecter ici sans code.
+  // Les comptes publics Supabase bridgés ont souvent un mot de passe NAS aléatoire :
+  // dans ce cas le 401 est normal et on bascule ensuite vers Supabase.
+  try {
+    const nasSession = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
+    if (nasSession) return nasSession;
+  } catch (error: any) {
+    nasError = error;
+    console.warn("[onlineApi] NAS-first login failed -> trying public Supabase bridge", error);
+  }
+
+  // Connexion stabilisée : le backend vérifie Supabase côté serveur et renvoie
+  // directement la session interne utilisée par toute l'app.
   try {
     return await publicSupabaseViaBackend("login", { email, password, nickname: payload.nickname });
   } catch (error: any) {
     publicError = error;
-    console.warn("[onlineApi] public backend login failed -> trying NAS fallback", error);
+    console.warn("[onlineApi] public backend login failed -> trying direct Supabase fallback", error);
   }
-
-  // Connexion unifiée : les comptes NAS invités/fondateurs déjà créés se reconnectent
-  // ici avec email + mot de passe, sans retaper le code d’invitation.
-  const nasSession = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
-  if (nasSession) return nasSession;
 
   if (__SUPABASE_ENV__.hasEnv) {
     // Dernier secours seulement : ancien compte Supabase direct non bridgé.
@@ -941,13 +958,28 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
       if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
       markAuthReady(!!session?.token);
       return session;
-    } catch (directError: any) {
-      console.warn("[onlineApi] public direct Supabase fallback failed", directError);
+    } catch (error: any) {
+      directError = error;
+      console.warn("[onlineApi] public direct Supabase fallback failed", error);
     }
   }
 
-  if (publicError) throw publicError instanceof Error ? publicError : new Error(String(publicError));
-  throw new Error("Connexion impossible : compte public Supabase ou compte invité NAS introuvable.");
+  const nasMsg = String(nasError?.message || "");
+  const publicMsg = String(publicError?.message || "");
+  const directMsg = String(directError?.message || "");
+  if (/Internal Server Error|Erreur login|Backend NAS|failed \(500\)|500/i.test(nasMsg)) {
+    throw new Error(`Connexion NAS impossible : ${nasMsg}`);
+  }
+  if (publicError && !/Invalid login credentials/i.test(publicMsg)) {
+    throw publicError instanceof Error ? publicError : new Error(publicMsg);
+  }
+  if (directError && !/Invalid login credentials/i.test(directMsg)) {
+    throw directError instanceof Error ? directError : new Error(directMsg);
+  }
+  if (nasError && !/Compte introuvable|Mot de passe invalide|401|Invalid login credentials/i.test(nasMsg)) {
+    throw nasError instanceof Error ? nasError : new Error(nasMsg);
+  }
+  throw new Error("Identifiants invalides ou compte introuvable. Vérifie l’email et le mot de passe.");
 }
 
 async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession> {

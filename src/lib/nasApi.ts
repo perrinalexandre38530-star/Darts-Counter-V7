@@ -81,15 +81,26 @@ function uniqueNasBaseUrls(values: string[]): string[] {
   return out;
 }
 
+function legacyNasHttpAllowed(): boolean {
+  if (typeof window === "undefined") return false;
+  const manual = String(readLs("dc_allow_legacy_http_api") || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(manual)) return true;
+  return window.location.protocol !== "https:";
+}
+
 function getNasApiBaseCandidates(): string[] {
-  const lastOk = sanitizeNasBaseUrl(readLs("dc_api_url_last_ok"));
+  const legacyAllowed = legacyNasHttpAllowed();
+  const legacyHttp = "http://api.multisports-api.fr:3000";
+  const rawLastOk = sanitizeNasBaseUrl(readLs("dc_api_url_last_ok"));
+  const lastOk = (!legacyAllowed && rawLastOk === legacyHttp) ? "" : rawLastOk;
   const manualOverride = sanitizeNasBaseUrl(readLs("dc_api_url"));
+  const legacy = legacyAllowed ? legacyHttp : "";
   return uniqueNasBaseUrls([
     lastOk,
     manualOverride,
     NAS_API_URL,
     "https://api.multisports-api.fr",
-    "http://api.multisports-api.fr:3000",
+    legacy,
   ]);
 }
 

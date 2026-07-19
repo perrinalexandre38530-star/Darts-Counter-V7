@@ -21,6 +21,15 @@ function safeReadLocalStorage(key: string): string {
   }
 }
 
+function safeReadSessionStorage(key: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.sessionStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
 function safeParseJson<T>(raw: string, fallback: T): T {
   if (!raw) return fallback;
   try {
@@ -52,6 +61,12 @@ function extractAuthTokenFromObject(value: any): string {
       value?.auth?.token ||
       value?.auth?.accessToken ||
       value?.auth?.access_token ||
+      value?.currentSession?.token ||
+      value?.currentSession?.accessToken ||
+      value?.currentSession?.access_token ||
+      value?.current_session?.token ||
+      value?.current_session?.accessToken ||
+      value?.current_session?.access_token ||
       ""
   ).trim();
 }
@@ -63,6 +78,40 @@ function looksLikeBearerToken(raw: string): boolean {
   return value.split(".").length >= 3 || value.length >= 24;
 }
 
+let volatileAccessToken = "";
+let lastAnnouncedAccessToken = "";
+
+/**
+ * Propage immédiatement au client /online/* le JWT NAS interne porté par la
+ * session React. Cela couvre la courte fenêtre de boot où la session est déjà
+ * restaurée en mémoire mais pas encore relue depuis le stockage navigateur.
+ */
+export function setApiAccessToken(rawToken: string | null | undefined): void {
+  const token = String(rawToken || "").trim();
+  volatileAccessToken = token;
+  if (!token) {
+    lastAnnouncedAccessToken = "";
+    return;
+  }
+  if (token === lastAnnouncedAccessToken || typeof window === "undefined") return;
+  lastAnnouncedAccessToken = token;
+  try { window.dispatchEvent(new CustomEvent("dc-api-auth-token-ready")); } catch {}
+}
+
+function tokenFromStoredValue(raw: string): string {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+
+  // Une session JSON dépasse largement 24 caractères. L'ancienne détection la
+  // prenait donc pour un token opaque et envoyait tout le JSON dans le header
+  // Authorization. On parse toujours le JSON avant le fallback token brut.
+  if (value.startsWith("{") || value.startsWith("[")) {
+    return extractAuthTokenFromObject(safeParseJson<any>(value, null));
+  }
+  if (looksLikeBearerToken(value)) return value;
+  return extractAuthTokenFromObject(safeParseJson<any>(value, null));
+}
+
 export function readNasAccessToken(): string {
   const directKeys = [
     "dc_nas_access_token_v1",
@@ -71,7 +120,7 @@ export function readNasAccessToken(): string {
   ];
 
   for (const key of directKeys) {
-    const direct = safeReadLocalStorage(key).trim();
+    const direct = (safeReadLocalStorage(key) || safeReadSessionStorage(key)).trim();
     if (direct) return direct;
   }
 
@@ -84,16 +133,13 @@ export function readNasAccessToken(): string {
   ];
 
   for (const key of sessionKeys) {
-    const raw = safeReadLocalStorage(key).trim();
+    const raw = (safeReadLocalStorage(key) || safeReadSessionStorage(key)).trim();
     if (!raw) continue;
-    if (looksLikeBearerToken(raw)) return raw;
-
-    const parsed = safeParseJson<any>(raw, null);
-    const token = extractAuthTokenFromObject(parsed);
+    const token = tokenFromStoredValue(raw);
     if (token) return token;
   }
 
-  return "";
+  return volatileAccessToken;
 }
 
 const envUrl = sanitizeApiUrl(getNasApiUrl());
@@ -114,9 +160,21 @@ function uniqApiUrls(values: string[]): string[] {
   return out;
 }
 
+function legacyHttpApiAllowed(): boolean {
+  if (typeof window === "undefined") return false;
+  const manual = String(safeReadLocalStorage("dc_allow_legacy_http_api") || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(manual)) return true;
+  // Depuis l'app publique HTTPS, on évite de spammer l'ancien :3000 qui provoque
+  // des erreurs de connexion trompeuses. Il reste possible via override manuel.
+  return window.location.protocol !== "https:";
+}
+
 export function getApiBaseCandidates(): string[] {
-  const lastOk = sanitizeApiUrl(safeReadLocalStorage(API_LAST_OK_KEY));
+  const legacyAllowed = legacyHttpApiAllowed();
+  const rawLastOk = sanitizeApiUrl(safeReadLocalStorage(API_LAST_OK_KEY));
+  const lastOk = (!legacyAllowed && rawLastOk === LEGACY_HTTP_API_URL) ? "" : rawLastOk;
   const localOverride = sanitizeApiUrl(safeReadLocalStorage(API_OVERRIDE_KEY));
+  const legacy = legacyAllowed ? LEGACY_HTTP_API_URL : "";
 
   // Important : l’override manuel doit pouvoir reprendre la main quand le domaine
   // Vite compilé est cassé / DNS KO. Avant, envUrl gagnait toujours, donc on ne
@@ -126,7 +184,7 @@ export function getApiBaseCandidates(): string[] {
     localOverride,
     envUrl,
     PUBLIC_HTTPS_API_URL,
-    LEGACY_HTTP_API_URL,
+    legacy,
   ]);
 }
 
@@ -148,6 +206,8 @@ const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStor
 const API_TIMEOUT_MS = Math.max(60000, rawApiTimeoutMs);
 
 let lastAuthChangedDispatchAt = 0;
+let lastMissingTokenWarningAt = 0;
+let nasAuthRecoveryInFlight: Promise<string> | null = null;
 
 function isSoftOnlineEndpoint(path: string): boolean {
   const normalized = String(path || "");
@@ -184,6 +244,7 @@ function clearNasAuthBecauseUnauthorized(sourcePath = "") {
     window.localStorage.removeItem("dc_nas_refresh_token_v1");
     window.localStorage.removeItem("dc_online_auth_supabase_v1");
   } catch {}
+  setApiAccessToken("");
   dispatchSignedOut("401", sourcePath);
 }
 
@@ -193,17 +254,24 @@ async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<str
   const existing = readNasAccessToken();
   if (existing && reason === "missing_token") return existing;
 
-  try {
-    const session: any = await nasRestoreSession({
-      force: reason === "401",
-      timeoutMs: reason === "401" ? 3500 : 2500,
-    });
-    const token = String(session?.token || readNasAccessToken() || "").trim();
-    return token;
-  } catch (e) {
-    console.warn(`[apiClient] NAS auth recovery failed (${reason})`, e);
-    return "";
-  }
+  if (nasAuthRecoveryInFlight) return nasAuthRecoveryInFlight;
+  nasAuthRecoveryInFlight = (async () => {
+    try {
+      const session: any = await nasRestoreSession({
+        force: reason === "401",
+        timeoutMs: reason === "401" ? 3500 : 2500,
+      });
+      const token = String(session?.token || readNasAccessToken() || "").trim();
+      setApiAccessToken(token);
+      return token;
+    } catch (e) {
+      console.warn(`[apiClient] NAS auth recovery failed (${reason})`, e);
+      return "";
+    } finally {
+      nasAuthRecoveryInFlight = null;
+    }
+  })();
+  return nasAuthRecoveryInFlight;
 }
 
 async function parseJsonSafe(res: Response) {
@@ -236,7 +304,11 @@ async function doFetch(path: string, init?: RequestInit) {
     if (!recoveredToken) {
       // Route online en arrière-plan : pas de pop-up, pas de purge.
       // L'utilisateur peut être en local, hors ligne, ou la session peut être en cours de restauration.
-      console.warn("[apiClient] /online/* ignoré sans token — session conservée", normalizedPath);
+      const now = Date.now();
+      if (now - lastMissingTokenWarningAt > 15_000) {
+        lastMissingTokenWarningAt = now;
+        console.warn("[apiClient] /online/* en attente du token — session conservée", normalizedPath);
+      }
       throw new Error(`${init?.method || "GET"} ${normalizedPath} skipped — session online absente`);
     }
   }
