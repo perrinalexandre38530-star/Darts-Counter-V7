@@ -772,7 +772,7 @@ function x01WritePlayerDartSetUsage(map: Record<string, Record<string, number>>)
   } catch {}
 }
 
-function x01BumpPlayerDartSetUsage(profileId: string, dartSetId: string | null | undefined) {
+export function x01BumpPlayerDartSetUsage(profileId: string, dartSetId: string | null | undefined) {
   const pid = String(profileId || "").trim();
   const dsid = String(dartSetId || "").trim();
   if (!pid || !dsid) return;
@@ -783,7 +783,7 @@ function x01BumpPlayerDartSetUsage(profileId: string, dartSetId: string | null |
   x01WritePlayerDartSetUsage(map);
 }
 
-function x01MostUsedDartSetIdForProfile(profileId: string, allProfiles: any[] = []): string | null {
+export function x01MostUsedDartSetIdForProfile(profileId: string, allProfiles: any[] = []): string | null {
   const pid = String(profileId || "").trim();
   if (!pid) return null;
 
@@ -1346,7 +1346,7 @@ function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []):
   return x01DartSetPickerCache.byProfile[pid] || [];
 }
 
-const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
+export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   profileId,
   dartSetId,
   onChange,
@@ -1786,7 +1786,7 @@ const BOT_TEAM_OPTIONS: any[] = [
 ];
 
 
-function SelectedParticipantsCompactBlock({
+export function SelectedParticipantsCompactBlock({
   items,
   accent,
   onRemove,
