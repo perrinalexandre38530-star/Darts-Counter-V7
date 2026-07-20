@@ -1739,6 +1739,53 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
 ];
 
+// API partagée par les autres modes de fléchettes : ils réutilisent ainsi
+// exactement les mêmes BOTS, équipes IA et sélecteurs que X01.
+export const X01_PRO_BOTS = PRO_BOTS;
+
+export function buildX01DartsBotTeams(botProfiles: any[] = []) {
+  const botByName = new Map<string, any>();
+  for (const bot of botProfiles || []) {
+    const nameKey = String(bot?.name || "").trim().toLowerCase();
+    if (nameKey && !botByName.has(nameKey)) botByName.set(nameKey, bot);
+  }
+
+  return (BOT_PRO_TEAMS || [])
+    .map((team: any) => {
+      const members = (Array.isArray(team?.members) ? team.members : [])
+        .map((member: any) => {
+          const byName = botByName.get(String(member?.name || "").trim().toLowerCase());
+          const id = String(byName?.id || member?.id || "");
+          if (!id) return null;
+          return {
+            ...member,
+            id,
+            name: byName?.name || member?.name || "BOT IA",
+            avatarDataUrl: byName?.avatarDataUrl || byName?.avatarUrl || byName?.avatar || null,
+            botLevel: byName?.botLevel || `${member?.botLevel || team?.botLevel || 1}/5`,
+            targetAvg3: Number(member?.targetAvg3 || team?.avg3D || 0) || 0,
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        id: `botteam_darts_${String(team?.key || team?.name || Date.now())}`,
+        key: String(team?.key || "bot"),
+        name: String(team?.name || "Équipe BOT IA"),
+        sport: "darts",
+        isBotTeam: true,
+        botTeamLevel: Number(team?.botLevel || 1),
+        botLevel: `${team?.botLevel || 1}/5`,
+        avg3D: Number(team?.avg3D || 0) || 0,
+        logoDataUrl: BOT_TEAM_LOGO_BY_KEY[String(team?.key || "")] || null,
+        logoUrl: BOT_TEAM_LOGO_BY_KEY[String(team?.key || "")] || null,
+        playerIds: members.map((member: any) => String(member.id)),
+        members,
+      };
+    })
+    .filter((team: any) => Array.isArray(team.playerIds) && team.playerIds.length > 0);
+}
+
 
 // Équipes BOTS IA proposées dans le mode Équipes enregistrées.
 // Elles utilisent les mêmes IDs que PRO_BOTS pour que X01PlayV3 les joue comme de vrais BOTS IA.
@@ -2523,48 +2570,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     }
   }, [allProfiles]);
 
-  const botDartsTeams: any[] = React.useMemo(() => {
-    const botByName = new Map<string, any>();
-    for (const b of botProfiles || []) {
-      const nameKey = String((b as any)?.name || "").trim().toLowerCase();
-      if (nameKey && !botByName.has(nameKey)) botByName.set(nameKey, b);
-    }
-
-    return (BOT_PRO_TEAMS || [])
-      .map((team: any) => {
-        const members = (Array.isArray(team?.members) ? team.members : [])
-          .map((member: any) => {
-            const byName = botByName.get(String(member?.name || "").trim().toLowerCase());
-            const id = String(byName?.id || member?.id || "");
-            if (!id) return null;
-            return {
-              ...member,
-              id,
-              name: byName?.name || member?.name || "BOT IA",
-              avatarDataUrl: byName?.avatarDataUrl || byName?.avatarUrl || byName?.avatar || null,
-              botLevel: byName?.botLevel || `${member?.botLevel || team?.botLevel || 1}/5`,
-              targetAvg3: Number(member?.targetAvg3 || team?.avg3D || 0) || 0,
-            };
-          })
-          .filter(Boolean);
-
-        return {
-          id: `botteam_darts_${String(team?.key || team?.name || Date.now())}`,
-          key: String(team?.key || "bot"),
-          name: String(team?.name || "Équipe BOT IA"),
-          sport: "darts",
-          isBotTeam: true,
-          botTeamLevel: Number(team?.botLevel || 1),
-          botLevel: `${team?.botLevel || 1}/5`,
-          avg3D: Number(team?.avg3D || 0) || 0,
-          logoDataUrl: BOT_TEAM_LOGO_BY_KEY[String(team?.key || "")] || null,
-          logoUrl: BOT_TEAM_LOGO_BY_KEY[String(team?.key || "")] || null,
-          playerIds: members.map((m: any) => String(m.id)),
-          members,
-        };
-      })
-      .filter((team: any) => Array.isArray(team.playerIds) && team.playerIds.length > 0);
-  }, [botProfiles]);
+  const botDartsTeams: any[] = React.useMemo(
+    () => buildX01DartsBotTeams(botProfiles),
+    [botProfiles]
+  );
 
   const selectableDartsTeams: any[] = React.useMemo(() => {
     return [...storedDartsTeams, ...botDartsTeams];
@@ -4955,7 +4964,7 @@ export type TeamsSectionProps = {
   primarySoft: string;
 };
 
-function BotTeamsSection({
+export function BotTeamsSection({
   botTeams = [],
   selectedBotTeamIds = [],
   toggleBotTeam,
@@ -5018,6 +5027,11 @@ function BotTeamsSection({
   return (
     <section
       style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        boxSizing: "border-box",
+        overflow: "hidden",
         background: "rgba(10, 12, 24, 0.96)",
         borderRadius: 18,
         padding: 12,
@@ -5697,6 +5711,7 @@ export function TeamsSection({
         width: "100%",
         maxWidth: "100%",
         minWidth: 0,
+        boxSizing: "border-box",
         overflow: "hidden",
         background: cardBg,
         borderRadius: 18,

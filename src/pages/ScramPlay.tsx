@@ -169,6 +169,17 @@ export default function ScramPlay(props: any) {
     A: (state?.teams?.A || []).map((id) => byId.get(String(id))).filter(Boolean),
     B: (state?.teams?.B || []).map((id) => byId.get(String(id))).filter(Boolean),
   }), [state?.teams, byId]);
+  const teamConfigBySide = React.useMemo(() => {
+    const out: Partial<Record<ScramTeam, any>> = {};
+    for (const team of params.teamConfigs || []) {
+      if (team?.side === "A" || team?.side === "B") out[team.side] = team;
+    }
+    return out;
+  }, [params.teamConfigs]);
+  const displayTeamName = React.useCallback((team: ScramTeam) => {
+    const configured = String(teamConfigBySide[team]?.name || "").trim();
+    return configured || teamName(team, teamPlayers[team]);
+  }, [teamConfigBySide, teamPlayers]);
   const activePlayer = state?.players?.[state.activePlayerIndex] || null;
   const activeProfile = activePlayer ? byId.get(String(activePlayer.id)) || activePlayer : null;
   const activeTeam: ScramTeam = activePlayer ? state.teamByPlayer[String(activePlayer.id)] : "A";
@@ -233,8 +244,8 @@ export default function ScramPlay(props: any) {
     const now = Date.now();
     const winnerTeam = state.winnerTeam;
     const winnerId = winnerTeam ? state.teams[winnerTeam][0] || null : null;
-    const teamAName = teamName("A", teamPlayers.A);
-    const teamBName = teamName("B", teamPlayers.B);
+    const teamAName = displayTeamName("A");
+    const teamBName = displayTeamName("B");
     const ordered = [...state.players].sort((left, right) => {
       const leftTeam = state.teamByPlayer[left.id];
       const rightTeam = state.teamByPlayer[right.id];
@@ -299,7 +310,8 @@ export default function ScramPlay(props: any) {
       players: state.teams[team],
       score: state.scores[team],
       winner: winnerTeam === team,
-      color: TEAM_COLOR[team],
+      color: teamConfigBySide[team]?.color || TEAM_COLOR[team],
+      logoDataUrl: teamConfigBySide[team]?.logoDataUrl || null,
     }));
     const summary = {
       kind: "scram",
@@ -307,7 +319,7 @@ export default function ScramPlay(props: any) {
       finished: true,
       winnerId,
       winnerTeam,
-      winnerName: state.tied ? "Égalité" : winnerTeam ? teamName(winnerTeam, teamPlayers[winnerTeam]) : "Égalité",
+      winnerName: state.tied ? "Égalité" : winnerTeam ? displayTeamName(winnerTeam) : "Égalité",
       tied: state.tied,
       scoreA: state.scores.A,
       scoreB: state.scores.B,
@@ -418,7 +430,7 @@ export default function ScramPlay(props: any) {
             <div>
               <div style={{ color: T.cyan, fontSize: 11, fontWeight: 1000, letterSpacing: 1 }}>PHASE {state.phase}/2 • ROUND {state.round}</div>
               <div style={{ marginTop: 3, fontSize: 15, fontWeight: 1000 }}>
-                <span style={{ color: TEAM_COLOR[state.stopperTeam] }}>TEAM {state.stopperTeam}</span> bloque • <span style={{ color: TEAM_COLOR[state.scorerTeam] }}>TEAM {state.scorerTeam}</span> marque
+                <span style={{ color: TEAM_COLOR[state.stopperTeam] }}>{displayTeamName(state.stopperTeam)}</span> bloque • <span style={{ color: TEAM_COLOR[state.scorerTeam] }}>{displayTeamName(state.scorerTeam)}</span> marque
               </div>
             </div>
             <div style={{ minWidth: 64, textAlign: "right" }}>
@@ -445,8 +457,8 @@ export default function ScramPlay(props: any) {
                     <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={shown as any} size={48} glow={active} /></div>
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 10.5, color, fontWeight: 1000 }}>TEAM {team} • {roleLabel(team, state.stopperTeam)}</div>
-                    <div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active ? playerName(shown) : teamName(team, members)}</div>
+                    <div style={{ fontSize: 10.5, color, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayTeamName(team)} • {roleLabel(team, state.stopperTeam)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active ? playerName(shown) : displayTeamName(team)}</div>
                   </div>
                   <div style={{ color, fontSize: 28, fontWeight: 1000, textShadow: `0 0 12px ${color}88` }}>{state.scores[team]}</div>
                 </div>
@@ -458,7 +470,7 @@ export default function ScramPlay(props: any) {
 
         <section style={{ ...panelStyle(), marginBottom: 10, padding: 11 }}>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 52px minmax(0,1fr)", gap: 7, color: T.soft, fontSize: 10.5, fontWeight: 1000, textAlign: "center", marginBottom: 5 }}>
-            <div style={{ color: TEAM_COLOR.A }}>TEAM A</div><div>CIBLE</div><div style={{ color: TEAM_COLOR.B }}>TEAM B</div>
+            <div style={{ color: TEAM_COLOR.A, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayTeamName("A")}</div><div>CIBLE</div><div style={{ color: TEAM_COLOR.B, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayTeamName("B")}</div>
           </div>
           {playableTargets.map((target) => (
             <div key={target} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 52px minmax(0,1fr)", gap: 7, alignItems: "center", padding: "5px 0", borderTop: "1px solid rgba(255,255,255,.045)" }}>

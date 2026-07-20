@@ -23,6 +23,16 @@ export type ScramConfigPayload = {
   players: number;
   selectedIds: string[];
   playersList?: any[];
+  /** Deux équipes choisies dans le sélecteur commun X01/Scram. */
+  teamConfigs?: Array<{
+    id: string;
+    side: ScramTeam;
+    name: string;
+    color?: string;
+    logoDataUrl?: string | null;
+    playerIds: string[];
+    isBotTeam?: boolean;
+  }>;
   botIds?: string[];
   botsEnabled?: boolean;
   botLevel?: "easy" | "normal" | "hard";
