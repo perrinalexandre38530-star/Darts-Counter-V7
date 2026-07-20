@@ -350,6 +350,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "warfare", label: "Warfare", aliases: ["warfare"] },
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
     { key: "scram", label: "SCRAM", aliases: ["scram"] },
+    { key: "baseball", label: "Baseball", aliases: ["baseball", "baseball darts"] },
     { key: "capital", label: "Capital", aliases: ["capital"] },
     { key: "batard", label: "Bâtard", aliases: ["batard", "bastard", "bâtard"] },
     { key: "clock", label: "Horloge", aliases: ["clock", "tourdelhorloge", "tour_de_lhorloge", "tdh"] },
@@ -446,7 +447,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -461,6 +462,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "five_lives",
     "les5vies",
     "scram",
+    "baseball",
     "capital",
     "batard",
     "bastard",
@@ -768,6 +770,7 @@ const modeColor: Record<string, string> = {
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
   scram: "#42d6ff",
+  baseball: "#67d4ff",
   capital: "#6ee36e",
   batard: "#9b5cff",
   default: "#888",
@@ -1513,6 +1516,41 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         </div>
       </div>
     );
+  }
+
+  if (normalizeToken(baseMode(e)) === "baseball" || inferGameFilterKey(e, "darts") === "baseball") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const standings = Array.isArray(summary?.standings)
+      ? summary.standings
+      : Array.isArray(summary?.rankings)
+      ? summary.rankings
+      : [];
+    if (standings.length) {
+      return (
+        <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+            {standings.slice(0, 4).map((row: any, index: number) => (
+              <React.Fragment key={String(row?.id || row?.name || index)}>
+                {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+                <span style={{ color: historyRankColor(Number(row?.rank || index + 1)), fontWeight: 1000 }}>
+                  {Number(row?.rank || index + 1)}.
+                </span>
+                <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{String(row?.name || `Joueur ${index + 1}`)}</span>
+                <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>
+                  {Number(row?.total ?? row?.runs ?? row?.score ?? 0)} R
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+          <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850 }}>
+            {Number(summary?.innings || anyE?.payload?.state?.inning || 9)} manches
+            {Number(summary?.extraInningsPlayed || 0) > 0 ? ` • ${Number(summary.extraInningsPlayed)} extra` : ""}
+            {summary?.tied ? " • Égalité" : summary?.winnerName ? ` • ${summary.winnerName} 🏆` : ""}
+          </div>
+        </div>
+      );
+    }
   }
 
   if (normalizeToken(baseMode(e)) === "scram" || inferGameFilterKey(e, "darts") === "scram") {

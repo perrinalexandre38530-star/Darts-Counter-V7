@@ -913,7 +913,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
 
       const toHydrate: string[] = [];
       for (const r of arr) {
@@ -1155,6 +1155,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("territ") || tag.includes("departement")) return "territories";
   if (tag.includes("batard") || tag.includes("bastard")) return "batard";
   if (tag.includes("scram")) return "scram";
+  if (tag.includes("baseball")) return "baseball";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("five_lives") || tag.includes("five lives") || tag.includes("5 vies") || tag.includes("cinq vies")) return "five_lives";
   if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour de")) return "clock";
@@ -4752,6 +4753,7 @@ const modeDefs = React.useMemo(
               { key: "warfare", label: "Warfare" },
               { key: "five_lives", label: "Les 5 vies" },
               { key: "scram", label: "SCRAM" },
+              { key: "baseball", label: "Baseball" },
               { key: "capital", label: "Capital" },
               { key: "batard", label: "BÂTARD" },
               { key: "territories", label: "Territories" },
@@ -6081,6 +6083,7 @@ const modeThemeColor: Record<string, string> = {
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
   scram: "#42d6ff",
+  baseball: "#67d4ff",
   capital: "#6ee36e",
   batard: "#9b5cff",
   default: "#888888",
@@ -6114,12 +6117,13 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     warfare: "Warfare",
     five_lives: "Les 5 vies",
     scram: "SCRAM",
+    baseball: "Baseball",
     capital: "Capital",
     batard: "Bâtard",
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -8374,7 +8378,7 @@ return (
               </div>
             )}
 
-{["battle_royale", "warfare", "scram", "capital"].includes(String(currentMode)) && (
+{["battle_royale", "warfare", "scram", "baseball", "capital"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
@@ -8388,6 +8392,7 @@ return (
                       warfare: ["warfare"],
                       five_lives: ["five_lives", "five lives", "5 vies", "cinq vies"],
                       scram: ["scram"],
+                      baseball: ["baseball", "baseball darts"],
                       capital: ["capital"],
                       batard: ["batard", "bâtard", "bastard"],
                       territories: ["territories", "territoires", "territory", "territ"],

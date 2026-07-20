@@ -436,7 +436,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:baseball",
     infoTitle: "Baseball",
     infoBody:
-      "9 manches. Manche N: cible = N. Points selon hits (S/D/T). Meilleur total gagne. A implementer.",
+      "9 manches. Manche N : cible N. Simple = 1 run, Double = 2, Triple = 3. Égalités départagées en manches supplémentaires. Joueurs, équipes et BOTS IA disponibles.",
   },
   {
     id: "football",
@@ -1119,6 +1119,7 @@ const READY_IDS = new Set<string>([
   "warfare",
   "five_lives",
   "scram",
+  "baseball",
 
   // ✅ UNGRAY CAPITAL (Games > Defis)
   "capital",
