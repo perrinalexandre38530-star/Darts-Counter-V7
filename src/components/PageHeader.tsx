@@ -12,6 +12,7 @@ export default function PageHeader(props: {
   tickerSrc?: string;
   tickerAlt?: string;
   tickerHeight?: number;
+  tickerEdgeFade?: "default" | "strong";
 }) {
   const {
     title = "",
@@ -21,6 +22,7 @@ export default function PageHeader(props: {
     tickerSrc,
     tickerAlt = "ticker",
     tickerHeight = 92,
+    tickerEdgeFade = "default",
   } = props;
 
   const hasTicker = !!tickerSrc;
@@ -77,8 +79,9 @@ export default function PageHeader(props: {
               position: "absolute",
               inset: 0,
               pointerEvents: "none",
-              background:
-                "linear-gradient(90deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.00) 13%, rgba(0,0,0,0.00) 87%, rgba(0,0,0,0.45) 100%)",
+              background: tickerEdgeFade === "strong"
+                ? "linear-gradient(90deg, rgba(2,3,9,.96) 0%, rgba(2,3,9,.68) 7%, rgba(2,3,9,0) 24%, rgba(2,3,9,0) 76%, rgba(2,3,9,.68) 93%, rgba(2,3,9,.96) 100%)"
+                : "linear-gradient(90deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.00) 13%, rgba(0,0,0,0.00) 87%, rgba(0,0,0,0.45) 100%)",
             }}
           />
 

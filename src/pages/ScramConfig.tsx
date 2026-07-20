@@ -20,6 +20,7 @@ import type { ScramConfigPayload, ScramTeam } from "../lib/gameEngines/scramEngi
 import { findRememberedGeneratedTeam } from "../lib/teamAutoShuffle";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
+import { SCORE_INPUT_LS_KEY } from "../lib/scoreInput/types";
 import {
   BotTeamsSection,
   PillButton,
@@ -35,6 +36,7 @@ type BotLevel = "easy" | "normal" | "hard";
 type FirstStopperChoice = ScramTeam | "random";
 type ParticipantMode = "players" | "teams";
 type TeamsSourceMode = "manual" | "saved" | "auto";
+type InputMethod = "keypad" | "dartboard";
 type TeamId = "gold" | "pink" | "blue" | "green";
 type BotLite = {
   id: string;
@@ -129,37 +131,35 @@ function RulesContent() {
   return (
     <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.45 }}>
       <div>
-        <strong style={{ color: CYAN }}>SÉLECTION</strong><br />
-        L’onglet <strong>Joueurs</strong> répartit les profils sélectionnés entre deux camps. L’onglet
-        <strong> Équipes</strong> reprend exactement le sélecteur X01 : composition manuelle, équipes
-        enregistrées ou brassage automatique.
+        <strong style={{ color: CYAN }}>SOLO OU ÉQUIPES</strong><br />
+        Le Scram n’est pas réservé aux équipes. En mode <strong>Joueurs</strong>, il se joue en duel
+        1 contre 1, ou avec 4, 6 ou 8 joueurs répartis dans deux camps. En mode <strong>Équipes</strong>,
+        tu choisis directement deux équipes complètes.
       </div>
       <div>
-        <strong style={{ color: CYAN }}>BRASSAGE AUTO</strong><br />
-        Seuls les profils cochés sont brassés. Les équipes générées restent temporaires pour la partie ;
-        elles ne rejoignent la liste des équipes enregistrées que si tu appuies explicitement sur
-        <strong> Enregistrer ces équipes</strong>.
-      </div>
-      <div>
-        <strong style={{ color: CYAN }}>PRINCIPE</strong><br />
-        Le Scram se joue en <strong>deux phases</strong>, avec les cibles Cricket 15 à 20 et le Bull.
-        Une équipe est <strong>Bloqueur</strong>, l’autre est <strong>Scoreur</strong>.
+        <strong style={{ color: CYAN }}>BUT DU JEU</strong><br />
+        La partie utilise les cibles Cricket 15 à 20 et, si activé, le Bull. À chaque phase, un camp
+        <strong> bloque</strong> les cibles pendant que l’autre <strong>marque des points</strong>.
       </div>
       <div>
         <strong style={{ color: GOLD }}>PHASE 1</strong><br />
-        Le Bloqueur joue en premier et ferme chaque cible en 3 marques : simple = 1, double = 2,
-        triple = 3. Pendant ce temps, le Scoreur marque la valeur de ses fléchettes sur les cibles
-        qui ne sont pas encore fermées.
+        Le Bloqueur joue en premier. Il ferme une cible avec 3 marques : simple = 1, double = 2,
+        triple = 3. Le Scoreur additionne la valeur de ses fléchettes uniquement sur les cibles encore ouvertes.
       </div>
       <div>
         <strong style={{ color: GOLD }}>PHASE 2</strong><br />
-        Les rôles s’inversent. Le nouveau Bloqueur commence avec un tableau vierge et l’autre équipe
-        tente de dépasser le score obtenu pendant la première phase.
+        Les rôles s’inversent. Le nouveau Bloqueur repart avec un tableau vierge ; le score cumulé des
+        deux phases détermine le vainqueur.
       </div>
       <div>
         <strong style={{ color: "#7dffca" }}>VICTOIRE</strong><br />
-        Quand le second Bloqueur a fermé toutes les cibles, l’équipe qui totalise le plus de points gagne.
-        Une égalité est possible. Le cap de rounds est seulement une sécurité facultative par phase.
+        Lorsque la seconde série de cibles est fermée, le joueur ou l’équipe qui possède le plus grand
+        total gagne. Une égalité reste possible.
+      </div>
+      <div>
+        <strong style={{ color: CYAN }}>SAISIE</strong><br />
+        Choisis le <strong>keypad</strong> ou la <strong>cible interactive</strong> avant de démarrer : ce choix
+        reste fixe pendant la partie afin de garder l’écran Play compact.
       </div>
     </div>
   );
@@ -208,6 +208,11 @@ export default function ScramConfig(props: any) {
   const [firstStopper, setFirstStopper] = React.useState<FirstStopperChoice>(
     saved.firstStopper === "B" || saved.firstStopper === "random" ? saved.firstStopper : "A"
   );
+  const [inputMethod, setInputMethod] = React.useState<InputMethod>(() => {
+    if (saved.inputMethod === "dartboard" || saved.inputMethod === "keypad") return saved.inputMethod;
+    try { return localStorage.getItem(SCORE_INPUT_LS_KEY) === "dartboard" ? "dartboard" : "keypad"; }
+    catch { return "keypad"; }
+  });
   const [botProfiles, setBotProfiles] = React.useState<BotLite[]>([]);
 
   React.useLayoutEffect(() => {
@@ -246,6 +251,7 @@ export default function ScramConfig(props: any) {
           useBull,
           maxRoundsPerPhase,
           firstStopper,
+          inputMethod,
         })
       );
     } catch {}
@@ -263,6 +269,7 @@ export default function ScramConfig(props: any) {
     useBull,
     maxRoundsPerPhase,
     firstStopper,
+    inputMethod,
   ]);
 
   const allProfiles = React.useMemo(
@@ -498,23 +505,31 @@ export default function ScramConfig(props: any) {
     };
   }
 
-  const playerModeTeams = React.useMemo(
-    () => [
+  const playerModeTeams = React.useMemo(() => {
+    const left = selectedIds.filter((_, index) => index % 2 === 0);
+    const right = selectedIds.filter((_, index) => index % 2 === 1);
+    const sideName = (ids: string[], fallback: string) => {
+      if (ids.length === 1) {
+        const profile: any = byId.get(String(ids[0]));
+        return profile?.name || profile?.displayName || fallback;
+      }
+      return fallback;
+    };
+    return [
       {
         id: "scram-team-a",
-        name: "TEAM A",
+        name: sideName(left, "CAMP A"),
         color: "#ff4ad1",
-        playerIds: selectedIds.filter((_, index) => index % 2 === 0),
+        playerIds: left,
       },
       {
         id: "scram-team-b",
-        name: "TEAM B",
+        name: sideName(right, "CAMP B"),
         color: GOLD,
-        playerIds: selectedIds.filter((_, index) => index % 2 === 1),
+        playerIds: right,
       },
-    ],
-    [selectedIds]
-  );
+    ];
+  }, [selectedIds, byId]);
 
   const manualTeamConfigs = React.useMemo(() => {
     const humanTeams = TEAM_IDS.map((teamId) => ({
@@ -556,7 +571,7 @@ export default function ScramConfig(props: any) {
 
   const selectionError = React.useMemo(() => {
     if (participantMode === "players") {
-      return "Sélectionne 2, 4, 6 ou 8 profils : ils seront répartis entre TEAM A et TEAM B.";
+      return "Sélectionne 2 joueurs pour un duel solo, ou 4, 6 ou 8 profils pour deux camps équilibrés.";
     }
     if (activeTeamConfigs.length !== 2) return "Le Scram se joue avec exactement 2 équipes.";
     if (!sameTeamSize) return "Les deux équipes doivent contenir le même nombre de joueurs.";
@@ -601,8 +616,11 @@ export default function ScramConfig(props: any) {
       useBull,
       maxRoundsPerPhase,
       firstStopper: chosenFirstStopper,
+      participantMode,
+      inputMethod,
     };
     try {
+      localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod);
       recordProfileUsageForMode("scram", orderedIds);
     } catch {}
     if (typeof go === "function") go("scram_play", payload);
@@ -639,6 +657,8 @@ export default function ScramConfig(props: any) {
       <PageHeader
         tickerSrc={tickerScram}
         tickerAlt="SCRAM"
+        tickerEdgeFade="strong"
+        tickerHeight={68}
         left={<BackDot onClick={backToGames} color={CYAN} glow="rgba(66,214,255,.58)" title="Retour" />}
         right={
           <InfoDot
@@ -701,7 +721,7 @@ export default function ScramConfig(props: any) {
                 showSelectedSummary={false}
               />
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                2, 4, 6 ou 8 profils, répartis équitablement entre les deux camps Scram.
+                2 joueurs = duel solo. 4, 6 ou 8 joueurs = deux camps équilibrés.
               </p>
             </>
           ) : (
@@ -848,8 +868,8 @@ export default function ScramConfig(props: any) {
               <OptionSelect
                 value={firstStopper}
                 options={[
-                  { value: "A", label: activeTeamConfigs[0]?.name || "Team A" },
-                  { value: "B", label: activeTeamConfigs[1]?.name || "Team B" },
+                  { value: "A", label: activeTeamConfigs[0]?.name || "Camp A" },
+                  { value: "B", label: activeTeamConfigs[1]?.name || "Camp B" },
                   { value: "random", label: "Aléatoire" },
                 ]}
                 onChange={setFirstStopper}
@@ -865,8 +885,18 @@ export default function ScramConfig(props: any) {
                 onChange={(value: any) => setMaxRoundsPerPhase(Number(value) || 0)}
               />
             </OptionRow>
+            <OptionRow label="Saisie pendant la partie">
+              <OptionSelect
+                value={inputMethod}
+                options={[
+                  { value: "keypad", label: "Keypad compact" },
+                  { value: "dartboard", label: "Cible interactive" },
+                ]}
+                onChange={(value: any) => setInputMethod(value === "dartboard" ? "dartboard" : "keypad")}
+              />
+            </OptionRow>
             <div style={{ marginTop: 9, fontSize: 11.5, opacity: 0.68, lineHeight: 1.35 }}>
-              Partie standard : deux phases, rôles inversés, meilleur total final. Le cap termine seulement une phase trop longue.
+              En duel solo, les noms des deux joueurs remplacent automatiquement les libellés d’équipe. La méthode de saisie choisie ici ne change plus dans l’écran Play.
             </div>
           </div>
         </Section>

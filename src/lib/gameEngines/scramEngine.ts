@@ -39,6 +39,10 @@ export type ScramConfigPayload = {
   useBull?: boolean;
   maxRoundsPerPhase?: number;
   firstStopper?: ScramTeam | "random";
+  /** Format choisi dans la configuration : duel de joueurs ou équipes. */
+  participantMode?: "players" | "teams";
+  /** Méthode de saisie fixée avant le lancement de la partie. */
+  inputMethod?: "keypad" | "dartboard";
 };
 
 export type TargetMarks = Record<ScramTarget, number>;
